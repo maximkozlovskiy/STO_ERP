@@ -23,6 +23,8 @@ function makeMocks() {
       expenseCategory: { findFirst: vi.fn() },
       garageBranch: { findFirst: vi.fn() },
       currency: { findFirst: vi.fn() },
+      // Блокування каси перед читанням залишку (pg_advisory_xact_lock) — лише для видачі.
+      $executeRaw: vi.fn().mockResolvedValue(1),
       $transaction: vi.fn(),
     },
     audit: { record: vi.fn().mockResolvedValue(undefined) },
@@ -516,6 +518,7 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
       cashShift: m.prisma.cashShift,
       expenseCategory: m.prisma.expenseCategory,
       cashOperation: m.prisma.cashOperation,
+      $executeRaw: m.prisma.$executeRaw,
     } as never;
 
     // Перший OUT 60 — проходить (баланс 100 ≥ 60).
@@ -532,6 +535,50 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
         tx,
       ),
     ).rejects.toThrow(/Недостатньо готівки/);
+  });
+
+  // Дві одночасні видачі в ЗОВНІШНІХ транзакціях (оплати різним постачальникам з однієї каси):
+  // рівень там ReadCommitted, тож без черги обидві читали той самий залишок і каса йшла в мінус.
+  // guards: BR-CASH-006, BR-CASH-011
+  it('видача бере блокування каси ДО читання залишку — тим самим клієнтом транзакції', async () => {
+    const m = makeMocks();
+    const service = makeService(m);
+    armBalance(m, 1000);
+    const tx = {
+      cashRegister: m.prisma.cashRegister,
+      cashShift: m.prisma.cashShift,
+      expenseCategory: m.prisma.expenseCategory,
+      cashOperation: m.prisma.cashOperation,
+      $executeRaw: vi.fn().mockResolvedValue(1),
+    };
+    await service.createOperation(
+      ORG,
+      { cashRegisterId: REG, direction: 'OUT', amount: 100, reason: 'SUPPLIER_PAYMENT' },
+      tx as never,
+    );
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    // Кореневий клієнт блокування не бере: воно жило б поза транзакцією викликача.
+    expect(m.prisma.$executeRaw).not.toHaveBeenCalled();
+    const [strings, key] = tx.$executeRaw.mock.calls[0] as [readonly string[], string];
+    expect(strings.join('?')).toContain('pg_advisory_xact_lock');
+    expect(key).toBe(`cash-register:${REG}`);
+    expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      m.prisma.cashOperation.aggregate.mock.invocationCallOrder[0],
+    );
+  });
+
+  // guards: BR-CASH-006
+  it('внесення блокування каси не бере: залишок воно не перевіряє', async () => {
+    const m = makeMocks();
+    const service = makeService(m);
+    armBalance(m, 0);
+    await service.createOperation(ORG, {
+      cashRegisterId: REG,
+      direction: 'IN',
+      amount: 100,
+      reason: 'MANUAL_IN',
+    });
+    expect(m.prisma.$executeRaw).not.toHaveBeenCalled();
   });
 
   // guards: BR-CASH-011

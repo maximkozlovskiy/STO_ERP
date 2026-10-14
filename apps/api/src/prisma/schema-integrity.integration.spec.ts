@@ -91,6 +91,10 @@ const REQUIRED_NAMED_INDEXES: { name: string; why: string }[] = [
     why: 'не більше однієї відкритої касової зміни на касу',
   },
   { name: 'loyalty_earn_one_per_document_uq', why: 'idempotency нарахування балів по документу' },
+  {
+    name: 'expense_categories_default_reason_uq',
+    why: 'один привід за замовчуванням — одна стаття руху коштів в організації (BR-CASH-022)',
+  },
 ];
 
 /** (table, column) на яких має бути GIN trgm-індекс (пошук). Ім'я не фіксуємо (див. шапку). */

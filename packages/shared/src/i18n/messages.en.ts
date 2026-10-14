@@ -725,9 +725,9 @@ export const en: Record<string, string> = {
   'err.auth.sessionInvalid': 'Session is invalid',
 
   // ── Exception messages: idempotency interceptor ──
-  'err.idempotency.inProgress': 'A request with this Idempotency-Key is already being processed',
+  'err.idempotency.inProgress': 'The same request is still being processed — please wait',
   'err.idempotency.keyReusedDifferentBody':
-    'Idempotency-Key has already been used with a different request body',
+    'An earlier attempt from this form may have gone through, and the data has changed since. Close the form, check whether the record already exists, and start again if needed',
 
   // ── Exception messages: fsm ──
   'err.fsm.transitionNotAllowed': 'Transition from status "{{from}}" to "{{to}}" is not allowed',

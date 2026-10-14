@@ -156,6 +156,44 @@ describe('CashService.createOperation — конкурентний конфлі�
     await expect(call).rejects.toThrow(/Каса зайнята паралельною операцією/);
   });
 
+  // Конфлікт, помічений на COMMIT, драйвер-адаптер віддає не як P2034, а як DriverAdapterError
+  // (kind = TransactionWriteConflict). Наживо саме він давав 500 на двох одночасних видачах.
+  // guards: BR-CASH-011
+  it('конфлікт серіалізації на COMMIT (DriverAdapterError) → та сама 400, не 500', async () => {
+    const { m, service } = setup();
+    const onCommit = Object.assign(new Error('TransactionWriteConflict'), {
+      name: 'DriverAdapterError',
+      cause: { kind: 'TransactionWriteConflict' },
+    });
+    m.prisma.$transaction.mockRejectedValueOnce(onCommit);
+    const call = service.createOperation(ORG, {
+      cashRegisterId: REG,
+      direction: 'OUT',
+      amount: 100,
+      reason: 'MANUAL_OUT',
+    });
+    await expect(call).rejects.toThrow(BadRequestException);
+    await expect(call).rejects.toThrow(/Каса зайнята паралельною операцією/);
+  });
+
+  // guards: BR-CASH-011
+  it('помилка драйвера іншого виду (не конфлікт серіалізації) не маскується під 400', async () => {
+    const { m, service } = setup();
+    const other = Object.assign(new Error('UniqueConstraintViolation'), {
+      name: 'DriverAdapterError',
+      cause: { kind: 'UniqueConstraintViolation' },
+    });
+    m.prisma.$transaction.mockRejectedValueOnce(other);
+    await expect(
+      service.createOperation(ORG, {
+        cashRegisterId: REG,
+        direction: 'OUT',
+        amount: 100,
+        reason: 'MANUAL_OUT',
+      }),
+    ).rejects.toBe(other);
+  });
+
   // guards: BR-CASH-011
   it('інша помилка БД не маскується під 400 — летить як є', async () => {
     const { m, service } = setup();

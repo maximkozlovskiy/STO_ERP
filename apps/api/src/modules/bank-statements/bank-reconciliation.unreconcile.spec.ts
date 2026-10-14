@@ -473,6 +473,7 @@ describe('BankReconciliationService.unreconcile — скасування роз�
         cashRegisterId: ID.cashUah,
         direction: 'OUT',
         reason: 'MANUAL_OUT',
+        withoutCategory: true,
         amount: ROW_AMOUNT,
       });
       expect(txArg).toBe(w.tx);

@@ -304,6 +304,89 @@ describe('SupplierPaymentCreateModal — create → confirm (оплата з з�
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  // Відповідь на проведення не дійшла, а сервер оплату провів. Раніше картка намагалась її
+  // скасувати (сервер відмовляє — проведену не скасувати), мовчки ковтала відмову і показувала
+  // помилку: повторний клік створював і проводив ДРУГУ оплату.
+  describe('відповідь на проведення не дійшла', () => {
+    const posts = () => calls().filter(c => c === 'POST /supplier-payments').length;
+
+    /** confirm завжди «падає»; стан документа й скасування задає кейс (черга відповідей). */
+    function mockLostConfirm(
+      statuses: Array<'CONFIRMED' | 'DRAFT' | 'offline'>,
+      cancelWorks: boolean[],
+    ) {
+      let created = 0;
+      apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
+        if (path === '/cash-registers')
+          return Promise.resolve({ items: [{ id: CASH_UUID, name: 'Каса №1' }], total: 1 });
+        if (path === '/bank-accounts') return Promise.resolve({ items: [], total: 0 });
+        if (path === '/payment-methods')
+          return Promise.resolve([{ code: 'CASH', name: 'Готівка', isActive: true }]);
+        if (path === '/supplier-payments' && opts?.method === 'POST') {
+          created += 1;
+          return Promise.resolve({ id: `sp${created}`, number: `SP-${created}` });
+        }
+        if (/^\/supplier-payments\/sp\d\/confirm$/.test(path))
+          return path === '/supplier-payments/sp1/confirm'
+            ? Promise.reject(new Error('Failed to fetch'))
+            : Promise.resolve({ status: 'CONFIRMED' });
+        if (/^\/supplier-payments\/sp\d\/cancel$/.test(path))
+          return cancelWorks.shift()
+            ? Promise.resolve({ status: 'CANCELLED' })
+            : Promise.reject(new Error('Failed to fetch'));
+        if (path === '/supplier-payments/sp1') {
+          const next = statuses.shift();
+          return next === 'offline' || next === undefined
+            ? Promise.reject(new Error('Failed to fetch'))
+            : Promise.resolve({ id: 'sp1', status: next });
+        }
+        return Promise.resolve({ items: [], total: 0 });
+      });
+    }
+
+    it('сервер оплату провів → це успіх: картка закрита, скасування й другої оплати немає', async () => {
+      mockLostConfirm(['CONFIRMED'], []);
+      const onSaved = vi.fn();
+      const onClose = vi.fn();
+      const btn = await renderReady(onSaved, onClose);
+      fireEvent.click(btn);
+      await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1), { timeout: 2000 });
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(posts()).toBe(1);
+      expect(calls()).not.toContain('POST /supplier-payments/sp1/cancel');
+    });
+
+    it('стан невідомий → повторний клік спершу зʼясовує долю ТІЄЇ оплати, другої не створює', async () => {
+      mockLostConfirm(['offline', 'CONFIRMED'], []);
+      const onSaved = vi.fn();
+      const btn = await renderReady(onSaved, vi.fn());
+      fireEvent.click(btn);
+      await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/Failed to fetch/), {
+        timeout: 2000,
+      });
+      expect(onSaved).not.toHaveBeenCalled();
+
+      fireEvent.click(btn);
+      await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1), { timeout: 2000 });
+      expect(posts()).toBe(1);
+    });
+
+    it('чернетку не вдалося скасувати → нова оплата лише після того, як стару скасовано', async () => {
+      mockLostConfirm(['DRAFT', 'DRAFT'], [false, true]);
+      const onSaved = vi.fn();
+      const btn = await renderReady(onSaved, vi.fn());
+      fireEvent.click(btn);
+      await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument(), { timeout: 2000 });
+      expect(posts()).toBe(1);
+
+      fireEvent.click(btn);
+      await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1), { timeout: 2000 });
+      expect(posts()).toBe(2);
+      expect(calls().filter(c => c === 'POST /supplier-payments/sp1/cancel')).toHaveLength(2);
+      expect(calls()).toContain('POST /supplier-payments/sp2/confirm');
+    });
+  });
+
   it('подвійний клік в одному tick: один документ і одне проведення', async () => {
     mockApi(false);
     const btn = await renderReady(vi.fn(), vi.fn());

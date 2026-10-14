@@ -151,7 +151,7 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 | Аспект                                                         | Тест                                          | Кейсів |
 | -------------------------------------------------------------- | --------------------------------------------- | ------ |
 | cancel remove                                                  | `supplier-payments.cancel-remove.spec.ts`     | 4      |
-| confirm                                                        | `supplier-payments.confirm.spec.ts`           | 5      |
+| confirm                                                        | `supplier-payments.confirm.spec.ts`           | 6      |
 | HTTP-контракт (DTO, статуси, валідація)                        | `supplier-payments.contract.spec.ts`          | 28     |
 | документ, позначений на видалення, — лише перегляд (BR-WO-012) | `supplier-payments.with-deleted.spec.ts`      | 9      |
 | create                                                         | `supplier-payments.create.spec.ts`            | 6      |

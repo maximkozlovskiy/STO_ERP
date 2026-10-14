@@ -1602,6 +1602,7 @@
   ],
   "apps/api/src/modules/cash-registers/cash-desk.client.spec.ts": [
    "CashDeskService.create — оплата контрагента (SALE_PAYMENT) без підстави: наряд в оплату не передається",
+   "CashDeskService.create — оплата контрагента (SALE_PAYMENT) каса чужої організації або видалена → 404, нічого не проведено",
    "CashDeskService.create — оплата контрагента (SALE_PAYMENT) контрагент «обидва» → оплата клієнта з джерелом «каса», готівкою, на суму з копійками",
    "CashDeskService.create — оплата контрагента (SALE_PAYMENT) контрагент клієнт → оплата клієнта з джерелом «каса», готівкою, на суму з копійками",
    "CashDeskService.create — оплата контрагента (SALE_PAYMENT) наряд (INVOICED) лишається підставою рядка каси: baseDocument* доходить до оплати «додатками»",
@@ -1620,15 +1621,21 @@
    "CashDeskService.create — оплата контрагента (SALE_PAYMENT) оплата не вдалась → помилка піднята як є, у касі й боргу нічого",
    "CashDeskService.create — оплата контрагента (SALE_PAYMENT) постачальник в «оплаті контрагента» → 400, оплату не створено",
    "CashDeskService.create — оплата контрагента (SALE_PAYMENT) рядок каси пише сама оплата: CashDeskService не кличе createOperation і не чіпає взаєморозрахунки",
+   "CashDeskService.create — оплата контрагента (SALE_PAYMENT) рядок оплати для відповіді береться лише у своїй організації",
    "CashDeskService.create — оплата контрагента (SALE_PAYMENT) стаття, обрана в касі, доходить до оплати «додатками» (єдиний рядок каси несе її одразу)",
+   "CashDeskService.create — повернення клієнту (REFUND) валютна каса: проводка несе валюту каси й курс рядка каси",
    "CashDeskService.create — повернення клієнту (REFUND) каса відмовила (недостатньо готівки) → проводки немає, борг клієнта не змінено",
    "CashDeskService.create — повернення клієнту (REFUND) контрагент «обидва» → рядок каси (видача) і REFUND_OUT на ту саму суму, проводка посилається на рядок",
    "CashDeskService.create — повернення клієнту (REFUND) контрагент клієнт → рядок каси (видача) і REFUND_OUT на ту саму суму, проводка посилається на рядок",
+   "CashDeskService.create — повернення клієнту (REFUND) конфлікт серіалізації (DriverAdapterError на COMMIT) → 400 «каса зайнята», не 500",
+   "CashDeskService.create — повернення клієнту (REFUND) конфлікт серіалізації (P2034 на запиті) → 400 «каса зайнята», не 500",
    "CashDeskService.create — повернення клієнту (REFUND) одна копійка повернення: і в касі, і в проводці 0.01",
    "CashDeskService.create — повернення клієнту (REFUND) повернення не створює оплату клієнта й не чіпає оплати постачальникам («сплачено» не змінюється)",
+   "CashDeskService.create — повернення клієнту (REFUND) повтор того самого повернення — дві окремі операції: кожна проводка посилається на СВІЙ рядок каси",
    "CashDeskService.create — повернення клієнту (REFUND) постачальник у «поверненні клієнту» → 400, нічого не проведено",
    "CashDeskService.create — повернення клієнту (REFUND) проводка кинула → рядка каси немає: транзакція відкотилась, помилка піднята",
-   "CashDeskService.create — повернення клієнту (REFUND) рядок каси і проводка йдуть ОДНІЄЮ транзакцією: обидва отримали той самий tx-клієнт"
+   "CashDeskService.create — повернення клієнту (REFUND) рядок каси і проводка йдуть ОДНІЄЮ транзакцією: обидва отримали той самий tx-клієнт",
+   "CashDeskService.create — повернення клієнту (REFUND) транзакція повернення — Serializable"
   ],
   "apps/api/src/modules/cash-registers/cash-desk.roles.spec.ts": [
    "CashDeskService.create — ролі за приводом ACCOUNTANT проводить привід ADVANCE_ISSUE",
@@ -1673,6 +1680,7 @@
    "CashDeskService.create — ролі за приводом OWNER проводить привід SALE_PAYMENT",
    "CashDeskService.create — ролі за приводом OWNER проводить привід SUPPLIER_PAYMENT",
    "CashDeskService.create — ролі за приводом OWNER проводить привід SUPPLIER_REFUND_IN",
+   "CashDeskService.create — ролі за приводом заборонений привід → 403 ще до читання каси, контрагента й підстави",
    "CashDeskService.create — ролі за приводом заборонених для приймальні приводів — тринадцять із чотирнадцяти ручних",
    "CashDeskService.create — ролі за приводом приймальня з приводом ADVANCE_ISSUE → 403, нічого не проведено",
    "CashDeskService.create — ролі за приводом приймальня з приводом ADVANCE_RETURN → 403, нічого не проведено",
@@ -1824,6 +1832,7 @@
    "CashService.createOperation — документ-підстава в рядку каси підставу не передано → baseDocumentType і baseDocumentId пишуться як null",
    "CashService.createOperation — стаття за замовчуванням для приводу IN / OWNER_IN без статті → підставляється активна стаття, за якою закріплено привід",
    "CashService.createOperation — стаття за замовчуванням для приводу OUT / BANK_DEPOSIT без статті → підставляється активна стаття, за якою закріплено привід",
+   "CashService.createOperation — стаття за замовчуванням для приводу withoutCategory → рядок без статті, хоч за приводом закріплено активну статтю",
    "CashService.createOperation — стаття за замовчуванням для приводу операція, створена оплатою (свій tx, платіжний документ), теж отримує статтю за замовчуванням",
    "CashService.createOperation — стаття за замовчуванням для приводу привід без закріпленої статті → операція без статті (як до правила)",
    "CashService.createOperation — стаття за замовчуванням для приводу свою статтю передано → лишається вона, стаття за замовчуванням не підміняє",
@@ -1831,7 +1840,8 @@
    "CashService.createOperation — стаття за замовчуванням для приводу стаття за замовчуванням вимкнена (isActive = false) → не підставляється, операція проходить без статті",
    "CashService.createOperation — стаття за замовчуванням для приводу стаття за замовчуванням закріплена за ІНШИМ приводом → не підставляється, операція проходить без статті",
    "CashService.createOperation — стаття за замовчуванням для приводу стаття за замовчуванням не того типу, що напрям → рядок із нею НЕ пишеться",
-   "CashService.createOperation — стаття за замовчуванням для приводу стаття за замовчуванням чужої організації → не підставляється, операція проходить без статті"
+   "CashService.createOperation — стаття за замовчуванням для приводу стаття за замовчуванням чужої організації → не підставляється, операція проходить без статті",
+   "CashService.createOperation — стаття за замовчуванням для приводу у зовнішній транзакції стаття за приводом читається ЇЇ клієнтом, не кореневим"
   ],
   "apps/api/src/modules/cash/cash.operation-record.spec.ts": [
    "CashService — прив’язка операції до документа documentType/documentId/counterpartyId/employeeId/notes/createdBy пишуться як передані",
@@ -1845,6 +1855,8 @@
    "CashService.createOperation — зміна фіскальної каси шукає ВІДКРИТУ невидалену зміну саме цієї каси в цій організації",
    "CashService.createOperation — конкурентний конфлікт P2034 (serialization failure) → 400 «Каса зайнята паралельною операцією»",
    "CashService.createOperation — конкурентний конфлікт зовнішній tx: каса, баланс і запис ідуть через НЬОГО, а не через this.prisma",
+   "CashService.createOperation — конкурентний конфлікт конфлікт серіалізації на COMMIT (DriverAdapterError) → та сама 400, не 500",
+   "CashService.createOperation — конкурентний конфлікт помилка драйвера іншого виду (не конфлікт серіалізації) не маскується під 400",
    "CashService.createOperation — конкурентний конфлікт інша помилка БД не маскується під 400 — летить як є",
    "CashService.createOperation — сума операції знак несе direction: OUT пишеться з ДОДАТНОЮ сумою",
    "CashService.createOperation — сума операції сума Infinity → 400 «Сума має бути додатною», касу не читаємо, нічого не пишемо",
@@ -1874,6 +1886,8 @@
    "CashService.createOperation — overdraft-guard (OUT не нижче 0) float-дрейф (баланс 0.30, OUT 0.30) → проходить (толеранс поглинає IEEE-754)",
    "CashService.createOperation — overdraft-guard (OUT не нижче 0) multi-OUT в одній зовнішній tx: другий OUT бачить списане першим → 400",
    "CashService.createOperation — overdraft-guard (OUT не нижче 0) без-tx шлях → Serializable транзакція",
+   "CashService.createOperation — overdraft-guard (OUT не нижче 0) видача бере блокування каси ДО читання залишку — тим самим клієнтом транзакції",
+   "CashService.createOperation — overdraft-guard (OUT не нижче 0) внесення блокування каси не бере: залишок воно не перевіряє",
    "CashService.createOperation — overdraft-guard (OUT не нижче 0) копійкова нестача (баланс 100.00, OUT 100.01) → 400 (толеранс −0.001 не пропускає)",
    "CashService.createOperation — єдина точка руху amount ≤ 0 → BadRequest",
    "CashService.createOperation — єдина точка руху expenseCategoryId не належить org → 404",
@@ -1906,7 +1920,9 @@
    "CashService — ізоляція організацій (where/data несуть orgId) getBalance шукає касу за id + orgId серед невидалених",
    "CashService — ізоляція організацій (where/data несуть orgId) listOperations фільтрує історію за orgId і касою",
    "CashService — ізоляція організацій (where/data несуть orgId) операція пишеться з orgId викликача і в касу, знайдену в цій організації",
-   "CashService — ізоляція організацій (where/data несуть orgId) стаття шукається за id + orgId серед невидалених"
+   "CashService — ізоляція організацій (where/data несуть orgId) пошук історії за назвою контрагента шукає контрагентів лише своєї організації, зі стелею",
+   "CashService — ізоляція організацій (where/data несуть orgId) стаття шукається за id + orgId серед невидалених",
+   "CashService — ізоляція організацій (where/data несуть orgId) історія: назви, номери й фіскальний статус шукаються за id + orgId"
   ],
   "apps/api/src/modules/comments/comments.service.spec.ts": [
    "CommentsService create — cross-tenant FK guard поліморфної сутності FK guard читає батька у СВОЇЙ org і не видаленого",
@@ -2307,6 +2323,11 @@
    "ExpenseCategoriesService — напрям приводу ↔ тип статті привід внесення OWNER_IN підходить статті оприбуткування (INCOME)",
    "ExpenseCategoriesService — напрям приводу ↔ тип статті привід внесення SALE_PAYMENT підходить статті оприбуткування (INCOME)",
    "ExpenseCategoriesService — напрям приводу ↔ тип статті привід внесення SUPPLIER_REFUND_IN підходить статті оприбуткування (INCOME)",
+   "ExpenseCategoriesService — привід зайняли між перевіркою і записом (P2002 індексу) create: індекс відмовив → 409, а не 500",
+   "ExpenseCategoriesService — привід зайняли між перевіркою і записом (P2002 індексу) restore: індекс відмовив → стаття відновлюється БЕЗ приводу другою спробою",
+   "ExpenseCategoriesService — привід зайняли між перевіркою і записом (P2002 індексу) update: індекс відмовив → 409 з назвою статті-власника",
+   "ExpenseCategoriesService — привід зайняли між перевіркою і записом (P2002 індексу) створення з назвою видаленої статті відновлює її з приводом ІЗ ЗАПИТУ, старий не повертається",
+   "ExpenseCategoriesService — привід зайняли між перевіркою і записом (P2002 індексу) інша помилка запису не маскується під 409",
    "ExpenseCategoriesService — привід зайнятий create з приводом, який тримає інша стаття → 409 із її назвою; статтю не створено",
    "ExpenseCategoriesService — привід зайнятий update з приводом, який тримає інша стаття → 409 із її назвою; обидві статті без змін",
    "ExpenseCategoriesService — привід зайнятий видалення статті (remove) звільняє привід: одразу після нього привід бере інша стаття",
@@ -3589,6 +3610,7 @@
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #674: methodConfig=null (невідомий метод) → джерело null, платіж успішний",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) DTO без джерела + config-дефолт BANK_ACCOUNT (живий рахунок) → джерело платежу з config",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) settlement і paidAmount однакові без джерела, з BANK_ACCOUNT і з CASH_REGISTER (борг не залежить від source-link)",
+   "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) додатки касового рядка (внутрішній аргумент) лягають у рядок каси оплати; без них рядок як раніше",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) рахунок виписано на іншого контрагента → 400, рахунок не чіпається, платіж і проводка не створюються",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) рахунок у OVERDUE → оплата приймається: часткова → PARTIALLY_PAID, повна → PAID",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) рахунок читається з контрагентом (counterpartyId у select) — без нього перевірка платника сліпа",
@@ -4791,6 +4813,7 @@
    "SupplierPaymentsService — confirm confirm(): CASH_REGISTER → cash-out OUT/SUPPLIER_PAYMENT у ту саму tx (Bug — cash-оплата не залишала касу)",
    "SupplierPaymentsService — confirm confirm(): overdraft у касі → createOperation кидає → весь confirm відкат (settlement не «залишається»)",
    "SupplierPaymentsService — confirm confirm(): settlement SUPPLIER_PAYMENT (+1, наш борг ↓) + documentType=SupplierPayment",
+   "SupplierPaymentsService — confirm confirm(): додатки касового рядка (внутрішній аргумент) лягають у рядок каси",
    "SupplierPaymentsService — confirm confirm(): з CANCELLED статусу (pre-check) → BadRequestException"
   ],
   "apps/api/src/modules/supplier-payments/supplier-payments.contract.spec.ts": [

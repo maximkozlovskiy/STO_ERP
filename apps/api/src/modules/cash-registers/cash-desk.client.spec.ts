@@ -7,12 +7,14 @@
  * навпаки: рядок каси й проводка `REFUND_OUT` в одній транзакції, без документа оплати.
  */
 import { describe, it, expect } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import {
   BOTH,
   CAT_INCOME,
   CLIENT,
   ORG,
+  OTHER_ORG,
   REG,
   SUPPLIER,
   USER,
@@ -23,6 +25,7 @@ import {
   validInput,
   type Desk,
 } from './cash-desk.spec-fixture';
+import type { MemRow } from '../cash/cash.spec-fixture';
 
 /** Аргументи єдиного виклику PaymentsService.create: (orgId, dto, …решта). */
 function paymentCall(h: Desk) {
@@ -180,6 +183,32 @@ describe('CashDeskService.create — оплата контрагента (SALE_P
     expect(h.cashRows).toEqual([]);
   });
 
+  // guards: BR-CASH-017, BR-CASH-003
+  it('рядок оплати для відповіді береться лише у своїй організації', async () => {
+    const h = makeDesk();
+    // Чужий рядок із тим самим платіжним документом стоїть у журналі раніше за свій.
+    h.cashRows.push({
+      id: 'op-foreign',
+      orgId: OTHER_ORG,
+      documentType: 'Payment',
+      documentId: 'pay-1',
+      amount: 999,
+    });
+    const result = await createOp(h, validInput('SALE_PAYMENT', { amount: 120 }));
+    expect(result.id).not.toBe('op-foreign');
+    expect(result.amount).toBe(120);
+  });
+
+  // guards: BR-CASH-003
+  it('каса чужої організації або видалена → 404, нічого не проведено', async () => {
+    for (const patchRow of [{ orgId: OTHER_ORG }, { deletedAt: new Date() }]) {
+      const h = makeDesk();
+      Object.assign(h.tables.cashRegister.rows[0], patchRow);
+      await expect(createOp(h, validInput('SALE_PAYMENT'))).rejects.toThrow(NotFoundException);
+      expectNothingMoved(h);
+    }
+  });
+
   // guards: BR-CASH-017, BR-CASH-004
   it('одна копійка оплати доходить як 0.01', async () => {
     const h = makeDesk();
@@ -251,6 +280,59 @@ describe('CashDeskService.create — повернення клієнту (REFUND
     expect(h.settlementRows).toEqual([]);
   });
 
+  // BR-SETL-010: проводка не ідемпотентна, і сервіс повтор НЕ відсіює — від подвійного кліку
+  // захищає лише Idempotency-Key на маршруті. Кейс стереже інше: проводка завжди на СВІЙ рядок
+  // каси, тобто двох проводок на один рядок (подвійного боргу за одну видачу) не буває.
+  // guards: BR-CASH-018, BR-SETL-010
+  it('повтор того самого повернення — дві окремі операції: кожна проводка посилається на СВІЙ рядок каси', async () => {
+    const h = makeDesk();
+    await createOp(h, validInput('REFUND', { amount: 50 }));
+    await createOp(h, validInput('REFUND', { amount: 50 }));
+
+    expect(h.cashRows).toHaveLength(2);
+    expect(h.settlementRows).toHaveLength(2);
+    expect(h.cashRows[0].id).not.toBe(h.cashRows[1].id);
+    expect(h.settlementRows.map(r => r.documentId)).toEqual(h.cashRows.map(r => r.id));
+  });
+
+  // Рядок каси і проводка йдуть Serializable-транзакцією: паралельна видача з тієї самої каси
+  // дає конфлікт серіалізації. На запиті він приходить як P2034, на COMMIT — як DriverAdapterError.
+  // guards: BR-CASH-018, BR-CASH-011
+  it.each([
+    [
+      'P2034 на запиті',
+      Object.assign(Object.create(Prisma.PrismaClientKnownRequestError.prototype) as Error, {
+        code: 'P2034',
+      }),
+    ],
+    [
+      'DriverAdapterError на COMMIT',
+      Object.assign(new Error('TransactionWriteConflict'), {
+        name: 'DriverAdapterError',
+        cause: { kind: 'TransactionWriteConflict' },
+      }),
+    ],
+  ])('конфлікт серіалізації (%s) → 400 «каса зайнята», не 500', async (_form, conflict) => {
+    const h = makeDesk();
+    h.prisma.$transaction.mockRejectedValueOnce(conflict);
+
+    const call = createOp(h, validInput('REFUND'));
+    await expect(call).rejects.toThrow(BadRequestException);
+    await expect(call).rejects.toThrow(/Каса зайнята паралельною операцією/);
+    expect(h.cashRows).toEqual([]);
+    expect(h.settlementRows).toEqual([]);
+  });
+
+  // guards: BR-CASH-018, BR-CASH-011
+  it('транзакція повернення — Serializable', async () => {
+    const h = makeDesk();
+    await createOp(h, validInput('REFUND'));
+    expect(h.prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ isolationLevel: 'Serializable' }),
+    );
+  });
+
   // guards: BR-CASH-018, BR-CASH-006
   it('каса відмовила (недостатньо готівки) → проводки немає, борг клієнта не змінено', async () => {
     const h = makeDesk();
@@ -281,6 +363,25 @@ describe('CashDeskService.create — повернення клієнту (REFUND
     expect(h.supplierPayments.create).not.toHaveBeenCalled();
     expect(h.supplierPayments.confirm).not.toHaveBeenCalled();
     expect(h.settlements.createTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  // Борг ведеться в базовій валюті. Проводка мусить узяти валюту каси й ТОЙ САМИЙ курс, яким
+  // записано рядок каси: власний перерахунок дав би іншу базову суму, ніж у журналі каси.
+  // guards: BR-CASH-018
+  it('валютна каса: проводка несе валюту каси й курс рядка каси', async () => {
+    const h = makeDesk();
+    h.tables.cashRegister.rows[0].currencyId = 'usd-id';
+    h.cash.createOperation.mockImplementationOnce((orgId: string, input: MemRow) =>
+      Promise.resolve({ id: 'op-usd', orgId, ...input, amountBase: 144.02, rateUsed: 43.25 }),
+    );
+    await createOp(h, validInput('REFUND', { amount: 3.33 }));
+    expect(h.settlementRows[0]).toMatchObject({
+      type: 'REFUND_OUT',
+      amount: 3.33,
+      currencyId: 'usd-id',
+      conversion: { amountBase: 144.02, rateUsed: 43.25 },
+      documentId: 'op-usd',
+    });
   });
 
   // guards: BR-CASH-018, BR-CASH-004

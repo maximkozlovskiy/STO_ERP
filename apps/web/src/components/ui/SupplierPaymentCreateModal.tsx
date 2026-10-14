@@ -27,8 +27,6 @@ import { SearchPickerModal } from '@/components/ui/search-picker-modal';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidatePurchaseSideEffects } from '@/lib/cache-invalidation';
 import {
-  useSupplierPayment,
-  useUpdateSupplierPayment,
   useCreateSupplierPayment,
   useConfirmSupplierPayment,
   useCancelSupplierPayment,
@@ -36,7 +34,7 @@ import {
 } from '@/hooks/api/useSupplierPayments';
 
 /**
- * Оплата постачальнику (створення з негайним проведенням; редагування чернетки).
+ * Оплата постачальнику: створення з негайним проведенням.
  *
  * `void` перед `handleSave()` / `handleModalClose()` у JSX: `handleSave` (RHF handleSubmit
  * над `onValid`) має try/catch, що пише текст відмови у `error` (баннер у модалці) і в
@@ -87,9 +85,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
-  /** Якщо задано — режим редагування наявної DRAFT-оплати (PATCH). */
-  paymentId?: string;
-  /** Передзаповнення при створенні (ігнорується у режимі редагування). */
+  /** Передзаповнення при створенні. */
   prefill?: SupplierPaymentPrefill;
 }
 
@@ -107,10 +103,9 @@ const emptyDefaults = (): SupplierPaymentFormInput => ({
   documentDate: kyivToday(),
 });
 
-export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, prefill }: Props) {
+export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: Props) {
   const { t } = useTranslation('supplierPayments');
   const features = useUiFeatures();
-  const isEdit = !!paymentId;
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   // react-hook-form + спільна zod-схема (єдине джерело валідації web ↔ api).
@@ -155,6 +150,10 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
   // помилку ПІСЛЯ commit-у (обрив на відповіді), повторний клік «Створити» не
   // має створити ДРУГУ оплату. Зберігаємо id першого успіху та завершуємо форму.
   const createdIdRef = useRef<string | null>(null);
+  // Оплата, створена попередньою спробою, доля якої невідома: відповідь на проведення не
+  // дійшла, а стан документа з'ясувати не вдалось. Наступна спроба спершу з'ясовує ЇЇ долю —
+  // інакше повторний клік створив би й провів другу оплату (гроші з каси двічі).
+  const pendingIdRef = useRef<string | null>(null);
   // Auto-select single source має спрацювати РАЗ на джерело (коли завантажився
   // список), а не після кожного рендера — інакше повторно вибирає щойно очищене
   // користувачем поле «— Оберіть —» і його неможливо лишити порожнім.
@@ -167,7 +166,6 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
     };
   }, []);
 
-  const updateMut = useUpdateSupplierPayment();
   // Bug #594: створення через хук (а не raw apiFetch) щоб onSuccess у хуку
   // інвалідував supplierPaymentsKeys.all — інакше нова оплата не з'являється
   // у списку до staleTime=30s (usePaginatedList кешує на 30 секунд).
@@ -177,34 +175,6 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
   const confirmMut = useConfirmSupplierPayment();
   const cancelMut = useCancelSupplierPayment();
   const queryClient = useQueryClient();
-
-  // Режим редагування — тягнемо наявну оплату для заповнення форми.
-  const { data: existing } = useSupplierPayment(isEdit && open ? paymentId : null);
-  const editNonDraft = isEdit && existing != null && existing.status !== 'DRAFT';
-
-  // Заповнення форми з наявної оплати (edit) — раз на завантаження запису.
-  const populatedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!open || !isEdit || !existing) return;
-    if (populatedRef.current === existing.id) return;
-    populatedRef.current = existing.id;
-    // reset() ставить нову «чисту» базу з наявного запису → rhfDirty=false.
-    reset({
-      supplierId: existing.supplierId,
-      sourceType: existing.sourceType,
-      bankAccountId: existing.bankAccountId ?? '',
-      cashRegisterId: existing.cashRegisterId ?? '',
-      purchaseOrderId: existing.purchaseOrderId ?? '',
-      amount: String(existing.amount),
-      method: existing.method,
-      notes: existing.notes ?? '',
-      documentDate: existing.documentDate ?? kyivToday(),
-    });
-    setSupplierName(existing.supplierName ?? '');
-    setPurchaseOrderNumber(existing.purchaseOrderNumber ?? '');
-    // джерело вже обрано з запису — не даємо auto-select перезаписати
-    autoSelectedRef.current = { cash: true, bank: true };
-  }, [open, isEdit, existing, reset]);
 
   // ── Reference data ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -274,28 +244,24 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
       setError('');
       autoSelectedRef.current = { cash: false, bank: false };
       createdIdRef.current = null;
+      pendingIdRef.current = null;
       savingRef.current = false;
-      if (!isEdit) {
-        // reset() ставить чисту базу → rhfDirty=false; далі накладаємо prefill.
-        reset(emptyDefaults());
-        setSupplierName('');
-        setPurchaseOrderNumber('');
-        // Передзаповнення при створенні з іншого документа (напр. PurchaseOrder).
-        if (prefill) {
-          if (prefill.supplierId) setValue('supplierId', prefill.supplierId);
-          if (prefill.supplierName) setSupplierName(prefill.supplierName);
-          if (prefill.purchaseOrderId) setValue('purchaseOrderId', prefill.purchaseOrderId);
-          if (prefill.purchaseOrderNumber) setPurchaseOrderNumber(prefill.purchaseOrderNumber);
-          if (prefill.amount != null && prefill.amount > 0)
-            setValue('amount', String(prefill.amount));
-        }
+      // reset() ставить чисту базу → rhfDirty=false; далі накладаємо prefill.
+      reset(emptyDefaults());
+      setSupplierName('');
+      setPurchaseOrderNumber('');
+      // Передзаповнення при створенні з іншого документа (напр. PurchaseOrder).
+      if (prefill) {
+        if (prefill.supplierId) setValue('supplierId', prefill.supplierId);
+        if (prefill.supplierName) setSupplierName(prefill.supplierName);
+        if (prefill.purchaseOrderId) setValue('purchaseOrderId', prefill.purchaseOrderId);
+        if (prefill.purchaseOrderNumber) setPurchaseOrderNumber(prefill.purchaseOrderNumber);
+        if (prefill.amount != null && prefill.amount > 0)
+          setValue('amount', String(prefill.amount));
       }
-    } else {
-      // Повне очищення при закритті (edit populate спрацює наново при наступному open).
-      populatedRef.current = null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, paymentId]);
+  }, [open]);
 
   // Міст RHF isDirty → useDirtyForm (DirtyConfirmDialog + beforeunload збережено).
   useEffect(() => {
@@ -303,6 +269,30 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
     else dirty.resetDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rhfDirty]);
+
+  /**
+   * Чим закінчилась оплата: проведена; скасована (зокрема щойно — чернетку скасовуємо тут);
+   * невідомо (немає зв'язку або чернетку не вдалося скасувати).
+   */
+  const settlePayment = useCallback(
+    async (id: string): Promise<'confirmed' | 'cancelled' | 'unknown'> => {
+      let status: string | undefined;
+      try {
+        status = (await apiFetch<{ status?: string }>(`/supplier-payments/${id}`)).status;
+      } catch {
+        return 'unknown';
+      }
+      if (status === 'CONFIRMED') return 'confirmed';
+      if (status === 'CANCELLED') return 'cancelled';
+      try {
+        await cancelMut.mutateAsync(id);
+        return 'cancelled';
+      } catch {
+        return 'unknown';
+      }
+    },
+    [cancelMut],
+  );
 
   const onValid = useCallback(
     async (values: SupplierPaymentFormValues) => {
@@ -323,31 +313,43 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
         documentDate: values.documentDate,
       };
       try {
-        if (isEdit) {
-          await updateMut.mutateAsync({ id: paymentId, data: payload });
-          if (features.toastEnabled) toast.success(t('toast.paymentUpdated'));
-        } else if (createdIdRef.current) {
-          // Оплату вже створено на попередній спробі (retry після обриву на
-          // відповіді) — не створюємо дубль, лише завершуємо форму.
-          if (features.toastEnabled) toast.success(t('toast.paymentCreated'));
-        } else {
-          // Bug #594: через хук — щоб onSuccess інвалідував supplierPaymentsKeys.all.
-          const created = await createMut.mutateAsync(payload);
-          try {
-            await confirmMut.mutateAsync(created.id);
-          } catch (confirmError) {
-            // Той самий порядок, що CashDeskService.payToSupplier: не вдалось провести —
-            // скасувати створений документ і показати відмову сервера в картці.
-            try {
-              await cancelMut.mutateAsync(created.id);
-            } catch {
-              /* скасування — best effort; помилка проведення важливіша */
-            }
-            throw confirmError;
+        if (!createdIdRef.current) {
+          // Попередня спроба лишила оплату з невідомою долею → спершу з'ясувати її.
+          let confirmedId: string | null = null;
+          if (pendingIdRef.current) {
+            const fate = await settlePayment(pendingIdRef.current);
+            if (fate === 'unknown') throw new Error(t('errors.paymentStateUnknown'));
+            if (fate === 'confirmed') confirmedId = pendingIdRef.current;
+            pendingIdRef.current = null;
           }
-          createdIdRef.current = created.id;
-          if (features.toastEnabled) toast.success(t('toast.paymentCreated'));
+          if (!confirmedId) {
+            // Bug #594: через хук — щоб onSuccess інвалідував supplierPaymentsKeys.all.
+            const created = await createMut.mutateAsync(payload);
+            pendingIdRef.current = created.id;
+            try {
+              await confirmMut.mutateAsync(created.id);
+            } catch (confirmError) {
+              // Відмова проведення і «відповідь не дійшла» виглядають однаково, а сервер міг
+              // оплату провести. Тому спершу стан документа: проведено — це успіх; ні —
+              // скасовуємо чернетку (порядок CashDeskService.payToSupplier) і показуємо відмову.
+              const fate = await settlePayment(created.id);
+              if (fate === 'cancelled') {
+                pendingIdRef.current = null;
+                throw confirmError;
+              }
+              if (fate === 'unknown') {
+                const reason = confirmError instanceof Error ? confirmError.message : '';
+                throw new Error(`${reason} ${t('errors.paymentStateUnknown')}`.trim());
+              }
+            }
+            pendingIdRef.current = null;
+            confirmedId = created.id;
+          }
+          createdIdRef.current = confirmedId;
         }
+        // createdIdRef уже був заданий → оплату проведено на попередній спробі (далі впав
+        // onSaved): дубль не створюємо, лише завершуємо форму.
+        if (features.toastEnabled) toast.success(t('toast.paymentCreated'));
         dirty.resetDirty();
         invalidatePurchaseSideEffects(queryClient);
         onSaved();
@@ -362,12 +364,9 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
       }
     },
     [
-      isEdit,
-      paymentId,
-      updateMut,
       createMut,
       confirmMut,
-      cancelMut,
+      settlePayment,
       queryClient,
       features.toastEnabled,
       onSaved,
@@ -392,7 +391,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
         open={open}
         onClose={() => void handleModalClose()}
         onSubmit={() => void handleSave()}
-        title={isEdit ? 'Редагувати оплату' : 'Оплата постачальнику'}
+        title="Оплата постачальнику"
         size="lg"
         footer={
           <div className="flex gap-2 items-center justify-end w-full">
@@ -407,23 +406,20 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
             <Button
               onClick={() => void handleSave()}
               loading={saving}
-              disabled={saving || !supplierId || editNonDraft}
+              disabled={saving || !supplierId}
               size="sm"
             >
-              {isEdit ? 'Зберегти' : 'Оплатити'}
+              Оплатити
             </Button>
           </div>
         }
       >
         <div className="space-y-4">
-          {editNonDraft && (
-            <div className="text-[13px] text-warning bg-warning-subtle border border-warning/30 rounded-lg px-3 py-2">
-              Редагування дозволено лише у статусі «Чернетка». Ця оплата вже проведена або
-              скасована.
-            </div>
-          )}
           {error && (
-            <div className="text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2">
+            <div
+              role="alert"
+              className="text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2"
+            >
               {error}
             </div>
           )}

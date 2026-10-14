@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { CASH_REASON_RULES, CASH_REASON_VALUES } from '@sto/shared';
 import { ExpenseCategoriesService } from './expense-categories.service';
 import { memoryTable, type MemRow } from '../cash/cash.spec-fixture';
@@ -75,7 +76,7 @@ function setup(rows: MemRow[]) {
     return hit;
   };
   const byName = (name: string): MemRow | undefined => rows.find(r => r.name === name);
-  return { service, rows, cache, byId, byName };
+  return { service, prisma, rows, cache, byId, byName };
 }
 
 const MANUAL = CASH_REASON_VALUES.filter(r => CASH_REASON_RULES[r].manual);
@@ -283,6 +284,69 @@ describe('ExpenseCategoriesService — напрям приводу ↔ тип с
   it('по сім ручних приводів на напрям — цикли вище не порожні', () => {
     expect(IN_REASONS).toHaveLength(7);
     expect(OUT_REASONS).toHaveLength(7);
+  });
+});
+
+// Перевірка «привід вільний» і запис — не одна атомарна дія: між ними привід може зайняти
+// паралельний запит. Тоді відмовляє частковий unique-індекс (P2002), і це має бути та сама
+// відповідь, що й без гонки, а не безіменна 500.
+describe('ExpenseCategoriesService — привід зайняли між перевіркою і записом (P2002 індексу)', () => {
+  const deletedAt = new Date('2026-10-02T10:00:00.000Z');
+  const indexConflict = () =>
+    Object.assign(Object.create(Prisma.PrismaClientKnownRequestError.prototype) as Error, {
+      code: 'P2002',
+      meta: { target: 'expense_categories_default_reason_uq' },
+    });
+
+  // guards: BR-CASH-022
+  it('update: індекс відмовив → 409 з назвою статті-власника', async () => {
+    const { service, prisma, rows } = setup([row(RENT, 'Оренда'), row(BANK, 'Здача в банк')]);
+    prisma.expenseCategory.update.mockImplementationOnce(() => {
+      // Паралельний запит устиг першим.
+      rows.find(r => r.id === BANK)!.defaultReason = 'BANK_DEPOSIT';
+      return Promise.reject(indexConflict());
+    });
+    const call = service.update(ORG, RENT, { defaultReason: 'BANK_DEPOSIT' });
+    await expect(call).rejects.toThrow(ConflictException);
+    await expect(call).rejects.toThrow(/Здача в банк/);
+  });
+
+  // guards: BR-CASH-022
+  it('create: індекс відмовив → 409, а не 500', async () => {
+    const { service, prisma } = setup([row(BANK, 'Здача в банк')]);
+    prisma.expenseCategory.create.mockRejectedValueOnce(indexConflict());
+    await expect(
+      service.create(ORG, { name: 'Інкасація до банку', defaultReason: 'BANK_DEPOSIT' }),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  // guards: BR-CASH-022
+  it('інша помилка запису не маскується під 409', async () => {
+    const { service, prisma } = setup([row(RENT, 'Оренда')]);
+    const boom = new Error('connection lost');
+    prisma.expenseCategory.update.mockRejectedValueOnce(boom);
+    await expect(service.update(ORG, RENT, { defaultReason: 'BANK_DEPOSIT' })).rejects.toBe(boom);
+  });
+
+  // guards: BR-CASH-022
+  it('restore: індекс відмовив → стаття відновлюється БЕЗ приводу другою спробою', async () => {
+    const { service, prisma, byId } = setup([
+      row(GONE, 'Стара здача в банк', { defaultReason: 'BANK_DEPOSIT', deletedAt }),
+    ]);
+    prisma.expenseCategory.updateMany.mockRejectedValueOnce(indexConflict());
+    await service.restore(ORG, GONE);
+    expect(byId(GONE)).toMatchObject({ deletedAt: null, defaultReason: null });
+  });
+
+  // guards: BR-CASH-022
+  it('створення з назвою видаленої статті відновлює її з приводом ІЗ ЗАПИТУ, старий не повертається', async () => {
+    const { service, byId } = setup([
+      row(GONE, 'Стара здача в банк', { defaultReason: 'BANK_DEPOSIT', deletedAt }),
+      row(BANK, 'Здача в банк', { defaultReason: 'BANK_DEPOSIT' }),
+    ]);
+    await service.create(ORG, { name: 'Стара здача в банк' });
+    expect(byId(GONE)).toMatchObject({ deletedAt: null, defaultReason: null });
+    expect(byId(BANK).defaultReason).toBe('BANK_DEPOSIT');
   });
 });
 

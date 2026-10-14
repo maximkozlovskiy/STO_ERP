@@ -96,7 +96,9 @@ describe('useCreateCashOperation', () => {
     }
   });
 
-  it('відмова сервера нічого не скидає', async () => {
+  // Відмова не доводить, що нічого не сталось: відповідь могла не дійти, а операція — пройти.
+  // Тому історію й залишок каси перечитуємо; оплати й закупівлі не чіпаємо.
+  it('після відмови перечитує лише касу (історію й залишок)', async () => {
     apiFetchMock.mockRejectedValue(new Error('403'));
     const { wrapper, roots } = setup();
     const { result } = renderHook(() => useCreateCashOperation(), { wrapper });
@@ -105,7 +107,7 @@ describe('useCreateCashOperation', () => {
         .mutateAsync({ cashRegisterId: 'reg-1', direction: 'OUT', reason: 'MANUAL_OUT', amount: 1 })
         .catch(() => undefined);
     });
-    expect(roots().size).toBe(0);
+    expect([...roots()]).toEqual(['cash']);
   });
 });
 

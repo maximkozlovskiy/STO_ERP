@@ -9,6 +9,7 @@ import { type Money, money, moneyFromDecimal } from '../../common/utils/money';
 import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { searchContains } from '../../common/utils/like-pattern';
 import { uniqueDefinedIds } from '../../common/utils/linked-counts';
+import { isSerializationConflict } from '../../common/utils/prisma-errors';
 import { CashOperationResponseDto } from './cash.dto';
 
 // Знак операції для балансу: IN додає готівку (+), OUT — віднімає (−). Баланс рахується
@@ -21,6 +22,12 @@ export interface CreateCashOperationInput {
   amount: number;
   reason: CashOperationReason;
   expenseCategoryId?: string | null;
+  /**
+   * true — рядок свідомо БЕЗ статті: стаття, закріплена за приводом (BR-CASH-022), не
+   * підставляється. Для руху власних грошей, який не є ні доходом, ні витратою (готівка, знята
+   * з банківського рахунку, BR-BANK-034).
+   */
+  withoutCategory?: boolean;
   counterpartyId?: string | null;
   employeeId?: string | null;
   documentType?: string | null;
@@ -122,6 +129,13 @@ export class CashService {
       // похибки вже немає, але поріг також поглинає легітимну копійчану різницю — знімати його
       // означало б змінити поведінку guard-а, а не прибрати мертвий код.
       if (input.direction === 'OUT') {
+        // Черга видач однієї каси. Зовнішня транзакція викликача (проведення оплати постачальнику,
+        // виплата зарплати) зазвичай ReadCommitted: дві одночасні видачі обидві читали той самий
+        // залишок і обидві проходили — каса йшла в мінус (review 2026-10-14, наживо: дві оплати
+        // різним постачальникам по 60 при залишку 100 → −20). Блокування живе до кінця транзакції;
+        // друга видача чекає й читає залишок уже з першою. У власній Serializable-транзакції воно
+        // зайве, але не шкодить: там конфлікт ловить SSI.
+        await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cash-register:${register.id}`}))`;
         const balance = await this.getBalance(orgId, register.id, client);
         if (balance - amount < -0.001) {
           throw new BadRequestException(
@@ -160,7 +174,7 @@ export class CashService {
 
     // Зовнішній tx: guard читає його ж стан (викликач керує isolation). Без tx: власна Serializable
     // транзакція — Postgres SSI ловить конкурентний OUT, що прочитав той самий залишок (Bug #416
-    // патерн invoices). P2034 (serialization failure) → зрозуміла 400 замість 500.
+    // патерн invoices). Конфлікт серіалізації (на запиті чи на COMMIT) → зрозуміла 400 замість 500.
     let op: Awaited<ReturnType<typeof run>>;
     try {
       op = tx
@@ -170,7 +184,7 @@ export class CashService {
             isolationLevel: 'Serializable',
           });
     } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2034') {
+      if (isSerializationConflict(e)) {
         throw new BadRequestException(translateError('err.cash.concurrentOperation', getLocale()));
       }
       throw e;
@@ -196,11 +210,15 @@ export class CashService {
    */
   private async resolveCategoryId(
     orgId: string,
-    input: Pick<CreateCashOperationInput, 'expenseCategoryId' | 'direction' | 'reason'>,
+    input: Pick<
+      CreateCashOperationInput,
+      'expenseCategoryId' | 'direction' | 'reason' | 'withoutCategory'
+    >,
     db: Prisma.TransactionClient | PrismaService,
   ): Promise<string | null> {
     const expected = input.direction === 'IN' ? 'INCOME' : 'EXPENSE';
     if (!input.expenseCategoryId) {
+      if (input.withoutCategory) return null;
       // `type` у where — запобіжник: привід закріплюють лише за статтею свого напряму, але авто-
       // викликач може передати привід з іншим напрямом, і тоді стаття не підходить.
       const byReason = await db.expenseCategory.findFirst({

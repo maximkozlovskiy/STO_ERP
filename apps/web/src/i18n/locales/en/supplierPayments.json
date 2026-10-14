@@ -33,7 +33,9 @@
     }
   },
   "toast": {
-    "paymentCreated": "Payment created",
-    "paymentUpdated": "Payment updated"
+    "paymentCreated": "Payment created"
+  },
+  "errors": {
+    "paymentStateUnknown": "Could not find out whether the payment was posted. Check the connection and press “Pay” again — a second payment will not be created."
   }
 }

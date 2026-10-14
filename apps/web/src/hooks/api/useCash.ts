@@ -166,6 +166,11 @@ export function useCreateCashOperation() {
       invalidatePaymentSideEffects(qc);
       invalidatePurchaseSideEffects(qc);
     },
+    // Відмова не доводить, що нічого не сталось: відповідь могла не дійти, а операція — пройти.
+    // Історія й залишок за карткою мають показати правду ще до того, як картку закриють.
+    onError: () => {
+      void qc.invalidateQueries({ queryKey: cashKeys.all });
+    },
   });
 }
 

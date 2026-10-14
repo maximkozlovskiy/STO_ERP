@@ -20,7 +20,6 @@ import {
   useCreateSupplierPayment,
   useConfirmSupplierPayment,
   useCancelSupplierPayment,
-  useDeleteSupplierPayment,
   useSupplierPaymentDocuments,
 } from './useSupplierPayments';
 import { counterpartiesKeys } from './useCounterparties';
@@ -127,26 +126,6 @@ describe('useSupplierPayments', () => {
       // cancel() з DRAFT НЕ пише settlement — counterparties навмисно НЕ інвалідується
       // щоб уникнути зайвих refetch на CRM (LOW noise, high volume у workflow).
       expect(calls).not.toContain(JSON.stringify(counterpartiesKeys.all));
-    });
-  });
-
-  describe('useDeleteSupplierPayment', () => {
-    it('DELETE /supplier-payments/:id інвалідує supplierPaymentsKeys.all', async () => {
-      const { client, wrapper } = createWrapper();
-      const spy = vi.spyOn(client, 'invalidateQueries');
-      apiFetchMock.mockResolvedValueOnce(undefined);
-
-      const { result } = renderHook(() => useDeleteSupplierPayment(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync('sp1');
-      });
-
-      expect(apiFetchMock).toHaveBeenCalledWith(
-        '/supplier-payments/sp1',
-        expect.objectContaining({ method: 'DELETE' }),
-      );
-      const calls = spy.mock.calls.map(c => JSON.stringify(c[0]?.queryKey ?? c[0]));
-      expect(calls).toContain(JSON.stringify(supplierPaymentsKeys.all));
     });
   });
 

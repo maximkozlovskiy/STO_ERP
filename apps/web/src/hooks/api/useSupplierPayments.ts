@@ -11,7 +11,6 @@ import { purchaseOrdersKeys } from './usePurchaseOrders';
  * Копія мала `status: string` замість union 'DRAFT' | 'CONFIRMED' | 'CANCELLED'.
  */
 export type SupplierPayment = ApiSchema<'SupplierPaymentResponseDto'>;
-export type SupplierPaymentStatusValue = SupplierPayment['status'];
 
 /** Джерело коштів — теж зі згенерованого, щоб не розходилось із DTO. */
 export type PaymentSourceType = SupplierPayment['sourceType'];
@@ -98,24 +97,6 @@ export function useSupplierPaymentDocuments(params: SupplierPaymentDocumentsPara
   });
 }
 
-export function useSupplierPayment(id: string | null, opts: { withDeleted?: boolean } = {}) {
-  const withDeleted = opts.withDeleted === true;
-  return useQuery({
-    queryKey: id
-      ? withDeleted
-        ? [...supplierPaymentsKeys.detail(id), 'withDeleted']
-        : supplierPaymentsKeys.detail(id)
-      : ['supplier-payments', 'detail', null],
-    queryFn: ({ signal }) =>
-      apiFetch<SupplierPayment>(
-        withDeleted ? `/supplier-payments/${id}?withDeleted=true` : `/supplier-payments/${id}`,
-        { signal },
-      ),
-    enabled: !!id,
-    staleTime: 30_000,
-  });
-}
-
 export function useCreateSupplierPayment() {
   const qc = useQueryClient();
   return useMutation({
@@ -130,21 +111,6 @@ export function useCreateSupplierPayment() {
       // (outstanding у списку PurchaseOrders) — інвалідуємо, інакше PO-список
       // показує застарілий outstanding до staleTime.
       void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-    },
-  });
-}
-
-export function useUpdateSupplierPayment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<CreateSupplierPaymentInput> }) =>
-      apiFetch<SupplierPayment>(`/supplier-payments/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      }),
-    onSuccess: (_, { id }) => {
-      void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
-      void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.detail(id) });
     },
   });
 }
@@ -179,16 +145,6 @@ export function useCancelSupplierPayment() {
       void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.detail(id) });
       // cancel() з DRAFT НЕ пише settlement (guard у service), тож counterparties
       // балансу не чіпає. Явно НЕ інвалідовано щоб уникнути зайвих refetch на CRM.
-    },
-  });
-}
-
-export function useDeleteSupplierPayment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => apiFetch<void>(`/supplier-payments/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
     },
   });
 }

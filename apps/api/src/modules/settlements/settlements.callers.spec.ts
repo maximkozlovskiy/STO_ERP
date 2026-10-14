@@ -166,9 +166,10 @@ const CALL_SITES: Record<string, CallSite> = {
   },
 
   // ── Каса: повернення клієнту й повернення від постачальника (BR-CASH-018, BR-CASH-019) ──
-  // ПОТРЕБУЄ ЗВІРКИ: запис зроблено разом із тестами зі специфікації, до QA реалізації. Ключ —
-  // той, який назвав сам сторож; якорі виведено з контракту («рядок каси, потім проводка з
-  // documentId = id рядка, в одній tx»), а не з рев'ю коду. Чи достатній цей захист — рішення QA.
+  // Звірено з кодом і наживо (review 2026-10-14). Якорі відповідають коду: рядок каси створюється
+  // в тій самій Serializable-tx ПЕРЕД проводкою, проводка несе `documentId: operation.id`.
+  // Наживо: той самий Idempotency-Key двічі одночасно → 201 і 409, повтор після відповіді →
+  // та сама відповідь без другої операції; БЕЗ заголовка два однакові запити → дві операції.
   'modules/cash-registers/cash-desk.service.ts#moveCashWithSettlement:REFUND_OUT|SUPPLIER_PAYMENT_RETURN':
     {
       guard:
@@ -177,12 +178,18 @@ const CALL_SITES: Record<string, CallSite> = {
         'створення самої операції: IdempotencyInterceptor на POST /cash-registers/:id/operations.',
       anchors: [/\.createOperation\(/],
       argAnchors: [/documentType:\s*'CashOperation'/, /documentId:\s*\w+\.id\b/],
-      raceTests: [],
+      raceTests: [
+        {
+          spec: 'cash-registers/cash-desk.client.spec.ts',
+          title:
+            'повтор того самого повернення — дві окремі операції: кожна проводка посилається на СВІЙ рядок каси',
+        },
+      ],
       note:
-        'Повернення без Idempotency-Key у сервісі нічим не дедуплікується: два однакові виклики — це два ' +
-        'рядки каси й дві проводки (журнал каси лише дописується, сторно немає). Тесту гонки немає; те, що ' +
-        'рядок і проводка йдуть однією транзакцією, стережуть cash-registers/cash-desk.client.spec.ts і ' +
-        'cash-desk.supplier.spec.ts.',
+        'Сервіс повтор не відсіює: запит без Idempotency-Key, надісланий двічі, — це два рядки каси й дві ' +
+        'проводки (журнал каси лише дописується, сторно немає). Заголовок необов’язковий, як і на POST ' +
+        '/payments; web шле його завжди (один ключ на відкриття картки). Чи вимагати ключ на маршруті — ' +
+        'питання власнику, docs/TECH-DEBT.md §10.',
     },
 
   // ── Закупівлі ──────────────────────────────────────────────────────────────────────────
@@ -543,7 +550,6 @@ describe('Settlements — місця виклику createTransaction (стат�
       .map(([key]) => key)
       .sort();
     expect(untested).toEqual([
-      'modules/cash-registers/cash-desk.service.ts#moveCashWithSettlement:REFUND_OUT|SUPPLIER_PAYMENT_RETURN',
       'modules/invoices/invoices.service.ts#transition:PAYMENT',
       'modules/work-orders/work-order-stock-effects.service.ts#returnPartsAndCredit:CREDIT_NOTE',
     ]);

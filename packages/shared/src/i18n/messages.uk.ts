@@ -712,8 +712,11 @@ export const uk: Record<string, string> = {
   'err.auth.sessionInvalid': 'Сесія недійсна',
 
   // ── Exception-повідомлення: idempotency-interceptor ──
-  'err.idempotency.inProgress': 'Запит з цим Idempotency-Key вже обробляється',
-  'err.idempotency.keyReusedDifferentBody': 'Idempotency-Key вже використано з іншим тілом запиту',
+  // Тексти бачить користувач у картці документа — без назви заголовка: вони мають казати, що
+  // сталося з попередньою спробою і що робити далі.
+  'err.idempotency.inProgress': 'Попередній такий самий запит ще обробляється — зачекайте',
+  'err.idempotency.keyReusedDifferentBody':
+    'Попередня спроба з цієї картки могла пройти, а дані відтоді змінено. Закрийте картку, перевірте, чи запис уже створено, і за потреби почніть заново',
 
   // ── Exception-повідомлення: fsm ──
   'err.fsm.transitionNotAllowed': 'Перехід зі статусу "{{from}}" в "{{to}}" неможливий',

@@ -138,6 +138,8 @@ export function makeMocks() {
       employee: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
       garageBranch: { findFirst: vi.fn() },
       currency: { findFirst: vi.fn() },
+      // Блокування каси перед читанням залишку (pg_advisory_xact_lock) — лише для видачі.
+      $executeRaw: vi.fn().mockResolvedValue(1),
       $transaction: vi.fn(),
     },
     audit: { record: vi.fn().mockResolvedValue(undefined) },

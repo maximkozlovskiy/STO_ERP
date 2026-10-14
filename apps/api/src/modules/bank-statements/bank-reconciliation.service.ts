@@ -1069,6 +1069,9 @@ export class BankReconciliationService {
                 cashRegisterId: plan.cashRegisterId,
                 direction: 'IN',
                 reason: 'MANUAL_IN',
+                // Інакше стаття, закріплена за приводом «Внесення» (BR-CASH-022), зробила б зняття
+                // з рахунку доходом у звіті за статтями.
+                withoutCategory: true,
                 amount,
                 documentType: 'BankTransaction',
                 documentId: txId,
@@ -1389,6 +1392,7 @@ export class BankReconciliationService {
               cashRegisterId: original.cashRegisterId,
               direction: 'OUT',
               reason: 'MANUAL_OUT',
+              withoutCategory: true, // зворотний рух того самого переміщення — теж без статті
               amount,
               documentType: 'BankTransaction',
               documentId: txId,

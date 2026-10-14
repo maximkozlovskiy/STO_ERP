@@ -118,6 +118,23 @@ describe('CashService.createOperation — стаття за замовчуван
     },
   );
 
+  // Готівка, знята з банківського рахунку, — переміщення власних грошей, а не дохід (BR-BANK-034):
+  // рознесення виписки пише її приводом «Внесення» і статті мати не повинна.
+  // guards: BR-CASH-022
+  it('withoutCategory → рядок без статті, хоч за приводом закріплено активну статтю', async () => {
+    const { m, service } = setupWithCategories([
+      category('cat-default', { type: 'INCOME', defaultReason: 'MANUAL_IN' }),
+    ]);
+    await service.createOperation(ORG, {
+      cashRegisterId: REG,
+      direction: 'IN',
+      amount: 5000,
+      reason: 'MANUAL_IN',
+      withoutCategory: true,
+    });
+    expect(writtenCategory(m)).toBeNull();
+  });
+
   // guards: BR-CASH-022
   it('свою статтю передано → лишається вона, стаття за замовчуванням не підміняє', async () => {
     const { m, service } = setupWithCategories([
@@ -190,6 +207,27 @@ describe('CashService.createOperation — стаття за замовчуван
       c => (c[0] as { data: MemRow }).data.expenseCategoryId,
     );
     expect(written).not.toContain('cat-wrong-type');
+  });
+
+  // Статтю могли закріпити за приводом у ТІЙ САМІЙ транзакції викликача: читання кореневим
+  // клієнтом її не побачило б.
+  // guards: BR-CASH-022
+  it('у зовнішній транзакції стаття за приводом читається ЇЇ клієнтом, не кореневим', async () => {
+    const { service, m } = setupWithCategories([]);
+    const outer = setup().m.prisma;
+    Object.assign(
+      outer.expenseCategory,
+      memoryTable([category('cat-in-tx', { type: 'INCOME', defaultReason: 'OWNER_IN' })]),
+    );
+
+    await service.createOperation(
+      ORG,
+      { cashRegisterId: REG, direction: 'IN', amount: 10, reason: 'OWNER_IN' },
+      outer as never,
+    );
+
+    expect(outer.cashOperation.create.mock.calls[0][0].data.expenseCategoryId).toBe('cat-in-tx');
+    expect(m.prisma.expenseCategory.findFirst).not.toHaveBeenCalled();
   });
 
   // guards: BR-CASH-022

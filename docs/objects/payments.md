@@ -312,7 +312,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | ланцюг опитування (Redis) | `payment-polling.queue.integration.spec.ts`       | 1      |
 | fiscal gate               | `payments.fiscal-gate.spec.ts`                    | 8      |
 | idempotency               | `payments.idempotency.spec.ts`                    | 7      |
-| money model               | `payments.money-model.spec.ts`                    | 19     |
+| money model               | `payments.money-model.spec.ts`                    | 20     |
 | multicurrency             | `payments.multicurrency.spec.ts`                  | 17     |
 | query dto                 | `payments.query-dto.spec.ts`                      | 41     |
 | передумови + наряд        | `payments.work-order.spec.ts`                     | 23     |

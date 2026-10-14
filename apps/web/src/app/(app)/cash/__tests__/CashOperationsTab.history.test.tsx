@@ -150,7 +150,7 @@ describe('CashOperationsTab — історія операцій', () => {
         baseDocumentNumber: 'ЗП-000003',
       }),
     ];
-    render(<CashOperationsTab canOperate />);
+    render(<CashOperationsTab canOperate canOpenPurchaseOrders />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Відкрити документ НЗ-000012' }));
     expect(nav.toWorkOrder).toHaveBeenCalledWith(WORK_ORDER);
@@ -159,6 +159,28 @@ describe('CashOperationsTab — історія операцій', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Відкрити документ ЗП-000003' }));
     expect(nav.toPurchaseOrder).toHaveBeenCalledWith(PURCHASE_ORDER);
     expect(nav.toWorkOrder).toHaveBeenCalledTimes(1);
+  });
+
+  // Бухгалтер у «Купівлі» бачить лише графік оплат, приймальню звідти веде на /403: посилання
+  // на картку замовлення для них вело б у нікуди. Наряд відкривають обидві ролі.
+  it('роль без доступу до замовлень: номер замовлення-підстави — текст, наряд — далі посилання', () => {
+    operations = [
+      salePayment(),
+      op({
+        id: 'op-sup',
+        reason: 'SUPPLIER_PAYMENT',
+        direction: 'OUT',
+        counterpartyName: 'ТОВ Запчастини',
+        baseDocumentType: 'PurchaseOrder',
+        baseDocumentId: PURCHASE_ORDER,
+        baseDocumentNumber: 'ЗП-000003',
+      }),
+    ];
+    render(<CashOperationsTab canOperate />);
+
+    expect(screen.getByText('ЗП-000003')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Відкрити документ ЗП-000003' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Відкрити документ НЗ-000012' })).toBeInTheDocument();
   });
 
   it('клік по підставі не «провалюється» в рядок', () => {

@@ -79,6 +79,7 @@ function CashPageShell() {
         <CashOperationsTab
           canOperate={['OWNER', 'ADMIN', 'ACCOUNTANT'].includes(role)}
           receptionist={role === 'RECEPTIONIST'}
+          canOpenPurchaseOrders={['OWNER', 'ADMIN'].includes(role)}
         />
       )}
       {tab === 'registers' && <CashRegistersTab canManage={['OWNER', 'ADMIN'].includes(role)} />}

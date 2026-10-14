@@ -25,6 +25,7 @@ import { exchangeRatesMock } from './payments.spec-fixture';
 
 describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)', () => {
   let service: PaymentsService;
+  let cash: CashService;
   let prisma: {
     counterparty: { findFirst: ReturnType<typeof vi.fn> };
     workOrder: { findFirst: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
@@ -118,6 +119,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
       ],
     }).compile();
     service = module.get(PaymentsService);
+    cash = module.get(CashService);
   });
 
   const baseDto = { counterpartyId: CP_ID, invoiceId: INV_ID, amount: 500, method: 'CASH' };
@@ -310,6 +312,49 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     );
     expect(prisma.payment.create).toHaveBeenCalledTimes(2);
     expect(settlements.createTransaction).toHaveBeenCalledTimes(2);
+  });
+
+  // Каса (CashDeskService) передає статтю, підставу й примітку ВНУТРІШНІМ аргументом: єдиний
+  // рядок каси мусить нести їх одразу — журнал лише дописується.
+  // guards: BR-CASH-017
+  it('додатки касового рядка (внутрішній аргумент) лягають у рядок каси оплати; без них рядок як раніше', async () => {
+    const armInvoice = () => {
+      prisma.invoice.findFirst.mockResolvedValue({
+        counterpartyId: CP_ID,
+        status: 'SENT',
+        workOrderId: null,
+        amount: 5000,
+        paidAmount: 0,
+      });
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+      prisma.cashRegister.findFirst.mockResolvedValue({ id: CASH_ID });
+    };
+    const dto = { ...baseDto, sourceType: 'CASH_REGISTER' as const, cashRegisterId: CASH_ID };
+    const createOperation = vi.mocked(cash.createOperation);
+
+    armInvoice();
+    await service.create(ORG, dto, 'user-1', {
+      expenseCategoryId: 'cat-sales',
+      baseDocumentType: 'WorkOrder',
+      baseDocumentId: 'wo-9',
+      notes: 'з каси',
+    });
+    expect(createOperation.mock.calls[0]![1]).toMatchObject({
+      direction: 'IN',
+      reason: 'SALE_PAYMENT',
+      documentType: 'Payment',
+      expenseCategoryId: 'cat-sales',
+      baseDocumentType: 'WorkOrder',
+      baseDocumentId: 'wo-9',
+      notes: 'з каси',
+    });
+
+    armInvoice();
+    await service.create(ORG, dto, 'user-1');
+    const plain: object = createOperation.mock.calls[1]![1];
+    expect(plain).toMatchObject({ reason: 'SALE_PAYMENT', documentType: 'Payment' });
+    expect(plain).not.toHaveProperty('expenseCategoryId');
+    expect(plain).not.toHaveProperty('baseDocumentId');
   });
 
   // ── resolveDestinationAccount: CASH_REGISTER + explicit-strict варіанти ────

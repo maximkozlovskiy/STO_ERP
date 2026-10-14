@@ -54,9 +54,19 @@ interface Props {
   canOperate?: boolean;
   /** Приймальня: лише внесення з приводами `RECEPTIONIST_CASH_REASONS`, без видачі й статей. */
   receptionist?: boolean;
+  /**
+   * Чи може роль відкрити картку замовлення постачальнику (сторінка «Купівля» — власник і
+   * адміністратор; бухгалтер бачить там лише графік оплат, приймальня — /403). Решті номер
+   * замовлення-підстави показуємо текстом, а не посиланням у нікуди.
+   */
+  canOpenPurchaseOrders?: boolean;
 }
 
-export default function CashOperationsTab({ canOperate = false, receptionist = false }: Props) {
+export default function CashOperationsTab({
+  canOperate = false,
+  receptionist = false,
+  canOpenPurchaseOrders = false,
+}: Props) {
   const { t } = useTranslation('cash');
   const nav = useLinkedNav();
   const { data: registers, isLoading: regLoading } = useCashRegisters();
@@ -389,7 +399,12 @@ export default function CashOperationsTab({ canOperate = false, receptionist = f
                   )}
                 </TableCell>
                 <TableCell className="text-[13px] whitespace-nowrap">
-                  {op.baseDocumentId && op.baseDocumentNumber ? (
+                  {op.baseDocumentId &&
+                  op.baseDocumentNumber &&
+                  op.baseDocumentType === 'PurchaseOrder' &&
+                  !canOpenPurchaseOrders ? (
+                    op.baseDocumentNumber
+                  ) : op.baseDocumentId && op.baseDocumentNumber ? (
                     <button
                       type="button"
                       onClick={e => {

@@ -82,6 +82,37 @@ describe('SupplierPaymentsService — confirm', () => {
     expect(cash.createOperation).not.toHaveBeenCalled();
   });
 
+  // guards: BR-CASH-019
+  it('confirm(): додатки касового рядка (внутрішній аргумент) лягають у рядок каси', async () => {
+    prisma.supplierPayment.findFirst
+      .mockResolvedValueOnce({
+        status: SupplierPaymentStatus.DRAFT,
+        supplierId: SUPPLIER_ID,
+        amount: 500,
+        sourceType: PaymentSourceType.CASH_REGISTER,
+        cashRegisterId: CASH_ID,
+      })
+      .mockResolvedValueOnce(confirmedRow);
+    prisma.supplierPayment.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    await service.confirm(ORG, SP_ID, USER_ID, undefined, {
+      expenseCategoryId: 'cat-parts',
+      baseDocumentType: 'PurchaseOrder',
+      baseDocumentId: 'po-7',
+      notes: 'з каси',
+    });
+
+    expect(cash.createOperation.mock.calls[0]![1]).toMatchObject({
+      reason: 'SUPPLIER_PAYMENT',
+      documentType: 'SupplierPayment',
+      documentId: SP_ID,
+      expenseCategoryId: 'cat-parts',
+      baseDocumentType: 'PurchaseOrder',
+      baseDocumentId: 'po-7',
+      notes: 'з каси',
+    });
+  });
+
   it('confirm(): CASH_REGISTER → cash-out OUT/SUPPLIER_PAYMENT у ту саму tx (Bug — cash-оплата не залишала касу)', async () => {
     prisma.supplierPayment.findFirst
       .mockResolvedValueOnce({

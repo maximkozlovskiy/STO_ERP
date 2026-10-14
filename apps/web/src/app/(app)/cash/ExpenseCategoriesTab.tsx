@@ -439,7 +439,10 @@ export default function ExpenseCategoriesTab({ canManage = false }: { canManage?
         }
       >
         {error && (
-          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">
+          <div
+            role="alert"
+            className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2"
+          >
             {error}
           </div>
         )}

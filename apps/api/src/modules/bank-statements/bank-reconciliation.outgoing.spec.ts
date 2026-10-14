@@ -379,6 +379,8 @@ describe('BankReconciliationService.reconcile — вихідні платежі'
         cashRegisterId: ID.cashUah,
         direction: 'IN',
         reason: 'MANUAL_IN',
+        // Переміщення власних грошей — без статті, навіть якщо за приводом закріплено статтю.
+        withoutCategory: true,
         amount: ROW_AMOUNT,
         documentType: 'BankTransaction',
         documentId: ID.tx,

@@ -6,7 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { PaymentSourceType, Prisma, UserRole, WorkOrderStatus } from '@prisma/client';
+import { PaymentSourceType, UserRole, WorkOrderStatus } from '@prisma/client';
 import {
   CASH_REASON_RULES,
   formatPersonName,
@@ -19,6 +19,7 @@ import {
 import { getLocale } from '../../common/tenant/tenant-context';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { money } from '../../common/utils/money';
+import { isSerializationConflict } from '../../common/utils/prisma-errors';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CashService, toCashOperationDto, type CashOperationExtras } from '../cash/cash.service';
 import { CashOperationResponseDto } from '../cash/cash.dto';
@@ -447,7 +448,7 @@ export class CashDeskService {
         { timeout: TRANSACTION_TIMEOUT_MS, isolationLevel: 'Serializable' },
       );
     } catch (e: unknown) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2034') {
+      if (isSerializationConflict(e)) {
         throw new BadRequestException(translateError('err.cash.concurrentOperation', getLocale()));
       }
       throw e;

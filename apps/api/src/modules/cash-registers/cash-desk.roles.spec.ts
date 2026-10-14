@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { ForbiddenException } from '@nestjs/common';
 import { CASH_REASON_RULES, CASH_REASON_VALUES, RECEPTIONIST_CASH_REASONS } from '@sto/shared';
 import {
+  MISSING,
   USER,
   createOp,
   expectNothingMoved,
@@ -65,5 +66,18 @@ describe('CashDeskService.create — ролі за приводом', () => {
     const h = makeDesk();
     await createOp(h, validInput(reason), { id: USER, role });
     expect(somethingMoved(h)).toBe(true);
+  });
+
+  // Заборонений привід відсікається ДО бази: інакше 404 «контрагента не знайдено» проти 403
+  // казав би приймальні, чи існує запис із таким id.
+  // guards: BR-CASH-021
+  it('заборонений привід → 403 ще до читання каси, контрагента й підстави', async () => {
+    const h = makeDesk();
+    await expect(
+      createOp(h, validInput('REFUND', { counterpartyId: MISSING }), RECEPTIONIST),
+    ).rejects.toThrow(ForbiddenException);
+    for (const table of [h.tables.cashRegister, h.tables.counterparty, h.tables.workOrder]) {
+      expect(table.findFirst).not.toHaveBeenCalled();
+    }
   });
 });

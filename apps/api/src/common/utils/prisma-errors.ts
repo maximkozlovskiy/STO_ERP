@@ -13,9 +13,31 @@ import { Prisma } from '@prisma/client';
  * ```
  */
 export function throwIfSerializationConflict(err: unknown, message: string): never {
-  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034')
-    throw new BadRequestException(message);
+  if (isSerializationConflict(err)) throw new BadRequestException(message);
   throw err as Error;
+}
+
+/**
+ * Чи це конфлікт серіалізації `Serializable`-транзакції (Postgres 40001). Приходить у ДВОХ формах:
+ *
+ *   • `PrismaClientKnownRequestError` з кодом `P2034` — конфлікт помічено на запиті всередині
+ *     транзакції;
+ *   • `DriverAdapterError` з `cause.kind === 'TransactionWriteConflict'` — конфлікт помічено на
+ *     COMMIT. Драйвер-адаптер (`@prisma/adapter-pg`) цю помилку в `P2034` не загортає.
+ *
+ * Перевірка лише на `P2034` пропускала другу форму: дві одночасні видачі з однієї каси давали
+ * одній із них безіменну 500 замість «каса зайнята — повторіть» (review 2026-10-14, наживо:
+ * 21 відповідь 500 із 32 запитів). Клас помилки адаптера не імпортуємо — звіряємо назву й `kind`.
+ */
+export function isSerializationConflict(err: unknown): boolean {
+  if (err instanceof Prisma.PrismaClientKnownRequestError) return err.code === 'P2034';
+  if (!(err instanceof Error) || err.name !== 'DriverAdapterError') return false;
+  const cause: unknown = err.cause;
+  return (
+    typeof cause === 'object' &&
+    cause !== null &&
+    (cause as { kind?: unknown }).kind === 'TransactionWriteConflict'
+  );
 }
 
 /**
