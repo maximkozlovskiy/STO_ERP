@@ -6,6 +6,10 @@ model Organisation {
   logoUrl       String?
   legalAddress  String?
   actualAddress String?
+  // Реквізити для друку документів (рахунок, наряд-замовлення, акти) — 2026-10-15.
+  phone         String?
+  email         String?
+  ipn           String? // ІПН платника ПДВ (10 або 12 цифр)
   bankAccountId String?   @db.Uuid
   syncVersion   BigInt    @default(0)
   createdAt     DateTime  @default(now())
