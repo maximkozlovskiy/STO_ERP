@@ -24,10 +24,10 @@ model LoyaltyAccount {
 model LoyaltyTransaction {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   accountId    String   @db.Uuid
-  type         String   // EARN | REDEEM (рядковий, не enum)
+  type         String   // EARN | REDEEM | EARN_REVERSAL (рядковий, не enum)
   points       Decimal  @db.Decimal(12, 2)
-  documentId   String?  @db.Uuid                    // для EARN — id Payment
-  documentType String?                              // для EARN — 'Payment'
+  documentId   String?  @db.Uuid                    // для EARN / EARN_REVERSAL — id Payment
+  documentType String?                              // для EARN / EARN_REVERSAL — 'Payment'
   notes        String?
   createdAt    DateTime @default(now())
   // немає deletedAt, updatedAt, orgId — леджер незмінний, orgId через account
@@ -120,6 +120,18 @@ data: { balance: { decrement: points } } })` — `UPDATE … WHERE balance >= N`
 - **BR-LOY-010**: `discountAmount = roundMoney(points * loyaltyRedeemRate)` — сума знижки у грн (повертається клієнту).
 - **BR-LOY-011**: Записує `LoyaltyTransaction(REDEEM)` у тій самій `$transaction`.
 
+### Сторно оплати — списання нарахованого (BR-CASH-024)
+
+Сторно касової оплати (`PaymentsService.reverse`, у своїй транзакції) викликає
+`LoyaltyService.reverseEarn(orgId, paymentId, tx)`: для кожного `EARN` цієї оплати пише рядок леджера
+`EARN_REVERSAL` (`points` = реально списане, `documentType = 'Payment'`, `documentId` = оплата) і зменшує
+`balance` — **не нижче нуля** (бали, які клієнт уже витратив, не забираються; нестача — у примітці
+рядка). Повторне сторно (уже є `EARN_REVERSAL`) нічого не пише. Нарахування, що ще у черзі: `earn()` перед
+записом бачить `reversedAt` оплати й пропускає її. Правило — у `docs/objects/cash.md` (BR-CASH-024);
+тести — `loyalty.reverse-earn.spec.ts`. У картці контрагента (вкладка «Лояльність») рядок
+`EARN_REVERSAL` підписано «Списання нарахованого за сторновану оплату» / «Points earned on a reversed
+payment deducted» і показано зі знаком «−».
+
 ### Tenant isolation
 
 - **BR-LOY-012**: Кожен виклик перевіряє `counterparty { id, orgId, deletedAt: null }` → `NotFound` якщо чужий/видалений.
@@ -129,10 +141,11 @@ data: { balance: { decrement: points } } })` — `UPDATE … WHERE balance >= N`
 
 ## Side-effects
 
-| Джерело                             | Ефект                                                                |
-| ----------------------------------- | -------------------------------------------------------------------- |
-| `Payment.create` (будь-який платіж) | `queueEarn` → job `earn` → нарахування балів (якщо `loyaltyEnabled`) |
-| `POST /loyalty/redeem`              | Списання балів + повернення `discountAmount` для знижки              |
+| Джерело                             | Ефект                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------ |
+| `Payment.create` (будь-який платіж) | `queueEarn` → job `earn` → нарахування балів (якщо `loyaltyEnabled`)     |
+| Сторно оплати з каси                | `reverseEarn` → `EARN_REVERSAL`, `balance` мінус нараховане (не нижче 0) |
+| `POST /loyalty/redeem`              | Списання балів + повернення `discountAmount` для знижки                  |
 
 ## Пов'язані об'єкти
 

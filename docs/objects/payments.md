@@ -8,7 +8,8 @@
 ## Prisma модель
 
 ```prisma
-// Append-only — ніколи не редагується (окрім delivery-метаданих fiscalStatus/fiscalError/…)
+// Append-only — ніколи не редагується (окрім delivery-метаданих fiscalStatus/fiscalError/… і
+// одноразової позначки сторно reversedAt/reversalCashOperationId, BR-CASH-024)
 model Payment {
   id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId           String   @db.Uuid
@@ -28,6 +29,8 @@ model Payment {
   bankAccountId   String?  @db.Uuid
   cashRegisterId  String?  @db.Uuid
   onlinePaymentIntentId String? @unique @db.Uuid      // лінк на OnlinePaymentIntent (idempotency)
+  reversedAt      DateTime?                           // оплату сторновано з каси (BR-CASH-024); пишеться ОДИН раз (CAS)
+  reversalCashOperationId String? @db.Uuid            // рядок каси-сторно
   syncVersion     BigInt   @default(0)
   createdAt       DateTime @default(now())
   // немає deletedAt, updatedAt — append-only грошова операція
@@ -194,6 +197,26 @@ create (метод без requiresFiscal) → null
 - **BR-PAY-004**: **Settlement:** у тій самій `$transaction` → `SettlementsService.createTransaction(PAYMENT)`
   (борг клієнта ↓). Ніколи не змінює баланс напряму. Знак/семантика — [settlements.md](settlements.md).
 - **BR-PAY-005**: Якщо `workOrderId`: `workOrder.paidAmount += amount` у транзакції платежу; після tx — best-effort FSM `INVOICED → PAID`, але лише при повній оплаті (BR-PAY-017).
+
+### Сторно оплати (BR-CASH-024)
+
+Публічного HTTP-маршруту сторно в `/payments` немає: сторно запускає каса
+(`POST /cash-registers/:id/operations/:operationId/reverse` → `CashDeskService.reverse`), яка в тій самій
+транзакції викликає внутрішній `PaymentsService.reverse(orgId, paymentId, ctx, tx)` (`ctx` — id рядка сторно,
+причина, користувач). Що він робить, у порядку записів: CAS `reversedAt: null → now()` (друге сторно →
+400; чек у черзі / `FAILED` одразу `SKIPPED`) → проводка `PAYMENT_CANCEL` / `PREPAYMENT_CANCEL` (за типом
+проводки оригіналу, курс оригіналу, документ — рядок сторно каси) → «сплачено» рахунку і наряду мінус
+сума (не нижче нуля), статус рахунку PAID/PARTIALLY_PAID → PARTIALLY_PAID/SENT, наряду PAID → INVOICED
+(`reopenPaidWorkOrderInTx`) → списання нарахованих бонусів (`LoyaltyService.reverseEarn`, `EARN_REVERSAL`).
+Відмови (400): чек уже пробито (`DONE` / є `fiscalReceiptId`), оплата не в базовій валюті, наряд в архіві,
+рахунок скасовано.
+
+Сторнована оплата **виключена** (`reversedAt: null` у відборі): із сум «сплачено», нічної звірки
+(`reconciliation.processor`), курсових різниць, нарахування бонусів (джоб `earn` пропускає її) і
+фіскальної черги (`checkbox.processor` пропускає). У відповідях `GET /payments` і пов'язаних документів
+вона віддається з `reversedAt` / `reversalCashOperationId`; у конструкторі звітів — поле «Сторновано».
+
+Тести сторно оплати — у реєстрі `cash.md` (`payments.reverse.spec.ts`, `payments.reversal-excluded.spec.ts`).
 
 ### Side-effects після `create` (усі поза транзакцією, best-effort)
 

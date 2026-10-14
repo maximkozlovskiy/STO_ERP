@@ -45,8 +45,11 @@ model CashOperation {
   counterpartyId?, employeeId?   // контрагент | працівник (залежно від приводу)
   documentType?, documentId?     // ПЛАТІЖНИЙ документ рядка: 'Payment' | 'SupplierPayment' | 'PayrollPeriod'
   baseDocumentType?, baseDocumentId?  // ПІДСТАВА: 'WorkOrder' | 'PurchaseOrder' (BR-CASH-020)
+  reversalOfId?  @unique @db.Uuid     // сторно (BR-CASH-023): id рядка, який цей рядок сторнує
   notes?, createdBy?, createdAt
   // @@index([orgId,cashRegisterId,createdAt]) [orgId,cashShiftId] [orgId,reason,createdAt]
+  //         [orgId,documentType,documentId]  — пошук рядка каси за платіжним документом (сторно)
+  // @@unique reversalOfId — друге сторно того самого рядка база не дасть (гонка двох запитів → P2002 → 400)
 }
 
 model ExpenseCategory {        // дерево статей руху коштів (per-org)
@@ -81,14 +84,19 @@ model ExpenseCategory {        // дерево статей руху кошті�
 
 **Каси** (`/api/cash-registers`) — OWNER/ADMIN CRUD; список/баланс/історія — +ACCOUNTANT/RECEPTIONIST:
 
-| Метод             | URL                              | Дія                                                                                                  |
-| ----------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| GET               | `/cash-registers`                | Список кас (+ isFiscal/initialBalance/balance)                                                       |
-| GET               | `/cash-registers/:id`            | Картка каси (OWNER/ADMIN/ACCOUNTANT)                                                                 |
-| POST/PATCH/DELETE | `/cash-registers[/:id]`          | CRUD (OWNER/ADMIN)                                                                                   |
-| GET               | `/cash-registers/:id/balance`    | Поточний залишок                                                                                     |
-| GET               | `/cash-registers/:id/operations` | Історія (limit, q, dateFrom, dateTo): контрагент / працівник, підстава, номер документа, чек         |
-| POST              | `/cash-registers/:id/operations` | Ручна операція за приводом → `CashDeskService.create` (BR-CASH-016…021); `Idempotency-Key` дозволено |
+| Метод             | URL                                                   | Дія                                                                                                                                       |
+| ----------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| GET               | `/cash-registers`                                     | Список кас (+ isFiscal/initialBalance/balance)                                                                                            |
+| GET               | `/cash-registers/:id`                                 | Картка каси (OWNER/ADMIN/ACCOUNTANT)                                                                                                      |
+| POST/PATCH/DELETE | `/cash-registers[/:id]`                               | CRUD (OWNER/ADMIN)                                                                                                                        |
+| GET               | `/cash-registers/:id/balance`                         | Поточний залишок                                                                                                                          |
+| GET               | `/cash-registers/:id/operations`                      | Історія (limit, q, dateFrom, dateTo): контрагент / працівник, підстава, номер документа, чек                                              |
+| POST              | `/cash-registers/:id/operations`                      | Ручна операція за приводом → `CashDeskService.create` (BR-CASH-016…021); `Idempotency-Key` дозволено                                      |
+| POST              | `/cash-registers/:id/operations/:operationId/reverse` | Сторно операції `{ reason }` → `CashDeskService.reverse` (BR-CASH-023…025); OWNER/ADMIN/ACCOUNTANT; `Idempotency-Key`; 201 — рядок сторно |
+
+Рядок історії (`CashOperationResponseDto`) несе поля сторно: `reversalOfId` (рядок-сторно → id оригіналу) і
+`reversedBy { id, createdAt, reason }` (оригінал → хто, коли й чому його сторнував; `reason` = примітка
+рядка сторно, nullable лише за формою типу — нове сторно завжди з причиною).
 
 Роль на `POST …/operations`: OWNER/ADMIN/ACCOUNTANT/RECEPTIONIST на рівні маршруту, далі привід звужує
 ролі (BR-CASH-021: приймальня — лише «оплата контрагента»).
@@ -119,23 +127,29 @@ model ExpenseCategory {        // дерево статей руху кошті�
 (`CashOperationModal`) за приводом показує потрібні поля (контрагент / працівник / підстава / стаття) і сама
 підставляє статтю, закріплену за приводом. Історія показує контрагента чи працівника, підставу (клік відкриває
 наряд / замовлення), номер документа й чек із «Повторити» для FAILED. Payroll pay-модалка — вибір каси для ЗП.
+Сторно: у рядку історії кнопка «Сторнувати» (лише OWNER/ADMIN/ACCOUNTANT; не показується для вже
+сторнованих, самих рядків сторно та рядків зарплати й банку) відкриває `CashReversalModal` — що сторнується
+й які наслідки, причина (обов'язкова, до 500), підтвердження «Так, сторнувати». Сторнований рядок і його
+сторно позначені й посилаються один на одного (клік прокручує до пари). У «Пов'язаних документах» рахунку й
+наряду сторнована оплата має бейдж «Сторновано», у замовленні постачальнику — статус «Сторновано».
 Старі адреси сторінок оплат (`/payments`, `/supplier-payments`) перенаправляються (`LegacyRouteRedirect`) у касу;
 `/payments/<id>` без перенаправлення — відома прогалина (TECH-DEBT).
 
-| Компонент        | Файл                                                                                          |
-| ---------------- | --------------------------------------------------------------------------------------------- |
-| Сторінка/вкладки | `app/(app)/cash/page.tsx` + `CashOperationsTab`/`CashRegistersTab`/`ExpenseCategoriesTab.tsx` |
-| Форма операції   | `app/(app)/cash/CashOperationModal.tsx`                                                       |
-| Hooks            | `hooks/api/useCash.ts`, `hooks/api/useExpenseCategories.ts` (типи — згенеровані `ApiSchema`)  |
-| Базова валюта    | `useBaseCurrency` → `GET /settings/base-currency` (усі ролі; не `/settings/organisation`)     |
-| Підписи приводів | `i18n/locales/{uk,en}/cash.json` `reasons.*` ≡ `CASH_REASON_LABELS` (`@sto/shared`)           |
+| Компонент        | Файл                                                                                           |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| Сторінка/вкладки | `app/(app)/cash/page.tsx` + `CashOperationsTab`/`CashRegistersTab`/`ExpenseCategoriesTab.tsx`  |
+| Форма операції   | `app/(app)/cash/CashOperationModal.tsx`                                                        |
+| Картка сторно    | `app/(app)/cash/CashReversalModal.tsx` (+ `useReverseCashOperation`, `CashReversalFormValues`) |
+| Hooks            | `hooks/api/useCash.ts`, `hooks/api/useExpenseCategories.ts` (типи — згенеровані `ApiSchema`)   |
+| Базова валюта    | `useBaseCurrency` → `GET /settings/base-currency` (усі ролі; не `/settings/organisation`)      |
+| Підписи приводів | `i18n/locales/{uk,en}/cash.json` `reasons.*` ≡ `CASH_REASON_LABELS` (`@sto/shared`)            |
 
 ---
 
 ## Інваріанти
 
 1. **Рух готівки лише через `CashService.createOperation`** — append-only, atomic, приймає зовнішній tx.
-   Виправлення — сторно-операцією протилежного напряму (не edit/delete).
+   Виправлення — сторно-операцією протилежного напряму з посиланням на оригінал (BR-CASH-023; не edit/delete).
 2. Гроші: `Decimal(12,2)` + `roundMoney`; `amount>0`; знак з `direction`. Баланс не кешується стейл.
 3. Tenant-isolation: orgId у кожному запиті; операція валідує касу/статтю/counterparty належать org.
 4. Employee ≠ counterparty → ЗП саме касовою операцією (не через SettlementAccount).

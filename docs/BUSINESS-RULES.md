@@ -198,24 +198,33 @@ const BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1> = {
   REFUND_OUT: 1, // повернули гроші клієнту (банк BR-BANK-030, каса BR-CASH-018) → він знову винен
   REFUND_OUT_CANCEL: -1, // сторно REFUND_OUT при скасуванні рознесення (BR-BANK-039)
   SUPPLIER_PAYMENT_RETURN: -1, // постачальник повернув гроші готівкою (каса BR-CASH-019)
+  // Сторно касової операції (BR-CASH-023…025) — знак протилежний до оригіналу:
+  PAYMENT_CANCEL: 1, // сторно PAYMENT
+  PREPAYMENT_CANCEL: 1, // сторно PREPAYMENT
+  SUPPLIER_PAYMENT_CANCEL: -1, // сторно SUPPLIER_PAYMENT
+  SUPPLIER_PAYMENT_RETURN_CANCEL: 1, // сторно SUPPLIER_PAYMENT_RETURN
 };
 ```
 
 ### Типи транзакцій
 
-| Тип                     | Знак  | Коли                                                                                    |
-| ----------------------- | ----- | --------------------------------------------------------------------------------------- |
-| CHARGE                  | +1    | Борг клієнта: завершення наряду (`WorkOrder` COMPLETED), виставлення рахунку            |
-| PAYMENT                 | -1    | Клієнт оплатив (`Payment`; готівкою — з каси, BR-CASH-017)                              |
-| PREPAYMENT              | -1    | Передоплата                                                                             |
-| REFUND                  | -1    | Вхідний банківський платіж з видом «повернення»                                         |
-| CREDIT_NOTE             | -1    | Кредит-нота                                                                             |
-| SUPPLIER_CHARGE         | -1    | Отримання товару від постачальника (`PurchaseOrder.receive`) → ми винні                 |
-| SUPPLIER_PAYMENT        | +1    | Ми оплатили постачальнику (`SupplierPayment.confirm`; з каси — BR-CASH-019) → борг ↓    |
-| SUPPLIER_REFUND         | +1    | Повернення ТОВАРУ постачальнику (`SupplierReturn.confirm`) → борг ↓                     |
-| SUPPLIER_PAYMENT_RETURN | -1    | Постачальник повернув ГРОШІ готівкою (каса) → його борг перед нами / наша передоплата ↓ |
-| REFUND_OUT / _CANCEL    | +1/-1 | Повернення коштів клієнту (банк / каса) і його сторно                                   |
-| FX_GAIN / FX_LOSS       | +1/-1 | Курсові різниці при повній оплаті іновалютного рахунку                                  |
+| Тип                            | Знак  | Коли                                                                                    |
+| ------------------------------ | ----- | --------------------------------------------------------------------------------------- |
+| CHARGE                         | +1    | Борг клієнта: завершення наряду (`WorkOrder` COMPLETED), виставлення рахунку            |
+| PAYMENT                        | -1    | Клієнт оплатив (`Payment`; готівкою — з каси, BR-CASH-017)                              |
+| PREPAYMENT                     | -1    | Передоплата                                                                             |
+| REFUND                         | -1    | Вхідний банківський платіж з видом «повернення»                                         |
+| CREDIT_NOTE                    | -1    | Кредит-нота                                                                             |
+| SUPPLIER_CHARGE                | -1    | Отримання товару від постачальника (`PurchaseOrder.receive`) → ми винні                 |
+| SUPPLIER_PAYMENT               | +1    | Ми оплатили постачальнику (`SupplierPayment.confirm`; з каси — BR-CASH-019) → борг ↓    |
+| SUPPLIER_REFUND                | +1    | Повернення ТОВАРУ постачальнику (`SupplierReturn.confirm`) → борг ↓                     |
+| SUPPLIER_PAYMENT_RETURN        | -1    | Постачальник повернув ГРОШІ готівкою (каса) → його борг перед нами / наша передоплата ↓ |
+| REFUND_OUT / _CANCEL           | +1/-1 | Повернення коштів клієнту (банк / каса) і його сторно                                   |
+| PAYMENT_CANCEL                 | +1    | Сторно оплати контрагента з каси (BR-CASH-024)                                          |
+| PREPAYMENT_CANCEL              | +1    | Сторно авансу контрагента з каси (BR-CASH-024)                                          |
+| SUPPLIER_PAYMENT_CANCEL        | -1    | Сторно оплати постачальнику з каси (BR-CASH-024) → наш борг знову ↑                     |
+| SUPPLIER_PAYMENT_RETURN_CANCEL | +1    | Сторно повернення від постачальника (BR-CASH-025)                                       |
+| FX_GAIN / FX_LOSS              | +1/-1 | Курсові різниці при повній оплаті іновалютного рахунку                                  |
 
 > Старий опис цієї таблиці (лише 5 типів і постачальницькі `CHARGE`/`PAYMENT`) розходився з кодом —
 > звірено з `settlements.service.ts` 2026-10-14.

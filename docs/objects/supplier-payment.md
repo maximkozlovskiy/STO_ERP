@@ -49,9 +49,10 @@ model SupplierPayment {
 > SUPPLIER_PAYMENT=+1 → залишок=paidBase−chargeBase): fx=chargeBase−paidBase → `fx>0 ⇒ FX_GAIN`,
 > `fx<0 ⇒ FX_LOSS`. chargeBase = Σ SUPPLIER_CHARGE.amountBase (ledger, PO); paidBase = Σ
 > SUPPLIER_PAYMENT.amountBase (CONFIRMED SP цього PO). Skip: base / |fx|<0.005 / idempotency count-guard.
-> cancel N/A (CONFIRMED термінальний → paidAmount монотонний).
+> cancel N/A (CONFIRMED термінальний для публічних дій; єдиний вихід — внутрішнє сторно з каси
+> `REVERSED`, яке зменшує `paidAmount`, але іновалютну оплату НЕ сторнує — 400, BR-CASH-024).
 
-**Enum-и:** `SupplierPaymentStatus` (DRAFT/CONFIRMED/CANCELLED), `PaymentSourceType` (BANK_ACCOUNT/CASH_REGISTER).
+**Enum-и:** `SupplierPaymentStatus` (DRAFT/CONFIRMED/CANCELLED/REVERSED), `PaymentSourceType` (BANK_ACCOUNT/CASH_REGISTER).
 
 **Відносини:** → `Counterparty` (supplier), `PurchaseOrder?`, `BankAccount?`, `CashRegister?`.
 
@@ -62,13 +63,24 @@ model SupplierPayment {
 ```
 DRAFT → CONFIRMED   (пише settlement SUPPLIER_PAYMENT)
       ↘ CANCELLED
+CONFIRMED → REVERSED   (лише сторно з каси, внутрішній метод `reverse`; публічного переходу немає)
 ```
 
-| Статус      | Значення                                                        |
-| ----------- | --------------------------------------------------------------- |
-| `DRAFT`     | Чернетка — settlement ще не пишеться, можна редагувати          |
-| `CONFIRMED` | Проведено — settlement SUPPLIER_PAYMENT записано, борг зменшено |
-| `CANCELLED` | Скасовано — settlement не пишеться                              |
+| Статус      | Значення                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------- |
+| `DRAFT`     | Чернетка — settlement ще не пишеться, можна редагувати                                      |
+| `CONFIRMED` | Проведено — settlement SUPPLIER_PAYMENT записано, борг зменшено                             |
+| `CANCELLED` | Скасовано — settlement не пишеться                                                          |
+| `REVERSED`  | Сторновано з каси (BR-CASH-024) — є `SUPPLIER_PAYMENT_CANCEL`; термінальний, не видаляється |
+
+Сторно (`SupplierPaymentsService.reverse(orgId, id, ctx, tx)`) — внутрішній метод без маршруту: його
+викликає лише `CashDeskService.reverse` у своїй транзакції після запису рядка сторно каси. Порядок: CAS
+`CONFIRMED → REVERSED` (друге сторно → 400) → проводка `SUPPLIER_PAYMENT_CANCEL` (−1, курс оригіналу,
+`documentType = 'CashOperation'`, `documentId` = рядок сторно) → `PurchaseOrder.paidAmount` мінус сума (не
+нижче нуля, CAS), `paidAt` знімається, якщо замовлення вже не сплачене повністю. Оплата не в базовій
+валюті → 400. `SP_TRANSITIONS.CONFIRMED` лишається порожньою: `REVERSED` ставить лише `reverse`.
+
+Тести сторно — у реєстрі `cash.md` (`supplier-payments.reverse.spec.ts`).
 
 Проведення (`confirm`) виконується у `$transaction` з re-read статусу всередині (race-safe проти подвійного SUPPLIER_PAYMENT).
 

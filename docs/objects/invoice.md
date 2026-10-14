@@ -75,6 +75,12 @@ OVERDUE → PAID / CANCELLED
 **FSM файл:** `apps/api/src/modules/invoices/invoices.service.ts` (`INV_TRANSITIONS`),
 дзеркалить `INVOICE_STATUS_TRANSITIONS` у `@sto/shared`.
 
+**Сторно оплати (BR-CASH-024):** `PAID` / `PARTIALLY_PAID` → `PARTIALLY_PAID` (залишилась інша
+оплата, `paidAmount > 0`) або `SENT` (`paidAmount` стало 0) — теж не через FSM-endpoint, а запис
+статусу й `paidAmount` у `PaymentsService.reverse` (CAS по прочитаних `paidAmount` і статусу). Сторнована
+оплата не входить у «сплачено» рахунку (відбір `reversedAt: null`), але видна в «Пов'язаних документах»
+з позначкою `reversedAt`. Скасований рахунок сторно оплати не приймає (400).
+
 **Важливо:** `PARTIALLY_PAID` виставляється **лише** частковим платежем
 (`PaymentsService.create`), а НЕ через FSM-endpoint. FSM-перехід у `PARTIALLY_PAID`
 відсутній у мапі навмисно (`SENT → [PAID, CANCELLED]`).

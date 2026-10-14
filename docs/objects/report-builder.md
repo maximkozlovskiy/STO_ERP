@@ -11,7 +11,7 @@
   `hasSoftDelete`/`profile: FULL|APPEND_ONLY`, `dateField`. Живить і backend-білдер, і фронт
   (`GET /reports/builder/metadata`).
 - **9 сутностей:** WorkOrder (Наряди), WorkOrderPart (Запчастини), PurchaseOrderLine (Закупівлі),
-  Invoice (Рахунки), Payment (Платежі, append-only), SettlementTransaction (Розрахунки, append-only),
+  Invoice (Рахунки), Payment (Платежі, append-only; поле «Сторновано» `reversedAt` — фільтр «порожньо» лишає чинні оплати, BR-CASH-024), SettlementTransaction (Розрахунки, append-only),
   StockMovement (Рухи, append-only, знакова quantity), StockBatch (Партії, append-only), StockItem
   (Залишки). Розширення = один запис у REGISTRY, движок не міняється.
 - **Профілі:** FULL (deletedAt-інжекція) vs APPEND_ONLY (без deletedAt — Payment/StockMovement/
@@ -199,7 +199,7 @@ cd apps/api && npx vitest run src/modules/report-builder/<файл>.spec.ts
 | Аспект                                             | Тест                                   | Кейсів |
 | -------------------------------------------------- | -------------------------------------- | ------ |
 | цілісність реєстру, tenant-умова по всіх сутностях | `report-registry.spec.ts`              | 9      |
-| побудова запиту: білі списки, ліміт, період        | `report-query.builder.spec.ts`         | 28     |
+| побудова запиту: білі списки, ліміт, період        | `report-query.builder.spec.ts`         | 29     |
 | групування, агрегації, підсумки                    | `report-aggregator.spec.ts`            | 21     |
 | авто-SUM і збагачення агрегацій                    | `report-builder.service.spec.ts`       | 3      |
 | збережені звіти, tenant-межа запуску               | `report-builder.saved-reports.spec.ts` | 10     |
@@ -209,7 +209,7 @@ cd apps/api && npx vitest run src/modules/report-builder/<файл>.spec.ts
 | фіксовані звіти: дати періоду в запиті (400)       | `reports.contract.spec.ts`             | 74     |
 | фіксовані звіти: межі періоду за Києвом, ПДВ       | `reports.period-bounds.spec.ts`        | 42     |
 
-Разом: **217** кейсів — 81 конструктора і 136 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **218** кейсів — 82 конструктора і 136 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
 
 Web-тест експорту (`BR-RPT-021`) лежить поза модулем:
 `apps/web/src/lib/__tests__/report-export.test.ts` — 23 кейси. Перевіряє чисту частину

@@ -71,6 +71,13 @@ PAID        → ARCHIVED
 
 > COMPLETED→CANCELLED (C2) реверсує склад+борг (див. side-effects). INVOICED/PAID/ARCHIVED
 > **незворотні** (там уже рахунок/гроші) — CANCELLED з них заборонено FSM.
+>
+> **Єдиний зворотний шлях — сторно оплати з каси (BR-CASH-024): `PAID → INVOICED`.** Це НЕ перехід
+> `WORK_ORDER_TRANSITIONS` (зворотного ребра в карті немає й не буде — кнопкою «розоплатити» наряд
+> не можна): статус пише внутрішній `reopenPaidWorkOrderInTx` (`work-order-status.ts`, один із двох
+> файлів, що пишуть статус наряду) — CAS по статусу `PAID` і прочитаному «сплачено», разом зі
+> зменшенням `paidAmount` на суму сторнованої оплати. Side-effects (резерв, списання, нарахування)
+> у цьому русі немає. Єдиний викликач — `PaymentsService.reverse`. Сторно оплати наряду в `ARCHIVED` — 400.
 
 Файл FSM: `apps/api/src/modules/work-orders/work-orders.fsm.ts`
 
