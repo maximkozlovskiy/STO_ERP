@@ -11,6 +11,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { PaymentSourceType } from '@prisma/client';
 import { it, expect } from 'vitest';
+import { supplierPaymentCreateSchema } from '@sto/shared';
 import {
   makeSpHarness,
   type SpHarness,
@@ -158,5 +159,27 @@ describe('SupplierPaymentsService — create', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.counterparty.findFirst).not.toHaveBeenCalled();
     expect(prisma.supplierPayment.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('supplierPaymentCreateSchema — межі суми (Bug #846)', () => {
+  const body = (amount: number) => ({
+    supplierId: '11111111-1111-4111-8111-111111111111',
+    sourceType: 'CASH_REGISTER',
+    cashRegisterId: '22222222-2222-4222-8222-222222222222',
+    amount,
+    method: 'cash',
+  });
+  const issues = (amount: number) => {
+    const res = supplierPaymentCreateSchema.safeParse(body(amount));
+    return res.success ? [] : res.error.issues.map(i => `${i.path.join('.')}: ${i.message}`);
+  };
+
+  it('сума понад місткість Decimal(12,2) → відмова на полі amount, а не 500 від бази', () => {
+    expect(issues(99_999_999_999)).toEqual(['amount: v.supplierPayment.amount.max']);
+  });
+
+  it('найбільша сума, яку вміщує колонка, проходить', () => {
+    expect(issues(9_999_999_999.99)).toEqual([]);
   });
 });

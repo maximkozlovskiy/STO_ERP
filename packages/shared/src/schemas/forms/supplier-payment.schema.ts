@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { optionalString, optionalUuid, optionalDateString, moneyString } from '../validators';
+import {
+  optionalString,
+  optionalUuid,
+  optionalDateString,
+  moneyString,
+  MONEY_AMOUNT_MAX,
+} from '../validators';
 
 /**
  * Спільна zod-схема оплати постачальнику (SupplierPayment) — ЄДИНЕ джерело правди web ↔ api.
@@ -20,8 +26,13 @@ const supplierPaymentShape = {
   bankAccountId: optionalUuid(),
   cashRegisterId: optionalUuid(),
   purchaseOrderId: optionalUuid(),
-  // amount — UA-кома підтримується (moneyString); мінімум 0.01 (дзеркалить @Min(0.01)).
-  amount: moneyString().pipe(z.number().min(0.01, 'v.supplierPayment.amount.min')),
+  // amount — UA-кома підтримується (moneyString); мінімум 0.01, стеля — місткість Decimal(12,2).
+  amount: moneyString().pipe(
+    z
+      .number()
+      .min(0.01, 'v.supplierPayment.amount.min')
+      .max(MONEY_AMOUNT_MAX, 'v.supplierPayment.amount.max'),
+  ),
   method: z.string().trim().min(1, 'v.supplierPayment.method.required'),
   notes: optionalString(),
   documentDate: optionalDateString(),

@@ -619,3 +619,26 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
  *      queue reject → .catch FAILED (no 500); tenant-scoped (cross-org → NotFound).
  *   4. toDto sourceName: bank name → cash name → null.
  */
+
+describe('CreatePaymentDto — межі суми (Bug #846)', () => {
+  const dtoErrors = async (amount: number) => {
+    const { validate } = await import('class-validator');
+    const { plainToInstance } = await import('class-transformer');
+    const { CreatePaymentDto } = await import('./payments.dto');
+    const dto = plainToInstance(CreatePaymentDto, {
+      counterpartyId: '11111111-1111-4111-8111-111111111111',
+      amount,
+      method: 'cash',
+    });
+    return (await validate(dto)).map(e => e.property);
+  };
+
+  it('сума понад місткість Decimal(12,2) → помилка поля amount, а не 500 від бази', async () => {
+    expect(await dtoErrors(99_999_999_999)).toEqual(['amount']);
+    expect(await dtoErrors(10_000_000_000)).toEqual(['amount']);
+  });
+
+  it('найбільша сума, яку вміщує колонка, проходить', async () => {
+    expect(await dtoErrors(9_999_999_999.99)).toEqual([]);
+  });
+});

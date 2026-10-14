@@ -255,6 +255,11 @@ describe('CashRegisters — HTTP Contract', () => {
       ['під звіт без працівника', { direction: 'OUT', reason: 'ADVANCE_ISSUE', amount: 100 }],
       ['витрата без статті', { direction: 'OUT', reason: 'EXPENSE', amount: 100 }],
       ['нульова сума', { direction: 'IN', reason: 'MANUAL_IN', amount: 0 }],
+      // Bug #846: без стелі сума доходила до Decimal(12,2) і поверталась 500.
+      [
+        'сума понад місткість колонки',
+        { direction: 'IN', reason: 'MANUAL_IN', amount: 99999999999 },
+      ],
       [
         'підстава не того типу',
         {

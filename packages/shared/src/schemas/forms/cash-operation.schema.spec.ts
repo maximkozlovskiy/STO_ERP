@@ -295,6 +295,17 @@ describe('cashOperationSchema — сума й примітка', () => {
     expect(res.error?.issues.map(i => i.path.join('.'))).toEqual(['amount']);
   });
 
+  // guards: BR-CASH-004
+  it('сума понад місткість Decimal(12,2) → відмова зі своїм текстом, межа проходить (Bug #846)', () => {
+    expect(issues({ ...minimal('MANUAL_IN'), amount: '9999999999.99' })).toEqual([]);
+    expect(issues({ ...minimal('MANUAL_IN'), amount: '10000000000' })).toEqual([
+      'amount: v.cashOperation.amount.max',
+    ]);
+    expect(issues({ ...minimal('MANUAL_IN'), amount: 99999999999 })).toEqual([
+      'amount: v.cashOperation.amount.max',
+    ]);
+  });
+
   // guards: BR-CASH-016
   it('примітка: 500 символів проходить, 501 — ні; порожня стає undefined', () => {
     expect(issues({ ...minimal('MANUAL_IN'), notes: 'я'.repeat(500) })).toEqual([]);

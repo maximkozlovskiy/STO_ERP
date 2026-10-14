@@ -1,7 +1,17 @@
-import { IsUUID, IsOptional, IsNumber, Min, IsString, IsNotEmpty, IsIn } from 'class-validator';
+import {
+  IsUUID,
+  IsOptional,
+  IsNumber,
+  Min,
+  Max,
+  IsString,
+  IsNotEmpty,
+  IsIn,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentSourceType } from '@prisma/client';
+import { MONEY_AMOUNT_MAX } from '@sto/shared';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 // Тип проводки балансу для вхідного платежу. Дефолт PAYMENT (звичайна оплата — знак −1).
@@ -23,7 +33,8 @@ export class CreatePaymentDto {
   @Transform(emptyToUndefined)
   @IsUUID()
   invoiceId?: string;
-  @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
+  // Стеля — місткість Decimal(12,2): більша сума давала 500 `numeric field overflow` (Bug #846).
+  @ApiProperty() @IsNumber() @Min(0.01) @Max(MONEY_AMOUNT_MAX) amount!: number;
   @ApiProperty() @IsString() @IsNotEmpty() method!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
   // Рахунок-призначення (опц.): куди фізично лягли гроші. Якщо не задано — дефолт з methodConfig.

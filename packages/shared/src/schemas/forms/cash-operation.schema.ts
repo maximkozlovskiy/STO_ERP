@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { optionalUuid, moneyString } from '../validators';
+import { optionalUuid, moneyString, MONEY_AMOUNT_MAX } from '../validators';
 
 /**
  * Ручна касова операція — ЄДИНЕ джерело правди web ↔ api (BR-CASH-016…021).
@@ -144,8 +144,13 @@ export const RECEPTIONIST_CASH_REASONS: readonly CashReasonValue[] = ['SALE_PAYM
 const cashOperationShape = {
   direction: z.enum(CASH_DIRECTION_VALUES, { error: 'v.cashOperation.direction.required' }),
   reason: z.enum(CASH_REASON_VALUES, { error: 'v.cashOperation.reason.required' }),
-  // UA-кома підтримується (moneyString); мінімум 0.01.
-  amount: moneyString().pipe(z.number().min(0.01, 'v.cashOperation.amount.min')),
+  // UA-кома підтримується (moneyString); мінімум 0.01, стеля — місткість Decimal(12,2).
+  amount: moneyString().pipe(
+    z
+      .number()
+      .min(0.01, 'v.cashOperation.amount.min')
+      .max(MONEY_AMOUNT_MAX, 'v.cashOperation.amount.max'),
+  ),
   expenseCategoryId: optionalUuid(),
   counterpartyId: optionalUuid(),
   employeeId: optionalUuid(),
