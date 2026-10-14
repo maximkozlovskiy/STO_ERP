@@ -14,10 +14,9 @@ test.describe.configure({ mode: 'serial' });
 /**
  * Сторно касової операції (BR-CASH-023…025), рішення власника 2026-10-14.
  *
- * ── Сценарії «за контрактом» ──
- * Написані паралельно з бекендом сторно (POST /cash-registers/:id/operations/:operationId/reverse,
- * поля рядка історії `reversalOfId` / `reversedBy`). До злиття з бекендом вони червоні — це
- * очікувано.
+ * Маршрут сторно: POST /cash-registers/:id/operations/:operationId/reverse; поля рядка історії
+ * `reversalOfId` / `reversedBy`. Сценарії писались паралельно з бекендом, прогнані разом із ним
+ * (2026-10-14).
  *
  * Касові операції — append-only (фінансовий слід), тож лишаються в БД навмисно. Касу й
  * контрагента, створених тестом, прибираємо.
@@ -124,9 +123,7 @@ test.describe('Сторно касової операції', () => {
     await ctx.close();
   });
 
-  test('[контракт] сторно простої операції: залишок назад, обидва рядки позначені', async ({
-    page,
-  }) => {
+  test('сторно простої операції: залишок назад, обидва рядки позначені', async ({ page }) => {
     await page.goto('/cash');
     const token = await getToken(page);
     const op = await createOperation(page, token, registerId, {
@@ -167,7 +164,7 @@ test.describe('Сторно касової операції', () => {
     await expect(reversal.getByRole('button', { name: 'Сторнувати', exact: true })).toHaveCount(0);
   });
 
-  test('[контракт] повторне сторно неможливе: кнопки немає, сервер відмовляє', async ({ page }) => {
+  test('повторне сторно неможливе: кнопки немає, сервер відмовляє', async ({ page }) => {
     expect(simpleOpId, 'попередній сценарій створив і сторнував операцію').toBeTruthy();
     await selectRegister(page, registerId);
     const original = page.locator(`#cash-op-${simpleOpId}`);
@@ -205,7 +202,7 @@ test.describe('Сторно касової операції', () => {
     expect(JSON.stringify(ofReversal.body)).toContain('Сторно не можна сторнувати');
   });
 
-  test('[контракт] сторно оплати контрагента: борг повертається', async ({ page }) => {
+  test('сторно оплати контрагента: борг повертається', async ({ page }) => {
     await page.goto('/cash');
     const token = await getToken(page);
     const before = await getBalance(page, token, clientId);
