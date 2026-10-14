@@ -23,6 +23,69 @@ async function getToken(page: Page): Promise<string> {
   return token as string;
 }
 
+const OWN_ACCOUNT = '000 E2E Банк UAH (рознесення)';
+const OWN_CATEGORY = 'E2E Витрата (рознесення)';
+
+/**
+ * Власний гривневий банківський рахунок і стаття витрат сценарію: у чистій базі CI їх немає, а
+ * покладатися на «перший-ліпший» рахунок dev-бази не можна. Беремо наявні з цими назвами або
+ * створюємо — без накопичення між прогонами.
+ */
+async function ownRefs(
+  page: Page,
+): Promise<{ accountId: string; categoryId: string; categoryName: string }> {
+  const token = await getToken(page);
+  const refs = await page.evaluate(
+    async ({ token, API, OWN_ACCOUNT, OWN_CATEGORY }) => {
+      const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+      const list = async (path: string) => {
+        const data = await (await fetch(`${API}${path}`, { headers: auth })).json();
+        return (data.items ?? data) as Array<Record<string, unknown>>;
+      };
+      let account = (await list('/bank-accounts')).find(a => a.name === OWN_ACCOUNT);
+      if (!account) {
+        const currencies = await list('/currencies');
+        const uah = currencies.find(c => c.code === 'UAH');
+        const res = await fetch(`${API}/bank-accounts`, {
+          method: 'POST',
+          headers: auth,
+          body: JSON.stringify({
+            name: OWN_ACCOUNT,
+            ibanUA: `UA${String(Date.now()).slice(-9).padStart(27, '0')}`,
+            currencyId: uah?.id,
+          }),
+        });
+        account = (await res.json()) as Record<string, unknown>;
+      }
+      const flat: Array<Record<string, unknown>> = [];
+      const walk = (nodes: Array<Record<string, unknown>>) =>
+        nodes.forEach(n => {
+          flat.push(n);
+          if (Array.isArray(n.children)) walk(n.children as Array<Record<string, unknown>>);
+        });
+      walk(await list('/expense-categories'));
+      let category = flat.find(c => c.name === OWN_CATEGORY && c.isActive !== false);
+      if (!category) {
+        const res = await fetch(`${API}/expense-categories`, {
+          method: 'POST',
+          headers: auth,
+          body: JSON.stringify({ name: OWN_CATEGORY, type: 'EXPENSE' }),
+        });
+        category = (await res.json()) as Record<string, unknown>;
+      }
+      return {
+        accountId: String(account?.id ?? ''),
+        categoryId: String(category?.id ?? ''),
+        categoryName: String(category?.name ?? ''),
+      };
+    },
+    { token, API, OWN_ACCOUNT, OWN_CATEGORY },
+  );
+  expect(refs.accountId, 'власний гривневий банківський рахунок сценарію').toBeTruthy();
+  expect(refs.categoryId, 'власна стаття витрат сценарію').toBeTruthy();
+  return refs;
+}
+
 interface Fixtures {
   accountId: string;
   clientName: string;
@@ -41,8 +104,6 @@ async function clientInvoice(page: Page, invoiceAmount: number): Promise<Fixture
         const res = await fetch(`${API}${path}`, { ...init, headers: auth });
         return { status: res.status, body: (await res.json().catch(() => null)) as never };
       };
-      const accounts = (await call('/bank-accounts')).body as { items: Record<string, string>[] };
-      const account = accounts.items.find(a => a.currencyCode === 'UAH');
       const clientName = `BNK10 Клієнт ${stamp}`;
       const cp = await call('/counterparties', {
         method: 'POST',
@@ -59,7 +120,6 @@ async function clientInvoice(page: Page, invoiceAmount: number): Promise<Fixture
         body: JSON.stringify({ status: 'SENT' }),
       });
       return {
-        accountId: account?.id ?? '',
         clientName,
         cp: cp.status,
         inv: inv.status,
@@ -70,11 +130,11 @@ async function clientInvoice(page: Page, invoiceAmount: number): Promise<Fixture
     },
     { token, API, stamp, invoiceAmount },
   );
-  expect(result.accountId, 'потрібен банківський рахунок у гривні').toBeTruthy();
   expect(result.cp, 'клієнт BNK10 створюється').toBeLessThan(300);
   expect(result.inv, 'рахунок клієнту створюється').toBeLessThan(300);
   expect(result.sent, 'рахунок виставляється').toBeLessThan(300);
-  return result;
+  const { accountId } = await ownRefs(page);
+  return { ...result, accountId };
 }
 
 async function invoiceStatus(page: Page, invoiceId: string): Promise<string> {
@@ -181,37 +241,7 @@ test.describe('Новий банківський платіж — «Рознес
       timeout: 20_000,
     });
     const token = await getToken(page);
-    const refs = await page.evaluate(
-      async ({ token, API }) => {
-        const auth = { Authorization: `Bearer ${token}` };
-        const accounts = (await (
-          await fetch(`${API}/bank-accounts`, { headers: auth })
-        ).json()) as {
-          items: Record<string, string>[];
-        };
-        const tree = (await (
-          await fetch(`${API}/expense-categories`, { headers: auth })
-        ).json()) as {
-          items: Record<string, unknown>[];
-        };
-        const flat: Record<string, unknown>[] = [];
-        const walk = (nodes: Record<string, unknown>[]) =>
-          nodes.forEach(n => {
-            flat.push(n);
-            if (Array.isArray(n.children)) walk(n.children as Record<string, unknown>[]);
-          });
-        walk(tree.items);
-        const category = flat.find(c => c.type === 'EXPENSE' && c.isActive !== false);
-        return {
-          accountId: accounts.items.find(a => a.currencyCode === 'UAH')?.id ?? '',
-          categoryId: String(category?.id ?? ''),
-          categoryName: String(category?.name ?? ''),
-        };
-      },
-      { token, API },
-    );
-    expect(refs.accountId, 'потрібен банківський рахунок у гривні').toBeTruthy();
-    expect(refs.categoryId, 'потрібна активна стаття витрат').toBeTruthy();
+    const refs = await ownRefs(page);
     const purpose = `BNK10 вихідний ${Date.now()}`;
 
     const dialog = await openCreate(page, refs.accountId, '45,60', purpose);

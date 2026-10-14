@@ -114,12 +114,12 @@ const requireField = (
 
 interface OutgoingRefs {
   type: BankTxOutMatchTypeValue;
-  counterpartyId?: string;
-  supplierPaymentId?: string;
-  expenseCategoryId?: string;
-  payrollPeriodId?: string;
-  transferBankAccountId?: string;
-  cashRegisterId?: string;
+  counterpartyId?: string | undefined;
+  supplierPaymentId?: string | undefined;
+  expenseCategoryId?: string | undefined;
+  payrollPeriodId?: string | undefined;
+  transferBankAccountId?: string | undefined;
+  cashRegisterId?: string | undefined;
 }
 
 /**
@@ -200,7 +200,7 @@ export const bankTransactionCreateOutgoingAllocationFormSchema = z
   .superRefine((v, ctx) => refineOutgoingRefs(v, ctx, 'v.bankTransaction.supplierNew.required'));
 
 function refineIncomingRefs(
-  v: { type: string; counterpartyId?: string; invoiceId?: string },
+  v: { type: string; counterpartyId?: string | undefined; invoiceId?: string | undefined },
   ctx: z.RefinementCtx,
 ): void {
   requireField(ctx, v.counterpartyId, 'counterpartyId', 'v.bankTransaction.counterparty.required');
