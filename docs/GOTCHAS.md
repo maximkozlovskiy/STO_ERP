@@ -4,6 +4,15 @@
 
 ---
 
+## `packages/shared`: збірка зелена, а `type-check` у CI червоний (2026-10-15)
+
+`npx tsc -p tsconfig.cjs.json` (збірка `dist`) не вмикає `exactOptionalPropertyTypes`, а
+`pnpm run type-check` пакета (`tsc --noEmit` за `tsconfig.json`) — вмикає. Схема
+`bank-transaction.schema.ts` зібралась і пройшла тести локально, а CI `quality` впав: значення
+zod `x?: string | undefined` не передається в параметр із `x?: string`. Після правки
+`packages/shared` перевіряти саме `cd packages/shared && pnpm run type-check` (або кореневий
+`pnpm run type-check`, як у CI); в optional-полях допоміжних типів писати `?: T | undefined`.
+
 ## `prettier --write … | head` обнуляє файл (2026-10-14)
 
 `npx prettier --write <файл> 2>&1 | head -2` лишив `PurchaseOrderCreateModal.tsx` розміром
