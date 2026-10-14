@@ -242,3 +242,11 @@ PATCH `{ isActive: false }` правила з видаленою пізніше 
 пише зняття готівки з рахунку приводом `MANUAL_IN` свідомо без статті (BR-BANK-034): зі статтею,
 закріпленою за «Внесенням», переміщення стало б доходом у звіті. **Фікс:** прапорець
 `withoutCategory` у `CreateCashOperationInput`. **Severity:** IMPORTANT
+
+### 2026-10-14 — Відмова за станом, прочитаним без блокування, обходиться CAS-ом — §5
+
+**Сигнал:** `PaymentsService.reverse` читав `fiscalStatus`, відмовляв на `DONE`, а CAS писав лише `where reversedAt: null` і ставив `SKIPPED`. Обробник Checkbox пише `DONE` без блокування: чек, пробитий між читанням і CAS, проходив повз відмову, і `SKIPPED` затирав `DONE` при наявному `fiscalReceiptId`. Те саме в `retryFiscal`: безумовний `update` → `QUEUED` після сторно лишав сторновану оплату в черзі навічно (обробник її пропускає). **Grep:** див. пункт у `sections/api.md` §5. **Фікс:** у `where` CAS — `fiscalReceiptId: null, fiscalStatus: <прочитане>`; `count = 0` → перечитати й відмовити з точною причиною; `retryFiscal` — `updateMany` з `fiscalStatus: 'FAILED', reversedAt: null`. **Severity:** IMPORTANT
+
+### 2026-10-14 — Аудит рядка, створеного в чужій транзакції, лишався після її відкату — §4/§5
+
+**Сигнал:** `CashService.createOperation(…, tx)` пише аудит best-effort одразу після вставки — окремим з'єднанням, до коміту транзакції викликача. Сторно касової операції пише рядок ПЕРШИМ, а відмови гілок (валюта, чек, архівний наряд) — потім: наживо відмова сторно іноземної оплати постачальнику лишила `audit_events` CREATE на `CashOperation`, якої в `cash_operations` немає. **Grep:** див. пункт у `sections/api.md` §5. **Фікс:** `deferAudit` у вході писача + `recordCreated()` викликача після коміту. **Severity:** IMPORTANT
