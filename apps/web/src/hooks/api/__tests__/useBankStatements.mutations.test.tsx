@@ -5,7 +5,9 @@
 // Mutation-verify:
 //   - прибрати `supplierPaymentsKeys.all` з onSuccess reconcile → кейс SUPPLIER_PAYMENT падає;
 //   - прибрати `cashKeys.all` з onSuccess reconcile             → кейс CASH_WITHDRAWAL падає;
-//   - `onSettled` → `onSuccess` у reconcile                     → «відмова теж оновлює список» падає.
+//   - `onSettled` → `onSuccess` у reconcile                     → «відмова теж оновлює список» падає;
+//   - прибрати `invalidatePaymentSideEffects` з onSuccess match → «match: збиває рахунки…» падає;
+//   - `invalidateSupplierPaymentEffects` без замовлень           → кейси «замовлення постачальнику» падають.
 
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -21,6 +23,7 @@ vi.mock('@/lib/api-client', () => ({
 import {
   useCreateBankTransaction,
   useDeleteBankTransaction,
+  useMatchBankTransaction,
   useReconcileBankTransaction,
   useUnreconcileBankTransaction,
   useSupplierPaymentCandidates,
@@ -73,6 +76,21 @@ describe('useReconcileBankTransaction', () => {
     expect(keys).toContain('bank-transactions');
     expect(keys).toContain('supplier-payments');
     expect(keys).not.toContain('cash');
+  });
+
+  // Bug #860: оплата постачальнику міняє борг постачальника й залишок за замовленням
+  // («графік оплат»); повернення клієнту — борг клієнта.
+  it('SUPPLIER_PAYMENT → ще й замовлення постачальнику та борги', async () => {
+    apiFetchMock.mockResolvedValue({});
+    const keys = await run({ type: 'SUPPLIER_PAYMENT', counterpartyId: ID });
+    expect(keys).toEqual(expect.arrayContaining(['purchase-orders', 'counterparties']));
+  });
+
+  it('CLIENT_REFUND → збиває борги контрагентів', async () => {
+    apiFetchMock.mockResolvedValue({});
+    const keys = await run({ type: 'CLIENT_REFUND', counterpartyId: ID });
+    expect(keys).toEqual(expect.arrayContaining(['bank-transactions', 'counterparties']));
+    expect(keys).not.toContain('supplier-payments');
   });
 
   it('CASH_WITHDRAWAL → збиває і список платежів, і касу', async () => {
@@ -146,6 +164,8 @@ describe('інші мутації банківських платежів', () =
         'cash',
         'supplier-payments',
         'counterparties',
+        // Bug #860: нова оплата постачальнику за замовленням міняє його залишок («графік оплат»).
+        'purchase-orders',
       ]),
     );
   });
@@ -195,7 +215,53 @@ describe('інші мутації банківських платежів', () =
     expect(path).toBe('/bank-statements/transactions/tx-7/unreconcile');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toEqual({ reason: 'дубль' });
-    expect([...invalidated()].sort()).toEqual(['bank-transactions', 'cash', 'supplier-payments']);
+    expect(invalidated()).toEqual(
+      expect.arrayContaining([
+        'bank-transactions',
+        'cash',
+        'supplier-payments',
+        // Bug #860: сторно повернення клієнту й відв'язана оплата постачальнику.
+        'purchase-orders',
+        'counterparties',
+      ]),
+    );
+  });
+
+  // Bug #860: рознесення вхідного окремим вікном створює оплату клієнта — ті самі чужі списки,
+  // що й внесення з рознесенням (рахунок лишався «Надіслано» після оплати).
+  it('match: POST …/:id/match; збиває рахунки, оплати, касу, борги', async () => {
+    apiFetchMock.mockResolvedValue({});
+    const { wrapper, invalidated } = setup();
+    const { result } = renderHook(() => useMatchBankTransaction(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({
+        id: 'tx-3',
+        data: { type: 'INVOICE', counterpartyId: ID, invoiceId: ID },
+      });
+    });
+    expect(apiFetchMock.mock.calls[0][0]).toBe('/bank-statements/transactions/tx-3/match');
+    expect(invalidated()).toEqual(
+      expect.arrayContaining([
+        'bank-transactions',
+        'invoices',
+        'payments',
+        'work-orders',
+        'cash',
+        'counterparties',
+      ]),
+    );
+  });
+
+  it('match, відмова: чужих списків не чіпає', async () => {
+    apiFetchMock.mockRejectedValue(new Error('Рахунок уже оплачено'));
+    const { wrapper, invalidated } = setup();
+    const { result } = renderHook(() => useMatchBankTransaction(), { wrapper });
+    await act(async () => {
+      await result.current
+        .mutateAsync({ id: 'tx-3', data: { type: 'PREPAYMENT', counterpartyId: ID } })
+        .catch(() => undefined);
+    });
+    expect(invalidated()).toEqual([]);
   });
 
   it('кандидати оплат: без id рядка або з enabled=false запит не йде', () => {

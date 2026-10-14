@@ -1,10 +1,21 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { ApiSchema, operations } from '@sto/shared';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
-import { invalidatePaymentSideEffects } from '@/lib/cache-invalidation';
+import { invalidateBalanceAffected, invalidatePaymentSideEffects } from '@/lib/cache-invalidation';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 import { supplierPaymentsKeys } from './useSupplierPayments';
+import { purchaseOrdersKeys } from './usePurchaseOrders';
 import { cashKeys } from './useCash';
+
+/**
+ * Оплата постачальнику з банку (нова, прив'язана чи скасована): її список, борг постачальника і
+ * залишок за замовленням постачальнику — «графік оплат» (Bug #860).
+ */
+function invalidateSupplierPaymentEffects(qc: QueryClient): void {
+  void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+  void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+  invalidateBalanceAffected(qc);
+}
 
 /**
  * Банк-транзакція (виписка) — ЗГЕНЕРОВАНИЙ тип із OpenAPI.
@@ -135,6 +146,9 @@ export function useMatchBankTransaction() {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: bankTransactionsKeys.all });
+      // Створено оплату клієнта: «сплачено» рахунку й наряду, оплати, борг — як при внесенні з
+      // рознесенням (Bug #860: рахунок лишався «Надіслано» до кінця staleTime).
+      invalidatePaymentSideEffects(qc);
     },
   });
 }
@@ -190,7 +204,7 @@ export function useCreateBankTransaction() {
     onSuccess: (_res, { data }) => {
       if (!data.allocation) return;
       invalidatePaymentSideEffects(qc);
-      void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+      invalidateSupplierPaymentEffects(qc);
     },
     // onSettled: рядок, за яким оплата вже проведена, лишається рознесеним навіть після відмови.
     onSettled: () => {
@@ -238,8 +252,9 @@ export function useReconcileBankTransaction() {
         body: JSON.stringify(data),
       }),
     onSuccess: (_res, { data }) => {
-      if (data.type === 'SUPPLIER_PAYMENT')
-        void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+      if (data.type === 'SUPPLIER_PAYMENT') invalidateSupplierPaymentEffects(qc);
+      // Повернення клієнту — проведення REFUND_OUT: борг клієнта (BR-BANK-030).
+      if (data.type === 'CLIENT_REFUND') invalidateBalanceAffected(qc);
       if (data.type === 'CASH_WITHDRAWAL') void qc.invalidateQueries({ queryKey: cashKeys.all });
     },
     // onSettled, не onSuccess: відмова 409 «уже рознесено» означає, що рядок у списку застарів.
@@ -261,9 +276,10 @@ export function useUnreconcileBankTransaction() {
       });
     },
     onSuccess: () => {
-      // Зворотна касова операція (зняття готівки) і відв'язана оплата постачальнику.
+      // Вид скасованого рознесення відомий лише серверу: зворотна касова операція (зняття
+      // готівки), сторно повернення клієнту (борг), відв'язана оплата постачальнику (замовлення).
       void qc.invalidateQueries({ queryKey: cashKeys.all });
-      void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+      invalidateSupplierPaymentEffects(qc);
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: bankTransactionsKeys.all });
