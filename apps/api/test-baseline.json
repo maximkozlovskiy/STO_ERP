@@ -1535,6 +1535,7 @@
   "apps/api/src/modules/calendar/calendar.contract.spec.ts": [
    "Calendar — HTTP Contract DELETE /calendar/slots/:id повертає 204 при успіху (soft delete)",
    "Calendar — HTTP Contract DELETE /calendar/slots/:id повертає 404 коли слот не знайдено",
+   "Calendar — HTTP Contract GET /calendar/slots віддає employeeName запису як є: ім'я механіка або null",
    "Calendar — HTTP Contract GET /calendar/slots повертає 200 + масив слотів, прокидає date + user.role у сервіс",
    "Calendar — HTTP Contract GET /calendar/slots повертає 400 коли branchId не UUID (ParseUUIDPipe optional)",
    "Calendar — HTTP Contract GET /calendar/slots повертає 403 коли guard не пропустив",
@@ -1606,7 +1607,13 @@
    "CalendarService.syncWorkOrderSlots кидає 400 коли startAt/endAt не парсяться у валідну Date",
    "CalendarService.syncWorkOrderSlots кидає 404 коли наряд не існує / належить іншій org (Bug #442 tenant guard)",
    "CalendarService.syncWorkOrderSlots повертає { updated: 0 } коли parent slot не існує (no-op)",
-   "CalendarService.syncWorkOrderSlots у $transaction робить soft-delete continuation FIRST, потім update parent (Gotcha #review-7640de)"
+   "CalendarService.syncWorkOrderSlots у $transaction робить soft-delete continuation FIRST, потім update parent (Gotcha #review-7640de)",
+   "findSlots — механік запису (BR-CAL-011) ADMIN: «Прізвище Ім'я» механіка; без механіка чи не знайдений в організації — null",
+   "findSlots — механік запису (BR-CAL-011) MECHANIC: «Прізвище Ім'я» механіка; без механіка чи не знайдений в організації — null",
+   "findSlots — механік запису (BR-CAL-011) жоден запис без механіка — працівників не читає, employeeName = null",
+   "findSlots — механік запису (BR-CAL-011) звільнений механік лишається на своїх записах; працівник іншої організації — null",
+   "findSlots — механік запису (BR-CAL-011) механік не отримує клієнта, хоча ім'я механіка отримує",
+   "findSlots — механік запису (BR-CAL-011) імена — одним запитом на всю відповідь, лише своєї організації, без повторів id"
   ],
   "apps/api/src/modules/calendar/calendar.slot-kinds.spec.ts": [
    "CalendarService — види слотів (BR-CAL) counterpartyId без workOrderId → слот зберігає прямого клієнта, наряд лишається null",
