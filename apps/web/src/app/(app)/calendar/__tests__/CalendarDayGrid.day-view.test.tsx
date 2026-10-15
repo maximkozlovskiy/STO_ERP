@@ -180,6 +180,31 @@ describe('Вид «День» — блок запису (BR-CAL-011)', () => {
     expect(block('WO-a').className).toContain('ring-2');
     expect(block('WO-a').dataset.category).toBe('planned');
   });
+
+  // guards: BR-CAL-011 (Bug #875)
+  it('запис за межами робочих годин — блок лише в межах сітки, не на колонці підйомника', async () => {
+    byDay['2026-10-15'] = [
+      // Почався до відкриття (08:00) — блок від 08:00, не з від'ємним відступом.
+      slot('early', '2026-10-15T06:00', '2026-10-15T10:00'),
+      // Закінчується після закриття (20:00) — блок до 20:00, рядок не ширшає.
+      slot('late', '2026-10-15T19:00', '2026-10-15T22:00'),
+      // Цілком до відкриття — коротка позначка біля краю, а не прихований чи зміщений блок.
+      slot('before', '2026-10-15T06:00', '2026-10-15T07:00'),
+    ];
+    await renderDay();
+    const pct = (s: string) => Number(s.replace('%', ''));
+    const early = block('WO-early').style;
+    expect(pct(early.left)).toBe(0);
+    expect(pct(early.width)).toBeCloseTo((2 / 12) * 100, 5);
+    const late = block('WO-late').style;
+    expect(pct(late.left)).toBeCloseTo((11 / 12) * 100, 5);
+    expect(pct(late.left) + pct(late.width)).toBeCloseTo(100, 5);
+    const before = block('WO-before').style;
+    expect(pct(before.left)).toBe(0);
+    expect(pct(before.width)).toBeCloseTo((0.25 / 12) * 100, 5);
+    // Підказка показує справжній час запису, а не обрізаний.
+    expect(block('WO-early').title).toContain('06:00–10:00');
+  });
 });
 
 describe('Вид «День» — лінія «зараз» (BR-CAL-011)', () => {

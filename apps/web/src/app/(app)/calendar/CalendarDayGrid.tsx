@@ -21,6 +21,8 @@ import { PENDING_DRAG_ID, type CalendarState } from './useCalendarState';
 // створює новий [] на КОЖНОМУ mount, але reference стабільна між render-ами.
 // Перенесення на module-level зберігає ту саму семантику + 0 alloc per mount.
 const EMPTY_BOOKINGS: BookingSlot[] = [];
+/** Найменша видима ширина блоку запису, год — крок сітки 15 хв. */
+const MIN_BLOCK_H = 0.25;
 
 // ─── DraggableSlot ───────────────────────────────────────────────────────────
 
@@ -49,10 +51,18 @@ const DraggableSlot = memo(function DraggableSlot({
   onResizeStart,
 }: DraggableSlotProps) {
   const { t } = useTranslation('calendar');
-  const startH = kyivHours(slot.startAt);
-  const endH = kyivHours(slot.endAt);
-  const left = ((startH - windowStart) / totalHours) * 100;
-  const width = ((endH - startH) / totalHours) * 100;
+  // Блок — лише видима частина запису в межах робочих годин (Bug #875): запис, що почався до
+  // відкриття чи закінчується після закриття (години змінили після запису, запис через API),
+  // інакше налазив на колонку підйомника — ховав назву і «N год з M» — або розширював рядок.
+  // Запис цілком поза годинами — коротка позначка біля краю: його видно й можна відкрити.
+  const windowEnd = windowStart + totalHours;
+  const visStart = Math.min(
+    Math.max(kyivHours(slot.startAt), windowStart),
+    windowEnd - MIN_BLOCK_H,
+  );
+  const visEnd = Math.min(Math.max(kyivHours(slot.endAt), visStart + MIN_BLOCK_H), windowEnd);
+  const left = ((visStart - windowStart) / totalHours) * 100;
+  const width = ((visEnd - visStart) / totalHours) * 100;
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: slot.id,
