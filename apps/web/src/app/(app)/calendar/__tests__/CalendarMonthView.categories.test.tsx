@@ -58,6 +58,17 @@ describe('slotCategory — категорія запису (BR-CAL-008)', () => 
     expect(slotCategory(entry(null, PAST), NOW)).toBe('other');
   });
 
+  // guards: BR-CAL-008
+  it('до гідратації (nowMs = 0) «прострочено» не ставиться — запис у категорії свого наряду', () => {
+    expect(slotCategory(entry('IN_PROGRESS', PAST), 0)).toBe('inProgress');
+    expect(slotCategory(entry('APPROVED', PAST), 0)).toBe('planned');
+  });
+
+  it('невідомий статус (зокрема ключ прототипу) → «без наряду», не падає', () => {
+    expect(slotCategory(entry('toString'), NOW)).toBe('other');
+    expect(slotCategory(entry('NEW_STATUS', PAST), NOW)).toBe('other');
+  });
+
   it('countCategories рахує кожну категорію окремо', () => {
     expect(
       countCategories(
@@ -96,10 +107,22 @@ describe('CalendarMonthView — рядок лічильників дня', () =>
       .getAllByLabelText(/: \d+$/)
       .map(el => el.getAttribute('data-category'));
     expect(items).toEqual(['overdue', 'inProgress', 'done']);
-    expect(within(row).getByLabelText('Прострочено: 2')).toHaveTextContent('2');
-    expect(within(row).getByLabelText('В роботі: 1')).toHaveTextContent('1');
-    expect(within(row).getByLabelText('Виконано: 1')).toBeInTheDocument();
+    // role="img" — інакше aria-label на span читач екрана не озвучує
+    expect(within(row).getByRole('img', { name: 'Прострочено: 2' })).toHaveTextContent('2');
+    expect(within(row).getByRole('img', { name: 'В роботі: 1' })).toHaveTextContent('1');
+    expect(within(row).getByRole('img', { name: 'Виконано: 1' })).toBeInTheDocument();
     expect(within(row).queryByLabelText(/Скасовано/)).toBeNull();
+  });
+
+  it('минулий день блідне числом і фоном, а лічильники — ні', () => {
+    const entries = [entry('IN_PROGRESS', PAST)];
+    renderMonth({ '2026-10-14': { total: 1, byLift: {}, entries } });
+
+    const row = screen.getByTestId('month-day-categories');
+    expect(row.closest('.opacity-60')).toBeNull();
+    const cell = row.closest('button');
+    expect(cell).not.toHaveClass('opacity-60');
+    expect(within(cell as HTMLElement).getByText('14')).toHaveClass('opacity-60');
   });
 
   it('день без записів не має рядка лічильників', () => {

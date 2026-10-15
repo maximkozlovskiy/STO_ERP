@@ -15,6 +15,9 @@ interface CalendarMonthViewProps {
   onDayClick: (dateStr: string) => void;
 }
 
+/** Наскільки блідшає фон завантаженості минулого дня (раніше — `opacity-60` кнопки). */
+const PAST_DIM = 0.6;
+
 const DAY_LABEL_KEYS = [
   'month.weekdays.mon',
   'month.weekdays.tue',
@@ -96,7 +99,11 @@ export function CalendarMonthView({
                 const isToday = dayStr === todayStr;
                 const isPast = nowMs ? dayStr < todayStr : false;
                 const load = total / maxSlots;
-                const bgAlpha = total === 0 ? 0 : Math.max(0.08, load * 0.5);
+                // Минулий день блідший: раніше `opacity-60` на всій кнопці, але вона гасила й
+                // лічильники категорій (BR-CAL-008) — саме «прострочено» стоїть у минулих днях.
+                // Тепер блідне фон і число дня, лічильники лишаються контрастними.
+                const bgAlpha =
+                  total === 0 ? 0 : Math.max(0.08, load * 0.5) * (isPast ? PAST_DIM : 1);
                 const dayNum = parseInt(dayStr.slice(8), 10);
                 const counts = countCategories(info?.entries ?? [], nowMs);
                 const recordsLabel = t(
@@ -113,7 +120,7 @@ export function CalendarMonthView({
                     type="button"
                     onClick={() => onDayClick(dayStr)}
                     title={total > 0 ? recordsLabel : undefined}
-                    className={`min-h-20 border-r border-border last:border-r-0 p-2 text-left transition-colors hover:bg-primary/5 flex flex-col gap-1 ${isPast ? 'opacity-60' : ''}`}
+                    className={`min-h-20 border-r border-border last:border-r-0 p-2 text-left transition-colors hover:bg-primary/5 flex flex-col gap-1`}
                     style={
                       total > 0
                         ? {
@@ -123,13 +130,15 @@ export function CalendarMonthView({
                     }
                   >
                     <span
-                      className={`text-sm font-semibold leading-none ${isToday ? 'flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs' : 'text-foreground'}`}
+                      className={`text-sm font-semibold leading-none ${isToday ? 'flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs' : 'text-foreground'} ${isPast ? 'opacity-60' : ''}`}
                     >
                       {dayNum}
                     </span>
                     {total > 0 && (
                       <span
-                        className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-medium leading-none tabular-nums"
+                        // Підкладка `bg-surface`: на насиченому фоні завантаженості кольори
+                        // категорій без неї падають нижче 3:1 (світла тема, 50% primary).
+                        className="flex flex-wrap items-center self-start gap-x-2 gap-y-1 rounded bg-surface px-1 py-0.5 text-[11px] font-medium leading-none tabular-nums"
                         data-testid="month-day-categories"
                       >
                         {SLOT_CATEGORIES.filter(c => (counts[c] ?? 0) > 0).map(c => {
@@ -139,6 +148,9 @@ export function CalendarMonthView({
                             <span
                               key={c}
                               className={`inline-flex items-center gap-0.5 ${className}`}
+                              // role="img": aria-label на `span` без ролі читачі екрана
+                              // ігнорують — звучало б лише «2» без назви категорії.
+                              role="img"
                               title={`${label}: ${counts[c]}`}
                               aria-label={`${label}: ${counts[c]}`}
                               data-category={c}

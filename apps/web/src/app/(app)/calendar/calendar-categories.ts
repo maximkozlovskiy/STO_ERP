@@ -1,3 +1,4 @@
+import type { WorkOrderStatus } from '@sto/shared';
 import type { LucideIcon } from 'lucide-react';
 import {
   AlertCircle,
@@ -31,9 +32,16 @@ export interface MonthEntry {
 }
 
 // Наряд, що ще не завершено: минулий запис із ним — прострочений.
-const OPEN_STATUSES = new Set(['DRAFT', 'ESTIMATE', 'APPROVED', 'IN_PROGRESS', 'ON_HOLD']);
+const OPEN_STATUSES: ReadonlySet<string> = new Set<WorkOrderStatus>([
+  'DRAFT',
+  'ESTIMATE',
+  'APPROVED',
+  'IN_PROGRESS',
+  'ON_HOLD',
+]);
 
-const BY_STATUS: Record<string, SlotCategory> = {
+// `Record<WorkOrderStatus, …>`: новий статус наряду без категорії не збереться (tsc).
+const STATUS_CATEGORY: Record<WorkOrderStatus, SlotCategory> = {
   DRAFT: 'draft',
   ESTIMATE: 'planned',
   APPROVED: 'planned',
@@ -45,12 +53,19 @@ const BY_STATUS: Record<string, SlotCategory> = {
   ARCHIVED: 'done',
   CANCELLED: 'cancelled',
 };
+// Map, а не індекс об'єкта: рядок із сервера звіряється лише з власними ключами
+// (`STATUS_CATEGORY['toString']` повернув би функцію замість категорії).
+const BY_STATUS = new Map<string, SlotCategory>(Object.entries(STATUS_CATEGORY));
 
+/**
+ * `nowMs` = 0 — час ще не відомий (до гідратації): «прострочено» не ставиться нікому,
+ * запис потрапляє в категорію свого наряду.
+ */
 export function slotCategory(entry: MonthEntry, nowMs: number): SlotCategory {
   const status = entry.workOrderStatus;
   if (!status) return 'other';
-  if (OPEN_STATUSES.has(status) && entry.endMs < nowMs) return 'overdue';
-  return BY_STATUS[status] ?? 'other';
+  if (nowMs > 0 && OPEN_STATUSES.has(status) && entry.endMs < nowMs) return 'overdue';
+  return BY_STATUS.get(status) ?? 'other';
 }
 
 export function countCategories(
