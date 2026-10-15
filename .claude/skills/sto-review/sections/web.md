@@ -284,8 +284,7 @@ grep -rn "<DatePickerInput" apps/web/src/app --include="*.tsx" | wc -l
       відкритті (`tabIndex={-1}`) і закриття, коли фокус пішов за межі кореня** (`onBlur` +
       `relatedTarget` поза `rootRef`; `null` — не вихід). Інакше легенда лишається відкритою під
       вкладеною модалкою, і один Escape закриває обидві. Grep:
-      `grep -rln 'role="dialog"' apps/web/src --include=*.tsx | grep -v __tests__ | xargs -d '
-' grep -L "onBlur\|useFocusTrap\|<Modal"`
+      `grep -rln 'role="dialog"' apps/web/src --include=*.tsx | grep -v __tests__ | xargs -d '\n' grep -L "onBlur\|useFocusTrap\|<Modal"`
       — кандидати (повноекранні вікна з власною пасткою фокусу теж потрапляють; дивитись лише
       попапи під кнопкою) (`journal/web.md`, 2026-10-15, легенда календаря)
 - [ ] **Стан «відкрито з точки входу A» (знімок запису з місяця, джерело відкриття) скидає КОЖНА
