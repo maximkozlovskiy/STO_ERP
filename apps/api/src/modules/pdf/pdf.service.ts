@@ -34,6 +34,8 @@ const UAH_FMT = new Intl.NumberFormat('uk-UA', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+// Кількість і години — у тому ж українському форматі, що й суми («1,5», не «1.5»; Bug #866).
+const UA_QTY_FMT = new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 3 });
 const UA_DATE_FMT = new Intl.DateTimeFormat('uk-UA', {
   day: '2-digit',
   month: '2-digit',
@@ -208,7 +210,7 @@ export class PdfService {
               ],
               ...data.lines.map((l): TableCell[] => [
                 l.description,
-                { text: String(l.quantity), alignment: 'right' },
+                { text: this.fmtQty(l.quantity), alignment: 'right' },
                 l.unit,
                 { text: this.fmtMoney(l.unitPrice, data.currencyCode), alignment: 'right' },
                 { text: `${l.vatRate}%`, alignment: 'right' },
@@ -302,7 +304,7 @@ export class PdfService {
               ],
               ...data.lines.map((l): TableCell[] => [
                 l.description,
-                { text: String(l.quantity), alignment: 'right' },
+                { text: this.fmtQty(l.quantity), alignment: 'right' },
                 { text: this.fmtMoney(l.unitPrice, data.currencyCode), alignment: 'right' },
                 { text: this.fmtMoney(l.amount, data.currencyCode), alignment: 'right' },
               ]),
@@ -536,7 +538,7 @@ export class PdfService {
   /** Роботи наряду: норма й факт годин окремо, ціна за годину, сума рядка. */
   private worksTable(rows: WorkOrderPdfData['works'], currencyCode?: string | null): Content {
     const hours = (h: number | null | undefined): TableCell => ({
-      text: h == null ? '—' : String(h),
+      text: h == null ? '—' : this.fmtQty(h),
       alignment: 'right',
     });
     return {
@@ -580,7 +582,7 @@ export class PdfService {
           ],
           ...rows.map((r): TableCell[] => [
             r.name,
-            { text: String(r.quantity), alignment: 'right' },
+            { text: this.fmtQty(r.quantity), alignment: 'right' },
             r.unit || 'шт',
             { text: this.fmtMoney(r.price, currencyCode), alignment: 'right' },
             { text: this.fmtMoney(r.total, currencyCode), alignment: 'right' },
@@ -597,6 +599,10 @@ export class PdfService {
   private fmtMoney(n: number, currencyCode?: string | null): string {
     const suffix = !currencyCode || currencyCode === 'UAH' ? 'грн' : currencyCode;
     return `${UAH_FMT.format(n)} ${suffix}`;
+  }
+
+  private fmtQty(n: number): string {
+    return UA_QTY_FMT.format(n);
   }
 
   private fmtDate(d: Date): string {

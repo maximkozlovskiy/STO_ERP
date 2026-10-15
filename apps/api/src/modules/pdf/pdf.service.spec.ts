@@ -251,4 +251,11 @@ describe('PdfService — pdfmake integration', () => {
       expect(doc).not.toMatch(/UAH|USD/);
     }
   }, 15_000);
+
+  // Bug #866: кількість і години — «0,25», а не «0.25».
+  it('кількість у рядку — український формат з комою', async () => {
+    const doc = await docOf(() => usdInvoice());
+    expect(doc).toContain('"0,25"');
+    expect(doc).not.toContain('"0.25"');
+  }, 15_000);
 });
