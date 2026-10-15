@@ -69,6 +69,8 @@ export interface OrgPrintInfo {
 
 /** Ключ логотипа в `docDefinition.images` — сам рядок data URL в `image:` не підставляємо. */
 const LOGO_IMAGE_KEY = 'orgLogo';
+/** Нерозривний пробіл: усередині реквізиту шапки рядок не переноситься (Bug #867). */
+const NBSP = String.fromCharCode(0xa0);
 
 export interface CounterpartyInfo {
   name: string;
@@ -396,8 +398,13 @@ export class PdfService {
    * праворуч. Однакова в наряді, рахунку, акті виконаних робіт і акті звірки.
    */
   private header(org: OrgPrintInfo, title: string): Content {
+    // Усередині реквізиту — нерозривні пробіли: рядок переноситься лише МІЖ реквізитами, а не
+    // посеред «Банк: АТ Банк» чи «МФО: 322313» (Bug #867).
     const join = (parts: Array<string | null | undefined | false>) =>
-      parts.filter(Boolean).join('   ');
+      parts
+        .filter((p): p is string => !!p)
+        .map(p => p.replace(/ /g, NBSP))
+        .join('   ');
     const lines = [
       join([org.edrpou && `ЄДРПОУ: ${org.edrpou}`, org.ipn && `ІПН: ${org.ipn}`]),
       org.address ?? '',

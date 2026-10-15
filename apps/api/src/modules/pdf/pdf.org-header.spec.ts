@@ -17,6 +17,9 @@ const BROKEN_PNG_DATA_URL = `data:image/png;base64,${Buffer.concat([
   Buffer.from('not really a png'),
 ]).toString('base64')}`;
 
+/** Нерозривний пробіл — ним шапка склеює підпис і значення реквізиту (Bug #867). */
+const NBSP = String.fromCharCode(0xa0);
+
 const FULL_ORG: OrgPrintInfo = {
   name: 'СТО Альфа',
   edrpou: '12345678',
@@ -165,7 +168,8 @@ describe('PdfService — шапка з логотипом і реквізита�
 
     const header = texts(docs()[0]!.content[0]);
     expect(header[0]).toBe('СТО Альфа');
-    const joined = header.join('\n');
+    // Усередині реквізиту — нерозривні пробіли (окремий кейс нижче); тут лише зміст.
+    const joined = header.join('\n').split(NBSP).join(' ');
     expect(joined).toContain('ЄДРПОУ: 12345678');
     expect(joined).toContain('ІПН: 123456789012');
     expect(joined).toContain('м. Київ, вул. Фактична, 2');
@@ -175,6 +179,22 @@ describe('PdfService — шапка з логотипом і реквізита�
     expect(joined).toContain('Банк: АТ «Банк»');
     expect(joined).toContain('МФО: 322313');
     expect(header[header.length - 1]).toBe('Наряд-замовлення № НЗ-2026-000001');
+  }, 15_000);
+
+  // Bug #867: «Банк: ТСТ» / «Банк МФО: 322313» — рядок рвався посеред назви банку й МФО.
+  it('реквізит цілий: усередині — нерозривні пробіли, перенос лише між реквізитами', async () => {
+    const docs = capture();
+
+    await service.generateWorkOrderPdf(workOrderData(FULL_ORG));
+
+    const bankLine = texts(docs()[0]!.content[0]).find(t => t.startsWith('IBAN'));
+    expect(bankLine).toBe(
+      [
+        `IBAN:${NBSP}UA213223130000026007233566001`,
+        `Банк:${NBSP}АТ${NBSP}«Банк»`,
+        `МФО:${NBSP}322313`,
+      ].join('   '),
+    );
   }, 15_000);
 
   it('незаповнені реквізити не друкуються порожніми підписами', async () => {
@@ -223,7 +243,7 @@ describe('PdfService — шапка з логотипом і реквізита�
 
       const [doc] = docs();
       expect(headerImages(doc!)).toHaveLength(1);
-      const header = texts(doc!.content[0]).join('\n');
+      const header = texts(doc!.content[0]).join('\n').split(NBSP).join(' ');
       expect(header).toContain('ІПН: 123456789012');
       expect(header).toContain('IBAN: UA213223130000026007233566001');
     },
