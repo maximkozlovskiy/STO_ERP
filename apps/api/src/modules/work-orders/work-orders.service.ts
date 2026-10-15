@@ -454,11 +454,9 @@ export class WorkOrdersService {
     if (dto.liftId && !lift)
       throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
     // BR-WO-015: «сплачено» ведеться у валюті наряду — сплачений наряд валюту не змінює.
-    if (
-      dto.currencyId !== undefined &&
-      (dto.currencyId ?? null) !== wo.currencyId &&
-      moneyFromDecimal(wo.paidAmount) > 0
-    ) {
+    const currencyChanging =
+      dto.currencyId !== undefined && (dto.currencyId ?? null) !== wo.currencyId;
+    if (currencyChanging && moneyFromDecimal(wo.paidAmount) > 0) {
       throw new BadRequestException(
         translateError('err.workOrder.paidCurrencyLocked', getLocale()),
       );
@@ -507,48 +505,59 @@ export class WorkOrdersService {
       ] as const
     ).forEach(trackField);
 
-    const updated = await this.prisma.workOrder.update({
-      where: { id, orgId },
-      data: {
-        description: dto.description,
-        inMileage: dto.inMileage,
-        outMileage: dto.outMileage,
-        priority: dto.priority,
-        repairCategory: dto.repairCategory,
-        clientApproval: dto.clientApproval,
-        // Distinguish "field omitted" (undefined → skip) from "field cleared"
-        // (null → set NULL). `dto.plannedAt === null` writes NULL.
-        plannedAt:
-          dto.plannedAt === undefined
-            ? undefined
-            : dto.plannedAt === null
-              ? null
-              : new Date(dto.plannedAt),
-        dueDate:
-          dto.dueDate === undefined
-            ? undefined
-            : dto.dueDate === null
-              ? null
-              : new Date(dto.dueDate),
-        documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
-        // Мультивалюта (Фаза 3): totalAmountBase/rateUsed лишаються зі старого курсу до
-        // наступного recalcTotals (той самий lazy-патерн, що вже для documentDate вище) —
-        // НЕ перераховуємо тут, щоб не дублювати recalc-логіку поза transaction.
-        currencyId: dto.currencyId === undefined ? undefined : (dto.currencyId ?? null),
-        liftId: dto.liftId === undefined ? undefined : (dto.liftId ?? null),
-        plannedHours: dto.plannedHours === undefined ? undefined : (dto.plannedHours ?? null),
-        actualHours: dto.actualHours === undefined ? undefined : (dto.actualHours ?? null),
-      },
-      // PATCH response must include contract so contractNumber doesn't vanish after any field edit.
-      include: {
-        vehicle: { select: { make: true, model: true, licensePlate: true } },
-        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-        branch: { select: { name: true } },
-        contract: { select: { id: true, number: true } },
-        currency: { select: { code: true } },
-        lift: { select: { name: true } },
-      },
-    });
+    const updated = await this.prisma.workOrder
+      .update({
+        // BR-WO-015: умова «нічого не сплачено» — у самому записі зміни валюти: оплата, що прийшла
+        // між читанням і записом, інакше лишила б «сплачено» в одній валюті, а наряд — в іншій.
+        where: { id, orgId, ...(currencyChanging && { paidAmount: 0 }) },
+        data: {
+          description: dto.description,
+          inMileage: dto.inMileage,
+          outMileage: dto.outMileage,
+          priority: dto.priority,
+          repairCategory: dto.repairCategory,
+          clientApproval: dto.clientApproval,
+          // Distinguish "field omitted" (undefined → skip) from "field cleared"
+          // (null → set NULL). `dto.plannedAt === null` writes NULL.
+          plannedAt:
+            dto.plannedAt === undefined
+              ? undefined
+              : dto.plannedAt === null
+                ? null
+                : new Date(dto.plannedAt),
+          dueDate:
+            dto.dueDate === undefined
+              ? undefined
+              : dto.dueDate === null
+                ? null
+                : new Date(dto.dueDate),
+          documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
+          // Мультивалюта (Фаза 3): totalAmountBase/rateUsed лишаються зі старого курсу до
+          // наступного recalcTotals (той самий lazy-патерн, що вже для documentDate вище) —
+          // НЕ перераховуємо тут, щоб не дублювати recalc-логіку поза transaction.
+          currencyId: dto.currencyId === undefined ? undefined : (dto.currencyId ?? null),
+          liftId: dto.liftId === undefined ? undefined : (dto.liftId ?? null),
+          plannedHours: dto.plannedHours === undefined ? undefined : (dto.plannedHours ?? null),
+          actualHours: dto.actualHours === undefined ? undefined : (dto.actualHours ?? null),
+        },
+        // PATCH response must include contract so contractNumber doesn't vanish after any field edit.
+        include: {
+          vehicle: { select: { make: true, model: true, licensePlate: true } },
+          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+          branch: { select: { name: true } },
+          contract: { select: { id: true, number: true } },
+          currency: { select: { code: true } },
+          lift: { select: { name: true } },
+        },
+      })
+      .catch((e: unknown) => {
+        if (currencyChanging && (e as { code?: string } | null)?.code === 'P2025') {
+          throw new BadRequestException(
+            translateError('err.workOrder.paidCurrencyLocked', getLocale()),
+          );
+        }
+        throw e;
+      });
 
     // AuditEvent for field-level updates (only if something actually changed)
     if (userId && Object.keys(newData).length > 0) {

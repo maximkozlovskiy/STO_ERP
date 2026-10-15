@@ -344,6 +344,11 @@ export class PaymentsService {
     // застосовувались, а видалений наряд отримував paidAmount.
     if (dto.workOrderId && !requestedWorkOrder)
       throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
+    // Так само рахунок: без цієї відмови оплата з invoiceId видаленого чи чужого рахунку мовчки
+    // проходила повз усі перевірки рахунку (статус, платник, валюта, залишок) і писала Payment з
+    // посиланням на рахунок, якого немає.
+    if (dto.invoiceId && !invoicePre)
+      throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
 
     // BR-PAY-021: рахунок, що не належить наряду із запиту (зокрема рахунок без наряду), → 400.
     if (dto.workOrderId && invoicePre && invoicePre.workOrderId !== dto.workOrderId) {
@@ -472,6 +477,8 @@ export class PaymentsService {
               status: wo.status,
               paidAmount: wo.paidAmount,
               totalAmount: wo.totalAmount,
+              // BR-WO-015: валюту, з якою звірено валюту оплати ДО транзакції, не змінили.
+              currencyId: workOrder?.currencyId,
             },
             data: { paidAmount: money(moneyFromDecimal(wo.paidAmount) + dto.amount) },
           });
@@ -529,70 +536,69 @@ export class PaymentsService {
               currencyId: true,
             },
           });
-          if (inv) {
-            // OVERDUE теж оплачуваний (прострочений рахунок ще належить сплатити); часткова
-            // оплата переведе його у PARTIALLY_PAID, повна — у PAID.
-            if (
-              inv.status !== 'SENT' &&
-              inv.status !== 'PARTIALLY_PAID' &&
-              inv.status !== 'OVERDUE'
-            ) {
-              throw new BadRequestException(
-                translateError('err.payment.invoiceStatusNoPayment', getLocale(), {
-                  status: inv.status,
-                }),
-              );
-            }
-            // Рахунок закриває лише його платник. Раніше платіж контрагента A міг закрити рахунок
-            // контрагента B: гроші лягали на баланс A, а борг B зникав. Єдине місце правди для
-            // ручного платежу, рознесення виписки й онлайн-оплати (усі йдуть через create).
-            if (inv.counterpartyId !== dto.counterpartyId) {
-              throw new BadRequestException(
-                translateError('err.payment.invoiceNotForCounterparty', getLocale()),
-              );
-            }
-            // Мультивалюта (Фаза 3): валюта оплати мусить збігатися з валютою рахунку — інакше
-            // крос-валютна алокація (яким курсом закрити залишок = FX-політика, поза scope).
-            // NULL currencyId (історичні/base) вважаємо еквівалентними базовій валюті.
-            if (
-              !(await this.exchangeRates.sameCurrency(orgId, paymentCurrencyId, inv.currencyId))
-            ) {
-              throw new BadRequestException(
-                translateError('err.payment.currencyMustMatchInvoice', getLocale()),
-              );
-            }
-            const invAmount = Number(inv.amount);
-            const prevPaid = Number(inv.paidAmount);
-            const remaining = invAmount - prevPaid;
-            // invoice.amount/paidAmount у ВАЛЮТІ рахунку, оплата — у тій самій валюті → порівнюємо
-            // dto.amount, НЕ conv.amountBase. Борг у леджері все одно лягає у base через settlement.
-            if (dto.amount > remaining + 1e-9) {
-              throw new BadRequestException(
-                translateError('err.payment.amountExceedsInvoiceRemaining', getLocale(), {
-                  remaining: remaining.toFixed(2),
-                }),
-              );
-            }
-            const newPaid = prevPaid + dto.amount;
-            const newStatus = newPaid >= invAmount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID';
-            // CAS: оновлюємо лише якщо paidAmount досі == prevPaid (не змінений конкурентом).
-            const updated = await tx.invoice.updateMany({
-              where: { id: dto.invoiceId, orgId, deletedAt: null, paidAmount: inv.paidAmount },
-              data: { paidAmount: newPaid, status: newStatus },
-            });
-            if (updated.count === 0) {
-              throw new BadRequestException(
-                translateError('err.payment.invoiceConcurrentChange', getLocale()),
-              );
-            }
-            // Курсові різниці (Фаза 4): рахунок став PAID цим платежем + валюта НЕ базова →
-            // після запису PAYMENT-settlement визнаємо realized FX проти CHARGE самого рахунку.
-            if (
-              newStatus === 'PAID' &&
-              !(await this.exchangeRates.sameCurrency(orgId, null, inv.currencyId))
-            ) {
-              fxInvoiceId = inv.id;
-            }
+          // Рахунок видалили між перевіркою і транзакцією → 404 і відкат, а не оплата «у нікуди».
+          if (!inv)
+            throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
+          // OVERDUE теж оплачуваний (прострочений рахунок ще належить сплатити); часткова
+          // оплата переведе його у PARTIALLY_PAID, повна — у PAID.
+          if (
+            inv.status !== 'SENT' &&
+            inv.status !== 'PARTIALLY_PAID' &&
+            inv.status !== 'OVERDUE'
+          ) {
+            throw new BadRequestException(
+              translateError('err.payment.invoiceStatusNoPayment', getLocale(), {
+                status: inv.status,
+              }),
+            );
+          }
+          // Рахунок закриває лише його платник. Раніше платіж контрагента A міг закрити рахунок
+          // контрагента B: гроші лягали на баланс A, а борг B зникав. Єдине місце правди для
+          // ручного платежу, рознесення виписки й онлайн-оплати (усі йдуть через create).
+          if (inv.counterpartyId !== dto.counterpartyId) {
+            throw new BadRequestException(
+              translateError('err.payment.invoiceNotForCounterparty', getLocale()),
+            );
+          }
+          // Мультивалюта (Фаза 3): валюта оплати мусить збігатися з валютою рахунку — інакше
+          // крос-валютна алокація (яким курсом закрити залишок = FX-політика, поза scope).
+          // NULL currencyId (історичні/base) вважаємо еквівалентними базовій валюті.
+          if (!(await this.exchangeRates.sameCurrency(orgId, paymentCurrencyId, inv.currencyId))) {
+            throw new BadRequestException(
+              translateError('err.payment.currencyMustMatchInvoice', getLocale()),
+            );
+          }
+          const invAmount = Number(inv.amount);
+          const prevPaid = Number(inv.paidAmount);
+          const remaining = invAmount - prevPaid;
+          // invoice.amount/paidAmount у ВАЛЮТІ рахунку, оплата — у тій самій валюті → порівнюємо
+          // dto.amount, НЕ conv.amountBase. Борг у леджері все одно лягає у base через settlement.
+          if (dto.amount > remaining + 1e-9) {
+            throw new BadRequestException(
+              translateError('err.payment.amountExceedsInvoiceRemaining', getLocale(), {
+                remaining: remaining.toFixed(2),
+              }),
+            );
+          }
+          const newPaid = prevPaid + dto.amount;
+          const newStatus = newPaid >= invAmount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID';
+          // CAS: оновлюємо лише якщо paidAmount досі == prevPaid (не змінений конкурентом).
+          const updated = await tx.invoice.updateMany({
+            where: { id: dto.invoiceId, orgId, deletedAt: null, paidAmount: inv.paidAmount },
+            data: { paidAmount: newPaid, status: newStatus },
+          });
+          if (updated.count === 0) {
+            throw new BadRequestException(
+              translateError('err.payment.invoiceConcurrentChange', getLocale()),
+            );
+          }
+          // Курсові різниці (Фаза 4): рахунок став PAID цим платежем + валюта НЕ базова →
+          // після запису PAYMENT-settlement визнаємо realized FX проти CHARGE самого рахунку.
+          if (
+            newStatus === 'PAID' &&
+            !(await this.exchangeRates.sameCurrency(orgId, null, inv.currencyId))
+          ) {
+            fxInvoiceId = inv.id;
           }
         }
 

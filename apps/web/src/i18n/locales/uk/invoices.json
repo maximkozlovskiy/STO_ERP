@@ -70,7 +70,8 @@
     "cashRegisterRequired": "Для оплати готівкою оберіть касу",
     "cashRegistersLoadError": "Не вдалося завантажити каси — закрийте вікно й відкрийте знову",
     "noCashRegisterInCurrency": "Немає жодної каси у валюті {{code}}",
-    "workOrderAmount": "Сума наряду:"
+    "workOrderAmount": "Сума наряду:",
+    "amountOutOfRange": "Сума має бути більшою за 0 і не більшою за залишок до сплати ({{remaining}})"
   },
   "toast": {
     "cancelledOne": "Скасовано {{count}} рахунок",

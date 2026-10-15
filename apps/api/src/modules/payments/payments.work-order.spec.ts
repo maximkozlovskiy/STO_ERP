@@ -103,6 +103,16 @@ function makeHarness(seed: Seed = {}) {
     settlementTransaction: memoryTable([]),
   };
 
+  // Prisma віддає ЗНІМОК рядка, а не посилання на нього: прочитане ДО транзакції не змінюється від
+  // «паралельної» зміни в beforeTx. Без цього перевірка до транзакції і читання в ній бачили б один
+  // і той самий об'єкт, і тест «змінилось між перевіркою і транзакцією» не відрізняв би їх.
+  for (const table of [tables.workOrder, tables.invoice]) {
+    const read = table.findFirst.getMockImplementation()!;
+    table.findFirst.mockImplementation((args?: { where?: unknown }) =>
+      read(args).then(r => (r ? { ...r } : r)),
+    );
+  }
+
   let inTx = false;
   const prisma: Record<string, unknown> = { ...tables };
   const runTx = async (cb: (tx: unknown) => Promise<unknown>) => {
@@ -230,6 +240,26 @@ describe('PaymentsService.create — передумови оплати наря�
     expect(h.prisma.$transaction).not.toHaveBeenCalled();
     expect(h.payments).toHaveLength(0);
     expect(h.settlementRows).toEqual([]);
+  });
+
+  // Раніше оплата з invoiceId видаленого / чужого рахунку проходила повз усі перевірки рахунку і
+  // писала Payment із посиланням на рахунок, якого немає.
+  // guards: BR-PAY-001
+  it('рахунок не знайдено (чужа org / видалений) → NotFound ДО транзакції, без Payment/settlement', async () => {
+    const h = makeHarness({ invoice: { deletedAt: new Date('2026-10-15') } });
+
+    await expect(
+      h.service.create(
+        ORG,
+        { counterpartyId: CP_ID, invoiceId: INV_ID, amount: 100, method: 'card' },
+        'user-1',
+      ),
+    ).rejects.toThrow('Рахунок не знайдено');
+
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+    expect(h.payments).toHaveLength(0);
+    expect(h.settlementRows).toEqual([]);
+    expect(h.workOrder!.paidAmount).toBe(0);
   });
 
   // Статус наряду, що змінився між перевіркою і транзакцією (скасували наряд), перевіряється
@@ -477,9 +507,46 @@ describe('PaymentsService.create — залишок наряду (BR-PAY-017)', 
         status: 'IN_PROGRESS',
         paidAmount: 100,
         totalAmount: 1200,
+        currencyId: null,
       },
       data: { paidAmount: 600 },
     });
+  });
+
+  // Авторитетна перевірка залишку — у транзакції, на свіжо прочитаних сумах: CAS цього не ловить,
+  // бо стоїть на тих самих свіжих значеннях (паралельна оплата встигла закомітитись раніше).
+  // guards: BR-PAY-017
+  it('залишок зменшився між перевіркою і транзакцією (паралельна оплата) → 400, нічого не пишеться', async () => {
+    const h = makeHarness({ workOrder: { totalAmount: 1200, paidAmount: 0 } });
+    h.beforeTx(() => {
+      h.workOrder!.paidAmount = 900;
+    });
+
+    await expect(h.service.create(ORG, woDto, 'user-1')).rejects.toThrow(
+      'Сума перевищує залишок до сплати за нарядом (300.00)',
+    );
+
+    expect(h.workOrder!.paidAmount).toBe(900);
+    expect(h.payments).toHaveLength(0);
+    expect(h.settlementRows).toEqual([]);
+  });
+
+  // Валюту оплати звірено з валютою наряду ДО транзакції: наряд, що встиг змінити валюту, не
+  // отримує «сплачено» в чужій валюті (BR-WO-015).
+  // guards: BR-PAY-017, BR-WO-015
+  it('валюту наряду змінили між перевіркою і транзакцією → 400 «повторіть», нічого не пишеться', async () => {
+    const h = makeHarness({ workOrder: { totalAmount: 1200 } });
+    h.beforeTx(() => {
+      h.workOrder!.currencyId = 'usd-id';
+    });
+
+    await expect(h.service.create(ORG, woDto, 'user-1')).rejects.toThrow(
+      'Наряд змінено паралельною операцією — повторіть',
+    );
+
+    expect(h.workOrder!.paidAmount).toBe(0);
+    expect(h.payments).toHaveLength(0);
+    expect(h.settlementRows).toEqual([]);
   });
 });
 

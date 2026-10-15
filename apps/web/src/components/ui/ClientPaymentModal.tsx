@@ -224,6 +224,12 @@ export function ClientPaymentModal({
   const handlePay = async () => {
     if (!target || blockedNoCash || savingRef.current) return;
     const amount = parsedAmount();
+    // BR-PAY-017: сума — від копійки до залишку. `min`/`max` поля кнопку не блокують (форми немає),
+    // тож без цієї перевірки «0» чи сума понад залишок ішли на сервер.
+    if (!(amount > 0) || amount > remaining + 1e-9) {
+      setError(t('payment.amountOutOfRange', { remaining: fmt(remaining) }));
+      return;
+    }
     savingRef.current = true;
     setError('');
     try {

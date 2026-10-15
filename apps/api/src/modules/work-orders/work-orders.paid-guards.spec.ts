@@ -323,6 +323,23 @@ describe('WorkOrdersService.update — валюта сплаченого нар�
     await unpaid.service.update(ORG, WO_ID, { currencyId: USD });
     expect(unpaid.row.currencyId).toBe(USD);
   });
+
+  // Перевірка вище читає наряд без блокування: оплата, що прийшла між читанням і записом, інакше
+  // лишила б «сплачено» в гривнях при доларовому наряді. Умова «нічого не сплачено» — у записі.
+  // guards: BR-WO-015
+  it('оплата між читанням і записом → зміна валюти не проходить (400), валюта та сама', async () => {
+    const h = makeHarness({ status: 'IN_PROGRESS', paidAmount: 0 });
+    const write = h.workOrder.update.getMockImplementation()!;
+    h.workOrder.update.mockImplementationOnce((args: { where?: unknown; data: MemRow }) => {
+      h.row.paidAmount = 300;
+      return write(args);
+    });
+
+    await expect(h.service.update(ORG, WO_ID, { currencyId: USD })).rejects.toThrow(
+      'Наряд уже має оплату — валюту змінити не можна',
+    );
+    expect(h.row.currencyId).toBe(UAH);
+  });
 });
 
 // ── BR-WO-015: сума наряду не нижча за сплачене ────────────────────────────────────────────
@@ -340,16 +357,14 @@ describe('WorkOrderTotalsService.recalc — сума не нижча за спл
     const tx = {
       workOrder: memoryTable([row]),
       workOrderLine: {
-        findMany: vi
-          .fn()
-          .mockResolvedValue(
-            lines.map(l => ({
-              amount: l.amount,
-              actualHours: null,
-              normoHours: 1,
-              price: l.price,
-            })),
-          ),
+        findMany: vi.fn().mockResolvedValue(
+          lines.map(l => ({
+            amount: l.amount,
+            actualHours: null,
+            normoHours: 1,
+            price: l.price,
+          })),
+        ),
       },
       workOrderPart: { aggregate: vi.fn().mockResolvedValue({ _sum: { amount: 0 } }) },
     };

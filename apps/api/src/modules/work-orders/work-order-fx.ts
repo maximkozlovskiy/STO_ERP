@@ -43,6 +43,8 @@ export async function postWorkOrderFxInTx(
   const invoices = await tx.invoice.findMany({
     where: { orgId, workOrderId },
     select: { id: true },
+    // Рахунки одного наряду (з видаленими й скасованими) — одиниці; межа — від OOM, не відбір.
+    take: 500,
   });
   const fxExisting = await tx.settlementTransaction.count({
     where: {

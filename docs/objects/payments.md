@@ -171,18 +171,18 @@ create (метод без requiresFiscal) → null
 
 ## UI (Web)
 
-| Компонент / сторінка           | Файл                                                                                                                                                                      |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Платежі (сторінки немає)       | `/payments` → редирект у `/cash`; `/payments/<id>` без редиректу                                                                                                          |
-| Чек і «Повторити» (FAILED)     | історія каси `cash/CashOperationsTab.tsx`; рядок оплати в «Пов'язаних документах» рахунку (`LinkedDocumentsPanel`, `fiscalStatus` з `GET /invoices/:id/linked-documents`) |
-| Оплата клієнта готівкою        | форма каси `cash/CashOperationModal.tsx` (привід `SALE_PAYMENT` → `POST /payments`)                                                                                       |
-| Оплата з рахунку               | «Оплатити» у боковій панелі `invoices/page.tsx` → `POST /payments`; поле «Каса» для готівки (BR-PAY-019)                                                                  |
-| Оплата з наряду                | «Оплатити» у картці (`CreateWorkOrderModal.tsx`) і на сторінці наряду (`work-orders/[id]/PageClient.tsx`) → `POST /payments { workOrderId }` (BR-PAY-020)                 |
-| Вікно «Оплатити» (спільне)     | `components/ui/ClientPaymentModal.tsx`: спосіб, каса для готівки, каси за валютою, сума = залишок, ключ ідемпотентності на відкриття, QR лише для рахунку                 |
-| Каса (cash-shift open/close)   | `app/(app)/cash/page.tsx`, `hooks/api/useCashShift.ts`                                                                                                                    |
-| QR-оплата (online-payment)     | `components/ui/QrPaymentModal.tsx`, `hooks/api/useOnlinePayment.ts`                                                                                                       |
-| ПРРО-провайдери (налаштування) | `app/(app)/settings/FiscalTab.tsx`, `ProviderRegistryPanel.tsx`                                                                                                           |
-| Довідник способів оплати       | `/api/payment-methods` (окремий модуль `payment-methods`); НДІ → «Оплата» `ndi/PaymentsTab.tsx` — «Куди надходять кошти»                                                  |
+| Компонент / сторінка           | Файл                                                                                                                                                                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Платежі (сторінки немає)       | `/payments` → редирект у `/cash`; `/payments/<id>` без редиректу                                                                                                                                                   |
+| Чек і «Повторити» (FAILED)     | історія каси `cash/CashOperationsTab.tsx`; рядок оплати в «Пов'язаних документах» рахунку (`LinkedDocumentsPanel`, `fiscalStatus` з `GET /invoices/:id/linked-documents`)                                          |
+| Оплата клієнта готівкою        | форма каси `cash/CashOperationModal.tsx` (привід `SALE_PAYMENT` → `POST /payments`)                                                                                                                                |
+| Оплата з рахунку               | «Оплатити» у боковій панелі `invoices/page.tsx` → `POST /payments`; поле «Каса» для готівки (BR-PAY-019)                                                                                                           |
+| Оплата з наряду                | «Оплатити» у картці (`CreateWorkOrderModal.tsx`) і на сторінці наряду (`work-orders/[id]/PageClient.tsx`) → `POST /payments { workOrderId }` (BR-PAY-020)                                                          |
+| Вікно «Оплатити» (спільне)     | `components/ui/ClientPaymentModal.tsx`: спосіб, каса для готівки, каси за валютою, сума = залишок (від 0,01 до залишку, інакше помилка у вікні без запиту), ключ ідемпотентності на відкриття, QR лише для рахунку |
+| Каса (cash-shift open/close)   | `app/(app)/cash/page.tsx`, `hooks/api/useCashShift.ts`                                                                                                                                                             |
+| QR-оплата (online-payment)     | `components/ui/QrPaymentModal.tsx`, `hooks/api/useOnlinePayment.ts`                                                                                                                                                |
+| ПРРО-провайдери (налаштування) | `app/(app)/settings/FiscalTab.tsx`, `ProviderRegistryPanel.tsx`                                                                                                                                                    |
+| Довідник способів оплати       | `/api/payment-methods` (окремий модуль `payment-methods`); НДІ → «Оплата» `ndi/PaymentsTab.tsx` — «Куди надходять кошти»                                                                                           |
 
 ---
 
@@ -190,7 +190,7 @@ create (метод без requiresFiscal) → null
 
 ### `create()` — реєстрація платежу
 
-- **BR-PAY-001**: Валідація: `counterparty` існує (org-scoped); якщо `workOrderId` — WO існує (org-scoped, не видалений; інакше 404 до транзакції) і його статус — у `WO_PAYABLE_STATUSES` (усі, крім «Скасовано», «Оплачено», «Архів»; рішення власника 2026-10-15), інакше 400 з назвою статусу. Наряд виводиться і з рахунку (BR-PAY-021).
+- **BR-PAY-001**: Валідація: `counterparty` існує (org-scoped); якщо `workOrderId` — WO існує (org-scoped, не видалений; інакше 404 до транзакції) і його статус — у `WO_PAYABLE_STATUSES` (усі, крім «Скасовано», «Оплачено», «Архів»; рішення власника 2026-10-15), інакше 400 з назвою статусу. Наряд виводиться і з рахунку (BR-PAY-021). Якщо `invoiceId` — рахунок існує (org-scoped, не видалений; інакше 404 до транзакції, а видалений між перевіркою і транзакцією — 404 і відкат), а не оплата з посиланням на рахунок, якого немає (review 2026-10-15).
 - **BR-PAY-002**: **Рахунок-призначення** (`resolveDestinationAccount`): DTO явно → сувора валідація (4xx на невалідний);
   дефолт з `PaymentMethodConfig` → best-effort (stale конфіг → тихо `null`, не валимо платіж; для готівки
   це 400 — BR-PAY-019). Запит із `cashRegisterId` (або `bankAccountId`) без `sourceType` — тип береться з
@@ -385,7 +385,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | money model               | `payments.money-model.spec.ts`                           | 22     |
 | multicurrency             | `payments.multicurrency.spec.ts`                         | 23     |
 | query dto                 | `payments.query-dto.spec.ts`                             | 43     |
-| передумови + наряд        | `payments.work-order.spec.ts`                            | 49     |
+| передумови + наряд        | `payments.work-order.spec.ts`                            | 52     |
 | політика повторів черг    | `payments.queue-retry-policy.spec.ts`                    | 6      |
 | сервісна логіка           | `provider-config.service.spec.ts`                        | 27     |
 | шифрування at-rest        | `../../prisma/field-encryption.extension.spec.ts`        | 21     |

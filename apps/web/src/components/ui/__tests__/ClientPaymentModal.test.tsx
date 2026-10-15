@@ -384,6 +384,23 @@ describe('ClientPaymentModal — оплата наряду (BR-PAY-020, BR-PAY-0
   });
 
   // guards: BR-PAY-017
+  it.each([['1500'], ['0'], ['-5']])(
+    'сума %s поза межами «від копійки до залишку» → помилка у вікні, запиту немає',
+    async value => {
+      const { dialog, onPaid } = await openDialog(WORK_ORDER);
+      fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+      fireEvent.change(within(dialog).getByLabelText(/^Сума,/), { target: { value } });
+      fireEvent.click(payButton(dialog));
+
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+        /не більшою за залишок до сплати \(1\s?140,00 ₴\)/,
+      );
+      expect(paymentCalls()).toHaveLength(0);
+      expect(onPaid).not.toHaveBeenCalled();
+    },
+  );
+
+  // guards: BR-PAY-017
   it('сплачено повністю — оплатити нічого: кнопка неактивна', async () => {
     const { dialog } = await openDialog({ ...WORK_ORDER, paidAmount: 1440 });
     fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
