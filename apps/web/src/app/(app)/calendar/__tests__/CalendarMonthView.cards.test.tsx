@@ -190,6 +190,7 @@ describe('CalendarMonthView — картки записів дня (BR-CAL-009)'
     expect(screen.getByRole('button', { name: 'Новий запис на 15.10.2026' })).toBeInTheDocument();
   });
 
+  // guards: BR-CAL-010
   it('без права створювати записи (механік) — «Новий запис» немає, «Відкрити день» є (Bug #871)', () => {
     renderMonth({}, { onNewOnDate: undefined });
     expect(screen.getByRole('button', { name: 'Відкрити день 20.10.2026' })).toBeInTheDocument();

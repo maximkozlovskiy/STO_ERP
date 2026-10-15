@@ -253,6 +253,7 @@ describe('useCalendarState — вид «Місяць»', () => {
     expect(result.current.isEditingPast).toBe(true);
   });
 
+  // guards: BR-CAL-010
   it('без права змінювати записи (механік): «Новий запис» нічого не відкриває (Bug #871)', async () => {
     const hook = renderHook(() => useCalendarState({ canManageSlots: false }));
     await waitFor(() => expect(hook.result.current.monthLoading).toBe(false));

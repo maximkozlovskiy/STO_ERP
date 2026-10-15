@@ -64,6 +64,7 @@ function renderForm(readOnly: boolean) {
 }
 
 describe('CalendarSlotModal — без права змінювати записи (Bug #871)', () => {
+  // guards: BR-CAL-010
   it('майбутній запис: лише перегляд — без «Оновити» і «Видалити», з поясненням', () => {
     renderForm(true);
     expect(screen.getByText('Перегляд слоту')).toBeInTheDocument();
@@ -75,6 +76,7 @@ describe('CalendarSlotModal — без права змінювати запис�
     expect(screen.getByRole('button', { name: 'Закрити' })).toBeInTheDocument();
   });
 
+  // guards: BR-CAL-010
   it('контроль: з правом той самий запис редагується', () => {
     renderForm(false);
     expect(screen.getByText('Редагування слоту')).toBeInTheDocument();
