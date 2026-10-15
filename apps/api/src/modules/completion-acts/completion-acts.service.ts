@@ -13,6 +13,7 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { PdfService } from '../pdf/pdf.service';
+import { OrgPrintInfoService } from '../pdf/org-print-info.service';
 import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
 import { transitionWorkOrderStatusInTx } from '../work-orders/work-order-status';
 import {
@@ -36,6 +37,8 @@ export class CompletionActsService {
     private readonly invoices: InvoicesService,
     private readonly pdf: PdfService,
     private readonly events: EventEmitter2,
+    // Реквізити й логотип організації для шапки друкованого акта.
+    private readonly orgPrintInfo: OrgPrintInfoService,
   ) {}
 
   async findAll(orgId: string, workOrderId?: string): Promise<PaginatedCompletionActsDto> {
@@ -312,10 +315,7 @@ export class CompletionActsService {
     // org + act-with-full-cp/vehicle йдуть паралельно у Promise.all (act read
     // одночасно завантажує phone/address — без додаткового RTT).
     const [org, act] = await Promise.all([
-      this.prisma.organisation.findFirst({
-        where: { id: orgId },
-        select: { name: true },
-      }),
+      this.orgPrintInfo.get(orgId),
       this.prisma.completionAct.findFirst({
         where: { id, orgId, deletedAt: null },
         include: {
@@ -384,7 +384,7 @@ export class CompletionActsService {
     const total = woTotal;
 
     return this.pdf.generateCompletionActPdf({
-      org: { name: org?.name ?? 'СТО', edrpou: null, address: null },
+      org: org.name ? org : { ...org, name: 'СТО' },
       counterparty: { name: cpName, phone: cp?.phone, address: cp?.actualAddress },
       vehicleLabel,
       number: act.number,

@@ -38,9 +38,12 @@ function setup(
       ? null
       : {
           number: 'НЗ-2026-000001',
-          createdAt: new Date('2026-10-01T09:00:00Z'),
+          // BR-WO-013: наряд-замовлення друкується від «Виконано».
+          status: 'COMPLETED',
+          documentDate: new Date('2026-10-01T00:00:00Z'),
+          inMileage: null,
           ...woTotals,
-          vehicle: { make: 'Toyota', model: 'Corolla', licensePlate: 'AA1234BB' },
+          vehicle: { make: 'Toyota', model: 'Corolla', licensePlate: 'AA1234BB', vin: null },
           counterparty: {
             firstName: 'Іван',
             lastName: 'Петренко',
@@ -54,8 +57,8 @@ function setup(
   );
   const prisma = {
     workOrder: { findFirst: woFindFirst },
-    organisation: { findFirst: vi.fn().mockResolvedValue({ name: 'СТО Альфа', edrpou: null }) },
   } as unknown as PrismaService;
+  const orgPrintInfoGet = vi.fn().mockResolvedValue({ name: 'СТО Альфа' });
   const generateWorkOrderPdf = vi.fn().mockResolvedValue(Buffer.from('%PDF'));
   const service = new WorkOrdersService(
     prisma,
@@ -67,6 +70,7 @@ function setup(
     null as never, // exchangeRates
     null as never, // events
     null as never, // totals
+    { get: orgPrintInfoGet } as never, // orgPrintInfo
   );
   const pdfArg = () => generateWorkOrderPdf.mock.calls[0]?.[0] as PdfArg;
   return { service, woFindFirst, generateWorkOrderPdf, pdfArg };

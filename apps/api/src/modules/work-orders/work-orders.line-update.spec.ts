@@ -78,6 +78,7 @@ describe('WorkOrdersService.updateLine — робота й виконавець 
       null as never, // exchangeRates
       null as never, // events
       { recalc } as never, // totals
+      null as never, // orgPrintInfo
     );
   });
 

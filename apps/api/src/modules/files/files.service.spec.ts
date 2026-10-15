@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Readable } from 'stream';
 import {
   BadRequestException,
   InternalServerErrorException,
@@ -36,6 +37,7 @@ describe('FilesService', () => {
     putObject: ReturnType<typeof vi.fn>;
     presignedGetObject: ReturnType<typeof vi.fn>;
     removeObject: ReturnType<typeof vi.fn>;
+    getObject: ReturnType<typeof vi.fn>;
   };
 
   const ORG = 'org-1';
@@ -78,6 +80,7 @@ describe('FilesService', () => {
       putObject: vi.fn().mockResolvedValue({}),
       presignedGetObject: vi.fn().mockResolvedValue('http://cdn.local/signed'),
       removeObject: vi.fn(),
+      getObject: vi.fn(),
     };
     // Конструктор намагається інстанціювати реального minio.Client; у тесті підміняємо.
     (svc as unknown as { client: typeof client }).client = client;
@@ -195,6 +198,31 @@ describe('FilesService', () => {
       await expect(svc.healthCheck()).resolves.toBe(false);
       (svc as unknown as { client: null }).client = null;
       await expect(svc.healthCheck()).resolves.toBe(false);
+    });
+  });
+  describe('getObject — читання обєкта в памʼять з лімітом (логотип у шапці PDF)', () => {
+    it('читає обєкт зі свого bucket і склеює частини потоку', async () => {
+      client.getObject.mockResolvedValue(Readable.from([Buffer.from('ab'), Buffer.from('cd')]));
+      const buf = await svc.getObject('org/x/public/a.png', 10);
+      expect(buf.toString()).toBe('abcd');
+      expect(client.getObject).toHaveBeenCalledWith('sto-files', 'org/x/public/a.png');
+    });
+
+    it('обєкт більший за ліміт → помилка, читання обривається', async () => {
+      const stream = Readable.from([Buffer.alloc(6), Buffer.alloc(6), Buffer.alloc(6)]);
+      client.getObject.mockResolvedValue(stream);
+      await expect(svc.getObject('org/x/public/big.png', 10)).rejects.toThrow(/exceeds 10 bytes/);
+      expect(stream.destroyed).toBe(true);
+    });
+
+    it('обєкт рівно на ліміті читається', async () => {
+      client.getObject.mockResolvedValue(Readable.from([Buffer.alloc(10)]));
+      await expect(svc.getObject('org/x/public/a.png', 10)).resolves.toHaveLength(10);
+    });
+
+    it('клієнт не сконфігурований → помилка (не тихий порожній буфер)', async () => {
+      (svc as unknown as { client: null }).client = null;
+      await expect(svc.getObject('org/x/public/a.png', 10)).rejects.toThrow(/not configured/);
     });
   });
 });

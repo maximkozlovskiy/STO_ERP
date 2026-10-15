@@ -42,6 +42,7 @@ describe('WorkOrdersService.findAll — відбір за датою докум�
       null as never, // exchangeRates
       null as never, // events
       null as never, // totals
+      null as never, // orgPrintInfo
     );
   });
 

@@ -2095,7 +2095,8 @@
    "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) «ПДВ у ціні»: сума акта = wo.totalAmount (700), сума без ПДВ і ПДВ — з тоталів наряду",
    "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) акт читається у межах свого orgId разом із тоталами наряду; чужий/відсутній → 404, PDF не будується",
    "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) наряд без ПДВ, сума рядків відстає на копійку (Bug #807): сума акта = wo.totalAmount (100.07), а не Σ рядків (100.06)",
-   "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) наряд без ПДВ: totalNet / vatTotal НЕ передаються (ключів немає), сума = сума наряду"
+   "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) наряд без ПДВ: totalNet / vatTotal НЕ передаються (ключів немає), сума = сума наряду",
+   "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) шапка акта — реквізити СВОЄЇ організації з OrgPrintInfoService, без змін"
   ],
   "apps/api/src/modules/completion-acts/completion-acts.service.spec.ts": [
    "CompletionActsController — sign() передає автора sign(): user.id іде четвертим аргументом у CompletionActsService.sign",
@@ -2507,6 +2508,10 @@
    "ExpenseCategoriesService update: перенесення у власного нащадка → 400 (цикл)"
   ],
   "apps/api/src/modules/files/files.service.spec.ts": [
+   "FilesService getObject — читання обєкта в памʼять з лімітом (логотип у шапці PDF) клієнт не сконфігурований → помилка (не тихий порожній буфер)",
+   "FilesService getObject — читання обєкта в памʼять з лімітом (логотип у шапці PDF) обєкт більший за ліміт → помилка, читання обривається",
+   "FilesService getObject — читання обєкта в памʼять з лімітом (логотип у шапці PDF) обєкт рівно на ліміті читається",
+   "FilesService getObject — читання обєкта в памʼять з лімітом (логотип у шапці PDF) читає обєкт зі свого bucket і склеює частини потоку",
    "FilesService getSignedUrl / deleteObject / healthCheck — мякий фолбек deleteObject без клієнта → no-op, removeObject не викликається",
    "FilesService getSignedUrl / deleteObject / healthCheck — мякий фолбек deleteObject — збій removeObject не кидає (DB-запис все одно видалиться)",
    "FilesService getSignedUrl / deleteObject / healthCheck — мякий фолбек getSignedUrl без клієнта → прямий public URL (офлайн-фолбек)",
@@ -3158,6 +3163,10 @@
    "InvoicesService.findAll — counterpartyId і statuses status разом із statuses → обидві умови (перетин), статус не затирається",
    "InvoicesService.findAll — counterpartyId і statuses statuses → status in [...]",
    "InvoicesService.findAll — counterpartyId і statuses без фільтрів → ні counterpartyId, ні AND у where"
+  ],
+  "apps/api/src/modules/invoices/invoices.pdf.spec.ts": [
+   "InvoicesService.generatePdf — реквізити організації в рахунку рахунок видалений або чужий → 404, PDF не будується",
+   "InvoicesService.generatePdf — реквізити організації в рахунку реквізити СВОЄЇ організації (з банківським рахунком) ідуть у PdfService без змін"
   ],
   "apps/api/src/modules/invoices/invoices.refresh-from-work-order.spec.ts": [
    "InvoicesService — refresh-from-work-order refreshFromWorkOrder — Bug #403 status guard кидає BadRequestException якщо existing.status=OVERDUE",
@@ -4212,6 +4221,34 @@
    "PayrollService — ізоляція організацій розрахунок пише й чистить лише в організації викликача",
    "PayrollService — ізоляція організацій філія перевіряється в межах організації викликача (попередній розрахунок і створення)"
   ],
+  "apps/api/src/modules/pdf/org-print-info.service.spec.ts": [
+   "OrgPrintInfoService — логотип у шапці JPEG теж іде в шапку (тип за байтами)",
+   "OrgPrintInfoService — логотип у шапці PNG зі сховища → data URL, читання за ключем об’єкта з лімітом 1 МБ, результат у кеші",
+   "OrgPrintInfoService — логотип у шапці logoUrl веде на об’єкт ЧУЖОЇ організації → сховище не читається, шапка без логотипа",
+   "OrgPrintInfoService — логотип у шапці завеликий логотип (сховище обриває читання за лімітом) → шапка без логотипа",
+   "OrgPrintInfoService — логотип у шапці ключ кешу залежить від logoUrl: новий логотип — новий ключ",
+   "OrgPrintInfoService — логотип у шапці логотип є в кеші → сховище не чіпається",
+   "OrgPrintInfoService — логотип у шапці логотипа немає → шапка без логотипа, сховище не чіпається",
+   "OrgPrintInfoService — логотип у шапці розширення .png, а всередині не PNG → не логотип (перевіряються байти, не назва)",
+   "OrgPrintInfoService — логотип у шапці сховище недоступне → шапка без логотипа, реквізити на місці, попередження в лог",
+   "OrgPrintInfoService — логотип у шапці файл не PNG і не JPEG (GIF) → шапка без логотипа, попередження",
+   "OrgPrintInfoService — реквізити для шапки документа адреса — фактична, а коли її немає — юридична",
+   "OrgPrintInfoService — реквізити для шапки документа організацію не знайдено → лише порожня назва, без падіння",
+   "OrgPrintInfoService — реквізити для шапки документа основний рахунок видалено → у реквізитах рахунку немає",
+   "OrgPrintInfoService — реквізити для шапки документа основний рахунок не задано → bank = null",
+   "OrgPrintInfoService — реквізити для шапки документа основний рахунок чужої організації → у реквізитах рахунку немає",
+   "OrgPrintInfoService — реквізити для шапки документа читає СВОЮ організацію і віддає назву, ЄДРПОУ, ІПН, телефон, e-mail і основний рахунок",
+   "logoObjectName / detectImageMime вихід угору → null",
+   "logoObjectName / detectImageMime вкладений шлях → null",
+   "logoObjectName / detectImageMime ключ береться з шляху URL від org/<orgId>/public/, з будь-яким префіксом публічного URL",
+   "logoObjectName / detectImageMime логотип, завантажений до розділення на public/ (org/<orgId>/<файл>), теж читається",
+   "logoObjectName / detectImageMime не URL → null",
+   "logoObjectName / detectImageMime приватна папка наряду → null",
+   "logoObjectName / detectImageMime тип за першими байтами: PNG, JPEG; інше — null",
+   "logoObjectName / detectImageMime чужа організація (старий шлях) → null",
+   "logoObjectName / detectImageMime чужа організація → null",
+   "logoObjectName / detectImageMime ім’я з «..» → null"
+  ],
   "apps/api/src/modules/pdf/pdf.document-total.spec.ts": [
    "PdfService — підсумок наряду й акта з ПДВ (BR-WO-007) vatTotal = 0 (наряд без ПДВ, totalNet = total) → теж один рядок «Разом»",
    "PdfService — підсумок наряду й акта з ПДВ (BR-WO-007) vatTotal > 0 → три рядки: «Сума без ПДВ» = totalNet, «ПДВ» = vatTotal, «Разом» = сума до сплати",
@@ -4220,13 +4257,32 @@
    "PdfService — підсумок наряду й акта з ПДВ (BR-WO-007) друкований акт будує підсумок із total / totalNet / vatTotal акта",
    "PdfService — підсумок наряду й акта з ПДВ (BR-WO-007) друкований наряд будує підсумок із total / totalNet / vatTotal наряду"
   ],
+  "apps/api/src/modules/pdf/pdf.org-header.spec.ts": [
+   "PdfService — наряд-замовлення: роботи й товари (BR-WO-013) авто: марка, модель, номер, VIN і пробіг; дата — передана дата документа",
+   "PdfService — наряд-замовлення: роботи й товари (BR-WO-013) роботи: назва, норма й факт годин окремо (без факту — «—»), ціна, сума",
+   "PdfService — наряд-замовлення: роботи й товари (BR-WO-013) товари: назва, кількість, одиниця, ціна, сума",
+   "PdfService — рахунок: «Реквізити для оплати» ЄДРПОУ одержувача на рахунку має пріоритет над ЄДРПОУ організації",
+   "PdfService — рахунок: «Реквізити для оплати» основний рахунок задано → блок з одержувачем, ЄДРПОУ, IBAN, банком і МФО",
+   "PdfService — рахунок: «Реквізити для оплати» основний рахунок не задано → блоку немає",
+   "PdfService — шапка з логотипом і реквізитами акт виконаних робіт має ту саму шапку: логотип і реквізити",
+   "PdfService — шапка з логотипом і реквізитами акт звірки має ту саму шапку: логотип і реквізити",
+   "PdfService — шапка з логотипом і реквізитами без логотипа: ні images, ні зображення в шапці; PDF будується",
+   "PdfService — шапка з логотипом і реквізитами з логотипом: зображення в images під ключем, у шапці — посилання на ключ, PDF будується",
+   "PdfService — шапка з логотипом і реквізитами незаповнені реквізити не друкуються порожніми підписами",
+   "PdfService — шапка з логотипом і реквізитами пошкоджений логотип (pdfmake його не приймає) → документ будується вдруге без логотипа",
+   "PdfService — шапка з логотипом і реквізитами рахунок має ту саму шапку: логотип і реквізити",
+   "PdfService — шапка з логотипом і реквізитами шапка несе назву, ЄДРПОУ, ІПН, адресу, телефон, e-mail, IBAN, банк і МФО"
+  ],
   "apps/api/src/modules/pdf/pdf.service.spec.ts": [
    "PdfService — pdfmake integration Bug #269: handles WorkOrder with empty counterparty/vehicleLabel without crashing",
    "PdfService — pdfmake integration Bug #269: handles minimal Invoice data (empty lines, null edrpou, empty counterparty fields)",
    "PdfService — pdfmake integration generateInvoicePdf returns a non-empty PDF Buffer starting with %PDF magic",
    "PdfService — pdfmake integration generateReconciliationActPdf renders FX_GAIN/FX_LOSS rows without crashing",
    "PdfService — pdfmake integration generateWorkOrderPdf returns a non-empty PDF Buffer with Cyrillic content",
-   "PdfService — pdfmake integration handles empty works/parts arrays gracefully"
+   "PdfService — pdfmake integration handles empty works/parts arrays gracefully",
+   "PdfService — pdfmake integration зображення з локального файла (не шрифт) не читається — документ не будується",
+   "PdfService — pdfmake integration зображення за URL не завантажується — документ не будується",
+   "PdfService — pdfmake integration суми в PDF — «1 250,00 грн», без знаку ₴, якого немає у шрифті"
   ],
   "apps/api/src/modules/purchase-orders/delivery/delivery-provider-registry.spec.ts": [
    "DeliveryProviderRegistry get() повертає зареєстровану службу; невідома → null",
@@ -4813,6 +4869,21 @@
    "Settings — HTTP Contract PATCH /settings/organisation з uiFeatures whitelist: невідомі ключі та non-boolean значення відкидаються",
    "Settings — HTTP Contract PATCH /settings/organisation з uiFeatures наступний GET /settings/ui-features віддає merged стан"
   ],
+  "apps/api/src/modules/settings/settings.org-info.contract.spec.ts": [
+   "PATCH /settings/org-info — реквізити для друку GET віддає нові поля",
+   "PATCH /settings/org-info — реквізити для друку GET і PATCH /settings/org-info — лише OWNER і ADMIN",
+   "PATCH /settings/org-info — реквізити для друку bankAccountId: null знімає основний рахунок без перевірки рахунку",
+   "PATCH /settings/org-info — реквізити для друку e-mail без @ → 400 з українським повідомленням, організація не змінюється",
+   "PATCH /settings/org-info — реквізити для друку ІПН з 11 цифр → 400 з українським повідомленням, організація не змінюється",
+   "PATCH /settings/org-info — реквізити для друку ІПН з літерами → 400 з українським повідомленням, організація не змінюється",
+   "PATCH /settings/org-info — реквізити для друку ІПН із 1234567890 цифр приймається",
+   "PATCH /settings/org-info — реквізити для друку ІПН із 123456789012 цифр приймається",
+   "PATCH /settings/org-info — реквізити для друку порожній рядок очищає телефон, e-mail і ІПН (null у базі)",
+   "PATCH /settings/org-info — реквізити для друку телефон без +380 → 400 з українським повідомленням, організація не змінюється",
+   "PATCH /settings/org-info — реквізити для друку телефон із пробілами → 400 з українським повідомленням, організація не змінюється",
+   "PATCH /settings/org-info — реквізити для друку телефон, e-mail, ІПН і основний рахунок зберігаються й повертаються",
+   "PATCH /settings/org-info — реквізити для друку чужий або видалений банківський рахунок → 404, організація не змінюється"
+  ],
   "apps/api/src/modules/settings/settings.service.spec.ts": [
    "SettingsService — C1b audit TaxRate best-effort: record() reject НЕ ламає основну мутацію (createTaxRate повертає результат)",
    "SettingsService — C1b audit TaxRate createTaxRate (non-default) → record(orgId, TaxRate, id, CREATE, userId)",
@@ -4879,6 +4950,7 @@
   ],
   "apps/api/src/modules/settlements/settlements.reconciliation-act.spec.ts": [
    "SettlementsAccountService — акт звірки PDF: акт шукається за id + організація + контрагент; не знайдено → NotFound, PDF не будується",
+   "SettlementsAccountService — акт звірки PDF: шапка акта — реквізити СВОЄЇ організації з OrgPrintInfoService, без змін",
    "SettlementsAccountService — акт звірки акт за минулий період: закриваючий = залишок на КІНЕЦЬ періоду (поточний мінус усе пізніше)",
    "SettlementsAccountService — акт звірки баланс і журнал читаються з одного знімка: RepeatableRead, баланс — той, що прочитано в транзакції",
    "SettlementsAccountService — акт звірки відкриваючий баланс = поточний баланс − Σ знак×сума транзакцій періоду (знак з BALANCE_SIGN)",
@@ -5753,6 +5825,26 @@
    "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) наряд читається у межах свого orgId разом із totalNet/totalAmount; чужий → 404, PDF не будується",
    "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) роботи й запчастини читаються в порядку введення (createdAt, далі id) — як на екрані й в акті",
    "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) рядок роботи округлено до копійки так само, як у тоталах: рядки складаються в підсумок"
+  ],
+  "apps/api/src/modules/work-orders/work-orders.print.spec.ts": [
+   "WorkOrdersController.downloadPdf — ролі маршруту (BR-WO-013) наряд-замовлення друкують OWNER, ADMIN, RECEPTIONIST, MECHANIC і ACCOUNTANT",
+   "WorkOrdersService.generatePdf — зміст наряд-замовлення (BR-WO-013) VIN і пробіг авто; у роботах норма й факт годин окремо; у товарах одиниця виміру",
+   "WorkOrdersService.generatePdf — зміст наряд-замовлення (BR-WO-013) дата документа — documentDate наряду, а не дата створення запису",
+   "WorkOrdersService.generatePdf — зміст наряд-замовлення (BR-WO-013) одиниця товару: обрана в рядку → базова одиниця товару → unit товару",
+   "WorkOrdersService.generatePdf — зміст наряд-замовлення (BR-WO-013) шапка — реквізити своєї організації з OrgPrintInfoService, передані без змін",
+   "WorkOrdersService.generatePdf — наряд-замовлення лише від «Виконано» (BR-WO-013) APPROVED → 400 «друкується після виконання робіт», PDF не будується",
+   "WorkOrdersService.generatePdf — наряд-замовлення лише від «Виконано» (BR-WO-013) ARCHIVED → PDF будується",
+   "WorkOrdersService.generatePdf — наряд-замовлення лише від «Виконано» (BR-WO-013) CANCELLED → 400 «друкується після виконання робіт», PDF не будується",
+   "WorkOrdersService.generatePdf — наряд-замовлення лише від «Виконано» (BR-WO-013) COMPLETED → PDF будується",
+   "WorkOrdersService.generatePdf — наряд-замовлення лише від «Виконано» (BR-WO-013) DRAFT → 400 «друкується після виконання робіт», PDF не будується",
+   "WorkOrdersService.generatePdf — наряд-замовлення лише від «Виконано» (BR-WO-013) ESTIMATE → 400 «друкується після виконання робіт», PDF не будується",
+   "WorkOrdersService.generatePdf — наряд-замовлення лише від «Виконано» (BR-WO-013) INVOICED → PDF будується",
+   "WorkOrdersService.generatePdf — наряд-замовлення лише від «Виконано» (BR-WO-013) IN_PROGRESS → 400 «друкується після виконання робіт», PDF не будується",
+   "WorkOrdersService.generatePdf — наряд-замовлення лише від «Виконано» (BR-WO-013) ON_HOLD → 400 «друкується після виконання робіт», PDF не будується",
+   "WorkOrdersService.generatePdf — наряд-замовлення лише від «Виконано» (BR-WO-013) PAID → PDF будується",
+   "WorkOrdersService.generatePdf — наряд-замовлення лише від «Виконано» (BR-WO-013) видалений або чужий наряд → 404 (запит лише своєї org і не видаленого), PDF не будується",
+   "WorkOrdersService.generatePdf — наряд-замовлення лише від «Виконано» (BR-WO-013) ворота — саме WO_INVOICE_VISIBLE_STATUSES: «Виконано», «Виставлено», «Оплачено», «Архів»",
+   "WorkOrdersService.generatePdf — наряд-замовлення лише від «Виконано» (BR-WO-013) текст відмови — український: «Наряд-замовлення друкується після виконання робіт»"
   ],
   "apps/api/src/modules/work-orders/work-orders.recalc-cap.spec.ts": [
    "WorkOrdersService.recalcTotals — defensive take: 1000 cap обробляє великий список (500 рядків) у single-pass reduce без CPU вибуху",

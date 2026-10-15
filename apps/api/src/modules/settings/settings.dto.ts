@@ -16,11 +16,16 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateBy,
   ValidateIf,
+  isEmail,
+  type ValidationOptions,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { PHONE_UA_REGEX } from '@sto/shared';
 import { VatMode, BatchCostMethod, ShiftMode } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { emptyToNull } from '../../common/transforms/empty-to-null';
 import { toUpperCurrencyCode } from '../../common/transforms/to-upper-currency-code';
 
 export interface UiFeatures {
@@ -443,6 +448,16 @@ export class WorkHoursDto {
   workEndHour!: number;
 }
 
+/** ІПН платника ПДВ: 10 цифр (фізична особа) або 12 цифр (юридична). */
+export const ORG_IPN_REGEX = /^(\d{10}|\d{12})$/;
+
+// Власні назви обмежень, а не `matches` / `isEmail`: для тих validationExceptionFactory підставляє
+// загальний шаблон («Поле "phone" має некоректний формат») і власне повідомлення не доходить.
+const orgFormat = (name: string, test: (v: string) => boolean, message: string) =>
+  ValidateBy({ name, validator: { validate: (v: unknown) => typeof v === 'string' && test(v) } }, {
+    message,
+  } satisfies ValidationOptions);
+
 export class UpdateOrganisationDto {
   @ApiPropertyOptional()
   @IsOptional()
@@ -473,6 +488,29 @@ export class UpdateOrganisationDto {
   @IsString()
   actualAddress?: string | null;
 
+  // Реквізити для шапки друкованих документів. Порожній рядок очищає поле (null).
+  @ApiPropertyOptional({ example: '+380501234567', nullable: true })
+  @IsOptional()
+  @Transform(emptyToNull)
+  @ValidateIf((o: UpdateOrganisationDto) => o.phone !== null)
+  @orgFormat('orgPhone', v => PHONE_UA_REGEX.test(v), 'err.dto.organisation.phone.format')
+  phone?: string | null;
+
+  @ApiPropertyOptional({ example: 'info@sto.ua', nullable: true })
+  @IsOptional()
+  @Transform(emptyToNull)
+  @ValidateIf((o: UpdateOrganisationDto) => o.email !== null)
+  @orgFormat('orgEmail', v => isEmail(v), 'err.dto.organisation.email.invalid')
+  email?: string | null;
+
+  @ApiPropertyOptional({ example: '123456789012', nullable: true, description: 'ІПН платника ПДВ' })
+  @IsOptional()
+  @Transform(emptyToNull)
+  @ValidateIf((o: UpdateOrganisationDto) => o.ipn !== null)
+  @orgFormat('orgIpn', v => ORG_IPN_REGEX.test(v), 'err.dto.organisation.ipn.format')
+  ipn?: string | null;
+
+  /** Основний банківський рахунок — друкується в рахунках і нарядах. Чужий / видалений → 404. */
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -489,6 +527,9 @@ export class OrganisationResponseDto {
   @ApiPropertyOptional() logoUrl?: string | null;
   @ApiPropertyOptional() legalAddress?: string | null;
   @ApiPropertyOptional() actualAddress?: string | null;
+  @ApiPropertyOptional() phone?: string | null;
+  @ApiPropertyOptional() email?: string | null;
+  @ApiPropertyOptional() ipn?: string | null;
   @ApiPropertyOptional() bankAccountId?: string | null;
   @ApiProperty() updatedAt!: string;
 }

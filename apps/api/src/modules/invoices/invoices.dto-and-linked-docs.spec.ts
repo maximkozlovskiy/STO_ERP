@@ -16,6 +16,7 @@ import { InvoicesService } from './invoices.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
+import { OrgPrintInfoService } from '../pdf/org-print-info.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuditService } from '../audit/audit.service';
@@ -62,6 +63,7 @@ describe('InvoicesService — toDto paidAmount authority (Bug #676)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DocumentNumberService, useValue: { next: vi.fn() } },
         { provide: PdfService, useValue: {} },
+        { provide: OrgPrintInfoService, useValue: {} },
         { provide: SettlementsService, useValue: {} },
         {
           provide: SettingsService,
@@ -152,6 +154,7 @@ describe('InvoicesService — linked-documents edge cases', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DocumentNumberService, useValue: { next: vi.fn() } },
         { provide: PdfService, useValue: {} },
+        { provide: OrgPrintInfoService, useValue: {} },
         { provide: SettlementsService, useValue: {} },
         {
           provide: SettingsService,

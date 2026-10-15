@@ -681,6 +681,9 @@ export class SettingsService {
     logoUrl: true,
     legalAddress: true,
     actualAddress: true,
+    phone: true,
+    email: true,
+    ipn: true,
     bankAccountId: true,
     updatedAt: true,
   } as const;
@@ -734,6 +737,9 @@ export class SettingsService {
     logoUrl?: string | null;
     legalAddress?: string | null;
     actualAddress?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    ipn?: string | null;
     bankAccountId?: string | null;
     updatedAt: Date;
   }): OrganisationResponseDto {
@@ -745,6 +751,9 @@ export class SettingsService {
       logoUrl: org.logoUrl ?? null,
       legalAddress: org.legalAddress ?? null,
       actualAddress: org.actualAddress ?? null,
+      phone: org.phone ?? null,
+      email: org.email ?? null,
+      ipn: org.ipn ?? null,
       bankAccountId: org.bankAccountId ?? null,
       updatedAt: org.updatedAt instanceof Date ? org.updatedAt.toISOString() : org.updatedAt,
     };

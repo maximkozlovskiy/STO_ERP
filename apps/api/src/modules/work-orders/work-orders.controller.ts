@@ -24,6 +24,7 @@ import {
   ApiOkResponse,
   ApiCreatedResponse,
   ApiNoContentResponse,
+  ApiBadRequestResponse,
   ApiProduces,
   ApiExtraModels,
   getSchemaPath,
@@ -173,11 +174,18 @@ export class WorkOrdersController {
     return this.service.update(orgId, id, dto, user.id);
   }
 
+  // BR-WO-013: друкований наряд-замовлення — лише від «Виконано»; до того — кошторис.
   @Get(':id/pdf')
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
-  @ApiOperation({ summary: 'Завантажити наряд у PDF' })
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
+  @ApiOperation({
+    summary: 'Наряд-замовлення у PDF (статуси «Виконано», «Виставлено», «Оплачено», «Архів»)',
+  })
   @ApiProduces('application/pdf')
-  @ApiOkResponse({ description: 'PDF-файл наряду', schema: { type: 'string', format: 'binary' } })
+  @ApiOkResponse({
+    description: 'PDF наряд-замовлення',
+    schema: { type: 'string', format: 'binary' },
+  })
+  @ApiBadRequestResponse({ description: 'Наряд ще не виконано — друкується кошторис' })
   async downloadPdf(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,

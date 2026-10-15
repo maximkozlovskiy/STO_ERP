@@ -96,6 +96,7 @@ function setup(preStatus: string) {
     null as never, // exchangeRates
     { emit: vi.fn(), emitAsync: vi.fn().mockResolvedValue([]) } as never, // events
     totals as never,
+    null as never, // orgPrintInfo
   );
   return { service, tx, totals, stockEffects, order };
 }

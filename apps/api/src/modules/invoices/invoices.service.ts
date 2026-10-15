@@ -22,6 +22,7 @@ import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-count
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
+import { OrgPrintInfoService } from '../pdf/org-print-info.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuditService } from '../audit/audit.service';
@@ -97,6 +98,8 @@ export class InvoicesService {
     private readonly settingsService: SettingsService,
     private readonly audit: AuditService,
     private readonly exchangeRates: ExchangeRatesService,
+    // Реквізити, банківський рахунок і логотип організації для шапки друкованого рахунку.
+    private readonly orgPrintInfo: OrgPrintInfoService,
   ) {}
 
   async findAll(
@@ -1316,10 +1319,7 @@ export class InvoicesService {
           },
         },
       }),
-      this.prisma.organisation.findFirst({
-        where: { id: orgId },
-        select: { name: true, edrpou: true },
-      }),
+      this.orgPrintInfo.get(orgId),
     ]);
     if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
 
@@ -1330,7 +1330,7 @@ export class InvoicesService {
     const counterpartyName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || '';
 
     return this.pdf.generateInvoicePdf({
-      org: { name: org?.name ?? '', edrpou: org?.edrpou },
+      org,
       counterparty: { name: counterpartyName, phone: cp?.phone, edrpou: cp?.edrpou },
       number: inv.number,
       date: inv.createdAt,

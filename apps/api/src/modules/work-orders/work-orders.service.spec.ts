@@ -68,6 +68,7 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     exchangeRates,
     { emit: vi.fn() } as never, // events (EventEmitter2)
     new WorkOrderTotalsService(null as never, exchangeRates),
+    null as never, // orgPrintInfo
   );
 }
 

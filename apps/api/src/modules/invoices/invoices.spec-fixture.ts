@@ -26,6 +26,7 @@ import { InvoicesService } from './invoices.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
+import { OrgPrintInfoService } from '../pdf/org-print-info.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuditService } from '../audit/audit.service';
@@ -50,6 +51,7 @@ export interface InvoicesHarness {
   };
   docNumbers: { next: Fn };
   pdf: { generateInvoicePdf: Fn };
+  orgPrintInfo: { get: Fn };
   settlements: { createTransaction: Fn };
   settings: Record<string, Fn>;
   exchangeRates: { resolveBaseConversion: Fn; getBaseCurrency: Fn };
@@ -111,6 +113,7 @@ export async function makeInvoicesHarness(): Promise<InvoicesHarness> {
   };
   const docNumbers = { next: vi.fn().mockResolvedValue('INV-2026-0001') };
   const pdf = { generateInvoicePdf: vi.fn() };
+  const orgPrintInfo = { get: vi.fn().mockResolvedValue({ name: 'СТО Тест' }) };
   const settlements = { createTransaction: vi.fn() };
   const exchangeRatesProvider = exchangeRatesMock();
   const exchangeRates = exchangeRatesProvider.useValue as InvoicesHarness['exchangeRates'];
@@ -127,6 +130,7 @@ export async function makeInvoicesHarness(): Promise<InvoicesHarness> {
       { provide: PrismaService, useValue: prisma },
       { provide: DocumentNumberService, useValue: docNumbers },
       { provide: PdfService, useValue: pdf },
+      { provide: OrgPrintInfoService, useValue: orgPrintInfo },
       { provide: SettlementsService, useValue: settlements },
       { provide: SettingsService, useValue: settings },
       { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
@@ -139,6 +143,7 @@ export async function makeInvoicesHarness(): Promise<InvoicesHarness> {
     prisma,
     docNumbers,
     pdf,
+    orgPrintInfo,
     settlements,
     settings,
     exchangeRates,

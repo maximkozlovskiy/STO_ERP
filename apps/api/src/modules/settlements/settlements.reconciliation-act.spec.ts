@@ -323,4 +323,23 @@ describe('SettlementsAccountService — акт звірки', () => {
     );
     expect(pdf.generateReconciliationActPdf).not.toHaveBeenCalled();
   });
+
+  it('PDF: шапка акта — реквізити СВОЄЇ організації з OrgPrintInfoService, без змін', async () => {
+    const fx = makeAccountFixture();
+    const orgInfo = { name: 'СТО Альфа', ipn: '123456789012', logo: 'data:image/png;base64,AA' };
+    fx.orgPrintInfo.get.mockResolvedValue(orgInfo);
+    fx.prisma.reconciliationAct.findFirst.mockResolvedValue({
+      periodFrom: new Date('2026-07-01T00:00:00Z'),
+      periodTo: new Date('2026-07-31T00:00:00Z'),
+      openingBalance: '0',
+      closingBalance: '0',
+      snapshotJson: [],
+      counterparty: { firstName: null, lastName: null, companyName: 'ТОВ Бета' },
+    });
+
+    await fx.service.generateReconciliationPdf('org-1', 'cp-1', 'act-1');
+
+    expect(fx.orgPrintInfo.get).toHaveBeenCalledWith('org-1');
+    expect(fx.pdf.generateReconciliationActPdf.mock.calls[0]?.[0]).toMatchObject({ org: orgInfo });
+  });
 });

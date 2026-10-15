@@ -89,23 +89,23 @@ OVERDUE → PAID / CANCELLED
 
 ## API Endpoints (`/api/invoices`)
 
-| Метод  | URL                                                  | Дія                                                                                                                                                             |
-| ------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/invoices`                                      | Список (фільтри: status, statuses — кілька через кому, counterpartyId, q, dateFrom, dateTo, showDeleted)                                                        |
-| GET    | `/api/invoices/:id`                                  | Деталь з lines                                                                                                                                                  |
-| GET    | `/api/invoices/:id/lines-summary`                    | Зведення по табличних частинах: роботи / товари / інше (BR-WO-009 у `work-order.md`); ролі — як у списку                                                        |
-| POST   | `/api/invoices`                                      | Створити рахунок (lines у body)                                                                                                                                 |
-| POST   | `/api/invoices/from-work-order/:workOrderId`         | Створити з наряду (auto-fill lines)                                                                                                                             |
-| POST   | `/api/invoices/from-work-order/:workOrderId/refresh` | Оновити рядки з наряду                                                                                                                                          |
-| GET    | `/api/invoices/from-work-order/:workOrderId/find`    | Знайти існуючий рахунок по наряду (lightweight: `{ id, number, status: InvoiceStatus, amount, documentDate: string \| null }` або `null`); виключає `CANCELLED` |
-| PATCH  | `/api/invoices/:id`                                  | Оновити (тільки DRAFT)                                                                                                                                          |
-| POST   | `/api/invoices/:id/transition`                       | FSM перехід                                                                                                                                                     |
-| POST   | `/api/invoices/:id/clone`                            | Клонувати рахунок                                                                                                                                               |
-| GET    | `/api/invoices/:id/pdf`                              | Завантажити PDF                                                                                                                                                 |
-| DELETE | `/api/invoices/:id`                                  | Soft-delete                                                                                                                                                     |
-| POST   | `/api/invoices/:id/lines`                            | Додати рядок                                                                                                                                                    |
-| PATCH  | `/api/invoices/:id/lines/:lineId`                    | Оновити рядок                                                                                                                                                   |
-| DELETE | `/api/invoices/:id/lines/:lineId`                    | Видалити рядок                                                                                                                                                  |
+| Метод  | URL                                                  | Дія                                                                                                                                                                    |
+| ------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/invoices`                                      | Список (фільтри: status, statuses — кілька через кому, counterpartyId, q, dateFrom, dateTo, showDeleted)                                                               |
+| GET    | `/api/invoices/:id`                                  | Деталь з lines                                                                                                                                                         |
+| GET    | `/api/invoices/:id/lines-summary`                    | Зведення по табличних частинах: роботи / товари / інше (BR-WO-009 у `work-order.md`); ролі — як у списку                                                               |
+| POST   | `/api/invoices`                                      | Створити рахунок (lines у body)                                                                                                                                        |
+| POST   | `/api/invoices/from-work-order/:workOrderId`         | Створити з наряду (auto-fill lines)                                                                                                                                    |
+| POST   | `/api/invoices/from-work-order/:workOrderId/refresh` | Оновити рядки з наряду                                                                                                                                                 |
+| GET    | `/api/invoices/from-work-order/:workOrderId/find`    | Знайти існуючий рахунок по наряду (lightweight: `{ id, number, status: InvoiceStatus, amount, documentDate: string \| null }` або `null`); виключає `CANCELLED`        |
+| PATCH  | `/api/invoices/:id`                                  | Оновити (тільки DRAFT)                                                                                                                                                 |
+| POST   | `/api/invoices/:id/transition`                       | FSM перехід                                                                                                                                                            |
+| POST   | `/api/invoices/:id/clone`                            | Клонувати рахунок                                                                                                                                                      |
+| GET    | `/api/invoices/:id/pdf`                              | PDF рахунку: шапка з логотипом і реквізитами організації; «Реквізити для оплати» (одержувач, ЄДРПОУ, IBAN, банк, МФО) — коли в НДІ задано основний банківський рахунок |
+| DELETE | `/api/invoices/:id`                                  | Soft-delete                                                                                                                                                            |
+| POST   | `/api/invoices/:id/lines`                            | Додати рядок                                                                                                                                                           |
+| PATCH  | `/api/invoices/:id/lines/:lineId`                    | Оновити рядок                                                                                                                                                          |
+| DELETE | `/api/invoices/:id/lines/:lineId`                    | Видалити рядок                                                                                                                                                         |
 
 ---
 
@@ -117,6 +117,12 @@ OVERDUE → PAID / CANCELLED
 | Модалка створення     | `components/ui/InvoiceCreateModal.tsx`         |
 | Detail Panel schema   | `lib/panel-schema.ts` → `INVOICE_PANEL_SCHEMA` |
 | Hook (TanStack Query) | `hooks/api/useInvoices.ts`                     |
+
+**Друк.** У боковій панелі списку поруч із «Завантажити PDF» — «Друкувати PDF» (`printPdf` з
+`lib/download.ts`: вікно друку відкривається до запиту PDF); для рахунку, позначеного на
+видалення, обидві сховано (BR-WO-012). З наряду — «Друк рахунку» в картці й на сторінці наряду
+(див. [work-order.md](work-order.md), BR-WO-013). Шапку й реквізити PDF будує
+`OrgPrintInfoService` (модуль `pdf`) — та сама шапка, що в наряді й актах.
 
 ---
 
@@ -227,8 +233,9 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | transition settlements                                         | `invoices.transition-settlements.spec.ts`  | 10     |
 | update: зміна контрагента (org, роль)                          | `invoices.update-counterparty.spec.ts`     | 5      |
 | рядки рахунку з наряду (чиста функція)                         | `invoices.work-order-lines.spec.ts`        | 23     |
+| друкований рахунок: реквізити своєї організації, 404           | `invoices.pdf.spec.ts`                     | 2      |
 
-Разом: **179** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **181** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для правил про суму з наряду і ПДВ рядка:
 

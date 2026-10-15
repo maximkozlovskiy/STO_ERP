@@ -91,6 +91,7 @@ function setup(originalForClone?: Record<string, unknown>) {
     exchangeRates,
     { emit: vi.fn() } as never,
     { recalc: vi.fn().mockResolvedValue(undefined) } as never, // totals (BR-WO-007) — тут не перевіряється
+    null as never, // orgPrintInfo
   );
   return { service, create, next };
 }

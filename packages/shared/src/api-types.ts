@@ -2470,7 +2470,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Завантажити наряд у PDF */
+        /** Наряд-замовлення у PDF (статуси «Виконано», «Виставлено», «Оплачено», «Архів») */
         get: operations["WorkOrdersController_downloadPdf_v1"];
         put?: never;
         post?: never;
@@ -5528,6 +5528,9 @@ export interface components {
             logoUrl?: string | null;
             legalAddress?: string | null;
             actualAddress?: string | null;
+            phone?: string | null;
+            email?: string | null;
+            ipn?: string | null;
             bankAccountId?: string | null;
             updatedAt: string;
         };
@@ -5537,7 +5540,19 @@ export interface components {
             logoUrl?: string | null;
             legalAddress?: string | null;
             actualAddress?: string | null;
-            /** Format: uuid */
+            /** @example +380501234567 */
+            phone?: string | null;
+            /** @example info@sto.ua */
+            email?: string | null;
+            /**
+             * @description ІПН платника ПДВ
+             * @example 123456789012
+             */
+            ipn?: string | null;
+            /**
+             * Format: uuid
+             * @description Основний банківський рахунок — друкується в рахунках і нарядах. Чужий / видалений → 404.
+             */
             bankAccountId?: string | null;
         };
         ExchangeRateResponseDto: {
@@ -13873,7 +13888,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description PDF-файл наряду */
+            /** @description PDF наряд-замовлення */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -13881,6 +13896,13 @@ export interface operations {
                 content: {
                     "application/pdf": string;
                 };
+            };
+            /** @description Наряд ще не виконано — друкується кошторис */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

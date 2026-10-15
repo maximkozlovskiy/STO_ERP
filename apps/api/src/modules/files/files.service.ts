@@ -36,6 +36,7 @@ export class FilesService implements OnModuleInit {
       meta: Record<string, string>,
     ): Promise<unknown>;
     presignedGetObject(bucket: string, object: string, expiry: number): Promise<string>;
+    getObject(bucket: string, object: string): Promise<NodeJS.ReadableStream>;
     removeObject(bucket: string, object: string): Promise<void>;
   } | null;
 
@@ -172,6 +173,29 @@ export class FilesService implements OnModuleInit {
     } catch {
       return `${this.publicUrl}/${this.bucket}/${objectName}`;
     }
+  }
+
+  /**
+   * Прочитати об'єкт сховища в пам'ять — для серверного використання (логотип у шапці PDF).
+   * Читає не більше `maxBytes`: більший об'єкт перериває читання й кидає помилку, щоб
+   * випадково завеликий файл не тягнувся в пам'ять цілком. Помилки — звичайні `Error`
+   * (внутрішній виклик, не HTTP): той, хто кличе, сам вирішує, що робити без файла.
+   */
+  async getObject(objectName: string, maxBytes: number): Promise<Buffer> {
+    if (!this.client) throw new Error('MinIO client is not configured');
+    const stream = await this.client.getObject(this.bucket, objectName);
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of stream) {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += buf.length;
+      if (size > maxBytes) {
+        (stream as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
+        throw new Error(`Object ${objectName} exceeds ${maxBytes} bytes`);
+      }
+      chunks.push(buf);
+    }
+    return Buffer.concat(chunks);
   }
 
   async deleteObject(objectName: string): Promise<void> {

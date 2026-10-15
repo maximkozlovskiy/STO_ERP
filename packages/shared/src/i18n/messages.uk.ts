@@ -533,6 +533,7 @@ export const uk: Record<string, string> = {
     'Поділитися кошторисом можна лише у статусі чернетка / кошторис / затверджено',
   'err.workOrder.publicUrlNotConfigured':
     'Публічний URL не налаштовано (WEB_PUBLIC_URL) — зверніться до адміністратора',
+  'err.workOrder.printBeforeCompletion': 'Наряд-замовлення друкується після виконання робіт',
   'err.workOrder.totalZeroCannotComplete':
     'Загальна сума наряду дорівнює нулю — завершення неможливе',
   'err.workOrder.vehicleNotFound': 'Автомобіль не знайдено',
@@ -990,6 +991,9 @@ export const uk: Record<string, string> = {
   'err.dto.settings.currencyCode.max': 'Код валюти не може перевищувати 10 символів',
   'err.dto.settings.time.format': 'Формат “ГГ:ХХ” (00:00–23:59)',
   'err.dto.settings.workingDays.max': 'Не більше 7 робочих днів',
+  'err.dto.organisation.phone.format': 'Телефон має бути у форматі +380XXXXXXXXX',
+  'err.dto.organisation.email.invalid': 'Невірний формат e-mail',
+  'err.dto.organisation.ipn.format': 'ІПН має містити 10 або 12 цифр',
   'err.dto.setup.email.invalid': 'Невірний формат email',
   'err.dto.setup.password.notEmpty': 'Пароль не може бути порожнім',
   'err.dto.setup.password.min': 'Пароль має бути не менше 8 символів',

@@ -113,6 +113,7 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     exchangeRates,
     null as never, // events (EventEmitter2)
     new WorkOrderTotalsService(settingsService, exchangeRates),
+    null as never, // orgPrintInfo
   );
 }
 
@@ -529,6 +530,7 @@ describe('WorkOrdersService.clone — тотали клона через recalc 
       { resolveBaseConversion: vi.fn(), requireBaseCurrencyId: vi.fn() } as never,
       { emit: vi.fn() } as never, // events
       { recalc } as never, // totals — єдиний власник суми наряду
+      null as never, // orgPrintInfo
     );
     return { service, tx, recalc, order, outerCreate };
   }

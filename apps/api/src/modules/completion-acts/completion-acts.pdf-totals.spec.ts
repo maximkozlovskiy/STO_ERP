@@ -74,19 +74,20 @@ function setup(
         },
   );
   const prisma = {
-    organisation: { findFirst: vi.fn().mockResolvedValue({ name: 'СТО Альфа' }) },
     completionAct: { findFirst: actFindFirst },
   } as unknown as PrismaService;
   const generateCompletionActPdf = vi.fn().mockResolvedValue(Buffer.from('%PDF'));
+  const orgPrintInfoGet = vi.fn().mockResolvedValue({ name: 'СТО Альфа', ipn: '123456789012' });
   const service = new CompletionActsService(
     prisma,
     null as never, // docNumbers
     null as never, // invoices
     { generateCompletionActPdf } as never,
     null as never, // events
+    { get: orgPrintInfoGet } as never, // orgPrintInfo
   );
   const pdfArg = () => generateCompletionActPdf.mock.calls[0]?.[0] as PdfArg;
-  return { service, actFindFirst, generateCompletionActPdf, pdfArg };
+  return { service, actFindFirst, generateCompletionActPdf, orgPrintInfoGet, pdfArg };
 }
 
 describe('CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007)', () => {
@@ -178,5 +179,19 @@ describe('CompletionActsService.generatePdf — сума акта з ПДВ (BR-
     const missing = setup(null);
     await expect(missing.service.generatePdf('org-2', ACT_ID)).rejects.toThrow(NotFoundException);
     expect(missing.generateCompletionActPdf).not.toHaveBeenCalled();
+  });
+
+  it('шапка акта — реквізити СВОЄЇ організації з OrgPrintInfoService, без змін', async () => {
+    const { service, orgPrintInfoGet, generateCompletionActPdf } = setup({
+      totalNet: 700,
+      totalAmount: 700,
+    });
+
+    await service.generatePdf(ORG, ACT_ID);
+
+    expect(orgPrintInfoGet).toHaveBeenCalledWith(ORG);
+    expect(generateCompletionActPdf.mock.calls[0]?.[0]).toMatchObject({
+      org: { name: 'СТО Альфа', ipn: '123456789012' },
+    });
   });
 });

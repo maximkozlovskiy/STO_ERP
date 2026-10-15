@@ -145,4 +145,33 @@ describe('PdfService — pdfmake integration', () => {
     expect(buf.length).toBeGreaterThan(500);
     expect(buf.slice(0, 4).toString('ascii')).toBe('%PDF');
   }, 15_000);
+  // Шапка документа несе зображення: pdfmake не має тягнути з мережі нічого, а з диска — нічого,
+  // крім шрифтів. Інакше рядок, що потрапив у `image`, став би запитом на URL чи читанням файла.
+  it('зображення за URL не завантажується — документ не будується', async () => {
+    const build = (service as unknown as { buildBuffer(d: object): Promise<Buffer> }).buildBuffer;
+    await expect(
+      build.call(service, {
+        // Через словник images — саме його pdfmake завантажує як URL перед рендером.
+        images: { logo: 'http://127.0.0.1:9/logo.png' },
+        content: [{ image: 'logo' }],
+        defaultStyle: { font: 'Roboto' },
+      }),
+    ).rejects.toThrow(/denied|access policy/i);
+  }, 15_000);
+
+  it('зображення з локального файла (не шрифт) не читається — документ не будується', async () => {
+    const build = (service as unknown as { buildBuffer(d: object): Promise<Buffer> }).buildBuffer;
+    await expect(
+      build.call(service, {
+        content: [{ image: __filename }],
+        defaultStyle: { font: 'Roboto' },
+      }),
+    ).rejects.toThrow(/denied|access policy/i);
+  }, 15_000);
+  // Знаку «₴» у вбудованому Roboto немає — суми друкувались із порожнім квадратом замість валюти.
+  it('суми в PDF — «1 250,00 грн», без знаку ₴, якого немає у шрифті', () => {
+    const fmt = (service as unknown as { fmtMoney(n: number): string }).fmtMoney(1250);
+    expect(fmt.replace(/\s/gu, ' ')).toBe('1 250,00 грн');
+    expect(fmt).not.toContain('₴');
+  });
 });

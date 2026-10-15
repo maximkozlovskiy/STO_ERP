@@ -544,6 +544,8 @@ export const en: Record<string, string> = {
     'The estimate can be shared only in draft / estimate / approved status',
   'err.workOrder.publicUrlNotConfigured':
     'Public URL is not configured (WEB_PUBLIC_URL) — contact the administrator',
+  'err.workOrder.printBeforeCompletion':
+    'The work order is printed only after the work is completed',
   'err.workOrder.totalZeroCannotComplete':
     'The work order total is zero — completion is not possible',
   'err.workOrder.vehicleNotFound': 'Vehicle not found',
@@ -1007,6 +1009,9 @@ export const en: Record<string, string> = {
   'err.dto.settings.currencyCode.max': 'Currency code cannot exceed 10 characters',
   'err.dto.settings.time.format': 'Format “HH:MM” (00:00–23:59)',
   'err.dto.settings.workingDays.max': 'No more than 7 working days',
+  'err.dto.organisation.phone.format': 'Phone must be in the format +380XXXXXXXXX',
+  'err.dto.organisation.email.invalid': 'Invalid email format',
+  'err.dto.organisation.ipn.format': 'Tax ID (IPN) must contain 10 or 12 digits',
   'err.dto.setup.email.invalid': 'Invalid email format',
   'err.dto.setup.password.notEmpty': 'Password cannot be empty',
   'err.dto.setup.password.min': 'Password must be at least 8 characters',

@@ -8397,7 +8397,7 @@
         ],
         "responses": {
           "200": {
-            "description": "PDF-файл наряду",
+            "description": "PDF наряд-замовлення",
             "content": {
               "application/pdf": {
                 "schema": {
@@ -8406,6 +8406,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Наряд ще не виконано — друкується кошторис"
           }
         },
         "security": [
@@ -8413,7 +8416,7 @@
             "bearer": []
           }
         ],
-        "summary": "Завантажити наряд у PDF",
+        "summary": "Наряд-замовлення у PDF (статуси «Виконано», «Виставлено», «Оплачено», «Архів»)",
         "tags": [
           "Work Orders"
         ]
@@ -17715,6 +17718,18 @@
             "type": "string",
             "nullable": true
           },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "ipn": {
+            "type": "string",
+            "nullable": true
+          },
           "bankAccountId": {
             "type": "string",
             "nullable": true
@@ -17751,9 +17766,26 @@
             "type": "string",
             "nullable": true
           },
+          "phone": {
+            "type": "string",
+            "nullable": true,
+            "example": "+380501234567"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true,
+            "example": "info@sto.ua"
+          },
+          "ipn": {
+            "type": "string",
+            "nullable": true,
+            "example": "123456789012",
+            "description": "ІПН платника ПДВ"
+          },
           "bankAccountId": {
             "type": "string",
             "nullable": true,
+            "description": "Основний банківський рахунок — друкується в рахунках і нарядах. Чужий / видалений → 404.",
             "format": "uuid"
           }
         }

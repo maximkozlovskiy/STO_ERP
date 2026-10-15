@@ -1,10 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { resolve } from 'path';
 import { SETTLEMENT_TX_TYPE_LABELS } from '@sto/shared';
 // pdfmake v0.3.x server-side API: singleton instance with createPdf(docDef).getBuffer().
 // The legacy `pdfmake/build/pdfmake` path is a browser-only UMD bundle and has no PdfPrinter class.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfMake = require('pdfmake') as {
   setFonts(fonts: Record<string, unknown>): void;
+  setUrlAccessPolicy?(callback: (url: string) => boolean): void;
+  setLocalAccessPolicy?(callback: (path: string) => boolean): void;
   createPdf(
     docDef: Record<string, unknown>,
     options?: Record<string, unknown>,
@@ -37,11 +40,33 @@ const UA_DATE_FMT = new Intl.DateTimeFormat('uk-UA', {
   year: 'numeric',
 });
 
-export interface OrgInfo {
+/**
+ * Реквізити організації для шапки друкованого документа (`OrgPrintInfoService.get`).
+ * Усе, крім назви, необов'язкове: незаповнене в НДІ просто не друкується.
+ */
+export interface OrgPrintInfo {
   name: string;
   edrpou?: string | null;
+  /** ІПН платника ПДВ. */
+  ipn?: string | null;
+  /** Фактична адреса, інакше юридична. */
   address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  /** Логотип як data URL (PNG/JPEG) — лише перевірений `OrgPrintInfoService`. */
+  logo?: string | null;
+  /** Основний банківський рахунок організації (НДІ → «Реквізити»). */
+  bank?: {
+    iban: string;
+    bankName?: string | null;
+    mfo?: string | null;
+    /** ЄДРПОУ одержувача на рахунку, якщо відрізняється від ЄДРПОУ організації. */
+    edrpou?: string | null;
+  } | null;
 }
+
+/** Ключ логотипа в `docDefinition.images` — сам рядок data URL в `image:` не підставляємо. */
+const LOGO_IMAGE_KEY = 'orgLogo';
 
 export interface CounterpartyInfo {
   name: string;
@@ -51,7 +76,7 @@ export interface CounterpartyInfo {
 }
 
 export interface InvoicePdfData {
-  org: OrgInfo;
+  org: OrgPrintInfo;
   counterparty: CounterpartyInfo;
   number: string;
   date: Date;
@@ -70,7 +95,7 @@ export interface InvoicePdfData {
 }
 
 export interface ReconciliationActPdfData {
-  org: OrgInfo;
+  org: OrgPrintInfo;
   counterpartyName: string;
   periodFrom: Date;
   periodTo: Date;
@@ -80,7 +105,7 @@ export interface ReconciliationActPdfData {
 }
 
 export interface CompletionActPdfData {
-  org: OrgInfo;
+  org: OrgPrintInfo;
   counterparty: CounterpartyInfo;
   vehicleLabel: string;
   number: string;
@@ -97,13 +122,28 @@ export interface CompletionActPdfData {
 }
 
 export interface WorkOrderPdfData {
-  org: OrgInfo;
+  org: OrgPrintInfo;
   counterparty: CounterpartyInfo;
   vehicleLabel: string;
+  vin?: string | null;
+  /** Пробіг на момент прийому авто, км. */
+  mileage?: number | null;
   number: string;
+  /** Дата документа наряду (`documentDate`), не дата створення запису. */
   date: Date;
-  works: Array<{ name: string; quantity: number; price: number; total: number }>;
-  parts: Array<{ name: string; quantity: number; price: number; total: number }>;
+  /**
+   * Роботи: `quantity` — години, за які взято гроші (факт, інакше норма), `total` — сума рядка.
+   * `normoHours` / `actualHours` друкуються окремими колонками.
+   */
+  works: Array<{
+    name: string;
+    quantity: number;
+    normoHours?: number | null;
+    actualHours?: number | null;
+    price: number;
+    total: number;
+  }>;
+  parts: Array<{ name: string; quantity: number; unit?: string; price: number; total: number }>;
   /** Сума до сплати (з ПДВ, якщо він є). */
   total: number;
   /** Сума без ПДВ і ПДВ — задані, коли в сумі є ПДВ: тоді підсумок друкується трьома рядками. */
@@ -113,9 +153,12 @@ export interface WorkOrderPdfData {
 
 type Content = Record<string, unknown> | string | Content[];
 type TableCell = string | Record<string, unknown>;
+type DocDefinition = Record<string, unknown>;
 
 @Injectable()
 export class PdfService {
+  private readonly logger = new Logger(PdfService.name);
+
   constructor() {
     // Register Roboto family once at module-init using the on-disk file paths. We fail fast
     // here (rather than at first PDF request) if pdfmake/fonts/Roboto was somehow not
@@ -124,17 +167,24 @@ export class PdfService {
       throw new Error('pdfmake Roboto descriptor missing. Re-install @sto/api dependencies.');
     }
     pdfMake.setFonts(robotoFontDescriptor);
+    // Шапка несе зображення, тож закриваємо pdfmake доступ до ресурсів: з мережі — нічого
+    // (рядок у `image` pdfmake інакше завантажив би як URL), з диска — лише файли шрифтів Roboto.
+    // Логотип приходить data URL-ом від OrgPrintInfoService і під ці політики не підпадає.
+    const fontFiles = new Set(Object.values(robotoFontDescriptor.Roboto).map(f => resolve(f)));
+    pdfMake.setUrlAccessPolicy?.(() => false);
+    pdfMake.setLocalAccessPolicy?.(file => fontFiles.has(resolve(file)));
   }
 
   async generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> {
-    const docDef = {
+    return this.render(data.org, org => ({
+      ...this.page(org),
       content: [
-        this.header(data.org, `Рахунок № ${data.number}`),
+        this.header(org, `Рахунок № ${data.number}`),
         {
           text: `Дата: ${this.fmtDate(data.date)}${data.dueDate ? `   Оплатити до: ${this.fmtDate(data.dueDate)}` : ''}`,
           margin: [0, 4, 0, 8],
         },
-        this.partyBlock('Постачальник', data.org),
+        this.partyBlock('Постачальник', org),
         this.partyBlock('Покупець', data.counterparty),
         { text: ' ', margin: [0, 4] },
         {
@@ -164,13 +214,10 @@ export class PdfService {
         },
         { text: ' ', margin: [0, 4] },
         this.totalsBlock(data.subtotal, data.vatTotal, data.grandTotal),
+        ...this.paymentDetails(org),
         { text: '\n\nПідпис: _____________________', margin: [0, 32, 0, 0] },
       ],
-      defaultStyle: { font: 'Roboto', fontSize: 10 },
-      pageSize: 'A4',
-      pageMargins: [40, 40, 40, 40],
-    };
-    return this.buildBuffer(docDef);
+    }));
   }
 
   async generateReconciliationActPdf(data: ReconciliationActPdfData): Promise<Buffer> {
@@ -179,9 +226,10 @@ export class PdfService {
     // Тепер єдине джерело — shared SETTLEMENT_TX_TYPE_LABELS (дзеркалить settlements екрани).
     const txTypeLabel = (type: string) => SETTLEMENT_TX_TYPE_LABELS[type] ?? type;
 
-    const docDef = {
+    return this.render(data.org, org => ({
+      ...this.page(org),
       content: [
-        this.header(data.org, 'Акт звірки'),
+        this.header(org, 'Акт звірки'),
         { text: `Контрагент: ${data.counterpartyName}`, margin: [0, 4, 0, 2] },
         {
           text: `Період: ${this.fmtDate(data.periodFrom)} — ${this.fmtDate(data.periodTo)}`,
@@ -220,22 +268,19 @@ export class PdfService {
           margin: [0, 40, 0, 0],
         },
       ],
-      defaultStyle: { font: 'Roboto', fontSize: 10 },
-      pageSize: 'A4',
-      pageMargins: [40, 40, 40, 40],
-    };
-    return this.buildBuffer(docDef);
+    }));
   }
 
   async generateCompletionActPdf(data: CompletionActPdfData): Promise<Buffer> {
-    const docDef = {
+    return this.render(data.org, org => ({
+      ...this.page(org),
       content: [
-        this.header(data.org, `Акт виконаних робіт № ${data.number}`),
+        this.header(org, `Акт виконаних робіт № ${data.number}`),
         {
           text: `Дата: ${this.fmtDate(data.date)}${data.signedAt ? `   Підписано: ${this.fmtDate(data.signedAt)}` : ''}`,
           margin: [0, 4, 0, 8],
         },
-        this.partyBlock('Виконавець', data.org),
+        this.partyBlock('Виконавець', org),
         this.partyBlock('Замовник', data.counterparty),
         { text: `Автомобіль: ${data.vehicleLabel}`, margin: [0, 4, 0, 8] },
         {
@@ -270,26 +315,28 @@ export class PdfService {
           margin: [0, 32, 0, 0],
         },
       ],
-      defaultStyle: { font: 'Roboto', fontSize: 10 },
-      pageSize: 'A4',
-      pageMargins: [40, 40, 40, 40],
-    };
-    return this.buildBuffer(docDef);
+    }));
   }
 
   async generateWorkOrderPdf(data: WorkOrderPdfData): Promise<Buffer> {
-    const docDef = {
+    const vehicle = [
+      data.vehicleLabel,
+      data.vin ? `VIN: ${data.vin}` : '',
+      data.mileage != null ? `пробіг: ${data.mileage} км` : '',
+    ].filter(Boolean);
+    return this.render(data.org, org => ({
+      ...this.page(org),
       content: [
-        this.header(data.org, `Наряд-замовлення № ${data.number}`),
+        this.header(org, `Наряд-замовлення № ${data.number}`),
         { text: `Дата: ${this.fmtDate(data.date)}`, margin: [0, 4, 0, 8] },
-        this.partyBlock('Виконавець', data.org),
+        this.partyBlock('Виконавець', org),
         this.partyBlock('Клієнт', data.counterparty),
-        { text: `Автомобіль: ${data.vehicleLabel}`, margin: [0, 4, 0, 8] },
+        { text: `Автомобіль: ${vehicle.join(', ')}`, margin: [0, 4, 0, 8] },
         ...(data.works.length > 0
-          ? [{ text: 'Роботи:', bold: true, margin: [0, 8, 0, 4] }, this.itemsTable(data.works)]
+          ? [{ text: 'Роботи:', bold: true, margin: [0, 8, 0, 4] }, this.worksTable(data.works)]
           : []),
         ...(data.parts.length > 0
-          ? [{ text: 'Запчастини:', bold: true, margin: [0, 8, 0, 4] }, this.itemsTable(data.parts)]
+          ? [{ text: 'Товари:', bold: true, margin: [0, 8, 0, 4] }, this.partsTable(data.parts)]
           : []),
         { text: ' ', margin: [0, 4] },
         this.documentTotal(data),
@@ -298,27 +345,94 @@ export class PdfService {
           margin: [0, 32, 0, 0],
         },
       ],
+    }));
+  }
+
+  /** Спільні параметри сторінки; логотип реєструється в `images` лише коли він є. */
+  private page(org: OrgPrintInfo): DocDefinition {
+    return {
       defaultStyle: { font: 'Roboto', fontSize: 10 },
       pageSize: 'A4',
       pageMargins: [40, 40, 40, 40],
+      ...(org.logo ? { images: { [LOGO_IMAGE_KEY]: org.logo } } : {}),
     };
-    return this.buildBuffer(docDef);
   }
 
-  private header(org: OrgInfo, title: string): Content {
+  /**
+   * Будує документ; якщо pdfmake не прийняв логотип (пошкоджене зображення з правильною
+   * сигнатурою) — будує ще раз без логотипа. Документ друкується завжди.
+   */
+  private async render(
+    org: OrgPrintInfo,
+    build: (org: OrgPrintInfo) => DocDefinition,
+  ): Promise<Buffer> {
+    if (!org.logo) return this.buildBuffer(build(org));
+    try {
+      return await this.buildBuffer(build(org));
+    } catch (e: unknown) {
+      this.logger.warn(
+        `PDF logo rejected by renderer, printing without it: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return this.buildBuffer(build({ ...org, logo: null }));
+    }
+  }
+
+  /**
+   * Шапка документа: логотип ліворуч, назва й реквізити організації поруч, назва документа
+   * праворуч. Однакова в наряді, рахунку, акті виконаних робіт і акті звірки.
+   */
+  private header(org: OrgPrintInfo, title: string): Content {
+    const join = (parts: Array<string | null | undefined | false>) =>
+      parts.filter(Boolean).join('   ');
+    const lines = [
+      join([org.edrpou && `ЄДРПОУ: ${org.edrpou}`, org.ipn && `ІПН: ${org.ipn}`]),
+      org.address ?? '',
+      join([org.phone && `Тел.: ${org.phone}`, org.email && `E-mail: ${org.email}`]),
+      org.bank
+        ? join([
+            `IBAN: ${org.bank.iban}`,
+            org.bank.bankName && `Банк: ${org.bank.bankName}`,
+            org.bank.mfo && `МФО: ${org.bank.mfo}`,
+          ])
+        : '',
+    ].filter(Boolean);
     return {
       columns: [
+        ...(org.logo ? [{ width: 90, image: LOGO_IMAGE_KEY, fit: [90, 60] }] : []),
         {
           width: '*',
           stack: [
-            { text: org.name, bold: true, fontSize: 14 },
-            ...(org.edrpou ? [{ text: `ЄДРПОУ: ${org.edrpou}`, fontSize: 9 }] : []),
+            { text: org.name, bold: true, fontSize: 13 },
+            ...lines.map(text => ({ text, fontSize: 8 })),
           ],
         },
-        { width: 'auto', text: title, bold: true, fontSize: 14, alignment: 'right' },
+        { width: 'auto', text: title, bold: true, fontSize: 13, alignment: 'right' },
       ],
+      columnGap: 10,
       margin: [0, 0, 0, 8],
     };
+  }
+
+  /**
+   * «Реквізити для оплати» рахунку — лише коли в НДІ задано основний банківський рахунок.
+   * Без рахунку блок не друкується (порожнього «IBAN:» у рахунку не буває).
+   */
+  private paymentDetails(org: OrgPrintInfo): Content[] {
+    if (!org.bank) return [];
+    const recipientEdrpou = org.bank.edrpou || org.edrpou;
+    return [
+      {
+        stack: [
+          { text: 'Реквізити для оплати:', bold: true, fontSize: 9 },
+          { text: `Одержувач: ${org.name}`, fontSize: 9 },
+          ...(recipientEdrpou ? [{ text: `ЄДРПОУ: ${recipientEdrpou}`, fontSize: 9 }] : []),
+          { text: `IBAN: ${org.bank.iban}`, fontSize: 9 },
+          ...(org.bank.bankName ? [{ text: `Банк: ${org.bank.bankName}`, fontSize: 9 }] : []),
+          ...(org.bank.mfo ? [{ text: `МФО: ${org.bank.mfo}`, fontSize: 9 }] : []),
+        ],
+        margin: [0, 12, 0, 0],
+      },
+    ];
   }
 
   private partyBlock(
@@ -386,23 +500,28 @@ export class PdfService {
     };
   }
 
-  private itemsTable(
-    rows: Array<{ name: string; quantity: number; price: number; total: number }>,
-  ): Content {
+  /** Роботи наряду: норма й факт годин окремо, ціна за годину, сума рядка. */
+  private worksTable(rows: WorkOrderPdfData['works']): Content {
+    const hours = (h: number | null | undefined): TableCell => ({
+      text: h == null ? '—' : String(h),
+      alignment: 'right',
+    });
     return {
       table: {
         headerRows: 1,
-        widths: ['*', 50, 65, 70],
+        widths: ['*', 50, 50, 65, 70],
         body: [
           [
             { text: 'Найменування', bold: true },
-            { text: 'Кіл.', bold: true },
+            { text: 'Норма, год', bold: true },
+            { text: 'Факт, год', bold: true },
             { text: 'Ціна', bold: true },
             { text: 'Сума', bold: true },
           ],
           ...rows.map((r): TableCell[] => [
             r.name,
-            { text: String(r.quantity), alignment: 'right' },
+            hours(r.normoHours === undefined ? r.quantity : r.normoHours),
+            hours(r.actualHours),
             { text: this.fmtMoney(r.price), alignment: 'right' },
             { text: this.fmtMoney(r.total), alignment: 'right' },
           ]),
@@ -412,15 +531,44 @@ export class PdfService {
     };
   }
 
+  /** Товари наряду: кількість з одиницею виміру, ціна, сума рядка. */
+  private partsTable(rows: WorkOrderPdfData['parts']): Content {
+    return {
+      table: {
+        headerRows: 1,
+        widths: ['*', 45, 35, 65, 70],
+        body: [
+          [
+            { text: 'Найменування', bold: true },
+            { text: 'Кіл.', bold: true },
+            { text: 'Од.', bold: true },
+            { text: 'Ціна', bold: true },
+            { text: 'Сума', bold: true },
+          ],
+          ...rows.map((r): TableCell[] => [
+            r.name,
+            { text: String(r.quantity), alignment: 'right' },
+            r.unit || 'шт',
+            { text: this.fmtMoney(r.price), alignment: 'right' },
+            { text: this.fmtMoney(r.total), alignment: 'right' },
+          ]),
+        ],
+      },
+      layout: 'lightHorizontalLines',
+    };
+  }
+
+  // «грн», а не «₴»: у вбудованому шрифті Roboto знаку гривні немає — на папері він друкувався
+  // порожнім квадратом. Формат суми — як в інтерфейсі: «1 250,00 грн».
   private fmtMoney(n: number): string {
-    return UAH_FMT.format(n) + ' ₴';
+    return `${UAH_FMT.format(n)} грн`;
   }
 
   private fmtDate(d: Date): string {
     return UA_DATE_FMT.format(d);
   }
 
-  private buildBuffer(docDef: Record<string, unknown>): Promise<Buffer> {
+  private buildBuffer(docDef: DocDefinition): Promise<Buffer> {
     // pdfmake v0.3.x: createPdf().getBuffer() handles the readable stream internally
     // and returns a Promise<Buffer>. We no longer need to wire up readable/end/error events.
     return pdfMake.createPdf(docDef).getBuffer();

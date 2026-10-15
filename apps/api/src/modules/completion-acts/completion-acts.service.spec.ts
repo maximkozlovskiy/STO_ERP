@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { PdfService } from '../pdf/pdf.service';
+import { OrgPrintInfoService } from '../pdf/org-print-info.service';
 
 // Регресійні гарди для sign(): ідемпотентність CONFIRM-еквіваленту (CAS DRAFT→SIGNED) та
 // поведінка auto-invoice ПОЗА транзакцією (best-effort, не роллбечить підписання).
@@ -81,6 +82,7 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
         { provide: DocumentNumberService, useValue: { next: vi.fn() } },
         { provide: InvoicesService, useValue: invoices },
         { provide: PdfService, useValue: { generateCompletionActPdf: vi.fn() } },
+        { provide: OrgPrintInfoService, useValue: { get: vi.fn() } },
         { provide: EventEmitter2, useValue: events },
       ],
     }).compile();

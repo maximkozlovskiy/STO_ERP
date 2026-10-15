@@ -16,10 +16,12 @@ import {
   formatVehicleLabel,
   TRANSACTION_TIMEOUT_MS,
   translateError,
+  WO_INVOICE_VISIBLE_STATUSES,
 } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
+import { OrgPrintInfoService } from '../pdf/org-print-info.service';
 import {
   WORK_ORDER_TRANSITIONS,
   CLOSED_STATUSES,
@@ -112,6 +114,8 @@ export class WorkOrdersService {
     private readonly events: EventEmitter2,
     // Єдиний власник складу суми наряду (BR-WO-007); його ж кличуть огляд і XLSX-імпорт запчастин.
     private readonly totals: WorkOrderTotalsService,
+    // Реквізити й логотип організації для шапки друкованого наряд-замовлення.
+    private readonly orgPrintInfo: OrgPrintInfoService,
   ) {}
 
   // ─── CRUD ────────────────────────────────────────────────
@@ -1283,6 +1287,11 @@ export class WorkOrdersService {
 
   // ─── Mappers ─────────────────────────────────────────────
 
+  /**
+   * Друкований наряд-замовлення (BR-WO-013): лише від «Виконано» (`WO_INVOICE_VISIBLE_STATUSES`) —
+   * до того клієнт отримує кошторис; дата — дата документа наряду; шапка — реквізити й логотип
+   * організації. Видалений наряд → 404 (BR-WO-012).
+   */
   async generatePdf(orgId: string, id: string): Promise<Buffer> {
     const [wo, org] = await Promise.all([
       this.prisma.workOrder.findFirst({
@@ -1292,10 +1301,12 @@ export class WorkOrdersService {
         // які не використовуються у PDF — лише name/quantity/price/amount + work.name + good.name.
         select: {
           number: true,
-          createdAt: true,
+          status: true,
+          documentDate: true,
+          inMileage: true,
           totalNet: true,
           totalAmount: true,
-          vehicle: { select: { make: true, model: true, licensePlate: true } },
+          vehicle: { select: { make: true, model: true, licensePlate: true, vin: true } },
           counterparty: {
             select: { firstName: true, lastName: true, companyName: true, phone: true },
           },
@@ -1322,28 +1333,39 @@ export class WorkOrdersService {
               quantity: true,
               price: true,
               amount: true,
-              good: { select: { name: true } },
+              // Одиниця рядка: обрана в рядку, інакше базова одиниця товару.
+              unitOfMeasure: { select: { shortName: true } },
+              good: {
+                select: {
+                  name: true,
+                  unit: true,
+                  unitOfMeasure: { select: { shortName: true } },
+                },
+              },
             },
           },
         },
       }),
-      this.prisma.organisation.findFirst({
-        where: { id: orgId },
-        select: { name: true, edrpou: true },
-      }),
+      this.orgPrintInfo.get(orgId),
     ]);
     if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
+    if (!WO_INVOICE_VISIBLE_STATUSES.includes(wo.status))
+      throw new BadRequestException(
+        translateError('err.workOrder.printBeforeCompletion', getLocale()),
+      );
 
     const cp = wo.counterparty;
     const counterpartyName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || '';
     const vehicleLabel = formatVehicleLabel(wo.vehicle);
 
     return this.pdf.generateWorkOrderPdf({
-      org: { name: org?.name ?? '', edrpou: org?.edrpou },
+      org,
       counterparty: { name: counterpartyName, phone: cp?.phone },
       vehicleLabel,
+      vin: wo.vehicle?.vin,
+      mileage: wo.inMileage,
       number: wo.number,
-      date: wo.createdAt,
+      date: wo.documentDate,
       works: wo.lines.map(l => {
         // totalAmount у WorkOrder уже рахується через (actualHours ?? normoHours) × price
         // (див. recalcTotals). Тут симетрично: quantity і total мають збігатися —
@@ -1357,6 +1379,8 @@ export class WorkOrdersService {
         return {
           name: l.work?.name ?? '',
           quantity,
+          normoHours: l.normoHours,
+          actualHours: l.actualHours,
           price,
           total: lineAmount(quantity, price),
         };
@@ -1364,6 +1388,8 @@ export class WorkOrdersService {
       parts: wo.parts.map(p => ({
         name: p.good?.name ?? '',
         quantity: p.quantity,
+        unit:
+          p.unitOfMeasure?.shortName ?? p.good?.unitOfMeasure?.shortName ?? p.good?.unit ?? 'шт',
         price: Number(p.price),
         total: Number(p.amount),
       })),

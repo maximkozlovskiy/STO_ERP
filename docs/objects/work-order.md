@@ -107,34 +107,45 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 
 ## API Endpoints (`/api/work-orders`)
 
-| Метод  | URL                                  | Дія                                                                             |
-| ------ | ------------------------------------ | ------------------------------------------------------------------------------- |
-| POST   | `/api/work-orders`                   | Створити наряд (lines у body)                                                   |
-| GET    | `/api/work-orders`                   | Список (фільтри: status, branchId, q, date range)                               |
-| GET    | `/api/work-orders/:id`               | Деталь з lines + parts                                                          |
-| GET    | `/api/work-orders/:id/lines-summary` | Зведення по табличних частинах і виконавці (BR-WO-009, 010); ролі — як у списку |
-| PATCH  | `/api/work-orders/:id`               | Оновити (WO_EDITABLE_STATUSES)                                                  |
-| POST   | `/api/work-orders/:id/transition`    | FSM перехід                                                                     |
-| POST   | `/api/work-orders/:id/clone`         | Клонувати наряд                                                                 |
-| POST   | `/api/work-orders/:id/share`         | Поширити кошторис                                                               |
-| GET    | `/api/work-orders/:id/parts`         | Запчастини наряду                                                               |
-| POST   | `/api/work-orders/:id/parts`         | Додати запчастину                                                               |
-| PATCH  | `/api/work-orders/:id/parts/:pId`    | Оновити запчастину                                                              |
-| DELETE | `/api/work-orders/:id/parts/:pId`    | Видалити запчастину                                                             |
-| GET    | `/api/work-orders/:id/lines`         | Роботи наряду                                                                   |
-| DELETE | `/api/work-orders/:id`               | Soft-delete (тільки WO_DELETABLE_STATUSES)                                      |
+| Метод  | URL                                  | Дія                                                                                                       |
+| ------ | ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/work-orders`                   | Створити наряд (lines у body)                                                                             |
+| GET    | `/api/work-orders`                   | Список (фільтри: status, branchId, q, date range)                                                         |
+| GET    | `/api/work-orders/:id`               | Деталь з lines + parts                                                                                    |
+| GET    | `/api/work-orders/:id/lines-summary` | Зведення по табличних частинах і виконавці (BR-WO-009, 010); ролі — як у списку                           |
+| PATCH  | `/api/work-orders/:id`               | Оновити (WO_EDITABLE_STATUSES)                                                                            |
+| POST   | `/api/work-orders/:id/transition`    | FSM перехід                                                                                               |
+| POST   | `/api/work-orders/:id/clone`         | Клонувати наряд                                                                                           |
+| POST   | `/api/work-orders/:id/share`         | Поширити кошторис                                                                                         |
+| GET    | `/api/work-orders/:id/pdf`           | Наряд-замовлення у PDF (BR-WO-013): від «Виконано»; ролі OWNER, ADMIN, RECEPTIONIST, MECHANIC, ACCOUNTANT |
+| GET    | `/api/work-orders/:id/parts`         | Запчастини наряду                                                                                         |
+| POST   | `/api/work-orders/:id/parts`         | Додати запчастину                                                                                         |
+| PATCH  | `/api/work-orders/:id/parts/:pId`    | Оновити запчастину                                                                                        |
+| DELETE | `/api/work-orders/:id/parts/:pId`    | Видалити запчастину                                                                                       |
+| GET    | `/api/work-orders/:id/lines`         | Роботи наряду                                                                                             |
+| DELETE | `/api/work-orders/:id`               | Soft-delete (тільки WO_DELETABLE_STATUSES)                                                                |
 
 ---
 
 ## UI (Web)
 
-| Компонент / сторінка          | Файл                                             |
-| ----------------------------- | ------------------------------------------------ |
-| Список                        | `app/(app)/work-orders/page.tsx`                 |
-| Деталь (картка)               | `app/(app)/work-orders/[id]/PageClient.tsx`      |
-| Модалка створення/редагування | `components/ui/CreateWorkOrderModal.tsx`         |
-| Detail Panel schema           | `lib/panel-schema.ts` → `WO_PANEL_SCHEMA`        |
-| FSM кнопки                    | `components/ui/fsm-buttons.tsx` → `<FSMButtons>` |
+| Компонент / сторінка          | Файл                                                   |
+| ----------------------------- | ------------------------------------------------------ |
+| Список                        | `app/(app)/work-orders/page.tsx`                       |
+| Деталь (картка)               | `app/(app)/work-orders/[id]/PageClient.tsx`            |
+| Модалка створення/редагування | `components/ui/CreateWorkOrderModal.tsx`               |
+| Detail Panel schema           | `lib/panel-schema.ts` → `WO_PANEL_SCHEMA`              |
+| FSM кнопки                    | `components/ui/fsm-buttons.tsx` → `<FSMButtons>`       |
+| Друк наряду на сторінці       | `app/(app)/work-orders/[id]/WorkOrderPrintButtons.tsx` |
+| Друк PDF (спільний помічник)  | `lib/download.ts` → `printPdf`                         |
+
+**Друк (BR-WO-013).** До «Виконано» картка друкує кошторис («Друк», «Зберегти як» через токен
+поширення), як раніше. Від «Виконано» — «Друк наряду» (серверний PDF, вікно друку відкривається
+до запиту) і «Зберегти PDF»; «Друк рахунку» — коли рахунок наряду є і роль може його друкувати
+(OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST — `INVOICE_PRINT_ROLES` у `hooks/useWorkOrderActions.ts`).
+Картка — `useWorkOrderActions` (`canPrintOrder`, `canPrintInvoice`); сторінка — «Друк наряду» і
+«Зберегти PDF» (`WorkOrderPrintButtons`), «Друк рахунку» в секції рахунку (`InvoiceSection`).
+Для наряду, позначеного на видалення, серверного друку немає (BR-WO-012).
 
 **Картка наряду — секції (PageClient.tsx, у порядку рендеру):**
 
@@ -142,7 +153,7 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 2. Метадані (клієнт, авто, склад, відповідальний)
 3. Підсумки (плановані/фактичні години, сума, оплачено)
 4. **Акт виконаних робіт** (`WO_INVOICEABLE_STATUSES` гейт)
-5. **Рахунок** (`WO_INVOICEABLE_STATUSES` гейт + `invoiceRef !== undefined`) — використовує `INVOICE_STATUS_LABELS` з `@sto/shared`; `InvoiceRef` interface = `{ id, number, status: InvoiceStatus, amount, documentDate }`. Endpoint `/invoices/from-work-order/:id/find` для preload + `POST /invoices/from-work-order/:id` (create) + `/refresh` (DRAFT only) + `/pdf` (download)
+5. **Рахунок** (`WO_INVOICEABLE_STATUSES` гейт + `invoiceRef !== undefined`) — використовує `INVOICE_STATUS_LABELS` з `@sto/shared`; `InvoiceRef` interface = `{ id, number, status: InvoiceStatus, amount, documentDate }`. Endpoint `/invoices/from-work-order/:id/find` для preload + `POST /invoices/from-work-order/:id` (create) + `/refresh` (DRAFT only) + `/pdf` (download і «Друк рахунку»)
 6. Роботи (`WorkOrderLinesSection`)
 7. Запчастини (`WorkOrderPartsSection`)
 8. Огляд авто
@@ -185,6 +196,8 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 - **BR-WO-011**: **Правка рядка роботи зберігає роботу й виконавця.** `PATCH /work-orders/:id/lines/:lineId` пише в рядок нові `workId` і `employeeId` (з виконавця рядка рахуються зарплата і блок «Виконавці», BR-WO-010). Нова робота й новий виконавець мають існувати в організації і не бути видаленими — інакше 404, рядок не змінюється. Перевіряється лише ЗМІНЕНЕ значення: картка наряду шле роботу й виконавця кожного рядка при кожному збереженні, тому рядок із уже видаленою роботою чи звільненим виконавцем зберігається далі. Години й ціна при зміні роботи беруться із запиту (або лишаються як були), з довідника робіт не підтягуються. У статусах «В роботі» / «Призупинено» правляться лише фактичні години — зміна роботи чи виконавця там дає 400 (Bug #836)
 - **BR-WO-012**: **Документ, позначений на видалення, можна відкрити лише на перегляд** (рішення власника 2026-10-13; спільне для нарядів, рахунків, замовлень і повернень постачальникам, складських документів та оплат постачальникам). `GET /<документ>/:id` приймає необов'язковий `withDeleted` (тільки `true` або `false`, інше → 400). З `true` повертається й видалений документ із заповненим `deletedAt`; без параметра або з `false` — 404, як раніше. Організація перевіряється завжди, ролі маршруту ті самі. Жодна змінна операція (оновлення, зміна статусу, проведення, скасування, оплата, копіювання, рядки, повторне видалення) видалений документ не бачить і дає 404. У web картка такого документа відкривається зі смугою «Документ позначено на видалення — лише перегляд», без збереження й переходів; кнопки, що йдуть на сервер по друк (PDF, токен поширення), і дії в секціях рахунку, гарантії та фото для видаленого сховані, друк засобами браузера лишається. Маскування собівартості за роллю діє й для видаленого наряду. (`WithDeletedQueryPipe`, `findOne(..., { withDeleted })`)
 
+- **BR-WO-013**: **Друкований наряд-замовлення — лише від «Виконано»** (рішення власника 2026-10-15). `GET /work-orders/:id/pdf` друкує наряд-замовлення лише в статусах «Виконано», «Виставлено», «Оплачено», «Архів» (`WO_INVOICE_VISIBLE_STATUSES`); в інших — 400 «Наряд-замовлення друкується після виконання робіт» (до того клієнт отримує кошторис). Видалений наряд — 404 (BR-WO-012). Дата документа — `documentDate` наряду, а не дата створення запису. Ролі маршруту — OWNER, ADMIN, RECEPTIONIST, MECHANIC, ACCOUNTANT. Зміст: шапка з логотипом і реквізитами організації (назва, ЄДРПОУ, ІПН, адреса — фактична, інакше юридична, телефон, e-mail, IBAN, банк, МФО основного банківського рахунку; `OrgPrintInfoService`, та сама шапка в рахунку, акті виконаних робіт і акті звірки); роботи — норма й факт годин окремо, ціна, сума; товари — кількість, одиниця, ціна, сума; підсумок з ПДВ (BR-WO-007); клієнт; авто — марка, модель, номер, VIN, пробіг на вході; підписи. Логотип — лише PNG/JPEG (за першими байтами) до 1 МБ зі сховища за ключем своєї організації (`org/<orgId>/public/<файл>` або, для логотипів до T7, `org/<orgId>/<файл>`); будь-яка проблема з логотипом — документ друкується без нього (попередження в лог). У web кнопки наряд-замовлення показуються лише в цих статусах і не показуються для видаленого наряду
+
 → Детально у [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
 
 ---
@@ -215,6 +228,7 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | список: відбір за датою документа                  | `work-orders.list-date-filter.spec.ts`           | 4      |
 | нумерація (create/clone)                           | `work-orders.numbering.spec.ts`                  | 2      |
 | друкований наряд: підсумок із тоталів              | `work-orders.pdf-totals.spec.ts`                 | 6      |
+| друк наряд-замовлення: статуси, дата, зміст, ролі  | `work-orders.print.spec.ts`                      | 18     |
 | правка рядка роботи: робота й виконавець           | `work-orders.line-update.spec.ts`                | 7      |
 | recalc cap                                         | `work-orders.recalc-cap.spec.ts`                 | 5      |
 | recalc totals                                      | `work-orders.recalc-totals.spec.ts`              | 21     |
@@ -223,7 +237,7 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | share public                                       | `work-orders.share-public.spec.ts`               | 14     |
 | зведення по табличних частинах і виконавці         | `../lines-summary/lines-summary.service.spec.ts` | 19     |
 
-Разом: **271** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **296** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для BR-WO-007 — сума наряду з ПДВ:
 
@@ -240,6 +254,19 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
   й акта), `apps/api/src/modules/completion-acts/completion-acts.pdf-totals.spec.ts` (сума акта =
   сума наряду до сплати), `apps/api/src/modules/inspection/inspection.service.spec.ts` (авто-рядки огляду).
 
+Правило → тест для BR-WO-013 — друк наряд-замовлення:
+
+- `work-orders.print.spec.ts` — кожен дозволений і заборонений статус (заборонені — усі інші
+  значення enum), видалений → 404, дата документа, реквізити з `OrgPrintInfoService`, VIN/пробіг,
+  норма/факт годин, одиниця товару, ролі маршруту.
+- поза модулем: `apps/api/src/modules/pdf/pdf.org-header.spec.ts` (шапка з логотипом / без /
+  пошкоджений логотип, реквізити в шапці, таблиці робіт і товарів),
+  `apps/api/src/modules/pdf/org-print-info.service.spec.ts` (логотип недоступний / не PNG-JPEG /
+  завеликий / чужий, основний рахунок видалений чи чужий), web —
+  `components/ui/__tests__/CreateWorkOrderModal.print.test.tsx`,
+  `app/(app)/work-orders/[id]/__tests__/WorkOrderPrintButtons.test.tsx`, E2E —
+  `apps/web/e2e/work-order-print.spec.ts`.
+
 **Чого тут НЕМА.** Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.
 
 - Guard `available >= qty` живе в `InventoryService.createMovement` (модуль inventory). Спек порядку рухів наряду відтворює його моком-«журналом»; сам guard на живому складі перевіряє лише `work-order-stock-effects.integration.spec.ts`.
@@ -247,3 +274,4 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 - Послідовність циклів перевірено для чотирьох методів `WorkOrderStockEffectsService`. Цикли в `recalcTotals` і `clone` рухів складу не створюють і цим не охоплені.
 - Сторож прямого запису статусу наряду (`work-order-status.spec.ts`) — regex, не AST: не бачить делегат через псевдонім (`const wo = tx.workOrder`), динамічний делегат (`prisma[model]`, так пише sync push) і сирий SQL зі складеною назвою таблиці. Нелітеральний `data` він вважає порушенням.
 - Нумерація: перевірено, що номер береться з `DocumentNumberService`; формат номера й унікальність під конкурентним створенням — зона модуля document-number.
+- Друк наряд-замовлення: текст готового PDF unit-тести не читають (pdfmake стискає потоки й вбудовує шрифт) — перевіряється docDefinition, який іде в pdfmake; E2E перевіряє лише, що PDF отримано (`%PDF`). Вигляд шапки на папері — ручна перевірка. Що видалений наряд не потрапляє в статуси друку, тримає FSM (видаляються лише чернетка й скасований) — окремо в web це стереже `!viewOnly` / `isDeleted`.

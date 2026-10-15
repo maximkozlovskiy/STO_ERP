@@ -30,17 +30,19 @@ export function makeAccountFixture() {
       findFirst: vi.fn().mockResolvedValue(null),
       findMany: vi.fn().mockResolvedValue([]),
     },
-    organisation: { findFirst: vi.fn().mockResolvedValue({ name: 'СТО Тест' }) },
     // Акт звірки читає баланс і журнал з одного знімка: callback отримує той самий мок.
     $transaction: vi.fn(),
   };
   prisma.$transaction.mockImplementation((cb: (tx: typeof prisma) => unknown) => cb(prisma));
   const pdf = { generateReconciliationActPdf: vi.fn().mockResolvedValue(Buffer.from('pdf')) };
+  // Реквізити й логотип організації для шапки акта — OrgPrintInfoService.
+  const orgPrintInfo = { get: vi.fn().mockResolvedValue({ name: 'СТО Тест' }) };
   const service = new SettlementsAccountService(
     prisma as unknown as PrismaService,
     pdf as unknown as PdfService,
+    orgPrintInfo as never,
   );
-  return { prisma, pdf, service };
+  return { prisma, pdf, orgPrintInfo, service };
 }
 
 /** Рядок журналу, яким його повертає Prisma (суми — рядки, як Decimal після серіалізації). */

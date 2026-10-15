@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { calculatePagination } from '../../common/utils/pagination';
 import { PdfService } from '../pdf/pdf.service';
+import { OrgPrintInfoService } from '../pdf/org-print-info.service';
 import { CreateReconciliationActDto } from './settlements.dto';
 import { BALANCE_SIGN } from './settlements.service';
 import { money, moneyFromDecimal } from '../../common/utils/money';
@@ -18,6 +19,8 @@ export class SettlementsAccountService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pdf: PdfService,
+    // Реквізити й логотип організації для шапки друкованого акта звірки.
+    private readonly orgPrintInfo: OrgPrintInfoService,
   ) {}
 
   async getBalance(orgId: string, counterpartyId: string) {
@@ -251,7 +254,7 @@ export class SettlementsAccountService {
     // org has id=orgId) — паралель не псує семантику NotFound (throw після Promise.all).
     // PDF narrow select: act має 10+ колонок (id/orgId/createdAt/syncVersion/deletedAt тощо),
     // PDF використовує лише periodFrom/periodTo/openingBalance/closingBalance/snapshotJson + counterparty.
-    // org має 15+ settings колонок, PDF читає лише name.
+    // Шапка акта — реквізити й логотип організації (OrgPrintInfoService).
     const [act, org] = await Promise.all([
       this.prisma.reconciliationAct.findFirst({
         where: { id: actId, orgId, counterpartyId },
@@ -264,10 +267,7 @@ export class SettlementsAccountService {
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         },
       }),
-      this.prisma.organisation.findFirst({
-        where: { id: orgId },
-        select: { name: true },
-      }),
+      this.orgPrintInfo.get(orgId),
     ]);
     if (!act)
       throw new NotFoundException(
@@ -288,7 +288,7 @@ export class SettlementsAccountService {
       : [];
 
     return this.pdf.generateReconciliationActPdf({
-      org: { name: org?.name ?? 'СТО' },
+      org: org.name ? org : { ...org, name: 'СТО' },
       counterpartyName: cpName,
       periodFrom: act.periodFrom,
       periodTo: act.periodTo,
