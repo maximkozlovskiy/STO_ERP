@@ -228,6 +228,11 @@ interface CalendarSlotModalProps {
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
+  /**
+   * Наряд змінено з його картки, відкритої з форми (статус, план): категорія й колір записів
+   * календаря залежать від статусу наряду (BR-CAL-008) — вид треба перечитати.
+   */
+  onWorkOrderChanged?: () => void;
 
   date: string;
   lifts: Lift[];
@@ -266,6 +271,7 @@ export function CalendarSlotModal({
   onClose,
   onSaved,
   onDeleted,
+  onWorkOrderChanged,
   date,
   lifts,
   form,
@@ -1562,6 +1568,7 @@ export function CalendarSlotModal({
             plannedHours: nh > 0 ? String(nh) : undefined,
           };
         })()}
+        onUpdated={onWorkOrderChanged}
         onCreated={wo => {
           const display = `${wo.number}${form.counterpartyDisplay ? ` · ${form.counterpartyDisplay}` : ''}`;
           setForm(f => ({ ...f, workOrderId: wo.id, workOrderDisplay: display }));

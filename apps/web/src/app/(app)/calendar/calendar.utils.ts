@@ -69,6 +69,13 @@ export function toDateString(d: Date) {
   return DATE_FMT.format(d);
 }
 
+/** 'YYYY-MM-DD' → наступна календарна дата (через полудень UTC — без зсуву на переведенні годинника). */
+export function nextDateString(date: string): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 export function kyivHours(iso: string): number {
   const parts = KYIV_HM_FMT.formatToParts(new Date(iso));
   const h = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);

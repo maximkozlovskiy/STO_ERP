@@ -38,8 +38,10 @@ import {
   decimalHoursToISO,
   kyivHours,
   snapTo15,
+  nextDateString,
   toDateString,
 } from './calendar.utils';
+import { buildMonthSlots } from './calendar-month';
 
 // Shared drag-id for the pending-slot block (used both by the draggable in JSX
 // and by handleDragEnd to dispatch logic). Exported so sub-components can use it.
@@ -99,7 +101,26 @@ export function useCalendarState() {
     [router, searchParams],
   );
 
+  /**
+   * Вид «День» на дату — ОДНИМ `router.replace`. Пара `setDate(d)` + `setCalView('day')` давала
+   * два replace від того самого `searchParams`, і другий повертав у URL стару дату: сторінка
+   * показувала обраний день, а оновлення сторінки — інший.
+   */
+  const openDay = useCallback(
+    (d: string) => {
+      setDateState(d);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('date', d);
+      params.set('view', 'day');
+      router.replace(`?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
+
   const [slots, setSlots] = useState<CalendarSlot[]>([]);
+  // Записи наступного дня — лише щоб знати кінець ланцюжка багатоденного запису для
+  // «прострочено» в рядку лічильників виду «День» (BR-CAL-008). Не показуються.
+  const [nextDaySlots, setNextDaySlots] = useState<CalendarSlot[]>([]);
   const [bookingSlots, setBookingSlots] = useState<BookingSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [lifts, setLifts] = useState<Lift[]>([]);
@@ -118,6 +139,9 @@ export function useCalendarState() {
   const [monthSlots, setMonthSlots] = useState<MonthSlots>({});
   const [monthLoading, setMonthLoading] = useState(false);
   const [monthError, setMonthError] = useState(false);
+  // Запис, відкритий карткою виду «Місяць» (BR-CAL-009): денного списку `slots` у цьому виді
+  // немає, тож «минулий» рахується від самого слота.
+  const [monthEditSlot, setMonthEditSlot] = useState<CalendarSlot | null>(null);
 
   const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('day');
   const [statsFrom, setStatsFrom] = useState('');
@@ -291,47 +315,43 @@ export function useCalendarState() {
 
   const monthAbortRef = useRef<AbortController | null>(null);
 
-  const loadMonth = useCallback(async (yearMonth: string) => {
+  /**
+   * `silent` — перечитування після збереження чи видалення запису: без спінера на місці сітки,
+   * щоб місяць не блимав під формою, що згортається.
+   */
+  const loadMonth = useCallback(async (yearMonth: string, silent = false) => {
     const [y, m] = yearMonth.split('-').map(Number);
     if (!y || !m) return;
     const daysInMonth = new Date(y, m, 0).getDate();
     monthAbortRef.current?.abort();
     const ac = new AbortController();
     monthAbortRef.current = ac;
-    setMonthLoading(true);
+    if (!silent) setMonthLoading(true);
     if (mountedRef.current) setMonthError(false);
     try {
       const days = Array.from({ length: daysInMonth }, (_, i) => {
         const d = i + 1;
         return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       });
+      // Перший день наступного місяця не показується, але продовження багатоденного запису
+      // на ньому — кінець ланцюжка для «прострочено» останнього дня (BR-CAL-008).
+      const next = new Date(y, m, 1);
+      const nextDay = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
       let failures = 0;
       const results = await Promise.all(
-        days.map(d =>
+        [...days, nextDay].map(d =>
           apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`, { signal: ac.signal })
             .then(s => ({ d, slots: s }))
             .catch(() => {
-              failures++;
+              // Збій лише довантаженого дня не робить місяць «не завантаженим».
+              if (d !== nextDay) failures++;
               return { d, slots: [] as CalendarSlot[] };
             }),
         ),
       );
       if (ac.signal.aborted) return;
-      const acc: MonthSlots = {};
-      for (const { d, slots: daySlots } of results) {
-        const byLift: Record<string, number> = {};
-        for (const s of daySlots) {
-          if (s.liftId) byLift[s.liftId] = (byLift[s.liftId] ?? 0) + 1;
-        }
-        // Категорії дня (BR-CAL-008) рахує вид від `nowMs` — тут лише потрібні для них поля.
-        const entries = daySlots.map(s => ({
-          endMs: new Date(s.endAt).getTime(),
-          workOrderStatus: s.workOrderStatus ?? null,
-        }));
-        acc[d] = { total: daySlots.length, byLift, entries };
-      }
       if (mountedRef.current) {
-        setMonthSlots(acc);
+        setMonthSlots(buildMonthSlots(results, days));
         setMonthError(days.length > 0 && failures === days.length);
       }
     } finally {
@@ -419,6 +439,11 @@ export function useCalendarState() {
     setLoading(true);
     Promise.all([
       apiFetch<CalendarSlot[]>(`/calendar/slots?date=${date}`),
+      // Збій довантаження наступного дня не ламає день — лише «прострочено» рахується
+      // за власним кінцем частини.
+      apiFetch<CalendarSlot[]>(`/calendar/slots?date=${nextDateString(date)}`).catch(
+        () => [] as CalendarSlot[],
+      ),
       apiFetch<{
         items: Array<{
           id: string;
@@ -435,9 +460,10 @@ export function useCalendarState() {
         }>,
       })),
     ])
-      .then(([calSlots, bookingRes]) => {
+      .then(([calSlots, nextSlots, bookingRes]) => {
         if (!mountedRef.current) return;
         setSlots(calSlots);
+        setNextDaySlots(nextSlots);
         // Assign each PENDING booking to the first lift that has no CalendarSlot conflict.
         // lifts state may not be populated yet on first load — read from the ref captured below.
         const currentLifts = liftsRef.current;
@@ -991,8 +1017,28 @@ export function useCalendarState() {
     return (blockedHours / dynTotalHours) * 100;
   }, [nowMs, date, minHour, dynWindowStart, dynTotalHours]);
 
+  // Рядок лічильників дня (BR-CAL-008) — та сама збірка, що й у місяці: кінець ланцюжка
+  // враховує продовження наступного дня.
+  const dayEntries = useMemo(
+    () =>
+      date
+        ? (buildMonthSlots(
+            [
+              { d: date, slots },
+              { d: nextDateString(date), slots: nextDaySlots },
+            ],
+            [date],
+          )[date]?.entries ?? [])
+        : [],
+    [date, slots, nextDaySlots],
+  );
+
   const isEditingPast = useMemo(() => {
     if (!editingSlotId || !nowMs) return false;
+    // Запис, відкритий з виду «Місяць», — минулий за власним `endAt` (BR-CAL-009).
+    if (monthEditSlot?.id === editingSlotId) {
+      return new Date(monthEditSlot.endAt).getTime() < nowMs;
+    }
     const slot = slots.find(s => s.id === editingSlotId);
     if (!slot) return false;
     const todayKyiv = toDateString(new Date(nowMs));
@@ -1000,13 +1046,14 @@ export function useCalendarState() {
     if (slotDate < todayKyiv) return true;
     if (slotDate === todayKyiv) return kyivHours(slot.startAt) < minHour;
     return false;
-  }, [editingSlotId, slots, nowMs, minHour]);
+  }, [editingSlotId, monthEditSlot, slots, nowMs, minHour]);
 
   // ── Modal close / save callbacks ──────────────────────────────────────────
 
   const handleModalClose = useCallback(() => {
     setShowAdd(false);
     setEditingSlotId(null);
+    setMonthEditSlot(null);
     setError('');
     setPendingSlot(null);
   }, []);
@@ -1014,11 +1061,50 @@ export function useCalendarState() {
   const handleModalSaved = useCallback(() => {
     setShowAdd(false);
     setEditingSlotId(null);
+    setMonthEditSlot(null);
     setPendingSlot(null);
     setForm(EMPTY_FORM);
     setCpDisplay('');
-    load();
-  }, [load]);
+    // Запис збережено чи видалено з виду «Місяць» — перечитати місяць, а не день (BR-CAL-009).
+    if (calView === 'month') void loadMonth(yearMonth, true);
+    else load();
+  }, [load, loadMonth, calView, yearMonth]);
+
+  /** Перечитати поточний вид, не закриваючи форму (наряд змінено з його картки). */
+  const refreshView = useCallback(() => {
+    if (calView === 'month') void loadMonth(yearMonth, true);
+    else if (calView === 'day') load();
+  }, [calView, load, loadMonth, yearMonth]);
+
+  // ── Month view: картка запису й «новий запис на дату» (BR-CAL-009) ─────────
+
+  /**
+   * Відкриває запис із картки місяця в тій самій формі, що й вид «День». Дата сторінки стає
+   * датою запису: форма рахує час від `date`, інакше збереження перенесло б запис на інший день.
+   */
+  const openMonthSlot = useCallback(
+    (slot: CalendarSlot) => {
+      setDate(toDateString(new Date(slot.startAt)));
+      setMonthEditSlot(slot);
+      setError('');
+      handleEditSlot(slot);
+    },
+    [setDate, handleEditSlot],
+  );
+
+  const openNewOnDate = useCallback(
+    (dayStr: string) => {
+      setDate(dayStr);
+      setMonthEditSlot(null);
+      setPendingSlot(null);
+      setEditingSlotId(null);
+      setError('');
+      setCpDisplay('');
+      setForm(EMPTY_FORM);
+      setShowAdd(true);
+    },
+    [setDate],
+  );
 
   return {
     // URL / view
@@ -1026,6 +1112,7 @@ export function useCalendarState() {
     setCalView,
     date,
     setDate,
+    openDay,
     yearMonth,
     prevDay,
     nextDay,
@@ -1036,6 +1123,7 @@ export function useCalendarState() {
 
     // Day view data
     slots,
+    dayEntries,
     bookingSlots,
     loading,
     lifts,
@@ -1103,9 +1191,12 @@ export function useCalendarState() {
     cancelPending,
     handleEditSlot,
     removeSlot,
+    openMonthSlot,
+    openNewOnDate,
 
     // Modal callbacks
     handleModalClose,
     handleModalSaved,
+    refreshView,
   };
 }

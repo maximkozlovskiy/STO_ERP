@@ -44,9 +44,39 @@
       "sun": "Sun"
     },
     "loadError": "Failed to load the monthly calendar. Check your connection and refresh the page.",
-    "recordsOne": "{{count}} booking",
-    "recordsFew": "{{count}} bookings",
-    "recordsMany": "{{count}} bookings",
+    "records_one": "{{count}} booking",
+    "records_few": "{{count}} bookings",
+    "records_many": "{{count}} bookings",
+    "records_other": "{{count}} bookings",
+    "card": {
+      "noWorkOrder": "No work order",
+      "continuation": "continuation",
+      "more": "{{count}} more",
+      "moreAria": "{{count}} more — open day {{date}}"
+    },
+    "openDay": "Open day {{date}}",
+    "newRecord": "New booking on {{date}}",
+    "type": {
+      "WORK": "Work",
+      "MAINTENANCE": "Maintenance",
+      "BREAK": "Break",
+      "MEETING": "Meeting"
+    },
+    "legend": {
+      "button": "Calendar icon legend",
+      "title": "What the icons mean",
+      "categories": "Booking state (bar and right icon)",
+      "types": "Booking type (left icon)",
+      "categoryHint": {
+        "overdue": "The booking has ended (including next-day continuation) but the work order is not finished",
+        "inProgress": "Work order in progress or on hold",
+        "planned": "Work order estimated or approved",
+        "draft": "Work order is a draft",
+        "done": "Work order completed, invoiced, paid or archived",
+        "cancelled": "Work order cancelled",
+        "other": "Service booking or booking without a work order"
+      }
+    },
     "category": {
       "overdue": "Overdue",
       "inProgress": "In progress",

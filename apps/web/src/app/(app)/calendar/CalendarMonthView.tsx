@@ -1,10 +1,21 @@
 'use client';
 
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Eye, Plus } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
-import type { MonthSlots } from './calendar.types';
-import { toDateString } from './calendar.utils';
-import { CATEGORY_VIEW, SLOT_CATEGORIES, countCategories } from './calendar-categories';
+import { woStatusLabel } from '@/i18n/enumLabel';
+import type { CalendarSlot, MonthSlots } from './calendar.types';
+import { fmtTime, toDateString } from './calendar.utils';
+import {
+  CATEGORY_VIEW,
+  SLOT_TYPE_ICON,
+  slotCategory,
+  slotType,
+  type MonthEntry,
+} from './calendar-categories';
+import { monthCards } from './calendar-month';
+import { CalendarCategoryCounters } from './CalendarCategoryCounters';
 
 interface CalendarMonthViewProps {
   yearMonth: string; // 'YYYY-MM'
@@ -12,7 +23,12 @@ interface CalendarMonthViewProps {
   monthLoading: boolean;
   monthError: boolean;
   nowMs: number;
+  /** Вид «День» на цю дату (клік по клітинці, «ще N», дія «Відкрити день»). */
   onDayClick: (dateStr: string) => void;
+  /** Картка запису → та сама форма, що й у виді «День» (BR-CAL-009). */
+  onOpenSlot: (slot: CalendarSlot) => void;
+  /** Дія «Новий запис на цю дату». */
+  onNewOnDate: (dateStr: string) => void;
 }
 
 /** Наскільки блідшає фон завантаженості минулого дня (раніше — `opacity-60` кнопки). */
@@ -28,6 +44,83 @@ const DAY_LABEL_KEYS = [
   'month.weekdays.sun',
 ] as const;
 
+/** 'YYYY-MM-DD' → 'DD.MM.YYYY' для назв дій (локаль проєкту). */
+const dmy = (dayStr: string) => dayStr.split('-').reverse().join('.');
+
+// Кнопки на клітинці стоять поверх фону завантаженості — власна підкладка `bg-surface`
+// тримає контраст (той самий прийом, що й у рядка лічильників).
+const CELL_ACTION =
+  'inline-flex h-5 w-5 items-center justify-center rounded border border-border bg-surface text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
+
+interface MonthSlotCardProps {
+  entry: MonthEntry;
+  nowMs: number;
+  onOpen: (slot: CalendarSlot) => void;
+}
+
+const MonthSlotCard = memo(function MonthSlotCard({ entry, nowMs, onOpen }: MonthSlotCardProps) {
+  const { t } = useTranslation('calendar');
+  const { slot } = entry;
+  const category = slotCategory(entry, nowMs);
+  const { icon: CategoryIcon, className, barClassName } = CATEGORY_VIEW[category];
+  const type = slotType(slot.type);
+  const TypeIcon = SLOT_TYPE_ICON[type];
+  const time = fmtTime(slot.startAt);
+  const categoryLabel = t(`month.category.${category}`);
+  const typeLabel = t(`month.type.${type}`);
+  // Головне — номер наряду (без наряду — «Без наряду»): не обрізається. Другорядне — клієнт
+  // (без наряду — клієнт або примітка) — обрізається. Механік клієнта не отримує (API віддає
+  // лише номер наряду) — тоді другорядного немає.
+  const main = slot.workOrderNumber ?? t('month.card.noWorkOrder');
+  const secondary = slot.workOrderNumber
+    ? slot.counterpartyName
+    : (slot.counterpartyName ?? slot.notes);
+  const text = secondary ? `${main} · ${secondary}` : main;
+  const title = [
+    `${time}–${fmtTime(slot.endAt)}${slot.parentSlotId ? ` (${t('month.card.continuation')})` : ''}`,
+    slot.workOrderNumber
+      ? `${slot.workOrderNumber}${slot.workOrderStatus ? ` · ${woStatusLabel(slot.workOrderStatus)}` : ''}`
+      : t('month.card.noWorkOrder'),
+    slot.counterpartyName,
+    slot.cpPhone,
+    [slot.vehicleSummary, slot.vehiclePlate].filter(Boolean).join(' ') || null,
+    slot.notes,
+    `${typeLabel} · ${categoryLabel}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return (
+    <button
+      type="button"
+      onClick={e => {
+        // Інакше клік дійшов би до клітинки й відкрив вид «День» замість запису.
+        e.stopPropagation();
+        onOpen(slot);
+      }}
+      title={title}
+      aria-label={`${time} ${text}. ${typeLabel}. ${categoryLabel}`}
+      data-testid="month-slot-card"
+      data-category={category}
+      className={`flex w-full min-w-0 items-center gap-1 rounded border border-border border-l-4 ${barClassName} bg-surface px-1 py-0.5 text-left text-[11px] leading-tight text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary`}
+    >
+      <TypeIcon className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="shrink-0 tabular-nums text-muted-foreground">{time}</span>
+      {/* Номер — природної ширини (обрізається лише коли не влазить сам); клієнт — `flex-1`
+          з нульовою базою, тобто лише залишок місця. Іконки `shrink-0` лишаються видимими. */}
+      <span className="min-w-0 truncate font-medium" data-part="main">
+        {main}
+      </span>
+      {secondary && (
+        <span className="min-w-0 flex-1 truncate" data-part="secondary">
+          · {secondary}
+        </span>
+      )}
+      <CategoryIcon className={`h-3 w-3 shrink-0 ${className}`} aria-hidden="true" />
+    </button>
+  );
+});
+
 export function CalendarMonthView({
   yearMonth,
   monthSlots,
@@ -35,6 +128,8 @@ export function CalendarMonthView({
   monthError,
   nowMs,
   onDayClick,
+  onOpenSlot,
+  onNewOnDate,
 }: CalendarMonthViewProps) {
   const { t } = useTranslation('calendar');
   const [y, m] = yearMonth ? yearMonth.split('-').map(Number) : [0, 0];
@@ -91,7 +186,7 @@ export function CalendarMonthView({
                   return (
                     <div
                       key={di}
-                      className="min-h-20 bg-secondary/40 border-r border-border last:border-r-0"
+                      className="min-h-36 bg-secondary/40 border-r border-border last:border-r-0"
                     />
                   );
                 const info = monthSlots[dayStr];
@@ -105,22 +200,19 @@ export function CalendarMonthView({
                 const bgAlpha =
                   total === 0 ? 0 : Math.max(0.08, load * 0.5) * (isPast ? PAST_DIM : 1);
                 const dayNum = parseInt(dayStr.slice(8), 10);
-                const counts = countCategories(info?.entries ?? [], nowMs);
-                const recordsLabel = t(
-                  total === 1
-                    ? 'month.recordsOne'
-                    : total < 5
-                      ? 'month.recordsFew'
-                      : 'month.recordsMany',
-                  { count: total },
-                );
+                const entries = info?.entries ?? [];
+                const { cards, more } = monthCards(entries);
+                const date = dmy(dayStr);
                 return (
-                  <button
+                  // Клітинка — `div`, а не кнопка: усередині кнопки карток і дій (BR-CAL-009).
+                  // Клік по вільному місцю — вид «День» (миша); з клавіатури — дія «Відкрити день».
+                  <div
                     key={dayStr}
-                    type="button"
                     onClick={() => onDayClick(dayStr)}
-                    title={total > 0 ? recordsLabel : undefined}
-                    className={`min-h-20 border-r border-border last:border-r-0 p-2 text-left transition-colors hover:bg-primary/5 flex flex-col gap-1`}
+                    title={total > 0 ? t('month.records', { count: total }) : undefined}
+                    data-testid="month-day"
+                    data-date={dayStr}
+                    className="group relative min-h-36 min-w-0 cursor-pointer border-r border-border last:border-r-0 p-2 text-left transition-colors hover:bg-primary/5 flex flex-col gap-1"
                     style={
                       total > 0
                         ? {
@@ -134,35 +226,68 @@ export function CalendarMonthView({
                     >
                       {dayNum}
                     </span>
-                    {total > 0 && (
-                      <span
-                        // Підкладка `bg-surface`: на насиченому фоні завантаженості кольори
-                        // категорій без неї падають нижче 3:1 (світла тема, 50% primary).
-                        className="flex flex-wrap items-center self-start gap-x-2 gap-y-1 rounded bg-surface px-1 py-0.5 text-[11px] font-medium leading-none tabular-nums"
-                        data-testid="month-day-categories"
+                    {/* Дії при наведенні; з клавіатури — з'являються, щойно фокус у клітинці.
+                        На сенсорних екранах наведення немає — показані завжди. */}
+                    <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100">
+                      <button
+                        type="button"
+                        className={CELL_ACTION}
+                        aria-label={t('month.openDay', { date })}
+                        title={t('month.openDay', { date })}
+                        onClick={e => {
+                          e.stopPropagation();
+                          onDayClick(dayStr);
+                        }}
                       >
-                        {SLOT_CATEGORIES.filter(c => (counts[c] ?? 0) > 0).map(c => {
-                          const { icon: Icon, className } = CATEGORY_VIEW[c];
-                          const label = t(`month.category.${c}`);
-                          return (
-                            <span
-                              key={c}
-                              className={`inline-flex items-center gap-0.5 ${className}`}
-                              // role="img": aria-label на `span` без ролі читачі екрана
-                              // ігнорують — звучало б лише «2» без назви категорії.
-                              role="img"
-                              title={`${label}: ${counts[c]}`}
-                              aria-label={`${label}: ${counts[c]}`}
-                              data-category={c}
-                            >
-                              <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
-                              {counts[c]}
-                            </span>
-                          );
-                        })}
-                      </span>
+                        <Eye className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                      {/* Минулий день: новий запис у минуле форма однаково не збереже. */}
+                      {!isPast && (
+                        <button
+                          type="button"
+                          className={CELL_ACTION}
+                          aria-label={t('month.newRecord', { date })}
+                          title={t('month.newRecord', { date })}
+                          onClick={e => {
+                            e.stopPropagation();
+                            onNewOnDate(dayStr);
+                          }}
+                        >
+                          <Plus className="h-3 w-3" aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
+                    <CalendarCategoryCounters
+                      entries={entries}
+                      nowMs={nowMs}
+                      testId="month-day-categories"
+                    />
+                    {cards.length > 0 && (
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        {cards.map(e => (
+                          <MonthSlotCard
+                            key={e.slot.id}
+                            entry={e}
+                            nowMs={nowMs}
+                            onOpen={onOpenSlot}
+                          />
+                        ))}
+                      </div>
                     )}
-                  </button>
+                    {more > 0 && (
+                      <button
+                        type="button"
+                        className="self-start rounded bg-surface px-1 py-0.5 text-[11px] font-medium leading-none text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        aria-label={t('month.card.moreAria', { count: more, date })}
+                        onClick={e => {
+                          e.stopPropagation();
+                          onDayClick(dayStr);
+                        }}
+                      >
+                        {t('month.card.more', { count: more })}
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>

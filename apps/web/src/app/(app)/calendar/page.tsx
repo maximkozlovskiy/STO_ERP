@@ -18,6 +18,8 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 import { toDateString, formatKyivDate, fmtKyivMonthYear } from './calendar.utils';
 import { CalendarMonthView } from './CalendarMonthView';
+import { CalendarLegend } from './CalendarLegend';
+import { CalendarCategoryCounters } from './CalendarCategoryCounters';
 import { CalendarStatsTab } from './CalendarStatsTab';
 import { CalendarSlotModal } from './CalendarSlotModal';
 import { CalendarDayGrid } from './CalendarDayGrid';
@@ -52,7 +54,10 @@ function CalendarPageClient() {
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <h1 className="page-title">{t('title')}</h1>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3">
+          {/* «?» пояснює іконки й кольори категорій і типів записів — у «День» і «Місяць»
+              (BR-CAL-009; рішення власника 2026-10-15) */}
+          {cs.calView !== 'stats' && <CalendarLegend />}
           {/* View switcher */}
           <div className="flex rounded-lg border border-border overflow-hidden text-sm">
             {VIEW_SWITCHER.map(([v, labelKey, Icon]) => (
@@ -167,6 +172,14 @@ function CalendarPageClient() {
                 >
                   {t('nav.today')}
                 </Button>
+                {/* Підсумок дня за категоріями — той самий рядок, що в клітинці місяця
+                    (BR-CAL-008), з денних записів. */}
+                <CalendarCategoryCounters
+                  entries={cs.dayEntries}
+                  nowMs={cs.nowMs}
+                  testId="day-categories"
+                  size="md"
+                />
                 <Button
                   className="ml-auto"
                   onClick={() => {
@@ -192,6 +205,7 @@ function CalendarPageClient() {
           onClose={cs.handleModalClose}
           onSaved={cs.handleModalSaved}
           onDeleted={cs.handleModalSaved}
+          onWorkOrderChanged={cs.refreshView}
           date={cs.date}
           lifts={cs.lifts}
           form={cs.form}
@@ -228,10 +242,9 @@ function CalendarPageClient() {
               monthLoading={cs.monthLoading}
               monthError={cs.monthError}
               nowMs={cs.nowMs}
-              onDayClick={dayStr => {
-                cs.setDate(dayStr);
-                cs.setCalView('day');
-              }}
+              onDayClick={cs.openDay}
+              onOpenSlot={cs.openMonthSlot}
+              onNewOnDate={cs.openNewOnDate}
             />
           )}
 

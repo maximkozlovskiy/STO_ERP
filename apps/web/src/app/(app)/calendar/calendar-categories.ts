@@ -2,13 +2,18 @@ import type { WorkOrderStatus } from '@sto/shared';
 import type { LucideIcon } from 'lucide-react';
 import {
   AlertCircle,
+  Car,
   CheckCircle2,
   Circle,
   Clock,
+  Coffee,
+  Hammer,
   PencilLine,
+  Users,
   Wrench,
   XCircle,
 } from 'lucide-react';
+import type { CalendarSlot } from './calendar.types';
 
 /**
  * Категорія запису календаря для лічильників дня у виді «Місяць» (BR-CAL-008).
@@ -25,10 +30,16 @@ export const SLOT_CATEGORIES = [
 ] as const;
 export type SlotCategory = (typeof SLOT_CATEGORIES)[number];
 
-/** Мінімум даних запису, потрібний для категорії (місяць не тримає слоти цілком). */
-export interface MonthEntry {
+/** Мінімум даних запису, потрібний для категорії. */
+export interface CategoryInput {
+  /** Кінець ЛАНЦЮЖКА багатоденного запису (`parentSlotId ?? id`), не лише цієї частини. */
   endMs: number;
   workOrderStatus: string | null;
+}
+
+/** Запис дня у виді «Місяць»: сам слот (для картки, BR-CAL-009) і дані категорії. */
+export interface MonthEntry extends CategoryInput {
+  slot: CalendarSlot;
 }
 
 // Наряд, що ще не завершено: минулий запис із ним — прострочений.
@@ -61,7 +72,7 @@ const BY_STATUS = new Map<string, SlotCategory>(Object.entries(STATUS_CATEGORY))
  * `nowMs` = 0 — час ще не відомий (до гідратації): «прострочено» не ставиться нікому,
  * запис потрапляє в категорію свого наряду.
  */
-export function slotCategory(entry: MonthEntry, nowMs: number): SlotCategory {
+export function slotCategory(entry: CategoryInput, nowMs: number): SlotCategory {
   const status = entry.workOrderStatus;
   if (!status) return 'other';
   if (nowMs > 0 && OPEN_STATUSES.has(status) && entry.endMs < nowMs) return 'overdue';
@@ -69,7 +80,7 @@ export function slotCategory(entry: MonthEntry, nowMs: number): SlotCategory {
 }
 
 export function countCategories(
-  entries: readonly MonthEntry[],
+  entries: readonly CategoryInput[],
   nowMs: number,
 ): Partial<Record<SlotCategory, number>> {
   const counts: Partial<Record<SlotCategory, number>> = {};
@@ -80,12 +91,50 @@ export function countCategories(
   return counts;
 }
 
-export const CATEGORY_VIEW: Record<SlotCategory, { icon: LucideIcon; className: string }> = {
-  overdue: { icon: AlertCircle, className: 'text-destructive-text' },
-  inProgress: { icon: Wrench, className: 'text-warning-text' },
-  planned: { icon: Clock, className: 'text-info-text' },
-  draft: { icon: PencilLine, className: 'text-muted-foreground' },
-  done: { icon: CheckCircle2, className: 'text-success-text' },
-  cancelled: { icon: XCircle, className: 'text-muted-foreground' },
-  other: { icon: Circle, className: 'text-muted-foreground' },
+/**
+ * `className` — колір значка й тексту (на `bg-surface`, контраст перевірено для лічильників),
+ * `barClassName` — колір смуги зліва на картці запису (BR-CAL-009).
+ */
+export const CATEGORY_VIEW: Record<
+  SlotCategory,
+  { icon: LucideIcon; className: string; barClassName: string }
+> = {
+  overdue: {
+    icon: AlertCircle,
+    className: 'text-destructive-text',
+    barClassName: 'border-l-destructive',
+  },
+  inProgress: { icon: Wrench, className: 'text-warning-text', barClassName: 'border-l-warning' },
+  planned: { icon: Clock, className: 'text-info-text', barClassName: 'border-l-info' },
+  draft: {
+    icon: PencilLine,
+    className: 'text-muted-foreground',
+    barClassName: 'border-l-muted-foreground',
+  },
+  done: { icon: CheckCircle2, className: 'text-success-text', barClassName: 'border-l-success' },
+  cancelled: { icon: XCircle, className: 'text-muted-foreground', barClassName: 'border-l-border' },
+  other: {
+    icon: Circle,
+    className: 'text-muted-foreground',
+    barClassName: 'border-l-muted-foreground',
+  },
 };
+
+/** Тип запису календаря (`CalendarSlot.type`) — іконка на картці й рядок легенди. */
+export const SLOT_TYPES = ['WORK', 'MAINTENANCE', 'BREAK', 'MEETING'] as const;
+export type SlotType = (typeof SLOT_TYPES)[number];
+
+export const SLOT_TYPE_ICON: Record<SlotType, LucideIcon> = {
+  WORK: Car,
+  MAINTENANCE: Hammer,
+  BREAK: Coffee,
+  MEETING: Users,
+};
+
+const KNOWN_TYPES: ReadonlySet<string> = new Set(SLOT_TYPES);
+const isSlotType = (type: string): type is SlotType => KNOWN_TYPES.has(type);
+
+/** Тип без значення (старі записи) чи невідомий — робота: UI створює лише WORK-слоти. */
+export function slotType(type: string | undefined): SlotType {
+  return type && isSlotType(type) ? type : 'WORK';
+}
