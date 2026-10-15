@@ -29,6 +29,8 @@ type PayMethodOption = Pick<PaymentMethodDto, 'code' | 'name'> &
 
 const EMPTY_CASH_REGISTERS: CashRegister[] = [];
 const QR_METHOD_CODE = 'monobank_qr';
+// Коди QR-способів оплати — `<шлюз>_qr` (monobank_qr, privat24_qr, liqpay_qr; setup.service).
+const QR_CODE_SUFFIX = '_qr';
 
 // crypto.randomUUID є лише в secure context; on-prem сервер СТО відкривають по http у LAN.
 const newIdempotencyKey = (): string =>
@@ -119,8 +121,10 @@ export function ClientPaymentModal({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    // Без QR-сценарію (наряд) — жодного QR-способу: setup створює ще privat24_qr і liqpay_qr, і
+    // обраний такий спосіб реєстрував оплату одразу, без жодного QR (Bug #870).
     const keep = (list: PayMethodOption[]) =>
-      allowQr ? list : list.filter(m => m.code !== QR_METHOD_CODE);
+      allowQr ? list : list.filter(m => !m.code.endsWith(QR_CODE_SUFFIX));
     // Довідник — одразу з sessionStorage, свіжий список фоном.
     const cached = getCached<PayMethodOption[]>('cache:payment-methods');
     if (cached) setPayMethods(keep(cached));

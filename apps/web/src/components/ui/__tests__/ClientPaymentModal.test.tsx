@@ -344,6 +344,20 @@ describe('ClientPaymentModal — QR лише для рахунку (Bug #859)', 
       .map(o => (o as HTMLOptionElement).value);
     expect(codes).not.toContain('monobank_qr');
   });
+
+  // Bug #870: setup створює ще PrivatPay QR і LiqPay QR — у вікні наряду їх теж не має бути:
+  // обраний, такий спосіб реєстрував оплату одразу, без жодного QR.
+  it('наряд: жодного QR-способу (privat24_qr, liqpay_qr) у переліку немає', async () => {
+    withQr();
+    methods.push(method('privat24_qr', 'PrivatPay QR'), method('liqpay_qr', 'LiqPay QR'));
+    const { dialog } = await openDialog(WORK_ORDER);
+
+    const codes = within(methodSelect(dialog))
+      .getAllByRole('option')
+      .map(o => (o as HTMLOptionElement).value);
+    expect(codes).toContain('cash');
+    expect(codes.filter(c => c.endsWith('_qr'))).toEqual([]);
+  });
 });
 
 describe('ClientPaymentModal — оплата наряду (BR-PAY-020, BR-PAY-017)', () => {
