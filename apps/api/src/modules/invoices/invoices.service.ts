@@ -1293,6 +1293,8 @@ export class InvoicesService {
           totalWithoutVat: true,
           totalVat: true,
           totalWithVat: true,
+          // Валюта рахунку — біля сум друкованого рахунку (Bug #865).
+          currency: { select: { code: true } },
           counterparty: {
             select: {
               firstName: true,
@@ -1348,6 +1350,7 @@ export class InvoicesService {
       subtotal: Number(inv.totalWithoutVat),
       vatTotal: Number(inv.totalVat),
       grandTotal: Number(inv.totalWithVat),
+      currencyCode: inv.currency?.code,
     });
   }
 

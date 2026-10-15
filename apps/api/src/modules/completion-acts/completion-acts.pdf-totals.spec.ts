@@ -194,4 +194,22 @@ describe('CompletionActsService.generatePdf — сума акта з ПДВ (BR-
       org: { name: 'СТО Альфа', ipn: '123456789012' },
     });
   });
+
+  // Bug #865: акт наряду в USD друкувався з «грн» — валюта наряду в PDF не йшла.
+  it('валюта наряду акта (код) іде в PDF разом із сумами', async () => {
+    const { service, actFindFirst, generateCompletionActPdf } = setup({
+      totalNet: 700,
+      totalAmount: 700,
+      currency: { code: 'USD' },
+    } as { totalNet: number; totalAmount: number });
+
+    await service.generatePdf(ORG, ACT_ID);
+
+    const include = (actFindFirst.mock.calls[0]?.[0] as { include: Record<string, unknown> })
+      .include;
+    expect(include).toMatchObject({
+      workOrder: { select: { currency: { select: { code: true } } } },
+    });
+    expect(generateCompletionActPdf.mock.calls[0]?.[0]).toMatchObject({ currencyCode: 'USD' });
+  });
 });

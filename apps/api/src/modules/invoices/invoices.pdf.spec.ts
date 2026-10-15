@@ -78,4 +78,16 @@ describe('InvoicesService.generatePdf — реквізити організац�
     const arg = h.pdf.generateInvoicePdf.mock.calls[0]?.[0] as { date: Date };
     expect(arg.date).toEqual(new Date('2026-10-01T00:00:00Z'));
   });
+
+  // Bug #865: рахунок у USD друкувався «Разом: … грн» — валюта рахунку в PDF не йшла.
+  it('валюта рахунку (код) іде в PDF разом із сумами', async () => {
+    h.prisma.invoice.findFirst.mockResolvedValue({ ...invoiceRow, currency: { code: 'USD' } });
+
+    await h.service.generatePdf(ORG, INV_ID);
+
+    const select = (h.prisma.invoice.findFirst.mock.calls[0]?.[0] as { select: object }).select;
+    expect(select).toMatchObject({ currency: { select: { code: true } } });
+    const arg = h.pdf.generateInvoicePdf.mock.calls[0]?.[0] as { currencyCode?: string };
+    expect(arg.currencyCode).toBe('USD');
+  });
 });

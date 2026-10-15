@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { PdfService } from './pdf.service';
 
 // Smoke tests for PdfService. The point of these tests is to detect future regressions in the
@@ -174,4 +174,81 @@ describe('PdfService — pdfmake integration', () => {
     expect(fmt.replace(/\s/gu, ' ')).toBe('1 250,00 грн');
     expect(fmt).not.toContain('₴');
   });
+
+  /** docDefinition, який іде в pdfmake: шпигун пропускає виклик далі, PDF будується справжній. */
+  const docOf = async (generate: () => Promise<Buffer>): Promise<string> => {
+    const internals = service as unknown as { buildBuffer(d: unknown): Promise<Buffer> };
+    const spy = vi.spyOn(internals, 'buildBuffer');
+    try {
+      await generate();
+      return JSON.stringify(spy.mock.calls[0]![0]);
+    } finally {
+      spy.mockRestore();
+    }
+  };
+
+  const usdInvoice = (currencyCode?: string) =>
+    service.generateInvoicePdf({
+      org: { name: 'СТО Альфа' },
+      counterparty: { name: 'ТОВ Бета' },
+      number: 'РАХ-1',
+      date: new Date('2026-10-15T00:00:00Z'),
+      lines: [
+        { description: 'Олива', quantity: 0.25, unit: 'л', unitPrice: 40, vatRate: 0, total: 10 },
+      ],
+      subtotal: 10,
+      vatTotal: 0,
+      grandTotal: 10,
+      currencyCode,
+    });
+
+  // Bug #865: рахунок у USD друкувався «Разом: 10,00 грн».
+  it('документ в іншій валюті — суми з кодом валюти, без «грн»', async () => {
+    const invoice = await docOf(() => usdInvoice('USD'));
+    expect(invoice).toContain('10,00 USD');
+    expect(invoice).toContain('40,00 USD');
+    expect(invoice).not.toContain('грн');
+
+    const order = await docOf(() =>
+      service.generateWorkOrderPdf({
+        org: { name: 'СТО Альфа' },
+        counterparty: { name: 'Клієнт' },
+        vehicleLabel: '',
+        number: 'НЗ-1',
+        date: new Date('2026-10-15T00:00:00Z'),
+        works: [{ name: 'Діагностика', quantity: 1, price: 50, total: 50 }],
+        parts: [{ name: 'Фільтр', quantity: 1, price: 20, total: 20 }],
+        total: 84,
+        totalNet: 70,
+        vatTotal: 14,
+        currencyCode: 'EUR',
+      }),
+    );
+    expect(order).toContain('84,00 EUR');
+    expect(order).toContain('20,00 EUR');
+    expect(order).not.toContain('грн');
+
+    const act = await docOf(() =>
+      service.generateCompletionActPdf({
+        org: { name: 'СТО Альфа' },
+        counterparty: { name: 'Клієнт' },
+        vehicleLabel: '',
+        number: 'АКТ-1',
+        date: new Date('2026-10-15T00:00:00Z'),
+        lines: [{ description: 'Діагностика', quantity: 1, unitPrice: 50, amount: 50 }],
+        total: 50,
+        currencyCode: 'USD',
+      }),
+    );
+    expect(act).toContain('50,00 USD');
+    expect(act).not.toContain('грн');
+  }, 15_000);
+
+  it('гривня або валюту не передано — «грн»', async () => {
+    for (const code of ['UAH', undefined]) {
+      const doc = await docOf(() => usdInvoice(code));
+      expect(doc).toContain('10,00 грн');
+      expect(doc).not.toMatch(/UAH|USD/);
+    }
+  }, 15_000);
 });

@@ -324,6 +324,8 @@ export class CompletionActsService {
               number: true,
               totalNet: true,
               totalAmount: true,
+              // Валюта наряду — біля сум друкованого акта (Bug #865).
+              currency: { select: { code: true } },
               counterparty: {
                 select: {
                   firstName: true,
@@ -400,6 +402,7 @@ export class CompletionActsService {
       total,
       ...(vatTotal > 0 ? { totalNet: woNet, vatTotal } : {}),
       notes: act.notes,
+      currencyCode: act.workOrder?.currency?.code,
     });
   }
 

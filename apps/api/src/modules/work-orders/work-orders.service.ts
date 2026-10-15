@@ -1306,6 +1306,8 @@ export class WorkOrdersService {
           inMileage: true,
           totalNet: true,
           totalAmount: true,
+          // Валюта наряду — біля сум друкованого документа (Bug #865).
+          currency: { select: { code: true } },
           vehicle: { select: { make: true, model: true, licensePlate: true, vin: true } },
           counterparty: {
             select: { firstName: true, lastName: true, companyName: true, phone: true },
@@ -1364,6 +1366,7 @@ export class WorkOrdersService {
       vehicleLabel,
       vin: wo.vehicle?.vin,
       mileage: wo.inMileage,
+      currencyCode: wo.currency?.code,
       number: wo.number,
       date: wo.documentDate,
       works: wo.lines.map(l => {

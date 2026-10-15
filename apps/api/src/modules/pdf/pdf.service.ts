@@ -92,6 +92,8 @@ export interface InvoicePdfData {
   subtotal: number;
   vatTotal: number;
   grandTotal: number;
+  /** Валюта рахунку (ISO-код); без неї — гривня. */
+  currencyCode?: string | null;
 }
 
 export interface ReconciliationActPdfData {
@@ -119,6 +121,8 @@ export interface CompletionActPdfData {
   totalNet?: number;
   vatTotal?: number;
   notes?: string | null;
+  /** Валюта наряду акта (ISO-код); без неї — гривня. */
+  currencyCode?: string | null;
 }
 
 export interface WorkOrderPdfData {
@@ -149,6 +153,8 @@ export interface WorkOrderPdfData {
   /** Сума без ПДВ і ПДВ — задані, коли в сумі є ПДВ: тоді підсумок друкується трьома рядками. */
   totalNet?: number;
   vatTotal?: number;
+  /** Валюта наряду (ISO-код); без неї — гривня. */
+  currencyCode?: string | null;
 }
 
 type Content = Record<string, unknown> | string | Content[];
@@ -204,16 +210,16 @@ export class PdfService {
                 l.description,
                 { text: String(l.quantity), alignment: 'right' },
                 l.unit,
-                { text: this.fmtMoney(l.unitPrice), alignment: 'right' },
+                { text: this.fmtMoney(l.unitPrice, data.currencyCode), alignment: 'right' },
                 { text: `${l.vatRate}%`, alignment: 'right' },
-                { text: this.fmtMoney(l.total), alignment: 'right' },
+                { text: this.fmtMoney(l.total, data.currencyCode), alignment: 'right' },
               ]),
             ],
           },
           layout: 'lightHorizontalLines',
         },
         { text: ' ', margin: [0, 4] },
-        this.totalsBlock(data.subtotal, data.vatTotal, data.grandTotal),
+        this.totalsBlock(data.subtotal, data.vatTotal, data.grandTotal, data.currencyCode),
         ...this.paymentDetails(org),
         { text: '\n\nПідпис: _____________________', margin: [0, 32, 0, 0] },
       ],
@@ -297,8 +303,8 @@ export class PdfService {
               ...data.lines.map((l): TableCell[] => [
                 l.description,
                 { text: String(l.quantity), alignment: 'right' },
-                { text: this.fmtMoney(l.unitPrice), alignment: 'right' },
-                { text: this.fmtMoney(l.amount), alignment: 'right' },
+                { text: this.fmtMoney(l.unitPrice, data.currencyCode), alignment: 'right' },
+                { text: this.fmtMoney(l.amount, data.currencyCode), alignment: 'right' },
               ]),
             ],
           },
@@ -333,10 +339,16 @@ export class PdfService {
         this.partyBlock('Клієнт', data.counterparty),
         { text: `Автомобіль: ${vehicle.join(', ')}`, margin: [0, 4, 0, 8] },
         ...(data.works.length > 0
-          ? [{ text: 'Роботи:', bold: true, margin: [0, 8, 0, 4] }, this.worksTable(data.works)]
+          ? [
+              { text: 'Роботи:', bold: true, margin: [0, 8, 0, 4] },
+              this.worksTable(data.works, data.currencyCode),
+            ]
           : []),
         ...(data.parts.length > 0
-          ? [{ text: 'Товари:', bold: true, margin: [0, 8, 0, 4] }, this.partsTable(data.parts)]
+          ? [
+              { text: 'Товари:', bold: true, margin: [0, 8, 0, 4] },
+              this.partsTable(data.parts, data.currencyCode),
+            ]
           : []),
         { text: ' ', margin: [0, 4] },
         this.documentTotal(data),
@@ -455,21 +467,37 @@ export class PdfService {
    * Підсумок наряду й акта: коли в сумі є ПДВ — «Сума без ПДВ / ПДВ / Разом» (той самий блок,
    * що в рахунку), інакше один рядок «Разом». Клієнт бачить ту саму суму, що в його боргу.
    */
-  private documentTotal(data: { total: number; totalNet?: number; vatTotal?: number }): Content {
+  private documentTotal(data: {
+    total: number;
+    totalNet?: number;
+    vatTotal?: number;
+    currencyCode?: string | null;
+  }): Content {
     if (data.vatTotal && data.vatTotal > 0 && data.totalNet != null)
-      return this.totalsBlock(data.totalNet, data.vatTotal, data.total);
+      return this.totalsBlock(data.totalNet, data.vatTotal, data.total, data.currencyCode);
     return {
       columns: [
         { width: '*', text: '' },
         {
           width: 200,
-          stack: [{ text: `Разом: ${this.fmtMoney(data.total)}`, bold: true, fontSize: 11 }],
+          stack: [
+            {
+              text: `Разом: ${this.fmtMoney(data.total, data.currencyCode)}`,
+              bold: true,
+              fontSize: 11,
+            },
+          ],
         },
       ],
     };
   }
 
-  private totalsBlock(subtotal: number, vatTotal: number, grandTotal: number): Content {
+  private totalsBlock(
+    subtotal: number,
+    vatTotal: number,
+    grandTotal: number,
+    currencyCode?: string | null,
+  ): Content {
     return {
       columns: [
         { width: '*', text: '' },
@@ -479,19 +507,24 @@ export class PdfService {
             {
               columns: [
                 { text: 'Сума без ПДВ:', width: '*' },
-                { text: this.fmtMoney(subtotal), width: 80, alignment: 'right' },
+                { text: this.fmtMoney(subtotal, currencyCode), width: 80, alignment: 'right' },
               ],
             },
             {
               columns: [
                 { text: 'ПДВ:', width: '*' },
-                { text: this.fmtMoney(vatTotal), width: 80, alignment: 'right' },
+                { text: this.fmtMoney(vatTotal, currencyCode), width: 80, alignment: 'right' },
               ],
             },
             {
               columns: [
                 { text: 'Разом:', bold: true, width: '*' },
-                { text: this.fmtMoney(grandTotal), bold: true, width: 80, alignment: 'right' },
+                {
+                  text: this.fmtMoney(grandTotal, currencyCode),
+                  bold: true,
+                  width: 80,
+                  alignment: 'right',
+                },
               ],
             },
           ],
@@ -501,7 +534,7 @@ export class PdfService {
   }
 
   /** Роботи наряду: норма й факт годин окремо, ціна за годину, сума рядка. */
-  private worksTable(rows: WorkOrderPdfData['works']): Content {
+  private worksTable(rows: WorkOrderPdfData['works'], currencyCode?: string | null): Content {
     const hours = (h: number | null | undefined): TableCell => ({
       text: h == null ? '—' : String(h),
       alignment: 'right',
@@ -522,8 +555,8 @@ export class PdfService {
             r.name,
             hours(r.normoHours === undefined ? r.quantity : r.normoHours),
             hours(r.actualHours),
-            { text: this.fmtMoney(r.price), alignment: 'right' },
-            { text: this.fmtMoney(r.total), alignment: 'right' },
+            { text: this.fmtMoney(r.price, currencyCode), alignment: 'right' },
+            { text: this.fmtMoney(r.total, currencyCode), alignment: 'right' },
           ]),
         ],
       },
@@ -532,7 +565,7 @@ export class PdfService {
   }
 
   /** Товари наряду: кількість з одиницею виміру, ціна, сума рядка. */
-  private partsTable(rows: WorkOrderPdfData['parts']): Content {
+  private partsTable(rows: WorkOrderPdfData['parts'], currencyCode?: string | null): Content {
     return {
       table: {
         headerRows: 1,
@@ -549,8 +582,8 @@ export class PdfService {
             r.name,
             { text: String(r.quantity), alignment: 'right' },
             r.unit || 'шт',
-            { text: this.fmtMoney(r.price), alignment: 'right' },
-            { text: this.fmtMoney(r.total), alignment: 'right' },
+            { text: this.fmtMoney(r.price, currencyCode), alignment: 'right' },
+            { text: this.fmtMoney(r.total, currencyCode), alignment: 'right' },
           ]),
         ],
       },
@@ -559,9 +592,11 @@ export class PdfService {
   }
 
   // «грн», а не «₴»: у вбудованому шрифті Roboto знаку гривні немає — на папері він друкувався
-  // порожнім квадратом. Формат суми — як в інтерфейсі: «1 250,00 грн».
-  private fmtMoney(n: number): string {
-    return `${UAH_FMT.format(n)} грн`;
+  // порожнім квадратом. Формат суми — як в інтерфейсі: «1 250,00 грн». Документ в іншій валюті
+  // (рахунок чи наряд у USD) — з кодом валюти, як у web (`fmtBankCurrencySuffix`): «100,00 USD».
+  private fmtMoney(n: number, currencyCode?: string | null): string {
+    const suffix = !currencyCode || currencyCode === 'UAH' ? 'грн' : currencyCode;
+    return `${UAH_FMT.format(n)} ${suffix}`;
   }
 
   private fmtDate(d: Date): string {

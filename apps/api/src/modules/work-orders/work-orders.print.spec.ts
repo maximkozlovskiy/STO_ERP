@@ -196,6 +196,18 @@ describe('WorkOrdersService.generatePdf — зміст наряд-замовле
 
     expect(pdfArg().parts.map(p => p.unit)).toEqual(['каністра', 'компл']);
   });
+
+  // Bug #865: наряд у USD друкувався з «грн» біля сум — валюта наряду в PDF не йшла.
+  it('валюта наряду (код) іде в PDF разом із сумами', async () => {
+    const row = { ...woRow('COMPLETED'), currency: { code: 'USD' } };
+    const { service, woFindFirst, pdfArg } = setup(row);
+
+    await service.generatePdf(ORG, WO_ID);
+
+    const select = (woFindFirst.mock.calls[0]?.[0] as { select: Record<string, unknown> }).select;
+    expect(select).toMatchObject({ currency: { select: { code: true } } });
+    expect((pdfArg() as { currencyCode?: string }).currencyCode).toBe('USD');
+  });
 });
 
 describe('WorkOrdersController.downloadPdf — ролі маршруту (BR-WO-013)', () => {
