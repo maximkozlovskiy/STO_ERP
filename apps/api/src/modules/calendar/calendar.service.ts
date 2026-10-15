@@ -78,6 +78,14 @@ const CONFLICT_SELECT = {
   },
 } as const;
 
+/**
+ * Ім'я механіка запису з уже прочитаних (BR-CAL-011): `null` — механіка не призначено або
+ * його немає в організації.
+ */
+function nameOf(employeeId: string | null, names: ReadonlyMap<string, string>): string | null {
+  return employeeId ? names.get(employeeId) || null : null;
+}
+
 /** Returns the UTC timestamp for `endHour` (Kyiv) on the same calendar day as `d`. */
 function kyivEndOfWorkDay(d: Date, endHour: number = DEFAULT_WORK_DAY_END_H): Date {
   const kyivDate = KYIV_DATE_FMT.format(d); // "YYYY-MM-DD"
@@ -200,7 +208,11 @@ export class CalendarService {
         },
         take: 500,
       });
-      return slots.map(s => this.toConflictDto(s));
+      // Ім'я механіка — не PII клієнта: механік бачить, хто на якому записі (BR-CAL-011).
+      const names = await this.employeeNames(orgId, slots);
+      return slots.map(s =>
+        this.toConflictDto({ ...s, employeeName: nameOf(s.employeeId, names) }),
+      );
     }
 
     const slots = await this.prisma.calendarSlot.findMany({
@@ -226,7 +238,28 @@ export class CalendarService {
       take: 500,
     });
 
-    return slots.map(item => this.toDto(item));
+    const names = await this.employeeNames(orgId, slots);
+    return slots.map(item => this.toDto({ ...item, employeeName: nameOf(item.employeeId, names) }));
+  }
+
+  /**
+   * «Прізвище Ім'я» механіків записів — ОДНИМ запитом на всю відповідь, не на кожен запис
+   * (BR-CAL-011). `include` неможливий: у `CalendarSlot` немає зв'язку з `Employee`, лише
+   * колонка `employeeId`. Без `deletedAt: null` — звільнений механік лишається на своїх
+   * минулих записах.
+   */
+  private async employeeNames(
+    orgId: string,
+    slots: readonly { employeeId: string | null }[],
+  ): Promise<ReadonlyMap<string, string>> {
+    const ids = [...new Set(slots.flatMap(s => (s.employeeId ? [s.employeeId] : [])))];
+    if (ids.length === 0) return new Map();
+    const employees = await this.prisma.employee.findMany({
+      where: { orgId, id: { in: ids } },
+      select: { id: true, firstName: true, lastName: true },
+      take: ids.length,
+    });
+    return new Map(employees.map(e => [e.id, formatPersonName(e.lastName, e.firstName)]));
   }
 
   async createSlot(
@@ -780,6 +813,7 @@ export class CalendarService {
     status: CalendarSlotStatus;
     type: CalendarSlotType;
     workOrder: { number: string; status: string } | null;
+    employeeName?: string | null;
   }): CalendarSlotResponseDto {
     return {
       id: slot.id,
@@ -800,6 +834,7 @@ export class CalendarService {
       cpPhone: null,
       vehicleSummary: null,
       vehiclePlate: null,
+      ...(slot.employeeName !== undefined && { employeeName: slot.employeeName }),
     };
   }
 
@@ -835,6 +870,8 @@ export class CalendarService {
       companyName: string | null;
       phone: string | null;
     } | null;
+    /** Лише з `findSlots` (BR-CAL-011); без нього поля в DTO немає. */
+    employeeName?: string | null;
   }): CalendarSlotResponseDto {
     const woCp = slot.workOrder?.counterparty;
     const directCp = slot.counterparty;
@@ -870,6 +907,7 @@ export class CalendarService {
       cpPhone,
       vehicleSummary,
       vehiclePlate,
+      ...(slot.employeeName !== undefined && { employeeName: slot.employeeName }),
     };
   }
 }

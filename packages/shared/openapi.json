@@ -24311,6 +24311,11 @@
             "type": "string",
             "nullable": true
           },
+          "employeeName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Механік запису «Прізвище Ім'я»; null — не призначено. Лише GET /calendar/slots"
+          },
           "status": {
             "enum": [
               "AVAILABLE",

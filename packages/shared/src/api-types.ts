@@ -7399,6 +7399,8 @@ export interface components {
             cpPhone?: string | null;
             vehicleSummary?: string | null;
             vehiclePlate?: string | null;
+            /** @description Механік запису «Прізвище Ім'я»; null — не призначено. Лише GET /calendar/slots */
+            employeeName?: string | null;
             /** @enum {string} */
             status: "AVAILABLE" | "BOOKED" | "BLOCKED";
             /** @enum {string} */

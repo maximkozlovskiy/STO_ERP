@@ -115,6 +115,17 @@ export class CalendarSlotResponseDto {
   @ApiPropertyOptional() cpPhone?: string | null;
   @ApiPropertyOptional() vehicleSummary?: string | null;
   @ApiPropertyOptional() vehiclePlate?: string | null;
+  /**
+   * Механік запису «Прізвище Ім'я»; `null` — не призначено (BR-CAL-011). Віддає лише
+   * `GET /calendar/slots` (і ролі MECHANIC); відповіді створення, зміни й перевірки конфліктів
+   * поля не мають.
+   */
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: "Механік запису «Прізвище Ім'я»; null — не призначено. Лише GET /calendar/slots",
+  })
+  employeeName?: string | null;
   @ApiProperty({ enum: CalendarSlotStatus }) status!: CalendarSlotStatus;
   @ApiProperty({ enum: CalendarSlotType }) type!: CalendarSlotType;
 }
