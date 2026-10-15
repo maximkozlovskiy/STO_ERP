@@ -139,6 +139,7 @@
     "titleNewRange": "New slot {{start}} – {{end}}",
     "titleNewOn": "New slot on {{date}}",
     "pastLocked": "Slot is in a closed period — editing is unavailable",
+    "roleLocked": "Calendar bookings are changed by an administrator or reception — view only",
     "fieldLift": "Lift",
     "liftAny": "— any —",
     "fieldStart": "Start",

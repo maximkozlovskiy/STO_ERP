@@ -69,6 +69,16 @@ export function toDateString(d: Date) {
   return DATE_FMT.format(d);
 }
 
+/**
+ * Ролі, яким API дає створювати, змінювати й видаляти записи календаря — дзеркало `@Roles`
+ * на `POST/PATCH/DELETE /calendar/slots`. Механік календар бачить, але лише для перегляду.
+ */
+const SLOT_MANAGER_ROLES: ReadonlySet<string> = new Set(['OWNER', 'ADMIN', 'RECEPTIONIST']);
+
+export function canManageCalendarSlots(role: string | null | undefined): boolean {
+  return !!role && SLOT_MANAGER_ROLES.has(role);
+}
+
 /** 'YYYY-MM-DD' → наступна календарна дата (через полудень UTC — без зсуву на переведенні годинника). */
 export function nextDateString(date: string): string {
   const d = new Date(`${date}T12:00:00Z`);

@@ -16,7 +16,12 @@ import { Button } from '@/components/ui/button';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
-import { toDateString, formatKyivDate, fmtKyivMonthYear } from './calendar.utils';
+import {
+  toDateString,
+  formatKyivDate,
+  fmtKyivMonthYear,
+  canManageCalendarSlots,
+} from './calendar.utils';
 import { CalendarMonthView } from './CalendarMonthView';
 import { CalendarLegend } from './CalendarLegend';
 import { CalendarCategoryCounters } from './CalendarCategoryCounters';
@@ -37,10 +42,13 @@ const VIEW_SWITCHER: ReadonlyArray<
 ] as const;
 
 function CalendarPageClient() {
-  useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
+  const { employee } = useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
   const { t } = useTranslation('calendar');
+  // Механік бачить календар, але створювати й змінювати записи API йому не дає (403) —
+  // форма лише для перегляду, дій створення немає (Bug #871).
+  const canManageSlots = canManageCalendarSlots(employee?.role);
 
-  const cs = useCalendarState();
+  const cs = useCalendarState({ canManageSlots });
 
   // sto-optimize: пара дублює `new Date(cs.nowMs)` + `toDateString()` двічі у render path
   // (один раз для className tinting, другий — для текст-suffix "минулий день").
@@ -126,20 +134,22 @@ function CalendarPageClient() {
                 >
                   {t('nav.thisMonth')}
                 </Button>
-                <Button
-                  className="ml-auto"
-                  onClick={() => {
-                    cs.setPendingSlot(null);
-                    cs.setEditingSlotId(null);
-                    cs.setError('');
-                    cs.setCpDisplay('');
-                    cs.setForm(EMPTY_FORM);
-                    cs.setShowAdd(v => !v);
-                  }}
-                >
-                  <Plus className="h-4 w-4" />
-                  {t('nav.slot')}
-                </Button>
+                {canManageSlots && (
+                  <Button
+                    className="ml-auto"
+                    onClick={() => {
+                      cs.setPendingSlot(null);
+                      cs.setEditingSlotId(null);
+                      cs.setError('');
+                      cs.setCpDisplay('');
+                      cs.setForm(EMPTY_FORM);
+                      cs.setShowAdd(v => !v);
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                    {t('nav.slot')}
+                  </Button>
+                )}
               </>
             ) : (
               <>
@@ -180,20 +190,22 @@ function CalendarPageClient() {
                   testId="day-categories"
                   size="md"
                 />
-                <Button
-                  className="ml-auto"
-                  onClick={() => {
-                    cs.setPendingSlot(null);
-                    cs.setEditingSlotId(null);
-                    cs.setError('');
-                    cs.setCpDisplay('');
-                    cs.setForm(EMPTY_FORM);
-                    cs.setShowAdd(v => !v);
-                  }}
-                >
-                  <Plus className="h-4 w-4" />
-                  {t('nav.slot')}
-                </Button>
+                {canManageSlots && (
+                  <Button
+                    className="ml-auto"
+                    onClick={() => {
+                      cs.setPendingSlot(null);
+                      cs.setEditingSlotId(null);
+                      cs.setError('');
+                      cs.setCpDisplay('');
+                      cs.setForm(EMPTY_FORM);
+                      cs.setShowAdd(v => !v);
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                    {t('nav.slot')}
+                  </Button>
+                )}
               </>
             )}
           </div>
@@ -212,6 +224,7 @@ function CalendarPageClient() {
           setForm={cs.setForm}
           editingSlotId={cs.editingSlotId}
           isEditingPast={cs.isEditingPast}
+          readOnly={!canManageSlots}
           pendingSlot={cs.pendingSlot}
           setPendingSlot={cs.setPendingSlot}
           formMounted={cs.formMounted}
@@ -244,7 +257,7 @@ function CalendarPageClient() {
               nowMs={cs.nowMs}
               onDayClick={cs.openDay}
               onOpenSlot={cs.openMonthSlot}
-              onNewOnDate={cs.openNewOnDate}
+              onNewOnDate={canManageSlots ? cs.openNewOnDate : undefined}
             />
           )}
 

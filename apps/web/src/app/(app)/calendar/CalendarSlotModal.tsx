@@ -241,6 +241,11 @@ interface CalendarSlotModalProps {
 
   editingSlotId: string | null;
   isEditingPast: boolean;
+  /**
+   * Користувач без права змінювати записи (механік): форма лише для перегляду, як для минулого
+   * запису, — інакше «Оновити» і «Видалити» закінчуються 403 (Bug #871).
+   */
+  readOnly?: boolean;
   pendingSlot: PendingSlot | null;
   setPendingSlot: Dispatch<SetStateAction<PendingSlot | null>>;
 
@@ -277,7 +282,8 @@ export function CalendarSlotModal({
   form,
   setForm,
   editingSlotId,
-  isEditingPast,
+  isEditingPast: isPastLocked,
+  readOnly = false,
   pendingSlot,
   setPendingSlot,
   formMounted,
@@ -297,6 +303,8 @@ export function CalendarSlotModal({
 }: CalendarSlotModalProps) {
   const { t } = useTranslation('calendar');
   const { confirm, dialogProps } = useConfirm();
+  // Усе, що для минулого запису заблоковано, заблоковано й без права змінювати записи.
+  const isEditingPast = isPastLocked || readOnly;
   const {
     conflict: calConflict,
     check: checkConflict,
@@ -789,7 +797,7 @@ export function CalendarSlotModal({
           {isEditingPast && (
             <div className="flex items-center gap-2 text-[13px] text-warning-text bg-warning-subtle border border-warning/20 rounded-lg px-3 py-2">
               <span>🔒</span>
-              <span>{t('slot.pastLocked')}</span>
+              <span>{readOnly ? t('slot.roleLocked') : t('slot.pastLocked')}</span>
             </div>
           )}
 

@@ -253,6 +253,21 @@ describe('useCalendarState — вид «Місяць»', () => {
     expect(result.current.isEditingPast).toBe(true);
   });
 
+  it('без права змінювати записи (механік): «Новий запис» нічого не відкриває (Bug #871)', async () => {
+    const hook = renderHook(() => useCalendarState({ canManageSlots: false }));
+    await waitFor(() => expect(hook.result.current.monthLoading).toBe(false));
+    act(() => hook.result.current.openNewOnDate('2026-10-22'));
+    expect(hook.result.current.showAdd).toBe(false);
+    expect(hook.result.current.date).toBe('2026-10-01');
+    // Перегляд запису лишається: картка відкриває форму (у ній — лише «Закрити»).
+    act(() =>
+      hook.result.current.openMonthSlot(
+        slot('v', '2026-10-20T10:00:00+03:00', '2026-10-20T11:00:00+03:00') as CalendarSlot,
+      ),
+    );
+    expect(hook.result.current.editingSlotId).toBe('v');
+  });
+
   it('«Новий запис на цю дату»: порожня форма на обрану дату', async () => {
     const { result } = await renderMonth();
     act(() => result.current.openNewOnDate('2026-10-22'));

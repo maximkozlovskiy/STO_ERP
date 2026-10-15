@@ -69,7 +69,15 @@ export const EMPTY_FORM: SlotForm = {
  */
 export type CalendarState = ReturnType<typeof useCalendarState>;
 
-export function useCalendarState() {
+interface UseCalendarStateOptions {
+  /**
+   * Чи може користувач створювати й змінювати записи (`canManageCalendarSlots`). Ні —
+   * перетягування, зміна меж і «Новий запис» нічого не роблять: API відповів би 403 (Bug #871).
+   */
+  canManageSlots?: boolean;
+}
+
+export function useCalendarState({ canManageSlots = true }: UseCalendarStateOptions = {}) {
   // i18n тут потрібен, бо хук сам показує toast-и (переміщення слотів, видалення) —
   // раніше вони були жорстко українськими рядками, попри двомовний UI.
   const { t } = useTranslation('calendar');
@@ -569,6 +577,8 @@ export function useCalendarState() {
 
   const showAddRef = useRef(showAdd);
   showAddRef.current = showAdd;
+  const canManageRef = useRef(canManageSlots);
+  canManageRef.current = canManageSlots;
   const minHourRef = useRef(minHour);
   minHourRef.current = minHour;
 
@@ -635,6 +645,7 @@ export function useCalendarState() {
   const handleResizeStart = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>, slotId: string, edge: 'start' | 'end') => {
       e.stopPropagation();
+      if (!canManageSlots) return;
       const slot = slots.find(s => s.id === slotId);
       if (!slot) return;
       setResizing({
@@ -651,7 +662,7 @@ export function useCalendarState() {
         endH: kyivHours(slot.endAt),
       });
     },
-    [slots],
+    [slots, canManageSlots],
   );
 
   // ── Resize pending slot ───────────────────────────────────────────────────
@@ -696,7 +707,7 @@ export function useCalendarState() {
       // generic-параметр, а не каст: closest() віддає Element, а .dataset є лише в HTMLElement.
       const liftRow = target.closest<HTMLElement>('[data-lift-id]');
       const liftId = liftRow?.dataset.liftId;
-      if (!liftId) return;
+      if (!liftId || !canManageRef.current) return;
       setPendingSlot(null);
       const todayKyiv = toDateString(new Date());
       if (dateRef.current < todayKyiv) return;
@@ -903,7 +914,7 @@ export function useCalendarState() {
       }
 
       const slot = slots.find(s => s.id === active.id);
-      if (!slot) return;
+      if (!slot || !canManageSlots) return;
       const newLiftId: string | null = over?.data?.current?.liftId ?? slot.liftId ?? null;
       const containerWidth = timelineRef.current?.getBoundingClientRect().width ?? 0;
       if (!containerWidth) return;
@@ -942,7 +953,7 @@ export function useCalendarState() {
         toast.error(e instanceof Error ? e.message : 'Помилка переміщення слоту');
       }
     },
-    [slots, load, nowMs, minHour, t],
+    [slots, load, nowMs, minHour, t, canManageSlots],
   );
 
   // ── Remove slot ───────────────────────────────────────────────────────────
@@ -1103,6 +1114,7 @@ export function useCalendarState() {
 
   const openNewOnDate = useCallback(
     (dayStr: string) => {
+      if (!canManageSlots) return;
       setDate(dayStr);
       setMonthEditSlot(null);
       setPendingSlot(null);
@@ -1112,7 +1124,7 @@ export function useCalendarState() {
       setForm(EMPTY_FORM);
       setShowAdd(true);
     },
-    [setDate],
+    [setDate, canManageSlots],
   );
 
   return {

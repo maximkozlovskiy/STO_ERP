@@ -43,7 +43,8 @@ function renderMonth(
       nowMs={NOW}
       onDayClick={handlers.onDayClick ?? (() => {})}
       onOpenSlot={handlers.onOpenSlot ?? (() => {})}
-      onNewOnDate={handlers.onNewOnDate ?? (() => {})}
+      // Явний `undefined` — без права створювати записи (механік): дії «Новий запис» немає.
+      onNewOnDate={'onNewOnDate' in handlers ? handlers.onNewOnDate : () => {}}
     />,
   );
 }
@@ -187,6 +188,12 @@ describe('CalendarMonthView — картки записів дня (BR-CAL-009)'
     expect(screen.getByRole('button', { name: 'Відкрити день 14.10.2026' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Новий запис на 14.10.2026' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Новий запис на 15.10.2026' })).toBeInTheDocument();
+  });
+
+  it('без права створювати записи (механік) — «Новий запис» немає, «Відкрити день» є (Bug #871)', () => {
+    renderMonth({}, { onNewOnDate: undefined });
+    expect(screen.getByRole('button', { name: 'Відкрити день 20.10.2026' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Новий запис/ })).toBeNull();
   });
 
   it('клітинка не є кнопкою — усередині кнопки карток і дій', () => {

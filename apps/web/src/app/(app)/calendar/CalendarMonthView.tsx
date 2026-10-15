@@ -27,8 +27,8 @@ interface CalendarMonthViewProps {
   onDayClick: (dateStr: string) => void;
   /** Картка запису → та сама форма, що й у виді «День» (BR-CAL-009). */
   onOpenSlot: (slot: CalendarSlot) => void;
-  /** Дія «Новий запис на цю дату». */
-  onNewOnDate: (dateStr: string) => void;
+  /** Дія «Новий запис на цю дату»; без неї (механік — лише перегляд) дії немає. */
+  onNewOnDate?: (dateStr: string) => void;
 }
 
 /** Наскільки блідшає фон завантаженості минулого дня (раніше — `opacity-60` кнопки). */
@@ -242,7 +242,7 @@ export function CalendarMonthView({
                         <Eye className="h-3 w-3" aria-hidden="true" />
                       </button>
                       {/* Минулий день: новий запис у минуле форма однаково не збереже. */}
-                      {!isPast && (
+                      {!isPast && onNewOnDate && (
                         <button
                           type="button"
                           className={CELL_ACTION}
