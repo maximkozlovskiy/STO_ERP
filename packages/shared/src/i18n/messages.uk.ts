@@ -300,6 +300,8 @@ export const uk: Record<string, string> = {
   'err.invoice.notFound': 'Рахунок не знайдено',
   'err.invoice.workOrderNotFound': 'Наряд не знайдено',
   'err.invoice.onlyCompletedInvoiceable': 'Рахунок можна виставити лише для завершеного наряду',
+  'err.invoice.workOrderInvoicePaidViaPayment':
+    'Рахунок наряду закривається оплатою — скористайтесь «Оплатити»',
   'err.invoice.workOrderTotalsMismatch':
     'Сума наряду не відповідає його рядкам — рахунок не сформовано. Перевірте роботи й запчастини наряду',
   'err.invoice.activeExists': 'Для цього наряду вже існує активний рахунок',
@@ -329,6 +331,7 @@ export const uk: Record<string, string> = {
   'err.payment.receiptAlreadyIssued': 'Чек уже пробито — повтор не потрібен',
   'err.payment.retryOnlyFailed': 'Повтор можливий лише для чеків у статусі «Помилка»',
   'err.payment.retryReversed': 'Оплату сторновано — чек за неї не пробивається',
+  'err.payment.refundWithWorkOrder': "Повернення не прив'язується до наряду — оформіть його в касі",
   'err.payment.workOrderStatusNoPayment': 'Наряд у статусі "{{status}}" — оплата неможлива',
   'err.payment.fiscalOnlyBaseCurrency':
     'Фіскалізація можлива лише у базовій валюті ({{code}}). Оберіть касу/рахунок у {{code}} або спосіб оплати без ПРРО.',
@@ -533,6 +536,15 @@ export const uk: Record<string, string> = {
     'Поділитися кошторисом можна лише у статусі чернетка / кошторис / затверджено',
   'err.workOrder.publicUrlNotConfigured':
     'Публічний URL не налаштовано (WEB_PUBLIC_URL) — зверніться до адміністратора',
+  'err.workOrder.paidCannotCancel':
+    'Наряд має оплату {{paid}} — спершу сторнуйте оплату, потім скасовуйте наряд',
+  'err.workOrder.paidCannotDelete':
+    'Наряд має оплату {{paid}} — спершу сторнуйте оплату, потім видаляйте наряд',
+  'err.workOrder.totalBelowPaid':
+    'Сума наряду {{total}} стала б меншою за сплачене {{paid}} — спершу сторнуйте оплату',
+  'err.workOrder.paidCurrencyLocked': 'Наряд уже має оплату — валюту змінити не можна',
+  'err.workOrder.paidRequiresFullPayment':
+    'Наряд не сплачено повністю (залишок {{remaining}}) — скористайтесь «Оплатити»',
   'err.workOrder.printBeforeCompletion': 'Наряд-замовлення друкується після виконання робіт',
   'err.workOrder.totalZeroCannotComplete':
     'Загальна сума наряду дорівнює нулю — завершення неможливе',
@@ -766,6 +778,7 @@ export const uk: Record<string, string> = {
   'err.cash.employeeNotFound': 'Працівника не знайдено',
   'err.cash.baseDocumentNotAllowed': 'Такий документ не може бути підставою для цього приводу',
   'err.cash.baseDocumentNotFound': 'Документ-підставу не знайдено',
+  'err.cash.baseWorkOrderNotPayable': 'Наряд у статусі «{{status}}» не приймає оплату',
   'err.cash.baseDocumentForeign': 'Документ-підстава належить іншому контрагентові',
 
   // ── Exception-повідомлення: comments-модуль ──

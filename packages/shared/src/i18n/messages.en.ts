@@ -298,6 +298,8 @@ export const en: Record<string, string> = {
   'err.invoice.workOrderNotFound': 'Work order not found',
   'err.invoice.onlyCompletedInvoiceable':
     'An invoice can only be issued for a completed work order',
+  'err.invoice.workOrderInvoicePaidViaPayment':
+    'A work order invoice is closed by a payment — use «Pay»',
   'err.invoice.workOrderTotalsMismatch':
     'Work order total does not match its lines — the invoice was not generated. Check the work order labour and parts',
   'err.invoice.activeExists': 'An active invoice already exists for this work order',
@@ -328,6 +330,8 @@ export const en: Record<string, string> = {
   'err.payment.receiptAlreadyIssued': 'The receipt has already been issued — a retry is not needed',
   'err.payment.retryOnlyFailed': 'Retry is possible only for receipts in the “Error” status',
   'err.payment.retryReversed': 'The payment has been reversed — no receipt is issued for it',
+  'err.payment.refundWithWorkOrder':
+    'A refund is not linked to a work order — record it in the cash register',
   'err.payment.workOrderStatusNoPayment':
     'Work order is in "{{status}}" status — payment is not possible',
   'err.payment.fiscalOnlyBaseCurrency':
@@ -544,6 +548,16 @@ export const en: Record<string, string> = {
     'The estimate can be shared only in draft / estimate / approved status',
   'err.workOrder.publicUrlNotConfigured':
     'Public URL is not configured (WEB_PUBLIC_URL) — contact the administrator',
+  'err.workOrder.paidCannotCancel':
+    'The work order has payments of {{paid}} — reverse the payment before cancelling the work order',
+  'err.workOrder.paidCannotDelete':
+    'The work order has payments of {{paid}} — reverse the payment before deleting the work order',
+  'err.workOrder.totalBelowPaid':
+    'The work order total {{total}} would become less than the paid amount {{paid}} — reverse the payment first',
+  'err.workOrder.paidCurrencyLocked':
+    'The work order already has payments — the currency cannot be changed',
+  'err.workOrder.paidRequiresFullPayment':
+    'The work order is not fully paid (remaining {{remaining}}) — use «Pay»',
   'err.workOrder.printBeforeCompletion':
     'The work order is printed only after the work is completed',
   'err.workOrder.totalZeroCannotComplete':
@@ -779,6 +793,8 @@ export const en: Record<string, string> = {
   'err.cash.employeeNotFound': 'Employee not found',
   'err.cash.baseDocumentNotAllowed': 'This document cannot be the base for this reason',
   'err.cash.baseDocumentNotFound': 'Base document not found',
+  'err.cash.baseWorkOrderNotPayable':
+    'The work order in the «{{status}}» status does not accept payment',
   'err.cash.baseDocumentForeign': 'The base document belongs to another counterparty',
 
   // ── Exception messages: comments module ──

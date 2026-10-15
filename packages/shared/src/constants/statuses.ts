@@ -72,6 +72,42 @@ export const WO_INVOICE_VISIBLE_STATUSES: readonly string[] = Object.freeze([
   'ARCHIVED',
 ]);
 
+// Оплата наряду з документа (BR-PAY-001, BR-PAY-020, рішення власника 2026-10-15): у будь-якому
+// статусі, крім «Скасовано», «Оплачено», «Архів». До «Виконано» борг (CHARGE) ще не нараховано —
+// гроші йдуть авансом (PREPAYMENT); з «Виконано» — оплатою (PAYMENT).
+export const WO_PREPAYMENT_STATUSES: readonly string[] = Object.freeze([
+  'DRAFT',
+  'ESTIMATE',
+  'APPROVED',
+  'IN_PROGRESS',
+  'ON_HOLD',
+]);
+export const WO_PAYABLE_STATUSES: readonly string[] = Object.freeze([
+  ...WO_PREPAYMENT_STATUSES,
+  'COMPLETED',
+  'INVOICED',
+]);
+/** Тип проводки оплати наряду за його статусом; null — статус оплату не приймає. */
+export function woPaymentKind(status: string): 'PREPAYMENT' | 'PAYMENT' | null {
+  if (WO_PREPAYMENT_STATUSES.includes(status)) return 'PREPAYMENT';
+  if (WO_PAYABLE_STATUSES.includes(status)) return 'PAYMENT';
+  return null;
+}
+// Рахунок з наряду (BR-INV-020): ширше за WO_INVOICEABLE_STATUSES — повністю сплачений наряд
+// стає «Оплачено» ще до рахунку, а рахунок для нього створити можна (акт, «Рахунок»).
+export const WO_INVOICE_CREATABLE_STATUSES: readonly string[] = Object.freeze([
+  'COMPLETED',
+  'INVOICED',
+  'PAID',
+]);
+/** Ролі, яким дозволено `POST /payments` (оплата клієнта з рахунку чи наряду). */
+export const PAYMENT_CREATE_ROLES: readonly string[] = Object.freeze([
+  'OWNER',
+  'ADMIN',
+  'ACCOUNTANT',
+  'RECEPTIONIST',
+]);
+
 // Single source of truth: must mirror backend `WORK_ORDER_TRANSITIONS`
 // in apps/api/src/modules/work-orders/work-orders.fsm.ts. Backend is authoritative —
 // if these diverge the UI offers transitions the API will reject with 400.
