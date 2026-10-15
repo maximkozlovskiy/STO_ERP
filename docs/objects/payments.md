@@ -177,6 +177,8 @@ create (метод без requiresFiscal) → null
 | Чек і «Повторити» (FAILED)     | історія каси `cash/CashOperationsTab.tsx`; рядок оплати в «Пов'язаних документах» рахунку (`LinkedDocumentsPanel`, `fiscalStatus` з `GET /invoices/:id/linked-documents`) |
 | Оплата клієнта готівкою        | форма каси `cash/CashOperationModal.tsx` (привід `SALE_PAYMENT` → `POST /payments`)                                                                                       |
 | Оплата з рахунку               | «Оплатити» у боковій панелі `invoices/page.tsx` → `POST /payments`; поле «Каса» для готівки (BR-PAY-019)                                                                  |
+| Оплата з наряду                | «Оплатити» у картці (`CreateWorkOrderModal.tsx`) і на сторінці наряду (`work-orders/[id]/PageClient.tsx`) → `POST /payments { workOrderId }` (BR-PAY-020)                 |
+| Вікно «Оплатити» (спільне)     | `components/ui/ClientPaymentModal.tsx`: спосіб, каса для готівки, каси за валютою, сума = залишок, ключ ідемпотентності на відкриття, QR лише для рахунку                 |
 | Каса (cash-shift open/close)   | `app/(app)/cash/page.tsx`, `hooks/api/useCashShift.ts`                                                                                                                    |
 | QR-оплата (online-payment)     | `components/ui/QrPaymentModal.tsx`, `hooks/api/useOnlinePayment.ts`                                                                                                       |
 | ПРРО-провайдери (налаштування) | `app/(app)/settings/FiscalTab.tsx`, `ProviderRegistryPanel.tsx`                                                                                                           |
@@ -214,10 +216,12 @@ create (метод без requiresFiscal) → null
 причина, користувач). Що він робить, у порядку записів: CAS `reversedAt: null → now()` (друге сторно →
 400; чек у черзі / `FAILED` одразу `SKIPPED`) → проводка `PAYMENT_CANCEL` / `PREPAYMENT_CANCEL` (за типом
 проводки оригіналу, курс оригіналу, документ — рядок сторно каси) → «сплачено» рахунку і наряду мінус
-сума (не нижче нуля), статус рахунку PAID/PARTIALLY_PAID → PARTIALLY_PAID/SENT, наряду PAID → INVOICED
-(`reopenPaidWorkOrderInTx`) → списання нарахованих бонусів (`LoyaltyService.reverseEarn`, `EARN_REVERSAL`).
+сума (не нижче нуля) — спершу наряд, потім рахунок (той самий порядок блокувань, що в оплаті), статус
+наряду PAID → INVOICED (`reopenPaidWorkOrderInTx`); рахунок наряду перераховується з наряду (дзеркало,
+BR-INV-018), рахунок без наряду — PAID/PARTIALLY_PAID → PARTIALLY_PAID/SENT → списання нарахованих бонусів (`LoyaltyService.reverseEarn`, `EARN_REVERSAL`).
 Відмови (400): чек уже пробито (`DONE` / є `fiscalReceiptId`), оплата не в базовій валюті, наряд в архіві,
-рахунок скасовано.
+рахунок скасовано (лише для оплати рахунку без наряду: рахунок наряду — дзеркало, його скасування сторно
+оплати наряду не блокує).
 
 Сторнована оплата **виключена** (`reversedAt: null` у відборі): із сум «сплачено», нічної звірки
 (`reconciliation.processor`), курсових різниць, нарахування бонусів (джоб `earn` пропускає її) і
@@ -228,13 +232,15 @@ create (метод без requiresFiscal) → null
 
 ### Side-effects після `create` (усі поза транзакцією, best-effort)
 
-| Ефект         | Умова / деталь                                                                                                           |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Фіскалізація  | якщо `method.requiresFiscal` → job `fiscal-receipt` у черзі `checkbox`; enqueue-fail → `fiscalStatus=FAILED`             |
-| Лояльність    | `LoyaltyService.queueEarn(orgId, counterpartyId, amount, payment.id)` → нарахування балів; див. [loyalty.md](loyalty.md) |
-| WorkOrder FSM | `INVOICED → PAID` (best-effort, лише лог при провалі)                                                                    |
-| Сповіщення    | `PAYMENT_RECEIVED` (якщо є phone/email)                                                                                  |
-| Audit         | `audit.record('Payment', …, 'CREATE')`                                                                                   |
+Перехід наряду в «Оплачено» серед них більше немає: він у транзакції оплати (BR-PAY-005); після
+коміту — лише події TRANSITIONED для зроблених кроків (`WorkOrdersService.emitStatusSteps`).
+
+| Ефект        | Умова / деталь                                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| Фіскалізація | якщо `method.requiresFiscal` → job `fiscal-receipt` у черзі `checkbox`; enqueue-fail → `fiscalStatus=FAILED`             |
+| Лояльність   | `LoyaltyService.queueEarn(orgId, counterpartyId, amount, payment.id)` → нарахування балів; див. [loyalty.md](loyalty.md) |
+| Сповіщення   | `PAYMENT_RECEIVED` (якщо є phone/email)                                                                                  |
+| Audit        | `audit.record('Payment', …, 'CREATE')`                                                                                   |
 
 ### Онлайн-оплата (QR-еквайринг)
 
@@ -377,9 +383,9 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | fiscal gate               | `payments.fiscal-gate.spec.ts`                           | 8      |
 | idempotency               | `payments.idempotency.spec.ts`                           | 7      |
 | money model               | `payments.money-model.spec.ts`                           | 22     |
-| multicurrency             | `payments.multicurrency.spec.ts`                         | 17     |
+| multicurrency             | `payments.multicurrency.spec.ts`                         | 23     |
 | query dto                 | `payments.query-dto.spec.ts`                             | 43     |
-| передумови + наряд        | `payments.work-order.spec.ts`                            | 23     |
+| передумови + наряд        | `payments.work-order.spec.ts`                            | 49     |
 | політика повторів черг    | `payments.queue-retry-policy.spec.ts`                    | 6      |
 | сервісна логіка           | `provider-config.service.spec.ts`                        | 27     |
 | шифрування at-rest        | `../../prisma/field-encryption.extension.spec.ts`        | 21     |
@@ -389,9 +395,9 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | HTTP-контракт способів    | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
 | системні способи оплати   | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
 
-Разом: **437** кейсів — 369 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
+Разом: **469** кейсів — 401 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
 (`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
-`vitest --reporter=json` (2026-10-14), не з grep.
+`vitest --reporter=json` (2026-10-15), не з grep.
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 

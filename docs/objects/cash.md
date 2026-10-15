@@ -314,13 +314,13 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 | сторно: рядок у журналі — курс оригіналу, `reversalOfId`, P2002 → 400 (BR-CASH-023)                             | `cash.reversal-record.spec.ts`                                                   | 10     |
 | каса-диригент: сторно — рядок протилежного напряму, відмови, одна транзакція (BR-CASH-023)                      | `../cash-registers/cash-desk.reverse.spec.ts`                                    | 33     |
 | каса-диригент: відкат за приводом — оплати, повернення, прості приводи (BR-CASH-024, 025)                       | `../cash-registers/cash-desk.reverse-branches.spec.ts`                           | 21     |
-| сторно оплати контрагента: CAS, `PAYMENT_CANCEL`/`PREPAYMENT_CANCEL`, «сплачено», чек, бонуси (BR-CASH-024)     | `../payments/payments.reverse.spec.ts`                                           | 34     |
+| сторно оплати контрагента: CAS, `PAYMENT_CANCEL`/`PREPAYMENT_CANCEL`, «сплачено», чек, бонуси (BR-CASH-024)     | `../payments/payments.reverse.spec.ts`                                           | 37     |
 | сторнована оплата поза нічною звіркою і фіскальною чергою (BR-CASH-024)                                         | `../payments/payments.reversal-excluded.spec.ts`                                 | 7      |
 | сторно оплати постачальнику: REVERSED, `SUPPLIER_PAYMENT_CANCEL`, «сплачено» замовлення (BR-CASH-024)           | `../supplier-payments/supplier-payments.reverse.spec.ts`                         | 16     |
 | бонуси за сторновану оплату: списання не нижче нуля, повтор, `earn` (BR-CASH-024)                               | `../loyalty/loyalty.reverse-earn.spec.ts`                                        | 12     |
 | причина сторно в zod-схемі (BR-CASH-023)                                                                        | `../../../../../packages/shared/src/schemas/forms/cash-reversal.schema.spec.ts`  | 11     |
 
-Разом: **648** кейсів (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
+Разом: **651** кейсів (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
 
 **Межі сторожів.** Мітка `// guards:` означає «порушення правила в коді валить цей тест» (кожну перевірено мутацією 2026-10-08), але не «правило стережеться повністю»:
 

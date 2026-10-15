@@ -295,15 +295,20 @@ test.describe('Наряд — повний FSM цикл DRAFT→PAID', () => {
     await expect(page.locator('text=Виставлено').first()).toBeVisible({ timeout: 10_000 });
   });
 
-  test('INVOICED → Оплачено (PAID)', async ({ page }) => {
+  // BR-WO-016 (рішення власника 2026-10-15): ручного переходу «Оплачено» немає — наряд стає
+  // «Оплачено» оплатою залишку з вікна «Оплатити» (BR-PAY-005).
+  test('INVOICED → «Оплатити» залишок → Оплачено (PAID)', async ({ page }) => {
     expect(woId, 'WO має бути доступний з попередньої сходинки FSM').toBeTruthy();
     if (!woId) return; // type-narrow для TS
     await page.goto(`/work-orders/${woId}`);
     await expect(page.locator('text=Виставлено').first()).toBeVisible({ timeout: 20_000 });
-    // FSM INVOICED → PAID — кнопка "Оплачено" або "Оплатити"
-    await page.locator('button:has-text("Оплачено"), button:has-text("Оплатити")').first().click();
-    const confirm = page.locator('button:has-text("Підтвердити"), button:has-text("Так")').first();
-    if (await confirm.isVisible({ timeout: 3_000 })) await confirm.click();
+    await page.getByRole('button', { name: 'Оплатити', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: /^Оплата наряду / });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    // Безготівковий спосіб без каси; порожня сума = залишок.
+    await dialog.getByLabel('Метод оплати').selectOption('bank_transfer');
+    await dialog.getByRole('button', { name: 'Підтвердити оплату' }).click();
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
     await expect(page.locator('text=Оплачено').first()).toBeVisible({ timeout: 10_000 });
 
     // Cleanup — наряд у фінальному статусі, просто видаляємо

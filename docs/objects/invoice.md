@@ -243,12 +243,13 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | список: відбір за датою документа                                  | `invoices.list-date-filter.spec.ts`        | 6      |
 | список: відбір за контрагентом, статусами, пошук                   | `invoices.list-filters.spec.ts`            | 7      |
 | refresh from work order                                            | `invoices.refresh-from-work-order.spec.ts` | 15     |
-| transition settlements                                             | `invoices.transition-settlements.spec.ts`  | 10     |
+| transition settlements                                             | `invoices.transition-settlements.spec.ts`  | 12     |
+| рахунок наряду — дзеркало наряду (BR-INV-018, 020)                 | `work-order-invoice-mirror.spec.ts`        | 32     |
 | update: зміна контрагента (org, роль)                              | `invoices.update-counterparty.spec.ts`     | 5      |
 | рядки рахунку з наряду (чиста функція)                             | `invoices.work-order-lines.spec.ts`        | 23     |
 | друкований рахунок: реквізити своєї організації, дата, валюта, 404 | `invoices.pdf.spec.ts`                     | 4      |
 
-Разом: **181** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **215** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для правил про суму з наряду і ПДВ рядка:
 

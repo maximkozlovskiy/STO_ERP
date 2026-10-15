@@ -147,6 +147,12 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 «Зберегти PDF» (`WorkOrderPrintButtons`), «Друк рахунку» в секції рахунку (`InvoiceSection`).
 Для наряду, позначеного на видалення, серверного друку немає (BR-WO-012).
 
+**Оплата (BR-PAY-020, BR-WO-016).** «Оплатити» — у картці й на сторінці наряду для статусів
+`WO_PAYABLE_STATUSES` і ролей `PAYMENT_CREATE_ROLES`; вікно `ClientPaymentModal` («Аванс за нарядом» до
+«Виконано», «Оплата наряду» після). Ручного переходу «Оплачено» в меню статусу немає. Після оплати,
+переходу й підписання акта статус і «Сплачено» беруться з сервера (наряд міг сам стати «Оплачено»).
+Підсумки показують «Залишок до сплати» (`WorkOrderTotals.tsx`).
+
 **Картка наряду — секції (PageClient.tsx, у порядку рендеру):**
 
 1. Заголовок + статус-бейдж + FSM кнопки
@@ -235,12 +241,13 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | правка рядка роботи: робота й виконавець           | `work-orders.line-update.spec.ts`                | 7      |
 | recalc cap                                         | `work-orders.recalc-cap.spec.ts`                 | 5      |
 | recalc totals                                      | `work-orders.recalc-totals.spec.ts`              | 21     |
+| сплачений наряд: скасування, сума, «Оплачено»      | `work-orders.paid-guards.spec.ts`                | 17     |
 | рольовий доступ                                    | `work-orders.role-gate.spec.ts`                  | 24     |
 | сервісна логіка                                    | `work-orders.service.spec.ts`                    | 25     |
 | share public                                       | `work-orders.share-public.spec.ts`               | 14     |
 | зведення по табличних частинах і виконавці         | `../lines-summary/lines-summary.service.spec.ts` | 19     |
 
-Разом: **296** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **313** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для BR-WO-007 — сума наряду з ПДВ:
 
