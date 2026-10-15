@@ -356,3 +356,93 @@ describe('InvoiceSection — наряд позначено на видаленн
     expect(screen.getByRole('button', { name: 'Відкрити рахунки ↗' })).toBeInTheDocument();
   });
 });
+
+describe('InvoiceSection — «Друк рахунку»', () => {
+  it('рахунок є і роль може друкувати → кнопка є; клік відкриває вікно і запитує PDF рахунку', async () => {
+    const win = {
+      document: document.implementation.createHTMLDocument(''),
+      closed: false,
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+    };
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(win as unknown as Window);
+    apiBlobFetchMock.mockResolvedValue(new Blob(['%PDF'], { type: 'application/pdf' }));
+    render(
+      <InvoiceSection
+        workOrderId={WO_ID}
+        workOrderStatus="INVOICED"
+        invoiceRef={draftInvoice}
+        onChange={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Друк рахунку' }));
+
+    await waitFor(() => expect(apiBlobFetchMock).toHaveBeenCalledWith(`/invoices/${INV_ID}/pdf`));
+    expect(openSpy).toHaveBeenCalledWith('', '_blank');
+    expect(win.document.title).toBe('Рахунок INV-2026-0001');
+    openSpy.mockRestore();
+  });
+
+  it('PDF рахунку не отримано → вікно друку закривається', async () => {
+    const win = {
+      document: document.implementation.createHTMLDocument(''),
+      closed: false,
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+    };
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(win as unknown as Window);
+    apiBlobFetchMock.mockRejectedValue(new Error('Рахунок не знайдено'));
+    render(
+      <InvoiceSection
+        workOrderId={WO_ID}
+        workOrderStatus="PAID"
+        invoiceRef={draftInvoice}
+        onChange={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Друк рахунку' }));
+
+    await waitFor(() => expect(win.close).toHaveBeenCalledTimes(1));
+    openSpy.mockRestore();
+  });
+
+  it('роль без доступу до рахунку (canPrint=false) → кнопки немає', () => {
+    render(
+      <InvoiceSection
+        workOrderId={WO_ID}
+        workOrderStatus="INVOICED"
+        invoiceRef={draftInvoice}
+        onChange={vi.fn()}
+        canPrint={false}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Друк рахунку' })).not.toBeInTheDocument();
+  });
+
+  it('рахунку немає → кнопки немає', () => {
+    render(
+      <InvoiceSection
+        workOrderId={WO_ID}
+        workOrderStatus="COMPLETED"
+        invoiceRef={null}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Друк рахунку' })).not.toBeInTheDocument();
+  });
+
+  it('наряд видалено (readOnly) → «Друк рахунку» лишається: рахунок окремий документ', () => {
+    render(
+      <InvoiceSection
+        workOrderId={WO_ID}
+        workOrderStatus="INVOICED"
+        invoiceRef={draftInvoice}
+        onChange={vi.fn()}
+        readOnly
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Друк рахунку' })).toBeInTheDocument();
+  });
+});

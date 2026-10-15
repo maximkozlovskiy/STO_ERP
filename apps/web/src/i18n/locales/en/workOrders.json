@@ -101,7 +101,6 @@
     "mileageUnit": "km",
     "plannedAt": "Planned",
     "description": "Description",
-    "pdf": "PDF",
     "print": "Print",
     "clone": "Duplicate",
     "template": "Template ↓",
@@ -300,5 +299,13 @@
     "net": "Amount excl. VAT",
     "vat": "VAT",
     "gross": "Total"
+  },
+  "print": {
+    "order": "Print work order",
+    "savePdf": "Save PDF",
+    "invoice": "Print invoice",
+    "orderTitle": "Work order {{number}}",
+    "invoiceTitle": "Invoice {{number}}",
+    "error": "Could not prepare the PDF for printing"
   }
 }

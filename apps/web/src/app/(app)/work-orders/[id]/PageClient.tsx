@@ -30,6 +30,8 @@ import {
   WO_EDITABLE_STATUSES,
   WO_INVOICEABLE_STATUSES,
 } from '@sto/shared';
+import { INVOICE_PRINT_ROLES } from '@/hooks/useWorkOrderActions';
+import { WorkOrderPrintButtons } from './WorkOrderPrintButtons';
 import { woStatusLabel, woPriorityLabel, woCategoryLabel } from '@/i18n/enumLabel';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Badge } from '@/components/ui/badge';
@@ -509,8 +511,8 @@ export default function WorkOrderCardPage() {
       });
   }, [id, t]);
 
-  // Усі дії користувача на цій сторінці (transition, saveEdit, handleClone, downloadPdf,
-  // generateAct, signAct, downloadActPdf, cancelAct) мають власний catch, який кладе текст
+  // Усі дії користувача на цій сторінці (transition, saveEdit, handleClone, друк наряду в
+  // WorkOrderPrintButtons, generateAct, signAct, downloadActPdf, cancelAct) мають власний catch, який кладе текст
   // помилки у setError — він показується у банері над карткою наряду. Тому в JSX вони
   // викликаються через `void`: проміс нікому не потрібен і реджекту бути не може.
   const transition = async (newStatus: string) => {
@@ -618,26 +620,6 @@ export default function WorkOrderCardPage() {
     }
   };
 
-  const downloadPdf = async () => {
-    // use apiBlobFetch which does silent refresh on 401 — direct fetch
-    // breaks when access token expired (~15min) requiring full page reload.
-    setError('');
-    try {
-      const blob = await apiBlobFetch(`/work-orders/${id}/pdf`);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `work-order-${wo?.number ?? id}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      // Defer revoke — Chromium can drop the download if revoke fires before the browser starts reading.
-      setTimeout(() => URL.revokeObjectURL(url), 100);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('detail.pdfError'));
-    }
-  };
-
   const handleClone = async () => {
     setCloning(true);
     setError('');
@@ -655,7 +637,7 @@ export default function WorkOrderCardPage() {
     setDownloadingActPdf(true);
     setError('');
     try {
-      // same silent-refresh hardening as downloadPdf above.
+      // apiBlobFetch робить silent refresh на 401 (як і друк наряду у WorkOrderPrintButtons).
       const blob = await apiBlobFetch(`/completion-acts/${actId}/pdf`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -921,13 +903,16 @@ export default function WorkOrderCardPage() {
             {TRANSITION_LABELS[s] ?? s}
           </Button>
         ))}
-        {/* BR-WO-012: PDF будує сервер, а він видаленого наряду не знаходить (404) — кнопку сховано.
+        {/* BR-WO-013: наряд-замовлення (серверний PDF) — лише від «Виконано».
+            BR-WO-012: сервер видаленого наряду не знаходить (404) — кнопки сховано.
             «Друк» нижче — window.print(), запиту немає, тому лишається. */}
-        {!isDeleted && (
-          <Button variant="outline" size="sm" onClick={() => void downloadPdf()}>
-            {t('detail.pdf')}
-          </Button>
-        )}
+        <WorkOrderPrintButtons
+          workOrderId={id}
+          number={wo.number}
+          status={wo.status}
+          isDeleted={isDeleted}
+          onError={setError}
+        />
         <Button variant="outline" size="sm" onClick={() => window.print()}>
           {t('detail.print')}
         </Button>
@@ -1051,6 +1036,7 @@ export default function WorkOrderCardPage() {
           invoiceRef={invoiceRef}
           onChange={setInvoiceRef}
           readOnly={isDeleted}
+          canPrint={INVOICE_PRINT_ROLES.includes(employee?.role ?? '')}
         />
       </SectionErrorBoundary>
 

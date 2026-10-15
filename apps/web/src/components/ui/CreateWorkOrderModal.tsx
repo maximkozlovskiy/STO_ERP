@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useTabBarContext } from '@/contexts/TabBarContext';
 import { apiFetch } from '@/lib/api-client';
+import { useAuth } from '@/lib/auth';
 import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -1605,17 +1606,24 @@ export function CreateWorkOrderModal({
   // Share/print/SMS allowed in DRAFT/ESTIMATE/APPROVED; after IN_PROGRESS the public link is inactive.
   // A3-modal: action-handlers (print/saveAs/share/sms/invoice+rollback) + loading + invoiceConflict
   // винесено у useWorkOrderActions. Footer-JSX споживає повернені handlers/флаги.
+  const { employee } = useAuth();
   const {
     shareLoading,
     smsLoading,
     invoiceLoading,
+    printLoading,
     invoiceConflict,
     setInvoiceConflict,
     saveAsOpen,
     setSaveAsOpen,
     canShare,
     canInvoice,
+    canPrintOrder,
+    canPrintInvoice,
     handlePrint,
+    handlePrintOrder,
+    handleSaveOrderPdf,
+    handlePrintInvoice,
     handleSaveAs,
     handleShare,
     handleSendSms,
@@ -1631,6 +1639,9 @@ export function CreateWorkOrderModal({
     setError,
     setLinkedDocsRefreshKey,
     onUpdated,
+    viewOnly,
+    woNumber,
+    role: employee?.role,
   });
 
   // sto-optimize: stable onClose ref для Modal. Modal має useEffect що додає
@@ -1879,6 +1890,42 @@ export function CreateWorkOrderModal({
                           SMS
                         </Button>
                       </>
+                    )}
+                  </>
+                )}
+                {/* BR-WO-013: від «Виконано» друкується наряд-замовлення (серверний PDF з
+                    реквізитами), а не кошторис; для видаленого наряду canPrintOrder = false. */}
+                {canPrintOrder && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handlePrintOrder()}
+                      loading={printLoading}
+                      disabled={printLoading || saving || transitioning || invoiceLoading}
+                    >
+                      <Printer size={15} className="mr-1" />
+                      {t('print.order')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleSaveOrderPdf()}
+                      disabled={printLoading || saving || transitioning || invoiceLoading}
+                    >
+                      <Download size={15} className="mr-1" />
+                      {t('print.savePdf')}
+                    </Button>
+                    {canPrintInvoice && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handlePrintInvoice()}
+                        disabled={printLoading || saving || transitioning || invoiceLoading}
+                      >
+                        <Printer size={15} className="mr-1" />
+                        {t('print.invoice')}
+                      </Button>
                     )}
                   </>
                 )}

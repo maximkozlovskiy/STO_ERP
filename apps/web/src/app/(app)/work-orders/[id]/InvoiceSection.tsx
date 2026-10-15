@@ -27,6 +27,7 @@ import { fmtMoney, fmtDate } from '@/lib/format';
 import { useBaseCurrency } from '@/hooks/api/useCash';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { toast } from '@/lib/toast';
+import { printPdf } from '@/lib/download';
 
 /**
  * Відповідь GET /invoices/from-work-order/:id/find — ЗГЕНЕРОВАНИЙ тип
@@ -68,6 +69,11 @@ interface InvoiceSectionProps {
    * лишаються — рахунок окремий документ.
    */
   readOnly?: boolean;
+  /**
+   * Роль може друкувати рахунок (`GET /invoices/:id/pdf`) — «Друк рахунку». Для видаленого
+   * наряду кнопка лишається: рахунок окремий документ, як і «PDF рахунку».
+   */
+  canPrint?: boolean;
 }
 
 export function InvoiceSection({
@@ -76,6 +82,7 @@ export function InvoiceSection({
   invoiceRef,
   onChange,
   readOnly = false,
+  canPrint = true,
 }: InvoiceSectionProps) {
   const { t } = useTranslation('workOrders');
   const router = useRouter();
@@ -151,6 +158,19 @@ export function InvoiceSection({
     }
   };
 
+  // printPdf відкриває вікно синхронно — він перший виклик обробника, до будь-якого await.
+  const printInvoice = async (invoiceId: string, invoiceNumber: string) => {
+    try {
+      await printPdf(
+        () => apiBlobFetch(`/invoices/${invoiceId}/pdf`),
+        t('print.invoiceTitle', { number: invoiceNumber }),
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : t('print.error');
+      if (features.toastEnabled) toast.error(msg);
+    }
+  };
+
   return (
     <div className="bg-surface rounded-xl border border-border p-5">
       <div className="flex items-center justify-between mb-3">
@@ -221,6 +241,15 @@ export function InvoiceSection({
           >
             {t('invoice.pdf')}
           </Button>
+          {canPrint && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void printInvoice(invoiceRef.id, invoiceRef.number)}
+            >
+              {t('print.invoice')}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => router.push('/invoices')}>
             {t('invoice.openInvoices')}
           </Button>

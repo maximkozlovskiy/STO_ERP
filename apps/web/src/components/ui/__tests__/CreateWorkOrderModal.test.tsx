@@ -10,6 +10,11 @@ vi.mock('@/lib/api-client', () => ({
 }));
 
 // LinkedDocumentsPanel «Документи» tab uses useLinkedNav()→useRouter; jsdom має no app router.
+// Картка бере роль користувача (друк рахунку з наряду — лише ролям, яким дозволено рахунок).
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({ employee: { role: 'OWNER' } }),
+}));
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: vi.fn(),

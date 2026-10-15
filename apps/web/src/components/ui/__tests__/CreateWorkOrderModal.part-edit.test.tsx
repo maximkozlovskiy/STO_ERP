@@ -21,6 +21,11 @@ vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
+// Картка бере роль користувача (друк рахунку з наряду — лише ролям, яким дозволено рахунок).
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({ employee: { role: 'OWNER' } }),
+}));
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: vi.fn(),

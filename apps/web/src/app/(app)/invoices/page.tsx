@@ -25,6 +25,7 @@ import { invoiceLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
+import { printPdf } from '@/lib/download';
 import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
 import { getCached, setCache } from '@/lib/ref-cache';
 import {
@@ -674,6 +675,20 @@ function InvoicesPageInner() {
     }
   };
 
+  // «Друк» серверного PDF рахунку: printPdf відкриває вікно синхронно — він перший виклик
+  // обробника, до будь-якого await (інакше браузер заблокує спливаюче вікно).
+  const printInvoicePdf = async (inv: InvoiceWithOptionals) => {
+    setError('');
+    try {
+      await printPdf(
+        () => apiBlobFetch(`/invoices/${inv.id}/pdf`),
+        t('print.title', { number: inv.number }),
+      );
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t('errors.printPdf'));
+    }
+  };
+
   const handleClone = async (inv: InvoiceWithOptionals) => {
     setCloning(true);
     setError('');
@@ -818,6 +833,16 @@ function InvoicesPageInner() {
                     onClick={() => void downloadPdf(inv)}
                   >
                     {t('actions.downloadPdf')}
+                  </Button>
+                )}
+                {!inv.deletedAt && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => void printInvoicePdf(inv)}
+                  >
+                    {t('actions.printPdf')}
                   </Button>
                 )}
                 <Button

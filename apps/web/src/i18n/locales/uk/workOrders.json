@@ -101,7 +101,6 @@
     "mileageUnit": "км",
     "plannedAt": "Заплановано",
     "description": "Опис",
-    "pdf": "PDF",
     "print": "Друк",
     "clone": "Дублювати",
     "template": "Шаблон ↓",
@@ -300,5 +299,13 @@
     "net": "Сума без ПДВ",
     "vat": "ПДВ",
     "gross": "Разом"
+  },
+  "print": {
+    "order": "Друк наряду",
+    "savePdf": "Зберегти PDF",
+    "invoice": "Друк рахунку",
+    "orderTitle": "Наряд-замовлення {{number}}",
+    "invoiceTitle": "Рахунок {{number}}",
+    "error": "Не вдалося підготувати PDF для друку"
   }
 }

@@ -8,7 +8,11 @@ import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { type OrgInfo } from './shared';
+import { Select } from '@/components/ui/select';
+import { useBankAccountOptions } from '@/hooks/api/useBankStatements';
+import type { ApiSchema } from '@sto/shared';
+
+type OrgInfo = ApiSchema<'OrganisationResponseDto'>;
 
 export default function OrgInfoTab() {
   const { t } = useTranslation('ndi');
@@ -19,9 +23,15 @@ export default function OrgInfoTab() {
     edrpou: '',
     legalAddress: '',
     actualAddress: '',
+    phone: '',
+    email: '',
+    ipn: '',
     bankAccountId: '',
-    bankAccountDisplay: '',
   });
+  // Банківські рахунки організації — для вибору основного (друкується в рахунках і нарядах).
+  // Той самий запит, що й у вікнах банківської виписки (спільний кеш TanStack Query).
+  // Не завантажився — вибір просто порожній, реквізити все одно редагуються.
+  const { data: bankAccounts = [] } = useBankAccountOptions();
   const [savingOrgInfo, setSavingOrgInfo] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -51,8 +61,10 @@ export default function OrgInfoTab() {
           edrpou: info.edrpou ?? '',
           legalAddress: info.legalAddress ?? '',
           actualAddress: info.actualAddress ?? '',
+          phone: info.phone ?? '',
+          email: info.email ?? '',
+          ipn: info.ipn ?? '',
           bankAccountId: info.bankAccountId ?? '',
-          bankAccountDisplay: '',
         });
       })
       .catch((e: unknown) => {
@@ -73,10 +85,14 @@ export default function OrgInfoTab() {
           edrpou: orgInfoForm.edrpou || undefined,
           legalAddress: orgInfoForm.legalAddress || null,
           actualAddress: orgInfoForm.actualAddress || null,
+          phone: orgInfoForm.phone.trim() || null,
+          email: orgInfoForm.email.trim() || null,
+          ipn: orgInfoForm.ipn.trim() || null,
           bankAccountId: orgInfoForm.bankAccountId || null,
         }),
       });
       setOrgInfo(updated);
+      setError('');
       if (currentFeatures.toastEnabled) toast.success(t('common.saved'));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('common.error'));
@@ -282,6 +298,48 @@ export default function OrgInfoTab() {
         onChange={e => setOrgInfoForm({ ...orgInfoForm, actualAddress: e.target.value })}
         className="h-8 text-[13px]"
       />
+      <Input
+        label={t('orgInfo.fieldPhone')}
+        type="tel"
+        inputMode="tel"
+        placeholder="+380XXXXXXXXX"
+        value={orgInfoForm.phone}
+        onChange={e => setOrgInfoForm({ ...orgInfoForm, phone: e.target.value })}
+        className="h-8 text-[13px]"
+      />
+      <Input
+        label={t('orgInfo.fieldEmail')}
+        type="email"
+        value={orgInfoForm.email}
+        onChange={e => setOrgInfoForm({ ...orgInfoForm, email: e.target.value })}
+        className="h-8 text-[13px]"
+      />
+      <Input
+        label={t('orgInfo.fieldIpn')}
+        inputMode="numeric"
+        placeholder={t('orgInfo.ipnPlaceholder')}
+        value={orgInfoForm.ipn}
+        onChange={e => setOrgInfoForm({ ...orgInfoForm, ipn: e.target.value })}
+        className="h-8 text-[13px]"
+      />
+      <Select
+        label={t('orgInfo.fieldBankAccount')}
+        hint={t('orgInfo.printHint')}
+        value={orgInfoForm.bankAccountId}
+        onChange={e => setOrgInfoForm({ ...orgInfoForm, bankAccountId: e.target.value })}
+        className="h-8 text-[13px]"
+      >
+        <option value="">{t('orgInfo.bankAccountNone')}</option>
+        {orgInfoForm.bankAccountId &&
+          !bankAccounts.some(a => a.id === orgInfoForm.bankAccountId) && (
+            <option value={orgInfoForm.bankAccountId}>{t('orgInfo.bankAccountMissing')}</option>
+          )}
+        {bankAccounts.map(a => (
+          <option key={a.id} value={a.id}>
+            {a.name} · {a.ibanUA}
+          </option>
+        ))}
+      </Select>
 
       <Button onClick={() => void saveOrgInfo()} loading={savingOrgInfo} className="w-full">
         {t('orgInfo.save')}

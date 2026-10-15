@@ -304,13 +304,15 @@ test.describe('Складський документ, позначений на 
   });
 });
 
-// ─── 4. Сторінка наряду: «PDF» для звичайного є, для видаленого немає ─────────
+// ─── 4. Сторінка наряду: серверного друку для чернетки й видаленого немає ──────
 //
-// PDF будує сервер, а видаленого наряду він не знаходить (404), тому на сторінці видаленого
-// наряду кнопку сховано; «Друк» (window.print) лишається. Компонентного тесту сторінка не має —
-// правило тримає цей сценарій (без `!isDeleted &&` біля кнопки падає другий крок).
+// BR-WO-013: наряд-замовлення («Друк наряду», «Зберегти PDF») друкується лише від «Виконано» —
+// у чернетки цих кнопок немає. Видалити можна лише чернетку чи скасований наряд, тож у
+// видаленого їх теж немає; «Друк» (window.print) лишається завжди. Гейти кнопок (статус і
+// видалений наряд) стереже компонентний тест `WorkOrderPrintButtons.test.tsx`, друк від
+// «Виконано» — `work-order-print.spec.ts`.
 
-test.describe('Сторінка наряду, позначеного на видалення, — без «PDF»', () => {
+test.describe('Сторінка наряду, позначеного на видалення, — без серверного друку', () => {
   let wo: { id: string; number: string } | null = null;
 
   test.beforeAll(async ({ browser }) => {
@@ -355,18 +357,18 @@ test.describe('Сторінка наряду, позначеного на вид
     await ctx.close();
   });
 
-  test('звичайний наряд має «PDF» і «Друк»; після видалення — смуга, «PDF» немає, «Друк» є', async ({
+  test('чернетка: «Друк» є, наряд-замовлення немає; після видалення — смуга, «Друк» є', async ({
     page,
   }) => {
     expect(wo, 'beforeAll має створити наряд (у seed є клієнт з авто)').toBeTruthy();
-    const pdf = page.getByRole('button', { name: 'PDF', exact: true });
+    const pdf = page.getByRole('button', { name: /^(Друк наряду|Зберегти PDF)$/ });
     const print = page.getByRole('button', { name: 'Друк', exact: true });
     const banner = page.getByTestId('deleted-document-banner');
 
     await page.goto(`/work-orders/${wo!.id}`);
     await expect(page.locator(`h1:has-text("${wo!.number}")`)).toBeVisible({ timeout: 30_000 });
-    await expect(pdf).toBeVisible();
     await expect(print).toBeVisible();
+    await expect(pdf).toHaveCount(0);
     await expect(banner).toHaveCount(0);
 
     await api(page, 'DELETE', `/work-orders/${wo!.id}`);
@@ -376,7 +378,7 @@ test.describe('Сторінка наряду, позначеного на вид
     await expect(banner).toHaveText('Документ позначено на видалення — лише перегляд');
     await expect(print).toBeVisible();
     await expect(pdf).toHaveCount(0);
-    // Разом із PDF зникають усі дії, що змінюють наряд.
+    // Зникають усі дії, що змінюють наряд.
     for (const name of ['Редагувати', 'Дублювати', 'Скасувати', '+ Робота', '+ Запчастина']) {
       await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
     }

@@ -29,6 +29,7 @@
     "pay": "Pay",
     "cancel": "Cancel",
     "downloadPdf": "Download PDF",
+    "printPdf": "Print PDF",
     "print": "Print",
     "clone": "Duplicate",
     "markForDeletion": "Mark for deletion",
@@ -90,10 +91,14 @@
     "transition": "Status change error",
     "payment": "Payment error",
     "downloadPdf": "PDF download error",
+    "printPdf": "Could not prepare the PDF for printing",
     "clone": "Duplication error",
     "delete": "Deletion error"
   },
   "status": {
     "all": "All"
+  },
+  "print": {
+    "title": "Invoice {{number}}"
   }
 }
