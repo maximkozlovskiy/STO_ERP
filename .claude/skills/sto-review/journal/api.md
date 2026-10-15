@@ -268,3 +268,12 @@ PATCH `{ isActive: false }` правила з видаленою пізніше 
 ### 2026-10-14 — Каса з запиту без `sourceType` мовчки губилась — §4
 
 **Сигнал:** `resolveDestinationAccount` брав тип із `dto.sourceType ?? methodConfig.defaultSourceType`. `POST /payments` з `cashRegisterId`, але без `sourceType`: у способу без замовчування тип `null` → каса відкидалась (термінал записувався повз касу, готівка — 400 BR-PAY-019 «вкажіть касу», хоча касу вказано); у способу з замовчуванням «рахунок» → 400 «не вказано рахунок». Резолвер замовчувань способу (`payment-methods.service`) у тому ж diff тип з id виводив. **Grep:** див. пункт у `sections/api.md` §4. **Фікс:** `dto.sourceType ?? <тип з єдиного id> ?? замовчування`. **Severity:** IMPORTANT
+
+### 2026-10-15 — Свідомо пропущений `deletedAt: null` не стерігся тестом — §5
+
+**Сигнал:** `CalendarService.employeeNames` (BR-CAL-011) читає імена механіків без `deletedAt: null`,
+щоб звільнений лишався на своїх минулих записах. Спек мокав `employee.findMany` фіксованою
+відповіддю — мутант «додати `deletedAt: null`» пройшов усі 26 кейсів. **Grep:**
+`git diff <base> -- apps/api/src | grep -nE "^\+.*(Без|без) .deletedAt"`. **Фікс:** кейс на
+таблиці працівників, що виконує `where` (orgId, `id in`, `deletedAt`), з видаленим рядком і рядком
+чужої організації (`calendar.service.spec.ts`, b72cab2d). **Severity:** SUGGESTION
