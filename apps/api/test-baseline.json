@@ -2094,6 +2094,7 @@
    "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) «ПДВ зверху»: сума акта = wo.totalAmount (840), а не сума рядків (700); totalNet і vatTotal передано",
    "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) «ПДВ у ціні»: сума акта = wo.totalAmount (700), сума без ПДВ і ПДВ — з тоталів наряду",
    "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) акт читається у межах свого orgId разом із тоталами наряду; чужий/відсутній → 404, PDF не будується",
+   "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) валюта наряду акта (код) іде в PDF разом із сумами",
    "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) наряд без ПДВ, сума рядків відстає на копійку (Bug #807): сума акта = wo.totalAmount (100.07), а не Σ рядків (100.06)",
    "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) наряд без ПДВ: totalNet / vatTotal НЕ передаються (ключів немає), сума = сума наряду",
    "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) шапка акта — реквізити СВОЄЇ організації з OrgPrintInfoService, без змін"
@@ -3165,6 +3166,8 @@
    "InvoicesService.findAll — counterpartyId і statuses без фільтрів → ні counterpartyId, ні AND у where"
   ],
   "apps/api/src/modules/invoices/invoices.pdf.spec.ts": [
+   "InvoicesService.generatePdf — реквізити організації в рахунку валюта рахунку (код) іде в PDF разом із сумами",
+   "InvoicesService.generatePdf — реквізити організації в рахунку дата друкованого рахунку — дата документа (documentDate), а не дата створення запису",
    "InvoicesService.generatePdf — реквізити організації в рахунку рахунок видалений або чужий → 404, PDF не будується",
    "InvoicesService.generatePdf — реквізити організації в рахунку реквізити СВОЄЇ організації (з банківським рахунком) ідуть у PdfService без змін"
   ],
@@ -4271,6 +4274,7 @@
    "PdfService — шапка з логотипом і реквізитами незаповнені реквізити не друкуються порожніми підписами",
    "PdfService — шапка з логотипом і реквізитами пошкоджений логотип (pdfmake його не приймає) → документ будується вдруге без логотипа",
    "PdfService — шапка з логотипом і реквізитами рахунок має ту саму шапку: логотип і реквізити",
+   "PdfService — шапка з логотипом і реквізитами реквізит цілий: усередині — нерозривні пробіли, перенос лише між реквізитами",
    "PdfService — шапка з логотипом і реквізитами шапка несе назву, ЄДРПОУ, ІПН, адресу, телефон, e-mail, IBAN, банк і МФО"
   ],
   "apps/api/src/modules/pdf/pdf.service.spec.ts": [
@@ -4280,8 +4284,11 @@
    "PdfService — pdfmake integration generateReconciliationActPdf renders FX_GAIN/FX_LOSS rows without crashing",
    "PdfService — pdfmake integration generateWorkOrderPdf returns a non-empty PDF Buffer with Cyrillic content",
    "PdfService — pdfmake integration handles empty works/parts arrays gracefully",
+   "PdfService — pdfmake integration гривня або валюту не передано — «грн»",
+   "PdfService — pdfmake integration документ в іншій валюті — суми з кодом валюти, без «грн»",
    "PdfService — pdfmake integration зображення з локального файла (не шрифт) не читається — документ не будується",
    "PdfService — pdfmake integration зображення за URL не завантажується — документ не будується",
+   "PdfService — pdfmake integration кількість у рядку — український формат з комою",
    "PdfService — pdfmake integration суми в PDF — «1 250,00 грн», без знаку ₴, якого немає у шрифті"
   ],
   "apps/api/src/modules/purchase-orders/delivery/delivery-provider-registry.spec.ts": [
@@ -5829,6 +5836,7 @@
   "apps/api/src/modules/work-orders/work-orders.print.spec.ts": [
    "WorkOrdersController.downloadPdf — ролі маршруту (BR-WO-013) наряд-замовлення друкують OWNER, ADMIN, RECEPTIONIST, MECHANIC і ACCOUNTANT",
    "WorkOrdersService.generatePdf — зміст наряд-замовлення (BR-WO-013) VIN і пробіг авто; у роботах норма й факт годин окремо; у товарах одиниця виміру",
+   "WorkOrdersService.generatePdf — зміст наряд-замовлення (BR-WO-013) валюта наряду (код) іде в PDF разом із сумами",
    "WorkOrdersService.generatePdf — зміст наряд-замовлення (BR-WO-013) дата документа — documentDate наряду, а не дата створення запису",
    "WorkOrdersService.generatePdf — зміст наряд-замовлення (BR-WO-013) одиниця товару: обрана в рядку → базова одиниця товару → unit товару",
    "WorkOrdersService.generatePdf — зміст наряд-замовлення (BR-WO-013) шапка — реквізити своєї організації з OrgPrintInfoService, передані без змін",

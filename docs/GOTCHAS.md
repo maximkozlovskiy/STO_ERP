@@ -4,6 +4,26 @@
 
 ---
 
+## Свій текст у `@Matches` / `@IsEmail` не доходить до відповіді API (2026-10-15)
+
+`common/pipes/validation-error.factory.ts` перекладає помилку за ІМЕНЕМ обмеження: `matches` →
+`err.cv.matches` («некоректний формат»), `isEmail` → `err.cv.isEmail`. Параметр `message`
+стандартного декоратора ігнорується. Для точного тексту («Телефон має бути у форматі
++380XXXXXXXXX») — власне обмеження через `ValidateBy` з унікальним `name` і ключем i18n
+(`settings.dto.ts`, реквізити організації).
+
+## Playwright: `response.body()` порожній, коли сторінка сама читає blob (2026-10-15)
+
+Друк і завантаження PDF роблять `fetch` → `blob()`; тіло вже прочитане сторінкою, і
+`page.waitForResponse(...).body()` повертає порожній буфер або падає. Щоб перевірити вміст
+файлу в E2E — `page.route(url, async (route) => { const r = await route.fetch(); … route.fulfill({ response: r }); })`
+(`e2e/work-order-print.spec.ts`).
+
+## pdfmake + Roboto: знака «₴» у шрифті немає (2026-10-15)
+
+У PDF він друкується порожнім місцем. Суми в серверних PDF — «грн» для UAH і код валюти для
+інших (`pdf.service.ts`, Bug #865); «₴» лишається у web, XLSX і DOCX.
+
 ## `packages/shared`: збірка зелена, а `type-check` у CI червоний (2026-10-15)
 
 `npx tsc -p tsconfig.cjs.json` (збірка `dist`) не вмикає `exactOptionalPropertyTypes`, а
