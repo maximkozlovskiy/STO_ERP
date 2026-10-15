@@ -653,4 +653,42 @@ describe('findSlots — механік запису (BR-CAL-011)', () => {
     expect(employeeFindMany).not.toHaveBeenCalled();
     expect(slot.employeeName).toBeNull();
   });
+
+  // guards: BR-CAL-011
+  it('звільнений механік лишається на своїх записах; працівник іншої організації — null', async () => {
+    // Таблиця працівників, що ВИКОНУЄ where (orgId, id in, deletedAt): мок із фіксованою
+    // відповіддю не відрізнив би запит із `deletedAt: null` від запиту без нього.
+    const FOREIGN = 'e4444444-4444-4444-8444-444444444444';
+    const table = [
+      { id: E1, orgId: 'org-1', firstName: 'Петро', lastName: 'Коваль', deletedAt: null },
+      {
+        id: GONE,
+        orgId: 'org-1',
+        firstName: 'Іван',
+        lastName: 'Звільнений',
+        deletedAt: new Date('2026-06-01T00:00:00Z'),
+      },
+      { id: FOREIGN, orgId: 'org-2', firstName: 'Чужий', lastName: 'Працівник', deletedAt: null },
+    ];
+    const employeeFindMany = vi.fn(
+      async (args: { where: { orgId?: string; id: { in: string[] }; deletedAt?: null } }) =>
+        table
+          .filter(e => args.where.orgId === undefined || e.orgId === args.where.orgId)
+          .filter(e => args.where.id.in.includes(e.id))
+          .filter(e => !('deletedAt' in args.where) || e.deletedAt === null)
+          .map(e => ({ id: e.id, firstName: e.firstName, lastName: e.lastName })),
+    );
+    const prisma = {
+      calendarSlot: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([slotRow('s1', E1), slotRow('s2', GONE), slotRow('s3', FOREIGN)]),
+      },
+      employee: { findMany: employeeFindMany },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const service = new CalendarService(prisma as any);
+    const result = await service.findSlots('org-1', '2026-06-15', 'ADMIN');
+    expect(result.map(s => s.employeeName)).toEqual(['Коваль Петро', 'Звільнений Іван', null]);
+  });
 });
