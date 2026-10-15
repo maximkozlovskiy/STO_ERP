@@ -1286,7 +1286,9 @@ export class InvoicesService {
         // priceWithoutVat/vatAmount, good.unit/unitOfMeasure.coefficient (PDF використовує лише shortName).
         select: {
           number: true,
-          createdAt: true,
+          // Дата друкованого рахунку — дата документа (як у списку й у секції рахунку наряду),
+          // а не мітка створення запису: заднім числом виставлений рахунок інакше мав би «сьогодні».
+          documentDate: true,
           dueDate: true,
           totalWithoutVat: true,
           totalVat: true,
@@ -1333,7 +1335,7 @@ export class InvoicesService {
       org,
       counterparty: { name: counterpartyName, phone: cp?.phone, edrpou: cp?.edrpou },
       number: inv.number,
-      date: inv.createdAt,
+      date: inv.documentDate,
       dueDate: inv.dueDate,
       lines: (inv.lines ?? []).map(l => ({
         description: l.description,

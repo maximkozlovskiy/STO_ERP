@@ -262,9 +262,14 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 - поза модулем: `apps/api/src/modules/pdf/pdf.org-header.spec.ts` (шапка з логотипом / без /
   пошкоджений логотип, реквізити в шапці, таблиці робіт і товарів),
   `apps/api/src/modules/pdf/org-print-info.service.spec.ts` (логотип недоступний / не PNG-JPEG /
-  завеликий / чужий, основний рахунок видалений чи чужий), web —
+  завеликий / чужий, основний рахунок видалений чи чужий),
+  `apps/api/src/modules/settings/settings.org-info.contract.spec.ts` (реквізити в НДІ: телефон,
+  e-mail, ІПН, порожній рядок → null, чужий / видалений основний рахунок → 404), web —
   `components/ui/__tests__/CreateWorkOrderModal.print.test.tsx`,
-  `app/(app)/work-orders/[id]/__tests__/WorkOrderPrintButtons.test.tsx`, E2E —
+  `app/(app)/work-orders/[id]/__tests__/WorkOrderPrintButtons.test.tsx`,
+  `app/(app)/work-orders/[id]/__tests__/InvoiceSection.test.tsx` («Друк рахунку» за роллю),
+  `app/(app)/ndi/__tests__/OrgInfoTab.test.tsx` (реквізити й основний рахунок у НДІ),
+  `lib/download.test.ts` (`printPdf`: вікно до запиту, закриття при помилці, рамка), E2E —
   `apps/web/e2e/work-order-print.spec.ts`.
 
 **Чого тут НЕМА.** Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.

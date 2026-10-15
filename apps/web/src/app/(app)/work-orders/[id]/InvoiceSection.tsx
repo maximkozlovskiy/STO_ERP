@@ -28,6 +28,8 @@ import { useBaseCurrency } from '@/hooks/api/useCash';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { toast } from '@/lib/toast';
 import { printPdf } from '@/lib/download';
+import { useAuth } from '@/lib/auth';
+import { INVOICE_PRINT_ROLES } from '@/hooks/useWorkOrderActions';
 
 /**
  * Відповідь GET /invoices/from-work-order/:id/find — ЗГЕНЕРОВАНИЙ тип
@@ -69,11 +71,6 @@ interface InvoiceSectionProps {
    * лишаються — рахунок окремий документ.
    */
   readOnly?: boolean;
-  /**
-   * Роль може друкувати рахунок (`GET /invoices/:id/pdf`) — «Друк рахунку». Для видаленого
-   * наряду кнопка лишається: рахунок окремий документ, як і «PDF рахунку».
-   */
-  canPrint?: boolean;
 }
 
 export function InvoiceSection({
@@ -82,15 +79,26 @@ export function InvoiceSection({
   invoiceRef,
   onChange,
   readOnly = false,
-  canPrint = true,
 }: InvoiceSectionProps) {
   const { t } = useTranslation('workOrders');
+  // «Друк рахунку» — лише ролям, яким сервер дозволяє `GET /invoices/:id/pdf`. Гейт тут, а не
+  // пропом зі сторінки: так його стереже тест цього компонента. Для видаленого наряду кнопка
+  // лишається: рахунок окремий документ, як і «PDF рахунку».
+  const { employee } = useAuth();
+  const canPrint = INVOICE_PRINT_ROLES.includes(employee?.role ?? '');
   const router = useRouter();
   const features = useUiFeatures();
   const { data: baseCurrency } = useBaseCurrency();
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [refreshingInvoice, setRefreshingInvoice] = useState(false);
   const [downloadingInvoicePdf, setDownloadingInvoicePdf] = useState(false);
+  // Помилка дії секції, коли тости вимкнено: без цього відмова (вікно друку закрилось, рахунок не
+  // створено) минала б без жодного сліду на екрані.
+  const [error, setError] = useState('');
+  const reportError = (msg: string) => {
+    if (features.toastEnabled) toast.error(msg);
+    else setError(msg);
+  };
 
   // Гейт: показуємо секцію якщо статус входить до WO_INVOICE_VISIBLE_STATUSES
   // (COMPLETED, INVOICED, PAID, ARCHIVED) і ТІЛЬКИ після того як apiFetch завершився
@@ -102,6 +110,7 @@ export function InvoiceSection({
   }
 
   const createInvoice = async () => {
+    setError('');
     setCreatingInvoice(true);
     try {
       const inv = await apiFetch<InvoiceApiShape>(`/invoices/from-work-order/${workOrderId}`, {
@@ -111,13 +120,14 @@ export function InvoiceSection({
       if (features.toastEnabled) toast.success(t('invoice.createdToast', { number: inv.number }));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('invoice.createError');
-      if (features.toastEnabled) toast.error(msg);
+      reportError(msg);
     } finally {
       setCreatingInvoice(false);
     }
   };
 
   const refreshInvoice = async () => {
+    setError('');
     setRefreshingInvoice(true);
     try {
       const inv = await apiFetch<InvoiceApiShape>(
@@ -128,13 +138,14 @@ export function InvoiceSection({
       if (features.toastEnabled) toast.success(t('invoice.refreshedToast'));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('invoice.refreshError');
-      if (features.toastEnabled) toast.error(msg);
+      reportError(msg);
     } finally {
       setRefreshingInvoice(false);
     }
   };
 
   const downloadInvoicePdf = async (invoiceId: string, invoiceNumber: string) => {
+    setError('');
     setDownloadingInvoicePdf(true);
     try {
       const blob = await apiBlobFetch(`/invoices/${invoiceId}/pdf`);
@@ -152,7 +163,7 @@ export function InvoiceSection({
       setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('invoice.pdfError');
-      if (features.toastEnabled) toast.error(msg);
+      reportError(msg);
     } finally {
       setDownloadingInvoicePdf(false);
     }
@@ -160,6 +171,7 @@ export function InvoiceSection({
 
   // printPdf відкриває вікно синхронно — він перший виклик обробника, до будь-якого await.
   const printInvoice = async (invoiceId: string, invoiceNumber: string) => {
+    setError('');
     try {
       await printPdf(
         () => apiBlobFetch(`/invoices/${invoiceId}/pdf`),
@@ -167,7 +179,7 @@ export function InvoiceSection({
       );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('print.error');
-      if (features.toastEnabled) toast.error(msg);
+      reportError(msg);
     }
   };
 
@@ -187,6 +199,14 @@ export function InvoiceSection({
           </Button>
         )}
       </div>
+      {error && (
+        <p
+          role="alert"
+          className="mb-3 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2"
+        >
+          {error}
+        </p>
+      )}
       {invoiceRef ? (
         <div className="flex items-center gap-4 flex-wrap">
           <p className="text-sm font-medium text-foreground">

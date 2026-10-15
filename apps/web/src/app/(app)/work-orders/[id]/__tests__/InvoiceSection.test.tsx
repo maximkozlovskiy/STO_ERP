@@ -48,6 +48,12 @@ vi.mock('@/lib/api-client', () => ({
   apiBlobFetch: (...args: unknown[]) => apiBlobFetchMock(...args),
 }));
 
+/// Роль користувача: «Друк рахунку» — лише INVOICE_PRINT_ROLES (гейт усередині InvoiceSection).
+let role: string | undefined = 'RECEPTIONIST';
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({ employee: role ? { role } : null }),
+}));
+
 // useUiFeatures повертає `toastEnabled` — компонент пускає toast лише якщо true.
 // Для component-test вимикаємо toast щоб не залежати від toast-mount.
 vi.mock('@/hooks/useUiFeatures', () => ({
@@ -85,6 +91,7 @@ const draftInvoice: InvoiceRef = {
 };
 
 beforeEach(() => {
+  role = 'RECEPTIONIST';
   apiFetchMock.mockReset();
   apiBlobFetchMock.mockReset();
   pushMock.mockClear();
@@ -405,21 +412,44 @@ describe('InvoiceSection — «Друк рахунку»', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Друк рахунку' }));
 
     await waitFor(() => expect(win.close).toHaveBeenCalledTimes(1));
+    // Тости вимкнено (мок useUiFeatures) — причина видна в самій секції, а не зникає мовчки.
+    expect(await screen.findByRole('alert')).toHaveTextContent('Рахунок не знайдено');
     openSpy.mockRestore();
   });
 
-  it('роль без доступу до рахунку (canPrint=false) → кнопки немає', () => {
-    render(
-      <InvoiceSection
-        workOrderId={WO_ID}
-        workOrderStatus="INVOICED"
-        invoiceRef={draftInvoice}
-        onChange={vi.fn()}
-        canPrint={false}
-      />,
-    );
-    expect(screen.queryByRole('button', { name: 'Друк рахунку' })).not.toBeInTheDocument();
-  });
+  // Сервер дозволяє `GET /invoices/:id/pdf` лише OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST.
+  it.each([['MECHANIC'], [undefined]])(
+    'роль %s без доступу до рахунку → кнопки «Друк рахунку» немає, «PDF рахунку» лишається',
+    r => {
+      role = r;
+      render(
+        <InvoiceSection
+          workOrderId={WO_ID}
+          workOrderStatus="INVOICED"
+          invoiceRef={draftInvoice}
+          onChange={vi.fn()}
+        />,
+      );
+      expect(screen.queryByRole('button', { name: 'Друк рахунку' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'PDF рахунку' })).toBeInTheDocument();
+    },
+  );
+
+  it.each([['OWNER'], ['ADMIN'], ['ACCOUNTANT'], ['RECEPTIONIST']])(
+    'роль %s → «Друк рахунку» є',
+    r => {
+      role = r;
+      render(
+        <InvoiceSection
+          workOrderId={WO_ID}
+          workOrderStatus="PAID"
+          invoiceRef={draftInvoice}
+          onChange={vi.fn()}
+        />,
+      );
+      expect(screen.getByRole('button', { name: 'Друк рахунку' })).toBeInTheDocument();
+    },
+  );
 
   it('рахунку немає → кнопки немає', () => {
     render(

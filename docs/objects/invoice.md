@@ -122,7 +122,8 @@ OVERDUE → PAID / CANCELLED
 `lib/download.ts`: вікно друку відкривається до запиту PDF); для рахунку, позначеного на
 видалення, обидві сховано (BR-WO-012). З наряду — «Друк рахунку» в картці й на сторінці наряду
 (див. [work-order.md](work-order.md), BR-WO-013). Шапку й реквізити PDF будує
-`OrgPrintInfoService` (модуль `pdf`) — та сама шапка, що в наряді й актах.
+`OrgPrintInfoService` (модуль `pdf`) — та сама шапка, що в наряді й актах. Дата друкованого
+рахунку — дата документа (`documentDate`, як у списку), а не мітка створення запису.
 
 ---
 
@@ -233,7 +234,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | transition settlements                                         | `invoices.transition-settlements.spec.ts`  | 10     |
 | update: зміна контрагента (org, роль)                          | `invoices.update-counterparty.spec.ts`     | 5      |
 | рядки рахунку з наряду (чиста функція)                         | `invoices.work-order-lines.spec.ts`        | 23     |
-| друкований рахунок: реквізити своєї організації, 404           | `invoices.pdf.spec.ts`                     | 2      |
+| друкований рахунок: реквізити своєї організації, дата, 404     | `invoices.pdf.spec.ts`                     | 2      |
 
 Разом: **181** кейсів (цифри з `vitest --reporter=json`, не з grep).
 

@@ -30,7 +30,6 @@ import {
   WO_EDITABLE_STATUSES,
   WO_INVOICEABLE_STATUSES,
 } from '@sto/shared';
-import { INVOICE_PRINT_ROLES } from '@/hooks/useWorkOrderActions';
 import { WorkOrderPrintButtons } from './WorkOrderPrintButtons';
 import { woStatusLabel, woPriorityLabel, woCategoryLabel } from '@/i18n/enumLabel';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
@@ -1036,7 +1035,6 @@ export default function WorkOrderCardPage() {
           invoiceRef={invoiceRef}
           onChange={setInvoiceRef}
           readOnly={isDeleted}
-          canPrint={INVOICE_PRINT_ROLES.includes(employee?.role ?? '')}
         />
       </SectionErrorBoundary>
 

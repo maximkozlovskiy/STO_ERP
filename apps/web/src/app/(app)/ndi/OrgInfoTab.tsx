@@ -76,6 +76,10 @@ export default function OrgInfoTab() {
   }, [t]);
 
   const saveOrgInfo = async () => {
+    // Основний рахунок шлемо лише коли його змінили: збережений рахунок могли видалити, і тоді
+    // сервер відповідає 404 на кожне збереження — реквізити не зберігались би взагалі, доки
+    // користувач сам не здогадається скинути вибір рахунку.
+    const bankAccountChanged = orgInfoForm.bankAccountId !== (orgInfo?.bankAccountId ?? '');
     setSavingOrgInfo(true);
     try {
       const updated = await apiFetch<OrgInfo>('/settings/org-info', {
@@ -88,7 +92,7 @@ export default function OrgInfoTab() {
           phone: orgInfoForm.phone.trim() || null,
           email: orgInfoForm.email.trim() || null,
           ipn: orgInfoForm.ipn.trim() || null,
-          bankAccountId: orgInfoForm.bankAccountId || null,
+          bankAccountId: bankAccountChanged ? orgInfoForm.bankAccountId || null : undefined,
         }),
       });
       setOrgInfo(updated);

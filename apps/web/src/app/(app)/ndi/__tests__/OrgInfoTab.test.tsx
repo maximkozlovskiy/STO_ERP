@@ -150,4 +150,19 @@ describe('OrgInfoTab — реквізити для друку', () => {
     await waitFor(() => expect(bankSelect().value).toBe(GONE));
     expect(bankSelect().selectedOptions[0]?.textContent).toBe('Рахунок недоступний (видалений)');
   });
+
+  // Сервер на видалений bankAccountId відповідає 404: якби незмінений рахунок ішов у кожному
+  // PATCH, жодне інше поле реквізитів не збереглося б.
+  it('рахунок не змінювали → bankAccountId не шлеться (видалений рахунок не блокує збереження)', async () => {
+    mockApi(orgInfo({ bankAccountId: GONE }));
+    render(<OrgInfoTab />);
+    await screen.findByDisplayValue('+380501112233');
+
+    fireEvent.change(screen.getByLabelText('Телефон'), { target: { value: '+380671112233' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(patchBody()).toBeDefined());
+    expect(patchBody()).toMatchObject({ phone: '+380671112233' });
+    expect(patchBody()).not.toHaveProperty('bankAccountId');
+  });
 });

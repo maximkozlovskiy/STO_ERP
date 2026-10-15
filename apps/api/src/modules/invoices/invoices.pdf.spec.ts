@@ -22,7 +22,7 @@ const ORG_INFO = {
 
 const invoiceRow = {
   number: 'РАХ-2026-000001',
-  createdAt: new Date('2026-10-15T10:00:00Z'),
+  documentDate: new Date('2026-10-01T00:00:00Z'),
   dueDate: null,
   totalWithoutVat: 500,
   totalVat: 100,
@@ -65,5 +65,17 @@ describe('InvoicesService.generatePdf — реквізити організац�
       where: { id: INV_ID, orgId: ORG, deletedAt: null },
     });
     expect(h.pdf.generateInvoicePdf).not.toHaveBeenCalled();
+  });
+
+  it('дата друкованого рахунку — дата документа (documentDate), а не дата створення запису', async () => {
+    h.prisma.invoice.findFirst.mockResolvedValue(invoiceRow);
+
+    await h.service.generatePdf(ORG, INV_ID);
+
+    const select = (h.prisma.invoice.findFirst.mock.calls[0]?.[0] as { select: object }).select;
+    expect(select).toMatchObject({ documentDate: true });
+    expect(select).not.toHaveProperty('createdAt');
+    const arg = h.pdf.generateInvoicePdf.mock.calls[0]?.[0] as { date: Date };
+    expect(arg.date).toEqual(new Date('2026-10-01T00:00:00Z'));
   });
 });
