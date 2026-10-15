@@ -264,6 +264,10 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
   й акта), `apps/api/src/modules/completion-acts/completion-acts.pdf-totals.spec.ts` (сума акта =
   сума наряду до сплати), `apps/api/src/modules/inspection/inspection.service.spec.ts` (авто-рядки огляду).
 
+Правило → тест для BR-WO-015 у web: `components/ui/__tests__/CreateWorkOrderModal.save-delete-error.test.tsx`
+— відмову сервера на видалення рядка («Зберегти зміни» картки) показано в картці, картка не
+закривається, рядок лишається на повтор (Bug #869).
+
 Правило → тест для BR-WO-013 — друк наряд-замовлення:
 
 - `work-orders.print.spec.ts` — кожен дозволений і заборонений статус (заборонені — усі інші
