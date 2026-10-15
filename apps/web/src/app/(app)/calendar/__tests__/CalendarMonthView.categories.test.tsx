@@ -159,10 +159,14 @@ describe('CalendarMonthView — рядок лічильників дня', () =>
     renderMonth({ '2026-10-14': { total: 1, byLift: {}, entries } });
 
     const row = screen.getByTestId('month-day-categories');
-    expect(row.closest('.opacity-60')).toBeNull();
+    expect(row.closest('.opacity-60, .opacity-70')).toBeNull();
     const cell = row.closest('[data-testid="month-day"]');
     expect(cell).not.toHaveClass('opacity-60');
-    expect(within(cell as HTMLElement).getByText('14')).toHaveClass('opacity-60');
+    // `opacity-70`, не `-60`: на найзавантаженішому минулому дні `-60` давав 4,0:1 у світлій
+    // темі (WCAG 1.4.3 вимагає 4,5:1; Bug #873). Контраст виміряно в браузері.
+    const dayNumber = within(cell as HTMLElement).getByText('14');
+    expect(dayNumber).toHaveClass('opacity-70');
+    expect(dayNumber).not.toHaveClass('opacity-60');
   });
 
   it('день без записів не має рядка лічильників', () => {

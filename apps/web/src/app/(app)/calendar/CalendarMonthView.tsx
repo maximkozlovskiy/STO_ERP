@@ -33,6 +33,11 @@ interface CalendarMonthViewProps {
 
 /** Наскільки блідшає фон завантаженості минулого дня (раніше — `opacity-60` кнопки). */
 const PAST_DIM = 0.6;
+/**
+ * Номер минулого дня: `opacity-60` на найзавантаженішому дні давав 4,0:1 у світлій темі (текст
+ * 14 px — норма 4,5:1, WCAG 1.4.3; Bug #873). `opacity-70` — 5,3:1 світла, 6,0:1 темна.
+ */
+const PAST_NUMBER_DIM = 'opacity-70';
 
 const DAY_LABEL_KEYS = [
   'month.weekdays.mon',
@@ -226,7 +231,7 @@ export function CalendarMonthView({
                     }
                   >
                     <span
-                      className={`text-sm font-semibold leading-none ${isToday ? 'flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs' : 'text-foreground'} ${isPast ? 'opacity-60' : ''}`}
+                      className={`text-sm font-semibold leading-none ${isToday ? 'flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs' : 'text-foreground'} ${isPast ? PAST_NUMBER_DIM : ''}`}
                     >
                       {dayNum}
                     </span>
