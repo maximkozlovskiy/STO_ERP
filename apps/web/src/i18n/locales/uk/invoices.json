@@ -69,7 +69,8 @@
     "cashRegisterPlaceholder": "— оберіть касу —",
     "cashRegisterRequired": "Для оплати готівкою оберіть касу",
     "cashRegistersLoadError": "Не вдалося завантажити каси — закрийте вікно й відкрийте знову",
-    "noCashRegisterInCurrency": "Немає жодної каси у валюті {{code}}"
+    "noCashRegisterInCurrency": "Немає жодної каси у валюті {{code}}",
+    "workOrderAmount": "Сума наряду:"
   },
   "toast": {
     "cancelledOne": "Скасовано {{count}} рахунок",

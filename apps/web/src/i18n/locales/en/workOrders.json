@@ -206,7 +206,8 @@
       "ARCHIVED": "Archive",
       "CANCELLED": "Cancel",
       "DRAFT": "Return to draft"
-    }
+    },
+    "remainingToPay": "Remaining to pay"
   },
   "invoice": {
     "title": "Invoice",
@@ -307,5 +308,12 @@
     "orderTitle": "Work order {{number}}",
     "invoiceTitle": "Invoice {{number}}",
     "error": "Could not prepare the PDF for printing"
+  },
+  "payment": {
+    "pay": "Pay",
+    "advanceTitle": "Advance for work order {{number}}",
+    "payTitle": "Payment for work order {{number}}",
+    "paidToast": "Payment of {{amount}} recorded",
+    "nothingToPay": "Nothing left to pay"
   }
 }

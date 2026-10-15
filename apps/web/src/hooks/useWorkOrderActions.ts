@@ -24,8 +24,8 @@ export const INVOICE_PRINT_ROLES: readonly string[] = [
 /**
  * A3-modal: дії edit-режиму наряду (друк/зберегти-як/поділитись/SMS/рахунок), винесені з
  * CreateWorkOrderModal. Хук володіє loading-станами + invoiceConflict + ESC-ефектом і повертає
- * handlers для footer-JSX. Логіку перенесено ДОСЛІВНО (behavior-identical). handleInvoice зберігає
- * FSM-rollback (COMPLETED→INVOICED→back-COMPLETED при провалі invoice-create).
+ * handlers для footer-JSX. handleInvoice бере статус наряду з відповіді сервера: повністю сплачений
+ * наряд із «Виконано» одразу стає «Оплачено» (BR-WO-016).
  *
  * form-agnostic: не торкається form/lines/parts (spine) — лише workOrderId + FSM-статус + features.
  */
@@ -264,18 +264,15 @@ export function useWorkOrderActions({
 
   const handleInvoice = async () => {
     if (!workOrderId) return;
-    // захоплюємо початковий статус ДО transition, щоб мати куди rollback при failure.
-    const statusBeforeTransition = currentStatus;
-    let transitionedHere = false;
     setInvoiceLoading(true);
     try {
       if (currentStatus === 'COMPLETED') {
-        await apiFetch(`/work-orders/${workOrderId}/transition`, {
-          method: 'POST',
-          body: JSON.stringify({ status: 'INVOICED' }),
-        });
-        setCurrentStatus('INVOICED');
-        transitionedHere = true;
+        const updated = await apiFetch<{ status?: string } | null>(
+          `/work-orders/${workOrderId}/transition`,
+          { method: 'POST', body: JSON.stringify({ status: 'INVOICED' }) },
+        );
+        // Статус — з відповіді: сплачений повністю наряд іде далі до «Оплачено» (BR-WO-016).
+        setCurrentStatus(updated?.status ?? 'INVOICED');
         onUpdated?.();
       }
       const invoice = await apiFetch<{ id: string; number: string }>(
@@ -298,20 +295,8 @@ export function useWorkOrderActions({
       if (msg.includes('вже існує')) {
         setInvoiceConflict(true);
       } else {
-        // якщо ми щойно перевели COMPLETED→INVOICED і invoice create провалився —
-        // rollback transition назад у COMPLETED, щоб FSM-інваріант не порушувався.
-        if (transitionedHere && statusBeforeTransition === 'COMPLETED') {
-          try {
-            await apiFetch(`/work-orders/${workOrderId}/transition`, {
-              method: 'POST',
-              body: JSON.stringify({ status: 'COMPLETED' }),
-            });
-            setCurrentStatus('COMPLETED');
-            onUpdated?.();
-          } catch {
-            // warn-only: manual recovery потрібен. Original error все одно показуємо нижче.
-          }
-        }
+        // Наряд лишається «Виставлено»: зворотного переходу в «Виконано» FSM не має (колишній
+        // «відкат» сервер завжди відхиляв), рахунок можна створити повторно кнопкою.
         if (features.toastEnabled) toast.error(msg || t('invoice.createError'));
         else setError(msg || 'Помилка');
       }

@@ -69,7 +69,8 @@
     "cashRegisterPlaceholder": "— select a cash register —",
     "cashRegisterRequired": "Select a cash register for a cash payment",
     "cashRegistersLoadError": "Could not load cash registers — close the window and open it again",
-    "noCashRegisterInCurrency": "There is no cash register in {{code}}"
+    "noCashRegisterInCurrency": "There is no cash register in {{code}}",
+    "workOrderAmount": "Work order total:"
   },
   "toast": {
     "cancelledOne": "Cancelled {{count}} invoice",

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Suspense, useEffect, useState, useCallback, useMemo } from 'react';
 import type { ElementType } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -27,38 +27,29 @@ import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { printPdf } from '@/lib/download';
 import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
-import { getCached, setCache } from '@/lib/ref-cache';
 import {
   useInvoices,
   invoicesKeys,
   type Invoice,
   type InvoiceStatusValue,
 } from '@/hooks/api/useInvoices';
-import {
-  useBaseCurrency,
-  useCashRegisters,
-  useRetryCashFiscal,
-  type CashRegister,
-} from '@/hooks/api/useCash';
+import { useBaseCurrency, useRetryCashFiscal } from '@/hooks/api/useCash';
 import { useAuth } from '@/lib/auth';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  CASH_METHOD_CODE,
   INVOICE_STATUS_BADGE,
   INVOICE_STATUS_DESCRIPTIONS,
   INVOICE_STATUS_TRANSITIONS,
-  type ApiSchema,
 } from '@sto/shared';
 import { invoiceStatusLabel, invoiceTypeLabel } from '@/i18n/enumLabel';
-import { Modal } from '@/components/ui/modal';
 import { QrPaymentModal } from '@/components/ui/QrPaymentModal';
+import { ClientPaymentModal } from '@/components/ui/ClientPaymentModal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { activateRow } from '@/lib/row-activation';
 import { InvoiceCreateModal } from '@/components/ui/InvoiceCreateModal';
@@ -81,7 +72,6 @@ import {
   type DetailPanelTab,
 } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
-import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import {
   INVOICE_PANEL_SCHEMA,
   buildPanelFields,
@@ -96,7 +86,7 @@ import { toast } from '@/lib/toast';
 import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
 import { cn, UUID_RE } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
-import { invoiceRemaining, optimisticInvoiceStatus } from '@/lib/invoice-payment';
+import { optimisticInvoiceStatus } from '@/lib/invoice-payment';
 import { invalidatePaymentSideEffects, invalidateBalanceAffected } from '@/lib/cache-invalidation';
 import { StatusPill } from '@/components/ui/status-pill';
 
@@ -118,20 +108,6 @@ interface InvoiceFilters extends Record<string, unknown> {
 // (@ApiPropertyOptional у InvoiceResponseDto), тож надбудова більше не потрібна.
 // Аліас лишаємо, щоб не переписувати ~15 вживань у цьому файлі.
 type InvoiceWithOptionals = Invoice;
-
-/** Спосіб оплати у вікні «Оплатити»: код, назва і куди за замовчуванням надходять кошти. */
-type PaymentMethodDto = ApiSchema<'PaymentMethodResponseDto'>;
-type PayMethodOption = Pick<PaymentMethodDto, 'code' | 'name'> &
-  Partial<
-    Pick<
-      PaymentMethodDto,
-      | 'defaultSourceType'
-      | 'defaultCashRegisterId'
-      | 'defaultDestinationName'
-      | 'defaultDestinationCurrencyCode'
-    >
-  >;
-const EMPTY_CASH_REGISTERS: CashRegister[] = [];
 
 // Status labels via i18n wrappers; badge/transition constants imported from @sto/shared
 const STATUS_BADGE = INVOICE_STATUS_BADGE;
@@ -322,86 +298,11 @@ function InvoicesPageInner() {
   // QR-оплата (monobank): {invoiceId, amount} коли касир обрав QR-метод.
   const [qrPay, setQrPay] = useState<{ invoiceId: string; amount?: number } | null>(null);
 
-  const [payMethods, setPayMethods] = useState<PayMethodOption[]>([]);
-  const [payForm, setPayForm] = useState({ method: CASH_METHOD_CODE, amount: '', notes: '' });
-  // Каса, яку касир обрав сам; null — поле йде за касою за замовчуванням способу оплати, тож зміна
-  // способу міняє касу лише доти, доки користувач її не чіпав.
-  const [payCashChoice, setPayCashChoice] = useState<string | null>(null);
-  // Помилка оплати — у самому вікні (закрита зміна фіскальної каси тощо), не в банері під ним.
-  const [payError, setPayError] = useState('');
-  const [saving, setSaving] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
-  // Каси для вікна оплати: лише коли вікно відкрите (сервер віддає невидалені, перші 200 за назвою).
-  const {
-    data: cashRegisters = EMPTY_CASH_REGISTERS,
-    isPending: cashRegistersPending,
-    isError: cashRegistersError,
-  } = useCashRegisters(!!showPayment);
 
-  const openPayment = useCallback((inv: InvoiceWithOptionals) => {
-    setPayCashChoice(null);
-    setPayError('');
-    setShowPayment(inv);
-  }, []);
-  // Стабільний close-handler для payment-Modal: модалка містить input-и (сума/примітки/метод)
-  // з onChange→setPayForm; без useCallback кожне натискання давало б нову onClose-ідентичність →
-  // Modal.useEffect [open, handleKey] знімав+вішав keydown-listener і переписував body.overflow
-  // на КОЖЕН символ (анти-патерн 2.16). Стабілізуємо → 0 thrashing.
+  const openPayment = useCallback((inv: InvoiceWithOptionals) => setShowPayment(inv), []);
+  // Стабільний close-handler: Modal перевішує keydown-listener на кожну нову ідентичність колбека.
   const closePayment = useCallback(() => setShowPayment(null), []);
-
-  // BR-PAY-019: поле «Каса» — для готівки (обов'язкове) і для способу, у якого кошти за
-  // замовчуванням надходять у касу. Значення — вибір касира або каса за замовчуванням способу.
-  const payMethod = payMethods.find(m => m.code === payForm.method);
-  const payNeedsCash = payForm.method === CASH_METHOD_CODE;
-  // monobank QR: вікно лише показує QR, оплату потім створює сервер за способом оплати — каса з
-  // поля нікуди не йшла б (Bug #859), тож поля для QR немає.
-  const payIsQr = payForm.method === 'monobank_qr';
-  const payShowsCash =
-    !payIsQr && (payNeedsCash || payMethod?.defaultSourceType === 'CASH_REGISTER');
-  const payDefaultCashId =
-    payMethod?.defaultSourceType === 'CASH_REGISTER' ? (payMethod.defaultCashRegisterId ?? '') : '';
-  // Валюта оплати — валюта каси, а сервер приймає лише валюту рахунку: каси іншої валюти не
-  // пропонуємо (інакше касир дізнавався б про це лише з відмови). Без коду валюти — базова.
-  const payCurrencyCode = showPayment?.currencyCode || baseCode;
-  const payCashOptions = useMemo(() => {
-    const options = cashRegisters
-      .filter(r => (r.currencyCode || baseCode) === payCurrencyCode)
-      .map(r => ({ id: r.id, name: r.name }));
-    // Каса за замовчуванням жива (сервер дав її назву), але не потрапила в перші 200 за назвою.
-    // Відсіяна за валютою — не повертаємо: вона є в переліку, просто не підходить рахунку. Поза
-    // переліком валюту каже сервер — без цього гривнева каса йшла доларовому рахунку (Bug #857).
-    if (
-      payDefaultCashId &&
-      payMethod?.defaultDestinationName &&
-      payMethod.defaultDestinationCurrencyCode === payCurrencyCode &&
-      !cashRegisters.some(r => r.id === payDefaultCashId)
-    )
-      options.unshift({ id: payDefaultCashId, name: payMethod.defaultDestinationName });
-    return options;
-  }, [
-    cashRegisters,
-    baseCode,
-    payCurrencyCode,
-    payDefaultCashId,
-    payMethod?.defaultDestinationName,
-    payMethod?.defaultDestinationCurrencyCode,
-  ]);
-  const payCashId =
-    payCashChoice ?? (payCashOptions.some(o => o.id === payDefaultCashId) ? payDefaultCashId : '');
-  const payBlockedNoCash = payNeedsCash && !payCashId;
-  // Підказку показуємо, лише коли каси й способи вже прийшли: інакше поле на мить червоніло, доки
-  // вантажилась каса за замовчуванням. Кнопка весь цей час неактивна. Порожній перелік пояснюємо
-  // (Bug #858): збій завантаження кас чи жодної каси у валюті рахунку — а не «оберіть касу».
-  const payCashHint =
-    !payShowsCash || cashRegistersPending || payMethods.length === 0
-      ? undefined
-      : cashRegistersError
-        ? t('payment.cashRegistersLoadError')
-        : payCashOptions.length === 0
-          ? t('payment.noCashRegisterInCurrency', { code: payCurrencyCode })
-          : payBlockedNoCash
-            ? t('payment.cashRegisterRequired')
-            : undefined;
 
   const applyFilter = useCallback(
     (preset: { id: string; filters: InvoiceFilters }) => {
@@ -487,54 +388,6 @@ function InvoicesPageInner() {
     [bulkCancel, t],
   );
 
-  useEffect(() => {
-    if (!showPayment) return;
-    let cancelled = false;
-    // Reference data — paint instantly from sessionStorage, refresh in background.
-    const cached = getCached<PayMethodOption[]>('cache:payment-methods');
-    if (cached) setPayMethods(cached);
-    apiFetch<PaymentMethodDto[]>('/payment-methods')
-      .then(d => {
-        const active = d
-          .filter(m => m.isActive)
-          .map(m => ({
-            code: m.code,
-            name: m.name,
-            defaultSourceType: m.defaultSourceType,
-            defaultCashRegisterId: m.defaultCashRegisterId,
-            defaultDestinationName: m.defaultDestinationName,
-            defaultDestinationCurrencyCode: m.defaultDestinationCurrencyCode,
-          }));
-        setCache('cache:payment-methods', active);
-        if (!cancelled) setPayMethods(active);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled && !cached) {
-          setError(e instanceof Error ? e.message : t('errors.loadPaymentMethods'));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [showPayment, t]);
-
-  // async-init Select race condition. payForm.method defaults to 'cash'
-  // and the payment modal can open BEFORE /payment-methods resolves. If 'cash' is
-  // deactivated (admin can disable it via PaymentMethodConfig), the loaded list
-  // won't contain it — the Select visually jumps to the first active method
-  // while state still holds 'cash'. POST /payments would then submit an inactive
-  // method code. Sync payForm.method to payMethods[0].code when the current
-  // value is missing from the loaded list.
-  // payForm.method excluded from deps intentionally: we only need to sync when
-  // payMethods or showPayment changes, not on every keystroke in the form.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!showPayment || payMethods.length === 0) return;
-    setPayForm(f =>
-      payMethods.some(m => m.code === f.method) ? f : { ...f, method: payMethods[0].code },
-    );
-  }, [payMethods, showPayment]);
-
   // newStatus звужено до union статусів рахунку (було `string`): згенерований тип
   // зробив `{ ...prev, status: newStatus }` помилкою компіляції. Це НЕ формальність —
   // із `string` опечатка у статусі доїжджала до setSelectedInv, і панель показувала
@@ -577,61 +430,28 @@ function InvoicesPageInner() {
   // вони викликаються через `void`. Так само `void` на queryClient.invalidateQueries —
   // фонова інвалідація, TanStack сам перезапитує активні queries і тримає їхній error-стан
   // (той самий патерн, що в lib/cache-invalidation.ts).
-  const handlePay = async () => {
+  // Оплату зареєстровано у вікні «Оплатити» (ClientPaymentModal).
+  const handlePaid = (amount: number) => {
     if (!showPayment) return;
-    // Порожнє поле = оплата залишку (amount − paidAmount), не всієї суми рахунку.
-    const remaining = invoiceRemaining(showPayment.amount, showPayment.paidAmount);
-    if (payBlockedNoCash) return;
-    const rawAmt = parseFloat(payForm.amount);
-    const amt = !payForm.amount || !Number.isFinite(rawAmt) ? remaining : rawAmt;
-    setSaving(true);
-    setPayError('');
-    try {
-      await apiFetch<{ id: string }>('/payments', {
-        method: 'POST',
-        body: JSON.stringify({
-          counterpartyId: showPayment.counterpartyId,
-          invoiceId: showPayment.id,
-          amount: amt,
-          method: payForm.method,
-          notes: payForm.notes || undefined,
-          // Каса з поля перемагає замовчування способу; без поля сервер бере призначення способу.
-          ...(payShowsCash && payCashId
-            ? { sourceType: 'CASH_REGISTER', cashRegisterId: payCashId }
-            : {}),
-        }),
-      });
-      const paidInvoiceId = showPayment.id;
-      const newPaidTotal = (showPayment.paidAmount ?? 0) + amt;
-      // Часткова оплата лишає рахунок PARTIALLY_PAID; повне покриття залишку → PAID.
-      // Дзеркалить backend CAS (newPaid>=amount ? PAID : PARTIALLY_PAID) з тим самим epsilon.
-      const optimisticStatus = optimisticInvoiceStatus(
-        showPayment.amount,
-        showPayment.paidAmount,
-        amt,
-      );
-      setShowPayment(null);
-      setPayForm({ method: CASH_METHOD_CODE, amount: '', notes: '' });
-      setPayCashChoice(null);
-      // Reflect the new status + paidAmount immediately in the open DetailPanel so the user
-      // does not see a stale status while the invalidateQueries refetch is in flight. For a
-      // partial payment the «Оплатити» button must stay available (PARTIALLY_PAID).
-      setSelectedInv(prev =>
-        prev && prev.id === paidInvoiceId
-          ? { ...prev, status: optimisticStatus, paidAmount: newPaidTotal }
-          : prev,
-      );
-      // WEB-R3-1: платіж рухає settlement-баланс контрагента й «сплачено» самого рахунку, не лише
-      // його рядок у списку → інвалідуємо УВЕСЬ крос-ресурс (не лише invoicesKeys), інакше баланс
-      // CRM стає застарілим. «Сплачено» наряду цей платіж НЕ чіпає: запит іде без workOrderId, тож
-      // PaymentsService.create оновлює лише рахунок (TECH-DEBT §10, п. 9 — наряд лишається
-      // «Виставлено»); наряд рухає тільки оплата, що йде за самим нарядом (з каси).
-      invalidatePaymentSideEffects(queryClient);
-    } catch (e: unknown) {
-      setPayError(e instanceof Error ? e.message : t('errors.payment'));
-    } finally {
-      setSaving(false);
-    }
+    const paidInvoiceId = showPayment.id;
+    const newPaidTotal = (showPayment.paidAmount ?? 0) + amount;
+    // Часткова оплата лишає рахунок PARTIALLY_PAID; повне покриття залишку → PAID.
+    // Дзеркалить backend (newPaid>=amount ? PAID : PARTIALLY_PAID) з тим самим epsilon.
+    const optimisticStatus = optimisticInvoiceStatus(
+      showPayment.amount,
+      showPayment.paidAmount,
+      amount,
+    );
+    setShowPayment(null);
+    // Панель показує новий статус і «сплачено» одразу, не чекаючи рефетчу; для часткової оплати
+    // кнопка «Оплатити» лишається (PARTIALLY_PAID).
+    setSelectedInv(prev =>
+      prev && prev.id === paidInvoiceId
+        ? { ...prev, status: optimisticStatus, paidAmount: newPaidTotal }
+        : prev,
+    );
+    // Кеші (рахунки, наряди, оплати, каса, баланс) скидає сам useCreatePayment. Оплата рахунку
+    // наряду — це оплата наряду (BR-PAY-021): «Сплачено» наряду росте, наряд може стати «Оплачено».
   };
 
   const selectInvoice = useCallback(async (inv: InvoiceWithOptionals) => {
@@ -1299,127 +1119,30 @@ function InvoicesPageInner() {
         }}
       />
 
-      {/* Payment modal */}
-      <Modal
+      {/* Оплата рахунку — спільне вікно (BR-PAY-019/021). QR — лише для рахунку. */}
+      <ClientPaymentModal
         open={!!showPayment}
-        onClose={closePayment}
-        title={showPayment ? t('payment.modalTitle', { number: showPayment.number }) : ''}
-        footer={
-          payIsQr ? (
-            <Button
-              onClick={() => {
-                if (!showPayment) return;
-                const rawAmt = parseFloat(payForm.amount);
-                const amt = payForm.amount && Number.isFinite(rawAmt) ? rawAmt : undefined;
-                setQrPay({ invoiceId: showPayment.id, amount: amt });
-                setShowPayment(null);
-              }}
-              className="w-full"
-            >
-              {t('payment.showQr')}
-            </Button>
-          ) : (
-            <Button
-              onClick={() => void handlePay()}
-              loading={saving}
-              disabled={payBlockedNoCash}
-              className="w-full"
-            >
-              {t('payment.confirmPayment')}
-            </Button>
-          )
+        target={
+          showPayment
+            ? {
+                kind: 'invoice',
+                id: showPayment.id,
+                counterpartyId: showPayment.counterpartyId,
+                amount: showPayment.amount,
+                paidAmount: showPayment.paidAmount,
+                currencyCode: showPayment.currencyCode,
+              }
+            : null
         }
-      >
-        {showPayment &&
-          (() => {
-            const paid = showPayment.paidAmount ?? 0;
-            const remaining = invoiceRemaining(showPayment.amount, showPayment.paidAmount);
-            const payIsBase = !showPayment.currencyCode || showPayment.currencyCode === baseCode;
-            const paySym = payIsBase ? baseSymbol : showPayment.currencyCode;
-            const fmtPay = (n: number) => `${fmtMoney(n)} ${paySym}`;
-            return (
-              <div className="space-y-4">
-                {payError && (
-                  <div
-                    role="alert"
-                    className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3"
-                  >
-                    {payError}
-                  </div>
-                )}
-                <div className="p-3 bg-info-subtle rounded-lg text-sm text-info-text space-y-0.5">
-                  <div>
-                    {t('payment.invoiceAmount')} <strong>{fmtPay(showPayment.amount)}</strong>
-                  </div>
-                  {paid > 0 && (
-                    <div>
-                      {t('payment.alreadyPaid')} <strong>{fmtPay(paid)}</strong>
-                    </div>
-                  )}
-                  <div>
-                    {t('payment.remaining')} <strong>{fmtPay(remaining)}</strong>
-                  </div>
-                </div>
-                <Select
-                  label={t('payment.method')}
-                  required
-                  value={payForm.method}
-                  onChange={e => setPayForm(f => ({ ...f, method: e.target.value }))}
-                  className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                >
-                  {payMethods.length > 0 ? (
-                    payMethods.map(m => (
-                      <option key={m.code} value={m.code}>
-                        {m.name}
-                      </option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="cash">{t('payment.methodCash')}</option>
-                      <option value="card_terminal">{t('payment.methodTerminal')}</option>
-                      <option value="bank_transfer">{t('payment.methodBankTransfer')}</option>
-                    </>
-                  )}
-                </Select>
-                {payShowsCash && (
-                  <Select
-                    label={t('payment.cashRegister')}
-                    required={payNeedsCash}
-                    value={payCashId}
-                    onChange={e => setPayCashChoice(e.target.value)}
-                    placeholder={t('payment.cashRegisterPlaceholder')}
-                    errorMessage={payCashHint}
-                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                  >
-                    {payCashOptions.map(r => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-                <Input
-                  label={t('payment.amount', { sym: paySym })}
-                  type="number"
-                  value={payForm.amount}
-                  onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
-                  placeholder={String(remaining)}
-                  min="0.01"
-                  max={String(remaining)}
-                  step="0.01"
-                  hint={t('payment.amountHint')}
-                  className="h-8 text-[13px]"
-                />
-                <Input
-                  label={t('payment.notes')}
-                  value={payForm.notes}
-                  onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))}
-                  className="h-8 text-[13px]"
-                />
-              </div>
-            );
-          })()}
-      </Modal>
+        title={showPayment ? t('payment.modalTitle', { number: showPayment.number }) : ''}
+        onClose={closePayment}
+        onPaid={handlePaid}
+        onShowQr={amount => {
+          if (!showPayment) return;
+          setQrPay({ invoiceId: showPayment.id, amount });
+          setShowPayment(null);
+        }}
+      />
 
       {/* QR-оплата monobank */}
       <QrPaymentModal

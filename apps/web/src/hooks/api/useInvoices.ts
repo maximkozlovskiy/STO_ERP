@@ -82,13 +82,27 @@ export function useDeleteInvoice() {
   });
 }
 
+/**
+ * Оплата клієнта (`POST /payments`) — з рахунку чи з наряду. `idempotencyKey` — один на відкриття
+ * вікна оплати (як у касовій операції): повтор запиту після обриву на відповіді не створює другої
+ * оплати.
+ */
 export function useCreatePayment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      apiFetch('/payments', { method: 'POST', body: JSON.stringify(body) }),
+    mutationFn: ({
+      idempotencyKey,
+      ...body
+    }: { idempotencyKey?: string } & Record<string, unknown>) =>
+      apiFetch<{ id: string }>('/payments', {
+        method: 'POST',
+        ...(idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
+        body: JSON.stringify(body),
+      }),
     // WEB-R3-2: спільний хелпер — інвалідує invoices+work-orders+payments+баланс(counterparties/
     // reports/dashboard). Раніше пропускав payments-list (список платежів лишався стале).
     onSuccess: () => invalidatePaymentSideEffects(qc),
+    // Відмова не доводить, що оплати немає: відповідь могла не дійти, а оплата — пройти.
+    onError: () => invalidatePaymentSideEffects(qc),
   });
 }

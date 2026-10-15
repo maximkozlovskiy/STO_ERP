@@ -17,7 +17,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
 import { Spinner } from '@/components/ui/spinner';
-import { Pencil } from 'lucide-react';
+import { CreditCard, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtInt, fmtDate, fmtDateTime, fmtShortDateTime } from '@/lib/format';
 import { useBaseCurrency } from '@/hooks/api/useCash';
@@ -29,7 +29,12 @@ import {
   WO_PRIORITY_DESCRIPTIONS,
   WO_EDITABLE_STATUSES,
   WO_INVOICEABLE_STATUSES,
+  WO_PAYABLE_STATUSES,
+  WO_PREPAYMENT_STATUSES,
+  PAYMENT_CREATE_ROLES,
 } from '@sto/shared';
+import { ClientPaymentModal } from '@/components/ui/ClientPaymentModal';
+import { invoiceRemaining } from '@/lib/invoice-payment';
 import { WorkOrderPrintButtons } from './WorkOrderPrintButtons';
 import { woStatusLabel, woPriorityLabel, woCategoryLabel } from '@/i18n/enumLabel';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
@@ -279,6 +284,9 @@ export default function WorkOrderCardPage() {
 
   const queryClient = useQueryClient();
   const [transitioning, setTransitioning] = useState(false);
+  // Вікно «Оплатити» наряду (аванс / оплата, BR-PAY-020).
+  const [payOpen, setPayOpen] = useState(false);
+  const closePay = useCallback(() => setPayOpen(false), []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [refsError, setRefsError] = useState('');
@@ -661,6 +669,10 @@ export default function WorkOrderCardPage() {
         method: 'PATCH',
       });
       setCompletionAct(act);
+      // Підписання переводить наряд «Виконано» → «Виставлено» (сплачений повністю — далі до
+      // «Оплачено», BR-WO-016) і створює рахунок — статус, суми й рахунок перечитуємо з сервера.
+      load();
+      invalidateWorkOrderSideEffects(queryClient);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('detail.act.signError'));
     } finally {
@@ -728,7 +740,16 @@ export default function WorkOrderCardPage() {
   // зміну, тож редагування, переходи статусу і дії, що створюють документи, сховані.
   const isDeleted = !!wo.deletedAt;
   const canEdit = !isDeleted && WO_EDITABLE_STATUSES.includes(wo.status);
-  const allowedTransitions = isDeleted ? [] : (TRANSITIONS[wo.status] ?? []);
+  // Ручного переходу в «Оплачено» немає — замість нього «Оплатити» (BR-WO-016).
+  const allowedTransitions = isDeleted
+    ? []
+    : (TRANSITIONS[wo.status] ?? []).filter(s => s !== 'PAID');
+  // «Оплатити» (BR-PAY-001): статуси, що приймають оплату, і ролі, яким дозволено POST /payments.
+  const canPay =
+    !isDeleted &&
+    WO_PAYABLE_STATUSES.includes(wo.status) &&
+    PAYMENT_CREATE_ROLES.includes(employee?.role ?? '');
+  const payRemaining = invoiceRemaining(wo.totalAmount, wo.paidAmount);
 
   // Мультивалюта (Фаза 3): валюта документа + сума у базовій валюті.
   const baseCode = baseCurrency?.code ?? 'UAH';
@@ -891,6 +912,16 @@ export default function WorkOrderCardPage() {
 
       {/* FSM Buttons */}
       <div className="flex gap-2 flex-wrap items-center">
+        {canPay && (
+          <Button
+            onClick={() => setPayOpen(true)}
+            disabled={payRemaining <= 0 || transitioning}
+            title={payRemaining <= 0 ? t('payment.nothingToPay') : undefined}
+          >
+            <CreditCard className="h-4 w-4 mr-1" />
+            {t('payment.pay')}
+          </Button>
+        )}
         {allowedTransitions.map(s => (
           <Button
             key={s}
@@ -938,6 +969,33 @@ export default function WorkOrderCardPage() {
           </>
         )}
       </div>
+
+      {payOpen && (
+        <ClientPaymentModal
+          open={payOpen}
+          target={{
+            kind: 'workOrder',
+            id: wo.id,
+            counterpartyId: wo.counterpartyId,
+            amount: wo.totalAmount,
+            paidAmount: wo.paidAmount,
+            currencyCode: wo.currencyCode,
+          }}
+          title={
+            WO_PREPAYMENT_STATUSES.includes(wo.status)
+              ? t('payment.advanceTitle', { number: wo.number })
+              : t('payment.payTitle', { number: wo.number })
+          }
+          onClose={closePay}
+          onPaid={(_amount, formatted) => {
+            setPayOpen(false);
+            if (features.toastEnabled) toast.success(t('payment.paidToast', { amount: formatted }));
+            // Наряд міг стати «Оплачено» (BR-PAY-005), рахунок наряду — дзеркало (BR-INV-018):
+            // перечитуємо наряд і його рахунок.
+            load();
+          }}
+        />
+      )}
 
       {/* Totals */}
       <WorkOrderTotals

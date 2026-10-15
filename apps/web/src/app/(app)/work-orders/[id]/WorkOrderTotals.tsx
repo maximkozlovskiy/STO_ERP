@@ -3,6 +3,7 @@
 import { useTranslation } from 'react-i18next';
 import { cn, workOrderVatSplit } from '@/lib/utils';
 import { fmtMoney } from '@/lib/format';
+import { invoiceRemaining } from '@/lib/invoice-payment';
 import { VatTotalsSummary } from '@/components/ui/work-order/VatTotalsSummary';
 
 export interface WorkOrderTotalsProps {
@@ -23,7 +24,8 @@ export interface WorkOrderTotalsProps {
  * Роботи й запчастини — суми РЯДКІВ. За BR-WO-007 вони дорівнюють «Разом» лише без ПДВ і в
  * режимі «ПДВ у ціні»; у режимі «ПДВ зверху» їхня сума — це «Сума без ПДВ», а «Разом» більше
  * на ПДВ. Тому ПДВ показано окремим рядком: без нього «роботи + запчастини» не сходились би
- * з сумою в шапці. Оплачено порівнюється з `totalAmount` — сумою до сплати.
+ * з сумою в шапці. Оплачено порівнюється з `totalAmount` — сумою до сплати; під ним — залишок до
+ * сплати (те, що прийме «Оплатити», BR-PAY-017).
  *
  * Коли фактичні години відрізняються від планових, показано обидва значення робіт: сума
  * наряду рахується від факту.
@@ -41,6 +43,7 @@ export function WorkOrderTotals({
   const { t } = useTranslation('workOrders');
   const split = workOrderVatSplit({ totalAmount, totalNet });
   const laborDiffers = totalActualLabor !== totalLabor;
+  const remaining = invoiceRemaining(totalAmount, paidAmount);
   return (
     <div className="bg-surface rounded-xl border border-border p-5 space-y-4 text-sm">
       <div className="grid grid-cols-3 gap-4">
@@ -76,6 +79,15 @@ export function WorkOrderTotals({
             data-testid="wo-totals-paid"
           >
             {fmtMoney(paidAmount)} {sym}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {t('detail.remainingToPay')}:{' '}
+            <span
+              className="font-medium text-foreground tabular-nums"
+              data-testid="wo-totals-remaining"
+            >
+              {fmtMoney(remaining)} {sym}
+            </span>
           </p>
         </div>
       </div>

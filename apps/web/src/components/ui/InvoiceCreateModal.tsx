@@ -186,6 +186,8 @@ export function InvoiceCreateModal({
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [workOrderNumber, setWorkOrderNumber] = useState<string | null>(null);
+  // Рахунок наряду (BR-INV-019): закривається лише оплатою наряду, ручного «Оплачено» немає.
+  const [workOrderLinked, setWorkOrderLinked] = useState(false);
   const [paidAmount, setPaidAmount] = useState<number | null>(null);
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
   const [showLineInput, setShowLineInput] = useState(false);
@@ -251,6 +253,7 @@ export function InvoiceCreateModal({
     setInvoiceNumber('');
     setCurrentStatus('DRAFT');
     setWorkOrderNumber(null);
+    setWorkOrderLinked(false);
     setPaidAmount(null);
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
@@ -314,6 +317,7 @@ export function InvoiceCreateModal({
         setInvoiceNumber(inv.number);
         setCurrentStatus(inv.status);
         setWorkOrderNumber(inv.workOrderNumber ?? null);
+        setWorkOrderLinked(!!inv.workOrderId);
         setPaidAmount(inv.paidAmount ?? null);
         const loadedLines = (inv.lines ?? []).map(l => ({
           _key: nextKey(),
@@ -385,11 +389,13 @@ export function InvoiceCreateModal({
   const notLoaded = isEditMode && loadedDocId !== invoiceId;
   const viewOnly = isDeleted || notLoaded;
 
-  // Видалений документ переходів не має: сервер відповість 404 на будь-яку зміну.
-  const allowedTransitions =
-    isEditMode && !viewOnly
-      ? (INVOICE_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
-      : EMPTY_TRANSITIONS;
+  // Видалений документ переходів не має: сервер відповість 404 на будь-яку зміну. Рахунок наряду
+  // ручного «Оплачено» не має (BR-INV-019) — його закриває оплата наряду («Оплатити»).
+  const allowedTransitions = useMemo(() => {
+    if (!isEditMode || viewOnly) return EMPTY_TRANSITIONS;
+    const all = INVOICE_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS;
+    return workOrderLinked ? all.filter(s => s !== 'PAID') : all;
+  }, [isEditMode, viewOnly, currentStatus, workOrderLinked]);
 
   const { statusPrevStep, statusNextStep } = useMemo(() => {
     const curIdx = INVOICE_STATUS_ORDER.indexOf(currentStatus);
@@ -405,7 +411,7 @@ export function InvoiceCreateModal({
       (s: string) => INVOICE_STATUS_ORDER.indexOf(s) > curIdx,
     );
     return { statusPrevStep, statusNextStep };
-  }, [currentStatus, isEditMode, viewOnly]);
+  }, [currentStatus, allowedTransitions]);
 
   const doTransition = async (newStatus: string) => {
     if (!invoiceId || viewOnly) return;

@@ -83,3 +83,19 @@ describe('WorkOrderTotals — розкладка ПДВ у картці наря
     expect(norm(document.body.textContent)).toContain('1 500,00 ₴');
   });
 });
+
+// BR-PAY-017: «Залишок до сплати» = «Разом» − «Сплачено», не менше нуля — те, що прийме «Оплатити».
+describe('WorkOrderTotals — залишок до сплати', () => {
+  // guards: BR-PAY-017
+  it('аванс 300 із 1 440 → залишок 1 140,00', () => {
+    render(<WorkOrderTotals {...base} paidAmount={300} totalNet={1200} totalAmount={1440} />);
+    expect(rowText('wo-totals-remaining')).toBe('1 140,00 ₴');
+  });
+
+  // guards: BR-PAY-017
+  it('сплачено повністю → залишок 0,00, «Сплачено» підсвічено', () => {
+    render(<WorkOrderTotals {...base} paidAmount={1200} totalNet={1200} totalAmount={1200} />);
+    expect(rowText('wo-totals-remaining')).toBe('0,00 ₴');
+    expect(screen.getByTestId('wo-totals-paid')).toHaveClass('text-success');
+  });
+});

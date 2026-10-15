@@ -57,9 +57,14 @@ import {
   WO_PRIORITY_LABELS,
   WO_CATEGORY_LABELS,
   WO_EDITABLE_STATUSES,
+  WO_PAYABLE_STATUSES,
+  WO_PREPAYMENT_STATUSES,
+  PAYMENT_CREATE_ROLES,
 } from '@sto/shared';
 import { woStatusLabel, woPriorityLabel, woCategoryLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
+import { ClientPaymentModal } from '@/components/ui/ClientPaymentModal';
+import { invoiceRemaining } from '@/lib/invoice-payment';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -113,6 +118,9 @@ interface WorkOrderDetail {
   contractId?: string | null;
   currencyId?: string | null;
   currencyCode?: string | null;
+  /** «Разом» наряду й уже сплачене — для «Оплатити» (BR-PAY-001/017). */
+  totalAmount?: number;
+  paidAmount?: number;
   liftId?: string | null;
   description?: string | null;
   inMileage?: number | null;
@@ -174,7 +182,6 @@ const TRANSITION_LABELS: Record<string, string> = {
   ON_HOLD: 'Призупинити',
   COMPLETED: 'Виконано',
   INVOICED: 'Виставити рахунок',
-  PAID: 'Оплачено',
   ARCHIVED: 'В архів',
   CANCELLED: 'Скасувати',
   DRAFT: 'Повернути в чернетку',
@@ -183,7 +190,6 @@ const TRANSITION_LABELS: Record<string, string> = {
 const TRANSITION_VARIANTS: Record<string, 'default' | 'destructive' | 'outline'> = {
   CANCELLED: 'destructive',
   COMPLETED: 'default',
-  PAID: 'default',
   APPROVED: 'default',
   IN_PROGRESS: 'default',
 };
@@ -207,6 +213,20 @@ const EMPTY_PART: Omit<LocalPart, '_key'> = {
 };
 
 const EMPTY_TRANSITIONS: readonly string[] = Object.freeze([]);
+
+interface WorkOrderPayState {
+  totalAmount: number;
+  paidAmount: number;
+  currencyCode: string | null;
+  counterpartyId: string;
+}
+/** Гроші наряду для «Оплатити» — з відповіді сервера, а не з форми (незбережені рядки не в рахунку). */
+const toPayState = (wo: WorkOrderDetail): WorkOrderPayState => ({
+  totalAmount: wo.totalAmount ?? 0,
+  paidAmount: wo.paidAmount ?? 0,
+  currencyCode: wo.currencyCode ?? null,
+  counterpartyId: wo.counterpartyId,
+});
 // Status order = keys of label map; module-level → uses const map once instead of
 // `Object.keys()` per render у IIFE-status-picker (recomputed на КОЖНИЙ keystroke у формі).
 const WO_STATUS_ORDER: readonly string[] = Object.freeze(Object.keys(WO_STATUS_LABELS));
@@ -546,6 +566,15 @@ export function CreateWorkOrderModal({
   const viewOnly = isDeleted || notLoaded;
   // A3-modal: vatMode/vatRate/recalc*/syncCalendar перенесено у useReferenceData (див. вище).
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
+  const [payState, setPayState] = useState<WorkOrderPayState | null>(null);
+  const [payOpen, setPayOpen] = useState(false);
+  // Вікно оплати відкрите поверх картки: Escape має закрити лише його. Прапорець знімається ПІСЛЯ
+  // події (setTimeout), а не в ефекті — інакше той самий Escape закрив би й картку (GOTCHAS
+  // 2026-10-12).
+  const payOpenRef = useRef(false);
+  // Наряд, відкритий у картці зараз: пізня відповідь для попереднього (вкладки) не пишеться.
+  const workOrderIdRef = useRef(workOrderId);
+  workOrderIdRef.current = workOrderId;
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [editModeLoading, setEditModeLoading] = useState(false);
   const [woNumber, setWoNumber] = useState('');
@@ -673,6 +702,9 @@ export function CreateWorkOrderModal({
     setHeaderCollapsed(false);
     setWoNumber('');
     setCurrentStatus('DRAFT');
+    setPayState(null);
+    setPayOpen(false);
+    payOpenRef.current = false;
     // A fresh modal session starts without a prior partial create.
     createdWoRef.current = null;
     postedLineKeysRef.current = new Set();
@@ -733,6 +765,7 @@ export function CreateWorkOrderModal({
         setLoadedDocId(workOrderId);
         setWoNumber(wo.number);
         setCurrentStatus(wo.status);
+        setPayState(toPayState(wo));
         const loadedLines: LocalLine[] = wo.lines.map(l => ({
           _key: nextKey(),
           id: l.id,
@@ -1495,11 +1528,15 @@ export function CreateWorkOrderModal({
     setTransitioningBoth(true);
     setError('');
     try {
-      await apiFetch(`/work-orders/${workOrderId}/transition`, {
-        method: 'POST',
-        body: JSON.stringify({ status: newStatus }),
-      });
-      setCurrentStatus(newStatus);
+      const updated = await apiFetch<{ status?: string } | null>(
+        `/work-orders/${workOrderId}/transition`,
+        { method: 'POST', body: JSON.stringify({ status: newStatus }) },
+      );
+      // Статус — з відповіді сервера: повністю сплачений наряд із «Виконано» сам іде до
+      // «Оплачено» (BR-WO-016), тож натиснута кнопка — не обов'язково статус наряду.
+      setCurrentStatus(updated?.status ?? newStatus);
+      // «Виконано» перераховує суму наряду — перечитуємо гроші для «Оплатити».
+      void reloadPayState();
       onUpdated?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
@@ -1508,10 +1545,25 @@ export function CreateWorkOrderModal({
     }
   };
 
-  // Видалений наряд переходів не має: сервер відповість 404 на будь-яку зміну.
+  /** Перечитати статус і гроші наряду (після оплати чи переходу) — форму з рядками не чіпає. */
+  const reloadPayState = async () => {
+    const requestedId = workOrderId;
+    if (!requestedId) return;
+    try {
+      const wo = await apiFetch<WorkOrderDetail>(`/work-orders/${requestedId}`);
+      if (workOrderIdRef.current !== requestedId) return;
+      setCurrentStatus(wo.status);
+      setPayState(toPayState(wo));
+    } catch {
+      // Статус і гроші лишаються попередніми; наступне відкриття картки перечитає наряд.
+    }
+  };
+
+  // Видалений наряд переходів не має: сервер відповість 404 на будь-яку зміну. Ручного переходу
+  // в «Оплачено» немає — замість нього «Оплатити» (BR-WO-016): «Оплачено» ставлять лише гроші.
   const allowedTransitions =
     isEditMode && !viewOnly
-      ? (WO_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
+      ? (WO_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS).filter(s => s !== 'PAID')
       : EMPTY_TRANSITIONS;
 
   const { prevStatus: statusPrevStep, nextStatus: statusNextStep } = useMemo(() => {
@@ -1607,6 +1659,34 @@ export function CreateWorkOrderModal({
   // A3-modal: action-handlers (print/saveAs/share/sms/invoice+rollback) + loading + invoiceConflict
   // винесено у useWorkOrderActions. Footer-JSX споживає повернені handlers/флаги.
   const { employee } = useAuth();
+
+  // «Оплатити» (BR-PAY-001): статуси, що приймають оплату, і ролі, яким дозволено POST /payments.
+  const canPay =
+    isEditMode &&
+    !viewOnly &&
+    !!payState &&
+    WO_PAYABLE_STATUSES.includes(currentStatus) &&
+    PAYMENT_CREATE_ROLES.includes(employee?.role ?? '');
+  const payRemaining = payState ? invoiceRemaining(payState.totalAmount, payState.paidAmount) : 0;
+  const openPay = () => {
+    payOpenRef.current = true;
+    setPayOpen(true);
+  };
+  const closePay = useCallback(() => {
+    setPayOpen(false);
+    setTimeout(() => {
+      payOpenRef.current = false;
+    }, 0);
+  }, []);
+  const handlePaid = (_amount: number, formatted: string) => {
+    closePay();
+    if (features.toastEnabled) toast.success(t('payment.paidToast', { amount: formatted }));
+    // Наряд міг стати «Оплачено» (BR-PAY-005) — статус і сплачене беремо з сервера.
+    void reloadPayState();
+    setLinkedDocsRefreshKey(k => k + 1);
+    onUpdated?.();
+  };
+
   const {
     shareLoading,
     smsLoading,
@@ -1661,6 +1741,8 @@ export function CreateWorkOrderModal({
   // save/transition; зараз лише при зміні onClose у parent).
   const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
+    // Escape над вікном оплати закриває лише його.
+    if (payOpenRef.current) return;
     if (!(await dirty.confirmClose())) return;
     setActiveTab('main');
     onClose();
@@ -1928,6 +2010,18 @@ export function CreateWorkOrderModal({
                       </Button>
                     )}
                   </>
+                )}
+                {canPay && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={openPay}
+                    disabled={payRemaining <= 0 || saving || transitioning}
+                    title={payRemaining <= 0 ? t('payment.nothingToPay') : undefined}
+                  >
+                    <CreditCard size={15} className="mr-1" />
+                    {t('payment.pay')}
+                  </Button>
                 )}
                 {canInvoice && !viewOnly && (
                   <Button
@@ -2482,6 +2576,32 @@ export function CreateWorkOrderModal({
       />
       <ConfirmDialog {...confirmDialogProps} />
       <DirtyConfirmDialog {...dirty.dialogProps} />
+      {/* «Оплатити» з наряду: аванс до «Виконано», оплата після (BR-PAY-020). Монтується лише
+          відкритим — каси, способи оплати й мутація не живуть у закритій картці. */}
+      {payOpen && (
+        <ClientPaymentModal
+          open={payOpen}
+          target={
+            workOrderId && payState
+              ? {
+                  kind: 'workOrder',
+                  id: workOrderId,
+                  counterpartyId: payState.counterpartyId,
+                  amount: payState.totalAmount,
+                  paidAmount: payState.paidAmount,
+                  currencyCode: payState.currencyCode,
+                }
+              : null
+          }
+          title={
+            WO_PREPAYMENT_STATUSES.includes(currentStatus)
+              ? t('payment.advanceTitle', { number: woNumber })
+              : t('payment.payTitle', { number: woNumber })
+          }
+          onClose={closePay}
+          onPaid={handlePaid}
+        />
+      )}
     </>
   );
 }

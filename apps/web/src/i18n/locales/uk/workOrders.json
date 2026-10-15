@@ -206,7 +206,8 @@
       "ARCHIVED": "В архів",
       "CANCELLED": "Скасувати",
       "DRAFT": "Повернути в чернетку"
-    }
+    },
+    "remainingToPay": "Залишок до сплати"
   },
   "invoice": {
     "title": "Рахунок",
@@ -307,5 +308,12 @@
     "orderTitle": "Наряд-замовлення {{number}}",
     "invoiceTitle": "Рахунок {{number}}",
     "error": "Не вдалося підготувати PDF для друку"
+  },
+  "payment": {
+    "pay": "Оплатити",
+    "advanceTitle": "Аванс за нарядом {{number}}",
+    "payTitle": "Оплата наряду {{number}}",
+    "paidToast": "Оплату {{amount}} зареєстровано",
+    "nothingToPay": "Залишку до сплати немає"
   }
 }
