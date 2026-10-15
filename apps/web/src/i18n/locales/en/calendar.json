@@ -46,7 +46,16 @@
     "loadError": "Failed to load the monthly calendar. Check your connection and refresh the page.",
     "recordsOne": "{{count}} booking",
     "recordsFew": "{{count}} bookings",
-    "recordsMany": "{{count}} bookings"
+    "recordsMany": "{{count}} bookings",
+    "category": {
+      "overdue": "Overdue",
+      "inProgress": "In progress",
+      "planned": "Planned",
+      "draft": "Draft",
+      "done": "Done",
+      "cancelled": "Cancelled",
+      "other": "No work order"
+    }
   },
   "stats": {
     "period": "Period",

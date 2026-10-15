@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Spinner } from '@/components/ui/spinner';
 import type { MonthSlots } from './calendar.types';
 import { toDateString } from './calendar.utils';
+import { CATEGORY_VIEW, SLOT_CATEGORIES, countCategories } from './calendar-categories';
 
 interface CalendarMonthViewProps {
   yearMonth: string; // 'YYYY-MM'
@@ -97,11 +98,21 @@ export function CalendarMonthView({
                 const load = total / maxSlots;
                 const bgAlpha = total === 0 ? 0 : Math.max(0.08, load * 0.5);
                 const dayNum = parseInt(dayStr.slice(8), 10);
+                const counts = countCategories(info?.entries ?? [], nowMs);
+                const recordsLabel = t(
+                  total === 1
+                    ? 'month.recordsOne'
+                    : total < 5
+                      ? 'month.recordsFew'
+                      : 'month.recordsMany',
+                  { count: total },
+                );
                 return (
                   <button
                     key={dayStr}
                     type="button"
                     onClick={() => onDayClick(dayStr)}
+                    title={total > 0 ? recordsLabel : undefined}
                     className={`min-h-20 border-r border-border last:border-r-0 p-2 text-left transition-colors hover:bg-primary/5 flex flex-col gap-1 ${isPast ? 'opacity-60' : ''}`}
                     style={
                       total > 0
@@ -117,15 +128,26 @@ export function CalendarMonthView({
                       {dayNum}
                     </span>
                     {total > 0 && (
-                      <span className="text-[11px] text-primary font-medium leading-none">
-                        {t(
-                          total === 1
-                            ? 'month.recordsOne'
-                            : total < 5
-                              ? 'month.recordsFew'
-                              : 'month.recordsMany',
-                          { count: total },
-                        )}
+                      <span
+                        className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-medium leading-none tabular-nums"
+                        data-testid="month-day-categories"
+                      >
+                        {SLOT_CATEGORIES.filter(c => (counts[c] ?? 0) > 0).map(c => {
+                          const { icon: Icon, className } = CATEGORY_VIEW[c];
+                          const label = t(`month.category.${c}`);
+                          return (
+                            <span
+                              key={c}
+                              className={`inline-flex items-center gap-0.5 ${className}`}
+                              title={`${label}: ${counts[c]}`}
+                              aria-label={`${label}: ${counts[c]}`}
+                              data-category={c}
+                            >
+                              <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+                              {counts[c]}
+                            </span>
+                          );
+                        })}
                       </span>
                     )}
                   </button>

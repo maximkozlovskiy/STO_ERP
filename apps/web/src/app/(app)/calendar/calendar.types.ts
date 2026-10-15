@@ -1,3 +1,5 @@
+import type { MonthEntry } from './calendar-categories';
+
 // ─── Shared Calendar Types ───────────────────────────────────────────────────
 
 export interface CalendarSlot {
@@ -97,7 +99,10 @@ export interface BookingSlot {
 
 export type CalView = 'day' | 'month' | 'stats';
 export type StatsPeriod = 'day' | 'month' | 'custom';
-export type MonthSlots = Record<string, { total: number; byLift: Record<string, number> }>;
+export type MonthSlots = Record<
+  string,
+  { total: number; byLift: Record<string, number>; entries: MonthEntry[] }
+>;
 
 export interface SlotForm {
   liftId: string;

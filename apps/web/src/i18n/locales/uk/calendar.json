@@ -46,7 +46,16 @@
     "loadError": "Не вдалося завантажити календар на місяць. Перевірте з’єднання та оновіть сторінку.",
     "recordsOne": "{{count}} запис",
     "recordsFew": "{{count}} записи",
-    "recordsMany": "{{count}} записів"
+    "recordsMany": "{{count}} записів",
+    "category": {
+      "overdue": "Прострочено",
+      "inProgress": "В роботі",
+      "planned": "Заплановано",
+      "draft": "Чернетка",
+      "done": "Виконано",
+      "cancelled": "Скасовано",
+      "other": "Без наряду"
+    }
   },
   "stats": {
     "period": "Період",

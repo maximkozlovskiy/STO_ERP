@@ -323,7 +323,12 @@ export function useCalendarState() {
         for (const s of daySlots) {
           if (s.liftId) byLift[s.liftId] = (byLift[s.liftId] ?? 0) + 1;
         }
-        acc[d] = { total: daySlots.length, byLift };
+        // Категорії дня (BR-CAL-008) рахує вид від `nowMs` — тут лише потрібні для них поля.
+        const entries = daySlots.map(s => ({
+          endMs: new Date(s.endAt).getTime(),
+          workOrderStatus: s.workOrderStatus ?? null,
+        }));
+        acc[d] = { total: daySlots.length, byLift, entries };
       }
       if (mountedRef.current) {
         setMonthSlots(acc);
