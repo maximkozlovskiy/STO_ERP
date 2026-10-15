@@ -15,10 +15,13 @@ export function CalendarLegend() {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
 
   useEffect(() => {
     if (!open) return;
+    // role="dialog": фокус переходить у вікно, щоб читач екрана одразу прочитав пояснення.
+    panelRef.current?.focus();
     const onPointerDown = (e: MouseEvent) => {
       if (e.target instanceof Node && rootRef.current?.contains(e.target)) return;
       setOpen(false);
@@ -38,7 +41,17 @@ export function CalendarLegend() {
   }, [open]);
 
   return (
-    <div ref={rootRef} className="relative">
+    <div
+      ref={rootRef}
+      className="relative"
+      // Фокус пішов за межі легенди (Tab, картка місяця, вкладена модалка) — легенда
+      // закривається: інакше вона висить над сторінкою, і Escape, призначений модалці, закрив
+      // би й її. `relatedTarget` null (клік по тексту вікна, перемикання вікна ОС) — не вихід.
+      onBlur={e => {
+        const next = e.relatedTarget;
+        if (next instanceof Node && !rootRef.current?.contains(next)) setOpen(false);
+      }}
+    >
       <button
         ref={buttonRef}
         type="button"
@@ -53,10 +66,12 @@ export function CalendarLegend() {
       </button>
       {open && (
         <div
+          ref={panelRef}
           id={panelId}
           role="dialog"
           aria-label={t('month.legend.title')}
-          className="absolute right-0 top-full z-50 mt-1.5 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-surface p-3 text-[13px] shadow-lg"
+          tabIndex={-1}
+          className="focus:outline-none absolute right-0 top-full z-50 mt-1.5 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-surface p-3 text-[13px] shadow-lg"
         >
           <p className="mb-2 font-semibold text-foreground">{t('month.legend.title')}</p>
           <p className="mb-1 text-[12px] font-medium text-muted-foreground">

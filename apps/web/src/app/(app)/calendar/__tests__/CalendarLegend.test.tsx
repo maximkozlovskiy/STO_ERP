@@ -66,6 +66,25 @@ describe('CalendarLegend — «?» з поясненням іконок', () => 
     expect(screen.queryByRole('dialog', { name: PANEL })).toBeNull();
   });
 
+  it('фокус переходить у легенду; вихід фокусу за її межі закриває її', () => {
+    render(
+      <>
+        <CalendarLegend />
+        <button type="button">картка місяця</button>
+      </>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: BUTTON }));
+    const panel = screen.getByRole('dialog', { name: PANEL });
+    expect(panel).toHaveFocus();
+    // Фокус нікуди (клік по тексту, перемикання вікна ОС) — легенда лишається.
+    fireEvent.blur(panel, { relatedTarget: null });
+    expect(screen.getByRole('dialog', { name: PANEL })).toBeInTheDocument();
+    // Tab на елемент сторінки поза легендою — закривається.
+    const outside = screen.getByRole('button', { name: 'картка місяця' });
+    fireEvent.blur(panel, { relatedTarget: outside });
+    expect(screen.queryByRole('dialog', { name: PANEL })).toBeNull();
+  });
+
   it('повторний клік по кнопці закриває легенду; інші клавіші — ні', () => {
     render(<CalendarLegend />);
     const button = screen.getByRole('button', { name: BUTTON });

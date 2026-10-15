@@ -434,8 +434,14 @@ export function useCalendarState() {
     if (calView === 'stats' && statsRange) void loadStats(statsRange.from, statsRange.to);
   }, [calView, statsRange, loadStats]);
 
+  // Номер останнього запиту дня: відповідь попереднього дня, що прийшла пізніше (швидке
+  // «‹ ›»), не перезаписує записи нового дня. Запит дня — три виклики, найповільніший вирішує.
+  const loadReqRef = useRef(0);
+
   const load = useCallback(() => {
     if (!date) return;
+    const req = ++loadReqRef.current;
+    const isStale = () => !mountedRef.current || req !== loadReqRef.current;
     setLoading(true);
     Promise.all([
       apiFetch<CalendarSlot[]>(`/calendar/slots?date=${date}`),
@@ -461,7 +467,7 @@ export function useCalendarState() {
       })),
     ])
       .then(([calSlots, nextSlots, bookingRes]) => {
-        if (!mountedRef.current) return;
+        if (isStale()) return;
         setSlots(calSlots);
         setNextDaySlots(nextSlots);
         // Assign each PENDING booking to the first lift that has no CalendarSlot conflict.
@@ -512,10 +518,10 @@ export function useCalendarState() {
         setBookingSlots(assigned);
       })
       .catch((e: unknown) => {
-        if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+        if (!isStale()) setError(e instanceof Error ? e.message : 'Помилка завантаження');
       })
       .finally(() => {
-        if (mountedRef.current) setLoading(false);
+        if (!isStale()) setLoading(false);
       });
   }, [date]);
 
@@ -598,6 +604,9 @@ export function useCalendarState() {
   }, []);
 
   const handleEditSlot = useCallback((slot: CalendarSlot) => {
+    // Відкрито з виду «День»: «минулий» — за правилом дня, не за знімком запису з місяця.
+    // `openMonthSlot` ставить свій знімок ПІСЛЯ цього виклику.
+    setMonthEditSlot(null);
     setEditingSlotId(slot.id);
     setPendingSlot(null);
     const woDisplay = slot.workOrderNumber
@@ -1085,9 +1094,9 @@ export function useCalendarState() {
   const openMonthSlot = useCallback(
     (slot: CalendarSlot) => {
       setDate(toDateString(new Date(slot.startAt)));
-      setMonthEditSlot(slot);
       setError('');
       handleEditSlot(slot);
+      setMonthEditSlot(slot);
     },
     [setDate, handleEditSlot],
   );

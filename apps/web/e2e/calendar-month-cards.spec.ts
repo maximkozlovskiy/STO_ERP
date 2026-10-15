@@ -68,6 +68,7 @@ const state: {
   cpId?: string;
   woId?: string;
   woNumber?: string;
+  vehicleId?: string;
   slotIds: string[];
 } = { slotIds: [] };
 
@@ -117,19 +118,25 @@ test.describe('Календар «Місяць» — картки записів
       }
     }
     // Статуси перевіряються: мовчазний збій прибирання лишав би записи в базі (так і було з
-    // `crud-calendar-slot.spec.ts`, що видаляв `undefined`).
+    // `crud-calendar-slot.spec.ts`, що видаляв `undefined`). `expect.soft` — збій одного кроку
+    // не скасовує решту прибирання (наряд, авто, клієнт лишились би в базі).
     for (const id of state.slotIds) {
       const res = await apiCall(page, state.token, 'DELETE', `/calendar/slots/${id}`);
-      expect(res.status, `DELETE слота ${id}`).toBeLessThan(300);
+      expect.soft(res.status, `DELETE слота ${id}`).toBeLessThan(300);
     }
     // Наряд створено чернеткою, і його ніхто не переводив — чернетку можна видалити.
     if (state.woId) {
       const res = await apiCall(page, state.token, 'DELETE', `/work-orders/${state.woId}`);
-      expect(res.status, 'DELETE наряду-чернетки').toBeLessThan(300);
+      expect.soft(res.status, 'DELETE наряду-чернетки').toBeLessThan(300);
+    }
+    // Авто — після наряду: з активним нарядом API авто не видаляє.
+    if (state.vehicleId) {
+      const res = await apiCall(page, state.token, 'DELETE', `/vehicles/${state.vehicleId}`);
+      expect.soft(res.status, 'DELETE авто').toBeLessThan(300);
     }
     if (state.cpId) {
       const res = await apiCall(page, state.token, 'DELETE', `/counterparties/${state.cpId}`);
-      expect(res.status, 'DELETE клієнта').toBeLessThan(300);
+      expect.soft(res.status, 'DELETE клієнта').toBeLessThan(300);
     }
     await ctx.close();
   });
@@ -164,6 +171,7 @@ test.describe('Календар «Місяць» — картки записів
       licensePlate: plate,
     });
     expect(vehicle.status, `авто: ${JSON.stringify(vehicle.body)}`).toBe(201);
+    state.vehicleId = vehicle.body.id;
 
     // ── 1. Наряд — через інтерфейс ───────────────────────────────────────────
     await page

@@ -213,6 +213,46 @@ describe('useCalendarState — вид «Місяць»', () => {
     expect(result.current.editingSlotId).toBe('a');
   });
 
+  it('вид «День»: пізня відповідь попереднього дня не перезаписує записи нового', async () => {
+    params = new URLSearchParams('view=day&date=2026-10-15');
+    byDay['2026-10-15'] = [slot('old', '2026-10-15T09:00:00+03:00', '2026-10-15T10:00:00+03:00')];
+    byDay['2026-10-17'] = [slot('new', '2026-10-17T09:00:00+03:00', '2026-10-17T10:00:00+03:00')];
+    // Відповіді на 15-те тримаються, доки 17-те не завантажиться.
+    let release15: () => void = () => {};
+    const held15 = new Promise<void>(r => (release15 = r));
+    const base = apiFetch.getMockImplementation()!;
+    apiFetch.mockImplementation((url: string, init?: unknown) =>
+      url === '/calendar/slots?date=2026-10-15'
+        ? held15.then(() => base(url, init))
+        : base(url, init),
+    );
+    const { result } = renderHook(() => useCalendarState());
+    await waitFor(() => expect(slotCalls()).toContain('/calendar/slots?date=2026-10-15'));
+    act(() => result.current.setDate('2026-10-17'));
+    await waitFor(() => expect(result.current.slots.map(s => s.id)).toEqual(['new']));
+    release15();
+    await act(async () => {
+      await held15;
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.slots.map(s => s.id)).toEqual(['new']);
+  });
+
+  it('запис, відкритий з місяця, а потім із виду «День», — «минулий» за правилом дня', async () => {
+    params = new URLSearchParams('view=day&date=2026-10-15');
+    // Почався о 10:00, триває до 14:00; зараз 12:00.
+    const s = slot('now', '2026-10-15T10:00:00+03:00', '2026-10-15T14:00:00+03:00');
+    byDay['2026-10-15'] = [s];
+    const { result } = renderHook(() => useCalendarState());
+    await waitFor(() => expect(result.current.slots).toHaveLength(1));
+    await waitFor(() => expect(result.current.nowMs).toBeGreaterThan(0));
+    act(() => result.current.openMonthSlot(s));
+    expect(result.current.isEditingPast).toBe(false); // за кінцем (BR-CAL-009)
+    act(() => result.current.handleEditSlot(s));
+    // Знімок із місяця не переходить у вид «День»: там — за початком (TECH-DEBT, питання власнику).
+    expect(result.current.isEditingPast).toBe(true);
+  });
+
   it('«Новий запис на цю дату»: порожня форма на обрану дату', async () => {
     const { result } = await renderMonth();
     act(() => result.current.openNewOnDate('2026-10-22'));
