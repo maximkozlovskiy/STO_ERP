@@ -790,7 +790,7 @@ export function CalendarSlotModal({
                     }
                     return t('slot.titleNewRange', { start: `${startDmy} ${s}`, end: e });
                   })()
-                : t('slot.titleNewOn', { date })}
+                : t('slot.titleNewOn', { date: fmtDate(date) })}
           </h3>
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
 
