@@ -49,8 +49,12 @@ const dmy = (dayStr: string) => dayStr.split('-').reverse().join('.');
 
 // Кнопки на клітинці стоять поверх фону завантаженості — власна підкладка `bg-surface`
 // тримає контраст (той самий прийом, що й у рядка лічильників).
+// Сенсорний екран (`pointer-coarse`): дії видно завжди, і кожна ціль — щонайменше 24×24 px
+// (WCAG 2.5.8; Bug #872): 20×20 з проміжком 2 px давали промахи по сусідній кнопці.
 const CELL_ACTION =
-  'inline-flex h-5 w-5 items-center justify-center rounded border border-border bg-surface text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
+  'inline-flex h-5 w-5 items-center justify-center rounded border border-border bg-surface text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary pointer-coarse:h-6 pointer-coarse:w-6';
+/** Мінімальна висота цілі на сенсорному екрані — картка запису й «ще N» (WCAG 2.5.8). */
+const COARSE_TARGET = 'pointer-coarse:min-h-6';
 
 interface MonthSlotCardProps {
   entry: MonthEntry;
@@ -102,7 +106,7 @@ const MonthSlotCard = memo(function MonthSlotCard({ entry, nowMs, onOpen }: Mont
       aria-label={`${time} ${text}. ${typeLabel}. ${categoryLabel}`}
       data-testid="month-slot-card"
       data-category={category}
-      className={`flex w-full min-w-0 items-center gap-1 rounded border border-border border-l-4 ${barClassName} bg-surface px-1 py-0.5 text-left text-[11px] leading-tight text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary`}
+      className={`flex w-full min-w-0 items-center gap-1 rounded border border-border border-l-4 ${barClassName} bg-surface px-1 py-0.5 text-left text-[11px] leading-tight text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${COARSE_TARGET}`}
     >
       <TypeIcon className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="shrink-0 tabular-nums text-muted-foreground">{time}</span>
@@ -228,7 +232,7 @@ export function CalendarMonthView({
                     </span>
                     {/* Дії при наведенні; з клавіатури — з'являються, щойно фокус у клітинці.
                         На сенсорних екранах наведення немає — показані завжди. */}
-                    <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100">
+                    <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:top-0.5 pointer-coarse:right-0.5 pointer-coarse:gap-1 pointer-coarse:opacity-100">
                       <button
                         type="button"
                         className={CELL_ACTION}
@@ -277,7 +281,7 @@ export function CalendarMonthView({
                     {more > 0 && (
                       <button
                         type="button"
-                        className="self-start rounded bg-surface px-1 py-0.5 text-[11px] font-medium leading-none text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        className={`self-start inline-flex items-center rounded bg-surface px-1 py-0.5 text-[11px] font-medium leading-none text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${COARSE_TARGET}`}
                         aria-label={t('month.card.moreAria', { count: more, date })}
                         onClick={e => {
                           e.stopPropagation();

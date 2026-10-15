@@ -196,6 +196,25 @@ describe('CalendarMonthView — картки записів дня (BR-CAL-009)'
     expect(screen.queryByRole('button', { name: /^Новий запис/ })).toBeNull();
   });
 
+  // jsdom не обчислює `@media (pointer: coarse)` — тут стережеться клас, розмір 24×24 px
+  // виміряно в браузері (Playwright hasTouch + isMobile).
+  it('сенсорний екран: дії, картки й «ще N» — цілі щонайменше 24 px (WCAG 2.5.8, Bug #872)', () => {
+    const slots = ['08:00', '09:00', '10:00', '11:00'].map((t, i) => slot(`s${i}`, t));
+    renderMonth(monthOf(slots));
+    for (const name of ['Відкрити день 20.10.2026', 'Новий запис на 20.10.2026']) {
+      expect(screen.getByRole('button', { name })).toHaveClass(
+        'pointer-coarse:h-6',
+        'pointer-coarse:w-6',
+      );
+    }
+    for (const card of within(cell()).getAllByTestId('month-slot-card')) {
+      expect(card).toHaveClass('pointer-coarse:min-h-6');
+    }
+    expect(within(cell()).getByRole('button', { name: /^Ще 1/ })).toHaveClass(
+      'pointer-coarse:min-h-6',
+    );
+  });
+
   it('клітинка не є кнопкою — усередині кнопки карток і дій', () => {
     renderMonth(monthOf([slot('a', '09:00')]));
     expect(cell().tagName).toBe('DIV');
