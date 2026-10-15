@@ -1342,15 +1342,28 @@ export function CreateWorkOrderModal({
         // sto-optimize: DELETEs are independent (each row by id) — fire in parallel
         // instead of N × sequential RTT. Promise.allSettled isolates per-row failures;
         // the next save() retry will still target the rows that didn't drop.
-        const lineDeletes = deletedLineIds.current.map(lineId =>
-          apiFetch(`/work-orders/${workOrderId}/lines/${lineId}`, { method: 'DELETE' }),
+        const lineIds = deletedLineIds.current;
+        const partIds = deletedPartIds.current;
+        const [lineResults, partResults] = await Promise.all([
+          Promise.allSettled(
+            lineIds.map(lineId =>
+              apiFetch(`/work-orders/${workOrderId}/lines/${lineId}`, { method: 'DELETE' }),
+            ),
+          ),
+          Promise.allSettled(
+            partIds.map(partId =>
+              apiFetch(`/work-orders/${workOrderId}/parts/${partId}`, { method: 'DELETE' }),
+            ),
+          ),
+        ]);
+        // Bug #869: відмову сервера не ковтаємо — сума нижче сплаченого (BR-WO-015) лишала рядок
+        // у наряді, а картка закривалась без повідомлення. Невидалені лишаються на повтор.
+        deletedLineIds.current = lineIds.filter((_, i) => lineResults[i]?.status === 'rejected');
+        deletedPartIds.current = partIds.filter((_, i) => partResults[i]?.status === 'rejected');
+        const deleteFailure = [...lineResults, ...partResults].find(
+          (r): r is PromiseRejectedResult => r.status === 'rejected',
         );
-        const partDeletes = deletedPartIds.current.map(partId =>
-          apiFetch(`/work-orders/${workOrderId}/parts/${partId}`, { method: 'DELETE' }),
-        );
-        await Promise.allSettled([...lineDeletes, ...partDeletes]);
-        deletedLineIds.current = [];
-        deletedPartIds.current = [];
+        if (deleteFailure) throw deleteFailure.reason;
         // Sequentially POST нових + PATCH існуючих ліній. Кожен write на бекенді
         // викликає recalcTotals (aggregate + update WO.totalLabor/Parts/Amount).
         // Паралель = race у READ COMMITTED: тх1/тх2 одна одної не бачать у
