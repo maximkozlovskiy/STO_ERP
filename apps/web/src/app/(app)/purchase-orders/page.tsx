@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Fragment, Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { ElementType } from 'react';
@@ -25,6 +25,7 @@ import { useAuth, useRequireAuth } from '@/lib/auth';
 import { SupplierPaymentScheduleTab } from './SupplierPaymentScheduleTab';
 import { apiFetch } from '@/lib/api-client';
 import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
+import { TabDivider } from '@/components/ui/tab-divider';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
 import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
 import { LinesSummarySection } from '@/components/ui/LinesSummarySection';
@@ -872,19 +873,22 @@ function PurchaseOrdersPageClient() {
             ...(canSeeSchedule ? [{ key: 'schedule', label: t('tabs.schedule') } as const] : []),
           ] as const
         ).map(tab => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={cn(
-              TAB_BUTTON,
-              activeTab === tab.key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {tab.label}
-          </button>
+          <Fragment key={tab.key}>
+            {/* Документи (замовлення, повернення) | звіт за ними (графік оплат) */}
+            {tab.key === 'schedule' && <TabDivider />}
+            <button
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                TAB_BUTTON,
+                activeTab === tab.key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {tab.label}
+            </button>
+          </Fragment>
         ))}
       </div>
 
