@@ -398,3 +398,13 @@ FK з наявного стану робить запис нередагован
 у `PageClient` вижила (механік бачив би кнопку, сервер — 403). **Фікс:** гейт ролі — у самому
 компоненті (`useAuth()` + константа ролей), тест мокає `@/lib/auth` і перебирає ролі.
 **Severity:** IMPORTANT
+
+### Enum-axis розширення — повний текст пункту §8.2 (перенесено з `sections/web.md` 2026-10-15)
+
+**Enum-axis розширення → знайти ВСІ inline списки TX_TYPES (sibling-drift)**: коли розширюється enum-value що впливає на знак/колір/семантику (`SettlementTransactionType` += SUPPLIER_CHARGE/PAYMENT/REFUND), оновлення однієї TX_LABELS/COLORS/BALANCE_UP-мапи НЕ достатньо. Grep за старими values (`['PAYMENT','PREPAYMENT','REFUND','CREDIT_NOTE']`, `type === 'CHARGE'`, `.includes(t.type)`, `TX_COLORS`, `TX_LABELS`) по apps/web/src → кожна копія оновлюється ідентично (module-level Set + коментар-посилання на бекове BALANCE_SIGN як SSOT). Sample: 23ce9109 оновив SettlementsTabContent, але sibling `counterparties/[id]/PageClient.tsx:1331,1336` мав власну inline-копію без SUPPLIER_CHARGE → отримання товару малювалось «+ red». Правило: після 3-го consumer → shared helper у `lib/utils.ts`. Grep: `grep -rnE "\.includes\(t\.type\)" apps/web/src`, `grep -rn "TX_LABELS\|TX_COLORS" apps/web/src`
+
+### 2026-10-15 — `aria-label` на span без ролі; лічильники під `opacity-60` і на heat-map — §8.5
+
+**Сигнал:** вид «Місяць» (BR-CAL-008) показував у кнопці дня категорії як `<span aria-label="Прострочено: 2"><Icon aria-hidden/>2</span>`. Назва на `span` (роль generic) заборонена ARIA 1.2 — назва кнопки збирається з вмісту, і читач озвучує «14 2 1» без категорій. Тест `getByLabelText` її знаходив і був зелений. Окремо: `opacity-60` на кнопці минулого дня гасив і лічильники — «прострочено» стоїть саме в минулих днях; на фоні 50% primary (світла тема) контраст кольорів категорій 2.2–3.3:1, з `opacity-60` — 1.5–2.1:1.
+**Grep:** `grep -rn -A8 "<span$" apps/web/src --include=*.tsx | grep aria-label=`; `grep -rnE "<span[^>]*aria-label=" apps/web/src --include=*.tsx | grep -v role=`
+**Фікс:** `role="img"` на значку з числом (діти стають презентаційними, дубля «2» немає); тест `getByRole('img', { name })`. Блідість минулого дня — фоном (`alpha × 0.6`) і числом дня, не `opacity` всієї кнопки; рядок лічильників — на підкладці `bg-surface` (≥ 4.4:1 в обох темах). Sample: `calendar/CalendarMonthView.tsx`. **Severity:** IMPORTANT
