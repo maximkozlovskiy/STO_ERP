@@ -92,7 +92,9 @@ test.describe('Календар — слоти', () => {
       return new Date(guess.getTime() + shiftMs).toISOString();
     }
 
-    let slot: { id: string; [k: string]: unknown } | null = null;
+    // POST /calendar/slots повертає `{ slots: [...] }` (split-day — дві частини). Раніше тест
+    // брав саму відповідь як слот і видаляв `slot.id` = undefined — слоти лишались у базі.
+    let createdIds: string[] = [];
     let lastError: unknown = null;
     outer: for (const liftId of data.liftIds) {
       for (let h = 10; h <= 16; h++) {
@@ -113,7 +115,7 @@ test.describe('Календар — слоти', () => {
           { token, liftId, counterpartyId: data.counterpartyId, startAt, endAt },
         );
         if (res && !('error' in res)) {
-          slot = res as typeof slot;
+          createdIds = (res as { slots: { id: string }[] }).slots.map(s => s.id);
           break outer;
         }
         lastError = res;
@@ -121,9 +123,9 @@ test.describe('Календар — слоти', () => {
     }
 
     expect(
-      slot,
+      createdIds.length,
       `Не знайдено вільної комбінації lift × hour для створення слоту. Last error: ${JSON.stringify(lastError)}`,
-    ).toBeTruthy();
+    ).toBeGreaterThan(0);
 
     // Перезавантажити і перевірити що слот є на timeline.
     // Точна перевірка наявності слоту: data-calendar-slot з відповідним часом.
@@ -137,16 +139,24 @@ test.describe('Календар — слоти', () => {
     // Сам слот має відрендеритись (DraggableSlot ставить data-calendar-slot атрибут)
     await expect(page.locator('[data-calendar-slot]').first()).toBeVisible({ timeout: 15_000 });
 
-    // Cleanup
-    await page.evaluate(
-      async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/v1/calendar/slots/${id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      },
-      { token, id: slot!.id },
+    // Cleanup — кожну частину; статус перевіряється, щоб мовчазний збій не лишав слоти в базі.
+    const statuses = await page.evaluate(
+      async ({ token, ids }) =>
+        Promise.all(
+          ids.map(async id => {
+            const r = await fetch(`http://localhost:3000/api/v1/calendar/slots/${id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            return r.status;
+          }),
+        ),
+      { token, ids: createdIds },
     );
+    expect(
+      statuses.every(s => s >= 200 && s < 300),
+      `DELETE слотів: ${statuses}`,
+    ).toBe(true);
   });
 
   test('перемикання Місяць — відображає сітку місяця', async ({ page }) => {
