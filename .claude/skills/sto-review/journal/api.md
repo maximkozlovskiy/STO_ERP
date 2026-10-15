@@ -3,6 +3,20 @@
 > Архів реальних випадків (дата — назва — §N + Сигнал / Grep / Фікс / Severity).
 > Не читати цілком — шукати за ключовим словом. Чекліст секції: `../sections/api.md`.
 
+### 2026-10-15 — «між перевіркою і транзакцією» на memoryTable без знімка — §5
+
+**Сигнал:** спек оплати наряду мав тест «статус змінився на «Виконано» між перевіркою і транзакцією →
+PAYMENT», але мутант, що бере статус із читання ДО транзакції, вижив: `memoryTable.findFirst` віддає
+сам рядок, і `beforeTx` міняв той самий об'єкт, який тримала перевірка до транзакції. Так само вижив
+мутант «прибрати перевірку залишку в транзакції» — тесту «залишок зменшився між перевіркою і
+транзакцією» не було. Поруч у коді: шлях рахунку без наряду мав `if (inv) { … }` без `else` —
+рахунок, видалений між перевіркою і записом, давав Payment з посиланням на неіснуючий рахунок.
+**Grep:** `grep -rl "beforeTx" apps/api/src --include="*.spec.ts" | xargs grep -L "{ ...r }"`;
+`grep -rnE "^\s+if \((inv|wo|doc|row)\) \{" apps/api/src/modules --include="*.service.ts"`.
+**Фікс:** у harness `findFirst` → `read(args).then(r => (r ? { ...r } : r))` (як у
+`work-orders.paid-guards.spec.ts`); тест на кожну авторитетну перевірку в транзакції; `if (!x) throw`.
+**Severity:** IMPORTANT — тести «на гонку» зелені без умови, яку стережуть.
+
 ### 2026-06-19 — relation-include drift: findOne vs create/update — §13
 
 **Сигнал:** новий scalar/relation у `findOne()` include + `toDto()`, але `create/update/addPart/updatePart` include-шейп старий → поле = `null` у POST/PATCH response (purchase-orders `lines.good` без `internalCode/brand`; work-orders `parts.good` без `internalCode/sku/brand`).
