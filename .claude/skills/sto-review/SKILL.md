@@ -183,14 +183,14 @@ done
 Чекліст кожного § лежить в окремому файлі. За матрицею з Кроку 0 визнач потрібні § і
 прочитай **цілком** відповідні файли секцій (кожен влазить в один Read). Інші не читай.
 
-| §            | Файл секції              | Журнал реальних випадків |
-| ------------ | ------------------------ | ------------------------ |
-| §1           | цей файл, Крок 1         | `journal/ts.md`          |
-| §2           | `sections/security.md`   | `journal/security.md`    |
-| §3, §8       | `sections/web.md`        | `journal/web.md`         |
-| §4, §5, §13  | `sections/api.md`        | `journal/api.md`         |
-| §6, §9       | `sections/database.md`   | `journal/database.md`    |
-| §7, §10, §11 | `sections/perf-queue.md` | `journal/perf-queue.md`  |
+| §            | Файл секції                                     | Журнал реальних випадків |
+| ------------ | ----------------------------------------------- | ------------------------ |
+| §1           | цей файл, Крок 1                                | `journal/ts.md`          |
+| §2           | `sections/security.md`                          | `journal/security.md`    |
+| §3, §8       | `sections/web.md` + `sections/web-documents.md` | `journal/web.md`         |
+| §4, §5, §13  | `sections/api.md`                               | `journal/api.md`         |
+| §6, §9       | `sections/database.md`                          | `journal/database.md`    |
+| §7, §10, §11 | `sections/perf-queue.md`                        | `journal/perf-queue.md`  |
 
 Журнал — архів уже знайдених випадків із детекторами. Цілком його не читати: шукати в
 ньому (`grep -n "<ключове слово>" .claude/skills/sto-review/journal/<файл>.md`), коли
