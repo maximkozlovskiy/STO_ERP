@@ -1,5 +1,3 @@
-import type { MonthEntry } from './calendar-categories';
-
 // ─── Shared Calendar Types ───────────────────────────────────────────────────
 
 export interface CalendarSlot {
@@ -99,6 +97,18 @@ export interface BookingSlot {
 
 export type CalView = 'day' | 'month' | 'stats';
 export type StatsPeriod = 'day' | 'month' | 'custom';
+/** Мінімум даних запису, потрібний для категорії (BR-CAL-008). */
+export interface CategoryInput {
+  /** Кінець ЛАНЦЮЖКА багатоденного запису (`parentSlotId ?? id`), не лише цієї частини. */
+  endMs: number;
+  workOrderStatus: string | null;
+}
+
+/** Запис дня у виді «Місяць»: сам слот (для картки, BR-CAL-009) і дані категорії. */
+export interface MonthEntry extends CategoryInput {
+  slot: CalendarSlot;
+}
+
 export type MonthSlots = Record<
   string,
   { total: number; byLift: Record<string, number>; entries: MonthEntry[] }

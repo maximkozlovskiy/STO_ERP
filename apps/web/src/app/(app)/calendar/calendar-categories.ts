@@ -13,7 +13,10 @@ import {
   Wrench,
   XCircle,
 } from 'lucide-react';
-import type { CalendarSlot } from './calendar.types';
+import type { CategoryInput } from './calendar.types';
+
+// Типи живуть у calendar.types.ts (інакше цикл імпортів types ↔ categories).
+export type { CategoryInput, MonthEntry } from './calendar.types';
 
 /**
  * Категорія запису календаря для лічильників дня у виді «Місяць» (BR-CAL-008).
@@ -29,18 +32,6 @@ export const SLOT_CATEGORIES = [
   'other',
 ] as const;
 export type SlotCategory = (typeof SLOT_CATEGORIES)[number];
-
-/** Мінімум даних запису, потрібний для категорії. */
-export interface CategoryInput {
-  /** Кінець ЛАНЦЮЖКА багатоденного запису (`parentSlotId ?? id`), не лише цієї частини. */
-  endMs: number;
-  workOrderStatus: string | null;
-}
-
-/** Запис дня у виді «Місяць»: сам слот (для картки, BR-CAL-009) і дані категорії. */
-export interface MonthEntry extends CategoryInput {
-  slot: CalendarSlot;
-}
 
 // Наряд, що ще не завершено: минулий запис із ним — прострочений.
 const OPEN_STATUSES: ReadonlySet<string> = new Set<WorkOrderStatus>([
