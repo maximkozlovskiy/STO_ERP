@@ -125,16 +125,29 @@ const DraggableSlot = memo(function DraggableSlot({
       </div>
 
       <div
-        className="flex-1 flex flex-col px-3 cursor-grab active:cursor-grabbing min-w-0 py-1 relative"
+        className="@container flex-1 flex flex-col px-3 cursor-grab active:cursor-grabbing min-w-0 py-1 relative"
         {...listeners}
         {...attributes}
         onClick={() => onEdit(slot)}
       >
-        {/* Верхній рядок: тип запису, час, продовження; справа — іконка категорії */}
+        {/* Верхній рядок: тип запису, час, продовження; справа — іконка категорії. У вузькому
+            блоці (30 хв на 1280) лишається лише іконка категорії — інакше її обрізало, і
+            «чернетку» від «без наряду» (той самий фон) не відрізнити (Bug #876). Час і тип —
+            у підказці й для читача екрана. */}
         <span className="flex items-center gap-1 text-[10px] leading-none mb-1 tabular-nums">
-          <TypeIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
-          <span className="truncate">{timeLabel}</span>
-          {slot.parentSlotId && <span aria-hidden="true">↩</span>}
+          <TypeIcon
+            className="h-3 w-3 shrink-0 @max-[2.75rem]:hidden"
+            aria-hidden="true"
+            data-part="type-icon"
+          />
+          <span className="truncate @max-[2.75rem]:sr-only" data-part="time">
+            {timeLabel}
+          </span>
+          {slot.parentSlotId && (
+            <span className="@max-[2.75rem]:hidden" aria-hidden="true">
+              ↩
+            </span>
+          )}
           <CategoryIcon
             className={`ml-auto h-3.5 w-3.5 shrink-0 ${categoryIconColor}`}
             aria-hidden="true"

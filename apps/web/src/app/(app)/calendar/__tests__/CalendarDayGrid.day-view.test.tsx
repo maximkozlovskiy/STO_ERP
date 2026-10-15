@@ -181,6 +181,26 @@ describe('Вид «День» — блок запису (BR-CAL-011)', () => {
     expect(block('WO-a').dataset.category).toBe('planned');
   });
 
+  // guards: BR-CAL-011 (Bug #876)
+  it('вузький блок: час і тип ховаються за шириною блоку, іконка категорії лишається', async () => {
+    byDay['2026-10-15'] = [slot('n', '2026-10-15T16:00', '2026-10-15T16:30')];
+    await renderDay();
+    const el = block('WO-n');
+    // jsdom не рахує контейнерні запити — перевіряється, що правило стоїть на своїх місцях;
+    // ширину й видимість іконки міряли в браузері (30 хв на 1280 — блок 43 px).
+    const body = el.querySelector<HTMLElement>('.\\@container');
+    expect(body).not.toBeNull();
+    expect(body!.contains(el.querySelector('[data-part="time"]'))).toBe(true);
+    expect(el.querySelector('[data-part="type-icon"]')?.getAttribute('class')).toContain(
+      '@max-[2.75rem]:hidden',
+    );
+    // Час не зникає для читача екрана — лише візуально.
+    expect(el.querySelector('[data-part="time"]')?.className).toContain('@max-[2.75rem]:sr-only');
+    const svgs = [...el.querySelectorAll('svg')];
+    const categoryIcon = svgs.find(s => s.getAttribute('class')?.includes('ml-auto'));
+    expect(categoryIcon?.getAttribute('class')).not.toContain('@max-');
+  });
+
   // guards: BR-CAL-011 (Bug #875)
   it('запис за межами робочих годин — блок лише в межах сітки, не на колонці підйомника', async () => {
     byDay['2026-10-15'] = [
