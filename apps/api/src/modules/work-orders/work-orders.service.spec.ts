@@ -46,6 +46,7 @@ function makeService(prisma: PrismaService): WorkOrdersService {
       createMovement: vi.fn().mockResolvedValue({ consumed: [], weightedCostPrice: null }),
     } as never,
     { createTransaction: vi.fn().mockResolvedValue({}) } as never,
+    null as never, // exchangeRates — курсова різниця (BR-PAY-022) тут не задіяна
   );
   const exchangeRates = {
     resolveBaseConversion: vi
@@ -477,7 +478,7 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
       createMovement: inventoryCreateMovement,
     } as unknown as InventoryService;
     const settlements = { createTransaction: vi.fn() } as unknown as SettlementsService;
-    return new WorkOrderStockEffectsService(prisma, inventory, settlements);
+    return new WorkOrderStockEffectsService(prisma, inventory, settlements, null as never);
   }
 
   it('single-batch WRITEOFF → part.batchCostPrice + part.batchId проставляються', async () => {
@@ -619,6 +620,7 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
       prisma,
       { createMovement } as unknown as InventoryService,
       { createTransaction: vi.fn() } as unknown as SettlementsService,
+      null as never, // exchangeRates
     );
     await svc.writeOffPartsAndCharge(
       'org-1',
@@ -764,7 +766,7 @@ describe('WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2)'
     const inventory = { createMovement } as never;
     const settlements = { createTransaction } as never;
     // A3: returnPartsAndCredit живе у WorkOrderStockEffectsService — тестуємо його напряму.
-    return new WorkOrderStockEffectsService(prisma, inventory, settlements);
+    return new WorkOrderStockEffectsService(prisma, inventory, settlements, null as never);
   }
 
   const RETURN_OK = { movementId: 'm-ret', consumed: [], weightedCostPrice: null };

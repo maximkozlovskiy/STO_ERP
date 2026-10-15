@@ -107,6 +107,7 @@ function stubService(): WorkOrderStockEffectsService {
     guarded as unknown as PrismaService,
     inventory,
     settlements,
+    null as never, // exchangeRates — курсова різниця (BR-PAY-022) тут не задіяна
   );
 }
 

@@ -49,7 +49,7 @@ function makeService(goodUoMFindMany: ReturnType<typeof vi.fn>) {
   const settlements = {
     createTransaction: vi.fn().mockResolvedValue({}),
   } as unknown as SettlementsService;
-  return new WorkOrderStockEffectsService(prisma, inventory, settlements);
+  return new WorkOrderStockEffectsService(prisma, inventory, settlements, null as never);
 }
 
 describe('WorkOrderStockEffectsService.fetchPartCoefficients — tenant-scope (A3)', () => {
@@ -171,7 +171,7 @@ function makeGapService(opts: {
   const createTransaction = vi.fn().mockResolvedValue({});
   const settlements = { createTransaction } as unknown as SettlementsService;
   return {
-    svc: new WorkOrderStockEffectsService(prisma, inventory, settlements),
+    svc: new WorkOrderStockEffectsService(prisma, inventory, settlements, null as never),
     createMovement,
     createTransaction,
   };
@@ -317,7 +317,7 @@ describe('WorkOrderStockEffectsService.writeOffPartsAndCharge — Bug #780 (rele
       createTransaction: vi.fn().mockResolvedValue({}),
     } as unknown as SettlementsService;
     return {
-      svc: new WorkOrderStockEffectsService(prisma, inventory, settlements),
+      svc: new WorkOrderStockEffectsService(prisma, inventory, settlements, null as never),
       createMovement: inv.createMovement,
       getReserved: inv.getReserved,
     };
@@ -449,7 +449,7 @@ describe('WorkOrderStockEffectsService.releasePartReservations — Bug #780 (rel
     const inventory = { createMovement: inv.createMovement } as unknown as InventoryService;
     const settlements = { createTransaction: vi.fn() } as unknown as SettlementsService;
     return {
-      svc: new WorkOrderStockEffectsService(prisma, inventory, settlements),
+      svc: new WorkOrderStockEffectsService(prisma, inventory, settlements, null as never),
       createMovement: inv.createMovement,
     };
   }
@@ -564,6 +564,7 @@ function makeLedgerService(opts: {
     prisma,
     { createMovement } as unknown as InventoryService,
     { createTransaction } as unknown as SettlementsService,
+    null as never, // exchangeRates
   );
   return {
     svc,

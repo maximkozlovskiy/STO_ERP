@@ -127,6 +127,8 @@ describe('InvoicesService — refresh-from-work-order', () => {
       // sto-optimize: Serializable inner re-check (status DRAFT) — додано симетрично
       // з createFromWorkOrder для закриття TOCTOU concurrent addLine/refresh.
       prisma.invoice.findFirst.mockResolvedValueOnce({ status: 'DRAFT' });
+      // Дзеркало сплаченого (BR-INV-018) шукає активний рахунок наряду — тут без сплаченого.
+      prisma.invoice.findFirst.mockResolvedValueOnce(null);
       // findOne (повернути результат після refresh) — мінімальний mock щоб не кидало
       prisma.invoice.findFirst.mockResolvedValueOnce({
         id: INV_ID,
@@ -186,6 +188,8 @@ describe('InvoicesService — refresh-from-work-order', () => {
         workOrderId: WO_ID,
       });
       prisma.invoice.findFirst.mockResolvedValueOnce({ status: 'DRAFT' });
+      // Дзеркало сплаченого (BR-INV-018) шукає активний рахунок наряду — тут без сплаченого.
+      prisma.invoice.findFirst.mockResolvedValueOnce(null);
       prisma.invoice.findFirst.mockResolvedValueOnce({
         id: INV_ID,
         orgId: ORG,
@@ -243,6 +247,8 @@ describe('InvoicesService — refresh-from-work-order', () => {
       });
       // sto-optimize: Serializable inner re-check.
       prisma.invoice.findFirst.mockResolvedValueOnce({ status: 'DRAFT' });
+      // Дзеркало сплаченого (BR-INV-018) шукає активний рахунок наряду — тут без сплаченого.
+      prisma.invoice.findFirst.mockResolvedValueOnce(null);
       prisma.invoice.findFirst.mockResolvedValueOnce({
         id: INV_ID,
         orgId: ORG,

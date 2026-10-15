@@ -304,11 +304,11 @@ function makePrismaForAddPart(batchCostPrice: number | null) {
   });
   const lineFindMany = vi.fn().mockResolvedValue([]);
   const partAggregate = vi.fn().mockResolvedValue({ _sum: { amount: 100 } });
-  const woUpdate = vi.fn().mockResolvedValue({});
+  const woUpdate = vi.fn().mockResolvedValue({ count: 1 });
 
   const tx = {
     workOrder: {
-      update: woUpdate,
+      updateMany: woUpdate,
       findFirst: vi.fn().mockResolvedValue({ currencyId: null, documentDate: new Date() }),
     },
     workOrderLine: { findMany: lineFindMany },
@@ -420,11 +420,11 @@ function makePrismaForUpdatePart(batchCostPrice: number | null) {
   });
   const lineFindMany = vi.fn().mockResolvedValue([]);
   const partAggregate = vi.fn().mockResolvedValue({ _sum: { amount: 200 } });
-  const woUpdate = vi.fn().mockResolvedValue({});
+  const woUpdate = vi.fn().mockResolvedValue({ count: 1 });
 
   const tx = {
     workOrder: {
-      update: woUpdate,
+      updateMany: woUpdate,
       findFirst: vi.fn().mockResolvedValue({ currencyId: null, documentDate: new Date() }),
     },
     workOrderLine: { findMany: lineFindMany },

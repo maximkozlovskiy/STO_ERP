@@ -98,46 +98,46 @@ describe('CashDeskService.create — оплата контрагента (SALE_P
     expect(paymentCall(h).dto.workOrderId ?? null).toBeNull();
   });
 
+  // BR-CASH-017 (рішення власника 2026-10-15): підстава-наряд — завжди оплата за нарядом; аванс чи
+  // оплата (тип проводки) визначає сам PaymentsService за статусом наряду (BR-PAY-020).
   // guards: BR-CASH-017
-  it('наряд «Виставлено» (INVOICED) → оплата йде ЗА НАРЯДОМ: workOrderId є, settlementType немає', async () => {
-    const h = makeDesk();
-    setWorkOrderStatus(h, 'INVOICED');
-    await createOp(
-      h,
-      validInput('SALE_PAYMENT', {
-        amount: 3400.5,
-        baseDocumentType: 'WorkOrder',
-        baseDocumentId: WO,
-      }),
-    );
-    const { dto } = paymentCall(h);
-    expect(dto).toMatchObject({ counterpartyId: CLIENT, amount: 3400.5, workOrderId: WO });
-    expect(dto.settlementType).toBeUndefined();
-  });
-
-  // guards: BR-CASH-017
-  it.each([
-    'DRAFT',
-    'ESTIMATE',
-    'APPROVED',
-    'IN_PROGRESS',
-    'ON_HOLD',
-    'COMPLETED',
-    'PAID',
-    'ARCHIVED',
-    'CANCELLED',
-  ])(
-    'наряд у статусі %s → аванс: settlementType = PREPAYMENT, workOrderId в оплату НЕ йде',
+  it.each(['DRAFT', 'ESTIMATE', 'APPROVED', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'INVOICED'])(
+    'наряд у статусі %s → оплата йде ЗА НАРЯДОМ: workOrderId є, settlementType із каси немає',
     async status => {
       const h = makeDesk();
       setWorkOrderStatus(h, status);
       await createOp(
         h,
-        validInput('SALE_PAYMENT', { baseDocumentType: 'WorkOrder', baseDocumentId: WO }),
+        validInput('SALE_PAYMENT', {
+          amount: 3400.5,
+          baseDocumentType: 'WorkOrder',
+          baseDocumentId: WO,
+        }),
       );
       const { dto } = paymentCall(h);
-      expect(dto.settlementType).toBe('PREPAYMENT');
-      expect(dto.workOrderId ?? null).toBeNull();
+      expect(dto).toMatchObject({ counterpartyId: CLIENT, amount: 3400.5, workOrderId: WO });
+      expect(dto.settlementType).toBeUndefined();
+    },
+  );
+
+  // guards: BR-CASH-026
+  it.each([
+    ['CANCELLED', 'Скасовано'],
+    ['PAID', 'Оплачено'],
+    ['ARCHIVED', 'Архів'],
+  ])(
+    'підстава — наряд у статусі %s → 400 «Наряд у статусі «%s» не приймає оплату», нічого не пишеться',
+    async (status, label) => {
+      const h = makeDesk();
+      setWorkOrderStatus(h, status);
+      const call = createOp(
+        h,
+        validInput('SALE_PAYMENT', { baseDocumentType: 'WorkOrder', baseDocumentId: WO }),
+      );
+      await expect(call).rejects.toThrow(BadRequestException);
+      await expect(call).rejects.toThrow(`Наряд у статусі «${label}» не приймає оплату`);
+      expect(h.payments.create).not.toHaveBeenCalled();
+      expectNothingMoved(h);
     },
   );
 

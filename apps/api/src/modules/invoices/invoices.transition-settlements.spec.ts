@@ -308,23 +308,28 @@ describe('InvoicesService — transition-settlements', () => {
     });
 
     // guards: BR-INV-012
-    it('WO-рахунок →PAID: БЕЗ PAYMENT (CHARGE був через COMPLETED, уникаємо подвійного обліку)', async () => {
-      prisma.invoice.findFirst
-        .mockResolvedValueOnce({
-          status: 'SENT',
+    // BR-INV-019 (рішення власника 2026-10-15): рахунок наряду закривається лише оплатою наряду —
+    // ручне «Оплачено» записало б сплачене без грошей і розвело б рахунок із нарядом (дзеркало,
+    // BR-INV-018). Раніше перехід проходив без PAYMENT; тепер — 400 і жодного запису.
+    // guards: BR-INV-019
+    it.each(['SENT', 'PARTIALLY_PAID', 'OVERDUE'])(
+      'WO-рахунок у %s → ручний PAID: 400 «закривається оплатою», ні статусу, ні проводки',
+      async status => {
+        prisma.invoice.findFirst.mockResolvedValueOnce({
+          status,
           workOrderId: 'wo-1', // рахунок за нарядом
           counterpartyId: CP_ID,
           amount: 500,
           paidAmount: 0,
-        })
-        .mockResolvedValue({ ...findOneRow, workOrderId: 'wo-1' });
-      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+        });
 
-      await service.transition(ORG, INV_ID, 'PAID' as never, 'user-1');
-      // MUTATION-VERIFY: якби умова була лише `newStatus===PAID` без `workOrderId===null` —
-      // WO-рахунок отримав би подвійний PAYMENT (CHARGE через COMPLETED + цей).
-      expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
-    });
+        await expect(service.transition(ORG, INV_ID, 'PAID' as never, 'user-1')).rejects.toThrow(
+          'Рахунок наряду закривається оплатою — скористайтесь «Оплатити»',
+        );
+        expect(prisma.invoice.updateMany).not.toHaveBeenCalled();
+        expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
+      },
+    );
 
     it('non-PAID перехід (SENT→CANCELLED) НЕ пише paidAmount + без PAYMENT', async () => {
       prisma.invoice.findFirst

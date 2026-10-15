@@ -158,7 +158,9 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
 
     await service.create(ORG, baseDto as never, 'user-1');
 
-    expect(prisma.invoice.findFirst.mock.calls[0][0].select.counterpartyId).toBe(true);
+    // Перше читання — лише наряд рахунку (BR-PAY-021); перевірку платника робить читання в транзакції.
+    const txRead = prisma.invoice.findFirst.mock.calls.find(c => c[0].select.status);
+    expect(txRead?.[0].select.counterpartyId).toBe(true);
   });
 
   // ── Часткова→повна послідовність + рівно-залишок ──────────────────────────

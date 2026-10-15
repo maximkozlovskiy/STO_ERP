@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import type { Prisma, WorkOrderStatus } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { assertFsmTransition } from '../../common/utils/fsm';
+import { moneyFromDecimal } from '../../common/utils/money';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
 
@@ -98,4 +99,50 @@ export async function reopenPaidWorkOrderInTx(
   if (cas.count === 0) {
     throw new BadRequestException(translateError('err.workOrder.statusChanged', getLocale()));
   }
+}
+
+/** Перехід статусу, зроблений у транзакції, — викликач емітить для нього подію ПІСЛЯ коміту. */
+export interface WorkOrderStatusStep {
+  from: WorkOrderStatus;
+  to: WorkOrderStatus;
+}
+
+/** Наряд сплачено повністю: є що сплачувати і «сплачено» покриває «Разом» (BR-WO-016). */
+export function isWorkOrderFullyPaid(
+  totalAmount: Prisma.Decimal | number,
+  paidAmount: Prisma.Decimal | number,
+): boolean {
+  const total = moneyFromDecimal(totalAmount);
+  return total > 0 && moneyFromDecimal(paidAmount) >= total - 1e-9;
+}
+
+/**
+ * BR-WO-016 / BR-PAY-005: повністю сплачений наряд сам іде до «Оплачено» — у ТІЙ САМІЙ транзакції,
+ * що зробила його сплаченим (оплата) або довела до боргу (перехід у «Виконано» / «Виставлено»).
+ * «Виконано» → «Виставлено» → «Оплачено» без створення рахунку; «Виставлено» → «Оплачено».
+ * Інші статуси й неповна оплата — нічого. Обидва кроки — `transitionWorkOrderStatusInTx` (FSM +
+ * CAS); повертає зроблені кроки, події TRANSITIONED викликач емітить після коміту.
+ */
+export async function settleIfFullyPaidInTx(
+  tx: Prisma.TransactionClient,
+  orgId: string,
+  workOrderId: string,
+): Promise<WorkOrderStatusStep[]> {
+  const wo = await tx.workOrder.findFirst({
+    where: { id: workOrderId, orgId, deletedAt: null },
+    select: { status: true, totalAmount: true, paidAmount: true },
+  });
+  if (!wo || !isWorkOrderFullyPaid(wo.totalAmount, wo.paidAmount)) return [];
+  const steps: WorkOrderStatusStep[] = [];
+  let status = wo.status;
+  if (status === 'COMPLETED') {
+    await transitionWorkOrderStatusInTx(tx, orgId, workOrderId, 'COMPLETED', 'INVOICED');
+    steps.push({ from: 'COMPLETED', to: 'INVOICED' });
+    status = 'INVOICED';
+  }
+  if (status === 'INVOICED') {
+    await transitionWorkOrderStatusInTx(tx, orgId, workOrderId, 'INVOICED', 'PAID');
+    steps.push({ from: 'INVOICED', to: 'PAID' });
+  }
+  return steps;
 }

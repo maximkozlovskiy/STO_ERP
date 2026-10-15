@@ -1,6 +1,11 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InvoiceStatus, Prisma } from '@prisma/client';
-import { formatPersonName, translateError } from '@sto/shared';
+import { InvoiceStatus, Prisma, type WorkOrderStatus } from '@prisma/client';
+import {
+  formatPersonName,
+  TRANSACTION_TIMEOUT_MS,
+  translateError,
+  WO_INVOICE_CREATABLE_STATUSES,
+} from '@sto/shared';
 
 import { getLocale } from '../../common/tenant/tenant-context';
 import { kyivToday, addDaysKyiv, dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
@@ -28,6 +33,7 @@ import { SettingsService } from '../settings/settings.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
+import { syncWorkOrderInvoicePaid } from './work-order-invoice-mirror';
 import {
   CreateInvoiceDto,
   UpdateInvoiceDto,
@@ -223,9 +229,9 @@ export class InvoicesService {
     ]);
     if (!wo)
       throw new NotFoundException(translateError('err.invoice.workOrderNotFound', getLocale()));
-    // shared INVOICEABLE_STATUSES: раніше inline `['COMPLETED', 'INVOICED']` — будь-який
-    // новий статус у whitelist оновлюється тільки у одному місці.
-    if (!INVOICEABLE_STATUSES.includes(wo.status)) {
+    // BR-INV-020: ширше за INVOICEABLE_STATUSES (гейт актів і кнопок) — повністю сплачений наряд
+    // стає «Оплачено» ще до рахунку, а рахунок для нього створити можна (акт, «Рахунок»).
+    if (!WO_INVOICE_CREATABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException(
         translateError('err.invoice.onlyCompletedInvoiceable', getLocale()),
       );
@@ -254,6 +260,29 @@ export class InvoicesService {
     try {
       const inv = await this.prisma.$transaction(
         async tx => {
+          // Рядок наряду — ПЕРШИЙ запис (блокування): той самий порядок «наряд → рахунок», що в
+          // оплаті (BR-PAY-005). Оплата, що прийшла під час створення, чекає на коміт і потрапляє
+          // в дзеркало нового рахунку, а не повз нього. Умова статусу — у самому записі.
+          const locked = await tx.workOrder.updateMany({
+            where: {
+              id: workOrderId,
+              orgId,
+              deletedAt: null,
+              status: { in: [...WO_INVOICE_CREATABLE_STATUSES] as WorkOrderStatus[] },
+            },
+            data: { syncVersion: { increment: 1 } },
+          });
+          if (locked.count === 0) {
+            const gone = !(await tx.workOrder.findFirst({
+              where: { id: workOrderId, orgId, deletedAt: null },
+              select: { id: true },
+            }));
+            throw gone
+              ? new NotFoundException(translateError('err.invoice.workOrderNotFound', getLocale()))
+              : new BadRequestException(
+                  translateError('err.invoice.onlyCompletedInvoiceable', getLocale()),
+                );
+          }
           const existing = await tx.invoice.findFirst({
             where: {
               workOrderId,
@@ -293,6 +322,8 @@ export class InvoicesService {
             currencyId: wo.currencyId,
             documentDate,
           });
+          // BR-INV-020: рахунок одразу переносить сплачене за нарядом (дзеркало, BR-INV-018).
+          await syncWorkOrderInvoicePaid(tx, orgId, workOrderId);
           return tx.invoice.findFirstOrThrow({
             where: { id: created.id, orgId },
             include: {
@@ -420,7 +451,7 @@ export class InvoicesService {
     // Раніше тягнуло amount/dueDate/notes/totalWithVat/syncVersion + counterpartyId/workOrderId/orgId.
     const inv = await this.prisma.invoice.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { status: true, counterpartyId: true },
+      select: { status: true, counterpartyId: true, workOrderId: true },
     });
     if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
     if (inv.status !== InvoiceStatus.DRAFT)
@@ -442,27 +473,39 @@ export class InvoicesService {
       assertCounterpartyRole(counterparty.type, 'client'); // BR-CP-001
     }
 
-    const updated = await this.prisma.invoice.update({
-      where: { id, orgId },
-      data: {
-        amount: dto.amount ?? undefined,
-        invoiceType: dto.invoiceType ?? undefined,
-        counterpartyId: dto.counterpartyId ?? undefined,
-        dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
-        documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
-        notes: dto.notes ?? undefined,
-        // Мультивалюта (Фаза 3): totalAmountBase/rateUsed лишаються зі старого курсу до
-        // transition() (DRAFT→SENT нараховує CHARGE у base по свіжому currencyId) —
-        // не перераховуємо тут, щоб не дублювати conversion-логіку поза FSM.
-        // Мультивалюта (TD1): currencyId NOT NULL — не дозволяємо занулити (лише зміна на іншу валюту).
-        currencyId: dto.currencyId ?? undefined,
-      },
-      include: {
-        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-        workOrder: { select: { number: true } },
-      },
-    });
+    const data = {
+      amount: dto.amount ?? undefined,
+      invoiceType: dto.invoiceType ?? undefined,
+      counterpartyId: dto.counterpartyId ?? undefined,
+      dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+      documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
+      notes: dto.notes ?? undefined,
+      // Мультивалюта (Фаза 3): totalAmountBase/rateUsed лишаються зі старого курсу до
+      // transition() (DRAFT→SENT нараховує CHARGE у base по свіжому currencyId) —
+      // не перераховуємо тут, щоб не дублювати conversion-логіку поза FSM.
+      // Мультивалюта (TD1): currencyId NOT NULL — не дозволяємо занулити (лише зміна на іншу валюту).
+      currencyId: dto.currencyId ?? undefined,
+    };
+    const include = {
+      counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+      workOrder: { select: { number: true } },
+    } satisfies Prisma.InvoiceInclude;
 
+    const workOrderId = inv.workOrderId ?? null;
+    if (workOrderId === null) {
+      const updated = await this.prisma.invoice.update({ where: { id, orgId }, data, include });
+      return this.toDto(updated);
+    }
+    // BR-INV-018: зміна суми рахунку наряду перераховує сплачене `min(сплачено наряду, сума)` —
+    // у тій самій транзакції, що й запис суми.
+    const updated = await this.prisma.$transaction(
+      async tx => {
+        await tx.invoice.update({ where: { id, orgId }, data });
+        await syncWorkOrderInvoicePaid(tx, orgId, workOrderId);
+        return tx.invoice.findFirstOrThrow({ where: { id, orgId }, include });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
     return this.toDto(updated);
   }
 
@@ -488,6 +531,14 @@ export class InvoicesService {
     if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
 
     assertFsmTransition(INV_TRANSITIONS, inv.status, newStatus);
+
+    // BR-INV-019: рахунок наряду закривається лише оплатою наряду (дзеркало, BR-INV-018) — ручне
+    // «Оплачено» записало б сплачене без грошей і розвело б рахунок із нарядом.
+    if (newStatus === InvoiceStatus.PAID && inv.workOrderId !== null) {
+      throw new BadRequestException(
+        translateError('err.invoice.workOrderInvoicePaidViaPayment', getLocale()),
+      );
+    }
 
     // FIN-C2: борг (CHARGE) для STANDALONE-рахунку (без наряду) створюється при виставленні
     // (DRAFT→SENT). WO-рахунок НЕ чіпаємо — там CHARGE вже нараховано при COMPLETED наряду
@@ -521,6 +572,11 @@ export class InvoicesService {
         });
         if (moved.count === 0) {
           throw new BadRequestException(translateError('err.invoice.statusChanged', getLocale()));
+        }
+        // BR-INV-018: на DRAFT → SENT статус рахунку наряду береться за сплаченим наряду
+        // (аванс уже міг покрити рахунок повністю чи частково).
+        if (inv.workOrderId !== null && newStatus === InvoiceStatus.SENT) {
+          await syncWorkOrderInvoicePaid(tx, orgId, inv.workOrderId);
         }
         if (chargesStandaloneOnSend) {
           await this.settlements.createTransaction(
@@ -1034,7 +1090,7 @@ export class InvoicesService {
       // Мультивалюта (Фаза 3): валюта + дата документа для base-конвертації тоталу.
       this.prisma.invoice.findFirst({
         where: { id: invoiceId, orgId },
-        select: { currencyId: true, documentDate: true },
+        select: { currencyId: true, documentDate: true, workOrderId: true },
       }),
     ]);
     const totalWithoutVat = money(Number(result._sum.priceWithoutVat ?? 0));
@@ -1052,17 +1108,28 @@ export class InvoicesService {
         )
       : { rateUsed: 1, amountBase: totalWithVat };
 
-    await this.prisma.invoice.update({
-      where: { id: invoiceId, orgId },
-      data: {
-        totalWithoutVat,
-        totalVat,
-        totalWithVat,
-        amount: totalWithVat,
-        totalAmountBase: conv.amountBase,
-        rateUsed: conv.rateUsed,
+    const data = {
+      totalWithoutVat,
+      totalVat,
+      totalWithVat,
+      amount: totalWithVat,
+      totalAmountBase: conv.amountBase,
+      rateUsed: conv.rateUsed,
+    };
+    const workOrderId = inv?.workOrderId ?? null;
+    if (workOrderId === null) {
+      await this.prisma.invoice.update({ where: { id: invoiceId, orgId }, data });
+      return;
+    }
+    // BR-INV-018: нова сума рахунку наряду → сплачене `min(сплачено наряду, сума)` у тій самій
+    // транзакції, що й запис суми.
+    await this.prisma.$transaction(
+      async tx => {
+        await tx.invoice.update({ where: { id: invoiceId, orgId }, data });
+        await syncWorkOrderInvoicePaid(tx, orgId, workOrderId);
       },
-    });
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
   }
 
   async findByWorkOrder(
@@ -1156,6 +1223,8 @@ export class InvoicesService {
             currencyId: invInTx.currencyId,
             documentDate: invInTx.documentDate ?? new Date(),
           });
+          // BR-INV-018: сума рахунку могла змінитись — сплачене перераховується з наряду.
+          await syncWorkOrderInvoicePaid(tx, orgId, workOrderId);
         },
         { isolationLevel: 'Serializable', timeout: 10_000 },
       );

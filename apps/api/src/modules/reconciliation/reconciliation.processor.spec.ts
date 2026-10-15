@@ -15,6 +15,7 @@ describe('ReconciliationProcessor', () => {
     settlementTransaction: { groupBy: ReturnType<typeof vi.fn> };
     invoice: { findMany: ReturnType<typeof vi.fn> };
     payment: { groupBy: ReturnType<typeof vi.fn> };
+    workOrder: { findMany: ReturnType<typeof vi.fn> };
   };
   let processor: ReconciliationProcessor;
   const job = { data: { orgId: 'org-1' } } as Job<ReconcileJob>;
@@ -27,6 +28,7 @@ describe('ReconciliationProcessor', () => {
       settlementTransaction: { groupBy: vi.fn().mockResolvedValue([]) },
       invoice: { findMany: vi.fn().mockResolvedValue([]) },
       payment: { groupBy: vi.fn().mockResolvedValue([]) },
+      workOrder: { findMany: vi.fn().mockResolvedValue([]) },
     };
     processor = new ReconciliationProcessor(prisma as never, { capture: vi.fn() } as never);
   });
@@ -138,6 +140,90 @@ describe('ReconciliationProcessor', () => {
     const secondCall = prisma.invoice.findMany.mock.calls[1][0];
     expect(secondCall.cursor).toEqual({ id: 'inv-999' });
     expect(secondCall.skip).toBe(1);
+  });
+
+  // ── BR-INV-018: рахунок наряду — дзеркало наряду ──────────────────────────────────────────
+
+  /** groupBy оплат: за рахунком і за нарядом — окремі набори. */
+  const paymentsGrouped = (
+    byInvoice: Array<{ invoiceId: string; amount: number }>,
+    byWorkOrder: Array<{ workOrderId: string; amount: number }>,
+  ) =>
+    prisma.payment.groupBy.mockImplementation((args: { by: string[] }) =>
+      Promise.resolve(
+        args.by[0] === 'workOrderId'
+          ? byWorkOrder.map(r => ({ workOrderId: r.workOrderId, _sum: { amount: r.amount } }))
+          : byInvoice.map(r => ({ invoiceId: r.invoiceId, _sum: { amount: r.amount } })),
+      ),
+    );
+
+  // guards: BR-INV-018
+  it('рахунок наряду: очікуване = min(Σ оплат наряду, сума рахунку) — аванс до рахунку не дрейф', async () => {
+    // Наряд сплачено 1000 (аванс 600 без рахунку + 400 з рахунком), рахунок на 1000 → сплачено 1000.
+    prisma.invoice.findMany.mockResolvedValue([
+      { id: 'inv1', paidAmount: 1000, workOrderId: 'wo1', status: 'PAID', amount: 1000 },
+    ]);
+    prisma.workOrder.findMany.mockResolvedValue([{ id: 'wo1', paidAmount: 1000 }]);
+    paymentsGrouped([{ invoiceId: 'inv1', amount: 400 }], [{ workOrderId: 'wo1', amount: 1000 }]);
+    const errSpy = vi.spyOn(processor['logger'], 'error');
+    await processor.process(job);
+    // MUTATION-VERIFY: рахувати рахунок наряду за Σ оплат з invoiceId (400) → DRIFT paidAmount.
+    expect(errSpy).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-INV-018
+  it('рахунок наряду, сплачене наряду більше за суму рахунку → очікуване = сума рахунку', async () => {
+    prisma.invoice.findMany.mockResolvedValue([
+      { id: 'inv1', paidAmount: 800, workOrderId: 'wo1', status: 'PAID', amount: 800 },
+    ]);
+    prisma.workOrder.findMany.mockResolvedValue([{ id: 'wo1', paidAmount: 1000 }]);
+    paymentsGrouped([], [{ workOrderId: 'wo1', amount: 1000 }]);
+    const errSpy = vi.spyOn(processor['logger'], 'error');
+    await processor.process(job);
+    expect(errSpy).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-INV-018
+  it('рахунок наряду розійшовся з нарядом → DRIFT paidAmount (лог, не виняток)', async () => {
+    prisma.invoice.findMany.mockResolvedValue([
+      // Старий рахунок, закритий вручну без оплат: сплачено 1000, а оплат наряду немає.
+      { id: 'inv1', paidAmount: 1000, workOrderId: 'wo1', status: 'PAID', amount: 1000 },
+    ]);
+    prisma.workOrder.findMany.mockResolvedValue([{ id: 'wo1', paidAmount: 0 }]);
+    paymentsGrouped([], []);
+    const errSpy = vi.spyOn(processor['logger'], 'error');
+    await expect(processor.process(job)).resolves.toBeUndefined();
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('DRIFT paidAmount'));
+  });
+
+  // guards: BR-INV-018
+  it('скасований рахунок наряду не звіряється — дзеркало його не чіпає', async () => {
+    prisma.invoice.findMany.mockResolvedValue([
+      { id: 'inv1', paidAmount: 300, workOrderId: 'wo1', status: 'CANCELLED', amount: 1000 },
+    ]);
+    prisma.workOrder.findMany.mockResolvedValue([{ id: 'wo1', paidAmount: 0 }]);
+    paymentsGrouped([], []);
+    const errSpy = vi.spyOn(processor['logger'], 'error');
+    await processor.process(job);
+    expect(errSpy).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-INV-018
+  it('наряд: paidAmount ≠ Σ оплат наряду → DRIFT workOrder.paidAmount; збіг → тиша', async () => {
+    prisma.workOrder.findMany.mockResolvedValue([
+      { id: 'wo1', paidAmount: 500 },
+      { id: 'wo2', paidAmount: 300 },
+    ]);
+    paymentsGrouped([], [{ workOrderId: 'wo1', amount: 500 }]);
+    const errSpy = vi.spyOn(processor['logger'], 'error');
+    await processor.process(job);
+    expect(errSpy).toHaveBeenCalledTimes(1);
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('workOrder=wo2'));
+    // Сторновані оплати не входять у Σ — фільтр у самому groupBy.
+    const woGroup = prisma.payment.groupBy.mock.calls.find(
+      c => (c[0] as { by: string[] }).by[0] === 'workOrderId',
+    )![0] as { where: Record<string, unknown> };
+    expect(woGroup.where).toEqual({ orgId: 'org-1', workOrderId: { not: null }, reversedAt: null });
   });
 
   it('READ-ONLY: жоден prisma-метод не є write (create/update/delete/upsert)', () => {

@@ -5,6 +5,9 @@ import {
   formatPersonName,
   TRANSACTION_TIMEOUT_MS,
   translateError,
+  WO_PAYABLE_STATUSES,
+  WO_STATUS_LABELS,
+  woPaymentKind,
 } from '@sto/shared';
 import { Queue } from 'bullmq';
 import {
@@ -21,7 +24,14 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { CashService, type CashOperationExtras } from '../cash/cash.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
-import { reopenPaidWorkOrderInTx } from '../work-orders/work-order-status';
+import {
+  isWorkOrderFullyPaid,
+  reopenPaidWorkOrderInTx,
+  settleIfFullyPaidInTx,
+  type WorkOrderStatusStep,
+} from '../work-orders/work-order-status';
+import { postWorkOrderFxInTx } from '../work-orders/work-order-fx';
+import { syncWorkOrderInvoicePaid } from '../invoices/work-order-invoice-mirror';
 import { LoyaltyService, type LoyaltyEarnReversal } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
@@ -44,6 +54,16 @@ const PAYMENT_INCLUDE = {
   cashRegister: { select: { name: true } },
   currency: { select: { code: true } },
 } satisfies Prisma.PaymentInclude;
+
+// Наряд платежу: перевірки ДО транзакції (статус, платник, валюта, залишок) і філія для сповіщення.
+const WORK_ORDER_PAYMENT_SELECT = {
+  branchId: true,
+  status: true,
+  currencyId: true,
+  counterpartyId: true,
+  totalAmount: true,
+  paidAmount: true,
+} satisfies Prisma.WorkOrderSelect;
 
 // Примітка фіскального статусу оплати, чий чек зняли з черги сторно (BR-CASH-024).
 const REVERSED_FISCAL_NOTE = 'Оплату сторновано';
@@ -266,9 +286,8 @@ export class PaymentsService {
     userId?: string,
     cashRow?: CashOperationExtras,
   ): Promise<PaymentResponseDto> {
-    // Single parallel batch — counterparty + workOrder (with both branchId + status
-    // selected in one query, replacing the prior duplicate findFirst calls).
-    const [counterparty, workOrder, methodConfig] = await Promise.all([
+    // Один паралельний батч: контрагент, наряд із запиту, наряд рахунку (BR-PAY-021) і спосіб оплати.
+    const [counterparty, requestedWorkOrder, invoicePre, methodConfig] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: dto.counterpartyId, orgId, deletedAt: null },
         select: {
@@ -283,16 +302,15 @@ export class PaymentsService {
       dto.workOrderId
         ? this.prisma.workOrder.findFirst({
             where: { id: dto.workOrderId, orgId, deletedAt: null },
-            // Мультивалюта (Фаза 3): currencyId наряду — оплата має бути у ТІЙ САМІЙ валюті
-            // (WO.paidAmount ведеться у валюті наряду; крос-валютна алокація = FX-політика, поза scope).
-            select: {
-              branchId: true,
-              status: true,
-              currencyId: true,
-              counterpartyId: true,
-              totalAmount: true,
-              paidAmount: true,
-            },
+            select: WORK_ORDER_PAYMENT_SELECT,
+          })
+        : Promise.resolve(null),
+      // BR-PAY-021: наряд платежу — і з рахунку (сторінка рахунків, рознесення виписки, онлайн-оплата
+      // дають лише invoiceId). Повне читання рахунку — у транзакції; тут лише його наряд.
+      dto.invoiceId
+        ? this.prisma.invoice.findFirst({
+            where: { id: dto.invoiceId, orgId, deletedAt: null },
+            select: { workOrderId: true },
           })
         : Promise.resolve(null),
       // Спосіб оплати: requiresFiscal (для ПРРО) + дефолтний рахунок-призначення (мапінг
@@ -322,27 +340,46 @@ export class PaymentsService {
       );
 
     // Наряд вказано, але його немає (чужа org або видалений) → 404 ДО транзакції. Без цього всі
-    // перевірки наряду нижче (`&& workOrder`) мовчали: статус, замовник, валюта й залишок
-    // (BR-PAY-001/016/017) не застосовувались, а видалений наряд (читання в транзакції не
-    // дивилось на deletedAt) отримував paidAmount.
-    if (dto.workOrderId && !workOrder)
+    // перевірки наряду нижче мовчали: статус, замовник, валюта й залишок (BR-PAY-001/016/017) не
+    // застосовувались, а видалений наряд отримував paidAmount.
+    if (dto.workOrderId && !requestedWorkOrder)
       throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
 
-    // Pre-validate work order status before opening transaction to avoid partial commit.
-    // Status was fetched in the parallel batch above — no extra query needed.
-    if (workOrder && workOrder.status !== 'INVOICED') {
+    // BR-PAY-021: рахунок, що не належить наряду із запиту (зокрема рахунок без наряду), → 400.
+    if (dto.workOrderId && invoicePre && invoicePre.workOrderId !== dto.workOrderId) {
       throw new BadRequestException(
-        translateError('err.payment.workOrderStatusNoPayment', getLocale(), {
-          status: workOrder.status,
-        }),
+        translateError('err.payment.invoiceNotForWorkOrder', getLocale()),
       );
+    }
+    const workOrderId = dto.workOrderId ?? invoicePre?.workOrderId ?? null;
+    const workOrder =
+      requestedWorkOrder ??
+      (workOrderId
+        ? await this.prisma.workOrder.findFirst({
+            where: { id: workOrderId, orgId, deletedAt: null },
+            select: WORK_ORDER_PAYMENT_SELECT,
+          })
+        : null);
+    if (workOrderId && !workOrder)
+      throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
+
+    if (workOrder) {
+      // BR-PAY-001: швидка відмова ДО транзакції; авторитетна перевірка — у транзакції на свіжому
+      // статусі (той самий, з якого береться тип проводки, BR-PAY-020).
+      this.assertWorkOrderPayable(workOrder.status);
+      // BR-PAY-020: повернення клієнту — касова операція, а не «оплата наряду» зі знаком мінус.
+      if (dto.settlementType === 'REFUND') {
+        throw new BadRequestException(
+          translateError('err.payment.refundWithWorkOrder', getLocale()),
+        );
+      }
     }
 
     // BR-PAY-016, пряма оплата наряду (без рахунку): наряд закриває лише його замовник. Без цього
     // платіж контрагента A піднімав paidAmount наряду контрагента B і переводив його в PAID, а
     // гроші лягали на баланс A — та сама діра, що її перевірка платника закриває для рахунку.
     // Якщо рахунок вказано, платника визначає РАХУНОК (його можна виписати на іншого платника,
-    // напр. страхову) — тоді ця перевірка мовчить, діє перевірка рахунку нижче.
+    // напр. страхову) — тоді ця перевірка мовчить, діє перевірка рахунку в транзакції.
     if (workOrder && !dto.invoiceId && workOrder.counterpartyId !== dto.counterpartyId) {
       throw new BadRequestException(
         translateError('err.payment.workOrderNotForCounterparty', getLocale()),
@@ -383,11 +420,10 @@ export class PaymentsService {
       }
     }
 
-    // Мультивалюта (Фаза 3): пряма оплата наряду (без invoiceId) — валюта оплати мусить збігатися
-    // з валютою наряду. WO.paidAmount інкрементується у ВАЛЮТІ наряду (dto.amount), тож оплата у
-    // іншій валюті змішала б одиниці у paidAmount (та сама вада, що invoice-guard нижче ловить для
-    // рахунку). NULL currencyId (історичні/base) ≡ базова валюта. Дзеркалить invoice-перевірку;
-    // для WO-with-invoice invoice-guard спрацьовує додатково (invoice успадковує валюту наряду).
+    // Мультивалюта (Фаза 3): оплата наряду — валюта оплати мусить збігатися з валютою наряду.
+    // WO.paidAmount інкрементується у ВАЛЮТІ наряду (dto.amount), тож оплата у іншій валюті змішала
+    // б одиниці у paidAmount. NULL currencyId (історичні/base) ≡ базова валюта. Рахунок наряду
+    // успадковує валюту наряду, тож ця ж перевірка покриває й оплату через рахунок наряду.
     if (workOrder) {
       if (
         !(await this.exchangeRates.sameCurrency(orgId, paymentCurrencyId, workOrder.currencyId))
@@ -396,35 +432,97 @@ export class PaymentsService {
           translateError('err.payment.currencyMustMatchWorkOrder', getLocale()),
         );
       }
-    }
-
-    // BR-PAY-017, швидка відмова ДО транзакції: пряма оплата наряду не може перевищити залишок до
-    // сплати (після перевірки валюти вище — суми порівнюються в одній валюті).
-    // Це зручність (4xx без відкритої транзакції) — авторитетна перевірка з тим самим
-    // правилом стоїть у транзакції нижче, на свіжо прочитаних сумах.
-    if (workOrder && !dto.invoiceId) {
+      // BR-PAY-017, швидка відмова ДО транзакції: будь-яка оплата наряду (аванс, оплата, через
+      // рахунок наряду) не перевищує залишок; наряд на 0 оплати не приймає. Авторитетна перевірка
+      // з тим самим правилом — у транзакції, на свіжо прочитаних сумах.
       this.assertWithinWorkOrderRemaining(workOrder.totalAmount, workOrder.paidAmount, dto.amount);
     }
 
-    let workOrderFullyPaid = false;
+    // Кроки наряду до «Оплачено», зроблені в транзакції (BR-PAY-005) — події для них після коміту.
+    let statusSteps: WorkOrderStatusStep[] = [];
     const payment = await this.prisma.$transaction(
       async tx => {
-        // Курсові різниці (Фаза 4): захоплюємо контекст іновалютного рахунку, що став PAID цим платежем,
-        // щоб ПІСЛЯ запису Payment+PAYMENT-settlement (paidBase має включати цей платіж) визнати FX.
-        let fxContext: { invoiceId: string; chargeDocType: string; chargeDocId: string } | null =
-          null;
-        // Часткова оплата з захистом від переплати під concurrency (FIN-C1 еволюція):
-        // читаємо amount/paidAmount/status; валідуємо суму ≤ залишку; атомарно інкрементуємо
-        // paidAmount ЛИШЕ якщо paidAmount не змінився з-під нас (CAS через updateMany where
-        // paidAmount=прочитане). count=0 → конкурентний платіж змінив paidAmount → throw/rollback.
-        if (dto.invoiceId) {
+        // Курсові різниці (Фаза 4) рахунку БЕЗ наряду: контекст іновалютного рахунку, що став PAID
+        // цим платежем, — FX визнається ПІСЛЯ запису Payment+PAYMENT-settlement.
+        let fxInvoiceId: string | null = null;
+        // Тип проводки оплати наряду — за статусом, прочитаним нижче в транзакції (BR-PAY-020).
+        let woKind: 'PREPAYMENT' | 'PAYMENT' = 'PAYMENT';
+        let paymentInvoiceId: string | null = dto.invoiceId ?? null;
+
+        if (workOrderId) {
+          // BR-PAY-005: рядок наряду — ПЕРШИЙ запис транзакції (раніше за рахунок; так само в
+          // reverse). Статус, сума і сплачене читаються тут і стоять у CAS: аванс, проведений
+          // проти статусу, що встиг змінитись, або оплата понад залишок не проскочать.
+          const wo = await tx.workOrder.findFirst({
+            where: { id: workOrderId, orgId, deletedAt: null },
+            select: { status: true, totalAmount: true, paidAmount: true },
+          });
+          if (!wo)
+            throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
+          this.assertWorkOrderPayable(wo.status);
+          woKind = woPaymentKind(wo.status) ?? 'PAYMENT';
+          this.assertWithinWorkOrderRemaining(wo.totalAmount, wo.paidAmount, dto.amount);
+          // Мультивалюта (Фаза 3): WorkOrder.paidAmount у ВАЛЮТІ наряду; оплата збігається з нею
+          // (перевірено вище) → додаємо dto.amount, не conv.amountBase.
+          const woUpdated = await tx.workOrder.updateMany({
+            where: {
+              id: workOrderId,
+              orgId,
+              deletedAt: null,
+              status: wo.status,
+              paidAmount: wo.paidAmount,
+              totalAmount: wo.totalAmount,
+            },
+            data: { paidAmount: money(moneyFromDecimal(wo.paidAmount) + dto.amount) },
+          });
+          if (woUpdated.count === 0) {
+            throw new BadRequestException(
+              translateError('err.payment.workOrderConcurrentChange', getLocale()),
+            );
+          }
+
+          // BR-PAY-021: рахунок із запиту — того ж наряду й того ж платника. Його статус оплату не
+          // обмежує (обмежує статус наряду), а сплачене й статус перерахує дзеркало нижче.
+          if (dto.invoiceId) {
+            const inv = await tx.invoice.findFirst({
+              where: { id: dto.invoiceId, orgId, deletedAt: null },
+              select: { workOrderId: true, counterpartyId: true },
+            });
+            if (!inv)
+              throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
+            if (inv.workOrderId !== workOrderId) {
+              throw new BadRequestException(
+                translateError('err.payment.invoiceNotForWorkOrder', getLocale()),
+              );
+            }
+            if (inv.counterpartyId !== dto.counterpartyId) {
+              throw new BadRequestException(
+                translateError('err.payment.invoiceNotForCounterparty', getLocale()),
+              );
+            }
+          }
+          // Оплата наряду отримує invoiceId активного рахунку наряду, якщо платник — його контрагент.
+          const active = await tx.invoice.findFirst({
+            where: {
+              workOrderId,
+              orgId,
+              deletedAt: null,
+              status: { not: InvoiceStatus.CANCELLED },
+            },
+            select: { id: true, counterpartyId: true },
+          });
+          paymentInvoiceId =
+            active && active.counterpartyId === dto.counterpartyId ? active.id : null;
+        } else if (dto.invoiceId) {
+          // Рахунок БЕЗ наряду (BR-PAY-003) — шлях не змінювався. Часткова оплата з захистом від
+          // переплати під concurrency (FIN-C1): читаємо amount/paidAmount/status; сума ≤ залишку;
+          // paidAmount пишеться CAS-ом за прочитаним значенням; count=0 → throw/rollback.
           const inv = await tx.invoice.findFirst({
             where: { id: dto.invoiceId, orgId, deletedAt: null },
             // Мультивалюта (Фаза 3): currencyId рахунку — оплата має бути у ТІЙ САМІЙ валюті.
             select: {
               id: true,
               status: true,
-              workOrderId: true,
               counterpartyId: true,
               amount: true,
               paidAmount: true,
@@ -453,11 +551,6 @@ export class PaymentsService {
                 translateError('err.payment.invoiceNotForCounterparty', getLocale()),
               );
             }
-            if (dto.workOrderId && inv.workOrderId && inv.workOrderId !== dto.workOrderId) {
-              throw new BadRequestException(
-                translateError('err.payment.invoiceNotForWorkOrder', getLocale()),
-              );
-            }
             // Мультивалюта (Фаза 3): валюта оплати мусить збігатися з валютою рахунку — інакше
             // крос-валютна алокація (яким курсом закрити залишок = FX-політика, поза scope).
             // NULL currencyId (історичні/base) вважаємо еквівалентними базовій валюті.
@@ -471,9 +564,8 @@ export class PaymentsService {
             const invAmount = Number(inv.amount);
             const prevPaid = Number(inv.paidAmount);
             const remaining = invAmount - prevPaid;
-            // Мультивалюта (Фаза 3): invoice.amount/paidAmount тепер у ВАЛЮТІ рахунку, а оплата — у
-            // тій самій валюті (перевірено вище) → порівнюємо/накопичуємо dto.amount (у валюті),
-            // НЕ conv.amountBase. Борг у леджері все одно лягає у base через settlement.
+            // invoice.amount/paidAmount у ВАЛЮТІ рахунку, оплата — у тій самій валюті → порівнюємо
+            // dto.amount, НЕ conv.amountBase. Борг у леджері все одно лягає у base через settlement.
             if (dto.amount > remaining + 1e-9) {
               throw new BadRequestException(
                 translateError('err.payment.amountExceedsInvoiceRemaining', getLocale(), {
@@ -494,17 +586,12 @@ export class PaymentsService {
               );
             }
             // Курсові різниці (Фаза 4): рахунок став PAID цим платежем + валюта НЕ базова →
-            // після запису PAYMENT-settlement визнаємо realized FX. CHARGE нараховувався проти
-            // наряду (WO-рахунок) або самого рахунку (standalone) — реконструюємо base з леджера.
+            // після запису PAYMENT-settlement визнаємо realized FX проти CHARGE самого рахунку.
             if (
               newStatus === 'PAID' &&
               !(await this.exchangeRates.sameCurrency(orgId, null, inv.currencyId))
             ) {
-              fxContext = {
-                invoiceId: inv.id,
-                chargeDocType: inv.workOrderId ? 'WorkOrder' : 'Invoice',
-                chargeDocId: inv.workOrderId ?? inv.id,
-              };
+              fxInvoiceId = inv.id;
             }
           }
         }
@@ -513,8 +600,8 @@ export class PaymentsService {
           data: {
             orgId,
             counterpartyId: dto.counterpartyId,
-            workOrderId: dto.workOrderId ?? null,
-            invoiceId: dto.invoiceId ?? null,
+            workOrderId,
+            invoiceId: paymentInvoiceId,
             amount: dto.amount,
             // Мультивалюта (Фаза 2): валюта рахунку + base-сума по курсу на дату.
             currencyId: paymentCurrencyId,
@@ -539,9 +626,13 @@ export class PaymentsService {
           orgId,
           {
             counterpartyId: dto.counterpartyId,
-            // Тип проводки: дефолт PAYMENT (звичайна оплата). Bank-statement рознесення передає
-            // PREPAYMENT (аванс) / REFUND (повернення) — BALANCE_SIGN різний знак. append-only-safe.
-            type: dto.settlementType ?? 'PAYMENT',
+            // BR-PAY-020: аванс (PREPAYMENT) до «Виконано», оплата (PAYMENT) після. Без наряду —
+            // дефолт PAYMENT; рознесення виписки передає PREPAYMENT / REFUND (BALANCE_SIGN різний).
+            type: workOrderId
+              ? woKind === 'PREPAYMENT'
+                ? 'PREPAYMENT'
+                : 'PAYMENT'
+              : (dto.settlementType ?? 'PAYMENT'),
             amount: dto.amount,
             // Мультивалюта (Фаза 2): передаємо валюту → борг лягає у base (amountBase). createTransaction
             // сам конвертує (спільне джерело курсу). Без currencyId → base (BC для UAH-орг).
@@ -553,88 +644,23 @@ export class PaymentsService {
           tx,
         );
 
-        // Курсові різниці (Фаза 4): рахунок повністю сплачено в іновалюті → base-залишок ≠ 0, бо
-        // CHARGE брав курс дати документа, а PAYMENT — курс дати оплати. Реалізуємо FX однією
-        // проводкою, що обнуляє залишок. paidBase агрегується ПІСЛЯ create цього Payment (включений).
-        if (fxContext) {
-          const [chargeAgg, paidAgg, fxExisting] = await Promise.all([
-            tx.settlementTransaction.aggregate({
-              where: {
-                orgId,
-                type: 'CHARGE',
-                documentType: fxContext.chargeDocType,
-                documentId: fxContext.chargeDocId,
-              },
-              _sum: { amountBase: true },
-            }),
-            tx.payment.aggregate({
-              where: { orgId, invoiceId: fxContext.invoiceId, reversedAt: null },
-              _sum: { amountBase: true },
-            }),
-            // Idempotency: якщо FX для цього рахунку вже проведено — не дублюємо (повторний PAID).
-            tx.settlementTransaction.count({
-              where: {
-                orgId,
-                type: { in: ['FX_GAIN', 'FX_LOSS'] },
-                documentType: 'Invoice',
-                documentId: fxContext.invoiceId,
-              },
-            }),
-          ]);
-          if (fxExisting === 0) {
-            const chargeBase = moneyFromDecimal(chargeAgg._sum.amountBase);
-            const paidBase = moneyFromDecimal(paidAgg._sum.amountBase);
-            const fx = money(chargeBase - paidBase);
-            // EPS 0.005: нижче — копійчаний дрейф округлення / той самий курс → FX не потрібна
-            // (і createTransaction відхилив би amount≤0).
-            if (Math.abs(fx) >= 0.005) {
-              await this.settlements.createTransaction(
-                orgId,
-                {
-                  counterpartyId: dto.counterpartyId,
-                  // fx>0: нарахували більше base ніж отримали → збиток (гасить додатний залишок).
-                  type: fx > 0 ? 'FX_LOSS' : 'FX_GAIN',
-                  amount: Math.abs(fx),
-                  // БЕЗ currencyId → base-дельта (rate=1, base=amount); інакше re-конвертація зіпсує суму.
-                  documentType: 'Invoice',
-                  documentId: fxContext.invoiceId,
-                  notes: `Курсова різниця: нараховано ${chargeBase.toFixed(2)} за курсом документа, отримано ${paidBase.toFixed(2)} за курсом оплат`,
-                  createdBy: userId,
-                },
-                tx,
-              );
-            }
-          }
-        }
+        if (fxInvoiceId)
+          await this.postInvoiceFx(tx, orgId, fxInvoiceId, dto.counterpartyId, userId);
 
-        if (dto.workOrderId) {
-          // BR-PAY-017: наряд «Оплачено» лише при ПОВНІЙ оплаті. Читаємо суму до сплати й уже
-          // оплачене в транзакції; пряма оплата (без рахунку) не може перевищити залишок; paidAmount
-          // пишеться CAS-ом (як у рахунку) — два одночасні платежі не «з'їдять» один одного.
-          const woInTx = await tx.workOrder.findFirst({
-            where: { id: dto.workOrderId, orgId, deletedAt: null },
-            select: { totalAmount: true, paidAmount: true },
-          });
-          if (!woInTx)
-            throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
-          const woTotal = moneyFromDecimal(woInTx.totalAmount);
-          const woPrevPaid = moneyFromDecimal(woInTx.paidAmount);
-          if (!dto.invoiceId) {
-            this.assertWithinWorkOrderRemaining(woInTx.totalAmount, woInTx.paidAmount, dto.amount);
-          }
-          // Мультивалюта (Фаза 3): WorkOrder.paidAmount у ВАЛЮТІ наряду; оплата збігається з нею
-          // (перевірено вище) → додаємо dto.amount, не conv.amountBase.
-          const woNewPaid = money(woPrevPaid + dto.amount);
-          const woUpdated = await tx.workOrder.updateMany({
-            where: { id: dto.workOrderId, orgId, paidAmount: woInTx.paidAmount },
-            data: { paidAmount: woNewPaid },
-          });
-          if (woUpdated.count === 0) {
-            throw new BadRequestException(
-              translateError('err.payment.workOrderConcurrentChange', getLocale()),
-            );
-          }
-          workOrderFullyPaid = woNewPaid >= woTotal - 1e-9;
+        if (workOrderId) {
+          // BR-PAY-005 / BR-WO-016: повна оплата — «Виставлено» → «Оплачено», «Виконано» →
+          // «Виставлено» → «Оплачено» (без рахунку) у цій самій транзакції.
+          statusSteps = await settleIfFullyPaidInTx(tx, orgId, workOrderId);
+          // BR-INV-018: рахунок наряду — дзеркало наряду (блокується після наряду).
+          await syncWorkOrderInvoicePaid(tx, orgId, workOrderId);
+          // BR-PAY-022: курсова різниця — за нарядом (лише повністю сплачений з нарахованим боргом).
+          await postWorkOrderFxInTx(
+            tx,
+            { settlements: this.settlements, exchangeRates: this.exchangeRates },
+            orgId,
+            workOrderId,
+            userId,
+          );
         }
 
         // Готівкова оплата → рух готівки у касу (cash-in). У ту саму транзакцію, щоб не розсинхронити
@@ -662,20 +688,8 @@ export class PaymentsService {
       { timeout: TRANSACTION_TIMEOUT_MS },
     ); // explicit timeout — payment + settlement + invoice/WO updates
 
-    // FSM INVOICED→PAID outside tx (WorkOrdersService has its own tx). Safe: payment + settlement
-    // already committed; if transition fails, operator retries status manually.
-    // BR-PAY-017: лише коли наряд оплачено повністю — часткова оплата лишає його INVOICED, і
-    // решту можна доплатити наступним платежем через наряд.
-    if (dto.workOrderId && workOrderFullyPaid) {
-      await this.workOrders
-        .transition(orgId, dto.workOrderId, 'PAID', userId)
-        .catch((e: unknown) => {
-          this.logger.warn(
-            `Не вдалось перевести наряд ${dto.workOrderId} у статус PAID після оплати: ${e instanceof Error ? e.message : e}`,
-          );
-        });
-    }
-
+    // Події переходів наряду (аудит статусу) — ПІСЛЯ коміту, як у WorkOrdersService.transition.
+    if (workOrderId) this.workOrders.emitStatusSteps(orgId, workOrderId, statusSteps, userId);
     if (counterparty.phone || counterparty.email) {
       // Bug fix: send() рано виходить без branchId → PAYMENT_RECEIVED раніше НІКОЛИ не слався.
       // Беремо branchId наряду; для standalone-оплати (без наряду) — найстаріша філія org
@@ -768,7 +782,8 @@ export class PaymentsService {
           amount: Number(dto.amount),
           method: dto.method,
           counterpartyId: dto.counterpartyId,
-          invoiceId: dto.invoiceId ?? null,
+          invoiceId: payment.invoiceId ?? null,
+          workOrderId: payment.workOrderId ?? null,
         })
         .catch((e: unknown) =>
           this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`),
@@ -829,7 +844,8 @@ export class PaymentsService {
             select: { status: true, paidAmount: true, totalAmount: true },
           })
         : null,
-      payment.invoiceId
+      // Рахунок окремо — лише для оплати без наряду: рахунок наряду — дзеркало (BR-INV-018).
+      payment.invoiceId && !payment.workOrderId
         ? tx.invoice.findFirst({
             where: { id: payment.invoiceId, orgId, deletedAt: null },
             select: { status: true, paidAmount: true, amount: true },
@@ -929,9 +945,49 @@ export class PaymentsService {
 
     const amount = moneyFromDecimal(payment.amount);
 
-    // «Сплачено» рахунку назад (не нижче нуля); «Оплачено» / «Частково оплачено» → «Частково
-    // оплачено» або «Виставлено». Статус — та сама формула, що в create, лише навпаки: сплачене
-    // й далі покриває суму рахунку → лишається «Оплачено». CAS на прочитаних сумі й статусі.
+    // Наряд — ПЕРШИМ (той самий порядок блокувань «наряд → рахунок», що в create): «сплачено» назад
+    // (не нижче нуля), «Оплачено» → «Виставлено», якщо наряд уже не сплачений повністю (BR-PAY-017
+    // навпаки: інші оплати можуть і далі покривати суму — тоді він лишається «Оплачено»).
+    // Зворотного переходу в публічній карті (WORK_ORDER_TRANSITIONS) немає і не буде: статус пише
+    // окремий внутрішній хелпер модуля нарядів (BR-WO-001). Рахунок наряду — дзеркало (BR-INV-018).
+    let reopenedWorkOrderId: string | null = null;
+    if (workOrder && payment.workOrderId) {
+      const newPaid = money(Math.max(0, moneyFromDecimal(workOrder.paidAmount) - amount));
+      if (
+        workOrder.status === WorkOrderStatus.PAID &&
+        !isWorkOrderFullyPaid(workOrder.totalAmount, newPaid)
+      ) {
+        await reopenPaidWorkOrderInTx(
+          tx,
+          orgId,
+          payment.workOrderId,
+          workOrder.paidAmount,
+          newPaid,
+        );
+        reopenedWorkOrderId = payment.workOrderId;
+      } else {
+        const moved = await tx.workOrder.updateMany({
+          where: {
+            id: payment.workOrderId,
+            orgId,
+            deletedAt: null,
+            paidAmount: workOrder.paidAmount,
+            status: workOrder.status,
+          },
+          data: { paidAmount: newPaid },
+        });
+        if (moved.count === 0) {
+          throw new BadRequestException(
+            translateError('err.payment.workOrderConcurrentChange', locale),
+          );
+        }
+      }
+      await syncWorkOrderInvoicePaid(tx, orgId, payment.workOrderId);
+    }
+
+    // Оплата рахунку БЕЗ наряду: «сплачено» рахунку назад (не нижче нуля); «Оплачено» / «Частково
+    // оплачено» → «Частково оплачено» або «Виставлено». Статус — та сама формула, що в create, лише
+    // навпаки: сплачене й далі покриває суму рахунку → лишається «Оплачено». CAS на сумі й статусі.
     if (invoice && payment.invoiceId) {
       const newPaid = money(Math.max(0, moneyFromDecimal(invoice.paidAmount) - amount));
       const wasPaid =
@@ -957,42 +1013,6 @@ export class PaymentsService {
         throw new BadRequestException(
           translateError('err.payment.invoiceConcurrentChange', locale),
         );
-      }
-    }
-
-    // Наряд — лише якщо оплата йшла за ним (`workOrderId`): «сплачено» назад (не нижче нуля),
-    // «Оплачено» → «Виставлено», якщо наряд уже не сплачений повністю (BR-PAY-017 навпаки: інші
-    // оплати можуть і далі покривати суму наряду — тоді він лишається «Оплачено»). Зворотного переходу в публічній карті (WORK_ORDER_TRANSITIONS)
-    // немає і не буде: статус пише окремий внутрішній хелпер модуля нарядів (BR-WO-001).
-    let reopenedWorkOrderId: string | null = null;
-    if (workOrder && payment.workOrderId) {
-      const newPaid = money(Math.max(0, moneyFromDecimal(workOrder.paidAmount) - amount));
-      const stillFullyPaid = newPaid >= moneyFromDecimal(workOrder.totalAmount) - 1e-9;
-      if (workOrder.status === WorkOrderStatus.PAID && !stillFullyPaid) {
-        await reopenPaidWorkOrderInTx(
-          tx,
-          orgId,
-          payment.workOrderId,
-          workOrder.paidAmount,
-          newPaid,
-        );
-        reopenedWorkOrderId = payment.workOrderId;
-      } else {
-        const moved = await tx.workOrder.updateMany({
-          where: {
-            id: payment.workOrderId,
-            orgId,
-            deletedAt: null,
-            paidAmount: workOrder.paidAmount,
-            status: workOrder.status,
-          },
-          data: { paidAmount: newPaid },
-        });
-        if (moved.count === 0) {
-          throw new BadRequestException(
-            translateError('err.payment.workOrderConcurrentChange', locale),
-          );
-        }
       }
     }
 
@@ -1046,7 +1066,73 @@ export class PaymentsService {
     }
   }
 
-  /** BR-PAY-017: пряма оплата наряду не перевищує залишок до сплати (total − paid). */
+  /** BR-PAY-001: наряд приймає оплату лише в `WO_PAYABLE_STATUSES`; інакше 400 з назвою статусу. */
+  private assertWorkOrderPayable(status: string): void {
+    if (!WO_PAYABLE_STATUSES.includes(status)) {
+      throw new BadRequestException(
+        translateError('err.payment.workOrderStatusNoPayment', getLocale(), {
+          status: WO_STATUS_LABELS[status] ?? status,
+        }),
+      );
+    }
+  }
+
+  /**
+   * Курсові різниці (Фаза 4) рахунку БЕЗ наряду, що став PAID цим платежем: CHARGE брав курс дати
+   * документа, PAYMENT — курс дати оплати, тож base-залишок ≠ 0. Одна проводка FX обнуляє його.
+   * paidBase агрегується ПІСЛЯ create цього Payment (включений). Рахунок наряду — `postWorkOrderFxInTx`.
+   */
+  private async postInvoiceFx(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    invoiceId: string,
+    counterpartyId: string,
+    userId?: string,
+  ): Promise<void> {
+    const [chargeAgg, paidAgg, fxExisting] = await Promise.all([
+      tx.settlementTransaction.aggregate({
+        where: { orgId, type: 'CHARGE', documentType: 'Invoice', documentId: invoiceId },
+        _sum: { amountBase: true },
+      }),
+      tx.payment.aggregate({
+        where: { orgId, invoiceId, reversedAt: null },
+        _sum: { amountBase: true },
+      }),
+      // Idempotency: якщо FX для цього рахунку вже проведено — не дублюємо (повторний PAID).
+      tx.settlementTransaction.count({
+        where: {
+          orgId,
+          type: { in: ['FX_GAIN', 'FX_LOSS'] },
+          documentType: 'Invoice',
+          documentId: invoiceId,
+        },
+      }),
+    ]);
+    if (fxExisting > 0) return;
+    const chargeBase = moneyFromDecimal(chargeAgg._sum.amountBase);
+    const paidBase = moneyFromDecimal(paidAgg._sum.amountBase);
+    const fx = money(chargeBase - paidBase);
+    // EPS 0.005: нижче — копійчаний дрейф округлення / той самий курс → FX не потрібна
+    // (і createTransaction відхилив би amount≤0).
+    if (Math.abs(fx) < 0.005) return;
+    await this.settlements.createTransaction(
+      orgId,
+      {
+        counterpartyId,
+        // fx>0: нарахували більше base ніж отримали → збиток (гасить додатний залишок).
+        type: fx > 0 ? 'FX_LOSS' : 'FX_GAIN',
+        amount: Math.abs(fx),
+        // БЕЗ currencyId → base-дельта (rate=1, base=amount); інакше re-конвертація зіпсує суму.
+        documentType: 'Invoice',
+        documentId: invoiceId,
+        notes: `Курсова різниця: нараховано ${chargeBase.toFixed(2)} за курсом документа, отримано ${paidBase.toFixed(2)} за курсом оплат`,
+        createdBy: userId,
+      },
+      tx,
+    );
+  }
+
+  /** BR-PAY-017: оплата наряду не перевищує залишок до сплати (total − paid). */
   private assertWithinWorkOrderRemaining(
     totalAmount: Prisma.Decimal,
     paidAmount: Prisma.Decimal,

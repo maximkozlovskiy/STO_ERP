@@ -43,7 +43,7 @@ export interface InvoicesHarness {
   prisma: {
     invoice: { findFirst: Fn; findFirstOrThrow: Fn; create: Fn; update: Fn; updateMany: Fn };
     invoiceLine: { deleteMany: Fn; createMany: Fn };
-    workOrder: { findFirst: Fn };
+    workOrder: { findFirst: Fn; updateMany: Fn };
     counterparty: { findFirst: Fn };
     settlementTransaction: { count: Fn; aggregate: Fn };
     payment: { aggregate: Fn };
@@ -98,7 +98,8 @@ export async function makeInvoicesHarness(): Promise<InvoicesHarness> {
       updateMany: vi.fn(),
     },
     invoiceLine: { deleteMany: vi.fn(), createMany: vi.fn() },
-    workOrder: { findFirst: vi.fn() },
+    // createFromWorkOrder блокує рядок наряду першим записом (BR-INV-020): за замовчуванням успішно.
+    workOrder: { findFirst: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     counterparty: { findFirst: vi.fn() },
     // Bug #745: FX-хук у transition() агрегує леджер + Payment для інваріанта.
     settlementTransaction: {

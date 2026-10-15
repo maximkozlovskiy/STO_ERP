@@ -72,6 +72,8 @@ const FX_ALREADY_BOOKED = [
   /tx\.settlementTransaction\.count\(\{\s*where:\s*\{[^}]*type:\s*\{\s*in:\s*\['FX_GAIN',\s*'FX_LOSS'\]/,
   /if\s*\(fxExisting === 0\)/,
 ];
+// Той самий захист, записаний раннім виходом (`if (fxExisting > 0) return;`).
+const FX_ALREADY_BOOKED_EARLY_RETURN = [FX_ALREADY_BOOKED[0], /if\s*\(fxExisting > 0\)\s*return;/];
 
 /**
  * ПЕРЕЛІК МІСЦЬ ВИКЛИКУ. Ключ: `<файл від apps/api/src>#<метод>:<тип проводки>`.
@@ -120,15 +122,18 @@ const CALL_SITES: Record<string, CallSite> = {
   },
 
   // ── Оплати клієнтів ────────────────────────────────────────────────────────────────────
-  'modules/payments/payments.service.ts#create:PAYMENT': {
+  'modules/payments/payments.service.ts#create:PAYMENT|PREPAYMENT': {
     guard:
       'Проводка 1:1 із щойно створеним документом Payment у тій самій tx (documentId = created.id) — ' +
       'повторної проводки для того самого Payment не буває. Від повторного створення самого Payment: ' +
-      'CAS paidAmount рахунку (updateMany where paidAmount = прочитаний) + перевірка залишку; ' +
-      '@unique onlinePaymentIntentId (P2002) для онлайн-оплат; IdempotencyInterceptor на POST /payments.',
+      'CAS рядка наряду (updateMany where status/paidAmount/totalAmount = прочитані) + залишок наряду ' +
+      '(BR-PAY-017); для рахунку без наряду — CAS paidAmount рахунку + перевірка залишку; ' +
+      '@unique onlinePaymentIntentId (P2002) для онлайн-оплат; IdempotencyInterceptor на POST /payments. ' +
+      'PREPAYMENT — аванс за нарядом до «Виконано» (BR-PAY-020).',
     anchors: [
-      /const created = await tx\.payment\.create\(/,
+      /tx\.workOrder\.updateMany\(\{\s*where:\s*\{[^}]*paidAmount:\s*wo\.paidAmount\b/,
       /tx\.invoice\.updateMany\(\{\s*where:\s*\{[^}]*paidAmount:\s*inv\.paidAmount\b/,
+      /const created = await tx\.payment\.create\(/,
       /onlinePaymentIntentId:\s*dto\.onlinePaymentIntentId/,
     ],
     argAnchors: [/documentType:\s*'Payment'/, /documentId:\s*created\.id\b/],
@@ -143,24 +148,42 @@ const CALL_SITES: Record<string, CallSite> = {
         title:
           'конкурентний 2-й poll: paid але CAS count=0 → payments.create НЕ викликається (no double)',
       },
+      {
+        spec: 'payments/payments.work-order.spec.ts',
+        title: 'паралельна зміна наряду (CAS count=0) → 400 «повторіть», без Payment і проводки',
+      },
     ],
     note:
-      'Оплата без invoiceId і без onlinePaymentIntentId (аванс, пряма оплата наряду) у сервісі нічим не ' +
-      'дедуплікується: два однакові виклики create() — це два платежі. Тримає лише Idempotency-Key клієнта.',
+      'Оплата без наряду, без invoiceId і без onlinePaymentIntentId (вільний аванс) у сервісі нічим не ' +
+      'дедуплікується: два однакові виклики create() — це два платежі. Тримає лише Idempotency-Key клієнта. ' +
+      'Те саме для двох послідовних оплат наряду в межах залишку.',
   },
-  'modules/payments/payments.service.ts#create:FX_GAIN|FX_LOSS': {
+  'modules/payments/payments.service.ts#postInvoiceFx:FX_GAIN|FX_LOSS': {
     guard:
-      'Гілка досяжна лише коли цей платіж перевів рахунок у PAID під CAS paidAmount; далі перевірка наявної ' +
-      'проводки: settlementTransaction.count FX_GAIN/FX_LOSS цього рахунку === 0 у тій самій tx.',
-    anchors: [
-      /tx\.invoice\.updateMany\(\{\s*where:\s*\{[^}]*paidAmount:\s*inv\.paidAmount\b/,
-      /newStatus === 'PAID'/,
-      ...FX_ALREADY_BOOKED,
-    ],
+      'Перевірка наявної проводки в тій самій tx: settlementTransaction.count FX_GAIN/FX_LOSS цього ' +
+      'рахунку > 0 → вихід. Єдиний викликач — create, лише коли цей платіж перевів рахунок БЕЗ наряду ' +
+      'у PAID під CAS paidAmount (PAID термінальний).',
+    anchors: [...FX_ALREADY_BOOKED_EARLY_RETURN],
     raceTests: [
       {
         spec: 'payments/payments.multicurrency.spec.ts',
         title: 'idempotency: FX для рахунку вже проведено (count>0) → повторно НЕ бронюється',
+      },
+    ],
+  },
+
+  // ── Наряди: курсова різниця (BR-PAY-022) ─────────────────────────────────────────────────
+  'modules/work-orders/work-order-fx.ts#postWorkOrderFxInTx:FX_GAIN|FX_LOSS': {
+    guard:
+      'Перевірка наявної проводки в тій самій tx: settlementTransaction.count FX_GAIN/FX_LOSS наряду або ' +
+      'будь-якого його рахунку > 0 → вихід. Обидва викликачі (оплата наряду, перехід у «Виконано») ' +
+      'тримають рядок наряду CAS-ом у своїй tx, тож дві проводки паралельно не пройдуть.',
+    anchors: [...FX_ALREADY_BOOKED_EARLY_RETURN],
+    raceTests: [
+      {
+        spec: 'payments/payments.multicurrency.spec.ts',
+        title:
+          'idempotency: курсову різницю наряду вже проведено (count>0) → повторно НЕ бронюється',
       },
     ],
   },

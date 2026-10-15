@@ -15,7 +15,11 @@ import { InvoicesService } from '../invoices/invoices.service';
 import { PdfService } from '../pdf/pdf.service';
 import { OrgPrintInfoService } from '../pdf/org-print-info.service';
 import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
-import { transitionWorkOrderStatusInTx } from '../work-orders/work-order-status';
+import {
+  settleIfFullyPaidInTx,
+  transitionWorkOrderStatusInTx,
+  type WorkOrderStatusStep,
+} from '../work-orders/work-order-status';
 import {
   WORK_ORDER_EVENTS,
   WorkOrderTransitionedEvent,
@@ -191,7 +195,8 @@ export class CompletionActsService {
     userId?: string,
   ): Promise<CompletionActResponseDto> {
     let workOrderId: string | null = null;
-    let invoicedFromCompleted = false;
+    // Переходи наряду в транзакції підписання — події TRANSITIONED для них після коміту.
+    const steps: WorkOrderStatusStep[] = [];
 
     await this.prisma.$transaction(
       async tx => {
@@ -245,7 +250,9 @@ export class CompletionActsService {
         // мовчки ставав INVOICED. Тепер такий конфлікт відкочує підписання.
         if (act.workOrder?.status === 'COMPLETED') {
           await transitionWorkOrderStatusInTx(tx, orgId, act.workOrder.id, 'COMPLETED', 'INVOICED');
-          invoicedFromCompleted = true;
+          steps.push({ from: 'COMPLETED', to: 'INVOICED' });
+          // BR-WO-016: наряд, сплачений повністю авансом, іде далі до «Оплачено» в цій же транзакції.
+          steps.push(...(await settleIfFullyPaidInTx(tx, orgId, act.workOrder.id)));
         }
         workOrderId = act.workOrder?.id ?? null;
       },
@@ -254,13 +261,16 @@ export class CompletionActsService {
 
     // Аудит переходу — ПІСЛЯ коміту (у транзакції не можна: вона ще могла відкотитись).
     // Той самий канал, що й у WorkOrdersService.transition(); хендлер сам гейтить userId.
-    if (workOrderId && invoicedFromCompleted) {
-      this.events.emit(
-        WORK_ORDER_EVENTS.TRANSITIONED,
-        new WorkOrderTransitionedEvent(orgId, workOrderId, 'COMPLETED', 'INVOICED', userId),
-      );
+    if (workOrderId) {
+      for (const step of steps) {
+        this.events.emit(
+          WORK_ORDER_EVENTS.TRANSITIONED,
+          new WorkOrderTransitionedEvent(orgId, workOrderId, step.from, step.to, userId),
+        );
+      }
     }
 
+    // Рахунок створюється й для вже оплаченого наряду (BR-INV-020): чернетка зі сплаченим = сума.
     if (workOrderId) {
       try {
         await this.invoices.createFromWorkOrder(orgId, workOrderId);

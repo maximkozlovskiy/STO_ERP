@@ -343,10 +343,44 @@ describe('PaymentsService.reverse — «сплачено» рахунку', () =
 
   // guards: BR-CASH-024
   it('рахунок скасовано → 400 «Рахунок оплати скасовано»', async () => {
-    const h = makeHarness({ invoice: { status: 'CANCELLED' } });
+    // Оплата рахунку БЕЗ наряду: рахунок — її єдиний документ.
+    const h = makeHarness({
+      payment: { workOrderId: null },
+      invoice: { status: 'CANCELLED', workOrderId: null },
+    });
     const call = h.reverse();
     await expect(call).rejects.toThrow(BadRequestException);
     await expect(call).rejects.toThrow(/Рахунок оплати скасовано/);
+  });
+
+  // Оплата наряду: рахунок наряду — лише дзеркало (BR-INV-018); скасований рахунок сторно не
+  // блокує, а «сплачено» йде з наряду.
+  // guards: BR-CASH-024, BR-INV-018
+  it('оплата наряду, її рахунок скасовано → сторно проходить: наряд мінус сума, скасований рахунок не чіпається', async () => {
+    const h = makeHarness({ invoice: { status: 'CANCELLED', paidAmount: 1000 } });
+    await h.reverse();
+    expect(Number(h.workOrder?.paidAmount)).toBe(600);
+    expect(h.workOrder?.status).toBe('INVOICED');
+    expect(h.invoice).toMatchObject({ status: 'CANCELLED', paidAmount: 1000 });
+  });
+
+  // guards: BR-CASH-024, BR-INV-018
+  it('оплата наряду: рахунок наряду перераховується з наряду (дзеркало), а не окремим мінусом', async () => {
+    // Рахунок розійшовся з нарядом (500 проти 1000) — після сторно він дорівнює наряду: 600.
+    const h = makeHarness({ invoice: { status: 'PARTIALLY_PAID', paidAmount: 500 } });
+    await h.reverse();
+    expect(Number(h.workOrder?.paidAmount)).toBe(600);
+    expect(h.invoice).toMatchObject({ status: 'PARTIALLY_PAID', paidAmount: 600 });
+  });
+
+  // Порядок блокувань «наряд → рахунок» — той самий, що в оплаті.
+  // guards: BR-CASH-024, BR-PAY-005
+  it('сторно оплати наряду пише рядок наряду раніше за рахунок', async () => {
+    const h = makeHarness();
+    await h.reverse();
+    const woWrite = h.tables.workOrder.updateMany.mock.invocationCallOrder[0]!;
+    const invWrite = h.tables.invoice.updateMany.mock.invocationCallOrder[0]!;
+    expect(woWrite).toBeLessThan(invWrite);
   });
 
   // guards: BR-CASH-024

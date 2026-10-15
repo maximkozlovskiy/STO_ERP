@@ -20,6 +20,8 @@ import {
   RECEPTIONIST_CASH_REASONS,
   TRANSACTION_TIMEOUT_MS,
   translateError,
+  WO_PAYABLE_STATUSES,
+  WO_STATUS_LABELS,
   type CashOperationFormValues,
   type CashReasonRule,
   type CashReversalFormValues,
@@ -312,9 +314,10 @@ export class CashDeskService {
 
   /**
    * BR-CASH-017: оплата контрагента = оплата клієнта з джерелом «каса». Борг, фіскальний чек,
-   * бонуси й єдиний рядок каси робить `PaymentsService.create` у своїй транзакції. Наряд-підстава
-   * у статусі «Виставлено» → оплата за нарядом (може закрити його); в іншому статусі → аванс, а
-   * наряд лишається лише підставою рядка каси. Без підстави — звичайна оплата боргу.
+   * бонуси й єдиний рядок каси робить `PaymentsService.create` у своїй транзакції. Наряд-підстава →
+   * завжди оплата за нарядом (`workOrderId`): аванс чи оплата — за статусом наряду (BR-PAY-020),
+   * сума не більша за залишок, наряд може стати «Оплачено». Без підстави — звичайна оплата боргу.
+   * BR-CASH-026: підстава «Скасовано» / «Оплачено» / «Архів» → 400 ДО будь-якого запису.
    */
   private async payByCounterparty(
     orgId: string,
@@ -324,7 +327,13 @@ export class CashDeskService {
     cashRow: CashOperationExtras,
     actor: CashDeskActor,
   ): Promise<DeskOutcome> {
-    const byWorkOrder = ctx.workOrder?.status === WorkOrderStatus.INVOICED;
+    if (ctx.workOrder && !WO_PAYABLE_STATUSES.includes(ctx.workOrder.status)) {
+      throw new BadRequestException(
+        translateError('err.cash.baseWorkOrderNotPayable', getLocale(), {
+          status: WO_STATUS_LABELS[ctx.workOrder.status] ?? ctx.workOrder.status,
+        }),
+      );
+    }
     const payment = await this.payments.create(
       orgId,
       {
@@ -334,10 +343,7 @@ export class CashDeskService {
         sourceType: PaymentSourceType.CASH_REGISTER,
         cashRegisterId: ctx.cashRegisterId,
         notes: dto.notes,
-        ...(ctx.workOrder &&
-          (byWorkOrder
-            ? { workOrderId: ctx.workOrder.id }
-            : { settlementType: 'PREPAYMENT' as const })),
+        ...(ctx.workOrder && { workOrderId: ctx.workOrder.id }),
       },
       actor.id,
       cashRow,

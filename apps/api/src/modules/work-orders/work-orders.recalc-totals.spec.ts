@@ -59,12 +59,12 @@ function makePrismaSpy(lines: LineRow[], partsSum: number) {
   // recalcTotals → workOrderLine.findMany + workOrderPart.aggregate + workOrder.update
   const lineFindMany = vi.fn().mockResolvedValue(lines);
   const partAggregate = vi.fn().mockResolvedValue({ _sum: { amount: partsSum } });
-  const woUpdate = vi.fn().mockResolvedValue({});
+  const woUpdate = vi.fn().mockResolvedValue({ count: 1 });
 
   const tx = {
     // Мультивалюта (Фаза 3): recalcTotals читає currencyId/documentDate наряду. null → base.
     workOrder: {
-      update: woUpdate,
+      updateMany: woUpdate,
       findFirst: vi.fn().mockResolvedValue({ currencyId: null, documentDate: new Date() }),
     },
     workOrderLine: { findMany: lineFindMany },
@@ -247,10 +247,10 @@ function makeTotals(opts: {
   documentDate?: Date;
   rate?: number;
 }) {
-  const woUpdate = vi.fn().mockResolvedValue({});
+  const woUpdate = vi.fn().mockResolvedValue({ count: 1 });
   const tx = {
     workOrder: {
-      update: woUpdate,
+      updateMany: woUpdate,
       findFirst: vi.fn().mockResolvedValue({
         currencyId: opts.currencyId ?? null,
         documentDate: opts.documentDate ?? new Date('2026-10-01'),
@@ -394,7 +394,8 @@ describe('WorkOrderTotalsService.recalc — склад суми за режим�
     const { where } = await run();
 
     expect(woUpdate).toHaveBeenCalledTimes(1);
-    expect(where).toEqual({ id: WO_ID, orgId: ORG });
+    // BR-WO-015: умова «сплачене ≤ нова сума» — у самому записі.
+    expect(where).toEqual({ id: WO_ID, orgId: ORG, paidAmount: { lte: 500 } });
     expect(tx.workOrderLine.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { workOrderId: WO_ID, orgId: ORG, deletedAt: null },

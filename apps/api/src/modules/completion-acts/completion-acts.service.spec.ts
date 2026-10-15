@@ -23,7 +23,11 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
       update: ReturnType<typeof vi.fn>;
       updateMany: ReturnType<typeof vi.fn>;
     };
-    workOrder: { update: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
+    workOrder: {
+      findFirst: ReturnType<typeof vi.fn>;
+      update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+    };
     $transaction: ReturnType<typeof vi.fn>;
   };
   let invoices: { createFromWorkOrder: ReturnType<typeof vi.fn> };
@@ -63,6 +67,10 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       workOrder: {
+        // settleIfFullyPaidInTx (BR-WO-016) читає наряд після переходу: за замовчуванням не сплачений.
+        findFirst: vi
+          .fn()
+          .mockResolvedValue({ status: 'INVOICED', totalAmount: 1000, paidAmount: 0 }),
         update: vi.fn().mockResolvedValue({}),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
@@ -291,6 +299,81 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
     expect(events.emit).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('exchange rate missing'));
     warn.mockRestore();
+  });
+
+  // BR-WO-016: наряд, сплачений повністю авансом, при підписанні акта (Виконано → Виставлено) іде
+  // далі до «Оплачено» в тій самій транзакції; події — для обох кроків, після коміту.
+  // guards: BR-WO-016
+  it('sign(): повністю сплачений наряд «Виконано» → «Виставлено» → «Оплачено» в транзакції підписання', async () => {
+    prisma.completionAct.findFirst.mockResolvedValueOnce({
+      status: CompletionActStatus.DRAFT,
+      workOrder: { id: WO_ID, status: 'COMPLETED' },
+    });
+    prisma.completionAct.findFirst.mockResolvedValueOnce(signedActRow);
+    prisma.workOrder.findFirst.mockResolvedValue({
+      status: 'INVOICED',
+      totalAmount: 1000,
+      paidAmount: 1000,
+    });
+
+    await service.sign(ORG, ACT_ID, { signedBy: 'Іван' } as never, 'user-1');
+
+    expect(prisma.workOrder.updateMany.mock.calls.map(c => c[0])).toEqual([
+      {
+        where: { id: WO_ID, orgId: ORG, deletedAt: null, status: 'COMPLETED' },
+        data: { status: 'INVOICED' },
+      },
+      {
+        where: { id: WO_ID, orgId: ORG, deletedAt: null, status: 'INVOICED' },
+        data: { status: 'PAID' },
+      },
+    ]);
+    expect(
+      events.emit.mock.calls.map(c => [
+        (c[1] as WorkOrderTransitionedEvent).fromStatus,
+        (c[1] as WorkOrderTransitionedEvent).toStatus,
+      ]),
+    ).toEqual([
+      ['COMPLETED', 'INVOICED'],
+      ['INVOICED', 'PAID'],
+    ]);
+    // BR-INV-020: рахунок створюється й для вже оплаченого наряду.
+    expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID);
+  });
+
+  // guards: BR-WO-016
+  it('sign(): частково сплачений наряд → лише «Виставлено», «Оплачено» не ставиться', async () => {
+    prisma.completionAct.findFirst.mockResolvedValueOnce({
+      status: CompletionActStatus.DRAFT,
+      workOrder: { id: WO_ID, status: 'COMPLETED' },
+    });
+    prisma.completionAct.findFirst.mockResolvedValueOnce(signedActRow);
+    prisma.workOrder.findFirst.mockResolvedValue({
+      status: 'INVOICED',
+      totalAmount: 1000,
+      paidAmount: 999.99,
+    });
+
+    await service.sign(ORG, ACT_ID, { signedBy: 'Іван' } as never, 'user-1');
+
+    expect(prisma.workOrder.updateMany).toHaveBeenCalledTimes(1);
+    expect(events.emit).toHaveBeenCalledTimes(1);
+  });
+
+  // BR-INV-020: акт на вже оплаченому наряді (наряд став «Оплачено» раніше за підпис) — рахунок
+  // однаково створюється (чернетка зі сплаченим = сума), статус наряду не чіпається.
+  // guards: BR-INV-020
+  it('sign(): наряд уже «Оплачено» → статус не чіпається, авто-рахунок створюється', async () => {
+    prisma.completionAct.findFirst.mockResolvedValueOnce({
+      status: CompletionActStatus.DRAFT,
+      workOrder: { id: WO_ID, status: 'PAID' },
+    });
+    prisma.completionAct.findFirst.mockResolvedValueOnce(signedActRow);
+
+    await service.sign(ORG, ACT_ID, { signedBy: 'Іван' } as never, 'user-1');
+
+    expect(prisma.workOrder.updateMany).not.toHaveBeenCalled();
+    expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID);
   });
 
   // Bug #795 (рішення власника 2026-10-07): акт скасованого наряду не підписується. Раніше підпис

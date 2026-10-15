@@ -7,6 +7,8 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { postWorkOrderFxInTx } from './work-order-fx';
 
 /** Ключ резерв-мапи: резерв відстежується по парі (товар, склад) — один товар на двох складах
  *  резервується незалежно. */
@@ -52,7 +54,28 @@ export class WorkOrderStockEffectsService {
     private readonly prisma: PrismaService,
     private readonly inventory: InventoryService,
     private readonly settlements: SettlementsService,
+    // BR-PAY-022: курсова різниця наряду, сплаченого повністю авансом, — при нарахуванні боргу.
+    private readonly exchangeRates: ExchangeRatesService,
   ) {}
+
+  /**
+   * BR-PAY-022: курсова різниця наряду в іноземній валюті, якщо він уже сплачений повністю (аванс)
+   * і борг щойно нараховано. Викликати в транзакції переходу ПІСЛЯ `writeOffPartsAndCharge`.
+   */
+  async postFxIfSettled(
+    orgId: string,
+    workOrderId: string,
+    userId: string | undefined,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    await postWorkOrderFxInTx(
+      tx,
+      { settlements: this.settlements, exchangeRates: this.exchangeRates },
+      orgId,
+      workOrderId,
+      userId,
+    );
+  }
 
   async reserveParts(
     orgId: string,

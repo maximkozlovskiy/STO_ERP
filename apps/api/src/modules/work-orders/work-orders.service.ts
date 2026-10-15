@@ -10,6 +10,11 @@ import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
 import { WorkOrderTotalsService } from './work-order-totals.service';
+import {
+  isWorkOrderFullyPaid,
+  settleIfFullyPaidInTx,
+  type WorkOrderStatusStep,
+} from './work-order-status';
 import { InvoiceStatus, RepairCategory, WorkOrderStatus } from '@prisma/client';
 import {
   formatPersonName,
@@ -83,6 +88,19 @@ const PART_GOOD_INCLUDE = {
     brand: { select: { name: true } },
   },
 } as const satisfies Prisma.GoodDefaultArgs;
+
+type PaidGuardKey = 'err.workOrder.paidCannotCancel' | 'err.workOrder.paidCannotDelete';
+
+/** BR-WO-014: 400 «спершу сторнуйте оплату», якщо наряд має сплачене > 0; інакше null. */
+function paidError(
+  paidAmount: Prisma.Decimal | number,
+  key: PaidGuardKey,
+): BadRequestException | null {
+  const paid = moneyFromDecimal(paidAmount);
+  return paid > 0
+    ? new BadRequestException(translateError(key, getLocale(), { paid: paid.toFixed(2) }))
+    : null;
+}
 
 // sto-optimize (cycle 3/3): sort-field whitelist hoisted from findAll body — static string-map,
 // re-allocated on every list request under polling. Sibling to SP_SORT_FIELDS/INV_SORT_FIELDS/PO_SORT_FIELDS/SD_SORT_FIELDS.
@@ -435,6 +453,16 @@ export class WorkOrdersService {
     }
     if (dto.liftId && !lift)
       throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
+    // BR-WO-015: «сплачено» ведеться у валюті наряду — сплачений наряд валюту не змінює.
+    if (
+      dto.currencyId !== undefined &&
+      (dto.currencyId ?? null) !== wo.currencyId &&
+      moneyFromDecimal(wo.paidAmount) > 0
+    ) {
+      throw new BadRequestException(
+        translateError('err.workOrder.paidCurrencyLocked', getLocale()),
+      );
+    }
 
     // Пробіг монотонний: вихідний ≥ вхідного. Одрук (out<in) інакше зберігся б (обидва @Min(0))
     // і зіпсував би синхронізацію Vehicle.currentMileage + розрахунок наступного ТО.
@@ -538,7 +566,7 @@ export class WorkOrdersService {
     // Narrow tenant guard — потрібен лише `status` + `number` (для audit log).
     const wo = await this.prisma.workOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { status: true, number: true },
+      select: { status: true, number: true, paidAmount: true },
     });
     if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
     if (!DELETABLE_STATUSES.includes(wo.status)) {
@@ -546,11 +574,16 @@ export class WorkOrdersService {
         translateError('err.workOrder.onlyDraftOrCancelledDeletable', getLocale()),
       );
     }
-    // Race-safe updateMany з повним compound where (id+orgId+deletedAt:null).
-    await this.prisma.workOrder.updateMany({
-      where: { id, orgId, deletedAt: null },
+    this.assertNotPaid(wo.paidAmount, 'err.workOrder.paidCannotDelete');
+    // Race-safe updateMany з повним compound where (id+orgId+deletedAt:null). BR-WO-014: умова
+    // «нічого не сплачено» — у самому записі, тож оплата між читанням і видаленням не проскочить.
+    const removed = await this.prisma.workOrder.updateMany({
+      where: { id, orgId, deletedAt: null, status: wo.status, paidAmount: 0 },
       data: { deletedAt: new Date() },
     });
+    if (removed.count === 0) {
+      throw await this.paidOrChangedError(orgId, id, 'err.workOrder.paidCannotDelete');
+    }
     if (userId) {
       this.audit
         .record(orgId, 'WorkOrder', id, 'DELETE', userId, { status: wo.status, number: wo.number })
@@ -744,14 +777,33 @@ export class WorkOrdersService {
         repairCategory: true,
         counterpartyId: true,
         totalAmount: true,
+        paidAmount: true,
       },
     });
     if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
 
     assertFsmTransition(WORK_ORDER_TRANSITIONS, wo.status, newStatus);
 
+    // BR-WO-014: сплачений наряд не скасовується — спершу сторно оплати. Тут — швидка відмова;
+    // авторитетна умова `paidAmount: 0` стоїть у CAS нижче.
+    if (newStatus === 'CANCELLED')
+      this.assertNotPaid(wo.paidAmount, 'err.workOrder.paidCannotCancel');
+    // BR-WO-016: «Оплачено» — лише за грошима. Ручний перехід дозволено лише повністю сплаченому
+    // наряду; CAS нижче тримає прочитані суми, тож сторно між перевіркою і записом не проскочить.
+    if (newStatus === 'PAID' && !isWorkOrderFullyPaid(wo.totalAmount, wo.paidAmount)) {
+      throw new BadRequestException(
+        translateError('err.workOrder.paidRequiresFullPayment', getLocale(), {
+          remaining: money(
+            moneyFromDecimal(wo.totalAmount) - moneyFromDecimal(wo.paidAmount),
+          ).toFixed(2),
+        }),
+      );
+    }
+
     const updates: { status: WorkOrderStatus; completedAt?: Date } = { status: newStatus };
     if (newStatus === 'COMPLETED') updates.completedAt = new Date();
+    // Авто-кроки до «Оплачено» (BR-WO-016), зроблені в транзакції, — події для них після коміту.
+    let settleSteps: WorkOrderStatusStep[] = [];
 
     // All side-effects + status update run in one transaction to prevent partial state.
     // Explicit 10s timeout: COMPLETED tx does N writeoff + N release + 1 charge per part;
@@ -777,12 +829,26 @@ export class WorkOrdersService {
         // (для labor-only наряду нема stockItem-lock, що інакше випадково серіалізує) + подвійний
         // WRITEOFF. count===0 → інший перехід уже стався. Дзеркалить stock-documents.transition.
         // (Заміна на CAS підсилює й single-shot-гарантію C2 returnPartsAndCredit нижче.)
+        // BR-WO-014: скасування — лише без оплати (`paidAmount: 0` у тому самому CAS). BR-WO-016:
+        // ручне «Оплачено» — на тих сумах, що перевірено вище.
         const cas = await tx.workOrder.updateMany({
-          where: { id, orgId, deletedAt: null, status: wo.status },
+          where: {
+            id,
+            orgId,
+            deletedAt: null,
+            status: wo.status,
+            ...(newStatus === 'CANCELLED' && { paidAmount: 0 }),
+            ...(newStatus === 'PAID' && {
+              paidAmount: wo.paidAmount,
+              totalAmount: wo.totalAmount,
+            }),
+          },
           data: updates,
         });
         if (cas.count === 0) {
-          throw new BadRequestException(translateError('err.workOrder.statusChanged', getLocale()));
+          throw newStatus === 'CANCELLED'
+            ? await this.paidOrChangedError(orgId, id, 'err.workOrder.paidCannotCancel', tx)
+            : new BadRequestException(translateError('err.workOrder.statusChanged', getLocale()));
         }
 
         // Резервувати ЛИШЕ при першому вході у IN_PROGRESS (з APPROVED). ON_HOLD зберігає
@@ -813,6 +879,17 @@ export class WorkOrdersService {
         // емітується рівно 1× (та сама гарантія, що не дає подвійного CHARGE).
         if (newStatus === 'CANCELLED' && wo.status === 'COMPLETED') {
           await this.stockEffects.returnPartsAndCredit(orgId, wo, userId, tx);
+        }
+
+        // BR-WO-016: наряд, сплачений авансом повністю, з «Виконано» чи «Виставлено» сам іде далі
+        // до «Оплачено» — у цій самій транзакції. BR-PAY-022: борг щойно нараховано, тож для
+        // іноземної валюти — курсова різниця (якщо наряд сплачено повністю).
+        if (newStatus === 'COMPLETED' || newStatus === 'INVOICED') {
+          settleSteps = await settleIfFullyPaidInTx(tx, orgId, id);
+          // Кроки є лише тоді, коли наряд сплачено повністю, — інакше курсової різниці ще немає.
+          if (newStatus === 'COMPLETED' && settleSteps.length > 0) {
+            await this.stockEffects.postFxIfSettled(orgId, id, userId, tx);
+          }
         }
 
         // Статус/completedAt уже застосовані CAS-updateMany вище — тут лише fetch з include.
@@ -848,6 +925,7 @@ export class WorkOrdersService {
       WORK_ORDER_EVENTS.TRANSITIONED,
       new WorkOrderTransitionedEvent(orgId, id, wo.status, newStatus, userId),
     );
+    this.emitStatusSteps(orgId, id, settleSteps, userId);
 
     // Завершення — несе повний контекст для хендлерів без re-fetch.
     if (newStatus === 'COMPLETED') {
@@ -874,6 +952,51 @@ export class WorkOrdersService {
     }
 
     return this.toDto(updated);
+  }
+
+  /**
+   * Події TRANSITIONED для кроків, зроблених у чужій транзакції (`settleIfFullyPaidInTx`: оплата,
+   * підписання акта). Викликати ПІСЛЯ коміту — як і для звичайного переходу.
+   */
+  emitStatusSteps(
+    orgId: string,
+    workOrderId: string,
+    steps: readonly WorkOrderStatusStep[],
+    userId?: string,
+  ): void {
+    for (const step of steps) {
+      this.events.emit(
+        WORK_ORDER_EVENTS.TRANSITIONED,
+        new WorkOrderTransitionedEvent(orgId, workOrderId, step.from, step.to, userId),
+      );
+    }
+  }
+
+  /** BR-WO-014: наряд зі сплаченим > 0 не скасувати й не видалити — спершу сторно оплати. */
+  private assertNotPaid(paidAmount: Prisma.Decimal | number, key: PaidGuardKey): void {
+    const error = paidError(paidAmount, key);
+    if (error) throw error;
+  }
+
+  /**
+   * CAS із умовою «нічого не сплачено» не пройшов: перечитуємо наряд і повертаємо точну причину —
+   * оплата, що з'явилась між читанням і записом (BR-WO-014), зниклий наряд або змінений статус.
+   */
+  private async paidOrChangedError(
+    orgId: string,
+    id: string,
+    key: PaidGuardKey,
+    db: Prisma.TransactionClient = this.prisma,
+  ): Promise<BadRequestException | NotFoundException> {
+    const now = await db.workOrder.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { paidAmount: true },
+    });
+    if (!now) return new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
+    return (
+      paidError(now.paidAmount, key) ??
+      new BadRequestException(translateError('err.workOrder.statusChanged', getLocale()))
+    );
   }
 
   // ─── Lines ───────────────────────────────────────────────

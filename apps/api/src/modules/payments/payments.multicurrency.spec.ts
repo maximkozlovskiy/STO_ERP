@@ -22,6 +22,7 @@ import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { memoryTable } from '../cash/cash.spec-fixture';
 
 describe('PaymentsService — мультивалюта Фаза 2 (Payment currencyId/amountBase + fiscal-UAH guard)', () => {
   let service: PaymentsService;
@@ -136,7 +137,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
         { provide: NotificationsService, useValue: { send: vi.fn().mockResolvedValue(undefined) } },
         {
           provide: WorkOrdersService,
-          useValue: { transition: vi.fn().mockResolvedValue(undefined) },
+          useValue: { transition: vi.fn().mockResolvedValue(undefined), emitStatusSteps: vi.fn() },
         },
         { provide: LoyaltyService, useValue: loyalty },
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
@@ -486,56 +487,216 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     await service.create(ORG, { ...usdCashDto, invoiceId: INV_FX }, 'user-1');
     expect(fxCall()).toBeUndefined();
   });
+});
 
-  it('WO-linked USD-інвойс: chargeBase береться з WorkOrder-CHARGE (леджер), documentType=Invoice у FX', async () => {
-    const WO = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-    prisma.cashRegister.findFirst.mockResolvedValue({
-      id: CASH_ID,
-      isFiscal: false,
-      currencyId: USD_ID,
-    });
-    prisma.workOrder.findFirst.mockResolvedValue({
-      branchId: 'br-1',
-      status: 'INVOICED',
-      currencyId: USD_ID,
-      counterpartyId: CP_ID,
-      totalAmount: 100,
-      paidAmount: 0,
-    });
-    prisma.invoice.findFirst.mockResolvedValue({
-      counterpartyId: CP_ID,
-      id: INV_FX,
-      status: 'SENT',
-      workOrderId: WO, // WO-linked → chargeDoc = WorkOrder
-      amount: 100,
-      paidAmount: 0,
-      currencyId: USD_ID,
-    });
-    prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
-    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
-    const pr = prisma as never as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
-    pr.settlementTransaction.aggregate.mockResolvedValue({ _sum: { amountBase: 4200 } }); // WO CHARGE base
-    pr.settlementTransaction.count.mockResolvedValue(0);
-    pr.payment.aggregate.mockResolvedValue({ _sum: { amountBase: 4150 } });
+// ── BR-PAY-022: курсова різниця — за нарядом ─────────────────────────────────────────────────
+//
+// Наряд, рахунок, оплати й проводки — таблиці в пам'яті: FX рахується агрегатами по них, тож
+// статичні моки тут показали б лише те, що в них поклали.
 
-    await service.create(ORG, { ...usdCashDto, invoiceId: INV_FX, workOrderId: WO }, 'user-1');
+describe('PaymentsService.create — курсова різниця наряду в іноземній валюті (BR-PAY-022)', () => {
+  const ORG = 'org-1';
+  const CP = '22222222-2222-4222-8222-222222222222';
+  const WO = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const INV = '99999999-9999-4999-8999-999999999999';
+  const CASH = '66666666-6666-4666-8666-666666666666';
+  const USD = '77777777-7777-4777-8777-777777777777';
+  const UAH = '88888888-8888-4888-8888-888888888888';
 
-    // chargeBase-агрегат шукав CHARGE проти WorkOrder (не Invoice).
-    expect(pr.settlementTransaction.aggregate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
+  function harness(opts: {
+    status?: string;
+    total?: number;
+    paid?: number;
+    chargeBase?: number;
+    invoice?: boolean;
+    existingFx?: { documentType: string; documentId: string };
+  }) {
+    const tables = {
+      counterparty: memoryTable([
+        { id: CP, orgId: ORG, deletedAt: null, phone: null, email: null, companyName: 'ТОВ' },
+      ]),
+      workOrder: memoryTable([
+        {
+          id: WO,
+          orgId: ORG,
+          branchId: 'br-1',
+          counterpartyId: CP,
+          status: opts.status ?? 'INVOICED',
+          totalAmount: opts.total ?? 100,
+          paidAmount: opts.paid ?? 0,
+          currencyId: USD,
+          deletedAt: null,
+        },
+      ]),
+      invoice: memoryTable(
+        opts.invoice
+          ? [
+              {
+                id: INV,
+                orgId: ORG,
+                workOrderId: WO,
+                counterpartyId: CP,
+                status: 'SENT',
+                amount: opts.total ?? 100,
+                paidAmount: opts.paid ?? 0,
+                currencyId: USD,
+                deletedAt: null,
+              },
+            ]
+          : [],
+      ),
+      payment: memoryTable([], () => ({
+        orgId: ORG,
+        reversedAt: null,
+        fiscalReceiptId: null,
+        createdAt: new Date('2026-10-15T09:00:00.000Z'),
+        counterparty: { firstName: null, lastName: null, companyName: 'ТОВ' },
+      })),
+      paymentMethodConfig: memoryTable([{ orgId: ORG, code: 'cash', requiresFiscal: false }]),
+      bankAccount: memoryTable([]),
+      cashRegister: memoryTable([
+        { id: CASH, orgId: ORG, deletedAt: null, isFiscal: false, currencyId: USD },
+      ]),
+      garageBranch: memoryTable([{ id: 'br-1', orgId: ORG, deletedAt: null }]),
+      settlementTransaction: memoryTable([
+        // Борг наряду, нарахований при «Виконано» за курсом дати документа.
+        {
+          id: 'st-charge',
+          orgId: ORG,
           type: 'CHARGE',
           documentType: 'WorkOrder',
           documentId: WO,
-        }),
-      }),
+          amountBase: opts.chargeBase ?? 4200,
+        },
+        ...(opts.existingFx
+          ? [{ id: 'st-fx', orgId: ORG, type: 'FX_LOSS', amountBase: 10, ...opts.existingFx }]
+          : []),
+      ]),
+    };
+    const prisma: Record<string, unknown> = { ...tables };
+    prisma.$transaction = vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(prisma));
+    const settlements = { createTransaction: vi.fn().mockResolvedValue(undefined) };
+    const exchangeRates = {
+      // 100 USD × 41.50 = 4150 UAH base за курсом дати оплати.
+      resolveBaseConversion: vi
+        .fn()
+        .mockImplementation((_o: string, _c: string, _d: Date, amount: number) =>
+          Promise.resolve({ rateUsed: 41.5, amountBase: amount * 41.5 }),
+        ),
+      getBaseCurrency: vi.fn().mockResolvedValue({ id: UAH, code: 'UAH' }),
+      sameCurrency: vi.fn((_o: string, a: string | null, b: string | null) =>
+        Promise.resolve((a ?? UAH) === (b ?? UAH)),
+      ),
+    };
+    const service = new PaymentsService(
+      prisma as never,
+      settlements as never,
+      { send: vi.fn().mockResolvedValue(undefined) } as never,
+      { emitStatusSteps: vi.fn() } as never,
+      { queueEarn: vi.fn().mockResolvedValue(undefined) } as never,
+      { record: vi.fn().mockResolvedValue(undefined) } as never,
+      { createOperation: vi.fn().mockResolvedValue(undefined) } as never,
+      exchangeRates as never,
+      { add: vi.fn().mockResolvedValue(undefined) } as never,
     );
-    // FX-проводка йде під documentType=Invoice (idempotency-ключ), сума 4200−4150=50 → LOSS.
-    expect(fxCall()![1]).toMatchObject({
-      type: 'FX_LOSS',
-      amount: 50,
-      documentType: 'Invoice',
-      documentId: INV_FX,
-    });
+    const fx = () =>
+      settlements.createTransaction.mock.calls
+        .map(c => c[1] as Record<string, unknown>)
+        .filter(d => d.type === 'FX_GAIN' || d.type === 'FX_LOSS');
+    return { service, tables, fx };
+  }
+
+  const dto = {
+    counterpartyId: CP,
+    amount: 100,
+    method: 'cash',
+    sourceType: 'CASH_REGISTER' as const,
+    cashRegisterId: CASH,
+  };
+
+  // guards: BR-PAY-022
+  it('повна оплата USD-наряду «Виставлено» → FX_LOSS за нарядом: нараховано 4200 − сплачено 4150', async () => {
+    const h = harness({ chargeBase: 4200 });
+
+    await h.service.create(ORG, { ...dto, workOrderId: WO }, 'user-1');
+
+    expect(h.fx()).toEqual([
+      expect.objectContaining({
+        type: 'FX_LOSS',
+        amount: 50,
+        counterpartyId: CP,
+        documentType: 'WorkOrder',
+        documentId: WO,
+      }),
+    ]);
+    // Курсова проводка — base-дельта, без валюти (інакше createTransaction перерахував би її).
+    expect(h.fx()[0]!.currencyId).toBeUndefined();
+  });
+
+  // guards: BR-PAY-022
+  it('оплата USD-рахунку наряду → FX за нарядом (documentType WorkOrder), а не за рахунком', async () => {
+    const h = harness({ chargeBase: 4100, invoice: true });
+
+    await h.service.create(ORG, { ...dto, invoiceId: INV }, 'user-1');
+
+    expect(h.fx()).toEqual([
+      expect.objectContaining({
+        type: 'FX_GAIN',
+        amount: 50,
+        documentType: 'WorkOrder',
+        documentId: WO,
+      }),
+    ]);
+  });
+
+  // guards: BR-PAY-022
+  it('idempotency: курсову різницю наряду вже проведено (count>0) → повторно НЕ бронюється', async () => {
+    const h = harness({ existingFx: { documentType: 'WorkOrder', documentId: WO } });
+
+    await h.service.create(ORG, { ...dto, workOrderId: WO }, 'user-1');
+
+    expect(h.fx()).toEqual([]);
+  });
+
+  // Старий шлях «рахунок наряду став PAID» проводив курсову різницю на рахунок — повторно за нарядом
+  // її не проводимо.
+  // guards: BR-PAY-022
+  it('стара курсова проводка рахунку наряду → за нарядом не дублюється', async () => {
+    const h = harness({ invoice: true, existingFx: { documentType: 'Invoice', documentId: INV } });
+
+    await h.service.create(ORG, { ...dto, workOrderId: WO }, 'user-1');
+
+    expect(h.fx()).toEqual([]);
+  });
+
+  // guards: BR-PAY-022
+  it('повний аванс USD-наряду «В роботі» → FX немає: борг ще не нараховано', async () => {
+    const h = harness({ status: 'IN_PROGRESS' });
+
+    await h.service.create(ORG, { ...dto, workOrderId: WO }, 'user-1');
+
+    expect(h.tables.workOrder.rows[0]!.paidAmount).toBe(100);
+    expect(h.fx()).toEqual([]);
+  });
+
+  // guards: BR-PAY-022
+  it('часткова оплата USD-наряду → FX немає (лише при повній оплаті)', async () => {
+    const h = harness({ total: 200 });
+
+    await h.service.create(ORG, { ...dto, workOrderId: WO }, 'user-1');
+
+    expect(h.fx()).toEqual([]);
+  });
+
+  // guards: BR-PAY-022
+  it('доплата решти USD-наряду: сплачено = Σ оплат наряду без сторно (обидві оплати)', async () => {
+    const h = harness({ total: 200, chargeBase: 8400 });
+
+    await h.service.create(ORG, { ...dto, workOrderId: WO }, 'user-1');
+    expect(h.fx()).toEqual([]);
+    await h.service.create(ORG, { ...dto, workOrderId: WO }, 'user-1');
+
+    // 8400 − (4150 + 4150) = 100 → збиток.
+    expect(h.fx()).toEqual([expect.objectContaining({ type: 'FX_LOSS', amount: 100 })]);
   });
 });

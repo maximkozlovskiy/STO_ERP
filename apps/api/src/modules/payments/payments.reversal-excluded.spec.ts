@@ -69,6 +69,8 @@ describe('ReconciliationProcessor — сторнована оплата не в�
         findMany: vi.fn().mockResolvedValue([{ id: INV, paidAmount: invoicePaid }]),
       },
       payment: { groupBy: memoryGroupBy(payments) },
+      // Звірка «сплачено» наряду (BR-INV-018): нарядів тут немає.
+      workOrder: { findMany: vi.fn().mockResolvedValue([]) },
     };
     const processor = new ReconciliationProcessor(prisma as never, { capture: vi.fn() } as never);
     const errors = vi.spyOn(processor['logger'], 'error');

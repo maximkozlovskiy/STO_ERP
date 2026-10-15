@@ -27,10 +27,12 @@ const RECON_BATCH_SIZE = 1000;
  * можуть їх розсинхронити тихо. Цей джоб рахує агрегати й ЛОГУЄ розбіжність (logger.error) —
  * НЕ авто-виправляє (щоб самому не стати джерелом дрейфу). Оператор/розробник бачить у логах.
  *
- * 3 звірки:
+ * 4 звірки:
  *   1. StockItem.quantity  vs  Σ StockBatch.remainingQty (той самий (good,warehouse)).
  *   2. SettlementAccount.balance  vs  Σ SettlementTransaction.amount × BALANCE_SIGN[type].
- *   3. Invoice.paidAmount  vs  Σ Payment.amount(invoiceId) + Σ дзеркальний settlement-PAYMENT.
+ *   3. Invoice.paidAmount: рахунок без наряду — Σ Payment.amount(invoiceId) + Σ дзеркальний
+ *      settlement-PAYMENT; активний рахунок наряду — min(Σ оплат наряду, amount) (BR-INV-018).
+ *   4. WorkOrder.paidAmount  vs  Σ Payment.amount(workOrderId) (BR-INV-018).
  */
 @Injectable()
 @Processor('reconciliation', { concurrency: 1 })
@@ -40,17 +42,19 @@ export class ReconciliationProcessor extends DeadLetterWorkerHost {
   async process(job: Job<ReconcileJob>): Promise<void> {
     return runWithTenant({ orgId: job.data.orgId }, async () => {
       const { orgId } = job.data;
-      const [stockDrift, balanceDrift, paidDrift] = await Promise.all([
+      const paidByWorkOrder = await this.sumPaymentsByWorkOrder(orgId);
+      const [stockDrift, balanceDrift, paidDrift, woPaidDrift] = await Promise.all([
         this.checkStock(orgId),
         this.checkBalances(orgId),
-        this.checkInvoicePaid(orgId),
+        this.checkInvoicePaid(orgId, paidByWorkOrder),
+        this.checkWorkOrderPaid(orgId, paidByWorkOrder),
       ]);
-      const total = stockDrift + balanceDrift + paidDrift;
+      const total = stockDrift + balanceDrift + paidDrift + woPaidDrift;
       if (total === 0) {
         this.logger.log(`Reconciliation org=${orgId}: інваріанти консистентні (0 розбіжностей)`);
       } else {
         this.logger.warn(
-          `Reconciliation org=${orgId}: знайдено ${total} розбіжностей (stock=${stockDrift}, balance=${balanceDrift}, paid=${paidDrift}) — див. error-логи вище`,
+          `Reconciliation org=${orgId}: знайдено ${total} розбіжностей (stock=${stockDrift}, balance=${balanceDrift}, paid=${paidDrift}, woPaid=${woPaidDrift}) — див. error-логи вище`,
         );
       }
     });
@@ -162,7 +166,10 @@ export class ReconciliationProcessor extends DeadLetterWorkerHost {
    * PAYMENT з леджера. Решта settlement-проводок (CHARGE/FX/реальні оплати з documentType='Payment')
    * сюди не входять — беремо лише PAYMENT проти самого рахунку.
    */
-  private async checkInvoicePaid(orgId: string): Promise<number> {
+  private async checkInvoicePaid(
+    orgId: string,
+    paidByWorkOrder: ReadonlyMap<string, number>,
+  ): Promise<number> {
     // Payment — append-only (без deletedAt): усі рядки враховуються. groupBy — SQL-side
     // агрегат (обмежений к-стю invoiceId з платежами), не raw-scan → без пагінації.
     const [payments, mirrorPayments] = await Promise.all([
@@ -198,24 +205,82 @@ export class ReconciliationProcessor extends DeadLetterWorkerHost {
     while (true) {
       const invoices = await this.prisma.invoice.findMany({
         where: { orgId, deletedAt: null },
-        select: { id: true, paidAmount: true },
+        select: { id: true, paidAmount: true, workOrderId: true, status: true, amount: true },
         orderBy: { id: 'asc' },
         take: RECON_BATCH_SIZE,
         ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
       });
       if (invoices.length === 0) break;
       for (const inv of invoices) {
-        const expected = paidByInvoice.get(inv.id) ?? 0;
+        // BR-INV-018: скасований рахунок наряду дзеркало не чіпає — інваріанту для нього немає.
+        if (inv.workOrderId && inv.status === 'CANCELLED') continue;
+        const expected = inv.workOrderId
+          ? Math.min(paidByWorkOrder.get(inv.workOrderId) ?? 0, Number(inv.amount))
+          : (paidByInvoice.get(inv.id) ?? 0);
         const actual = Number(inv.paidAmount);
         if (Math.abs(actual - expected) > MONEY_EPSILON) {
           drift++;
           this.logger.error(
-            `DRIFT paidAmount org=${orgId} invoice=${inv.id}: paidAmount=${actual} ≠ Σ(Payment+дзеркальний)=${expected} (Δ=${actual - expected})`,
+            inv.workOrderId
+              ? `DRIFT paidAmount org=${orgId} invoice=${inv.id} (наряд ${inv.workOrderId}): paidAmount=${actual} ≠ min(Σ оплат наряду, сума)=${expected} (Δ=${actual - expected})`
+              : `DRIFT paidAmount org=${orgId} invoice=${inv.id}: paidAmount=${actual} ≠ Σ(Payment+дзеркальний)=${expected} (Δ=${actual - expected})`,
           );
         }
       }
       cursor = invoices[invoices.length - 1].id;
       if (invoices.length < RECON_BATCH_SIZE) break;
+    }
+    return drift;
+  }
+
+  /** Σ оплат за нарядом без сторно (BR-CASH-024) — спільне для звірок 3 і 4. */
+  private async sumPaymentsByWorkOrder(orgId: string): Promise<Map<string, number>> {
+    // groupBy — SQL-side агрегат (обмежений к-стю нарядів з оплатами), не raw-scan → без пагінації.
+    const rows = await this.prisma.payment.groupBy({
+      by: ['workOrderId'],
+      where: { orgId, workOrderId: { not: null }, reversedAt: null },
+      _sum: { amount: true },
+    });
+    const byWorkOrder = new Map<string, number>();
+    for (const r of rows) {
+      if (r.workOrderId) byWorkOrder.set(r.workOrderId, Number(r._sum.amount ?? 0));
+    }
+    return byWorkOrder;
+  }
+
+  /**
+   * WorkOrder.paidAmount vs Σ Payment.amount(workOrderId) без сторно (BR-INV-018). Наряд, у якого
+   * оплат немає, очікує 0. Старі оплати рахунків наряду без `workOrderId` (до бекфілу) дають тут
+   * розбіжність — це запис у лог, як і будь-який дрейф, а не виняток.
+   */
+  private async checkWorkOrderPaid(
+    orgId: string,
+    paidByWorkOrder: ReadonlyMap<string, number>,
+  ): Promise<number> {
+    let drift = 0;
+    let cursor: string | undefined;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const orders = await this.prisma.workOrder.findMany({
+        where: { orgId, deletedAt: null },
+        select: { id: true, paidAmount: true },
+        orderBy: { id: 'asc' },
+        take: RECON_BATCH_SIZE,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      });
+      if (orders.length === 0) break;
+      for (const wo of orders) {
+        const expected = paidByWorkOrder.get(wo.id) ?? 0;
+        const actual = Number(wo.paidAmount);
+        if (Math.abs(actual - expected) > MONEY_EPSILON) {
+          drift++;
+          this.logger.error(
+            `DRIFT workOrder.paidAmount org=${orgId} workOrder=${wo.id}: paidAmount=${actual} ≠ Σ оплат наряду=${expected} (Δ=${actual - expected})`,
+          );
+        }
+      }
+      cursor = orders[orders.length - 1].id;
+      if (orders.length < RECON_BATCH_SIZE) break;
     }
     return drift;
   }

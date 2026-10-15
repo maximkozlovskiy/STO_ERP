@@ -198,7 +198,11 @@ describe('InvoicesService — create-from-work-order', () => {
           }),
         },
         invoiceLine: { createMany: step('createMany', { count: 0 }) },
-        workOrder: { findFirst: vi.fn().mockResolvedValue(woInTx) },
+        workOrder: {
+          findFirst: vi.fn().mockResolvedValue(woInTx),
+          // Блокування рядка наряду першим записом (BR-INV-020).
+          updateMany: step('lock-wo', woInTx ? { count: 1 } : { count: 0 }),
+        },
       };
       // pre-check поза транзакцією: статус і валюта наряду.
       prisma.workOrder.findFirst.mockResolvedValue({
@@ -234,7 +238,16 @@ describe('InvoicesService — create-from-work-order', () => {
 
       await service.createFromWorkOrder(ORG, WO_ID);
 
-      expect(order).toEqual(['tx-begin', 'create', 'createMany', 'update', 'reread', 'tx-commit']);
+      // Рядок наряду блокується першим записом (BR-INV-020), далі — рахунок.
+      expect(order).toEqual([
+        'tx-begin',
+        'lock-wo',
+        'create',
+        'createMany',
+        'update',
+        'reread',
+        'tx-commit',
+      ]);
       expect(tx.invoiceLine.createMany).toHaveBeenCalledTimes(1);
       const data = lineData(tx);
       expect(data).toHaveLength(2);
@@ -313,7 +326,8 @@ describe('InvoicesService — create-from-work-order', () => {
       expect(tx.workOrder.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: WO_ID, orgId: ORG, deletedAt: null } }),
       );
-      expect(order).toEqual(['tx-begin', 'create', 'tx-rollback']);
+      // Блокування наряду (перший запис) не знайшло рядка → 404 ще до створення рахунку.
+      expect(order).toEqual(['tx-begin', 'lock-wo', 'tx-rollback']);
     });
 
     // Bug #814: порядок рядків рахунку = порядок рядків наряду. Без orderBy «останній рядок», що
@@ -343,7 +357,7 @@ describe('InvoicesService — create-from-work-order', () => {
       await expect(service.createFromWorkOrder(ORG, WO_ID)).rejects.toThrow(BadRequestException);
 
       // create уже відбувся в tx — тож помилка мусить вийти з колбека, щоб Prisma його відкотила.
-      expect(order).toEqual(['tx-begin', 'create', 'tx-rollback']);
+      expect(order).toEqual(['tx-begin', 'lock-wo', 'create', 'tx-rollback']);
       expect(tx.invoiceLine.createMany).not.toHaveBeenCalled();
       expect(tx.invoice.update).not.toHaveBeenCalled();
     });

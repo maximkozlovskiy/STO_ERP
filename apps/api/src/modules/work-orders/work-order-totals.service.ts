@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { lineAmount, money, moneyFromDecimal } from '../../common/utils/money';
 import { calcVatOnBase, splitWorkOrderTotal } from '../../common/utils/vat';
 import { SettingsService } from '../settings/settings.service';
@@ -87,8 +89,11 @@ export class WorkOrderTotalsService {
           true,
         )
       : { rateUsed: 1, amountBase: totalAmount };
-    await tx.workOrder.update({
-      where: { id: workOrderId, orgId },
+    // BR-WO-015: сума наряду не нижча за сплачене. Умова стоїть у самому записі (не окремим
+    // читанням) — паралельна оплата між перерахунком і записом теж не проскочить. Одне місце для
+    // всіх перерахунків: рядки, запчастини, огляд, імпорт, ПДВ при «Виконано».
+    const written = await tx.workOrder.updateMany({
+      where: { id: workOrderId, orgId, paidAmount: { lte: totalAmount } },
       data: {
         totalLabor: money(totalLabor),
         totalActualLabor: money(totalActualLabor),
@@ -100,5 +105,19 @@ export class WorkOrderTotalsService {
         rateUsed: conv.rateUsed,
       },
     });
+    if (written.count === 0) {
+      const now = await tx.workOrder.findFirst({
+        where: { id: workOrderId, orgId },
+        select: { paidAmount: true },
+      });
+      // Наряду немає зовсім — не наша відмова: викликач уже перевірив існування й статус.
+      if (!now) return;
+      throw new BadRequestException(
+        translateError('err.workOrder.totalBelowPaid', getLocale(), {
+          total: totalAmount.toFixed(2),
+          paid: moneyFromDecimal(now.paidAmount).toFixed(2),
+        }),
+      );
+    }
   }
 }
