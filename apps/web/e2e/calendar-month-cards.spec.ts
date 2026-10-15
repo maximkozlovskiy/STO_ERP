@@ -25,6 +25,18 @@ function targetDate(): string {
   return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-10`;
 }
 const dmy = (iso: string) => iso.split('-').reverse().join('.');
+/** Київське «date HH:00» як мітка часу: зсув — з Intl (з переведенням годинника), не +03:00. */
+function kyivMs(date: string, hour: number): number {
+  const naive = new Date(`${date}T${pad(hour)}:00:00Z`);
+  const kyivHour = Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Kyiv',
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).format(naive),
+  );
+  return naive.getTime() - ((kyivHour - naive.getUTCHours() + 24) % 24) * 3_600_000;
+}
 /** Київський час HH:mm моменту ISO. */
 const kyivHHMM = (iso: string) =>
   new Intl.DateTimeFormat('uk-UA', {
@@ -56,6 +68,8 @@ async function apiCall<T = unknown>(
 
 interface SlotDto {
   id: string;
+  liftId?: string | null;
+  employeeName?: string | null;
   workOrderId?: string | null;
   workOrderStatus?: string | null;
   workOrderNumber?: string;
@@ -69,6 +83,7 @@ const state: {
   woId?: string;
   woNumber?: string;
   vehicleId?: string;
+  employeeId?: string;
   slotIds: string[];
 } = { slotIds: [] };
 
@@ -137,6 +152,11 @@ test.describe('Календар «Місяць» — картки записів
     if (state.cpId) {
       const res = await apiCall(page, state.token, 'DELETE', `/counterparties/${state.cpId}`);
       expect.soft(res.status, 'DELETE клієнта').toBeLessThan(300);
+    }
+    // Механік — після записів, на яких він стоїть.
+    if (state.employeeId) {
+      const res = await apiCall(page, state.token, 'DELETE', `/employees/${state.employeeId}`);
+      expect.soft(res.status, 'DELETE механіка').toBeLessThan(300);
     }
     await ctx.close();
   });
@@ -272,6 +292,54 @@ test.describe('Календар «Місяць» — картки записів
     await expect(dayLegend).toContainText('Без наряду');
     await page.locator('h1', { hasText: 'Календар' }).click();
     await expect(dayLegend).toBeHidden();
+
+    // ── 3b. Вид «День»: колір категорії, механік, завантаження поста (BR-CAL-011) ─
+    // Поля «Механік» у формі запису немає (призначити механіка в інтерфейсі нічим), тож
+    // механік — передумова через API, як клієнт і авто; перевіряється те, що бачить людина.
+    const mech = await apiCall<{ id: string }>(page, token, 'POST', '/employees', {
+      firstName: 'Механік',
+      lastName: `000 E2E ${uid}`,
+      role: 'MECHANIC',
+      rateScheme: { type: 'percent_normo', params: { percent: 40 } },
+    });
+    expect(mech.status, `механік: ${JSON.stringify(mech.body)}`).toBe(201);
+    state.employeeId = mech.body.id;
+    const assign = await apiCall(page, token, 'PATCH', `/calendar/slots/${edited[0].id}`, {
+      employeeId: mech.body.id,
+    });
+    expect(assign.status, `механік на записі: ${JSON.stringify(assign.body)}`).toBe(200);
+    await page.reload();
+    const dayBlock = page.locator('[data-calendar-slot]', { hasText: wo.number });
+    await expect(dayBlock).toBeVisible({ timeout: 30_000 });
+    // Наряд — чернетка, запис у майбутньому: категорія «Чернетка».
+    await expect(dayBlock).toHaveAttribute('data-category', 'draft');
+    await expect(dayBlock.locator('[data-part="mechanic"]')).toHaveText(
+      `Механік: 000 E2E ${uid} Механік`,
+    );
+    // Дата — наступний місяць: лінії «зараз» немає.
+    await expect(page.getByTestId('now-line')).toHaveCount(0);
+    // Завантаження підйомника — з тих самих записів дня, що їх віддає API (у dev-базі на цьому
+    // підйомнику можуть бути й чужі), обрізаних по робочих годинах, з округленням до 0,5.
+    const hoursRes = await apiCall<{ workStartHour: number; workEndHour: number }>(
+      page,
+      token,
+      'GET',
+      '/settings/work-hours',
+    );
+    const { workStartHour: wsh, workEndHour: weh } = hoursRes.body;
+    const liftId = edited[0].liftId!;
+    const from = kyivMs(date, wsh);
+    const to = kyivMs(date, weh);
+    let busyMs = 0;
+    for (const s of await daySlots(page, token, date)) {
+      if (s.liftId !== liftId) continue;
+      const a = Math.max(new Date(s.startAt).getTime(), from);
+      const b = Math.min(new Date(s.endAt).getTime(), to);
+      if (b > a) busyMs += b - a;
+    }
+    const booked = String(Math.round((busyMs / 3_600_000) * 2) / 2).replace('.', ',');
+    const liftRow = page.locator('div.grid', { has: page.locator(`[data-lift-id="${liftId}"]`) });
+    await expect(liftRow.getByTestId('lift-load')).toHaveText(`${booked} год з ${weh - wsh}`);
 
     // ── 4. Вид «Місяць»: картка з номером наряду в потрібному дні ─────────────
     await page.getByRole('button', { name: 'Місяць', exact: true }).click();

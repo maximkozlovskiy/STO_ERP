@@ -121,6 +121,30 @@ describe('Calendar — HTTP Contract', () => {
       );
     });
 
+    // guards: BR-CAL-011
+    it("віддає employeeName запису як є: ім'я механіка або null", async () => {
+      serviceMock.findSlots.mockResolvedValueOnce([
+        {
+          id: SLOT_ID,
+          startAt: 'a',
+          endAt: 'b',
+          status: 'BOOKED',
+          type: 'WORK',
+          employeeName: 'Коваль Петро',
+        },
+        { id: WO_ID, startAt: 'a', endAt: 'b', status: 'BOOKED', type: 'WORK', employeeName: null },
+      ]);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/calendar/slots?date=2026-05-22',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().map((s: { employeeName: unknown }) => s.employeeName)).toEqual([
+        'Коваль Петро',
+        null,
+      ]);
+    });
+
     it('повертає 400 коли branchId не UUID (ParseUUIDPipe optional)', async () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',

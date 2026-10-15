@@ -558,3 +558,99 @@ describe('CalendarService.syncWorkOrderSlots', () => {
     });
   });
 });
+
+// guards: BR-CAL-011
+// Механік запису на блоці виду «День»: `employeeName` у відповіді `GET /calendar/slots` — і для
+// ролі MECHANIC (ім'я механіка не PII клієнта). Зв'язку слот → працівник у схемі немає, тож імена
+// читаються ОДНИМ запитом на всю відповідь, а не на кожен запис.
+describe('findSlots — механік запису (BR-CAL-011)', () => {
+  const E1 = 'e1111111-1111-4111-8111-111111111111';
+  const E2 = 'e2222222-2222-4222-8222-222222222222';
+  const GONE = 'e3333333-3333-4333-8333-333333333333';
+
+  function slotRow(id: string, employeeId: string | null) {
+    return {
+      id,
+      liftId: null,
+      employeeId,
+      workOrderId: null,
+      vehicleId: null,
+      counterpartyId: null,
+      parentSlotId: null,
+      startAt: new Date('2026-06-15T07:00:00.000Z'),
+      endAt: new Date('2026-06-15T08:00:00.000Z'),
+      notes: null,
+      status: 'BOOKED',
+      type: 'WORK',
+      vehicle: null,
+      counterparty: null,
+      workOrder: {
+        number: 'WO-1',
+        status: 'APPROVED',
+        counterpartyId: 'cp',
+        counterparty: null,
+        vehicle: null,
+      },
+    };
+  }
+
+  function setup(rows: ReturnType<typeof slotRow>[]) {
+    const employeeFindMany = vi.fn().mockResolvedValue([
+      { id: E1, firstName: 'Петро', lastName: 'Коваль' },
+      { id: E2, firstName: 'Олена', lastName: 'Шевчук' },
+    ]);
+    const prisma = {
+      calendarSlot: { findMany: vi.fn().mockResolvedValue(rows) },
+      employee: { findMany: employeeFindMany },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return { service: new CalendarService(prisma as any), employeeFindMany };
+  }
+
+  const rows = () => [
+    slotRow('s1', E1),
+    slotRow('s2', E2),
+    slotRow('s3', E1),
+    slotRow('s4', null),
+    slotRow('s5', GONE),
+  ];
+
+  it.each(['ADMIN', 'MECHANIC'])(
+    "%s: «Прізвище Ім'я» механіка; без механіка чи не знайдений в організації — null",
+    async role => {
+      const { service } = setup(rows());
+      const result = await service.findSlots('org-1', '2026-06-15', role);
+      expect(result.map(s => s.employeeName)).toEqual([
+        'Коваль Петро',
+        'Шевчук Олена',
+        'Коваль Петро',
+        null,
+        null,
+      ]);
+    },
+  );
+
+  it('імена — одним запитом на всю відповідь, лише своєї організації, без повторів id', async () => {
+    const { service, employeeFindMany } = setup(rows());
+    await service.findSlots('org-1', '2026-06-15', 'ADMIN');
+    expect(employeeFindMany).toHaveBeenCalledTimes(1);
+    const { where } = employeeFindMany.mock.calls[0][0];
+    expect(where.orgId).toBe('org-1');
+    expect([...where.id.in].sort()).toEqual([E1, E2, GONE].sort());
+  });
+
+  it("механік не отримує клієнта, хоча ім'я механіка отримує", async () => {
+    const { service } = setup([slotRow('s1', E1)]);
+    const [slot] = await service.findSlots('org-1', '2026-06-15', 'MECHANIC');
+    expect(slot.employeeName).toBe('Коваль Петро');
+    expect(slot.counterpartyName).toBeUndefined();
+    expect(slot.cpPhone).toBeNull();
+  });
+
+  it('жоден запис без механіка — працівників не читає, employeeName = null', async () => {
+    const { service, employeeFindMany } = setup([slotRow('s1', null)]);
+    const [slot] = await service.findSlots('org-1', '2026-06-15', 'ADMIN');
+    expect(employeeFindMany).not.toHaveBeenCalled();
+    expect(slot.employeeName).toBeNull();
+  });
+});

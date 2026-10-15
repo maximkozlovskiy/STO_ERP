@@ -48,28 +48,29 @@ model CalendarSlot {
 
 ## API Endpoints (`/api/calendar`)
 
-| Метод  | URL                                        | Дія                                                    |
-| ------ | ------------------------------------------ | ------------------------------------------------------ |
-| GET    | `/api/calendar`                            | Слоти за датою/діапазоном (liftId, employeeId, date)   |
-| POST   | `/api/calendar/check-conflicts`            | Перевірити конфлікти (excludeWorkOrderId обов'язковий) |
-| POST   | `/api/calendar`                            | Створити слот                                          |
-| PATCH  | `/api/calendar/by-work-order/:workOrderId` | Bulk-update слотів наряду (syncWorkOrderSlots)         |
-| PATCH  | `/api/calendar/:id`                        | Оновити один слот                                      |
-| DELETE | `/api/calendar/:id`                        | Soft-delete слота                                      |
+| Метод  | URL                                        | Дія                                                                                         |
+| ------ | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| GET    | `/api/calendar`                            | Слоти за датою/діапазоном (liftId, employeeId, date); `employeeName` — механік (BR-CAL-011) |
+| POST   | `/api/calendar/check-conflicts`            | Перевірити конфлікти (excludeWorkOrderId обов'язковий)                                      |
+| POST   | `/api/calendar`                            | Створити слот                                                                               |
+| PATCH  | `/api/calendar/by-work-order/:workOrderId` | Bulk-update слотів наряду (syncWorkOrderSlots)                                              |
+| PATCH  | `/api/calendar/:id`                        | Оновити один слот                                                                           |
+| DELETE | `/api/calendar/:id`                        | Soft-delete слота                                                                           |
 
 ---
 
 ## UI (Web)
 
-| Компонент / сторінка  | Файл                                                                                                              |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Календар (DnD)        | `app/(app)/calendar/page.tsx` (1460+ рядків)                                                                      |
-| Вид «Місяць»          | `app/(app)/calendar/CalendarMonthView.tsx` — лічильники дня за категоріями (BR-CAL-008), `calendar-categories.ts` |
-| Картки дня (місяць)   | `CalendarMonthView.tsx` (`MonthSlotCard`), `calendar-month.ts` — кінець ланцюжка, до 3 карток (BR-CAL-009)        |
-| Легенда «?»           | `app/(app)/calendar/CalendarLegend.tsx` — пояснення іконок категорій і типів записів (BR-CAL-009)                 |
-| Лічильники дня        | `app/(app)/calendar/CalendarCategoryCounters.tsx` — рядок категорій у клітинці місяця і в смузі «День»            |
-| Модалка слота         | `app/(app)/calendar/CalendarSlotModal.tsx`                                                                        |
-| Hook (conflict check) | `hooks/useConflictCheck.ts`                                                                                       |
+| Компонент / сторінка  | Файл                                                                                                                               |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Календар (DnD)        | `app/(app)/calendar/page.tsx` (1460+ рядків)                                                                                       |
+| Вид «Місяць»          | `app/(app)/calendar/CalendarMonthView.tsx` — лічильники дня за категоріями (BR-CAL-008), `calendar-categories.ts`                  |
+| Картки дня (місяць)   | `CalendarMonthView.tsx` (`MonthSlotCard`), `calendar-month.ts` — кінець ланцюжка, до 3 карток (BR-CAL-009)                         |
+| Легенда «?»           | `app/(app)/calendar/CalendarLegend.tsx` — пояснення іконок категорій і типів записів (BR-CAL-009)                                  |
+| Лічильники дня        | `app/(app)/calendar/CalendarCategoryCounters.tsx` — рядок категорій у клітинці місяця і в смузі «День»                             |
+| Вид «День»            | `app/(app)/calendar/CalendarDayGrid.tsx` — колір блоку, механік, лінія «зараз», завантаження поста; `calendar-day.ts` (BR-CAL-011) |
+| Модалка слота         | `app/(app)/calendar/CalendarSlotModal.tsx`                                                                                         |
+| Hook (conflict check) | `hooks/useConflictCheck.ts`                                                                                                        |
 
 ---
 
@@ -142,17 +143,17 @@ cd apps/api && npx vitest run src/modules/calendar/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/calendar/`
 
-| Аспект                                                                              | Тест                          | Кейсів |
-| ----------------------------------------------------------------------------------- | ----------------------------- | ------ |
-| HTTP-контракт (DTO, статуси, валідація)                                             | `calendar.contract.spec.ts`   | 31     |
-| сервісна логіка                                                                     | `calendar.service.spec.ts`    | 21     |
-| види слотів (без наряду / без механіка / службові / статус)                         | `calendar.slot-kinds.spec.ts` | 7      |
-| конфлікти слотів у `createSlot` / `updateSlot` (підйомник, механік, split-day, 409) | `calendar.conflicts.spec.ts`  | 27     |
-| межі дня у `findSlots` (київська доба, переведення годинника, перевірка дати)       | `calendar.day-bounds.spec.ts` | 18     |
+| Аспект                                                                                    | Тест                          | Кейсів |
+| ----------------------------------------------------------------------------------------- | ----------------------------- | ------ |
+| HTTP-контракт (DTO, статуси, валідація)                                                   | `calendar.contract.spec.ts`   | 32     |
+| сервісна логіка; механік запису `employeeName` одним запитом, і для MECHANIC (BR-CAL-011) | `calendar.service.spec.ts`    | 26     |
+| види слотів (без наряду / без механіка / службові / статус)                               | `calendar.slot-kinds.spec.ts` | 7      |
+| конфлікти слотів у `createSlot` / `updateSlot` (підйомник, механік, split-day, 409)       | `calendar.conflicts.spec.ts`  | 27     |
+| межі дня у `findSlots` (київська доба, переведення годинника, перевірка дати)             | `calendar.day-bounds.spec.ts` | 18     |
 
-Разом: **86** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **110** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
-**Web:** вид «Місяць» (BR-CAL-008, BR-CAL-009), тека `apps/web/src/app/(app)/calendar/__tests__/`:
+**Web:** вид «Місяць» (BR-CAL-008, BR-CAL-009) і «День» (BR-CAL-011), тека `apps/web/src/app/(app)/calendar/__tests__/`:
 
 | Аспект                                                                                                                                                                                                         | Тест                                    | Кейсів |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------ |
@@ -163,13 +164,17 @@ cd apps/api && npx vitest run src/modules/calendar/<файл>.spec.ts
 | вид «День»: рядок лічильників дня з денних записів, кінець ланцюжка (BR-CAL-008)                                                                                                                               | `CalendarCategoryCounters.day.test.tsx` | 5      |
 | форма запису без права змінювати (механік) — лише перегляд (BR-CAL-010)                                                                                                                                        | `CalendarSlotModal.read-only.test.tsx`  | 2      |
 | форма: заголовок нового запису з датою ДД.ММ.РРРР                                                                                                                                                              | `CalendarSlotModal.title.test.tsx`      | 1      |
+| вид «День», чисті функції: категорія блоку з кінцем ланцюжка, лінія «зараз» і приглушене минуле за Києвом, завантаження підйомника (обрізання, частина багатоденного, 0,5 год) (BR-CAL-011)                    | `calendar-day.test.ts`                  | 31     |
+| вид «День» через хук: колір блоку за станом, механік на блоці, рамка редагування, лінія «зараз» лише сьогодні й оновлення щохвилини, «N год з M» (BR-CAL-011)                                                  | `CalendarDayGrid.day-view.test.tsx`     | 11     |
 
-Разом web: **74** кейси (цифри з `vitest --reporter=json`).
+Разом web: **116** кейсів (цифри з `vitest --reporter=json`).
 
 E2E: `apps/web/e2e/calendar-month-cards.spec.ts` — наряд створюється через інтерфейс, запис
 календаря з ним — через «+ Слот», час редагується у формі; у виді «Місяць» — картка з номером
 наряду, клік відкриває запис, легенда «?», дія «Відкрити день» (BR-CAL-009); у виді «День» — рядок
-лічильників дня і легенда «?» (BR-CAL-008).
+лічильників дня і легенда «?» (BR-CAL-008); блок наряду в кольорі категорії (`data-category`) з механіком
+і «N год з M» у колонці підйомника, лінії «зараз» на іншому дні немає (BR-CAL-011). Механік на записі —
+передумова через API: поля «Механік» у формі запису немає.
 
 Спільний сетап — `calendar.spec-fixture.ts`: сховище слотів у пам'яті, яке ВИКОНУЄ Prisma `where`
 (а не повертає заготовку), тож кейси конфліктів описують поведінку, а не форму запиту.
