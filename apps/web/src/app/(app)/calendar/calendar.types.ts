@@ -21,6 +21,8 @@ export interface CalendarSlot {
   cpPhone?: string | null;
   vehicleSummary?: string | null;
   vehiclePlate?: string | null;
+  /** Механік запису «Прізвище Ім'я»; `null` — не призначено (BR-CAL-011). */
+  employeeName?: string | null;
 }
 
 export interface Lift {

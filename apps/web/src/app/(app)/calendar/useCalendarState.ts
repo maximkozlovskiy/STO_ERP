@@ -41,7 +41,8 @@ import {
   nextDateString,
   toDateString,
 } from './calendar.utils';
-import { buildMonthSlots } from './calendar-month';
+import { buildMonthSlots, chainEnds } from './calendar-month';
+import { nowLinePercent, pastPercent } from './calendar-day';
 
 // Shared drag-id for the pending-slot block (used both by the draggable in JSX
 // and by handleDragEnd to dispatch logic). Exported so sub-components can use it.
@@ -1028,14 +1029,22 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     return map;
   }, [slotsByLift, nowMs]);
 
-  const blockedWidth = useMemo(() => {
-    if (!nowMs || !date) return 0;
-    const todayKyiv = toDateString(new Date(nowMs));
-    if (date < todayKyiv) return 100;
-    if (date > todayKyiv) return 0;
-    const blockedHours = Math.max(0, minHour - dynWindowStart);
-    return (blockedHours / dynTotalHours) * 100;
-  }, [nowMs, date, minHour, dynWindowStart, dynTotalHours]);
+  // Приглушене минуле: сьогодні — до лінії «зараз» (BR-CAL-011), не до початку поточної години.
+  // Заборону малювати в минулому тримає `minHour`, а не ця ширина.
+  const blockedWidth = useMemo(
+    () => pastPercent(nowMs, date, dynWindowStart, dynWindowEnd),
+    [nowMs, date, dynWindowStart, dynWindowEnd],
+  );
+
+  // Лінія «зараз» — лише сьогодні за Києвом і в межах робочих годин (BR-CAL-011).
+  const nowLine = useMemo(
+    () => nowLinePercent(nowMs, date, dynWindowStart, dynWindowEnd),
+    [nowMs, date, dynWindowStart, dynWindowEnd],
+  );
+
+  // Кінець ланцюжка кожного запису дня (з продовженнями наступного дня) — для кольору блоку
+  // «прострочено» у виді «День» (BR-CAL-011), так само як у рядку лічильників.
+  const dayChainEnds = useMemo(() => chainEnds([...slots, ...nextDaySlots]), [slots, nextDaySlots]);
 
   // Рядок лічильників дня (BR-CAL-008) — та сама збірка, що й у місяці: кінець ланцюжка
   // враховує продовження наступного дня.
@@ -1153,6 +1162,8 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     nextSlotByLift,
     EMPTY_SLOTS,
     blockedWidth,
+    nowLine,
+    dayChainEnds,
     nowMs,
     minHour,
 

@@ -2,16 +2,19 @@
 
 import { memo, useMemo, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus, UserRound } from 'lucide-react';
 import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { woStatusLabel } from '@/i18n/enumLabel';
+import { fmtQty } from '@/lib/format';
 
 import type { BookingSlot, CalendarSlot, GhostSlot, Lift, PendingSlot } from './calendar.types';
 import { SIDEBAR_W, decimalHoursToHHMM, fmtTime, kyivHours, pad } from './calendar.utils';
+import { CATEGORY_VIEW, SLOT_TYPE_ICON, slotType, type SlotCategory } from './calendar-categories';
+import { daySlotCategory, liftLoadHours } from './calendar-day';
 import { PENDING_DRAG_ID, type CalendarState } from './useCalendarState';
 
 // Module-level stable refs — `useMemo<[]>(() => [], [])` всередині компонента
@@ -23,6 +26,8 @@ const EMPTY_BOOKINGS: BookingSlot[] = [];
 
 interface DraggableSlotProps {
   slot: CalendarSlot;
+  /** Категорія BR-CAL-008 з кінцем ланцюжка — колір і іконка блоку (BR-CAL-011). */
+  category: SlotCategory;
   isEditing: boolean;
   windowStart: number;
   totalHours: number;
@@ -36,6 +41,7 @@ interface DraggableSlotProps {
 
 const DraggableSlot = memo(function DraggableSlot({
   slot,
+  category,
   isEditing,
   windowStart,
   totalHours,
@@ -61,14 +67,26 @@ const DraggableSlot = memo(function DraggableSlot({
   };
 
   const timeLabel = `${fmtTime(slot.startAt)}–${fmtTime(slot.endAt)}`;
+  const {
+    icon: CategoryIcon,
+    className: categoryIconColor,
+    barClassName,
+    bgClassName,
+  } = CATEGORY_VIEW[category];
+  const type = slotType(slot.type);
+  const TypeIcon = SLOT_TYPE_ICON[type];
+  const categoryLabel = t(`month.category.${category}`);
+  const typeLabel = t(`month.type.${type}`);
   const titleTooltip = [
     timeLabel,
     slot.workOrderNumber ? `· ${slot.workOrderNumber}` : null,
     slot.workOrderStatus ? woStatusLabel(slot.workOrderStatus) : null,
+    slot.employeeName ? t('day.mechanic', { name: slot.employeeName }) : null,
     slot.counterpartyName ?? null,
     slot.cpPhone ?? null,
     slot.vehicleSummary ?? null,
     slot.vehiclePlate ?? null,
+    `${typeLabel} · ${categoryLabel}`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -78,18 +96,22 @@ const DraggableSlot = memo(function DraggableSlot({
       ref={setNodeRef}
       style={style}
       data-calendar-slot
-      className={`absolute top-1 bottom-1 rounded text-white text-xs overflow-hidden group select-none ring-2 ring-offset-1 flex flex-col ${isEditing ? 'bg-amber-500 ring-amber-400' : 'bg-primary ring-transparent'}`}
+      data-category={category}
+      data-editing={isEditing || undefined}
+      // Світлий фон і смуга категорії, темний текст (BR-CAL-011). Блок, що редагується, —
+      // бурштинова рамка: amber-600 — 3,2:1 до білого, 5,6:1 до темного фону (WCAG 1.4.11).
+      className={`absolute top-1 bottom-1 rounded border border-border border-l-4 ${barClassName} ${bgClassName} text-foreground text-xs overflow-hidden group select-none ring-offset-1 ring-offset-surface flex flex-col ${isEditing ? 'ring-2 ring-amber-600 shadow-md' : ''}`}
       title={titleTooltip}
     >
       <div
-        className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-white/20 rounded-l flex items-center justify-center"
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-foreground/10 rounded-l flex items-center justify-center"
         onPointerDown={e => {
           e.stopPropagation();
           onResizeStart(e, slot.id, 'start');
         }}
         aria-label={t('day.editStart')}
       >
-        <div className="w-0.5 h-4 bg-white/50 rounded" />
+        <div className="w-0.5 h-4 bg-foreground/30 rounded" />
       </div>
 
       <div
@@ -98,45 +120,54 @@ const DraggableSlot = memo(function DraggableSlot({
         {...attributes}
         onClick={() => onEdit(slot)}
       >
-        {/* Time — top-left, small */}
-        <span className="text-[10px] leading-none opacity-75 mb-1">
-          {timeLabel}
-          {slot.parentSlotId && <span className="ml-1 opacity-60">↩</span>}
+        {/* Верхній рядок: тип запису, час, продовження; справа — іконка категорії */}
+        <span className="flex items-center gap-1 text-[10px] leading-none mb-1 tabular-nums">
+          <TypeIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{timeLabel}</span>
+          {slot.parentSlotId && <span aria-hidden="true">↩</span>}
+          <CategoryIcon
+            className={`ml-auto h-3.5 w-3.5 shrink-0 ${categoryIconColor}`}
+            aria-hidden="true"
+          />
         </span>
+        <span className="sr-only">{` ${typeLabel}. ${categoryLabel}. `}</span>
         {/* Main info — centered */}
         <div className="flex-1 flex flex-col justify-center gap-0.5 min-w-0">
           {slot.workOrderNumber && (
-            <span className="font-medium truncate leading-tight">{slot.workOrderNumber}</span>
+            <span className="font-bold truncate leading-tight">{slot.workOrderNumber}</span>
           )}
           {slot.workOrderStatus && (
-            <span className="truncate leading-tight text-[10px] opacity-90">
+            <span className="truncate leading-tight text-[10px]">
               {woStatusLabel(slot.workOrderStatus)}
+            </span>
+          )}
+          {slot.employeeName && (
+            <span className="flex items-center gap-1 min-w-0 leading-tight" data-part="mechanic">
+              <UserRound className="h-3 w-3 shrink-0" aria-hidden="true" />
+              <span className="sr-only">{`${t('day.mechanicSr')} `}</span>
+              <span className="truncate">{slot.employeeName}</span>
             </span>
           )}
           {slot.counterpartyName && (
             <span className="truncate leading-tight">{slot.counterpartyName}</span>
           )}
-          {slot.cpPhone && (
-            <span className="truncate leading-tight opacity-75">{slot.cpPhone}</span>
-          )}
+          {slot.cpPhone && <span className="truncate leading-tight">{slot.cpPhone}</span>}
           {slot.vehicleSummary && (
-            <span className="truncate leading-tight opacity-75">{slot.vehicleSummary}</span>
+            <span className="truncate leading-tight">{slot.vehicleSummary}</span>
           )}
-          {slot.vehiclePlate && (
-            <span className="truncate leading-tight opacity-75">{slot.vehiclePlate}</span>
-          )}
+          {slot.vehiclePlate && <span className="truncate leading-tight">{slot.vehiclePlate}</span>}
         </div>
       </div>
 
       <div
-        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-white/20 rounded-r flex items-center justify-center"
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-foreground/10 rounded-r flex items-center justify-center"
         onPointerDown={e => {
           e.stopPropagation();
           onResizeStart(e, slot.id, 'end');
         }}
         aria-label={t('day.editEnd')}
       >
-        <div className="w-0.5 h-4 bg-white/50 rounded" />
+        <div className="w-0.5 h-4 bg-foreground/30 rounded" />
       </div>
     </div>
   );
@@ -280,6 +311,11 @@ interface DroppableLiftRowProps {
   pending: PendingSlot | null;
   editingSlotId: string | null;
   blockedWidth: number;
+  /** Лінія «зараз», % ширини; `null` — не сьогодні або поза робочими годинами (BR-CAL-011). */
+  nowLine: number | null;
+  /** Кінці ланцюжків записів дня — для «прострочено» (BR-CAL-008/011). */
+  chainEnds: ReadonlyMap<string, number>;
+  nowMs: number;
   hours: number[];
   windowStart: number;
   windowEnd: number;
@@ -303,6 +339,9 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
   pending,
   editingSlotId,
   blockedWidth,
+  nowLine,
+  chainEnds,
+  nowMs,
   hours,
   windowStart,
   windowEnd,
@@ -338,9 +377,11 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
           className="absolute inset-y-0 left-0 pointer-events-none z-1"
           style={{
             width: `${blockedWidth}%`,
+            // Від `--color-foreground`, а не чорного: у темній темі чорні смуги на темному
+            // фоні не видно, і минулі години не виглядали приглушеними (BR-CAL-011).
             backgroundImage:
-              'repeating-linear-gradient(135deg, transparent 0px, transparent 6px, rgba(0,0,0,0.08) 6px, rgba(0,0,0,0.08) 8px)',
-            backgroundColor: 'rgba(0,0,0,0.04)',
+              'repeating-linear-gradient(135deg, transparent 0px, transparent 6px, color-mix(in srgb, var(--color-foreground) 8%, transparent) 6px, color-mix(in srgb, var(--color-foreground) 8%, transparent) 8px)',
+            backgroundColor: 'color-mix(in srgb, var(--color-foreground) 4%, transparent)',
           }}
           aria-hidden
         >
@@ -376,6 +417,7 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
         <DraggableSlot
           key={s.id}
           slot={s}
+          category={daySlotCategory(s, chainEnds, nowMs)}
           isEditing={s.id === editingSlotId}
           windowStart={windowStart}
           totalHours={totalHours}
@@ -393,6 +435,15 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
           totalHours={totalHours}
         />
       ))}
+
+      {nowLine !== null && (
+        <div
+          className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-destructive pointer-events-none z-15"
+          style={{ left: `${nowLine}%` }}
+          data-testid="now-line"
+          aria-hidden="true"
+        />
+      )}
     </div>
   );
 });
@@ -419,6 +470,11 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
     nextSlotByLift,
     EMPTY_SLOTS,
     blockedWidth,
+    nowLine,
+    dayChainEnds,
+    nowMs,
+    slots,
+    date,
     pendingSlot,
     ghost,
     editingSlotId,
@@ -448,6 +504,15 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
     }
     return map;
   }, [bookingSlots]);
+
+  // Завантаження кожного підйомника за день — зі збережених записів дня (BR-CAL-011).
+  const loadByLift = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const lift of lifts) {
+      map.set(lift.id, liftLoadHours(slots, lift.id, date, windowStart, windowEnd));
+    }
+    return map;
+  }, [lifts, slots, date, windowStart, windowEnd]);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -506,6 +571,16 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                     {pad(h)}:00
                   </div>
                 ))}
+                {/* Позначка «зараз» у шапці — коротка, щоб не перекривати підпис години */}
+                {nowLine !== null && (
+                  <div
+                    className="absolute bottom-0 h-2 w-0.5 -translate-x-1/2 bg-destructive pointer-events-none"
+                    style={{
+                      left: `calc(${SIDEBAR_W}px + (100% - ${SIDEBAR_W}px) * ${nowLine / 100})`,
+                    }}
+                    aria-hidden="true"
+                  />
+                )}
               </div>
               {/* Scrollable rows — flex-1 so rows fill remaining height; scrollbar stays below header */}
               <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
@@ -518,6 +593,17 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                     <div className="px-3 py-3 min-h-20 bg-secondary border-r border-border flex flex-col justify-center gap-0.5">
                       <span className="text-sm font-medium text-foreground leading-tight">
                         {lift.name}
+                      </span>
+                      {/* `text-foreground`: muted на `bg-secondary` — лише 4,3:1 у світлій темі */}
+                      <span
+                        className="text-[11px] text-foreground leading-none tabular-nums"
+                        title={t('day.liftLoadTitle')}
+                        data-testid="lift-load"
+                      >
+                        {t('day.liftLoad', {
+                          booked: fmtQty(loadByLift.get(lift.id) ?? 0),
+                          total: fmtQty(totalHours),
+                        })}
                       </span>
                       {nextSlotByLift.get(lift.id) === 'now' ? (
                         <span className="text-[10px] font-medium text-success-text leading-none">
@@ -537,6 +623,9 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                       pending={pendingSlot}
                       editingSlotId={editingSlotId}
                       blockedWidth={blockedWidth}
+                      nowLine={nowLine}
+                      chainEnds={dayChainEnds}
+                      nowMs={nowMs}
                       hours={hours}
                       windowStart={windowStart}
                       windowEnd={windowEnd}

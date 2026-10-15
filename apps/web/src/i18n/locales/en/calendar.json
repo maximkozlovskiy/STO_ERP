@@ -28,7 +28,11 @@
     "editStart": "Change start",
     "editEnd": "Change end",
     "cancel": "Cancel",
-    "pendingTooltip": "Drag to change the lift or time. Click to open the form"
+    "pendingTooltip": "Drag to change the lift or time. Click to open the form",
+    "mechanic": "Mechanic: {{name}}",
+    "mechanicSr": "Mechanic:",
+    "liftLoad": "{{booked}} h of {{total}}",
+    "liftLoadTitle": "Booked within the working hours of the day"
   },
   "booking": {
     "onlineTooltip": "Online booking: {{name}} {{phone}}"

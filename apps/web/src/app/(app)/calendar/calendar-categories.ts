@@ -84,30 +84,55 @@ export function countCategories(
 
 /**
  * `className` — колір значка й тексту (на `bg-surface`, контраст перевірено для лічильників),
- * `barClassName` — колір смуги зліва на картці запису (BR-CAL-009).
+ * `barClassName` — колір смуги зліва на картці запису (BR-CAL-009),
+ * `bgClassName` — світлий фон блоку запису у виді «День» (BR-CAL-011). Текст на ньому —
+ * `text-foreground`: від 16:1 у світлій темі й від 12:1 у темній (WCAG 1.4.3, норма 4,5:1).
  */
 export const CATEGORY_VIEW: Record<
   SlotCategory,
-  { icon: LucideIcon; className: string; barClassName: string }
+  { icon: LucideIcon; className: string; barClassName: string; bgClassName: string }
 > = {
   overdue: {
     icon: AlertCircle,
     className: 'text-destructive-text',
     barClassName: 'border-l-destructive',
+    bgClassName: 'bg-destructive-subtle',
   },
-  inProgress: { icon: Wrench, className: 'text-warning-text', barClassName: 'border-l-warning' },
-  planned: { icon: Clock, className: 'text-info-text', barClassName: 'border-l-info' },
+  inProgress: {
+    icon: Wrench,
+    className: 'text-warning-text',
+    barClassName: 'border-l-warning',
+    bgClassName: 'bg-warning-subtle',
+  },
+  planned: {
+    icon: Clock,
+    className: 'text-info-text',
+    barClassName: 'border-l-info',
+    bgClassName: 'bg-info-subtle',
+  },
   draft: {
     icon: PencilLine,
     className: 'text-muted-foreground',
     barClassName: 'border-l-muted-foreground',
+    bgClassName: 'bg-muted',
   },
-  done: { icon: CheckCircle2, className: 'text-success-text', barClassName: 'border-l-success' },
-  cancelled: { icon: XCircle, className: 'text-muted-foreground', barClassName: 'border-l-border' },
+  done: {
+    icon: CheckCircle2,
+    className: 'text-success-text',
+    barClassName: 'border-l-success',
+    bgClassName: 'bg-success-subtle',
+  },
+  cancelled: {
+    icon: XCircle,
+    className: 'text-muted-foreground',
+    barClassName: 'border-l-border',
+    bgClassName: 'bg-muted',
+  },
   other: {
     icon: Circle,
     className: 'text-muted-foreground',
     barClassName: 'border-l-muted-foreground',
+    bgClassName: 'bg-muted',
   },
 };
 
