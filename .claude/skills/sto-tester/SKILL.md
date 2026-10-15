@@ -204,7 +204,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/_next/static/chunks
 | §1.4 | `sections/s1-4-security.md`               | `journal/details-1-4.md` | 8 (з них 3 — кодом)    |
 | §1.5 | `sections/s1-5-test-coverage-backend.md`  | `journal/details-1-5.md` | 20 (з них 14 — кодом)  |
 | §1.6 | `sections/s1-6-test-coverage-frontend.md` | `journal/details-1-6.md` | 18 (з них 15 — кодом)  |
-| §1.7 | `sections/s1-7-a11y-i18n.md`              | `journal/details-1-7.md` | 7 (з них 1 — кодом)    |
+| §1.7 | `sections/s1-7-a11y-i18n.md`              | `journal/details-1-7.md` | 10 (з них 1 — кодом)   |
 
 ---
 
