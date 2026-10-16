@@ -47,6 +47,7 @@ import { WorkOrderTotals } from './WorkOrderTotals';
 import { SectionErrorBoundary } from '@/components/ui/SectionErrorBoundary';
 import { WorkOrderAuditSection } from './WorkOrderAuditSection';
 import { InvoiceSection, type InvoiceRef } from './InvoiceSection';
+import { ACTIVE_MECHANICS_URL, activeMechanics } from '@/lib/work-order-mechanics';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -181,6 +182,9 @@ interface Employee {
   id: string;
   firstName: string;
   lastName: string;
+  role?: string;
+  status?: string;
+  deletedAt?: string | null;
 }
 interface Good {
   id: string;
@@ -465,7 +469,7 @@ export default function WorkOrderCardPage() {
     const cachedEmployees = getCached<Employee[]>('cache:employees');
     const cachedWarehouses = getCached<Warehouse[]>('cache:warehouses');
     if (cachedWorks) setWorks(cachedWorks);
-    if (cachedEmployees) setEmployees(cachedEmployees);
+    if (cachedEmployees) setEmployees(activeMechanics(cachedEmployees));
     if (cachedWarehouses) {
       setWarehouses(cachedWarehouses);
       const mainW =
@@ -483,9 +487,11 @@ export default function WorkOrderCardPage() {
         if (mountedRef.current && !cachedWorks)
           setRefsError(e instanceof Error ? e.message : t('detail.refsLoadError'));
       });
-    apiFetch<{ items: Employee[] }>('/employees?limit=200')
+    // BR-WO-018: «Виконавець» нового рядка роботи — лише активні механіки (як у картці наряду);
+    // збережений виконавець рядка показується ім'ям з відповіді наряду (`employeeName`).
+    apiFetch<{ items: Employee[] }>(ACTIVE_MECHANICS_URL)
       .then((r: { items?: Employee[] } | Employee[]) => {
-        const arr = Array.isArray(r) ? r : (r.items ?? []);
+        const arr = activeMechanics(Array.isArray(r) ? r : (r.items ?? []));
         setCache('cache:employees', arr);
         if (mountedRef.current) setEmployees(arr);
       })

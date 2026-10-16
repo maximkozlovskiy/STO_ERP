@@ -61,7 +61,12 @@ import {
   WO_PREPAYMENT_STATUSES,
   PAYMENT_CREATE_ROLES,
 } from '@sto/shared';
-import { woStatusLabel, woPriorityLabel, woCategoryLabel } from '@/i18n/enumLabel';
+import {
+  woStatusLabel,
+  woPriorityLabel,
+  woCategoryLabel,
+  contractTypeLabel,
+} from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
 import { ClientPaymentModal } from '@/components/ui/ClientPaymentModal';
 import { invoiceRemaining } from '@/lib/invoice-payment';
@@ -772,6 +777,7 @@ export function CreateWorkOrderModal({
           workId: l.workId,
           workName: l.workName ?? '',
           employeeId: l.employeeId,
+          employeeName: l.employeeName ?? '',
           normoHours: String(l.normoHours),
           actualHours: l.actualHours != null ? String(l.actualHours) : '',
           price: String(l.price),
@@ -2296,8 +2302,10 @@ export function CreateWorkOrderModal({
                           <option value="">— Без договору —</option>
                           {contracts.map(c => (
                             <option key={c.id} value={c.id}>
-                              {c.number ? `${c.number} — ` : ''}
-                              {c.title}
+                              {/* Номер і тип: решту полів договору механік не отримує */}
+                              {c.contractType
+                                ? `${c.number} — ${contractTypeLabel(c.contractType)}`
+                                : c.number}
                             </option>
                           ))}
                         </Select>

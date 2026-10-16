@@ -8,6 +8,8 @@ export interface LocalLine {
   workId: string;
   workName: string;
   employeeId: string;
+  /** Ім'я збереженого виконавця з відповіді наряду (BR-WO-018): показ того, кого немає в довіднику. */
+  employeeName?: string;
   normoHours: string;
   actualHours: string;
   price: string;

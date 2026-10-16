@@ -219,7 +219,11 @@
     "pastTimeLocked": "Не можна перемістити запис у минулий час",
     "slotDeleted": "Слот видалено",
     "mechanicDropped": "Механіка знято: {{name}} не закріплений за підйомником «{{lift}}»",
-    "mechanicDroppedNoName": "Механіка знято: не закріплений за підйомником «{{lift}}»"
+    "mechanicDroppedNoName": "Механіка знято: не закріплений за підйомником «{{lift}}»",
+    "mechanicDroppedOnLeave": "Механіка знято: {{name}} у відпустці",
+    "mechanicDroppedOnLeaveNoName": "Механіка знято: механік у відпустці",
+    "mechanicDroppedUnavailable": "Механіка знято: {{name}} недоступний (звільнений чи не механік)",
+    "mechanicDroppedUnavailableNoName": "Механіка знято: механік недоступний (звільнений чи не механік)"
   },
   "wizard": {
     "titleClient": "Новий клієнт",

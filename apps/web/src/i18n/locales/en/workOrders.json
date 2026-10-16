@@ -257,7 +257,10 @@
     "deleteAria": "Delete labor",
     "confirmDelete": "Delete labor?",
     "deletedToast": "Labor deleted",
-    "deleteError": "Deletion error"
+    "deleteError": "Deletion error",
+    "executorUnknown": "Executor",
+    "executorUnavailable": "{{name}} (unavailable)",
+    "executorUnavailableHint": "Not an active mechanic (not a mechanic, dismissed or on leave) — choose another"
   },
   "parts": {
     "title": "Parts and materials",

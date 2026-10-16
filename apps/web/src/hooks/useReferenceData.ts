@@ -2,6 +2,7 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { toIdMap } from '@/lib/utils';
+import { ACTIVE_MECHANICS_URL, activeMechanics } from '@/lib/work-order-mechanics';
 
 /**
  * A3-modal: reference-data + org-settings хук, винесений з CreateWorkOrderModal (God-component 3708р).
@@ -30,6 +31,7 @@ export interface Employee {
   firstName: string;
   lastName: string;
   role?: string;
+  status?: string;
   deletedAt?: string | null;
 }
 export interface Vehicle {
@@ -38,10 +40,14 @@ export interface Vehicle {
   model: string;
   licensePlate: string | null;
 }
+/**
+ * Договір у полі «Договір» картки наряду. Лише поля, які віддає й механіку звужена відповідь
+ * `GET /counterparties/:id/contracts` (id, номер, тип; рішення власника 2026-10-16, друге).
+ */
 export interface Contract {
   id: string;
-  title: string;
-  number?: string | null;
+  number: string;
+  contractType?: string | null;
 }
 export interface Unit {
   id: string;
@@ -107,11 +113,12 @@ export function useReferenceData() {
       })
       .catch(() => {});
 
+    // BR-WO-018: виконавець рядка роботи — лише активні механіки.
     const cachedEmployees = getCached<Employee[]>('cache:employees');
-    if (cachedEmployees) setEmployees(cachedEmployees);
-    apiFetch<{ items: Employee[] }>('/employees?limit=200&role=MECHANIC')
+    if (cachedEmployees) setEmployees(activeMechanics(cachedEmployees));
+    apiFetch<{ items: Employee[] }>(ACTIVE_MECHANICS_URL)
       .then(r => {
-        const list = (Array.isArray(r.items) ? r.items : []).filter(e => !e.deletedAt);
+        const list = activeMechanics(Array.isArray(r.items) ? r.items : []);
         setEmployees(list);
         setCache('cache:employees', list);
       })

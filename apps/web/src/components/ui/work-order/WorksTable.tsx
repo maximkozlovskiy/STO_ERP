@@ -1,8 +1,8 @@
 import { Plus, Trash2, Pencil, Check, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { type WorkPickerItem } from '@/components/ui/WorkPickerModal';
+import { ExecutorSelect } from './ExecutorSelect';
 import { calcVatOnBase, lineAmount } from '@/lib/utils';
 import type { LocalLine, Employee, WorkOrderFormState } from './types';
 
@@ -206,20 +206,16 @@ export function WorksTable(props: WorksTableProps) {
                         />
                       </td>
                       <td className="px-2 py-1.5">
-                        <Select
+                        {/* BR-WO-018: збережений виконавець поза списком — недоступна опція */}
+                        <ExecutorSelect
                           value={editingLine.employeeId}
-                          onChange={e =>
-                            setEditingLine(l => ({ ...l, employeeId: e.target.value }))
-                          }
+                          onChange={employeeId => setEditingLine(l => ({ ...l, employeeId }))}
+                          employees={employees}
+                          saved={line}
+                          placeholder="— Механік —"
+                          ariaLabel="Виконавець"
                           disabled={!canEdit}
-                        >
-                          <option value="">— Механік —</option>
-                          {employees.map(e => (
-                            <option key={e.id} value={e.id}>
-                              {e.lastName} {e.firstName}
-                            </option>
-                          ))}
-                        </Select>
+                        />
                       </td>
                       <td className="px-2 py-1.5">
                         <Input
@@ -327,7 +323,8 @@ export function WorksTable(props: WorksTableProps) {
                     <>
                       <td className="px-3 py-1.5 text-foreground truncate">{line.workName}</td>
                       <td className="px-2 py-1.5 text-muted-foreground truncate">
-                        {emp ? `${emp.lastName} ${emp.firstName}` : '—'}
+                        {/* BR-WO-018: виконавець поза списком механіків — ім'я з рядка наряду */}
+                        {emp ? `${emp.lastName} ${emp.firstName}` : line.employeeName || '—'}
                       </td>
                       <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                         {line.normoHours || '—'}
@@ -445,17 +442,13 @@ export function WorksTable(props: WorksTableProps) {
                   />
                 </td>
                 <td className="px-2 py-1.5">
-                  <Select
+                  <ExecutorSelect
                     value={newLine.employeeId}
-                    onChange={e => setNewLine(l => ({ ...l, employeeId: e.target.value }))}
-                  >
-                    <option value="">— Механік —</option>
-                    {employees.map(e => (
-                      <option key={e.id} value={e.id}>
-                        {e.lastName} {e.firstName}
-                      </option>
-                    ))}
-                  </Select>
+                    onChange={employeeId => setNewLine(l => ({ ...l, employeeId }))}
+                    employees={employees}
+                    placeholder="— Механік —"
+                    ariaLabel="Виконавець"
+                  />
                 </td>
                 <td className="px-2 py-1.5">
                   <Input

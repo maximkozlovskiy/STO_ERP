@@ -257,7 +257,10 @@
     "deleteAria": "Видалити роботу",
     "confirmDelete": "Видалити роботу?",
     "deletedToast": "Роботу видалено",
-    "deleteError": "Помилка видалення"
+    "deleteError": "Помилка видалення",
+    "executorUnknown": "Виконавець",
+    "executorUnavailable": "{{name}} (недоступний)",
+    "executorUnavailableHint": "Не активний механік (не механік, звільнений чи у відпустці) — оберіть іншого"
   },
   "parts": {
     "title": "Запчастини та матеріали",

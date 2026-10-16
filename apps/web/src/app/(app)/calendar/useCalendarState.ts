@@ -44,6 +44,7 @@ import {
 } from './calendar.utils';
 import { buildMonthSlots, chainEnds, liveSlots } from './calendar-month';
 import { nowLinePercent, pastPercent } from './calendar-day';
+import { mechanicDroppedText, type MechanicDropResponse } from './calendar-mechanic-drop';
 
 // Shared drag-id for the pending-slot block (used both by the draggable in JSX
 // and by handleDragEnd to dispatch logic). Exported so sub-components can use it.
@@ -953,7 +954,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
 
       const liftChanged = newLiftId !== slot.liftId;
       try {
-        const saved = await apiFetch<{ mechanicDropped?: boolean }>(`/calendar/slots/${slot.id}`, {
+        const saved = await apiFetch<MechanicDropResponse>(`/calendar/slots/${slot.id}`, {
           method: 'PATCH',
           body: JSON.stringify({
             startAt: newStart.toISOString(),
@@ -966,9 +967,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         if (saved?.mechanicDropped) {
           const lift = liftsRef.current.find(l => l.id === newLiftId)?.name ?? '';
           toast.warning(
-            slot.employeeName
-              ? t('slot.mechanicDropped', { name: slot.employeeName, lift })
-              : t('slot.mechanicDroppedNoName', { lift }),
+            mechanicDroppedText(t, saved.mechanicDroppedReason, slot.employeeName, lift),
           );
         }
         load();

@@ -219,7 +219,11 @@
     "pastTimeLocked": "Cannot move booking into the past",
     "slotDeleted": "Slot deleted",
     "mechanicDropped": "Mechanic removed: {{name}} is not assigned to lift \"{{lift}}\"",
-    "mechanicDroppedNoName": "Mechanic removed: not assigned to lift \"{{lift}}\""
+    "mechanicDroppedNoName": "Mechanic removed: not assigned to lift \"{{lift}}\"",
+    "mechanicDroppedOnLeave": "Mechanic removed: {{name}} is on leave",
+    "mechanicDroppedOnLeaveNoName": "Mechanic removed: the mechanic is on leave",
+    "mechanicDroppedUnavailable": "Mechanic removed: {{name}} is unavailable (dismissed or not a mechanic)",
+    "mechanicDroppedUnavailableNoName": "Mechanic removed: the mechanic is unavailable (dismissed or not a mechanic)"
   },
   "wizard": {
     "titleClient": "New client",
