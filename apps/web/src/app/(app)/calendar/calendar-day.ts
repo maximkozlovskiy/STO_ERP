@@ -70,10 +70,14 @@ const HOUR_MS = 3_600_000;
 /**
  * Завантаження підйомника за день (BR-CAL-011): сума тривалостей його записів у межах робочих
  * годин дня `date` (Київ). Запис, що виходить за межі, обрізається; частина багатоденного запису
- * рахується лише своєю частиною цього дня. Результат — години, округлені до 0,5.
+ * рахується лише своєю частиною цього дня. Записи скасованих (`CANCELLED`) і видалених нарядів не
+ * рахуються (рішення власника 2026-10-16). Результат — години, округлені до 0,5.
  */
 export function liftLoadHours(
-  slots: readonly Pick<CalendarSlot, 'liftId' | 'startAt' | 'endAt'>[],
+  slots: readonly Pick<
+    CalendarSlot,
+    'liftId' | 'startAt' | 'endAt' | 'workOrderStatus' | 'workOrderDeleted'
+  >[],
   liftId: string,
   date: string,
   startHour: number,
@@ -84,7 +88,7 @@ export function liftLoadHours(
   if (!(to > from)) return 0;
   let ms = 0;
   for (const s of slots) {
-    if (s.liftId !== liftId) continue;
+    if (s.liftId !== liftId || s.workOrderStatus === 'CANCELLED' || s.workOrderDeleted) continue;
     const a = Math.max(new Date(s.startAt).getTime(), from);
     const b = Math.min(new Date(s.endAt).getTime(), to);
     if (b > a) ms += b - a;

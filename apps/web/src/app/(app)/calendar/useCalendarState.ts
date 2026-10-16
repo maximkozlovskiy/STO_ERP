@@ -27,6 +27,7 @@ import type {
   PendingResizeState,
   PendingSlot,
   ResizeState,
+  SavedMechanic,
   SlotForm,
   StatsPeriod,
 } from './calendar.types';
@@ -151,6 +152,9 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   // Запис, відкритий карткою виду «Місяць» (BR-CAL-009): денного списку `slots` у цьому виді
   // немає, тож «минулий» рахується від самого слота.
   const [monthEditSlot, setMonthEditSlot] = useState<CalendarSlot | null>(null);
+  // Механік і підйомник запису на момент відкриття форми (BR-CAL-012): збережений механік, якого
+  // вже не можна обрати, форма показує недоступною опцією, доки його не змінять.
+  const [editingSaved, setEditingSaved] = useState<{ id: string } & SavedMechanic>();
 
   const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('day');
   const [statsFrom, setStatsFrom] = useState('');
@@ -625,6 +629,12 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       : '';
     const cpDisp = slot.counterpartyName ?? '';
     setCpDisplay(cpDisp);
+    setEditingSaved({
+      id: slot.id,
+      liftId: slot.liftId ?? '',
+      employeeId: slot.employeeId ?? '',
+      employeeName: slot.employeeName ?? null,
+    });
     setForm({
       liftId: slot.liftId ?? '',
       employeeId: slot.employeeId ?? '',
@@ -1077,6 +1087,18 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     return false;
   }, [editingSlotId, monthEditSlot, slots, nowMs, minHour]);
 
+  const savedMechanic = useMemo<SavedMechanic | null>(
+    () =>
+      editingSlotId && editingSaved?.id === editingSlotId
+        ? {
+            liftId: editingSaved.liftId,
+            employeeId: editingSaved.employeeId,
+            employeeName: editingSaved.employeeName,
+          }
+        : null,
+    [editingSlotId, editingSaved],
+  );
+
   // ── Modal close / save callbacks ──────────────────────────────────────────
 
   const handleModalClose = useCallback(() => {
@@ -1137,6 +1159,9 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   );
 
   return {
+    /** Право створювати й змінювати записи (BR-CAL-010): механіку — лише перегляд. */
+    canManageSlots,
+
     // URL / view
     calView,
     setCalView,
@@ -1201,6 +1226,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     editingSlotId,
     setEditingSlotId,
     isEditingPast,
+    savedMechanic,
     error,
     setError,
     saving,

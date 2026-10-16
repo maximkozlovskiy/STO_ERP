@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useId, useRef, useCallback, useState } from 'react';
 import type { Dispatch, SetStateAction, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import dynamic from 'next/dynamic';
@@ -34,6 +34,7 @@ import type {
   WorkOrderOption,
   VehicleOption,
   PendingSlot,
+  SavedMechanic,
   SlotForm,
 } from './calendar.types';
 import {
@@ -46,6 +47,7 @@ import {
   fmtKyivDate,
   toDateString,
 } from './calendar.utils';
+import { CalendarMechanicField } from './CalendarMechanicField';
 
 /**
  * Backend split boundaries — MUST match `apps/api/src/modules/calendar/calendar.service.ts`
@@ -246,6 +248,8 @@ interface CalendarSlotModalProps {
    * запису, — інакше «Оновити» і «Видалити» закінчуються 403 (Bug #871).
    */
   readOnly?: boolean;
+  /** Механік і підйомник запису, що редагується (BR-CAL-012); `null` — новий запис. */
+  savedMechanic?: SavedMechanic | null;
   pendingSlot: PendingSlot | null;
   setPendingSlot: Dispatch<SetStateAction<PendingSlot | null>>;
 
@@ -284,6 +288,7 @@ export function CalendarSlotModal({
   editingSlotId,
   isEditingPast: isPastLocked,
   readOnly = false,
+  savedMechanic = null,
   pendingSlot,
   setPendingSlot,
   formMounted,
@@ -312,6 +317,11 @@ export function CalendarSlotModal({
     conflictWoNumbers,
   } = useConflictCheck();
   const mountedRef = useRef(true);
+  const liftSelectId = useId();
+  const setMechanic = useCallback(
+    (employeeId: string) => setForm(f => ({ ...f, employeeId })),
+    [setForm],
+  );
 
   // ── Detail modals ─────────────────────────────────────────────────────────
   const [cpDetailOpen, setCpDetailOpen] = useState(false);
@@ -691,7 +701,8 @@ export function CalendarSlotModal({
     setError('');
     const body = {
       liftId: form.liftId || undefined,
-      employeeId: form.employeeId || undefined,
+      // «— без механіка —» у зміні запису знімає механіка (`null`); у новому — поля просто немає.
+      employeeId: form.employeeId || (editingSlotId ? null : undefined),
       workOrderId: form.workOrderId || undefined,
       counterpartyId: form.counterpartyId || undefined,
       vehicleId: form.vehicleId || undefined,
@@ -801,12 +812,16 @@ export function CalendarSlotModal({
             </div>
           )}
 
-          <div className="grid grid-cols-4 gap-3 items-start">
+          <div className="grid grid-cols-5 gap-3 items-start">
             <div>
-              <label className="block text-[13px] font-medium text-muted-foreground mb-1">
+              <label
+                htmlFor={liftSelectId}
+                className="block text-[13px] font-medium text-muted-foreground mb-1"
+              >
                 {t('slot.fieldLift')} <span className="text-destructive">*</span>
               </label>
               <Select
+                id={liftSelectId}
                 value={form.liftId}
                 disabled={isEditingPast}
                 onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
@@ -820,6 +835,13 @@ export function CalendarSlotModal({
                 ))}
               </Select>
             </div>
+            <CalendarMechanicField
+              liftId={form.liftId}
+              value={form.employeeId}
+              onChange={setMechanic}
+              saved={savedMechanic}
+              disabled={isEditingPast}
+            />
             <div>
               <DateTimePickerInput
                 label={t('slot.fieldStart')}

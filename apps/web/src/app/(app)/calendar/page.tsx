@@ -225,6 +225,7 @@ function CalendarPageClient() {
           editingSlotId={cs.editingSlotId}
           isEditingPast={cs.isEditingPast}
           readOnly={!canManageSlots}
+          savedMechanic={cs.savedMechanic}
           pendingSlot={cs.pendingSlot}
           setPendingSlot={cs.setPendingSlot}
           formMounted={cs.formMounted}

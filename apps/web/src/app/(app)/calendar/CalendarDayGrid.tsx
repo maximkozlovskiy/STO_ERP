@@ -1,6 +1,12 @@
 'use client';
 
-import { memo, useMemo, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  memo,
+  useMemo,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { Trash2, Plus, UserRound } from 'lucide-react';
 import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core';
@@ -31,6 +37,11 @@ interface DraggableSlotProps {
   /** Категорія BR-CAL-008 з кінцем ланцюжка — колір і іконка блоку (BR-CAL-011). */
   category: SlotCategory;
   isEditing: boolean;
+  /**
+   * Право змінювати записи (BR-CAL-010). Без нього (механік) блок не перетягується, ручок зміни
+   * меж і курсорів перетягування немає — лише відкриття запису для перегляду.
+   */
+  canManage: boolean;
   windowStart: number;
   totalHours: number;
   onEdit: (slot: CalendarSlot) => void;
@@ -45,6 +56,7 @@ const DraggableSlot = memo(function DraggableSlot({
   slot,
   category,
   isEditing,
+  canManage,
   windowStart,
   totalHours,
   onEdit,
@@ -67,7 +79,20 @@ const DraggableSlot = memo(function DraggableSlot({
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: slot.id,
     data: { slot },
+    disabled: !canManage,
   });
+  // Механіку — звичайна кнопка перегляду: без «draggable» для читача екрана, з Enter і пробілом.
+  const contentProps = canManage
+    ? { ...listeners, ...attributes }
+    : {
+        role: 'button',
+        tabIndex: 0,
+        onKeyDown: (e: ReactKeyboardEvent<HTMLDivElement>) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          onEdit(slot);
+        },
+      };
   const style: CSSProperties = {
     left: `${left}%`,
     width: `${width}%`,
@@ -113,21 +138,24 @@ const DraggableSlot = memo(function DraggableSlot({
       className={`absolute top-1 bottom-1 rounded border border-border border-l-4 ${barClassName} ${bgClassName} text-foreground text-xs overflow-hidden group select-none ring-offset-1 ring-offset-surface flex flex-col ${isEditing ? 'ring-2 ring-amber-600 shadow-md' : ''}`}
       title={titleTooltip}
     >
-      <div
-        className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-foreground/10 rounded-l flex items-center justify-center"
-        onPointerDown={e => {
-          e.stopPropagation();
-          onResizeStart(e, slot.id, 'start');
-        }}
-        aria-label={t('day.editStart')}
-      >
-        <div className="w-0.5 h-4 bg-foreground/30 rounded" />
-      </div>
+      {canManage && (
+        <div
+          className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-foreground/10 rounded-l flex items-center justify-center"
+          onPointerDown={e => {
+            e.stopPropagation();
+            onResizeStart(e, slot.id, 'start');
+          }}
+          aria-label={t('day.editStart')}
+          data-part="resize-start"
+        >
+          <div className="w-0.5 h-4 bg-foreground/30 rounded" />
+        </div>
+      )}
 
       <div
-        className="@container flex-1 flex flex-col px-3 cursor-grab active:cursor-grabbing min-w-0 py-1 relative"
-        {...listeners}
-        {...attributes}
+        className={`@container flex-1 flex flex-col px-3 min-w-0 py-1 relative ${canManage ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
+        data-part="content"
+        {...contentProps}
         onClick={() => onEdit(slot)}
       >
         {/* Верхній рядок: тип запису, час, продовження; справа — іконка категорії. У вузькому
@@ -182,16 +210,19 @@ const DraggableSlot = memo(function DraggableSlot({
         </div>
       </div>
 
-      <div
-        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-foreground/10 rounded-r flex items-center justify-center"
-        onPointerDown={e => {
-          e.stopPropagation();
-          onResizeStart(e, slot.id, 'end');
-        }}
-        aria-label={t('day.editEnd')}
-      >
-        <div className="w-0.5 h-4 bg-foreground/30 rounded" />
-      </div>
+      {canManage && (
+        <div
+          className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-foreground/10 rounded-r flex items-center justify-center"
+          onPointerDown={e => {
+            e.stopPropagation();
+            onResizeStart(e, slot.id, 'end');
+          }}
+          aria-label={t('day.editEnd')}
+          data-part="resize-end"
+        >
+          <div className="w-0.5 h-4 bg-foreground/30 rounded" />
+        </div>
+      )}
     </div>
   );
 });
@@ -333,6 +364,7 @@ interface DroppableLiftRowProps {
   ghost: GhostSlot | null;
   pending: PendingSlot | null;
   editingSlotId: string | null;
+  canManage: boolean;
   blockedWidth: number;
   /** Лінія «зараз», % ширини; `null` — не сьогодні або поза робочими годинами (BR-CAL-011). */
   nowLine: number | null;
@@ -361,6 +393,7 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
   ghost,
   pending,
   editingSlotId,
+  canManage,
   blockedWidth,
   nowLine,
   chainEnds,
@@ -442,6 +475,7 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
           slot={s}
           category={daySlotCategory(s, chainEnds, nowMs)}
           isEditing={s.id === editingSlotId}
+          canManage={canManage}
           windowStart={windowStart}
           totalHours={totalHours}
           onEdit={onEdit}
@@ -515,6 +549,7 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
     windowStart,
     windowEnd,
     totalHours,
+    canManageSlots,
   } = state;
 
   // Group booking slots by their assigned liftId
@@ -540,7 +575,8 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       {/* ── Hint ───────────────────────────────────────────────────────────── */}
-      {!loading && lifts.length > 0 && !pendingSlot && !showAdd && (
+      {/* Підказка про малювання й перетягування — лише тим, кому це доступно (BR-CAL-010) */}
+      {canManageSlots && !loading && lifts.length > 0 && !pendingSlot && !showAdd && (
         <p className="text-xs text-muted-foreground mb-2">{t('day.hintDraw')}</p>
       )}
       {pendingSlot && !showAdd && (
@@ -645,6 +681,7 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                       ghost={ghost}
                       pending={pendingSlot}
                       editingSlotId={editingSlotId}
+                      canManage={canManageSlots}
                       blockedWidth={blockedWidth}
                       nowLine={nowLine}
                       chainEnds={dayChainEnds}
@@ -693,17 +730,19 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                   )}
                   {s.notes && <span className="ml-2 text-xs text-muted-foreground">{s.notes}</span>}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void removeSlot(s.id)}
-                  title={t('day.deleteSlotTitle')}
-                  aria-label={t('day.deleteSlotAria', {
-                    time: `${fmtTime(s.startAt)}–${fmtTime(s.endAt)}`,
-                  })}
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                </Button>
+                {canManageSlots && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void removeSlot(s.id)}
+                    title={t('day.deleteSlotTitle')}
+                    aria-label={t('day.deleteSlotAria', {
+                      time: `${fmtTime(s.startAt)}–${fmtTime(s.endAt)}`,
+                    })}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
+                )}
               </div>
             ))}
           </div>

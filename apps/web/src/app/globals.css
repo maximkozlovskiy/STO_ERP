@@ -60,6 +60,8 @@
   --color-warning-subtle:     hsl(48 96% 95%);
   --color-warning-text:       hsl(26 83% 30%);
   --color-warning-border:     hsl(38 92% 72%);
+  /* Смуга категорії «В роботі» в календарі (BR-CAL-008): `warning` на білому — 2,1:1, норма 3:1 */
+  --color-warning-strong:     hsl(28 90% 42%);
 
   --color-info:            hsl(199 89% 48%);
   --color-info-foreground: hsl(0 0% 100%);
@@ -71,6 +73,10 @@
   --color-purple-subtle:   hsl(270 100% 97%);
   --color-purple-text:     hsl(262 83% 44%);
   --color-purple-border:   hsl(270 88% 82%);
+
+  /* Коричневий — категорія «Скасовано» в календарі (BR-CAL-008): смуга й іконка, фон блоку */
+  --color-brown:           hsl(24 40% 32%);
+  --color-brown-subtle:    hsl(30 33% 95%);
 
   /* ─── Border / Input ─── */
   --color-border:       hsl(214 32% 91%);
@@ -460,6 +466,9 @@ button, a, input, select, textarea {
   --color-purple-subtle:      hsl(270 40% 14%);
   --color-purple-border:      hsl(270 50% 30%);
   --color-purple-text:        hsl(262 83% 72%);
+  --color-warning-strong:     hsl(38 92% 50%);
+  --color-brown:              hsl(28 40% 62%);
+  --color-brown-subtle:       hsl(25 25% 14%);
 }
 
 /* Dark mode: inputs need slightly elevated background to be visible against dark card */
@@ -518,6 +527,7 @@ button, a, input, select, textarea {
     --color-warning-subtle:     hsl(38 40% 13%);
     --color-info-subtle:        hsl(199 40% 13%);
     --color-purple-subtle:      hsl(270 40% 14%);
+    --color-brown-subtle:       hsl(25 25% 14%);
   }
 }
 

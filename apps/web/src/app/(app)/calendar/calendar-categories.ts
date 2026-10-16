@@ -83,10 +83,13 @@ export function countCategories(
 }
 
 /**
- * `className` — колір значка й тексту (на `bg-surface`, контраст перевірено для лічильників),
- * `barClassName` — колір смуги зліва на картці запису (BR-CAL-009),
+ * Кожна категорія — СВІЙ колір смуги й іконки, сім різних (BR-CAL-008, рішення власника 2026-10-16).
+ * `className` — колір значка й тексту лічильника (на `bg-surface` — від 4,5:1),
+ * `barClassName` — смуга зліва на картці запису (BR-CAL-009) і блоці «Дня»: від 3:1 до `bg-surface`,
+ * `bg-secondary` і фону блоку в світлій, темній і системній темній темах (WCAG 1.4.11),
  * `bgClassName` — світлий фон блоку запису у виді «День» (BR-CAL-011). Текст на ньому —
  * `text-foreground`: від 16:1 у світлій темі й від 12:1 у темній (WCAG 1.4.3, норма 4,5:1).
+ * Базові `warning`, `info`, `success` на білому дають 2,1–2,9:1, тому смуги — темніші відтінки.
  */
 export const CATEGORY_VIEW: Record<
   SlotCategory,
@@ -101,32 +104,32 @@ export const CATEGORY_VIEW: Record<
   inProgress: {
     icon: Wrench,
     className: 'text-warning-text',
-    barClassName: 'border-l-warning',
+    barClassName: 'border-l-warning-strong',
     bgClassName: 'bg-warning-subtle',
   },
   planned: {
     icon: Clock,
     className: 'text-info-text',
-    barClassName: 'border-l-info',
+    barClassName: 'border-l-info-text',
     bgClassName: 'bg-info-subtle',
   },
   draft: {
     icon: PencilLine,
-    className: 'text-muted-foreground',
-    barClassName: 'border-l-muted-foreground',
-    bgClassName: 'bg-muted',
+    className: 'text-purple-text',
+    barClassName: 'border-l-purple-text',
+    bgClassName: 'bg-purple-subtle',
   },
   done: {
     icon: CheckCircle2,
     className: 'text-success-text',
-    barClassName: 'border-l-success',
+    barClassName: 'border-l-success-text',
     bgClassName: 'bg-success-subtle',
   },
   cancelled: {
     icon: XCircle,
-    className: 'text-muted-foreground',
-    barClassName: 'border-l-border',
-    bgClassName: 'bg-muted',
+    className: 'text-brown',
+    barClassName: 'border-l-brown',
+    bgClassName: 'bg-brown-subtle',
   },
   other: {
     icon: Circle,

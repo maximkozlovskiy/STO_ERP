@@ -21,8 +21,21 @@ export interface CalendarSlot {
   cpPhone?: string | null;
   vehicleSummary?: string | null;
   vehiclePlate?: string | null;
-  /** Механік запису «Прізвище Ім'я»; `null` — не призначено (BR-CAL-011). */
+  /** Механік запису «Прізвище Ім'я»; `null` — не призначено, звільнений чи видалений (BR-CAL-011). */
   employeeName?: string | null;
+  /** Наряд запису видалено — завантаження поста запис не рахує (BR-CAL-011). */
+  workOrderDeleted?: boolean;
+}
+
+/**
+ * Механік і підйомник запису, що редагується, на момент відкриття форми (BR-CAL-012): механіка,
+ * якого вже не можна обрати, форма показує недоступною опцією, доки його не змінять.
+ */
+export interface SavedMechanic {
+  liftId: string;
+  employeeId: string;
+  /** `null` — механіка не призначено, або він звільнений чи видалений (BR-CAL-011). */
+  employeeName: string | null;
 }
 
 export interface Lift {
