@@ -110,6 +110,14 @@ export class CalendarSlotResponseDto {
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() workOrderNumber?: string;
   @ApiPropertyOptional() workOrderStatus?: string | null;
+  /**
+   * Наряд запису видалено (soft delete): завантаження поста такий запис не рахує (BR-CAL-011).
+   * `false` — наряду немає або він живий.
+   */
+  @ApiPropertyOptional({
+    description: 'Наряд запису видалено — завантаження поста його не рахує (BR-CAL-011)',
+  })
+  workOrderDeleted?: boolean;
   @ApiPropertyOptional() counterpartyId?: string | null;
   @ApiPropertyOptional() counterpartyName?: string;
   @ApiPropertyOptional() cpPhone?: string | null;

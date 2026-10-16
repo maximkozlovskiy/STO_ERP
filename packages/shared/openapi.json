@@ -2307,6 +2307,16 @@
             }
           },
           {
+            "name": "liftId",
+            "required": false,
+            "in": "query",
+            "description": "Лише закріплені за підйомником і не звільнені (FIRED) — механіки запису календаря (BR-CAL-012)",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "required": false,
             "in": "query",
@@ -24291,6 +24301,10 @@
           "workOrderStatus": {
             "type": "string",
             "nullable": true
+          },
+          "workOrderDeleted": {
+            "type": "boolean",
+            "description": "Наряд запису видалено — завантаження поста його не рахує (BR-CAL-011)"
           },
           "counterpartyId": {
             "type": "string",

@@ -181,6 +181,15 @@ export class EmployeesQueryDto {
   @IsBooleanString()
   showDeleted?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Лише закріплені за підйомником і не звільнені (FIRED) — механіки запису календаря (BR-CAL-012)',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  liftId?: string;
+
   @ApiPropertyOptional({ default: 20 })
   @IsOptional()
   @Type(() => Number)

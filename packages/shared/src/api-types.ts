@@ -7394,6 +7394,8 @@ export interface components {
             notes?: string | null;
             workOrderNumber?: string;
             workOrderStatus?: string | null;
+            /** @description Наряд запису видалено — завантаження поста його не рахує (BR-CAL-011) */
+            workOrderDeleted?: boolean;
             counterpartyId?: string | null;
             counterpartyName?: string;
             cpPhone?: string | null;
@@ -10572,6 +10574,8 @@ export interface operations {
                 role?: "OWNER" | "ADMIN" | "RECEPTIONIST" | "MECHANIC" | "STOREKEEPER" | "ACCOUNTANT" | "XLSX_MANAGER" | "CLIENT";
                 /** @description Показати soft-deleted */
                 showDeleted?: string;
+                /** @description Лише закріплені за підйомником і не звільнені (FIRED) — механіки запису календаря (BR-CAL-012) */
+                liftId?: string;
                 limit?: number;
                 /** @description Поле сортування */
                 sortBy?: "lastName" | "createdAt";

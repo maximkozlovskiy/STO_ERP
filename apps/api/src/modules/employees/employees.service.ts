@@ -37,6 +37,11 @@ export class EmployeesService {
       ...(showDeleted ? {} : { deletedAt: null }),
     };
     if (query.role) where.role = query.role;
+    // BR-CAL-012: поле «Механік» у записі календаря — закріплені за підйомником, без звільнених.
+    if (query.liftId) {
+      where.employeeLifts = { some: { liftId: query.liftId } };
+      where.status = { not: 'FIRED' };
+    }
     if (query.q) {
       const q = query.q.trim();
       if (q.length > 0) {
@@ -438,7 +443,9 @@ export class EmployeesService {
     }
     await this.prisma.$transaction(
       async tx => {
-        await tx.employeeBranch.deleteMany({ where: { employeeId: id } });
+        // `orgId` у where: EmployeeBranch — tenant-модель, і guard без нього кидав 500 (картка
+        // співробітника не зберігалась узагалі, знайдено E2E закріплення механіка, BR-CAL-012).
+        await tx.employeeBranch.deleteMany({ where: { employeeId: id, orgId } });
         if (dto.branchIds.length) {
           await tx.employeeBranch.createMany({
             data: dto.branchIds.map(branchId => ({ employeeId: id, branchId, orgId })),

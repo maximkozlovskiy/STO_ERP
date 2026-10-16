@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
+import { CalendarSlotStatus, CalendarSlotType, EmployeeStatus, UserRole } from '@prisma/client';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -48,6 +48,7 @@ const SLOT_INCLUDE = {
     select: {
       number: true,
       status: true,
+      deletedAt: true,
       counterpartyId: true,
       counterparty: {
         select: { firstName: true, lastName: true, companyName: true, phone: true } as const,
@@ -74,13 +75,13 @@ const CONFLICT_SELECT = {
   status: true,
   type: true,
   workOrder: {
-    select: { number: true, status: true },
+    select: { number: true, status: true, deletedAt: true },
   },
 } as const;
 
 /**
- * Ім'я механіка запису з уже прочитаних (BR-CAL-011): `null` — механіка не призначено або
- * його немає в організації.
+ * Ім'я механіка запису з уже прочитаних (BR-CAL-011): `null` — механіка не призначено, його
+ * немає в організації або він звільнений.
  */
 function nameOf(employeeId: string | null, names: ReadonlyMap<string, string>): string | null {
   return employeeId ? names.get(employeeId) || null : null;
@@ -204,7 +205,7 @@ export class CalendarService {
           parentSlotId: true,
           status: true,
           type: true,
-          workOrder: { select: { number: true, status: true } },
+          workOrder: { select: { number: true, status: true, deletedAt: true } },
         },
         take: 500,
       });
@@ -227,6 +228,7 @@ export class CalendarService {
           select: {
             number: true,
             status: true,
+            deletedAt: true,
             counterpartyId: true,
             counterparty: {
               select: { firstName: true, lastName: true, companyName: true, phone: true },
@@ -245,8 +247,8 @@ export class CalendarService {
   /**
    * «Прізвище Ім'я» механіків записів — ОДНИМ запитом на всю відповідь, не на кожен запис
    * (BR-CAL-011). `include` неможливий: у `CalendarSlot` немає зв'язку з `Employee`, лише
-   * колонка `employeeId`. Без `deletedAt: null` — звільнений механік лишається на своїх
-   * минулих записах.
+   * колонка `employeeId`. Звільнений (`FIRED`) чи видалений механік не показується —
+   * `employeeName = null` (рішення власника 2026-10-16).
    */
   private async employeeNames(
     orgId: string,
@@ -255,11 +257,36 @@ export class CalendarService {
     const ids = [...new Set(slots.flatMap(s => (s.employeeId ? [s.employeeId] : [])))];
     if (ids.length === 0) return new Map();
     const employees = await this.prisma.employee.findMany({
-      where: { orgId, id: { in: ids } },
+      where: { orgId, id: { in: ids }, deletedAt: null, status: { not: EmployeeStatus.FIRED } },
       select: { id: true, firstName: true, lastName: true },
       take: ids.length,
     });
     return new Map(employees.map(e => [e.id, formatPersonName(e.lastName, e.firstName)]));
+  }
+
+  /**
+   * BR-CAL-012: механік запису — активний (не звільнений, не видалений) MECHANIC своєї
+   * організації, закріплений за підйомником запису (`EmployeeLift`). Без підйомника закріпитись
+   * нема за чим — `null`. Один запит: умови — у `where`, а не перевірка прочитаного.
+   * `null` → виклик кидає 400 `err.calendar.employeeNotOnLift`.
+   */
+  private async mechanicOnLift(
+    orgId: string,
+    employeeId: string,
+    liftId: string | null,
+  ): Promise<{ id: string } | null> {
+    if (!liftId) return null;
+    return this.prisma.employee.findFirst({
+      where: {
+        id: employeeId,
+        orgId,
+        deletedAt: null,
+        role: UserRole.MECHANIC,
+        status: { not: EmployeeStatus.FIRED },
+        employeeLifts: { some: { liftId } },
+      },
+      select: { id: true },
+    });
   }
 
   async createSlot(
@@ -274,7 +301,7 @@ export class CalendarService {
 
     // Validate FK ownership to prevent cross-tenant injection — independent checks run in parallel.
     // Narrow projection — потрібне лише існування (NotFoundException), не дані.
-    const [lift, employee, workOrder, counterparty, vehicle] = await Promise.all([
+    const [lift, mechanic, workOrder, counterparty, vehicle] = await Promise.all([
       dto.liftId
         ? this.prisma.lift.findFirst({
             where: { id: dto.liftId, orgId, deletedAt: null },
@@ -283,11 +310,10 @@ export class CalendarService {
             select: { id: true, zone: { select: { branchId: true } } },
           })
         : Promise.resolve(null),
+      // BR-CAL-012: механік закріплений за підйомником запису — і для продовження багатоденного,
+      // бо воно отримує той самий підйомник і механіка.
       dto.employeeId
-        ? this.prisma.employee.findFirst({
-            where: { id: dto.employeeId, orgId, deletedAt: null },
-            select: { id: true },
-          })
+        ? this.mechanicOnLift(orgId, dto.employeeId, dto.liftId ?? null)
         : Promise.resolve(null),
       dto.workOrderId
         ? this.prisma.workOrder.findFirst({
@@ -310,8 +336,8 @@ export class CalendarService {
     ]);
     if (dto.liftId && !lift)
       throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
-    if (dto.employeeId && !employee)
-      throw new NotFoundException(translateError('err.calendar.employeeNotFound', getLocale()));
+    if (dto.employeeId && !mechanic)
+      throw new BadRequestException(translateError('err.calendar.employeeNotOnLift', getLocale()));
     if (dto.workOrderId && !workOrder)
       throw new NotFoundException(translateError('err.calendar.workOrderNotFound', getLocale()));
     if (dto.counterpartyId && !counterparty)
@@ -466,23 +492,16 @@ export class CalendarService {
 
     // Existing slot + independent FK ownership checks run in parallel; error priority preserved below
     const checkLift = dto.liftId !== undefined && dto.liftId !== null;
-    const checkEmployee = dto.employeeId !== undefined && dto.employeeId !== null;
     const checkWorkOrder = dto.workOrderId !== undefined && dto.workOrderId !== null;
     const checkCounterparty = dto.counterpartyId !== undefined && dto.counterpartyId !== null;
     const checkVehicle = dto.vehicleId !== undefined && dto.vehicleId !== null;
-    const [existing, lift, employee, workOrder, counterparty, vehicle] = await Promise.all([
+    const [existing, lift, workOrder, counterparty, vehicle] = await Promise.all([
       // existing — потрібен повним: startAt/endAt/liftId/employeeId юзаються нижче.
       this.prisma.calendarSlot.findFirst({ where: { id, orgId, deletedAt: null } }),
       // FK guards — narrow projection (тільки існування важливе для NotFoundException).
       checkLift
         ? this.prisma.lift.findFirst({
             where: { id: dto.liftId!, orgId, deletedAt: null },
-            select: { id: true },
-          })
-        : Promise.resolve(null),
-      checkEmployee
-        ? this.prisma.employee.findFirst({
-            where: { id: dto.employeeId!, orgId, deletedAt: null },
             select: { id: true },
           })
         : Promise.resolve(null),
@@ -509,8 +528,6 @@ export class CalendarService {
       throw new NotFoundException(translateError('err.calendar.slotNotFound', getLocale()));
     if (checkLift && !lift)
       throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
-    if (checkEmployee && !employee)
-      throw new NotFoundException(translateError('err.calendar.employeeNotFound', getLocale()));
     if (checkWorkOrder && !workOrder)
       throw new NotFoundException(translateError('err.calendar.workOrderNotFound', getLocale()));
     if (checkCounterparty && !counterparty)
@@ -526,6 +543,17 @@ export class CalendarService {
     const liftId = dto.liftId !== undefined ? dto.liftId : existing.liftId;
 
     const employeeId = dto.employeeId !== undefined ? dto.employeeId : existing.employeeId;
+
+    // BR-CAL-012: механіка перевіряє лише зміна механіка чи підйомника. Форма шле обидва поля
+    // щоразу, тож порівнюється з БД, а не «поле є в запиті»: збережений механік, якого вже
+    // звільнили чи відкріпили, не заважає змінити час чи нотатки запису.
+    if (employeeId && (employeeId !== existing.employeeId || liftId !== existing.liftId)) {
+      const mechanic = await this.mechanicOnLift(orgId, employeeId, liftId);
+      if (!mechanic)
+        throw new BadRequestException(
+          translateError('err.calendar.employeeNotOnLift', getLocale()),
+        );
+    }
 
     let updated;
     try {
@@ -587,6 +615,7 @@ export class CalendarService {
                 select: {
                   number: true,
                   status: true,
+                  deletedAt: true,
                   counterpartyId: true,
                   counterparty: {
                     select: { firstName: true, lastName: true, companyName: true, phone: true },
@@ -812,7 +841,7 @@ export class CalendarService {
     endAt: Date;
     status: CalendarSlotStatus;
     type: CalendarSlotType;
-    workOrder: { number: string; status: string } | null;
+    workOrder: { number: string; status: string; deletedAt: Date | null } | null;
     employeeName?: string | null;
   }): CalendarSlotResponseDto {
     return {
@@ -829,6 +858,7 @@ export class CalendarService {
       type: slot.type,
       workOrderNumber: slot.workOrder?.number,
       workOrderStatus: slot.workOrder?.status ?? null,
+      workOrderDeleted: !!slot.workOrder?.deletedAt,
       counterpartyId: null,
       counterpartyName: undefined,
       cpPhone: null,
@@ -855,6 +885,7 @@ export class CalendarService {
     workOrder: {
       number: string;
       status: string;
+      deletedAt: Date | null;
       counterpartyId: string;
       counterparty: {
         firstName: string | null;
@@ -902,6 +933,7 @@ export class CalendarService {
       type: slot.type,
       workOrderNumber: slot.workOrder?.number,
       workOrderStatus: slot.workOrder?.status ?? null,
+      workOrderDeleted: !!slot.workOrder?.deletedAt,
       counterpartyId,
       counterpartyName,
       cpPhone,
