@@ -586,6 +586,7 @@ export const en: Record<string, string> = {
   // ── Exception messages: calendar module ──
   'err.calendar.invalidDateFormatExpected': 'Invalid date format. Expected YYYY-MM-DD',
   'err.calendar.endBeforeStart': 'The end time must be after the start time',
+  'err.calendar.employeeOnLeave': 'The mechanic is on leave',
   'err.calendar.employeeNotOnLift': 'The mechanic is not assigned to this lift',
   'err.calendar.syncRoleForbidden':
     'Only the owner, an administrator or the reception can change calendar records',
