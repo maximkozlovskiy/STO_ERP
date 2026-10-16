@@ -69,7 +69,9 @@ test.describe('Зведення в боковій панелі — наряди'
       await apiCall(p, 'GET', `/vehicles?customerGarageId=${garageId}&limit=1`),
     )?.id;
     const workId = first(await apiCall(p, 'GET', '/works?limit=1'))?.id;
-    const employeeId = first(await apiCall(p, 'GET', '/employees?limit=1'))?.id;
+    const employeeId = first(
+      await apiCall(p, 'GET', '/employees?limit=1&role=MECHANIC&sortBy=createdAt&sortDir=asc'),
+    )?.id;
     expect(
       { cpId, branchId, vehicleId, workId, employeeId },
       'seed має містити клієнта з авто, філію, роботу і працівника',

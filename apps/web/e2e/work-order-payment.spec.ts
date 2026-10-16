@@ -163,7 +163,7 @@ test.describe('Оплата наряду з документа наряду', ()
     const [currencies, branches, employees] = await Promise.all([
       api(p, token, 'GET', '/currencies'),
       api(p, token, 'GET', '/branches'),
-      api(p, token, 'GET', '/employees?limit=1'),
+      api(p, token, 'GET', '/employees?limit=1&role=MECHANIC&sortBy=createdAt&sortDir=asc'),
     ]);
     const uah = listOf<{ id: string; code: string }>(currencies.body).find(c => c.code === 'UAH');
     ctx.branchId = listOf<{ id: string }>(branches.body)[0]?.id ?? '';

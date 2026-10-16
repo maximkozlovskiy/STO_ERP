@@ -102,7 +102,9 @@ async function setUp(page: Page): Promise<Fixture> {
     (await api(page, 'GET', `/vehicles?customerGarageId=${garageId}&limit=1`)).body,
   )[0]?.id;
   const workId = items((await api(page, 'GET', '/works?limit=1')).body)[0]?.id;
-  const employeeId = items((await api(page, 'GET', '/employees?limit=1')).body)[0]?.id;
+  const employeeId = items(
+    (await api(page, 'GET', '/employees?limit=1&role=MECHANIC&sortBy=createdAt&sortDir=asc')).body,
+  )[0]?.id;
   expect(
     { cpId, branchId, vehicleId, workId, employeeId },
     'seed має містити клієнта з авто, філію, роботу і працівника',
