@@ -208,4 +208,33 @@ describe('CreateWorkOrderModal — планові дати (BR-WO-019, BR-WO-020
     expect(warning.textContent).toMatch(/буде відхилено/);
     expect(warning.textContent).not.toMatch(/Можна зберегти/);
   });
+
+  // guards: BR-WO-020
+  it('новий наряд із датами на зайнятий підйомник — попередження ще до «Створити наряд»', async () => {
+    mockApi({ workStartHour: 8, workEndHour: 18 });
+    conflict.current = {
+      anyConflict: true,
+      liftConflict: true,
+      employeeConflict: false,
+      conflictSlots: [{ id: 'busy', startAt: '', endAt: '', status: 'BOOKED', type: 'WORK' }],
+    };
+    render(
+      <CreateWorkOrderModal
+        open
+        onClose={vi.fn()}
+        prefill={{
+          branchId: B1,
+          liftId: '10000000-0000-4000-8000-000000000009',
+          plannedStartAt: '2026-05-22T16:00',
+          plannedEndAt: '2026-05-22T17:00',
+        }}
+      />,
+    );
+    const warning = await screen.findByText(/Підйомник зайнятий/, undefined, { timeout: 3_000 });
+    expect(warning.textContent).toMatch(/буде відхилено/);
+    const check = (apiFetchMock.mock.calls as Call[]).find(
+      ([p]) => p === '/calendar/slots/check-conflicts',
+    );
+    expect(JSON.parse(check![1]!.body!)).not.toHaveProperty('excludeWorkOrderId');
+  });
 });

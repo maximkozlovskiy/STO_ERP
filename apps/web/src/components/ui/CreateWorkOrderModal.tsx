@@ -593,13 +593,14 @@ export function CreateWorkOrderModal({
 
   // A3-modal: invoiceConflict ESC-ефект перенесено у useWorkOrderActions.
 
-  // Conflict check when planned period or liftId changes (edit mode only).
+  // Conflict check when planned period or liftId changes — і для нового наряду: з BR-WO-020
+  // створення наряду з датами вже займає підйомник (сервер відповідає 400 на зайнятий).
   // Backend expects ISO with TZ; DateTimePickerInput emits naive "YYYY-MM-DDTHH:mm"
   // (no TZ). Normalize via DST-aware localDateTimeToISO (passes through values
   // already ending Z / ±HH:MM). Без цієї нормалізації backend new Date("2026-06-10T14:00")
   // парсить як UTC → +2/+3h зсув → false positives.
   useEffect(() => {
-    if (!isEditMode || !form.plannedStartAt || !form.plannedEndAt) {
+    if (!open || !form.plannedStartAt || !form.plannedEndAt) {
       clearConflict();
       return;
     }
@@ -621,7 +622,7 @@ export function CreateWorkOrderModal({
     form.plannedStartAt,
     form.plannedEndAt,
     form.liftId,
-    isEditMode,
+    open,
     workOrderId,
     checkConflict,
     clearConflict,

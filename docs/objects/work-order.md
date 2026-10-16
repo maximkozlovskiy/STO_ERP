@@ -301,7 +301,7 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 - web: `components/ui/__tests__/DateTimePickerInput.test.tsx` (минулі дні й години, робочі години,
   перша година, `closeHour`, очищення), `planned-dates.test.ts` (автокінець і нормогодини),
   `CreateWorkOrderModal.planned-dates.test.tsx` (години філії, без діалогу й `by-work-order`,
-  календар перечитує, зайнятий підйомник — попередження «буде відхилено»), `app/(app)/calendar/__tests__/CalendarSlotModal.work-order.test.tsx` (наряд із
+  календар перечитує, зайнятий підйомник — попередження «буде відхилено», і для нового наряду), `app/(app)/calendar/__tests__/CalendarSlotModal.work-order.test.tsx` (наряд із
   форми запису — без дубля), `app/(app)/work-orders/[id]/__tests__/WorkOrderAuditSection.test.tsx`
   (журнал змін за ролями).
 - E2E `apps/web/e2e/work-order-calendar-record.spec.ts` — наряд із датами й підйомником через
