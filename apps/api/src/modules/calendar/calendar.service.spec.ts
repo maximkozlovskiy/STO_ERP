@@ -245,8 +245,12 @@ describe('CalendarService.syncWorkOrderSlots', () => {
       expect(where).toEqual({
         orgId,
         deletedAt: null,
-        workOrderId: { not: workOrderId },
-        AND: [{ OR: [{ workOrderId: null }, { workOrder: { is: { deletedAt: null } } }] }],
+        // Записи без наряду — теж «чужі»: `{ not: X }` сам по собі відкидає NULL (поведінку
+        // стереже calendar.conflicts.spec.ts, describe syncWorkOrderSlots).
+        AND: [
+          { OR: [{ workOrderId: null }, { workOrder: { is: { deletedAt: null } } }] },
+          { OR: [{ workOrderId: null }, { workOrderId: { not: workOrderId } }] },
+        ],
         startAt: { lt: new Date('2026-05-22T11:00:00.000Z') },
         endAt: { gt: new Date('2026-05-22T10:00:00.000Z') },
         OR: [{ liftId }, { employeeId }],
