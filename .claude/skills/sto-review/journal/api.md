@@ -277,3 +277,13 @@ PATCH `{ isActive: false }` правила з видаленою пізніше 
 `git diff <base> -- apps/api/src | grep -nE "^\+.*(Без|без) .deletedAt"`. **Фікс:** кейс на
 таблиці працівників, що виконує `where` (orgId, `id in`, `deletedAt`), з видаленим рядком і рядком
 чужої організації (`calendar.service.spec.ts`, b72cab2d). **Severity:** SUGGESTION
+
+### 2026-10-16 — Фільтр списку для поля форми поступався `showDeleted` — §4
+
+**Сигнал:** `GET /employees?liftId=` (кандидати поля «Механік», BR-CAL-012) додавав до `where`
+закріплення і `status ≠ FIRED`, але `deletedAt` брав із загального прапорця `showDeleted`: із
+`showDeleted=true` список віддавав видалених, яких `POST /calendar` відхиляє 400. **Grep:**
+`git diff <base> -- apps/api/src | grep -nE "^\+\s+if \(query\.[a-zA-Z]+Id\) \{"` → у гілці
+звуження перевірити, чи вона перекриває КОЖЕН загальний прапорець (`showDeleted`, `status`).
+**Фікс:** `where.deletedAt = null` у гілці `liftId` + кейс із `showDeleted: 'true'` і контролем
+без `liftId` (`employees.lift-filter.spec.ts`, 3c41f6c9). **Severity:** SUGGESTION

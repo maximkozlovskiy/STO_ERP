@@ -116,6 +116,9 @@ grep -nE "paidAmount.*(increment|decrement).*dto\.amount|prevPaid \+ dto\.amount
       запиту без нього: мутант «додати `deletedAt: null`» виживає, і рішення тримається лише на
       коментарі. Grep: `git diff <base> -- apps/api/src | grep -nE "^\+.*(Без|без) .deletedAt"` →
       для кожного — кейс із рядком `deletedAt: <дата>` (`journal/api.md`, 2026-10-15)
+- [ ] **Фільтр списку «кандидати для поля форми» (`?liftId=`) повторює правило сервера запису
+      цілком і перекриває загальні прапорці списку (`showDeleted`)** — інакше список пропонує те,
+      що запис відхилить 400 (`journal/api.md`, 2026-10-16)
 - [ ] `SettlementsService.createTransaction` → internal `amount > 0 && Number.isFinite(amount)` guard
 - [ ] **Новий виклик `docNumbers.next(orgId, 'X')` → тип `X` є в `seed.ts`, `setup.service.ts` І в backfill-міграції.** Інакше створення документа дає 404 на кожній org, а unit-тести (мок `DocumentNumberService`) зелені. Детектор і взірець міграції — `journal/api.md`, запис 2026-10-07. Severity: CRITICAL
 - [ ] **Статичний сторож у spec (читає код regex-ом) — fail-closed:** аргумент, який він не може прочитати як літерал (`data: updates`, shorthand, spread), має бути порушенням, і на кожну обхідну форму є контрольний кейс (`journal/api.md`, 2026-10-07)
