@@ -1,6 +1,10 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AUDIT_VIEW_ROLES } from '@sto/shared';
+import { apiFetch } from '@/lib/api-client';
+import { useAuth } from '@/lib/auth';
 import { fmtDateTime } from '@/lib/format';
 
 interface AuditEventItem {
@@ -12,12 +16,40 @@ interface AuditEventItem {
 }
 
 interface WorkOrderAuditSectionProps {
-  auditEvents: AuditEventItem[];
+  woId: string;
 }
 
-export function WorkOrderAuditSection({ auditEvents }: WorkOrderAuditSectionProps) {
+/**
+ * «Журнал змін» наряду. Лише ролям із доступом до `GET /audit` (`AUDIT_VIEW_ROLES`: власник,
+ * адміністратор, бухгалтер): для приймальні й механіка — ні запиту (інакше 403 у консолі), ні
+ * блоку (рішення власника 2026-10-16). Порожній журнал — блок не показується.
+ */
+export function WorkOrderAuditSection({ woId }: WorkOrderAuditSectionProps) {
   const { t } = useTranslation('workOrders');
-  if (auditEvents.length === 0) return null;
+  const { employee } = useAuth();
+  const canView = AUDIT_VIEW_ROLES.includes(employee?.role ?? '');
+  const [auditEvents, setAuditEvents] = useState<AuditEventItem[]>([]);
+
+  useEffect(() => {
+    if (!canView) {
+      setAuditEvents([]);
+      return;
+    }
+    let cancelled = false;
+    // Вторинний блок: збій журналу не ламає сторінку — блок просто не показується.
+    apiFetch<{ items: AuditEventItem[] }>(`/audit?entityType=WorkOrder&entityId=${woId}`)
+      .then(res => {
+        if (!cancelled) setAuditEvents(res.items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setAuditEvents([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canView, woId]);
+
+  if (!canView || auditEvents.length === 0) return null;
 
   return (
     <div className="bg-surface rounded-xl border border-border overflow-hidden">

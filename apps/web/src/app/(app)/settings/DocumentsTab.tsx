@@ -51,7 +51,6 @@ export default function DocumentsTab() {
   const initialRef = useRef<{
     recalcPlannedHoursFromLines: boolean;
     recalcActualHoursFromLines: boolean;
-    syncCalendarSlotWithPlannedHours: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -61,7 +60,6 @@ export default function DocumentsTab() {
         initialRef.current = {
           recalcPlannedHoursFromLines: s.recalcPlannedHoursFromLines ?? true,
           recalcActualHoursFromLines: s.recalcActualHoursFromLines ?? true,
-          syncCalendarSlotWithPlannedHours: s.syncCalendarSlotWithPlannedHours ?? true,
         };
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : t('common.loadError')));
@@ -75,20 +73,15 @@ export default function DocumentsTab() {
       const initial = initialRef.current;
       const recalcNow = orgSettings.recalcPlannedHoursFromLines ?? true;
       const recalcActualNow = orgSettings.recalcActualHoursFromLines ?? true;
-      const syncNow = orgSettings.syncCalendarSlotWithPlannedHours ?? true;
       const patch: {
         recalcPlannedHoursFromLines?: boolean;
         recalcActualHoursFromLines?: boolean;
-        syncCalendarSlotWithPlannedHours?: boolean;
       } = {};
       if (!initial || initial.recalcPlannedHoursFromLines !== recalcNow) {
         patch.recalcPlannedHoursFromLines = recalcNow;
       }
       if (!initial || initial.recalcActualHoursFromLines !== recalcActualNow) {
         patch.recalcActualHoursFromLines = recalcActualNow;
-      }
-      if (!initial || initial.syncCalendarSlotWithPlannedHours !== syncNow) {
-        patch.syncCalendarSlotWithPlannedHours = syncNow;
       }
       // Nothing actually changed — short-circuit без RTT і без зайвого toast.
       if (Object.keys(patch).length === 0) {
@@ -103,7 +96,6 @@ export default function DocumentsTab() {
       initialRef.current = {
         recalcPlannedHoursFromLines: updated.recalcPlannedHoursFromLines ?? true,
         recalcActualHoursFromLines: updated.recalcActualHoursFromLines ?? true,
-        syncCalendarSlotWithPlannedHours: updated.syncCalendarSlotWithPlannedHours ?? true,
       };
       if (features.toastEnabled) toast.success(t('common.saved'));
     } catch (e: unknown) {
@@ -161,22 +153,6 @@ export default function DocumentsTab() {
           <Toggle
             checked={orgSettings.recalcActualHoursFromLines ?? true}
             onChange={v => setOrgSettings({ ...orgSettings, recalcActualHoursFromLines: v })}
-          />
-        </div>
-
-        <div
-          className="flex items-center justify-between gap-4 py-2 border-b border-border"
-          title={t('documents.syncSlot.tooltip')}
-        >
-          <div>
-            <p className="text-sm font-medium text-foreground">{t('documents.syncSlot.title')}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {t('documents.syncSlot.description')}
-            </p>
-          </div>
-          <Toggle
-            checked={orgSettings.syncCalendarSlotWithPlannedHours ?? true}
-            onChange={v => setOrgSettings({ ...orgSettings, syncCalendarSlotWithPlannedHours: v })}
           />
         </div>
       </section>

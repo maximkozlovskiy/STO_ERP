@@ -79,7 +79,7 @@ import {
 } from '@/lib/panel-schema';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { type SavedFilter } from '@/hooks/useSavedFilters';
-import { InlineEditCell, InlineViewCell } from '@/components/ui/inline-edit-cell';
+import { InlineViewCell } from '@/components/ui/inline-edit-cell';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useListPage } from '@/hooks/useListPage';
@@ -1072,51 +1072,25 @@ function WorkOrdersPageInner() {
                               {wo.plannedAt ? fmtShortDateTime(wo.plannedAt) : '—'}
                             </TableCell>
                           );
+                        // Планове завершення — лише перегляд: міняється в картці наряду разом із
+                        // часом і плановим початком (BR-WO-019 — робочі години, BR-WO-020 —
+                        // запис календаря). Інлайн-поле дати без часу ставило б північ.
                         if (col.key === 'dueDate')
                           return (
-                            <TableCell
-                              key="dueDate"
-                              className="text-[12px]"
-                              onClick={e => e.stopPropagation()}
-                            >
-                              {inlineEdit.isEditing(wo.id, 'dueDate') ? (
-                                <InlineEditCell
-                                  value={wo.dueDate ? wo.dueDate.slice(0, 10) : ''}
-                                  saving={inlineEdit.saving}
-                                  onCommit={v => {
-                                    void inlineEdit.commitEdit(v).catch(() => {});
-                                  }}
-                                  onCancel={inlineEdit.cancelEdit}
-                                  type="date"
-                                  className="w-36"
-                                />
-                              ) : (
-                                <InlineViewCell
-                                  value={wo.dueDate ?? ''}
-                                  enabled={features.inlineEditEnabled && !wo.deletedAt}
-                                  onClick={() =>
-                                    inlineEdit.startEdit(
-                                      wo.id,
-                                      'dueDate',
-                                      wo.dueDate ? wo.dueDate.slice(0, 10) : '',
-                                    )
-                                  }
-                                >
-                                  {wo.dueDate ? (
-                                    <span
-                                      className={cn(
-                                        'font-medium',
-                                        isOverdue(wo.dueDate, nowMs)
-                                          ? 'text-warning'
-                                          : 'text-muted-foreground',
-                                      )}
-                                    >
-                                      {fmtDate(wo.dueDate)}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground">—</span>
+                            <TableCell key="dueDate" className="text-[12px]">
+                              {wo.dueDate ? (
+                                <span
+                                  className={cn(
+                                    'font-medium',
+                                    isOverdue(wo.dueDate, nowMs)
+                                      ? 'text-warning'
+                                      : 'text-muted-foreground',
                                   )}
-                                </InlineViewCell>
+                                >
+                                  {fmtDate(wo.dueDate)}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
                               )}
                             </TableCell>
                           );

@@ -4,8 +4,10 @@
 // Винесено без зміни поведінки — cohesive суб-форма (дати/нормогодини). Фактична колонка
 // read-only (заповнюється з ліній): дати завжди disabled+NOOP, нормогодини = liveActualHours
 // (обчислені з ліній) або form.actualHours, disabled коли live-значення присутнє.
-import { memo, type ChangeEvent } from 'react';
+import { memo, useMemo, type ChangeEvent } from 'react';
 import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
+import { localDateTimeToISO } from '@/lib/format';
+import type { WorkHoursWindow } from './planned-dates';
 
 const NOOP_DT_CHANGE: (v: string) => void = () => {};
 
@@ -20,6 +22,10 @@ export interface PlannedActualMetricsProps {
   onPlannedEndChange: (v: string) => void;
   onPlannedHoursChange: (e: ChangeEvent<HTMLInputElement>) => void;
   onActualHoursChange: (e: ChangeEvent<HTMLInputElement>) => void;
+  /** Робочі години філії наряду (BR-WO-019): поза ними планові час недоступний. */
+  workHours: WorkHoursWindow;
+  /** «Зараз» (оновлюється щохвилини): минулі дні й години недоступні (BR-WO-019). */
+  now: Date;
 }
 
 // sto-optimize (2.17): усі пропси — примітиви (canEdit/*Hours/liveActualHours) або
@@ -37,7 +43,15 @@ function PlannedActualMetricsBase({
   onPlannedEndChange,
   onPlannedHoursChange,
   onActualHoursChange,
+  workHours,
+  now,
 }: PlannedActualMetricsProps) {
+  // Завершення — пізніше за початок: найраніше — хвилина після початку, якщо він у майбутньому.
+  const endMin = useMemo(() => {
+    const iso = plannedStartAt ? localDateTimeToISO(plannedStartAt) : null;
+    const start = iso ? new Date(iso).getTime() + 60_000 : NaN;
+    return Number.isFinite(start) && start > now.getTime() ? new Date(start) : now;
+  }, [plannedStartAt, now]);
   return (
     <div className="rounded-lg border border-border overflow-hidden">
       <div className="grid grid-cols-2 divide-x divide-border">
@@ -56,6 +70,10 @@ function PlannedActualMetricsBase({
             onChange={onPlannedStartChange}
             disabled={!canEdit}
             inputClassName="h-8 text-[13px]"
+            minDateTime={now}
+            minHour={workHours.startHour}
+            maxHour={workHours.endHour - 1}
+            clearable
           />
           <DateTimePickerInput
             label="Дата та час завершення"
@@ -63,6 +81,10 @@ function PlannedActualMetricsBase({
             onChange={onPlannedEndChange}
             disabled={!canEdit}
             inputClassName="h-8 text-[13px]"
+            minDateTime={endMin}
+            minHour={workHours.startHour}
+            closeHour={workHours.endHour}
+            clearable
           />
           <div className="flex flex-col gap-1 min-w-20">
             <label className="text-[11px] text-muted-foreground font-medium">Нормогодин</label>

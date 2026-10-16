@@ -11,7 +11,7 @@ import {
 /**
  * A3-modal: reference-data + org-settings хук, винесений з CreateWorkOrderModal (God-component 3708р).
  * Self-contained: тягне 6 довідників (branches/lifts/warehouses/employees/units + per-CP vehicles/contracts)
- * і org-налаштування (vatMode/vatRate/recalc-flags/syncCalendar) через apiFetch + warm sessionStorage cache.
+ * і org-налаштування (vatMode/vatRate/recalc-flags) через apiFetch + warm sessionStorage cache.
  * Нуль coupling у form/lines/parts модала — vehicle auto-select single повертається через колбек
  * `onSingleVehicle`, щоб хук не залежав від form-shape.
  */
@@ -80,7 +80,6 @@ export function useReferenceData() {
   // WO модалка ефективно off коли GET /settings/organisation lag-ить чи не повертає поле.
   const [recalcPlannedHoursEnabled, setRecalcPlannedHoursEnabled] = useState(true);
   const [recalcActualHoursEnabled, setRecalcActualHoursEnabled] = useState(true);
-  const [syncCalendarEnabled, setSyncCalendarEnabled] = useState(true);
 
   const vehicleReqRef = useRef(0);
   const contractReqRef = useRef(0);
@@ -157,7 +156,6 @@ export function useReferenceData() {
         defaultVatRateId?: string | null;
         recalcPlannedHoursFromLines?: boolean;
         recalcActualHoursFromLines?: boolean;
-        syncCalendarSlotWithPlannedHours?: boolean;
       }>('/settings/organisation'),
       apiFetch<{ id: string; rate: number; isDefault: boolean; isActive?: boolean }[]>(
         '/settings/tax-rates',
@@ -169,7 +167,6 @@ export function useReferenceData() {
         // response, що не містить поля, settings/DocumentsTab показує on, а тут off.
         setRecalcPlannedHoursEnabled(org.recalcPlannedHoursFromLines ?? true);
         setRecalcActualHoursEnabled(org.recalcActualHoursFromLines ?? true);
-        setSyncCalendarEnabled(org.syncCalendarSlotWithPlannedHours ?? true);
         const list = Array.isArray(rates) ? rates : [];
         const def = org.defaultVatRateId
           ? list.find(r => r.id === org.defaultVatRateId)
@@ -234,7 +231,6 @@ export function useReferenceData() {
     vatRate,
     recalcPlannedHoursEnabled,
     recalcActualHoursEnabled,
-    syncCalendarEnabled,
     loadVehicles,
     loadContracts,
     employeesById,

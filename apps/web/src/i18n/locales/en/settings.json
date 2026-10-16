@@ -91,11 +91,6 @@
       "tooltip": "When enabled, saving a work order automatically calculates the “Actual labor hours” field as the sum of lines: if a line has “Hrs (actual)” it is used, otherwise “Hrs (planned)”.",
       "description": "When a work order is saved, the “Actual labor hours” field is automatically calculated as the sum of work lines. For each line “Hrs (actual)” is used if filled, otherwise “Hrs (planned)”."
     },
-    "syncSlot": {
-      "title": "Sync calendar slot when work order planned hours change",
-      "tooltip": "When enabled, saving a work order checks whether the planned dates match the calendar slots and offers to sync.",
-      "description": "When a work order is saved, if the planned dates differ from the calendar slot, the system will offer to sync the slot."
-    },
     "noChanges": "No changes",
     "saving": "Saving..."
   },

@@ -5,7 +5,8 @@ import { createPortal } from 'react-dom';
 import { DayPicker } from 'react-day-picker';
 import { uk } from 'date-fns/locale';
 import { format, parse, isValid } from 'date-fns';
-import { Calendar } from 'lucide-react';
+import { Calendar, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 const DAY_PICKER_CLASS_NAMES = {
@@ -29,6 +30,21 @@ const DAY_PICKER_CLASS_NAMES = {
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
 const MINUTES = ['00', '15', '30', '45'];
+const KYIV_PARTS = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Europe/Kyiv',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** Київські дата 'YYYY-MM-DD' і хвилина доби миті (значення пікера — київський настінний час). */
+function kyivParts(d: Date): { ymd: string; minute: number } {
+  const p = Object.fromEntries(KYIV_PARTS.formatToParts(d).map(x => [x.type, x.value]));
+  return { ymd: `${p.year}-${p.month}-${p.day}`, minute: Number(p.hour) * 60 + Number(p.minute) };
+}
 
 interface DateTimePickerInputProps {
   value: string; // "YYYY-MM-DDTHH:mm" або "" (у timeOnly режимі: "HH:mm" або "")
@@ -42,6 +58,19 @@ interface DateTimePickerInputProps {
   timeOnly?: boolean; // лише вибір часу, без DayPicker
   minHour?: number; // мінімальна допустима година (включно)
   maxHour?: number; // максимальна допустима година (включно)
+  /**
+   * Година закриття (кінець робочого дня): доступна лише як «HH:00» — останній момент дня для
+   * часу завершення. Замінює `maxHour`. Для часу початку — `maxHour = закриття − 1`.
+   */
+  closeHour?: number;
+  /**
+   * Найраніший допустимий момент (BR-WO-019 — планові дати не в минулому): дні до нього
+   * недоступні в календарі, у його день — лише час від нього (хвилини з кроком 15 округлюються
+   * вгору). Порівнюється з київським настінним часом, яким є значення пікера.
+   */
+  minDateTime?: Date;
+  /** Кнопка «Очистити дату» біля заповненого поля (значення стає ''). */
+  clearable?: boolean;
 }
 
 function parseDateTime(value: string): { date: Date | undefined; time: string } {
@@ -71,14 +100,47 @@ export function DateTimePickerInput({
   timeOnly = false,
   minHour,
   maxHour,
+  closeHour,
+  minDateTime,
+  clearable = false,
 }: DateTimePickerInputProps) {
+  const { t } = useTranslation('common');
+  const showClear = Boolean(clearable && value && !disabled);
   placeholder = placeholder ?? (timeOnly ? 'ГГ:ХХ' : 'ДД.ММ.РРРР ГГ:ХХ');
-  const availableHours = useMemo(
-    () =>
-      HOURS.filter(
-        h => (minHour === undefined || +h >= minHour) && (maxHour === undefined || +h <= maxHour),
-      ),
-    [minHour, maxHour],
+  const minParts = useMemo(() => (minDateTime ? kyivParts(minDateTime) : null), [minDateTime]);
+
+  /** Чи можна обрати час `h:m` у день `ymd` (`null` — день не важливий: timeOnly). */
+  const isAllowed = useCallback(
+    (ymd: string | null, h: number, m: number) => {
+      if (minHour !== undefined && h < minHour) return false;
+      if (closeHour !== undefined) {
+        if (h > closeHour || (h === closeHour && m > 0)) return false;
+      } else if (maxHour !== undefined && h > maxHour) return false;
+      if (minParts && ymd !== null) {
+        if (ymd < minParts.ymd) return false;
+        if (ymd === minParts.ymd && h * 60 + m < minParts.minute) return false;
+      }
+      return true;
+    },
+    [minHour, maxHour, closeHour, minParts],
+  );
+  const hoursFor = useCallback(
+    (ymd: string | null) => HOURS.filter(h => MINUTES.some(m => isAllowed(ymd, +h, +m))),
+    [isAllowed],
+  );
+  const minutesFor = useCallback(
+    (ymd: string | null, h: string) => MINUTES.filter(m => isAllowed(ymd, +h, +m)),
+    [isAllowed],
+  );
+  /** Перший доступний час дня (вибір дня ставить його, якщо поточний час недоступний). */
+  const firstTime = useCallback(
+    (ymd: string | null): string | null => {
+      const h = hoursFor(ymd)[0];
+      if (h === undefined) return null;
+      const m = minutesFor(ymd, h)[0];
+      return m === undefined ? null : `${h}:${m}`;
+    },
+    [hoursFor, minutesFor],
   );
   const [open, setOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
@@ -90,12 +152,40 @@ export function DateTimePickerInput({
     () => (timeOnly ? { date: undefined, time: value.slice(0, 5) } : parseDateTime(value)),
     [value, timeOnly],
   );
-  // default hour fallback має поважати minHour/maxHour, інакше при
-  // відкритті picker з порожнім value та minHour=10 у `<select value="09">`
-  // не буде відповідної `<option>` (React warning + state-mismatch UX).
+  // День, до якого застосовується час: обраний, інакше сьогодні (так само його бере applyTime).
+  const todayYmd = minParts?.ymd ?? format(new Date(), 'yyyy-MM-dd');
+  const selectedYmd = timeOnly
+    ? null
+    : selectedDate
+      ? format(selectedDate, 'yyyy-MM-dd')
+      : todayYmd;
+  const availableHours = useMemo(() => hoursFor(selectedYmd), [hoursFor, selectedYmd]);
+  // default hour fallback має поважати обмеження, інакше при відкритті picker з порожнім value
+  // та minHour=10 у `<select value="09">` не буде відповідної `<option>` (React warning).
   const fallbackHour = availableHours[0] ?? '09';
   const selectedHour = selectedTime ? selectedTime.slice(0, 2) : fallbackHour;
-  const selectedMinute = selectedTime ? selectedTime.slice(3, 5) : '00';
+  const availableMinutes = useMemo(
+    () => minutesFor(selectedYmd, selectedHour),
+    [minutesFor, selectedYmd, selectedHour],
+  );
+  const selectedMinute = selectedTime ? selectedTime.slice(3, 5) : (availableMinutes[0] ?? '00');
+  // Збережене значення поза обмеженнями (старий наряд із минулими датами) показується
+  // недоступною опцією — select не підміняє його мовчки першою доступною.
+  const hourOptions = availableHours.includes(selectedHour)
+    ? availableHours
+    : [...availableHours, selectedHour].sort();
+  const minuteOptions = availableMinutes.includes(selectedMinute)
+    ? availableMinutes
+    : [...availableMinutes, selectedMinute].sort();
+  // Дні до першого дня з доступним часом — недоступні (сьогодні після закриття — теж).
+  const disabledDays = useMemo(() => {
+    if (!minParts) return undefined;
+    const today = parse(minParts.ymd, 'yyyy-MM-dd', new Date());
+    if (firstTime(minParts.ymd) !== null) return { before: today };
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return { before: tomorrow };
+  }, [minParts, firstTime]);
 
   useEffect(() => {
     setMounted(true);
@@ -103,16 +193,16 @@ export function DateTimePickerInput({
 
   const applyTime = useCallback(
     (hour: string, minute: string) => {
+      // Нова година з хвилинами, яких у ній немає (09:00 при мінімумі 09:30) → перша доступна.
+      const minutes = minutesFor(selectedYmd, hour);
+      const m = minutes.includes(minute) ? minute : (minutes[0] ?? minute);
       if (timeOnly) {
-        onChange(`${hour}:${minute}`);
+        onChange(`${hour}:${m}`);
         return;
       }
-      const datePart = selectedDate
-        ? format(selectedDate, 'yyyy-MM-dd')
-        : format(new Date(), 'yyyy-MM-dd');
-      onChange(`${datePart}T${hour}:${minute}`);
+      onChange(`${selectedYmd ?? todayYmd}T${hour}:${m}`);
     },
-    [timeOnly, selectedDate, onChange],
+    [timeOnly, selectedYmd, todayYmd, minutesFor, onChange],
   );
 
   const updatePos = useCallback(() => {
@@ -178,8 +268,13 @@ export function DateTimePickerInput({
   const handleDaySelect = (day: Date | undefined) => {
     if (!day) return;
     const datePart = format(day, 'yyyy-MM-dd');
-    const time = selectedTime || '09:00';
-    onChange(`${datePart}T${time}`);
+    // Обраний час лишається, якщо він доступний у новий день; інакше — перша доступна година дня.
+    const [h, m] = (selectedTime || '').split(':').map(Number);
+    const keep =
+      selectedTime && h !== undefined && m !== undefined && isAllowed(datePart, h, m)
+        ? selectedTime
+        : null;
+    onChange(`${datePart}T${keep ?? firstTime(datePart) ?? selectedTime ?? '09:00'}`);
   };
 
   return (
@@ -199,13 +294,30 @@ export function DateTimePickerInput({
           disabled={disabled}
           onClick={handleOpen}
           className={cn(
-            'w-full h-9 rounded border bg-surface px-3 pr-9 text-[14px] text-foreground placeholder:text-muted-foreground cursor-pointer',
+            'w-full h-9 rounded border bg-surface px-3 text-[14px] text-foreground placeholder:text-muted-foreground cursor-pointer',
+            // Місце під іконку календаря; з кнопкою очищення — під обидві.
+            showClear ? 'pr-14' : 'pr-9',
             'border-border hover:border-border-hover',
             'focus:outline-none focus:border-primary focus:ring-3 focus:ring-brand-100 transition-all duration-150',
             disabled && 'opacity-60 cursor-not-allowed bg-secondary',
             inputClassName,
           )}
         />
+        {showClear && (
+          <button
+            type="button"
+            // Назва містить назву поля: у картці наряду дві такі кнопки (початок і завершення).
+            aria-label={label ? `${t('clearDate')}: ${label}` : t('clearDate')}
+            title={t('clearDate')}
+            onClick={() => {
+              onChange('');
+              setOpen(false);
+            }}
+            className="absolute right-7 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           type="button"
           tabIndex={-1}
@@ -239,6 +351,11 @@ export function DateTimePickerInput({
                   locale={uk}
                   weekStartsOn={1}
                   showOutsideDays
+                  disabled={disabledDays}
+                  // Відкривається на місяці значення, а без нього — на першому доступному дні:
+                  // інакше планове завершення через місяць показувало б поточний місяць, де
+                  // недоступне все.
+                  defaultMonth={selectedDate ?? disabledDays?.before}
                   classNames={DAY_PICKER_CLASS_NAMES}
                 />
               </div>
@@ -253,12 +370,13 @@ export function DateTimePickerInput({
                 <div className="flex flex-col gap-1 flex-1">
                   <span className="text-[11px] text-muted-foreground">Год.</span>
                   <select
+                    aria-label="Година"
                     value={selectedHour}
                     onChange={e => applyTime(e.target.value, selectedMinute)}
                     className="h-9 rounded border border-border bg-surface text-[14px] text-foreground px-2 focus:outline-none focus:border-primary focus:ring-3 focus:ring-brand-100"
                   >
-                    {availableHours.map(h => (
-                      <option key={h} value={h}>
+                    {hourOptions.map(h => (
+                      <option key={h} value={h} disabled={!availableHours.includes(h)}>
                         {h}
                       </option>
                     ))}
@@ -268,12 +386,13 @@ export function DateTimePickerInput({
                 <div className="flex flex-col gap-1 flex-1">
                   <span className="text-[11px] text-muted-foreground">Хв.</span>
                   <select
+                    aria-label="Хвилини"
                     value={selectedMinute}
                     onChange={e => applyTime(selectedHour, e.target.value)}
                     className="h-9 rounded border border-border bg-surface text-[14px] text-foreground px-2 focus:outline-none focus:border-primary focus:ring-3 focus:ring-brand-100"
                   >
-                    {MINUTES.map(m => (
-                      <option key={m} value={m}>
+                    {minuteOptions.map(m => (
+                      <option key={m} value={m} disabled={!availableMinutes.includes(m)}>
                         {m}
                       </option>
                     ))}

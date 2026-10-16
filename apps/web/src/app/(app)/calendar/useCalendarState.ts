@@ -13,6 +13,7 @@ import { PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-ki
 
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
+import { onCalendarChanged } from '@/lib/calendar-events';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useTranslation } from 'react-i18next';
@@ -551,6 +552,17 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   useEffect(() => {
     if (calView === 'day') load();
   }, [load, calView, lifts.length]);
+
+  // Наряд змінив свій запис календаря на сервері (BR-WO-020: збереження планових дат чи
+  // підйомника з картки наряду поверх календаря) — перечитати поточний вид.
+  useEffect(
+    () =>
+      onCalendarChanged(() => {
+        if (calView === 'day') load();
+        else if (calView === 'month' && yearMonth) void loadMonth(yearMonth, true);
+      }),
+    [calView, load, loadMonth, yearMonth],
+  );
 
   const prevDay = useCallback(() => {
     const d = new Date(date);

@@ -198,6 +198,8 @@
     "delete": "Видалити",
     "toastUpdated": "Слот оновлено",
     "toastCreated": "Слот створено",
+    "toastWoCreatedWithSlot": "Наряд {{number}} створено — запис у календарі додано",
+    "toastWoMechanicNotSet": "Механіка на запис наряду не призначено: {{error}}",
     "toastSplit": "Слот розбито на 2 дні: {{s1Start}}–{{s1End}} та {{s2Date}} {{s2Start}}–{{s2End}}",
     "toastDeleted": "Слот видалено",
     "errStartEndRequired": "Вкажіть час початку та завершення",

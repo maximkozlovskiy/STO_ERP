@@ -42,6 +42,13 @@ import { useStockTotals } from '@/hooks/useStockTotals';
 import { useWorkOrderActions } from '@/hooks/useWorkOrderActions';
 import { getCached } from '@/lib/ref-cache';
 import { kyivToday, isoToKyivLocalDateTime, localDateTimeToISO } from '@/lib/format';
+import { notifyCalendarChanged } from '@/lib/calendar-events';
+import { useBranchWorkHours } from '@/hooks/useBranchWorkHours';
+import {
+  calcEndFromHours,
+  calcPlannedHours,
+  DEFAULT_WORK_HOURS_WINDOW,
+} from './work-order/planned-dates';
 import {
   cn,
   displayCounterpartyName,
@@ -254,6 +261,9 @@ export interface CreatedWorkOrder {
   id: string;
   number: string;
   counterpartyId: string | null;
+  /** Плановий початок / завершення: обидва є → сервер уже створив запис календаря (BR-WO-020). */
+  plannedAt?: string | null;
+  dueDate?: string | null;
 }
 
 interface Props {
@@ -273,58 +283,8 @@ const nextKey = () =>
     ? crypto.randomUUID()
     : `k${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 
-// Calc working hours between two "YYYY-MM-DDTHH:mm" local datetime strings.
-// Returns rounded-to-2-decimals string, or '' if inputs are missing/invalid.
-const calcPlannedHours = (start?: string, end?: string): string => {
-  if (!start || !end) return '';
-  const s = new Date(start);
-  const e = new Date(end);
-  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || e <= s) return '';
-  const hours = (e.getTime() - s.getTime()) / 3_600_000;
-  return String(Math.round(hours * 100) / 100);
-};
-
-// Working day window: 08:00–20:00 (matches calendar WINDOW_START/WINDOW_END).
-const WORK_START_H = 8;
-const WORK_END_H = 20;
-
-// Given a "YYYY-MM-DDTHH:mm" start and hours value, compute plannedEndAt
-// respecting the working-hours window. Overflow beyond 20:00 continues on the
-// next day starting at 08:00 (same logic as CalendarSlotModal.calcEndAt).
-// Returns "YYYY-MM-DDTHH:mm" string, or '' if inputs invalid.
-const calcEndFromHours = (start: string, hours: number): string => {
-  if (!start || !Number.isFinite(hours) || hours <= 0) return '';
-  const base = new Date(start);
-  if (Number.isNaN(base.getTime())) return '';
-
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const startH = base.getHours();
-  const startM = base.getMinutes();
-  const startMinOfDay = startH * 60 + startM;
-  const durationMin = Math.round(hours * 60);
-  const endMinOfDay = startMinOfDay + durationMin;
-  const workEndMin = WORK_END_H * 60;
-
-  let endDate: Date;
-  let endH: number;
-  let endM: number;
-
-  if (endMinOfDay <= workEndMin) {
-    endDate = new Date(base);
-    endH = Math.floor(endMinOfDay / 60);
-    endM = endMinOfDay % 60;
-  } else {
-    // Overflow: next calendar day, starting at WORK_START_H
-    const overflowMin = endMinOfDay - workEndMin;
-    const day2Min = WORK_START_H * 60 + overflowMin;
-    endDate = new Date(base);
-    endDate.setDate(endDate.getDate() + 1);
-    endH = Math.floor(day2Min / 60);
-    endM = day2Min % 60;
-  }
-
-  return `${endDate.getFullYear()}-${pad(endDate.getMonth() + 1)}-${pad(endDate.getDate())}T${pad(endH)}:${pad(endM)}`;
-};
+// Планові нормогодини / автокінець — у робочих годинах філії: `work-order/planned-dates.ts`
+// (calcPlannedHours / calcEndFromHours), години — useBranchWorkHours (BR-WO-019).
 
 // Recalc plannedHours = max(currentVal, sum of normoHours across all lines).
 // Used when recalcPlannedHoursFromLines setting is enabled.
@@ -438,6 +398,20 @@ export function CreateWorkOrderModal({
     [watchedAll],
   );
 
+  // BR-WO-019: робочі години філії наряду (пікер планових дат, автокінець) і «зараз»
+  // (минулі дні й години недоступні; оновлюється щохвилини, поки картка відкрита).
+  const workHours = useBranchWorkHours(form.branchId);
+  const workHoursRef = useRef(workHours);
+  workHoursRef.current = workHours;
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!open) return;
+    setNowMs(Date.now());
+    const timer = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, [open]);
+  const now = useMemo(() => new Date(nowMs), [nowMs]);
+
   // `setForm` shim: приймає той самий SetStateAction<WorkOrderFormState>, що й старий useState.
   // Обчислює наступний стан із getValues()-знімка й пише лише змінені поля через setValue
   // (shouldDirty:true → RHF isDirty ↑, dirty-guard). getValues (а не `form`) — щоб послідовні
@@ -521,7 +495,6 @@ export function CreateWorkOrderModal({
     vatRate,
     recalcPlannedHoursEnabled,
     recalcActualHoursEnabled,
-    syncCalendarEnabled,
     loadVehicles: loadVehiclesRef,
     loadContracts,
     employeesById,
@@ -542,14 +515,6 @@ export function CreateWorkOrderModal({
   // reset() ставить нову «чисту» базу (rhfDirty=false), а програмні зміни (авто-вибір філії
   // Bug #639, currency defaultToBase Bug #747) йдуть через setValue({shouldDirty:false}) — не
   // вмикають dirty без крихкого baseline-rebaseline протоколу.
-  // track initial planned dates loaded from WO so we can detect
-  // whether they actually changed before prompting the calendar-sync dialog.
-  // Without this every save() — even one that only touches description or
-  // lines — would ask "Планові дати наряду змінились" and lie to the user.
-  const initialPlannedRef = useRef<{ startAt: string; endAt: string }>({
-    startAt: '',
-    endAt: '',
-  });
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
     setSaving(v);
@@ -570,7 +535,7 @@ export function CreateWorkOrderModal({
   // користувач не бачить (Bug #844). Разом із «видалено» це дає картку лише на перегляд.
   const notLoaded = isEditMode && loadedDocId !== workOrderId;
   const viewOnly = isDeleted || notLoaded;
-  // A3-modal: vatMode/vatRate/recalc*/syncCalendar перенесено у useReferenceData (див. вище).
+  // A3-modal: vatMode/vatRate/recalc* перенесено у useReferenceData (див. вище).
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
   const [payState, setPayState] = useState<WorkOrderPayState | null>(null);
   const [payOpen, setPayOpen] = useState(false);
@@ -715,11 +680,6 @@ export function CreateWorkOrderModal({
     createdWoRef.current = null;
     postedLineKeysRef.current = new Set();
     postedPartKeysRef.current = new Set();
-    // reset snapshot so previous WO's dates don't bleed into a new session.
-    initialPlannedRef.current = {
-      startAt: prefill?.plannedStartAt ?? '',
-      endAt: prefill?.plannedEndAt ?? '',
-    };
     setCounterpartyDisplayName(prefill?.counterpartyDisplay ?? '');
     setCpPhone('');
 
@@ -742,7 +702,12 @@ export function CreateWorkOrderModal({
         plannedStartAt: prefill?.plannedStartAt ?? '',
         plannedEndAt: prefill?.plannedEndAt ?? '',
         plannedHours:
-          prefill?.plannedHours ?? calcPlannedHours(prefill?.plannedStartAt, prefill?.plannedEndAt),
+          prefill?.plannedHours ??
+          calcPlannedHours(
+            prefill?.plannedStartAt,
+            prefill?.plannedEndAt,
+            workHoursRef.current ?? DEFAULT_WORK_HOURS_WINDOW,
+          ),
       });
       if (prefill?.counterpartyId) {
         loadVehicles(prefill.counterpartyId, prefill.vehicleId);
@@ -821,12 +786,6 @@ export function CreateWorkOrderModal({
           lines: loadedLines as unknown as WorkOrderFormInput['lines'],
           parts: loadedParts as unknown as WorkOrderFormInput['parts'],
         });
-        // snapshot loaded dates for later change-detection.
-        // Used by save() to decide whether to show calendar-sync dialog.
-        initialPlannedRef.current = {
-          startAt: isoToKyivLocalDateTime(wo.plannedAt),
-          endAt: isoToKyivLocalDateTime(wo.dueDate),
-        };
         setCounterpartyDisplayName(wo.counterpartyName ?? '');
         setCpPhone('');
         if (wo.counterpartyId) {
@@ -974,18 +933,20 @@ export function CreateWorkOrderModal({
   // (typing у будь-якому полі форми → новий handler → DateTimePickerInput не може
   // memo-skip). useCallback з [] deps безпечний: всі updates йдуть через setForm(f => ...)
   // — найсвіжіший state читається з callback-аргументу, не з closure.
+  // Робочі години — з ref: хендлери лишаються стабільними (memo PlannedActualMetrics), а
+  // рахують за годинами філії, обраної зараз.
   const handlePlannedStartChange = useCallback((v: string) => {
     setForm(f => ({
       ...f,
       plannedStartAt: v,
-      plannedHours: calcPlannedHours(v, f.plannedEndAt),
+      plannedHours: calcPlannedHours(v, f.plannedEndAt, workHoursRef.current),
     }));
   }, []);
   const handlePlannedEndChange = useCallback((v: string) => {
     setForm(f => ({
       ...f,
       plannedEndAt: v,
-      plannedHours: calcPlannedHours(f.plannedStartAt, v),
+      plannedHours: calcPlannedHours(f.plannedStartAt, v, workHoursRef.current),
     }));
   }, []);
   const handlePlannedHoursChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -994,11 +955,16 @@ export function CreateWorkOrderModal({
       const hours = Number(value.replace(',', '.'));
       const newEnd =
         f.plannedStartAt && Number.isFinite(hours) && hours > 0
-          ? calcEndFromHours(f.plannedStartAt, hours)
+          ? calcEndFromHours(f.plannedStartAt, hours, workHoursRef.current)
           : f.plannedEndAt;
       return { ...f, plannedHours: value, plannedEndAt: newEnd || f.plannedEndAt };
     });
   }, []);
+  /** Автокінець для рядків робіт (WorksTable): ті самі робочі години філії. */
+  const calcEndForLines = useCallback(
+    (start: string, hours: number) => calcEndFromHours(start, hours, workHoursRef.current),
+    [],
+  );
   const handleActualHoursChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setForm(f => ({ ...f, actualHours: value }));
@@ -1031,7 +997,7 @@ export function CreateWorkOrderModal({
           const newHours = calcPlannedHoursFromLines(f.plannedHours, updated);
           const newEnd =
             newHours !== f.plannedHours && f.plannedStartAt
-              ? calcEndFromHours(f.plannedStartAt, Number(newHours.replace(',', '.')))
+              ? calcEndForLines(f.plannedStartAt, Number(newHours.replace(',', '.')))
               : f.plannedEndAt;
           return { ...f, plannedHours: newHours, plannedEndAt: newEnd || f.plannedEndAt };
         });
@@ -1241,6 +1207,9 @@ export function CreateWorkOrderModal({
       postedLineKeysRef.current = new Set();
       postedPartKeysRef.current = new Set();
       dirty.resetDirty();
+      // BR-WO-020: наряд із плановими датами вже має запис календаря — відкритий календар
+      // перечитує записи.
+      notifyCalendarChanged();
       onCreated?.(wo);
       onClose();
     } catch (e: unknown) {
@@ -1450,58 +1419,10 @@ export function CreateWorkOrderModal({
           });
         }
       }
-      // show calendar-sync dialog ONLY when planned dates actually
-      // changed compared to the values loaded from the WO. Otherwise every save
-      // (even a description-only edit) prompts the user with a misleading
-      // "Планові дати наряду змінились" message and risks an unnecessary PATCH.
-      const datesChanged =
-        form.plannedStartAt !== initialPlannedRef.current.startAt ||
-        form.plannedEndAt !== initialPlannedRef.current.endAt;
-      if (
-        syncCalendarEnabled &&
-        workOrderId &&
-        form.plannedStartAt &&
-        form.plannedEndAt &&
-        datesChanged
-      ) {
-        const startAt = localDateTimeToISO(form.plannedStartAt) ?? form.plannedStartAt;
-        const endAt = localDateTimeToISO(form.plannedEndAt) ?? form.plannedEndAt;
-        const ok = await confirm({
-          title: 'Оновити слот в календарі?',
-          message: 'Планові дати наряду змінились. Оновити відповідний слот в календарі?',
-          confirmLabel: 'Так, оновити',
-          cancelLabel: 'Ні',
-        });
-        if (ok) {
-          try {
-            const result = await apiFetch<{ updated: number }>(
-              `/calendar/slots/by-work-order/${workOrderId}`,
-              {
-                method: 'PATCH',
-                body: JSON.stringify({ startAt, endAt }),
-              },
-            );
-            // коли у наряду немає слоту в календарі, backend silently
-            // повертає { updated: 0 }. Без user-facing feedback клієнт думає що
-            // синхронізація відбулась.
-            if (result && result.updated === 0 && features.toastEnabled) {
-              toast.info(t('toast.slotNotFound'));
-            }
-            // Освіжаємо snapshot, щоб повторні save() без змін дат не запитували знову.
-            initialPlannedRef.current = {
-              startAt: form.plannedStartAt,
-              endAt: form.plannedEndAt,
-            };
-          } catch (err: unknown) {
-            // Surface the error to user — silent failure hides 400/403/500 from backend.
-            // Не блокуємо закриття: показуємо повідомлення, але форма далі закривається.
-            const syncMsg = err instanceof Error ? err.message : 'Помилка синхронізації слоту';
-            if (features.toastEnabled) toast.warning(t('toast.slotSyncFailed', { error: syncMsg }));
-            // eslint-disable-next-line no-console
-            console.warn('Calendar sync failed:', err);
-          }
-        }
-      }
+      // BR-WO-020: запис календаря наряду сервер переносить / видаляє в тій самій транзакції,
+      // що й зберігає дати й підйомник (раніше — окремий діалог і PATCH by-work-order тут).
+      // Відкритий календар перечитує записи.
+      notifyCalendarChanged();
       postedLineKeysRef.current = new Set();
       postedPartKeysRef.current = new Set();
       dirty.resetDirty();
@@ -2238,6 +2159,8 @@ export function CreateWorkOrderModal({
                       onPlannedEndChange={handlePlannedEndChange}
                       onPlannedHoursChange={handlePlannedHoursChange}
                       onActualHoursChange={handleActualHoursChange}
+                      workHours={workHours}
+                      now={now}
                     />
 
                     {/* Попередження про конфлікт у календарі */}
@@ -2441,7 +2364,7 @@ export function CreateWorkOrderModal({
                   recalcPlannedHoursEnabled={recalcPlannedHoursEnabled}
                   setForm={setForm}
                   calcPlannedHoursFromLines={calcPlannedHoursFromLines}
-                  calcEndFromHours={calcEndFromHours}
+                  calcEndFromHours={calcEndForLines}
                   setWorkPickerOpen={setWorkPickerOpen}
                   setEditWorkPickerOpen={setEditWorkPickerOpen}
                   setServicePickerOpen={setServicePickerOpen}

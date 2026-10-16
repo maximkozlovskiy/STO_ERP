@@ -66,14 +66,6 @@ interface WorkOrderMedia {
   createdAt: string;
 }
 
-interface AuditEventItem {
-  id: string;
-  action: string;
-  diff: Record<string, unknown>;
-  createdAt: string;
-  user: { firstName: string; lastName: string };
-}
-
 interface WorkOrderLine {
   id: string;
   workOrderId?: string;
@@ -316,8 +308,6 @@ export default function WorkOrderCardPage() {
 
   const [media, setMedia] = useState<WorkOrderMedia[]>([]);
 
-  const [auditEvents, setAuditEvents] = useState<AuditEventItem[]>([]);
-
   const [savingTemplate, setSavingTemplate] = useState(false);
 
   const features = useUiFeatures();
@@ -364,10 +354,11 @@ export default function WorkOrderCardPage() {
     });
   }, [id, t]);
 
-  // Load secondary data (comments, media, audit) in parallel — single effect, single mount
+  // Load secondary data (comments, media) in parallel — single effect, single mount.
+  // «Журнал змін» читає сам WorkOrderAuditSection — лише для ролей із доступом (AUDIT_VIEW_ROLES).
   const loadSecondary = useCallback(() => {
-    // void: кожен запит має .catch з порожнім fallback — вторинні блоки (комментарі,
-    // медіа, аудит) просто лишаються порожніми, Promise.all не реджектиться.
+    // void: кожен запит має .catch з порожнім fallback — вторинні блоки (коментарі,
+    // медіа) просто лишаються порожніми, Promise.all не реджектиться.
     void Promise.all([
       apiFetch<{ items: Comment[] }>(`/comments?entityType=WorkOrder&entityId=${id}`).catch(() => ({
         items: [] as Comment[],
@@ -375,14 +366,10 @@ export default function WorkOrderCardPage() {
       apiFetch<{ items: WorkOrderMedia[] }>(`/work-orders/${id}/media`).catch(() => ({
         items: [] as WorkOrderMedia[],
       })),
-      apiFetch<{ items: AuditEventItem[] }>(`/audit?entityType=WorkOrder&entityId=${id}`).catch(
-        () => ({ items: [] as AuditEventItem[] }),
-      ),
-    ]).then(([comments, media, audit]) => {
+    ]).then(([comments, media]) => {
       if (!mountedRef.current) return;
       setComments(comments.items ?? []);
       setMedia(media.items ?? []);
-      setAuditEvents(audit.items ?? []);
     });
   }, [id]);
 
@@ -591,7 +578,6 @@ export default function WorkOrderCardPage() {
     repairCategory: '',
     description: '',
     inMileage: '',
-    dueDate: '',
     clientApproval: false,
   });
 
@@ -603,7 +589,6 @@ export default function WorkOrderCardPage() {
       repairCategory: wo.repairCategory ?? '',
       description: wo.description ?? '',
       inMileage: wo.inMileage != null ? String(wo.inMileage) : '',
-      dueDate: wo.dueDate ? wo.dueDate.slice(0, 10) : '',
       clientApproval: wo.clientApproval ?? false,
     });
     setEditModal(true);
@@ -622,7 +607,6 @@ export default function WorkOrderCardPage() {
           repairCategory: editForm.repairCategory || undefined,
           description: editForm.description || undefined,
           inMileage: editForm.inMileage ? Number(editForm.inMileage) : undefined,
-          dueDate: editForm.dueDate || undefined,
           clientApproval: editForm.clientApproval,
         }),
       });
@@ -1312,7 +1296,7 @@ export default function WorkOrderCardPage() {
         />
       </SectionErrorBoundary>
 
-      <WorkOrderAuditSection auditEvents={auditEvents} />
+      <WorkOrderAuditSection woId={id} />
 
       <ConfirmDialog {...dialogProps} />
 
@@ -1377,16 +1361,6 @@ export default function WorkOrderCardPage() {
               <option value="WARRANTY">{t('detail.editModal.categoryWarranty')}</option>
               <option value="SEASONAL">{t('detail.editModal.categorySeasonal')}</option>
             </Select>
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1">
-              {t('detail.editModal.dueDate')}
-            </label>
-            <DatePickerInput
-              value={editForm.dueDate}
-              onChange={v => setEditForm(f => ({ ...f, dueDate: v }))}
-              placeholder={t('detail.editModal.datePlaceholder')}
-            />
           </div>
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1">

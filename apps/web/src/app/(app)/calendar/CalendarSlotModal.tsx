@@ -48,30 +48,20 @@ import {
   toDateString,
 } from './calendar.utils';
 import { CalendarMechanicField } from './CalendarMechanicField';
+import type { CreatedWorkOrder } from '@/components/ui/CreateWorkOrderModal';
 
 /**
- * Backend split boundaries — MUST match `apps/api/src/modules/calendar/calendar.service.ts`
- * `WORK_DAY_START_H` / `WORK_DAY_END_H`. Until the backend reads BranchSettings, the frontend
- * uses these constants for overflow split detection (visual grid uses dynamic windowStart/End).
- * Mismatch with backend → frontend says "split at 18:00", backend keeps single slot 17–20.
+ * Кінець запису для поля «Кінець» за початком + тривалістю (хвилини від півночі). Межі дня —
+ * робочі години філії (`windowStart`/`windowEnd` з `GET /settings/work-hours`), ті самі, що
+ * сервер бере для розбиття запису на два дні (BR-CAL-007) і для планових дат наряду
+ * (BR-WO-019). Переповнення понад кінець дня — наступного дня від відкриття + залишок.
  */
-const SPLIT_DAY_START_H = 8;
-const SPLIT_DAY_END_H = 20;
-
-// sto-optimize (cycle 3/3): pure module-level constant — was recomputed on every calcEndAt() call
-// (called on each keystroke in "Тривалість" input under real-time normoHours conversion).
-const WORK_END_MIN = SPLIT_DAY_END_H * 60;
-
-/**
- * Given totalMin (start + normoHours in minutes), returns the display HH:mm for the "Кінець" field.
- * When totalMin overflows SPLIT_DAY_END_H (20:00), the end time is day-2 SPLIT_DAY_START_H + overflowMin.
- * When within the same day, returns the direct HH:mm.
- */
-function calcEndAt(totalMin: number): string {
+function calcEndAt(totalMin: number, dayStartH: number, dayEndH: number): string {
   const raw = Math.round(totalMin / 15) * 15; // snap to 15-min grid
-  if (raw > WORK_END_MIN) {
-    const overflowMin = raw - WORK_END_MIN;
-    const day2Min = SPLIT_DAY_START_H * 60 + overflowMin;
+  const workEndMin = dayEndH * 60;
+  if (raw > workEndMin) {
+    const overflowMin = raw - workEndMin;
+    const day2Min = dayStartH * 60 + overflowMin;
     return `${pad(Math.floor(day2Min / 60))}:${pad(day2Min % 60)}`;
   }
   const clamped = Math.min(raw, 23 * 60 + 59);
@@ -631,11 +621,9 @@ export function CalendarSlotModal({
     const [sh2, sm2] = form.startAt.split(':').map(Number);
     const startMin2 = (sh2 ?? 0) * 60 + (sm2 ?? 0);
     const nh2 = parseFloat(String(form.normoHours).replace(',', '.'));
-    // Backend splits at SPLIT_DAY_END_H (20:00) — NOT the dynamic windowEnd, which
-    // is only used for the visual grid. Mismatch would send an "overflow" payload that
-    // the backend keeps as a single slot.
+    // Сервер ділить запис на кінці робочого дня філії (BR-CAL-007) — це ж windowEnd сітки.
     const isOverflowSlot =
-      !isNaN(nh2) && nh2 > 0 && startMin2 + Math.round(nh2 * 60) > SPLIT_DAY_END_H * 60;
+      !isNaN(nh2) && nh2 > 0 && startMin2 + Math.round(nh2 * 60) > windowEnd * 60;
     if (!isOverflowSlot && form.endAt <= form.startAt) {
       setError(t('slot.errEndAfterStart'));
       return;
@@ -686,7 +674,7 @@ export function CalendarSlotModal({
     const endTimeForSave = isOverflowSlot
       ? (() => {
           // Send real wall-clock end on the same day so the backend split computes correctly:
-          // slot2 duration = endAt - 20:00 (WORK_DAY_END_H). E.g. 2h from 20:00 → endAt=22:00.
+          // slot2 duration = endAt - кінець робочого дня. E.g. 2h from 18:00 → endAt=20:00.
           // Cap at 23:59 — kyivDateTimeToISO rejects hours ≥ 24 (produces Invalid Date).
           const totalMinRaw = Math.min(startMin2 + Math.round(nh2 * 60), 23 * 60 + 59);
           return `${pad(Math.floor(totalMinRaw / 60))}:${pad(totalMinRaw % 60)}`;
@@ -746,6 +734,37 @@ export function CalendarSlotModal({
     } finally {
       setSaving(false);
     }
+  };
+
+  /**
+   * Наряд, створений із цієї форми, уже має запис календаря (BR-WO-020). Механік форми
+   * переноситься на запис наряду (PATCH самого запису); відмова сервера (механік зайнятий,
+   * багатоденний запис) не скасовує наряду — лише попереджає.
+   */
+  const adoptWorkOrderSlot = async (wo: CreatedWorkOrder) => {
+    const employeeId = form.employeeId;
+    if (employeeId) {
+      try {
+        const linked = await apiFetch<{ calendarSlots: { id: string; startAt: string }[] }>(
+          `/work-orders/${wo.id}/linked-documents`,
+        );
+        // Перша частина запису (найраніша) — та, на якій тримається механік.
+        const anchor = [...linked.calendarSlots].sort((x, y) =>
+          x.startAt.localeCompare(y.startAt),
+        )[0];
+        if (anchor) {
+          await apiFetch(`/calendar/slots/${anchor.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ employeeId }),
+          });
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : t('slot.errSaveFallback');
+        toast.warning(t('slot.toastWoMechanicNotSet', { error: msg }));
+      }
+    }
+    toast.success(t('slot.toastWoCreatedWithSlot', { number: wo.number }));
+    onSaved();
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -859,7 +878,7 @@ export function CalendarSlotModal({
                       const [h, m] = start.split(':').map(Number);
                       const totalMin =
                         (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(f.normoHours) * 60);
-                      const endAt = calcEndAt(totalMin);
+                      const endAt = calcEndAt(totalMin, windowStart, windowEnd);
                       next = { ...next, endAt };
                     }
                     if (pendingSlot) {
@@ -894,7 +913,7 @@ export function CalendarSlotModal({
                     if (f.startAt && nh && Number(nh) > 0) {
                       const [h, m] = f.startAt.split(':').map(Number);
                       const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(Number(nh) * 60);
-                      const endAt = calcEndAt(totalMin);
+                      const endAt = calcEndAt(totalMin, windowStart, windowEnd);
                       if (pendingSlot) {
                         const { h: eh, m: em2 } = parseHHMM(endAt);
                         setPendingSlot(p => (p ? { ...p, endH: eh + em2 / 60 } : p));
@@ -906,21 +925,19 @@ export function CalendarSlotModal({
                 }}
                 placeholder={t('slot.normoHoursPlaceholder')}
               />
-              {/* Overflow preview — uses backend split constants (SPLIT_DAY_END_H=20),
-                  NOT the dynamic windowEnd, so the warning matches what the backend
-                  will actually split. */}
+              {/* Overflow preview — кінець робочого дня філії, на якому сервер ділить запис. */}
               {(() => {
                 const nh = Number(form.normoHours);
                 if (!form.startAt || !nh || nh <= 0) return null;
                 const [h, m] = form.startAt.split(':').map(Number);
                 const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(nh * 60);
-                const workEndMin = SPLIT_DAY_END_H * 60;
+                const workEndMin = windowEnd * 60;
                 // Use the same 15-min snap as calcEndAt() so the warning fires iff the
                 // Кінець field actually shows a next-day time (prevents contradictory UI).
                 const snappedTotal = Math.round(totalMin / 15) * 15;
                 if (snappedTotal <= workEndMin) return null;
                 const overflowMin = snappedTotal - workEndMin;
-                const day2EndMin = SPLIT_DAY_START_H * 60 + overflowMin;
+                const day2EndMin = windowStart * 60 + overflowMin;
                 const day2H = Math.floor(day2EndMin / 60);
                 const day2M = day2EndMin % 60;
                 const nextDayIso = (() => {
@@ -936,9 +953,9 @@ export function CalendarSlotModal({
                   <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
                     {t('slot.splitWarning', {
                       start: form.startAt,
-                      splitEnd: `${pad(SPLIT_DAY_END_H)}:00`,
+                      splitEnd: `${pad(windowEnd)}:00`,
                       nextDay: nextDayIso,
-                      dayStart: `${pad(SPLIT_DAY_START_H)}:00`,
+                      dayStart: `${pad(windowStart)}:00`,
                       dayEnd: `${pad(day2H)}:${pad(day2M)}`,
                     })}
                   </p>
@@ -946,12 +963,12 @@ export function CalendarSlotModal({
               })()}
             </div>
             <div>
-              {/* Compute end date: next calendar day when totalMin overflows SPLIT_DAY_END_H */}
+              {/* Compute end date: next calendar day when totalMin overflows windowEnd */}
               {(() => {
                 const nh = Number(form.normoHours);
                 const [sh, sm] = form.startAt ? form.startAt.split(':').map(Number) : [0, 0];
                 const totalMin = (sh ?? 0) * 60 + (sm ?? 0) + Math.round((nh > 0 ? nh : 0) * 60);
-                const isOverflow = form.startAt && nh > 0 && totalMin > SPLIT_DAY_END_H * 60;
+                const isOverflow = form.startAt && nh > 0 && totalMin > windowEnd * 60;
                 const endDate = (() => {
                   if (!isOverflow || !date) return date;
                   try {
@@ -1575,7 +1592,7 @@ export function CalendarSlotModal({
           const nh = Number(form.normoHours);
           const [sh, sm] = form.startAt ? form.startAt.split(':').map(Number) : [0, 0];
           const totalMin = (sh ?? 0) * 60 + (sm ?? 0) + Math.round((nh > 0 ? nh : 0) * 60);
-          const isOverflow = form.startAt && nh > 0 && totalMin > SPLIT_DAY_END_H * 60;
+          const isOverflow = form.startAt && nh > 0 && totalMin > windowEnd * 60;
           const endDate = (() => {
             if (!isOverflow || !date) return date;
             try {
@@ -1594,13 +1611,26 @@ export function CalendarSlotModal({
             description: form.notes || undefined,
             // guard against `date = ''` on first render before effect default:
             // without guard we'd build "T17:00" — invalid ISO string.
-            plannedStartAt: form.startAt && date ? `${date}T${form.startAt}` : undefined,
-            plannedEndAt: form.endAt && endDate ? `${endDate}T${form.endAt}` : undefined,
+            // Наряд для ІСНУЮЧОГО запису — без планових дат: інакше сервер створив би наряду
+            // власний запис (BR-WO-020) поверх цього ж («Підйомник зайнятий»); наряд
+            // прив'язується до запису кнопкою «Оновити», як і раніше.
+            plannedStartAt:
+              !editingSlotId && form.startAt && date ? `${date}T${form.startAt}` : undefined,
+            plannedEndAt:
+              !editingSlotId && form.endAt && endDate ? `${endDate}T${form.endAt}` : undefined,
             plannedHours: nh > 0 ? String(nh) : undefined,
           };
         })()}
         onUpdated={onWorkOrderChanged}
         onCreated={wo => {
+          // BR-WO-020: наряд із плановими початком і завершенням сервер уже записав у календар —
+          // ця форма запису його не дублює (POST /calendar/slots дав би другий запис або
+          // «Підйомник зайнятий» на власному часі). Механік, обраний у формі, ставиться на
+          // запис наряду; форма закривається, календар перечитує записи.
+          if (!editingSlotId && wo.plannedAt && wo.dueDate) {
+            void adoptWorkOrderSlot(wo);
+            return;
+          }
           const display = `${wo.number}${form.counterpartyDisplay ? ` · ${form.counterpartyDisplay}` : ''}`;
           setForm(f => ({ ...f, workOrderId: wo.id, workOrderDisplay: display }));
         }}

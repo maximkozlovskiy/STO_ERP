@@ -189,7 +189,6 @@
       "categoryDiagnostics": "Діагностика",
       "categoryWarranty": "Гарантійний",
       "categorySeasonal": "Сезонне",
-      "dueDate": "Дедлайн",
       "inMileageLabel": "Пробіг (вхід), км",
       "clientApproval": "Погодження клієнта",
       "description": "Опис",
@@ -295,9 +294,7 @@
   },
   "toast": {
     "partAdded": "Запчастину додано",
-    "lineAdded": "Роботу додано",
-    "slotNotFound": "Слот у календарі для цього наряду не знайдено",
-    "slotSyncFailed": "Слот календаря не оновлено: {{error}}"
+    "lineAdded": "Роботу додано"
   },
   "totals": {
     "net": "Сума без ПДВ",

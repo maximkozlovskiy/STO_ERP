@@ -198,6 +198,8 @@
     "delete": "Delete",
     "toastUpdated": "Slot updated",
     "toastCreated": "Slot created",
+    "toastWoCreatedWithSlot": "Work order {{number}} created — calendar record added",
+    "toastWoMechanicNotSet": "Mechanic not assigned to the work order record: {{error}}",
     "toastSplit": "Slot split across 2 days: {{s1Start}}–{{s1End}} and {{s2Date}} {{s2Start}}–{{s2End}}",
     "toastDeleted": "Slot deleted",
     "errStartEndRequired": "Enter the start and end time",
