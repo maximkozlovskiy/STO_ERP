@@ -37,6 +37,9 @@ apps/api/public
 **/*.test.tsx
 **/__tests__
 apps/web/e2e
+# Конфіг Playwright імпортує ./e2e/api-url (одне джерело адреси API для E2E). Каталог e2e вище
+# виключено, тож без цього рядка `next build` в образі падав на перевірці типів (CI 2026-10-16).
+apps/web/playwright.config.ts
 apps/web/test-results
 apps/web/playwright-report
 apps/web/.playwright
