@@ -46,16 +46,16 @@ model CalendarSlot {
 
 ---
 
-## API Endpoints (`/api/calendar`)
+## API Endpoints (`/api/calendar/slots`)
 
-| Метод  | URL                                        | Дія                                                                                                                                  |
-| ------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/api/calendar`                            | Слоти за датою/діапазоном (liftId, employeeId, date); `employeeName` — механік; записів видалених нарядів не повертає (BR-CAL-011)   |
-| POST   | `/api/calendar/check-conflicts`            | Перевірити конфлікти (excludeWorkOrderId обов'язковий)                                                                               |
-| POST   | `/api/calendar`                            | Створити слот; механік — закріплений за підйомником (BR-CAL-012)                                                                     |
-| PATCH  | `/api/calendar/by-work-order/:workOrderId` | Bulk-update слотів наряду (syncWorkOrderSlots)                                                                                       |
-| PATCH  | `/api/calendar/:id`                        | Оновити один слот; `dropMechanicNotOnLift` (перетягування) — незакріпленого механіка знято, відповідь `mechanicDropped` (BR-CAL-012) |
-| DELETE | `/api/calendar/:id`                        | Soft-delete слота                                                                                                                    |
+| Метод  | URL                                              | Дія                                                                                                                                  |
+| ------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/calendar/slots`                            | Слоти за датою/діапазоном (liftId, employeeId, date); `employeeName` — механік; записів видалених нарядів не повертає (BR-CAL-011)   |
+| POST   | `/api/calendar/slots/check-conflicts`            | Перевірити конфлікти (excludeWorkOrderId обов'язковий)                                                                               |
+| POST   | `/api/calendar/slots`                            | Створити слот; механік — закріплений за підйомником (BR-CAL-012)                                                                     |
+| PATCH  | `/api/calendar/slots/by-work-order/:workOrderId` | Bulk-update слотів наряду (syncWorkOrderSlots)                                                                                       |
+| PATCH  | `/api/calendar/slots/:id`                        | Оновити один слот; `dropMechanicNotOnLift` (перетягування) — незакріпленого механіка знято, відповідь `mechanicDropped` (BR-CAL-012) |
+| DELETE | `/api/calendar/slots/:id`                        | Soft-delete слота                                                                                                                    |
 
 ---
 
@@ -186,6 +186,12 @@ E2E: `apps/web/e2e/calendar-month-cards.spec.ts` — наряд створюєт
 через API, закріплення за підйомником — через картку співробітника, вибір механіка — у полі «Механік»
 форми запису разом зі зміною часу (BR-CAL-012); на 1024 дата й час «Початок»/«Кінець» не обрізані
 (Bug #878).
+
+E2E: `apps/web/e2e/calendar-owner-decisions.spec.ts` — рішення власника 2026-10-16 на справжньому
+наряді: механік відкриває картку наряду без жодного 403 (довідники, `employee.md`); перетягування
+запису мишею на підйомник, за яким механік не закріплений, знімає механіка з повідомленням
+«Механіка знято: …» (BR-CAL-012); видалення наряду в списку прибирає його запис із календаря, і на
+тому самому підйомнику в той самий час створюється новий запис (BR-WO-017, BR-CAL-011).
 
 Спільний сетап — `calendar.spec-fixture.ts`: сховище слотів у пам'яті, яке ВИКОНУЄ Prisma `where`
 (а не повертає заготовку), тож кейси конфліктів описують поведінку, а не форму запиту.

@@ -123,7 +123,7 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 | PATCH  | `/api/work-orders/:id/parts/:pId`    | Оновити запчастину                                                                                        |
 | DELETE | `/api/work-orders/:id/parts/:pId`    | Видалити запчастину                                                                                       |
 | GET    | `/api/work-orders/:id/lines`         | Роботи наряду                                                                                             |
-| DELETE | `/api/work-orders/:id`               | Soft-delete (тільки WO_DELETABLE_STATUSES)                                                                |
+| DELETE | `/api/work-orders/:id`               | Soft-delete (тільки WO_DELETABLE_STATUSES); записи календаря наряду — теж (BR-WO-017)                     |
 
 ---
 
