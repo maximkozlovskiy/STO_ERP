@@ -140,7 +140,9 @@ describe('CalendarMonthView — рядок лічильників дня', () =>
       dayEntry('IN_PROGRESS', PAST),
       dayEntry('IN_PROGRESS'),
     ];
-    renderMonth({ '2026-10-14': { total: entries.length, byLift: {}, entries } });
+    renderMonth({
+      '2026-10-14': { total: entries.length, busy: entries.length, byLift: {}, entries },
+    });
 
     const row = screen.getByTestId('month-day-categories');
     const items = within(row)
@@ -156,7 +158,7 @@ describe('CalendarMonthView — рядок лічильників дня', () =>
 
   it('минулий день блідне числом і фоном, а лічильники — ні', () => {
     const entries = [dayEntry('IN_PROGRESS', PAST)];
-    renderMonth({ '2026-10-14': { total: 1, byLift: {}, entries } });
+    renderMonth({ '2026-10-14': { total: 1, busy: 1, byLift: {}, entries } });
 
     const row = screen.getByTestId('month-day-categories');
     expect(row.closest('.opacity-60, .opacity-70')).toBeNull();
@@ -256,7 +258,7 @@ describe('Підказка клітинки — кількість записі�
     render(
       <CalendarMonthView
         yearMonth="2026-10"
-        monthSlots={{ '2026-10-20': { total: n, byLift: {}, entries } }}
+        monthSlots={{ '2026-10-20': { total: n, busy: n, byLift: {}, entries } }}
         monthLoading={false}
         monthError={false}
         nowMs={NOW}

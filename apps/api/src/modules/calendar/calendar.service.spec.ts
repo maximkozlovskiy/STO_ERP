@@ -246,6 +246,7 @@ describe('CalendarService.syncWorkOrderSlots', () => {
         orgId,
         deletedAt: null,
         workOrderId: { not: workOrderId },
+        AND: [{ OR: [{ workOrderId: null }, { workOrder: { is: { deletedAt: null } } }] }],
         startAt: { lt: new Date('2026-05-22T11:00:00.000Z') },
         endAt: { gt: new Date('2026-05-22T10:00:00.000Z') },
         OR: [{ liftId }, { employeeId }],

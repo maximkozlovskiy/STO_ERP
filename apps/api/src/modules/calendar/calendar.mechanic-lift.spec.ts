@@ -87,7 +87,6 @@ describe('CalendarService — механік запису закріплений
     it.each([
       ['активний механік, закріплений лише за цим підйомником', MECH],
       ['механік, закріплений за кількома підйомниками', MECH_BOTH],
-      ['механік у відпустці — не звільнений', ON_LEAVE],
     ])('%s → запис створено з механіком', async (_label, employeeId) => {
       const { prisma, service } = serviceOver([]);
       const res = await service.createSlot(FAKE_ORG_ID, {
@@ -105,6 +104,7 @@ describe('CalendarService — механік запису закріплений
     it.each([
       ['не MECHANIC (адміністратор), хоч і закріплений', RECEPTIONIST, LIFT_1],
       ['звільнений (FIRED)', FIRED, LIFT_1],
+      ['у відпустці (ON_LEAVE), хоч і закріплений', ON_LEAVE, LIFT_1],
       ['видалений', DELETED, LIFT_1],
       ['з іншої організації', FOREIGN, LIFT_1],
       ['не закріплений за підйомником запису', MECH_LIFT_2, LIFT_1],
@@ -189,6 +189,7 @@ describe('CalendarService — механік запису закріплений
     it.each([
       ['не закріпленого за підйомником', MECH_LIFT_2],
       ['звільненого', FIRED],
+      ['у відпустці', ON_LEAVE],
       ['не MECHANIC', RECEPTIONIST],
       ['з іншої організації', FOREIGN],
     ])('зміна механіка на %s → 400, запис не змінено', async (_label, employeeId) => {
@@ -252,5 +253,112 @@ describe('CalendarService — механік запису закріплений
         expect(slot.employeeId).toBe(FIRED);
       },
     );
+  });
+});
+
+// Перетягування чи зміна меж запису у «Дні» (рішення власника 2026-10-16): web шле
+// `dropMechanicNotOnLift: true`, і механік запису, не закріплений за новим підйомником, знімається
+// (`employeeId: null`) замість 400. Форма запису прапорця не шле — для неї й далі 400.
+describe('CalendarService.updateSlot — перетягування знімає незакріпленого механіка (BR-CAL-012)', () => {
+  const saved = (over: Partial<FakeSlot> = {}) =>
+    fakeSlot({
+      liftId: LIFT_1,
+      employeeId: MECH,
+      startAt: at('07:00'),
+      endAt: at('08:00'),
+      ...over,
+    });
+
+  // guards: BR-CAL-012
+  it.each([
+    ['не закріплений за новим підйомником', MECH],
+    ['у відпустці', ON_LEAVE],
+    ['звільнений', FIRED],
+  ])(
+    'механік %s → запис на новому підйомнику без механіка, відповідь mechanicDropped',
+    async (_label, employeeId) => {
+      const slot = saved({ employeeId });
+      const { service } = serviceOver([slot]);
+      const res = await service.updateSlot(FAKE_ORG_ID, slot.id, {
+        liftId: LIFT_2,
+        startAt: iso('09:00'),
+        endAt: iso('10:00'),
+        dropMechanicNotOnLift: true,
+      });
+      expect(slot).toMatchObject({ liftId: LIFT_2, employeeId: null });
+      expect(slot.startAt.toISOString()).toBe(iso('09:00'));
+      expect(res.employeeId).toBeNull();
+      expect(res.mechanicDropped).toBe(true);
+    },
+  );
+
+  // guards: BR-CAL-012
+  it('механік закріплений і за новим підйомником → лишається, mechanicDropped немає', async () => {
+    const slot = saved({ employeeId: MECH_BOTH });
+    const { service } = serviceOver([slot]);
+    const res = await service.updateSlot(FAKE_ORG_ID, slot.id, {
+      liftId: LIFT_2,
+      dropMechanicNotOnLift: true,
+    });
+    expect(slot).toMatchObject({ liftId: LIFT_2, employeeId: MECH_BOTH });
+    expect(res).not.toHaveProperty('mechanicDropped');
+  });
+
+  // guards: BR-CAL-012
+  it('запис без механіка → просто переміщено, працівників не читає', async () => {
+    const slot = saved({ employeeId: null });
+    const { service, employeeFindFirst } = serviceOver([slot]);
+    const res = await service.updateSlot(FAKE_ORG_ID, slot.id, {
+      liftId: LIFT_2,
+      dropMechanicNotOnLift: true,
+    });
+    expect(slot).toMatchObject({ liftId: LIFT_2, employeeId: null });
+    expect(employeeFindFirst).not.toHaveBeenCalled();
+    expect(res).not.toHaveProperty('mechanicDropped');
+  });
+
+  // guards: BR-CAL-012
+  it('без прапорця (форма) — як і раніше 400, запис не змінено', async () => {
+    const slot = saved();
+    const { prisma, service } = serviceOver([slot]);
+    await expectNotOnLift(service.updateSlot(FAKE_ORG_ID, slot.id, { liftId: LIFT_2 }));
+    expect(prisma._update).not.toHaveBeenCalled();
+    expect(slot).toMatchObject({ liftId: LIFT_1, employeeId: MECH });
+  });
+
+  // guards: BR-CAL-012
+  it('явно обраний ІНШИЙ незакріплений механік із прапорцем → 400: знімається лише свій механік', async () => {
+    const slot = saved();
+    const { prisma, service } = serviceOver([slot]);
+    await expectNotOnLift(
+      service.updateSlot(FAKE_ORG_ID, slot.id, {
+        liftId: LIFT_2,
+        employeeId: FIRED,
+        dropMechanicNotOnLift: true,
+      }),
+    );
+    expect(prisma._update).not.toHaveBeenCalled();
+    expect(slot).toMatchObject({ liftId: LIFT_1, employeeId: MECH });
+  });
+
+  // guards: BR-CAL-012
+  it('знятий механік не перевіряється на зайнятість: його інший запис у цей час не заважає', async () => {
+    const slot = saved();
+    // Той самий механік уже має запис на підйомнику 1 у час, куди переносять.
+    const busy = fakeSlot({
+      liftId: LIFT_1,
+      employeeId: MECH,
+      startAt: at('09:00'),
+      endAt: at('10:00'),
+    });
+    const { service } = serviceOver([slot, busy]);
+    const res = await service.updateSlot(FAKE_ORG_ID, slot.id, {
+      liftId: LIFT_2,
+      startAt: iso('09:00'),
+      endAt: iso('10:00'),
+      dropMechanicNotOnLift: true,
+    });
+    expect(res.mechanicDropped).toBe(true);
+    expect(slot).toMatchObject({ liftId: LIFT_2, employeeId: null });
   });
 });

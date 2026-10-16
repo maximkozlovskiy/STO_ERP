@@ -28,6 +28,8 @@ export interface FakeSlot extends Row {
   type: string;
   notes: string | null;
   deletedAt: Date | null;
+  /** Наряд запису — для фільтра через зв'язок (`workOrder: { is }`); `null` — без наряду. */
+  workOrder?: { deletedAt: Date | null; number?: string; status?: string } | null;
 }
 
 export const FAKE_ORG_ID = 'org-1';
@@ -42,8 +44,9 @@ function same(a: unknown, b: unknown): boolean {
 
 /**
  * Обчислює підмножину Prisma `where`, якою користуються календар і онлайн-запис: рівність
- * скалярів (зокрема `null`), `lt/lte/gt/gte/not/in`, `OR`, `NOT`, зв'язок-список `some` (рядок
- * тримає масив пов'язаних рядків, напр. `employeeLifts`). `undefined` — «без фільтра»,
+ * скалярів (зокрема `null`), `lt/lte/gt/gte/not/in`, `OR`, `AND`, `NOT`, зв'язок-список `some`
+ * (рядок тримає масив пов'язаних рядків, напр. `employeeLifts`) і зв'язок-один `is` (рядок тримає
+ * пов'язаний рядок або `null`; `is` для `null` — не збіг, як у Prisma). `undefined` — «без фільтра»,
  * як у Prisma. Невідоме поле чи оператор — помилка, а не мовчазне «збіглося»: інакше фільтр,
  * якого сховище не розуміє, виглядав би як пройдений тест.
  */
@@ -52,6 +55,10 @@ export function matchesWhere(row: Row, where: Where): boolean {
     if (cond === undefined) continue;
     if (key === 'OR') {
       if (!(cond as Where[]).some(w => matchesWhere(row, w))) return false;
+      continue;
+    }
+    if (key === 'AND') {
+      if (!(cond as Where[]).every(w => matchesWhere(row, w))) return false;
       continue;
     }
     if (key === 'NOT') {
@@ -80,6 +87,9 @@ export function matchesWhere(row: Row, where: Where): boolean {
         if (same(value, operand) || (value === null && operand !== null)) return false;
       } else if (op === 'in') {
         if (!(operand as unknown[]).some(o => same(value, o))) return false;
+      } else if (op === 'is') {
+        if (value === null || typeof value !== 'object') return false; // зв'язку немає — `is` не збігається
+        if (!matchesWhere(value as Row, operand as Where)) return false;
       } else if (op === 'some') {
         if (!Array.isArray(value)) throw new Error(`fake store: «${key}» не є списком для some`);
         if (!(value as Row[]).some(el => matchesWhere(el, operand as Where))) return false;
@@ -109,6 +119,7 @@ export function fakeSlot(over: Partial<FakeSlot> & { startAt: Date; endAt: Date 
     type: 'WORK',
     notes: null,
     deletedAt: null,
+    workOrder: null,
     ...over,
   };
 }

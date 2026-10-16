@@ -48,14 +48,14 @@ model CalendarSlot {
 
 ## API Endpoints (`/api/calendar`)
 
-| Метод  | URL                                        | Дія                                                                                                                              |
-| ------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/calendar`                            | Слоти за датою/діапазоном (liftId, employeeId, date); `employeeName` — механік, `workOrderDeleted` — наряд видалено (BR-CAL-011) |
-| POST   | `/api/calendar/check-conflicts`            | Перевірити конфлікти (excludeWorkOrderId обов'язковий)                                                                           |
-| POST   | `/api/calendar`                            | Створити слот; механік — закріплений за підйомником (BR-CAL-012)                                                                 |
-| PATCH  | `/api/calendar/by-work-order/:workOrderId` | Bulk-update слотів наряду (syncWorkOrderSlots)                                                                                   |
-| PATCH  | `/api/calendar/:id`                        | Оновити один слот                                                                                                                |
-| DELETE | `/api/calendar/:id`                        | Soft-delete слота                                                                                                                |
+| Метод  | URL                                        | Дія                                                                                                                                  |
+| ------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/calendar`                            | Слоти за датою/діапазоном (liftId, employeeId, date); `employeeName` — механік; записів видалених нарядів не повертає (BR-CAL-011)   |
+| POST   | `/api/calendar/check-conflicts`            | Перевірити конфлікти (excludeWorkOrderId обов'язковий)                                                                               |
+| POST   | `/api/calendar`                            | Створити слот; механік — закріплений за підйомником (BR-CAL-012)                                                                     |
+| PATCH  | `/api/calendar/by-work-order/:workOrderId` | Bulk-update слотів наряду (syncWorkOrderSlots)                                                                                       |
+| PATCH  | `/api/calendar/:id`                        | Оновити один слот; `dropMechanicNotOnLift` (перетягування) — незакріпленого механіка знято, відповідь `mechanicDropped` (BR-CAL-012) |
+| DELETE | `/api/calendar/:id`                        | Soft-delete слота                                                                                                                    |
 
 ---
 
@@ -145,16 +145,18 @@ cd apps/api && npx vitest run src/modules/calendar/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/calendar/`
 
-| Аспект                                                                                                                           | Тест                             | Кейсів |
-| -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | ------ |
-| HTTP-контракт (DTO, статуси, валідація; `employeeId: null` у зміні — BR-CAL-012)                                                 | `calendar.contract.spec.ts`      | 33     |
-| сервісна логіка; механік запису `employeeName` одним запитом, і для MECHANIC, звільнений — null; `workOrderDeleted` (BR-CAL-011) | `calendar.service.spec.ts`       | 29     |
-| види слотів (без наряду / без механіка / службові / статус)                                                                      | `calendar.slot-kinds.spec.ts`    | 7      |
-| конфлікти слотів у `createSlot` / `updateSlot` (підйомник, механік, split-day, 409)                                              | `calendar.conflicts.spec.ts`     | 27     |
-| межі дня у `findSlots` (київська доба, переведення годинника, перевірка дати)                                                    | `calendar.day-bounds.spec.ts`    | 18     |
-| механік запису закріплений за підйомником: create/update, зміна підйомника, продовження (BR-CAL-012)                             | `calendar.mechanic-lift.spec.ts` | 22     |
+| Аспект                                                                                                                                         | Тест                                  | Кейсів |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | ------ |
+| HTTP-контракт (DTO, статуси, валідація; `employeeId: null` у зміні — BR-CAL-012)                                                               | `calendar.contract.spec.ts`           | 33     |
+| сервісна логіка; механік запису `employeeName` одним запитом, і для MECHANIC, звільнений — null; `workOrderDeleted` (BR-CAL-011)               | `calendar.service.spec.ts`            | 29     |
+| види слотів (без наряду / без механіка / службові / статус)                                                                                    | `calendar.slot-kinds.spec.ts`         | 7      |
+| конфлікти слотів у `createSlot` / `updateSlot` (підйомник, механік, split-day, 409)                                                            | `calendar.conflicts.spec.ts`          | 27     |
+| межі дня у `findSlots` (київська доба, переведення годинника, перевірка дати)                                                                  | `calendar.day-bounds.spec.ts`         | 18     |
+| механік запису закріплений за підйомником: create/update, зміна підйомника, продовження, відпустка, перетягування знімає механіка (BR-CAL-012) | `calendar.mechanic-lift.spec.ts`      | 31     |
+| записи видаленого наряду: не в `findSlots`, не займають підйомник і механіка (BR-CAL-011)                                                      | `calendar.deleted-work-order.spec.ts` | 7      |
+| синхронізація з планшета: механік за підйомником і ролі календаря (BR-CAL-012, BR-CAL-010)                                                     | `../sync/sync.calendar-slots.spec.ts` | 16     |
 
-Разом: **136** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **168** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Web:** вид «Місяць» (BR-CAL-008, BR-CAL-009) і «День» (BR-CAL-011), тека `apps/web/src/app/(app)/calendar/__tests__/`:
 
@@ -169,10 +171,12 @@ cd apps/api && npx vitest run src/modules/calendar/<файл>.spec.ts
 | форма: заголовок нового запису з датою ДД.ММ.РРРР                                                                                                                                                                                                                                                             | `CalendarSlotModal.title.test.tsx`      | 1      |
 | вид «День», чисті функції: категорія блоку з кінцем ланцюжка, лінія «зараз» і приглушене минуле за Києвом, завантаження підйомника (обрізання, частина багатоденного, 0,5 год, без скасованих і видалених нарядів) (BR-CAL-011)                                                                               | `calendar-day.test.ts`                  | 32     |
 | вид «День» через хук: колір блоку за станом, механік на блоці, рамка редагування, лінія «зараз» лише сьогодні й оновлення щохвилини, «N год з M» без скасованих і видалених (BR-CAL-011); механіку — без підказки DnD, ручок і курсорів (BR-CAL-010); блок відкривається з клавіатури в обох ролях (Bug #877) | `CalendarDayGrid.day-view.test.tsx`     | 19     |
-| форма: поле «Механік» — механіки підйомника, без підйомника недоступне, нікого — підказка, зміна підйомника скидає, недоступна опція збереженого, `null` при знятті (BR-CAL-012)                                                                                                                              | `CalendarSlotModal.mechanic.test.tsx`   | 9      |
+| форма: поле «Механік» — механіки підйомника, без підйомника недоступне, нікого — підказка, зміна підйомника скидає, недоступна опція збереженого (і у відпустці), `null` при знятті (BR-CAL-012)                                                                                                              | `CalendarSlotModal.mechanic.test.tsx`   | 10     |
+| перетягування на інший підйомник: прапорець, тост «Механіка знято» з іменем і постом, без нього — без повідомлення (BR-CAL-012)                                                                                                                                                                               | `useCalendarState.drag.test.ts`         | 4      |
+| колір завантаженості «Місяця» без скасованих і видалених нарядів (BR-CAL-008); записи видаленого наряду відкидаються (BR-CAL-011)                                                                                                                                                                             | `CalendarMonthView.load-color.test.tsx` | 8      |
 | сім різних кольорів смуги, іконки й фону; контраст смуги від 3:1 і тексту від 4,5:1 у світлій, темній і системній темній темах — з токенів `globals.css` (BR-CAL-008)                                                                                                                                         | `calendar-categories.colors.test.ts`    | 4      |
 
-Разом web: **137** кейсів (цифри з `vitest --reporter=json`).
+Разом web: **151** кейс (цифри з `vitest --reporter=json`).
 
 E2E: `apps/web/e2e/calendar-month-cards.spec.ts` — наряд створюється через інтерфейс, запис
 календаря з ним — через «+ Слот», час редагується у формі; у виді «Місяць» — картка з номером

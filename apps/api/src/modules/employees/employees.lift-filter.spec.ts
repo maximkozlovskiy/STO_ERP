@@ -4,7 +4,8 @@ import { matchesWhere } from '../calendar/calendar.spec-fixture';
 
 // guards: BR-CAL-012
 // `GET /employees?liftId=` — список для поля «Механік» у записі календаря: лише закріплені за
-// підйомником, своєї організації, без звільнених і видалених. Таблиця в пам'яті ВИКОНУЄ Prisma
+// підйомником, своєї організації, активні — без звільнених, без тих, хто у відпустці (рішення
+// власника 2026-10-16), і без видалених. Таблиця в пам'яті ВИКОНУЄ Prisma
 // `where` (`matchesWhere` — та сама, що в спеках календаря), тож тест описує, КОГО повертає
 // фільтр, а не форму запиту.
 
@@ -55,17 +56,15 @@ function service() {
 }
 
 describe('EmployeesService.findAll — фільтр liftId (BR-CAL-012)', () => {
-  it('лише закріплені за підйомником, своєї організації, без звільнених і видалених', async () => {
+  it('лише закріплені за підйомником, своєї організації, без звільнених, відпустки й видалених', async () => {
     const { items, total } = await service().findAll('org-1', { liftId: LIFT_1 });
-    expect(items.map(e => e.id).sort()).toEqual(
-      ['both-lifts', 'on-leave', 'on-lift-1', 'receptionist'].sort(),
-    );
-    expect(total).toBe(4);
+    expect(items.map(e => e.id).sort()).toEqual(['both-lifts', 'on-lift-1', 'receptionist'].sort());
+    expect(total).toBe(3);
   });
 
   it('разом із role=MECHANIC — лише механіки підйомника', async () => {
     const { items } = await service().findAll('org-1', { liftId: LIFT_1, role: 'MECHANIC' });
-    expect(items.map(e => e.id).sort()).toEqual(['both-lifts', 'on-leave', 'on-lift-1'].sort());
+    expect(items.map(e => e.id).sort()).toEqual(['both-lifts', 'on-lift-1'].sort());
   });
 
   it('з showDeleted=true видалені все одно не потрапляють — список той, що приймає запис', async () => {
@@ -81,10 +80,10 @@ describe('EmployeesService.findAll — фільтр liftId (BR-CAL-012)', () => 
     expect(items.map(e => e.id).sort()).toEqual(['both-lifts', 'on-lift-2'].sort());
   });
 
-  it('без liftId фільтр не діє: звільнені й незакріплені в загальному списку лишаються', async () => {
+  it('без liftId фільтр не діє: звільнені, у відпустці й незакріплені в загальному списку лишаються', async () => {
     const { items } = await service().findAll('org-1', {});
     expect(items.map(e => e.id)).toEqual(
-      expect.arrayContaining(['fired', 'no-lifts', 'on-lift-2']),
+      expect.arrayContaining(['fired', 'on-leave', 'no-lifts', 'on-lift-2']),
     );
   });
 });

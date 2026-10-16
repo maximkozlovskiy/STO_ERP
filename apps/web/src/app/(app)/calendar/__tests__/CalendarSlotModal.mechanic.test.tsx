@@ -13,6 +13,7 @@ const L3 = '11111111-1111-4111-8111-000000000003';
 const KOVAL = '22222222-2222-4222-8222-000000000001';
 const SHEVCHUK = '22222222-2222-4222-8222-000000000002';
 const FIRED = '22222222-2222-4222-8222-000000000003';
+const ON_LEAVE = '22222222-2222-4222-8222-000000000004';
 const CP = '33333333-3333-4333-8333-000000000001';
 
 const MECHANICS: Record<string, { id: string; firstName: string; lastName: string }[]> = {
@@ -209,7 +210,7 @@ describe('CalendarSlotModal — поле «Механік» (BR-CAL-012)', () =>
     expect(mechanicSelect().value).toBe(FIRED);
     expect(employeeId()).toBe(FIRED);
     expect(mechanicSelect()).toHaveAccessibleDescription(
-      'Механік звільнений або не закріплений за цим підйомником — оберіть іншого або «без механіка»',
+      'Механік звільнений, у відпустці або не закріплений за цим підйомником — оберіть іншого або «без механіка»',
     );
 
     // Збереження без зміни механіка шле того самого (сервер його не перевіряє).
@@ -224,6 +225,31 @@ describe('CalendarSlotModal — поле «Механік» (BR-CAL-012)', () =>
     fireEvent.change(liftSelect(), { target: { value: L3 } });
     await waitFor(() => expect(employeeId()).toBe(''));
     expect(optionTexts()).toEqual(['— без механіка —', 'Коваль Петро']);
+  });
+
+  // guards: BR-CAL-012
+  it('збережений механік у відпустці — список підйомника його не пропонує, недоступна опція з ім’ям', async () => {
+    // Сервер (`GET /employees?liftId=`) механіка у відпустці не віддає, хоч він і закріплений за
+    // П1; ім'я запису (`employeeName`) приходить — він не звільнений.
+    render(
+      <Harness
+        initial={{ liftId: L1, employeeId: ON_LEAVE }}
+        editingSlotId="slot-1"
+        saved={{ liftId: L1, employeeId: ON_LEAVE, employeeName: 'Бондар Андрій' }}
+      />,
+    );
+    await waitFor(() => expect(optionTexts()).toContain('Коваль Петро'));
+    const option = within(mechanicSelect()).getByRole('option', {
+      name: 'Бондар Андрій (недоступний)',
+    });
+    expect(option).toBeDisabled();
+    expect(optionTexts()).toEqual([
+      '— без механіка —',
+      'Бондар Андрій (недоступний)',
+      'Коваль Петро',
+      'Шевчук Олена',
+    ]);
+    expect(mechanicSelect()).toHaveAccessibleDescription(/у відпустці/);
   });
 
   // guards: BR-CAL-012

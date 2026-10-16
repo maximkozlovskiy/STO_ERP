@@ -71,8 +71,9 @@ function makeHarness(over: MemRow = {}) {
     readRow(args).then(r => (r ? { ...r } : r)),
   );
   const completionAct = memoryTable([]);
+  const calendarSlot = memoryTable([]);
   const order: string[] = [];
-  const db = { workOrder, completionAct };
+  const db = { workOrder, completionAct, calendarSlot };
   const prisma: Record<string, unknown> = { ...db, lift: memoryTable([]) };
   const runTx = async (cb: (t: unknown) => unknown) => {
     order.push('tx-begin');

@@ -245,10 +245,11 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | сплачений наряд: скасування, сума, «Оплачено»      | `work-orders.paid-guards.spec.ts`                | 18     |
 | рольовий доступ                                    | `work-orders.role-gate.spec.ts`                  | 24     |
 | сервісна логіка                                    | `work-orders.service.spec.ts`                    | 25     |
+| видалення звільняє календар (BR-WO-017)            | `work-orders.remove-calendar.spec.ts`            | 5      |
 | share public                                       | `work-orders.share-public.spec.ts`               | 14     |
 | зведення по табличних частинах і виконавці         | `../lines-summary/lines-summary.service.spec.ts` | 19     |
 
-Разом: **313** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **318** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для BR-WO-007 — сума наряду з ПДВ:
 

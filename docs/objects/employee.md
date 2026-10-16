@@ -39,17 +39,18 @@
 
 **Модуль:** `apps/api/src/modules/employees/`
 
-| Аспект                                       | Тест                                     | Кейсів |
-| -------------------------------------------- | ---------------------------------------- | ------ |
-| звільнення: сесії гаснуть, не себе           | `employees.fire.spec.ts`                 | 14     |
-| вхід і оновлення токена                      | `../../auth/auth.spec.ts`                | 18     |
-| перевірка сесії на кожному запиті            | `../../auth/jwt.strategy.spec.ts`        | 8      |
-| панель черг                                  | `../bull-board/bull-board.guard.spec.ts` | 23     |
-| фільтр `liftId` — механіки підйомника запису | `employees.lift-filter.spec.ts`          | 5      |
-| збереження філій картки — tenant-фільтр      | `employees.assign-branches.spec.ts`      | 1      |
-| HTTP-контракт (DTO, статуси, валідація)      | `employees.contract.spec.ts`             | 26     |
-| видалення: блок за активним нарядом, каскад  | `employees.remove-guard.spec.ts`         | 3      |
+| Аспект                                                                                                     | Тест                                     | Кейсів |
+| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ------ |
+| звільнення: сесії гаснуть, не себе                                                                         | `employees.fire.spec.ts`                 | 14     |
+| вхід і оновлення токена                                                                                    | `../../auth/auth.spec.ts`                | 18     |
+| перевірка сесії на кожному запиті                                                                          | `../../auth/jwt.strategy.spec.ts`        | 8      |
+| панель черг                                                                                                | `../bull-board/bull-board.guard.spec.ts` | 23     |
+| фільтр `liftId` — механіки підйомника запису, без звільнених і відпустки                                   | `employees.lift-filter.spec.ts`          | 5      |
+| збереження філій картки — tenant-фільтр                                                                    | `employees.assign-branches.spec.ts`      | 1      |
+| HTTP-контракт (DTO, статуси, валідація)                                                                    | `employees.contract.spec.ts`             | 26     |
+| видалення: блок за активним нарядом, каскад                                                                | `employees.remove-guard.spec.ts`         | 3      |
+| механік читає довідники картки наряду: 200, без `rateScheme`, налаштування — лише поля картки, зміни — 403 | `employees.mechanic-lookups.spec.ts`     | 12     |
 
-Разом: **98** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **110** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
-**Читання довідників механіком (рішення власника 2026-10-16).** Роль MECHANIC отримує лише читання довідників, які запитує картка наряду: `GET /employees?role=MECHANIC`, `GET /settings/organisation`, `GET /settings/tax-rates`, `GET /counterparties/:id/contracts` — без ставок (`rateScheme`) і без персональних даних понад те, що вже бачить RECEPTIONIST; змінювати їх механік не може.
+**Читання довідників механіком (рішення власника 2026-10-16).** Роль MECHANIC отримує лише читання довідників, які запитує картка наряду: `GET /employees?role=MECHANIC`, `GET /settings/organisation`, `GET /settings/tax-rates`, `GET /counterparties/:id/contracts` — без ставок (`rateScheme`) і без персональних даних понад те, що вже бачить RECEPTIONIST; змінювати їх механік не може. Реалізація: `GET /employees` для MECHANIC завжди віддає лише невидалених механіків (інші `role`/`showDeleted` ігноруються); `GET /settings/organisation` для MECHANIC — лише поля картки (`OrganisationCardSettingsDto`: валюта, ПДВ, мова, перерахунок годин, синхронізація запису), без `laborCostRatio`, лояльності й інтеграцій.
