@@ -109,7 +109,8 @@ const WO_WRITE_INCLUDE = {
 
 /** EXCLUDE підйомника в БД — запасний захист від паралельного бронювання (CAL-C1). */
 const SLOT_EXCLUSION = 'calendar_slots_no_overlap';
-const SLOT_RACE_MESSAGE = 'Підйомник уже зайнятий на цей час (паралельне бронювання)';
+/** 409 гонки за підйомник — тим самим перекладеним текстом, що й 400 перевірки зайнятості. */
+const slotRaceMessage = (): string => translateError('err.calendar.liftBusy', getLocale());
 
 /** Значення дати після PATCH: `undefined` — без змін, `null` — стерто. */
 function nextDate(value: string | null | undefined, stored: Date | null): Date | null {
@@ -495,7 +496,7 @@ export class WorkOrdersService {
               },
               { timeout: TRANSACTION_TIMEOUT_MS },
             )
-            .catch((e: unknown) => throwIfExclusionConflict(e, SLOT_EXCLUSION, SLOT_RACE_MESSAGE))
+            .catch((e: unknown) => throwIfExclusionConflict(e, SLOT_EXCLUSION, slotRaceMessage()))
         : await createWo(this.prisma);
 
     if (userId) {
@@ -672,7 +673,7 @@ export class WorkOrdersService {
           translateError('err.workOrder.paidCurrencyLocked', getLocale()),
         );
       }
-      if (slotAction !== null) throwIfExclusionConflict(e, SLOT_EXCLUSION, SLOT_RACE_MESSAGE);
+      if (slotAction !== null) throwIfExclusionConflict(e, SLOT_EXCLUSION, slotRaceMessage());
       throw e;
     });
 

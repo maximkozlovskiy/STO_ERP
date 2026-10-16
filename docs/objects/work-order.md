@@ -245,36 +245,36 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/work-orders/`
 
-| Аспект                                                                                                                                              | Тест                                             | Кейсів |
-| --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------ |
-| handlers                                                                                                                                            | `events/work-order.handlers.spec.ts`             | 10     |
-| fsm parity                                                                                                                                          | `fsm-parity.spec.ts`                             | 12     |
-| статус у чужій транзакції + сторож FSM                                                                                                              | `work-order-status.spec.ts`                      | 19     |
-| integration на живій БД                                                                                                                             | `work-order-stock-effects.integration.spec.ts`   | 4      |
-| сервісна логіка                                                                                                                                     | `work-order-stock-effects.service.spec.ts`       | 19     |
-| сервісна логіка                                                                                                                                     | `work-orders-export.service.spec.ts`             | 11     |
-| завершення: перерахунок тоталів                                                                                                                     | `work-orders.complete-recalc.spec.ts`            | 4      |
-| HTTP-контракт (DTO, статуси, валідація)                                                                                                             | `work-orders.contract.spec.ts`                   | 35     |
-| документ, позначений на видалення, — лише перегляд                                                                                                  | `work-orders.with-deleted.spec.ts`               | 19     |
-| HTTP-контракт (DTO, статуси, валідація)                                                                                                             | `work-orders.fsm.contract.spec.ts`               | 2      |
-| інваріанти (property-based)                                                                                                                         | `work-orders.fsm.invariants.spec.ts`             | 16     |
-| список: відбір за датою документа                                                                                                                   | `work-orders.list-date-filter.spec.ts`           | 4      |
-| нумерація (create/clone)                                                                                                                            | `work-orders.numbering.spec.ts`                  | 2      |
-| друкований наряд: підсумок із тоталів                                                                                                               | `work-orders.pdf-totals.spec.ts`                 | 6      |
-| друк наряд-замовлення: статуси, дата, зміст, ролі                                                                                                   | `work-orders.print.spec.ts`                      | 19     |
-| правка рядка роботи: робота й виконавець                                                                                                            | `work-orders.line-update.spec.ts`                | 7      |
-| recalc cap                                                                                                                                          | `work-orders.recalc-cap.spec.ts`                 | 5      |
-| recalc totals                                                                                                                                       | `work-orders.recalc-totals.spec.ts`              | 21     |
-| сплачений наряд: скасування, сума, «Оплачено»                                                                                                       | `work-orders.paid-guards.spec.ts`                | 18     |
-| рольовий доступ                                                                                                                                     | `work-orders.role-gate.spec.ts`                  | 24     |
-| сервісна логіка                                                                                                                                     | `work-orders.service.spec.ts`                    | 25     |
-| видалення звільняє календар (BR-WO-017)                                                                                                             | `work-orders.remove-calendar.spec.ts`            | 5      |
-| планові дати: не в минулому, у робочих годинах філії, лише змінені, Київ/DST, clone без дат (BR-WO-019)                                             | `work-orders.planned-dates.spec.ts`              | 22     |
-| запис календаря наряду: створення, перенесення, підйомник і механік, стерті дати, зайнятість → 400 без змін, два дні, без дубля, tenant (BR-WO-020) | `work-orders.calendar-slot.spec.ts`              | 22     |
-| share public                                                                                                                                        | `work-orders.share-public.spec.ts`               | 14     |
-| зведення по табличних частинах і виконавці                                                                                                          | `../lines-summary/lines-summary.service.spec.ts` | 19     |
+| Аспект                                                                                                                                                                     | Тест                                             | Кейсів |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------ |
+| handlers                                                                                                                                                                   | `events/work-order.handlers.spec.ts`             | 10     |
+| fsm parity                                                                                                                                                                 | `fsm-parity.spec.ts`                             | 12     |
+| статус у чужій транзакції + сторож FSM                                                                                                                                     | `work-order-status.spec.ts`                      | 19     |
+| integration на живій БД                                                                                                                                                    | `work-order-stock-effects.integration.spec.ts`   | 4      |
+| сервісна логіка                                                                                                                                                            | `work-order-stock-effects.service.spec.ts`       | 19     |
+| сервісна логіка                                                                                                                                                            | `work-orders-export.service.spec.ts`             | 11     |
+| завершення: перерахунок тоталів                                                                                                                                            | `work-orders.complete-recalc.spec.ts`            | 4      |
+| HTTP-контракт (DTO, статуси, валідація)                                                                                                                                    | `work-orders.contract.spec.ts`                   | 35     |
+| документ, позначений на видалення, — лише перегляд                                                                                                                         | `work-orders.with-deleted.spec.ts`               | 19     |
+| HTTP-контракт (DTO, статуси, валідація)                                                                                                                                    | `work-orders.fsm.contract.spec.ts`               | 2      |
+| інваріанти (property-based)                                                                                                                                                | `work-orders.fsm.invariants.spec.ts`             | 16     |
+| список: відбір за датою документа                                                                                                                                          | `work-orders.list-date-filter.spec.ts`           | 4      |
+| нумерація (create/clone)                                                                                                                                                   | `work-orders.numbering.spec.ts`                  | 2      |
+| друкований наряд: підсумок із тоталів                                                                                                                                      | `work-orders.pdf-totals.spec.ts`                 | 6      |
+| друк наряд-замовлення: статуси, дата, зміст, ролі                                                                                                                          | `work-orders.print.spec.ts`                      | 19     |
+| правка рядка роботи: робота й виконавець                                                                                                                                   | `work-orders.line-update.spec.ts`                | 7      |
+| recalc cap                                                                                                                                                                 | `work-orders.recalc-cap.spec.ts`                 | 5      |
+| recalc totals                                                                                                                                                              | `work-orders.recalc-totals.spec.ts`              | 21     |
+| сплачений наряд: скасування, сума, «Оплачено»                                                                                                                              | `work-orders.paid-guards.spec.ts`                | 18     |
+| рольовий доступ                                                                                                                                                            | `work-orders.role-gate.spec.ts`                  | 24     |
+| сервісна логіка                                                                                                                                                            | `work-orders.service.spec.ts`                    | 25     |
+| видалення звільняє календар (BR-WO-017)                                                                                                                                    | `work-orders.remove-calendar.spec.ts`            | 5      |
+| планові дати: не в минулому, у робочих годинах філії, лише змінені, Київ/DST, clone без дат (BR-WO-019)                                                                    | `work-orders.planned-dates.spec.ts`              | 22     |
+| запис календаря наряду: створення, перенесення, підйомник і механік, стерті дати, зайнятість → 400 без змін, гонка (EXCLUDE) → 409, два дні, без дубля, tenant (BR-WO-020) | `work-orders.calendar-slot.spec.ts`              | 25     |
+| share public                                                                                                                                                               | `work-orders.share-public.spec.ts`               | 14     |
+| зведення по табличних частинах і виконавці                                                                                                                                 | `../lines-summary/lines-summary.service.spec.ts` | 19     |
 
-Разом: **318** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **367** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для BR-WO-007 — сума наряду з ПДВ:
 

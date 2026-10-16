@@ -11,7 +11,7 @@
  * (`work-orders.planning.spec-fixture.ts`). Правило — docs/objects/work-order.md, BR-WO-020.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import {
   LIFT_1,
@@ -423,6 +423,67 @@ describe('WorkOrdersService — запис календаря наряду (BR-W
         t(kyiv(D2, '10:00')),
       ]);
       expect(h.calendarSlot.rows.find(r => r.id === 'old-cont')!.deletedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  // Паралельне бронювання, яке обійшло перевірку зайнятості, зупиняє EXCLUDE
+  // `calendar_slots_no_overlap` у БД. Наряд відповідає 409 перекладеним текстом «Підйомник
+  // зайнятий», а не 500, і транзакція відкочує наряд разом із записом.
+  describe('гонка за підйомник (EXCLUDE у БД)', () => {
+    const exclusion = () =>
+      new Error('conflicting key value violates exclusion constraint "calendar_slots_no_overlap"');
+
+    async function conflict(p: Promise<unknown>): Promise<Error> {
+      const err = await p.then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as Error).message).toBe(LIFT_BUSY);
+      return err as Error;
+    }
+
+    // guards: BR-WO-020
+    it('створення: EXCLUDE на записі → 409, наряду немає', async () => {
+      const h = planningHarness({ workOrders: [] });
+      h.prisma.calendarSlot.create = vi.fn().mockRejectedValue(exclusion());
+      await conflict(
+        h.service.create(
+          ORG,
+          createDto({
+            liftId: LIFT_1,
+            plannedAt: kyiv(D, '10:00').toISOString(),
+            dueDate: kyiv(D, '12:00').toISOString(),
+          }),
+        ),
+      );
+      expect(h.workOrder.rows).toHaveLength(0);
+    });
+
+    // guards: BR-WO-020
+    it('зміна дат: EXCLUDE на перенесенні якоря → 409, наряд із попередніми датами', async () => {
+      const h = plannedWo();
+      h.prisma.calendarSlot.update = vi.fn().mockRejectedValue(exclusion());
+      await conflict(
+        h.service.update(ORG, WO_ID, {
+          plannedAt: kyiv(D2, '10:00').toISOString(),
+          dueDate: kyiv(D2, '12:00').toISOString(),
+        }),
+      );
+      expect(t(h.workOrder.rows[0]!.plannedAt)).toBe(t(kyiv(D, '10:00')));
+    });
+
+    // guards: BR-WO-020
+    it('інша помилка запису календаря не перетворюється на 409 (контроль)', async () => {
+      const h = plannedWo();
+      const other = new Error('connection reset');
+      h.prisma.calendarSlot.update = vi.fn().mockRejectedValue(other);
+      await expect(
+        h.service.update(ORG, WO_ID, {
+          plannedAt: kyiv(D2, '10:00').toISOString(),
+          dueDate: kyiv(D2, '12:00').toISOString(),
+        }),
+      ).rejects.toBe(other);
     });
   });
 });

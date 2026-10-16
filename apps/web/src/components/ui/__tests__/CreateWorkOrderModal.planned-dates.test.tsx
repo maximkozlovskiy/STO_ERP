@@ -7,7 +7,7 @@
  *   питає «Оновити слот?» і не шле `PATCH /calendar/slots/by-work-order`; після збереження
  *   відкритий календар перечитує записи (подія `sto:calendar-changed`).
  */
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { CreateWorkOrderModal } from '../CreateWorkOrderModal';
@@ -107,6 +107,12 @@ async function openCard() {
   await waitFor(() =>
     expect(apiFetchMock).toHaveBeenCalledWith(`/settings/work-hours?branchId=${B1}`),
   );
+  // Запит відправлено — ще не означає, що години філії вже в стані хука: відповідь іде
+  // ланцюжком промісів (кеш → розбір → setHours). Без цього кроку під навантаженням повного
+  // прогону автокінець рахувався за типовими 09–18 (review 2026-10-16: «10:00» замість «09:00»).
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
 }
 
 describe('CreateWorkOrderModal — планові дати (BR-WO-019, BR-WO-020)', () => {

@@ -422,4 +422,61 @@ describe('CalendarService — конфлікти слотів (BR-CAL-006)', () 
       ).rejects.toBeInstanceOf(ConflictException);
     });
   });
+
+  // Попередження картки наряду (`excludeWorkOrderId`): власні записи наряду — не конфлікт, а
+  // бронювання без наряду — конфлікт. Prisma `{ not: X }` відкидає й NULL, тож фільтр лише за
+  // `workOrderId <> X` мовчав про записи без наряду (review 2026-10-16).
+  describe('checkConflicts з excludeWorkOrderId', () => {
+    const OWN_WO = '44444444-4444-4444-8444-444444444444';
+    const own = { workOrderId: OWN_WO, workOrder: { deletedAt: null } } as Partial<FakeSlot>;
+
+    // guards: BR-CAL-006
+    it('запис без наряду на тому самому підйомнику й у механіка → конфлікт', async () => {
+      const { service } = serviceOver([
+        fakeSlot({
+          liftId: LIFT_1,
+          employeeId: MECHANIC,
+          startAt: at('10:00'),
+          endAt: at('11:00'),
+        }),
+      ]);
+
+      const res = await service.checkConflicts(FAKE_ORG_ID, {
+        liftId: LIFT_1,
+        employeeId: MECHANIC,
+        startAt: iso('10:30'),
+        endAt: iso('11:30'),
+        excludeWorkOrderId: OWN_WO,
+      });
+
+      expect(res).toMatchObject({ liftConflict: true, employeeConflict: true, anyConflict: true });
+    });
+
+    // guards: BR-CAL-006
+    it('власний запис наряду в той самий час → не конфлікт (контроль виключення)', async () => {
+      const { service } = serviceOver([
+        fakeSlot({
+          ...own,
+          liftId: LIFT_1,
+          employeeId: MECHANIC,
+          startAt: at('10:00'),
+          endAt: at('11:00'),
+        }),
+      ]);
+
+      const res = await service.checkConflicts(FAKE_ORG_ID, {
+        liftId: LIFT_1,
+        employeeId: MECHANIC,
+        startAt: iso('10:30'),
+        endAt: iso('11:30'),
+        excludeWorkOrderId: OWN_WO,
+      });
+
+      expect(res).toMatchObject({
+        liftConflict: false,
+        employeeConflict: false,
+        anyConflict: false,
+      });
+    });
+  });
 });

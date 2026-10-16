@@ -163,13 +163,13 @@ cd apps/api && npx vitest run src/modules/calendar/<файл>.spec.ts
 | HTTP-контракт (DTO, статуси, валідація; `employeeId: null` у зміні — BR-CAL-012)                                                                                                                                                                                           | `calendar.contract.spec.ts`           | 33     |
 | сервісна логіка; механік запису `employeeName` одним запитом, і для MECHANIC, звільнений — null; `workOrderDeleted` (BR-CAL-011)                                                                                                                                           | `calendar.service.spec.ts`            | 29     |
 | види слотів (без наряду / без механіка / службові / статус)                                                                                                                                                                                                                | `calendar.slot-kinds.spec.ts`         | 7      |
-| конфлікти слотів у `createSlot` / `updateSlot` (підйомник, механік, split-day, 409)                                                                                                                                                                                        | `calendar.conflicts.spec.ts`          | 27     |
+| конфлікти слотів у `createSlot` / `updateSlot` (підйомник, механік, split-day, 409); `checkConflicts` картки наряду — без власних записів, але із записами без наряду                                                                                                      | `calendar.conflicts.spec.ts`          | 29     |
 | межі дня у `findSlots` (київська доба, переведення годинника, перевірка дати)                                                                                                                                                                                              | `calendar.day-bounds.spec.ts`         | 18     |
 | механік запису закріплений за підйомником: create/update, зміна підйомника, продовження, відпустка, перетягування знімає механіка; причина 400 і `mechanicDroppedReason` — у відпустці / не закріплений / інше; без підйомника — точна причина одним читанням (BR-CAL-012) | `calendar.mechanic-lift.spec.ts`      | 36     |
 | записи видаленого наряду: не в `findSlots`, не займають підйомник і механіка (BR-CAL-011)                                                                                                                                                                                  | `calendar.deleted-work-order.spec.ts` | 7      |
 | синхронізація з планшета: механік за підйомником і ролі календаря, причина в `lastError` (BR-CAL-012, BR-CAL-010)                                                                                                                                                          | `../sync/sync.calendar-slots.spec.ts` | 16     |
 
-Разом: **170** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **175** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Web:** вид «Місяць» (BR-CAL-008, BR-CAL-009) і «День» (BR-CAL-011), тека `apps/web/src/app/(app)/calendar/__tests__/`:
 
@@ -190,7 +190,7 @@ cd apps/api && npx vitest run src/modules/calendar/<файл>.spec.ts
 | колір завантаженості «Місяця» без скасованих і видалених нарядів (BR-CAL-008); записи видаленого наряду відкидаються (BR-CAL-011)                                                                                                                                                                             | `CalendarMonthView.load-color.test.tsx` | 8      |
 | сім різних кольорів смуги, іконки й фону; контраст смуги від 3:1 і тексту від 4,5:1 у світлій, темній і системній темній темах — з токенів `globals.css` (BR-CAL-008)                                                                                                                                         | `calendar-categories.colors.test.ts`    | 4      |
 
-Разом web: **157** кейсів (цифри з `vitest --reporter=json`).
+Разом web: **162** кейсів (цифри з `vitest --reporter=json`).
 
 E2E: `apps/web/e2e/calendar-month-cards.spec.ts` — наряд створюється через інтерфейс, запис
 календаря з ним — через «+ Слот», час редагується у формі; у виді «Місяць» — картка з номером

@@ -452,7 +452,7 @@ export class CalendarService {
       throwIfExclusionConflict(
         err,
         'calendar_slots_no_overlap',
-        'Підйомник уже зайнятий на цей час (паралельне бронювання)',
+        translateError('err.calendar.liftBusy', getLocale()),
       );
     }
 
@@ -629,7 +629,7 @@ export class CalendarService {
       throwIfExclusionConflict(
         err,
         'calendar_slots_no_overlap',
-        'Підйомник уже зайнятий на цей час (паралельне бронювання)',
+        translateError('err.calendar.liftBusy', getLocale()),
       );
     }
 
@@ -655,8 +655,16 @@ export class CalendarService {
       );
     }
     const excludeFilter = dto.excludeSlotId ? { not: dto.excludeSlotId } : undefined;
-    // excludeWorkOrderId filter — excludes slots of the current WO when editing its planned period.
-    const excludeWoFilter = dto.excludeWorkOrderId ? { not: dto.excludeWorkOrderId } : undefined;
+    // excludeWorkOrderId — записи самого наряду (картка наряду перевіряє власний час) не конфлікт.
+    // Записи без наряду лишаються: Prisma `{ not: X }` дає SQL `<> X`, що відкидає й NULL, тож
+    // попередження в картці мовчало про звичайні бронювання підйомника, а збереження потім
+    // відмовляло «Підйомник зайнятий» (BR-WO-020, review 2026-10-16).
+    const conflictAnd = dto.excludeWorkOrderId
+      ? [
+          OF_LIVE_WORK_ORDER,
+          { OR: [{ workOrderId: null }, { workOrderId: { not: dto.excludeWorkOrderId } }] },
+        ]
+      : [OF_LIVE_WORK_ORDER];
     // findMany without take violates OOM guard — realistic upper bound for a time window is a few dozen slots.
     const CONFLICT_TAKE = 50;
     // CONFLICT_SELECT hoisted to module-level (sto-optimize cycle 3/3).
@@ -668,9 +676,8 @@ export class CalendarService {
               orgId,
               liftId: dto.liftId,
               deletedAt: null,
-              AND: [OF_LIVE_WORK_ORDER],
+              AND: conflictAnd,
               id: excludeFilter,
-              workOrderId: excludeWoFilter,
               startAt: { lt: endAt },
               endAt: { gt: startAt },
             },
@@ -684,9 +691,8 @@ export class CalendarService {
               orgId,
               employeeId: dto.employeeId,
               deletedAt: null,
-              AND: [OF_LIVE_WORK_ORDER],
+              AND: conflictAnd,
               id: excludeFilter,
-              workOrderId: excludeWoFilter,
               startAt: { lt: endAt },
               endAt: { gt: startAt },
             },
@@ -814,7 +820,7 @@ export class CalendarService {
       throwIfExclusionConflict(
         err,
         'calendar_slots_no_overlap',
-        'Підйомник уже зайнятий на цей час (паралельне бронювання)',
+        translateError('err.calendar.liftBusy', getLocale()),
       );
     }
     return result;
