@@ -147,3 +147,15 @@
 Взірець, що вже так робив, — `types` у `counterparties.dto.ts`. Тест контракту — з повтором параметра.
 **Severity:** IMPORTANT — фільтр мовчки зникає; клієнт, що будує запит через `URLSearchParams.append`,
 отримує зайві записи (у пікері рахунку — рахунки, які не можна оплатити). Sample: `invoices.dto.ts` (5d2df581).
+
+### 2026-10-16 — Звужена за роллю відповідь, а спільний кеш вкладки зберігає повну — §2.4
+
+**Сигнал:** `GET /employees` для MECHANIC віддає лише id та ім'я (`EmployeeLookupListDto`), але
+картка й сторінка наряду писали в `cache:employees` (`sessionStorage`) рядки, як прийшли. Під
+власником це повні `EmployeeResponseDto` (телефон, e-mail, `userId`); вихід кеш не чистить, тож
+механік, що входить у тій самій вкладці, мав ці поля в `sessionStorage` (видно в devtools).
+**Grep:** `grep -rn "setCache('cache:" apps/web/src --include="*.ts*"` → звірити ключ з ендпоінтами,
+що мають `oneOf`/звужений DTO за роллю.
+**Фікс:** у кеш — лише поля звуженої форми (`executorCacheRows` у `lib/work-order-mechanics.ts`),
+тест на відсутність зайвих полів. Очищення `cache:*` при виході — окреме рішення власника.
+**Severity:** IMPORTANT

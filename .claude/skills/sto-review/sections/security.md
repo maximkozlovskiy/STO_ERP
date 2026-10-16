@@ -84,6 +84,7 @@ grep -rnE "throw new Error\(`[^`]*\$\{(await )?(response|res)\.text\(\)" apps/ap
 - [ ] `passwordHash`, `apiKey`, `secret` відсутні у `*ResponseDto`
 - [ ] `phone`, `edrpou`, `email` у `PULL_FIELD_BLACKLIST` (sync)
 - [ ] **Body-borne credential + `response.text()` у Error.message → `redactSecrets(text, [secret])`.** Секрети у ЗАГОЛОВКАХ (Bearer/X-Token) безпечні (не серіалізуємо заголовки). Але credential у request BODY (Nova Poshta `apiKey`, Checkbox `pin_code`/`licenseKey`) + `${await response.text()}` у throw → провайдер що ЕХО-не запит у 4xx зіллє секрет у Error.message → `IntegrationLog.error`. Логер (`IntegrationLogService.wrap`) секрет-сліпий → redaction МУСИТЬ бути на рівні клієнта. `redactSecrets(...)` (`apps/api/src/common/utils/redact.ts` — ігнорує <6-символьні). LiqPay-стиль (body=base64+signature без сирого privateKey) — безпечний. Sample: audit IntegrationLog (1bc106f8)
+- [ ] **Відповідь, звужена за роллю, + спільний web-кеш (`lib/ref-cache.ts`, `sessionStorage`) → у кеш лише поля звуженої форми.** Кеш вкладки виходом не очищується: рядки, які записала сторінка під власником (телефон, e-mail, `userId`), читає наступна роль у тій самій вкладці. Grep: `grep -rn "setCache('cache:" apps/web/src --include="*.ts*"` → для ключа, чий ендпоінт має `oneOf`/звужений DTO за роллю, значення проходить мапер на поля звуженої форми (`executorCacheRows`). Severity: IMPORTANT (журнал 2026-10-16)
 
 #### §2.5 BullMQ Queue Safety
 
