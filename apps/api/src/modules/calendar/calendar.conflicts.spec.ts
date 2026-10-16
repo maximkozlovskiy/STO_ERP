@@ -5,6 +5,7 @@ import { CalendarService } from './calendar.service';
 import {
   buildSlotStorePrisma,
   fakeSlot,
+  matchesWhere,
   FAKE_ORG_ID,
   type FakeSlot,
 } from './calendar.spec-fixture';
@@ -477,6 +478,69 @@ describe('CalendarService — конфлікти слотів (BR-CAL-006)', () 
         employeeConflict: false,
         anyConflict: false,
       });
+    });
+  });
+
+  // `PATCH /calendar/slots/by-work-order/:id` (живий, клієнтів у web немає): та сама пастка
+  // `{ not: X }` — бронювання без наряду на підйомнику якоря не вважалось конфліктом.
+  describe('syncWorkOrderSlots', () => {
+    const OWN_WO = '44444444-4444-4444-8444-555555555555';
+
+    function syncOver(rows: FakeSlot[]) {
+      const { prisma, service } = serviceOver(rows);
+      const updateMany = vi.fn(
+        ({ where, data }: { where: Record<string, unknown>; data: Partial<FakeSlot> }) => {
+          const hit = prisma._rows.filter(r => matchesWhere(r, where));
+          hit.forEach(r => Object.assign(r, data));
+          return Promise.resolve({ count: hit.length });
+        },
+      );
+      prisma.$transaction = vi.fn((cb: (tx: unknown) => unknown) =>
+        cb({ calendarSlot: { ...prisma.calendarSlot, updateMany }, workOrder: prisma.workOrder }),
+      );
+      return { prisma, service };
+    }
+    const own0 = (rows: FakeSlot[]) => rows.find(r => r.workOrderId === OWN_WO)!;
+    const anchor = () =>
+      fakeSlot({
+        liftId: LIFT_1,
+        workOrderId: OWN_WO,
+        workOrder: { deletedAt: null },
+        startAt: at('06:00'),
+        endAt: at('07:00'),
+      });
+
+    // guards: BR-CAL-006
+    it('запис без наряду на підйомнику якоря в новий час → 400 «підйомник зайнятий»', async () => {
+      const { prisma, service } = syncOver([
+        anchor(),
+        fakeSlot({ liftId: LIFT_1, startAt: at('10:00'), endAt: at('11:00') }),
+      ]);
+
+      await expectBadRequest(
+        service.syncWorkOrderSlots(FAKE_ORG_ID, OWN_WO, {
+          startAt: iso('10:30'),
+          endAt: iso('11:30'),
+        }),
+        msg('err.calendar.liftBusy'),
+      );
+      expect(own0(prisma._rows).startAt.toISOString()).toBe(iso('06:00'));
+    });
+
+    // guards: BR-CAL-006
+    it('вільний час → якір перенесено (контроль)', async () => {
+      const own = anchor();
+      const { service } = syncOver([
+        own,
+        fakeSlot({ liftId: LIFT_1, startAt: at('10:00'), endAt: at('11:00') }),
+      ]);
+
+      await service.syncWorkOrderSlots(FAKE_ORG_ID, OWN_WO, {
+        startAt: iso('12:00'),
+        endAt: iso('13:00'),
+      });
+
+      expect(own.startAt.toISOString()).toBe(iso('12:00'));
     });
   });
 });

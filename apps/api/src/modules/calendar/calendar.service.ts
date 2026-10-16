@@ -776,8 +776,11 @@ export class CalendarService {
               where: {
                 orgId,
                 deletedAt: null,
-                AND: [OF_LIVE_WORK_ORDER],
-                workOrderId: { not: workOrderId },
+                // Записи без наряду — теж конфлікт: `{ not: X }` сам по собі відкидає й NULL.
+                AND: [
+                  OF_LIVE_WORK_ORDER,
+                  { OR: [{ workOrderId: null }, { workOrderId: { not: workOrderId } }] },
+                ],
                 startAt: { lt: endAt },
                 endAt: { gt: startAt },
                 OR: orConflicts,

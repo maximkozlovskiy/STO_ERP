@@ -163,13 +163,13 @@ cd apps/api && npx vitest run src/modules/calendar/<файл>.spec.ts
 | HTTP-контракт (DTO, статуси, валідація; `employeeId: null` у зміні — BR-CAL-012)                                                                                                                                                                                           | `calendar.contract.spec.ts`           | 33     |
 | сервісна логіка; механік запису `employeeName` одним запитом, і для MECHANIC, звільнений — null; `workOrderDeleted` (BR-CAL-011)                                                                                                                                           | `calendar.service.spec.ts`            | 29     |
 | види слотів (без наряду / без механіка / службові / статус)                                                                                                                                                                                                                | `calendar.slot-kinds.spec.ts`         | 7      |
-| конфлікти слотів у `createSlot` / `updateSlot` (підйомник, механік, split-day, 409); `checkConflicts` картки наряду — без власних записів, але із записами без наряду                                                                                                      | `calendar.conflicts.spec.ts`          | 29     |
+| конфлікти слотів у `createSlot` / `updateSlot` (підйомник, механік, split-day, 409); `checkConflicts` картки наряду — без власних записів, але із записами без наряду; `syncWorkOrderSlots` — те саме                                                                      | `calendar.conflicts.spec.ts`          | 31     |
 | межі дня у `findSlots` (київська доба, переведення годинника, перевірка дати)                                                                                                                                                                                              | `calendar.day-bounds.spec.ts`         | 18     |
 | механік запису закріплений за підйомником: create/update, зміна підйомника, продовження, відпустка, перетягування знімає механіка; причина 400 і `mechanicDroppedReason` — у відпустці / не закріплений / інше; без підйомника — точна причина одним читанням (BR-CAL-012) | `calendar.mechanic-lift.spec.ts`      | 36     |
 | записи видаленого наряду: не в `findSlots`, не займають підйомник і механіка (BR-CAL-011)                                                                                                                                                                                  | `calendar.deleted-work-order.spec.ts` | 7      |
 | синхронізація з планшета: механік за підйомником і ролі календаря, причина в `lastError` (BR-CAL-012, BR-CAL-010)                                                                                                                                                          | `../sync/sync.calendar-slots.spec.ts` | 16     |
 
-Разом: **175** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **177** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Web:** вид «Місяць» (BR-CAL-008, BR-CAL-009) і «День» (BR-CAL-011), тека `apps/web/src/app/(app)/calendar/__tests__/`:
 
@@ -229,7 +229,7 @@ E2E: `apps/web/e2e/work-order-lookups-roles.spec.ts` — механік у ві�
 
 **Чого тут НЕМА.** Контракт і аспектні спеки є, але стережуть вони не все:
 
-- Conflict probe стережеться лише над сховищем у пам'яті. Справжній перетин проти БД не ганяє ніхто: integration-спек `apps/api/src/prisma/schema-integrity.integration.spec.ts` перевіряє тільки, що EXCLUDE `calendar_slots_no_overlap` ІСНУЄ, а не що він відхиляє пересічні слоти. `syncWorkOrderSlots` перевірено на моках-заготовках (форма `where`, не поведінка).
+- Conflict probe стережеться лише над сховищем у пам'яті. Справжній перетин проти БД не ганяє ніхто: integration-спек `apps/api/src/prisma/schema-integrity.integration.spec.ts` перевіряє тільки, що EXCLUDE `calendar_slots_no_overlap` ІСНУЄ, а не що він відхиляє пересічні слоти. `syncWorkOrderSlots` перевірено на моках-заготовках (форма `where`), поведінкою — лише конфлікт із записом без наряду (`calendar.conflicts.spec.ts`).
 - `checkConflicts()` (read-only проба для UI, `excludeSlotId` / `excludeWorkOrderId`) unit-тестом не стережеться зовсім: контракт-спек мокає сервіс цілком.
 - Зайнятість механіка страхує лише app-проба: EXCLUDE-констрейнт покриває підйомник, тож дві одночасні транзакції можуть подвоїти механіка — тестом це не відтворюється.
 - Закріплення механіка за підйомником перевіряє лише `CalendarService` (`POST`/`PATCH /calendar`).
