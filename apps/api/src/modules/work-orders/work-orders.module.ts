@@ -18,6 +18,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { WorkOrderTotalsModule } from './work-order-totals.module';
 import { LinesSummaryModule } from '../lines-summary/lines-summary.module';
+import { CalendarModule } from '../calendar/calendar.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { LinesSummaryModule } from '../lines-summary/lines-summary.module';
     SettingsModule,
     ExchangeRatesModule, // мультивалюта (Фаза 3): base-конвертація тоталів наряду
     WorkOrderTotalsModule, // BR-WO-007: єдиний власник тоталів наряду
+    CalendarModule, // BR-WO-019/020: робочі години філії й запис календаря наряду
   ],
   controllers: [WorkOrdersController, WorkOrdersPublicController],
   // A2: WorkOrderEventHandlers — @OnEvent-хендлери lifecycle-side-effects (реагують на події з

@@ -7,6 +7,7 @@ import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
 import { BankStatementPullScheduler } from '../bank-statements/bank-statement-pull.scheduler';
 import { AuditService } from '../audit/audit.service';
 import { validatePublicUrl } from '../../common/utils/url-guard';
+import { workHoursOf } from '../../common/utils/work-hours';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import {
@@ -26,6 +27,11 @@ const TTL_SECONDS = 300; // 5 minutes
 // cache on new session); shorter TTL reflects that admins can change work hours quickly.
 // Cache invalidation in updateBranchSettings is the primary mechanism; TTL is defense-in-depth.
 const WORK_HOURS_TTL_SECONDS = 60;
+
+/** Ключ кешу годин: основна філія організації або конкретна філія. */
+function workHoursCacheKey(orgId: string, branchId?: string): string {
+  return branchId ? `settings:work-hours:${orgId}:${branchId}` : `settings:work-hours:${orgId}`;
+}
 
 @Injectable()
 export class SettingsService {
@@ -210,8 +216,18 @@ export class SettingsService {
     return result;
   }
 
-  async getWorkHours(orgId: string): Promise<{ workStartHour: number; workEndHour: number }> {
-    const cacheKey = `settings:work-hours:${orgId}`;
+  /**
+   * Робочі години філії (`branchId`) або основної — першої створеної — філії організації.
+   * Розбір і типові години — ті самі, що в календарі (`workHoursOf`, 09–18): сітка, пікер
+   * планових дат наряду й сервер, що ділить запис на дні та перевіряє BR-WO-019, бачать однакові
+   * межі. Філія чужої організації чи без налаштувань — типові години, не 404: години не секрет,
+   * а відповідь не каже, чи існує чужа філія.
+   */
+  async getWorkHours(
+    orgId: string,
+    branchId?: string,
+  ): Promise<{ workStartHour: number; workEndHour: number }> {
+    const cacheKey = workHoursCacheKey(orgId, branchId);
     try {
       const cached = await this.redis.get(cacheKey);
       if (cached) return JSON.parse(cached) as { workStartHour: number; workEndHour: number };
@@ -220,27 +236,16 @@ export class SettingsService {
     }
 
     const settings = await this.prisma.branchSettings.findFirst({
-      where: { orgId, branch: { deletedAt: null } },
+      where: branchId
+        ? { orgId, branchId, branch: { deletedAt: null } }
+        : { orgId, branch: { deletedAt: null } },
       select: { workStartTime: true, workEndTime: true },
       orderBy: { branch: { createdAt: 'asc' } },
     });
-    // parseInt('00', 10) === 0 → use Number.isFinite() check (0 is valid 24/7 start hour).
-    // Fallbacks aligned with BranchSettings Prisma defaults (09:00 / 18:00) to match booking.service.ts.
-    const parseHour = (t: string | undefined, fallback: number) => {
-      if (!t) return fallback;
-      const h = parseInt(t.split(':')[0], 10);
-      return Number.isFinite(h) && h >= 0 && h <= 23 ? h : fallback;
-    };
-    const workStartHour = parseHour(settings?.workStartTime, 9);
-    const workEndHour = parseHour(settings?.workEndTime, 18);
-    // Defense-in-depth against inverted hours in DB (legacy/corrupt data before Matches regex was
-    // added to DTO). Without this: Array.from({ length: workEndHour - workStartHour }) → [] for
-    // negative length → divide-by-0 → NaN in CSS → DOM crash. Fallback keeps calendar usable
-    // until admin fixes settings.
-    const result =
-      workEndHour <= workStartHour
-        ? { workStartHour: 9, workEndHour: 18 }
-        : { workStartHour, workEndHour };
+    // Невалідний час чи кінець не пізніше початку (дані до валідації DTO, Bug #515) → типові
+    // години цілком: інакше сітка календаря отримала б від'ємну кількість годин.
+    const { startHour, endHour } = workHoursOf(settings);
+    const result = { workStartHour: startHour, workEndHour: endHour };
 
     try {
       await this.redis.set(cacheKey, JSON.stringify(result), 'EX', WORK_HOURS_TTL_SECONDS);
@@ -251,9 +256,13 @@ export class SettingsService {
     return result;
   }
 
-  async invalidateWorkHoursCache(orgId: string): Promise<void> {
+  async invalidateWorkHoursCache(orgId: string, branchId?: string): Promise<void> {
     try {
-      await this.redis.del(`settings:work-hours:${orgId}`);
+      // Години основної філії (без branchId) могли змінитись разом із годинами будь-якої філії.
+      await this.redis.del(
+        workHoursCacheKey(orgId),
+        ...(branchId ? [workHoursCacheKey(orgId, branchId)] : []),
+      );
     } catch {
       // ignore
     }
@@ -303,7 +312,7 @@ export class SettingsService {
     // work-hours cache is org-scoped (one per org regardless of branch). Invalidate only when
     // workStartTime/workEndTime actually changed — not on every PATCH (smsEnabled, fiscalEnabled, etc.).
     if (dto.workStartTime !== undefined || dto.workEndTime !== undefined) {
-      await this.invalidateWorkHoursCache(orgId);
+      await this.invalidateWorkHoursCache(orgId, branchId);
     }
 
     this.auditSettings(orgId, 'BranchSettings', branchId, 'UPDATE', userId, undefined, { ...dto });

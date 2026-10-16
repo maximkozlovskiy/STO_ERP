@@ -8,12 +8,14 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiProperty,
+  ApiQuery,
   ApiPropertyOptional,
   ApiResponse,
   ApiTags,
@@ -152,10 +154,18 @@ export class SettingsController {
 
   @Get('work-hours')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Робочі години основної філії (для побудови сітки календаря)' })
+  @ApiOperation({
+    summary:
+      'Робочі години філії: сітка календаря, пікер планових дат наряду (BR-WO-019). ' +
+      'Без branchId — основна (перша) філія',
+  })
+  @ApiQuery({ name: 'branchId', required: false, description: 'Філія (UUID)' })
   @ApiResponse({ status: 200, type: WorkHoursDto })
-  getWorkHours(@OrgContext() orgId: string) {
-    return this.service.getWorkHours(orgId);
+  getWorkHours(
+    @OrgContext() orgId: string,
+    @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string,
+  ) {
+    return this.service.getWorkHours(orgId, branchId);
   }
 
   @Patch('branch/:branchId')

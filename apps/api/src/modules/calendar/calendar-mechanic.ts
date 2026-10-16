@@ -30,12 +30,14 @@ export const MECHANIC_REJECT_KEY: Record<MechanicRejectReason, string> = {
 
 /**
  * BR-CAL-012: механік запису — активний (не звільнений, не видалений і не у відпустці) MECHANIC
- * своєї організації, закріплений за підйомником запису (`EmployeeLift`). Без підйомника
- * закріпитись нема за чим — `NOT_ON_LIFT` без запиту. Прийнятий механік — один запит, умови в
- * `where`, а не перевірка прочитаного. Лише відмова читає другий раз — причину: механік цієї
- * організації у відпустці → `ON_LEAVE` (навіть якщо ще й не закріплений: повернути його на
- * підйомник не допоможе), активний → `NOT_ON_LIFT`, інакше `UNAVAILABLE`. Те саме читає
- * `GET /employees?liftId=` (список поля «Механік»), запис календаря і синхронізація з планшета.
+ * своєї організації, закріплений за підйомником запису (`EmployeeLift`). Прийнятий механік — один
+ * запит, умови в `where`, а не перевірка прочитаного. Лише відмова читає другий раз — причину:
+ * механік цієї організації у відпустці → `ON_LEAVE` (навіть якщо ще й не закріплений: повернути
+ * його на підйомник не допоможе), активний → `NOT_ON_LIFT`, інакше `UNAVAILABLE`. Без підйомника
+ * закріпитись нема за чим — відмова завжди, тож перший запит пропускається, а причина читається
+ * так само: «у відпустці» / «звільнений чи не механік» точніші за «не закріплений» (рішення
+ * власника 2026-10-16). Те саме читає `GET /employees?liftId=` (список поля «Механік»), запис
+ * календаря, запис наряду (BR-WO-020) і синхронізація з планшета.
  */
 export async function findMechanicOnLift(
   prisma: Pick<PrismaService, 'employee'>,
@@ -43,13 +45,14 @@ export async function findMechanicOnLift(
   employeeId: string,
   liftId: string | null,
 ): Promise<MechanicOnLiftResult> {
-  if (!liftId) return { ok: false, reason: 'NOT_ON_LIFT' };
   const mechanic = { id: employeeId, orgId, deletedAt: null, role: UserRole.MECHANIC };
-  const found = await prisma.employee.findFirst({
-    where: { ...mechanic, status: EmployeeStatus.ACTIVE, employeeLifts: { some: { liftId } } },
-    select: { id: true },
-  });
-  if (found) return { ok: true, id: found.id };
+  if (liftId) {
+    const found = await prisma.employee.findFirst({
+      where: { ...mechanic, status: EmployeeStatus.ACTIVE, employeeLifts: { some: { liftId } } },
+      select: { id: true },
+    });
+    if (found) return { ok: true, id: found.id };
+  }
   const other = await prisma.employee.findFirst({
     where: { ...mechanic, status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.ON_LEAVE] } },
     select: { status: true },

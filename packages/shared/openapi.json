@@ -417,7 +417,17 @@
     "/api/v1/settings/work-hours": {
       "get": {
         "operationId": "SettingsController_getWorkHours_v1",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "branchId",
+            "required": false,
+            "in": "query",
+            "description": "Філія (UUID)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -435,7 +445,7 @@
             "bearer": []
           }
         ],
-        "summary": "Робочі години основної філії (для побудови сітки календаря)",
+        "summary": "Робочі години філії: сітка календаря, пікер планових дат наряду (BR-WO-019). Без branchId — основна (перша) філія",
         "tags": [
           "Налаштування"
         ]

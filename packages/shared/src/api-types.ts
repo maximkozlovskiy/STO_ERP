@@ -251,7 +251,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Робочі години основної філії (для побудови сітки календаря) */
+        /** Робочі години філії: сітка календаря, пікер планових дат наряду (BR-WO-019). Без branchId — основна (перша) філія */
         get: operations["SettingsController_getWorkHours_v1"];
         put?: never;
         post?: never;
@@ -9417,7 +9417,10 @@ export interface operations {
     };
     SettingsController_getWorkHours_v1: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Філія (UUID) */
+                branchId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

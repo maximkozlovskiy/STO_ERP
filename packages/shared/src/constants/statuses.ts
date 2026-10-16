@@ -107,6 +107,11 @@ export const PAYMENT_CREATE_ROLES: readonly string[] = Object.freeze([
   'ACCOUNTANT',
   'RECEPTIONIST',
 ]);
+/**
+ * Ролі, яким дозволено `GET /audit` (журнал змін документа). Блок «Журнал змін» на сторінці
+ * наряду для інших ролей не рендериться і не запитується — інакше 403 у консолі.
+ */
+export const AUDIT_VIEW_ROLES: readonly string[] = Object.freeze(['OWNER', 'ADMIN', 'ACCOUNTANT']);
 
 // Single source of truth: must mirror backend `WORK_ORDER_TRANSITIONS`
 // in apps/api/src/modules/work-orders/work-orders.fsm.ts. Backend is authoritative —

@@ -7,7 +7,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { translateError } from '@sto/shared';
+import { AUDIT_VIEW_ROLES, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -44,7 +44,7 @@ export class AuditController {
   constructor(private readonly service: AuditService) {}
 
   @Get()
-  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @Roles(...AUDIT_VIEW_ROLES)
   @ApiOperation({ summary: 'Журнал змін сутності' })
   @ApiQuery({ name: 'entityType', required: true, enum: AUDIT_ENTITY_TYPES })
   @ApiQuery({ name: 'entityId', required: true })

@@ -8,6 +8,8 @@ import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagina
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { PrismaService } from '../../prisma/prisma.service';
+import { throwIfExclusionConflict } from '../../common/utils/prisma-errors';
+import type { WorkHours } from '../../common/utils/work-hours';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
 import { WorkOrderTotalsService } from './work-order-totals.service';
 import {
@@ -38,6 +40,12 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { CalendarService } from '../calendar/calendar.service';
+import {
+  changedPlannedDates,
+  plannedDatesError,
+  type PlannedDates,
+} from './work-order-planned-dates';
 import {
   WORK_ORDER_EVENTS,
   WorkOrderCompletedEvent,
@@ -89,6 +97,30 @@ const PART_GOOD_INCLUDE = {
   },
 } as const satisfies Prisma.GoodDefaultArgs;
 
+/** Include відповіді створення/зміни наряду (`toDto`): той самий для create і update. */
+const WO_WRITE_INCLUDE = {
+  vehicle: { select: { make: true, model: true, licensePlate: true } },
+  counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+  branch: { select: { name: true } },
+  contract: { select: { id: true, number: true } },
+  currency: { select: { code: true } },
+  lift: { select: { name: true } },
+} as const satisfies Prisma.WorkOrderInclude;
+
+/** EXCLUDE підйомника в БД — запасний захист від паралельного бронювання (CAL-C1). */
+const SLOT_EXCLUSION = 'calendar_slots_no_overlap';
+const SLOT_RACE_MESSAGE = 'Підйомник уже зайнятий на цей час (паралельне бронювання)';
+
+/** Значення дати після PATCH: `undefined` — без змін, `null` — стерто. */
+function nextDate(value: string | null | undefined, stored: Date | null): Date | null {
+  if (value === undefined) return stored;
+  return value === null ? null : new Date(value);
+}
+
+function sameInstant(a: Date | null, b: Date | null): boolean {
+  return (a?.getTime() ?? null) === (b?.getTime() ?? null);
+}
+
 type PaidGuardKey = 'err.workOrder.paidCannotCancel' | 'err.workOrder.paidCannotDelete';
 
 /** BR-WO-014: 400 «спершу сторнуйте оплату», якщо наряд має сплачене > 0; інакше null. */
@@ -134,9 +166,34 @@ export class WorkOrdersService {
     private readonly totals: WorkOrderTotalsService,
     // Реквізити й логотип організації для шапки друкованого наряд-замовлення.
     private readonly orgPrintInfo: OrgPrintInfoService,
+    // BR-WO-019/020: робочі години філії для планових дат і запис календаря наряду.
+    private readonly calendar: CalendarService,
   ) {}
 
   // ─── CRUD ────────────────────────────────────────────────
+
+  /**
+   * BR-WO-019: 400, якщо змінена планова дата в минулому, поза робочими годинами філії наряду
+   * або завершення не пізніше за початок. Години філії читаються лише коли дата змінюється;
+   * повертаються, щоб запис календаря (BR-WO-020) не читав їх удруге.
+   */
+  private async assertPlannedDates(
+    orgId: string,
+    branchId: string,
+    next: PlannedDates,
+    prev: PlannedDates | null,
+  ): Promise<WorkHours | null> {
+    const changed = changedPlannedDates(next, prev);
+    if (!changed.start && !changed.end) return null;
+    const hours = await this.calendar.resolveWorkHours(orgId, branchId);
+    const err = plannedDatesError(next, prev, new Date(), hours);
+    if (err) {
+      throw new BadRequestException(
+        translateError(err.key, getLocale(), 'params' in err ? err.params : undefined),
+      );
+    }
+    return hours;
+  }
 
   async findAll(orgId: string, query: WorkOrderQueryDto): Promise<PaginatedWorkOrdersDto> {
     const showDeleted = query.showDeleted === 'true';
@@ -378,40 +435,68 @@ export class WorkOrdersService {
     // Примітка: outMileage у CreateWorkOrderDto немає (виставляється лише на update/завершенні),
     // тож guard монотонності пробігу потрібен лише в update() — тут перевіряти нічого.
 
+    // BR-WO-019: планові дати нового наряду — не в минулому й у робочих годинах його філії.
+    const planned: PlannedDates = {
+      plannedAt: dto.plannedAt ? new Date(dto.plannedAt) : null,
+      dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+    };
+    const hours = await this.assertPlannedDates(orgId, dto.branchId, planned, null);
+
     const number = await this.docNumbers.next(orgId, 'WORK_ORDER');
 
     // Мультивалюта (Фаза 3): валюта наряду — з DTO або базова org. Тотали ще 0 (рядки додаються
     // пізніше → recalcTotals порахує totalAmountBase по курсу). Тут лише фіксуємо currencyId.
     const currencyId = dto.currencyId ?? (await this.exchangeRates.requireBaseCurrencyId(orgId));
 
-    const wo = await this.prisma.workOrder.create({
-      data: {
-        orgId,
-        branchId: dto.branchId,
-        vehicleId: dto.vehicleId,
-        counterpartyId: dto.counterpartyId,
-        contractId,
-        liftId: dto.liftId ?? null,
-        number,
-        description: dto.description,
-        inMileage: dto.inMileage,
-        priority: dto.priority ?? 'NORMAL',
-        repairCategory: dto.repairCategory ?? null,
-        plannedAt: dto.plannedAt ? new Date(dto.plannedAt) : null,
-        dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-        plannedHours: dto.plannedHours ?? null,
-        currencyId,
-        documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
-      },
-      include: {
-        vehicle: { select: { make: true, model: true, licensePlate: true } },
-        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-        branch: { select: { name: true } },
-        contract: { select: { id: true, number: true } },
-        currency: { select: { code: true } },
-        lift: { select: { name: true } },
-      },
-    });
+    const createWo = (db: Prisma.TransactionClient) =>
+      db.workOrder.create({
+        data: {
+          orgId,
+          branchId: dto.branchId,
+          vehicleId: dto.vehicleId,
+          counterpartyId: dto.counterpartyId,
+          contractId,
+          liftId: dto.liftId ?? null,
+          number,
+          description: dto.description,
+          inMileage: dto.inMileage,
+          priority: dto.priority ?? 'NORMAL',
+          repairCategory: dto.repairCategory ?? null,
+          plannedAt: planned.plannedAt,
+          dueDate: planned.dueDate,
+          plannedHours: dto.plannedHours ?? null,
+          currencyId,
+          documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
+        },
+        include: WO_WRITE_INCLUDE,
+      });
+
+    // BR-WO-020: наряд із плановими початком і завершенням сам має запис календаря — у тій самій
+    // транзакції: зайнятий підйомник чи механік (400) не лишає наряду без запису.
+    const { plannedAt, dueDate } = planned;
+    const wo =
+      plannedAt && dueDate
+        ? await this.prisma
+            .$transaction(
+              async tx => {
+                const created = await createWo(tx);
+                await this.calendar.upsertWorkOrderSlot(tx, {
+                  orgId,
+                  workOrderId: created.id,
+                  branchId: dto.branchId,
+                  liftId: dto.liftId ?? null,
+                  startAt: plannedAt,
+                  endAt: dueDate,
+                  vehicleId: dto.vehicleId,
+                  counterpartyId: dto.counterpartyId,
+                  ...(hours && { hours }),
+                });
+                return created;
+              },
+              { timeout: TRANSACTION_TIMEOUT_MS },
+            )
+            .catch((e: unknown) => throwIfExclusionConflict(e, SLOT_EXCLUSION, SLOT_RACE_MESSAGE))
+        : await createWo(this.prisma);
 
     if (userId) {
       this.audit
@@ -505,8 +590,30 @@ export class WorkOrdersService {
       ] as const
     ).forEach(trackField);
 
-    const updated = await this.prisma.workOrder
-      .update({
+    // BR-WO-019: перевіряються лише планові дати, що змінюються відносно збережених.
+    const next: PlannedDates = {
+      plannedAt: nextDate(dto.plannedAt, wo.plannedAt),
+      dueDate: nextDate(dto.dueDate, wo.dueDate),
+    };
+    const hours = await this.assertPlannedDates(orgId, wo.branchId, next, wo);
+    // BR-WO-020: запис календаря наряду переноситься, коли змінились дати чи підйомник, і
+    // позначається видаленим, коли наряд мав обидві дати, а тепер — ні. Форма шле дати й
+    // підйомник щоразу, тож порівнюється зі збереженим, а не «поле є в запиті».
+    const nextLiftId = dto.liftId === undefined ? wo.liftId : (dto.liftId ?? null);
+    const datesChanged =
+      !sameInstant(next.plannedAt, wo.plannedAt) || !sameInstant(next.dueDate, wo.dueDate);
+    const { plannedAt, dueDate } = next;
+    const slotAction: 'upsert' | 'remove' | null =
+      plannedAt && dueDate
+        ? datesChanged || nextLiftId !== wo.liftId
+          ? 'upsert'
+          : null
+        : wo.plannedAt && wo.dueDate
+          ? 'remove'
+          : null;
+
+    const updateWo = (db: Prisma.TransactionClient) =>
+      db.workOrder.update({
         // BR-WO-015: умова «нічого не сплачено» — у самому записі зміни валюти: оплата, що прийшла
         // між читанням і записом, інакше лишила б «сплачено» в одній валюті, а наряд — в іншій.
         where: { id, orgId, ...(currencyChanging && { paidAmount: 0 }) },
@@ -519,18 +626,8 @@ export class WorkOrdersService {
           clientApproval: dto.clientApproval,
           // Distinguish "field omitted" (undefined → skip) from "field cleared"
           // (null → set NULL). `dto.plannedAt === null` writes NULL.
-          plannedAt:
-            dto.plannedAt === undefined
-              ? undefined
-              : dto.plannedAt === null
-                ? null
-                : new Date(dto.plannedAt),
-          dueDate:
-            dto.dueDate === undefined
-              ? undefined
-              : dto.dueDate === null
-                ? null
-                : new Date(dto.dueDate),
+          plannedAt: dto.plannedAt === undefined ? undefined : next.plannedAt,
+          dueDate: dto.dueDate === undefined ? undefined : next.dueDate,
           documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
           // Мультивалюта (Фаза 3): totalAmountBase/rateUsed лишаються зі старого курсу до
           // наступного recalcTotals (той самий lazy-патерн, що вже для documentDate вище) —
@@ -541,23 +638,43 @@ export class WorkOrdersService {
           actualHours: dto.actualHours === undefined ? undefined : (dto.actualHours ?? null),
         },
         // PATCH response must include contract so contractNumber doesn't vanish after any field edit.
-        include: {
-          vehicle: { select: { make: true, model: true, licensePlate: true } },
-          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-          branch: { select: { name: true } },
-          contract: { select: { id: true, number: true } },
-          currency: { select: { code: true } },
-          lift: { select: { name: true } },
-        },
-      })
-      .catch((e: unknown) => {
-        if (currencyChanging && (e as { code?: string } | null)?.code === 'P2025') {
-          throw new BadRequestException(
-            translateError('err.workOrder.paidCurrencyLocked', getLocale()),
-          );
-        }
-        throw e;
+        include: WO_WRITE_INCLUDE,
       });
+
+    const persist =
+      slotAction === null
+        ? updateWo(this.prisma)
+        : this.prisma.$transaction(
+            async tx => {
+              const res = await updateWo(tx);
+              if (slotAction === 'remove') {
+                await this.calendar.removeWorkOrderSlots(tx, orgId, id);
+              } else {
+                await this.calendar.upsertWorkOrderSlot(tx, {
+                  orgId,
+                  workOrderId: id,
+                  branchId: wo.branchId,
+                  liftId: nextLiftId,
+                  startAt: plannedAt!,
+                  endAt: dueDate!,
+                  vehicleId: wo.vehicleId,
+                  counterpartyId: wo.counterpartyId,
+                  ...(hours && { hours }),
+                });
+              }
+              return res;
+            },
+            { timeout: TRANSACTION_TIMEOUT_MS },
+          );
+    const updated = await persist.catch((e: unknown) => {
+      if (currencyChanging && (e as { code?: string } | null)?.code === 'P2025') {
+        throw new BadRequestException(
+          translateError('err.workOrder.paidCurrencyLocked', getLocale()),
+        );
+      }
+      if (slotAction !== null) throwIfExclusionConflict(e, SLOT_EXCLUSION, SLOT_RACE_MESSAGE);
+      throw e;
+    });
 
     // AuditEvent for field-level updates (only if something actually changed)
     if (userId && Object.keys(newData).length > 0) {
@@ -634,7 +751,6 @@ export class WorkOrdersService {
         inMileage: true,
         priority: true,
         repairCategory: true,
-        dueDate: true,
         plannedHours: true,
         currencyId: true, // Мультивалюта (Фаза 3): клон успадковує валюту документа
         lines: {
@@ -714,8 +830,9 @@ export class WorkOrdersService {
             inMileage: original.inMileage,
             priority: original.priority,
             repairCategory: original.repairCategory,
-            dueDate: original.dueDate,
-            // plannedHours copied from original — clone preserves all planning fields.
+            // Планові дати не копіюються: клон — новий візит, дати оригіналу здебільшого вже минули
+            // (BR-WO-019), а запис календаря (BR-WO-020) клон отримає, щойно йому призначать
+            // початок і завершення. Нормогодини копіюються — це обсяг робіт, не час.
             // actualHours intentionally omitted — clone is a new DRAFT session, actual hours do not yet exist.
             plannedHours: original.plannedHours,
             currencyId: original.currencyId ?? null,

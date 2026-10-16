@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { CalendarSlotStatus, CalendarSlotType, EmployeeStatus } from '@prisma/client';
+import { CalendarSlotStatus, CalendarSlotType, EmployeeStatus, Prisma } from '@prisma/client';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -10,6 +10,13 @@ import {
   kyivDayStart,
   kyivOffsetMs,
 } from '../../common/utils/kyiv-date';
+import {
+  splitByWorkHours,
+  workHoursOf,
+  DEFAULT_WORK_HOURS,
+  type TimeSegment,
+  type WorkHours,
+} from '../../common/utils/work-hours';
 import {
   CreateCalendarSlotDto,
   UpdateCalendarSlotDto,
@@ -26,21 +33,6 @@ import {
 } from './calendar-mechanic';
 
 const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
-
-// Default working-day boundaries (fallback коли BranchSettings недоступні або слот без
-// підйомника → не можемо резолвнути філію). §13: реальні межі беруться з
-// BranchSettings.workStartTime/workEndTime per-branch (resolveWorkHours).
-const DEFAULT_WORK_DAY_START_H = 8;
-const DEFAULT_WORK_DAY_END_H = 20;
-
-/** Парсить "HH:mm" → ціла година [0..23]; повертає fallback при невалідному вводі. */
-function parseHour(value: string | null | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const m = /^(\d{1,2}):/.exec(value.trim());
-  if (!m) return fallback;
-  const h = Number(m[1]);
-  return Number.isInteger(h) && h >= 0 && h <= 23 ? h : fallback;
-}
 
 // sto-optimize (cycle 3/3): shared include shape для create()/update() — попереджає alloc per-request.
 // Дзеркалить SLOT_INCLUDE що раніше жив у тілі create(). Прив'язан до Prisma Client через inference.
@@ -104,7 +96,7 @@ function nameOf(employeeId: string | null, names: ReadonlyMap<string, string>): 
 }
 
 /** Returns the UTC timestamp for `endHour` (Kyiv) on the same calendar day as `d`. */
-function kyivEndOfWorkDay(d: Date, endHour: number = DEFAULT_WORK_DAY_END_H): Date {
+function kyivEndOfWorkDay(d: Date, endHour: number): Date {
   const kyivDate = KYIV_DATE_FMT.format(d); // "YYYY-MM-DD"
   // Build "YYYY-MM-DDTHH:00:00" as a local Kyiv wall-clock time, then convert to UTC.
   // We use the same DST-aware approach: find the UTC offset at noon of that day.
@@ -116,7 +108,7 @@ function kyivEndOfWorkDay(d: Date, endHour: number = DEFAULT_WORK_DAY_END_H): Da
 }
 
 /** Returns the UTC timestamp for `startHour` (Kyiv) on the calendar day AFTER `d`. */
-function kyivStartOfNextWorkDay(d: Date, startHour: number = DEFAULT_WORK_DAY_START_H): Date {
+function kyivStartOfNextWorkDay(d: Date, startHour: number): Date {
   const kyivDate = KYIV_DATE_FMT.format(d); // "YYYY-MM-DD"
   const [y, m, day] = kyivDate.split('-').map(Number);
   const nextDay = new Date(Date.UTC(y, m - 1, day + 1));
@@ -134,33 +126,24 @@ export class CalendarService {
 
   /**
    * §13 config-over-hardcode: межі робочого дня філії з BranchSettings
-   * (workStartTime/workEndTime "HH:mm"). Fallback на дефолт 8..20 коли:
-   *  - слот без підйомника (branchId=null → не знаємо філію),
+   * (workStartTime/workEndTime "HH:mm"). Типові години (`DEFAULT_WORK_HOURS`, 09–18 — ті самі,
+   * що в `GET /settings/work-hours`), коли:
+   *  - філію не визначено (запис без підйомника),
    *  - BranchSettings ще не створені для філії,
-   *  - workEndTime ≤ workStartTime (некоректна конфігурація → безпечний дефолт),
+   *  - workEndTime ≤ workStartTime чи невалідний час (некоректна конфігурація),
    *  - будь-яка помилка читання (офлайн-стійкість).
+   * Ці ж години перевіряють планові дати наряду (BR-WO-019).
    */
-  private async resolveWorkHours(
-    orgId: string,
-    branchId: string | null,
-  ): Promise<{ startHour: number; endHour: number }> {
-    const fallback = {
-      startHour: DEFAULT_WORK_DAY_START_H,
-      endHour: DEFAULT_WORK_DAY_END_H,
-    };
-    if (!branchId) return fallback;
+  async resolveWorkHours(orgId: string, branchId: string | null): Promise<WorkHours> {
+    if (!branchId) return { ...DEFAULT_WORK_HOURS };
     try {
       const bs = await this.prisma.branchSettings.findFirst({
         where: { branchId, orgId },
         select: { workStartTime: true, workEndTime: true },
       });
-      if (!bs) return fallback;
-      const startHour = parseHour(bs.workStartTime, DEFAULT_WORK_DAY_START_H);
-      const endHour = parseHour(bs.workEndTime, DEFAULT_WORK_DAY_END_H);
-      if (endHour <= startHour) return fallback;
-      return { startHour, endHour };
+      return workHoursOf(bs);
     } catch {
-      return fallback;
+      return { ...DEFAULT_WORK_HOURS };
     }
   }
 
@@ -342,7 +325,7 @@ export class CalendarService {
       throw new NotFoundException(translateError('err.calendar.vehicleNotFound', getLocale()));
 
     // §13: межі робочого дня per-branch (BranchSettings.workStartTime/workEndTime).
-    // Резолвимо філію через lift.zone.branchId; без підйомника → дефолт 8..20.
+    // Резолвимо філію через lift.zone.branchId; без підйомника → типові години.
     const { startHour, endHour } = await this.resolveWorkHours(orgId, lift?.zone?.branchId ?? null);
 
     // Determine if slot overflows the working day end (endHour Kyiv, per-branch)
@@ -835,6 +818,176 @@ export class CalendarService {
       );
     }
     return result;
+  }
+
+  /**
+   * BR-WO-020: запис календаря наряду з плановими початком і завершенням — у транзакції
+   * збереження наряду (`tx`), тож зайнятий підйомник чи механік (400) відкочує й сам наряд.
+   *
+   * - Проміжок [startAt, endAt) ділиться на робочі години філії наряду: по запису на день
+   *   (перший — «якір», решта — продовження з `parentSlotId`, як багатоденний запис BR-CAL-007).
+   *   Плановий початок/завершення — мить, а не тривалість, тож другий день закінчується о
+   *   `dueDate`, а не «залишок тривалості від відкриття».
+   * - Наявний якір наряду переноситься на місці: зберігаються id, механік, статус, тип і нотатки;
+   *   продовження й зайві записи наряду позначаються видаленими й створюються заново — один
+   *   запис на наряд.
+   * - Механік зберігається; зміна підйомника знімає механіка, не закріпленого за новим (чи
+   *   у відпустці, чи звільненого), як перетягування у «Дні» (BR-CAL-012). Без зміни підйомника
+   *   механіка не перевіряє.
+   * - Зайнятість — як у `createSlot`: інші записи на підйомнику / у механіка, записи видалених
+   *   нарядів не рахуються (BR-CAL-011); власні записи наряду — не конфлікт.
+   */
+  async upsertWorkOrderSlot(
+    tx: Prisma.TransactionClient,
+    args: {
+      orgId: string;
+      workOrderId: string;
+      branchId: string;
+      liftId: string | null;
+      startAt: Date;
+      endAt: Date;
+      vehicleId: string | null;
+      counterpartyId: string | null;
+      hours?: WorkHours;
+    },
+  ): Promise<void> {
+    const { orgId, workOrderId, liftId } = args;
+    const hours = args.hours ?? (await this.resolveWorkHours(orgId, args.branchId));
+    const split = splitByWorkHours(args.startAt, args.endAt, hours);
+    // Поза робочими годинами бувають лише старі незмінені дати (BR-WO-019 їх не перевіряє, а
+    // запис переноситься, бо змінився підйомник) — такий запис лишається одним відрізком.
+    const segments: TimeSegment[] =
+      split.length > 0 ? split : [{ startAt: args.startAt, endAt: args.endAt }];
+    const [first, ...rest] = segments as [TimeSegment, ...TimeSegment[]];
+
+    const own = await tx.calendarSlot.findMany({
+      where: { orgId, workOrderId, deletedAt: null },
+      select: {
+        id: true,
+        parentSlotId: true,
+        liftId: true,
+        employeeId: true,
+        status: true,
+        type: true,
+        notes: true,
+      },
+      orderBy: { startAt: 'asc' },
+      take: 500,
+    });
+    const anchor = own.find(s => s.parentSlotId === null) ?? null;
+
+    let employeeId = anchor?.employeeId ?? null;
+    if (anchor && employeeId && liftId !== anchor.liftId) {
+      const mechanic = await findMechanicOnLift(this.prisma, orgId, employeeId, liftId);
+      if (!mechanic.ok) employeeId = null;
+    }
+
+    const ownIds = own.map(s => s.id);
+    const busyWhere = (resource: { liftId: string } | { employeeId: string }) => ({
+      orgId,
+      ...resource,
+      deletedAt: null,
+      ...(ownIds.length > 0 && { id: { notIn: ownIds } }),
+      AND: [
+        OF_LIVE_WORK_ORDER,
+        { OR: segments.map(s => ({ startAt: { lt: s.endAt }, endAt: { gt: s.startAt } })) },
+      ],
+    });
+    const [liftHit, mechanicHit] = await Promise.all([
+      liftId
+        ? tx.calendarSlot.findFirst({
+            where: busyWhere({ liftId }),
+            select: { startAt: true, endAt: true },
+          })
+        : Promise.resolve(null),
+      employeeId
+        ? tx.calendarSlot.findFirst({
+            where: busyWhere({ employeeId }),
+            select: { startAt: true, endAt: true },
+          })
+        : Promise.resolve(null),
+    ]);
+    const onFirstDay = (hit: { startAt: Date; endAt: Date }) =>
+      hit.startAt < first.endAt && hit.endAt > first.startAt;
+    if (liftHit)
+      throw new BadRequestException(
+        translateError(
+          onFirstDay(liftHit) ? 'err.calendar.liftBusy' : 'err.calendar.liftBusyNextDay',
+          getLocale(),
+        ),
+      );
+    if (mechanicHit)
+      throw new BadRequestException(
+        translateError(
+          onFirstDay(mechanicHit)
+            ? 'err.calendar.employeeBusy'
+            : 'err.calendar.employeeBusyNextDay',
+          getLocale(),
+        ),
+      );
+
+    // Спершу звільнити старі продовження: інакше перенесений якір перетнувся б із власним
+    // продовженням на тому ж підйомнику (EXCLUDE `calendar_slots_no_overlap`).
+    const stale = ownIds.filter(id => id !== anchor?.id);
+    if (stale.length > 0) {
+      await tx.calendarSlot.updateMany({
+        where: { orgId, id: { in: stale }, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+    }
+
+    const shared = {
+      orgId,
+      workOrderId,
+      liftId,
+      employeeId,
+      vehicleId: args.vehicleId,
+      counterpartyId: args.counterpartyId,
+      status: anchor?.status ?? CalendarSlotStatus.BOOKED,
+      type: anchor?.type ?? CalendarSlotType.WORK,
+      notes: anchor?.notes ?? null,
+    };
+    let anchorId: string;
+    if (anchor) {
+      await tx.calendarSlot.update({
+        where: { id: anchor.id, orgId },
+        data: { liftId, employeeId, startAt: first.startAt, endAt: first.endAt },
+        select: { id: true },
+      });
+      anchorId = anchor.id;
+    } else {
+      const created = await tx.calendarSlot.create({
+        data: { ...shared, startAt: first.startAt, endAt: first.endAt },
+        select: { id: true },
+      });
+      anchorId = created.id;
+    }
+    if (rest.length > 0) {
+      await tx.calendarSlot.createMany({
+        data: rest.map(s => ({
+          ...shared,
+          parentSlotId: anchorId,
+          startAt: s.startAt,
+          endAt: s.endAt,
+        })),
+      });
+    }
+  }
+
+  /**
+   * BR-WO-020: планові дати наряду стерто — його записи календаря (обидві частини багатоденного)
+   * позначаються видаленими в транзакції збереження наряду; підйомник і механік звільняються.
+   */
+  async removeWorkOrderSlots(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    workOrderId: string,
+  ): Promise<number> {
+    const res = await tx.calendarSlot.updateMany({
+      where: { orgId, workOrderId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    return res.count;
   }
 
   async removeSlot(orgId: string, id: string): Promise<void> {
