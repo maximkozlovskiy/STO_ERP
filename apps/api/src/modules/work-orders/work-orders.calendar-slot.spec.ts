@@ -101,6 +101,22 @@ describe('WorkOrdersService — запис календаря наряду (BR-W
       expect(t(live[0]!.endAt)).toBe(t(kyiv(D, '12:00')));
     });
 
+    it('новий наряд: власні записи календаря не читаються — їх ще не може бути', async () => {
+      // sto-optimize: наряд створено в цій самій транзакції, тож пошук його записів завжди
+      // порожній — зайвий запит до БД на кожне створення наряду з датами.
+      const h = planningHarness({ workOrders: [] });
+      const wo = await h.service.create(
+        ORG,
+        createDto({
+          liftId: LIFT_1,
+          plannedAt: kyiv(D, '10:00').toISOString(),
+          dueDate: kyiv(D, '12:00').toISOString(),
+        }),
+      );
+      expect(h.liveSlots(wo.id)).toHaveLength(1);
+      expect(h.calendarSlot.findMany).not.toHaveBeenCalled();
+    });
+
     // guards: BR-WO-020
     it('без підйомника → запис «Без підйомника» (liftId = null)', async () => {
       const h = planningHarness({ workOrders: [] });

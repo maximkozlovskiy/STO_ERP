@@ -845,6 +845,8 @@ export class CalendarService {
    *   механіка не перевіряє.
    * - Зайнятість — як у `createSlot`: інші записи на підйомнику / у механіка, записи видалених
    *   нарядів не рахуються (BR-CAL-011); власні записи наряду — не конфлікт.
+   * - `isNew` — наряд створено в цій самій транзакції: власних записів у нього ще немає, тож
+   *   їх пошук (завжди порожній) пропускається — на один запит до БД менше на створення.
    */
   async upsertWorkOrderSlot(
     tx: Prisma.TransactionClient,
@@ -858,6 +860,7 @@ export class CalendarService {
       vehicleId: string | null;
       counterpartyId: string | null;
       hours?: WorkHours;
+      isNew?: boolean;
     },
   ): Promise<void> {
     const { orgId, workOrderId, liftId } = args;
@@ -869,20 +872,22 @@ export class CalendarService {
       split.length > 0 ? split : [{ startAt: args.startAt, endAt: args.endAt }];
     const [first, ...rest] = segments as [TimeSegment, ...TimeSegment[]];
 
-    const own = await tx.calendarSlot.findMany({
-      where: { orgId, workOrderId, deletedAt: null },
-      select: {
-        id: true,
-        parentSlotId: true,
-        liftId: true,
-        employeeId: true,
-        status: true,
-        type: true,
-        notes: true,
-      },
-      orderBy: { startAt: 'asc' },
-      take: 500,
-    });
+    const own = args.isNew
+      ? []
+      : await tx.calendarSlot.findMany({
+          where: { orgId, workOrderId, deletedAt: null },
+          select: {
+            id: true,
+            parentSlotId: true,
+            liftId: true,
+            employeeId: true,
+            status: true,
+            type: true,
+            notes: true,
+          },
+          orderBy: { startAt: 'asc' },
+          take: 500,
+        });
     const anchor = own.find(s => s.parentSlotId === null) ?? null;
 
     let employeeId = anchor?.employeeId ?? null;

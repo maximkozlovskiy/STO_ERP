@@ -491,6 +491,7 @@ export class WorkOrdersService {
                   vehicleId: dto.vehicleId,
                   counterpartyId: dto.counterpartyId,
                   ...(hours && { hours }),
+                  isNew: true,
                 });
                 return created;
               },
