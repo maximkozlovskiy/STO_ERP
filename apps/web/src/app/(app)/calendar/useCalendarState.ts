@@ -159,6 +159,14 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   // Механік і підйомник запису на момент відкриття форми (BR-CAL-012): збережений механік, якого
   // вже не можна обрати, форма показує недоступною опцією, доки його не змінять.
   const [editingSaved, setEditingSaved] = useState<{ id: string } & SavedMechanic>();
+  // Запис у формі на момент відкриття і прапорець «наряд змінено поверх форми» (Bug #884):
+  // збереження картки наряду переносить його запис на сервері (BR-WO-020), і форма звіряється з
+  // перечитаним видом — інакше «Оновити» повернув би запис на старий час.
+  const editingOrigRef = useRef<Pick<
+    CalendarSlot,
+    'id' | 'startAt' | 'endAt' | 'liftId' | 'employeeId'
+  > | null>(null);
+  const resyncEditRef = useRef(false);
 
   const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('day');
   const [statsFrom, setStatsFrom] = useState('');
@@ -560,6 +568,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   useEffect(
     () =>
       onCalendarChanged(() => {
+        resyncEditRef.current = true;
         if (calView === 'day') load();
         else if (calView === 'month' && yearMonth) void loadMonth(yearMonth, true);
       }),
@@ -651,6 +660,13 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       employeeId: slot.employeeId ?? '',
       employeeName: slot.employeeName ?? null,
     });
+    editingOrigRef.current = {
+      id: slot.id,
+      startAt: slot.startAt,
+      endAt: slot.endAt,
+      liftId: slot.liftId ?? null,
+      employeeId: slot.employeeId ?? null,
+    };
     setForm({
       liftId: slot.liftId ?? '',
       employeeId: slot.employeeId ?? '',
@@ -1148,9 +1164,61 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
 
   /** Перечитати поточний вид, не закриваючи форму (наряд змінено з його картки). */
   const refreshView = useCallback(() => {
+    resyncEditRef.current = true;
     if (calView === 'month') void loadMonth(yearMonth, true);
     else if (calView === 'day') load();
   }, [calView, load, loadMonth, yearMonth]);
+
+  // Bug #884: наряд, чий запис відкрито у формі, збережено з його картки — сервер переніс запис
+  // (BR-WO-020). Перечитаний запис іншого часу, підйомника чи механіка → форма бере збережене;
+  // запису вже немає у виді (переїхав на інший день, продовження створено заново, дати стерто) →
+  // форма закривається. Без змін — форма не чіпається (незбережені нотатки лишаються).
+  useEffect(() => {
+    if (!resyncEditRef.current) return;
+    resyncEditRef.current = false;
+    const orig = editingOrigRef.current;
+    if (!showAdd || !editingSlotId || orig?.id !== editingSlotId) return;
+    const pool =
+      calView === 'month'
+        ? Object.values(monthSlots).flatMap(d => d.entries.map(e => e.slot))
+        : slots;
+    const fresh = pool.find(s => s.id === editingSlotId);
+    if (!fresh) {
+      handleModalClose();
+      return;
+    }
+    const liftId = fresh.liftId ?? null;
+    const employeeId = fresh.employeeId ?? null;
+    if (
+      fresh.startAt === orig.startAt &&
+      fresh.endAt === orig.endAt &&
+      liftId === orig.liftId &&
+      employeeId === orig.employeeId
+    )
+      return;
+    editingOrigRef.current = {
+      id: fresh.id,
+      startAt: fresh.startAt,
+      endAt: fresh.endAt,
+      liftId,
+      employeeId,
+    };
+    setEditingSaved({
+      id: fresh.id,
+      liftId: liftId ?? '',
+      employeeId: employeeId ?? '',
+      employeeName: fresh.employeeName ?? null,
+    });
+    if (calView === 'month') setMonthEditSlot(fresh);
+    setForm(f => ({
+      ...f,
+      liftId: liftId ?? '',
+      employeeId: employeeId ?? '',
+      startAt: decimalHoursToHHMM(kyivHours(fresh.startAt)),
+      endAt: decimalHoursToHHMM(kyivHours(fresh.endAt)),
+      normoHours: String(+(kyivHours(fresh.endAt) - kyivHours(fresh.startAt)).toFixed(2)),
+    }));
+  }, [slots, monthSlots, showAdd, editingSlotId, calView, handleModalClose]);
 
   // ── Month view: картка запису й «новий запис на дату» (BR-CAL-009) ─────────
 
