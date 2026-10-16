@@ -66,6 +66,9 @@ export function useReferenceData() {
   const [lifts, setLifts] = useState<Lift[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  // BR-WO-018: «(недоступний)» виконавця рядка — лише проти ОТРИМАНОГО довідника. До відповіді
+  // (і після збою) порожній перелік не означає «не активний механік» (Bug #880).
+  const [employeesLoaded, setEmployeesLoaded] = useState(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -119,11 +122,15 @@ export function useReferenceData() {
 
     // BR-WO-018: виконавець рядка роботи — лише активні механіки.
     const cachedEmployees = getCached<Employee[]>('cache:employees');
-    if (cachedEmployees) setEmployees(activeMechanics(cachedEmployees));
+    if (cachedEmployees) {
+      setEmployees(activeMechanics(cachedEmployees));
+      setEmployeesLoaded(true);
+    }
     apiFetch<{ items: Employee[] }>(ACTIVE_MECHANICS_URL)
       .then(r => {
         const list = activeMechanics(Array.isArray(r.items) ? r.items : []);
         setEmployees(list);
+        setEmployeesLoaded(true);
         setCache('cache:employees', executorCacheRows(list));
       })
       .catch(() => {});
@@ -217,6 +224,7 @@ export function useReferenceData() {
     lifts,
     warehouses,
     employees,
+    employeesLoaded,
     vehicles,
     contracts,
     units,

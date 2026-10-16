@@ -22,6 +22,11 @@ interface ExecutorSelectProps {
   onChange: (employeeId: string) => void;
   /** Активні механіки (`activeMechanics`) — єдині, кого можна обрати заново. */
   employees: readonly ExecutorOption[];
+  /**
+   * Довідник уже отримано (кеш чи відповідь). Поки ні — порожній `employees` нічого не каже про
+   * виконавця: збережений показується своїм ім'ям, без «(недоступний)» і пояснення (Bug #880).
+   */
+  employeesLoaded?: boolean;
   /** Збережений виконавець рядка; `null`/відсутній — новий рядок. */
   saved?: SavedExecutor | null;
   placeholder: string;
@@ -40,6 +45,7 @@ export function ExecutorSelect({
   value,
   onChange,
   employees,
+  employeesLoaded = true,
   saved,
   placeholder,
   disabled,
@@ -47,8 +53,10 @@ export function ExecutorSelect({
 }: ExecutorSelectProps) {
   const { t } = useTranslation('workOrders');
   const id = useId();
-  const unavailable =
+  // Збережений виконавець, якого немає серед отриманих активних механіків.
+  const outside =
     !!value && !!saved && value === saved.employeeId && !employees.some(e => e.id === value);
+  const unavailable = outside && employeesLoaded;
   const savedName = saved?.employeeName || t('lines.executorUnknown');
 
   return (
@@ -62,9 +70,9 @@ export function ExecutorSelect({
       errorMessage={unavailable && !disabled ? t('lines.executorUnavailableHint') : undefined}
     >
       <option value="">{placeholder}</option>
-      {unavailable && (
-        <option value={value} disabled>
-          {t('lines.executorUnavailable', { name: savedName })}
+      {outside && (
+        <option value={value} disabled={unavailable}>
+          {unavailable ? t('lines.executorUnavailable', { name: savedName }) : savedName}
         </option>
       )}
       {employees.map(e => (

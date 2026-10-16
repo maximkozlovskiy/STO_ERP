@@ -262,6 +262,68 @@ describe('CreateWorkOrderModal — виконавець поза списком 
   });
 });
 
+describe('CreateWorkOrderModal — виконавець, поки довідник механіків вантажиться (BR-WO-018)', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    role = 'OWNER';
+  });
+
+  const HINT = 'Не активний механік (не механік, звільнений чи у відпустці) — оберіть іншого';
+
+  /** `GET /employees` відповідає лише після `release()` — довідник «ще вантажиться». */
+  function holdEmployees(lines: { employeeId: string; employeeName?: string }[]) {
+    mockApi({ lines });
+    const base = apiFetchMock.getMockImplementation()!;
+    let release: (items: Record<string, unknown>[]) => void = () => {};
+    apiFetchMock.mockImplementation((path: string) =>
+      path.startsWith('/employees')
+        ? new Promise(resolve => {
+            release = items => resolve({ items });
+          })
+        : base(path),
+    );
+    return { release: (items: Record<string, unknown>[]) => release(items) };
+  }
+
+  // guards: BR-WO-018
+  it('активний механік: до відповіді довідника — його ім’я без «(недоступний)» і без пояснення', async () => {
+    const hold = holdEmployees([{ employeeId: 'm-active', employeeName: 'Петров Іван' }]);
+    render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
+    await screen.findByText('Робота 1');
+
+    const select = await editLine('Робота 1');
+
+    expect(select.value).toBe('m-active');
+    expect(norm(select.selectedOptions[0]?.textContent)).toBe('Петров Іван');
+    expect(optionTexts(select).some(t => t.includes('(недоступний)'))).toBe(false);
+    expect(screen.queryByText(HINT)).toBeNull();
+
+    hold.release(EMPLOYEES);
+    await waitFor(() =>
+      expect(Array.from(select.options).filter(o => o.value === 'm-active')).toHaveLength(1),
+    );
+    expect(norm(select.selectedOptions[0]?.textContent)).toBe('Петров Іван');
+    expect(screen.queryByText(HINT)).toBeNull();
+  });
+
+  // guards: BR-WO-018
+  it('адмін: «(недоступний)» і пояснення з’являються лише після відповіді довідника', async () => {
+    const hold = holdEmployees([{ employeeId: 'admin-1', employeeName: 'Адмін Олег' }]);
+    render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
+    await screen.findByText('Робота 1');
+
+    const select = await editLine('Робота 1');
+    expect(norm(select.selectedOptions[0]?.textContent)).toBe('Адмін Олег');
+    expect(screen.queryByText(HINT)).toBeNull();
+
+    hold.release(EMPLOYEES);
+    await waitFor(() =>
+      expect(norm(select.selectedOptions[0]?.textContent)).toBe('Адмін Олег (недоступний)'),
+    );
+    expect(screen.getByText(HINT)).toBeTruthy();
+  });
+});
+
 describe('CreateWorkOrderModal — довідники картки за звуженими відповідями (рішення 2026-10-16)', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();

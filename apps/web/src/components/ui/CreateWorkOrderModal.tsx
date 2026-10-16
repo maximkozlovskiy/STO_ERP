@@ -511,6 +511,7 @@ export function CreateWorkOrderModal({
     lifts,
     warehouses,
     employees,
+    employeesLoaded,
     vehicles,
     contracts,
     units,
@@ -2425,6 +2426,7 @@ export function CreateWorkOrderModal({
                   deletedLineIds={deletedLineIds}
                   addLine={addLine}
                   employees={employees}
+                  employeesLoaded={employeesLoaded}
                   employeesById={employeesById}
                   vatMode={vatMode}
                   vatRate={vatRate}

@@ -22,6 +22,8 @@ export interface WorksTableProps {
   addLine: () => void;
   // Ref-data
   employees: Employee[];
+  /** Довідник механіків отримано — до того виконавець поза списком не «недоступний» (Bug #880). */
+  employeesLoaded: boolean;
   employeesById: Map<string, Employee>;
   // VAT / totals
   vatMode: 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE';
@@ -61,6 +63,7 @@ export function WorksTable(props: WorksTableProps) {
     deletedLineIds,
     addLine,
     employees,
+    employeesLoaded,
     employeesById,
     vatMode,
     vatRate,
@@ -211,6 +214,7 @@ export function WorksTable(props: WorksTableProps) {
                           value={editingLine.employeeId}
                           onChange={employeeId => setEditingLine(l => ({ ...l, employeeId }))}
                           employees={employees}
+                          employeesLoaded={employeesLoaded}
                           saved={line}
                           placeholder="— Механік —"
                           ariaLabel="Виконавець"
