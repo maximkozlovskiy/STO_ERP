@@ -4,6 +4,14 @@
 
 ---
 
+## Tenant-guard: `deleteMany` моделі з `orgId` без `orgId` у `where` → 500 (2026-10-16)
+
+`EmployeesService.assignBranches` робив `employeeBranch.deleteMany({ where: { employeeId } })`.
+`EmployeeBranch` має `orgId`, тож fail-closed guard Prisma відхиляв запит, і збереження картки
+співробітника в UI завжди падало з 500 — закріпити механіка за підйомником було неможливо. Unit-тести
+не бачили: Prisma там замокана без guard-а. У `where` будь-якого запису моделі з `orgId` — `orgId`;
+регресійний тест — через справжню функцію guard-а (`employees.assign-branches.spec.ts`).
+
 ## Свій текст у `@Matches` / `@IsEmail` не доходить до відповіді API (2026-10-15)
 
 `common/pipes/validation-error.factory.ts` перекладає помилку за ІМЕНЕМ обмеження: `matches` →
