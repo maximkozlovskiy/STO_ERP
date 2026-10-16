@@ -11,6 +11,7 @@ import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import type { MechanicRejectReason } from './calendar-mechanic';
 
 export class CreateCalendarSlotDto {
   @ApiPropertyOptional()
@@ -142,13 +143,25 @@ export class CalendarSlotResponseDto {
   })
   workOrderDeleted?: boolean;
   /**
-   * Лише відповідь `PATCH` з `dropMechanicNotOnLift`: механіка знято, бо він не закріплений за
-   * новим підйомником (BR-CAL-012). Відсутнє — механіка не знімали.
+   * Лише відповідь `PATCH` з `dropMechanicNotOnLift`: механіка знято, бо його вже не можна
+   * поставити на новий підйомник (BR-CAL-012; причина — `mechanicDroppedReason`). Відсутнє —
+   * механіка не знімали.
    */
   @ApiPropertyOptional({
-    description: 'Механіка знято: не закріплений за новим підйомником (лише PATCH з перетягування)',
+    description:
+      'Механіка знято з запису (лише PATCH з перетягування); причина — mechanicDroppedReason',
   })
   mechanicDropped?: boolean;
+  /**
+   * Разом із `mechanicDropped`: чому механіка знято (BR-CAL-012) — у відпустці (`ON_LEAVE`), не
+   * закріплений за новим підйомником (`NOT_ON_LIFT`) чи недоступний: звільнений, видалений, не
+   * механік (`UNAVAILABLE`). Web показує за нею текст тосту.
+   */
+  @ApiPropertyOptional({
+    enum: ['ON_LEAVE', 'NOT_ON_LIFT', 'UNAVAILABLE'],
+    description: 'Причина зняття механіка (лише разом із mechanicDropped)',
+  })
+  mechanicDroppedReason?: MechanicRejectReason;
   @ApiPropertyOptional() counterpartyId?: string | null;
   @ApiPropertyOptional() counterpartyName?: string;
   @ApiPropertyOptional() cpPhone?: string | null;

@@ -279,6 +279,26 @@ export class EmployeeResponseDto {
   deletedAt?: string | null;
 }
 
+export class EmployeeListDto {
+  @ApiProperty({ type: [EmployeeResponseDto] }) items!: EmployeeResponseDto[];
+  @ApiProperty() total!: number;
+}
+
+/**
+ * Механік у довіднику картки наряду для ролі MECHANIC (рішення власника 2026-10-16, друге,
+ * employee.md): лише id та ім'я — без телефону, e-mail, дат, `userId`, підйомників і зон.
+ */
+export class EmployeeLookupDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() firstName!: string;
+  @ApiProperty() lastName!: string;
+}
+
+export class EmployeeLookupListDto {
+  @ApiProperty({ type: [EmployeeLookupDto] }) items!: EmployeeLookupDto[];
+  @ApiProperty() total!: number;
+}
+
 export class EmployeeDetailDto extends EmployeeResponseDto {
   @ApiProperty({ description: 'Схема нарахування (тільки OWNER/ADMIN)' })
   rateScheme!: RateScheme;

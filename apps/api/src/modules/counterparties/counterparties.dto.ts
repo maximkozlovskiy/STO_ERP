@@ -333,6 +333,20 @@ export class ContractResponseDto {
   @ApiPropertyOptional() deletedAt!: string | null;
 }
 
+/**
+ * Договір у картці наряду для ролі MECHANIC (рішення власника 2026-10-16, друге, employee.md):
+ * лише id, номер і тип — без кредитного ліміту, відстрочки, валюти й дат.
+ */
+export class ContractLookupDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: ContractType }) contractType!: ContractType;
+}
+
+export function toContractLookup(c: ContractLookupDto): ContractLookupDto {
+  return { id: c.id, number: c.number, contractType: c.contractType };
+}
+
 // ─── Linked documents (detail) ─────────────────────────────
 // Інлайн-форма → `200: {}` у Swagger; web тримав рукописні дублі у
 // `lib/linked-configs.tsx`. DTO-класи (НЕ interface — Swagger їх не бачить,

@@ -12,13 +12,22 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiExtraModels,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import {
+  ContractLookupDto,
   ContractResponseDto,
   CounterpartyQueryDto,
   CounterpartyResponseDto,
@@ -28,6 +37,7 @@ import {
   CounterpartyLinkedDocumentsDto,
   PaginatedCounterpartiesDto,
   UpdateContractDto,
+  toContractLookup,
 } from './counterparties.dto';
 import { CounterpartiesService } from './counterparties.service';
 import { AssignCounterpartyStatusDto } from '../counterparty-statuses/counterparty-statuses.dto';
@@ -174,13 +184,32 @@ export class CounterpartiesController {
   @Get(':id/contracts')
   // MECHANIC — договір у картці наряду, лише читання (рішення власника 2026-10-16, employee.md).
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT', 'MECHANIC')
-  @ApiOperation({ summary: 'Договори контрагента' })
-  @ApiResponse({ status: 200, type: [ContractResponseDto] })
-  findContracts(
+  @ApiOperation({
+    summary: 'Договори контрагента',
+    description:
+      'MECHANIC отримує лише id, номер і тип договору (ContractLookupDto), без видалених',
+  })
+  @ApiExtraModels(ContractResponseDto, ContractLookupDto)
+  @ApiResponse({
+    status: 200,
+    description: 'ContractLookupDto[] — для ролі MECHANIC, ContractResponseDto[] — для решти',
+    schema: {
+      oneOf: [
+        { type: 'array', items: { $ref: getSchemaPath(ContractResponseDto) } },
+        { type: 'array', items: { $ref: getSchemaPath(ContractLookupDto) } },
+      ],
+    },
+  })
+  async findContracts(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Query('showDeleted') showDeleted?: string,
-  ) {
+  ): Promise<ContractResponseDto[] | ContractLookupDto[]> {
+    // Механік бачить мінімум (рішення власника 2026-10-16, друге): номер і тип — для поля
+    // «Договір» картки наряду; ліміт, відстрочка, валюта й дати — ні. Видалені — теж ні.
+    if (user.role === 'MECHANIC')
+      return (await this.service.findContracts(orgId, id, false)).map(toContractLookup);
     return this.service.findContracts(orgId, id, showDeleted === 'true');
   }
 

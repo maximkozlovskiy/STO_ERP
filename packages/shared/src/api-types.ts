@@ -751,7 +751,7 @@ export interface paths {
         };
         /**
          * Список співробітників
-         * @description MECHANIC отримує лише механіків, без видалених — незалежно від `role`
+         * @description MECHANIC отримує лише активних невидалених механіків і лише id, ім'я та прізвище (EmployeeLookupListDto) — незалежно від `role` і `showDeleted`
          */
         get: operations["EmployeesController_findAll_v1"];
         put?: never;
@@ -977,7 +977,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Договори контрагента */
+        /**
+         * Договори контрагента
+         * @description MECHANIC отримує лише id, номер і тип договору (ContractLookupDto), без видалених
+         */
         get: operations["CounterpartiesController_findContracts_v1"];
         put?: never;
         /** Додати договір */
@@ -5852,6 +5855,19 @@ export interface components {
             /** @description Set when the employee is soft-deleted */
             deletedAt?: string | null;
         };
+        EmployeeListDto: {
+            items: components["schemas"]["EmployeeResponseDto"][];
+            total: number;
+        };
+        EmployeeLookupDto: {
+            id: string;
+            firstName: string;
+            lastName: string;
+        };
+        EmployeeLookupListDto: {
+            items: components["schemas"]["EmployeeLookupDto"][];
+            total: number;
+        };
         AssignZonesDto: {
             /** @description Масив UUID зон */
             zoneIds: string[];
@@ -5991,6 +6007,12 @@ export interface components {
             createdAt: string;
             updatedAt: string;
             deletedAt?: string | null;
+        };
+        ContractLookupDto: {
+            id: string;
+            number: string;
+            /** @enum {string} */
+            contractType: "PURCHASE" | "SALE";
         };
         CreateContractDto: {
             /** @description Номер договору (авто якщо не передано) */
@@ -7399,8 +7421,13 @@ export interface components {
             workOrderStatus?: string | null;
             /** @description Наряд запису видалено (BR-CAL-011). GET /calendar/slots таких записів не повертає */
             workOrderDeleted?: boolean;
-            /** @description Механіка знято: не закріплений за новим підйомником (лише PATCH з перетягування) */
+            /** @description Механіка знято з запису (лише PATCH з перетягування); причина — mechanicDroppedReason */
             mechanicDropped?: boolean;
+            /**
+             * @description Причина зняття механіка (лише разом із mechanicDropped)
+             * @enum {string}
+             */
+            mechanicDroppedReason?: "ON_LEAVE" | "NOT_ON_LIFT" | "UNAVAILABLE";
             counterpartyId?: string | null;
             counterpartyName?: string;
             cpPhone?: string | null;
@@ -9270,7 +9297,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description MECHANIC отримує лише поля картки наряду (OrganisationCardSettingsDto) */
+            /** @description MECHANIC і RECEPTIONIST отримують лише поля картки наряду (OrganisationCardSettingsDto) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10597,12 +10624,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description EmployeeLookupListDto — для ролі MECHANIC, EmployeeListDto — для решти */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EmployeeResponseDto"][];
+                    "application/json": components["schemas"]["EmployeeListDto"] | components["schemas"]["EmployeeLookupListDto"];
                 };
             };
         };
@@ -11046,12 +11074,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description ContractLookupDto[] — для ролі MECHANIC, ContractResponseDto[] — для решти */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ContractResponseDto"][];
+                    "application/json": components["schemas"]["ContractResponseDto"][] | components["schemas"]["ContractLookupDto"][];
                 };
             };
         };

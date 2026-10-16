@@ -12,8 +12,14 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import {
+  ApiBearerAuth,
+  ApiExtraModels,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -32,6 +38,8 @@ import {
   AssignLiftsDto,
   AssignWorkCategoriesDto,
   AssignZonesDto,
+  EmployeeListDto,
+  EmployeeLookupListDto,
   EmployeeResponseDto,
   EmployeesQueryDto,
 } from './employees.dto';
@@ -51,21 +59,31 @@ export class EmployeesController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT', 'MECHANIC')
   @ApiOperation({
     summary: 'Список співробітників',
-    description: 'MECHANIC отримує лише механіків, без видалених — незалежно від `role`',
+    description:
+      "MECHANIC отримує лише активних невидалених механіків і лише id, ім'я та прізвище " +
+      '(EmployeeLookupListDto) — незалежно від `role` і `showDeleted`',
   })
-  @ApiResponse({ status: 200, type: [EmployeeResponseDto] })
+  @ApiExtraModels(EmployeeListDto, EmployeeLookupListDto)
+  @ApiResponse({
+    status: 200,
+    description: 'EmployeeLookupListDto — для ролі MECHANIC, EmployeeListDto — для решти',
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(EmployeeListDto) },
+        { $ref: getSchemaPath(EmployeeLookupListDto) },
+      ],
+    },
+  })
   findAll(
     @OrgContext() orgId: string,
     @Query() query: EmployeesQueryDto,
     @CurrentUser() user: AuthenticatedUser,
-  ) {
-    // Механік читає лише довідник механіків (`?role=MECHANIC` картки наряду): інший `role` чи
-    // `showDeleted` не розширюють йому список на власника, бухгалтера чи звільнених.
-    const scoped: EmployeesQueryDto =
-      user.role === 'MECHANIC'
-        ? { ...query, role: UserRole.MECHANIC, showDeleted: undefined }
-        : query;
-    return this.service.findAll(orgId, scoped);
+  ): Promise<EmployeeListDto | EmployeeLookupListDto> {
+    // Механік читає лише довідник механіків картки наряду: інший `role` чи `showDeleted` не
+    // розширюють йому список на власника, бухгалтера чи звільнених, а персональних даних
+    // (телефон, e-mail, дати, `userId`) відповідь не має (рішення власника 2026-10-16, друге).
+    if (user.role === 'MECHANIC') return this.service.findMechanicLookups(orgId, query);
+    return this.service.findAll(orgId, query);
   }
 
   @Get(':id')

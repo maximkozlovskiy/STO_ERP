@@ -19,7 +19,11 @@ import {
   CheckConflictsResponseDto,
   SyncWorkOrderSlotsDto,
 } from './calendar.dto';
-import { findMechanicOnLift } from './calendar-mechanic';
+import {
+  findMechanicOnLift,
+  MECHANIC_REJECT_KEY,
+  type MechanicRejectReason,
+} from './calendar-mechanic';
 
 const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 
@@ -326,8 +330,10 @@ export class CalendarService {
     ]);
     if (dto.liftId && !lift)
       throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
-    if (dto.employeeId && !mechanic)
-      throw new BadRequestException(translateError('err.calendar.employeeNotOnLift', getLocale()));
+    if (mechanic && !mechanic.ok)
+      throw new BadRequestException(
+        translateError(MECHANIC_REJECT_KEY[mechanic.reason], getLocale()),
+      );
     if (dto.workOrderId && !workOrder)
       throw new NotFoundException(translateError('err.calendar.workOrderNotFound', getLocale()));
     if (dto.counterpartyId && !counterparty)
@@ -537,7 +543,7 @@ export class CalendarService {
     const liftId = dto.liftId !== undefined ? dto.liftId : existing.liftId;
 
     let employeeId = dto.employeeId !== undefined ? dto.employeeId : existing.employeeId;
-    let mechanicDropped = false;
+    let mechanicDroppedReason: MechanicRejectReason | null = null;
 
     // BR-CAL-012: механіка перевіряє лише зміна механіка чи підйомника. Форма шле обидва поля
     // щоразу, тож порівнюється з БД, а не «поле є в запиті»: збережений механік, якого вже
@@ -545,16 +551,17 @@ export class CalendarService {
     if (employeeId && (employeeId !== existing.employeeId || liftId !== existing.liftId)) {
       const mechanic = await findMechanicOnLift(this.prisma, orgId, employeeId, liftId);
       // Перетягування у «Дні» (`dropMechanicNotOnLift`) знімає СВІЙ механік запису, не
-      // закріплений за новим підйомником, замість 400. Явно обраного іншого механіка не знімає:
-      // це вибір користувача, і він отримує 400, як у формі.
-      const drop = !mechanic && dto.dropMechanicNotOnLift === true;
-      if (!mechanic && !(drop && employeeId === existing.employeeId))
-        throw new BadRequestException(
-          translateError('err.calendar.employeeNotOnLift', getLocale()),
-        );
-      if (!mechanic) {
+      // закріплений за новим підйомником (чи у відпустці), замість 400 — з причиною у відповіді.
+      // Явно обраного іншого механіка не знімає: це вибір користувача, і він отримує 400, як у
+      // формі.
+      if (!mechanic.ok) {
+        const drop = dto.dropMechanicNotOnLift === true && employeeId === existing.employeeId;
+        if (!drop)
+          throw new BadRequestException(
+            translateError(MECHANIC_REJECT_KEY[mechanic.reason], getLocale()),
+          );
         employeeId = null;
-        mechanicDropped = true;
+        mechanicDroppedReason = mechanic.reason;
       }
     }
 
@@ -603,7 +610,9 @@ export class CalendarService {
             where: { id, orgId },
             data: {
               ...(dto.liftId !== undefined && { liftId: dto.liftId }),
-              ...((dto.employeeId !== undefined || mechanicDropped) && { employeeId }),
+              ...((dto.employeeId !== undefined || mechanicDroppedReason !== null) && {
+                employeeId,
+              }),
               ...(dto.workOrderId !== undefined && { workOrderId: dto.workOrderId }),
               ...(dto.counterpartyId !== undefined && { counterpartyId: dto.counterpartyId }),
               ...(dto.vehicleId !== undefined && { vehicleId: dto.vehicleId }),
@@ -642,7 +651,7 @@ export class CalendarService {
     }
 
     const res = this.toDto(updated);
-    return mechanicDropped ? { ...res, mechanicDropped: true } : res;
+    return mechanicDroppedReason ? { ...res, mechanicDropped: true, mechanicDroppedReason } : res;
   }
 
   async checkConflicts(orgId: string, dto: CheckConflictsDto): Promise<CheckConflictsResponseDto> {

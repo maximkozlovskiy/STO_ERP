@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, UserRole } from '@prisma/client';
+import { EmployeeStatus, Prisma, UserRole } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -17,6 +17,7 @@ import {
   AssignZonesDto,
   CreateEmployeeDto,
   EmployeeDetailDto,
+  EmployeeLookupDto,
   EmployeeResponseDto,
   EmployeesQueryDto,
   UpdateEmployeeDto,
@@ -76,6 +77,45 @@ export class EmployeesService {
       this.prisma.employee.count({ where }),
     ]);
     return { items: items.map(item => this.toDto(item)), total };
+  }
+
+  /**
+   * Довідник механіків картки наряду для ролі MECHANIC (рішення власника 2026-10-16, друге,
+   * employee.md): лише активні (не звільнені, не у відпустці) невидалені механіки і лише `id`,
+   * ім'я, прізвище — `select`, а не обрізання повного рядка. `role`/`showDeleted` запиту не
+   * діють; пошук — лише за ім'ям і прізвищем (телефон та e-mail механіку не віддаються, тож і
+   * шукати за ними не можна); `liftId` звужує, як у BR-CAL-012.
+   */
+  async findMechanicLookups(
+    orgId: string,
+    query: EmployeesQueryDto = {},
+  ): Promise<{ items: EmployeeLookupDto[]; total: number }> {
+    const where: Prisma.EmployeeWhereInput = {
+      orgId,
+      deletedAt: null,
+      role: UserRole.MECHANIC,
+      status: EmployeeStatus.ACTIVE,
+      ...(query.liftId && { employeeLifts: { some: { liftId: query.liftId } } }),
+    };
+    const q = query.q?.trim();
+    if (q) {
+      where.OR = [
+        { firstName: { contains: q, mode: 'insensitive' } },
+        { lastName: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+    const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
+    const [items, total] = await Promise.all([
+      this.prisma.employee.findMany({
+        where,
+        select: { id: true, firstName: true, lastName: true },
+        orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+        take,
+        skip,
+      }),
+      this.prisma.employee.count({ where }),
+    ]);
+    return { items, total };
   }
 
   async findOne(

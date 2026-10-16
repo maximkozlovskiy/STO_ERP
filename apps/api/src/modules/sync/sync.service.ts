@@ -3,7 +3,11 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SyncRecord, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
-import { canWriteCalendar, findMechanicOnLift } from '../calendar/calendar-mechanic';
+import {
+  canWriteCalendar,
+  findMechanicOnLift,
+  MECHANIC_REJECT_KEY,
+} from '../calendar/calendar-mechanic';
 
 // Minimal interface for the dynamic Prisma model operations used in sync
 interface DynamicPrismaModel {
@@ -382,8 +386,9 @@ export class SyncService {
       liftId !== (existing.liftId ?? null);
     if (!changed) return;
     const mechanic = await findMechanicOnLift(this.prisma, orgId, employeeId, liftId);
-    if (!mechanic) {
-      throw new Error(translateError('err.calendar.employeeNotOnLift', getLocale()));
+    if (!mechanic.ok) {
+      // Та сама причина, що й у 400 API: «у відпустці» окремо від «не закріплений».
+      throw new Error(translateError(MECHANIC_REJECT_KEY[mechanic.reason], getLocale()));
     }
   }
 

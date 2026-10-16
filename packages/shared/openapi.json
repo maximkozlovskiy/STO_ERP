@@ -224,7 +224,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "MECHANIC отримує лише поля картки наряду (OrganisationCardSettingsDto)",
+            "description": "MECHANIC і RECEPTIONIST отримують лише поля картки наряду (OrganisationCardSettingsDto)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2266,7 +2266,7 @@
     },
     "/api/v1/employees": {
       "get": {
-        "description": "MECHANIC отримує лише механіків, без видалених — незалежно від `role`",
+        "description": "MECHANIC отримує лише активних невидалених механіків і лише id, ім'я та прізвище (EmployeeLookupListDto) — незалежно від `role` і `showDeleted`",
         "operationId": "EmployeesController_findAll_v1",
         "parameters": [
           {
@@ -2367,14 +2367,18 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "EmployeeLookupListDto — для ролі MECHANIC, EmployeeListDto — для решти",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/EmployeeResponseDto"
-                  }
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/EmployeeListDto"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EmployeeLookupListDto"
+                    }
+                  ]
                 }
               }
             }
@@ -3187,6 +3191,7 @@
     },
     "/api/v1/counterparties/{id}/contracts": {
       "get": {
+        "description": "MECHANIC отримує лише id, номер і тип договору (ContractLookupDto), без видалених",
         "operationId": "CounterpartiesController_findContracts_v1",
         "parameters": [
           {
@@ -3208,14 +3213,24 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "ContractLookupDto[] — для ролі MECHANIC, ContractResponseDto[] — для решти",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ContractResponseDto"
-                  }
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ContractResponseDto"
+                      }
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ContractLookupDto"
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -18804,6 +18819,61 @@
           "updatedAt"
         ]
       },
+      "EmployeeListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EmployeeResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ]
+      },
+      "EmployeeLookupDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "firstName",
+          "lastName"
+        ]
+      },
+      "EmployeeLookupListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EmployeeLookupDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ]
+      },
       "AssignZonesDto": {
         "type": "object",
         "properties": {
@@ -19336,6 +19406,29 @@
           "currencyCode",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "ContractLookupDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "contractType": {
+            "enum": [
+              "PURCHASE",
+              "SALE"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "contractType"
         ]
       },
       "CreateContractDto": {
@@ -24309,7 +24402,16 @@
           },
           "mechanicDropped": {
             "type": "boolean",
-            "description": "Механіка знято: не закріплений за новим підйомником (лише PATCH з перетягування)"
+            "description": "Механіка знято з запису (лише PATCH з перетягування); причина — mechanicDroppedReason"
+          },
+          "mechanicDroppedReason": {
+            "description": "Причина зняття механіка (лише разом із mechanicDropped)",
+            "enum": [
+              "ON_LEAVE",
+              "NOT_ON_LIFT",
+              "UNAVAILABLE"
+            ],
+            "type": "string"
           },
           "counterpartyId": {
             "type": "string",
