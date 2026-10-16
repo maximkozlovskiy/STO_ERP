@@ -536,6 +536,10 @@ export const uk: Record<string, string> = {
     'Поділитися кошторисом можна лише у статусі чернетка / кошторис / затверджено',
   'err.workOrder.publicUrlNotConfigured':
     'Публічний URL не налаштовано (WEB_PUBLIC_URL) — зверніться до адміністратора',
+  'err.workOrder.plannedInPast': 'Плановий час не може бути в минулому',
+  'err.workOrder.plannedOutsideWorkHours':
+    'Плановий час має бути в робочих годинах ({{start}}:00–{{end}}:00)',
+  'err.workOrder.plannedEndBeforeStart': 'Планове завершення має бути пізніше за початок',
   'err.workOrder.paidCannotCancel':
     'Наряд має оплату {{paid}} — спершу сторнуйте оплату, потім скасовуйте наряд',
   'err.workOrder.paidCannotDelete':
