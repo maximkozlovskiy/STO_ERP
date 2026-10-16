@@ -2,7 +2,11 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { toIdMap } from '@/lib/utils';
-import { ACTIVE_MECHANICS_URL, activeMechanics } from '@/lib/work-order-mechanics';
+import {
+  ACTIVE_MECHANICS_URL,
+  activeMechanics,
+  executorCacheRows,
+} from '@/lib/work-order-mechanics';
 
 /**
  * A3-modal: reference-data + org-settings хук, винесений з CreateWorkOrderModal (God-component 3708р).
@@ -120,7 +124,7 @@ export function useReferenceData() {
       .then(r => {
         const list = activeMechanics(Array.isArray(r.items) ? r.items : []);
         setEmployees(list);
-        setCache('cache:employees', list);
+        setCache('cache:employees', executorCacheRows(list));
       })
       .catch(() => {});
 

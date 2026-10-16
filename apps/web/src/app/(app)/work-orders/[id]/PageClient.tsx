@@ -47,7 +47,11 @@ import { WorkOrderTotals } from './WorkOrderTotals';
 import { SectionErrorBoundary } from '@/components/ui/SectionErrorBoundary';
 import { WorkOrderAuditSection } from './WorkOrderAuditSection';
 import { InvoiceSection, type InvoiceRef } from './InvoiceSection';
-import { ACTIVE_MECHANICS_URL, activeMechanics } from '@/lib/work-order-mechanics';
+import {
+  ACTIVE_MECHANICS_URL,
+  activeMechanics,
+  executorCacheRows,
+} from '@/lib/work-order-mechanics';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -492,7 +496,7 @@ export default function WorkOrderCardPage() {
     apiFetch<{ items: Employee[] }>(ACTIVE_MECHANICS_URL)
       .then((r: { items?: Employee[] } | Employee[]) => {
         const arr = activeMechanics(Array.isArray(r) ? r : (r.items ?? []));
-        setCache('cache:employees', arr);
+        setCache('cache:employees', executorCacheRows(arr));
         if (mountedRef.current) setEmployees(arr);
       })
       .catch((e: unknown) => {

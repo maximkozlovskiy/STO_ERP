@@ -28,3 +28,19 @@ export function activeMechanics<T extends MechanicRow>(
       (e.status === undefined || e.status === 'ACTIVE'),
   );
 }
+
+interface ExecutorRow {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+/**
+ * Рядки для кешу `cache:employees` — лише id та ім'я. Кеш у `sessionStorage` вкладки виходом не
+ * очищується, тож після власника (повна відповідь: телефон, e-mail, дати, `userId`) у тій самій
+ * вкладці працював би механік, якому ці поля не віддаються (рішення власника 2026-10-16, друге).
+ * Кешуються вже відфільтровані `activeMechanics` — `role`/`status` у кеші не потрібні.
+ */
+export function executorCacheRows(items: readonly ExecutorRow[]): ExecutorRow[] {
+  return items.map(({ id, firstName, lastName }) => ({ id, firstName, lastName }));
+}

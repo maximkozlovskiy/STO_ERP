@@ -280,8 +280,9 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
   приймальня — ПДВ організації зі звужених налаштувань; договір — «номер — тип».
 - `app/(app)/work-orders/[id]/__tests__/WorkOrderLinesSection.executor.test.tsx` (2) — сторінка
   наряду: ім'я виконавця поза списком, «+ Робота» — лише активні механіки.
-- `lib/__tests__/work-order-mechanics.test.ts` (4) — `activeMechanics`: без відпустки,
-  звільнених, видалених і не механіків; звужена відповідь — як прийшла.
+- `lib/__tests__/work-order-mechanics.test.ts` (5) — `activeMechanics`: без відпустки,
+  звільнених, видалених і не механіків; звужена відповідь — як прийшла; кеш `cache:employees` —
+  лише id та ім'я (`executorCacheRows`: кеш вкладки виходом не очищується).
 - E2E `apps/web/e2e/work-order-lookups-roles.spec.ts` — новий рядок у картці не пропонує
   адміністратора; рядок із виконавцем-адміністратором — недоступна опція з ім'ям і поясненням у
   картці, ім'я на сторінці наряду.

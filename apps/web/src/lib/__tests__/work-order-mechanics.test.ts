@@ -3,7 +3,7 @@
 // бо сервер уже відфільтрував (рішення власника 2026-10-16, друге).
 
 import { describe, expect, it } from 'vitest';
-import { ACTIVE_MECHANICS_URL, activeMechanics } from '../work-order-mechanics';
+import { ACTIVE_MECHANICS_URL, activeMechanics, executorCacheRows } from '../work-order-mechanics';
 
 const person = (id: string, over: Record<string, unknown> = {}) => ({
   id,
@@ -46,5 +46,12 @@ describe('activeMechanics (BR-WO-018)', () => {
 
   it('запит — лише механіки', () => {
     expect(ACTIVE_MECHANICS_URL).toContain('role=MECHANIC');
+  });
+
+  // Кеш вкладки виходом не очищується: після власника в ній може працювати механік.
+  it("кеш — лише id та ім'я, без телефону, e-mail і userId повної відповіді", () => {
+    const full = { ...person('a'), phone: '+380501112233', email: 'a@x.ua', userId: 'u1' };
+
+    expect(executorCacheRows([full])).toEqual([{ id: 'a', firstName: 'Іван', lastName: 'a' }]);
   });
 });
