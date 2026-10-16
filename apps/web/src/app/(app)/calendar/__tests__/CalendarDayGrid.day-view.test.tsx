@@ -299,6 +299,24 @@ describe('Вид «День» — механік лише переглядає (
     await waitFor(() => expect(block('WO-b').dataset.editing).toBe('true'));
   });
 
+  // Bug #877: з правом блок теж кнопка для клавіатури (`role="button"` від useDraggable), а
+  // сенсор лише вказівний — без власного обробника Enter і пробіл запису не відкривали.
+  it('з правом змінювати: запис теж відкривається з клавіатури — Enter і пробіл', async () => {
+    byDay['2026-10-15'] = [
+      slot('a', '2026-10-15T13:00', '2026-10-15T14:00'),
+      slot('b', '2026-10-15T15:00', '2026-10-15T16:00'),
+    ];
+    await renderDay({ canManageSlots: true });
+    const content = (n: string) => block(n).querySelector<HTMLElement>('[data-part="content"]')!;
+    expect(content('WO-a')).toHaveAttribute('role', 'button');
+    fireEvent.keyDown(content('WO-a'), { key: 'Tab' });
+    expect(block('WO-a').dataset.editing).toBeUndefined();
+    fireEvent.keyDown(content('WO-a'), { key: 'Enter' });
+    await waitFor(() => expect(block('WO-a').dataset.editing).toBe('true'));
+    fireEvent.keyDown(content('WO-b'), { key: ' ' });
+    await waitFor(() => expect(block('WO-b').dataset.editing).toBe('true'));
+  });
+
   // guards: BR-CAL-010
   it('контроль: з правом — підказка, ручки зміни меж і курсор перетягування є', async () => {
     byDay['2026-10-15'] = [slot('a', '2026-10-15T13:00', '2026-10-15T15:00')];

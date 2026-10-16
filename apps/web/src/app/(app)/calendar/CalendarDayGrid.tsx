@@ -81,18 +81,18 @@ const DraggableSlot = memo(function DraggableSlot({
     data: { slot },
     disabled: !canManage,
   });
-  // Механіку — звичайна кнопка перегляду: без «draggable» для читача екрана, з Enter і пробілом.
+  // Тіло блоку — кнопка для клавіатури в обох ролях: Enter і пробіл відкривають запис. Сенсор
+  // перетягування лише вказівний (`PointerSensor`), тож `listeners` клавіш не обробляють — без
+  // власного `onKeyDown` фокусована «кнопка» нічого не робила (Bug #877). Механіку — без
+  // «draggable» для читача екрана.
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    onEdit(slot);
+  };
   const contentProps = canManage
-    ? { ...listeners, ...attributes }
-    : {
-        role: 'button',
-        tabIndex: 0,
-        onKeyDown: (e: ReactKeyboardEvent<HTMLDivElement>) => {
-          if (e.key !== 'Enter' && e.key !== ' ') return;
-          e.preventDefault();
-          onEdit(slot);
-        },
-      };
+    ? { ...listeners, ...attributes, onKeyDown }
+    : { role: 'button', tabIndex: 0, onKeyDown };
   const style: CSSProperties = {
     left: `${left}%`,
     width: `${width}%`,
