@@ -42,6 +42,8 @@ const EMPLOYEES = [
 ];
 
 const NOT_ON_LIFT = translateError('err.calendar.employeeNotOnLift', 'uk');
+const ON_LEAVE_MSG = translateError('err.calendar.employeeOnLeave', 'uk');
+const NOT_FOUND = translateError('err.calendar.employeeNotFound', 'uk');
 const ROLE_FORBIDDEN = translateError('err.calendar.syncRoleForbidden', 'uk');
 
 function harness(existing: Record<string, unknown> | null = null) {
@@ -60,7 +62,7 @@ function harness(existing: Record<string, unknown> | null = null) {
     employee: {
       findFirst: vi.fn(({ where }: { where: Record<string, unknown> }) => {
         const found = EMPLOYEES.find(e => matchesWhere(e, where));
-        return Promise.resolve(found ? { id: found.id } : null);
+        return Promise.resolve(found ? { id: found.id, status: found.status } : null);
       }),
     },
     lift: { findFirst: exists() },
@@ -105,18 +107,16 @@ describe('SyncService.push calendar_slots — механік за підйомн
 
   // guards: BR-CAL-012
   it.each([
-    ['не закріплений за підйомником', { employeeId: MECH, liftId: LIFT_2 }],
-    ['у відпустці', { employeeId: ON_LEAVE }],
-    ['звільнений', { employeeId: FIRED }],
-    ['без підйомника', { employeeId: MECH, liftId: null }],
-  ])('новий запис, механік %s → відмова з причиною, запис не створено', async (_l, over) => {
+    ['не закріплений за підйомником', { employeeId: MECH, liftId: LIFT_2 }, NOT_ON_LIFT],
+    ['у відпустці', { employeeId: ON_LEAVE }, ON_LEAVE_MSG],
+    ['звільнений', { employeeId: FIRED }, NOT_FOUND],
+    ['без підйомника', { employeeId: MECH, liftId: null }, NOT_ON_LIFT],
+  ])('новий запис, механік %s → відмова з причиною, запис не створено', async (_l, over, msg) => {
     const h = harness();
     const res = await h.service.push(ORG, [record({ payload: slotPayload(over) })], 'ADMIN');
     expect(res).toEqual({ accepted: 0, conflicts: 1 });
     expect(h.prisma.calendarSlot.create).not.toHaveBeenCalled();
-    expect(h.lastErrors()).toEqual([
-      expect.objectContaining({ status: 'FAILED', lastError: NOT_ON_LIFT }),
-    ]);
+    expect(h.lastErrors()).toEqual([expect.objectContaining({ status: 'FAILED', lastError: msg })]);
   });
 
   // guards: BR-CAL-012

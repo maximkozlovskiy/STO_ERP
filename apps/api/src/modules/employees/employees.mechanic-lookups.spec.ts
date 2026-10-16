@@ -51,8 +51,15 @@ function person(id: string, role: string, over: Record<string, unknown> = {}) {
 }
 
 const EMPLOYEES = [
-  person('mech-1', 'MECHANIC'),
+  person('mech-1', 'MECHANIC', {
+    userId: 'user-mech-1',
+    dateOfHire: new Date('2025-02-03'),
+    employeeLifts: [{ liftId: 'lift-1' }],
+    employeeZones: [{ zoneId: 'zone-1' }],
+  }),
   person('mech-gone', 'MECHANIC', { deletedAt: new Date('2026-05-01') }),
+  person('mech-fired', 'MECHANIC', { status: 'FIRED', dateOfFire: new Date('2026-06-01') }),
+  person('mech-leave', 'MECHANIC', { status: 'ON_LEAVE' }),
   person('owner-1', 'OWNER'),
   person('acc-1', 'ACCOUNTANT'),
 ];
@@ -111,9 +118,16 @@ const jwtGuard = {
 
 const employeeTable = (args: { where: Record<string, unknown> }) =>
   EMPLOYEES.filter(e => matchesWhere(e, args.where));
+// Як Prisma: `select` віддає лише обрані поля. Сховище, що ігнорує `select`, сховало б витік
+// полів запитом без нього — саме те, від чого стереже перелік полів механіка.
+const project = (row: Record<string, unknown>, select?: Record<string, unknown>) =>
+  select ? Object.fromEntries(Object.keys(select).map(k => [k, row[k]])) : row;
 const prisma = {
   employee: {
-    findMany: vi.fn(async (args: { where: Record<string, unknown> }) => employeeTable(args)),
+    findMany: vi.fn(
+      async (args: { where: Record<string, unknown>; select?: Record<string, unknown> }) =>
+        employeeTable(args).map(e => project(e, args.select)),
+    ),
     count: vi.fn(async (args: { where: Record<string, unknown> }) => employeeTable(args).length),
   },
   organisationSettings: { findUnique: vi.fn().mockResolvedValue(ORG_SETTINGS_ROW) },
@@ -126,8 +140,25 @@ const prisma = {
   },
 };
 const redis = { get: vi.fn().mockResolvedValue(null), set: vi.fn().mockResolvedValue('OK') };
+// Повний рядок договору, як його віддає сервіс решті ролей.
+const CONTRACT = {
+  id: 'c-1',
+  orgId: ORG,
+  counterpartyId: CP_ID,
+  number: 'Д-1',
+  contractType: 'SALE',
+  startDate: '2026-01-01',
+  endDate: '2026-12-31',
+  isPrimary: true,
+  creditLimit: 50000,
+  currencyCode: 'UAH',
+  paymentDeferDays: 14,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  deletedAt: null,
+};
 const counterparties = {
-  findContracts: vi.fn().mockResolvedValue([{ id: 'c-1', number: 'Д-1', isPrimary: true }]),
+  findContracts: vi.fn().mockResolvedValue([CONTRACT]),
   createContract: vi.fn(),
 };
 
@@ -168,6 +199,7 @@ describe('MECHANIC — читання довідників картки наря
 
   beforeEach(() => {
     role = 'MECHANIC';
+    counterparties.findContracts.mockClear();
   });
 
   const get = (url: string) => app.inject({ method: 'GET', url });
@@ -230,4 +262,133 @@ describe('MECHANIC — читання довідників картки наря
     expect(res.statusCode).toBe(403);
     expect(counterparties.createContract).not.toHaveBeenCalled();
   });
+
+  // ── Рішення власника 2026-10-16, друге (employee.md, «Звуження й приймальня»): приймальня —
+  // звужені налаштування й ставки ПДВ; механік — мінімум полів у працівниках і договорах.
+
+  it('GET /settings/organisation: приймальні — лише поля картки наряду (ПДВ організації)', async () => {
+    role = 'RECEPTIONIST';
+    const res = await get('/settings/organisation');
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(CARD_FIELDS);
+    expect(body).toMatchObject({ vatMode: 'EXCLUSIVE', defaultVatRateId: 'vat-20' });
+    expect(body).not.toHaveProperty('laborCostRatio');
+    expect(body).not.toHaveProperty('loyaltyEnabled');
+    expect(body).not.toHaveProperty('invoiceDueDays');
+  });
+
+  it.each(['ADMIN', 'OWNER'])(
+    'GET /settings/organisation: %s — повні налаштування, як раніше',
+    async r => {
+      role = r;
+      const body = (await get('/settings/organisation')).json() as Record<string, unknown>;
+      expect(body).toHaveProperty('laborCostRatio', 0.4);
+      expect(body).toHaveProperty('invoiceDueDays', 7);
+    },
+  );
+
+  it.each(['RECEPTIONIST', 'ACCOUNTANT', 'ADMIN'])(
+    'GET /settings/tax-rates → 200 для %s',
+    async r => {
+      role = r;
+      const res = await get('/settings/tax-rates');
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual([
+        { id: 'vat-20', name: 'ПДВ 20%', rate: 20, isDefault: true, isActive: true },
+      ]);
+    },
+  );
+
+  it.each([
+    ['PATCH', '/settings/organisation', { invoiceDueDays: 10 }],
+    ['POST', '/settings/tax-rates', { name: 'X', rate: 7 }],
+  ] as const)(
+    '%s %s → 403 для приймальні: читання не дає права змінювати',
+    async (method, url, payload) => {
+      role = 'RECEPTIONIST';
+      const res = await app.inject({ method, url, payload });
+      expect(res.statusCode).toBe(403);
+    },
+  );
+
+  it("GET /employees: механіку — лише id, ім'я, прізвище активних механіків", async () => {
+    const res = await get('/employees?role=MECHANIC&limit=200');
+    const body = res.json() as { items: Record<string, unknown>[]; total: number };
+    expect(body.items).toEqual([{ id: 'mech-1', firstName: 'Іван', lastName: 'mech-1' }]);
+    expect(body.total).toBe(1);
+    const [mech] = body.items;
+    for (const field of [
+      'phone',
+      'email',
+      'dateOfHire',
+      'dateOfFire',
+      'userId',
+      'liftIds',
+      'zoneIds',
+      'workCategoryIds',
+      'branchIds',
+      'status',
+      'role',
+      'orgId',
+      'rateScheme',
+    ])
+      expect(mech).not.toHaveProperty(field);
+  });
+
+  it('GET /employees: механіку — без звільнених і тих, хто у відпустці', async () => {
+    const body = (await get('/employees?limit=200')).json() as { items: { id: string }[] };
+    const ids = body.items.map(e => e.id);
+    expect(ids).not.toContain('mech-fired');
+    expect(ids).not.toContain('mech-leave');
+  });
+
+  it.each(['RECEPTIONIST', 'ADMIN'])(
+    'GET /employees: %s — повні дані механіків, як раніше (контроль звуження)',
+    async r => {
+      role = r;
+      const body = (await get('/employees?role=MECHANIC&limit=200')).json() as {
+        items: Record<string, unknown>[];
+      };
+      expect(body.items.map(e => e.id)).toEqual(['mech-1', 'mech-fired', 'mech-leave']);
+      expect(body.items[0]).toMatchObject({
+        phone: '+380501112233',
+        email: 'mech-1@sto.local',
+        userId: 'user-mech-1',
+        status: 'ACTIVE',
+        liftIds: ['lift-1'],
+      });
+      expect(body.items[0]).not.toHaveProperty('rateScheme');
+    },
+  );
+
+  it('GET /counterparties/:id/contracts: механіку — лише id, номер і тип', async () => {
+    const res = await get(`/counterparties/${CP_ID}/contracts?showDeleted=true`);
+    expect(res.statusCode).toBe(200);
+    const [contract] = res.json() as Record<string, unknown>[];
+    expect(contract).toEqual({ id: 'c-1', number: 'Д-1', contractType: 'SALE' });
+    for (const field of [
+      'creditLimit',
+      'paymentDeferDays',
+      'currencyCode',
+      'startDate',
+      'endDate',
+      'isPrimary',
+      'counterpartyId',
+      'orgId',
+      'deletedAt',
+    ])
+      expect(contract).not.toHaveProperty(field);
+    // `showDeleted` механіку не діє: видалені договори він не отримує.
+    expect(counterparties.findContracts).toHaveBeenCalledWith(ORG, CP_ID, false);
+  });
+
+  it.each(['RECEPTIONIST', 'ACCOUNTANT', 'OWNER'])(
+    'GET /counterparties/:id/contracts: %s — повний договір, як раніше',
+    async r => {
+      role = r;
+      const res = await get(`/counterparties/${CP_ID}/contracts`);
+      expect(res.json()).toEqual([CONTRACT]);
+    },
+  );
 });

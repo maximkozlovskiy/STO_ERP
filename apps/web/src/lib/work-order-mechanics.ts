@@ -6,6 +6,7 @@
 export const ACTIVE_MECHANICS_URL = '/employees?limit=200&role=MECHANIC';
 
 interface MechanicRow {
+  id: string;
   role?: string;
   status?: string;
   deletedAt?: string | null;

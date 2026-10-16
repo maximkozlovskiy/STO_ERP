@@ -260,13 +260,13 @@ describe('Settings — HTTP Contract', () => {
       expect(res.json()).toEqual({ currency: 'UAH' });
     });
 
-    it('маршрут відкритий бухгалтеру й приймальні; налаштування — власнику, адміну й механіку (лише поля картки)', () => {
+    it('маршрут відкритий бухгалтеру й приймальні; налаштування — власнику, адміну, приймальні й механіку (дві останні — лише поля картки)', () => {
       const rolesOf = (method: keyof SettingsController) =>
         Reflect.getMetadata(ROLES_KEY, SettingsController.prototype[method]) as string[];
       expect(rolesOf('getBaseCurrency')).toEqual(
         expect.arrayContaining(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST', 'STOREKEEPER']),
       );
-      expect(rolesOf('getOrganisation')).toEqual(['OWNER', 'ADMIN', 'MECHANIC']);
+      expect(rolesOf('getOrganisation')).toEqual(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
     });
   });
 

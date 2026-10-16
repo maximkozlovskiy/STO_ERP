@@ -149,3 +149,45 @@ describe('useCalendarState — перетягування на інший під
     expect(toast.warning).not.toHaveBeenCalled();
   });
 });
+
+// Рішення власника 2026-10-16, друге: причина зняття з відповіді (`mechanicDroppedReason`) —
+// «у відпустці» окремим текстом; «не закріплений за підйомником» лише коли справді не закріплений.
+describe('useCalendarState — текст «Механіка знято» за причиною (BR-CAL-012)', () => {
+  // guards: BR-CAL-012
+  it.each([
+    [
+      'NOT_ON_LIFT',
+      'Коваль Іван',
+      'Механіка знято: Коваль Іван не закріплений за підйомником «Пост 2»',
+    ],
+    ['ON_LEAVE', 'Коваль Іван', 'Механіка знято: Коваль Іван у відпустці'],
+    ['ON_LEAVE', null, 'Механіка знято: механік у відпустці'],
+    ['UNAVAILABLE', null, 'Механіка знято: механік недоступний (звільнений чи не механік)'],
+    [
+      'UNAVAILABLE',
+      'Коваль Іван',
+      'Механіка знято: Коваль Іван недоступний (звільнений чи не механік)',
+    ],
+  ])('причина %s, механік %s → «%s»', async (reason, name, text) => {
+    daySlots = [{ ...SLOT, employeeName: name }];
+    patchResponse = { mechanicDropped: true, mechanicDroppedReason: reason };
+    const { result } = await renderDay();
+
+    await act(() => result.current.handleDragEnd(dropOn('lift-2')));
+
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.warning).toHaveBeenCalledWith(text);
+  });
+
+  // guards: BR-CAL-012
+  it('у відпустці — без «не закріплений за підйомником»: механік міг бути закріплений', async () => {
+    patchResponse = { mechanicDropped: true, mechanicDroppedReason: 'ON_LEAVE' };
+    const { result } = await renderDay();
+
+    await act(() => result.current.handleDragEnd(dropOn('lift-2')));
+
+    const [text] = toast.warning.mock.calls[0] as [string];
+    expect(text).not.toContain('не закріплений');
+    expect(text).not.toContain('Пост 2');
+  });
+});

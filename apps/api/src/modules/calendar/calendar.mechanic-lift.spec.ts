@@ -57,12 +57,16 @@ const at = (hhmm: string, day = '2026-05-22') => new Date(`${day}T${hhmm}:00.000
 const iso = (hhmm: string, day?: string) => at(hhmm, day).toISOString();
 
 const NOT_ON_LIFT = translateError('err.calendar.employeeNotOnLift', 'uk');
+// Рішення власника 2026-10-16, друге: «у відпустці» — окремий текст; «не закріплений» — лише коли
+// справді не закріплений; інше (звільнений, видалений, не механік, чужий) — «не знайдено».
+const ON_LEAVE_MSG = translateError('err.calendar.employeeOnLeave', 'uk');
+const NOT_FOUND = translateError('err.calendar.employeeNotFound', 'uk');
 
 function serviceOver(rows: FakeSlot[]) {
   const prisma = buildSlotStorePrisma(rows);
   const employeeFindFirst = vi.fn(({ where }: { where: Record<string, unknown> }) => {
     const found = EMPLOYEES.find(e => matchesWhere(e, where));
-    return Promise.resolve(found ? { id: found.id } : null);
+    return Promise.resolve(found ? { id: found.id, status: found.status } : null);
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const service = new CalendarService({
@@ -72,13 +76,13 @@ function serviceOver(rows: FakeSlot[]) {
   return { prisma, service, employeeFindFirst };
 }
 
-async function expectNotOnLift(promise: Promise<unknown>) {
+async function expectNotOnLift(promise: Promise<unknown>, message = NOT_ON_LIFT) {
   const err = await promise.then(
     () => null,
     (e: unknown) => e,
   );
   expect(err).toBeInstanceOf(BadRequestException);
-  expect((err as Error).message).toBe(NOT_ON_LIFT);
+  expect((err as Error).message).toBe(message);
 }
 
 describe('CalendarService — механік запису закріплений за підйомником (BR-CAL-012)', () => {
@@ -102,25 +106,30 @@ describe('CalendarService — механік запису закріплений
 
     // guards: BR-CAL-012
     it.each([
-      ['не MECHANIC (адміністратор), хоч і закріплений', RECEPTIONIST, LIFT_1],
-      ['звільнений (FIRED)', FIRED, LIFT_1],
-      ['у відпустці (ON_LEAVE), хоч і закріплений', ON_LEAVE, LIFT_1],
-      ['видалений', DELETED, LIFT_1],
-      ['з іншої організації', FOREIGN, LIFT_1],
-      ['не закріплений за підйомником запису', MECH_LIFT_2, LIFT_1],
-      ['неіснуючий', '33333333-3333-4333-8333-0000000000ff', LIFT_1],
-    ])('механік %s → 400, запис не створено', async (_label, employeeId, liftId) => {
-      const { prisma, service } = serviceOver([]);
-      await expectNotOnLift(
-        service.createSlot(FAKE_ORG_ID, {
-          liftId,
-          employeeId,
-          startAt: iso('07:00'),
-          endAt: iso('08:00'),
-        }),
-      );
-      expect(prisma._create).not.toHaveBeenCalled();
-    });
+      ['не MECHANIC (адміністратор), хоч і закріплений', RECEPTIONIST, LIFT_1, NOT_FOUND],
+      ['звільнений (FIRED)', FIRED, LIFT_1, NOT_FOUND],
+      ['у відпустці (ON_LEAVE), хоч і закріплений', ON_LEAVE, LIFT_1, ON_LEAVE_MSG],
+      ['у відпустці й не закріплений — відпустка важливіша', ON_LEAVE, LIFT_2, ON_LEAVE_MSG],
+      ['видалений', DELETED, LIFT_1, NOT_FOUND],
+      ['з іншої організації', FOREIGN, LIFT_1, NOT_FOUND],
+      ['не закріплений за підйомником запису', MECH_LIFT_2, LIFT_1, NOT_ON_LIFT],
+      ['неіснуючий', '33333333-3333-4333-8333-0000000000ff', LIFT_1, NOT_FOUND],
+    ])(
+      'механік %s → 400 з його причиною, запис не створено',
+      async (_l, employeeId, liftId, msg) => {
+        const { prisma, service } = serviceOver([]);
+        await expectNotOnLift(
+          service.createSlot(FAKE_ORG_ID, {
+            liftId,
+            employeeId,
+            startAt: iso('07:00'),
+            endAt: iso('08:00'),
+          }),
+          msg,
+        );
+        expect(prisma._create).not.toHaveBeenCalled();
+      },
+    );
 
     // guards: BR-CAL-012
     it('механік без підйомника → 400: закріпитись нема за чим, працівників не читає', async () => {
@@ -187,15 +196,15 @@ describe('CalendarService — механік запису закріплений
 
     // guards: BR-CAL-012
     it.each([
-      ['не закріпленого за підйомником', MECH_LIFT_2],
-      ['звільненого', FIRED],
-      ['у відпустці', ON_LEAVE],
-      ['не MECHANIC', RECEPTIONIST],
-      ['з іншої організації', FOREIGN],
-    ])('зміна механіка на %s → 400, запис не змінено', async (_label, employeeId) => {
+      ['не закріпленого за підйомником', MECH_LIFT_2, NOT_ON_LIFT],
+      ['звільненого', FIRED, NOT_FOUND],
+      ['у відпустці', ON_LEAVE, ON_LEAVE_MSG],
+      ['не MECHANIC', RECEPTIONIST, NOT_FOUND],
+      ['з іншої організації', FOREIGN, NOT_FOUND],
+    ])('зміна механіка на %s → 400 з причиною, запис не змінено', async (_l, employeeId, msg) => {
       const slot = saved();
       const { prisma, service } = serviceOver([slot]);
-      await expectNotOnLift(service.updateSlot(FAKE_ORG_ID, slot.id, { employeeId }));
+      await expectNotOnLift(service.updateSlot(FAKE_ORG_ID, slot.id, { employeeId }), msg);
       expect(prisma._update).not.toHaveBeenCalled();
       expect(slot.employeeId).toBe(MECH);
     });
@@ -271,12 +280,12 @@ describe('CalendarService.updateSlot — перетягування знімає
 
   // guards: BR-CAL-012
   it.each([
-    ['не закріплений за новим підйомником', MECH],
-    ['у відпустці', ON_LEAVE],
-    ['звільнений', FIRED],
+    ['не закріплений за новим підйомником', MECH, 'NOT_ON_LIFT'],
+    ['у відпустці', ON_LEAVE, 'ON_LEAVE'],
+    ['звільнений', FIRED, 'UNAVAILABLE'],
   ])(
-    'механік %s → запис на новому підйомнику без механіка, відповідь mechanicDropped',
-    async (_label, employeeId) => {
+    'механік %s → запис на новому підйомнику без механіка, відповідь mechanicDropped з причиною',
+    async (_label, employeeId, reason) => {
       const slot = saved({ employeeId });
       const { service } = serviceOver([slot]);
       const res = await service.updateSlot(FAKE_ORG_ID, slot.id, {
@@ -289,8 +298,23 @@ describe('CalendarService.updateSlot — перетягування знімає
       expect(slot.startAt.toISOString()).toBe(iso('09:00'));
       expect(res.employeeId).toBeNull();
       expect(res.mechanicDropped).toBe(true);
+      expect(res.mechanicDroppedReason).toBe(reason);
     },
   );
+
+  // guards: BR-CAL-012
+  it('механік у відпустці, закріплений і за новим підйомником → знято з причиною ON_LEAVE', async () => {
+    // Закріплення не рятує: у відпустці механіка не ставлять на запис (рішення 2026-10-16).
+    // ON_LEAVE закріплений за LIFT_1; запис стоїть на LIFT_2 і переїжджає на LIFT_1.
+    const slot = saved({ employeeId: ON_LEAVE, liftId: LIFT_2 });
+    const { service } = serviceOver([slot]);
+    const res = await service.updateSlot(FAKE_ORG_ID, slot.id, {
+      liftId: LIFT_1,
+      dropMechanicNotOnLift: true,
+    });
+    expect(slot).toMatchObject({ liftId: LIFT_1, employeeId: null });
+    expect(res).toMatchObject({ mechanicDropped: true, mechanicDroppedReason: 'ON_LEAVE' });
+  });
 
   // guards: BR-CAL-012
   it('механік закріплений і за новим підйомником → лишається, mechanicDropped немає', async () => {
@@ -302,6 +326,7 @@ describe('CalendarService.updateSlot — перетягування знімає
     });
     expect(slot).toMatchObject({ liftId: LIFT_2, employeeId: MECH_BOTH });
     expect(res).not.toHaveProperty('mechanicDropped');
+    expect(res).not.toHaveProperty('mechanicDroppedReason');
   });
 
   // guards: BR-CAL-012
@@ -336,6 +361,7 @@ describe('CalendarService.updateSlot — перетягування знімає
         employeeId: FIRED,
         dropMechanicNotOnLift: true,
       }),
+      NOT_FOUND,
     );
     expect(prisma._update).not.toHaveBeenCalled();
     expect(slot).toMatchObject({ liftId: LIFT_1, employeeId: MECH });
