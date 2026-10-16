@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 
@@ -152,18 +153,21 @@ test.describe('Наряди — картка (seed дані)', () => {
       () =>
         sessionStorage.getItem('sto_access_token') ?? localStorage.getItem('sto_e2e_access_token'),
     );
-    const wo = await page.evaluate(async t => {
-      // НЕ найновіший наряд (Bug #797): список відсортовано від найновішого, а паралельний
-      // CRUD-тест саме зараз створює і видаляє свій — картка відкривалась уже на «Наряд не
-      // знайдено». Беремо останній із двадцяти: він існував до початку прогону.
-      const r = await fetch('http://localhost:3000/api/v1/work-orders?limit=20', {
-        headers: { Authorization: `Bearer ${t}` },
-      });
-      if (!r.ok) return null;
-      const j = await r.json();
-      const items = Array.isArray(j) ? j : (j.items ?? []);
-      return items[items.length - 1] ?? null;
-    }, token);
+    const wo = await page.evaluate(
+      async ({ t, api }) => {
+        // НЕ найновіший наряд (Bug #797): список відсортовано від найновішого, а паралельний
+        // CRUD-тест саме зараз створює і видаляє свій — картка відкривалась уже на «Наряд не
+        // знайдено». Беремо останній із двадцяти: він існував до початку прогону.
+        const r = await fetch(`${api}/work-orders?limit=20`, {
+          headers: { Authorization: `Bearer ${t}` },
+        });
+        if (!r.ok) return null;
+        const j = await r.json();
+        const items = Array.isArray(j) ? j : (j.items ?? []);
+        return items[items.length - 1] ?? null;
+      },
+      { t: token, api: API },
+    );
     expect(wo, 'Seed має містити хоча б 1 наряд').toBeTruthy();
     if (!wo) return null;
     await page.goto(`/work-orders/${wo.id}`);

@@ -1,4 +1,5 @@
 import { test, expect, request, type APIRequestContext } from '@playwright/test';
+import { API_ORIGIN_IPV4 } from './api-url';
 import { clearDateFilter } from './fixtures';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -26,8 +27,8 @@ import * as fs from 'fs';
 // Bug #566: Windows Node 18+ resolves `localhost` → `::1` first (IPv6), but API binds
 // only to `0.0.0.0` (IPv4) → intermittent ECONNREFUSED ::1:3000 from server-side request
 // contexts. Browser-side requests work because Chromium handles dual-stack itself.
-// Fix: force IPv4 by using 127.0.0.1 explicitly for ALL server-side API calls.
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3000';
+// Fix: force IPv4 (127.0.0.1) for ALL server-side API calls — API_ORIGIN_IPV4 з e2e/api-url.ts.
+const API_BASE = API_ORIGIN_IPV4;
 const STORAGE_STATE_PATH = path.join(__dirname, '.auth/admin.json');
 
 test.use({ storageState: STORAGE_STATE_PATH });

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -41,21 +42,21 @@ test.describe('Документи складу — CRUD', () => {
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
 
     const seed = await page.evaluate(
-      async ({ token }) => {
-        const wRes = await fetch('http://localhost:3000/api/v1/warehouses?limit=1', {
+      async ({ token, api }) => {
+        const wRes = await fetch(`${api}/warehouses?limit=1`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const w = (await wRes.json())[0];
         return { warehouseId: w?.id ?? null, branchId: w?.branchId ?? null };
       },
-      { token },
+      { token, api: API },
     );
     expect(seed.warehouseId, 'Seed має містити хоча б 1 склад').toBeTruthy();
     expect(seed.branchId, 'Склад seed має мати привязану філію').toBeTruthy();
 
     const doc = await page.evaluate(
-      async ({ token, warehouseId, branchId }) => {
-        const r = await fetch('http://localhost:3000/api/v1/stock-documents', {
+      async ({ token, warehouseId, branchId, api }) => {
+        const r = await fetch(`${api}/stock-documents`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ type: 'WRITEOFF', warehouseId, branchId, lines: [] }),
@@ -64,7 +65,7 @@ test.describe('Документи складу — CRUD', () => {
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
-      { token, warehouseId: seed.warehouseId, branchId: seed.branchId },
+      { token, warehouseId: seed.warehouseId, branchId: seed.branchId, api: API },
     );
     expect(
       doc && !('error' in doc),
@@ -80,13 +81,13 @@ test.describe('Документи складу — CRUD', () => {
 
     // Cleanup
     await page.evaluate(
-      async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/v1/stock-documents/${id}`, {
+      async ({ token, id, api }) => {
+        await fetch(`${api}/stock-documents/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
       },
-      { token, id: doc.id },
+      { token, id: doc.id, api: API },
     );
   });
 
@@ -99,12 +100,12 @@ test.describe('Документи складу — CRUD', () => {
 
     // Знайти склад + branchId + good (DTO вимагає branchId, transition вимагає lines — Bug #571 fix).
     const seed = await page.evaluate(
-      async ({ token }) => {
+      async ({ token, api }) => {
         const [wRes, gRes] = await Promise.all([
-          fetch('http://localhost:3000/api/v1/warehouses?limit=1', {
+          fetch(`${api}/warehouses?limit=1`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch('http://localhost:3000/api/v1/goods?limit=1', {
+          fetch(`${api}/goods?limit=1`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -118,7 +119,7 @@ test.describe('Документи складу — CRUD', () => {
           goodId: g?.id ?? null,
         };
       },
-      { token },
+      { token, api: API },
     );
 
     expect(seed.warehouseId, 'Seed має містити склад').toBeTruthy();
@@ -128,8 +129,8 @@ test.describe('Документи складу — CRUD', () => {
     // Створити RECEIPT з позицією (WRITEOFF з порожнім складом → undefined cost у transition).
     // RECEIPT збільшує склад, transition підтверджує без перевірки залишків.
     const doc = await page.evaluate(
-      async ({ token, warehouseId, branchId, goodId }) => {
-        const r = await fetch('http://localhost:3000/api/v1/stock-documents', {
+      async ({ token, warehouseId, branchId, goodId, api }) => {
+        const r = await fetch(`${api}/stock-documents`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
@@ -143,7 +144,13 @@ test.describe('Документи складу — CRUD', () => {
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
-      { token, warehouseId: seed.warehouseId, branchId: seed.branchId, goodId: seed.goodId },
+      {
+        token,
+        warehouseId: seed.warehouseId,
+        branchId: seed.branchId,
+        goodId: seed.goodId,
+        api: API,
+      },
     );
 
     expect(
@@ -166,15 +173,15 @@ test.describe('Документи складу — CRUD', () => {
     // Тест перевіряє реальну поведінку: статус DRAFT → CONFIRMED після POST на transition,
     // і що UI оновлює badge на "Проведено" (фільтр відображення).
     const transitionRes = await page.evaluate(
-      async ({ token, id }) => {
-        const r = await fetch(`http://localhost:3000/api/v1/stock-documents/${id}/transition`, {
+      async ({ token, id, api }) => {
+        const r = await fetch(`${api}/stock-documents/${id}/transition`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ status: 'CONFIRMED' }),
         });
         return { status: r.status, body: await r.text() };
       },
-      { token, id: doc.id },
+      { token, id: doc.id, api: API },
     );
     expect(transitionRes.status).toBeLessThan(400);
     const updatedDoc = JSON.parse(transitionRes.body);
@@ -188,13 +195,13 @@ test.describe('Документи складу — CRUD', () => {
 
     // Cleanup
     await page.evaluate(
-      async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/v1/stock-documents/${id}`, {
+      async ({ token, id, api }) => {
+        await fetch(`${api}/stock-documents/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
       },
-      { token, id: doc.id },
+      { token, id: doc.id, api: API },
     );
   });
 

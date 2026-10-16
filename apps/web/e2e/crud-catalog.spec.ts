@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { API_ORIGIN } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 
@@ -140,7 +141,7 @@ test.describe('Каталог — CRUD товару', () => {
     await page.goto('/catalog');
     await expect(page.locator('h1:has-text("Каталог")')).toBeVisible({ timeout: 15_000 });
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
-    const apiBase = 'http://localhost:3000';
+    const apiBase = API_ORIGIN;
 
     // Перший товар — має успішно створитись
     const r1 = await page.evaluate(

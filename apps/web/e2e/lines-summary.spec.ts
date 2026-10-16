@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API } from './api-url';
 import { clearDateFilter } from './fixtures';
 
 // E2E для «Зведення по табличних частинах і виконавці в боковій панелі списків»
@@ -19,10 +20,10 @@ async function apiCall(page: Page, method: string, path: string, body?: Record<s
       sessionStorage.getItem('sto_access_token') ?? localStorage.getItem('sto_e2e_access_token'),
   );
   return page.evaluate(
-    async ({ token, method, path, body }) => {
+    async ({ token, method, path, body, api }) => {
       const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
       if (body) headers['Content-Type'] = 'application/json';
-      const r = await fetch(`http://localhost:3000/api/v1${path}`, {
+      const r = await fetch(`${api}${path}`, {
         method,
         headers,
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -31,7 +32,7 @@ async function apiCall(page: Page, method: string, path: string, body?: Record<s
       const text = await r.text();
       return text ? JSON.parse(text) : null;
     },
-    { token, method, path, body: body ?? null },
+    { token, method, path, body: body ?? null, api: API },
   );
 }
 

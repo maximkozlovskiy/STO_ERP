@@ -1,11 +1,12 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { API } from './api-url';
 
 /**
  * Спільні помічники сценаріїв «каса як місце готівкових оплат»: сторінок оплат клієнтів і
  * постачальників більше немає, оплату вносять у касі (картка операції з контрагентом).
  */
 
-export const API = 'http://localhost:3000/api/v1';
+export { API };
 
 export async function getToken(page: Page): Promise<string> {
   const token = await page.evaluate(

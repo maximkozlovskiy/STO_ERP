@@ -1,9 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
-
-const API = 'http://localhost:3000/api/v1';
 
 /**
  * Друк наряд-замовлення і рахунку з наряду (BR-WO-013): з картки наряду і зі сторінки наряду.

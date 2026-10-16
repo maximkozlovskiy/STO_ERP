@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -26,24 +27,27 @@ test.describe('Онлайн-запис (Bookings)', () => {
     await page.goto('/bookings');
     await page.waitForTimeout(1000);
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
-    await page.evaluate(async tok => {
-      const r = await fetch('http://localhost:3000/api/v1/booking', {
-        headers: { Authorization: `Bearer ${tok}` },
-      });
-      const data = await r.json().catch(() => ({ items: [] }));
-      const items = Array.isArray(data) ? data : (data.items ?? []);
-      // Видалити всі E2E тестові заявки (clientName містить 'E2E')
-      await Promise.all(
-        items
-          .filter((i: { clientName: string }) => i.clientName?.includes('E2E'))
-          .map((i: { id: string }) =>
-            fetch(`http://localhost:3000/api/v1/booking/${i.id}`, {
-              method: 'DELETE',
-              headers: { Authorization: `Bearer ${tok}` },
-            }).catch(() => {}),
-          ),
-      );
-    }, token);
+    await page.evaluate(
+      async ({ tok, api }) => {
+        const r = await fetch(`${api}/booking`, {
+          headers: { Authorization: `Bearer ${tok}` },
+        });
+        const data = await r.json().catch(() => ({ items: [] }));
+        const items = Array.isArray(data) ? data : (data.items ?? []);
+        // Видалити всі E2E тестові заявки (clientName містить 'E2E')
+        await Promise.all(
+          items
+            .filter((i: { clientName: string }) => i.clientName?.includes('E2E'))
+            .map((i: { id: string }) =>
+              fetch(`${api}/booking/${i.id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${tok}` },
+              }).catch(() => {}),
+            ),
+        );
+      },
+      { tok: token, api: API },
+    );
     await ctx.close();
   });
 
@@ -71,13 +75,16 @@ test.describe('Онлайн-запис (Bookings)', () => {
     // CreateBookingRequestDto вимагає: branchId (UUID), clientName, clientPhone (+380XXXXXXXXX),
     // requestedDate (НЕ preferredDate). Раніше тут було неправильне поле і відсутній branchId —
     // /booking/request віддавав 400, r.ok=false → test.skip → fake-green silent skip (Bug #287).
-    const data = await page.evaluate(async () => {
-      const branchesRes = await fetch('http://localhost:3000/api/v1/booking/branches');
-      const branches = await branchesRes.json().catch(() => []);
-      return {
-        branchId: Array.isArray(branches) ? branches[0]?.id : null,
-      };
-    });
+    const data = await page.evaluate(
+      async ({ api }) => {
+        const branchesRes = await fetch(`${api}/booking/branches`);
+        const branches = await branchesRes.json().catch(() => []);
+        return {
+          branchId: Array.isArray(branches) ? branches[0]?.id : null,
+        };
+      },
+      { api: API },
+    );
 
     // Bug #287/#571 follow-up: ніколи не skip — seed містить публічну філію.
     // Якщо відсутня — це регресія сидінгу, тест має падати голосно.
@@ -86,8 +93,8 @@ test.describe('Онлайн-запис (Bookings)', () => {
     // Унікальний phone для кожного тест-запуску (останні 6 цифр = timestamp)
     const uniquePhone = `+38099${Date.now().toString().slice(-7)}`;
     const bookingRes = await page.evaluate(
-      async ({ branchId, phone, requestedDate }) => {
-        const r = await fetch('http://localhost:3000/api/v1/booking/request', {
+      async ({ branchId, phone, requestedDate, api }) => {
+        const r = await fetch(`${api}/booking/request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -101,7 +108,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
-      { branchId: data.branchId, phone: uniquePhone, requestedDate: nextWorkingDayIso() },
+      { branchId: data.branchId, phone: uniquePhone, requestedDate: nextWorkingDayIso(), api: API },
     );
 
     // Якщо API повернув помилку — це баг, не silent skip.
@@ -133,13 +140,13 @@ test.describe('Онлайн-запис (Bookings)', () => {
 
     // Cleanup
     await page.evaluate(
-      async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/v1/booking/${id}`, {
+      async ({ token, id, api }) => {
+        await fetch(`${api}/booking/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         }).catch(() => {});
       },
-      { token, id: bookingRes.id },
+      { token, id: bookingRes.id, api: API },
     );
   });
 
@@ -151,17 +158,20 @@ test.describe('Онлайн-запис (Bookings)', () => {
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
 
     // DTO вимагає branchId + requestedDate (НЕ preferredDate). Див. коментар у попередньому тесті.
-    const branchId = await page.evaluate(async () => {
-      const r = await fetch('http://localhost:3000/api/v1/booking/branches');
-      const list = await r.json().catch(() => []);
-      return Array.isArray(list) ? list[0]?.id : null;
-    });
+    const branchId = await page.evaluate(
+      async ({ api }) => {
+        const r = await fetch(`${api}/booking/branches`);
+        const list = await r.json().catch(() => []);
+        return Array.isArray(list) ? list[0]?.id : null;
+      },
+      { api: API },
+    );
     expect(branchId, 'Seed не створив публічну філію /api/booking/branches').toBeTruthy();
 
     const cancelPhone = `+38099${(Date.now() + 1).toString().slice(-7)}`;
     const bookingRes = await page.evaluate(
-      async ({ branchId, phone, requestedDate }) => {
-        const r = await fetch('http://localhost:3000/api/v1/booking/request', {
+      async ({ branchId, phone, requestedDate, api }) => {
+        const r = await fetch(`${api}/booking/request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -175,7 +185,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
-      { branchId, phone: cancelPhone, requestedDate: nextWorkingDayIso() },
+      { branchId, phone: cancelPhone, requestedDate: nextWorkingDayIso(), api: API },
     );
 
     expect(
@@ -202,13 +212,13 @@ test.describe('Онлайн-запис (Bookings)', () => {
 
     // Cleanup
     await page.evaluate(
-      async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/v1/booking/${id}`, {
+      async ({ token, id, api }) => {
+        await fetch(`${api}/booking/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         }).catch(() => {});
       },
-      { token, id: bookingRes.id },
+      { token, id: bookingRes.id, api: API },
     );
   });
 });

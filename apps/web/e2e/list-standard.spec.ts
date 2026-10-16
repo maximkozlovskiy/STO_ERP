@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API } from './api-url';
 import { clearDateFilter } from './fixtures';
 
 // Єдиний стандарт списків (рішення власника 2026-10-13):
@@ -11,8 +12,6 @@ import { clearDateFilter } from './fixtures';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
-
-const API = 'http://localhost:3000/api/v1';
 
 async function api<T>(page: Page, method: string, path: string, body?: unknown): Promise<T> {
   // sessionStorage доступний лише після навігації на origin застосунку.

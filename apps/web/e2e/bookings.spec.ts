@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 
@@ -52,13 +53,13 @@ test.describe('/bookings — список заявок', () => {
     await page.waitForTimeout(500);
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
     const result = await page.evaluate(
-      async ({ token }) => {
-        const r = await fetch('http://localhost:3000/api/v1/booking', {
+      async ({ token, api }) => {
+        const r = await fetch(`${api}/booking`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         return { status: r.status, body: await r.text() };
       },
-      { token },
+      { token, api: API },
     );
     expect(result.status).toBe(200);
     // Контракт: response має items[] + total

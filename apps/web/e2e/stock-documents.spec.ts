@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API } from './api-url';
 import { clearDateFilter } from './fixtures';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
@@ -23,8 +24,8 @@ async function getToken(page: Page): Promise<string> {
 async function apiPost<T>(page: Page, path: string, body: unknown): Promise<T> {
   const token = await getToken(page);
   return page.evaluate(
-    async ({ token, path, body }) => {
-      const r = await fetch(`http://localhost:3000/api/v1${path}`, {
+    async ({ token, path, body, api }) => {
+      const r = await fetch(`${api}${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
@@ -36,34 +37,34 @@ async function apiPost<T>(page: Page, path: string, body: unknown): Promise<T> {
       const t = await r.text();
       return (t ? JSON.parse(t) : null) as T;
     },
-    { token, path, body },
+    { token, path, body, api: API },
   );
 }
 
 async function apiGet<T>(page: Page, path: string): Promise<T> {
   const token = await getToken(page);
   return page.evaluate(
-    async ({ token, path }) => {
-      const r = await fetch(`http://localhost:3000/api/v1${path}`, {
+    async ({ token, path, api }) => {
+      const r = await fetch(`${api}${path}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) throw new Error(`GET ${path} → ${r.status}`);
       return r.json() as T;
     },
-    { token, path },
+    { token, path, api: API },
   );
 }
 
 async function apiDelete(page: Page, path: string): Promise<void> {
   const token = await getToken(page);
   await page.evaluate(
-    async ({ token, path }) => {
-      await fetch(`http://localhost:3000/api/v1${path}`, {
+    async ({ token, path, api }) => {
+      await fetch(`${api}${path}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
     },
-    { token, path },
+    { token, path, api: API },
   );
 }
 

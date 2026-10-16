@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -36,12 +37,12 @@ test.describe('Календар — слоти', () => {
 
     // Отримати ВСІ ліфти + контрагента щоб мати запас на конфлікти "Підйомник вже зайнятий".
     const data = await page.evaluate(
-      async ({ token }) => {
+      async ({ token, api }) => {
         const [liftsRes, cpRes] = await Promise.all([
-          fetch('http://localhost:3000/api/v1/lifts', {
+          fetch(`${api}/lifts`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch('http://localhost:3000/api/v1/counterparties?limit=1', {
+          fetch(`${api}/counterparties?limit=1`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -51,7 +52,7 @@ test.describe('Календар — слоти', () => {
           counterpartyId: cps.items?.[0]?.id,
         };
       },
-      { token },
+      { token, api: API },
     );
 
     expect(data.liftIds.length, 'GET /api/lifts повернув порожньо').toBeGreaterThan(0);
@@ -102,8 +103,8 @@ test.describe('Календар — слоти', () => {
         const startAt = kyivWallToUtcIso(kyivToday, h, 0);
         const endAt = kyivWallToUtcIso(kyivToday, h, 30);
         const res = await page.evaluate(
-          async ({ token, liftId, counterpartyId, startAt, endAt }) => {
-            const r = await fetch('http://localhost:3000/api/v1/calendar/slots', {
+          async ({ token, liftId, counterpartyId, startAt, endAt, api }) => {
+            const r = await fetch(`${api}/calendar/slots`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ liftId, counterpartyId, startAt, endAt }),
@@ -112,7 +113,7 @@ test.describe('Календар — слоти', () => {
             const text = await r.text();
             return text ? JSON.parse(text) : null;
           },
-          { token, liftId, counterpartyId: data.counterpartyId, startAt, endAt },
+          { token, liftId, counterpartyId: data.counterpartyId, startAt, endAt, api: API },
         );
         if (res && !('error' in res)) {
           createdIds = (res as { slots: { id: string }[] }).slots.map(s => s.id);
@@ -141,17 +142,17 @@ test.describe('Календар — слоти', () => {
 
     // Cleanup — кожну частину; статус перевіряється, щоб мовчазний збій не лишав слоти в базі.
     const statuses = await page.evaluate(
-      async ({ token, ids }) =>
+      async ({ token, ids, api }) =>
         Promise.all(
           ids.map(async id => {
-            const r = await fetch(`http://localhost:3000/api/v1/calendar/slots/${id}`, {
+            const r = await fetch(`${api}/calendar/slots/${id}`, {
               method: 'DELETE',
               headers: { Authorization: `Bearer ${token}` },
             });
             return r.status;
           }),
         ),
-      { token, ids: createdIds },
+      { token, ids: createdIds, api: API },
     );
     expect(
       statuses.every(s => s >= 200 && s < 300),

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { API, API_ORIGIN } from './api-url';
 import { clearAuthState } from './fixtures';
 
 test.describe('Smoke — публічні сторінки', () => {
@@ -20,10 +21,13 @@ test.describe('Smoke — публічні сторінки', () => {
     // У seed-БД (initialized:true) це коректна поведінка; на чистій БД показується wizard.
     // Інваріант: сторінка рендериться і НЕ падає в error-overlay у будь-якому зі станів.
     const status = await page
-      .evaluate(async () => {
-        const r = await fetch('http://localhost:3000/api/v1/setup/status');
-        return (await r.json()) as { initialized: boolean };
-      })
+      .evaluate(
+        async ({ api }) => {
+          const r = await fetch(`${api}/setup/status`);
+          return (await r.json()) as { initialized: boolean };
+        },
+        { api: API },
+      )
       .catch(() => ({ initialized: false }));
     if (status.initialized) {
       // Ініціалізована система → setup-lock → редірект на /login (не auth-guard, а бізнес-lock).
@@ -68,7 +72,7 @@ test.describe('Smoke — auth guard', () => {
 // E2E перевіряє це проти живого API (не unit) бо helmet — Fastify plugin
 // рівня bootstrap, а тестовий NestJS context використовує app.init() без bootstrap().
 test.describe('Smoke — API security headers (Bug #135)', () => {
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+  const API_BASE = API_ORIGIN;
 
   test('GET /api/health повертає X-Content-Type-Options і X-Frame-Options', async ({ request }) => {
     const res = await request.get(`${API_BASE}/api/health`);

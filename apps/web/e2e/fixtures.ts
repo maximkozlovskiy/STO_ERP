@@ -1,4 +1,5 @@
 import { test as base, expect, Page } from '@playwright/test';
+import { API_ORIGIN } from './api-url';
 
 // ─── Shared auth helpers ──────────────────────────────────────────────────
 
@@ -38,7 +39,7 @@ export async function clearDateFilter(page: Page): Promise<void> {
 // ─── Shared helpers ────────────────────────────────────────────────────────
 
 export async function loginViaAPI(page: Page) {
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+  const apiBase = API_ORIGIN;
   const result = await page.evaluate(
     async ({ apiBase, email, password }) => {
       const r = await fetch(`${apiBase}/api/v1/auth/login`, {

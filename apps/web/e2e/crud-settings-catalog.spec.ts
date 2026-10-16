@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -38,18 +39,15 @@ test.describe('Каталог — CRUD бренду', () => {
     // Перевірити через API що бренд створено
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
     const brand = await page.evaluate(
-      async ({ token, brandName }) => {
-        const r = await fetch(
-          `http://localhost:3000/api/v1/brands?q=${encodeURIComponent(brandName)}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        );
+      async ({ token, brandName, api }) => {
+        const r = await fetch(`${api}/brands?q=${encodeURIComponent(brandName)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         const d = await r.json();
         const items = Array.isArray(d) ? d : (d.items ?? []);
         return items.find((b: { name: string }) => b.name === brandName) ?? null;
       },
-      { token, brandName },
+      { token, brandName, api: API },
     );
     expect(brand, `Бренд "${brandName}" має бути в БД після збереження`).toBeTruthy();
 
@@ -59,13 +57,13 @@ test.describe('Каталог — CRUD бренду', () => {
     if (brand) {
       const token2 = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
       await page.evaluate(
-        async ({ token, id }) => {
-          await fetch(`http://localhost:3000/api/v1/brands/${id}`, {
+        async ({ token, id, api }) => {
+          await fetch(`${api}/brands/${id}`, {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${token}` },
           });
         },
-        { token: token2, id: brand.id },
+        { token: token2, id: brand.id, api: API },
       );
     }
   });

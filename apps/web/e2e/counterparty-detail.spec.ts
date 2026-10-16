@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -25,12 +26,12 @@ async function apiCall(
 ): Promise<unknown> {
   const token = await getToken(page);
   return page.evaluate(
-    async ({ token, method, path, body }) => {
+    async ({ token, method, path, body, api }) => {
       const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
       if (body) headers['Content-Type'] = 'application/json';
       // API-версіонування: бізнес-роути під /api/v1 (counterparties — versioned).
       // Раніше хелпер бив по /api${path} → 404 → seed повертав null → перший serial-тест падав.
-      const r = await fetch(`${'http://localhost:3000'}/api/v1${path}`, {
+      const r = await fetch(`${api}${path}`, {
         method,
         headers,
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -39,7 +40,7 @@ async function apiCall(
       const text = await r.text();
       return text ? JSON.parse(text) : null;
     },
-    { token, method, path, body: body ?? null },
+    { token, method, path, body: body ?? null, api: API },
   );
 }
 

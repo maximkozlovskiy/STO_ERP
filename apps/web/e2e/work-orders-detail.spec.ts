@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -8,13 +9,13 @@ test.describe.configure({ mode: 'serial' });
 async function apiCall(page: Page, method: string, path: string, body?: Record<string, unknown>) {
   const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
   return page.evaluate(
-    async ({ token, method, path, body }) => {
+    async ({ token, method, path, body, api }) => {
       // Only set Content-Type: application/json when there's actually a body.
       // Sending Content-Type: application/json with empty body → Fastify SyntaxError → 500
       // (mirrors fix in apps/web/src/lib/api-client.ts).
       const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
       if (body) headers['Content-Type'] = 'application/json';
-      const r = await fetch(`http://localhost:3000/api/v1${path}`, {
+      const r = await fetch(`${api}${path}`, {
         method,
         headers,
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -23,7 +24,7 @@ async function apiCall(page: Page, method: string, path: string, body?: Record<s
       const text = await r.text();
       return text ? JSON.parse(text) : null;
     },
-    { token, method, path, body: body ?? null },
+    { token, method, path, body: body ?? null, api: API },
   );
 }
 

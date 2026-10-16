@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -18,8 +19,6 @@ test.describe.configure({ mode: 'serial' });
  * роботу каталогу. Виконавець рядка — поточний користувач (співробітник, яким увійшли). Оплати й
  * наряди лишаються в базі навмисно (фінансовий слід); спосіб оплати, касу й роботу прибираємо.
  */
-
-const API = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000'}/api/v1`;
 
 async function getToken(page: Page): Promise<string> {
   const token = await page.evaluate(

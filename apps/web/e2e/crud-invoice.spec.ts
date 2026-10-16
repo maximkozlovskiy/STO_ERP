@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { API } from './api-url';
 import { clearDateFilter } from './fixtures';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
@@ -90,24 +91,24 @@ test.describe('Рахунки — CRUD', () => {
     // Cleanup через API
     const token2 = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
     const firstInv = await page.evaluate(
-      async ({ token }) => {
-        const r = await fetch('http://localhost:3000/api/v1/invoices?limit=1&status=DRAFT', {
+      async ({ token, api }) => {
+        const r = await fetch(`${api}/invoices?limit=1&status=DRAFT`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const d = await r.json();
         return d.items?.[0]?.id ?? null;
       },
-      { token: token2 },
+      { token: token2, api: API },
     );
     if (firstInv) {
       await page.evaluate(
-        async ({ token, id }) => {
-          await fetch(`http://localhost:3000/api/v1/invoices/${id}`, {
+        async ({ token, id, api }) => {
+          await fetch(`${api}/invoices/${id}`, {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${token}` },
           });
         },
-        { token: token2, id: firstInv },
+        { token: token2, id: firstInv, api: API },
       );
     }
   });
@@ -120,17 +121,14 @@ test.describe('Рахунки — CRUD', () => {
 
     // Знайти контрагента
     const cpRes = await page.evaluate(
-      async ({ token }) => {
-        const r = await fetch(
-          'http://localhost:3000/api/v1/counterparties?types=CLIENT,BOTH&limit=1',
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        );
+      async ({ token, api }) => {
+        const r = await fetch(`${api}/counterparties?types=CLIENT,BOTH&limit=1`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         const d = await r.json();
         return d.items?.[0]?.id ?? null;
       },
-      { token },
+      { token, api: API },
     );
 
     // Seed гарантує контрагентів — silent skip = регресія.
@@ -138,8 +136,8 @@ test.describe('Рахунки — CRUD', () => {
 
     // Створити рахунок через API
     const inv = await page.evaluate(
-      async ({ token, cpId }) => {
-        const r = await fetch('http://localhost:3000/api/v1/invoices', {
+      async ({ token, cpId, api }) => {
+        const r = await fetch(`${api}/invoices`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ counterpartyId: cpId, amount: 50 }),
@@ -148,7 +146,7 @@ test.describe('Рахунки — CRUD', () => {
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
-      { token, cpId: cpRes },
+      { token, cpId: cpRes, api: API },
     );
 
     expect(
@@ -185,13 +183,13 @@ test.describe('Рахунки — CRUD', () => {
 
     // Cleanup
     await page.evaluate(
-      async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/v1/invoices/${id}`, {
+      async ({ token, id, api }) => {
+        await fetch(`${api}/invoices/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
       },
-      { token, id: inv.id },
+      { token, id: inv.id, api: API },
     );
   });
 

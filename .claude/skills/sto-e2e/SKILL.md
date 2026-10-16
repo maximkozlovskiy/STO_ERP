@@ -70,6 +70,13 @@ until curl -s http://localhost:3000/api/health > /dev/null 2>&1; do sleep 3; don
 
 > **STALE API**: `404` на існуючому роуті = старий процес. `curl :3000/api/<route>` → `401` = OK, `404` = перезапустити.
 
+> **Адреса API в спеках — лише з `e2e/api-url.ts`** (`API`, `API_ORIGIN`, `API_ORIGIN_IPV4`;
+> `E2E_API_URL` → `NEXT_PUBLIC_API_URL` → `:3000`), жорсткий `localhost:3000` у спеку не писати.
+> У `page.evaluate` константу передавати аргументом: ``({ api }) => fetch(`${api}/…`), { api: API }``.
+> Прогін проти свіжого API на іншому порту — без копій спеків:
+> `E2E_API_URL=http://localhost:3010 NEXT_PUBLIC_API_URL=http://localhost:3010 PLAYWRIGHT_BASE_URL=http://localhost:3012 npx playwright test …`
+> (web на `:3012` піднятий із тим самим `NEXT_PUBLIC_API_URL` і `NEXT_PUBLIC_E2E=1`).
+
 ---
 
 ## Крок 2 — Запуск тестів

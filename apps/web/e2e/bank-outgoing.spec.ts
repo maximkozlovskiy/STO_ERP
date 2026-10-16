@@ -1,8 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
-
-const API = 'http://localhost:3000/api/v1';
 
 /**
  * Вихідні банківські платежі (рішення власника 2026-10-09, BR-BANK-017…040).

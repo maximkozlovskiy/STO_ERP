@@ -1,8 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
-
-const API = 'http://localhost:3000/api/v1';
 
 /**
  * Пошук на сторінках документів (рішення власника 2026-10-09: «не на всіх сторінках

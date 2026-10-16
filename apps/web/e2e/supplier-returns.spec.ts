@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { API } from './api-url';
 import { clearDateFilter } from './fixtures';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
@@ -52,27 +53,27 @@ test.describe('Повернення постачальнику', () => {
 
     // Seed постачальника + склад
     const data = await page.evaluate(
-      async ({ token }) => {
+      async ({ token, api }) => {
         const [cpRes, wRes] = await Promise.all([
-          fetch('http://localhost:3000/api/v1/counterparties?types=SUPPLIER,BOTH&limit=1', {
+          fetch(`${api}/counterparties?types=SUPPLIER,BOTH&limit=1`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch('http://localhost:3000/api/v1/warehouses?limit=1', {
+          fetch(`${api}/warehouses?limit=1`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
         const [cpData, wData] = await Promise.all([cpRes.json(), wRes.json()]);
         return { supplierId: cpData.items?.[0]?.id, warehouseId: wData[0]?.id };
       },
-      { token },
+      { token, api: API },
     );
 
     expect(data.supplierId, 'Seed має містити постачальника').toBeTruthy();
     expect(data.warehouseId, 'Seed має містити склад').toBeTruthy();
 
     const sr = await page.evaluate(
-      async ({ token, supplierId, warehouseId }) => {
-        const r = await fetch('http://localhost:3000/api/v1/supplier-returns', {
+      async ({ token, supplierId, warehouseId, api }) => {
+        const r = await fetch(`${api}/supplier-returns`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ supplierId, warehouseId, lines: [] }),
@@ -81,7 +82,7 @@ test.describe('Повернення постачальнику', () => {
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
-      { token, ...data },
+      { token, ...data, api: API },
     );
 
     expect(
@@ -104,13 +105,13 @@ test.describe('Повернення постачальнику', () => {
 
     // Cleanup
     await page.evaluate(
-      async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/v1/supplier-returns/${id}`, {
+      async ({ token, id, api }) => {
+        await fetch(`${api}/supplier-returns/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         }).catch(() => {});
       },
-      { token, id: sr.id },
+      { token, id: sr.id, api: API },
     );
   });
 
@@ -123,27 +124,27 @@ test.describe('Повернення постачальнику', () => {
     );
 
     const data = await page.evaluate(
-      async ({ token }) => {
+      async ({ token, api }) => {
         const [cpRes, wRes] = await Promise.all([
-          fetch('http://localhost:3000/api/v1/counterparties?types=SUPPLIER,BOTH&limit=1', {
+          fetch(`${api}/counterparties?types=SUPPLIER,BOTH&limit=1`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch('http://localhost:3000/api/v1/warehouses?limit=1', {
+          fetch(`${api}/warehouses?limit=1`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
         const [cpData, wData] = await Promise.all([cpRes.json(), wRes.json()]);
         return { supplierId: cpData.items?.[0]?.id, warehouseId: wData[0]?.id };
       },
-      { token },
+      { token, api: API },
     );
 
     expect(data.supplierId).toBeTruthy();
     expect(data.warehouseId).toBeTruthy();
 
     const sr = await page.evaluate(
-      async ({ token, supplierId, warehouseId }) => {
-        const r = await fetch('http://localhost:3000/api/v1/supplier-returns', {
+      async ({ token, supplierId, warehouseId, api }) => {
+        const r = await fetch(`${api}/supplier-returns`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ supplierId, warehouseId, lines: [] }),
@@ -151,21 +152,21 @@ test.describe('Повернення постачальнику', () => {
         const text = await r.text();
         return text ? JSON.parse(text) : null;
       },
-      { token, ...data },
+      { token, ...data, api: API },
     );
     expect(sr).toBeTruthy();
 
     // FSM transition DRAFT → CONFIRMED через /confirm endpoint
     const confirmed = await page.evaluate(
-      async ({ token, id }) => {
-        const r = await fetch(`http://localhost:3000/api/v1/supplier-returns/${id}/confirm`, {
+      async ({ token, id, api }) => {
+        const r = await fetch(`${api}/supplier-returns/${id}/confirm`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: '{}',
         });
         return { status: r.status, body: await r.text().catch(() => '') };
       },
-      { token, id: sr.id },
+      { token, id: sr.id, api: API },
     );
 
     // Очікуємо успішну транзицію (200/201) АБО 400 з валідною бізнес-помилкою (наприклад, "Немає позицій").
@@ -174,13 +175,13 @@ test.describe('Повернення постачальнику', () => {
 
     // Cleanup
     await page.evaluate(
-      async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/v1/supplier-returns/${id}`, {
+      async ({ token, id, api }) => {
+        await fetch(`${api}/supplier-returns/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         }).catch(() => {});
       },
-      { token, id: sr.id },
+      { token, id: sr.id, api: API },
     );
   });
 });

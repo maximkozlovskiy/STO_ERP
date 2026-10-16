@@ -1,4 +1,5 @@
 import { chromium, type FullConfig } from '@playwright/test';
+import { API_ORIGIN_IPV4 } from './api-url';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -63,7 +64,8 @@ async function globalSetup(config: FullConfig) {
   // Bug #566: Force IPv4 (127.0.0.1) to avoid Node ::1 (IPv6) resolution on Windows
   // when API binds only to 0.0.0.0 (IPv4). Otherwise globalSetup intermittently fails
   // with ECONNREFUSED ::1:3000 during fetch().
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3000';
+  // Адреса — з e2e/api-url.ts (E2E_API_URL → NEXT_PUBLIC_API_URL → :3000), localhost → 127.0.0.1.
+  const apiBase = API_ORIGIN_IPV4;
 
   // Step 1: get JWT через прямий API виклик (швидше за UI логін)
   const res = await fetch(`${apiBase}/api/v1/auth/login`, {

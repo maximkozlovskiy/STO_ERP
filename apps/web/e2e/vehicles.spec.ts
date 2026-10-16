@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -29,17 +30,20 @@ test.describe('Автомобілі', () => {
       () =>
         sessionStorage.getItem('sto_access_token') ?? localStorage.getItem('sto_e2e_access_token'),
     );
-    const data = await page.evaluate(async tok => {
-      const r = await fetch('http://localhost:3000/api/v1/vehicles?limit=1', {
-        headers: { Authorization: `Bearer ${tok}` },
-      });
-      if (!r.ok) return { vehicleId: null, garageId: null };
-      const list = await r.json();
-      return {
-        vehicleId: list[0]?.id ?? null,
-        garageId: list[0]?.customerGarageId ?? null,
-      };
-    }, token);
+    const data = await page.evaluate(
+      async ({ tok, api }) => {
+        const r = await fetch(`${api}/vehicles?limit=1`, {
+          headers: { Authorization: `Bearer ${tok}` },
+        });
+        if (!r.ok) return { vehicleId: null, garageId: null };
+        const list = await r.json();
+        return {
+          vehicleId: list[0]?.id ?? null,
+          garageId: list[0]?.customerGarageId ?? null,
+        };
+      },
+      { tok: token, api: API },
+    );
     vehicleId = data.vehicleId;
     garageId = data.garageId;
     await ctx.close();
@@ -120,14 +124,14 @@ test.describe('Автомобілі', () => {
     // Раніше hardcoded "AA1234BB|2020|Toyota" — крихко при чисто E2E-сеед.
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
     const vehicle = await page.evaluate(
-      async ({ tok, id }) => {
-        const r = await fetch(`http://localhost:3000/api/v1/vehicles/${id}`, {
+      async ({ tok, id, api }) => {
+        const r = await fetch(`${api}/vehicles/${id}`, {
           headers: { Authorization: `Bearer ${tok}` },
         });
         if (!r.ok) return null;
         return r.json();
       },
-      { tok: token, id: vehicleId },
+      { tok: token, id: vehicleId, api: API },
     );
     expect(vehicle, 'API має повернути авто').toBeTruthy();
 
@@ -218,8 +222,8 @@ test.describe('Автомобілі', () => {
     // Cleanup через API: знайти створене авто за model name + видалити
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
     await page.evaluate(
-      async ({ token, suffix }) => {
-        const r = await fetch('http://localhost:3000/api/v1/vehicles?limit=200', {
+      async ({ token, suffix, api }) => {
+        const r = await fetch(`${api}/vehicles?limit=200`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const list = await r.json();
@@ -227,13 +231,13 @@ test.describe('Автомобілі', () => {
           v.model?.includes(suffix),
         );
         if (target) {
-          await fetch(`http://localhost:3000/api/v1/vehicles/${target.id}`, {
+          await fetch(`${api}/vehicles/${target.id}`, {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${token}` },
           }).catch(() => {});
         }
       },
-      { token, suffix: uniqueSuffix },
+      { token, suffix: uniqueSuffix, api: API },
     );
   });
 });

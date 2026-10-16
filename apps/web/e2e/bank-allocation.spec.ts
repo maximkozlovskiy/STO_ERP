@@ -1,8 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
-
-const API = 'http://localhost:3000/api/v1';
 
 /**
  * «Рознести як» у вікні «Новий банківський платіж» (BR-BANK-041): одна дія — платіж внесено й

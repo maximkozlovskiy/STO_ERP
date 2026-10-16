@@ -4,6 +4,19 @@
 
 ---
 
+## E2E: адреса API — лише з `apps/web/e2e/api-url.ts` (2026-10-16)
+
+У 37 файлах E2E адреса API була прописана жорстко (`'http://localhost:3000/api/v1'`), тож прогін
+проти свіжого API на іншому порту вимагав тимчасових копій спеків. Тепер одне джерело:
+`API_ORIGIN` / `API` / `API_ORIGIN_IPV4` (`E2E_API_URL` → `NEXT_PUBLIC_API_URL` → `:3000`); його ж
+бере `playwright.config.ts` для свого webServer. Проти свіжого API — без копій:
+`E2E_API_URL=http://localhost:3010 NEXT_PUBLIC_API_URL=http://localhost:3010 npx playwright test …`
+(+ `PLAYWRIGHT_BASE_URL`, якщо web піднято вручну з тим самим `NEXT_PUBLIC_API_URL`). Пастка в
+новому спеку: усередині `page.evaluate(() => …)` імпортованої константи НЕ видно — функція
+виконується в браузері (`ReferenceError: API is not defined`); передавати аргументом
+``page.evaluate(({ api }) => fetch(`${api}/…`), { api: API })``. Із Node (globalSetup,
+`APIRequestContext`) — `API_ORIGIN_IPV4` (Bug #566: `localhost` → `::1` на Windows).
+
 ## Prisma `{ not: X }` на nullable-колонці відкидає й NULL (2026-10-16)
 
 `workOrderId: { not: id }` — це SQL `"workOrderId" <> $1`, і рядки з `workOrderId IS NULL` у вибірку

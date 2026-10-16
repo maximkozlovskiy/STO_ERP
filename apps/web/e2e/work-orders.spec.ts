@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API } from './api-url';
 import { clearDateFilter } from './fixtures';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
@@ -181,14 +182,17 @@ test.describe('Наряди — картка', () => {
       () =>
         sessionStorage.getItem('sto_access_token') ?? localStorage.getItem('sto_e2e_access_token'),
     );
-    const wo = await page.evaluate(async t => {
-      const r = await fetch('http://localhost:3000/api/v1/work-orders?limit=1', {
-        headers: { Authorization: `Bearer ${t}` },
-      });
-      if (!r.ok) return null;
-      const j = await r.json();
-      return Array.isArray(j) ? j[0] : (j.items?.[0] ?? null);
-    }, token);
+    const wo = await page.evaluate(
+      async ({ t, api }) => {
+        const r = await fetch(`${api}/work-orders?limit=1`, {
+          headers: { Authorization: `Bearer ${t}` },
+        });
+        if (!r.ok) return null;
+        const j = await r.json();
+        return Array.isArray(j) ? j[0] : (j.items?.[0] ?? null);
+      },
+      { t: token, api: API },
+    );
     expect(wo, 'Seed має містити хоча б 1 наряд').toBeTruthy();
     if (!wo) return;
 

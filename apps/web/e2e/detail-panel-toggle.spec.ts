@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API } from './api-url';
 
 // E2E для DetailPanelToggle-стандарту списків (коміт 6405c3a9 + review-fix 3fd7d5fb).
 // Купівля → «Замовлення» та Склад → «Товари»: тогл бокової панелі поряд з «Колонки»,
@@ -12,10 +13,10 @@ test.describe.configure({ mode: 'serial' });
 async function apiCall(page: Page, method: string, path: string, body?: Record<string, unknown>) {
   const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
   return page.evaluate(
-    async ({ token, method, path, body }) => {
+    async ({ token, method, path, body, api }) => {
       const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
       if (body) headers['Content-Type'] = 'application/json';
-      const r = await fetch(`http://localhost:3000/api/v1${path}`, {
+      const r = await fetch(`${api}${path}`, {
         method,
         headers,
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -24,7 +25,7 @@ async function apiCall(page: Page, method: string, path: string, body?: Record<s
       const text = await r.text();
       return text ? JSON.parse(text) : null;
     },
-    { token, method, path, body: body ?? null },
+    { token, method, path, body: body ?? null, api: API },
   );
 }
 

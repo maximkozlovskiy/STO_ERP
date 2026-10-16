@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import * as path from 'node:path';
+import { API_ORIGIN } from './e2e/api-url';
 
 // Локально E2E живе на ВЛАСНОМУ порту :3002, а не на dev-сервері :3001. Dev-сервер зібраний
 // без `NEXT_PUBLIC_E2E`, і на ньому всі тести йдуть у /login; раніше доводилось його вбивати,
@@ -15,7 +16,9 @@ const BASE_URL =
   process.env.PLAYWRIGHT_BASE_URL ??
   (process.env.CI ? 'http://localhost:3001' : 'http://localhost:3002');
 const E2E_PORT = new URL(BASE_URL).port || '3002';
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+// Адреса API — одна на конфіг і спеки (e2e/api-url.ts: E2E_API_URL → NEXT_PUBLIC_API_URL → :3000).
+// Її ж отримує локальний webServer як NEXT_PUBLIC_API_URL — сторінки й спеки йдуть на той самий API.
+const API_URL = API_ORIGIN;
 
 // Самовідновлення: якщо на E2E-порту вже висить ЗІПСОВАНИЙ екземпляр (корінь 200, сторінки
 // `/…/[id]` — 5xx), зупиняємо його ще до того, як webServer вирішить «перевикористати». Далі

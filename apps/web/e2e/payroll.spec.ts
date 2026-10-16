@@ -1,9 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API_ORIGIN as API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
-
-const API = 'http://localhost:3000';
 
 // Широкий діапазон — покриває всі завершені наряди, включно зі щойно створеним у тесті.
 const FROM = '2020-01-01';

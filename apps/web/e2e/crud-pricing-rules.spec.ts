@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -6,8 +7,6 @@ test.describe.configure({ mode: 'serial' });
 const uid = () => Date.now().toString().slice(-6);
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-
-const API = 'http://localhost:3000/api/v1';
 
 async function getToken(page: Page): Promise<string> {
   // Playwright не відновлює sessionStorage між контекстами: AuthProvider копіює

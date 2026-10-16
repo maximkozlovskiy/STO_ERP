@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -16,7 +17,6 @@ test.describe.configure({ mode: 'serial' });
  * «+ Слот»). Клієнт і авто — передумови через API. Дата — 19-те число наступного місяця.
  */
 
-const API = `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000'}/api/v1`;
 const uid = Date.now().toString().slice(-6);
 const CLIENT = `000 E2E Наряд у календарі ${uid}`;
 const PLATE = `WC${uid.slice(-5)}`;

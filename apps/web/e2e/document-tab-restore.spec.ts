@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { API } from './api-url';
 
 // Стандарт (рішення власника 2026-10-14): картка документа, згорнута у вкладку, відновлюється
 // кліком по вкладці — для наряду, рахунку, замовлення постачальнику і складського документа.
@@ -10,7 +11,6 @@ import { test, expect, type Page } from '@playwright/test';
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
 
-const API = 'http://localhost:3000/api/v1';
 const TABS_KEY = 'sto_modal_tabs';
 
 interface Created {

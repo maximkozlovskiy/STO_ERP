@@ -1,9 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
-
-const API = 'http://localhost:3000/api/v1';
 
 /**
  * Bank Statements — сторінка /bank-statements (вхідні банк-платежі без рахунку).
