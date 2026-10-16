@@ -812,7 +812,8 @@ export function CalendarSlotModal({
             </div>
           )}
 
-          <div className="grid grid-cols-5 gap-3 items-start">
+          {/* П'ять полів у рядок — лише від xl: на 1024 стовпець вужчий за дату й час (Bug #878) */}
+          <div className="grid grid-cols-3 xl:grid-cols-5 gap-3 items-start">
             <div>
               <label
                 htmlFor={liftSelectId}

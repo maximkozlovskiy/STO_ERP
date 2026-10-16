@@ -314,6 +314,18 @@ test.describe('Календар «Місяць» — картки записів
       .locator('..')
       .locator('input')
       .fill('1');
+    // Bug #878: на 1024 п'ять полів у рядку обрізали хвилини «Початок» і «Кінець».
+    await page.setViewportSize({ width: 1024, height: 900 });
+    // «Початок» і «Кінець» — два поля дати й часу форми.
+    const dateTimes = editForm.getByPlaceholder('ДД.ММ.РРРР ГГ:ХХ');
+    await expect(dateTimes).toHaveCount(2);
+    for (const input of await dateTimes.all()) {
+      await expect(input).toHaveValue(/\d{2}:\d{2}$/);
+      await expect
+        .poll(() => input.evaluate(el => el.scrollWidth - el.clientWidth))
+        .toBeLessThanOrEqual(1);
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
     // У полі — лише механіки, закріплені за підйомником запису (BR-CAL-012).
     const mechSelect = editForm.getByLabel('Механік');
     await expect(mechSelect.locator('option', { hasText: mechName })).toHaveCount(1, {
