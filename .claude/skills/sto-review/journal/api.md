@@ -287,3 +287,15 @@ PATCH `{ isActive: false }` правила з видаленою пізніше 
 звуження перевірити, чи вона перекриває КОЖЕН загальний прапорець (`showDeleted`, `status`).
 **Фікс:** `where.deletedAt = null` у гілці `liftId` + кейс із `showDeleted: 'true'` і контролем
 без `liftId` (`employees.lift-filter.spec.ts`, 3c41f6c9). **Severity:** SUGGESTION
+
+### 2026-10-16 — Дос'є без нового E2E і з URL модуля замість префікса контролера — §4
+
+**Сигнал:** коміт 4e06f8f3 додав `apps/web/e2e/calendar-owner-decisions.spec.ts`, а
+`docs/objects/calendar.md` перелічував лише `calendar-month-cards.spec.ts`; таблиця «API Endpoints»
+того ж дос'є, яку diff доповнив (`dropMechanicNotOnLift`), давала `/api/calendar/:id` при
+`@Controller('calendar/slots')`. Гейти C і `check-doc-links` цього не бачать: перший рахує лише
+unit-спеки реєстру, другий — посилання, а не текст URL. **Grep:**
+`git diff --name-status <base> | grep -E "^A.*e2e/.*\.spec\.ts"` → кожен файл згаданий у
+`docs/objects/*.md`; `grep -n "@Controller" apps/api/src/modules/<mod>/<mod>.controller.ts` проти
+таблиці. **Фікс:** абзац «E2E:» у дос'є, URL таблиці з префікса контролера (572e4631).
+**Severity:** SUGGESTION
