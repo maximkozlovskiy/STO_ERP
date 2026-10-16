@@ -74,7 +74,16 @@ RELEASE = re.compile(
 AUDITOR = re.compile(r"sto-claims-auditor", re.I)
 # Цитата — не твердження: «блок завершено» в лапках чи бектиках, коли я ОПИСУЮ правило, а не
 # підсумовую блок (рішення власника 2026-10-16 — hook блокував власний опис правила).
-QUOTED = re.compile(r"«[^»\n]*»|\"[^\"\n]*\"|“[^”\n]*”|`[^`\n]*`")
+QUOTED = re.compile(r"«[^«»\n]*»|\"[^\"\n]*\"|“[^”\n]*”|`[^`\n]*`")
+
+
+def strip_quotes(s):
+    """Знімає цитати зсередини назовні: «правило «блок завершено» описано» — вкладені ялинки
+    інакше закривались на першій «»» і хвіст цитати виглядав твердженням."""
+    prev = None
+    while prev != s:
+        prev, s = s, QUOTED.sub(" ", s)
+    return s
 
 
 def read_stdin_json():
@@ -178,7 +187,7 @@ def main():
 
     if not text.strip():
         return 0
-    release = [c.strip(" |-*#`") for c in text.split(NL) if RELEASE.search(QUOTED.sub(" ", c))]
+    release = [c.strip(" |-*#`") for c in text.split(NL) if RELEASE.search(strip_quotes(c))]
     if release and not AUDITOR.search(tools):
         try:
             if size:
@@ -203,7 +212,7 @@ def main():
             continue
         ratio_hit = bool(RATIO.search(DATEISH.sub(" ", s)))
         # вердикт у лапках — цитата (опис правила), не твердження; цифри — як завжди
-        if VERDICT.search(QUOTED.sub(" ", s)) or NUMBER.search(s) or ratio_hit:
+        if VERDICT.search(strip_quotes(s)) or NUMBER.search(s) or ratio_hit:
             claims.append(s)
     if not claims:
         return 0
