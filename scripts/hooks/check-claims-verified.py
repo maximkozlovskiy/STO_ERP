@@ -72,6 +72,9 @@ RELEASE = re.compile(
     re.I,
 )
 AUDITOR = re.compile(r"sto-claims-auditor", re.I)
+# Цитата — не твердження: «блок завершено» в лапках чи бектиках, коли я ОПИСУЮ правило, а не
+# підсумовую блок (рішення власника 2026-10-16 — hook блокував власний опис правила).
+QUOTED = re.compile(r"«[^»\n]*»|\"[^\"\n]*\"|“[^”\n]*”|`[^`\n]*`")
 
 
 def read_stdin_json():
@@ -175,7 +178,7 @@ def main():
 
     if not text.strip():
         return 0
-    release = [c.strip(" |-*#`") for c in text.split(NL) if RELEASE.search(c)]
+    release = [c.strip(" |-*#`") for c in text.split(NL) if RELEASE.search(QUOTED.sub(" ", c))]
     if release and not AUDITOR.search(tools):
         try:
             if size:
@@ -199,7 +202,8 @@ def main():
         if not (15 < len(s) < 300):
             continue
         ratio_hit = bool(RATIO.search(DATEISH.sub(" ", s)))
-        if VERDICT.search(s) or NUMBER.search(s) or ratio_hit:
+        # вердикт у лапках — цитата (опис правила), не твердження; цифри — як завжди
+        if VERDICT.search(QUOTED.sub(" ", s)) or NUMBER.search(s) or ratio_hit:
             claims.append(s)
     if not claims:
         return 0
