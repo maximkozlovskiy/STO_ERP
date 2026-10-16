@@ -4,6 +4,13 @@
 
 ---
 
+## Sync: спільний `select` динамічного Prisma-делегата з полем, якого немає в моделі (2026-10-16)
+
+`SyncService.push` читав поточний запис через `delegate.findFirst({ select: { …, workOrderId } })` для
+БУДЬ-якої таблиці. У контрагента, авто й гаража `workOrderId` немає — Prisma кидає на валідації, і push
+цих таблиць мав падати. Делегат типізований як `any`, тож tsc мовчить. Поля, специфічні для таблиці,
+додавати в `select` лише для неї (`sync.calendar-slots.spec.ts`).
+
 ## Tenant-guard: `deleteMany` моделі з `orgId` без `orgId` у `where` → 500 (2026-10-16)
 
 `EmployeesService.assignBranches` робив `employeeBranch.deleteMany({ where: { employeeId } })`.

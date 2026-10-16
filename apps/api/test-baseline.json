@@ -1587,6 +1587,15 @@
    "CalendarService.findSlots — перевірка дати неіснуюча дата 2026-02-31 → 400, запит до бази не йде",
    "CalendarService.findSlots — перевірка дати неіснуюча дата 2026-13-01 → 400, запит до бази не йде"
   ],
+  "apps/api/src/modules/calendar/calendar.deleted-work-order.spec.ts": [
+   "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) ADMIN: findSlots не повертає запис видаленого наряду; живий наряд і запис без наряду — так",
+   "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) MECHANIC: findSlots не повертає запис видаленого наряду; живий наряд і запис без наряду — так",
+   "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) checkConflicts: живий наряд у той самий час — конфлікт (контроль фільтра)",
+   "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) checkConflicts: запис видаленого наряду не конфлікт ні за підйомником, ні за механіком",
+   "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) createSlot: запис ЖИВОГО наряду в той самий час і далі займає підйомник — 400",
+   "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) createSlot: підйомник і механік у час запису видаленого наряду вільні — запис створено",
+   "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) updateSlot: перенесення на час запису видаленого наряду — без конфлікту"
+  ],
   "apps/api/src/modules/calendar/calendar.mechanic-lift.spec.ts": [
    "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) createSlot активний механік, закріплений лише за цим підйомником → запис створено з механіком",
    "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) createSlot багатоденний запис: закріплений механік — на обох частинах; не закріплений — 400, нічого",
@@ -1598,7 +1607,7 @@
    "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) createSlot механік не MECHANIC (адміністратор), хоч і закріплений → 400, запис не створено",
    "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) createSlot механік не закріплений за підйомником запису → 400, запис не створено",
    "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) createSlot механік неіснуючий → 400, запис не створено",
-   "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) createSlot механік у відпустці — не звільнений → запис створено з механіком",
+   "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) createSlot механік у відпустці (ON_LEAVE), хоч і закріплений → 400, запис не створено",
    "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) createSlot механік, закріплений за кількома підйомниками → запис створено з механіком",
    "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) updateSlot збережений звільнений механік, запит без механіка й підйомника, змінено час → збережено без перевірки",
    "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) updateSlot збережений звільнений механік, форма шле ті самі механіка й підйомника, змінено час → збережено без перевірки",
@@ -1607,9 +1616,18 @@
    "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) updateSlot зміна механіка на звільненого → 400, запис не змінено",
    "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) updateSlot зміна механіка на не MECHANIC → 400, запис не змінено",
    "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) updateSlot зміна механіка на не закріпленого за підйомником → 400, запис не змінено",
+   "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) updateSlot зміна механіка на у відпустці → 400, запис не змінено",
    "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) updateSlot зміна підйомника разом зі зняттям механіка (null) → збережено без перевірки",
    "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) updateSlot зміна підйомника, механік закріплений і за новим → збережено",
-   "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) updateSlot зміна підйомника, механік не закріплений за новим → 400, запис не змінено"
+   "CalendarService — механік запису закріплений за підйомником (BR-CAL-012) updateSlot зміна підйомника, механік не закріплений за новим → 400, запис не змінено",
+   "CalendarService.updateSlot — перетягування знімає незакріпленого механіка (BR-CAL-012) без прапорця (форма) — як і раніше 400, запис не змінено",
+   "CalendarService.updateSlot — перетягування знімає незакріпленого механіка (BR-CAL-012) запис без механіка → просто переміщено, працівників не читає",
+   "CalendarService.updateSlot — перетягування знімає незакріпленого механіка (BR-CAL-012) знятий механік не перевіряється на зайнятість: його інший запис у цей час не заважає",
+   "CalendarService.updateSlot — перетягування знімає незакріпленого механіка (BR-CAL-012) механік закріплений і за новим підйомником → лишається, mechanicDropped немає",
+   "CalendarService.updateSlot — перетягування знімає незакріпленого механіка (BR-CAL-012) механік звільнений → запис на новому підйомнику без механіка, відповідь mechanicDropped",
+   "CalendarService.updateSlot — перетягування знімає незакріпленого механіка (BR-CAL-012) механік не закріплений за новим підйомником → запис на новому підйомнику без механіка, відповідь mechanicDropped",
+   "CalendarService.updateSlot — перетягування знімає незакріпленого механіка (BR-CAL-012) механік у відпустці → запис на новому підйомнику без механіка, відповідь mechanicDropped",
+   "CalendarService.updateSlot — перетягування знімає незакріпленого механіка (BR-CAL-012) явно обраний ІНШИЙ незакріплений механік із прапорцем → 400: знімається лише свій механік"
   ],
   "apps/api/src/modules/calendar/calendar.service.spec.ts": [
    "CalendarService.syncWorkOrderSlots Bug #444 — conflict check vs OTHER WO slots Bug #628: конвертує EXCLUDE-порушення (23P01) на UPDATE парента у 409 ConflictException",
@@ -2434,11 +2452,25 @@
    "PATCH /employees/:id — контролер передає id поточного користувача у сервіс іде (orgId, id, dto, id того, хто робить запит)"
   ],
   "apps/api/src/modules/employees/employees.lift-filter.spec.ts": [
-   "EmployeesService.findAll — фільтр liftId (BR-CAL-012) без liftId фільтр не діє: звільнені й незакріплені в загальному списку лишаються",
+   "EmployeesService.findAll — фільтр liftId (BR-CAL-012) без liftId фільтр не діє: звільнені, у відпустці й незакріплені в загальному списку лишаються",
    "EmployeesService.findAll — фільтр liftId (BR-CAL-012) з showDeleted=true видалені все одно не потрапляють — список той, що приймає запис",
-   "EmployeesService.findAll — фільтр liftId (BR-CAL-012) лише закріплені за підйомником, своєї організації, без звільнених і видалених",
+   "EmployeesService.findAll — фільтр liftId (BR-CAL-012) лише закріплені за підйомником, своєї організації, без звільнених, відпустки й видалених",
    "EmployeesService.findAll — фільтр liftId (BR-CAL-012) разом із role=MECHANIC — лише механіки підйомника",
    "EmployeesService.findAll — фільтр liftId (BR-CAL-012) інший підйомник — свій список"
+  ],
+  "apps/api/src/modules/employees/employees.mechanic-lookups.spec.ts": [
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /counterparties/55555555-5555-4555-8555-555555555555/contracts → 200 для механіка",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /employees: механік отримує лише живих механіків без ставок — навіть із role=OWNER і showDeleted",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /employees: приймальня бачить запитаний список як і раніше (контроль обмеження)",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /employees?role=MECHANIC&limit=200 → 200 для механіка",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/organisation → 200 для механіка",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/organisation: власнику — повні налаштування (контроль звуження)",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/organisation: механіку — лише поля картки наряду",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/tax-rates → 200 для механіка",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/tax-rates: лише id, назва, ставка й прапорці",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) PATCH /settings/organisation → 403: змінювати довідники механік не може",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) POST /counterparties/55555555-5555-4555-8555-555555555555/contracts → 403: змінювати довідники механік не може",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) POST /settings/tax-rates → 403: змінювати довідники механік не може"
   ],
   "apps/api/src/modules/employees/employees.remove-guard.spec.ts": [
    "EmployeesService.remove — cascade guard (active work orders) блокує звільнення співробітника з активним нарядом → BadRequestException, БЕЗ soft-delete",
@@ -4989,7 +5021,7 @@
    "Settings — HTTP Contract Bug #84 regression: followUp fields end-to-end PATCH /settings/organisation приймає followUpActive=true, followUpDays=120",
    "Settings — HTTP Contract Bug #84 regression: followUp fields end-to-end PATCH відхиляє followUpDays < 30 (поза межами @Min/@Max)",
    "Settings — HTTP Contract Bug #84 regression: followUp fields end-to-end PATCH відхиляє followUpDays > 365",
-   "Settings — HTTP Contract GET /settings/base-currency маршрут відкритий бухгалтеру й приймальні; повні налаштування — лише власнику й адміну",
+   "Settings — HTTP Contract GET /settings/base-currency маршрут відкритий бухгалтеру й приймальні; налаштування — власнику, адміну й механіку (лише поля картки)",
    "Settings — HTTP Contract GET /settings/base-currency повертає 200 і лише код базової валюти — без решти налаштувань організації",
    "Settings — HTTP Contract GET /settings/organisation повертає 200 з uiFeatures всередині shape",
    "Settings — HTTP Contract GET /settings/organisation повертає costMethod зі значення Prisma enum",
@@ -5557,6 +5589,24 @@
    "SupplierReturnsService — документ, позначений на видалення (BR-WO-012) змінити видалений документ неможливо update (примітка) → 404, у базу нічого не записано",
    "SupplierReturnsService — документ, позначений на видалення (BR-WO-012) змінити видалений документ неможливо update (рядки) → 404, у базу нічого не записано"
   ],
+  "apps/api/src/modules/sync/sync.calendar-slots.spec.ts": [
+   "SyncService.push calendar_slots — механік за підйомником (BR-CAL-012) збережений механік у відпустці, змінено лише нотатки → прийнято без перевірки",
+   "SyncService.push calendar_slots — механік за підйомником (BR-CAL-012) зміна підйомника, механік закріплений і за новим → прийнято",
+   "SyncService.push calendar_slots — механік за підйомником (BR-CAL-012) зміна підйомника, механік не закріплений за новим → відмова, запис не змінено",
+   "SyncService.push calendar_slots — механік за підйомником (BR-CAL-012) новий запис із закріпленим механіком → прийнято",
+   "SyncService.push calendar_slots — механік за підйомником (BR-CAL-012) новий запис, механік без підйомника → відмова з причиною, запис не створено",
+   "SyncService.push calendar_slots — механік за підйомником (BR-CAL-012) новий запис, механік звільнений → відмова з причиною, запис не створено",
+   "SyncService.push calendar_slots — механік за підйомником (BR-CAL-012) новий запис, механік не закріплений за підйомником → відмова з причиною, запис не створено",
+   "SyncService.push calendar_slots — механік за підйомником (BR-CAL-012) новий запис, механік у відпустці → відмова з причиною, запис не створено",
+   "SyncService.push calendar_slots — ролі календаря (BR-CAL-010) ADMIN → запис прийнято",
+   "SyncService.push calendar_slots — ролі календаря (BR-CAL-010) MECHANIC, DELETE → відмова з причиною, нічого не читає й не пише",
+   "SyncService.push calendar_slots — ролі календаря (BR-CAL-010) MECHANIC, INSERT → відмова з причиною, нічого не читає й не пише",
+   "SyncService.push calendar_slots — ролі календаря (BR-CAL-010) MECHANIC, UPDATE → відмова з причиною, нічого не читає й не пише",
+   "SyncService.push calendar_slots — ролі календаря (BR-CAL-010) OWNER → запис прийнято",
+   "SyncService.push calendar_slots — ролі календаря (BR-CAL-010) RECEPTIONIST → запис прийнято",
+   "SyncService.push calendar_slots — ролі календаря (BR-CAL-010) колонки запису календаря читаються лише для calendar_slots (у контрагента їх немає)",
+   "SyncService.push calendar_slots — ролі календаря (BR-CAL-010) роль не стосується інших таблиць: MECHANIC і контрагент — без відмови за роллю"
+  ],
   "apps/api/src/modules/sync/sync.contract.spec.ts": [
    "Sync — HTTP Contract GET /sync/pull (Bug #128 regression) pull counterparties: phone / email / edrpou НЕ потрапляють у payload (PULL_FIELD_BLACKLIST)",
    "Sync — HTTP Contract GET /sync/pull (Bug #128 regression) видалені записи приходять як operation=DELETE з payload={id}",
@@ -6031,6 +6081,13 @@
    "WorkOrdersService.recalcTotals — totalActualLabor formula mixed actualHours/null → uses actualHours when set, normoHours when null",
    "WorkOrdersService.recalcTotals — totalActualLabor formula totalAmount formula = totalActualLabor + totalParts (NOT totalLabor + totalParts)",
    "WorkOrdersService.recalcTotals — totalActualLabor formula пише totalAmountBase + rateUsed (base-валюта → base=totalAmount, rate=1)"
+  ],
+  "apps/api/src/modules/work-orders/work-orders.remove-calendar.spec.ts": [
+   "WorkOrdersService.remove — записи календаря наряду (BR-WO-017) запис, видалений раніше, зберігає свій час видалення",
+   "WorkOrdersService.remove — записи календаря наряду (BR-WO-017) наряд не в «Чернетці» / «Скасовано» → 400, записи календаря живі",
+   "WorkOrdersService.remove — записи календаря наряду (BR-WO-017) наряд не видалено (оплата між читанням і записом) → записи календаря живі",
+   "WorkOrdersService.remove — записи календаря наряду (BR-WO-017) обидві частини багатоденного запису позначено видаленими разом із нарядом, тим самим часом",
+   "WorkOrdersService.remove — записи календаря наряду (BR-WO-017) чужі записи не чіпає: інший наряд, запис без наряду, інша організація з тим самим id наряду"
   ],
   "apps/api/src/modules/work-orders/work-orders.role-gate.spec.ts": [
    "WorkOrdersService.addPart — costPrice role-gating (Bug #529) Bug #541: addPart DTO містить goodInternalCode / goodSku / goodBrandName",
