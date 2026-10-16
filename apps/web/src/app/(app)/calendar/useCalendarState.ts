@@ -136,7 +136,9 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   const [bookingSlots, setBookingSlots] = useState<BookingSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [lifts, setLifts] = useState<Lift[]>([]);
-  const [workStartHour, setWorkStartHour] = useState(8);
+  // До відповіді `GET /settings/work-hours` (і при її збої) — типові 09–18, як на сервері
+  // (`DEFAULT_WORK_HOURS`): форма запису ділить запис на дні за цими ж межами (BR-CAL-007).
+  const [workStartHour, setWorkStartHour] = useState(9);
   const [workEndHour, setWorkEndHour] = useState(18);
   // Ref so `load` useCallback can read current lifts without adding them as dependency
   const liftsRef = useRef<Lift[]>([]);
@@ -319,7 +321,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         setWorkStartHour(hoursRes.data.workStartHour);
         setWorkEndHour(hoursRes.data.workEndHour);
       } else if (process.env.NODE_ENV !== 'production') {
-        // Fallback to defaults (8-18) on error — calendar still works.
+        // Fallback to defaults (09–18, як на сервері) on error — calendar still works.
         console.warn(
           '[calendar] /settings/work-hours fetch failed; using defaults',
           hoursRes.error,

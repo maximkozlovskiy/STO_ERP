@@ -389,6 +389,6 @@ const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en', { timeZone: 'Europe/Kyiv', h
 
 1. Soft-delete continuations (`parentSlotId IS NOT NULL`)
 2. Update тільки parent (`parentSlotId IS NULL`)
-3. Recreate child якщо range перевищує `WORK_DAY_END_H (20:00)`
+3. Продовження наступного дня НЕ відтворюються — лишається один якір (endpoint веб не кличе, TECH-DEBT §13.16)
 
 **Conflict check обов'язковий** для БУДЬ-ЯКОГО методу що мутує `startAt/endAt` слота.

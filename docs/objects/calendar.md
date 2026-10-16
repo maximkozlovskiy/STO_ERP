@@ -92,7 +92,7 @@ child:  startAt=2026-06-15 08:00 → endAt=2026-06-15 11:00  (parentSlotId = par
 
 1. Soft-delete continuations (`parentSlotId IS NOT NULL`)
 2. Update тільки parent (`parentSlotId IS NULL`)
-3. Recreate child якщо range перевищує `WORK_DAY_END_H (20:00)`
+3. Продовження наступного дня НЕ відтворюються — лишається один якір (endpoint веб не кличе, TECH-DEBT §13.16)
 
 **Увага:** `updateMany({ workOrderId })` з одним `{startAt, endAt}` — data corruption.
 

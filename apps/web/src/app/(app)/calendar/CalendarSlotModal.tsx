@@ -668,8 +668,8 @@ export function CalendarSlotModal({
     // local-парсингу без TZ (+02 зима, +03 літо).
     const startIso = kyivDateTimeToISO(date, form.startAt);
     // For overflow slots the backend expects endAt as the real wall-clock end time
-    // on the *same* day (e.g. 22:00 for 2 h from 20:00), not the next-day display time.
-    // calcEndAt() converts overflow to "08:00 + remainder" for display only — we must
+    // on the *same* day (e.g. 20:00 for 2 h from 18:00), not the next-day display time.
+    // calcEndAt() converts overflow to "відкриття + remainder" for display only — we must
     // send the raw totalMin end time so the backend split logic works correctly.
     const endTimeForSave = isOverflowSlot
       ? (() => {
