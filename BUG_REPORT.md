@@ -2598,3 +2598,37 @@ WCAG 2.5.8 не виконано, промах по «Новий запис» в
 Наживо: 1024 і 1280 — 0 обрізаних полів, сторінка без горизонтальної прокрутки
 (`18-form-fixed-1024.png`). Тест: E2E `calendar-month-cards.spec.ts` — на 1024 `scrollWidth`
 полів дати й часу форми не більший за `clientWidth` (червоний на `grid-cols-5`: різниця 9 px).
+
+## Session 2026-10-16 — календар: рішення власника 2026-10-16 (зняття механіка перетягуванням, записи видаленого наряду, відпустка, колір «Місяця», довідники картки для механіка) (tester, `b6ea3e44..c4eb0d16`) — наживо (власний API зі свіжої збірки на :3010, web на :3012), ролі OWNER / MECHANIC / RECEPTIONIST
+
+## Bug #879 — [HIGH] Дашборд механіка й приймальні — банер помилки замість показників (403 на заборонених ролі списках)
+
+**Файл:** `apps/web/src/app/(app)/dashboard/page.tsx`, `apps/web/src/components/TopShell.tsx` (`PREFETCH_MAP['/dashboard']`)
+**Severity:** HIGH
+**Категорія:** frontend (ролі, клас Bug #729)
+
+**Опис:** дашборд запитує списки, з яких рахує показники, для БУДЬ-ЯКОЇ ролі: `GET /stock-items/low`
+(дозволено OWNER / ADMIN / STOREKEEPER), `GET /invoices?status=SENT` (без MECHANIC і STOREKEEPER),
+`GET /maintenance-schedules/upcoming` (без MECHANIC, ACCOUNTANT, STOREKEEPER), `GET /warranties/expiring`
+(без MECHANIC і STOREKEEPER). Гейт ролі стоїть лише на виручці. 403 → `isError` → банер «Не вдалося
+завантажити частину показників» і `kpi = null` (потрібні всі три списки) → замість карток «Немає даних».
+Наведення на пункт меню «Дашборд» (`PREFETCH_MAP`) шле ті самі запити плюс `GET /reports/revenue` без
+гейту — ще 403 на кожне наведення. Самі лічильники (`pendingInvoices`, `lowStockCount`, `activeWo`) усім
+ролям уже віддає `GET /dashboard/summary`. Знайдено, бо E2E діапазону
+`calendar-owner-decisions.spec.ts` (механік відкриває картку наряду без 403) збирає 403 від входу, а
+механік після входу потрапляє на дашборд: тест червоний у всіх трьох спробах.
+**Відтворення:** RECEPTIONIST або MECHANIC → вхід → «Дашборд»: банер помилки, «Немає даних —
+Не вдалося завантажити показники» (скриншоти `dash_recep.png`, `dash_mech.png`); мережа — 403 на
+`/stock-items/low` (обидві ролі), `/invoices`, `/maintenance-schedules/upcoming`, `/warranties/expiring`
+(механік), `/reports/revenue` при наведенні на «Дашборд».
+**Очікувана поведінка:** роль бачить показники дашборда; запитів, які її роль не може читати, немає.
+**Фактична поведінка:** порожній дашборд із банером помилки, 4–5 відповідей 403 на кожне відкриття.
+**Статус:** [x] виправлено — набори ролей кожного списку (`DASHBOARD_READ_ROLES` у
+`useDashboardData.ts`, дзеркало `@Roles`) гейтять і запити сторінки, і `PREFETCH_MAP['/dashboard']`;
+показник, список якого роль не читає, — «—» (або лічильник `GET /dashboard/summary`), а не банер і не
+«0». Наживо: механік, приймальня, власник — 0 відповідей 403 на дашборді й при наведенні на «Дашборд»,
+картки показників на місці (`dash_*_fixed.png`); E2E `calendar-owner-decisions.spec.ts` 3/3,
+`dashboard` + `console-errors` + `auth-flow` 41/41. Тести: `useDashboardData.roles.test.ts` (набори ролей
+проти `@Roles` контролерів api — червоний, якщо додати MECHANIC у `lowStock`) і
+`DashboardPage.roles.test.tsx` (механік / приймальня не просять заборонених списків, без банера —
+червоний, якщо прибрати гейт `lowStock`).

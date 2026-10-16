@@ -21,6 +21,42 @@ export const dashboardKeys = {
 
 const OPTS = { staleTime: 60_000, gcTime: 5 * 60_000 } as const;
 
+/**
+ * Хто читає списки, з яких дашборд рахує показники, — дзеркало `@Roles` їхніх ендпоінтів (Bug #879;
+ * збіг стереже `useDashboardData.roles.test.ts`). Ролі поза списком запиту не шлють: 403 давав банер
+ * помилки й порожній дашборд механіку й приймальні. Лічильники всім ролям віддає
+ * `GET /dashboard/summary` (`useDashboardStream`).
+ */
+export const DASHBOARD_READ_ROLES = {
+  /** `GET /work-orders` */
+  orders: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT'],
+  /** `GET /stock-items/low` */
+  lowStock: ['OWNER', 'ADMIN', 'STOREKEEPER'],
+  /** `GET /invoices` */
+  invoices: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
+  /** `GET /reports/revenue` */
+  revenue: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
+  /** `GET /maintenance-schedules/upcoming` */
+  maintenance: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
+  /** `GET /warranties/expiring` */
+  expiringWarranties: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT'],
+} as const satisfies Record<string, readonly string[]>;
+
+export type DashboardAccess = Record<keyof typeof DASHBOARD_READ_ROLES, boolean>;
+
+/** Які списки дашборда роль може читати; без ролі (до входу) — жодного. */
+export function dashboardAccess(role: string | null | undefined): DashboardAccess {
+  const can = (roles: readonly string[]) => !!role && roles.includes(role);
+  return {
+    orders: can(DASHBOARD_READ_ROLES.orders),
+    lowStock: can(DASHBOARD_READ_ROLES.lowStock),
+    invoices: can(DASHBOARD_READ_ROLES.invoices),
+    revenue: can(DASHBOARD_READ_ROLES.revenue),
+    maintenance: can(DASHBOARD_READ_ROLES.maintenance),
+    expiringWarranties: can(DASHBOARD_READ_ROLES.expiringWarranties),
+  };
+}
+
 export function useDashboardOrders(enabled: boolean) {
   return useQuery({
     queryKey: dashboardKeys.orders(),

@@ -44,7 +44,7 @@ import { pricingRulesKeys } from '@/hooks/api/usePricingRules';
 import { stockDocsKeys } from '@/hooks/api/useStockDocuments';
 import { payrollKeys } from '@/hooks/api/usePayroll';
 import { infraKeys } from '@/hooks/api/useInfrastructure';
-import { dashboardKeys } from '@/hooks/api/useDashboardData';
+import { dashboardAccess, dashboardKeys } from '@/hooks/api/useDashboardData';
 import { syncKeys } from '@/hooks/api/useSyncStatus';
 import { worksKeys } from '@/hooks/api/useWorks';
 import { reportsKeys } from '@/hooks/api/useReports';
@@ -94,7 +94,8 @@ const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv'
 
 // Prefetch API даних при hover на NavLink — дані готові до кліку (~200мс).
 // prefetchQuery — no-op якщо дані вже fresh (staleTime не минув), безпечно.
-type PrefetchFn = (qc: ReturnType<typeof useQueryClient>) => void;
+// `role` — для сторінок, чиї запити дозволені не всім ролям, що бачать пункт меню (дашборд).
+type PrefetchFn = (qc: ReturnType<typeof useQueryClient>, role: string) => void;
 const PREFETCH_MAP: Record<string, PrefetchFn> = {
   // prefetch queryKey МАЄ збігатися з тим що page-споживач передає у useXxx({...}).
   // Якщо ключі різні — react-query тримає prefetched data у окремому cache slot який сторінка
@@ -282,36 +283,43 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
       staleTime: 5 * 60_000,
     });
   },
-  '/dashboard': qc => {
+  '/dashboard': (qc, role) => {
+    // Лише списки, які роль читає, — як сам дашборд (Bug #879): інакше кожне наведення давало 403.
+    const access = dashboardAccess(role);
     const today = kyivToday();
     // weekStart = 7 днів тому (як у useDashboardRevenue — Date.now() - 6 days).
     const weekStart = KYIV_DATE_FMT.format(new Date(Date.now() - 6 * 86_400_000));
-    void qc.prefetchQuery({
-      queryKey: dashboardKeys.orders(),
-      queryFn: ({ signal }) => apiFetch('/work-orders?limit=200', { signal }),
-      staleTime: 60_000,
-    });
-    void qc.prefetchQuery({
-      queryKey: dashboardKeys.lowStock(),
-      queryFn: ({ signal }) => apiFetch('/stock-items/low', { signal }),
-      staleTime: 60_000,
-    });
-    void qc.prefetchQuery({
-      queryKey: dashboardKeys.invoices(),
-      queryFn: ({ signal }) => apiFetch('/invoices?status=SENT&limit=200', { signal }),
-      staleTime: 60_000,
-    });
-    void qc.prefetchQuery({
-      queryKey: dashboardKeys.revenue(weekStart, today),
-      queryFn: ({ signal }) =>
-        apiFetch(`/reports/revenue?from=${weekStart}&to=${today}`, { signal }),
-      staleTime: 60_000,
-    });
-    void qc.prefetchQuery({
-      queryKey: dashboardKeys.maintenance(),
-      queryFn: ({ signal }) => apiFetch('/maintenance-schedules/upcoming?days=30', { signal }),
-      staleTime: 60_000,
-    });
+    if (access.orders)
+      void qc.prefetchQuery({
+        queryKey: dashboardKeys.orders(),
+        queryFn: ({ signal }) => apiFetch('/work-orders?limit=200', { signal }),
+        staleTime: 60_000,
+      });
+    if (access.lowStock)
+      void qc.prefetchQuery({
+        queryKey: dashboardKeys.lowStock(),
+        queryFn: ({ signal }) => apiFetch('/stock-items/low', { signal }),
+        staleTime: 60_000,
+      });
+    if (access.invoices)
+      void qc.prefetchQuery({
+        queryKey: dashboardKeys.invoices(),
+        queryFn: ({ signal }) => apiFetch('/invoices?status=SENT&limit=200', { signal }),
+        staleTime: 60_000,
+      });
+    if (access.revenue)
+      void qc.prefetchQuery({
+        queryKey: dashboardKeys.revenue(weekStart, today),
+        queryFn: ({ signal }) =>
+          apiFetch(`/reports/revenue?from=${weekStart}&to=${today}`, { signal }),
+        staleTime: 60_000,
+      });
+    if (access.maintenance)
+      void qc.prefetchQuery({
+        queryKey: dashboardKeys.maintenance(),
+        queryFn: ({ signal }) => apiFetch('/maintenance-schedules/upcoming?days=30', { signal }),
+        staleTime: 60_000,
+      });
   },
   '/settings/sync': qc =>
     void qc.prefetchQuery({
@@ -577,7 +585,7 @@ export function TopShell({ children }: { children: ReactNode }) {
         key={item.href}
         href={item.href}
         prefetch={true}
-        onMouseEnter={() => employee && PREFETCH_MAP[item.href]?.(queryClient)}
+        onMouseEnter={() => employee && PREFETCH_MAP[item.href]?.(queryClient, employee.role)}
         title={collapsed ? navLabel : undefined}
         className={cn(
           'group relative flex items-center gap-3 rounded-lg text-[13px] font-medium transition-colors duration-100 mb-0.5',

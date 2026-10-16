@@ -11,6 +11,7 @@ import {
   useDashboardRevenue,
   useDashboardMaintenance,
   useDashboardExpiringWarranties,
+  dashboardAccess,
 } from '@/hooks/api/useDashboardData';
 import { type Warranty as ExpiringWarranty } from '@/hooks/api/useWarranties';
 import { useDashboardStream } from '@/hooks/useDashboardStream';
@@ -55,14 +56,15 @@ interface MaintenanceSchedule {
   notes?: string | null;
 }
 
+/** `null` — роль не читає список, з якого рахується показник (Bug #879): картка показує «—». */
 interface KPI {
-  openOrders: number;
-  inProgressOrders: number;
-  completedToday: number;
-  revenueMonth: number;
-  lowStockCount: number;
-  unpaidInvoices: number;
-  unpaidAmount: number;
+  openOrders: number | null;
+  inProgressOrders: number | null;
+  completedToday: number | null;
+  revenueMonth: number | null;
+  lowStockCount: number | null;
+  unpaidInvoices: number | null;
+  unpaidAmount: number | null;
 }
 
 interface RevenueDay {
@@ -152,32 +154,36 @@ export default function DashboardPage() {
   const { t } = useTranslation('dashboard');
   const { employee } = useRequireAuth();
   const enabled = !!employee;
-  // Виручка — чутлива фін-інформація: /reports/revenue дозволений лише OWNER/ADMIN/ACCOUNTANT.
-  // Для решти ролей НЕ фаєримо запит (інакше 403 → банер помилки) і ховаємо графік.
-  const canViewRevenue = ['OWNER', 'ADMIN', 'ACCOUNTANT'].includes(employee?.role ?? '');
+  // Кожен список — лише ролям, яким його віддає API (Bug #879): 403 давав банер помилки й порожній
+  // дашборд механіку й приймальні. Виручка — чутлива фін-інформація: для решти ролей ще й графік
+  // сховано.
+  const access = dashboardAccess(employee?.role);
+  const canViewRevenue = access.revenue;
 
   const {
     data: ordersData,
     isLoading: ordersLoading,
     isError: ordersError,
-  } = useDashboardOrders(enabled);
+  } = useDashboardOrders(enabled && access.orders);
   const {
     data: lowStockData,
     isLoading: lowStockLoading,
     isError: lowStockError,
-  } = useDashboardLowStock(enabled);
+  } = useDashboardLowStock(enabled && access.lowStock);
   const {
     data: invoicesData,
     isLoading: invoicesLoading,
     isError: invoicesError,
-  } = useDashboardInvoices(enabled);
+  } = useDashboardInvoices(enabled && access.invoices);
   const {
     data: revenueData,
     isLoading: revenueLoading,
     isError: revenueError,
   } = useDashboardRevenue(enabled && canViewRevenue);
-  const { data: maintenanceData } = useDashboardMaintenance(enabled);
-  const { data: expiringWarrantiesData } = useDashboardExpiringWarranties(enabled);
+  const { data: maintenanceData } = useDashboardMaintenance(enabled && access.maintenance);
+  const { data: expiringWarrantiesData } = useDashboardExpiringWarranties(
+    enabled && access.expiringWarranties,
+  );
   const loading = ordersLoading || lowStockLoading || invoicesLoading || revenueLoading;
 
   // T9: раніше error ніколи не виставлявся → помилка запиту тихо показувала 0/«нема даних»
@@ -194,17 +200,21 @@ export default function DashboardPage() {
 
   // KPI — обчислюється синхронно з TanStack Query даних (no useEffect needed)
   const kpi = useMemo<KPI | null>(() => {
-    if (!ordersData || !lowStockData || !invoicesData) return null;
+    // Чекаємо лише списки, які роль читає; решта показників — `null` («—»).
+    if (!enabled) return null;
+    if (access.orders && !ordersData) return null;
+    if (access.lowStock && !lowStockData) return null;
+    if (access.invoices && !invoicesData) return null;
     const today = kyivToday();
     const allOrders: WorkOrderSummary[] =
-      (ordersData as { items?: WorkOrderSummary[] }).items ?? [];
+      (ordersData as { items?: WorkOrderSummary[] } | undefined)?.items ?? [];
     const todayOrders = allOrders.filter(
       // Київська дата завершення, не UTC-зріз ISO-рядка: наряд, закритий о 00:30 за Києвом,
       // в UTC ще «вчора» і в лічильник «завершено сьогодні» не потрапляв (Bug #812).
       o => kyivDateOf(o.completedAt) === today,
     );
     const allInvoices: InvoiceSummary[] =
-      (invoicesData as { items?: InvoiceSummary[] }).items ?? [];
+      (invoicesData as { items?: InvoiceSummary[] } | undefined)?.items ?? [];
     const kyivStr = KYIV_YEAR_MONTH_DAY_FMT.format(new Date());
     const [kyivYear, kyivMonth] = kyivStr.split('-').map(Number);
     const monthStart = `${kyivYear}-${String(kyivMonth).padStart(2, '0')}-01`;
@@ -214,15 +224,29 @@ export default function DashboardPage() {
       .reduce((s, r) => s + r.revenue, 0);
     const lowArr = Array.isArray(lowStockData) ? lowStockData : [];
     return {
-      openOrders: allOrders.filter(o => WO_EDITABLE_STATUSES.includes(o.status)).length,
-      inProgressOrders: allOrders.filter(o => o.status === 'IN_PROGRESS').length,
-      completedToday: todayOrders.length,
-      revenueMonth: monthRevenue,
-      lowStockCount: lowArr.length,
-      unpaidInvoices: allInvoices.length,
-      unpaidAmount: allInvoices.reduce((s, i) => s + i.amount, 0),
+      openOrders: access.orders
+        ? allOrders.filter(o => WO_EDITABLE_STATUSES.includes(o.status)).length
+        : null,
+      inProgressOrders: access.orders
+        ? allOrders.filter(o => o.status === 'IN_PROGRESS').length
+        : null,
+      completedToday: access.orders ? todayOrders.length : null,
+      revenueMonth: access.revenue ? monthRevenue : null,
+      lowStockCount: access.lowStock ? lowArr.length : null,
+      unpaidInvoices: access.invoices ? allInvoices.length : null,
+      unpaidAmount: access.invoices ? allInvoices.reduce((s, i) => s + i.amount, 0) : null,
     };
-  }, [ordersData, lowStockData, invoicesData, revenueData]);
+  }, [
+    enabled,
+    access.orders,
+    access.lowStock,
+    access.invoices,
+    access.revenue,
+    ordersData,
+    lowStockData,
+    invoicesData,
+    revenueData,
+  ]);
 
   const revenue: RevenueDay[] =
     (revenueData as { rows?: RevenueDay[] } | undefined)?.rows ?? (EMPTY_REVENUE as RevenueDay[]);
@@ -307,20 +331,24 @@ export default function DashboardPage() {
             <Link href="/work-orders" className="flex">
               <KpiCard
                 label={t('kpi.inProgress')}
-                value={streamData?.activeWo ?? kpi.inProgressOrders}
+                value={streamData?.activeWo ?? kpi.inProgressOrders ?? '—'}
                 icon={<Wrench />}
                 colorClass="kpi-card-blue"
-                trend={{
-                  value: t('kpi.completedToday', { n: kpi.completedToday }),
-                  up: kpi.completedToday > 0,
-                }}
+                trend={
+                  kpi.completedToday !== null
+                    ? {
+                        value: t('kpi.completedToday', { n: kpi.completedToday }),
+                        up: kpi.completedToday > 0,
+                      }
+                    : undefined
+                }
                 className="w-full"
               />
             </Link>
             <Link href="/work-orders" className="flex">
               <KpiCard
                 label={t('kpi.open')}
-                value={kpi.openOrders}
+                value={kpi.openOrders ?? '—'}
                 icon={<Clock />}
                 colorClass="kpi-card-amber"
                 className="w-full"
@@ -341,7 +369,7 @@ export default function DashboardPage() {
             <Link href="/reports" className="flex">
               <KpiCard
                 label={t('kpi.revenueMonth')}
-                value={fmt(kpi.revenueMonth)}
+                value={kpi.revenueMonth !== null ? fmt(kpi.revenueMonth) : '—'}
                 icon={<BarChart2 />}
                 colorClass="kpi-card-violet"
                 className="w-full"
@@ -350,15 +378,17 @@ export default function DashboardPage() {
             <Link href="/invoices" className="flex">
               <KpiCard
                 label={t('kpi.unpaidInvoices')}
-                value={streamData?.pendingInvoices ?? kpi.unpaidInvoices}
+                value={streamData?.pendingInvoices ?? kpi.unpaidInvoices ?? '—'}
                 icon={<FileX />}
                 colorClass={
-                  (streamData?.pendingInvoices ?? kpi.unpaidInvoices) > 0
+                  (streamData?.pendingInvoices ?? kpi.unpaidInvoices ?? 0) > 0
                     ? 'kpi-card-red'
                     : 'kpi-card-blue'
                 }
                 trend={
-                  kpi.unpaidAmount > 0 ? { value: fmt(kpi.unpaidAmount), up: false } : undefined
+                  kpi.unpaidAmount !== null && kpi.unpaidAmount > 0
+                    ? { value: fmt(kpi.unpaidAmount), up: false }
+                    : undefined
                 }
                 className="w-full"
               />
@@ -366,10 +396,10 @@ export default function DashboardPage() {
             <Link href="/reports?tab=inventory" className="flex">
               <KpiCard
                 label={t('kpi.lowStock')}
-                value={streamData?.lowStockCount ?? kpi.lowStockCount}
+                value={streamData?.lowStockCount ?? kpi.lowStockCount ?? '—'}
                 icon={<AlertTriangle />}
                 colorClass={
-                  (streamData?.lowStockCount ?? kpi.lowStockCount) > 0
+                  (streamData?.lowStockCount ?? kpi.lowStockCount ?? 0) > 0
                     ? 'kpi-card-amber'
                     : 'kpi-card-teal'
                 }
