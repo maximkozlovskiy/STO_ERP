@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Ті самі перевірки, що job `quality` у CI (scripts/prepush.sh). Пуш без них обходить правило
+# «prepush обов'язковий» (CLAUDE.md, крок 5). Обхід — лише `git push --no-verify` на прохання власника.
+bash scripts/prepush.sh

@@ -64,6 +64,14 @@ DATEISH = re.compile(r"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b
 # після — рік у знаменнику пропорції тестів не буває, а в даті буває завжди.
 # Доказ: виклик аудитора АБО запуск вимірювальних скриптів у цьому ж ході.
 PROOF_TOOL = re.compile(r"(sto-claims-auditor|verdict\.sh|measure\.sh|count-untyped-routes)", re.I)
+# Підсумок БЛОКУ чи готовність до релізу — тут verdict.sh замало, потрібен саме аудитор
+# (CLAUDE.md, «Вердикт і цифри», п.3). Рішення власника 2026-10-16: за два дні аудитор
+# запускався двічі на ~10 блоків, бо hook пропускав будь-який verdict.sh у ході.
+RELEASE = re.compile(
+    r"(можна\s+релізити|готов[оаі]\s+до\s+релізу|(?:блок|фіч[ау]|роботу)\s+(?:завершено|закрито))",
+    re.I,
+)
+AUDITOR = re.compile(r"sto-claims-auditor", re.I)
 
 
 def read_stdin_json():
@@ -167,6 +175,21 @@ def main():
 
     if not text.strip():
         return 0
+    release = [c.strip(" |-*#`") for c in text.split(NL) if RELEASE.search(c)]
+    if release and not AUDITOR.search(tools):
+        try:
+            if size:
+                io.open(marker, "w", encoding="utf-8").write(size)
+        except Exception:
+            pass
+        sys.stderr.write(
+            "СТОП: відповідь підсумовує блок або каже про готовність до релізу, але в цьому\n"
+            "ході не запускався sto-claims-auditor (verdict.sh тут замало — CLAUDE.md, п.3):\n"
+            + "".join(f"  • {c[:160]}\n" for c in release[:3])
+            + "\nЗапустіть Agent(subagent_type=\"sto-claims-auditor\") і зведіть звіт за ним,\n"
+            "або приберіть формулювання про завершення, якщо блок ще не закрито.\n"
+        )
+        return 2
     if PROOF_TOOL.search(tools):          # доказ у цьому ж ході — пропускаємо
         return 0
 

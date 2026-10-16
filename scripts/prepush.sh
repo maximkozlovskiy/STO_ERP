@@ -58,6 +58,7 @@ if [ "${1:-}" = "--tests" ]; then
 fi
 
 step "stop-hook contract" $PY scripts/hooks/test-check-claims.py
+step "skill-before-edit hook contract" $PY scripts/hooks/test-require-skill.py
 step "test selector contract" $PY scripts/test-affected-tests.py
 step "agent scopes contract" $PY scripts/test-agent-scopes.py
 step "schema drift self-test" $PY scripts/check-schema-drift.py --self-test
@@ -74,6 +75,14 @@ elif [ -n "$(find apps/api/src -name '*.spec.ts' -newer "$report" -print -quit)"
   fail=1
 else
   step "spec registry" $PY scripts/check-spec-registry.py --from-report "$report"
+fi
+
+# Нагадування, не блокування: MemoryManual.md оновлюється вручну після кожного блоку (CLAUDE.md,
+# крок 3), і 2026-10-16 він простояв день із датою попереднього, хоча за день пройшло п'ять блоків.
+mm_date=$(sed -n 's/^Дата:[[:space:]]*\([0-9-]\{10\}\).*/\1/p' MemoryManual.md | head -1)
+last_feat=$(git log -1 --format=%cs -E --grep='^(feat|fix)(\(|:)' 2>/dev/null)
+if [ -n "$mm_date" ] && [ -n "$last_feat" ] && [[ "$mm_date" < "$last_feat" ]]; then
+  echo "⚠️  MemoryManual.md: «Дата: $mm_date» старша за останній feat/fix ($last_feat) — онови «Поточний стан»"
 fi
 
 if [ $fail -eq 0 ]; then
