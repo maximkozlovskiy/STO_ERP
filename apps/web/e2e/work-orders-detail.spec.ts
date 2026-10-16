@@ -226,10 +226,12 @@ test.describe('Наряд — повний FSM цикл DRAFT→PAID', () => {
     woId = wo.id;
 
     // Додати роботу через API щоб totalAmount > 0 (інакше COMPLETED заблокований)
-    // employeeId — обов'язкове поле для лінії наряду
+    // employeeId — обов'язкове поле для лінії наряду. Виконавець — найстаріший механік (seed):
+    // `/employees?limit=1` за прізвищем брав першого «000 TST …» — тимчасового працівника іншого
+    // тесту (навіть приймальню), і оплачений наряд не давав його видалити (Bug #881, BR-WO-018).
     const [works, emps] = await Promise.all([
       apiCall(page, 'GET', '/works?limit=1'),
-      apiCall(page, 'GET', '/employees?limit=1'),
+      apiCall(page, 'GET', '/employees?limit=1&role=MECHANIC&sortBy=createdAt&sortDir=asc'),
     ]);
     const workId = works?.items?.[0]?.id ?? (Array.isArray(works) ? works[0]?.id : null);
     const employeeId = emps?.items?.[0]?.id ?? (Array.isArray(emps) ? emps[0]?.id : null);
