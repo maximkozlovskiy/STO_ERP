@@ -14,12 +14,12 @@
 
 ## API Endpoints (`/api/employees`, `/api/auth`)
 
-| Метод | URL                  | Дія                                                                           | Ролі                                   |
-| ----- | -------------------- | ----------------------------------------------------------------------------- | -------------------------------------- |
-| GET   | `/api/employees`     | Список; `liftId` — лише закріплені за підйомником і не звільнені (BR-CAL-012) | OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT |
-| PATCH | `/api/employees/:id` | Зміна картки, зокрема статусу (звільнення — BR-EMP-001)                       | OWNER, ADMIN                           |
-| POST  | `/api/auth/login`    | Вхід; звільнений → 403                                                        | публічний                              |
-| POST  | `/api/auth/refresh`  | Оновлення токена; звільнений → 401                                            | cookie                                 |
+| Метод | URL                  | Дія                                                                                        | Ролі                                   |
+| ----- | -------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------- |
+| GET   | `/api/employees`     | Список; `liftId` — лише закріплені за підйомником, не звільнені й не видалені (BR-CAL-012) | OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT |
+| PATCH | `/api/employees/:id` | Зміна картки, зокрема статусу (звільнення — BR-EMP-001)                                    | OWNER, ADMIN                           |
+| POST  | `/api/auth/login`    | Вхід; звільнений → 403                                                                     | публічний                              |
+| POST  | `/api/auth/refresh`  | Оновлення токена; звільнений → 401                                                         | cookie                                 |
 
 ## Бізнес-правила (BR-EMP)
 
@@ -45,7 +45,9 @@
 | вхід і оновлення токена                      | `../../auth/auth.spec.ts`                | 18     |
 | перевірка сесії на кожному запиті            | `../../auth/jwt.strategy.spec.ts`        | 8      |
 | панель черг                                  | `../bull-board/bull-board.guard.spec.ts` | 23     |
-| фільтр `liftId` — механіки підйомника запису | `employees.lift-filter.spec.ts`          | 4      |
+| фільтр `liftId` — механіки підйомника запису | `employees.lift-filter.spec.ts`          | 5      |
 | збереження філій картки — tenant-фільтр      | `employees.assign-branches.spec.ts`      | 1      |
+| HTTP-контракт (DTO, статуси, валідація)      | `employees.contract.spec.ts`             | 26     |
+| видалення: блок за активним нарядом, каскад  | `employees.remove-guard.spec.ts`         | 3      |
 
-Разом: **68** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **98** кейсів (цифри з `vitest --reporter=json`, не з grep).

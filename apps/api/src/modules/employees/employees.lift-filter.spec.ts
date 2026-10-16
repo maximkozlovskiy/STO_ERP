@@ -68,6 +68,14 @@ describe('EmployeesService.findAll — фільтр liftId (BR-CAL-012)', () => 
     expect(items.map(e => e.id).sort()).toEqual(['both-lifts', 'on-leave', 'on-lift-1'].sort());
   });
 
+  it('з showDeleted=true видалені все одно не потрапляють — список той, що приймає запис', async () => {
+    const { items } = await service().findAll('org-1', { liftId: LIFT_1, showDeleted: 'true' });
+    expect(items.map(e => e.id)).not.toContain('deleted');
+    // Контроль: без liftId showDeleted=true видаленого показує.
+    const all = await service().findAll('org-1', { showDeleted: 'true' });
+    expect(all.items.map(e => e.id)).toContain('deleted');
+  });
+
   it('інший підйомник — свій список', async () => {
     const { items } = await service().findAll('org-1', { liftId: LIFT_2 });
     expect(items.map(e => e.id).sort()).toEqual(['both-lifts', 'on-lift-2'].sort());

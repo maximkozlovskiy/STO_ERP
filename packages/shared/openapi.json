@@ -2310,7 +2310,7 @@
             "name": "liftId",
             "required": false,
             "in": "query",
-            "description": "Лише закріплені за підйомником і не звільнені (FIRED) — механіки запису календаря (BR-CAL-012)",
+            "description": "Лише закріплені за підйомником, не звільнені (FIRED) і не видалені — механіки запису календаря (BR-CAL-012)",
             "schema": {
               "format": "uuid",
               "type": "string"

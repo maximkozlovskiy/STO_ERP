@@ -37,10 +37,12 @@ export class EmployeesService {
       ...(showDeleted ? {} : { deletedAt: null }),
     };
     if (query.role) where.role = query.role;
-    // BR-CAL-012: поле «Механік» у записі календаря — закріплені за підйомником, без звільнених.
+    // BR-CAL-012: поле «Механік» у записі календаря — закріплені за підйомником, без звільнених
+    // і без видалених навіть із `showDeleted=true`: список той самий, що приймає сервер запису.
     if (query.liftId) {
       where.employeeLifts = { some: { liftId: query.liftId } };
       where.status = { not: 'FIRED' };
+      where.deletedAt = null;
     }
     if (query.q) {
       const q = query.q.trim();

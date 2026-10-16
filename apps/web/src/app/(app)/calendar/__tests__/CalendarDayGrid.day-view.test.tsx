@@ -284,6 +284,22 @@ describe('Вид «День» — механік лише переглядає (
   });
 
   // guards: BR-CAL-010
+  it('без права змінювати: запис відкривається з клавіатури — Enter і пробіл, інші клавіші ні', async () => {
+    byDay['2026-10-15'] = [
+      slot('a', '2026-10-15T13:00', '2026-10-15T14:00'),
+      slot('b', '2026-10-15T15:00', '2026-10-15T16:00'),
+    ];
+    await renderDay({ canManageSlots: false });
+    const content = (n: string) => block(n).querySelector<HTMLElement>('[data-part="content"]')!;
+    fireEvent.keyDown(content('WO-a'), { key: 'a' });
+    expect(block('WO-a').dataset.editing).toBeUndefined();
+    fireEvent.keyDown(content('WO-a'), { key: 'Enter' });
+    await waitFor(() => expect(block('WO-a').dataset.editing).toBe('true'));
+    fireEvent.keyDown(content('WO-b'), { key: ' ' });
+    await waitFor(() => expect(block('WO-b').dataset.editing).toBe('true'));
+  });
+
+  // guards: BR-CAL-010
   it('контроль: з правом — підказка, ручки зміни меж і курсор перетягування є', async () => {
     byDay['2026-10-15'] = [slot('a', '2026-10-15T13:00', '2026-10-15T15:00')];
     await renderDay({ canManageSlots: true });

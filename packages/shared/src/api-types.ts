@@ -10574,7 +10574,7 @@ export interface operations {
                 role?: "OWNER" | "ADMIN" | "RECEPTIONIST" | "MECHANIC" | "STOREKEEPER" | "ACCOUNTANT" | "XLSX_MANAGER" | "CLIENT";
                 /** @description Показати soft-deleted */
                 showDeleted?: string;
-                /** @description Лише закріплені за підйомником і не звільнені (FIRED) — механіки запису календаря (BR-CAL-012) */
+                /** @description Лише закріплені за підйомником, не звільнені (FIRED) і не видалені — механіки запису календаря (BR-CAL-012) */
                 liftId?: string;
                 limit?: number;
                 /** @description Поле сортування */
