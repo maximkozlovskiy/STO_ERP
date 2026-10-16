@@ -254,6 +254,13 @@ Hard delete, пряме оновлення `StockItem`/`SettlementAccount`, за
 prisma.stockMovement.findMany({ where: { orgId } }); // може повернути мільйони рядків
 // ✅
 prisma.stockMovement.findMany({ where: { orgId }, take: limit, skip: offset });
+
+// ❌ «усі, крім цього наряду» на nullable-колонці: SQL `"workOrderId" <> $1` відкидає й NULL
+calendarSlot.findMany({ where: { liftId, workOrderId: { not: woId } } }); // записи без наряду зникли
+// ✅ NULL — явно
+calendarSlot.findMany({
+  where: { liftId, OR: [{ workOrderId: null }, { workOrderId: { not: woId } }] },
+});
 ```
 
 ---

@@ -39,3 +39,16 @@
 **Сигнал:** міграція `20261014100000` створює `expense_categories_default_reason_uq`, а в
 `schema-integrity.integration.spec.ts` його не було: сторож дрейфу `DROP INDEX` не рахує.
 **Grep:** див. пункт секції. **Фікс:** рядок у переліку індексів спеку. **Severity:** IMPORTANT
+
+### 2026-10-16 — `{ not: X }` на nullable FK відкидає NULL — §6
+
+**Сигнал:** `checkConflicts({ excludeWorkOrderId })` (картка наряду) і `syncWorkOrderSlots` фільтрували
+`workOrderId: { not: X }`. Prisma будує `"workOrderId" <> $1`, а `NULL <> X` — не істина: записи без
+наряду (на dev-БД 194 із 313) випадали з перевірки зайнятості. Наживо: попередження в картці «вільно»,
+а збереження наряду (BR-WO-020) — 400 «Підйомник зайнятий». Форм-тест сервісу (`toEqual(where)`)
+закріплював саме баг.
+**Grep:** `grep -rnE "[a-zA-Z]+Id: \{ not: [a-zA-Z.]+ \}" apps/api/src/modules --include="*.ts" | grep -v spec`
+**Фікс:** `AND: [..., { OR: [{ workOrderId: null }, { workOrderId: { not: X } }] }]`; тест на
+`buildSlotStorePrisma` (`matchesWhere` моделює SQL-семантику `not`) із записом `workOrderId: null` + контроль
+«власний запис — не конфлікт» (`calendar.conflicts.spec.ts`).
+**Severity:** IMPORTANT
