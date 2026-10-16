@@ -22,3 +22,17 @@
 **Grep:** `grep -rn "createCanvas\|getViewport\|new Image\|sharp(" apps/api/src --include="*.ts" | grep -v spec` → кожна растеризація/decode user-файлу без clamp площі.
 **Фікс:** базовий viewport (scale=1) → `clampScaleToArea(baseW, baseH, scale) = area<=MAX ? scale : scale*√(MAX/area)` (площа ∝ scale²) під `MAX_CANVAS_PIXELS` (~40 млн px ≈ 160 МБ RGBA; A4@200=3.9 млн — норма не зачеплена). Регрес-тест: 10000×10000 pt @ 400 DPI → площа ≤ стелі.
 **Severity:** CRITICAL — OOM/DoS від одного завантаженого файлу. Sample: pdf-rasterizer.rasterizePdfPages (ce52e337).
+
+### 2026-10-16 — Серверний дефолт налаштування вирівняно, клієнтський запасний лишився старим — §11
+
+**Сигнал:** `work-hours.ts` зробив `DEFAULT_WORK_HOURS` (09–18) єдиним джерелом для календаря,
+`GET /settings/work-hours` і BR-WO-019, а `useCalendarState` тримав `useState(8)`: до відповіді
+`/settings/work-hours` чи при її збої сітка й попередження «розіб'ється на 2 дні» у формі запису
+рахували від 08:00, а сервер ділив запис о 09:00. Паралельно `calendar.md` і `BUSINESS-RULES.md`
+описували крок `syncWorkOrderSlots` через прибрану константу `WORK_DAY_END_H (20:00)` (і ще й
+неправдиво — продовження той ендпоінт не відтворює).
+**Grep:** `grep -rn "work-hours" apps/web/src --include="*.ts*" | grep -v test` → початковий
+`useState` і гілка збою кожного викликача; `grep -rn "WORK_DAY_END_H\|WORK_DAY_START_H" docs/`.
+**Фікс:** `useState(9)` з коментарем про серверний дефолт; рядки дос'є переписано за кодом
+(`0b811355`). **Severity:** SUGGESTION (видно лише при збої запиту годин, але дає розбіжність
+попередження форми з тим, що збереже сервер).
