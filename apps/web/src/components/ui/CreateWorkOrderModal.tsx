@@ -2169,7 +2169,8 @@ export function CreateWorkOrderModal({
                         ⚠{calConflict.liftConflict && ' Підйомник зайнятий.'}
                         {calConflict.employeeConflict && ' Механік зайнятий.'} Є перетин з{' '}
                         {calConflict.conflictSlots.length} слотом(и) у календарі
-                        {conflictWoNumbers && <> ({conflictWoNumbers})</>}. Можна зберегти попри це.
+                        {conflictWoNumbers && <> ({conflictWoNumbers})</>}. Збереження з цим часом і
+                        підйомником буде відхилено — оберіть інший час або підйомник.
                       </div>
                     )}
 

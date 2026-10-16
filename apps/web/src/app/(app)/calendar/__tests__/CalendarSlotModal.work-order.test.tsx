@@ -227,3 +227,24 @@ describe('CalendarSlotModal — наряд, створений із форми �
     expect(prefill().plannedEndAt).toBe('2026-10-21T09:00');
   });
 });
+
+describe('CalendarSlotModal — попередження про зайнятість (BR-CAL-006)', () => {
+  // guards: BR-CAL-006
+  it('зайнятий підйомник: попередження каже, що збереження буде відхилено, а не «можна зберегти»', async () => {
+    const free = apiFetch.getMockImplementation()!;
+    apiFetch.mockImplementation((url: string, init?: unknown) => {
+      if (url.startsWith('/calendar/slots/check-conflicts'))
+        return Promise.resolve({
+          anyConflict: true,
+          liftConflict: true,
+          employeeConflict: false,
+          conflictSlots: [{ id: 'busy', startAt: '', endAt: '', status: 'BOOKED', type: 'WORK' }],
+        });
+      return free(url, init);
+    });
+    render(<Harness initial={{}} onSaved={vi.fn()} />);
+    const warning = await screen.findByText(/Підйомник зайнятий/, undefined, { timeout: 3_000 });
+    expect(warning.textContent).toMatch(/буде відхилено/);
+    expect(warning.textContent).not.toMatch(/Можна зберегти/);
+  });
+});

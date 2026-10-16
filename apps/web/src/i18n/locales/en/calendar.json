@@ -188,7 +188,7 @@
     "conflictEmployee": " Mechanic is busy.",
     "conflictOverlap": " Overlaps with {{count}} slot(s)",
     "conflictWoNumbers": " ({{numbers}})",
-    "conflictCanSave": ". You can save anyway.",
+    "conflictRejected": ". Saving will be rejected — choose another time, lift or mechanic.",
     "update": "Update",
     "save": "Save",
     "close": "Close",

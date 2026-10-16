@@ -92,9 +92,13 @@ function mockApi(hours: { workStartHour: number; workEndHour: number }) {
       });
     }
     if (path === `/work-orders/${WO}` && init?.method === 'PATCH') return Promise.resolve({});
+    if (path === '/calendar/slots/check-conflicts') return Promise.resolve(conflict.current);
     return Promise.resolve({ items: [] });
   });
 }
+
+/** Відповідь перевірки зайнятості для картки (типово — вільно). */
+const conflict: { current: unknown } = { current: { anyConflict: false, conflictSlots: [] } };
 
 /** Поля пікерів дат картки: [плановий початок, планове завершення, фактичні…]. */
 const dateInputs = () => screen.getAllByPlaceholderText('ДД.ММ.РРРР ГГ:ХХ') as HTMLInputElement[];
@@ -120,6 +124,7 @@ describe('CreateWorkOrderModal — планові дати (BR-WO-019, BR-WO-020
     vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
     apiFetchMock.mockReset();
     resetBranchWorkHoursCache();
+    conflict.current = { anyConflict: false, conflictSlots: [] };
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -187,5 +192,20 @@ describe('CreateWorkOrderModal — планові дати (BR-WO-019, BR-WO-020
     } finally {
       window.removeEventListener('sto:calendar-changed', onCalendarChanged);
     }
+  });
+
+  // guards: BR-WO-020
+  it('зайнятий підйомник: попередження каже, що збереження буде відхилено (сервер — 400)', async () => {
+    mockApi({ workStartHour: 8, workEndHour: 18 });
+    conflict.current = {
+      anyConflict: true,
+      liftConflict: true,
+      employeeConflict: false,
+      conflictSlots: [{ id: 'busy', startAt: '', endAt: '', status: 'BOOKED', type: 'WORK' }],
+    };
+    await openCard();
+    const warning = await screen.findByText(/Підйомник зайнятий/, undefined, { timeout: 3_000 });
+    expect(warning.textContent).toMatch(/буде відхилено/);
+    expect(warning.textContent).not.toMatch(/Можна зберегти/);
   });
 });

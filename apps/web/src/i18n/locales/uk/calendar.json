@@ -188,7 +188,7 @@
     "conflictEmployee": " Механік зайнятий.",
     "conflictOverlap": " Є перетин з {{count}} слотом(и)",
     "conflictWoNumbers": " ({{numbers}})",
-    "conflictCanSave": ". Можна зберегти попри це.",
+    "conflictRejected": ". Збереження буде відхилено — оберіть інший час, підйомник чи механіка.",
     "update": "Оновити",
     "save": "Зберегти",
     "close": "Закрити",

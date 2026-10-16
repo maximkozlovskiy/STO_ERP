@@ -1509,7 +1509,7 @@ export function CalendarSlotModal({
               {calConflict.employeeConflict && t('slot.conflictEmployee')}
               {t('slot.conflictOverlap', { count: calConflict.conflictSlots.length })}
               {conflictWoNumbers && t('slot.conflictWoNumbers', { numbers: conflictWoNumbers })}
-              {t('slot.conflictCanSave')}
+              {t('slot.conflictRejected')}
             </div>
           )}
           <div className="flex items-center gap-2">
