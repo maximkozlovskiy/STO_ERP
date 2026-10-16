@@ -7,7 +7,7 @@ import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { fmtDateTime } from '@/lib/format';
 
-interface AuditEventItem {
+export interface AuditEventItem {
   id: string;
   action: string;
   diff: Record<string, unknown>;
@@ -15,17 +15,17 @@ interface AuditEventItem {
   user: { firstName: string; lastName: string };
 }
 
-interface WorkOrderAuditSectionProps {
-  woId: string;
-}
+const EMPTY_AUDIT: AuditEventItem[] = [];
 
 /**
- * «Журнал змін» наряду. Лише ролям із доступом до `GET /audit` (`AUDIT_VIEW_ROLES`: власник,
- * адміністратор, бухгалтер): для приймальні й механіка — ні запиту (інакше 403 у консолі), ні
- * блоку (рішення власника 2026-10-16). Порожній журнал — блок не показується.
+ * Журнал змін наряду для блоку «Журнал змін». Лише ролям із доступом до `GET /audit`
+ * (`AUDIT_VIEW_ROLES`: власник, адміністратор, бухгалтер): для приймальні й механіка запиту немає
+ * (інакше 403 у консолі) — порожній список (рішення власника 2026-10-16). Хук кличе сторінка
+ * наряду ще до того, як наряд завантажено: запит іде в одній хвилі з рештою, а не після відповіді
+ * `GET /work-orders/:id` (блок рендериться лише тоді — sto-optimize, водоспад ~+30 мс до
+ * завантаження сторінки). Збій журналу не ламає сторінку — блок просто не показується.
  */
-export function WorkOrderAuditSection({ woId }: WorkOrderAuditSectionProps) {
-  const { t } = useTranslation('workOrders');
+export function useWorkOrderAudit(woId: string): AuditEventItem[] {
   const { employee } = useAuth();
   const canView = AUDIT_VIEW_ROLES.includes(employee?.role ?? '');
   const [auditEvents, setAuditEvents] = useState<AuditEventItem[]>([]);
@@ -36,7 +36,6 @@ export function WorkOrderAuditSection({ woId }: WorkOrderAuditSectionProps) {
       return;
     }
     let cancelled = false;
-    // Вторинний блок: збій журналу не ламає сторінку — блок просто не показується.
     apiFetch<{ items: AuditEventItem[] }>(`/audit?entityType=WorkOrder&entityId=${woId}`)
       .then(res => {
         if (!cancelled) setAuditEvents(res.items ?? []);
@@ -49,7 +48,18 @@ export function WorkOrderAuditSection({ woId }: WorkOrderAuditSectionProps) {
     };
   }, [canView, woId]);
 
-  if (!canView || auditEvents.length === 0) return null;
+  return canView ? auditEvents : EMPTY_AUDIT;
+}
+
+interface WorkOrderAuditSectionProps {
+  /** Журнал із `useWorkOrderAudit` (порожній для ролей без доступу). */
+  auditEvents: AuditEventItem[];
+}
+
+/** «Журнал змін» наряду. Порожній журнал (чи роль без доступу) — блок не показується. */
+export function WorkOrderAuditSection({ auditEvents }: WorkOrderAuditSectionProps) {
+  const { t } = useTranslation('workOrders');
+  if (auditEvents.length === 0) return null;
 
   return (
     <div className="bg-surface rounded-xl border border-border overflow-hidden">

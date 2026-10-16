@@ -45,7 +45,7 @@ import { WorkOrderMediaSection } from './WorkOrderMediaSection';
 import { WarrantySection } from './WarrantySection';
 import { WorkOrderTotals } from './WorkOrderTotals';
 import { SectionErrorBoundary } from '@/components/ui/SectionErrorBoundary';
-import { WorkOrderAuditSection } from './WorkOrderAuditSection';
+import { WorkOrderAuditSection, useWorkOrderAudit } from './WorkOrderAuditSection';
 import { InvoiceSection, type InvoiceRef } from './InvoiceSection';
 import {
   ACTIVE_MECHANICS_URL,
@@ -265,6 +265,8 @@ export default function WorkOrderCardPage() {
   const { employee } = useAuth();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  // «Журнал змін» — у першій хвилі запитів сторінки, а не після відповіді наряду.
+  const auditEvents = useWorkOrderAudit(id);
 
   const [wo, setWo] = useState<WorkOrderDetail | null>(null);
   const { data: baseCurrency } = useBaseCurrency();
@@ -355,7 +357,7 @@ export default function WorkOrderCardPage() {
   }, [id, t]);
 
   // Load secondary data (comments, media) in parallel — single effect, single mount.
-  // «Журнал змін» читає сам WorkOrderAuditSection — лише для ролей із доступом (AUDIT_VIEW_ROLES).
+  // «Журнал змін» — useWorkOrderAudit нижче, лише для ролей із доступом (AUDIT_VIEW_ROLES).
   const loadSecondary = useCallback(() => {
     // void: кожен запит має .catch з порожнім fallback — вторинні блоки (коментарі,
     // медіа) просто лишаються порожніми, Promise.all не реджектиться.
@@ -1296,7 +1298,7 @@ export default function WorkOrderCardPage() {
         />
       </SectionErrorBoundary>
 
-      <WorkOrderAuditSection woId={id} />
+      <WorkOrderAuditSection auditEvents={auditEvents} />
 
       <ConfirmDialog {...dialogProps} />
 

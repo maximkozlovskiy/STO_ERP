@@ -5,7 +5,13 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 import { AUDIT_VIEW_ROLES } from '@sto/shared';
-import { WorkOrderAuditSection } from '../WorkOrderAuditSection';
+import { WorkOrderAuditSection, useWorkOrderAudit } from '../WorkOrderAuditSection';
+
+/** Як на сторінці наряду: хук читає журнал, блок його показує. */
+function AuditBlock({ woId }: { woId: string }) {
+  const events = useWorkOrderAudit(woId);
+  return <WorkOrderAuditSection auditEvents={events} />;
+}
 
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
@@ -42,7 +48,7 @@ describe('WorkOrderAuditSection — «Журнал змін» за ролями'
 
   it.each(['OWNER', 'ADMIN', 'ACCOUNTANT'])('%s → журнал запитано й показано', async r => {
     role = r;
-    render(<WorkOrderAuditSection woId={WO_ID} />);
+    render(<AuditBlock woId={WO_ID} />);
     expect(await screen.findByText(/Петренко Іван/)).toBeInTheDocument();
     expect(apiFetchMock).toHaveBeenCalledWith(`/audit?entityType=WorkOrder&entityId=${WO_ID}`);
   });
@@ -51,7 +57,7 @@ describe('WorkOrderAuditSection — «Журнал змін» за ролями'
     '%s → ні запиту, ні блоку',
     async r => {
       role = r;
-      const { container } = render(<WorkOrderAuditSection woId={WO_ID} />);
+      const { container } = render(<AuditBlock woId={WO_ID} />);
       await waitFor(() => expect(container).toBeEmptyDOMElement());
       expect(apiFetchMock).not.toHaveBeenCalled();
     },
@@ -60,7 +66,7 @@ describe('WorkOrderAuditSection — «Журнал змін» за ролями'
   it('збій журналу не ламає сторінку — блоку немає', async () => {
     role = 'OWNER';
     apiFetchMock.mockRejectedValue(new Error('500'));
-    const { container } = render(<WorkOrderAuditSection woId={WO_ID} />);
+    const { container } = render(<AuditBlock woId={WO_ID} />);
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
   });

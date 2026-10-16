@@ -117,6 +117,24 @@ describe('useCalendarState — форма запису після збереже
     expect(result.current.form).toMatchObject({ startAt: '16:00', notes: 'чернетка' });
   });
 
+  it('збереження картки наряду в календарі — вид перечитується один раз, не двічі', async () => {
+    // Картка наряду після збереження шле подію (notifyCalendarChanged) і одразу кличе onUpdated
+    // форми запису (refreshView) — обидва в одному такті; вид має піти на сервер один раз.
+    const { result } = await openDayForm();
+    const dayCalls = () =>
+      apiFetch.mock.calls.filter(([u]) => u === '/calendar/slots?date=2026-10-22').length;
+    const before = dayCalls();
+
+    act(() => {
+      notifyCalendarChanged();
+      result.current.refreshView();
+    });
+
+    await waitFor(() => expect(dayCalls()).toBeGreaterThan(before));
+    await act(async () => {});
+    expect(dayCalls() - before).toBe(1);
+  });
+
   // guards: BR-WO-020
   it('вид «Місяць»: перенесений запис — форма й знімок запису місяця оновлюються', async () => {
     params = new URLSearchParams('view=month&date=2026-10-01');

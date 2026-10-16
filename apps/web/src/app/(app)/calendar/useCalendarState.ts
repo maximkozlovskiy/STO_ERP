@@ -563,18 +563,6 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     if (calView === 'day') load();
   }, [load, calView, lifts.length]);
 
-  // Наряд змінив свій запис календаря на сервері (BR-WO-020: збереження планових дат чи
-  // підйомника з картки наряду поверх календаря) — перечитати поточний вид.
-  useEffect(
-    () =>
-      onCalendarChanged(() => {
-        resyncEditRef.current = true;
-        if (calView === 'day') load();
-        else if (calView === 'month' && yearMonth) void loadMonth(yearMonth, true);
-      }),
-    [calView, load, loadMonth, yearMonth],
-  );
-
   const prevDay = useCallback(() => {
     const d = new Date(date);
     d.setDate(d.getDate() - 1);
@@ -1162,12 +1150,27 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     else load();
   }, [load, loadMonth, calView, yearMonth]);
 
-  /** Перечитати поточний вид, не закриваючи форму (наряд змінено з його картки). */
+  /**
+   * Перечитати поточний вид, не закриваючи форму (наряд змінено з його картки). Виклики одного
+   * такту зливаються в одне читання: картка наряду після збереження шле подію
+   * `notifyCalendarChanged` і одразу кличе `onUpdated` форми запису — без злиття «День» читався
+   * двічі (6 запитів замість 3), «Місяць» — 64 замість 32.
+   */
+  const refreshPendingRef = useRef(false);
   const refreshView = useCallback(() => {
     resyncEditRef.current = true;
-    if (calView === 'month') void loadMonth(yearMonth, true);
-    else if (calView === 'day') load();
+    if (refreshPendingRef.current) return;
+    refreshPendingRef.current = true;
+    queueMicrotask(() => {
+      refreshPendingRef.current = false;
+      if (calView === 'month') void loadMonth(yearMonth, true);
+      else if (calView === 'day') load();
+    });
   }, [calView, load, loadMonth, yearMonth]);
+
+  // Наряд змінив свій запис календаря на сервері (BR-WO-020: збереження планових дат чи
+  // підйомника з картки наряду поверх календаря) — перечитати поточний вид.
+  useEffect(() => onCalendarChanged(refreshView), [refreshView]);
 
   // Bug #884: наряд, чий запис відкрито у формі, збережено з його картки — сервер переніс запис
   // (BR-WO-020). Перечитаний запис іншого часу, підйомника чи механіка → форма бере збережене;
