@@ -70,6 +70,7 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     { emit: vi.fn() } as never, // events (EventEmitter2)
     new WorkOrderTotalsService(null as never, exchangeRates),
     null as never, // orgPrintInfo
+    null as never, // calendar
   );
 }
 

@@ -97,6 +97,7 @@ function setup(preStatus: string) {
     { emit: vi.fn(), emitAsync: vi.fn().mockResolvedValue([]) } as never, // events
     totals as never,
     null as never, // orgPrintInfo
+    null as never, // calendar
   );
   return { service, tx, totals, stockEffects, order };
 }

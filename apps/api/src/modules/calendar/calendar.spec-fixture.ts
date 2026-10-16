@@ -33,6 +33,7 @@ export interface FakeSlot extends Row {
 }
 
 export const FAKE_ORG_ID = 'org-1';
+export const FAKE_BRANCH_ID = 'branch-1';
 
 function comparable(value: unknown): unknown {
   return value instanceof Date ? value.getTime() : value;
@@ -130,8 +131,9 @@ const NO_RELATIONS = { counterparty: null, vehicle: null, workOrder: null };
  * Prisma-мок поверх масиву слотів: `findFirst` / `findMany` обчислюють `where`, `create` і
  * `update` змінюють масив. `$transaction(cb)` передає той самий `calendarSlot` як `tx`.
  * Підйомник «існує» для будь-якого id, механік — для будь-якого id і підйомника (BR-CAL-012
- * стереже `calendar.mechanic-lift.spec.ts` зі справжньою таблицею працівників); філія не
- * резолвиться → робочий день 8..20.
+ * стереже `calendar.mechanic-lift.spec.ts` зі справжньою таблицею працівників). Підйомник — у
+ * філії `FAKE_BRANCH_ID` з робочим днем 08:00–20:00 (явні налаштування філії, не типові години):
+ * години в спеках конфліктів розраховані на це вікно. Запис без підйомника — типові 09–18.
  */
 export function buildSlotStorePrisma(rows: FakeSlot[]) {
   const findFirst = vi.fn(({ where }: { where: Where }) =>
@@ -159,14 +161,16 @@ export function buildSlotStorePrisma(rows: FakeSlot[]) {
     calendarSlot,
     lift: {
       findFirst: vi.fn(({ where }: { where: { id: string } }) =>
-        Promise.resolve({ id: where.id, zone: { branchId: null } }),
+        Promise.resolve({ id: where.id, zone: { branchId: FAKE_BRANCH_ID } }),
       ),
     },
     employee: { findFirst: exists() },
     workOrder: { findFirst: exists() },
     counterparty: { findFirst: exists() },
     vehicle: { findFirst: exists() },
-    branchSettings: { findFirst: vi.fn().mockResolvedValue(null) },
+    branchSettings: {
+      findFirst: vi.fn().mockResolvedValue({ workStartTime: '08:00', workEndTime: '20:00' }),
+    },
     $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({ calendarSlot })),
     _rows: rows,
     _create: create,

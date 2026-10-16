@@ -543,6 +543,49 @@ describe('Settings — HTTP Contract', () => {
       expect(res.json()).toEqual({ workStartHour: 9, workEndHour: 18 });
     });
 
+    // Одне джерело годин із календарем (`workHoursOf`, рішення 2026-10-16): години конкретної
+    // філії — для пікера планових дат наряду (BR-WO-019).
+    // guards: BR-WO-019
+    it('?branchId= → години САМЕ цієї філії своєї організації, окремий ключ кешу', async () => {
+      const branchId = '11111111-1111-4111-8111-111111111111';
+      prismaMock.branchSettings.findFirst = vi
+        .fn()
+        .mockResolvedValue({ workStartTime: '08:00', workEndTime: '17:00' });
+      const res = await app.inject({
+        method: 'GET',
+        url: `/settings/work-hours?branchId=${branchId}`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ workStartHour: 8, workEndHour: 17 });
+      const where = (prismaMock.branchSettings.findFirst as ReturnType<typeof vi.fn>).mock
+        .calls[0]![0].where as Record<string, unknown>;
+      expect(where).toMatchObject({ orgId: 'org-1', branchId, branch: { deletedAt: null } });
+      expect(redisMock.set).toHaveBeenCalledWith(
+        `settings:work-hours:org-1:${branchId}`,
+        expect.any(String),
+        'EX',
+        60,
+      );
+    });
+
+    // guards: BR-WO-019
+    it('?branchId= філії без налаштувань (чи чужої) → типові 09–18, як у календарі', async () => {
+      prismaMock.branchSettings.findFirst = vi.fn().mockResolvedValue(null);
+      const res = await app.inject({
+        method: 'GET',
+        url: '/settings/work-hours?branchId=11111111-1111-4111-8111-222222222222',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ workStartHour: 9, workEndHour: 18 });
+    });
+
+    it('?branchId=не-uuid → 400, без читання БД', async () => {
+      prismaMock.branchSettings.findFirst = vi.fn();
+      const res = await app.inject({ method: 'GET', url: '/settings/work-hours?branchId=abc' });
+      expect(res.statusCode).toBe(400);
+      expect(prismaMock.branchSettings.findFirst).not.toHaveBeenCalled();
+    });
+
     it('доступний для RECEPTIONIST/MECHANIC ролей (не лише OWNER/ADMIN)', async () => {
       // mockRolesGuard повертає true для усіх — перевіряємо що handler не падає бо
       // ролі MECHANIC/RECEPTIONIST явно у @Roles() списку нового endpoint.
@@ -608,6 +651,11 @@ describe('Settings — HTTP Contract', () => {
         payload: { workStartTime: '09:00', workEndTime: '18:00' },
       });
       expect(res.statusCode).toBe(200);
+      // Кеш годин скидається і для основної філії, і для цієї (`?branchId=`).
+      expect(redisMock.del).toHaveBeenCalledWith(
+        'settings:work-hours:org-1',
+        `settings:work-hours:org-1:${branchId}`,
+      );
     });
 
     it('PATCH з workStartTime="20:00", workEndTime="09:00" → 400 (cross-field: end <= start)', async () => {

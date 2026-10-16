@@ -109,6 +109,7 @@ function makeHarness(over: MemRow = {}) {
     events as never,
     totals as never,
     null as never, // orgPrintInfo
+    null as never, // calendar
   );
   const transitions = () =>
     events.emit.mock.calls

@@ -99,6 +99,7 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     null as never, // events (EventEmitter2)
     new WorkOrderTotalsService(settingsService, exchangeRates),
     null as never, // orgPrintInfo
+    null as never, // calendar
   );
 }
 

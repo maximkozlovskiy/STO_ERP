@@ -71,6 +71,7 @@ function setup(
     null as never, // events
     null as never, // totals
     { get: orgPrintInfoGet } as never, // orgPrintInfo
+    null as never, // calendar
   );
   const pdfArg = () => generateWorkOrderPdf.mock.calls[0]?.[0] as PdfArg;
   return { service, woFindFirst, generateWorkOrderPdf, pdfArg };

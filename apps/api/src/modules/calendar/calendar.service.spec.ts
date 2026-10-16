@@ -437,7 +437,7 @@ describe('CalendarService.syncWorkOrderSlots', () => {
       expect(data.endAt.getTime()).toBeGreaterThan(data.startAt.getTime());
     });
 
-    it('workEndTime="20:00" (дефолт) → той самий слот НЕ розбивається', async () => {
+    it('workEndTime="20:00" (налаштування філії) → той самий слот НЕ розбивається', async () => {
       const prisma = buildCreateMock('20:00');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const service = new CalendarService(prisma as any);
@@ -451,10 +451,10 @@ describe('CalendarService.syncWorkOrderSlots', () => {
     });
 
     // resolveWorkHours fallback: невалідний "HH:mm" / workEnd≤workStart / нема BranchSettings /
-    // слот без підйомника → безпечний дефолт 8..20. Слот 16:00–19:00 Kyiv (19:00 < 20:00) НЕ
-    // розбивається за дефолтом → рівно 1 create. Це відрізняє fallback (8..20) від
-    // «18:00»-конфігу (який би розбив).
-    it('невалідний workEndTime ("bad") → fallback 8..20 → слот 16:00–19:00 НЕ розбивається', async () => {
+    // слот без підйомника → типові години 09..18 (`DEFAULT_WORK_HOURS`, ті самі, що в
+    // `GET /settings/work-hours` і `@default` BranchSettings). Слот 16:00–19:00 Kyiv розбивається
+    // на 18:00 → 2 create. Попередній дефолт 8..20 його б не розбив (1 create) — тест розрізняє.
+    it('невалідний workEndTime ("bad") → типові 09..18 → слот 16:00–19:00 розбивається на 18:00', async () => {
       const prisma = buildCreateMock('bad');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const service = new CalendarService(prisma as any);
@@ -463,12 +463,14 @@ describe('CalendarService.syncWorkOrderSlots', () => {
         startAt: '2026-05-22T13:00:00.000Z',
         endAt: '2026-05-22T16:00:00.000Z',
       } as never);
-      expect(prisma._create).toHaveBeenCalledTimes(1);
-      expect(result.slots).toHaveLength(1);
+      expect(prisma._create).toHaveBeenCalledTimes(2);
+      const firstEnd = prisma._create.mock.calls[0][0].data.endAt as Date;
+      expect(firstEnd.toISOString()).toBe('2026-05-22T15:00:00.000Z');
+      expect(result.slots).toHaveLength(2);
     });
 
-    it('workEndTime ≤ workStartTime (некоректна конфігурація) → fallback 8..20', async () => {
-      // workStart 09:00, workEnd 08:00 → endHour(8) ≤ startHour(9) → fallback 8..20.
+    it('workEndTime ≤ workStartTime (некоректна конфігурація) → типові 09..18', async () => {
+      // workStart 09:00, workEnd 08:00 → endHour(8) ≤ startHour(9) → типові 09..18.
       const create = vi.fn().mockImplementation(async ({ data }: { data: { endAt: Date } }) => ({
         id: 'slot-x',
         orgId,
@@ -507,13 +509,16 @@ describe('CalendarService.syncWorkOrderSlots', () => {
       const result = await service.createSlot(orgId, {
         liftId,
         startAt: '2026-05-22T13:00:00.000Z', // 16:00 Kyiv
-        endAt: '2026-05-22T16:00:00.000Z', // 19:00 Kyiv < 20:00 fallback → без split
+        endAt: '2026-05-22T16:00:00.000Z', // 19:00 Kyiv > 18:00 → split
       } as never);
-      expect(create).toHaveBeenCalledTimes(1);
-      expect(result.slots).toHaveLength(1);
+      expect(create).toHaveBeenCalledTimes(2);
+      expect((create.mock.calls[0][0].data.endAt as Date).toISOString()).toBe(
+        '2026-05-22T15:00:00.000Z',
+      );
+      expect(result.slots).toHaveLength(2);
     });
 
-    it('слот без підйомника (branchId=null) → fallback 8..20, branchSettings не читається', async () => {
+    it('слот без підйомника (branchId=null) → типові 09..18, branchSettings не читається', async () => {
       const create = vi.fn().mockImplementation(async ({ data }: { data: { endAt: Date } }) => ({
         id: 'slot-x',
         orgId,
@@ -551,10 +556,10 @@ describe('CalendarService.syncWorkOrderSlots', () => {
       // Слот без liftId → resolveWorkHours(orgId, null) → fallback без DB read.
       const result = await service.createSlot(orgId, {
         startAt: '2026-05-22T13:00:00.000Z', // 16:00 Kyiv
-        endAt: '2026-05-22T16:00:00.000Z', // 19:00 Kyiv < 20:00 → без split
+        endAt: '2026-05-22T16:00:00.000Z', // 19:00 Kyiv > 18:00 → split
       } as never);
-      expect(create).toHaveBeenCalledTimes(1);
-      expect(result.slots).toHaveLength(1);
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(result.slots).toHaveLength(2);
       // Немає branchId → resolveWorkHours коротить на fallback ДО будь-якого branchSettings read.
       expect(branchSettingsFindFirst).not.toHaveBeenCalled();
     });

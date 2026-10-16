@@ -114,6 +114,7 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     null as never, // events (EventEmitter2)
     new WorkOrderTotalsService(settingsService, exchangeRates),
     null as never, // orgPrintInfo
+    null as never, // calendar
   );
 }
 
@@ -532,6 +533,7 @@ describe('WorkOrdersService.clone — тотали клона через recalc 
       { emit: vi.fn() } as never, // events
       { recalc } as never, // totals — єдиний власник суми наряду
       null as never, // orgPrintInfo
+      null as never, // calendar
     );
     return { service, tx, recalc, order, outerCreate };
   }

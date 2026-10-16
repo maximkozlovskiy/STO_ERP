@@ -1,0 +1,229 @@
+// Наряд, створений із форми запису календаря (BR-WO-020, рішення власника 2026-10-16): наряд із
+// плановими початком і завершенням сервер сам записує в календар — форма запису НЕ шле
+// `POST /calendar/slots` (інакше другий запис чи «Підйомник зайнятий» на власному часі), лише
+// ставить обраного механіка на запис наряду й закривається. Межі дня для переповнення — робочі
+// години філії (windowStart/windowEnd), а не жорсткі 08–20.
+
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { createRef, useState } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const L1 = '11111111-1111-4111-8111-000000000001';
+const KOVAL = '22222222-2222-4222-8222-000000000001';
+const CP = '33333333-3333-4333-8333-000000000001';
+const WO = '44444444-4444-4444-8444-000000000001';
+
+const { apiFetch, created } = vi.hoisted(() => ({
+  apiFetch: vi.fn(),
+  created: {
+    current: null as null | {
+      id: string;
+      number: string;
+      counterpartyId: string | null;
+      plannedAt?: string | null;
+      dueDate?: string | null;
+    },
+  },
+}));
+vi.mock('@/lib/api-client', () => ({ apiFetch }));
+// Картка наряду — заглушка: показує prefill і по кліку «створює» наряд `created.current`.
+vi.mock('next/dynamic', () => ({
+  default:
+    () =>
+    (props: {
+      prefill?: Record<string, unknown>;
+      onCreated?: (wo: NonNullable<typeof created.current>) => void;
+    }) => (
+      <button
+        type="button"
+        data-testid="wo-stub"
+        data-prefill={JSON.stringify(props.prefill ?? {})}
+        onClick={() => created.current && props.onCreated?.(created.current)}
+      >
+        stub
+      </button>
+    ),
+}));
+vi.mock('@/components/ui/CounterpartyEditModal', () => ({ CounterpartyEditModal: () => null }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/calendar',
+}));
+
+import { CalendarSlotModal } from '../CalendarSlotModal';
+import { EMPTY_FORM } from '../useCalendarState';
+import type { SlotForm } from '../calendar.types';
+
+const FUTURE = '2026-10-20';
+
+function Harness({
+  initial,
+  editingSlotId = null,
+  onSaved,
+  windowStart = 8,
+  windowEnd = 18,
+}: {
+  initial: Partial<SlotForm>;
+  editingSlotId?: string | null;
+  onSaved: () => void;
+  windowStart?: number;
+  windowEnd?: number;
+}) {
+  const [form, setForm] = useState<SlotForm>({
+    ...EMPTY_FORM,
+    counterpartyId: CP,
+    counterpartyDisplay: 'Клієнт',
+    liftId: L1,
+    startAt: '10:00',
+    endAt: '11:00',
+    normoHours: '1',
+    ...initial,
+  });
+  return (
+    <>
+      <output data-testid="wo-id">{form.workOrderId}</output>
+      <CalendarSlotModal
+        open
+        onClose={() => {}}
+        onSaved={onSaved}
+        onDeleted={() => {}}
+        date={FUTURE}
+        lifts={[{ id: L1, name: 'П1' }]}
+        form={form}
+        setForm={setForm}
+        editingSlotId={editingSlotId}
+        isEditingPast={false}
+        savedMechanic={null}
+        pendingSlot={null}
+        setPendingSlot={() => {}}
+        formMounted
+        formVisible
+        formCollapseRef={createRef<HTMLDivElement>()}
+        formInnerRef={createRef<HTMLDivElement>()}
+        minHour={windowStart}
+        windowStart={windowStart}
+        windowEnd={windowEnd}
+        nowMs={new Date('2026-10-15T12:00:00+03:00').getTime()}
+        error=""
+        setError={() => {}}
+        saving={false}
+        setSaving={() => {}}
+        cpDisplay="Клієнт"
+        setCpDisplay={() => {}}
+      />
+    </>
+  );
+}
+
+const calls = () => apiFetch.mock.calls as [string, { method?: string; body?: string }?][];
+const prefill = () =>
+  JSON.parse(screen.getByTestId('wo-stub').getAttribute('data-prefill') ?? '{}') as Record<
+    string,
+    string | undefined
+  >;
+
+beforeEach(() => {
+  apiFetch.mockReset();
+  created.current = null;
+  apiFetch.mockImplementation((url: string) => {
+    if (url.startsWith('/employees?'))
+      return Promise.resolve({ items: [{ id: KOVAL, firstName: 'Петро', lastName: 'Коваль' }] });
+    if (url.startsWith('/calendar/slots/check-conflicts'))
+      return Promise.resolve({ anyConflict: false, conflictSlots: [] });
+    if (url.startsWith('/vehicles'))
+      return Promise.resolve([
+        { id: 'veh-1', make: 'Skoda', model: 'Octavia', licensePlate: null },
+      ]);
+    if (url === `/work-orders/${WO}/linked-documents`)
+      return Promise.resolve({
+        invoices: [],
+        payments: [],
+        warranties: [],
+        calendarSlots: [
+          { id: 'cont', startAt: '2026-10-21T06:00:00.000Z' },
+          { id: 'anchor', startAt: '2026-10-20T07:00:00.000Z' },
+        ],
+      });
+    return Promise.resolve({ items: [] });
+  });
+});
+
+describe('CalendarSlotModal — наряд, створений із форми запису (BR-WO-020)', () => {
+  // guards: BR-WO-020
+  it('наряд із плановими датами → без POST /calendar/slots; механік — на запис наряду; форма закрита', async () => {
+    const onSaved = vi.fn();
+    created.current = {
+      id: WO,
+      number: 'НЗ-1',
+      counterpartyId: CP,
+      plannedAt: '2026-10-20T07:00:00.000Z',
+      dueDate: '2026-10-20T08:00:00.000Z',
+    };
+    render(<Harness initial={{ employeeId: KOVAL }} onSaved={onSaved} />);
+    fireEvent.click(screen.getByTestId('wo-stub'));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(calls().some(([u, i]) => u === '/calendar/slots' && i?.method === 'POST')).toBe(false);
+    const patch = calls().find(
+      ([u, i]) => u.startsWith('/calendar/slots/') && i?.method === 'PATCH',
+    );
+    // Механік ставиться на ПЕРШУ (найранішу) частину запису наряду.
+    expect(patch?.[0]).toBe('/calendar/slots/anchor');
+    expect(JSON.parse(patch![1]!.body!)).toEqual({ employeeId: KOVAL });
+  });
+
+  // guards: BR-WO-020
+  it('без механіка у формі — жодних запитів до записів календаря, форма закрита', async () => {
+    const onSaved = vi.fn();
+    created.current = {
+      id: WO,
+      number: 'НЗ-1',
+      counterpartyId: CP,
+      plannedAt: '2026-10-20T07:00:00.000Z',
+      dueDate: '2026-10-20T08:00:00.000Z',
+    };
+    render(<Harness initial={{}} onSaved={onSaved} />);
+    fireEvent.click(screen.getByTestId('wo-stub'));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(calls().some(([u]) => u.startsWith('/calendar/slots/') && !u.includes('check'))).toBe(
+      false,
+    );
+  });
+
+  // guards: BR-WO-020
+  it('наряд без планових дат → як раніше: наряд підставлено у форму, запис ще не збережено', async () => {
+    const onSaved = vi.fn();
+    created.current = {
+      id: WO,
+      number: 'НЗ-1',
+      counterpartyId: CP,
+      plannedAt: null,
+      dueDate: null,
+    };
+    render(<Harness initial={{}} onSaved={onSaved} />);
+    fireEvent.click(screen.getByTestId('wo-stub'));
+    await waitFor(() => expect(screen.getByTestId('wo-id').textContent).toBe(WO));
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-WO-020
+  it('наряд для ІСНУЮЧОГО запису — без планових дат у prefill (сервер не створить другий запис)', () => {
+    render(<Harness initial={{}} editingSlotId="slot-1" onSaved={vi.fn()} />);
+    expect(prefill().plannedStartAt).toBeUndefined();
+    expect(prefill().plannedEndAt).toBeUndefined();
+  });
+
+  // guards: BR-WO-019
+  it('prefill нового запису: переповнення — за кінцем робочого дня філії (18:00), не 20:00', () => {
+    render(
+      <Harness
+        initial={{ startAt: '17:00', endAt: '09:00', normoHours: '2' }}
+        onSaved={vi.fn()}
+        windowEnd={18}
+      />,
+    );
+    expect(prefill().plannedStartAt).toBe('2026-10-20T17:00');
+    expect(prefill().plannedEndAt).toBe('2026-10-21T09:00');
+  });
+});

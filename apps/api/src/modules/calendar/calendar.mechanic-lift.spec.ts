@@ -132,18 +132,30 @@ describe('CalendarService — механік запису закріплений
     );
 
     // guards: BR-CAL-012
-    it('механік без підйомника → 400: закріпитись нема за чим, працівників не читає', async () => {
-      const { prisma, service, employeeFindFirst } = serviceOver([]);
-      await expectNotOnLift(
-        service.createSlot(FAKE_ORG_ID, {
-          employeeId: MECH,
-          startAt: iso('07:00'),
-          endAt: iso('08:00'),
-        }),
-      );
-      expect(employeeFindFirst).not.toHaveBeenCalled();
-      expect(prisma._create).not.toHaveBeenCalled();
-    });
+    it.each([
+      ['активний — закріпитись нема за чим', MECH, NOT_ON_LIFT],
+      ['у відпустці — «у відпустці», а не «не закріплений»', ON_LEAVE, ON_LEAVE_MSG],
+      ['звільнений — «не знайдено», а не «не закріплений»', FIRED, NOT_FOUND],
+      ['не механік — «не знайдено»', RECEPTIONIST, NOT_FOUND],
+    ])(
+      'механік без підйомника, %s → 400 з точною причиною; одне читання — лише причини',
+      async (_l, employeeId, msg) => {
+        const { prisma, service, employeeFindFirst } = serviceOver([]);
+        await expectNotOnLift(
+          service.createSlot(FAKE_ORG_ID, {
+            employeeId,
+            startAt: iso('07:00'),
+            endAt: iso('08:00'),
+          }),
+          msg,
+        );
+        // Без підйомника відмова неминуча: запиту «закріплений за підйомником» немає, читається
+        // лише причина (рішення власника 2026-10-16).
+        expect(employeeFindFirst).toHaveBeenCalledTimes(1);
+        expect(employeeFindFirst.mock.calls[0]![0].where).not.toHaveProperty('employeeLifts');
+        expect(prisma._create).not.toHaveBeenCalled();
+      },
+    );
 
     // guards: BR-CAL-012
     it('без механіка — перевірки немає, запис створено', async () => {

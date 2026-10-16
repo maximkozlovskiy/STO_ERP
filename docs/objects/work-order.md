@@ -107,37 +107,41 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 
 ## API Endpoints (`/api/work-orders`)
 
-| Метод  | URL                                  | Дія                                                                                                       |
-| ------ | ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/work-orders`                   | Створити наряд (lines у body)                                                                             |
-| GET    | `/api/work-orders`                   | Список (фільтри: status, branchId, q, date range)                                                         |
-| GET    | `/api/work-orders/:id`               | Деталь з lines + parts                                                                                    |
-| GET    | `/api/work-orders/:id/lines-summary` | Зведення по табличних частинах і виконавці (BR-WO-009, 010); ролі — як у списку                           |
-| PATCH  | `/api/work-orders/:id`               | Оновити (WO_EDITABLE_STATUSES)                                                                            |
-| POST   | `/api/work-orders/:id/transition`    | FSM перехід                                                                                               |
-| POST   | `/api/work-orders/:id/clone`         | Клонувати наряд                                                                                           |
-| POST   | `/api/work-orders/:id/share`         | Поширити кошторис                                                                                         |
-| GET    | `/api/work-orders/:id/pdf`           | Наряд-замовлення у PDF (BR-WO-013): від «Виконано»; ролі OWNER, ADMIN, RECEPTIONIST, MECHANIC, ACCOUNTANT |
-| GET    | `/api/work-orders/:id/parts`         | Запчастини наряду                                                                                         |
-| POST   | `/api/work-orders/:id/parts`         | Додати запчастину                                                                                         |
-| PATCH  | `/api/work-orders/:id/parts/:pId`    | Оновити запчастину                                                                                        |
-| DELETE | `/api/work-orders/:id/parts/:pId`    | Видалити запчастину                                                                                       |
-| GET    | `/api/work-orders/:id/lines`         | Роботи наряду                                                                                             |
-| DELETE | `/api/work-orders/:id`               | Soft-delete (тільки WO_DELETABLE_STATUSES); записи календаря наряду — теж (BR-WO-017)                     |
+| Метод  | URL                                  | Дія                                                                                                                                |
+| ------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/work-orders`                   | Створити наряд; планові дати — BR-WO-019; з плановими початком і завершенням — запис календаря в тій самій транзакції (BR-WO-020)  |
+| GET    | `/api/work-orders`                   | Список (фільтри: status, branchId, q, date range)                                                                                  |
+| GET    | `/api/work-orders/:id`               | Деталь з lines + parts                                                                                                             |
+| GET    | `/api/work-orders/:id/lines-summary` | Зведення по табличних частинах і виконавці (BR-WO-009, 010); ролі — як у списку                                                    |
+| PATCH  | `/api/work-orders/:id`               | Оновити; змінені планові дати — BR-WO-019; зміна дат чи підйомника переносить запис календаря, стерті дати — видаляють (BR-WO-020) |
+| POST   | `/api/work-orders/:id/transition`    | FSM перехід                                                                                                                        |
+| POST   | `/api/work-orders/:id/clone`         | Клонувати наряд (без планових дат — новий візит, BR-WO-019)                                                                        |
+| POST   | `/api/work-orders/:id/share`         | Поширити кошторис                                                                                                                  |
+| GET    | `/api/work-orders/:id/pdf`           | Наряд-замовлення у PDF (BR-WO-013): від «Виконано»; ролі OWNER, ADMIN, RECEPTIONIST, MECHANIC, ACCOUNTANT                          |
+| GET    | `/api/work-orders/:id/parts`         | Запчастини наряду                                                                                                                  |
+| POST   | `/api/work-orders/:id/parts`         | Додати запчастину                                                                                                                  |
+| PATCH  | `/api/work-orders/:id/parts/:pId`    | Оновити запчастину                                                                                                                 |
+| DELETE | `/api/work-orders/:id/parts/:pId`    | Видалити запчастину                                                                                                                |
+| GET    | `/api/work-orders/:id/lines`         | Роботи наряду                                                                                                                      |
+| DELETE | `/api/work-orders/:id`               | Soft-delete (тільки WO_DELETABLE_STATUSES); записи календаря наряду — теж (BR-WO-017)                                              |
 
 ---
 
 ## UI (Web)
 
-| Компонент / сторінка          | Файл                                                   |
-| ----------------------------- | ------------------------------------------------------ |
-| Список                        | `app/(app)/work-orders/page.tsx`                       |
-| Деталь (картка)               | `app/(app)/work-orders/[id]/PageClient.tsx`            |
-| Модалка створення/редагування | `components/ui/CreateWorkOrderModal.tsx`               |
-| Detail Panel schema           | `lib/panel-schema.ts` → `WO_PANEL_SCHEMA`              |
-| FSM кнопки                    | `components/ui/fsm-buttons.tsx` → `<FSMButtons>`       |
-| Друк наряду на сторінці       | `app/(app)/work-orders/[id]/WorkOrderPrintButtons.tsx` |
-| Друк PDF (спільний помічник)  | `lib/download.ts` → `printPdf`                         |
+| Компонент / сторінка          | Файл                                                                                            |
+| ----------------------------- | ----------------------------------------------------------------------------------------------- |
+| Список                        | `app/(app)/work-orders/page.tsx`                                                                |
+| Деталь (картка)               | `app/(app)/work-orders/[id]/PageClient.tsx`                                                     |
+| Модалка створення/редагування | `components/ui/CreateWorkOrderModal.tsx`                                                        |
+| Detail Panel schema           | `lib/panel-schema.ts` → `WO_PANEL_SCHEMA`                                                       |
+| FSM кнопки                    | `components/ui/fsm-buttons.tsx` → `<FSMButtons>`                                                |
+| Друк наряду на сторінці       | `app/(app)/work-orders/[id]/WorkOrderPrintButtons.tsx`                                          |
+| Друк PDF (спільний помічник)  | `lib/download.ts` → `printPdf`                                                                  |
+| Пікер планових дат            | `components/ui/datetime-picker-input.tsx` — `minDateTime`, `closeHour`, `clearable` (BR-WO-019) |
+| Автокінець і нормогодини      | `components/ui/work-order/planned-dates.ts` — у робочих годинах філії (BR-WO-019)               |
+| Робочі години філії           | `hooks/useBranchWorkHours.ts` → `GET /settings/work-hours?branchId=`                            |
+| Журнал змін (сторінка)        | `app/(app)/work-orders/[id]/WorkOrderAuditSection.tsx` — `AUDIT_VIEW_ROLES`                     |
 
 **Друк (BR-WO-013).** До «Виконано» картка друкує кошторис («Друк», «Зберегти як» через токен
 поширення), як раніше. Від «Виконано» — «Друк наряду» (серверний PDF, вікно друку відкривається
@@ -153,6 +157,22 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 переходу й підписання акта статус і «Сплачено» беруться з сервера (наряд міг сам стати «Оплачено»).
 Підсумки показують «Залишок до сплати» (`WorkOrderTotals.tsx`).
 
+**Планові дати (BR-WO-019, BR-WO-020).** Планові «Дата та час початку / завершення» картки — пікер
+з мінімальним моментом «зараз» (минулі дні недоступні, сьогодні — години від поточної) і робочими
+годинами філії наряду (`GET /settings/work-hours?branchId=`; початок — до години закриття,
+завершення — включно з «HH:00» закриття); вибір дня ставить першу доступну годину; поле можна
+очистити. Автокінець за нормогодинами й нормогодини між датами рахують лише робочий час філії
+(ніч не рахується). Запис календаря наряду переносить сервер при збереженні — діалогу «Оновити
+слот?» і `PATCH /calendar/slots/by-work-order` картка більше не має; після збереження відкритий
+календар перечитує записи (`lib/calendar-events.ts`). Планове завершення (`dueDate`) у «Реквізитах»
+сторінки наряду й у колонці списку — лише перегляд: дата без часу ставила б північ (поза робочими
+годинами) і зсувала запис календаря; змінюється в картці разом із часом і початком.
+
+**Журнал змін (рішення власника 2026-10-16).** Блок «Журнал змін» на сторінці наряду бачать лише
+ролі з доступом до `GET /audit` — `AUDIT_VIEW_ROLES` (`@sto/shared`: OWNER, ADMIN, ACCOUNTANT;
+той самий список у `@Roles` контролера аудиту). Приймальні й механіку — ні запиту (інакше 403 у
+консолі), ні блоку.
+
 **Картка наряду — секції (PageClient.tsx, у порядку рендеру):**
 
 1. Заголовок + статус-бейдж + FSM кнопки
@@ -164,7 +184,7 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 7. Запчастини (`WorkOrderPartsSection`)
 8. Огляд авто
 9. Медіа
-10. Audit log
+10. Журнал змін — лише `AUDIT_VIEW_ROLES` (OWNER, ADMIN, ACCOUNTANT)
 11. Коментарі
 
 ---
@@ -225,32 +245,34 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/work-orders/`
 
-| Аспект                                             | Тест                                             | Кейсів |
-| -------------------------------------------------- | ------------------------------------------------ | ------ |
-| handlers                                           | `events/work-order.handlers.spec.ts`             | 10     |
-| fsm parity                                         | `fsm-parity.spec.ts`                             | 12     |
-| статус у чужій транзакції + сторож FSM             | `work-order-status.spec.ts`                      | 19     |
-| integration на живій БД                            | `work-order-stock-effects.integration.spec.ts`   | 4      |
-| сервісна логіка                                    | `work-order-stock-effects.service.spec.ts`       | 19     |
-| сервісна логіка                                    | `work-orders-export.service.spec.ts`             | 11     |
-| завершення: перерахунок тоталів                    | `work-orders.complete-recalc.spec.ts`            | 4      |
-| HTTP-контракт (DTO, статуси, валідація)            | `work-orders.contract.spec.ts`                   | 35     |
-| документ, позначений на видалення, — лише перегляд | `work-orders.with-deleted.spec.ts`               | 19     |
-| HTTP-контракт (DTO, статуси, валідація)            | `work-orders.fsm.contract.spec.ts`               | 2      |
-| інваріанти (property-based)                        | `work-orders.fsm.invariants.spec.ts`             | 16     |
-| список: відбір за датою документа                  | `work-orders.list-date-filter.spec.ts`           | 4      |
-| нумерація (create/clone)                           | `work-orders.numbering.spec.ts`                  | 2      |
-| друкований наряд: підсумок із тоталів              | `work-orders.pdf-totals.spec.ts`                 | 6      |
-| друк наряд-замовлення: статуси, дата, зміст, ролі  | `work-orders.print.spec.ts`                      | 19     |
-| правка рядка роботи: робота й виконавець           | `work-orders.line-update.spec.ts`                | 7      |
-| recalc cap                                         | `work-orders.recalc-cap.spec.ts`                 | 5      |
-| recalc totals                                      | `work-orders.recalc-totals.spec.ts`              | 21     |
-| сплачений наряд: скасування, сума, «Оплачено»      | `work-orders.paid-guards.spec.ts`                | 18     |
-| рольовий доступ                                    | `work-orders.role-gate.spec.ts`                  | 24     |
-| сервісна логіка                                    | `work-orders.service.spec.ts`                    | 25     |
-| видалення звільняє календар (BR-WO-017)            | `work-orders.remove-calendar.spec.ts`            | 5      |
-| share public                                       | `work-orders.share-public.spec.ts`               | 14     |
-| зведення по табличних частинах і виконавці         | `../lines-summary/lines-summary.service.spec.ts` | 19     |
+| Аспект                                                                                                                                              | Тест                                             | Кейсів |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------ |
+| handlers                                                                                                                                            | `events/work-order.handlers.spec.ts`             | 10     |
+| fsm parity                                                                                                                                          | `fsm-parity.spec.ts`                             | 12     |
+| статус у чужій транзакції + сторож FSM                                                                                                              | `work-order-status.spec.ts`                      | 19     |
+| integration на живій БД                                                                                                                             | `work-order-stock-effects.integration.spec.ts`   | 4      |
+| сервісна логіка                                                                                                                                     | `work-order-stock-effects.service.spec.ts`       | 19     |
+| сервісна логіка                                                                                                                                     | `work-orders-export.service.spec.ts`             | 11     |
+| завершення: перерахунок тоталів                                                                                                                     | `work-orders.complete-recalc.spec.ts`            | 4      |
+| HTTP-контракт (DTO, статуси, валідація)                                                                                                             | `work-orders.contract.spec.ts`                   | 35     |
+| документ, позначений на видалення, — лише перегляд                                                                                                  | `work-orders.with-deleted.spec.ts`               | 19     |
+| HTTP-контракт (DTO, статуси, валідація)                                                                                                             | `work-orders.fsm.contract.spec.ts`               | 2      |
+| інваріанти (property-based)                                                                                                                         | `work-orders.fsm.invariants.spec.ts`             | 16     |
+| список: відбір за датою документа                                                                                                                   | `work-orders.list-date-filter.spec.ts`           | 4      |
+| нумерація (create/clone)                                                                                                                            | `work-orders.numbering.spec.ts`                  | 2      |
+| друкований наряд: підсумок із тоталів                                                                                                               | `work-orders.pdf-totals.spec.ts`                 | 6      |
+| друк наряд-замовлення: статуси, дата, зміст, ролі                                                                                                   | `work-orders.print.spec.ts`                      | 19     |
+| правка рядка роботи: робота й виконавець                                                                                                            | `work-orders.line-update.spec.ts`                | 7      |
+| recalc cap                                                                                                                                          | `work-orders.recalc-cap.spec.ts`                 | 5      |
+| recalc totals                                                                                                                                       | `work-orders.recalc-totals.spec.ts`              | 21     |
+| сплачений наряд: скасування, сума, «Оплачено»                                                                                                       | `work-orders.paid-guards.spec.ts`                | 18     |
+| рольовий доступ                                                                                                                                     | `work-orders.role-gate.spec.ts`                  | 24     |
+| сервісна логіка                                                                                                                                     | `work-orders.service.spec.ts`                    | 25     |
+| видалення звільняє календар (BR-WO-017)                                                                                                             | `work-orders.remove-calendar.spec.ts`            | 5      |
+| планові дати: не в минулому, у робочих годинах філії, лише змінені, Київ/DST, clone без дат (BR-WO-019)                                             | `work-orders.planned-dates.spec.ts`              | 22     |
+| запис календаря наряду: створення, перенесення, підйомник і механік, стерті дати, зайнятість → 400 без змін, два дні, без дубля, tenant (BR-WO-020) | `work-orders.calendar-slot.spec.ts`              | 22     |
+| share public                                                                                                                                        | `work-orders.share-public.spec.ts`               | 14     |
+| зведення по табличних частинах і виконавці                                                                                                          | `../lines-summary/lines-summary.service.spec.ts` | 19     |
 
 Разом: **318** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
@@ -268,6 +290,23 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
   кличе `recalc` рівно раз), `apps/api/src/modules/pdf/pdf.document-total.spec.ts` (підсумок наряду
   й акта), `apps/api/src/modules/completion-acts/completion-acts.pdf-totals.spec.ts` (сума акта =
   сума наряду до сплати), `apps/api/src/modules/inspection/inspection.service.spec.ts` (авто-рядки огляду).
+
+Правило → тест для BR-WO-019 / BR-WO-020 — планові дати й запис календаря наряду (мітки `// guards:`):
+
+- api: `work-orders.planned-dates.spec.ts`, `work-orders.calendar-slot.spec.ts` (справжні
+  `WorkOrdersService` + `CalendarService` над таблицями в пам'яті, `work-orders.planning.spec-fixture.ts`;
+  транзакція відкочує таблиці — «наряд не змінено» видно рядком наряду); поза модулем —
+  `apps/api/src/common/utils/work-hours.spec.ts` (розбиття на дні робочих годин, типові 09–18, DST),
+  `settings/settings.contract.spec.ts` (`GET /settings/work-hours?branchId=`).
+- web: `components/ui/__tests__/DateTimePickerInput.test.tsx` (минулі дні й години, робочі години,
+  перша година, `closeHour`, очищення), `planned-dates.test.ts` (автокінець і нормогодини),
+  `CreateWorkOrderModal.planned-dates.test.tsx` (години філії, без діалогу й `by-work-order`,
+  календар перечитує), `app/(app)/calendar/__tests__/CalendarSlotModal.work-order.test.tsx` (наряд із
+  форми запису — без дубля), `app/(app)/work-orders/[id]/__tests__/WorkOrderAuditSection.test.tsx`
+  (журнал змін за ролями).
+- E2E `apps/web/e2e/work-order-calendar-record.spec.ts` — наряд із датами й підйомником через
+  список → запис у «Дні»; минулі дні й години в пікері недоступні; зміна дат і підйомника в картці —
+  запис переїхав (той самий id); стерті дати — запис зник; наряд із форми запису — рівно один запис.
 
 Правило → тест для BR-WO-015 у web: `components/ui/__tests__/CreateWorkOrderModal.save-delete-error.test.tsx`
 — відмову сервера на видалення рядка («Зберегти зміни» картки) показано в картці, картка не

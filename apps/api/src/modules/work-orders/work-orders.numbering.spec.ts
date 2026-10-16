@@ -92,6 +92,7 @@ function setup(originalForClone?: Record<string, unknown>) {
     { emit: vi.fn() } as never,
     { recalc: vi.fn().mockResolvedValue(undefined) } as never, // totals (BR-WO-007) — тут не перевіряється
     null as never, // orgPrintInfo
+    null as never, // calendar
   );
   return { service, create, next };
 }

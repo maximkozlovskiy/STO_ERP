@@ -64,6 +64,7 @@ function harness(woOver: MemRow = {}, slots: MemRow[] = []) {
     { emit: vi.fn() } as never, // events
     null as never, // totals
     null as never, // orgPrintInfo
+    null as never, // calendar
   );
   return { service, prisma, workOrder, calendarSlot };
 }
