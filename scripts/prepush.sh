@@ -64,6 +64,9 @@ step "agent scopes contract" $PY scripts/test-agent-scopes.py
 step "schema drift self-test" $PY scripts/check-schema-drift.py --self-test
 step "skill size" $PY scripts/check-skill-size.py
 step "doc links" $PY scripts/check-doc-links.py
+# Що бачить `next build` В ОБРАЗІ: файли, виключені .dockerignore, не мають бути потрібні збиранню
+# (2026-10-16 CI docker-build упав на TS2307, хоча локальні tsc були чисті).
+step "docker context (web)" $PY scripts/check-docker-context.py
 
 report=apps/api/.vitest-report.json
 if [ ! -f "$report" ]; then
