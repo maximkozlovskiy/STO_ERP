@@ -120,7 +120,7 @@ describe('CalendarMonthView — картки записів дня (BR-CAL-009)'
     expect(within(card).getByText('WO-000123')).not.toHaveClass('flex-1');
     expect(within(card).getByText('· Петренко Іван')).toHaveClass('flex-1', 'truncate');
     expect(card).toHaveAttribute('data-category', 'inProgress');
-    expect(card).toHaveClass('border-l-warning');
+    expect(card).toHaveClass('border-l-warning-strong');
     expect(card).toHaveAccessibleName('09:00 WO-000123 · Петренко Іван. Робота. В роботі');
     // Повний опис — у підказці: час до кінця, статус наряду.
     expect(card.getAttribute('title')).toContain('09:00–10:00');

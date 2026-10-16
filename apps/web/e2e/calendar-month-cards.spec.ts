@@ -9,7 +9,8 @@ test.describe.configure({ mode: 'serial' });
  *
  * За правилом власника документи тестуються через браузер: НАРЯД створюється через інтерфейс
  * («Наряд» → картка), ЗАПИС календаря з цим нарядом — через «+ Слот» і вибір наряду у формі,
- * потім час запису редагується у формі. Клієнт і авто — лише передумови, їх створює API.
+ * потім у формі змінюються час запису й механік. Механіка закріплено за підйомником через картку
+ * співробітника (BR-CAL-012). Клієнт, авто й сам механік — лише передумови, їх створює API.
  * Дата — 10-те число наступного місяця: завжди в майбутньому, тож запис редагується.
  */
 
@@ -69,9 +70,11 @@ async function apiCall<T = unknown>(
 interface SlotDto {
   id: string;
   liftId?: string | null;
+  employeeId?: string | null;
   employeeName?: string | null;
   workOrderId?: string | null;
   workOrderStatus?: string | null;
+  workOrderDeleted?: boolean;
   workOrderNumber?: string;
   startAt: string;
   endAt: string;
@@ -231,17 +234,57 @@ test.describe('Календар «Місяць» — картки записів
     await woCard.getByRole('button', { name: 'Закрити' }).last().click();
     await expect(woCard).toBeHidden({ timeout: 10_000 });
 
+    // ── 1a. Механік підйомника (BR-CAL-012) ─────────────────────────────────
+    // Сам механік — передумова через API; закріплення за підйомником — через картку співробітника.
+    const lifts = await apiCall<{ id: string; name: string }[]>(page, token, 'GET', '/lifts');
+    expect(lifts.status).toBe(200);
+    const lift = lifts.body[0];
+    const mechLastName = `000 E2E ${uid}`;
+    const mechName = `${mechLastName} Механік`;
+    const mech = await apiCall<{ id: string }>(page, token, 'POST', '/employees', {
+      firstName: 'Механік',
+      lastName: mechLastName,
+      role: 'MECHANIC',
+      rateScheme: { type: 'percent_normo', params: { percent: 40 } },
+    });
+    expect(mech.status, `механік: ${JSON.stringify(mech.body)}`).toBe(201);
+    state.employeeId = mech.body.id;
+
+    await page.goto('/employees');
+    await page.getByPlaceholder("Пошук за ім'ям...").fill(mechLastName);
+    const empRow = page.locator('table tbody tr', { hasText: mechLastName }).first();
+    await expect(empRow).toBeVisible({ timeout: 15_000 });
+    await empRow.hover();
+    await empRow.getByTitle('Редагувати').click();
+    const empModal = page.getByRole('dialog').filter({ hasText: mechLastName });
+    await expect(empModal).toBeVisible({ timeout: 15_000 });
+    await empModal.getByRole('button', { name: /Зони та підйомники/ }).click();
+    const liftBox = empModal
+      .locator('div.mb-3')
+      .filter({ has: page.locator('label', { hasText: /^Підйомники$/ }) });
+    await liftBox
+      .locator('label', { hasText: lift.name })
+      .locator('input[type="checkbox"]')
+      .check();
+    await empModal.getByRole('button', { name: 'Зберегти', exact: true }).click();
+    await expect(empModal).toBeHidden({ timeout: 15_000 });
+    const assigned = await apiCall<{ liftIds: string[] }>(
+      page,
+      token,
+      'GET',
+      `/employees/${mech.body.id}`,
+    );
+    expect(assigned.body.liftIds, 'механік закріплений за підйомником').toEqual([lift.id]);
+
     // ── 2. Запис календаря з цим нарядом — «+ Слот» у виді «День» ─────────────
     await page.goto(`/calendar?view=day&date=${date}`);
     await expect(page.locator('h1:has-text("Календар")')).toBeVisible({ timeout: 30_000 });
     await page.getByRole('button', { name: 'Слот', exact: true }).click();
     const newForm = slotForm(page, /Новий слот/);
     await expect(newForm).toBeVisible({ timeout: 10_000 });
-    await newForm
-      .locator('label', { hasText: 'Підйомник' })
-      .locator('..')
-      .locator('select')
-      .selectOption({ index: 1 });
+    // Без підйомника поле «Механік» недоступне (BR-CAL-012).
+    await expect(newForm.getByLabel('Механік')).toBeDisabled();
+    await newForm.getByLabel(/Підйомник/).selectOption({ label: lift.name });
     await pickStart(page, newForm, '14');
     await newForm
       .locator('label', { hasText: 'Норм-год' })
@@ -259,7 +302,7 @@ test.describe('Календар «Місяць» — картки записів
     expect(kyivHHMM(created[0].startAt)).toBe('14:00');
     expect(kyivHHMM(created[0].endAt)).toBe('15:00');
 
-    // ── 3. Редагування запису: час 14:00 → 15:00 ─────────────────────────────
+    // ── 3. Редагування запису: час 14:00 → 15:00 і механік підйомника ─────────
     const block = page.locator('[data-calendar-slot]', { hasText: wo.number });
     await expect(block).toBeVisible({ timeout: 15_000 });
     await block.locator('span', { hasText: wo.number }).click();
@@ -271,12 +314,20 @@ test.describe('Календар «Місяць» — картки записів
       .locator('..')
       .locator('input')
       .fill('1');
+    // У полі — лише механіки, закріплені за підйомником запису (BR-CAL-012).
+    const mechSelect = editForm.getByLabel('Механік');
+    await expect(mechSelect.locator('option', { hasText: mechName })).toHaveCount(1, {
+      timeout: 10_000,
+    });
+    await mechSelect.selectOption({ label: mechName });
     await editForm.getByRole('button', { name: 'Оновити', exact: true }).click();
     await expect(editForm).toBeHidden({ timeout: 15_000 });
     const edited = (await daySlots(page, token, date)).filter(s => s.workOrderId === wo.id);
     expect(edited).toHaveLength(1);
     expect(kyivHHMM(edited[0].startAt)).toBe('15:00');
     expect(kyivHHMM(edited[0].endAt)).toBe('16:00');
+    expect(edited[0].employeeId, 'механік, обраний у формі').toBe(mech.body.id);
+    expect(edited[0].employeeName).toBe(mechName);
 
     // ── 3a. Вид «День»: підсумок дня за іконками і легенда «?» (BR-CAL-008) ──
     const dayRow = page.getByTestId('day-categories');
@@ -294,32 +345,17 @@ test.describe('Календар «Місяць» — картки записів
     await expect(dayLegend).toBeHidden();
 
     // ── 3b. Вид «День»: колір категорії, механік, завантаження поста (BR-CAL-011) ─
-    // Поля «Механік» у формі запису немає (призначити механіка в інтерфейсі нічим), тож
-    // механік — передумова через API, як клієнт і авто; перевіряється те, що бачить людина.
-    const mech = await apiCall<{ id: string }>(page, token, 'POST', '/employees', {
-      firstName: 'Механік',
-      lastName: `000 E2E ${uid}`,
-      role: 'MECHANIC',
-      rateScheme: { type: 'percent_normo', params: { percent: 40 } },
-    });
-    expect(mech.status, `механік: ${JSON.stringify(mech.body)}`).toBe(201);
-    state.employeeId = mech.body.id;
-    const assign = await apiCall(page, token, 'PATCH', `/calendar/slots/${edited[0].id}`, {
-      employeeId: mech.body.id,
-    });
-    expect(assign.status, `механік на записі: ${JSON.stringify(assign.body)}`).toBe(200);
-    await page.reload();
+    // Механіка обрано у формі вище — блок показує його без перезавантаження сторінки.
     const dayBlock = page.locator('[data-calendar-slot]', { hasText: wo.number });
     await expect(dayBlock).toBeVisible({ timeout: 30_000 });
     // Наряд — чернетка, запис у майбутньому: категорія «Чернетка».
     await expect(dayBlock).toHaveAttribute('data-category', 'draft');
-    await expect(dayBlock.locator('[data-part="mechanic"]')).toHaveText(
-      `Механік: 000 E2E ${uid} Механік`,
-    );
+    await expect(dayBlock.locator('[data-part="mechanic"]')).toHaveText(`Механік: ${mechName}`);
     // Дата — наступний місяць: лінії «зараз» немає.
     await expect(page.getByTestId('now-line')).toHaveCount(0);
     // Завантаження підйомника — з тих самих записів дня, що їх віддає API (у dev-базі на цьому
-    // підйомнику можуть бути й чужі), обрізаних по робочих годинах, з округленням до 0,5.
+    // підйомнику можуть бути й чужі), обрізаних по робочих годинах, з округленням до 0,5; записи
+    // скасованих і видалених нарядів не рахуються.
     const hoursRes = await apiCall<{ workStartHour: number; workEndHour: number }>(
       page,
       token,
@@ -332,7 +368,7 @@ test.describe('Календар «Місяць» — картки записів
     const to = kyivMs(date, weh);
     let busyMs = 0;
     for (const s of await daySlots(page, token, date)) {
-      if (s.liftId !== liftId) continue;
+      if (s.liftId !== liftId || s.workOrderStatus === 'CANCELLED' || s.workOrderDeleted) continue;
       const a = Math.max(new Date(s.startAt).getTime(), from);
       const b = Math.min(new Date(s.endAt).getTime(), to);
       if (b > a) busyMs += b - a;

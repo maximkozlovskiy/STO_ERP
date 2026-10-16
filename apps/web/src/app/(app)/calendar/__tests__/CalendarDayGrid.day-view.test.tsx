@@ -265,6 +265,43 @@ describe('Вид «День» — лінія «зараз» (BR-CAL-011)', () =>
   });
 });
 
+describe('Вид «День» — механік лише переглядає (BR-CAL-010)', () => {
+  const HINT = /Затисніть і перетягніть/;
+
+  // guards: BR-CAL-010
+  it('без права змінювати: без підказки DnD, ручок і курсорів перетягування; клік відкриває', async () => {
+    byDay['2026-10-15'] = [slot('a', '2026-10-15T13:00', '2026-10-15T15:00')];
+    await renderDay({ canManageSlots: false });
+    const el = await waitFor(() => block('WO-a'));
+    expect(screen.queryByText(HINT)).toBeNull();
+    expect(el.querySelector('[data-part^="resize-"]')).toBeNull();
+    expect(el.querySelector('.cursor-grab, .cursor-col-resize')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Змінити початок' })).toBeNull();
+    const content = el.querySelector<HTMLElement>('[data-part="content"]')!;
+    expect(content).toHaveClass('cursor-pointer');
+    expect(content).toHaveAttribute('role', 'button');
+    expect(content).not.toHaveAttribute('aria-roledescription');
+  });
+
+  // guards: BR-CAL-010
+  it('контроль: з правом — підказка, ручки зміни меж і курсор перетягування є', async () => {
+    byDay['2026-10-15'] = [slot('a', '2026-10-15T13:00', '2026-10-15T15:00')];
+    await renderDay({ canManageSlots: true });
+    const el = await waitFor(() => block('WO-a'));
+    expect(screen.getByText(HINT)).toBeInTheDocument();
+    expect(el.querySelectorAll('[data-part^="resize-"]')).toHaveLength(2);
+    expect(el.querySelector('[data-part="content"]')).toHaveClass('cursor-grab');
+  });
+
+  // guards: BR-CAL-010
+  it('без права змінювати: запис без підйомника — без кнопки «Видалити»', async () => {
+    byDay['2026-10-15'] = [slot('u', '2026-10-15T13:00', '2026-10-15T15:00', { liftId: null })];
+    await renderDay({ canManageSlots: false });
+    await waitFor(() => expect(screen.getByText('Наряд WO-u')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /Видалити слот/ })).toBeNull();
+  });
+});
+
 describe('Вид «День» — завантаження підйомника (BR-CAL-011)', () => {
   // guards: BR-CAL-011
   it('«N год з M» під назвою підйомника: сума записів у межах годин, 0 — без записів', async () => {
@@ -278,6 +315,22 @@ describe('Вид «День» — завантаження підйомника 
     await waitFor(() =>
       expect(screen.getAllByTestId('lift-load').map(el => el.textContent)).toEqual([
         '5,5 год з 12',
+        '0 год з 12',
+      ]),
+    );
+  });
+
+  // guards: BR-CAL-011
+  it('записи скасованих і видалених нарядів не входять у «N год з M»', async () => {
+    byDay['2026-10-15'] = [
+      slot('a', '2026-10-15T08:00', '2026-10-15T10:00'),
+      slot('cn', '2026-10-15T10:00', '2026-10-15T13:00', { workOrderStatus: 'CANCELLED' }),
+      slot('del', '2026-10-15T13:00', '2026-10-15T16:00', { workOrderDeleted: true }),
+    ];
+    await renderDay();
+    await waitFor(() =>
+      expect(screen.getAllByTestId('lift-load').map(el => el.textContent)).toEqual([
+        '2 год з 12',
         '0 год з 12',
       ]),
     );

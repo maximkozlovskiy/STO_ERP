@@ -156,6 +156,26 @@ describe('liftLoadHours — завантаження підйомника (BR-CA
   });
 
   // guards: BR-CAL-011
+  it('записи скасованих і видалених нарядів не рахуються; службовий запис — рахується', () => {
+    const slots = [
+      slot('ok', '2026-10-15T08:00', '2026-10-15T10:00'),
+      slot('cn', '2026-10-15T10:00', '2026-10-15T12:00', { workOrderStatus: 'CANCELLED' }),
+      slot('del', '2026-10-15T12:00', '2026-10-15T14:00', { workOrderDeleted: true }),
+      // Видалений і з живим статусом — однаково не рахується.
+      slot('del2', '2026-10-15T14:00', '2026-10-15T15:00', {
+        workOrderStatus: 'IN_PROGRESS',
+        workOrderDeleted: true,
+      }),
+      slot('svc', '2026-10-15T15:00', '2026-10-15T16:00', { workOrderStatus: null }),
+      slot('done', '2026-10-15T16:00', '2026-10-15T17:00', {
+        workOrderStatus: 'PAID',
+        workOrderDeleted: false,
+      }),
+    ];
+    expect(liftLoadHours(slots, 'L1', DAY, 8, 18)).toBe(4);
+  });
+
+  // guards: BR-CAL-011
   it('без записів — 0', () => {
     expect(liftLoadHours([], 'L1', DAY, 8, 18)).toBe(0);
     expect(

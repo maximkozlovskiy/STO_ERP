@@ -347,6 +347,28 @@ describe('Calendar — HTTP Contract', () => {
         expect.objectContaining({ startAt: '2026-05-22T09:00:00.000Z' }),
       );
     });
+
+    // guards: BR-CAL-012
+    it('employeeId: null («— без механіка —» у формі) проходить валідацію і доходить до сервісу', async () => {
+      serviceMock.updateSlot.mockResolvedValueOnce({
+        id: SLOT_ID,
+        liftId: LIFT_ID,
+        employeeId: null,
+        startAt: '2026-05-22T09:00:00.000Z',
+        endAt: '2026-05-22T10:00:00.000Z',
+        status: 'BOOKED',
+        type: 'WORK',
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/calendar/slots/${SLOT_ID}`,
+        payload: { liftId: LIFT_ID, employeeId: null },
+      });
+      expect(res.statusCode).toBe(200);
+      const dto = serviceMock.updateSlot.mock.calls[0][2];
+      expect(dto).toHaveProperty('employeeId', null);
+      expect(dto.liftId).toBe(LIFT_ID);
+    });
   });
 
   describe('DELETE /calendar/slots/:id', () => {

@@ -292,4 +292,29 @@ describe('Employees — HTTP Contract (assignment endpoints)', () => {
       expect(serviceMock.create).not.toHaveBeenCalled();
     });
   });
+
+  // guards: BR-CAL-012
+  describe('GET /employees?liftId (механіки запису календаря)', () => {
+    it('валідний UUID підйомника доходить до сервісу разом із role', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0 });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/employees?liftId=${FK_A}&role=MECHANIC`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.findAll).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({ liftId: FK_A, role: 'MECHANIC' }),
+      );
+    });
+
+    it('не-UUID у liftId → 400, сервіс не викликано', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/employees?liftId=lift-1',
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.findAll).not.toHaveBeenCalled();
+    });
+  });
 });

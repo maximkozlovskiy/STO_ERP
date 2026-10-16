@@ -42,7 +42,8 @@ function same(a: unknown, b: unknown): boolean {
 
 /**
  * Обчислює підмножину Prisma `where`, якою користуються календар і онлайн-запис: рівність
- * скалярів (зокрема `null`), `lt/lte/gt/gte/not/in`, `OR`, `NOT`. `undefined` — «без фільтра»,
+ * скалярів (зокрема `null`), `lt/lte/gt/gte/not/in`, `OR`, `NOT`, зв'язок-список `some` (рядок
+ * тримає масив пов'язаних рядків, напр. `employeeLifts`). `undefined` — «без фільтра»,
  * як у Prisma. Невідоме поле чи оператор — помилка, а не мовчазне «збіглося»: інакше фільтр,
  * якого сховище не розуміє, виглядав би як пройдений тест.
  */
@@ -79,6 +80,9 @@ export function matchesWhere(row: Row, where: Where): boolean {
         if (same(value, operand) || (value === null && operand !== null)) return false;
       } else if (op === 'in') {
         if (!(operand as unknown[]).some(o => same(value, o))) return false;
+      } else if (op === 'some') {
+        if (!Array.isArray(value)) throw new Error(`fake store: «${key}» не є списком для some`);
+        if (!(value as Row[]).some(el => matchesWhere(el, operand as Where))) return false;
       } else {
         throw new Error(`fake store: оператор «${op}» не підтримано`);
       }
@@ -114,7 +118,9 @@ const NO_RELATIONS = { counterparty: null, vehicle: null, workOrder: null };
 /**
  * Prisma-мок поверх масиву слотів: `findFirst` / `findMany` обчислюють `where`, `create` і
  * `update` змінюють масив. `$transaction(cb)` передає той самий `calendarSlot` як `tx`.
- * Підйомник і механік «існують» для будь-якого id; філія не резолвиться → робочий день 8..20.
+ * Підйомник «існує» для будь-якого id, механік — для будь-якого id і підйомника (BR-CAL-012
+ * стереже `calendar.mechanic-lift.spec.ts` зі справжньою таблицею працівників); філія не
+ * резолвиться → робочий день 8..20.
  */
 export function buildSlotStorePrisma(rows: FakeSlot[]) {
   const findFirst = vi.fn(({ where }: { where: Where }) =>

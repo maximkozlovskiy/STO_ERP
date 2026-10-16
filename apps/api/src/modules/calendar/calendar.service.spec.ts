@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import { CalendarService } from './calendar.service';
+import { matchesWhere } from './calendar.spec-fixture';
 
 // Lightweight regression-guard tests for syncWorkOrderSlots:
 // 1. soft-delete continuation children before updating parent (Bug #review-7640de gotcha)
@@ -655,40 +656,111 @@ describe('findSlots — механік запису (BR-CAL-011)', () => {
   });
 
   // guards: BR-CAL-011
-  it('звільнений механік лишається на своїх записах; працівник іншої організації — null', async () => {
-    // Таблиця працівників, що ВИКОНУЄ where (orgId, id in, deletedAt): мок із фіксованою
-    // відповіддю не відрізнив би запит із `deletedAt: null` від запиту без нього.
+  it('звільнений (FIRED) чи видалений механік і працівник іншої організації — null', async () => {
+    // Таблиця працівників, що ВИКОНУЄ where (`matchesWhere` фікстури): мок із фіксованою
+    // відповіддю не відрізнив би запит із `deletedAt: null` і `status: { not: FIRED }` від
+    // запиту без них.
     const FOREIGN = 'e4444444-4444-4444-8444-444444444444';
+    const FIRED = 'e5555555-5555-4555-8555-555555555555';
+    const ON_LEAVE = 'e6666666-6666-4666-8666-666666666666';
+    const person = (id: string, orgId: string, lastName: string, over: object = {}) => ({
+      id,
+      orgId,
+      firstName: 'Іван',
+      lastName,
+      status: 'ACTIVE',
+      deletedAt: null,
+      ...over,
+    });
     const table = [
-      { id: E1, orgId: 'org-1', firstName: 'Петро', lastName: 'Коваль', deletedAt: null },
-      {
-        id: GONE,
-        orgId: 'org-1',
-        firstName: 'Іван',
-        lastName: 'Звільнений',
-        deletedAt: new Date('2026-06-01T00:00:00Z'),
-      },
-      { id: FOREIGN, orgId: 'org-2', firstName: 'Чужий', lastName: 'Працівник', deletedAt: null },
+      person(E1, 'org-1', 'Коваль'),
+      person(GONE, 'org-1', 'Видалений', { deletedAt: new Date('2026-06-01T00:00:00Z') }),
+      person(FIRED, 'org-1', 'Звільнений', { status: 'FIRED' }),
+      person(ON_LEAVE, 'org-1', 'Відпустка', { status: 'ON_LEAVE' }),
+      person(FOREIGN, 'org-2', 'Чужий'),
     ];
-    const employeeFindMany = vi.fn(
-      async (args: { where: { orgId?: string; id: { in: string[] }; deletedAt?: null } }) =>
-        table
-          .filter(e => args.where.orgId === undefined || e.orgId === args.where.orgId)
-          .filter(e => args.where.id.in.includes(e.id))
-          .filter(e => !('deletedAt' in args.where) || e.deletedAt === null)
-          .map(e => ({ id: e.id, firstName: e.firstName, lastName: e.lastName })),
+    const employeeFindMany = vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
+      table
+        .filter(e => matchesWhere(e, where))
+        .map(e => ({ id: e.id, firstName: e.firstName, lastName: e.lastName })),
     );
     const prisma = {
       calendarSlot: {
         findMany: vi
           .fn()
-          .mockResolvedValue([slotRow('s1', E1), slotRow('s2', GONE), slotRow('s3', FOREIGN)]),
+          .mockResolvedValue([
+            slotRow('s1', E1),
+            slotRow('s2', GONE),
+            slotRow('s3', FIRED),
+            slotRow('s4', ON_LEAVE),
+            slotRow('s5', FOREIGN),
+          ]),
       },
       employee: { findMany: employeeFindMany },
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const service = new CalendarService(prisma as any);
-    const result = await service.findSlots('org-1', '2026-06-15', 'ADMIN');
-    expect(result.map(s => s.employeeName)).toEqual(['Коваль Петро', 'Звільнений Іван', null]);
+    for (const role of ['ADMIN', 'MECHANIC']) {
+      const result = await service.findSlots('org-1', '2026-06-15', role);
+      expect(result.map(s => s.employeeName)).toEqual([
+        'Коваль Іван',
+        null,
+        null,
+        'Відпустка Іван',
+        null,
+      ]);
+    }
   });
+});
+
+// guards: BR-CAL-011
+// Завантаження поста не рахує записи видалених нарядів — відповідь позначає такий запис.
+describe('findSlots — запис видаленого наряду (BR-CAL-011)', () => {
+  function row(id: string, workOrder: { deletedAt: Date | null } | null) {
+    return {
+      id,
+      liftId: 'lift-1',
+      employeeId: null,
+      workOrderId: workOrder ? `wo-${id}` : null,
+      vehicleId: null,
+      counterpartyId: null,
+      parentSlotId: null,
+      startAt: new Date('2026-06-15T07:00:00.000Z'),
+      endAt: new Date('2026-06-15T08:00:00.000Z'),
+      notes: null,
+      status: 'BOOKED',
+      type: 'WORK',
+      vehicle: null,
+      counterparty: null,
+      workOrder: workOrder && {
+        number: `WO-${id}`,
+        status: 'APPROVED',
+        counterpartyId: 'cp',
+        counterparty: null,
+        vehicle: null,
+        ...workOrder,
+      },
+    };
+  }
+
+  it.each(['ADMIN', 'MECHANIC'])(
+    '%s: workOrderDeleted — true лише для видаленого наряду; наряд читається з deletedAt',
+    async role => {
+      const findMany = vi
+        .fn()
+        .mockResolvedValue([
+          row('s1', { deletedAt: new Date('2026-06-10T00:00:00Z') }),
+          row('s2', { deletedAt: null }),
+          row('s3', null),
+        ]);
+      const prisma = { calendarSlot: { findMany }, employee: { findMany: vi.fn() } };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      const result = await service.findSlots('org-1', '2026-06-15', role);
+      expect(result.map(s => s.workOrderDeleted)).toEqual([true, false, false]);
+      const args = findMany.mock.calls[0][0];
+      const woSelect = (args.select ?? args.include).workOrder.select;
+      expect(woSelect.deletedAt).toBe(true);
+    },
+  );
 });
