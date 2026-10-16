@@ -51,3 +51,5 @@
 | видалення: блок за активним нарядом, каскад  | `employees.remove-guard.spec.ts`         | 3      |
 
 Разом: **98** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Читання довідників механіком (рішення власника 2026-10-16).** Роль MECHANIC отримує лише читання довідників, які запитує картка наряду: `GET /employees?role=MECHANIC`, `GET /settings/organisation`, `GET /settings/tax-rates`, `GET /counterparties/:id/contracts` — без ставок (`rateScheme`) і без персональних даних понад те, що вже бачить RECEPTIONIST; змінювати їх механік не може.
