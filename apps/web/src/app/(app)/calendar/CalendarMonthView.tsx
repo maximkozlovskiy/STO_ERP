@@ -160,7 +160,9 @@ export function CalendarMonthView({
   // Pad to full weeks
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const maxSlots = Math.max(1, ...Object.values(monthSlots).map(v => v.total));
+  // Колір завантаженості — за записами, що займають пост: без скасованих і видалених нарядів
+  // (рішення власника 2026-10-16, BR-CAL-008). Підказка й лічильники — за всіма записами дня.
+  const maxBusy = Math.max(1, ...Object.values(monthSlots).map(v => v.busy));
 
   return (
     <div className="bg-surface border border-border rounded-xl overflow-hidden">
@@ -202,12 +204,13 @@ export function CalendarMonthView({
                 const total = info?.total ?? 0;
                 const isToday = dayStr === todayStr;
                 const isPast = nowMs ? dayStr < todayStr : false;
-                const load = total / maxSlots;
+                const busy = info?.busy ?? 0;
+                const load = busy / maxBusy;
                 // Минулий день блідший: раніше `opacity-60` на всій кнопці, але вона гасила й
                 // лічильники категорій (BR-CAL-008) — саме «прострочено» стоїть у минулих днях.
                 // Тепер блідне фон і число дня, лічильники лишаються контрастними.
                 const bgAlpha =
-                  total === 0 ? 0 : Math.max(0.08, load * 0.5) * (isPast ? PAST_DIM : 1);
+                  busy === 0 ? 0 : Math.max(0.08, load * 0.5) * (isPast ? PAST_DIM : 1);
                 const dayNum = parseInt(dayStr.slice(8), 10);
                 const entries = info?.entries ?? [];
                 const { cards, more } = monthCards(entries);
@@ -223,7 +226,7 @@ export function CalendarMonthView({
                     data-date={dayStr}
                     className="group relative min-h-36 min-w-0 cursor-pointer border-r border-border last:border-r-0 p-2 text-left transition-colors hover:bg-primary/5 flex flex-col gap-1"
                     style={
-                      total > 0
+                      busy > 0
                         ? {
                             backgroundColor: `color-mix(in srgb, var(--color-primary) ${Math.round(bgAlpha * 100)}%, transparent)`,
                           }

@@ -1,6 +1,6 @@
 import type { CalendarSlot } from './calendar.types';
 import { slotCategory, type SlotCategory } from './calendar-categories';
-import { chainKey } from './calendar-month';
+import { chainKey, countsAsLoad } from './calendar-month';
 import { decimalHoursToISO, kyivHours, toDateString } from './calendar.utils';
 
 /**
@@ -88,7 +88,7 @@ export function liftLoadHours(
   if (!(to > from)) return 0;
   let ms = 0;
   for (const s of slots) {
-    if (s.liftId !== liftId || s.workOrderStatus === 'CANCELLED' || s.workOrderDeleted) continue;
+    if (s.liftId !== liftId || !countsAsLoad(s)) continue;
     const a = Math.max(new Date(s.startAt).getTime(), from);
     const b = Math.min(new Date(s.endAt).getTime(), to);
     if (b > a) ms += b - a;

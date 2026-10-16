@@ -12,6 +12,27 @@ export function chainKey(slot: Pick<CalendarSlot, 'id' | 'parentSlotId'>): strin
   return slot.parentSlotId ?? slot.id;
 }
 
+/**
+ * Записи видалених нарядів календар не показує ніде (BR-CAL-011, BR-WO-017): `GET /calendar/slots`
+ * їх не повертає, бо видалення наряду позначає видаленими і його записи. Фільтр — захист від
+ * запису, що прийшов із позначкою `workOrderDeleted` (дані до міграції-бекфілу).
+ */
+export function liveSlots<T extends Pick<CalendarSlot, 'workOrderDeleted'>>(
+  slots: readonly T[],
+): T[] {
+  return slots.filter(s => !s.workOrderDeleted);
+}
+
+/**
+ * Запис займає пост: не скасований наряд і не видалений (рішення власника 2026-10-16). Рахує
+ * «N год з M» у «Дні» (BR-CAL-011) і колір завантаженості клітинки «Місяця» (BR-CAL-008).
+ */
+export function countsAsLoad(
+  slot: Pick<CalendarSlot, 'workOrderStatus' | 'workOrderDeleted'>,
+): boolean {
+  return slot.workOrderStatus !== 'CANCELLED' && !slot.workOrderDeleted;
+}
+
 /** Кінець кожного ланцюжка — найбільший `endAt` серед його частин. */
 export function chainEnds(slots: Iterable<CalendarSlot>): Map<string, number> {
   const ends = new Map<string, number>();
@@ -39,15 +60,17 @@ export function buildMonthSlots(
   for (const { d, slots } of results) {
     if (!shown.has(d)) continue;
     const byLift: Record<string, number> = {};
+    let busy = 0;
     for (const s of slots) {
       if (s.liftId) byLift[s.liftId] = (byLift[s.liftId] ?? 0) + 1;
+      if (countsAsLoad(s)) busy += 1;
     }
     const entries: MonthEntry[] = slots.map(s => ({
       slot: s,
       endMs: ends.get(chainKey(s)) ?? new Date(s.endAt).getTime(),
       workOrderStatus: s.workOrderStatus ?? null,
     }));
-    acc[d] = { total: slots.length, byLift, entries };
+    acc[d] = { total: slots.length, busy, byLift, entries };
   }
   return acc;
 }

@@ -126,7 +126,14 @@ export interface MonthEntry extends CategoryInput {
 
 export type MonthSlots = Record<
   string,
-  { total: number; byLift: Record<string, number>; entries: MonthEntry[] }
+  {
+    /** Усі записи дня — підказка клітинки й лічильники (BR-CAL-008). */
+    total: number;
+    /** Записи, що займають пост (без скасованих і видалених нарядів) — колір завантаженості. */
+    busy: number;
+    byLift: Record<string, number>;
+    entries: MonthEntry[];
+  }
 >;
 
 export interface SlotForm {

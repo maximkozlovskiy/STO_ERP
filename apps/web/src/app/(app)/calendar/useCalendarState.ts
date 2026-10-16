@@ -42,7 +42,7 @@ import {
   nextDateString,
   toDateString,
 } from './calendar.utils';
-import { buildMonthSlots, chainEnds } from './calendar-month';
+import { buildMonthSlots, chainEnds, liveSlots } from './calendar-month';
 import { nowLinePercent, pastPercent } from './calendar-day';
 
 // Shared drag-id for the pending-slot block (used both by the draggable in JSX
@@ -354,7 +354,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       const results = await Promise.all(
         [...days, nextDay].map(d =>
           apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`, { signal: ac.signal })
-            .then(s => ({ d, slots: s }))
+            .then(s => ({ d, slots: liveSlots(s) }))
             .catch(() => {
               // Збій лише довантаженого дня не робить місяць «не завантаженим».
               if (d !== nextDay) failures++;
@@ -422,7 +422,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       );
       if (ac.signal.aborted) return;
       if (mountedRef.current) {
-        setStatsSlots(results.flat());
+        setStatsSlots(liveSlots(results.flat()));
         setStatsError(days.length > 0 && failures === days.length);
       }
     } finally {
@@ -479,10 +479,11 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         }>,
       })),
     ])
-      .then(([calSlots, nextSlots, bookingRes]) => {
+      .then(([rawSlots, nextSlots, bookingRes]) => {
         if (isStale()) return;
+        const calSlots = liveSlots(rawSlots);
         setSlots(calSlots);
-        setNextDaySlots(nextSlots);
+        setNextDaySlots(liveSlots(nextSlots));
         // Assign each PENDING booking to the first lift that has no CalendarSlot conflict.
         // lifts state may not be populated yet on first load — read from the ref captured below.
         const currentLifts = liftsRef.current;
@@ -950,15 +951,26 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         return;
       }
 
+      const liftChanged = newLiftId !== slot.liftId;
       try {
-        await apiFetch(`/calendar/slots/${slot.id}`, {
+        const saved = await apiFetch<{ mechanicDropped?: boolean }>(`/calendar/slots/${slot.id}`, {
           method: 'PATCH',
           body: JSON.stringify({
             startAt: newStart.toISOString(),
             endAt: newEnd.toISOString(),
-            ...(newLiftId !== slot.liftId && { liftId: newLiftId }),
+            // BR-CAL-012: механік, не закріплений за новим підйомником, знімається сервером
+            // (рішення власника 2026-10-16) — перетягування не відхиляється.
+            ...(liftChanged && { liftId: newLiftId, dropMechanicNotOnLift: true }),
           }),
         });
+        if (saved?.mechanicDropped) {
+          const lift = liftsRef.current.find(l => l.id === newLiftId)?.name ?? '';
+          toast.warning(
+            slot.employeeName
+              ? t('slot.mechanicDropped', { name: slot.employeeName, lift })
+              : t('slot.mechanicDroppedNoName', { lift }),
+          );
+        }
         load();
       } catch (e: unknown) {
         toast.error(e instanceof Error ? e.message : 'Помилка переміщення слоту');
