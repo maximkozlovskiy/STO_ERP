@@ -570,6 +570,7 @@ export const uk: Record<string, string> = {
   // ── Exception-повідомлення: calendar-модуль ──
   'err.calendar.invalidDateFormatExpected': 'Невірний формат дати. Очікується YYYY-MM-DD',
   'err.calendar.endBeforeStart': 'Час завершення має бути після початку',
+  'err.calendar.employeeNotOnLift': 'Механік не закріплений за цим підйомником',
   'err.calendar.employeeNotFound': 'Співробітника не знайдено',
   'err.calendar.workOrderNotFound': 'Наряд не знайдено',
   'err.calendar.clientNotFound': 'Клієнта не знайдено',

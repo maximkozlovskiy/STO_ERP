@@ -641,6 +641,7 @@ export const VALIDATION_KEYS = [
   // Exception-повідомлення: calendar-модуль
   'err.calendar.invalidDateFormatExpected',
   'err.calendar.endBeforeStart',
+  'err.calendar.employeeNotOnLift',
   'err.calendar.employeeNotFound',
   'err.calendar.workOrderNotFound',
   'err.calendar.clientNotFound',
