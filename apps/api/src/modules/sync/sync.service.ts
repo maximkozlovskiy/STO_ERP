@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SyncRecord } from '@sto/shared';
+import { SyncRecord, translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
+import { canWriteCalendar, findMechanicOnLift } from '../calendar/calendar-mechanic';
 
 // Minimal interface for the dynamic Prisma model operations used in sync
 interface DynamicPrismaModel {
@@ -206,9 +208,14 @@ export class SyncService {
     return records;
   }
 
+  /**
+   * `role` — роль того, хто синхронізує: записи календаря змінюють лише ролі BR-CAL-010.
+   * Відмова — як будь-який конфлікт синхронізації: `conflicts + 1` і `SyncJob` FAILED з причиною.
+   */
   async push(
     orgId: string,
     records: SyncRecord[],
+    role: string,
   ): Promise<{ accepted: number; conflicts: number }> {
     let accepted = 0;
     let conflicts = 0;
@@ -221,7 +228,7 @@ export class SyncService {
       }
 
       try {
-        await this.applyRecord(orgId, rec);
+        await this.applyRecord(orgId, rec, role);
         accepted++;
       } catch (err) {
         conflicts++;
@@ -244,13 +251,27 @@ export class SyncService {
     return { accepted, conflicts };
   }
 
-  private async applyRecord(orgId: string, rec: SyncRecord): Promise<void> {
+  private async applyRecord(orgId: string, rec: SyncRecord, role: string): Promise<void> {
     const model = this.model(rec.table);
     if (!model) throw new Error(`Unknown model for table: ${rec.table}`);
 
+    const isSlot = rec.table === 'calendar_slots';
+    // BR-CAL-010: записи календаря змінюють лише власник, адміністратор і приймальня — і з
+    // планшета теж, будь-якою операцією.
+    if (isSlot && !canWriteCalendar(role)) {
+      throw new Error(translateError('err.calendar.syncRoleForbidden', getLocale()));
+    }
+
+    // Колонки запису календаря — лише для `calendar_slots`: у контрагента, авто й гаража їх
+    // немає, і Prisma відхилила б `select` невідомого поля (кожен push цих таблиць падав би).
     const existing = await model.findFirst({
       where: { id: rec.id, orgId },
-      select: { id: true, syncVersion: true, deletedAt: true, workOrderId: true },
+      select: {
+        id: true,
+        syncVersion: true,
+        deletedAt: true,
+        ...(isSlot && { workOrderId: true, liftId: true, employeeId: true }),
+      },
     });
 
     // Strip protected fields — only allow whitelisted fields through
@@ -296,6 +317,7 @@ export class SyncService {
     if (!existing) {
       // Validate FK fields belong to the same org to prevent cross-tenant injection
       await this.validateForeignKeys(orgId, rec.table, safePayload);
+      if (isSlot) await this.assertSlotMechanic(orgId, safePayload, null);
       await model.create({ data: { ...safePayload, id: rec.id, orgId } });
       return;
     }
@@ -318,6 +340,7 @@ export class SyncService {
       BigInt((existing as { syncVersion: bigint | number | string }).syncVersion ?? 0)
     ) {
       await this.validateForeignKeys(orgId, rec.table, safePayload);
+      if (isSlot) await this.assertSlotMechanic(orgId, safePayload, existing);
       const data =
         mileageToWrite !== undefined
           ? { ...safePayload, currentMileage: mileageToWrite }
@@ -332,6 +355,35 @@ export class SyncService {
           data: { currentMileage: mileageToWrite },
         });
       }
+    }
+  }
+
+  /**
+   * BR-CAL-012 для запису календаря з планшета — та сама перевірка, що в `CalendarService`:
+   * механік запису активний (не звільнений, не у відпустці) MECHANIC організації, закріплений за
+   * підйомником запису. Як і в API, перевіряє лише новий запис або зміну механіка чи підйомника:
+   * збережений механік, якого відтоді відкріпили, не блокує зміну часу чи нотаток.
+   */
+  private async assertSlotMechanic(
+    orgId: string,
+    payload: Record<string, unknown>,
+    existing: Record<string, unknown> | null,
+  ): Promise<void> {
+    const pick = (field: 'employeeId' | 'liftId'): string | null => {
+      const value = field in payload ? payload[field] : existing?.[field];
+      return typeof value === 'string' && value ? value : null;
+    };
+    const employeeId = pick('employeeId');
+    if (!employeeId) return;
+    const liftId = pick('liftId');
+    const changed =
+      !existing ||
+      employeeId !== (existing.employeeId ?? null) ||
+      liftId !== (existing.liftId ?? null);
+    if (!changed) return;
+    const mechanic = await findMechanicOnLift(this.prisma, orgId, employeeId, liftId);
+    if (!mechanic) {
+      throw new Error(translateError('err.calendar.employeeNotOnLift', getLocale()));
     }
   }
 

@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { CalendarSlotStatus, CalendarSlotType, EmployeeStatus, UserRole } from '@prisma/client';
+import { CalendarSlotStatus, CalendarSlotType, EmployeeStatus } from '@prisma/client';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -19,6 +19,7 @@ import {
   CheckConflictsResponseDto,
   SyncWorkOrderSlotsDto,
 } from './calendar.dto';
+import { findMechanicOnLift } from './calendar-mechanic';
 
 const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 
@@ -78,6 +79,17 @@ const CONFLICT_SELECT = {
     select: { number: true, status: true, deletedAt: true },
   },
 } as const;
+
+/**
+ * Запис без наряду або наряду, що не видалений (BR-CAL-011, BR-WO-017). Видалення наряду саме
+ * позначає видаленими його записи; ця умова — на випадок записів, які пережили видалення наряду
+ * (дані до міграції `20261016120000_calendar_slots_of_deleted_work_orders`): їх не показує
+ * `findSlots` і не бачить перевірка зайнятості. `OR` — у `AND`, бо проби вже мають власний `OR`.
+ * `is` не пропускає запис без наряду, тому `workOrderId: null` — окремою гілкою.
+ */
+const OF_LIVE_WORK_ORDER = {
+  OR: [{ workOrderId: null }, { workOrder: { is: { deletedAt: null } } }],
+};
 
 /**
  * Ім'я механіка запису з уже прочитаних (BR-CAL-011): `null` — механіка не призначено, його
@@ -174,6 +186,7 @@ export class CalendarService {
       deletedAt: null;
       startAt: { lt: Date };
       endAt: { gt: Date };
+      AND: (typeof OF_LIVE_WORK_ORDER)[];
       lift?: { zone: { branchId: string; orgId: string } };
       employeeId?: string;
     } = {
@@ -181,6 +194,8 @@ export class CalendarService {
       deletedAt: null,
       startAt: { lt: end },
       endAt: { gt: start },
+      // BR-CAL-011: записи видаленого наряду не показуються ніде в календарі.
+      AND: [OF_LIVE_WORK_ORDER],
     };
     if (branchId) where.lift = { zone: { branchId, orgId } };
     if (employeeId) where.employeeId = employeeId;
@@ -264,31 +279,6 @@ export class CalendarService {
     return new Map(employees.map(e => [e.id, formatPersonName(e.lastName, e.firstName)]));
   }
 
-  /**
-   * BR-CAL-012: механік запису — активний (не звільнений, не видалений) MECHANIC своєї
-   * організації, закріплений за підйомником запису (`EmployeeLift`). Без підйомника закріпитись
-   * нема за чим — `null`. Один запит: умови — у `where`, а не перевірка прочитаного.
-   * `null` → виклик кидає 400 `err.calendar.employeeNotOnLift`.
-   */
-  private async mechanicOnLift(
-    orgId: string,
-    employeeId: string,
-    liftId: string | null,
-  ): Promise<{ id: string } | null> {
-    if (!liftId) return null;
-    return this.prisma.employee.findFirst({
-      where: {
-        id: employeeId,
-        orgId,
-        deletedAt: null,
-        role: UserRole.MECHANIC,
-        status: { not: EmployeeStatus.FIRED },
-        employeeLifts: { some: { liftId } },
-      },
-      select: { id: true },
-    });
-  }
-
   async createSlot(
     orgId: string,
     dto: CreateCalendarSlotDto,
@@ -313,7 +303,7 @@ export class CalendarService {
       // BR-CAL-012: механік закріплений за підйомником запису — і для продовження багатоденного,
       // бо воно отримує той самий підйомник і механіка.
       dto.employeeId
-        ? this.mechanicOnLift(orgId, dto.employeeId, dto.liftId ?? null)
+        ? findMechanicOnLift(this.prisma, orgId, dto.employeeId, dto.liftId ?? null)
         : Promise.resolve(null),
       dto.workOrderId
         ? this.prisma.workOrder.findFirst({
@@ -377,6 +367,7 @@ export class CalendarService {
                     orgId,
                     liftId: dto.liftId,
                     deletedAt: null,
+                    AND: [OF_LIVE_WORK_ORDER],
                     OR: [{ startAt: { lt: slot1End }, endAt: { gt: startAt } }],
                   },
                   select: { id: true },
@@ -388,6 +379,7 @@ export class CalendarService {
                     orgId,
                     employeeId: dto.employeeId,
                     deletedAt: null,
+                    AND: [OF_LIVE_WORK_ORDER],
                     OR: [{ startAt: { lt: slot1End }, endAt: { gt: startAt } }],
                   },
                   select: { id: true },
@@ -399,6 +391,7 @@ export class CalendarService {
                     orgId,
                     liftId: dto.liftId,
                     deletedAt: null,
+                    AND: [OF_LIVE_WORK_ORDER],
                     OR: [{ startAt: { lt: slot2End! }, endAt: { gt: slot2Start! } }],
                   },
                   select: { id: true },
@@ -410,6 +403,7 @@ export class CalendarService {
                     orgId,
                     employeeId: dto.employeeId,
                     deletedAt: null,
+                    AND: [OF_LIVE_WORK_ORDER],
                     OR: [{ startAt: { lt: slot2End! }, endAt: { gt: slot2Start! } }],
                   },
                   select: { id: true },
@@ -542,17 +536,26 @@ export class CalendarService {
 
     const liftId = dto.liftId !== undefined ? dto.liftId : existing.liftId;
 
-    const employeeId = dto.employeeId !== undefined ? dto.employeeId : existing.employeeId;
+    let employeeId = dto.employeeId !== undefined ? dto.employeeId : existing.employeeId;
+    let mechanicDropped = false;
 
     // BR-CAL-012: механіка перевіряє лише зміна механіка чи підйомника. Форма шле обидва поля
     // щоразу, тож порівнюється з БД, а не «поле є в запиті»: збережений механік, якого вже
     // звільнили чи відкріпили, не заважає змінити час чи нотатки запису.
     if (employeeId && (employeeId !== existing.employeeId || liftId !== existing.liftId)) {
-      const mechanic = await this.mechanicOnLift(orgId, employeeId, liftId);
-      if (!mechanic)
+      const mechanic = await findMechanicOnLift(this.prisma, orgId, employeeId, liftId);
+      // Перетягування у «Дні» (`dropMechanicNotOnLift`) знімає СВІЙ механік запису, не
+      // закріплений за новим підйомником, замість 400. Явно обраного іншого механіка не знімає:
+      // це вибір користувача, і він отримує 400, як у формі.
+      const drop = !mechanic && dto.dropMechanicNotOnLift === true;
+      if (!mechanic && !(drop && employeeId === existing.employeeId))
         throw new BadRequestException(
           translateError('err.calendar.employeeNotOnLift', getLocale()),
         );
+      if (!mechanic) {
+        employeeId = null;
+        mechanicDropped = true;
+      }
     }
 
     let updated;
@@ -568,6 +571,7 @@ export class CalendarService {
                     orgId,
                     liftId,
                     deletedAt: null,
+                    AND: [OF_LIVE_WORK_ORDER],
                     NOT: { id },
                     OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
                   },
@@ -580,6 +584,7 @@ export class CalendarService {
                     orgId,
                     employeeId,
                     deletedAt: null,
+                    AND: [OF_LIVE_WORK_ORDER],
                     NOT: { id },
                     OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
                   },
@@ -598,7 +603,7 @@ export class CalendarService {
             where: { id, orgId },
             data: {
               ...(dto.liftId !== undefined && { liftId: dto.liftId }),
-              ...(dto.employeeId !== undefined && { employeeId: dto.employeeId }),
+              ...((dto.employeeId !== undefined || mechanicDropped) && { employeeId }),
               ...(dto.workOrderId !== undefined && { workOrderId: dto.workOrderId }),
               ...(dto.counterpartyId !== undefined && { counterpartyId: dto.counterpartyId }),
               ...(dto.vehicleId !== undefined && { vehicleId: dto.vehicleId }),
@@ -636,7 +641,8 @@ export class CalendarService {
       );
     }
 
-    return this.toDto(updated);
+    const res = this.toDto(updated);
+    return mechanicDropped ? { ...res, mechanicDropped: true } : res;
   }
 
   async checkConflicts(orgId: string, dto: CheckConflictsDto): Promise<CheckConflictsResponseDto> {
@@ -670,6 +676,7 @@ export class CalendarService {
               orgId,
               liftId: dto.liftId,
               deletedAt: null,
+              AND: [OF_LIVE_WORK_ORDER],
               id: excludeFilter,
               workOrderId: excludeWoFilter,
               startAt: { lt: endAt },
@@ -685,6 +692,7 @@ export class CalendarService {
               orgId,
               employeeId: dto.employeeId,
               deletedAt: null,
+              AND: [OF_LIVE_WORK_ORDER],
               id: excludeFilter,
               workOrderId: excludeWoFilter,
               startAt: { lt: endAt },
@@ -770,6 +778,7 @@ export class CalendarService {
               where: {
                 orgId,
                 deletedAt: null,
+                AND: [OF_LIVE_WORK_ORDER],
                 workOrderId: { not: workOrderId },
                 startAt: { lt: endAt },
                 endAt: { gt: startAt },

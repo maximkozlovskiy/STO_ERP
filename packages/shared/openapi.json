@@ -224,7 +224,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "",
+            "description": "MECHANIC отримує лише поля картки наряду (OrganisationCardSettingsDto)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2266,6 +2266,7 @@
     },
     "/api/v1/employees": {
       "get": {
+        "description": "MECHANIC отримує лише механіків, без видалених — незалежно від `role`",
         "operationId": "EmployeesController_findAll_v1",
         "parameters": [
           {
@@ -2310,7 +2311,7 @@
             "name": "liftId",
             "required": false,
             "in": "query",
-            "description": "Лише закріплені за підйомником, не звільнені (FIRED) і не видалені — механіки запису календаря (BR-CAL-012)",
+            "description": "Лише закріплені за підйомником, активні (не звільнені й не у відпустці) і не видалені — механіки запису календаря (BR-CAL-012)",
             "schema": {
               "format": "uuid",
               "type": "string"
@@ -24304,7 +24305,11 @@
           },
           "workOrderDeleted": {
             "type": "boolean",
-            "description": "Наряд запису видалено — завантаження поста його не рахує (BR-CAL-011)"
+            "description": "Наряд запису видалено (BR-CAL-011). GET /calendar/slots таких записів не повертає"
+          },
+          "mechanicDropped": {
+            "type": "boolean",
+            "description": "Механіка знято: не закріплений за новим підйомником (лише PATCH з перетягування)"
           },
           "counterpartyId": {
             "type": "string",
@@ -24546,6 +24551,10 @@
           },
           "notes": {
             "type": "string"
+          },
+          "dropMechanicNotOnLift": {
+            "type": "boolean",
+            "description": "Перетягування: механік запису, не закріплений за новим підйомником, знімається замість 400"
           }
         }
       },

@@ -1,4 +1,12 @@
-import { IsUUID, IsOptional, IsString, IsISO8601, IsEnum, IsDateString } from 'class-validator';
+import {
+  IsUUID,
+  IsOptional,
+  IsString,
+  IsISO8601,
+  IsEnum,
+  IsDateString,
+  IsBoolean,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
@@ -96,6 +104,19 @@ export class UpdateCalendarSlotDto {
   @IsISO8601()
   endAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+
+  /**
+   * Перетягування чи зміна меж запису у виді «День» (BR-CAL-012): механік запису, не закріплений
+   * за новим підйомником, знімається (`employeeId: null`) замість 400. Форма запису поля не шле —
+   * для неї незакріплений механік і далі 400.
+   */
+  @ApiPropertyOptional({
+    description:
+      'Перетягування: механік запису, не закріплений за новим підйомником, знімається замість 400',
+  })
+  @IsOptional()
+  @IsBoolean()
+  dropMechanicNotOnLift?: boolean;
 }
 
 export class CalendarSlotResponseDto {
@@ -111,13 +132,23 @@ export class CalendarSlotResponseDto {
   @ApiPropertyOptional() workOrderNumber?: string;
   @ApiPropertyOptional() workOrderStatus?: string | null;
   /**
-   * Наряд запису видалено (soft delete): завантаження поста такий запис не рахує (BR-CAL-011).
-   * `false` — наряду немає або він живий.
+   * Наряд запису видалено (soft delete; BR-CAL-011). `GET /calendar/slots` таких записів не
+   * повертає (BR-WO-017 позначає їх видаленими разом із нарядом), тож тут завжди `false`; поле —
+   * захисна позначка, яку web відкидає, якщо такий запис усе ж прийде.
    */
   @ApiPropertyOptional({
-    description: 'Наряд запису видалено — завантаження поста його не рахує (BR-CAL-011)',
+    description:
+      'Наряд запису видалено (BR-CAL-011). GET /calendar/slots таких записів не повертає',
   })
   workOrderDeleted?: boolean;
+  /**
+   * Лише відповідь `PATCH` з `dropMechanicNotOnLift`: механіка знято, бо він не закріплений за
+   * новим підйомником (BR-CAL-012). Відсутнє — механіка не знімали.
+   */
+  @ApiPropertyOptional({
+    description: 'Механіка знято: не закріплений за новим підйомником (лише PATCH з перетягування)',
+  })
+  mechanicDropped?: boolean;
   @ApiPropertyOptional() counterpartyId?: string | null;
   @ApiPropertyOptional() counterpartyName?: string;
   @ApiPropertyOptional() cpPhone?: string | null;

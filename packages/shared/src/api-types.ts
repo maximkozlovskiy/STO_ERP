@@ -749,7 +749,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Список співробітників */
+        /**
+         * Список співробітників
+         * @description MECHANIC отримує лише механіків, без видалених — незалежно від `role`
+         */
         get: operations["EmployeesController_findAll_v1"];
         put?: never;
         /** Створити співробітника */
@@ -7394,8 +7397,10 @@ export interface components {
             notes?: string | null;
             workOrderNumber?: string;
             workOrderStatus?: string | null;
-            /** @description Наряд запису видалено — завантаження поста його не рахує (BR-CAL-011) */
+            /** @description Наряд запису видалено (BR-CAL-011). GET /calendar/slots таких записів не повертає */
             workOrderDeleted?: boolean;
+            /** @description Механіка знято: не закріплений за новим підйомником (лише PATCH з перетягування) */
+            mechanicDropped?: boolean;
             counterpartyId?: string | null;
             counterpartyName?: string;
             cpPhone?: string | null;
@@ -7471,6 +7476,8 @@ export interface components {
             startAt?: string;
             endAt?: string;
             notes?: string;
+            /** @description Перетягування: механік запису, не закріплений за новим підйомником, знімається замість 400 */
+            dropMechanicNotOnLift?: boolean;
         };
         PurchaseOrderLineResponseDto: {
             id: string;
@@ -9263,6 +9270,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description MECHANIC отримує лише поля картки наряду (OrganisationCardSettingsDto) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10574,7 +10582,7 @@ export interface operations {
                 role?: "OWNER" | "ADMIN" | "RECEPTIONIST" | "MECHANIC" | "STOREKEEPER" | "ACCOUNTANT" | "XLSX_MANAGER" | "CLIENT";
                 /** @description Показати soft-deleted */
                 showDeleted?: string;
-                /** @description Лише закріплені за підйомником, не звільнені (FIRED) і не видалені — механіки запису календаря (BR-CAL-012) */
+                /** @description Лише закріплені за підйомником, активні (не звільнені й не у відпустці) і не видалені — механіки запису календаря (BR-CAL-012) */
                 liftId?: string;
                 limit?: number;
                 /** @description Поле сортування */

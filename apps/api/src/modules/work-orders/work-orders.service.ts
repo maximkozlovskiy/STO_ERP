@@ -586,10 +586,24 @@ export class WorkOrdersService {
     this.assertNotPaid(wo.paidAmount, 'err.workOrder.paidCannotDelete');
     // Race-safe updateMany з повним compound where (id+orgId+deletedAt:null). BR-WO-014: умова
     // «нічого не сплачено» — у самому записі, тож оплата між читанням і видаленням не проскочить.
-    const removed = await this.prisma.workOrder.updateMany({
-      where: { id, orgId, deletedAt: null, status: wo.status, paidAmount: 0 },
-      data: { deletedAt: new Date() },
-    });
+    // BR-WO-017: у тій самій транзакції — записи календаря наряду (обидві частини багатоденного):
+    // підйомник і механік звільняються, запис у календарі не показується.
+    const deletedAt = new Date();
+    const removed = await this.prisma.$transaction(
+      async tx => {
+        const res = await tx.workOrder.updateMany({
+          where: { id, orgId, deletedAt: null, status: wo.status, paidAmount: 0 },
+          data: { deletedAt },
+        });
+        if (res.count === 0) return res;
+        await tx.calendarSlot.updateMany({
+          where: { orgId, workOrderId: id, deletedAt: null },
+          data: { deletedAt },
+        });
+        return res;
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
     if (removed.count === 0) {
       throw await this.paidOrChangedError(orgId, id, 'err.workOrder.paidCannotDelete');
     }

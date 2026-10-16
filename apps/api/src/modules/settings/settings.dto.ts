@@ -373,6 +373,21 @@ export class BaseCurrencyResponseDto {
   currency!: string;
 }
 
+/**
+ * Налаштування організації, які читає картка наряду (рішення власника 2026-10-16, employee.md):
+ * механік отримує лише їх — без частки ФОП механіків (`laborCostRatio`), лояльності, методу
+ * собівартості й інтервалів інтеграцій.
+ */
+export class OrganisationCardSettingsDto {
+  @ApiProperty() currency!: string;
+  @ApiProperty({ enum: VatMode }) vatMode!: VatMode;
+  @ApiPropertyOptional() defaultVatRateId?: string | null;
+  @ApiProperty() language!: string;
+  @ApiProperty() recalcPlannedHoursFromLines!: boolean;
+  @ApiProperty() recalcActualHoursFromLines!: boolean;
+  @ApiProperty() syncCalendarSlotWithPlannedHours!: boolean;
+}
+
 export class OrganisationSettingsResponseDto {
   @ApiProperty() orgId!: string;
   @ApiProperty() currency!: string;

@@ -172,7 +172,8 @@ export class CounterpartiesController {
   // ─── Contracts ───────────────────────────────────────────
 
   @Get(':id/contracts')
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT')
+  // MECHANIC — договір у картці наряду, лише читання (рішення власника 2026-10-16, employee.md).
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT', 'MECHANIC')
   @ApiOperation({ summary: 'Договори контрагента' })
   @ApiResponse({ status: 200, type: [ContractResponseDto] })
   findContracts(

@@ -587,6 +587,8 @@ export const en: Record<string, string> = {
   'err.calendar.invalidDateFormatExpected': 'Invalid date format. Expected YYYY-MM-DD',
   'err.calendar.endBeforeStart': 'The end time must be after the start time',
   'err.calendar.employeeNotOnLift': 'The mechanic is not assigned to this lift',
+  'err.calendar.syncRoleForbidden':
+    'Only the owner, an administrator or the reception can change calendar records',
   'err.calendar.employeeNotFound': 'Employee not found',
   'err.calendar.workOrderNotFound': 'Work order not found',
   'err.calendar.clientNotFound': 'Client not found',

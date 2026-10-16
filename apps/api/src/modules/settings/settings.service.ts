@@ -12,6 +12,7 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import {
   BranchSettingsResponseDto,
   OrganisationResponseDto,
+  OrganisationCardSettingsDto,
   OrganisationSettingsResponseDto,
   UiFeatures,
   UI_FEATURES_DEFAULTS,
@@ -88,6 +89,24 @@ export class SettingsService {
     }
 
     return result;
+  }
+
+  /**
+   * Поля налаштувань організації для картки наряду — те, що читає механік (рішення власника
+   * 2026-10-16). Явний перелік, а не «усе крім»: нове поле налаштувань не потрапить механіку,
+   * доки його сюди не додадуть.
+   */
+  async getOrganisationCardSettings(orgId: string): Promise<OrganisationCardSettingsDto> {
+    const s = await this.getOrganisationSettings(orgId);
+    return {
+      currency: s.currency,
+      vatMode: s.vatMode,
+      defaultVatRateId: s.defaultVatRateId ?? null,
+      language: s.language,
+      recalcPlannedHoursFromLines: s.recalcPlannedHoursFromLines,
+      recalcActualHoursFromLines: s.recalcActualHoursFromLines,
+      syncCalendarSlotWithPlannedHours: s.syncCalendarSlotWithPlannedHours,
+    };
   }
 
   async updateOrganisationSettings(

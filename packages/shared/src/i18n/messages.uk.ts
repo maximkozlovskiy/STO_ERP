@@ -571,6 +571,8 @@ export const uk: Record<string, string> = {
   'err.calendar.invalidDateFormatExpected': 'Невірний формат дати. Очікується YYYY-MM-DD',
   'err.calendar.endBeforeStart': 'Час завершення має бути після початку',
   'err.calendar.employeeNotOnLift': 'Механік не закріплений за цим підйомником',
+  'err.calendar.syncRoleForbidden':
+    'Записи календаря змінюють лише власник, адміністратор і приймальня',
   'err.calendar.employeeNotFound': 'Співробітника не знайдено',
   'err.calendar.workOrderNotFound': 'Наряд не знайдено',
   'err.calendar.clientNotFound': 'Клієнта не знайдено',

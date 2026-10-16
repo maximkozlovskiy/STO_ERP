@@ -27,9 +27,11 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import {
   BaseCurrencyResponseDto,
   BranchSettingsResponseDto,
+  OrganisationCardSettingsDto,
   OrganisationResponseDto,
   OrganisationSettingsResponseDto,
   UiFeatures,
@@ -78,10 +80,20 @@ export class SettingsController {
   constructor(private readonly service: SettingsService) {}
 
   @Get('organisation')
-  @Roles('OWNER', 'ADMIN')
+  // MECHANIC — лише читання полів картки наряду (рішення власника 2026-10-16, employee.md):
+  // ПДВ, валюта, мова, перерахунок годин і синхронізація запису календаря.
+  @Roles('OWNER', 'ADMIN', 'MECHANIC')
   @ApiOperation({ summary: 'Налаштування організації' })
-  @ApiResponse({ status: 200, type: OrganisationSettingsResponseDto })
-  getOrganisation(@OrgContext() orgId: string) {
+  @ApiResponse({
+    status: 200,
+    type: OrganisationSettingsResponseDto,
+    description: 'MECHANIC отримує лише поля картки наряду (OrganisationCardSettingsDto)',
+  })
+  getOrganisation(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<OrganisationSettingsResponseDto | OrganisationCardSettingsDto> {
+    if (user.role === 'MECHANIC') return this.service.getOrganisationCardSettings(orgId);
     return this.service.getOrganisationSettings(orgId);
   }
 
@@ -194,7 +206,8 @@ export class SettingsController {
   // pre-edit copy for up to 5 minutes after a save (Bug #299 class; brands - owner report 2026-10-12).
   // The server-side Redis cache, invalidated on every write, keeps the response fast.
   @Header('Cache-Control', 'private, no-cache')
-  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  // MECHANIC — ставка ПДВ картки наряду (рішення власника 2026-10-16); список без чутливих полів.
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'MECHANIC')
   @ApiOperation({ summary: 'Список ставок ПДВ' })
   getTaxRates(@OrgContext() orgId: string) {
     return this.service.getTaxRates(orgId);

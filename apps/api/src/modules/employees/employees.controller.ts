@@ -13,6 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -45,12 +46,26 @@ export class EmployeesController {
 
   @Get()
   // ACCOUNTANT: пікер працівника в модалці рознесення виплати зарплати (BR-BANK-030).
+  // MECHANIC: довідник механіків картки наряду (рішення власника 2026-10-16, employee.md).
   // Список не віддає rateScheme, тож розширення не відкриває ставок.
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Список співробітників' })
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT', 'MECHANIC')
+  @ApiOperation({
+    summary: 'Список співробітників',
+    description: 'MECHANIC отримує лише механіків, без видалених — незалежно від `role`',
+  })
   @ApiResponse({ status: 200, type: [EmployeeResponseDto] })
-  findAll(@OrgContext() orgId: string, @Query() query: EmployeesQueryDto) {
-    return this.service.findAll(orgId, query);
+  findAll(
+    @OrgContext() orgId: string,
+    @Query() query: EmployeesQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    // Механік читає лише довідник механіків (`?role=MECHANIC` картки наряду): інший `role` чи
+    // `showDeleted` не розширюють йому список на власника, бухгалтера чи звільнених.
+    const scoped: EmployeesQueryDto =
+      user.role === 'MECHANIC'
+        ? { ...query, role: UserRole.MECHANIC, showDeleted: undefined }
+        : query;
+    return this.service.findAll(orgId, scoped);
   }
 
   @Get(':id')

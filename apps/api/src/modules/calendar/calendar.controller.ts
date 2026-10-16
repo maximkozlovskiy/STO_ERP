@@ -20,6 +20,7 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { CalendarService } from './calendar.service';
+import { CALENDAR_WRITE_ROLES } from './calendar-mechanic';
 import {
   CreateCalendarSlotDto,
   UpdateCalendarSlotDto,
@@ -66,7 +67,7 @@ export class CalendarController {
   }
 
   @Post()
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @Roles(...CALENDAR_WRITE_ROLES)
   @ApiOperation({
     summary: 'Створити слот (повертає 1 або 2 слоти якщо виходить за межі робочого дня)',
   })
@@ -78,7 +79,7 @@ export class CalendarController {
   }
 
   @Patch('by-work-order/:workOrderId')
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @Roles(...CALENDAR_WRITE_ROLES)
   @ApiOperation({ summary: 'Синхронізувати всі слоти наряду з новими датами' })
   @ApiResponse({ status: 200, type: SyncWorkOrderSlotsResponseDto })
   syncWorkOrderSlots(
@@ -90,7 +91,7 @@ export class CalendarController {
   }
 
   @Patch(':id')
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @Roles(...CALENDAR_WRITE_ROLES)
   @ApiOperation({ summary: 'Оновити слот (час, підйомник, наряд)' })
   updateSlot(
     @OrgContext() orgId: string,
@@ -101,7 +102,7 @@ export class CalendarController {
   }
 
   @Delete(':id')
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @Roles(...CALENDAR_WRITE_ROLES)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити слот' })
   removeSlot(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {

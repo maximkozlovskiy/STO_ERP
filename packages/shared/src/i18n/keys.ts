@@ -642,6 +642,7 @@ export const VALIDATION_KEYS = [
   'err.calendar.invalidDateFormatExpected',
   'err.calendar.endBeforeStart',
   'err.calendar.employeeNotOnLift',
+  'err.calendar.syncRoleForbidden',
   'err.calendar.employeeNotFound',
   'err.calendar.workOrderNotFound',
   'err.calendar.clientNotFound',

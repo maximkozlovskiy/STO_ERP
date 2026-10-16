@@ -15,6 +15,8 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { SyncService } from './sync.service';
 
 class SyncRecordDto {
@@ -64,7 +66,7 @@ export class SyncController {
   @Post('push')
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Push local changes to server' })
-  push(@OrgContext() orgId: string, @Body() dto: PushDto) {
-    return this.service.push(orgId, dto.records);
+  push(@OrgContext() orgId: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: PushDto) {
+    return this.service.push(orgId, dto.records, user.role);
   }
 }
