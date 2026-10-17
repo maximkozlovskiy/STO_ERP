@@ -18,6 +18,7 @@ grep -rn "@Get\|@Post\|@Patch\|@Delete" apps/api/src/modules/ --include="*.contr
 - [ ] Кожен `@Controller` має `@UseGuards(JwtAuthGuard, RolesGuard)` або явний `@Public()`
 - [ ] `@Roles(...)` на кожному методі — без `@Roles` RolesGuard пропускає всіх авторизованих (включно з MECHANIC до cost даних!)
 - [ ] `costPrice`, `purchasePrice`, `salePrice`, `priceHistory`, `margin` → тільки `OWNER/ADMIN/STOREKEEPER/ACCOUNTANT`
+- [ ] **Закупівельна ціна під ІНШОЮ назвою (`expectedPrice`, `unitCost`, `lastPurchasePrice`) у відповіді ендпоінта, відкритого RECEPTIONIST чи MECHANIC → маскування, як `Good.purchasePrice`** (`maskItemCost` у purchase-lists). Перевірка «costPrice тільки для …» ловить знайомі імена, а нове поле нової сутності проходить повз. Grep: `git diff <base> -- apps/api/src | grep -nE "^\+.*(expected|purchase|unit|last)[A-Za-z]*(Price|Cost)\b"` → для кожного поля в `*ResponseDto` звірити `@Roles` ендпоінтів, що його віддають (`journal/security.md`, 2026-10-18)
 - [ ] `/setup/init` → перевіряє `isAlreadyInitialized()` (anti-replay)
 - [ ] `@CurrentUser()` повертає `{ sub, orgId, role }` — не `any`; у контролерах `user.id`, не `user.sub` (jwt.strategy.ts повертає `{ id, orgId, role }`)
 - [ ] Restore-endpoint (`POST :id/restore`) → ролі ІДЕНТИЧНІ delete-endpoint (асиметрія = роль «undo»-ить видалення, яке сама не мала права зробити)

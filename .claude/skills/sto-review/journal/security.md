@@ -159,3 +159,15 @@
 **Фікс:** у кеш — лише поля звуженої форми (`executorCacheRows` у `lib/work-order-mechanics.ts`),
 тест на відсутність зайвих полів. Очищення `cache:*` при виході — окреме рішення власника.
 **Severity:** IMPORTANT
+
+### 2026-10-18 — Закупівельна ціна нової сутності під іншою назвою — §2.1
+
+**Сигнал:** списки купівлі віддавали `expectedPrice` (очікувана закупівельна ціна позиції) у
+`GET /purchase-list-items`, `GET /purchase-lists/:id`, `POST /purchase-lists/from-work-order`
+(RECEPTIONIST) і `GET /purchase-list-items/by-work-order/:id` (MECHANIC), хоча `Good.purchasePrice`
+цим ролям маскується (goods.service `PURCHASE_PRICE_VISIBLE_ROLES`). Чекліст §2.1 перелічував
+знайомі імена (`costPrice`, `purchasePrice`) — нове поле під іншою назвою пройшло.
+**Grep:** `git diff <base> -- apps/api/src | grep -nE "^\+.*(expected|purchase|unit|last)[A-Za-z]*(Price|Cost)\b"`
+→ для кожного поля відповіді звірити ролі ендпоінтів.
+**Фікс:** `maskItemCost(items, role)` у мапері (fail-closed: невідома роль → `null`), роль із
+`@CurrentUser()` у сервіс. **Severity:** IMPORTANT
