@@ -205,6 +205,31 @@ describe('BR-PL-012 остача після повного приймання', 
   });
 
   // guards: BR-PL-012
+  it('замовлення закрите переходом «Отримано» з недостачею → остача в OPEN, як при прийманні (Bug #885)', async () => {
+    const h = harness(
+      'PARTIAL',
+      [line('l1', GOOD, 5, 1)],
+      [
+        itemRow('i1', ordered({ quantity: 2, receivedQty: 1, reservedQty: 1 })),
+        itemRow('i2', ordered({ quantity: 3 })),
+      ],
+    );
+
+    await h.purchaseOrders.transition(ORG, PO, 'RECEIVED' as never);
+
+    // Без цього позиції лишались ORDERED на закритому замовленні, а їхнє недоотримане нестача
+    // рахувала покриттям — наряди переставали показувати, що товару бракує.
+    expect(h.tables.purchaseOrder.rows[0].status).toBe('RECEIVED');
+    expect(h.item('i1')).toMatchObject({ status: 'RECEIVED', quantity: 1, receivedQty: 1 });
+    expect(h.item('i2')).toMatchObject({ status: 'OPEN', purchaseOrderId: null });
+    const rest = h.liveItems().filter(i => !['i1', 'i2'].includes(i.id as string));
+    expect(rest).toEqual([
+      expect.objectContaining({ status: 'OPEN', quantity: 1, purchaseOrderId: null }),
+    ]);
+    expect(h.liveItems().filter(i => i.status === 'ORDERED')).toEqual([]);
+  });
+
+  // guards: BR-PL-012
   it('часткове приймання (PARTIAL) позицій не розділяє', async () => {
     const h = harness('ORDERED', [line('l1', GOOD, 4)], [itemRow('i1', ordered({ quantity: 4 }))]);
 

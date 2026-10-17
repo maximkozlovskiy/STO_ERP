@@ -668,6 +668,13 @@ export class PurchaseOrdersService {
         if (newStatus === PurchaseOrderStatus.CANCELLED) {
           await this.purchaseLists.onOrderCancelledOrDeleted(tx, orgId, id);
         }
+        // BR-PL-012 (Bug #885): замовлення закрито кнопкою «Отримано» (постачальник більше не
+        // привезе) — остача позицій повертається в OPEN так само, як при повному прийманні.
+        // Інакше позиції лишались ORDERED на закритому замовленні, а нестача рахувала їхнє
+        // недоотримане покриттям.
+        if (newStatus === PurchaseOrderStatus.RECEIVED) {
+          await this.purchaseLists.onOrderFullyReceived(tx, orgId, id);
+        }
         await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
