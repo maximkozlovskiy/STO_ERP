@@ -126,9 +126,25 @@ BR-PL-009/010/012/013) і `PurchaseListReceiptService` (розподіл отр�
 
 ## UI (Web)
 
+**Маршрути UI:** `/purchase-orders`, `/work-orders`
+
 Вкладка «Управління купівлями» на сторінці «Купівля» (`app/(app)/purchase-orders/page.tsx`,
-`?tab=procurement`) — види «Нестача», «Позиції», «Списки»; у картці наряду — дія «До списку купівлі»
-й стан позиції біля кожного товару. Файли — заповнює виконавець.
+`?tab=procurement`; приймальня бачить лише її — `PurchaseProcurementPage`, BR-PL-015):
+
+- `purchase-orders/ProcurementTab.tsx` — види `?view=shortage|items|lists`; `?list=<id>` відкриває
+  картку списку (deep link `nav.toPurchaseList` з пов'язаних документів наряду й замовлення);
+- `purchase-orders/procurement/ShortageView.tsx` — нестача (BR-PL-014) → «До списку купівлі»;
+- `purchase-orders/procurement/ItemsView.tsx` — позиції з фільтрами (статус, постачальник / «без
+  постачальника», склад, список, пошук) і масовими діями: постачальник і ціна, перенесення,
+  «Створити замовлення», скасування; у рядку — «Розділити», «Зняти резерв»;
+- `purchase-orders/procurement/ListsView.tsx` — списки, новий, «Обʼєднати»; картка списку:
+  «Винести в новий список», ручна позиція, «Створити замовлення», закрити / скасувати / видалити.
+
+Картка наряду (`components/ui/CreateWorkOrderModal.tsx` → `work-order/PartsTable.tsx`; сторінка
+`/work-orders/[id]` → `WorkOrderPartsSection.tsx`): бейдж стану біля залишку збереженого рядка
+(`purchase-list/ProcurementBadge.tsx`) і «До списку купівлі» (`purchase-list/WorkOrderProcurement.tsx`,
+спільний діалог `purchase-list/AddToListDialog.tsx`). Товар і склад збереженого рядка — лише для
+читання. Хук — `hooks/api/usePurchaseLists.ts`; кеш після дій — `invalidateProcurementSideEffects`.
 
 ---
 
@@ -142,16 +158,27 @@ cd apps/api && npx vitest run src/modules/purchase-lists/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/purchase-lists/`
 
-| Аспект                                                                         | Тест                                        | Кейсів |
-| ------------------------------------------------------------------------------ | ------------------------------------------- | ------ |
-| HTTP-контракт: ролі (BR-PL-015), zod-тіла                                      | `purchase-lists.contract.spec.ts`           | 25     |
-| надсилання з наряду, нумерація, базові одиниці (BR-PL-001…003)                 | `purchase-lists.from-work-order.spec.ts`    | 11     |
-| ручна позиція, лише OPEN, об'єднання, перенесення й розділення (BR-PL-004…007) | `purchase-lists.merge-split.spec.ts`        | 14     |
-| нестача по нарядах (BR-PL-014)                                                 | `purchase-lists.shortage.spec.ts`           | 4      |
-| вплив змін наряду на позиції (BR-PL-013)                                       | `purchase-lists.work-order-changes.spec.ts` | 6      |
+| Аспект                                                                                       | Тест                                        | Кейсів |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------- | ------ |
+| HTTP-контракт: ролі (BR-PL-015), zod-тіла                                                    | `purchase-lists.contract.spec.ts`           | 26     |
+| надсилання з наряду, нумерація, базові одиниці (BR-PL-001…003)                               | `purchase-lists.from-work-order.spec.ts`    | 11     |
+| ручна позиція, лише OPEN, об'єднання, перенесення й розділення (BR-PL-004…007)               | `purchase-lists.merge-split.spec.ts`        | 14     |
+| нестача по нарядах (BR-PL-014)                                                               | `purchase-lists.shortage.spec.ts`           | 4      |
+| вплив змін наряду на позиції (BR-PL-013)                                                     | `purchase-lists.work-order-changes.spec.ts` | 6      |
+| замовлення зі списку (BR-PL-008, BR-PO-010)                                                  | `purchase-lists.create-orders.spec.ts`      | 5      |
+| розподіл отриманого й резерв (BR-PL-011, BR-PO-009, BR-INVT-018), «Зняти резерв» (BR-PL-016) | `purchase-lists.receive-allocation.spec.ts` | 12     |
+| звірка чернетки, видалення й скасування, остача (BR-PL-009, 010, 012)                        | `purchase-lists.po-lifecycle.spec.ts`       | 6      |
+| звʼязки списку й наряду                                                                      | `purchase-lists.linked-docs.spec.ts`        | 3      |
 
-Разом: **60** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **87** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Спеки — справжні сервіси над таблицями в пам'яті (`purchase-lists.spec-fixture.ts` поверх
 `work-orders/work-order-stock.spec-fixture.ts`: справжній InventoryService, відкат транзакції,
 журнал блокувань нарядів).
+
+Поза модулем: `work-orders/work-order-stock-effects.reservation-lifecycle.spec.ts` (BR-WO-021,
+BR-INVT-018), `xlsx/document-line-import.adapter.spec.ts` і `xlsx/xlsx.service.spec.ts` (імпорт рядків —
+BR-PL-009, BR-WO-021). Web: `purchase-orders/__tests__/PurchaseOrdersPage.procurement-tab.test.tsx`,
+`ProcurementTab.test.tsx`, `components/ui/purchase-list/__tests__/*`,
+`components/ui/__tests__/CreateWorkOrderModal.procurement.test.tsx`,
+`settings/__tests__/NumbersTab.purchase-list.test.tsx`. E2E через браузер — `apps/web/e2e/purchase-lists.spec.ts`.

@@ -236,15 +236,22 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 | `update()` — резолв контракту контрагента                      | `purchase-orders.contract-resolution.spec.ts`                    | 9      |
 | `transition()` — карта `PO_TRANSITIONS`                        | `purchase-orders.fsm.spec.ts`                                    | 15     |
 | `findAll` — `sortBy=paymentDate`, nulls-last                   | `purchase-orders.sort.spec.ts`                                   | 7      |
-| linked-documents — межові випадки                              | `purchase-orders.linked-docs.spec.ts`                            | 5      |
+| linked-documents — межові випадки, списки купівлі замовлення   | `purchase-orders.linked-docs.spec.ts`                            | 6      |
 | `create` — Σ(lines.amount) === totalAmount                     | `purchase-orders.totals.spec.ts`                                 | 1      |
 | швидкий імпорт рядків XLSX: виклик перерахунку                 | `../xlsx/xlsx.po-lines-import-totals.spec.ts`                    | 3      |
-| імпорт рядків: ПДВ рядків і тотали (адаптер)                   | `../xlsx/document-line-import.adapter.spec.ts`                   | 12     |
+| імпорт рядків: ПДВ рядків і тотали, звірка списків (адаптер)   | `../xlsx/document-line-import.adapter.spec.ts`                   | 14     |
 | HTTP-контракт (DTO, статуси, валідація)                        | `purchase-orders.contract.spec.ts`                               | 47     |
 | документ, позначений на видалення, — лише перегляд (BR-WO-012) | `purchase-orders.with-deleted.spec.ts`                           | 11     |
 | Доставка (Нова Пошта)                                          | `delivery/*.spec.ts`, `purchase-orders.delivery.service.spec.ts` | —      |
 
-Спільні DI-провайдери — `purchase-orders.spec-fixture.ts`. Якщо у конструктор
+Правило → тест для BR-PO-009 / BR-PO-010 (списки купівлі, мітки `// guards:`) — у спеках
+`apps/api/src/modules/purchase-lists/`: `purchase-lists.receive-allocation.spec.ts` (RECEIPT з
+`purchaseOrderLineId`, резерв до боргу), `purchase-lists.create-orders.spec.ts` (`createInTx` —
+той самий шлях, що й `create()`), `purchase-lists.po-lifecycle.spec.ts` (звірка чернетки,
+видалення й скасування, остача після RECEIVED); адаптер імпорту — `document-line-import.adapter.spec.ts`.
+
+Спільні DI-провайдери — `purchase-orders.spec-fixture.ts` (`purchaseListProviders()` — заглушки
+хуків списків купівлі й розподілу отриманого). Якщо у конструктор
 `PurchaseOrdersService` додається сервіс, усі спеки впадуть із «Nest can't resolve
 dependencies» — це очікувано (клас Bug #536, #724): падіння видно одразу.
 

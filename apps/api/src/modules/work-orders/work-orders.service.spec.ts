@@ -34,10 +34,7 @@ function makePrismaSpy() {
   return { prisma, findMany, count };
 }
 
-function makeService(
-  prisma: PrismaService,
-  createMovement = vi.fn().mockResolvedValue({ consumed: [], weightedCostPrice: null }),
-): WorkOrdersService {
+function makeService(prisma: PrismaService): WorkOrdersService {
   // findAll only touches `this.prisma`; інші deps null. events — мок з emit (transition-тести
   // double-CHARGE через цей же helper емітять доменні події після коміту).
   // A3: transition() делегує stock-ефекти у WorkOrderStockEffectsService — будуємо РЕАЛЬНИЙ на тому ж
@@ -45,7 +42,9 @@ function makeService(
   // (transition-тести перевіряють делегацію за фактом workOrderPart.findMany).
   const stockEffects = new WorkOrderStockEffectsService(
     prisma,
-    { createMovement } as never,
+    {
+      createMovement: vi.fn().mockResolvedValue({ consumed: [], weightedCostPrice: null }),
+    } as never,
     { createTransaction: vi.fn().mockResolvedValue({}) } as never,
     null as never, // exchangeRates — курсова різниця (BR-PAY-022) тут не задіяна,
     {
@@ -196,18 +195,9 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
     expect(findFirstOrThrow).not.toHaveBeenCalled();
   });
 
-  // WO-C1 / BR-WO-021: кожен вхід у «В роботі» дорезервовує лише бракуюче — повторний вхід з
-  // «Призупинено» резерву не подвоює (net уже покриває потребу).
-  function makeTransitionPrisma(
-    preStatus: string,
-    opts: { partQty?: number; netReserved?: number; onHand?: number } = {},
-  ) {
-    const parts =
-      opts.partQty === undefined
-        ? []
-        : [{ id: 'p1', goodId: 'g1', warehouseId: 'w1', quantity: opts.partQty }];
-    const partsFindMany = vi.fn().mockResolvedValue(parts);
-    const net = opts.netReserved ?? 0;
+  // Дорезервування на «В роботу» (WO-C1, BR-WO-021) стережуть справжні сервіси над таблицями
+  // в пам'яті — work-order-stock-effects.reservation-lifecycle.spec.ts.
+  function makeTransitionPrisma(preStatus: string) {
     const base = {
       id: WO_ID,
       orgId: ORG,
@@ -218,69 +208,23 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
       counterpartyId: 'c',
       totalAmount: 0,
     };
+    const partsFindMany = vi.fn().mockResolvedValue([]);
     const findFirst = vi.fn().mockResolvedValueOnce({ ...base, status: preStatus }); // pre-tx
     const prisma = {
       workOrder: {
         findFirst,
-        // CAS flip preStatus→IN_PROGRESS успішний.
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-        // фінальний fetch з include після side-effects.
         findFirstOrThrow: vi
           .fn()
           .mockResolvedValue({ ...base, status: 'IN_PROGRESS', vehicle: null, counterparty: null }),
       },
       workOrderPart: { findMany: partsFindMany },
-      stockMovement: {
-        findMany: vi
-          .fn()
-          .mockResolvedValue(net > 0 ? [{ goodId: 'g1', warehouseId: 'w1', quantity: net }] : []),
-      },
-      stockItem: {
-        findFirst: vi.fn().mockResolvedValue({ quantity: opts.onHand ?? 0, reserved: net }),
-      },
+      // Скасування знімає net-резерв наряду за картою рухів (BR-WO-021) — тут резерву немає.
+      stockMovement: { findMany: vi.fn().mockResolvedValue([]) },
       $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
     } as unknown as PrismaService;
     return { prisma, partsFindMany };
   }
-
-  const reservations = (createMovement: ReturnType<typeof vi.fn>) =>
-    createMovement.mock.calls
-      .map(c => c[1] as { type: string; quantity: number })
-      .filter(m => m.type === 'RESERVATION')
-      .map(m => m.quantity);
-
-  // guards: BR-WO-021
-  it('WO-C1: APPROVED→IN_PROGRESS резервує потребу (3 із 10 вільних)', async () => {
-    const { prisma } = makeTransitionPrisma('APPROVED', { partQty: 3, onHand: 10 });
-    const createMovement = vi.fn().mockResolvedValue({ consumed: [], weightedCostPrice: null });
-    await makeService(prisma, createMovement).transition(ORG, WO_ID, 'IN_PROGRESS' as never);
-    expect(reservations(createMovement)).toEqual([3]);
-  });
-
-  // guards: BR-WO-021
-  it('WO-C1: ON_HOLD→IN_PROGRESS з net-резервом, що покриває потребу, — другого RESERVATION немає', async () => {
-    // Свідома зміна 2026-10-17: раніше ON_HOLD→IN_PROGRESS не викликав reserveParts зовсім; тепер
-    // викликає (дорезервування бракуючого), а подвоєння не дає net-резерв наряду.
-    const { prisma, partsFindMany } = makeTransitionPrisma('ON_HOLD', {
-      partQty: 3,
-      netReserved: 3,
-      onHand: 10,
-    });
-    const createMovement = vi.fn().mockResolvedValue({ consumed: [], weightedCostPrice: null });
-    await makeService(prisma, createMovement).transition(ORG, WO_ID, 'IN_PROGRESS' as never);
-    expect(partsFindMany).toHaveBeenCalled();
-    expect(reservations(createMovement)).toEqual([]);
-  });
-
-  // guards: BR-WO-021
-  it('BR-WO-021: нестача не блокує «В роботу» — резервується наявне (2 із потрібних 5)', async () => {
-    const { prisma } = makeTransitionPrisma('APPROVED', { partQty: 5, onHand: 2 });
-    const createMovement = vi.fn().mockResolvedValue({ consumed: [], weightedCostPrice: null });
-    await expect(
-      makeService(prisma, createMovement).transition(ORG, WO_ID, 'IN_PROGRESS' as never),
-    ).resolves.toBeDefined();
-    expect(reservations(createMovement)).toEqual([2]);
-  });
 
   // guards: BR-WO-006
   it('Bug #795: →CANCELLED скасовує чернетки актів цього наряду в тій самій транзакції', async () => {
