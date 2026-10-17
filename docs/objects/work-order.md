@@ -275,7 +275,7 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | share public                                                                                                                                                                                                         | `work-orders.share-public.spec.ts`                       | 14     |
 | зведення по табличних частинах і виконавці                                                                                                                                                                           | `../lines-summary/lines-summary.service.spec.ts`         | 19     |
 
-Разом: **367** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **380** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для BR-WO-007 — сума наряду з ПДВ:
 
