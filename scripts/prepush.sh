@@ -21,7 +21,29 @@ V="bash scripts/verdict.sh"
 # Windows Git Bash має `python`, Linux/CI — часто лише `python3`.
 PY=python; command -v python >/dev/null 2>&1 || PY=python3
 fail=0
-step() { # step "<назва>" <команда…> — вердикт дає exit code І текст виводу (verdict.sh --cmd)
+
+# Незалежні кроки йдуть ПАРАЛЕЛЬНО у фоні: кожен пише свій вивід і код у власні файли,
+# після `wait` усе друкується в порядку запуску, а `fail` зводиться з кодів — вивід
+# стабільний, хоч кроки й закінчуються в довільному порядку.
+OUT_DIR="$(mktemp -d)"; trap 'rm -rf "$OUT_DIR"' EXIT
+n_bg=0
+bg() { # bg "<назва>" <команда…> — вердикт дає exit code І текст виводу (verdict.sh --cmd)
+  n_bg=$((n_bg + 1))
+  local id; id=$(printf '%02d' "$n_bg")
+  ( $V --cmd "$1" -- "${@:2}" > "$OUT_DIR/$id.out" 2>&1; echo $? > "$OUT_DIR/$id.rc" ) &
+}
+collect() { # друкує вивід фонових кроків у порядку запуску й зводить їхні коди у fail
+  wait
+  local f rc
+  for f in "$OUT_DIR"/*.out; do
+    [ -e "$f" ] || continue
+    cat "$f"
+    rc=$(cat "${f%.out}.rc" 2>/dev/null || echo 1)
+    [ "$rc" = 0 ] || fail=1
+    rm -f "$f" "${f%.out}.rc"
+  done
+}
+step() { # step "<назва>" <команда…> — те саме, але на передньому плані
   local name=$1; shift
   if ! $V --cmd "$name" -- "$@"; then fail=1; fi
 }
@@ -29,8 +51,7 @@ step() { # step "<назва>" <команда…> — вердикт дає exi
 # Згенерований Prisma-клієнт старший за схему → tsc локально перевіряє не ті типи, що CI
 # (CI генерує клієнт заново на кожен прогін).
 client_dts=$(cd packages/database && node -e "const p=require('path');process.stdout.write(
-  p.join(p.dirname(require.resolve('@prisma/client')),'..','..','.prisma','client','index.d.ts'))" \
-  2>/dev/null)
+  p.join(p.dirname(require.resolve('@prisma/client')),'..','..','.prisma','client','index.d.ts'))"   2>/dev/null)
 if [ -z "$client_dts" ] || [ ! -f "$client_dts" ]; then
   echo "❌ НЕ ЧИСТО — prisma client: не знайдено згенерований клієнт (pnpm --filter @sto/database exec prisma generate)"
   fail=1
@@ -39,34 +60,37 @@ elif [ -n "$(find packages/database/prisma/schema -name '*.prisma' -newer "$clie
   fail=1
 fi
 
+# type-check і lint — ОДИН виклик turbo, а не два паралельні: обидві задачі мають
+# `dependsOn: ["^build"]`, і два одночасні `turbo run … --force` збирали б `packages/shared`
+# двічі в той самий dist. Один граф збирає залежності раз, а задачі пакетів іде паралельно.
+# --continue: падіння type-check не обриває lint — у звіті видно обидва.
 # --force: CI кешу turbo не має, а локальний кеш не бачить входів поза пакетом (згенерований
 # Prisma-клієнт у node_modules) — «cache hit» тоді повторює старий вердикт.
-step "type-check (api · web · shared · mobile)" pnpm run --silent type-check --force
-step "lint (api · web · mobile)" pnpm run --silent lint --force
-step "circular dependencies" pnpm run --silent cycles
+bg "type-check · lint (api · web · shared · mobile)"   pnpm exec turbo run type-check lint --force --continue --output-logs=errors-only
+bg "circular dependencies" pnpm run --silent cycles
+bg "verdict.sh self-test" bash scripts/verdict.sh --self-test
+bg "stop-hook contract" $PY scripts/hooks/test-check-claims.py
+bg "skill-before-edit hook contract" $PY scripts/hooks/test-require-skill.py
+bg "test selector contract" $PY scripts/test-affected-tests.py
+bg "agent scopes contract" $PY scripts/test-agent-scopes.py
+bg "schema drift self-test" $PY scripts/check-schema-drift.py --self-test
+bg "skill size" $PY scripts/check-skill-size.py
+bg "doc links" $PY scripts/check-doc-links.py
+# Що бачить `next build` В ОБРАЗІ: файли, виключені .dockerignore, не мають бути потрібні збиранню
+# (2026-10-16 CI docker-build упав на TS2307, хоча локальні tsc були чисті).
+bg "docker context (web)" $PY scripts/check-docker-context.py
+collect
 
 if [ "${1:-}" = "--tests" ]; then
+  # Після фонових кроків, а не разом із ними: unit-набори й turbo ділили б ті самі ядра.
   # Оточення як у job `quality`: БД і Redis там НЕМАЄ, тож integration-специ йдуть у skip (без
   # REQUIRE_DB) — локально вони інакше ходили б у dev-базу, писали б у неї й могли б падати на
   # її даних. Склад кейсів у звіті від цього не змінюється. --coverage — це крок
   # «Coverage thresholds (api)» в одному прогоні з unit-тестами, а не окремим.
-  (cd apps/api && DATABASE_URL=postgresql://sto:sto@127.0.0.1:1/sto_erp \
-    REDIS_URL=redis://127.0.0.1:1 npx vitest run --coverage --reporter=default \
-    --reporter=json --outputFile.json=.vitest-report.json) 2>&1 | $V "api unit + coverage" || fail=1
+  (cd apps/api && DATABASE_URL=postgresql://sto:sto@127.0.0.1:1/sto_erp     REDIS_URL=redis://127.0.0.1:1 npx vitest run --coverage --reporter=default     --reporter=json --outputFile.json=.vitest-report.json) 2>&1 | $V "api unit + coverage" || fail=1
   (cd apps/web && npx vitest run) 2>&1 | $V "web unit" || fail=1
   (cd packages/shared && npx vitest run) 2>&1 | $V "shared unit" || fail=1
 fi
-
-step "stop-hook contract" $PY scripts/hooks/test-check-claims.py
-step "skill-before-edit hook contract" $PY scripts/hooks/test-require-skill.py
-step "test selector contract" $PY scripts/test-affected-tests.py
-step "agent scopes contract" $PY scripts/test-agent-scopes.py
-step "schema drift self-test" $PY scripts/check-schema-drift.py --self-test
-step "skill size" $PY scripts/check-skill-size.py
-step "doc links" $PY scripts/check-doc-links.py
-# Що бачить `next build` В ОБРАЗІ: файли, виключені .dockerignore, не мають бути потрібні збиранню
-# (2026-10-16 CI docker-build упав на TS2307, хоча локальні tsc були чисті).
-step "docker context (web)" $PY scripts/check-docker-context.py
 
 report=apps/api/.vitest-report.json
 if [ ! -f "$report" ]; then

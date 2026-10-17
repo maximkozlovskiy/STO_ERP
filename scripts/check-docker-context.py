@@ -79,16 +79,32 @@ def web_exclude_globs(pats):
     return out
 
 
+def tsc_bin():
+    """`tsc` з node_modules/.bin — напряму, без `npx` і shell: npx на кожен виклик шукає пакет
+    і на Windows іде через cmd.exe. Спершу bin пакета web (те, що бачить `npx` у його теці), далі
+    кореня монорепо. На Windows pnpm кладе поруч `tsc.CMD` — запускається тільки він."""
+    name = "tsc.cmd" if os.name == "nt" else "tsc"
+    for base in (WEB, ROOT):
+        p = os.path.join(base, "node_modules", ".bin", name)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
 def program_files():
     pats = load_patterns(open(os.path.join(ROOT, ".dockerignore"), encoding="utf-8").read())
     regexes = [to_regex(p) for p in pats]
     fd, cfg = tempfile.mkstemp(prefix="tsconfig.docker-", suffix=".json", dir=WEB)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump({"extends": "./tsconfig.json", "exclude": web_exclude_globs(pats)}, f)
+    tsc = tsc_bin()
+    if not tsc:
+        os.remove(cfg)
+        return [], regexes, 1, "не знайдено node_modules/.bin/tsc — pnpm install"
     try:
         r = subprocess.run(
-            "npx tsc --listFilesOnly -p " + os.path.basename(cfg),
-            cwd=WEB, shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            [tsc, "--listFilesOnly", "-p", os.path.basename(cfg)],
+            cwd=WEB, capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
     finally:
         os.remove(cfg)

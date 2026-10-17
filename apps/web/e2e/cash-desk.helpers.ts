@@ -1,52 +1,13 @@
 import { expect, type Locator, type Page } from '@playwright/test';
-import { API } from './api-url';
+import { apiCall } from './api-helpers';
 
 /**
  * Спільні помічники сценаріїв «каса як місце готівкових оплат»: сторінок оплат клієнтів і
  * постачальників більше немає, оплату вносять у касі (картка операції з контрагентом).
  */
 
-export { API };
-
-export async function getToken(page: Page): Promise<string> {
-  const token = await page.evaluate(
-    () =>
-      sessionStorage.getItem('sto_access_token') ?? localStorage.getItem('sto_e2e_access_token'),
-  );
-  expect(token, 'access token має бути у storage').toBeTruthy();
-  return token as string;
-}
-
-/** Запит до API від імені користувача сторінки. Тіло відповіді — JSON або null. */
-export async function apiCall<T = unknown>(
-  page: Page,
-  token: string,
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<{ status: number; body: T }> {
-  return page.evaluate(
-    async ({ token, API, method, path, body }) => {
-      const r = await fetch(`${API}${path}`, {
-        method,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-        },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-      });
-      const text = await r.text();
-      let parsed: unknown = null;
-      try {
-        parsed = text ? JSON.parse(text) : null;
-      } catch {
-        parsed = text;
-      }
-      return { status: r.status, body: parsed as never };
-    },
-    { token, API, method, path, body },
-  );
-}
+// Запит до API і токен — у спільному модулі (повтор на 429); реекспорт для наявних спеків.
+export { API, apiCall, getToken } from './api-helpers';
 
 /** Контрагент-юрособа з передбачуваною назвою (за нею його знаходить пікер картки). */
 export async function createCounterparty(

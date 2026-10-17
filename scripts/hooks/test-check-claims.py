@@ -65,6 +65,12 @@ MSG_CASES = [
     (BLOCK, "Правило «блок завершено» описано; блок завершено, усе запушено.", {}),
     # вкладені ялинки: уся фраза — цитата прикладу → пропуск
     (PASS, "Приклад: «правило «блок завершено» описано; блок завершено, усе запушено» блокується.", {}),
+    # цитати знімаються один раз для ВСІХ перевірок: цифра чи пропорція в лапках — теж цитата
+    (PASS, "Аудитор зачепився за рядок «Tests 340 passed, 0 помилок» з чужого логу.", {}),
+    (PASS, "Форма підсумку `7/7` описана в правилі hook'а, а не виміряна.", {}),
+    (PASS, 'Шаблон "309/5/12 тестів" — приклад із журналу, не вимір.', {}),
+    (BLOCK, "Прогін дав 340 тестів, «як і очікувалось».", {}),
+    (BLOCK, "Матриця «A» пройшла 7/7, «B» ще ні.", {}),
     # антицикл
     (PASS, "Усе чисто — 0 помилок, 3118 тестів.", {"stop_hook_active": True}),
 ]
@@ -118,8 +124,41 @@ def main():
     proof = base + [{"type": "assistant", "message": {"content": [
         {"type": "tool_use", "name": "Bash",
          "input": {"command": "bash scripts/verdict.sh --file /tmp/x.log"}}]}}]
+    # Звіт субагента (hand-back) — у формі з реального транскрипту сесії 771d064f
+    # (2026-10-17): запис `user` (isMeta, origin.kind=peer, текст рядком) і ще один —
+    # `api-request-blob` з message.role=user і text-блоками. Його текст — не моя відповідь.
+    report = "Усе чисто — 3118/3118 тестів, 0 помилок. Блок завершено."
+    agent_msg = "\n".join([
+        "Another Claude session sent a message:",
+        '<agent-message from="a528a646b609a4911">',
+        "[Subagent hand-back] The text below is the final report of a subagent.",
+        "",
+        report,
+        "</agent-message>",
+    ])
+    handback = [
+        {"type": "user", "message": {"content": [{"type": "text", "text": "зроби рев'ю"}]}},
+        {"type": "assistant", "isSidechain": False, "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "name": "Agent", "input": {"prompt": "рев'ю"}}]}},
+        {"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "content": "Async agent launched successfully"}]}},
+        {"type": "user", "isMeta": True, "isSidechain": False,
+         "origin": {"kind": "peer", "from": "a528a646b609a4911", "handback": True,
+                    "handbackReportText": report},
+         "message": {"role": "user", "content": agent_msg}},
+        {"type": "api-request-blob", "message": {"role": "user", "content": [
+            {"type": "text",
+             "text": "<system-reminder>\n[SYSTEM NOTIFICATION - NOT USER INPUT]\n</system-reminder>"},
+            {"type": "text", "text": agent_msg}]}},
+    ]
+    mine_ok = {"type": "assistant", "isSidechain": False, "message": {"role": "assistant",
+               "content": [{"type": "text", "text": "Рецензент повернув звіт, зводжу знахідки."}]}}
+    mine_claim = {"type": "assistant", "isSidechain": False, "message": {"role": "assistant",
+                  "content": [{"type": "text", "text": "За звітом усе чисто, 0 помилок."}]}}
     for name, recs, want in (("транскрипт без доказу", base, BLOCK),
-                             ("транскрипт із доказом", proof, PASS)):
+                             ("транскрипт із доказом", proof, PASS),
+                             ("звіт субагента — не моя відповідь", handback + [mine_ok], PASS),
+                             ("після звіту субагента моє твердження", handback + [mine_claim], BLOCK)):
         fp = os.path.join(d, name.replace(" ", "_") + ".jsonl")
         with io.open(fp, "w", encoding="utf-8", newline="\n") as f:
             for r in recs:
@@ -134,7 +173,7 @@ def main():
     # «НЕ РОЗПІЗНАНО» (і має рацію: невідоме ≠ чисто). Власний формат вердикту
     # означав би, що результат цього тесту не можна перевірити інструментом,
     # тобто він випав би з того самого правила, яке hook і стереже.
-    total = len(MSG_CASES) + 3
+    total = len(MSG_CASES) + 5
     print()
     if bad:
         print("%d failed | %d passed (%d)" % (len(bad), total - len(bad), total))

@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { apiCall as rawApiCall, createCounterparty, getToken } from './cash-desk.helpers';
+import { apiCall, getToken } from './api-helpers';
+import { createCounterparty } from './cash-desk.helpers';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -46,26 +47,6 @@ const kyivHHMM = (iso: string) =>
     minute: '2-digit',
     hour12: false,
   }).format(new Date(iso));
-
-/**
- * Запит до API з повтором на 429. Ліміт API — 200 запитів/хв на IP, а вид «Місяць» робить
- * 32 запити за завантаження: поряд з іншими спеками ліміт вичерпується, і без повтору
- * прибирання в `afterAll` мовчки не видаляло запис — наступний прогін падав на «Підйомник
- * вже зайнятий».
- */
-async function apiCall<T = unknown>(
-  page: Page,
-  token: string,
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<{ status: number; body: T }> {
-  for (let attempt = 0; ; attempt++) {
-    const res = await rawApiCall<T>(page, token, method, path, body);
-    if (res.status !== 429 || attempt >= 12) return res;
-    await page.waitForTimeout(5_000);
-  }
-}
 
 interface SlotDto {
   id: string;

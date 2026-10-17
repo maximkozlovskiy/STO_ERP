@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { API } from './api-url';
+import { apiCall, apiRequest, getToken } from './api-helpers';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -50,48 +50,9 @@ const kyivHHMM = (iso: string) =>
     hour12: false,
   }).format(new Date(iso));
 
-async function getToken(page: Page): Promise<string> {
-  const token = await page.evaluate(
-    () =>
-      sessionStorage.getItem('sto_access_token') ?? localStorage.getItem('sto_e2e_access_token'),
-  );
-  expect(token, 'access token має бути у storage').toBeTruthy();
-  return token as string;
-}
-
-/** Запит до API від імені користувача сторінки; повтор на 429 (ліміт 200 запитів/хв). */
-async function apiCall<T = unknown>(
-  page: Page,
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<{ status: number; body: T }> {
-  const token = state.token ?? (await getToken(page));
-  for (let attempt = 0; ; attempt++) {
-    const res = await page.evaluate(
-      async ({ token, API, method, path, body }) => {
-        const r = await fetch(`${API}${path}`, {
-          method,
-          headers: {
-            Authorization: `Bearer ${token}`,
-            ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-          },
-          ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-        });
-        const text = await r.text();
-        let parsed: unknown = null;
-        try {
-          parsed = text ? JSON.parse(text) : null;
-        } catch {
-          parsed = text;
-        }
-        return { status: r.status, body: parsed as never };
-      },
-      { token, API, method, path, body },
-    );
-    if (res.status !== 429 || attempt >= 12) return res as { status: number; body: T };
-    await page.waitForTimeout(5_000);
-  }
+/** Запит до API від імені користувача сторінки (токен — збережений першим тестом). */
+async function api<T = unknown>(page: Page, method: string, path: string, body?: unknown) {
+  return apiCall<T>(page, state.token ?? (await getToken(page)), method, path, body);
 }
 
 interface SlotDto {
@@ -118,7 +79,7 @@ const state: {
 } = {};
 
 async function woSlots(page: Page, woId: string): Promise<SlotDto[]> {
-  const res = await apiCall<SlotDto[]>(page, 'GET', `/calendar/slots?date=${targetDate()}`);
+  const res = await api<SlotDto[]>(page, 'GET', `/calendar/slots?date=${targetDate()}`);
   expect(res.status).toBe(200);
   return res.body.filter(s => s.workOrderId === woId);
 }
@@ -169,34 +130,34 @@ async function dayView(page: Page) {
 }
 
 test.describe('Наряд у календарі — BR-WO-019 / BR-WO-020', () => {
-  test.afterAll(async ({ browser }) => {
-    if (!state.token) return;
-    const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
-    const page = await ctx.newPage();
-    await page.goto('/work-orders');
+  // Прибирання — запитами з Node (фікстура `request`) токеном першого тесту: сторінка й
+  // завантаження `/work-orders` для цього не потрібні.
+  test.afterAll(async ({ request }) => {
+    const token = state.token;
+    if (!token) return;
     // Наряди (DRAFT) — разом із записами календаря (BR-WO-017); далі авто → гараж → клієнт.
     for (const id of [state.woId, state.wo2Id]) {
       if (!id) continue;
-      const res = await apiCall(page, 'DELETE', `/work-orders/${id}`);
+      const res = await apiRequest(request, token, 'DELETE', `/work-orders/${id}`);
       expect.soft([200, 204, 404], `DELETE наряду ${id}`).toContain(res.status);
     }
     if (state.vehicleId) {
-      const res = await apiCall(page, 'DELETE', `/vehicles/${state.vehicleId}`);
+      const res = await apiRequest(request, token, 'DELETE', `/vehicles/${state.vehicleId}`);
       expect.soft(res.status, 'DELETE авто').toBeLessThan(300);
     }
     if (state.garageId) {
-      const res = await apiCall(
-        page,
+      const res = await apiRequest(
+        request,
+        token,
         'DELETE',
         `/counterparties/${state.cpId}/garages/${state.garageId}`,
       );
       expect.soft(res.status, 'DELETE гаража').toBeLessThan(300);
     }
     if (state.cpId) {
-      const res = await apiCall(page, 'DELETE', `/counterparties/${state.cpId}`);
+      const res = await apiRequest(request, token, 'DELETE', `/counterparties/${state.cpId}`);
       expect.soft(res.status, 'DELETE клієнта').toBeLessThan(300);
     }
-    await ctx.close();
   });
 
   test('наряд із плановими датами й підйомником через інтерфейс → запис у виді «День»', async ({
@@ -210,13 +171,13 @@ test.describe('Наряд у календарі — BR-WO-019 / BR-WO-020', () =
     state.token = await getToken(page);
 
     // ── Передумови через API ─────────────────────────────────────────────
-    const cp = await apiCall<{ id: string }>(page, 'POST', '/counterparties', {
+    const cp = await api<{ id: string }>(page, 'POST', '/counterparties', {
       type: 'CLIENT',
       companyName: CLIENT,
     });
     expect(cp.status).toBe(201);
     state.cpId = cp.body.id;
-    const garage = await apiCall<{ id: string }>(
+    const garage = await api<{ id: string }>(
       page,
       'POST',
       `/counterparties/${state.cpId}/garages`,
@@ -224,7 +185,7 @@ test.describe('Наряд у календарі — BR-WO-019 / BR-WO-020', () =
     );
     expect(garage.status).toBe(201);
     state.garageId = garage.body.id;
-    const vehicle = await apiCall<{ id: string }>(page, 'POST', '/vehicles', {
+    const vehicle = await api<{ id: string }>(page, 'POST', '/vehicles', {
       customerGarageId: garage.body.id,
       make: 'Toyota',
       model: 'Corolla',
@@ -232,7 +193,7 @@ test.describe('Наряд у календарі — BR-WO-019 / BR-WO-020', () =
     });
     expect(vehicle.status).toBe(201);
     state.vehicleId = vehicle.body.id;
-    const lifts = await apiCall<{ id: string; name: string }[]>(page, 'GET', '/lifts');
+    const lifts = await api<{ id: string; name: string }[]>(page, 'GET', '/lifts');
     const own = lifts.body.filter(l => !l.name.startsWith('E2E'));
     const pool = own.length >= 2 ? own : lifts.body;
     expect(pool.length, 'потрібні два підйомники').toBeGreaterThanOrEqual(2);
@@ -291,7 +252,7 @@ test.describe('Наряд у календарі — BR-WO-019 / BR-WO-020', () =
     await woModal.getByRole('button', { name: 'Створити наряд' }).click();
     await expect(woModal).toBeHidden({ timeout: 20_000 });
 
-    const list = await apiCall<{ items: { id: string; number: string }[] }>(
+    const list = await api<{ items: { id: string; number: string }[] }>(
       page,
       'GET',
       `/work-orders?counterpartyId=${state.cpId}&limit=5`,
@@ -400,7 +361,7 @@ test.describe('Наряд у календарі — BR-WO-019 / BR-WO-020', () =
     // Форма запису закривається сама: запис наряду створив сервер.
     await expect(form).toBeHidden({ timeout: 15_000 });
 
-    const list = await apiCall<{ items: { id: string; number: string }[] }>(
+    const list = await api<{ items: { id: string; number: string }[] }>(
       page,
       'GET',
       `/work-orders?counterpartyId=${state.cpId}&limit=5`,

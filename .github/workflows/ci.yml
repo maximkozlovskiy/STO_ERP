@@ -102,6 +102,12 @@ jobs:
       - name: PreToolUse hook contract (skill before Prisma schema edit)
         run: python3 scripts/hooks/test-require-skill.py
 
+      # verdict.sh — єдине джерело «чисто / не чисто» (CLAUDE.md, «Вердикт і цифри»). Self-test на
+      # реальних зразках: Playwright `15 failed` при exit 0, turbo-префікси, eslint/depcruise,
+      # порожній вивід, ~600 КБ виводу без зависання (так висів pre-push 2026-10-16).
+      - name: verdict.sh self-test
+        run: bash scripts/verdict.sh --self-test
+
       - name: Docker context (web build sees no .dockerignore'd file)
         run: |
           python3 scripts/check-docker-context.py --self-test

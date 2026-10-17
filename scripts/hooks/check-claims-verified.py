@@ -20,19 +20,19 @@
 
 ВАЖЛИВО: hook НЕ вирішує, чи твердження правдиве. Він лише питає «чим виміряв».
 """
-import json
 import io
+import json
 import os
 import re
 import sys
 import tempfile
 
+sys.dont_write_bytecode = True  # без __pycache__ у scripts/hooks від імпорту _common
+from _common import content_blocks, iter_transcript, read_stdin_json, setup_stdio  # noqa: E402
+
 NL = chr(10)  # явно, щоб не залежати від escape-послідовностей у генераторах
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+setup_stdio()
 
 # Ті самі патерни, що в audit-claims.py — свідомо, щоб hook і аудитор бачили одне й те саме.
 VERDICT = re.compile(
@@ -46,8 +46,8 @@ NUMBER = re.compile(
 # ГОЛА ПРОПОРЦІЯ без іменника: «7/7», «51/137», «309/5/12». NUMBER її не бачить,
 # бо вимагає слово-одиницю після цифр. А саме на цій формі аудитор зловив мене
 # двічі («51 із 137» при рухомій базі), і нею ж я підсумовую матриці тестів.
-# Пропорція без іменника: «7/7», «51/137», «309/5/12». NUMBER її не бачить, бо
-# вимагає слово-одиницю після цифр, а саме цю форму аудитор зловив двічі.
+# Дату «05/10/2026» відсікає обмеження на 5 цифр у компоненті + заборона ще однієї
+# групи цифр одразу після — рік у знаменнику пропорції тестів не буває.
 RATIO = re.compile(
     r"(?<![\d/.-])"
     r"\d{1,5}\s*/\s*\d{1,5}"
@@ -59,9 +59,6 @@ RATIO = re.compile(
 # коли я ускладнював RATIO, зʼявлявся новий кутовий випадок (рік то з'їдався
 # третім компонентом, то лишався поза матчем).
 DATEISH = re.compile(r"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b")
-# Дата «05/10/2026» теж пропорція за формою, але не твердження. Відсікаємо її
-# обмеженням на 5 цифр у компоненті + забороною ще однієї групи цифр одразу
-# після — рік у знаменнику пропорції тестів не буває, а в даті буває завжди.
 # Доказ: виклик аудитора АБО запуск вимірювальних скриптів у цьому ж ході.
 PROOF_TOOL = re.compile(r"(sto-claims-auditor|verdict\.sh|measure\.sh|count-untyped-routes)", re.I)
 # Підсумок БЛОКУ чи готовність до релізу — тут verdict.sh замало, потрібен саме аудитор
@@ -73,7 +70,9 @@ RELEASE = re.compile(
 )
 AUDITOR = re.compile(r"sto-claims-auditor", re.I)
 # Цитата — не твердження: «блок завершено» в лапках чи бектиках, коли я ОПИСУЮ правило, а не
-# підсумовую блок (рішення власника 2026-10-16 — hook блокував власний опис правила).
+# підсумовую блок (рішення власника 2026-10-16 — hook блокував власний опис правила). Цитати
+# знімаються ОДИН раз з рядка перед усіма перевірками (вердикт, реліз, цифри, пропорції):
+# раніше цифри перевірялись по рядку з цитатами, і «340 passed» у лапках теж блокувало.
 QUOTED = re.compile(r"«[^«»\n]*»|\"[^\"\n]*\"|“[^”\n]*”|`[^`\n]*`")
 
 
@@ -86,39 +85,21 @@ def strip_quotes(s):
     return s
 
 
-def read_stdin_json():
-    """Читає payload ЯК БАЙТИ і декодує UTF-8 явно.
-
-    ПАСТКА (зловлена на живому прогоні). `sys.stdin.read()` декодує консольним
-    кодуванням, а на цій машині воно cp1251. Платформа надсилає UTF-8, тому
-    кирилиця перетворювалась на «РЈСЃРµ С‡РёСЃС‚Рѕ» — JSON лишався валідним
-    (мояибаке теж валідний рядок), ключі читались, але українські регулярки по
-    ньому не матчились. Наслідок: hook тихо пропускав РІВНО ті відповіді, які
-    мав блокувати, і виглядав робочим — exit 0 на вердикті без доказу.
-    Тому читаємо sys.stdin.buffer, не sys.stdin.
-    """
-    try:
-        buf = getattr(sys.stdin, "buffer", None)
-        raw = buf.read().decode("utf-8", "replace") if buf else sys.stdin.read()
-        return json.loads(raw) if raw.strip() else {}
-    except Exception:
-        return {}
-
-
 def last_turn(path):
     """Повертає (текст останнього assistant-блоку, рядок із назвами інструментів ходу).
 
     «Хід» = записи після останнього user-повідомлення. Саме в ньому має бути доказ:
     посилання на перевірку, зроблену три години тому, нічого не підтверджує про
     цифри, названі зараз.
+
+    Текст і інструменти — ЛИШЕ з записів `type: "assistant"` головної сесії. Звіт субагента
+    (hand-back) лежить у транскрипті двічі: записом `type: "user"` (`isMeta`, `origin.kind:
+    "peer"`, текст рядком) і записом `type: "api-request-blob"` з `message.role: "user"` та
+    блоками `{"type": "text"}` — `<system-reminder>…<agent-message …>`. Другий межею ходу не
+    є, а його text-блоки йшли в «мою відповідь»: хук блокував на рядках зі звітів агентів
+    (сесія 771d064f, 2026-10-17: 6 з 76 блокувань — на тексті api-request-blob).
     """
-    recs = []
-    with io.open(path, encoding="utf-8", errors="replace") as f:
-        for line in f:
-            try:
-                recs.append(json.loads(line))
-            except Exception:
-                continue
+    recs = list(iter_transcript(path))
     # межа ходу — останній справжній user-запит
     start = 0
     for i, d in enumerate(recs):
@@ -126,10 +107,9 @@ def last_turn(path):
             start = i
     text_parts, tool_names = [], []
     for d in recs[start:]:
-        content = d.get("message", {}).get("content", [])
-        if not isinstance(content, list):
+        if d.get("type") != "assistant" or d.get("isSidechain"):
             continue
-        for b in content:
+        for b in content_blocks(d):
             if b.get("type") == "text":
                 text_parts.append(b.get("text") or "")
             elif b.get("type") == "tool_use":
@@ -187,54 +167,51 @@ def main():
 
     if not text.strip():
         return 0
-    release = [c.strip(" |-*#`") for c in text.split(NL) if RELEASE.search(strip_quotes(c))]
-    if release and not AUDITOR.search(tools):
+
+    def block(header, lines, tail):
+        """Блокує завершення: маркер антициклу + stderr агенту + exit 2."""
         try:
             if size:
                 io.open(marker, "w", encoding="utf-8").write(size)
         except Exception:
             pass
-        sys.stderr.write(
-            "СТОП: відповідь підсумовує блок або каже про готовність до релізу, але в цьому\n"
-            "ході не запускався sto-claims-auditor (verdict.sh тут замало — CLAUDE.md, п.3):\n"
-            + "".join(f"  • {c[:160]}\n" for c in release[:3])
-            + "\nЗапустіть Agent(subagent_type=\"sto-claims-auditor\") і зведіть звіт за ним,\n"
-            "або приберіть формулювання про завершення, якщо блок ще не закрито.\n"
-        )
+        sys.stderr.write(header + "".join(f"  • {c[:160]}\n" for c in lines) + tail)
         return 2
+
+    # (рядок для звіту, той самий рядок без цитат) — цитати знімаються ОДИН раз, і всі
+    # перевірки нижче йдуть по рядку без них.
+    lines = [(s, strip_quotes(s)) for s in (c.strip(" |-*#`") for c in text.split(NL))]
+
+    release = [s for s, q in lines if RELEASE.search(q)]
+    if release and not AUDITOR.search(tools):
+        return block(
+            "СТОП: відповідь підсумовує блок або каже про готовність до релізу, але в цьому\n"
+            "ході не запускався sto-claims-auditor (verdict.sh тут замало — CLAUDE.md, п.3):\n",
+            release[:3],
+            "\nЗапустіть Agent(subagent_type=\"sto-claims-auditor\") і зведіть звіт за ним,\n"
+            "або приберіть формулювання про завершення, якщо блок ще не закрито.\n",
+        )
     if PROOF_TOOL.search(tools):          # доказ у цьому ж ході — пропускаємо
         return 0
 
-    claims = []
-    for chunk in text.split("\n"):
-        s = chunk.strip(" |-*#`")
-        if not (15 < len(s) < 300):
-            continue
-        ratio_hit = bool(RATIO.search(DATEISH.sub(" ", s)))
-        # вердикт у лапках — цитата (опис правила), не твердження; цифри — як завжди
-        if VERDICT.search(strip_quotes(s)) or NUMBER.search(s) or ratio_hit:
-            claims.append(s)
+    claims = [
+        s for s, q in lines
+        if 15 < len(s) < 300
+        and (VERDICT.search(q) or NUMBER.search(q) or RATIO.search(DATEISH.sub(" ", q)))
+    ]
     if not claims:
         return 0
-
-    try:
-        if size:
-            io.open(marker, "w", encoding="utf-8").write(size)
-    except Exception:
-        pass
-
-    sys.stderr.write(
+    return block(
         "СТОП: у відповіді є вердикт або цифри, але в цьому ході не запускався ні\n"
         "sto-claims-auditor, ні verdict.sh/measure.sh.\n\n"
-        "Твердження, що потребують доказу (перші 5):\n"
-        + "".join(f"  • {c[:160]}\n" for c in claims[:5])
-        + "\nЗробіть ОДНЕ з трьох:\n"
+        "Твердження, що потребують доказу (перші 5):\n",
+        claims[:5],
+        "\nЗробіть ОДНЕ з трьох:\n"
         "  1) Agent(subagent_type=\"sto-claims-auditor\") — якщо це підсумок роботи;\n"
         "  2) прогоніть verdict.sh / measure.sh і назвіть вивід;\n"
         "  3) якщо цифра взята з раніше названого виміру — скажіть ЗВІДКИ саме,\n"
-        "     або прямо напишіть, що вона не перевірена цього ходу.\n"
+        "     або прямо напишіть, що вона не перевірена цього ходу.\n",
     )
-    return 2
 
 
 if __name__ == "__main__":
