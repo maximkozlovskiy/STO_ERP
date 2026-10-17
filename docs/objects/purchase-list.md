@@ -176,6 +176,9 @@ cd apps/api && npx vitest run src/modules/purchase-lists/<файл>.spec.ts
 `work-orders/work-order-stock.spec-fixture.ts`: справжній InventoryService, відкат транзакції,
 журнал блокувань нарядів).
 
+Жива БД: `purchase-lists.receive-vs-cancel.integration.spec.ts` — одночасні приймання (резерв під
+наряд) і скасування наряду: без deadlock, скасований наряд резерву не тримає (BR-PL-011, BR-WO-021).
+
 Поза модулем: `work-orders/work-order-stock-effects.reservation-lifecycle.spec.ts` (BR-WO-021,
 BR-INVT-018), `xlsx/document-line-import.adapter.spec.ts` і `xlsx/xlsx.service.spec.ts` (імпорт рядків —
 BR-PL-009, BR-WO-021). Web: `purchase-orders/__tests__/PurchaseOrdersPage.procurement-tab.test.tsx`,
