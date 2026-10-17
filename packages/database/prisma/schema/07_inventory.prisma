@@ -256,6 +256,7 @@ model PurchaseOrder {
   supplierPayments SupplierPayment[]
   stockDocuments   StockDocument[]
   supplierReturns  SupplierReturn[]
+  purchaseListItems PurchaseListItem[]
 
   @@index([orgId, status, deletedAt, createdAt])
   @@index([orgId, syncVersion])
@@ -292,6 +293,84 @@ model PurchaseOrderLine {
   @@index([purchaseOrderId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("purchase_order_lines")
+}
+
+// Список купівлі (docs/objects/purchase-list.md, BR-PL-*): товари, які треба закупити — з нарядів і вручну.
+// Не документ обліку: залишків і розрахунків не змінює. Із позицій створюються замовлення постачальникам.
+model PurchaseList {
+  id           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String             @db.Uuid
+  number       String
+  name         String?
+  status       PurchaseListStatus @default(OPEN)
+  // Типовий склад для ручних позицій; кожна позиція має власний warehouseId (не обмеження списку).
+  warehouseId  String?            @db.Uuid
+  notes        String?
+  // Список злито в інший (BR-PL-006): статус CLOSED, позиції перенесено в mergedIntoId.
+  mergedIntoId String?            @db.Uuid
+  closedAt     DateTime?
+  syncVersion  BigInt             @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  deletedAt    DateTime?
+
+  warehouse  Warehouse?         @relation(fields: [warehouseId], references: [id])
+  mergedInto PurchaseList?      @relation("PurchaseListMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom PurchaseList[]     @relation("PurchaseListMerge")
+  items      PurchaseListItem[]
+
+  @@index([orgId, status, deletedAt, createdAt])
+  @@index([orgId, deletedAt, createdAt])
+  @@index([orgId, syncVersion])
+  // Ручний partial-unique (orgId, number) WHERE deletedAt IS NULL — міграція 20261017120000.
+  @@map("purchase_lists")
+}
+
+// Позиція списку купівлі. quantity/receivedQty/reservedQty — у БАЗОВИХ одиницях товару (BR-PL-002):
+// з наряду = кількість рядка × коефіцієнт його одиниці. Зв'язок із замовленням — purchaseOrderId + goodId,
+// НЕ id рядка замовлення: рядки чернетки перезаписуються при редагуванні та імпорті XLSX.
+// CHECK quantity > 0, receivedQty >= 0, 0 <= reservedQty <= receivedQty — у міграції 20261017120000.
+model PurchaseListItem {
+  id              String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String                 @db.Uuid
+  listId          String                 @db.Uuid
+  goodId          String                 @db.Uuid
+  warehouseId     String                 @db.Uuid
+  quantity        Float
+  // Скільки з цієї позиції вже отримано від постачальника (розподіл при прийманні, BR-PL-011).
+  receivedQty     Float                  @default(0)
+  // Скільки з отриманого зарезервовано під наряд позиції (рухи RESERVATION з documentType 'WorkOrder').
+  reservedQty     Float                  @default(0)
+  status          PurchaseListItemStatus @default(OPEN)
+  source          PurchaseListItemSource
+  workOrderId     String?                @db.Uuid
+  workOrderPartId String?                @db.Uuid
+  // Постачальник може бути не визначений (чернетка); обов'язковий лише для створення замовлення (BR-PL-008).
+  supplierId      String?                @db.Uuid
+  expectedPrice   Decimal?               @db.Decimal(12, 2)
+  purchaseOrderId String?                @db.Uuid
+  notes           String?
+  syncVersion     BigInt                 @default(0)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  deletedAt       DateTime?
+
+  list          PurchaseList   @relation(fields: [listId], references: [id])
+  good          Good           @relation(fields: [goodId], references: [id])
+  warehouse     Warehouse      @relation(fields: [warehouseId], references: [id])
+  workOrder     WorkOrder?     @relation(fields: [workOrderId], references: [id])
+  workOrderPart WorkOrderPart? @relation(fields: [workOrderPartId], references: [id])
+  supplier      Counterparty?  @relation(fields: [supplierId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+
+  @@index([orgId, listId, deletedAt])
+  @@index([orgId, status, deletedAt, createdAt])
+  @@index([orgId, workOrderId, deletedAt])
+  @@index([orgId, purchaseOrderId, goodId, status])
+  @@index([orgId, goodId, warehouseId, status])
+  @@index([orgId, supplierId, status])
+  @@index([orgId, syncVersion])
+  @@map("purchase_list_items")
 }
 
 model SupplierReturn {

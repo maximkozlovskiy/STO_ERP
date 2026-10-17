@@ -178,6 +178,7 @@ async function main() {
     { documentType: DocumentType.COMPLETION_ACT, prefix: 'АВР' },
     { documentType: DocumentType.COUNTERPARTY_AGREEMENT, prefix: 'ДГ' },
     { documentType: DocumentType.SUPPLIER_PAYMENT, prefix: 'ОПП' },
+    { documentType: DocumentType.PURCHASE_LIST, prefix: 'СК' },
     {
       documentType: DocumentType.GOOD_INTERNAL_CODE,
       prefix: 'T',

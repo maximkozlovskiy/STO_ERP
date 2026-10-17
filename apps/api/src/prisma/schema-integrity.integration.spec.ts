@@ -65,6 +65,10 @@ const REQUIRED_NAMED_INDEXES: { name: string; why: string }[] = [
     why: 'унікальність № замовлення серед активних',
   },
   {
+    name: 'purchase_lists_orgId_number_active_uq',
+    why: 'унікальність № списку купівлі серед активних (BR-PL-001)',
+  },
+  {
     name: 'stock_documents_orgId_number_active_uq',
     why: 'унікальність № складського док. серед активних',
   },
@@ -196,6 +200,21 @@ describe('Schema integrity — manual-SQL конструкти живі у БД 
       c => !present.has(c),
     );
     expect(missing, "Втрачено CHECK-констрейнти — можливі від'ємні залишки").toEqual([]);
+  });
+
+  it('CHECK-констрейнти кількостей позиції списку купівлі живі (BR-PL-002, BR-PL-011)', async () => {
+    if (!dbAvailable) return;
+    const expected = [
+      'purchase_list_items_quantity_positive_chk',
+      'purchase_list_items_received_nonneg_chk',
+      'purchase_list_items_reserved_range_chk',
+    ];
+    const rows = await raw.$queryRawUnsafe<{ conname: string }[]>(
+      `SELECT conname FROM pg_constraint WHERE contype = 'c' AND conname = ANY($1::text[])`,
+      expected,
+    );
+    const present = new Set(rows.map(r => r.conname));
+    expect(expected.filter(c => !present.has(c))).toEqual([]);
   });
 
   it('append-only immutability тригери живі (ledger — фізична незмінність)', async () => {

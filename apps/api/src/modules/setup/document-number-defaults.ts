@@ -38,4 +38,6 @@ export const DOCUMENT_NUMBER_DEFAULTS: Record<DocumentType, DocumentNumberDefaul
   // Внутрішній код товару — наскрізний лічильник без дати (як у міграції 20260619140001).
   GOOD_INTERNAL_CODE: { prefix: 'T', includeDate: false, resetPeriod: 'NEVER' },
   SUPPLIER_PAYMENT: { prefix: 'ОПП', resetPeriod: 'YEARLY' },
+  // Список купівлі (BR-PL-001); backfill наявних організацій — міграція 20261017120001.
+  PURCHASE_LIST: { prefix: 'СК', resetPeriod: 'YEARLY' },
 };

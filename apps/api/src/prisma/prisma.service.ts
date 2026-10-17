@@ -37,6 +37,8 @@ const SYNC_VERSION_MODELS = new Set([
   'StockItem',
   'PurchaseOrder',
   'PurchaseOrderLine',
+  'PurchaseList',
+  'PurchaseListItem',
   'StockDocument',
   'StockDocumentLine',
   'Invoice',

@@ -195,6 +195,8 @@ model Warehouse {
   workOrderParts       WorkOrderPart[]
   purchaseOrders       PurchaseOrder[]
   supplierReturns      SupplierReturn[]
+  purchaseLists        PurchaseList[]
+  purchaseListItems    PurchaseListItem[]
   stockDocumentsSource StockDocument[]  @relation("SourceWarehouse")
   stockDocumentsTarget StockDocument[]  @relation("TargetWarehouse")
   stockBatches         StockBatch[]

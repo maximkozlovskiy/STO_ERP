@@ -186,6 +186,7 @@ model Good {
   serviceGoods        ServiceGood[]
   workOrderParts      WorkOrderPart[]
   purchaseOrderLines  PurchaseOrderLine[]
+  purchaseListItems   PurchaseListItem[]
   supplierReturnLines SupplierReturnLine[]
   stockDocumentLines  StockDocumentLine[]
   invoiceLines        InvoiceLine[]

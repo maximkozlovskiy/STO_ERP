@@ -92,6 +92,7 @@ enum DocumentType {
   COUNTERPARTY_AGREEMENT
   GOOD_INTERNAL_CODE
   SUPPLIER_PAYMENT
+  PURCHASE_LIST
 }
 
 enum ContractType {
@@ -284,6 +285,30 @@ enum PurchaseOrderStatus {
   RECEIVED
   PARTIAL
   CANCELLED
+}
+
+// Список купівлі (BR-PL). OPEN — у роботі; CLOSED — закрито вручну або злито в інший (mergedIntoId);
+// CANCELLED — скасовано (лише без замовлених і отриманих позицій).
+enum PurchaseListStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+// Позиція списку купівлі. OPEN — ще не замовлена (редагується, переноситься, ділиться);
+// ORDERED — у замовленні постачальнику (purchaseOrderId); RECEIVED — отримана повністю;
+// CANCELLED — скасована (зокрема коли наряд закрито до замовлення).
+enum PurchaseListItemStatus {
+  OPEN
+  ORDERED
+  RECEIVED
+  CANCELLED
+}
+
+// Звідки позиція: з рядка товару наряду чи додана вручну. Етап 3 (автоматичний розподіл) додасть AUTO.
+enum PurchaseListItemSource {
+  WORK_ORDER
+  MANUAL
 }
 
 // Нормалізований статус доставки (мапиться зі StatusCode служби доставки, напр. Нової Пошти).

@@ -51,6 +51,7 @@ model WorkOrder {
   currency         Currency?             @relation("WorkOrderCurrency", fields: [currencyId], references: [id])
   lines            WorkOrderLine[]
   parts            WorkOrderPart[]
+  purchaseListItems PurchaseListItem[]
   payments         Payment[]
   invoices         Invoice[]
   calendarSlots    CalendarSlot[]
@@ -146,6 +147,7 @@ model WorkOrderPart {
   warehouse     Warehouse      @relation(fields: [warehouseId], references: [id])
   batch         StockBatch?    @relation(fields: [batchId], references: [id])
   unitOfMeasure UnitOfMeasure? @relation("WorkOrderPartUoM", fields: [unitOfMeasureId], references: [id])
+  purchaseListItems PurchaseListItem[]
 
   @@index([orgId, workOrderId, deletedAt])
   @@index([orgId, syncVersion]) // T5: delta-pull курсор

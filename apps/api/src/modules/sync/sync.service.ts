@@ -65,6 +65,8 @@ const PULL_TABLES = [
 //  - bank_transactions: staging вхідних банк-виписок (payerName/payerIban/purpose — PII платника);
 //    серверна реконсиляція, mobile не потрібна. Має syncVersion для консистентності, але свідомо
 //    поза PULL_TABLES/PUSH_SAFE_TABLES.
+//  - purchase_lists / purchase_list_items: закупівля (етап 1, BR-PL-*) — робота в web; мобільному
+//    клієнтові механіка не потрібна. Мають syncVersion, але свідомо поза PULL_TABLES/PUSH_SAFE_TABLES.
 
 // Tables safe for push — excludes append-only logs and FSM-controlled models
 const PUSH_SAFE_TABLES = new Set([
