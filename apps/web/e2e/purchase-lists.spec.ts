@@ -11,7 +11,7 @@ test.describe.configure({ mode: 'serial' });
  *     «До списку купівлі» (новий список), другий — з вкладки «Нестача» в той самий список;
  *  2. «Позиції» → «Створити замовлення» (одне на постачальника й склад);
  *  3. картка замовлення: «Замовлено» → «Оприбуткувати все» → «Підтвердити прийом»;
- *  4. у картці першого наряду — «прибуло 1, зарезервовано 1»; «В роботу» резерву не подвоює;
+ *  4. у картці першого наряду — «прибуло 1 шт, зарезервовано 1 шт» (базова одиниця, Bug #886); «В роботу» резерву не подвоює;
  *  5. скасування другого наряду знімає його резерв;
  *  6. приймальня бачить лише «Управління купівлями», позиції — без масових дій (BR-PL-015).
  *
@@ -298,7 +298,7 @@ test.describe('Управління купівлями — від нестачі
     // ── Картка наряду А: нестача → «До списку купівлі» (новий список) ─────
     const card = await openWoCard(page, state.woA.number);
     const row = card.locator('tr', { hasText: GOOD }).first();
-    await expect(row.getByTestId('procurement-badge')).toContainText('нестача 1', {
+    await expect(row.getByTestId('procurement-badge')).toContainText('нестача 1 шт', {
       timeout: 15_000,
     });
     await card.getByRole('button', { name: 'До списку купівлі' }).click();
@@ -409,9 +409,12 @@ test.describe('Управління купівлями — від нестачі
     test.setTimeout(150_000);
     const card = await openWoCard(page, state.woA!.number);
     const row = card.locator('tr', { hasText: GOOD }).first();
-    await expect(row.getByTestId('procurement-badge')).toContainText('прибуло 1, зарезервовано 1', {
-      timeout: 15_000,
-    });
+    await expect(row.getByTestId('procurement-badge')).toContainText(
+      'прибуло 1 шт, зарезервовано 1 шт',
+      {
+        timeout: 15_000,
+      },
+    );
     await expect(row.getByTestId('procurement-badge')).not.toContainText('нестача');
     await row.screenshot({ path: test.info().outputPath('pl_e2e_card_reserved.png') });
 
