@@ -16,6 +16,7 @@ import { getCached, setCache } from '@/lib/ref-cache';
 import { onCalendarChanged } from '@/lib/calendar-events';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useBranchWorkHours } from '@/hooks/useBranchWorkHours';
 import { useTranslation } from 'react-i18next';
 
 import type {
@@ -65,6 +66,46 @@ export const EMPTY_FORM: SlotForm = {
   notes: '',
   normoHours: '',
 };
+
+/**
+ * Запис, відкритий у формі, на момент відкриття (чи останньої звірки з сервером): механік і
+ * підйомник — для недоступної опції збереженого механіка (BR-CAL-012), час — щоб помітити, що
+ * наряд переніс запис поверх форми (Bug #884).
+ */
+type EditingSaved = { id: string; startAt: string; endAt: string } & SavedMechanic;
+
+function savedOf(slot: CalendarSlot): EditingSaved {
+  return {
+    id: slot.id,
+    startAt: slot.startAt,
+    endAt: slot.endAt,
+    liftId: slot.liftId ?? '',
+    employeeId: slot.employeeId ?? '',
+    employeeName: slot.employeeName ?? null,
+  };
+}
+
+/** Форма запису з його збережених полів (час — київський «HH:mm» дня запису). */
+function slotToForm(slot: CalendarSlot): SlotForm {
+  const counterpartyDisplay = slot.counterpartyName ?? '';
+  const startH = kyivHours(slot.startAt);
+  const endH = kyivHours(slot.endAt);
+  return {
+    liftId: slot.liftId ?? '',
+    employeeId: slot.employeeId ?? '',
+    counterpartyId: slot.counterpartyId ?? '',
+    counterpartyDisplay,
+    vehicleId: slot.vehicleId ?? '',
+    workOrderId: slot.workOrderId ?? '',
+    workOrderDisplay: slot.workOrderNumber
+      ? `${slot.workOrderNumber}${slot.counterpartyName ? ` · ${slot.counterpartyName}` : ''}`
+      : '',
+    startAt: decimalHoursToHHMM(startH),
+    endAt: decimalHoursToHHMM(endH),
+    normoHours: String(+(endH - startH).toFixed(2)),
+    notes: slot.notes ?? '',
+  };
+}
 
 /**
  * useCalendarState — encapsulates all state, refs, side-effects and handlers
@@ -136,10 +177,12 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   const [bookingSlots, setBookingSlots] = useState<BookingSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [lifts, setLifts] = useState<Lift[]>([]);
-  // До відповіді `GET /settings/work-hours` (і при її збої) — типові 09–18, як на сервері
-  // (`DEFAULT_WORK_HOURS`): форма запису ділить запис на дні за цими ж межами (BR-CAL-007).
-  const [workStartHour, setWorkStartHour] = useState(9);
-  const [workEndHour, setWorkEndHour] = useState(18);
+  // Години основної філії (`GET /settings/work-hours`); до відповіді й при її збої — типові
+  // 09–18, як на сервері (`DEFAULT_WORK_HOURS`): форма запису ділить запис на дні за цими ж
+  // межами (BR-CAL-007).
+  const { startHour: workStartHour, endHour: workEndHour } = useBranchWorkHours(null, {
+    mainBranch: true,
+  });
   // Ref so `load` useCallback can read current lifts without adding them as dependency
   const liftsRef = useRef<Lift[]>([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -156,16 +199,12 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   // Запис, відкритий карткою виду «Місяць» (BR-CAL-009): денного списку `slots` у цьому виді
   // немає, тож «минулий» рахується від самого слота.
   const [monthEditSlot, setMonthEditSlot] = useState<CalendarSlot | null>(null);
-  // Механік і підйомник запису на момент відкриття форми (BR-CAL-012): збережений механік, якого
-  // вже не можна обрати, форма показує недоступною опцією, доки його не змінять.
-  const [editingSaved, setEditingSaved] = useState<{ id: string } & SavedMechanic>();
-  // Запис у формі на момент відкриття і прапорець «наряд змінено поверх форми» (Bug #884):
-  // збереження картки наряду переносить його запис на сервері (BR-WO-020), і форма звіряється з
-  // перечитаним видом — інакше «Оновити» повернув би запис на старий час.
-  const editingOrigRef = useRef<Pick<
-    CalendarSlot,
-    'id' | 'startAt' | 'endAt' | 'liftId' | 'employeeId'
-  > | null>(null);
+  // Запис у формі на момент відкриття (`savedOf`): збережений механік, якого вже не можна обрати,
+  // форма показує недоступною опцією, доки його не змінять (BR-CAL-012). Прапорець — «наряд
+  // змінено поверх форми» (Bug #884): збереження картки наряду переносить його запис на сервері
+  // (BR-WO-020), і форма звіряється з перечитаним видом — інакше «Оновити» повернув би запис на
+  // старий час.
+  const [editingSaved, setEditingSaved] = useState<EditingSaved>();
   const resyncEditRef = useRef(false);
 
   const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('day');
@@ -297,45 +336,25 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // sto-optimize: об'єднано mount-only fetches /lifts + /settings/work-hours
-  // у один useEffect з Promise.all → 1 мережева хвиля замість 2-х. Кожен fetch
-  // незалежний (різні endpoint-и) → race-safe. /lifts ще читає sessionStorage
-  // cache синхронно для миттєвого first-paint.
+  // /lifts читає sessionStorage cache синхронно для миттєвого first-paint, потім — свіжий список.
   useEffect(() => {
     const cached = getCached<Lift[]>('cache:lifts');
     if (cached && mountedRef.current) {
       setLifts(cached);
       liftsRef.current = cached;
     }
-    void Promise.all([
-      apiFetch<Lift[]>('/lifts').then(
-        data => ({ ok: true as const, data }),
-        (e: unknown) => ({ ok: false as const, error: e }),
-      ),
-      apiFetch<{ workStartHour: number; workEndHour: number }>('/settings/work-hours').then(
-        data => ({ ok: true as const, data }),
-        (e: unknown) => ({ ok: false as const, error: e }),
-      ),
-    ]).then(([liftsRes, hoursRes]) => {
-      if (!mountedRef.current) return;
-      if (liftsRes.ok) {
-        setCache('cache:lifts', liftsRes.data);
-        setLifts(liftsRes.data);
-        liftsRef.current = liftsRes.data;
-      } else if (!cached) {
-        setError(liftsRes.error instanceof Error ? liftsRes.error.message : 'Помилка завантаження');
-      }
-      if (hoursRes.ok) {
-        setWorkStartHour(hoursRes.data.workStartHour);
-        setWorkEndHour(hoursRes.data.workEndHour);
-      } else if (process.env.NODE_ENV !== 'production') {
-        // Fallback to defaults (09–18, як на сервері) on error — calendar still works.
-        console.warn(
-          '[calendar] /settings/work-hours fetch failed; using defaults',
-          hoursRes.error,
-        );
-      }
-    });
+    apiFetch<Lift[]>('/lifts').then(
+      data => {
+        if (!mountedRef.current) return;
+        setCache('cache:lifts', data);
+        setLifts(data);
+        liftsRef.current = data;
+      },
+      (e: unknown) => {
+        if (mountedRef.current && !cached)
+          setError(e instanceof Error ? e.message : 'Помилка завантаження');
+      },
+    );
   }, []);
 
   const monthAbortRef = useRef<AbortController | null>(null);
@@ -637,37 +656,10 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     setMonthEditSlot(null);
     setEditingSlotId(slot.id);
     setPendingSlot(null);
-    const woDisplay = slot.workOrderNumber
-      ? `${slot.workOrderNumber}${slot.counterpartyName ? ` · ${slot.counterpartyName}` : ''}`
-      : '';
-    const cpDisp = slot.counterpartyName ?? '';
-    setCpDisplay(cpDisp);
-    setEditingSaved({
-      id: slot.id,
-      liftId: slot.liftId ?? '',
-      employeeId: slot.employeeId ?? '',
-      employeeName: slot.employeeName ?? null,
-    });
-    editingOrigRef.current = {
-      id: slot.id,
-      startAt: slot.startAt,
-      endAt: slot.endAt,
-      liftId: slot.liftId ?? null,
-      employeeId: slot.employeeId ?? null,
-    };
-    setForm({
-      liftId: slot.liftId ?? '',
-      employeeId: slot.employeeId ?? '',
-      counterpartyId: slot.counterpartyId ?? '',
-      counterpartyDisplay: cpDisp,
-      vehicleId: slot.vehicleId ?? '',
-      workOrderId: slot.workOrderId ?? '',
-      workOrderDisplay: woDisplay,
-      startAt: decimalHoursToHHMM(kyivHours(slot.startAt)),
-      endAt: decimalHoursToHHMM(kyivHours(slot.endAt)),
-      normoHours: String(+(kyivHours(slot.endAt) - kyivHours(slot.startAt)).toFixed(2)),
-      notes: slot.notes ?? '',
-    });
+    const next = slotToForm(slot);
+    setCpDisplay(next.counterpartyDisplay);
+    setEditingSaved(savedOf(slot));
+    setForm(next);
     setShowAdd(true);
   }, []);
 
@@ -1138,18 +1130,6 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     setPendingSlot(null);
   }, []);
 
-  const handleModalSaved = useCallback(() => {
-    setShowAdd(false);
-    setEditingSlotId(null);
-    setMonthEditSlot(null);
-    setPendingSlot(null);
-    setForm(EMPTY_FORM);
-    setCpDisplay('');
-    // Запис збережено чи видалено з виду «Місяць» — перечитати місяць, а не день (BR-CAL-009).
-    if (calView === 'month') void loadMonth(yearMonth, true);
-    else load();
-  }, [load, loadMonth, calView, yearMonth]);
-
   /**
    * Перечитати поточний вид, не закриваючи форму (наряд змінено з його картки). Виклики одного
    * такту зливаються в одне читання: картка наряду після збереження шле подію
@@ -1168,6 +1148,17 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     });
   }, [calView, load, loadMonth, yearMonth]);
 
+  const handleModalSaved = useCallback(() => {
+    setShowAdd(false);
+    setEditingSlotId(null);
+    setMonthEditSlot(null);
+    setPendingSlot(null);
+    setForm(EMPTY_FORM);
+    setCpDisplay('');
+    // Запис збережено чи видалено з виду «Місяць» — перечитати місяць, а не день (BR-CAL-009).
+    refreshView();
+  }, [refreshView]);
+
   // Наряд змінив свій запис календаря на сервері (BR-WO-020: збереження планових дат чи
   // підйомника з картки наряду поверх календаря) — перечитати поточний вид.
   useEffect(() => onCalendarChanged(refreshView), [refreshView]);
@@ -1179,8 +1170,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   useEffect(() => {
     if (!resyncEditRef.current) return;
     resyncEditRef.current = false;
-    const orig = editingOrigRef.current;
-    if (!showAdd || !editingSlotId || orig?.id !== editingSlotId) return;
+    if (!showAdd || !editingSlotId || editingSaved?.id !== editingSlotId) return;
     const pool =
       calView === 'month'
         ? Object.values(monthSlots).flatMap(d => d.entries.map(e => e.slot))
@@ -1190,38 +1180,19 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       handleModalClose();
       return;
     }
-    const liftId = fresh.liftId ?? null;
-    const employeeId = fresh.employeeId ?? null;
+    const saved = savedOf(fresh);
     if (
-      fresh.startAt === orig.startAt &&
-      fresh.endAt === orig.endAt &&
-      liftId === orig.liftId &&
-      employeeId === orig.employeeId
+      saved.startAt === editingSaved.startAt &&
+      saved.endAt === editingSaved.endAt &&
+      saved.liftId === editingSaved.liftId &&
+      saved.employeeId === editingSaved.employeeId
     )
       return;
-    editingOrigRef.current = {
-      id: fresh.id,
-      startAt: fresh.startAt,
-      endAt: fresh.endAt,
-      liftId,
-      employeeId,
-    };
-    setEditingSaved({
-      id: fresh.id,
-      liftId: liftId ?? '',
-      employeeId: employeeId ?? '',
-      employeeName: fresh.employeeName ?? null,
-    });
+    setEditingSaved(saved);
     if (calView === 'month') setMonthEditSlot(fresh);
-    setForm(f => ({
-      ...f,
-      liftId: liftId ?? '',
-      employeeId: employeeId ?? '',
-      startAt: decimalHoursToHHMM(kyivHours(fresh.startAt)),
-      endAt: decimalHoursToHHMM(kyivHours(fresh.endAt)),
-      normoHours: String(+(kyivHours(fresh.endAt) - kyivHours(fresh.startAt)).toFixed(2)),
-    }));
-  }, [slots, monthSlots, showAdd, editingSlotId, calView, handleModalClose]);
+    const { liftId, employeeId, startAt, endAt, normoHours } = slotToForm(fresh);
+    setForm(f => ({ ...f, liftId, employeeId, startAt, endAt, normoHours }));
+  }, [slots, monthSlots, showAdd, editingSlotId, editingSaved, calView, handleModalClose]);
 
   // ── Month view: картка запису й «новий запис на дату» (BR-CAL-009) ─────────
 

@@ -1,7 +1,8 @@
 // Вид «День»: підсумок дня за іконками категорій — той самий рядок лічильників, що в клітинці
 // місяця (BR-CAL-008; рішення власника 2026-10-15), з денних записів і кінцем ланцюжка.
 
-import { render, screen, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import { renderWithQueryClient } from '@/__tests__/query-utils';
 import { describe, expect, it } from 'vitest';
 import { CalendarCategoryCounters } from '../CalendarCategoryCounters';
 import { buildMonthSlots } from '../calendar-month';
@@ -36,7 +37,7 @@ const dayEntries = (day: CalendarSlot[], next: CalendarSlot[] = []) =>
   )[DAY]?.entries ?? [];
 
 const renderRow = (day: CalendarSlot[], next: CalendarSlot[] = []) =>
-  render(
+  renderWithQueryClient(
     <CalendarCategoryCounters
       entries={dayEntries(day, next)}
       nowMs={NOW}

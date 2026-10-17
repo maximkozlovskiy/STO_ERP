@@ -8,6 +8,7 @@ import { format, parse, isValid } from 'date-fns';
 import { Calendar, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { isoToKyivLocalDateTime, kyivToday } from '@/lib/format';
 
 const DAY_PICKER_CLASS_NAMES = {
   root: 'rdp-root',
@@ -30,20 +31,14 @@ const DAY_PICKER_CLASS_NAMES = {
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
 const MINUTES = ['00', '15', '30', '45'];
-const KYIV_PARTS = new Intl.DateTimeFormat('sv-SE', {
-  timeZone: 'Europe/Kyiv',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
 
 /** Київські дата 'YYYY-MM-DD' і хвилина доби миті (значення пікера — київський настінний час). */
 function kyivParts(d: Date): { ymd: string; minute: number } {
-  const p = Object.fromEntries(KYIV_PARTS.formatToParts(d).map(x => [x.type, x.value]));
-  return { ymd: `${p.year}-${p.month}-${p.day}`, minute: Number(p.hour) * 60 + Number(p.minute) };
+  const local = isoToKyivLocalDateTime(d); // 'YYYY-MM-DDTHH:mm'
+  return {
+    ymd: local.slice(0, 10),
+    minute: Number(local.slice(11, 13)) * 60 + Number(local.slice(14, 16)),
+  };
 }
 
 interface DateTimePickerInputProps {
@@ -153,7 +148,7 @@ export function DateTimePickerInput({
     [value, timeOnly],
   );
   // День, до якого застосовується час: обраний, інакше сьогодні (так само його бере applyTime).
-  const todayYmd = minParts?.ymd ?? format(new Date(), 'yyyy-MM-dd');
+  const todayYmd = minParts?.ymd ?? kyivToday();
   const selectedYmd = timeOnly
     ? null
     : selectedDate

@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-  DEFAULT_WORK_HOURS,
-  kyivHourOnDay,
-  kyivMinuteOfDay,
-  splitByWorkHours,
-  workHoursOf,
-} from './work-hours';
+import { DEFAULT_WORK_HOURS } from '@sto/shared';
+import { kyivHourOnDay, kyivMinuteOfDay, splitByWorkHours, workHoursOf } from './work-hours';
 
 // Робочі години філії — одне джерело для календаря, `GET /settings/work-hours` і планових дат
 // наряду (BR-WO-019, BR-WO-020). Час — київський, із переведенням годинника (25.10.2026 — на +02).

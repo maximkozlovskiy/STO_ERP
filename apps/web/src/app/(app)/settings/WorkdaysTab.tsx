@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { workHoursKeys } from '@/hooks/useBranchWorkHours';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -25,6 +27,7 @@ interface BranchSettings {
 export default function WorkdaysTab() {
   const { t } = useTranslation('settings');
   const currentFeatures = useUiFeatures();
+  const queryClient = useQueryClient();
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [selectedBranch, setSelectedBranch] = useState('');
   const [branchSettings, setBranchSettings] = useState<BranchSettings | null>(null);
@@ -83,6 +86,9 @@ export default function WorkdaysTab() {
         method: 'PATCH',
         body: JSON.stringify(branchSettings),
       });
+      // Сітка календаря й пікер планових дат наряду мають побачити нові години одразу, а не
+      // через хвилину кешу (сервер свій кеш годин скидає сам).
+      void queryClient.invalidateQueries({ queryKey: workHoursKeys.all });
       if (currentFeatures.toastEnabled) toast.success(t('workdays.saved'));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('common.error'));

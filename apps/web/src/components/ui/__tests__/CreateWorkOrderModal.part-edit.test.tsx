@@ -1,4 +1,5 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import { renderWithQueryClient } from '@/__tests__/query-utils';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 import { CreateWorkOrderModal } from '../CreateWorkOrderModal';
@@ -139,7 +140,7 @@ function partWrites(): Array<[string, string, Record<string, unknown> | null]> {
 
 async function openAndEditPart() {
   const user = userEvent.setup();
-  render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId={WO} />);
+  renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId={WO} />);
   await screen.findByText('Колодки гальмівні');
   await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/settings/organisation'));
   await user.click(await screen.findByRole('button', { name: 'Редагувати товар' }));
@@ -189,7 +190,7 @@ describe('CreateWorkOrderModal — правка збереженого рядк�
   });
 
   it('«На складі» — залишок округлено до 3 знаків, без хвоста float (294.96500000000003)', async () => {
-    render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId={WO} />);
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId={WO} />);
     const name = await screen.findByText('Колодки гальмівні');
     const row = name.closest('tr')!;
     await waitFor(() => expect(row.textContent).toContain('34,367/294,965'));

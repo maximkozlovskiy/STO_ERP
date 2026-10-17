@@ -7,7 +7,8 @@
 //   рахунку («Механік») рахунок навіть не запитують;
 // - друк відкриває вікно ДО запиту PDF; запит упав → вікно закривається, помилка показується.
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import { renderWithQueryClient } from '@/__tests__/query-utils';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { CreateWorkOrderModal } from '../CreateWorkOrderModal';
@@ -112,7 +113,7 @@ const findCalls = () =>
 const button = (name: string | RegExp) => screen.queryByRole('button', { name });
 
 async function open() {
-  render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
+  renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
   await screen.findByText('Заміна колодок');
   await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/settings/organisation'));
 }

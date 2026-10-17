@@ -5,13 +5,15 @@
  *   дні недоступні.
  * - BR-WO-020: запис календаря переносить сервер у транзакції збереження наряду — картка не
  *   питає «Оновити слот?» і не шле `PATCH /calendar/slots/by-work-order`; після збереження
- *   відкритий календар перечитує записи (подія `sto:calendar-changed`).
+ *   відкритий календар перечитує записи (подія `sto:calendar-changed`) — лише коли змінились
+ *   планові дати чи підйомник; без підйомника перевірки зайнятості немає (сервер на такий запит
+ *   відповідає «вільно», не читаючи календар).
  */
-import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { CreateWorkOrderModal } from '../CreateWorkOrderModal';
-import { resetBranchWorkHoursCache } from '@/hooks/useBranchWorkHours';
+import { renderWithQueryClient } from '@/__tests__/query-utils';
 
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
@@ -48,13 +50,17 @@ const WO = '10000000-0000-4000-8000-000000000001';
 const B1 = '10000000-0000-4000-8000-000000000002';
 const V1 = '10000000-0000-4000-8000-000000000003';
 const CP1 = '10000000-0000-4000-8000-000000000004';
+const LIFT = '10000000-0000-4000-8000-000000000009';
 
 /** «Зараз» — 20.05.2026 12:00 Києва. */
 const NOW = new Date('2026-05-20T09:00:00Z');
 
 type Call = [string, { method?: string; body?: string } | undefined];
 
-function mockApi(hours: { workStartHour: number; workEndHour: number }) {
+function mockApi(
+  hours: { workStartHour: number; workEndHour: number },
+  { liftId = LIFT }: { liftId?: string | null } = {},
+) {
   apiFetchMock.mockImplementation((path: string, init?: { method?: string }) => {
     if (path === '/branches') return Promise.resolve([{ id: B1, name: 'Філія №1' }]);
     if (path === '/warehouses') return Promise.resolve([]);
@@ -77,7 +83,7 @@ function mockApi(hours: { workStartHour: number; workEndHour: number }) {
         counterpartyId: CP1,
         counterpartyName: 'Тест',
         contractId: null,
-        liftId: null,
+        liftId,
         description: '',
         priority: 'NORMAL',
         repairCategory: '',
@@ -106,13 +112,16 @@ const plannedHoursInput = () =>
   document.querySelectorAll<HTMLInputElement>('input[type="number"][step="0.5"]')[0]!;
 
 async function openCard() {
-  render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId={WO} />);
+  renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId={WO} />);
   await waitFor(() => expect(dateInputs()[0]!.value).toBe('22.05.2026 16:00'));
   await waitFor(() =>
-    expect(apiFetchMock).toHaveBeenCalledWith(`/settings/work-hours?branchId=${B1}`),
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      `/settings/work-hours?branchId=${B1}`,
+      expect.anything(),
+    ),
   );
   // Запит відправлено — ще не означає, що години філії вже в стані хука: відповідь іде
-  // ланцюжком промісів (кеш → розбір → setHours). Без цього кроку під навантаженням повного
+  // ланцюжком промісів (запит → розбір → кеш запитів). Без цього кроку під навантаженням повного
   // прогону автокінець рахувався за типовими 09–18 (review 2026-10-16: «10:00» замість «09:00»).
   await act(async () => {
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -123,7 +132,6 @@ describe('CreateWorkOrderModal — планові дати (BR-WO-019, BR-WO-020
   beforeEach(() => {
     vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
     apiFetchMock.mockReset();
-    resetBranchWorkHoursCache();
     conflict.current = { anyConflict: false, conflictSlots: [] };
   });
   afterEach(() => {
@@ -218,13 +226,13 @@ describe('CreateWorkOrderModal — планові дати (BR-WO-019, BR-WO-020
       employeeConflict: false,
       conflictSlots: [{ id: 'busy', startAt: '', endAt: '', status: 'BOOKED', type: 'WORK' }],
     };
-    render(
+    renderWithQueryClient(
       <CreateWorkOrderModal
         open
         onClose={vi.fn()}
         prefill={{
           branchId: B1,
-          liftId: '10000000-0000-4000-8000-000000000009',
+          liftId: LIFT,
           plannedStartAt: '2026-05-22T16:00',
           plannedEndAt: '2026-05-22T17:00',
         }}
@@ -236,5 +244,50 @@ describe('CreateWorkOrderModal — планові дати (BR-WO-019, BR-WO-020
       ([p]) => p === '/calendar/slots/check-conflicts',
     );
     expect(JSON.parse(check![1]!.body!)).not.toHaveProperty('excludeWorkOrderId');
+  });
+
+  // guards: BR-WO-020
+  it('збереження без зміни дат і підйомника — календар не перечитується', async () => {
+    mockApi({ workStartHour: 8, workEndHour: 18 });
+    const user = userEvent.setup();
+    const onCalendarChanged = vi.fn();
+    window.addEventListener('sto:calendar-changed', onCalendarChanged);
+    try {
+      await openCard();
+      await user.click(screen.getByRole('button', { name: 'Зберегти зміни' }));
+      await waitFor(() =>
+        expect(
+          (apiFetchMock.mock.calls as Call[]).some(
+            ([p, i]) => p === `/work-orders/${WO}` && i?.method === 'PATCH',
+          ),
+        ).toBe(true),
+      );
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+      });
+      expect(onCalendarChanged).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('sto:calendar-changed', onCalendarChanged);
+    }
+  });
+
+  // guards: BR-WO-020
+  it('наряд без підйомника — перевірки зайнятості немає, попередження немає', async () => {
+    mockApi({ workStartHour: 8, workEndHour: 18 }, { liftId: null });
+    conflict.current = {
+      anyConflict: true,
+      liftConflict: true,
+      employeeConflict: false,
+      conflictSlots: [{ id: 'busy', startAt: '', endAt: '', status: 'BOOKED', type: 'WORK' }],
+    };
+    await openCard();
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 600));
+    });
+    const checks = (apiFetchMock.mock.calls as Call[]).filter(
+      ([p]) => p === '/calendar/slots/check-conflicts',
+    );
+    expect(checks).toEqual([]);
+    expect(screen.queryByText(/Підйомник зайнятий/)).not.toBeInTheDocument();
   });
 });

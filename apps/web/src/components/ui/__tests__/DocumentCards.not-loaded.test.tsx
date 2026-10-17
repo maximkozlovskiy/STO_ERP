@@ -209,7 +209,7 @@ const CASES: CardCase[] = [
     title: 'наряд',
     docPath: '/work-orders/wo-1?withDeleted=true',
     render: () => {
-      render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
+      renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
     },
     actions: ['Зберегти зміни', 'Скасувати', /Поділитись/, 'Друк'],
     doc: {

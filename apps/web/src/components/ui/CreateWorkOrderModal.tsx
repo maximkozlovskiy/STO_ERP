@@ -44,11 +44,7 @@ import { getCached } from '@/lib/ref-cache';
 import { kyivToday, isoToKyivLocalDateTime, localDateTimeToISO } from '@/lib/format';
 import { notifyCalendarChanged } from '@/lib/calendar-events';
 import { useBranchWorkHours } from '@/hooks/useBranchWorkHours';
-import {
-  calcEndFromHours,
-  calcPlannedHours,
-  DEFAULT_WORK_HOURS_WINDOW,
-} from './work-order/planned-dates';
+import { calcEndFromHours, calcPlannedHours } from './work-order/planned-dates';
 import {
   cn,
   displayCounterpartyName,
@@ -398,19 +394,13 @@ export function CreateWorkOrderModal({
     [watchedAll],
   );
 
-  // BR-WO-019: робочі години філії наряду (пікер планових дат, автокінець) і «зараз»
-  // (минулі дні й години недоступні; оновлюється щохвилини, поки картка відкрита).
+  // BR-WO-019: робочі години філії наряду (пікер планових дат, автокінець).
   const workHours = useBranchWorkHours(form.branchId);
   const workHoursRef = useRef(workHours);
   workHoursRef.current = workHours;
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    if (!open) return;
-    setNowMs(Date.now());
-    const timer = setInterval(() => setNowMs(Date.now()), 60_000);
-    return () => clearInterval(timer);
-  }, [open]);
-  const now = useMemo(() => new Date(nowMs), [nowMs]);
+  // Планові дати й підйомник збереженого наряду на момент завантаження: запис календаря наряду
+  // (BR-WO-020) змінюється лише з ними, тож відкритий календар перечитується лише тоді.
+  const savedScheduleRef = useRef({ plannedStartAt: '', plannedEndAt: '', liftId: '' });
 
   // `setForm` shim: приймає той самий SetStateAction<WorkOrderFormState>, що й старий useState.
   // Обчислює наступний стан із getValues()-знімка й пише лише змінені поля через setValue
@@ -599,8 +589,10 @@ export function CreateWorkOrderModal({
   // (no TZ). Normalize via DST-aware localDateTimeToISO (passes through values
   // already ending Z / ±HH:MM). Без цієї нормалізації backend new Date("2026-06-10T14:00")
   // парсить як UTC → +2/+3h зсув → false positives.
+  // Без підйомника перевіряти нічого: механіка картка наряду не обирає, а сервер на запит без
+  // ресурсу відповідає «конфлікту немає», не читаючи календар.
   useEffect(() => {
-    if (!open || !form.plannedStartAt || !form.plannedEndAt) {
+    if (!open || !form.liftId || !form.plannedStartAt || !form.plannedEndAt) {
       clearConflict();
       return;
     }
@@ -611,7 +603,7 @@ export function CreateWorkOrderModal({
       return;
     }
     checkConflict({
-      liftId: form.liftId || undefined,
+      liftId: form.liftId,
       startAt: startIso,
       endAt: endIso,
       // виключити слоти цього самого наряду — інакше будь-який наряд
@@ -704,11 +696,7 @@ export function CreateWorkOrderModal({
         plannedEndAt: prefill?.plannedEndAt ?? '',
         plannedHours:
           prefill?.plannedHours ??
-          calcPlannedHours(
-            prefill?.plannedStartAt,
-            prefill?.plannedEndAt,
-            workHoursRef.current ?? DEFAULT_WORK_HOURS_WINDOW,
-          ),
+          calcPlannedHours(prefill?.plannedStartAt, prefill?.plannedEndAt, workHoursRef.current),
       });
       if (prefill?.counterpartyId) {
         loadVehicles(prefill.counterpartyId, prefill.vehicleId);
@@ -766,6 +754,11 @@ export function CreateWorkOrderModal({
           unitOfMeasureId: p.unitOfMeasureId ?? '',
           unitShortName: p.unitShortName ?? '',
         }));
+        savedScheduleRef.current = {
+          plannedStartAt: isoToKyivLocalDateTime(wo.plannedAt),
+          plannedEndAt: isoToKyivLocalDateTime(wo.dueDate),
+          liftId: wo.liftId ?? '',
+        };
         // reset() із завантаженими даними → нова «чиста» база (rhfDirty=false для незмінених даних).
         // lines/parts несуть _key/display-поля поза схемою (widened у field-array item).
         reset({
@@ -780,8 +773,8 @@ export function CreateWorkOrderModal({
           priority: wo.priority ?? 'NORMAL',
           repairCategory: wo.repairCategory ?? '',
           documentDate: wo.documentDate ? wo.documentDate.slice(0, 10) : kyivToday(),
-          plannedStartAt: isoToKyivLocalDateTime(wo.plannedAt),
-          plannedEndAt: isoToKyivLocalDateTime(wo.dueDate),
+          plannedStartAt: savedScheduleRef.current.plannedStartAt,
+          plannedEndAt: savedScheduleRef.current.plannedEndAt,
           plannedHours: wo.plannedHours != null ? String(wo.plannedHours) : '',
           actualHours: wo.actualHours != null ? String(wo.actualHours) : '',
           lines: loadedLines as unknown as WorkOrderFormInput['lines'],
@@ -1208,9 +1201,9 @@ export function CreateWorkOrderModal({
       postedLineKeysRef.current = new Set();
       postedPartKeysRef.current = new Set();
       dirty.resetDirty();
-      // BR-WO-020: наряд із плановими датами вже має запис календаря — відкритий календар
+      // BR-WO-020: наряд з обома плановими датами вже має запис календаря — відкритий календар
       // перечитує записи.
-      notifyCalendarChanged();
+      if (form.plannedStartAt && form.plannedEndAt) notifyCalendarChanged();
       onCreated?.(wo);
       onClose();
     } catch (e: unknown) {
@@ -1422,8 +1415,15 @@ export function CreateWorkOrderModal({
       }
       // BR-WO-020: запис календаря наряду сервер переносить / видаляє в тій самій транзакції,
       // що й зберігає дати й підйомник (раніше — окремий діалог і PATCH by-work-order тут).
-      // Відкритий календар перечитує записи.
-      notifyCalendarChanged();
+      // Відкритий календар перечитує записи — лише коли дати чи підйомник справді змінились.
+      const saved = savedScheduleRef.current;
+      if (
+        canEdit &&
+        (form.plannedStartAt !== saved.plannedStartAt ||
+          form.plannedEndAt !== saved.plannedEndAt ||
+          form.liftId !== saved.liftId)
+      )
+        notifyCalendarChanged();
       postedLineKeysRef.current = new Set();
       postedPartKeysRef.current = new Set();
       dirty.resetDirty();
@@ -2161,7 +2161,6 @@ export function CreateWorkOrderModal({
                       onPlannedHoursChange={handlePlannedHoursChange}
                       onActualHoursChange={handleActualHoursChange}
                       workHours={workHours}
-                      now={now}
                     />
 
                     {/* Попередження про конфлікт у календарі */}

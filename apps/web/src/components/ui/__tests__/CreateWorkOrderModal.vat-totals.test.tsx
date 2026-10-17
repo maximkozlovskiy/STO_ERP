@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import { renderWithQueryClient } from '@/__tests__/query-utils';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 import { CreateWorkOrderModal } from '../CreateWorkOrderModal';
 
@@ -125,7 +126,7 @@ function mockApi(opts: {
 const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
 
 async function openModal() {
-  render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
+  renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
   await screen.findByText('Заміна колодок');
   await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/settings/organisation'));
 }

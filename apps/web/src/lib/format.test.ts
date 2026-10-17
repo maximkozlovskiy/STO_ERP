@@ -111,6 +111,11 @@ describe('isoToKyivLocalDateTime — UTC ISO → Kyiv local (Bug #436)', () => {
     expect(isoToKyivLocalDateTime('not-a-date')).toBe('');
   });
 
+  it('північ Києва — «00:00» того самого дня, не «24:00» (hourCycle h23); Date теж приймає', () => {
+    expect(isoToKyivLocalDateTime('2026-06-11T21:00:00.000Z')).toBe('2026-06-12T00:00');
+    expect(isoToKyivLocalDateTime(new Date('2026-01-14T22:05:00.000Z'))).toBe('2026-01-15T00:05');
+  });
+
   it('round-trip: localDateTimeToISO(isoToKyivLocalDateTime(iso)) === iso для valid літа', () => {
     const iso = '2026-06-12T05:30:00.000Z';
     const local = isoToKyivLocalDateTime(iso);

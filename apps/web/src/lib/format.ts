@@ -243,6 +243,8 @@ export function kyivDateTimeToISO(date: string, time: string): string {
  * @example isoToKyivLocalDateTime('2026-06-12T05:30:00.000Z') → '2026-06-12T08:30'
  * @example isoToKyivLocalDateTime('2026-01-15T07:00:00.000Z') → '2026-01-15T09:00'
  */
+// `hourCycle: 'h23'`, а не `hour12: false`: останнє в частині рушіїв друкує північ як «24:00»
+// (h24), і день з годиною розходились би на добу.
 const KYIV_DATETIME_LOCAL_FMT = new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'Europe/Kyiv',
   year: 'numeric',
@@ -250,10 +252,10 @@ const KYIV_DATETIME_LOCAL_FMT = new Intl.DateTimeFormat('sv-SE', {
   day: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
-  hour12: false,
+  hourCycle: 'h23',
 });
 
-export function isoToKyivLocalDateTime(iso: string | null | undefined): string {
+export function isoToKyivLocalDateTime(iso: string | Date | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';

@@ -13,7 +13,8 @@ export type PlannedDatesError =
 
 const pad2 = (h: number): string => String(h).padStart(2, '0');
 
-const same = (a: Date | null, b: Date | null): boolean =>
+/** Та сама мить (або обидві дати порожні). */
+export const sameInstant = (a: Date | null, b: Date | null): boolean =>
   (a?.getTime() ?? null) === (b?.getTime() ?? null);
 
 /** Які з планових дат змінюються відносно збережених (`prev = null` — новий наряд). */
@@ -22,8 +23,9 @@ export function changedPlannedDates(
   prev: PlannedDates | null,
 ): { start: boolean; end: boolean } {
   return {
-    start: next.plannedAt !== null && (prev === null || !same(next.plannedAt, prev.plannedAt)),
-    end: next.dueDate !== null && (prev === null || !same(next.dueDate, prev.dueDate)),
+    start:
+      next.plannedAt !== null && (prev === null || !sameInstant(next.plannedAt, prev.plannedAt)),
+    end: next.dueDate !== null && (prev === null || !sameInstant(next.dueDate, prev.dueDate)),
   };
 }
 

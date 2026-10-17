@@ -7,6 +7,7 @@
 import { memo, useMemo, type ChangeEvent } from 'react';
 import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
 import { localDateTimeToISO } from '@/lib/format';
+import { useNow } from '@/hooks/useNow';
 import type { WorkHoursWindow } from './planned-dates';
 
 const NOOP_DT_CHANGE: (v: string) => void = () => {};
@@ -24,8 +25,6 @@ export interface PlannedActualMetricsProps {
   onActualHoursChange: (e: ChangeEvent<HTMLInputElement>) => void;
   /** Робочі години філії наряду (BR-WO-019): поза ними планові час недоступний. */
   workHours: WorkHoursWindow;
-  /** «Зараз» (оновлюється щохвилини): минулі дні й години недоступні (BR-WO-019). */
-  now: Date;
 }
 
 // sto-optimize (2.17): усі пропси — примітиви (canEdit/*Hours/liveActualHours) або
@@ -44,8 +43,10 @@ function PlannedActualMetricsBase({
   onPlannedHoursChange,
   onActualHoursChange,
   workHours,
-  now,
 }: PlannedActualMetricsProps) {
+  // «Зараз» (оновлюється щохвилини): минулі дні й години недоступні (BR-WO-019). Таймер тут, а
+  // не в картці наряду: щохвилинне оновлення ре-рендерить лише цю панель.
+  const now = useNow(60_000);
   // Завершення — пізніше за початок: найраніше — хвилина після початку, якщо він у майбутньому.
   const endMin = useMemo(() => {
     const iso = plannedStartAt ? localDateTimeToISO(plannedStartAt) : null;

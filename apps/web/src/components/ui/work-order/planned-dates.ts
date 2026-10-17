@@ -4,16 +4,15 @@
 // з 16:00 на 3 год при вікні 9–18 закінчується завтра об 10:00 — так само сервер ділить запис
 // календаря наряду на дні (BR-WO-020).
 
+import { DEFAULT_WORK_HOURS } from '@sto/shared';
+
 export interface WorkHoursWindow {
   startHour: number;
   endHour: number;
 }
 
-/** Типові години — як на сервері (`DEFAULT_WORK_HOURS`), доки години філії не завантажено. */
-export const DEFAULT_WORK_HOURS_WINDOW: Readonly<WorkHoursWindow> = Object.freeze({
-  startHour: 9,
-  endHour: 18,
-});
+/** Типові години — ті самі, що на сервері (`DEFAULT_WORK_HOURS`), доки години філії не завантажено. */
+export const DEFAULT_WORK_HOURS_WINDOW: Readonly<WorkHoursWindow> = DEFAULT_WORK_HOURS;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const DT_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;

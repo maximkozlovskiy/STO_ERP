@@ -4,6 +4,7 @@
 // час, і запис розійшовся б із плановими датами наряду.
 
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { createQueryWrapper } from '@/__tests__/query-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarSlot } from '../calendar.types';
 import { notifyCalendarChanged } from '@/lib/calendar-events';
@@ -67,7 +68,7 @@ afterEach(() => {
 });
 
 async function openDayForm() {
-  const hook = renderHook(() => useCalendarState());
+  const hook = renderHook(() => useCalendarState(), { wrapper: createQueryWrapper() });
   await waitFor(() => expect(hook.result.current.slots).toHaveLength(1));
   act(() => hook.result.current.handleEditSlot(SLOT));
   expect(hook.result.current.form).toMatchObject({ startAt: '15:00', endAt: '18:00' });
@@ -139,7 +140,7 @@ describe('useCalendarState — форма запису після збереже
   it('вид «Місяць»: перенесений запис — форма й знімок запису місяця оновлюються', async () => {
     params = new URLSearchParams('view=month&date=2026-10-01');
     monthDays['2026-10-22'] = [SLOT];
-    const { result } = renderHook(() => useCalendarState());
+    const { result } = renderHook(() => useCalendarState(), { wrapper: createQueryWrapper() });
     await waitFor(() => expect(result.current.monthSlots['2026-10-22']?.total).toBe(1));
     act(() => result.current.openMonthSlot(SLOT));
 

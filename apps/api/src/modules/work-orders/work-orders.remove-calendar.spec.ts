@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { WorkOrdersService } from './work-orders.service';
+import { CalendarService } from '../calendar/calendar.service';
 import { memoryTable, type MemRow } from '../cash/cash.spec-fixture';
 import type { PrismaService } from '../../prisma/prisma.service';
 
@@ -64,7 +65,7 @@ function harness(woOver: MemRow = {}, slots: MemRow[] = []) {
     { emit: vi.fn() } as never, // events
     null as never, // totals
     null as never, // orgPrintInfo
-    null as never, // calendar
+    new CalendarService(prisma as unknown as PrismaService), // calendar (BR-WO-017)
   );
   return { service, prisma, workOrder, calendarSlot };
 }

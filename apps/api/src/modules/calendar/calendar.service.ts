@@ -1,19 +1,25 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { CalendarSlotStatus, CalendarSlotType, EmployeeStatus, Prisma } from '@prisma/client';
-import { formatPersonName, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
+import {
+  DEFAULT_WORK_HOURS,
+  formatPersonName,
+  TRANSACTION_TIMEOUT_MS,
+  translateError,
+} from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { throwIfExclusionConflict } from '../../common/utils/prisma-errors';
 import {
+  addDaysKyiv,
   isCalendarDate,
   kyivDayEnd,
   kyivDayStart,
-  kyivOffsetMs,
+  kyivYmd,
 } from '../../common/utils/kyiv-date';
 import {
+  kyivHourOnDay,
   splitByWorkHours,
   workHoursOf,
-  DEFAULT_WORK_HOURS,
   type TimeSegment,
   type WorkHours,
 } from '../../common/utils/work-hours';
@@ -32,7 +38,11 @@ import {
   type MechanicRejectReason,
 } from './calendar-mechanic';
 
-const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
+/**
+ * EXCLUDE-обмеження БД проти перетину записів на підйомнику — запасний захист від паралельного
+ * бронювання (CAL-C1). Його ім'я шукає `throwIfExclusionConflict` тут і в нарядах (BR-WO-020).
+ */
+export const CALENDAR_SLOT_EXCLUSION = 'calendar_slots_no_overlap';
 
 // sto-optimize (cycle 3/3): shared include shape для create()/update() — попереджає alloc per-request.
 // Дзеркалить SLOT_INCLUDE що раніше жив у тілі create(). Прив'язан до Prisma Client через inference.
@@ -88,36 +98,45 @@ const OF_LIVE_WORK_ORDER = {
 };
 
 /**
+ * Записи, що не належать наряду `workOrderId`, разом із записами без наряду: Prisma `{ not: X }`
+ * дає SQL `<> X`, що відкидає й NULL, — і звичайне бронювання підйомника не було б конфліктом
+ * (BR-WO-020, review 2026-10-16).
+ */
+const notOfWorkOrder = (workOrderId: string) => ({
+  OR: [{ workOrderId: null }, { workOrderId: { not: workOrderId } }],
+});
+
+/**
+ * Зайнятість ресурсу (BR-CAL-005): живі записи організації на `resource` (підйомник, механік чи
+ * `OR` обох), що перетинають хоч один із проміжків `intervals` — half-open, дотик меж не є
+ * перетином. Записи видаленого наряду не рахуються (BR-CAL-011). Не конфлікт: `exclude.ids` — сам
+ * запис чи власні записи наряду; `exclude.workOrderId` — усі записи наряду.
+ */
+function busyWhere(
+  orgId: string,
+  resource: Prisma.CalendarSlotWhereInput,
+  intervals: readonly TimeSegment[],
+  exclude: { ids?: readonly string[] | undefined; workOrderId?: string | undefined } = {},
+): Prisma.CalendarSlotWhereInput {
+  return {
+    orgId,
+    ...resource,
+    deletedAt: null,
+    ...(exclude.ids?.length ? { NOT: { id: { in: [...exclude.ids] } } } : {}),
+    AND: [
+      OF_LIVE_WORK_ORDER,
+      ...(exclude.workOrderId ? [notOfWorkOrder(exclude.workOrderId)] : []),
+      { OR: intervals.map(i => ({ startAt: { lt: i.endAt }, endAt: { gt: i.startAt } })) },
+    ],
+  };
+}
+
+/**
  * Ім'я механіка запису з уже прочитаних (BR-CAL-011): `null` — механіка не призначено, його
  * немає в організації або він звільнений.
  */
 function nameOf(employeeId: string | null, names: ReadonlyMap<string, string>): string | null {
   return employeeId ? names.get(employeeId) || null : null;
-}
-
-/** Returns the UTC timestamp for `endHour` (Kyiv) on the same calendar day as `d`. */
-function kyivEndOfWorkDay(d: Date, endHour: number): Date {
-  const kyivDate = KYIV_DATE_FMT.format(d); // "YYYY-MM-DD"
-  // Build "YYYY-MM-DDTHH:00:00" as a local Kyiv wall-clock time, then convert to UTC.
-  // We use the same DST-aware approach: find the UTC offset at noon of that day.
-  const noonUtc = new Date(`${kyivDate}T12:00:00Z`);
-  const offsetMs = kyivOffsetMs(noonUtc);
-  return new Date(
-    new Date(`${kyivDate}T${String(endHour).padStart(2, '0')}:00:00Z`).getTime() - offsetMs,
-  );
-}
-
-/** Returns the UTC timestamp for `startHour` (Kyiv) on the calendar day AFTER `d`. */
-function kyivStartOfNextWorkDay(d: Date, startHour: number): Date {
-  const kyivDate = KYIV_DATE_FMT.format(d); // "YYYY-MM-DD"
-  const [y, m, day] = kyivDate.split('-').map(Number);
-  const nextDay = new Date(Date.UTC(y, m - 1, day + 1));
-  const nextDateStr = KYIV_DATE_FMT.format(nextDay);
-  const noonUtc = new Date(`${nextDateStr}T12:00:00Z`);
-  const offsetMs = kyivOffsetMs(noonUtc);
-  return new Date(
-    new Date(`${nextDateStr}T${String(startHour).padStart(2, '0')}:00:00Z`).getTime() - offsetMs,
-  );
 }
 
 @Injectable()
@@ -135,7 +154,7 @@ export class CalendarService {
    * Ці ж години перевіряють планові дати наряду (BR-WO-019).
    */
   async resolveWorkHours(orgId: string, branchId: string | null): Promise<WorkHours> {
-    if (!branchId) return { ...DEFAULT_WORK_HOURS };
+    if (!branchId) return DEFAULT_WORK_HOURS;
     try {
       const bs = await this.prisma.branchSettings.findFirst({
         where: { branchId, orgId },
@@ -143,7 +162,7 @@ export class CalendarService {
       });
       return workHoursOf(bs);
     } catch {
-      return { ...DEFAULT_WORK_HOURS };
+      return DEFAULT_WORK_HOURS;
     }
   }
 
@@ -329,7 +348,7 @@ export class CalendarService {
     const { startHour, endHour } = await this.resolveWorkHours(orgId, lift?.zone?.branchId ?? null);
 
     // Determine if slot overflows the working day end (endHour Kyiv, per-branch)
-    const workDayEnd = kyivEndOfWorkDay(startAt, endHour);
+    const workDayEnd = kyivHourOnDay(kyivYmd(startAt), endHour);
     // Bug #819: split only a slot that STARTS inside the working day. For a slot that starts at or
     // after its end (23:30) the "today" part ended before it began: the parent was stored with
     // endAt < startAt, and the continuation got the whole gap since the end of the working day.
@@ -337,7 +356,7 @@ export class CalendarService {
     const isSplit = startAt < workDayEnd && endAt > workDayEnd;
 
     const slot1End = isSplit ? workDayEnd : endAt;
-    const slot2Start = isSplit ? kyivStartOfNextWorkDay(startAt, startHour) : null;
+    const slot2Start = isSplit ? kyivHourOnDay(kyivYmd(addDaysKyiv(startAt, 1)), startHour) : null;
     const slot2End = isSplit
       ? new Date(slot2Start!.getTime() + (endAt.getTime() - workDayEnd.getTime()))
       : null;
@@ -349,55 +368,20 @@ export class CalendarService {
       slots = await this.prisma.$transaction(
         async tx => {
           // Conflict check for slot1 interval (+ slot2 interval if split) — all in parallel.
+          const day1 = [{ startAt, endAt: slot1End }];
+          const day2 = isSplit ? [{ startAt: slot2Start!, endAt: slot2End! }] : null;
+          const busy = (resource: Prisma.CalendarSlotWhereInput, intervals: TimeSegment[]) =>
+            tx.calendarSlot.findFirst({
+              where: busyWhere(orgId, resource, intervals),
+              select: { id: true },
+            });
+          const lift = dto.liftId ? { liftId: dto.liftId } : null;
+          const employee = dto.employeeId ? { employeeId: dto.employeeId } : null;
           const [conflict1, empConflict1, conflict2, empConflict2] = await Promise.all([
-            dto.liftId
-              ? tx.calendarSlot.findFirst({
-                  where: {
-                    orgId,
-                    liftId: dto.liftId,
-                    deletedAt: null,
-                    AND: [OF_LIVE_WORK_ORDER],
-                    OR: [{ startAt: { lt: slot1End }, endAt: { gt: startAt } }],
-                  },
-                  select: { id: true },
-                })
-              : Promise.resolve(null),
-            dto.employeeId
-              ? tx.calendarSlot.findFirst({
-                  where: {
-                    orgId,
-                    employeeId: dto.employeeId,
-                    deletedAt: null,
-                    AND: [OF_LIVE_WORK_ORDER],
-                    OR: [{ startAt: { lt: slot1End }, endAt: { gt: startAt } }],
-                  },
-                  select: { id: true },
-                })
-              : Promise.resolve(null),
-            isSplit && dto.liftId
-              ? tx.calendarSlot.findFirst({
-                  where: {
-                    orgId,
-                    liftId: dto.liftId,
-                    deletedAt: null,
-                    AND: [OF_LIVE_WORK_ORDER],
-                    OR: [{ startAt: { lt: slot2End! }, endAt: { gt: slot2Start! } }],
-                  },
-                  select: { id: true },
-                })
-              : Promise.resolve(null),
-            isSplit && dto.employeeId
-              ? tx.calendarSlot.findFirst({
-                  where: {
-                    orgId,
-                    employeeId: dto.employeeId,
-                    deletedAt: null,
-                    AND: [OF_LIVE_WORK_ORDER],
-                    OR: [{ startAt: { lt: slot2End! }, endAt: { gt: slot2Start! } }],
-                  },
-                  select: { id: true },
-                })
-              : Promise.resolve(null),
+            lift && busy(lift, day1),
+            employee && busy(employee, day1),
+            day2 && lift && busy(lift, day2),
+            day2 && employee && busy(employee, day2),
           ]);
           if (dto.liftId && conflict1)
             throw new BadRequestException(translateError('err.calendar.liftBusy', getLocale()));
@@ -451,7 +435,7 @@ export class CalendarService {
       // (concurrent booking). Конвертуємо у 409 UA замість generic 500.
       throwIfExclusionConflict(
         err,
-        'calendar_slots_no_overlap',
+        CALENDAR_SLOT_EXCLUSION,
         translateError('err.calendar.liftBusy', getLocale()),
       );
     }
@@ -552,35 +536,16 @@ export class CalendarService {
     try {
       updated = await this.prisma.$transaction(
         async tx => {
-          // Lift- + employee-conflict checks незалежні — паралелимо.
+          // Lift- + employee-conflict checks незалежні — паралелимо; сам запис — не конфлікт.
           // Narrow projection (select id) — потрібен лише факт існування.
+          const busy = (resource: Prisma.CalendarSlotWhereInput) =>
+            tx.calendarSlot.findFirst({
+              where: busyWhere(orgId, resource, [{ startAt, endAt }], { ids: [id] }),
+              select: { id: true },
+            });
           const [conflict, empConflict] = await Promise.all([
-            liftId
-              ? tx.calendarSlot.findFirst({
-                  where: {
-                    orgId,
-                    liftId,
-                    deletedAt: null,
-                    AND: [OF_LIVE_WORK_ORDER],
-                    NOT: { id },
-                    OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
-                  },
-                  select: { id: true },
-                })
-              : Promise.resolve(null),
-            employeeId
-              ? tx.calendarSlot.findFirst({
-                  where: {
-                    orgId,
-                    employeeId,
-                    deletedAt: null,
-                    AND: [OF_LIVE_WORK_ORDER],
-                    NOT: { id },
-                    OR: [{ startAt: { lt: endAt }, endAt: { gt: startAt } }],
-                  },
-                  select: { id: true },
-                })
-              : Promise.resolve(null),
+            liftId ? busy({ liftId }) : null,
+            employeeId ? busy({ employeeId }) : null,
           ]);
           if (liftId && conflict) {
             throw new BadRequestException(translateError('err.calendar.liftBusy', getLocale()));
@@ -628,7 +593,7 @@ export class CalendarService {
     } catch (err) {
       throwIfExclusionConflict(
         err,
-        'calendar_slots_no_overlap',
+        CALENDAR_SLOT_EXCLUSION,
         translateError('err.calendar.liftBusy', getLocale()),
       );
     }
@@ -654,52 +619,25 @@ export class CalendarService {
         translateError('err.calendar.invalidTimeInterval', getLocale()),
       );
     }
-    const excludeFilter = dto.excludeSlotId ? { not: dto.excludeSlotId } : undefined;
-    // excludeWorkOrderId — записи самого наряду (картка наряду перевіряє власний час) не конфлікт.
-    // Записи без наряду лишаються: Prisma `{ not: X }` дає SQL `<> X`, що відкидає й NULL, тож
-    // попередження в картці мовчало про звичайні бронювання підйомника, а збереження потім
-    // відмовляло «Підйомник зайнятий» (BR-WO-020, review 2026-10-16).
-    const conflictAnd = dto.excludeWorkOrderId
-      ? [
-          OF_LIVE_WORK_ORDER,
-          { OR: [{ workOrderId: null }, { workOrderId: { not: dto.excludeWorkOrderId } }] },
-        ]
-      : [OF_LIVE_WORK_ORDER];
+    // excludeWorkOrderId — записи самого наряду (картка наряду перевіряє власний час) не конфлікт;
+    // записи без наряду лишаються конфліктом (`busyWhere`, BR-WO-020).
+    const exclude = {
+      ids: dto.excludeSlotId ? [dto.excludeSlotId] : undefined,
+      workOrderId: dto.excludeWorkOrderId,
+    };
     // findMany without take violates OOM guard — realistic upper bound for a time window is a few dozen slots.
     const CONFLICT_TAKE = 50;
     // CONFLICT_SELECT hoisted to module-level (sto-optimize cycle 3/3).
+    const busy = (resource: Prisma.CalendarSlotWhereInput) =>
+      this.prisma.calendarSlot.findMany({
+        where: busyWhere(orgId, resource, [{ startAt, endAt }], exclude),
+        select: CONFLICT_SELECT,
+        take: CONFLICT_TAKE,
+      });
 
     const [liftSlots, empSlots] = await Promise.all([
-      dto.liftId
-        ? this.prisma.calendarSlot.findMany({
-            where: {
-              orgId,
-              liftId: dto.liftId,
-              deletedAt: null,
-              AND: conflictAnd,
-              id: excludeFilter,
-              startAt: { lt: endAt },
-              endAt: { gt: startAt },
-            },
-            select: CONFLICT_SELECT,
-            take: CONFLICT_TAKE,
-          })
-        : Promise.resolve([]),
-      dto.employeeId
-        ? this.prisma.calendarSlot.findMany({
-            where: {
-              orgId,
-              employeeId: dto.employeeId,
-              deletedAt: null,
-              AND: conflictAnd,
-              id: excludeFilter,
-              startAt: { lt: endAt },
-              endAt: { gt: startAt },
-            },
-            select: CONFLICT_SELECT,
-            take: CONFLICT_TAKE,
-          })
-        : Promise.resolve([]),
+      dto.liftId ? busy({ liftId: dto.liftId }) : [],
+      dto.employeeId ? busy({ employeeId: dto.employeeId }) : [],
     ]);
 
     const seen = new Set<string>();
@@ -773,18 +711,7 @@ export class CalendarService {
             if (parentSlot.employeeId) orConflicts.push({ employeeId: parentSlot.employeeId });
 
             const conflict = await tx.calendarSlot.findFirst({
-              where: {
-                orgId,
-                deletedAt: null,
-                // Записи без наряду — теж конфлікт: `{ not: X }` сам по собі відкидає й NULL.
-                AND: [
-                  OF_LIVE_WORK_ORDER,
-                  { OR: [{ workOrderId: null }, { workOrderId: { not: workOrderId } }] },
-                ],
-                startAt: { lt: endAt },
-                endAt: { gt: startAt },
-                OR: orConflicts,
-              },
+              where: busyWhere(orgId, { OR: orConflicts }, [{ startAt, endAt }], { workOrderId }),
               select: { id: true, liftId: true, employeeId: true },
             });
             if (conflict) {
@@ -822,7 +749,7 @@ export class CalendarService {
       // симетрично createSlot()/updateSlot() (раніше цей alternate-mutation endpoint пропускав це).
       throwIfExclusionConflict(
         err,
-        'calendar_slots_no_overlap',
+        CALENDAR_SLOT_EXCLUSION,
         translateError('err.calendar.liftBusy', getLocale()),
       );
     }
@@ -892,53 +819,31 @@ export class CalendarService {
 
     let employeeId = anchor?.employeeId ?? null;
     if (anchor && employeeId && liftId !== anchor.liftId) {
-      const mechanic = await findMechanicOnLift(this.prisma, orgId, employeeId, liftId);
+      const mechanic = await findMechanicOnLift(tx, orgId, employeeId, liftId);
       if (!mechanic.ok) employeeId = null;
     }
 
     const ownIds = own.map(s => s.id);
-    const busyWhere = (resource: { liftId: string } | { employeeId: string }) => ({
-      orgId,
-      ...resource,
-      deletedAt: null,
-      ...(ownIds.length > 0 && { id: { notIn: ownIds } }),
-      AND: [
-        OF_LIVE_WORK_ORDER,
-        { OR: segments.map(s => ({ startAt: { lt: s.endAt }, endAt: { gt: s.startAt } })) },
-      ],
-    });
+    const busy = (resource: { liftId: string } | { employeeId: string }) =>
+      tx.calendarSlot.findFirst({
+        where: busyWhere(orgId, resource, segments, { ids: ownIds }),
+        select: { startAt: true, endAt: true },
+      });
     const [liftHit, mechanicHit] = await Promise.all([
-      liftId
-        ? tx.calendarSlot.findFirst({
-            where: busyWhere({ liftId }),
-            select: { startAt: true, endAt: true },
-          })
-        : Promise.resolve(null),
-      employeeId
-        ? tx.calendarSlot.findFirst({
-            where: busyWhere({ employeeId }),
-            select: { startAt: true, endAt: true },
-          })
-        : Promise.resolve(null),
+      liftId ? busy({ liftId }) : null,
+      employeeId ? busy({ employeeId }) : null,
     ]);
-    const onFirstDay = (hit: { startAt: Date; endAt: Date }) =>
-      hit.startAt < first.endAt && hit.endAt > first.startAt;
-    if (liftHit)
-      throw new BadRequestException(
+    // Перетин із першим днем — «зайнятий», лише з наступними — «зайнятий наступного дня».
+    const busyError = (hit: TimeSegment, sameDayKey: string, nextDayKey: string) =>
+      new BadRequestException(
         translateError(
-          onFirstDay(liftHit) ? 'err.calendar.liftBusy' : 'err.calendar.liftBusyNextDay',
+          hit.startAt < first.endAt && hit.endAt > first.startAt ? sameDayKey : nextDayKey,
           getLocale(),
         ),
       );
+    if (liftHit) throw busyError(liftHit, 'err.calendar.liftBusy', 'err.calendar.liftBusyNextDay');
     if (mechanicHit)
-      throw new BadRequestException(
-        translateError(
-          onFirstDay(mechanicHit)
-            ? 'err.calendar.employeeBusy'
-            : 'err.calendar.employeeBusyNextDay',
-          getLocale(),
-        ),
-      );
+      throw busyError(mechanicHit, 'err.calendar.employeeBusy', 'err.calendar.employeeBusyNextDay');
 
     // Спершу звільнити старі продовження: інакше перенесений якір перетнувся б із власним
     // продовженням на тому ж підйомнику (EXCLUDE `calendar_slots_no_overlap`).
@@ -989,19 +894,20 @@ export class CalendarService {
   }
 
   /**
-   * BR-WO-020: планові дати наряду стерто — його записи календаря (обидві частини багатоденного)
-   * позначаються видаленими в транзакції збереження наряду; підйомник і механік звільняються.
+   * BR-WO-017/020: наряд видалено чи його планові дати стерто — записи календаря наряду (обидві
+   * частини багатоденного) позначаються видаленими в транзакції наряду; підйомник і механік
+   * звільняються. `deletedAt` — той самий час, що й у видаленого наряду.
    */
   async removeWorkOrderSlots(
     tx: Prisma.TransactionClient,
     orgId: string,
     workOrderId: string,
-  ): Promise<number> {
-    const res = await tx.calendarSlot.updateMany({
+    deletedAt: Date = new Date(),
+  ): Promise<void> {
+    await tx.calendarSlot.updateMany({
       where: { orgId, workOrderId, deletedAt: null },
-      data: { deletedAt: new Date() },
+      data: { deletedAt },
     });
-    return res.count;
   }
 
   async removeSlot(orgId: string, id: string): Promise<void> {

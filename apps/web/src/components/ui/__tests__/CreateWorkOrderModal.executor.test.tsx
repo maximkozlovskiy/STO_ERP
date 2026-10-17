@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { renderWithQueryClient } from '@/__tests__/query-utils';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 import { CreateWorkOrderModal } from '../CreateWorkOrderModal';
 
@@ -134,7 +135,7 @@ function mockApi(opts: {
 const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
 
 async function openModal() {
-  render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
+  renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
   await screen.findByText('Робота 1');
   await waitFor(() =>
     expect(apiFetchMock).toHaveBeenCalledWith('/employees?limit=200&role=MECHANIC'),
@@ -288,7 +289,7 @@ describe('CreateWorkOrderModal — виконавець, поки довідни
   // guards: BR-WO-018
   it('активний механік: до відповіді довідника — його ім’я без «(недоступний)» і без пояснення', async () => {
     const hold = holdEmployees([{ employeeId: 'm-active', employeeName: 'Петров Іван' }]);
-    render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
     await screen.findByText('Робота 1');
 
     const select = await editLine('Робота 1');
@@ -309,7 +310,7 @@ describe('CreateWorkOrderModal — виконавець, поки довідни
   // guards: BR-WO-018
   it('адмін: «(недоступний)» і пояснення з’являються лише після відповіді довідника', async () => {
     const hold = holdEmployees([{ employeeId: 'admin-1', employeeName: 'Адмін Олег' }]);
-    render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
     await screen.findByText('Робота 1');
 
     const select = await editLine('Робота 1');

@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import { renderWithQueryClient } from '@/__tests__/query-utils';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 import { CreateWorkOrderModal } from '../CreateWorkOrderModal';
@@ -126,7 +127,7 @@ describe('CreateWorkOrderModal — збереження, коли сервер �
     mockApi(() => Promise.reject(new Error(BELOW_PAID)));
     const onClose = vi.fn();
     const user = userEvent.setup();
-    render(<CreateWorkOrderModal open onClose={onClose} workOrderId={WO} />);
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={onClose} workOrderId={WO} />);
     await screen.findByText('Заміна колодок');
     await user.click((await screen.findAllByRole('button', { name: 'Видалити роботу' }))[0]!);
 
@@ -145,7 +146,7 @@ describe('CreateWorkOrderModal — збереження, коли сервер �
     mockApi(() => Promise.resolve(undefined));
     const onClose = vi.fn();
     const user = userEvent.setup();
-    render(<CreateWorkOrderModal open onClose={onClose} workOrderId={WO} />);
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={onClose} workOrderId={WO} />);
     await screen.findByText('Заміна колодок');
     await user.click((await screen.findAllByRole('button', { name: 'Видалити роботу' }))[0]!);
 

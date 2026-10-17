@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import {
   DEFAULT_WORK_HOURS_WINDOW,
@@ -12,10 +12,14 @@ interface WorkHoursResponse {
   workEndHour: number;
 }
 
-// Години філії змінюються рідко (сервер тримає їх у кеші 60 с) — одне читання на хвилину на
-// філію, а не на кожне відкриття картки наряду.
-const TTL_MS = 60_000;
-const cache = new Map<string, { at: number; value: Promise<WorkHoursWindow> }>();
+/**
+ * Ключі кешу робочих годин: `all` — для скидання після збереження годин філії в налаштуваннях;
+ * `null` замість філії — основна філія організації (`GET /settings/work-hours` без `branchId`).
+ */
+export const workHoursKeys = {
+  all: ['settings', 'work-hours'] as const,
+  branch: (branchId: string | null) => ['settings', 'work-hours', branchId] as const,
+};
 
 function isHours(v: unknown): v is WorkHoursResponse {
   const r = v as WorkHoursResponse | null;
@@ -29,48 +33,35 @@ function isHours(v: unknown): v is WorkHoursResponse {
   );
 }
 
-function load(branchId: string): Promise<WorkHoursWindow> {
-  const hit = cache.get(branchId);
-  if (hit && Date.now() - hit.at < TTL_MS) return hit.value;
-  const value = apiFetch<unknown>(`/settings/work-hours?branchId=${encodeURIComponent(branchId)}`)
-    .then(r =>
-      isHours(r)
-        ? { startHour: r.workStartHour, endHour: r.workEndHour }
-        : { ...DEFAULT_WORK_HOURS_WINDOW },
-    )
-    .catch(() => {
-      cache.delete(branchId); // збій — наступне відкриття спробує ще раз
-      return { ...DEFAULT_WORK_HOURS_WINDOW };
-    });
-  cache.set(branchId, { at: Date.now(), value });
-  return value;
-}
-
-/** Лише для тестів: скинути кеш між кейсами (`isolate: false`). */
-export function resetBranchWorkHoursCache(): void {
-  cache.clear();
+async function fetchWorkHours(
+  branchId: string | null,
+  signal: AbortSignal,
+): Promise<WorkHoursWindow> {
+  const query = branchId ? `?branchId=${encodeURIComponent(branchId)}` : '';
+  const r = await apiFetch<unknown>(`/settings/work-hours${query}`, { signal });
+  return isHours(r)
+    ? { startHour: r.workStartHour, endHour: r.workEndHour }
+    : DEFAULT_WORK_HOURS_WINDOW;
 }
 
 /**
- * Робочі години філії для пікера планових дат наряду й автокінця (BR-WO-019) — той самий
- * `GET /settings/work-hours?branchId=`, що й сервер, який перевіряє дати. Доки не завантажено
- * чи філію не обрано — типові 09–18, як на сервері.
+ * Робочі години філії для пікера планових дат наряду й автокінця (BR-WO-019) і сітки календаря —
+ * той самий `GET /settings/work-hours`, що й сервер, який перевіряє дати й ділить запис на дні.
+ * `branchId` порожній: `mainBranch` — години основної філії (сітка календаря), інакше — типові
+ * 09–18 без запиту (картка наряду, доки філію не обрано). Доки не завантажено чи при збої —
+ * типові 09–18, як на сервері. Години змінюються рідко (сервер тримає їх у кеші 60 с) — одне
+ * читання на хвилину на філію, а не на кожне відкриття картки.
  */
-export function useBranchWorkHours(branchId: string | null | undefined): WorkHoursWindow {
-  const [hours, setHours] = useState<WorkHoursWindow>(DEFAULT_WORK_HOURS_WINDOW);
-  useEffect(() => {
-    if (!branchId) {
-      setHours(DEFAULT_WORK_HOURS_WINDOW);
-      return;
-    }
-    let cancelled = false;
-    void load(branchId).then(h => {
-      if (cancelled) return;
-      setHours(prev => (prev.startHour === h.startHour && prev.endHour === h.endHour ? prev : h));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [branchId]);
-  return hours;
+export function useBranchWorkHours(
+  branchId: string | null | undefined,
+  { mainBranch = false }: { mainBranch?: boolean } = {},
+): WorkHoursWindow {
+  const key = branchId || null;
+  const { data } = useQuery({
+    queryKey: workHoursKeys.branch(key),
+    queryFn: ({ signal }) => fetchWorkHours(key, signal),
+    enabled: key !== null || mainBranch,
+    staleTime: 60_000,
+  });
+  return data ?? DEFAULT_WORK_HOURS_WINDOW;
 }

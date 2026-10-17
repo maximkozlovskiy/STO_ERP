@@ -244,16 +244,22 @@ describe('CalendarService.syncWorkOrderSlots', () => {
       const where = prisma._txCalendarSlot.findFirst.mock.calls[1][0].where;
       expect(where).toEqual({
         orgId,
+        OR: [{ liftId }, { employeeId }],
         deletedAt: null,
         // Записи без наряду — теж «чужі»: `{ not: X }` сам по собі відкидає NULL (поведінку
         // стереже calendar.conflicts.spec.ts, describe syncWorkOrderSlots).
         AND: [
           { OR: [{ workOrderId: null }, { workOrder: { is: { deletedAt: null } } }] },
           { OR: [{ workOrderId: null }, { workOrderId: { not: workOrderId } }] },
+          {
+            OR: [
+              {
+                startAt: { lt: new Date('2026-05-22T11:00:00.000Z') },
+                endAt: { gt: new Date('2026-05-22T10:00:00.000Z') },
+              },
+            ],
+          },
         ],
-        startAt: { lt: new Date('2026-05-22T11:00:00.000Z') },
-        endAt: { gt: new Date('2026-05-22T10:00:00.000Z') },
-        OR: [{ liftId }, { employeeId }],
       });
     });
 

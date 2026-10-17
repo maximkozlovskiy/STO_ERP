@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import { renderWithQueryClient } from '@/__tests__/query-utils';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 import { CreateWorkOrderModal } from '../CreateWorkOrderModal';
@@ -114,7 +115,7 @@ function plannedHoursInput(): HTMLInputElement {
 
 async function openAndDeleteFirstLine(firstLineName: string) {
   const user = userEvent.setup();
-  render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
+  renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
   await screen.findByText(firstLineName);
   // Налаштування org приходять окремим запитом — дочекатись, інакше прапорець ще дефолтний.
   await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/settings/organisation'));

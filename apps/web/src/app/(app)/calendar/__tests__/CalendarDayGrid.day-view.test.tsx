@@ -2,7 +2,8 @@
 // (прострочення — за кінцем ланцюжка з довантаженим наступним днем), механік на блоці, лінія
 // «зараз» лише сьогодні з оновленням щохвилини, завантаження підйомника «N год з M».
 
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { renderWithQueryClient } from '@/__tests__/query-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarSlot } from '../calendar.types';
 
@@ -75,8 +76,11 @@ function Harness({ canManageSlots = true }: { canManageSlots?: boolean }) {
 }
 
 async function renderDay(opts: { canManageSlots?: boolean } = {}) {
-  const view = render(<Harness {...opts} />);
+  const view = renderWithQueryClient(<Harness {...opts} />);
   await waitFor(() => expect(screen.getAllByTestId('lift-load')).toHaveLength(2));
+  // Прихід підйомників перечитує день (бронювання розкладаються по вільних підйомниках) — блоки
+  // записів з'являються, коли це читання завершиться.
+  await waitFor(() => expect(screen.queryByLabelText('Завантаження')).not.toBeInTheDocument());
   return view;
 }
 

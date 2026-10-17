@@ -448,7 +448,7 @@ describe('CreateWorkOrderModal — наряд, позначений на вид�
   });
   const open = async (deletedAt: string | null) => {
     mockApi({ '/work-orders/wo-1?withDeleted=true': doc(deletedAt) });
-    render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
     await screen.findByText('Заміна колодок');
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/settings/organisation'));
   };
@@ -700,7 +700,7 @@ describe('Ctrl+Enter у картці документа, позначеного 
       },
     });
     const onClose = vi.fn();
-    render(<CreateWorkOrderModal open onClose={onClose} workOrderId="wo-1" />);
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={onClose} workOrderId="wo-1" />);
     await screen.findByText('Заміна колодок');
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/settings/organisation'));
     expect(banner()).toBeInTheDocument();

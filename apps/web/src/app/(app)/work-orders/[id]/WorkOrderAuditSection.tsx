@@ -31,10 +31,8 @@ export function useWorkOrderAudit(woId: string): AuditEventItem[] {
   const [auditEvents, setAuditEvents] = useState<AuditEventItem[]>([]);
 
   useEffect(() => {
-    if (!canView) {
-      setAuditEvents([]);
-      return;
-    }
+    // Роль без доступу — без запиту; порожній список дає вихід хука нижче.
+    if (!canView) return;
     let cancelled = false;
     apiFetch<{ items: AuditEventItem[] }>(`/audit?entityType=WorkOrder&entityId=${woId}`)
       .then(res => {

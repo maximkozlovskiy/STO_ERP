@@ -14,6 +14,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { WorkOrdersService } from './work-orders.service';
+import { CalendarService } from '../calendar/calendar.service';
 import { WorkOrderTotalsService } from './work-order-totals.service';
 import { memoryTable, type MemRow } from '../cash/cash.spec-fixture';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -109,7 +110,7 @@ function makeHarness(over: MemRow = {}) {
     events as never,
     totals as never,
     null as never, // orgPrintInfo
-    null as never, // calendar
+    new CalendarService(prisma as unknown as PrismaService), // calendar (BR-WO-017)
   );
   const transitions = () =>
     events.emit.mock.calls

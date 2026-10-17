@@ -16,6 +16,17 @@ export const MAX_QUERY_LIMIT = 1000;
 export const TRANSACTION_TIMEOUT_MS = 5_000;
 
 /**
+ * Типові робочі години філії (київський час): 09:00–18:00, як `@default` колонок
+ * `BranchSettings.workStartTime/workEndTime`. Одне джерело для API (розбиття запису календаря на
+ * дні, BR-CAL-007; перевірка планових дат наряду, BR-WO-019; `GET /settings/work-hours`) і web
+ * (сітка календаря, пікер планових дат), доки години філії не завантажено чи їх немає.
+ */
+export const DEFAULT_WORK_HOURS: Readonly<{ startHour: number; endHour: number }> = Object.freeze({
+  startHour: 9,
+  endHour: 18,
+});
+
+/**
  * Найбільша довжина рядка пошуку `q` у списках: поле вводу у web обмежене цим самим числом,
  * API обрізає або відхиляє довший рядок. Одне джерело, щоб межі не розійшлись (Bug #816).
  */

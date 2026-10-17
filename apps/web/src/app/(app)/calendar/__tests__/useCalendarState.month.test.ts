@@ -3,6 +3,7 @@
 // після збереження перечитується місяць (BR-CAL-009).
 
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { createQueryWrapper } from '@/__tests__/query-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarSlot } from '../calendar.types';
 
@@ -61,7 +62,7 @@ const slotCalls = () =>
   apiFetch.mock.calls.map(c => String(c[0])).filter(u => u.startsWith('/calendar/slots?date='));
 
 async function renderMonth() {
-  const hook = renderHook(() => useCalendarState());
+  const hook = renderHook(() => useCalendarState(), { wrapper: createQueryWrapper() });
   await waitFor(() => expect(hook.result.current.monthLoading).toBe(false));
   await waitFor(() => expect(hook.result.current.nowMs).toBeGreaterThan(0));
   return hook;
@@ -179,7 +180,7 @@ describe('useCalendarState — вид «Місяць»', () => {
     byDay['2026-10-16'] = [
       slot('c', '2026-10-16T08:00:00+03:00', '2026-10-16T11:00:00+03:00', { parentSlotId: 'p' }),
     ];
-    const { result } = renderHook(() => useCalendarState());
+    const { result } = renderHook(() => useCalendarState(), { wrapper: createQueryWrapper() });
     await waitFor(() => expect(result.current.dayEntries).toHaveLength(1));
     expect(slotCalls()).toEqual(
       expect.arrayContaining([
@@ -226,7 +227,7 @@ describe('useCalendarState — вид «Місяць»', () => {
         ? held15.then(() => base(url, init))
         : base(url, init),
     );
-    const { result } = renderHook(() => useCalendarState());
+    const { result } = renderHook(() => useCalendarState(), { wrapper: createQueryWrapper() });
     await waitFor(() => expect(slotCalls()).toContain('/calendar/slots?date=2026-10-15'));
     act(() => result.current.setDate('2026-10-17'));
     await waitFor(() => expect(result.current.slots.map(s => s.id)).toEqual(['new']));
@@ -243,7 +244,7 @@ describe('useCalendarState — вид «Місяць»', () => {
     // Почався о 10:00, триває до 14:00; зараз 12:00.
     const s = slot('now', '2026-10-15T10:00:00+03:00', '2026-10-15T14:00:00+03:00');
     byDay['2026-10-15'] = [s];
-    const { result } = renderHook(() => useCalendarState());
+    const { result } = renderHook(() => useCalendarState(), { wrapper: createQueryWrapper() });
     await waitFor(() => expect(result.current.slots).toHaveLength(1));
     await waitFor(() => expect(result.current.nowMs).toBeGreaterThan(0));
     act(() => result.current.openMonthSlot(s));
@@ -255,7 +256,9 @@ describe('useCalendarState — вид «Місяць»', () => {
 
   // guards: BR-CAL-010
   it('без права змінювати записи (механік): «Новий запис» нічого не відкриває (Bug #871)', async () => {
-    const hook = renderHook(() => useCalendarState({ canManageSlots: false }));
+    const hook = renderHook(() => useCalendarState({ canManageSlots: false }), {
+      wrapper: createQueryWrapper(),
+    });
     await waitFor(() => expect(hook.result.current.monthLoading).toBe(false));
     act(() => hook.result.current.openNewOnDate('2026-10-22'));
     expect(hook.result.current.showAdd).toBe(false);

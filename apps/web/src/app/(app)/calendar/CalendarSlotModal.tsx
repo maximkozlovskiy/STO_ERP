@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useCallback, useState } from 'react';
+import { useEffect, useId, useRef, useCallback, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import dynamic from 'next/dynamic';
@@ -8,7 +8,7 @@ import { UserPlus, FilePlus, Trash2, ExternalLink } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { WO_STATUS_BADGE } from '@sto/shared';
 import { woStatusLabel } from '@/i18n/enumLabel';
-import { fmtMoney, fmtDate, kyivDateTimeToISO } from '@/lib/format';
+import { addDaysISO, fmtMoney, fmtDate, kyivDateTimeToISO } from '@/lib/format';
 import { workOrderVatSplit } from '@/lib/utils';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import {
@@ -610,6 +610,28 @@ export function CalendarSlotModal({
     [form.counterpartyId],
   );
 
+  /**
+   * Запис за початком і нормогодинами переходить за кінець робочого дня філії — сервер ділить
+   * його на два дні (BR-CAL-007). `totalMin` — справжній кінець (хвилини від півночі дня запису),
+   * `nextDate` — наступний день (`null` — дати сторінки ще немає чи вона невалідна).
+   */
+  const dayOverflow = useMemo(() => {
+    const nh = parseFloat(String(form.normoHours).replace(',', '.'));
+    if (!form.startAt || !(nh > 0)) return null;
+    const [h, m] = form.startAt.split(':').map(Number);
+    const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(nh * 60);
+    if (totalMin <= windowEnd * 60) return null;
+    let nextDate: string | null = null;
+    try {
+      nextDate = date ? addDaysISO(date, 1) : null;
+    } catch {
+      nextDate = null;
+    }
+    return { totalMin, nextDate };
+  }, [form.startAt, form.normoHours, windowEnd, date]);
+  // День завершення запису: наступний, коли запис переходить за кінець робочого дня.
+  const endDate = dayOverflow?.nextDate ?? date;
+
   // ── Add / update slot ─────────────────────────────────────────────────────
 
   const addSlot = async () => {
@@ -618,13 +640,7 @@ export function CalendarSlotModal({
       return;
     }
     // overflow: endAt (next-day, e.g. "10:30") < startAt ("19:00") is valid
-    const [sh2, sm2] = form.startAt.split(':').map(Number);
-    const startMin2 = (sh2 ?? 0) * 60 + (sm2 ?? 0);
-    const nh2 = parseFloat(String(form.normoHours).replace(',', '.'));
-    // Сервер ділить запис на кінці робочого дня філії (BR-CAL-007) — це ж windowEnd сітки.
-    const isOverflowSlot =
-      !isNaN(nh2) && nh2 > 0 && startMin2 + Math.round(nh2 * 60) > windowEnd * 60;
-    if (!isOverflowSlot && form.endAt <= form.startAt) {
+    if (!dayOverflow && form.endAt <= form.startAt) {
       setError(t('slot.errEndAfterStart'));
       return;
     }
@@ -671,12 +687,12 @@ export function CalendarSlotModal({
     // on the *same* day (e.g. 20:00 for 2 h from 18:00), not the next-day display time.
     // calcEndAt() converts overflow to "відкриття + remainder" for display only — we must
     // send the raw totalMin end time so the backend split logic works correctly.
-    const endTimeForSave = isOverflowSlot
+    const endTimeForSave = dayOverflow
       ? (() => {
           // Send real wall-clock end on the same day so the backend split computes correctly:
           // slot2 duration = endAt - кінець робочого дня. E.g. 2h from 18:00 → endAt=20:00.
           // Cap at 23:59 — kyivDateTimeToISO rejects hours ≥ 24 (produces Invalid Date).
-          const totalMinRaw = Math.min(startMin2 + Math.round(nh2 * 60), 23 * 60 + 59);
+          const totalMinRaw = Math.min(dayOverflow.totalMin, 23 * 60 + 59);
           return `${pad(Math.floor(totalMinRaw / 60))}:${pad(totalMinRaw % 60)}`;
         })()
       : form.endAt;
@@ -927,28 +943,19 @@ export function CalendarSlotModal({
               />
               {/* Overflow preview — кінець робочого дня філії, на якому сервер ділить запис. */}
               {(() => {
-                const nh = Number(form.normoHours);
-                if (!form.startAt || !nh || nh <= 0) return null;
-                const [h, m] = form.startAt.split(':').map(Number);
-                const totalMin = (h ?? 0) * 60 + (m ?? 0) + Math.round(nh * 60);
+                if (!dayOverflow) return null;
                 const workEndMin = windowEnd * 60;
                 // Use the same 15-min snap as calcEndAt() so the warning fires iff the
                 // Кінець field actually shows a next-day time (prevents contradictory UI).
-                const snappedTotal = Math.round(totalMin / 15) * 15;
+                const snappedTotal = Math.round(dayOverflow.totalMin / 15) * 15;
                 if (snappedTotal <= workEndMin) return null;
                 const overflowMin = snappedTotal - workEndMin;
                 const day2EndMin = windowStart * 60 + overflowMin;
                 const day2H = Math.floor(day2EndMin / 60);
                 const day2M = day2EndMin % 60;
-                const nextDayIso = (() => {
-                  try {
-                    const d = new Date(`${date}T12:00:00Z`);
-                    d.setUTCDate(d.getUTCDate() + 1);
-                    return fmtKyivDate(d.toISOString());
-                  } catch {
-                    return '';
-                  }
-                })();
+                const nextDayIso = dayOverflow.nextDate
+                  ? fmtKyivDate(`${dayOverflow.nextDate}T12:00:00.000Z`)
+                  : '';
                 return (
                   <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
                     {t('slot.splitWarning', {
@@ -963,41 +970,23 @@ export function CalendarSlotModal({
               })()}
             </div>
             <div>
-              {/* Compute end date: next calendar day when totalMin overflows windowEnd */}
-              {(() => {
-                const nh = Number(form.normoHours);
-                const [sh, sm] = form.startAt ? form.startAt.split(':').map(Number) : [0, 0];
-                const totalMin = (sh ?? 0) * 60 + (sm ?? 0) + Math.round((nh > 0 ? nh : 0) * 60);
-                const isOverflow = form.startAt && nh > 0 && totalMin > windowEnd * 60;
-                const endDate = (() => {
-                  if (!isOverflow || !date) return date;
-                  try {
-                    const d = new Date(`${date}T12:00:00Z`);
-                    d.setUTCDate(d.getUTCDate() + 1);
-                    return d.toISOString().slice(0, 10);
-                  } catch {
-                    return date;
+              {/* End date: next calendar day when the slot overflows windowEnd */}
+              <DateTimePickerInput
+                label={t('slot.fieldEnd')}
+                value={endDate && form.endAt ? `${endDate}T${form.endAt}` : ''}
+                minHour={windowStart}
+                maxHour={23}
+                disabled={isEditingPast}
+                inputClassName="h-8 text-[13px]"
+                onChange={val => {
+                  const endAt = val ? val.slice(11, 16) : '';
+                  setForm(f => ({ ...f, endAt }));
+                  if (pendingSlot) {
+                    const { h, m } = parseHHMM(endAt);
+                    setPendingSlot(p => (p ? { ...p, endH: h + m / 60 } : p));
                   }
-                })();
-                return (
-                  <DateTimePickerInput
-                    label={t('slot.fieldEnd')}
-                    value={endDate && form.endAt ? `${endDate}T${form.endAt}` : ''}
-                    minHour={windowStart}
-                    maxHour={23}
-                    disabled={isEditingPast}
-                    inputClassName="h-8 text-[13px]"
-                    onChange={val => {
-                      const endAt = val ? val.slice(11, 16) : '';
-                      setForm(f => ({ ...f, endAt }));
-                      if (pendingSlot) {
-                        const { h, m } = parseHHMM(endAt);
-                        setPendingSlot(p => (p ? { ...p, endH: h + m / 60 } : p));
-                      }
-                    }}
-                  />
-                );
-              })()}
+                }}
+              />
             </div>
           </div>
 
@@ -1590,19 +1579,6 @@ export function CalendarSlotModal({
         }}
         prefill={(() => {
           const nh = Number(form.normoHours);
-          const [sh, sm] = form.startAt ? form.startAt.split(':').map(Number) : [0, 0];
-          const totalMin = (sh ?? 0) * 60 + (sm ?? 0) + Math.round((nh > 0 ? nh : 0) * 60);
-          const isOverflow = form.startAt && nh > 0 && totalMin > windowEnd * 60;
-          const endDate = (() => {
-            if (!isOverflow || !date) return date;
-            try {
-              const d = new Date(`${date}T12:00:00Z`);
-              d.setUTCDate(d.getUTCDate() + 1);
-              return d.toISOString().slice(0, 10);
-            } catch {
-              return date;
-            }
-          })();
           return {
             counterpartyId: form.counterpartyId || undefined,
             counterpartyDisplay: form.counterpartyDisplay || undefined,

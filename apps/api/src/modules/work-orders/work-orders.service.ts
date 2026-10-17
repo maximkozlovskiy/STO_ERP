@@ -40,10 +40,11 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
-import { CalendarService } from '../calendar/calendar.service';
+import { CalendarService, CALENDAR_SLOT_EXCLUSION } from '../calendar/calendar.service';
 import {
   changedPlannedDates,
   plannedDatesError,
+  sameInstant,
   type PlannedDates,
 } from './work-order-planned-dates';
 import {
@@ -107,8 +108,6 @@ const WO_WRITE_INCLUDE = {
   lift: { select: { name: true } },
 } as const satisfies Prisma.WorkOrderInclude;
 
-/** EXCLUDE підйомника в БД — запасний захист від паралельного бронювання (CAL-C1). */
-const SLOT_EXCLUSION = 'calendar_slots_no_overlap';
 /** 409 гонки за підйомник — тим самим перекладеним текстом, що й 400 перевірки зайнятості. */
 const slotRaceMessage = (): string => translateError('err.calendar.liftBusy', getLocale());
 
@@ -116,10 +115,6 @@ const slotRaceMessage = (): string => translateError('err.calendar.liftBusy', ge
 function nextDate(value: string | null | undefined, stored: Date | null): Date | null {
   if (value === undefined) return stored;
   return value === null ? null : new Date(value);
-}
-
-function sameInstant(a: Date | null, b: Date | null): boolean {
-  return (a?.getTime() ?? null) === (b?.getTime() ?? null);
 }
 
 type PaidGuardKey = 'err.workOrder.paidCannotCancel' | 'err.workOrder.paidCannotDelete';
@@ -441,13 +436,15 @@ export class WorkOrdersService {
       plannedAt: dto.plannedAt ? new Date(dto.plannedAt) : null,
       dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
     };
-    const hours = await this.assertPlannedDates(orgId, dto.branchId, planned, null);
-
-    const number = await this.docNumbers.next(orgId, 'WORK_ORDER');
-
     // Мультивалюта (Фаза 3): валюта наряду — з DTO або базова org. Тотали ще 0 (рядки додаються
     // пізніше → recalcTotals порахує totalAmountBase по курсу). Тут лише фіксуємо currencyId.
-    const currencyId = dto.currencyId ?? (await this.exchangeRates.requireBaseCurrencyId(orgId));
+    // Обидві перевірки незалежні й ідуть ДО номера: відмова не спалює номер документа.
+    const [hours, currencyId] = await Promise.all([
+      this.assertPlannedDates(orgId, dto.branchId, planned, null),
+      dto.currencyId ?? this.exchangeRates.requireBaseCurrencyId(orgId),
+    ]);
+
+    const number = await this.docNumbers.next(orgId, 'WORK_ORDER');
 
     const createWo = (db: Prisma.TransactionClient) =>
       db.workOrder.create({
@@ -497,7 +494,9 @@ export class WorkOrdersService {
               },
               { timeout: TRANSACTION_TIMEOUT_MS },
             )
-            .catch((e: unknown) => throwIfExclusionConflict(e, SLOT_EXCLUSION, slotRaceMessage()))
+            .catch((e: unknown) =>
+              throwIfExclusionConflict(e, CALENDAR_SLOT_EXCLUSION, slotRaceMessage()),
+            )
         : await createWo(this.prisma);
 
     if (userId) {
@@ -674,7 +673,8 @@ export class WorkOrdersService {
           translateError('err.workOrder.paidCurrencyLocked', getLocale()),
         );
       }
-      if (slotAction !== null) throwIfExclusionConflict(e, SLOT_EXCLUSION, slotRaceMessage());
+      if (slotAction !== null)
+        throwIfExclusionConflict(e, CALENDAR_SLOT_EXCLUSION, slotRaceMessage());
       throw e;
     });
 
@@ -715,10 +715,7 @@ export class WorkOrdersService {
           data: { deletedAt },
         });
         if (res.count === 0) return res;
-        await tx.calendarSlot.updateMany({
-          where: { orgId, workOrderId: id, deletedAt: null },
-          data: { deletedAt },
-        });
+        await this.calendar.removeWorkOrderSlots(tx, orgId, id, deletedAt);
         return res;
       },
       { timeout: TRANSACTION_TIMEOUT_MS },

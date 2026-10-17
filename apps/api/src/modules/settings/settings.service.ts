@@ -236,9 +236,7 @@ export class SettingsService {
     }
 
     const settings = await this.prisma.branchSettings.findFirst({
-      where: branchId
-        ? { orgId, branchId, branch: { deletedAt: null } }
-        : { orgId, branch: { deletedAt: null } },
+      where: { orgId, ...(branchId ? { branchId } : {}), branch: { deletedAt: null } },
       select: { workStartTime: true, workEndTime: true },
       orderBy: { branch: { createdAt: 'asc' } },
     });
@@ -309,8 +307,8 @@ export class SettingsService {
     });
 
     await this.invalidateBranchCache(orgId, branchId);
-    // work-hours cache is org-scoped (one per org regardless of branch). Invalidate only when
-    // workStartTime/workEndTime actually changed — not on every PATCH (smsEnabled, fiscalEnabled, etc.).
+    // Invalidate the work-hours cache only when workStartTime/workEndTime actually changed — not on
+    // every PATCH (smsEnabled, fiscalEnabled, etc.).
     if (dto.workStartTime !== undefined || dto.workEndTime !== undefined) {
       await this.invalidateWorkHoursCache(orgId, branchId);
     }

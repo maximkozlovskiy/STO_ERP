@@ -1,4 +1,5 @@
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { screen, waitFor, act } from '@testing-library/react';
+import { renderWithQueryClient } from '@/__tests__/query-utils';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 import { CreateWorkOrderModal } from '../CreateWorkOrderModal';
@@ -86,7 +87,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
     // Provide a prefill so required fields are satisfied for submit.
     // Схема наряду тепер .uuid() (Фаза 5) — фікстури мусять бути валідними UUID, інакше
     // safeParse-гейт у create() відсіює submit до setSaving і Escape закриває модалку.
-    render(
+    renderWithQueryClient(
       <CreateWorkOrderModal
         open
         onClose={onClose}
@@ -123,7 +124,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
 
   it('Bug #382: блокує дублікат робота+виконавець з показом помилки', async () => {
     const user = userEvent.setup();
-    render(
+    renderWithQueryClient(
       <CreateWorkOrderModal
         open
         onClose={vi.fn()}
@@ -152,7 +153,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
   it('Bug #384: показує помилку коли newLine має workId але без employeeId на submit', async () => {
     // Track if /work-orders POST was called — it MUST NOT be while error is shown.
     const onClose = vi.fn();
-    render(
+    renderWithQueryClient(
       <CreateWorkOrderModal
         open
         onClose={onClose}
@@ -178,7 +179,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
     // могло видати інше значення через округлення/таймзону. Тепер init має використати
     // prefill.plannedHours напряму, fallback на calcPlannedHours лише коли plannedHours
     // не задано.
-    render(
+    renderWithQueryClient(
       <CreateWorkOrderModal
         open
         onClose={vi.fn()}
@@ -210,7 +211,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
     // Контекст: slot 17:00 + 3.5 норм-год → endAt = 08:30 наступного дня (overflow).
     // calcPlannedHours(17:00, next-day 08:30) обчислила б ~15.5h (різниця через ніч).
     // А slot має нормогодин 3.5. Тільки prefill.plannedHours дає правильне значення.
-    render(
+    renderWithQueryClient(
       <CreateWorkOrderModal
         open
         onClose={vi.fn()}
@@ -242,7 +243,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
     const GOOD_ID_2 = '22222222-2222-4222-8222-222222222222';
 
     it('Bug #452: новий модал БЕЗ goodId-ів → НЕ робить запит до /goods/stock-totals', async () => {
-      render(
+      renderWithQueryClient(
         <CreateWorkOrderModal
           open
           onClose={vi.fn()}
@@ -323,7 +324,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
         return Promise.resolve({ items: [] });
       });
 
-      render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
+      renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
 
       await waitFor(() => {
         const calls = apiFetchMock.mock.calls.filter(
@@ -394,7 +395,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
       });
 
       // Render не повинен throw навіть коли stock-totals rejected
-      render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-2" />);
+      renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-2" />);
 
       // Дочекатися інкорпорації + спрацьовування useEffect
       await waitFor(() => {
@@ -480,7 +481,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
         return Promise.resolve({ items: [] });
       });
 
-      render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-sort" />);
+      renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-sort" />);
 
       await waitFor(() => {
         const calls = apiFetchMock.mock.calls.filter(
@@ -561,7 +562,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
         return Promise.resolve({ items: [] });
       });
 
-      render(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-3" />);
+      renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-3" />);
 
       await waitFor(() => {
         const calls = apiFetchMock.mock.calls.filter(
@@ -666,7 +667,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
     );
 
     const onClose = vi.fn();
-    render(<CreateWorkOrderModal open onClose={onClose} prefill={P} />);
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={onClose} prefill={P} />);
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/branches'));
 
     await addOneLine(user);
@@ -708,7 +709,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
       }),
     );
 
-    render(<CreateWorkOrderModal open onClose={vi.fn()} prefill={P} />);
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} prefill={P} />);
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/branches'));
     await addOneLine(user);
 
@@ -729,7 +730,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
   it('Bug #448: fallback на calcPlannedHours коли prefill.plannedHours не заданий', async () => {
     // Backward compat: старі call-sites що не передають plannedHours все ще працюють —
     // плановіh обчислюється з дат.
-    render(
+    renderWithQueryClient(
       <CreateWorkOrderModal
         open
         onClose={vi.fn()}

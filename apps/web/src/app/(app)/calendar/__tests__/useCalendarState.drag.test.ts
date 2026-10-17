@@ -4,6 +4,7 @@
 // механіка чи переміщення в межах підйомника — без прапорця й без повідомлення.
 
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { createQueryWrapper } from '@/__tests__/query-utils';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarSlot } from '../calendar.types';
@@ -75,7 +76,7 @@ afterEach(() => {
 });
 
 async function renderDay() {
-  const hook = renderHook(() => useCalendarState());
+  const hook = renderHook(() => useCalendarState(), { wrapper: createQueryWrapper() });
   await waitFor(() => expect(hook.result.current.slots).toHaveLength(daySlots.length));
   await waitFor(() => expect(hook.result.current.lifts).toHaveLength(2));
   // Сітка в тесті не рендериться — ширину шкали дає заглушка елемента.
