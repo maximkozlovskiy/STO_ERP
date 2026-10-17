@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Plus, Trash2, Pencil, Check, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -6,6 +7,8 @@ import { type GoodPickerItem } from '@/components/ui/GoodPickerModal';
 import { calcVatOnBase, lineAmount } from '@/lib/utils';
 import { fmtQty } from '@/lib/format';
 import type { LocalPart, Warehouse, Unit } from './types';
+import { ProcurementBadge } from '@/components/ui/purchase-list/ProcurementBadge';
+import type { WorkOrderProcurementState } from '@/components/ui/purchase-list/WorkOrderProcurement';
 
 export interface PartsTableProps {
   // Parts state
@@ -42,6 +45,10 @@ export interface PartsTableProps {
   // Pickers
   setGoodPickerOpen: (v: boolean) => void;
   setEditGoodPickerOpen: (v: boolean) => void;
+  /** Стан закупівлі збережених рядків (списки купівлі, замовлення, нестача) — бейдж біля залишку. */
+  procurement?: WorkOrderProcurementState;
+  /** Дія поруч із «Додати» — «До списку купівлі». */
+  headerAction?: ReactNode;
 }
 
 export function PartsTable(props: PartsTableProps) {
@@ -74,6 +81,8 @@ export function PartsTable(props: PartsTableProps) {
     fetchGoods,
     setGoodPickerOpen,
     setEditGoodPickerOpen,
+    procurement,
+    headerAction,
   } = props;
 
   // Залишок — сума Float по рухах: без округлення в комірці стояло «294.96500000000003» і число
@@ -86,19 +95,22 @@ export function PartsTable(props: PartsTableProps) {
     <div className="pt-4 pb-2">
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs font-medium text-muted-foreground">Товари / Запчастини</p>
-        {canEdit && !showPartInput && (
-          <button
-            type="button"
-            onClick={() => {
-              setNewPart(EMPTY_PART);
-              setShowPartInput(true);
-            }}
-            className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Додати
-          </button>
-        )}
+        <div className="flex items-center gap-4">
+          {headerAction}
+          {canEdit && !showPartInput && (
+            <button
+              type="button"
+              onClick={() => {
+                setNewPart(EMPTY_PART);
+                setShowPartInput(true);
+              }}
+              className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Додати
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="rounded-lg border border-border overflow-visible">
@@ -176,55 +188,75 @@ export function PartsTable(props: PartsTableProps) {
                 >
                   {editingPartKey === part._key ? (
                     <>
-                      <td className="px-2 py-1.5">
-                        <EntityPickerField<GoodPickerItem>
-                          display={editingPart.goodName}
-                          placeholder="Пошук товару..."
-                          ariaLabel="Товар"
-                          onPick={() => setEditGoodPickerOpen(true)}
-                          onSearch={fetchGoods}
-                          onSearchSelect={g =>
-                            setEditingPart(p => ({
-                              ...p,
-                              goodId: g.id,
-                              goodName: g.name,
-                              goodInternalCode: g.internalCode ?? null,
-                              goodSku: g.sku ?? null,
-                              goodBrandName: g.brandName ?? null,
-                              price: String(g.salePrice),
-                              unitOfMeasureId: g.unitId ?? '',
-                              unitShortName: g.unitShortName ?? '',
-                            }))
-                          }
-                          onClear={() =>
-                            setEditingPart(p => ({
-                              ...p,
-                              goodId: '',
-                              goodName: '',
-                              goodInternalCode: null,
-                              goodSku: null,
-                              goodBrandName: null,
-                              unitOfMeasureId: '',
-                              unitShortName: '',
-                            }))
-                          }
-                        />
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <Select
-                          value={editingPart.warehouseId}
-                          onChange={e =>
-                            setEditingPart(p => ({ ...p, warehouseId: e.target.value }))
-                          }
+                      {/* Збережений рядок: товар і склад лише для читання — сервер їх не змінює
+                          (PATCH рядка міняє кількість, ціну й одиницю), а резерв і позиції списків
+                          купівлі прив'язані до цього рядка (BR-WO-021). */}
+                      {part.id ? (
+                        <td className="px-3 py-1.5 text-foreground">
+                          <div className="truncate" data-testid="part-good-readonly">
+                            {editingPart.goodName}
+                          </div>
+                        </td>
+                      ) : (
+                        <td className="px-2 py-1.5">
+                          <EntityPickerField<GoodPickerItem>
+                            display={editingPart.goodName}
+                            placeholder="Пошук товару..."
+                            ariaLabel="Товар"
+                            onPick={() => setEditGoodPickerOpen(true)}
+                            onSearch={fetchGoods}
+                            onSearchSelect={g =>
+                              setEditingPart(p => ({
+                                ...p,
+                                goodId: g.id,
+                                goodName: g.name,
+                                goodInternalCode: g.internalCode ?? null,
+                                goodSku: g.sku ?? null,
+                                goodBrandName: g.brandName ?? null,
+                                price: String(g.salePrice),
+                                unitOfMeasureId: g.unitId ?? '',
+                                unitShortName: g.unitShortName ?? '',
+                              }))
+                            }
+                            onClear={() =>
+                              setEditingPart(p => ({
+                                ...p,
+                                goodId: '',
+                                goodName: '',
+                                goodInternalCode: null,
+                                goodSku: null,
+                                goodBrandName: null,
+                                unitOfMeasureId: '',
+                                unitShortName: '',
+                              }))
+                            }
+                          />
+                        </td>
+                      )}
+                      {part.id ? (
+                        <td
+                          className="px-2 py-1.5 text-muted-foreground truncate"
+                          data-testid="part-warehouse-readonly"
                         >
-                          <option value="">Склад</option>
-                          {warehouses.map(w => (
-                            <option key={w.id} value={w.id}>
-                              {w.name}
-                            </option>
-                          ))}
-                        </Select>
-                      </td>
+                          {warehousesById.get(editingPart.warehouseId)?.name ?? '—'}
+                        </td>
+                      ) : (
+                        <td className="px-2 py-1.5">
+                          <Select
+                            value={editingPart.warehouseId}
+                            onChange={e =>
+                              setEditingPart(p => ({ ...p, warehouseId: e.target.value }))
+                            }
+                          >
+                            <option value="">Склад</option>
+                            {warehouses.map(w => (
+                              <option key={w.id} value={w.id}>
+                                {w.name}
+                              </option>
+                            ))}
+                          </Select>
+                        </td>
+                      )}
                       <td className="px-2 py-1.5 text-left tabular-nums text-[12px] text-muted-foreground">
                         {editingPart.goodId ? (
                           <>
@@ -312,27 +344,12 @@ export function PartsTable(props: PartsTableProps) {
                               // тому без `...pt` save() filter не побачив би existing part
                               // → POST дублікат + duplicate-key fail.
                               // Bug #837: збережений рядок (є `id`) після правки треба донести
-                              // до сервера — save() шле POST лише рядкам без `id`. Змінили товар
-                              // або склад → рядок замінюється (старий у deletedPartIds, новий без
-                              // `id` піде POST-ом: PATCH товар і склад не міняє). Змінили лише
-                              // кількість / ціну / одиницю → `_dirty`, save() надішле PATCH.
-                              const replaced =
-                                !!part.id &&
-                                (part.goodId !== editingPart.goodId ||
-                                  part.warehouseId !== editingPart.warehouseId);
-                              if (replaced && part.id) deletedPartIds.current.push(part.id);
+                              // до сервера — save() шле POST лише рядкам без `id`: змінені
+                              // кількість / ціна / одиниця → `_dirty`, save() надішле PATCH.
+                              // Товар і склад збереженого рядка не змінюються (лише для читання).
                               setParts(prev =>
                                 prev.map(pt => {
                                   if (pt._key !== part._key) return pt;
-                                  if (replaced) {
-                                    return {
-                                      ...pt,
-                                      ...editingPart,
-                                      id: undefined,
-                                      _dirty: undefined,
-                                      _key: `${pt._key}-r`,
-                                    };
-                                  }
                                   return {
                                     ...pt,
                                     ...editingPart,
@@ -384,6 +401,12 @@ export function PartsTable(props: PartsTableProps) {
                           </>
                         ) : (
                           '—'
+                        )}
+                        {part.id && procurement && (
+                          <ProcurementBadge
+                            items={procurement.itemsByPart.get(part.id) ?? []}
+                            shortage={procurement.shortageByPart.get(part.id) ?? 0}
+                          />
                         )}
                       </td>
                       <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">

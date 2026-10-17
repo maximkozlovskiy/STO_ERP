@@ -10,6 +10,11 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { fmtMoney } from '@/lib/format';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { WorkOrderAddPartModal } from '@/components/ui/WorkOrderAddPartModal';
+import { ProcurementBadge } from '@/components/ui/purchase-list/ProcurementBadge';
+import {
+  SendToListButton,
+  useWorkOrderProcurementState,
+} from '@/components/ui/purchase-list/WorkOrderProcurement';
 
 interface WorkOrderPart {
   id: string;
@@ -49,6 +54,8 @@ interface WorkOrderPartsSectionProps {
   disabled?: boolean;
   /** Surface delete errors at the page level (preserves original UX). */
   onError?: (msg: string) => void;
+  /** Статус наряду — «До списку купівлі» лише для активного наряду (BR-PL-003). */
+  status?: string;
 }
 
 export function WorkOrderPartsSection({
@@ -59,6 +66,7 @@ export function WorkOrderPartsSection({
   onChanged,
   disabled,
   onError,
+  status,
 }: WorkOrderPartsSectionProps) {
   const { t } = useTranslation('workOrders');
   const features = useUiFeatures();
@@ -84,31 +92,47 @@ export function WorkOrderPartsSection({
   };
 
   const canEdit = !disabled;
+  // Стан закупівлі рядків (списки купівлі, замовлення, нестача) — docs/objects/purchase-list.md.
+  const procurement = useWorkOrderProcurementState(woId);
 
   return (
     <>
       <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-foreground">{t('parts.title')}</h2>
-          {canEdit && (
-            <div className="flex items-center gap-3">
-              <XlsxImportButton
-                templateType="wo-parts"
-                importUrl={`/xlsx/import/work-order-parts/${woId}`}
-                onImportComplete={onChanged}
+          <div className="flex items-center gap-3">
+            {status && (
+              <SendToListButton
+                workOrderId={woId}
+                status={status}
+                parts={(parts ?? []).map(p => ({
+                  id: p.id,
+                  goodName: p.goodName ?? '',
+                  unit: p.unitShortName ?? null,
+                }))}
+                procurement={procurement}
               />
-              <button
-                type="button"
-                onClick={() => {
-                  onError?.('');
-                  setPartModal(true);
-                }}
-                className="text-sm text-primary hover:underline"
-              >
-                {t('parts.add')}
-              </button>
-            </div>
-          )}
+            )}
+            {canEdit && (
+              <div className="flex items-center gap-3">
+                <XlsxImportButton
+                  templateType="wo-parts"
+                  importUrl={`/xlsx/import/work-order-parts/${woId}`}
+                  onImportComplete={onChanged}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    onError?.('');
+                    setPartModal(true);
+                  }}
+                  className="text-sm text-primary hover:underline"
+                >
+                  {t('parts.add')}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         {(parts?.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">{t('parts.empty')}</p>
@@ -126,6 +150,12 @@ export function WorkOrderPartsSection({
                   <p className="text-xs text-muted-foreground">
                     {p.quantity} {p.unitShortName ?? t('parts.unitDefault')} × {fmtMoney(p.price)} ₴
                   </p>
+                  {procurement && (
+                    <ProcurementBadge
+                      items={procurement.itemsByPart.get(p.id) ?? []}
+                      shortage={procurement.shortageByPart.get(p.id) ?? 0}
+                    />
+                  )}
                 </div>
                 <div className="text-right mr-3">
                   <p className="text-sm font-medium text-foreground">{fmtMoney(p.amount)} ₴</p>

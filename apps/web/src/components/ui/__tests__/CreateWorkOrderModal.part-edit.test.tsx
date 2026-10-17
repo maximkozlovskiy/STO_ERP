@@ -13,8 +13,8 @@ import { CreateWorkOrderModal } from '../CreateWorkOrderModal';
  * блоці «Зведення» бокової панелі списку) лишалась стара. Знайдено наживо 2026-10-13.
  *
  * Mutation-verify (2026-10-13): прибрати цикл PATCH із save() → падає кейс «кількість»;
- * прибрати `deletedPartIds.push` у PartsTable → падає кейс «склад»; повернути сире число в
- * колонці залишку → падає кейс «На складі».
+ * повернути сире число в колонці залишку → падає кейс «На складі». 2026-10-17: товар і склад
+ * збереженого рядка — лише для читання (BR-WO-021) → кейс «лише для читання».
  */
 
 const apiFetchMock = vi.fn();
@@ -171,22 +171,25 @@ describe('CreateWorkOrderModal — правка збереженого рядк�
     ]);
   });
 
-  it('змінили склад → старий рядок видаляється, новий створюється (PATCH склад не міняє)', async () => {
+  // Свідома зміна 2026-10-17 (рішення власника): раніше зміна складу збереженого рядка замінювала
+  // рядок (DELETE + POST); тепер товар і склад збереженого рядка — лише для читання: до рядка
+  // прив'язані резерв і позиції списків купівлі (BR-WO-021), а PATCH їх і так не змінює.
+  // guards: BR-WO-021
+  it('збережений рядок: товар і склад лише для читання, PATCH без DELETE і POST', async () => {
     const { user, row } = await openAndEditPart();
-    await user.selectOptions(within(row).getByDisplayValue('Склад №1'), W2);
-    await user.click(within(row).getByTitle('Зберегти'));
+    expect(within(row).getByTestId('part-good-readonly')).toHaveTextContent('Колодки гальмівні');
+    expect(within(row).getByTestId('part-warehouse-readonly')).toHaveTextContent('Склад №1');
+    expect(within(row).queryByDisplayValue('Склад №1')).not.toBeInTheDocument();
+    expect(within(row).queryByRole('combobox', { name: 'Товар' })).not.toBeInTheDocument();
 
+    const qty = within(row).getByDisplayValue('3');
+    await user.clear(qty);
+    await user.type(qty, '2');
+    await user.click(within(row).getByTitle('Зберегти'));
     await user.click(screen.getByRole('button', { name: 'Зберегти зміни' }));
 
-    await waitFor(() => expect(partWrites()).toHaveLength(2));
-    expect(partWrites()).toEqual([
-      ['DELETE', `/work-orders/${WO}/parts/${P1}`, null],
-      [
-        'POST',
-        `/work-orders/${WO}/parts`,
-        expect.objectContaining({ goodId: G1, warehouseId: W2, quantity: 3, price: 50 }),
-      ],
-    ]);
+    await waitFor(() => expect(partWrites()).toHaveLength(1));
+    expect(partWrites()[0]![0]).toBe('PATCH');
   });
 
   it('«На складі» — залишок округлено до 3 знаків, без хвоста float (294.96500000000003)', async () => {

@@ -97,6 +97,12 @@ import {
 import { workOrderLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { CurrencySelect } from '@/components/ui/CurrencySelect';
+import { useQueryClient } from '@tanstack/react-query';
+import { purchaseListsKeys } from '@/hooks/api/usePurchaseLists';
+import {
+  SendToListButton,
+  useWorkOrderProcurementState,
+} from '@/components/ui/purchase-list/WorkOrderProcurement';
 
 // A3-modal: Branch/Lift/Warehouse/Employee/Vehicle типи → useReferenceData (import above).
 interface Counterparty {
@@ -533,6 +539,15 @@ export function CreateWorkOrderModal({
   // події (setTimeout), а не в ефекті — інакше той самий Escape закрив би й картку (GOTCHAS
   // 2026-10-12).
   const payOpenRef = useRef(false);
+  // Те саме для діалогу «До списку купівлі» над карткою (прапорець знімається після події).
+  const addToListOpenRef = useRef(false);
+  const onAddToListOpenChange = useCallback((isOpen: boolean) => {
+    if (isOpen) addToListOpenRef.current = true;
+    else
+      setTimeout(() => {
+        addToListOpenRef.current = false;
+      }, 0);
+  }, []);
   // Наряд, відкритий у картці зараз: пізня відповідь для попереднього (вкладки) не пишеться.
   const workOrderIdRef = useRef(workOrderId);
   workOrderIdRef.current = workOrderId;
@@ -892,6 +907,18 @@ export function CreateWorkOrderModal({
         })),
       ),
     [],
+  );
+
+  // Стан закупівлі збережених рядків (списки купівлі, замовлення, нестача) — бейдж і
+  // «До списку купівлі» (docs/objects/purchase-list.md).
+  const queryClient = useQueryClient();
+  const procurement = useWorkOrderProcurementState(isEditMode ? workOrderId : null);
+  const savedPartsForProcurement = useMemo(
+    () =>
+      parts
+        .filter((p): p is LocalPart & { id: string } => !!p.id)
+        .map(p => ({ id: p.id, goodName: p.goodName, unit: p.unitShortName || null })),
+    [parts],
   );
 
   // A3-modal: stock-totals кеш винесено у useStockTotals (Bug #452-454 збережено ДОСЛІВНО).
@@ -1479,6 +1506,8 @@ export function CreateWorkOrderModal({
       setCurrentStatus(updated?.status ?? newStatus);
       // «Виконано» перераховує суму наряду — перечитуємо гроші для «Оплатити».
       void reloadPayState();
+      // Перехід міняє резерв і позиції списків купівлі наряду (BR-WO-021, BR-PL-013).
+      void queryClient.invalidateQueries({ queryKey: purchaseListsKeys.all });
       onUpdated?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
@@ -1683,8 +1712,8 @@ export function CreateWorkOrderModal({
   // save/transition; зараз лише при зміні onClose у parent).
   const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
-    // Escape над вікном оплати закриває лише його.
-    if (payOpenRef.current) return;
+    // Escape над вікном оплати чи «До списку купівлі» закриває лише його.
+    if (payOpenRef.current || addToListOpenRef.current) return;
     if (!(await dirty.confirmClose())) return;
     setActiveTab('main');
     onClose();
@@ -2401,6 +2430,19 @@ export function CreateWorkOrderModal({
                   fetchGoods={fetchGoods}
                   setGoodPickerOpen={setGoodPickerOpen}
                   setEditGoodPickerOpen={setEditGoodPickerOpen}
+                  procurement={procurement}
+                  headerAction={
+                    isEditMode && workOrderId && !viewOnly ? (
+                      <SendToListButton
+                        workOrderId={workOrderId}
+                        status={currentStatus}
+                        parts={savedPartsForProcurement}
+                        procurement={procurement}
+                        onOpenChange={onAddToListOpenChange}
+                        disabled={saving}
+                      />
+                    ) : undefined
+                  }
                 />
 
                 {(lines.length > 0 || parts.length > 0) && (

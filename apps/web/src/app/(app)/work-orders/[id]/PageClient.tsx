@@ -1121,6 +1121,7 @@ export default function WorkOrderCardPage() {
         onChanged={load}
         disabled={!canEdit}
         onError={setError}
+        status={isDeleted ? undefined : wo.status}
       />
 
       {/* Inspection section */}

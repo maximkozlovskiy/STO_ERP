@@ -105,7 +105,8 @@ export function useWorkOrderProcurement(workOrderId: string | null | undefined, 
     queryFn: ({ signal }) =>
       apiFetch(`/purchase-list-items/by-work-order/${workOrderId}`, { signal }),
     enabled: !!workOrderId && enabled,
-    staleTime: 10_000,
+    // Картку відкривають після збереження рядків — стан закупівлі перечитується щоразу.
+    staleTime: 0,
   });
 }
 

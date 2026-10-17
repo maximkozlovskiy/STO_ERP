@@ -56,6 +56,12 @@ vi.mock('@/components/ui/WorkOrderAddPartModal', () => ({
     open ? <div data-testid="add-part-modal" /> : null,
 }));
 
+// Стан закупівлі рядків (списки купівлі) читає useQuery — тут не предмет тесту.
+vi.mock('@/components/ui/purchase-list/WorkOrderProcurement', () => ({
+  useWorkOrderProcurementState: () => undefined,
+  SendToListButton: () => null,
+}));
+
 vi.mock('@/components/ui/xlsx-import-button', () => ({
   XlsxImportButton: () => <button type="button">XLSX</button>,
 }));
