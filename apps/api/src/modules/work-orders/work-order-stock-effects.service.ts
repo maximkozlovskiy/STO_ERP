@@ -8,6 +8,7 @@ import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { postWorkOrderFxInTx } from './work-order-fx';
+import { PurchaseListLinkService } from '../purchase-lists/purchase-list-link.service';
 import {
   availableQty,
   fetchPartCoefficients,
@@ -59,6 +60,9 @@ export class WorkOrderStockEffectsService {
     private readonly settlements: SettlementsService,
     // BR-PAY-022: курсова різниця наряду, сплаченого повністю авансом, — при нарахуванні боргу.
     private readonly exchangeRates: ExchangeRatesService,
+    // BR-PL-013: позиції списків купівлі наряду реагують на його скасування, видалення, завершення
+    // й зміну товарів — у транзакції наряду.
+    private readonly purchaseLists: PurchaseListLinkService,
   ) {}
 
   /**
@@ -143,6 +147,8 @@ export class WorkOrderStockEffectsService {
     const db = tx ?? this.prisma;
     const net = await netReservedByWorkOrder(db, orgId, workOrderId);
     await this.releaseExcess(orgId, workOrderId, net, new Map(), userId, db);
+    // BR-PL-013: наряд скасовано чи видалено — його незамовлені позиції списків скасовуються.
+    await this.purchaseLists.onWorkOrderClosed(db, orgId, workOrderId);
   }
 
   /**
@@ -165,6 +171,8 @@ export class WorkOrderStockEffectsService {
     const required = requiredByKey(parts, coeffMap);
     const net = await netReservedByWorkOrder(db, orgId, workOrderId);
     await this.releaseExcess(orgId, workOrderId, net, required, userId, db);
+    // BR-PL-013: надлишок покриття знімається з OPEN-позицій наряду (після зняття резерву).
+    await this.purchaseLists.onWorkOrderPartsChanged(db, orgId, workOrderId);
   }
 
   /**
@@ -290,6 +298,8 @@ export class WorkOrderStockEffectsService {
     // BR-WO-021: залишок net-резерву після списання рядків (резерв за рядком, якого вже немає, чи
     // за одиницею, що змінилась) знімається — інакше «завис» би на складі назавжди.
     await this.releaseExcess(orgId, wo.id, reserveByStock, new Map(), userId, db);
+    // BR-PL-013: наряд завершено — незамовлені позиції списків купівлі вже не потрібні.
+    await this.purchaseLists.onWorkOrderClosed(db, orgId, wo.id);
     // WO-H1: сума боргу — з IN-TX re-read totalAmount (не зі stale pre-tx знімка wo). Concurrent
     // addLine/updatePart міг змінити суму через recalcTotals між pre-tx read і цією транзакцією.
     const freshWo = await db.workOrder.findFirst({

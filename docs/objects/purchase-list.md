@@ -85,9 +85,42 @@ model PurchaseListItem {
 
 ## API Endpoints
 
-`/api/purchase-lists` і `/api/purchase-list-items` — таблиця маршрутів і ролей у BR-PL-003…016;
-виконавець переносить сюди фінальну таблицю разом із контролерами. Тіла запитів — zod-схеми
-`packages/shared/src/schemas/forms/purchase-list.schema.ts`; помилки — `err.purchaseList.*`.
+Тіла запитів — zod-схеми `packages/shared/src/schemas/forms/purchase-list.schema.ts`
+(`ZodValidationPipe`); помилки — `err.purchaseList.*`. R = OWNER, ADMIN, STOREKEEPER, RECEPTIONIST;
+S = OWNER, ADMIN, STOREKEEPER (BR-PL-015). Контролери — `apps/api/src/modules/purchase-lists/`.
+
+| Метод  | Шлях                                                  | Ролі         | Що                                                                                     |
+| ------ | ----------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------- |
+| GET    | `/api/purchase-lists`                                 | R            | Списки (`status`, `q`, пагінація) з лічильниками позицій                               |
+| POST   | `/api/purchase-lists`                                 | R            | Новий список (BR-PL-001), Idempotency-Key                                              |
+| POST   | `/api/purchase-lists/from-work-order`                 | R            | Товари наряду → список (BR-PL-003), Idempotency-Key                                    |
+| POST   | `/api/purchase-lists/linked-counts`                   | R            | Лічильники зв'язків (наряди, замовлення, злиті списки)                                 |
+| GET    | `/api/purchase-lists/:id`                             | R            | Список з позиціями                                                                     |
+| GET    | `/api/purchase-lists/:id/linked-documents`            | R            | Наряди й замовлення позицій, злиті списки                                              |
+| PATCH  | `/api/purchase-lists/:id`                             | S            | Назва, типовий склад, примітка (лише OPEN)                                             |
+| POST   | `/api/purchase-lists/:id/items`                       | S            | Ручна позиція (BR-PL-004)                                                              |
+| POST   | `/api/purchase-lists/merge`                           | S            | Об'єднання (BR-PL-006)                                                                 |
+| POST   | `/api/purchase-lists/create-orders`                   | S            | Замовлення постачальникам з позицій (BR-PL-008), Idempotency-Key                       |
+| POST   | `/api/purchase-lists/:id/close`                       | S            | Закрити (OPEN → CLOSED)                                                                |
+| POST   | `/api/purchase-lists/:id/cancel`                      | S            | Скасувати — лише без ORDERED/RECEIVED (`cancelHasOrdered`)                             |
+| DELETE | `/api/purchase-lists/:id`                             | S            | Soft-delete — лише без ORDERED/RECEIVED; позиції видаляються разом                     |
+| GET    | `/api/purchase-list-items`                            | R            | Позиції (`status`, `supplierId` / `none`, `warehouseId`, `workOrderId`, `listId`, `q`) |
+| GET    | `/api/purchase-list-items/shortage`                   | R            | Нестача по нарядах (BR-PL-014), `truncated`                                            |
+| GET    | `/api/purchase-list-items/by-work-order/:workOrderId` | R + MECHANIC | Позиції наряду й нестача кожного його рядка (картка наряду)                            |
+| PATCH  | `/api/purchase-list-items/:id`                        | S            | Кількість, постачальник, ціна, примітка (лише OPEN, BR-PL-005)                         |
+| POST   | `/api/purchase-list-items/:id/split`                  | S            | Розділити (BR-PL-007)                                                                  |
+| POST   | `/api/purchase-list-items/move`                       | S            | Перенести в наявний або новий список (BR-PL-007)                                       |
+| POST   | `/api/purchase-list-items/bulk-update`                | S            | Масово: постачальник, очікувана ціна                                                   |
+| POST   | `/api/purchase-list-items/bulk-cancel`                | S            | Масово скасувати OPEN-позиції                                                          |
+| POST   | `/api/purchase-list-items/:id/release-reservation`    | S            | Зняти резерв (BR-PL-016)                                                               |
+
+**Модулі.** `PurchaseListCoreModule` — `PurchaseListLinkService` (хуки наряду й замовлення,
+BR-PL-009/010/012/013) і `PurchaseListReceiptService` (розподіл отриманого, BR-PL-011; порядок —
+`AllocationStrategy`, етап 1 — FIFO); залежить лише від складу, тож його імпортують
+`WorkOrderStockEffectsModule`, `PurchaseOrdersModule` і `XlsxModule` без циклу.
+`PurchaseListsModule` — контролери, `PurchaseListsService`, `PurchaseListItemsService`,
+`PurchaseShortageService`, `PurchaseListOrdersService`. Потреба й резерв наряду — спільні
+`apps/api/src/modules/work-orders/work-order-stock-requirements.ts`.
 
 ---
 
@@ -101,4 +134,24 @@ model PurchaseListItem {
 
 ## Аспекти і тести, що їх стережуть
 
-Реєстр заповнює виконавець разом зі спеками (`apps/api/src/modules/purchase-lists/`).
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/purchase-lists/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/purchase-lists/`
+
+| Аспект                                                                         | Тест                                        | Кейсів |
+| ------------------------------------------------------------------------------ | ------------------------------------------- | ------ |
+| HTTP-контракт: ролі (BR-PL-015), zod-тіла                                      | `purchase-lists.contract.spec.ts`           | 25     |
+| надсилання з наряду, нумерація, базові одиниці (BR-PL-001…003)                 | `purchase-lists.from-work-order.spec.ts`    | 11     |
+| ручна позиція, лише OPEN, об'єднання, перенесення й розділення (BR-PL-004…007) | `purchase-lists.merge-split.spec.ts`        | 14     |
+| нестача по нарядах (BR-PL-014)                                                 | `purchase-lists.shortage.spec.ts`           | 4      |
+| вплив змін наряду на позиції (BR-PL-013)                                       | `purchase-lists.work-order-changes.spec.ts` | 6      |
+
+Разом: **60** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+Спеки — справжні сервіси над таблицями в пам'яті (`purchase-lists.spec-fixture.ts` поверх
+`work-orders/work-order-stock.spec-fixture.ts`: справжній InventoryService, відкат транзакції,
+журнал блокувань нарядів).

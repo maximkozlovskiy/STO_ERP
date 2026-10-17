@@ -49,7 +49,16 @@ function makeService(goodUoMFindMany: ReturnType<typeof vi.fn>) {
   const settlements = {
     createTransaction: vi.fn().mockResolvedValue({}),
   } as unknown as SettlementsService;
-  return new WorkOrderStockEffectsService(prisma, inventory, settlements, null as never);
+  return new WorkOrderStockEffectsService(
+    prisma,
+    inventory,
+    settlements,
+    null as never,
+    {
+      onWorkOrderClosed: () => Promise.resolve(),
+      onWorkOrderPartsChanged: () => Promise.resolve(),
+    } as never /* purchaseLists (BR-PL-013) */,
+  );
 }
 
 describe('WorkOrderStockEffectsService.fetchPartCoefficients — tenant-scope (A3)', () => {
@@ -171,7 +180,16 @@ function makeGapService(opts: {
   const createTransaction = vi.fn().mockResolvedValue({});
   const settlements = { createTransaction } as unknown as SettlementsService;
   return {
-    svc: new WorkOrderStockEffectsService(prisma, inventory, settlements, null as never),
+    svc: new WorkOrderStockEffectsService(
+      prisma,
+      inventory,
+      settlements,
+      null as never,
+      {
+        onWorkOrderClosed: () => Promise.resolve(),
+        onWorkOrderPartsChanged: () => Promise.resolve(),
+      } as never /* purchaseLists (BR-PL-013) */,
+    ),
     createMovement,
     createTransaction,
   };
@@ -317,7 +335,16 @@ describe('WorkOrderStockEffectsService.writeOffPartsAndCharge — Bug #780 (rele
       createTransaction: vi.fn().mockResolvedValue({}),
     } as unknown as SettlementsService;
     return {
-      svc: new WorkOrderStockEffectsService(prisma, inventory, settlements, null as never),
+      svc: new WorkOrderStockEffectsService(
+        prisma,
+        inventory,
+        settlements,
+        null as never,
+        {
+          onWorkOrderClosed: () => Promise.resolve(),
+          onWorkOrderPartsChanged: () => Promise.resolve(),
+        } as never /* purchaseLists (BR-PL-013) */,
+      ),
       createMovement: inv.createMovement,
       getReserved: inv.getReserved,
     };
@@ -455,7 +482,16 @@ describe('WorkOrderStockEffectsService.releaseAllNetReservations — Bug #780 (r
     const inventory = { createMovement: inv.createMovement } as unknown as InventoryService;
     const settlements = { createTransaction: vi.fn() } as unknown as SettlementsService;
     return {
-      svc: new WorkOrderStockEffectsService(prisma, inventory, settlements, null as never),
+      svc: new WorkOrderStockEffectsService(
+        prisma,
+        inventory,
+        settlements,
+        null as never,
+        {
+          onWorkOrderClosed: () => Promise.resolve(),
+          onWorkOrderPartsChanged: () => Promise.resolve(),
+        } as never /* purchaseLists (BR-PL-013) */,
+      ),
       createMovement: inv.createMovement,
     };
   }
@@ -578,7 +614,11 @@ function makeLedgerService(opts: {
     prisma,
     { createMovement } as unknown as InventoryService,
     { createTransaction } as unknown as SettlementsService,
-    null as never, // exchangeRates
+    null as never, // exchangeRates,
+    {
+      onWorkOrderClosed: () => Promise.resolve(),
+      onWorkOrderPartsChanged: () => Promise.resolve(),
+    } as never /* purchaseLists (BR-PL-013) */,
   );
   return {
     svc,

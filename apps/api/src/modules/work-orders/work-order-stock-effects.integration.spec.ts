@@ -107,7 +107,11 @@ function stubService(): WorkOrderStockEffectsService {
     guarded as unknown as PrismaService,
     inventory,
     settlements,
-    null as never, // exchangeRates — курсова різниця (BR-PAY-022) тут не задіяна
+    null as never, // exchangeRates — курсова різниця (BR-PAY-022) тут не задіяна,
+    {
+      onWorkOrderClosed: () => Promise.resolve(),
+      onWorkOrderPartsChanged: () => Promise.resolve(),
+    } as never /* purchaseLists (BR-PL-013) */,
   );
 }
 

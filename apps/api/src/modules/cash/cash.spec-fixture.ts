@@ -90,6 +90,12 @@ function fieldMatches(actual: unknown, cond: unknown): boolean {
     if (op === 'gte') return actual != null && num(actual) >= num(expected);
     if (op === 'lt') return actual != null && num(actual) < num(expected);
     if (op === 'lte') return actual != null && num(actual) <= num(expected);
+    // `mode: 'insensitive'` — порівняння `contains` тут і так без урахування регістру.
+    if (op === 'mode') return true;
+    if (op === 'contains')
+      return (
+        actual != null && String(actual).toLowerCase().includes(String(expected).toLowerCase())
+      );
     throw new Error(
       `Таблиця в пам'яті: оператор «${op}» у where не підтримано — допиши його в cash.spec-fixture.ts`,
     );
@@ -255,27 +261,39 @@ export function memoryTable(
         return Promise.resolve(result);
       },
     ),
-    groupBy: vi.fn((args: { by: string[]; where?: unknown; _sum?: Record<string, boolean> }) => {
-      const groups = new Map<string, MemRow[]>();
-      for (const hit of find(args)) {
-        const key = JSON.stringify(args.by.map(f => hit[f] ?? null));
-        groups.set(key, [...(groups.get(key) ?? []), hit]);
-      }
-      return Promise.resolve(
-        Array.from(groups.values()).map(members => {
-          const out: MemRow = {};
-          for (const f of args.by) out[f] = members[0][f] ?? null;
-          if (args._sum) {
-            const sum: MemRow = {};
-            for (const field of Object.keys(args._sum)) {
-              sum[field] = members.reduce((acc, r) => acc + num(r[field] ?? 0), 0);
+    groupBy: vi.fn(
+      (args: {
+        by: string[];
+        where?: unknown;
+        _sum?: Record<string, boolean>;
+        _count?: Record<string, boolean>;
+      }) => {
+        const groups = new Map<string, MemRow[]>();
+        for (const hit of find(args)) {
+          const key = JSON.stringify(args.by.map(f => hit[f] ?? null));
+          groups.set(key, [...(groups.get(key) ?? []), hit]);
+        }
+        return Promise.resolve(
+          Array.from(groups.values()).map(members => {
+            const out: MemRow = {};
+            for (const f of args.by) out[f] = members[0][f] ?? null;
+            if (args._sum) {
+              const sum: MemRow = {};
+              for (const field of Object.keys(args._sum)) {
+                sum[field] = members.reduce((acc, r) => acc + num(r[field] ?? 0), 0);
+              }
+              out._sum = sum;
             }
-            out._sum = sum;
-          }
-          return out;
-        }),
-      );
-    }),
+            if (args._count) {
+              const count: MemRow = {};
+              for (const field of Object.keys(args._count)) count[field] = members.length;
+              out._count = count;
+            }
+            return out;
+          }),
+        );
+      },
+    ),
     create: vi.fn((args: { data: MemRow }) => Promise.resolve(read(args)(insert(args.data)))),
     createMany: vi.fn((args: { data: MemRow[] }) => {
       for (const data of args.data) insert(data);

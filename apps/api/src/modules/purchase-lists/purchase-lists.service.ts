@@ -1,0 +1,504 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
+import {
+  TRANSACTION_TIMEOUT_MS,
+  type PurchaseListCreateValues,
+  type PurchaseListFromWorkOrderValues,
+  type PurchaseListManualItemValues,
+  type PurchaseListMergeValues,
+  type PurchaseListUpdateValues,
+} from '@sto/shared';
+import { PrismaService } from '../../prisma/prisma.service';
+import { calculatePagination } from '../../common/utils/pagination';
+import { escapeLike } from '../../common/utils/like-pattern';
+import { initCountsMap } from '../../common/utils/linked-counts';
+import { DocumentNumberService } from '../document-number/document-number.service';
+import { lockWorkOrdersForUpdate, QTY_EPSILON } from '../work-orders/work-order-stock-requirements';
+import { PROCUREMENT_ACTIVE_STATUSES } from '../work-orders/work-orders.fsm';
+import { PurchaseShortageService } from './purchase-shortage.service';
+import {
+  assertSupplier,
+  conflict,
+  err,
+  listCounts,
+  loadItemDtos,
+  loadList,
+  loadListDto,
+} from './purchase-lists.helpers';
+import { ITEM_INCLUDE, LIST_INCLUDE, toItemDto, toListDto } from './purchase-lists.mapper';
+import type {
+  FromWorkOrderResultDto,
+  PaginatedPurchaseListsDto,
+  PurchaseListDetailDto,
+  PurchaseListItemResponseDto,
+  PurchaseListQueryDto,
+  PurchaseListResponseDto,
+} from './purchase-lists.dto';
+
+type Tx = Prisma.TransactionClient;
+
+/**
+ * Списки купівлі (docs/objects/purchase-list.md): перелік, створення, надсилання з наряду (BR-PL-003),
+ * ручні позиції (BR-PL-004), об'єднання (BR-PL-006), закриття, скасування, видалення, зв'язки.
+ * Операції з окремими позиціями — PurchaseListItemsService; замовлення зі списку —
+ * PurchaseListOrdersService.
+ */
+@Injectable()
+export class PurchaseListsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly docNumbers: DocumentNumberService,
+    private readonly shortage: PurchaseShortageService,
+  ) {}
+
+  async findAll(orgId: string, query: PurchaseListQueryDto): Promise<PaginatedPurchaseListsDto> {
+    const where: Prisma.PurchaseListWhereInput = { orgId, deletedAt: null };
+    if (query.status) where.status = query.status;
+    const search = query.q?.trim().slice(0, 100);
+    if (search) {
+      const contains = { contains: escapeLike(search), mode: 'insensitive' as const };
+      where.OR = [{ number: contains }, { name: contains }];
+    }
+    const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
+    const [lists, total] = await Promise.all([
+      this.prisma.purchaseList.findMany({
+        where,
+        include: LIST_INCLUDE,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.purchaseList.count({ where }),
+    ]);
+    const counts = await listCounts(
+      this.prisma,
+      orgId,
+      lists.map(l => l.id),
+    );
+    return {
+      items: lists.map(l => toListDto(l, counts.get(l.id))),
+      total,
+      page: query.page,
+      limit: take,
+    };
+  }
+
+  async findOne(orgId: string, id: string): Promise<PurchaseListDetailDto> {
+    const [list, items] = await Promise.all([
+      loadListDto(this.prisma, orgId, id),
+      this.prisma.purchaseListItem.findMany({
+        where: { orgId, listId: id, deletedAt: null },
+        include: ITEM_INCLUDE,
+        orderBy: { createdAt: 'asc' },
+        take: 1000,
+      }),
+    ]);
+    return { ...list, items: items.map(toItemDto) };
+  }
+
+  /** BR-PL-001: номер береться ДО транзакції (пропуск номера при відмові допустимий). */
+  async create(orgId: string, dto: PurchaseListCreateValues): Promise<PurchaseListResponseDto> {
+    if (dto.warehouseId) await this.assertWarehouse(orgId, dto.warehouseId);
+    const number = await this.docNumbers.next(orgId, 'PURCHASE_LIST');
+    const list = await this.prisma.purchaseList.create({
+      data: {
+        orgId,
+        number,
+        name: dto.name ?? null,
+        warehouseId: dto.warehouseId ?? null,
+        notes: dto.notes ?? null,
+      },
+    });
+    return loadListDto(this.prisma, orgId, list.id);
+  }
+
+  async update(
+    orgId: string,
+    id: string,
+    dto: PurchaseListUpdateValues,
+  ): Promise<PurchaseListResponseDto> {
+    const list = await loadList(this.prisma, orgId, id, { requireOpen: true });
+    if (dto.warehouseId) await this.assertWarehouse(orgId, dto.warehouseId);
+    const res = await this.prisma.purchaseList.updateMany({
+      where: { id, orgId, deletedAt: null, status: 'OPEN', updatedAt: list.updatedAt },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.warehouseId !== undefined ? { warehouseId: dto.warehouseId } : {}),
+        ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+      },
+    });
+    if (res.count !== 1) throw conflict();
+    return loadListDto(this.prisma, orgId, id);
+  }
+
+  /** BR-PL-004: ручна позиція — товар, склад, постачальник організації; список OPEN. */
+  async addItem(
+    orgId: string,
+    listId: string,
+    dto: PurchaseListManualItemValues,
+  ): Promise<PurchaseListItemResponseDto> {
+    await loadList(this.prisma, orgId, listId, { requireOpen: true });
+    const [good] = await Promise.all([
+      this.prisma.good.findFirst({
+        where: { id: dto.goodId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.assertWarehouse(orgId, dto.warehouseId),
+      dto.supplierId ? assertSupplier(this.prisma, orgId, dto.supplierId) : Promise.resolve(),
+    ]);
+    if (!good) throw new NotFoundException(err('err.purchaseList.goodNotFound'));
+    const item = await this.prisma.$transaction(
+      async tx => {
+        // Список міг закритись між перевіркою і записом — перевірка в транзакції.
+        await loadList(tx, orgId, listId, { requireOpen: true });
+        return tx.purchaseListItem.create({
+          data: {
+            orgId,
+            listId,
+            goodId: dto.goodId,
+            warehouseId: dto.warehouseId,
+            quantity: dto.quantity,
+            source: 'MANUAL',
+            supplierId: dto.supplierId ?? null,
+            expectedPrice: dto.expectedPrice ?? null,
+            notes: dto.notes ?? null,
+          },
+          include: ITEM_INCLUDE,
+        });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+    return toItemDto(item);
+  }
+
+  /**
+   * BR-PL-003: товари наряду → у наявний OPEN-список або новий. Кількість за замовчуванням —
+   * непокрита потреба рядка (BR-PL-014), у базових одиницях; ≤ 0 → 400 partAlreadyCovered.
+   * OPEN-позиція того самого рядка в цільовому списку збільшується. Наряд блокується
+   * (`SELECT … FOR UPDATE`) до зміни позицій — непокрита потреба не «з'їдається» двічі.
+   */
+  async fromWorkOrder(
+    orgId: string,
+    dto: PurchaseListFromWorkOrderValues,
+  ): Promise<FromWorkOrderResultDto> {
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id: dto.workOrderId, orgId, deletedAt: null },
+      select: { status: true },
+    });
+    if (!wo) throw new NotFoundException(err('err.purchaseList.workOrderNotFound'));
+    this.assertWorkOrderActive(wo.status);
+    if (dto.listId) await loadList(this.prisma, orgId, dto.listId, { requireOpen: true });
+    const newNumber = dto.listId ? null : await this.docNumbers.next(orgId, 'PURCHASE_LIST');
+
+    const result = await this.prisma.$transaction(
+      async tx => {
+        await lockWorkOrdersForUpdate(tx, orgId, [dto.workOrderId]);
+        const fresh = await tx.workOrder.findFirst({
+          where: { id: dto.workOrderId, orgId, deletedAt: null },
+          select: { status: true },
+        });
+        if (!fresh) throw new NotFoundException(err('err.purchaseList.workOrderNotFound'));
+        this.assertWorkOrderActive(fresh.status);
+
+        const partIds = dto.parts.map(p => p.workOrderPartId);
+        const parts = await tx.workOrderPart.findMany({
+          where: { orgId, workOrderId: dto.workOrderId, id: { in: partIds }, deletedAt: null },
+          include: { good: { select: { name: true, preferredSupplierId: true } } },
+          take: partIds.length,
+        });
+        const partById = new Map(parts.map(p => [p.id, p]));
+        const missing = partIds.filter(id => !partById.has(id));
+        if (missing.length > 0) {
+          throw new BadRequestException(
+            err('err.purchaseList.partNotFound', { missing: missing.join(', ') }),
+          );
+        }
+
+        const listId = dto.listId
+          ? (await loadList(tx, orgId, dto.listId, { requireOpen: true })).id
+          : (
+              await tx.purchaseList.create({
+                data: {
+                  orgId,
+                  number: newNumber as string,
+                  name: dto.newList?.name ?? null,
+                  notes: dto.newList?.notes ?? null,
+                },
+              })
+            ).id;
+
+        const uncovered = await this.shortage.uncoveredByPart(tx, orgId, dto.workOrderId);
+        const itemIds: string[] = [];
+        for (const req of dto.parts) {
+          const part = partById.get(req.workOrderPartId)!;
+          const quantity = req.quantity ?? uncovered.get(part.id) ?? 0;
+          if (quantity <= QTY_EPSILON) {
+            throw new BadRequestException(
+              err('err.purchaseList.partAlreadyCovered', { good: part.good.name }),
+            );
+          }
+          itemIds.push(await this.addOrIncrement(tx, orgId, listId, part, quantity));
+        }
+        return { listId, itemIds };
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+    const [list, items] = await Promise.all([
+      loadListDto(this.prisma, orgId, result.listId),
+      loadItemDtos(this.prisma, orgId, Array.from(new Set(result.itemIds))),
+    ]);
+    return { list, items };
+  }
+
+  private async addOrIncrement(
+    tx: Tx,
+    orgId: string,
+    listId: string,
+    part: {
+      id: string;
+      workOrderId: string;
+      goodId: string;
+      warehouseId: string;
+      good: { preferredSupplierId: string | null };
+    },
+    quantity: number,
+  ): Promise<string> {
+    const existing = await tx.purchaseListItem.findFirst({
+      where: { orgId, listId, workOrderPartId: part.id, status: 'OPEN', deletedAt: null },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (existing) {
+      const res = await tx.purchaseListItem.updateMany({
+        where: {
+          id: existing.id,
+          orgId,
+          status: 'OPEN',
+          purchaseOrderId: null,
+          quantity: existing.quantity,
+          deletedAt: null,
+        },
+        data: { quantity: existing.quantity + quantity },
+      });
+      if (res.count !== 1) throw conflict();
+      return existing.id;
+    }
+    const created = await tx.purchaseListItem.create({
+      data: {
+        orgId,
+        listId,
+        goodId: part.goodId,
+        warehouseId: part.warehouseId,
+        quantity,
+        source: 'WORK_ORDER',
+        workOrderId: part.workOrderId,
+        workOrderPartId: part.id,
+        supplierId: part.good.preferredSupplierId ?? null,
+      },
+      select: { id: true },
+    });
+    return created.id;
+  }
+
+  /**
+   * BR-PL-006: ціль і джерела — OPEN; усі невидалені позиції джерел переходять у ціль; джерела →
+   * CLOSED з mergedIntoId і closedAt. Склади позицій не обмежуються.
+   */
+  async merge(orgId: string, dto: PurchaseListMergeValues): Promise<PurchaseListDetailDto> {
+    const sources = Array.from(new Set(dto.sourceListIds));
+    if (sources.includes(dto.targetListId)) {
+      throw new BadRequestException(err('err.purchaseList.mergeIntoItself'));
+    }
+    await this.prisma.$transaction(
+      async tx => {
+        await loadList(tx, orgId, dto.targetListId, { requireOpen: true });
+        const found = await tx.purchaseList.findMany({
+          where: { orgId, id: { in: sources }, deletedAt: null },
+          select: { id: true, status: true },
+        });
+        if (found.length !== sources.length) {
+          throw new NotFoundException(err('err.purchaseList.notFound'));
+        }
+        if (found.some(l => l.status !== 'OPEN')) {
+          throw new BadRequestException(err('err.purchaseList.listNotOpen'));
+        }
+        const closed = await tx.purchaseList.updateMany({
+          where: { orgId, id: { in: sources }, status: 'OPEN', deletedAt: null },
+          data: { status: 'CLOSED', mergedIntoId: dto.targetListId, closedAt: new Date() },
+        });
+        if (closed.count !== sources.length) throw conflict();
+        // Ціль лишається OPEN до коміту: зміна статусу з іншого запиту чекає на цей рядок.
+        const target = await tx.purchaseList.updateMany({
+          where: { orgId, id: dto.targetListId, status: 'OPEN', deletedAt: null },
+          data: { closedAt: null },
+        });
+        if (target.count !== 1) throw conflict();
+        await tx.purchaseListItem.updateMany({
+          where: { orgId, listId: { in: sources }, deletedAt: null },
+          data: { listId: dto.targetListId },
+        });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+    return this.findOne(orgId, dto.targetListId);
+  }
+
+  /** Закрити список вручну (OPEN → CLOSED); позиції лишаються як є. */
+  async close(orgId: string, id: string): Promise<PurchaseListResponseDto> {
+    await loadList(this.prisma, orgId, id, { requireOpen: true });
+    const res = await this.prisma.purchaseList.updateMany({
+      where: { id, orgId, status: 'OPEN', deletedAt: null },
+      data: { status: 'CLOSED', closedAt: new Date() },
+    });
+    if (res.count !== 1) throw conflict();
+    return loadListDto(this.prisma, orgId, id);
+  }
+
+  /** Скасувати список — лише без ORDERED/RECEIVED позицій; OPEN-позиції → CANCELLED. */
+  async cancel(orgId: string, id: string): Promise<PurchaseListResponseDto> {
+    await loadList(this.prisma, orgId, id, { requireOpen: true });
+    await this.prisma.$transaction(
+      async tx => {
+        await this.assertNothingOrdered(tx, orgId, id);
+        const res = await tx.purchaseList.updateMany({
+          where: { id, orgId, status: 'OPEN', deletedAt: null },
+          data: { status: 'CANCELLED', closedAt: new Date() },
+        });
+        if (res.count !== 1) throw conflict();
+        await tx.purchaseListItem.updateMany({
+          where: { orgId, listId: id, status: 'OPEN', deletedAt: null },
+          data: { status: 'CANCELLED' },
+        });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+    return loadListDto(this.prisma, orgId, id);
+  }
+
+  /** Видалити (soft) — лише без ORDERED/RECEIVED позицій; позиції видаляються разом зі списком. */
+  async remove(orgId: string, id: string): Promise<void> {
+    const list = await loadList(this.prisma, orgId, id);
+    await this.prisma.$transaction(
+      async tx => {
+        await this.assertNothingOrdered(tx, orgId, id);
+        const deletedAt = new Date();
+        const res = await tx.purchaseList.updateMany({
+          where: { id, orgId, status: list.status, deletedAt: null },
+          data: { deletedAt },
+        });
+        if (res.count !== 1) throw conflict();
+        await tx.purchaseListItem.updateMany({
+          where: { orgId, listId: id, deletedAt: null },
+          data: { status: 'CANCELLED', deletedAt },
+        });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+  }
+
+  // ─── Зв'язки ──────────────────────────────────────────────
+
+  /** Наряди й замовлення постачальникам позицій списку, списки, злиті в нього. */
+  async getLinkedDocuments(orgId: string, id: string) {
+    const list = await this.prisma.purchaseList.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!list) return { workOrders: [], purchaseOrders: [], purchaseLists: [] };
+    const TAKE = 500;
+    const [items, merged] = await Promise.all([
+      this.prisma.purchaseListItem.findMany({
+        where: { orgId, listId: id, deletedAt: null },
+        select: {
+          workOrder: { select: { id: true, number: true, status: true, deletedAt: true } },
+          purchaseOrder: { select: { id: true, number: true, status: true, deletedAt: true } },
+        },
+        take: TAKE * 4,
+      }),
+      this.prisma.purchaseList.findMany({
+        where: { orgId, mergedIntoId: id, deletedAt: null },
+        select: { id: true, number: true, status: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: TAKE,
+      }),
+    ]);
+    const unique = <T extends { id: string; deletedAt: Date | null }>(rows: (T | null)[]) =>
+      Array.from(
+        new Map(
+          rows
+            .filter((r): r is T => r !== null && r.deletedAt === null)
+            .map(({ deletedAt: _d, ...rest }) => [rest.id, rest]),
+        ).values(),
+      ).slice(0, TAKE);
+    return {
+      workOrders: unique(items.map(i => i.workOrder)),
+      purchaseOrders: unique(items.map(i => i.purchaseOrder)),
+      purchaseLists: merged,
+    };
+  }
+
+  async getLinkedCounts(orgId: string, ids: string[]) {
+    if (!ids.length) return {};
+    const [items, merged] = await Promise.all([
+      this.prisma.purchaseListItem.findMany({
+        where: { orgId, listId: { in: ids }, deletedAt: null },
+        select: {
+          listId: true,
+          workOrderId: true,
+          purchaseOrderId: true,
+          workOrder: { select: { deletedAt: true } },
+          purchaseOrder: { select: { deletedAt: true } },
+        },
+        take: 5000,
+      }),
+      this.prisma.purchaseList.groupBy({
+        by: ['mergedIntoId'],
+        where: { orgId, mergedIntoId: { in: ids }, deletedAt: null },
+        _count: { _all: true },
+      }),
+    ]);
+    const result = initCountsMap(ids, ['workOrders', 'purchaseOrders', 'purchaseLists'] as const);
+    const wo = new Map<string, Set<string>>();
+    const po = new Map<string, Set<string>>();
+    for (const i of items) {
+      if (i.workOrderId && i.workOrder && i.workOrder.deletedAt === null) {
+        wo.set(i.listId, (wo.get(i.listId) ?? new Set()).add(i.workOrderId));
+      }
+      if (i.purchaseOrderId && i.purchaseOrder && i.purchaseOrder.deletedAt === null) {
+        po.set(i.listId, (po.get(i.listId) ?? new Set()).add(i.purchaseOrderId));
+      }
+    }
+    for (const id of ids) {
+      result[id].workOrders = wo.get(id)?.size ?? 0;
+      result[id].purchaseOrders = po.get(id)?.size ?? 0;
+    }
+    for (const g of merged) {
+      if (g.mergedIntoId && result[g.mergedIntoId]) {
+        result[g.mergedIntoId].purchaseLists = g._count._all;
+      }
+    }
+    return result;
+  }
+
+  // ─── Допоміжне ────────────────────────────────────────────
+
+  private assertWorkOrderActive(status: string): void {
+    if (!(PROCUREMENT_ACTIVE_STATUSES as readonly string[]).includes(status)) {
+      throw new BadRequestException(err('err.purchaseList.workOrderNotActive'));
+    }
+  }
+
+  private async assertWarehouse(orgId: string, warehouseId: string): Promise<void> {
+    const wh = await this.prisma.warehouse.findFirst({
+      where: { id: warehouseId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!wh) throw new NotFoundException(err('err.purchaseList.warehouseNotFound'));
+  }
+
+  private async assertNothingOrdered(tx: Tx, orgId: string, listId: string): Promise<void> {
+    const ordered = await tx.purchaseListItem.count({
+      where: { orgId, listId, deletedAt: null, status: { in: ['ORDERED', 'RECEIVED'] } },
+    });
+    if (ordered > 0) throw new BadRequestException(err('err.purchaseList.cancelHasOrdered'));
+  }
+}

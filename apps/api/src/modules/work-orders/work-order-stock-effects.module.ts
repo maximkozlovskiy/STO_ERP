@@ -3,6 +3,7 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { SettlementsModule } from '../settlements/settlements.module';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
+import { PurchaseListCoreModule } from '../purchase-lists/purchase-list-core.module';
 
 /**
  * Склад і борг переходів наряду (A3) окремим модулем: крім WorkOrdersModule, його потребує імпорт
@@ -10,7 +11,7 @@ import { WorkOrderStockEffectsService } from './work-order-stock-effects.service
  * тягне в XlsxModule весь WorkOrdersModule.
  */
 @Module({
-  imports: [InventoryModule, SettlementsModule, ExchangeRatesModule],
+  imports: [InventoryModule, SettlementsModule, ExchangeRatesModule, PurchaseListCoreModule],
   providers: [WorkOrderStockEffectsService],
   exports: [WorkOrderStockEffectsService],
 })

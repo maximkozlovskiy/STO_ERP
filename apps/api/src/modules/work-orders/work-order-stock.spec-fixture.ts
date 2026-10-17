@@ -22,6 +22,7 @@ import {
 import { InventoryService } from '../inventory/inventory.service';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
 import { WorkOrdersService } from './work-orders.service';
+import { PurchaseListLinkService } from '../purchase-lists/purchase-list-link.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 
 export const ORG = '11111111-1111-4111-8111-111111111111';
@@ -144,6 +145,22 @@ export function memoryDb(opts: StockHarnessOptions = {}) {
   ]);
   add('unitOfMeasure', []);
   add('completionAct');
+  add('purchaseList');
+  add('purchaseListItem', [], () => ({
+    createdAt: tick(),
+    deletedAt: null,
+    receivedQty: 0,
+    reservedQty: 0,
+    status: 'OPEN',
+    purchaseOrderId: null,
+    workOrderId: null,
+    workOrderPartId: null,
+    supplierId: null,
+    expectedPrice: null,
+    notes: null,
+  }));
+  add('purchaseOrder');
+  add('purchaseOrderLine');
   add('calendarSlot');
 
   /** Журнал подій у порядку виклику: `lock:<woId>`, `<тип руху>:<goodId>`. */
@@ -212,8 +229,10 @@ export function memoryInventory(db: MemoryDb): InventoryService {
   );
 }
 
-export function stockHarness(opts: StockHarnessOptions = {}, extra: { hooks?: unknown } = {}) {
+export function stockHarness(opts: StockHarnessOptions = {}) {
   const db = memoryDb(opts);
+  // Справжні хуки списків купівлі (BR-PL-013) над таблицею позицій у пам'яті.
+  const purchaseLists = new PurchaseListLinkService();
   const inventory = memoryInventory(db);
   const settlements = { createTransaction: vi.fn().mockResolvedValue({}) };
   const stockEffects = new WorkOrderStockEffectsService(
@@ -221,7 +240,7 @@ export function stockHarness(opts: StockHarnessOptions = {}, extra: { hooks?: un
     inventory,
     settlements as never,
     null as never, // exchangeRates — курсова різниця тут не задіяна
-    ...((extra.hooks === undefined ? [] : [extra.hooks]) as []),
+    purchaseLists,
   );
   const service = new WorkOrdersService(
     db.prisma as unknown as PrismaService,
