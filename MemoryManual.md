@@ -9,7 +9,7 @@
 ## Поточний стан
 
 ```
-Дата:       2026-10-16
+Дата:       2026-10-17
 HEAD:       див. `git log --oneline -1` (хеш тут НЕ дублюється — старіє щокоміту)
 Фаза:       PHASES.md 229/231 закрито. Хвости: EAS Build (mobile) + smoke на чистій
             Windows VM — обидва потребують фізичного оточення, не коду.
@@ -100,13 +100,13 @@ python scripts/check-doc-links.py                      # посилання мі
 | `scripts/audit-claims.py`                                                                | Витягує з транскрипту мої твердження, що потребують доказу (для auditor'а)                                                               |
 | `scripts/count-untyped-routes.py`                                                        | Роути без типу з OpenAPI-документа (не grep по контролерах)                                                                              |
 | `scripts/hooks/check-claims-verified.py`                                                 | Stop-hook: блокує завершення, якщо вердикт/цифра без auditor/verdict.sh/measure.sh                                                       |
-| `scripts/hooks/test-check-claims.py`                                                     | Тест hook'а ПРОЦЕСОМ — ловить cp1251-stdin і зіпсовані \b, яких не видно в grep                                                          |
+| `scripts/hooks/_common.py`, `scripts/hooks/test-*.py`                                    | Спільне для хуків (stdin, транскрипт); тести хуків ПРОЦЕСОМ — ловлять cp1251-stdin і зіпсовані                                           |
+| `apps/web/e2e/api-helpers.ts`, `apps/web/src/hooks/useNow.ts`                            | E2E: токен і `apiCall` з повтором на 429; web: поточний час, що оновлюється (лінія «зараз», пікери)                                      |
 | `.claude/agents/sto-claims-auditor.md`                                                   | Агент-аудитор: читає ТРАНСКРИПТ, не мою доповідь; переперевіряє кожну цифру інструментом                                                 |
 | `scripts/check-spec-registry.py`                                                         | Три гейти: втрата кейсів (множини fullName), нові моноліти (>900 і >=2 describe), цілісність реєстрів дос'є                              |
 | `scripts/spec-baseline.py`                                                               | Дистилює vitest-звіт у стабільний `apps/api/test-baseline.json` (файл -> fullName); детермінований, у .prettierignore                    |
 | `.claude/skills/sto-spec/SKILL.md`                                                       | Специфікація агрегату: BR-ID, аспектні спеки, реєстр, гейти; між sto-analyst і sto-feature                                               |
-| `scripts/affected-tests.py`                                                              | Селектор: готові команди API / WEB / E2E для diff-у; каже, коли потрібен повний прогін                                                   |
-| `scripts/test-affected-tests.py`                                                         | Тест самого вибору на реальних файлах репо (у CI job `quality`)                                                                          |
+| `scripts/affected-tests.py` (+`test-affected-tests.py`)                                  | Селектор: готові команди API / WEB / E2E для diff-у; каже, коли потрібен повний прогін; тест — у CI                                      |
 | `scripts/check-skill-size.py`                                                            | Гейт розміру скілів у КБ (ядро 32, секція 36); у CI job `quality`                                                                        |
 | `scripts/agent-scopes.py`, `scripts/hooks/require-skill-before-edit.py`                  | сфери запису паралельних агентів; PreToolUse-хук: схема/міграції Prisma лише після `/sto-database`                                       |
 | `.claude/agents/sto-{br-trace,review-finder,tester-finder,fixer}*`                       | Паралельні агенти; НОВІ ТИПИ доступні лише з наступної сесії — перевірити запуск за іменем                                               |

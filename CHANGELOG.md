@@ -5,6 +5,14 @@
 
 ---
 
+### d14f6ca3..bcf2f8e7 QA-цикл: sync → review → tester → optimize → e2e → simplify → code-review → security (2026-10-17)
+
+- Review: резервні години календаря 09–18 як на сервері; tester: Bug #884 (форма запису йде за нарядом).
+- Optimize: календар перечитується раз після збереження наряду; журнал змін — у першій хвилі запитів.
+- Simplify: `DEFAULT_WORK_HOURS` у `@sto/shared`, `useBranchWorkHours` на TanStack Query, verdict.sh через
+  файл, паралельний prepush, спільне для хуків. Code-review: межа ходу Stop-хука — справжній запит.
+  Security-review: знахідок із впевненістю ≥ 8 немає.
+
 ### 118b95d1..HEAD feat(work-orders): планові дати й запис календаря наряду (2026-10-16)
 
 - BR-WO-019: планові початок і завершення — не в минулому й у робочих годинах філії (пікер і сервер,
