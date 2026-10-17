@@ -54,7 +54,11 @@ export type MemRow = Record<string, unknown>;
  * що повертає пов'язаний рядок (або null). Без опису зв'язку такий фільтр кидає помилку —
  * тест падає з підказкою, а не мовчки «знаходить» усе.
  */
-export type MemRelations = Record<string, (row: MemRow) => MemRow | MemRow[] | null | undefined>;
+/** Зв'язок рядка; `arg` — те, що сервіс передав у `include`/`select` для цього ключа (для `_count`). */
+export type MemRelations = Record<
+  string,
+  (row: MemRow, arg?: unknown) => MemRow | MemRow[] | null | undefined
+>;
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !(v instanceof Date) && !Array.isArray(v);
@@ -189,7 +193,7 @@ function withRelations(row: MemRow, args: unknown, relations: MemRelations): Mem
   const keys = Object.keys(shape).filter(k => relations[k] && shape[k]);
   if (keys.length === 0) return row;
   const copy: MemRow = { ...row };
-  for (const k of keys) copy[k] = relations[k](row) ?? null;
+  for (const k of keys) copy[k] = relations[k](row, shape[k]) ?? null;
   return copy;
 }
 

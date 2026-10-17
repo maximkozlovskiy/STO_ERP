@@ -57,14 +57,29 @@ export class PurchaseListLinkService {
    * (BR-PL-016) відповідав би 400 nothingToRelease.
    */
   async capReservedToNet(tx: Tx, orgId: string, workOrderId: string): Promise<void> {
-    const items = await tx.purchaseListItem.findMany({
+    const items = await this.itemsOfWorkOrder(tx, orgId, workOrderId);
+    if (!items.some(i => i.reservedQty > QTY_EPSILON)) return;
+    const net = await netReservedByWorkOrder(tx, orgId, workOrderId);
+    await this.capReserved(tx, orgId, items, net);
+  }
+
+  /** Усі невидалені позиції наряду, новіші першими (обидва хуки наряду читають саме їх). */
+  private itemsOfWorkOrder(tx: Tx, orgId: string, workOrderId: string): Promise<ItemRow[]> {
+    return tx.purchaseListItem.findMany({
       where: { orgId, workOrderId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       take: 1000,
     });
+  }
+
+  /** `reservedQty` позицій (новіші першими) урізається до net-резерву по (товар, склад). */
+  private async capReserved(
+    tx: Tx,
+    orgId: string,
+    items: ItemRow[],
+    net: Map<string, number>,
+  ): Promise<void> {
     const reserved = items.filter(i => i.reservedQty > QTY_EPSILON);
-    if (reserved.length === 0) return;
-    const net = await netReservedByWorkOrder(tx, orgId, workOrderId);
     const byKey = new Map<string, ItemRow[]>();
     for (const item of reserved) {
       const key = stockKey(item.goodId, item.warehouseId);
@@ -96,25 +111,34 @@ export class PurchaseListLinkService {
    * надлишок над потребою знімається з OPEN-позицій, новіші першими (урізати або скасувати).
    * ORDERED не змінюються — при прийманні резерв обмежить потреба (BR-PL-011).
    * Викликати ПІСЛЯ зняття надлишку резерву (той самий tx).
+   *
+   * `required` — потреба наряду по (товар, склад), уже порахована викликом із рядків ЦІЄЇ
+   * транзакції (reconcileAfterPartsChange): рядки між ним і хуком не змінюються, тож повторне
+   * читання рядків і коефіцієнтів зайве. Без неї — читається тут.
+   *
+   * sto-optimize: позиції наряду читаються ОДИН раз (раніше — двічі: зріз резерву й урізання), а
+   * net-резерв — один раз на обидва кроки (зріз `reservedQty` рухів не створює). Наряд без
+   * позицій списків (більшість) — один запит.
    */
-  async onWorkOrderPartsChanged(tx: Tx, orgId: string, workOrderId: string): Promise<void> {
-    // Надлишок резерву вже знято (reconcileAfterPartsChange) — reservedQty позицій слідом.
-    await this.capReservedToNet(tx, orgId, workOrderId);
-    const items = await tx.purchaseListItem.findMany({
-      where: { orgId, workOrderId, status: { in: ['OPEN', 'ORDERED'] }, deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-      take: 1000,
-    });
-    if (!items.some(i => i.status === 'OPEN')) return;
+  async onWorkOrderPartsChanged(
+    tx: Tx,
+    orgId: string,
+    workOrderId: string,
+    required?: Map<string, number>,
+  ): Promise<void> {
+    const all = await this.itemsOfWorkOrder(tx, orgId, workOrderId);
+    const hasReserved = all.some(i => i.reservedQty > QTY_EPSILON);
+    // Новіші першими — порядок `all` (orderBy createdAt desc) зберігається фільтром.
+    const items = all.filter(i => i.status === 'OPEN' || i.status === 'ORDERED');
+    const hasOpen = items.some(i => i.status === 'OPEN');
+    if (!hasReserved && !hasOpen) return;
 
-    const parts = await tx.workOrderPart.findMany({
-      where: { workOrderId, orgId, deletedAt: null },
-      take: 1000,
-    });
-    const coeffMap = await fetchPartCoefficients(tx, orgId, parts);
-    const required = requiredByKey(parts, coeffMap);
     const net = await netReservedByWorkOrder(tx, orgId, workOrderId);
+    // Надлишок резерву вже знято (reconcileAfterPartsChange) — reservedQty позицій слідом.
+    if (hasReserved) await this.capReserved(tx, orgId, all, net);
+    if (!hasOpen) return;
 
+    const need = required ?? (await this.requiredOf(tx, orgId, workOrderId));
     const byKey = new Map<string, ItemRow[]>();
     for (const item of items) {
       const key = stockKey(item.goodId, item.warehouseId);
@@ -124,7 +148,7 @@ export class PurchaseListLinkService {
       const covered =
         Math.max(0, net.get(key) ?? 0) +
         group.reduce((s, i) => s + (i.status === 'OPEN' ? i.quantity : undelivered(i)), 0);
-      let excess = covered - (required.get(key) ?? 0);
+      let excess = covered - (need.get(key) ?? 0);
       // `group` уже від новіших до старіших (orderBy createdAt desc).
       for (const item of group) {
         if (excess <= QTY_EPSILON) break;
@@ -138,6 +162,15 @@ export class PurchaseListLinkService {
         }
       }
     }
+  }
+
+  /** Потреба наряду по (товар, склад) у базових одиницях — з його рядків у цій транзакції. */
+  private async requiredOf(tx: Tx, orgId: string, workOrderId: string) {
+    const parts = await tx.workOrderPart.findMany({
+      where: { workOrderId, orgId, deletedAt: null },
+      take: 1000,
+    });
+    return requiredByKey(parts, await fetchPartCoefficients(tx, orgId, parts));
   }
 
   /**

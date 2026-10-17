@@ -7,6 +7,7 @@ import {
   WH,
   WO_A,
   WO_B,
+  itemRow,
   listRow,
   partRow,
   procurementHarness,
@@ -181,5 +182,61 @@ describe('BR-PL-002 базові одиниці', () => {
 
     // 1.5 пакета × 4 = 6 штук: підпис — «шт» товару, а не «пак» рядка.
     expect(res.shortage).toEqual([{ workOrderPartId: 'p1', shortage: 6, goodUnit: 'шт' }]);
+  });
+});
+
+describe('BR-PL-015 позиції наряду в його картці', () => {
+  // guards: BR-PL-015
+  it('позиції наряду без скасованих, найстаріші першими; нестача — поруч', async () => {
+    const h = harness({
+      items: [
+        itemRow('i-cancel', { workOrderId: WO_A, workOrderPartId: 'p1', status: 'CANCELLED' }),
+        itemRow('i-old', { workOrderId: WO_A, workOrderPartId: 'p1', quantity: 1 }),
+        itemRow('i-new', { workOrderId: WO_A, workOrderPartId: 'p1', quantity: 1 }),
+        itemRow('i-other', { workOrderId: WO_B, workOrderPartId: 'p-b' }),
+      ],
+    });
+
+    const res = await h.items.byWorkOrder(ORG, WO_A, 'STOREKEEPER');
+
+    expect(res.items.map(i => i.id)).toEqual(['i-old', 'i-new']);
+    // Потреба 3: склад 1 + позиції 2 → нестачі немає.
+    expect(res.shortage).toEqual([]);
+  });
+
+  // guards: BR-PL-015
+  it('наряд без позицій (лише скасовані) — порожньо, позиції зі зв’язками не читаються', async () => {
+    const h = harness({
+      stock: {},
+      items: [
+        itemRow('i-cancel', { workOrderId: WO_A, workOrderPartId: 'p1', status: 'CANCELLED' }),
+      ],
+    });
+    h.tables.purchaseListItem.findMany.mockClear();
+
+    const res = await h.items.byWorkOrder(ORG, WO_A, 'MECHANIC');
+
+    expect(res.items).toEqual([]);
+    expect(res.shortage).toEqual([{ workOrderPartId: 'p1', shortage: 3, goodUnit: 'шт' }]);
+    // sto-optimize: лічильник позицій — разом із перевіркою наряду; `findMany` з `include` шле
+    // запит на кожен зв'язок навіть на порожньому результаті. Лишається лише читання нестачі.
+    expect(
+      h.tables.purchaseListItem.findMany.mock.calls.filter(
+        ([args]) => (args as { include?: unknown }).include,
+      ),
+    ).toHaveLength(0);
+  });
+
+  // guards: BR-PL-015
+  it('видалений або чужий наряд → 404', async () => {
+    const h = harness({
+      workOrders: [
+        woRow(WO_A, { status: 'APPROVED', deletedAt: new Date() }),
+        woRow(WO_B, { status: 'DRAFT', orgId: '00000000-0000-4000-8000-00000000f0f0' }),
+      ],
+    });
+
+    await expect(h.items.byWorkOrder(ORG, WO_A, 'MECHANIC')).rejects.toThrow(/не знайдено/i);
+    await expect(h.items.byWorkOrder(ORG, WO_B, 'MECHANIC')).rejects.toThrow(/не знайдено/i);
   });
 });

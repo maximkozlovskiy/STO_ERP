@@ -109,6 +109,58 @@ describe('BR-PL-013 змінено товари наряду', () => {
   });
 
   // guards: BR-PL-013
+  it('менша потреба: reservedQty позиції слідом за знятим резервом, OPEN урізається — позиції, рядки й net читаються по разу', async () => {
+    const h = procurementHarness({
+      workOrders: [woRow(WO_A, { status: 'APPROVED' })],
+      parts: [partRow('p1', WO_A, { quantity: 4 })],
+      stock: { [`${GOOD}|${WH}`]: 2 },
+      items: [
+        itemRow('i-recv', {
+          workOrderId: WO_A,
+          workOrderPartId: 'p1',
+          source: 'WORK_ORDER',
+          status: 'RECEIVED',
+          purchaseOrderId: 'po-1',
+          quantity: 2,
+          receivedQty: 2,
+          reservedQty: 2,
+        }),
+        open('i-open', { quantity: 2 }),
+      ],
+    });
+    await h.reserveFor(WO_A, 2);
+    h.tables.purchaseListItem.findMany.mockClear();
+    h.tables.workOrderPart.findMany.mockClear();
+    h.tables.stockMovement.findMany.mockClear();
+
+    await h.workOrders.updatePart(ORG, WO_A, 'p1', { quantity: 1 } as never);
+
+    // Потреба 1: резерв 2 → 1 (BR-WO-021), reservedQty позиції слідом; покриття 1 + OPEN 2 → OPEN скасовано.
+    expect(h.netOf(WO_A)).toBe(1);
+    expect(h.item('i-recv')!.reservedQty).toBe(1);
+    expect(h.item('i-open')!.status).toBe('CANCELLED');
+    // sto-optimize: хук бере потребу від reconcileAfterPartsChange і читає позиції й net один раз
+    // (раніше — рядки 2, позиції 2, net 3).
+    expect(h.tables.workOrderPart.findMany).toHaveBeenCalledTimes(1);
+    expect(h.tables.purchaseListItem.findMany).toHaveBeenCalledTimes(1);
+    expect(h.tables.stockMovement.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  // guards: BR-PL-013
+  it('наряд без позицій списків: зміна товарів читає позиції один раз і нічого не пише', async () => {
+    const h = procurementHarness({
+      workOrders: [woRow(WO_A, { status: 'APPROVED' })],
+      parts: [partRow('p1', WO_A, { quantity: 4 })],
+    });
+    h.tables.purchaseListItem.findMany.mockClear();
+
+    await h.workOrders.updatePart(ORG, WO_A, 'p1', { quantity: 2 } as never);
+
+    expect(h.tables.purchaseListItem.findMany).toHaveBeenCalledTimes(1);
+    expect(h.tables.purchaseListItem.updateMany).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PL-013
   it('прибраний рядок: усі OPEN-позиції за товаром і складом → CANCELLED', async () => {
     const h = procurementHarness({
       workOrders: [woRow(WO_A, { status: 'ESTIMATE' })],

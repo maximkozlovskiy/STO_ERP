@@ -173,7 +173,8 @@ export class WorkOrderStockEffectsService {
     const net = await netReservedByWorkOrder(db, orgId, workOrderId);
     await this.releaseExcess(orgId, workOrderId, net, required, userId, db);
     // BR-PL-013: надлишок покриття знімається з OPEN-позицій наряду (після зняття резерву).
-    await this.purchaseLists.onWorkOrderPartsChanged(db, orgId, workOrderId);
+    // Потреба — та сама, що вище (рядки в цій транзакції не змінювались): хук її не перечитує.
+    await this.purchaseLists.onWorkOrderPartsChanged(db, orgId, workOrderId, required);
   }
 
   /**

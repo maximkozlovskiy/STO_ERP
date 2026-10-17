@@ -15,6 +15,7 @@
 import { vi } from 'vitest';
 import {
   memoryTable,
+  whereMatches,
   type MemRelations,
   type MemRow,
   type MemoryTable,
@@ -119,6 +120,19 @@ export function memoryDb(opts: StockHarnessOptions = {}) {
     contract: () => null,
     currency: () => null,
     lift: () => null,
+    // `_count: { select: { purchaseListItems: { where } } }` — позиції списків купівлі наряду
+    // (картка наряду, BR-PL-015); `where` виконується по-справжньому.
+    _count: (r, arg) => {
+      const sel = (arg as { select?: { purchaseListItems?: boolean | { where?: unknown } } })
+        ?.select?.purchaseListItems;
+      if (!sel) return {};
+      const where = typeof sel === 'object' ? sel.where : undefined;
+      return {
+        purchaseListItems: (tables.purchaseListItem?.rows ?? []).filter(
+          i => i.workOrderId === r.id && whereMatches(i, where),
+        ).length,
+      };
+    },
   });
   add('workOrderPart', opts.parts ?? []);
   add('goodUoM', opts.goodUoMs ?? []);

@@ -98,20 +98,28 @@ export class PurchaseListItemsService {
     workOrderId: string,
     role?: string,
   ): Promise<WorkOrderProcurementDto> {
-    const wo = await this.prisma.workOrder.findFirst({
-      where: { id: workOrderId, orgId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!wo) throw new NotFoundException(err('err.purchaseList.workOrderNotFound'));
-    const [rows, uncovered] = await Promise.all([
-      this.prisma.purchaseListItem.findMany({
-        where: { orgId, workOrderId, deletedAt: null, status: { not: 'CANCELLED' } },
-        include: ITEM_INCLUDE,
-        orderBy: { createdAt: 'asc' },
-        take: 500,
+    const itemsWhere = { orgId, deletedAt: null, status: { not: 'CANCELLED' as const } };
+    // sto-optimize: картку наряду відкривають часто, а позицій списків у більшості нарядів немає.
+    // `findMany` з `include` і на порожньому результаті шле запит на КОЖЕН зв'язок (`IN (NULL)`),
+    // тож лічильник позицій береться разом із перевіркою наряду, і порожній список не читається.
+    // Нестача рахується паралельно з перевіркою (для чужого/видаленого наряду — 404, як і раніше).
+    const [wo, uncovered] = await Promise.all([
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        select: { id: true, _count: { select: { purchaseListItems: { where: itemsWhere } } } },
       }),
       this.shortage.uncoveredRowsByPart(this.prisma, orgId, workOrderId),
     ]);
+    if (!wo) throw new NotFoundException(err('err.purchaseList.workOrderNotFound'));
+    const rows =
+      wo._count.purchaseListItems === 0
+        ? []
+        : await this.prisma.purchaseListItem.findMany({
+            where: { ...itemsWhere, workOrderId },
+            include: ITEM_INCLUDE,
+            orderBy: { createdAt: 'asc' },
+            take: 500,
+          });
     return {
       items: maskItemCost(rows.map(toItemDto), role),
       shortage: Array.from(uncovered, ([workOrderPartId, row]) => ({

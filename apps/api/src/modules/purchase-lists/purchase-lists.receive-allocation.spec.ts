@@ -235,11 +235,11 @@ describe('BR-PL-016 «Зняти резерв»', () => {
   it('скасування наряду обнуляє reservedQty його позицій — «зарезервовано» не бреше', async () => {
     const h = harness();
     await receive(h, 3);
-    expect(h.item('ia').reservedQty).toBe(2);
+    expect(h.item('ia')!.reservedQty).toBe(2);
 
     await h.workOrders.transition(ORG, WO_A, 'CANCELLED' as never);
 
     expect(h.item('ia')).toMatchObject({ status: 'RECEIVED', receivedQty: 2, reservedQty: 0 });
-    expect(h.item('ib').reservedQty).toBe(1); // позиція іншого наряду не зачеплена
+    expect(h.item('ib')!.reservedQty).toBe(1); // позиція іншого наряду не зачеплена
   });
 });
