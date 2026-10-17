@@ -22,6 +22,12 @@ const SEND_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTI
 export interface WorkOrderProcurementState {
   itemsByPart: Map<string, PurchaseListItem[]>;
   shortageByPart: Map<string, number>;
+  /**
+   * Базова одиниця товару рядка: нестача, прибуле й зарезервоване — у БАЗОВИХ одиницях
+   * (BR-PL-002), тож підпис до них — вона, а не одиниця рядка наряду (Bug #886: «6 Пак» замість
+   * «6 шт» для рядка «1.5 Пак»).
+   */
+  unitByPart: Map<string, string>;
 }
 
 /**
@@ -38,15 +44,18 @@ export function useWorkOrderProcurementState(
     // Відповідь неочікуваної форми (старий API, заглушка) не має ламати картку наряду.
     if (!data || !Array.isArray(data.items) || !Array.isArray(data.shortage)) return undefined;
     const itemsByPart = new Map<string, PurchaseListItem[]>();
+    const unitByPart = new Map<string, string>();
     for (const item of data.items) {
       if (!item.workOrderPartId) continue;
       itemsByPart.set(item.workOrderPartId, [
         ...(itemsByPart.get(item.workOrderPartId) ?? []),
         item,
       ]);
+      if (item.goodUnit) unitByPart.set(item.workOrderPartId, item.goodUnit);
     }
     const shortageByPart = new Map(data.shortage.map(s => [s.workOrderPartId, s.shortage]));
-    return { itemsByPart, shortageByPart };
+    for (const s of data.shortage) if (s.goodUnit) unitByPart.set(s.workOrderPartId, s.goodUnit);
+    return { itemsByPart, shortageByPart, unitByPart };
   }, [data]);
 }
 
@@ -65,8 +74,8 @@ export function useInvalidateProcurement(): () => void {
 interface SendToListButtonProps {
   workOrderId: string;
   status: string;
-  /** Збережені рядки товарів наряду (з `id`). */
-  parts: Array<{ id: string; goodName: string; unit?: string | null }>;
+  /** Збережені рядки товарів наряду (з `id`). Одиниця — базова з `procurement.unitByPart`. */
+  parts: Array<{ id: string; goodName: string }>;
   procurement: WorkOrderProcurementState | undefined;
   /** Діалог поверх картки-модалки: картка не закривається тим самим Escape (GOTCHAS 2026-10-12). */
   onOpenChange?: (open: boolean) => void;
@@ -108,7 +117,7 @@ export function SendToListButton({
         workOrderPartId: part.id,
         label: part.goodName,
         shortage,
-        unit: part.unit,
+        unit: procurement?.unitByPart.get(part.id) ?? null,
       })),
     );
     onOpenChange?.(true);

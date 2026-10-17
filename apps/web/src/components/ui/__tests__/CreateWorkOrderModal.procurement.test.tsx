@@ -130,6 +130,31 @@ describe('CreateWorkOrderModal — закупівля товарів наряд�
     expect(await screen.findByLabelText('Кількість для Колодки гальмівні')).toHaveValue(1);
   });
 
+  // guards: BR-PL-002
+  it('рядок у пакетах: нестача з базовою одиницею товару, а не одиницею рядка (Bug #886)', async () => {
+    const base = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation(async (path: string, ...rest: unknown[]) => {
+      if (path === `/purchase-list-items/by-work-order/${WO}`) {
+        return { items: [], shortage: [{ workOrderPartId: P1, shortage: 6, goodUnit: 'шт' }] };
+      }
+      const res = await base(path, ...rest);
+      if (path === `/work-orders/${WO}?withDeleted=true`) {
+        // 1.5 пакета, 1 пакет = 4 шт → бракує 6 шт (BR-PL-002).
+        res.parts = [{ ...res.parts[0], quantity: 1.5, unitShortName: 'Пак' }];
+      }
+      return res;
+    });
+    const user = userEvent.setup();
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId={WO} />);
+    const badge = await screen.findByTestId('procurement-badge');
+    expect(badge).toHaveTextContent('нестача 6 шт');
+    await user.click(screen.getByRole('button', { name: 'До списку купівлі' }));
+    const input = await screen.findByLabelText('Кількість для Колодки гальмівні');
+    const dialogRow = input.closest('tr')!;
+    expect(dialogRow).toHaveTextContent('6 шт');
+    expect(dialogRow).not.toHaveTextContent('Пак');
+  });
+
   // guards: BR-PL-015
   it('механік: стан бачить, а надсилати до списку не може', async () => {
     role = 'MECHANIC';

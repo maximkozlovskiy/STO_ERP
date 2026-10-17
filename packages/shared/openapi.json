@@ -26583,12 +26583,19 @@
             "type": "string"
           },
           "shortage": {
-            "type": "number"
+            "type": "number",
+            "description": "Непокрита потреба рядка — у БАЗОВИХ одиницях товару (BR-PL-002)."
+          },
+          "goodUnit": {
+            "type": "string",
+            "nullable": true,
+            "description": "Базова одиниця товару — підпис до `shortage` (не одиниця рядка наряду, Bug #886)."
           }
         },
         "required": [
           "workOrderPartId",
-          "shortage"
+          "shortage",
+          "goodUnit"
         ]
       },
       "WorkOrderProcurementDto": {

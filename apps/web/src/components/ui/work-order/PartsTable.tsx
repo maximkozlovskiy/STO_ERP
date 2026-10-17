@@ -406,6 +406,7 @@ export function PartsTable(props: PartsTableProps) {
                           <ProcurementBadge
                             items={procurement.itemsByPart.get(part.id) ?? []}
                             shortage={procurement.shortageByPart.get(part.id) ?? 0}
+                            unit={procurement.unitByPart.get(part.id)}
                           />
                         )}
                       </td>

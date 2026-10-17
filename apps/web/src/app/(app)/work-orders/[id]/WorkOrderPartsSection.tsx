@@ -115,7 +115,6 @@ export function WorkOrderPartsSection({
                 parts={(parts ?? []).map(p => ({
                   id: p.id,
                   goodName: p.goodName ?? '',
-                  unit: p.unitShortName ?? null,
                 }))}
                 procurement={procurement}
               />
@@ -161,6 +160,7 @@ export function WorkOrderPartsSection({
                     <ProcurementBadge
                       items={procurement.itemsByPart.get(p.id) ?? []}
                       shortage={procurement.shortageByPart.get(p.id) ?? 0}
+                      unit={procurement.unitByPart.get(p.id)}
                     />
                   )}
                 </div>

@@ -168,4 +168,18 @@ describe('BR-PL-002 базові одиниці', () => {
 
     expect(res.items[0].quantity).toBe(12);
   });
+
+  // guards: BR-PL-002
+  it('нестача рядка в картці наряду — у базових одиницях і з базовою одиницею товару (Bug #886)', async () => {
+    const h = harness({
+      parts: [partRow('p1', WO_A, { quantity: 1.5, unitOfMeasureId: UOM_PACK })],
+      stock: {},
+      goodUoMs: [{ orgId: ORG, goodId: GOOD, unitOfMeasureId: UOM_PACK, coefficient: 4 }],
+    });
+
+    const res = await h.items.byWorkOrder(ORG, WO_A, 'RECEPTIONIST');
+
+    // 1.5 пакета × 4 = 6 штук: підпис — «шт» товару, а не «пак» рядка.
+    expect(res.shortage).toEqual([{ workOrderPartId: 'p1', shortage: 6, goodUnit: 'шт' }]);
+  });
 });

@@ -65,7 +65,7 @@ model PurchaseListItem {
 ## Бізнес-правила (BR-PL)
 
 - **BR-PL-001**: **Нумерація.** Номер списку — `DocumentNumberService.next(orgId, 'PURCHASE_LIST')`, типовий префікс `СК` (рішення власника 2026-10-17; змінюється в «Налаштування → Нумерація»). Номер береться ДО транзакції створення (пропуск номера при відмові допустимий, як в інших документах); серед невидалених номер унікальний (partial-unique `purchase_lists_orgId_number_active_uq`).
-- **BR-PL-002**: **Кількості позиції — у базових одиницях товару.** Позиція з наряду отримує `кількість рядка × коефіцієнт його одиниці` (той самий коефіцієнт, що й резерв наряду, `fetchPartCoefficients`); ручна позиція — у базових одиницях. `quantity > 0`, `0 ≤ reservedQty ≤ receivedQty` (CHECK у БД); усі порівняння кількостей — з епсилоном `1e-6`.
+- **BR-PL-002**: **Кількості позиції — у базових одиницях товару.** Позиція з наряду отримує `кількість рядка × коефіцієнт його одиниці` (той самий коефіцієнт, що й резерв наряду, `fetchPartCoefficients`); ручна позиція — у базових одиницях. `quantity > 0`, `0 ≤ reservedQty ≤ receivedQty` (CHECK у БД); усі порівняння кількостей — з епсилоном `1e-6`. Нестача, прибуле й зарезервоване в картці наряду підписуються базовою одиницею товару, а не одиницею рядка (Bug #886).
 - **BR-PL-003**: **Надсилання товарів із наряду** (`POST /purchase-lists/from-work-order`). Лише наряд організації, не видалений, у статусі з `WO_PROCUREMENT_ACTIVE_STATUSES` (DRAFT, ESTIMATE, APPROVED, IN_PROGRESS, ON_HOLD), інакше 400 `workOrderNotActive`; лише збережені рядки товарів цього наряду (чужий чи видалений рядок → 400 `partNotFound`). Ціль — наявний OPEN-список (`listId`) або новий (`newList`); закритий чи скасований → 400 `listNotOpen`. Кількість за замовчуванням — непокрита потреба рядка (BR-PL-014); якщо вона ≤ 0 → 400 `partAlreadyCovered`; рядок, повторений у тілі запиту, ту саму потребу вдруге не бере. OPEN-позиція того самого рядка наряду в цільовому списку збільшується, а не дублюється. Постачальник за замовчуванням — `Good.preferredSupplierId`. Рядок наряду блокується (`SELECT … FOR UPDATE`) до зміни позицій. Ролі: OWNER, ADMIN, STOREKEEPER, RECEPTIONIST.
 - **BR-PL-004**: **Ручна позиція** (`POST /purchase-lists/:id/items`): товар і склад — організації й не видалені (404 інакше), постачальник — контрагент організації з роллю постачальника (`assertCounterpartyRole`, BR-CP-001); список — OPEN. `source = MANUAL`, без наряду. Ролі: OWNER, ADMIN, STOREKEEPER.
 - **BR-PL-005**: **Змінюється лише OPEN-позиція** (кількість, постачальник, очікувана ціна, примітка, перенесення, розділення, скасування). Кожна зміна стану — `updateMany` з умовою на статус (і `purchaseOrderId: null`) та перевіркою кількості змінених рядків; розбіжність → 409 `concurrentChange` і відкат. ORDERED/RECEIVED/CANCELLED → 400 `itemNotOpen`.
@@ -89,30 +89,30 @@ model PurchaseListItem {
 (`ZodValidationPipe`); помилки — `err.purchaseList.*`. R = OWNER, ADMIN, STOREKEEPER, RECEPTIONIST;
 S = OWNER, ADMIN, STOREKEEPER (BR-PL-015). Контролери — `apps/api/src/modules/purchase-lists/`.
 
-| Метод  | Шлях                                                  | Ролі         | Що                                                                                     |
-| ------ | ----------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------- |
-| GET    | `/api/purchase-lists`                                 | R            | Списки (`status`, `q`, пагінація) з лічильниками позицій                               |
-| POST   | `/api/purchase-lists`                                 | R            | Новий список (BR-PL-001), Idempotency-Key                                              |
-| POST   | `/api/purchase-lists/from-work-order`                 | R            | Товари наряду → список (BR-PL-003), Idempotency-Key                                    |
-| POST   | `/api/purchase-lists/linked-counts`                   | R            | Лічильники зв'язків (наряди, замовлення, злиті списки)                                 |
-| GET    | `/api/purchase-lists/:id`                             | R            | Список з позиціями                                                                     |
-| GET    | `/api/purchase-lists/:id/linked-documents`            | R            | Наряди й замовлення позицій, злиті списки                                              |
-| PATCH  | `/api/purchase-lists/:id`                             | S            | Назва, типовий склад, примітка (лише OPEN)                                             |
-| POST   | `/api/purchase-lists/:id/items`                       | S            | Ручна позиція (BR-PL-004)                                                              |
-| POST   | `/api/purchase-lists/merge`                           | S            | Об'єднання (BR-PL-006)                                                                 |
-| POST   | `/api/purchase-lists/create-orders`                   | S            | Замовлення постачальникам з позицій (BR-PL-008), Idempotency-Key                       |
-| POST   | `/api/purchase-lists/:id/close`                       | S            | Закрити (OPEN → CLOSED)                                                                |
-| POST   | `/api/purchase-lists/:id/cancel`                      | S            | Скасувати — лише без ORDERED/RECEIVED (`cancelHasOrdered`)                             |
-| DELETE | `/api/purchase-lists/:id`                             | S            | Soft-delete — лише без ORDERED/RECEIVED; позиції видаляються разом                     |
-| GET    | `/api/purchase-list-items`                            | R            | Позиції (`status`, `supplierId` / `none`, `warehouseId`, `workOrderId`, `listId`, `q`) |
-| GET    | `/api/purchase-list-items/shortage`                   | R            | Нестача по нарядах (BR-PL-014), `truncated`                                            |
-| GET    | `/api/purchase-list-items/by-work-order/:workOrderId` | R + MECHANIC | Позиції наряду й нестача кожного його рядка (картка наряду)                            |
-| PATCH  | `/api/purchase-list-items/:id`                        | S            | Кількість, постачальник, ціна, примітка (лише OPEN, BR-PL-005)                         |
-| POST   | `/api/purchase-list-items/:id/split`                  | S            | Розділити (BR-PL-007)                                                                  |
-| POST   | `/api/purchase-list-items/move`                       | S            | Перенести в наявний або новий список (BR-PL-007)                                       |
-| POST   | `/api/purchase-list-items/bulk-update`                | S            | Масово: постачальник, очікувана ціна                                                   |
-| POST   | `/api/purchase-list-items/bulk-cancel`                | S            | Масово скасувати OPEN-позиції                                                          |
-| POST   | `/api/purchase-list-items/:id/release-reservation`    | S            | Зняти резерв (BR-PL-016)                                                               |
+| Метод  | Шлях                                                  | Ролі         | Що                                                                                        |
+| ------ | ----------------------------------------------------- | ------------ | ----------------------------------------------------------------------------------------- |
+| GET    | `/api/purchase-lists`                                 | R            | Списки (`status`, `q`, пагінація) з лічильниками позицій                                  |
+| POST   | `/api/purchase-lists`                                 | R            | Новий список (BR-PL-001), Idempotency-Key                                                 |
+| POST   | `/api/purchase-lists/from-work-order`                 | R            | Товари наряду → список (BR-PL-003), Idempotency-Key                                       |
+| POST   | `/api/purchase-lists/linked-counts`                   | R            | Лічильники зв'язків (наряди, замовлення, злиті списки)                                    |
+| GET    | `/api/purchase-lists/:id`                             | R            | Список з позиціями                                                                        |
+| GET    | `/api/purchase-lists/:id/linked-documents`            | R            | Наряди й замовлення позицій, злиті списки                                                 |
+| PATCH  | `/api/purchase-lists/:id`                             | S            | Назва, типовий склад, примітка (лише OPEN)                                                |
+| POST   | `/api/purchase-lists/:id/items`                       | S            | Ручна позиція (BR-PL-004)                                                                 |
+| POST   | `/api/purchase-lists/merge`                           | S            | Об'єднання (BR-PL-006)                                                                    |
+| POST   | `/api/purchase-lists/create-orders`                   | S            | Замовлення постачальникам з позицій (BR-PL-008), Idempotency-Key                          |
+| POST   | `/api/purchase-lists/:id/close`                       | S            | Закрити (OPEN → CLOSED)                                                                   |
+| POST   | `/api/purchase-lists/:id/cancel`                      | S            | Скасувати — лише без ORDERED/RECEIVED (`cancelHasOrdered`)                                |
+| DELETE | `/api/purchase-lists/:id`                             | S            | Soft-delete — лише без ORDERED/RECEIVED; позиції видаляються разом                        |
+| GET    | `/api/purchase-list-items`                            | R            | Позиції (`status`, `supplierId` / `none`, `warehouseId`, `workOrderId`, `listId`, `q`)    |
+| GET    | `/api/purchase-list-items/shortage`                   | R            | Нестача по нарядах (BR-PL-014), `truncated`                                               |
+| GET    | `/api/purchase-list-items/by-work-order/:workOrderId` | R + MECHANIC | Позиції наряду й нестача кожного його рядка з базовою одиницею `goodUnit` (картка наряду) |
+| PATCH  | `/api/purchase-list-items/:id`                        | S            | Кількість, постачальник, ціна, примітка (лише OPEN, BR-PL-005)                            |
+| POST   | `/api/purchase-list-items/:id/split`                  | S            | Розділити (BR-PL-007)                                                                     |
+| POST   | `/api/purchase-list-items/move`                       | S            | Перенести в наявний або новий список (BR-PL-007)                                          |
+| POST   | `/api/purchase-list-items/bulk-update`                | S            | Масово: постачальник, очікувана ціна                                                      |
+| POST   | `/api/purchase-list-items/bulk-cancel`                | S            | Масово скасувати OPEN-позиції                                                             |
+| POST   | `/api/purchase-list-items/:id/release-reservation`    | S            | Зняти резерв (BR-PL-016)                                                                  |
 
 **Модулі.** `PurchaseListCoreModule` — `PurchaseListLinkService` (хуки наряду й замовлення,
 BR-PL-009/010/012/013) і `PurchaseListReceiptService` (розподіл отриманого, BR-PL-011; порядок —
@@ -161,7 +161,7 @@ cd apps/api && npx vitest run src/modules/purchase-lists/<файл>.spec.ts
 | Аспект                                                                                       | Тест                                        | Кейсів |
 | -------------------------------------------------------------------------------------------- | ------------------------------------------- | ------ |
 | HTTP-контракт: ролі (BR-PL-015), zod-тіла                                                    | `purchase-lists.contract.spec.ts`           | 26     |
-| надсилання з наряду, нумерація, базові одиниці (BR-PL-001…003)                               | `purchase-lists.from-work-order.spec.ts`    | 13     |
+| надсилання з наряду, нумерація, базові одиниці (BR-PL-001…003)                               | `purchase-lists.from-work-order.spec.ts`    | 14     |
 | ручна позиція, лише OPEN, об'єднання, перенесення й розділення (BR-PL-004…007)               | `purchase-lists.merge-split.spec.ts`        | 14     |
 | нестача по нарядах (BR-PL-014)                                                               | `purchase-lists.shortage.spec.ts`           | 4      |
 | вплив змін наряду на позиції (BR-PL-013)                                                     | `purchase-lists.work-order-changes.spec.ts` | 6      |
@@ -170,7 +170,7 @@ cd apps/api && npx vitest run src/modules/purchase-lists/<файл>.spec.ts
 | звірка чернетки, видалення й скасування, остача (BR-PL-009, 010, 012)                        | `purchase-lists.po-lifecycle.spec.ts`       | 8      |
 | звʼязки списку й наряду                                                                      | `purchase-lists.linked-docs.spec.ts`        | 3      |
 
-Разом: **88** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **89** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Спеки — справжні сервіси над таблицями в пам'яті (`purchase-lists.spec-fixture.ts` поверх
 `work-orders/work-order-stock.spec-fixture.ts`: справжній InventoryService, відкат транзакції,

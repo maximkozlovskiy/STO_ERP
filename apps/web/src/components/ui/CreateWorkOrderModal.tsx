@@ -917,7 +917,7 @@ export function CreateWorkOrderModal({
     () =>
       parts
         .filter((p): p is LocalPart & { id: string } => !!p.id)
-        .map(p => ({ id: p.id, goodName: p.goodName, unit: p.unitShortName || null })),
+        .map(p => ({ id: p.id, goodName: p.goodName })),
     [parts],
   );
 

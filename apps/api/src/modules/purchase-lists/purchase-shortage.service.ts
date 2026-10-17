@@ -80,18 +80,30 @@ export class PurchaseShortageService {
 
   /** Непокрита потреба кожного рядка товару наряду (`workOrderPartId → кількість`). */
   async uncoveredByPart(db: Db, orgId: string, workOrderId: string): Promise<Map<string, number>> {
+    const rows = await this.uncoveredRowsByPart(db, orgId, workOrderId);
+    return new Map(Array.from(rows, ([partId, row]) => [partId, row.shortage]));
+  }
+
+  /**
+   * Рядки нестачі наряду (`workOrderPartId → рядок`): кількість — у БАЗОВИХ одиницях товару, тож
+   * картка наряду підписує її `goodUnit`, а не одиницею рядка (Bug #886: «6 Пак» замість «6 шт»).
+   */
+  async uncoveredRowsByPart(
+    db: Db,
+    orgId: string,
+    workOrderId: string,
+  ): Promise<Map<string, ShortageRowDto>> {
     const own = await db.workOrderPart.findMany({
       where: { orgId, workOrderId, deletedAt: null },
       select: { goodId: true },
       take: 1000,
     });
-    const result = new Map<string, number>();
+    const result = new Map<string, ShortageRowDto>();
     if (own.length === 0) return result;
     const { rows } = await this.compute(db, orgId, {
       goodIds: Array.from(new Set(own.map(p => p.goodId))),
     });
-    for (const r of rows)
-      if (r.workOrderId === workOrderId) result.set(r.workOrderPartId, r.shortage);
+    for (const r of rows) if (r.workOrderId === workOrderId) result.set(r.workOrderPartId, r);
     return result;
   }
 

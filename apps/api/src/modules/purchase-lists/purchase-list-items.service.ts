@@ -110,13 +110,14 @@ export class PurchaseListItemsService {
         orderBy: { createdAt: 'asc' },
         take: 500,
       }),
-      this.shortage.uncoveredByPart(this.prisma, orgId, workOrderId),
+      this.shortage.uncoveredRowsByPart(this.prisma, orgId, workOrderId),
     ]);
     return {
       items: maskItemCost(rows.map(toItemDto), role),
-      shortage: Array.from(uncovered, ([workOrderPartId, shortage]) => ({
+      shortage: Array.from(uncovered, ([workOrderPartId, row]) => ({
         workOrderPartId,
-        shortage,
+        shortage: row.shortage,
+        goodUnit: row.goodUnit,
       })),
     };
   }

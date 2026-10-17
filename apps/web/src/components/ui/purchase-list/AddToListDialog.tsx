@@ -57,7 +57,13 @@ export function AddToListDialog({ open, onClose, rows, onDone }: AddToListDialog
   useEffect(() => {
     if (!open) return;
     setSelected(new Set(rows.map(r => r.workOrderPartId)));
-    setQty(Object.fromEntries(rows.map(r => [r.workOrderPartId, String(r.shortage)])));
+    // Округлення до 6 знаків (епсилон кількостей BR-PL-002): дробовий коефіцієнт одиниці дає
+    // Float-хвіст — без нього в полі стояло б «0.30000000000000004» (Bug #886).
+    setQty(
+      Object.fromEntries(
+        rows.map(r => [r.workOrderPartId, String(Math.round(r.shortage * 1e6) / 1e6)]),
+      ),
+    );
     setTarget('new');
     setNewName('');
     setListId('');

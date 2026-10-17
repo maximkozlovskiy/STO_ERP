@@ -248,7 +248,10 @@ export class ShortageResponseDto {
 
 export class WorkOrderPartShortageDto {
   @ApiProperty() workOrderPartId!: string;
+  /** Непокрита потреба рядка — у БАЗОВИХ одиницях товару (BR-PL-002). */
   @ApiProperty() shortage!: number;
+  /** Базова одиниця товару — підпис до `shortage` (не одиниця рядка наряду, Bug #886). */
+  @ApiProperty({ type: String, nullable: true }) goodUnit!: string | null;
 }
 
 export class WorkOrderProcurementDto {

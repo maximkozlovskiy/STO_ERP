@@ -8100,7 +8100,10 @@ export interface components {
         };
         WorkOrderPartShortageDto: {
             workOrderPartId: string;
+            /** @description Непокрита потреба рядка — у БАЗОВИХ одиницях товару (BR-PL-002). */
             shortage: number;
+            /** @description Базова одиниця товару — підпис до `shortage` (не одиниця рядка наряду, Bug #886). */
+            goodUnit: string | null;
         };
         WorkOrderProcurementDto: {
             items: components["schemas"]["PurchaseListItemResponseDto"][];
