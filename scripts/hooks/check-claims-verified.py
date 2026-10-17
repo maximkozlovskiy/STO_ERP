@@ -85,6 +85,13 @@ def strip_quotes(s):
     return s
 
 
+def is_user_prompt(record):
+    """Запис `user` — справжній запит людини, а не результат інструмента чи службовий звіт."""
+    if record.get("isMeta"):
+        return False
+    return not any(b.get("type") == "tool_result" for b in content_blocks(record))
+
+
 def last_turn(path):
     """Повертає (текст останнього assistant-блоку, рядок із назвами інструментів ходу).
 
@@ -100,10 +107,13 @@ def last_turn(path):
     (сесія 771d064f, 2026-10-17: 6 з 76 блокувань — на тексті api-request-blob).
     """
     recs = list(iter_transcript(path))
-    # межа ходу — останній справжній user-запит
+    # межа ходу — останній справжній user-запит. Результат інструмента (`tool_result`) і звіт
+    # субагента (`isMeta`) теж мають `type: "user"`, але межею ходу не є: інакше доказ
+    # (verdict.sh, виклик sto-claims-auditor) до останнього результату інструмента випадав би
+    # з ходу, і hook блокував би відповідь, що його має.
     start = 0
     for i, d in enumerate(recs):
-        if d.get("type") == "user":
+        if d.get("type") == "user" and is_user_prompt(d):
             start = i
     text_parts, tool_names = [], []
     for d in recs[start:]:

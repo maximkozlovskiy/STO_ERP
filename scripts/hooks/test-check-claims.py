@@ -155,8 +155,25 @@ def main():
                "content": [{"type": "text", "text": "Рецензент повернув звіт, зводжу знахідки."}]}}
     mine_claim = {"type": "assistant", "isSidechain": False, "message": {"role": "assistant",
                   "content": [{"type": "text", "text": "За звітом усе чисто, 0 помилок."}]}}
+    # Доказ раніше в ході, далі результат інструмента (теж запис `user`) — межею ходу він не є.
+    tool_result = {"type": "user", "message": {"role": "user", "content": [
+        {"type": "tool_result", "content": "✅ ЧИСТО — api unit"}]}}
+    proof_then_result = [base[0], proof[2], tool_result, base[1]]
+    # Аудитор запущено, його звіт повернувся (tool_result + isMeta) — підсумок блоку дозволено.
+    auditor = [
+        base[0],
+        {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Agent",
+             "input": {"subagent_type": "sto-claims-auditor", "prompt": "аудит"}}]}},
+        tool_result,
+        handback[3],
+        {"type": "assistant", "message": {"content": [
+            {"type": "text", "text": "За аудитором блок завершено, 0 помилок."}]}},
+    ]
     for name, recs, want in (("транскрипт без доказу", base, BLOCK),
                              ("транскрипт із доказом", proof, PASS),
+                             ("доказ до результату інструмента", proof_then_result, PASS),
+                             ("підсумок блоку після аудитора", auditor, PASS),
                              ("звіт субагента — не моя відповідь", handback + [mine_ok], PASS),
                              ("після звіту субагента моє твердження", handback + [mine_claim], BLOCK)):
         fp = os.path.join(d, name.replace(" ", "_") + ".jsonl")
