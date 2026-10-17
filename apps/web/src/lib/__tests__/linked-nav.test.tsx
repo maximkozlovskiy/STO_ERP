@@ -53,6 +53,12 @@ describe('useLinkedNav — URL-контракт deep-link навігації', (
     expect(push).not.toHaveBeenCalledWith(`/purchase-orders?open=${ID}`);
   });
 
+  it('список купівлі → вкладка «Управління купівлями», вид «Списки», картка списку', () => {
+    const { result } = renderHook(() => useLinkedNav());
+    result.current.toPurchaseList(ID);
+    expect(push).toHaveBeenCalledWith(`/purchase-orders?tab=procurement&view=lists&list=${ID}`);
+  });
+
   it('запис календаря → календар у режимі дня на КИЇВСЬКОМУ дні запису', () => {
     const { result } = renderHook(() => useLinkedNav());
     // 10.06 о 19:00 за Києвом = 16:00 UTC.

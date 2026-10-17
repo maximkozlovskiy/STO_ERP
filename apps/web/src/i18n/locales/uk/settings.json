@@ -45,7 +45,8 @@
       "COMPLETION_ACT": "Акт виконаних робіт",
       "COUNTERPARTY_AGREEMENT": "Договір контрагента",
       "GOOD_INTERNAL_CODE": "Внутрішній код товару",
-      "SUPPLIER_PAYMENT": "Оплата постачальнику"
+      "SUPPLIER_PAYMENT": "Оплата постачальнику",
+      "PURCHASE_LIST": "Список купівлі"
     },
     "resetConfirm": "Скинути лічильник для {{documentType}}?",
     "noConfigs": "Конфігурацій не знайдено",

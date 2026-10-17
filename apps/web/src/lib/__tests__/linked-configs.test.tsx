@@ -19,6 +19,7 @@ function makeNav(): LinkedNav & Record<string, ReturnType<typeof vi.fn>> {
     toPurchaseOrder: vi.fn(),
     toStockDocument: vi.fn(),
     toSupplierReturn: vi.fn(),
+    toPurchaseList: vi.fn(),
     toCalendarDay: vi.fn(),
   } as LinkedNav & Record<string, ReturnType<typeof vi.fn>>;
 }
@@ -261,6 +262,22 @@ describe('linked-configs — behaviour parity of parametrized builders', () => {
       expect(none.badge).toBeUndefined();
     });
   });
+
+  it.each([workOrderLinkedConfig, purchaseOrderLinkedConfig])(
+    '%o → секція «Списки купівлі» веде у вкладку «Управління купівлями»',
+    factory => {
+      const nav = makeNav();
+      const row = section(factory(nav), 'purchaseLists').mapRow({
+        id: 'pl1',
+        number: 'СК-2026-000001',
+        status: 'OPEN',
+        createdAt: '2026-10-17T08:00:00Z',
+      });
+      expect(row.primary).toContain('СК-2026-000001');
+      row.navigate?.();
+      expect(nav.toPurchaseList).toHaveBeenCalledWith('pl1');
+    },
+  );
 
   describe('fetchPath кожного конфіга — правильний endpoint', () => {
     it.each([

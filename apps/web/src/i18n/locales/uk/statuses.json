@@ -46,6 +46,17 @@
     "RECEIVED": "Отримано",
     "CANCELLED": "Скасовано"
   },
+  "PURCHASE_LIST_STATUS": {
+    "OPEN": "Відкритий",
+    "CLOSED": "Закритий",
+    "CANCELLED": "Скасований"
+  },
+  "PURCHASE_LIST_ITEM_STATUS": {
+    "OPEN": "Не замовлено",
+    "ORDERED": "Замовлено",
+    "RECEIVED": "Отримано",
+    "CANCELLED": "Скасовано"
+  },
   "DELIVERY_STATUS": {
     "PENDING": "Очікує",
     "IN_TRANSIT": "У дорозі",

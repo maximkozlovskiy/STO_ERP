@@ -13,6 +13,7 @@ import { dashboardKeys } from '@/hooks/api/useDashboardData';
 import { paymentsKeys } from '@/hooks/api/usePayments';
 import { vehicleMileageKeys } from '@/hooks/api/useVehicleMileage';
 import { cashKeys } from '@/hooks/api/useCash';
+import { purchaseListsKeys } from '@/hooks/api/usePurchaseLists';
 
 /**
  * Спільні cross-cache інвалідатори (WEB-H1/H2 з аудиту).
@@ -77,6 +78,8 @@ export function invalidatePaymentSideEffects(qc: QueryClient): void {
  */
 export function invalidateWorkOrderSideEffects(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: workOrdersKeys.all });
+  // Скасування/завершення наряду скасовує його незамовлені позиції списків купівлі (BR-PL-013).
+  void qc.invalidateQueries({ queryKey: purchaseListsKeys.all });
   void qc.invalidateQueries({ queryKey: vehicleMileageKeys.all });
   void qc.invalidateQueries({ queryKey: invoicesKeys.all });
   invalidateStockAffected(qc);
@@ -108,9 +111,23 @@ export function invalidateStockDocumentSideEffects(qc: QueryClient): void {
 export function invalidatePurchaseSideEffects(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: cashKeys.all });
   void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+  // Приймання розподіляє отримане між позиціями списків і резервує під наряди (BR-PL-011);
+  // скасування й видалення замовлення повертає позиції в «Не замовлено» (BR-PL-010).
+  void qc.invalidateQueries({ queryKey: purchaseListsKeys.all });
   void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
   invalidateStockAffected(qc);
   invalidateBalanceAffected(qc);
+}
+
+/**
+ * Дії «Управління купівлями» (списки, позиції, замовлення зі списку, «Зняти резерв»): власні
+ * ключі списків і позицій (зокрема стан товарів у картці наряду), замовлення постачальникам
+ * (create-orders створює DRAFT) і склад (зняття резерву міняє «вільно»).
+ */
+export function invalidateProcurementSideEffects(qc: QueryClient): void {
+  void qc.invalidateQueries({ queryKey: purchaseListsKeys.all });
+  void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+  invalidateStockAffected(qc);
 }
 
 /**

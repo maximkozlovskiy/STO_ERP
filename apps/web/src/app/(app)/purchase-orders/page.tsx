@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuth, useRequireAuth } from '@/lib/auth';
 import { SupplierPaymentScheduleTab } from './SupplierPaymentScheduleTab';
+import { ProcurementTab } from './ProcurementTab';
 import { apiFetch } from '@/lib/api-client';
 import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
 import { TabDivider } from '@/components/ui/tab-divider';
@@ -206,12 +207,14 @@ interface SrFilters extends Record<string, unknown> {
   dateTo: string;
 }
 
-type PurchaseTab = 'orders' | 'returns' | 'schedule';
+type PurchaseTab = 'orders' | 'returns' | 'procurement' | 'schedule';
 
 // «Графік оплат» читає GET /supplier-payments/schedule — ролі цього endpoint-а (без комірника).
 const SCHEDULE_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
 // Замовлення й повернення — ролі сторінки закупівель (картки документів бухгалтеру недоступні).
 const DOCUMENT_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER'];
+// «Управління купівлями» (BR-PL-015): ролі документів + приймальня (лише ця вкладка).
+const PROCUREMENT_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST'];
 
 const TAB_BUTTON =
   'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm';
@@ -238,9 +241,11 @@ function PurchaseOrdersPageClient() {
   const activeTab: PurchaseTab =
     requestedTab === 'returns'
       ? 'returns'
-      : requestedTab === 'schedule' && canSeeSchedule
-        ? 'schedule'
-        : 'orders';
+      : requestedTab === 'procurement'
+        ? 'procurement'
+        : requestedTab === 'schedule' && canSeeSchedule
+          ? 'schedule'
+          : 'orders';
   const setActiveTab = useCallback(
     (tab: PurchaseTab) => {
       const params = new URLSearchParams(searchParams.toString());
@@ -870,6 +875,7 @@ function PurchaseOrdersPageClient() {
           [
             { key: 'orders', label: t('tabs.orders') },
             { key: 'returns', label: t('tabs.returns') },
+            { key: 'procurement', label: t('tabs.procurement') },
             ...(canSeeSchedule ? [{ key: 'schedule', label: t('tabs.schedule') } as const] : []),
           ] as const
         ).map(tab => (
@@ -897,6 +903,8 @@ function PurchaseOrdersPageClient() {
           <SupplierPaymentScheduleTab />
         </div>
       )}
+
+      {activeTab === 'procurement' && <ProcurementTab />}
 
       {activeTab === 'returns' && (
         <div className="flex flex-col gap-3 flex-1">
@@ -1819,9 +1827,37 @@ function PurchaseSchedulePage() {
   );
 }
 
+/**
+ * Приймальня в «Купівлі» бачить лише «Управління купівлями» (рішення власника 2026-10-17,
+ * BR-PL-015): нестачу, позиції й списки — і надсилає товари з нарядів; замовлення, повернення
+ * й графік оплат їй закриті. Окрема оболонка — сторінка замовлень із її запитами не монтується.
+ */
+function PurchaseProcurementPage() {
+  useRequireAuth(['RECEPTIONIST']);
+  const { t } = useTranslation('purchaseOrders');
+  return (
+    <div className="page-fill p-4 md:p-6">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">{t('title')}</h1>
+        </div>
+      </div>
+      <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
+        <span className={cn(TAB_BUTTON, 'border-primary text-primary')}>
+          {t('tabs.procurement')}
+        </span>
+      </div>
+      <ProcurementTab />
+    </div>
+  );
+}
+
 function PurchaseOrdersRoute() {
   const { employee } = useAuth();
   const role = employee?.role ?? '';
+  if (PROCUREMENT_ROLES.includes(role) && !DOCUMENT_ROLES.includes(role)) {
+    return <PurchaseProcurementPage />;
+  }
   if (SCHEDULE_ROLES.includes(role) && !DOCUMENT_ROLES.includes(role)) {
     return <PurchaseSchedulePage />;
   }

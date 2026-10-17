@@ -20,6 +20,8 @@ export interface LinkedNav {
   toPurchaseOrder: (id: string) => void;
   toStockDocument: (id: string) => void;
   toSupplierReturn: (id: string) => void;
+  /** Список купівлі — у вкладці «Управління купівлями» сторінки «Купівля» (вид «Списки»). */
+  toPurchaseList: (id: string) => void;
   /** Запис календаря не має власної сторінки — відкриваємо календар на дні запису. */
   toCalendarDay: (startAtIso: string) => void;
 }
@@ -73,6 +75,8 @@ export function useLinkedNav(): LinkedNav {
       toStockDocument: id => router.push(`/stock-documents?open=${id}`),
       // SupplierReturn lives inside the purchase-orders page (returns tab)
       toSupplierReturn: id => router.push(`/purchase-orders?openReturn=${id}`),
+      // Списки купівлі — у вкладці «Управління купівлями»; `list=` відкриває картку списку.
+      toPurchaseList: id => router.push(`/purchase-orders?tab=procurement&view=lists&list=${id}`),
       // Календар читає день із ?date=YYYY-MM-DD (київський день запису, не UTC).
       toCalendarDay: startAtIso => {
         const day = isoToKyivLocalDateTime(startAtIso).slice(0, 10);

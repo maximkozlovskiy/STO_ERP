@@ -45,7 +45,8 @@
       "COMPLETION_ACT": "Completion act",
       "COUNTERPARTY_AGREEMENT": "Counterparty agreement",
       "GOOD_INTERNAL_CODE": "Internal product code",
-      "SUPPLIER_PAYMENT": "Supplier payment"
+      "SUPPLIER_PAYMENT": "Supplier payment",
+      "PURCHASE_LIST": "Purchase list"
     },
     "resetConfirm": "Reset the counter for {{documentType}}?",
     "noConfigs": "No configurations found",

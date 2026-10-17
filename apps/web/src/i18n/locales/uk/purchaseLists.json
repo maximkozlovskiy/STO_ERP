@@ -1,0 +1,179 @@
+{
+  "common": {
+    "cancel": "Скасувати",
+    "save": "Зберегти",
+    "selectAll": "Вибрати всі",
+    "selected": "Обрано: {{count}}"
+  },
+  "views": {
+    "shortage": "Нестача",
+    "items": "Позиції",
+    "lists": "Списки",
+    "aria": "Вид управління купівлями"
+  },
+  "filters": {
+    "warehouse": "Склад",
+    "allWarehouses": "Усі склади",
+    "search": "Товар, артикул, код",
+    "searchLists": "Номер або назва списку",
+    "status": "Статус",
+    "allStatuses": "Усі статуси",
+    "supplier": "Постачальник",
+    "allSuppliers": "Усі постачальники",
+    "noSupplier": "Без постачальника",
+    "list": "Список",
+    "allLists": "Усі відкриті списки"
+  },
+  "columns": {
+    "workOrder": "Наряд",
+    "good": "Товар",
+    "warehouse": "Склад",
+    "required": "Потрібно",
+    "reserved": "Резерв",
+    "inLists": "У списках",
+    "fromPool": "Зі складу",
+    "shortage": "Нестача",
+    "quantity": "К-сть",
+    "receivedReserved": "Прибуло / резерв",
+    "status": "Статус",
+    "supplier": "Постачальник",
+    "price": "Ціна, ₴",
+    "list": "Список",
+    "order": "Замовлення",
+    "number": "Номер",
+    "name": "Назва",
+    "itemsCount": "Позицій (не зам. / зам. / отр.)",
+    "created": "Створено"
+  },
+  "shortage": {
+    "addToList": "До списку купівлі ({{count}})",
+    "truncated": "Показано не всі рядки — звузьте вибір складом.",
+    "selectRow": "Вибрати {{good}} ({{wo}})",
+    "empty": {
+      "title": "Нестачі немає",
+      "description": "Усі товари нарядів зарезервовані, замовлені або є на складі."
+    }
+  },
+  "errors": {
+    "load": "Не вдалося завантажити дані",
+    "action": "Дію не виконано"
+  },
+  "items": {
+    "selectRow": "Вибрати {{good}}",
+    "noSupplier": "не вказано",
+    "manual": "вручну",
+    "split": "Розділити",
+    "release": "Зняти резерв",
+    "createOrders": "Створити замовлення",
+    "setSupplier": "Постачальник і ціна",
+    "move": "Перенести",
+    "cancel": "Скасувати",
+    "createOrdersConfirm": "Створити замовлення постачальникам з {{count}} позицій?",
+    "ordersCreated": "Створено замовлення: {{numbers}}",
+    "cancelConfirm": "Скасувати {{count}} позицій?",
+    "cancelled": "Скасовано позицій: {{count}}",
+    "releaseConfirm": "Зняти резерв з позиції «{{good}}»?",
+    "releaseHint": "Товар стане вільним залишком: його можна повернути постачальнику або віддати в інший наряд.",
+    "released": "Знято з резерву: {{qty}}",
+    "updated": "Змінено позицій: {{count}}",
+    "moved": "Перенесено позицій: {{count}}",
+    "splitDone": "Позицію розділено",
+    "empty": {
+      "title": "Позицій немає",
+      "description": "Надішліть товари з наряду або додайте позицію вручну у списку."
+    },
+    "dialogs": {
+      "nothingToChange": "Оберіть постачальника або вкажіть ціну",
+      "supplierTitle": "Постачальник і ціна — {{count}} позицій",
+      "suppliersUnavailable": "Список постачальників недоступний для вашої ролі",
+      "keep": "— не змінювати —",
+      "price": "Очікувана ціна, ₴",
+      "moveTitle": "Перенести {{count}} позицій",
+      "targetList": "Куди",
+      "newList": "Новий список",
+      "newListName": "Назва нового списку",
+      "splitInvalid": "Кількість має бути більшою за 0 і меншою за {{max}}",
+      "splitTitle": "Розділити «{{good}}»",
+      "splitHint": "Зараз у позиції {{qty}}. Вкажіть, скільки винести в нову позицію.",
+      "splitQuantity": "Кількість нової позиції"
+    }
+  },
+  "lists": {
+    "merge": "Обʼєднати",
+    "create": "Новий список",
+    "selectRow": "Вибрати список {{number}}",
+    "mergedInto": "злито в {{number}}",
+    "counts": "{{open}} / {{ordered}} / {{received}}",
+    "created": "Створено список {{number}}",
+    "merged": "Списки обʼєднано в {{number}}",
+    "namePlaceholder": "Напр. «Тиждень 42»",
+    "mergeTitle": "Обʼєднати {{count}} списки",
+    "mergeHint": "Позиції всіх списків перейдуть у вибраний, решта закриються.",
+    "mergeTarget": "Обʼєднати в",
+    "splitDone": "Винесено в новий список: {{count}}",
+    "closeConfirm": "Закрити список {{number}}?",
+    "closed": "Список {{number}} закрито",
+    "cancelConfirm": "Скасувати список {{number}}?",
+    "cancelled": "Список {{number}} скасовано",
+    "deleteConfirm": "Видалити список {{number}}?",
+    "deleted": "Список {{number}} видалено",
+    "detailTitle": "Список купівлі {{number}}",
+    "detailLoading": "Список купівлі",
+    "delete": "Видалити",
+    "cancel": "Скасувати список",
+    "close": "Закрити список",
+    "addItem": "Додати позицію",
+    "splitOut": "Винести в новий список",
+    "noItems": "У списку ще немає позицій",
+    "itemAdded": "Позицію додано",
+    "empty": {
+      "title": "Списків немає",
+      "description": "Створіть список або надішліть товари з наряду."
+    },
+    "manual": {
+      "required": "Оберіть товар і склад",
+      "goodPlaceholder": "Пошук товару...",
+      "quantity": "Кількість (базові од.)",
+      "unit": "Одиниця: {{unit}}"
+    }
+  },
+  "addToList": {
+    "title": "До списку купівлі",
+    "description": "Кількість — у базових одиницях товару; за замовчуванням — скільки бракує.",
+    "submit": "Додати до списку",
+    "columns": {
+      "good": "Товар",
+      "shortage": "Бракує",
+      "quantity": "Кількість"
+    },
+    "empty": "Немає товарів, яких бракує",
+    "selectRow": "Вибрати {{good}}",
+    "quantityFor": "Кількість для {{good}}",
+    "baseUnitsHint": "Кількість вказується в базових одиницях товару (як на складі).",
+    "target": "Куди додати",
+    "targetNew": "Новий список",
+    "newNamePlaceholder": "Назва (необовʼязково)",
+    "newName": "Назва нового списку",
+    "targetExisting": "Наявний відкритий список",
+    "existingList": "Список",
+    "chooseList": "— оберіть список —",
+    "done": "Додано позицій: {{count}} у {{number}}",
+    "errors": {
+      "nothingSelected": "Оберіть хоча б один товар",
+      "listRequired": "Оберіть список",
+      "quantity": "Кількість має бути більшою за 0",
+      "failed": "Не вдалося додати до списку"
+    }
+  },
+  "badge": {
+    "inList": "у списку {{numbers}}",
+    "ordered": "замовлено {{number}} ({{status}})",
+    "received": "прибуло {{received}}{{unit}}, зарезервовано {{reserved}}{{unit}}",
+    "shortage": "нестача {{qty}}{{unit}}"
+  },
+  "card": {
+    "addToList": "До списку купівлі",
+    "saveFirst": "Збережіть наряд, щоб надіслати товари до списку купівлі",
+    "noShortage": "Усі товари наряду покриті — надсилати нічого"
+  }
+}

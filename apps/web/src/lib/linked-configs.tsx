@@ -11,6 +11,7 @@ import {
   ShoppingCart,
   RotateCcw,
   Warehouse,
+  ListChecks,
 } from 'lucide-react';
 import {
   invoiceStatusLabel,
@@ -19,6 +20,7 @@ import {
   supplierPaymentStatusLabel,
   supplierReturnStatusLabel,
   fiscalStatusLabel,
+  purchaseListStatusLabel,
 } from '@/i18n/enumLabel';
 import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
@@ -97,7 +99,39 @@ interface LinkedPurchaseOrderRow {
   status: string;
   totalAmount: string | number;
 }
+interface LinkedPurchaseListRow {
+  id: string;
+  number: string;
+  status: string;
+  createdAt: string;
+}
 // ─── Спільні section-builders (переюз між конфігами) ───────
+
+/** Секція «Списки купівлі» — списки з позиціями наряду чи замовлення (docs/objects/purchase-list.md). */
+function purchaseListSection(nav: LinkedNav) {
+  return {
+    key: 'purchaseLists',
+    title: 'Списки купівлі',
+    icon: ListChecks,
+    mapRow: (row: LinkedPurchaseListRow) => ({
+      id: row.id,
+      primary: `Список ${row.number}`,
+      secondary: fmtDate(row.createdAt),
+      badge: {
+        label: purchaseListStatusLabel(row.status),
+        className: 'bg-secondary text-muted-foreground',
+      },
+      preview: {
+        title: `Список купівлі ${row.number}`,
+        rows: [
+          { label: 'Статус', value: purchaseListStatusLabel(row.status) },
+          { label: 'Створено', value: fmtDate(row.createdAt) },
+        ],
+      },
+      navigate: () => nav.toPurchaseList(row.id),
+    }),
+  };
+}
 
 /** Секція «Контрагент» — однаковий рядок скрізь, навігація до картки контрагента. */
 function counterpartySection(nav: LinkedNav) {
@@ -267,6 +301,7 @@ export function workOrderLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
           };
         },
       },
+      purchaseListSection(nav),
     ],
   };
 }
@@ -376,7 +411,7 @@ function supplierPaymentSection({ withDate = true }: { withDate?: boolean } = {}
 export function purchaseOrderLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
   return {
     fetchPath: id => `/purchase-orders/${id}/linked-documents`,
-    sections: [supplierPaymentSection(), counterpartySection(nav)],
+    sections: [supplierPaymentSection(), counterpartySection(nav), purchaseListSection(nav)],
   };
 }
 

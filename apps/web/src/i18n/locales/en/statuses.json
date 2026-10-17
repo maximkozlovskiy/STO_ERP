@@ -46,6 +46,17 @@
     "RECEIVED": "Received",
     "CANCELLED": "Cancelled"
   },
+  "PURCHASE_LIST_STATUS": {
+    "OPEN": "Open",
+    "CLOSED": "Closed",
+    "CANCELLED": "Cancelled"
+  },
+  "PURCHASE_LIST_ITEM_STATUS": {
+    "OPEN": "Not ordered",
+    "ORDERED": "Ordered",
+    "RECEIVED": "Received",
+    "CANCELLED": "Cancelled"
+  },
   "DELIVERY_STATUS": {
     "PENDING": "Pending",
     "IN_TRANSIT": "In transit",

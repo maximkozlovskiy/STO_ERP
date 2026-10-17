@@ -238,6 +238,33 @@ export const PO_STATUS_BADGE: Record<string, BadgeVariant> = {
   CANCELLED: 'destructive',
 };
 
+// ─── Списки купівлі (docs/objects/purchase-list.md) ─────────────────────────
+export const PURCHASE_LIST_STATUS_LABELS: Record<string, string> = {
+  OPEN: 'Відкритий',
+  CLOSED: 'Закритий',
+  CANCELLED: 'Скасований',
+};
+
+export const PURCHASE_LIST_STATUS_BADGE: Record<string, BadgeVariant> = {
+  OPEN: 'default',
+  CLOSED: 'secondary',
+  CANCELLED: 'destructive',
+};
+
+export const PURCHASE_LIST_ITEM_STATUS_LABELS: Record<string, string> = {
+  OPEN: 'Не замовлено',
+  ORDERED: 'Замовлено',
+  RECEIVED: 'Отримано',
+  CANCELLED: 'Скасовано',
+};
+
+export const PURCHASE_LIST_ITEM_STATUS_BADGE: Record<string, BadgeVariant> = {
+  OPEN: 'warning',
+  ORDERED: 'default',
+  RECEIVED: 'success',
+  CANCELLED: 'secondary',
+};
+
 // Single source of truth: must mirror backend `PO_TRANSITIONS` in
 // apps/api/src/modules/purchase-orders/purchase-orders.service.ts.
 export const PO_STATUS_TRANSITIONS: Record<string, string[]> = {

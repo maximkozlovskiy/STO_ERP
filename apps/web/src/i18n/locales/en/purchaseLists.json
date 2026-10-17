@@ -1,0 +1,179 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "selectAll": "Select all",
+    "selected": "Selected: {{count}}"
+  },
+  "views": {
+    "shortage": "Shortage",
+    "items": "Items",
+    "lists": "Lists",
+    "aria": "Procurement view"
+  },
+  "filters": {
+    "warehouse": "Warehouse",
+    "allWarehouses": "All warehouses",
+    "search": "Good, SKU, code",
+    "searchLists": "List number or name",
+    "status": "Status",
+    "allStatuses": "All statuses",
+    "supplier": "Supplier",
+    "allSuppliers": "All suppliers",
+    "noSupplier": "No supplier",
+    "list": "List",
+    "allLists": "All open lists"
+  },
+  "columns": {
+    "workOrder": "Work order",
+    "good": "Good",
+    "warehouse": "Warehouse",
+    "required": "Required",
+    "reserved": "Reserved",
+    "inLists": "In lists",
+    "fromPool": "From stock",
+    "shortage": "Shortage",
+    "quantity": "Qty",
+    "receivedReserved": "Received / reserved",
+    "status": "Status",
+    "supplier": "Supplier",
+    "price": "Price, ₴",
+    "list": "List",
+    "order": "Order",
+    "number": "Number",
+    "name": "Name",
+    "itemsCount": "Items (open / ordered / received)",
+    "created": "Created"
+  },
+  "shortage": {
+    "addToList": "To purchase list ({{count}})",
+    "truncated": "Not all rows are shown — narrow down by warehouse.",
+    "selectRow": "Select {{good}} ({{wo}})",
+    "empty": {
+      "title": "No shortage",
+      "description": "All work order goods are reserved, ordered or in stock."
+    }
+  },
+  "errors": {
+    "load": "Failed to load data",
+    "action": "Action failed"
+  },
+  "items": {
+    "selectRow": "Select {{good}}",
+    "noSupplier": "not set",
+    "manual": "manual",
+    "split": "Split",
+    "release": "Release reservation",
+    "createOrders": "Create orders",
+    "setSupplier": "Supplier and price",
+    "move": "Move",
+    "cancel": "Cancel",
+    "createOrdersConfirm": "Create supplier orders from {{count}} items?",
+    "ordersCreated": "Orders created: {{numbers}}",
+    "cancelConfirm": "Cancel {{count}} items?",
+    "cancelled": "Items cancelled: {{count}}",
+    "releaseConfirm": "Release the reservation of \"{{good}}\"?",
+    "releaseHint": "The goods become free stock: return them to the supplier or use them for another work order.",
+    "released": "Released: {{qty}}",
+    "updated": "Items updated: {{count}}",
+    "moved": "Items moved: {{count}}",
+    "splitDone": "Item split",
+    "empty": {
+      "title": "No items",
+      "description": "Send goods from a work order or add an item manually in a list."
+    },
+    "dialogs": {
+      "nothingToChange": "Choose a supplier or enter a price",
+      "supplierTitle": "Supplier and price — {{count}} items",
+      "suppliersUnavailable": "The supplier list is not available for your role",
+      "keep": "— keep —",
+      "price": "Expected price, ₴",
+      "moveTitle": "Move {{count}} items",
+      "targetList": "Target",
+      "newList": "New list",
+      "newListName": "New list name",
+      "splitInvalid": "Quantity must be greater than 0 and less than {{max}}",
+      "splitTitle": "Split \"{{good}}\"",
+      "splitHint": "The item has {{qty}} now. Enter how much goes to the new item.",
+      "splitQuantity": "New item quantity"
+    }
+  },
+  "lists": {
+    "merge": "Merge",
+    "create": "New list",
+    "selectRow": "Select list {{number}}",
+    "mergedInto": "merged into {{number}}",
+    "counts": "{{open}} / {{ordered}} / {{received}}",
+    "created": "List {{number}} created",
+    "merged": "Lists merged into {{number}}",
+    "namePlaceholder": "E.g. \"Week 42\"",
+    "mergeTitle": "Merge {{count}} lists",
+    "mergeHint": "Items of all lists move into the chosen one; the others are closed.",
+    "mergeTarget": "Merge into",
+    "splitDone": "Moved to a new list: {{count}}",
+    "closeConfirm": "Close list {{number}}?",
+    "closed": "List {{number}} closed",
+    "cancelConfirm": "Cancel list {{number}}?",
+    "cancelled": "List {{number}} cancelled",
+    "deleteConfirm": "Delete list {{number}}?",
+    "deleted": "List {{number}} deleted",
+    "detailTitle": "Purchase list {{number}}",
+    "detailLoading": "Purchase list",
+    "delete": "Delete",
+    "cancel": "Cancel list",
+    "close": "Close list",
+    "addItem": "Add item",
+    "splitOut": "Move to a new list",
+    "noItems": "The list has no items yet",
+    "itemAdded": "Item added",
+    "empty": {
+      "title": "No lists",
+      "description": "Create a list or send goods from a work order."
+    },
+    "manual": {
+      "required": "Choose a good and a warehouse",
+      "goodPlaceholder": "Search goods...",
+      "quantity": "Quantity (base units)",
+      "unit": "Unit: {{unit}}"
+    }
+  },
+  "addToList": {
+    "title": "To purchase list",
+    "description": "Quantity is in base units of the good; by default — what is missing.",
+    "submit": "Add to list",
+    "columns": {
+      "good": "Good",
+      "shortage": "Missing",
+      "quantity": "Quantity"
+    },
+    "empty": "No missing goods",
+    "selectRow": "Select {{good}}",
+    "quantityFor": "Quantity for {{good}}",
+    "baseUnitsHint": "Quantity is in base units of the good (as in stock).",
+    "target": "Add to",
+    "targetNew": "New list",
+    "newNamePlaceholder": "Name (optional)",
+    "newName": "New list name",
+    "targetExisting": "Existing open list",
+    "existingList": "List",
+    "chooseList": "— choose a list —",
+    "done": "Items added: {{count}} to {{number}}",
+    "errors": {
+      "nothingSelected": "Select at least one good",
+      "listRequired": "Choose a list",
+      "quantity": "Quantity must be greater than 0",
+      "failed": "Failed to add to the list"
+    }
+  },
+  "badge": {
+    "inList": "in list {{numbers}}",
+    "ordered": "ordered {{number}} ({{status}})",
+    "received": "received {{received}}{{unit}}, reserved {{reserved}}{{unit}}",
+    "shortage": "missing {{qty}}{{unit}}"
+  },
+  "card": {
+    "addToList": "To purchase list",
+    "saveFirst": "Save the work order to send goods to a purchase list",
+    "noShortage": "All goods of the work order are covered — nothing to send"
+  }
+}

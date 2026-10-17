@@ -3,7 +3,8 @@
   "tabs": {
     "orders": "Purchase orders",
     "returns": "Supplier returns",
-    "schedule": "Payment schedule"
+    "schedule": "Payment schedule",
+    "procurement": "Procurement"
   },
   "columns": {
     "number": "Number",

@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { type DocNumberConfig } from './shared';
 
-// Повний перелік DocumentType (schema.prisma) — усі 13 значень мають людський підпис,
+// Повний перелік DocumentType (schema.prisma) — усі 14 значень мають людський підпис,
 // інакше засіяні setup-ом типи (STOCK_OPENING, RECONCILIATION_ACT) показуються сирим кодом.
 // Підписи — у settings-каталозі (numbers.docTypes.*); тут лише ключі (порядок збережено).
 const DOC_TYPE_KEYS = [
@@ -26,6 +26,7 @@ const DOC_TYPE_KEYS = [
   'COUNTERPARTY_AGREEMENT',
   'GOOD_INTERNAL_CODE',
   'SUPPLIER_PAYMENT',
+  'PURCHASE_LIST',
 ];
 
 export default function NumbersTab() {
