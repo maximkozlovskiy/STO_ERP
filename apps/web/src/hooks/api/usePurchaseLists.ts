@@ -60,9 +60,11 @@ export const purchaseListsKeys = {
   byWorkOrder: (id: string) => [...purchaseListsKeys.all, 'by-work-order', id] as const,
 };
 
-export function usePurchaseLists(filters: PurchaseListsFilter = {}) {
+/** `enabled: false` — не читати, доки список не потрібен (діалог закритий). */
+export function usePurchaseLists(filters: PurchaseListsFilter = {}, enabled = true) {
   return usePaginatedList<PurchaseList>('/purchase-lists', filters, {
     queryKey: 'purchase-lists',
+    enabled,
   });
 }
 

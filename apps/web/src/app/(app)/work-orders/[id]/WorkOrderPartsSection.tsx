@@ -14,7 +14,7 @@ import { ProcurementBadge } from '@/components/ui/purchase-list/ProcurementBadge
 import {
   SendToListButton,
   useInvalidateProcurement,
-  useWorkOrderProcurementState,
+  type WorkOrderProcurementState,
 } from '@/components/ui/purchase-list/WorkOrderProcurement';
 
 interface WorkOrderPart {
@@ -57,6 +57,12 @@ interface WorkOrderPartsSectionProps {
   onError?: (msg: string) => void;
   /** Статус наряду — «До списку купівлі» лише для активного наряду (BR-PL-003). */
   status?: string;
+  /**
+   * Стан закупівлі рядків (списки купівлі, замовлення, нестача) — docs/objects/purchase-list.md.
+   * Читає сторінка до появи наряду (`useWorkOrderProcurementState(id)`): секція монтується лише
+   * після нього, і власний запит тут ставав другою хвилею (sto-optimize, водоспад 2.20).
+   */
+  procurement?: WorkOrderProcurementState;
 }
 
 export function WorkOrderPartsSection({
@@ -68,6 +74,7 @@ export function WorkOrderPartsSection({
   disabled,
   onError,
   status,
+  procurement,
 }: WorkOrderPartsSectionProps) {
   const { t } = useTranslation('workOrders');
   const features = useUiFeatures();
@@ -99,8 +106,6 @@ export function WorkOrderPartsSection({
   };
 
   const canEdit = !disabled;
-  // Стан закупівлі рядків (списки купівлі, замовлення, нестача) — docs/objects/purchase-list.md.
-  const procurement = useWorkOrderProcurementState(woId);
 
   return (
     <>

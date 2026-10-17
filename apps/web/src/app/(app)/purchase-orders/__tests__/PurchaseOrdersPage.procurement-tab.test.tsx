@@ -31,23 +31,27 @@ vi.mock('@/lib/api-client', () => ({
   apiFetch: () => Promise.resolve({ items: [], total: 0 }),
 }));
 
-const usePurchaseOrdersMock = vi.fn(() => ({
+const usePurchaseOrdersMock = vi.fn((..._args: unknown[]) => ({
   data: { items: [], total: 0, page: 1, limit: 20 },
   isLoading: false,
   error: null,
 }));
 vi.mock('@/hooks/api/usePurchaseOrders', async importOriginal => {
   const actual = await importOriginal<typeof import('@/hooks/api/usePurchaseOrders')>();
-  return { ...actual, usePurchaseOrders: () => usePurchaseOrdersMock() };
+  return {
+    ...actual,
+    usePurchaseOrders: (...args: unknown[]) => usePurchaseOrdersMock(...args),
+  };
 });
+const useSupplierReturnsMock = vi.fn((..._args: unknown[]) => ({
+  data: { items: [], total: 0, page: 1, limit: 50 },
+  isLoading: false,
+}));
 vi.mock('@/hooks/api/useSupplierReturns', async importOriginal => {
   const actual = await importOriginal<typeof import('@/hooks/api/useSupplierReturns')>();
   return {
     ...actual,
-    useSupplierReturns: () => ({
-      data: { items: [], total: 0, page: 1, limit: 50 },
-      isLoading: false,
-    }),
+    useSupplierReturns: (...args: unknown[]) => useSupplierReturnsMock(...args),
   };
 });
 vi.mock('@/hooks/api/useCash', async importOriginal => {
@@ -88,6 +92,22 @@ describe('«Купівля» — вкладка «Управління купі�
     role = 'OWNER';
     requireAuthMock.mockClear();
     usePurchaseOrdersMock.mockClear();
+    useSupplierReturnsMock.mockClear();
+  });
+
+  // sto-optimize: списки інших вкладок читаються лише на своїй вкладці — «Управління купівлями»
+  // не тягне замовлень, їхніх лічильників зв'язків і повернень (і не перечитує їх після дій).
+  it('?tab=procurement: замовлення й повернення не читаються; на «Замовленнях» — лише замовлення', () => {
+    search = 'tab=procurement';
+    const { unmount } = renderPage();
+    expect(usePurchaseOrdersMock.mock.calls.at(-1)?.[1]).toBe(false);
+    expect(useSupplierReturnsMock.mock.calls.at(-1)?.[1]).toBe(false);
+    unmount();
+
+    search = '';
+    renderPage();
+    expect(usePurchaseOrdersMock.mock.calls.at(-1)?.[1]).toBe(true);
+    expect(useSupplierReturnsMock.mock.calls.at(-1)?.[1]).toBe(false);
   });
 
   // guards: BR-PL-015

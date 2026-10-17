@@ -161,3 +161,23 @@ describe('usePaginatedList — queryKey shape (Bug #355 regression-guard)', () =
     expect(cache[0]?.queryKey).toEqual(['/some-endpoint', 'list', filters]);
   });
 });
+
+describe('usePaginatedList — enabled', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+  });
+
+  it('enabled: false → запит не йде, доки його не ввімкнуть', async () => {
+    const { result, rerender } = renderHook(
+      ({ on }: { on: boolean }) => usePaginatedList('/purchase-lists', {}, { enabled: on }),
+      { wrapper, initialProps: { on: false } },
+    );
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(apiFetchMock).not.toHaveBeenCalled();
+
+    rerender({ on: true });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+  });
+});

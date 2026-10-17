@@ -41,6 +41,7 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Badge } from '@/components/ui/badge';
 import { WorkOrderLinesSection } from './WorkOrderLinesSection';
 import { WorkOrderPartsSection } from './WorkOrderPartsSection';
+import { useWorkOrderProcurementState } from '@/components/ui/purchase-list/WorkOrderProcurement';
 import { WorkOrderMediaSection } from './WorkOrderMediaSection';
 import { WarrantySection } from './WarrantySection';
 import { WorkOrderTotals } from './WorkOrderTotals';
@@ -264,6 +265,9 @@ export default function WorkOrderCardPage() {
   const { confirm, dialogProps } = useConfirm();
   const { employee } = useAuth();
   const { id } = useParams<{ id: string }>();
+  // Стан закупівлі рядків — паралельно із самим нарядом, а не після нього (секція товарів
+  // монтується лише після завантаження наряду; sto-optimize, водоспад 2.20).
+  const procurement = useWorkOrderProcurementState(id);
   const router = useRouter();
   // «Журнал змін» — у першій хвилі запитів сторінки, а не після відповіді наряду.
   const auditEvents = useWorkOrderAudit(id);
@@ -1122,6 +1126,7 @@ export default function WorkOrderCardPage() {
         disabled={!canEdit}
         onError={setError}
         status={isDeleted ? undefined : wo.status}
+        procurement={procurement}
       />
 
       {/* Inspection section */}

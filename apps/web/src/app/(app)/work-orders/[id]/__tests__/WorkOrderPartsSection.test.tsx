@@ -179,3 +179,27 @@ describe('WorkOrderPartsSection — sub-line render (Bug #542)', () => {
     expect(screen.getByText('Запчастини не додані')).toBeInTheDocument();
   });
 });
+
+// ─── Стан закупівлі — від сторінки (sto-optimize, водоспад 2.20) ─────────────────
+
+describe('WorkOrderPartsSection — стан закупівлі з пропа', () => {
+  it('бейдж нестачі рядка — зі стану, який передала сторінка (секція сама його не читає)', () => {
+    const part = makePart({});
+
+    render(
+      <WorkOrderPartsSection
+        woId={WO_ID}
+        parts={[part]}
+        warehouses={baseWarehouses}
+        onChanged={vi.fn()}
+        procurement={{
+          itemsByPart: new Map(),
+          shortageByPart: new Map([[part.id, 2]]),
+          unitByPart: new Map([[part.id, 'шт']]),
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/нестача 2/)).toBeInTheDocument();
+  });
+});

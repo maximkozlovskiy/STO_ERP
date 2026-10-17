@@ -7,16 +7,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 const fromWorkOrder = vi.fn();
+const usePurchaseListsArgs = vi.fn();
 vi.mock('@/hooks/api/usePurchaseLists', async importOriginal => {
   const actual = await importOriginal<typeof import('@/hooks/api/usePurchaseLists')>();
   return {
     ...actual,
-    usePurchaseLists: () => ({
-      data: {
-        items: [{ id: 'l-open', number: 'СК-2026-000007', name: 'Тиждень', status: 'OPEN' }],
-        total: 1,
-      },
-    }),
+    usePurchaseLists: (...args: unknown[]) => {
+      usePurchaseListsArgs(...args);
+      return {
+        data: {
+          items: [{ id: 'l-open', number: 'СК-2026-000007', name: 'Тиждень', status: 'OPEN' }],
+          total: 1,
+        },
+      };
+    },
     purchaseListsApi: {
       ...actual.purchaseListsApi,
       fromWorkOrder: (b: unknown) => fromWorkOrder(b),
@@ -45,6 +49,29 @@ function renderDialog(rows = ROWS, onDone = vi.fn(), onClose = vi.fn()) {
 describe('AddToListDialog', () => {
   beforeEach(() => {
     fromWorkOrder.mockReset();
+    usePurchaseListsArgs.mockClear();
+  });
+
+  // sto-optimize: діалог змонтований у картці наряду й на «Нестачі» постійно — відкриті списки
+  // читаються лише відкритим діалогом (раніше — при кожному відкритті картки).
+  it('закритий діалог не читає відкриті списки; відкритий — читає', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = (open: boolean) => (
+      <QueryClientProvider client={client}>
+        <AddToListDialog open={open} rows={ROWS} onClose={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(view(false));
+    expect(usePurchaseListsArgs).toHaveBeenLastCalledWith(
+      { status: 'OPEN', page: 1, limit: 100 },
+      false,
+    );
+
+    rerender(view(true));
+    expect(usePurchaseListsArgs).toHaveBeenLastCalledWith(
+      { status: 'OPEN', page: 1, limit: 100 },
+      true,
+    );
   });
 
   // guards: BR-PL-003

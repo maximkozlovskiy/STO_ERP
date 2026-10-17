@@ -33,6 +33,9 @@ interface AddToListDialogProps {
 
 type Target = 'new' | 'existing';
 
+/** Той самий ключ кешу, що й фільтр «Список» на вкладці «Позиції» — спільний запит. */
+const OPEN_LISTS_FILTER = { status: 'OPEN', page: 1, limit: 100 } as const;
+
 /**
  * «До списку купівлі»: вибрані товари нарядів → новий або наявний відкритий список. Спільний для
  * картки наряду й вкладки «Нестача». Кількість — у базових одиницях товару (BR-PL-002), за
@@ -50,7 +53,10 @@ export function AddToListDialog({ open, onClose, rows, onDone }: AddToListDialog
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
-  const { data: openLists } = usePurchaseLists({ status: 'OPEN', page: 1, limit: 100 });
+  // Відкриті списки потрібні лише відкритому діалогу: сам діалог змонтований у картці наряду й на
+  // вкладці «Нестача» постійно, тож без `open` кожне відкриття картки читало списки (і перечитувало
+  // їх після кожного скидання кешу закупівель) — sto-optimize.
+  const { data: openLists } = usePurchaseLists(OPEN_LISTS_FILTER, open);
   const lists = openLists?.items ?? [];
 
   // Скидання форми при кожному відкритті: усі рядки вибрані, кількість — непокрита потреба.

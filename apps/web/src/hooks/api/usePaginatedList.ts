@@ -32,7 +32,7 @@ export function buildParams(filters: Record<string, unknown>): string {
 export function usePaginatedList<T>(
   endpoint: string,
   filters: Record<string, unknown>,
-  options?: { staleTime?: number; queryKey?: string },
+  options?: { staleTime?: number; queryKey?: string; enabled?: boolean },
 ) {
   const { employee } = useAuth();
   const qs = buildParams(filters);
@@ -43,7 +43,7 @@ export function usePaginatedList<T>(
   return useQuery<PaginatedResponse<T>>({
     queryKey: [key, 'list', filters],
     queryFn: ({ signal }) => apiFetch(`${endpoint}${qs}`, { signal }),
-    enabled: !!employee,
+    enabled: !!employee && (options?.enabled ?? true),
     staleTime: options?.staleTime ?? 30_000,
     placeholderData: keepPreviousData,
   });

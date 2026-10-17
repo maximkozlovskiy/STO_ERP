@@ -39,9 +39,11 @@ export const purchaseOrdersKeys = {
   detail: (id: string) => [...purchaseOrdersKeys.all, 'detail', id] as const,
 };
 
-export function usePurchaseOrders(filters: PurchaseOrdersFilter = {}) {
+/** `enabled: false` — список не потрібен (на сторінці відкрита інша вкладка). */
+export function usePurchaseOrders(filters: PurchaseOrdersFilter = {}, enabled = true) {
   return usePaginatedList<PurchaseOrder>('/purchase-orders', filters, {
     queryKey: 'purchase-orders',
+    enabled,
   });
 }
 

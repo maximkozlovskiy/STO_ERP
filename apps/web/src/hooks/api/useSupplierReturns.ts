@@ -33,9 +33,11 @@ export const supplierReturnsKeys = {
   detail: (id: string) => [...supplierReturnsKeys.all, 'detail', id] as const,
 };
 
-export function useSupplierReturns(filters: SupplierReturnsFilter = {}) {
+/** `enabled: false` — список не потрібен (на сторінці відкрита інша вкладка). */
+export function useSupplierReturns(filters: SupplierReturnsFilter = {}, enabled = true) {
   return usePaginatedList<SupplierReturn>('/supplier-returns', filters, {
     queryKey: 'supplier-returns',
+    enabled,
   });
 }
 

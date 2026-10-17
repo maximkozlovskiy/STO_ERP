@@ -313,21 +313,27 @@ function PurchaseOrdersPageClient() {
   const nowMs = useMemo(() => today?.getTime() ?? 0, [today]);
 
   // React Query hooks
+  // sto-optimize: список замовлень читається лише на своїй вкладці. Інакше «Управління
+  // купівлями» тягнула замовлення й їхні лічильники зв'язків (а після кожної дії над позиціями —
+  // перечитувала, бо дія скидає кеш замовлень), хоча їх не показує. Повернення — так само нижче.
   const {
     data: queryData,
     isLoading: loading,
     error: queryError,
-  } = usePurchaseOrders({
-    page,
-    limit,
-    status,
-    q: debouncedQ,
-    showDeleted,
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
-    sortBy: poSort.sortBy,
-    sortDir: poSort.sortDir,
-  });
+  } = usePurchaseOrders(
+    {
+      page,
+      limit,
+      status,
+      q: debouncedQ,
+      showDeleted,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      sortBy: poSort.sortBy,
+      sortDir: poSort.sortDir,
+    },
+    activeTab === 'orders',
+  );
   // regression guard — stable empty array reference.
   const orders = queryData?.items ?? (EMPTY_ITEMS as unknown as PurchaseOrder[]);
   const total = queryData?.total ?? 0;
@@ -665,15 +671,18 @@ function PurchaseOrdersPageClient() {
     ],
   );
 
-  const { data: srData, isLoading: srLoading } = useSupplierReturns({
-    q: debouncedSrSearch,
-    status: srStatus,
-    showDeleted: srShowDeleted,
-    dateFrom: srDateFrom || undefined,
-    dateTo: srDateTo || undefined,
-    page: srPage,
-    limit: srLimit,
-  });
+  const { data: srData, isLoading: srLoading } = useSupplierReturns(
+    {
+      q: debouncedSrSearch,
+      status: srStatus,
+      showDeleted: srShowDeleted,
+      dateFrom: srDateFrom || undefined,
+      dateTo: srDateTo || undefined,
+      page: srPage,
+      limit: srLimit,
+    },
+    activeTab === 'returns',
+  );
   const srItems = srData?.items ?? ([] as SupplierReturn[]);
   const deleteSupplierReturn = useDeleteSupplierReturn();
 
