@@ -3226,6 +3226,332 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/purchase-lists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Списки купівлі */
+        get: operations["PurchaseListsController_findAll_v1"];
+        put?: never;
+        /** Створити список купівлі */
+        post: operations["PurchaseListsController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-lists/linked-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Кількість пов'язаних документів для списків (batch) */
+        post: operations["PurchaseListsController_getLinkedCounts_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-lists/from-work-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Товари наряду → до списку купівлі (BR-PL-003) */
+        post: operations["PurchaseListsController_fromWorkOrder_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-lists/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Об'єднати списки (BR-PL-006) */
+        post: operations["PurchaseListsController_merge_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-lists/create-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Створити замовлення постачальникам з позицій (BR-PL-008) */
+        post: operations["PurchaseListsController_createOrders_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-lists/{id}/linked-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Пов'язані документи списку (наряди, замовлення, злиті списки) */
+        get: operations["PurchaseListsController_getLinkedDocuments_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-lists/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ручна позиція (BR-PL-004) */
+        post: operations["PurchaseListsController_addItem_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-lists/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Закрити список */
+        post: operations["PurchaseListsController_close_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-lists/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Скасувати список (без замовлених позицій) */
+        post: operations["PurchaseListsController_cancel_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-lists/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Список купівлі з позиціями */
+        get: operations["PurchaseListsController_findOne_v1"];
+        put?: never;
+        post?: never;
+        /** Видалити список (без замовлених позицій) */
+        delete: operations["PurchaseListsController_remove_v1"];
+        options?: never;
+        head?: never;
+        /** Змінити список (назва, склад, примітка) */
+        patch: operations["PurchaseListsController_update_v1"];
+        trace?: never;
+    };
+    "/api/v1/purchase-list-items/shortage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Нестача товарів по нарядах (BR-PL-014) */
+        get: operations["PurchaseListItemsController_getShortage_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-list-items/by-work-order/{workOrderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Позиції списків купівлі наряду й нестача його рядків */
+        get: operations["PurchaseListItemsController_byWorkOrder_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-list-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Позиції списків купівлі */
+        get: operations["PurchaseListItemsController_findAll_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-list-items/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Перенести позиції в інший список (BR-PL-007) */
+        post: operations["PurchaseListItemsController_move_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-list-items/bulk-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Масово: постачальник і очікувана ціна */
+        post: operations["PurchaseListItemsController_bulkUpdate_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-list-items/bulk-cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Масово скасувати позиції */
+        post: operations["PurchaseListItemsController_bulkCancel_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-list-items/{id}/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Розділити позицію (BR-PL-007) */
+        post: operations["PurchaseListItemsController_split_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-list-items/{id}/release-reservation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Зняти резерв отриманого з позиції (BR-PL-016) */
+        post: operations["PurchaseListItemsController_releaseReservation_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-list-items/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Змінити позицію (лише OPEN, BR-PL-005) */
+        patch: operations["PurchaseListItemsController_update_v1"];
+        trace?: never;
+    };
     "/api/v1/supplier-returns": {
         parameters: {
             query?: never;
@@ -7645,6 +7971,154 @@ export interface components {
             total: number;
             page: number;
             limit: number;
+        };
+        PurchaseListResponseDto: {
+            id: string;
+            number: string;
+            name: string | null;
+            /** @enum {string} */
+            status: "OPEN" | "CLOSED" | "CANCELLED";
+            warehouseId: string | null;
+            warehouseName: string | null;
+            notes: string | null;
+            mergedIntoId: string | null;
+            mergedIntoNumber: string | null;
+            closedAt: string | null;
+            createdAt: string;
+            /** @description Невидалені позиції, крім скасованих */
+            itemsCount: number;
+            openCount: number;
+            orderedCount: number;
+            receivedCount: number;
+        };
+        PaginatedPurchaseListsDto: {
+            items: components["schemas"]["PurchaseListResponseDto"][];
+            total: number;
+            page: number;
+            limit: number;
+        };
+        PurchaseListItemResponseDto: {
+            id: string;
+            listId: string;
+            listNumber: string;
+            /** @enum {string} */
+            listStatus: "OPEN" | "CLOSED" | "CANCELLED";
+            goodId: string;
+            goodName: string;
+            goodSku: string | null;
+            goodCode: string | null;
+            /** @description Базова одиниця товару */
+            goodUnit: string | null;
+            warehouseId: string;
+            warehouseName: string;
+            /** @description Кількість у базових одиницях (BR-PL-002) */
+            quantity: number;
+            receivedQty: number;
+            reservedQty: number;
+            /** @enum {string} */
+            status: "OPEN" | "ORDERED" | "RECEIVED" | "CANCELLED";
+            /** @enum {string} */
+            source: "WORK_ORDER" | "MANUAL";
+            workOrderId: string | null;
+            workOrderNumber: string | null;
+            /** @enum {string|null} */
+            workOrderStatus: "DRAFT" | "ESTIMATE" | "APPROVED" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "INVOICED" | "PAID" | "ARCHIVED" | "CANCELLED" | null;
+            workOrderPartId: string | null;
+            supplierId: string | null;
+            supplierName: string | null;
+            expectedPrice: number | null;
+            purchaseOrderId: string | null;
+            purchaseOrderNumber: string | null;
+            /** @enum {string|null} */
+            purchaseOrderStatus: "DRAFT" | "ORDERED" | "RECEIVED" | "PARTIAL" | "CANCELLED" | null;
+            notes: string | null;
+            createdAt: string;
+        };
+        FromWorkOrderResultDto: {
+            list: components["schemas"]["PurchaseListResponseDto"];
+            items: components["schemas"]["PurchaseListItemResponseDto"][];
+        };
+        PurchaseListDetailDto: {
+            id: string;
+            number: string;
+            name: string | null;
+            /** @enum {string} */
+            status: "OPEN" | "CLOSED" | "CANCELLED";
+            warehouseId: string | null;
+            warehouseName: string | null;
+            notes: string | null;
+            mergedIntoId: string | null;
+            mergedIntoNumber: string | null;
+            closedAt: string | null;
+            createdAt: string;
+            /** @description Невидалені позиції, крім скасованих */
+            itemsCount: number;
+            openCount: number;
+            orderedCount: number;
+            receivedCount: number;
+            items: components["schemas"]["PurchaseListItemResponseDto"][];
+        };
+        CreatedOrderDto: {
+            id: string;
+            number: string;
+            supplierId: string;
+            warehouseId: string;
+            itemsCount: number;
+        };
+        CreateOrdersResultDto: {
+            orders: components["schemas"]["CreatedOrderDto"][];
+        };
+        ShortageRowDto: {
+            workOrderId: string;
+            workOrderNumber: string;
+            /** @enum {string} */
+            workOrderStatus: "DRAFT" | "ESTIMATE" | "APPROVED" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "INVOICED" | "PAID" | "ARCHIVED" | "CANCELLED";
+            plannedAt: string | null;
+            workOrderPartId: string;
+            goodId: string;
+            goodName: string;
+            goodSku: string | null;
+            goodUnit: string | null;
+            warehouseId: string;
+            warehouseName: string;
+            /** @description Потреба рядка в базових одиницях */
+            required: number;
+            /** @description Покрито резервом наряду */
+            reserved: number;
+            /** @description Покрито позиціями списків цього рядка (OPEN + недоотримане) */
+            inLists: number;
+            /** @description Покрито вільним залишком і ручними позиціями (FIFO між нарядами) */
+            fromPool: number;
+            /** @description Непокрито */
+            shortage: number;
+            preferredSupplierId: string | null;
+        };
+        ShortageResponseDto: {
+            items: components["schemas"]["ShortageRowDto"][];
+            /** @description Рядків більше, ніж limit */
+            truncated: boolean;
+        };
+        WorkOrderPartShortageDto: {
+            workOrderPartId: string;
+            shortage: number;
+        };
+        WorkOrderProcurementDto: {
+            items: components["schemas"]["PurchaseListItemResponseDto"][];
+            shortage: components["schemas"]["WorkOrderPartShortageDto"][];
+        };
+        PaginatedPurchaseListItemsDto: {
+            items: components["schemas"]["PurchaseListItemResponseDto"][];
+            total: number;
+            page: number;
+            limit: number;
+        };
+        BulkResultDto: {
+            count: number;
+        };
+        ReleaseReservationResultDto: {
+            /** @description Знято з резерву (базові одиниці) */
+            released: number;
+            item: components["schemas"]["PurchaseListItemResponseDto"];
         };
         SupplierReturnLineResponseDto: {
             id: string;
@@ -15167,6 +15641,470 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaginatedIntegrationLogsDto"];
+                };
+            };
+        };
+    };
+    PurchaseListsController_findAll_v1: {
+        parameters: {
+            query?: {
+                status?: "OPEN" | "CLOSED" | "CANCELLED";
+                /** @description Пошук за номером і назвою */
+                q?: string;
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedPurchaseListsDto"];
+                };
+            };
+        };
+    };
+    PurchaseListsController_create_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseListResponseDto"];
+                };
+            };
+        };
+    };
+    PurchaseListsController_getLinkedCounts_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkedCountsDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    PurchaseListsController_fromWorkOrder_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FromWorkOrderResultDto"];
+                };
+            };
+        };
+    };
+    PurchaseListsController_merge_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseListDetailDto"];
+                };
+            };
+        };
+    };
+    PurchaseListsController_createOrders_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateOrdersResultDto"];
+                };
+            };
+        };
+    };
+    PurchaseListsController_getLinkedDocuments_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PurchaseListsController_addItem_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseListItemResponseDto"];
+                };
+            };
+        };
+    };
+    PurchaseListsController_close_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseListResponseDto"];
+                };
+            };
+        };
+    };
+    PurchaseListsController_cancel_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseListResponseDto"];
+                };
+            };
+        };
+    };
+    PurchaseListsController_findOne_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseListDetailDto"];
+                };
+            };
+        };
+    };
+    PurchaseListsController_remove_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PurchaseListsController_update_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseListResponseDto"];
+                };
+            };
+        };
+    };
+    PurchaseListItemsController_getShortage_v1: {
+        parameters: {
+            query?: {
+                warehouseId?: string;
+                workOrderId?: string;
+                /** @description Скільки рядків нестачі повернути */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortageResponseDto"];
+                };
+            };
+        };
+    };
+    PurchaseListItemsController_byWorkOrder_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workOrderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderProcurementDto"];
+                };
+            };
+        };
+    };
+    PurchaseListItemsController_findAll_v1: {
+        parameters: {
+            query?: {
+                status?: "OPEN" | "ORDERED" | "RECEIVED" | "CANCELLED";
+                /** @description UUID постачальника або 'none' — без постачальника */
+                supplierId?: string;
+                warehouseId?: string;
+                workOrderId?: string;
+                listId?: string;
+                /** @description Пошук за назвою товару, артикулом і кодом */
+                q?: string;
+                sortBy?: "createdAt" | "quantity";
+                sortDir?: "asc" | "desc";
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedPurchaseListItemsDto"];
+                };
+            };
+        };
+    };
+    PurchaseListItemsController_move_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResultDto"];
+                };
+            };
+        };
+    };
+    PurchaseListItemsController_bulkUpdate_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResultDto"];
+                };
+            };
+        };
+    };
+    PurchaseListItemsController_bulkCancel_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkResultDto"];
+                };
+            };
+        };
+    };
+    PurchaseListItemsController_split_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseListItemResponseDto"][];
+                };
+            };
+        };
+    };
+    PurchaseListItemsController_releaseReservation_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseReservationResultDto"];
+                };
+            };
+        };
+    };
+    PurchaseListItemsController_update_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseListItemResponseDto"];
                 };
             };
         };

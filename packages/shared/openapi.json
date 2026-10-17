@@ -10628,6 +10628,875 @@
         ]
       }
     },
+    "/api/v1/purchase-lists": {
+      "get": {
+        "operationId": "PurchaseListsController_findAll_v1",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OPEN",
+                "CLOSED",
+                "CANCELLED"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Пошук за номером і назвою",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedPurchaseListsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Списки купівлі",
+        "tags": [
+          "Purchase Lists"
+        ]
+      },
+      "post": {
+        "operationId": "PurchaseListsController_create_v1",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Створити список купівлі",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-lists/linked-counts": {
+      "post": {
+        "operationId": "PurchaseListsController_getLinkedCounts_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkedCountsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Кількість пов'язаних документів для списків (batch)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-lists/from-work-order": {
+      "post": {
+        "operationId": "PurchaseListsController_fromWorkOrder_v1",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FromWorkOrderResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Товари наряду → до списку купівлі (BR-PL-003)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-lists/merge": {
+      "post": {
+        "operationId": "PurchaseListsController_merge_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseListDetailDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Об'єднати списки (BR-PL-006)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-lists/create-orders": {
+      "post": {
+        "operationId": "PurchaseListsController_createOrders_v1",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateOrdersResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Створити замовлення постачальникам з позицій (BR-PL-008)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-lists/{id}/linked-documents": {
+      "get": {
+        "operationId": "PurchaseListsController_getLinkedDocuments_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Пов'язані документи списку (наряди, замовлення, злиті списки)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-lists/{id}/items": {
+      "post": {
+        "operationId": "PurchaseListsController_addItem_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseListItemResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ручна позиція (BR-PL-004)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-lists/{id}/close": {
+      "post": {
+        "operationId": "PurchaseListsController_close_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Закрити список",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-lists/{id}/cancel": {
+      "post": {
+        "operationId": "PurchaseListsController_cancel_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Скасувати список (без замовлених позицій)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-lists/{id}": {
+      "get": {
+        "operationId": "PurchaseListsController_findOne_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseListDetailDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Список купівлі з позиціями",
+        "tags": [
+          "Purchase Lists"
+        ]
+      },
+      "patch": {
+        "operationId": "PurchaseListsController_update_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Змінити список (назва, склад, примітка)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      },
+      "delete": {
+        "operationId": "PurchaseListsController_remove_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Видалити список (без замовлених позицій)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-list-items/shortage": {
+      "get": {
+        "operationId": "PurchaseListItemsController_getShortage_v1",
+        "parameters": [
+          {
+            "name": "warehouseId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "workOrderId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Скільки рядків нестачі повернути",
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "default": 200,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortageResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Нестача товарів по нарядах (BR-PL-014)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-list-items/by-work-order/{workOrderId}": {
+      "get": {
+        "operationId": "PurchaseListItemsController_byWorkOrder_v1",
+        "parameters": [
+          {
+            "name": "workOrderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderProcurementDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Позиції списків купівлі наряду й нестача його рядків",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-list-items": {
+      "get": {
+        "operationId": "PurchaseListItemsController_findAll_v1",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OPEN",
+                "ORDERED",
+                "RECEIVED",
+                "CANCELLED"
+              ]
+            }
+          },
+          {
+            "name": "supplierId",
+            "required": false,
+            "in": "query",
+            "description": "UUID постачальника або 'none' — без постачальника",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "warehouseId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "workOrderId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "listId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Пошук за назвою товару, артикулом і кодом",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "createdAt",
+                "quantity"
+              ]
+            }
+          },
+          {
+            "name": "sortDir",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedPurchaseListItemsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Позиції списків купівлі",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-list-items/move": {
+      "post": {
+        "operationId": "PurchaseListItemsController_move_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Перенести позиції в інший список (BR-PL-007)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-list-items/bulk-update": {
+      "post": {
+        "operationId": "PurchaseListItemsController_bulkUpdate_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Масово: постачальник і очікувана ціна",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-list-items/bulk-cancel": {
+      "post": {
+        "operationId": "PurchaseListItemsController_bulkCancel_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Масово скасувати позиції",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-list-items/{id}/split": {
+      "post": {
+        "operationId": "PurchaseListItemsController_split_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PurchaseListItemResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Розділити позицію (BR-PL-007)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-list-items/{id}/release-reservation": {
+      "post": {
+        "operationId": "PurchaseListItemsController_releaseReservation_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseReservationResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Зняти резерв отриманого з позиції (BR-PL-016)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/purchase-list-items/{id}": {
+      "patch": {
+        "operationId": "PurchaseListItemsController_update_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseListItemResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Змінити позицію (лише OPEN, BR-PL-005)",
+        "tags": [
+          "Purchase Lists"
+        ]
+      }
+    },
     "/api/v1/supplier-returns": {
       "post": {
         "operationId": "SupplierReturnsController_create_v1",
@@ -25169,6 +26038,631 @@
           "total",
           "page",
           "limit"
+        ]
+      },
+      "PurchaseListResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "enum": [
+              "OPEN",
+              "CLOSED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "warehouseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "warehouseName": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "mergedIntoId": {
+            "type": "string",
+            "nullable": true
+          },
+          "mergedIntoNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "closedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "itemsCount": {
+            "type": "number",
+            "description": "Невидалені позиції, крім скасованих"
+          },
+          "openCount": {
+            "type": "number"
+          },
+          "orderedCount": {
+            "type": "number"
+          },
+          "receivedCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "name",
+          "status",
+          "warehouseId",
+          "warehouseName",
+          "notes",
+          "mergedIntoId",
+          "mergedIntoNumber",
+          "closedAt",
+          "createdAt",
+          "itemsCount",
+          "openCount",
+          "orderedCount",
+          "receivedCount"
+        ]
+      },
+      "PaginatedPurchaseListsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseListResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
+      "PurchaseListItemResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "listId": {
+            "type": "string"
+          },
+          "listNumber": {
+            "type": "string"
+          },
+          "listStatus": {
+            "enum": [
+              "OPEN",
+              "CLOSED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "goodId": {
+            "type": "string"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "goodSku": {
+            "type": "string",
+            "nullable": true
+          },
+          "goodCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "goodUnit": {
+            "type": "string",
+            "nullable": true,
+            "description": "Базова одиниця товару"
+          },
+          "warehouseId": {
+            "type": "string"
+          },
+          "warehouseName": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Кількість у базових одиницях (BR-PL-002)"
+          },
+          "receivedQty": {
+            "type": "number"
+          },
+          "reservedQty": {
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "OPEN",
+              "ORDERED",
+              "RECEIVED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "WORK_ORDER",
+              "MANUAL"
+            ],
+            "type": "string"
+          },
+          "workOrderId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workOrderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "workOrderStatus": {
+            "nullable": true,
+            "enum": [
+              "DRAFT",
+              "ESTIMATE",
+              "APPROVED",
+              "IN_PROGRESS",
+              "ON_HOLD",
+              "COMPLETED",
+              "INVOICED",
+              "PAID",
+              "ARCHIVED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "workOrderPartId": {
+            "type": "string",
+            "nullable": true
+          },
+          "supplierId": {
+            "type": "string",
+            "nullable": true
+          },
+          "supplierName": {
+            "type": "string",
+            "nullable": true
+          },
+          "expectedPrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "purchaseOrderId": {
+            "type": "string",
+            "nullable": true
+          },
+          "purchaseOrderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "purchaseOrderStatus": {
+            "nullable": true,
+            "enum": [
+              "DRAFT",
+              "ORDERED",
+              "RECEIVED",
+              "PARTIAL",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "listId",
+          "listNumber",
+          "listStatus",
+          "goodId",
+          "goodName",
+          "goodSku",
+          "goodCode",
+          "goodUnit",
+          "warehouseId",
+          "warehouseName",
+          "quantity",
+          "receivedQty",
+          "reservedQty",
+          "status",
+          "source",
+          "workOrderId",
+          "workOrderNumber",
+          "workOrderStatus",
+          "workOrderPartId",
+          "supplierId",
+          "supplierName",
+          "expectedPrice",
+          "purchaseOrderId",
+          "purchaseOrderNumber",
+          "purchaseOrderStatus",
+          "notes",
+          "createdAt"
+        ]
+      },
+      "FromWorkOrderResultDto": {
+        "type": "object",
+        "properties": {
+          "list": {
+            "$ref": "#/components/schemas/PurchaseListResponseDto"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseListItemResponseDto"
+            }
+          }
+        },
+        "required": [
+          "list",
+          "items"
+        ]
+      },
+      "PurchaseListDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "enum": [
+              "OPEN",
+              "CLOSED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "warehouseId": {
+            "type": "string",
+            "nullable": true
+          },
+          "warehouseName": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "mergedIntoId": {
+            "type": "string",
+            "nullable": true
+          },
+          "mergedIntoNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "closedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "itemsCount": {
+            "type": "number",
+            "description": "Невидалені позиції, крім скасованих"
+          },
+          "openCount": {
+            "type": "number"
+          },
+          "orderedCount": {
+            "type": "number"
+          },
+          "receivedCount": {
+            "type": "number"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseListItemResponseDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "name",
+          "status",
+          "warehouseId",
+          "warehouseName",
+          "notes",
+          "mergedIntoId",
+          "mergedIntoNumber",
+          "closedAt",
+          "createdAt",
+          "itemsCount",
+          "openCount",
+          "orderedCount",
+          "receivedCount",
+          "items"
+        ]
+      },
+      "CreatedOrderDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "supplierId": {
+            "type": "string"
+          },
+          "warehouseId": {
+            "type": "string"
+          },
+          "itemsCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "supplierId",
+          "warehouseId",
+          "itemsCount"
+        ]
+      },
+      "CreateOrdersResultDto": {
+        "type": "object",
+        "properties": {
+          "orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreatedOrderDto"
+            }
+          }
+        },
+        "required": [
+          "orders"
+        ]
+      },
+      "ShortageRowDto": {
+        "type": "object",
+        "properties": {
+          "workOrderId": {
+            "type": "string"
+          },
+          "workOrderNumber": {
+            "type": "string"
+          },
+          "workOrderStatus": {
+            "enum": [
+              "DRAFT",
+              "ESTIMATE",
+              "APPROVED",
+              "IN_PROGRESS",
+              "ON_HOLD",
+              "COMPLETED",
+              "INVOICED",
+              "PAID",
+              "ARCHIVED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "plannedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "workOrderPartId": {
+            "type": "string"
+          },
+          "goodId": {
+            "type": "string"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "goodSku": {
+            "type": "string",
+            "nullable": true
+          },
+          "goodUnit": {
+            "type": "string",
+            "nullable": true
+          },
+          "warehouseId": {
+            "type": "string"
+          },
+          "warehouseName": {
+            "type": "string"
+          },
+          "required": {
+            "type": "number",
+            "description": "Потреба рядка в базових одиницях"
+          },
+          "reserved": {
+            "type": "number",
+            "description": "Покрито резервом наряду"
+          },
+          "inLists": {
+            "type": "number",
+            "description": "Покрито позиціями списків цього рядка (OPEN + недоотримане)"
+          },
+          "fromPool": {
+            "type": "number",
+            "description": "Покрито вільним залишком і ручними позиціями (FIFO між нарядами)"
+          },
+          "shortage": {
+            "type": "number",
+            "description": "Непокрито"
+          },
+          "preferredSupplierId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "workOrderId",
+          "workOrderNumber",
+          "workOrderStatus",
+          "plannedAt",
+          "workOrderPartId",
+          "goodId",
+          "goodName",
+          "goodSku",
+          "goodUnit",
+          "warehouseId",
+          "warehouseName",
+          "required",
+          "reserved",
+          "inLists",
+          "fromPool",
+          "shortage",
+          "preferredSupplierId"
+        ]
+      },
+      "ShortageResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShortageRowDto"
+            }
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Рядків більше, ніж limit"
+          }
+        },
+        "required": [
+          "items",
+          "truncated"
+        ]
+      },
+      "WorkOrderPartShortageDto": {
+        "type": "object",
+        "properties": {
+          "workOrderPartId": {
+            "type": "string"
+          },
+          "shortage": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "workOrderPartId",
+          "shortage"
+        ]
+      },
+      "WorkOrderProcurementDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseListItemResponseDto"
+            }
+          },
+          "shortage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkOrderPartShortageDto"
+            }
+          }
+        },
+        "required": [
+          "items",
+          "shortage"
+        ]
+      },
+      "PaginatedPurchaseListItemsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseListItemResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
+      "BulkResultDto": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "count"
+        ]
+      },
+      "ReleaseReservationResultDto": {
+        "type": "object",
+        "properties": {
+          "released": {
+            "type": "number",
+            "description": "Знято з резерву (базові одиниці)"
+          },
+          "item": {
+            "$ref": "#/components/schemas/PurchaseListItemResponseDto"
+          }
+        },
+        "required": [
+          "released",
+          "item"
         ]
       },
       "SupplierReturnLineResponseDto": {

@@ -1704,7 +1704,7 @@ export class WorkOrdersService {
     // §3.2/§7.1: take: N — захист від OOM при патологічних обсягах (рідко, але можливо
     // для довгоживучих нарядів з частковою оплатою або десятками перенесень слотів).
     const TAKE = 500;
-    const [invoices, payments, calendarSlots, warranties] = await Promise.all([
+    const [invoices, payments, calendarSlots, warranties, listItems] = await Promise.all([
       this.prisma.invoice.findMany({
         // CANCELLED invoices excluded for consistency with `findByWorkOrder` and
         // `createFromWorkOrder` pre-check: the "Документи" badge must not count cancelled
@@ -1755,6 +1755,13 @@ export class WorkOrdersService {
         orderBy: { createdAt: 'desc' },
         take: TAKE,
       }),
+      // Списки купівлі з позиціями наряду (docs/objects/purchase-list.md).
+      this.prisma.purchaseListItem.findMany({
+        where: { workOrderId, orgId, deletedAt: null, list: { deletedAt: null } },
+        select: { list: { select: { id: true, number: true, status: true, createdAt: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: TAKE,
+      }),
     ]);
 
     // §13 API Contract: Prisma Decimal → number у DTO; Date → ISO string (JSON.stringify
@@ -1766,13 +1773,14 @@ export class WorkOrdersService {
       payments: payments.map(p => ({ ...p, amount: Number(p.amount) })),
       calendarSlots,
       warranties,
+      purchaseLists: Array.from(new Map(listItems.map(i => [i.list.id, i.list])).values()),
     };
   }
 
   async getLinkedCounts(orgId: string, workOrderIds: string[]) {
     if (!workOrderIds.length) return {};
 
-    const [invoices, payments, calendarSlots, warranties] = await Promise.all([
+    const [invoices, payments, calendarSlots, warranties, listItems] = await Promise.all([
       this.prisma.invoice.groupBy({
         by: ['workOrderId'],
         // Symmetric with getLinkedDocuments — CANCELLED excluded from counts.
@@ -1799,14 +1807,30 @@ export class WorkOrdersService {
         where: { workOrderId: { in: workOrderIds }, orgId, deletedAt: null },
         _count: { id: true },
       }),
+      // Різні списки купівлі з позиціями наряду: пара (наряд, список) — одна група.
+      this.prisma.purchaseListItem.groupBy({
+        by: ['workOrderId', 'listId'],
+        where: {
+          workOrderId: { in: workOrderIds },
+          orgId,
+          deletedAt: null,
+          list: { deletedAt: null },
+        },
+      }),
     ]);
 
     const result: Record<
       string,
-      { invoices: number; payments: number; calendarSlots: number; warranties: number }
+      {
+        invoices: number;
+        payments: number;
+        calendarSlots: number;
+        warranties: number;
+        purchaseLists: number;
+      }
     > = {};
     for (const id of workOrderIds) {
-      result[id] = { invoices: 0, payments: 0, calendarSlots: 0, warranties: 0 };
+      result[id] = { invoices: 0, payments: 0, calendarSlots: 0, warranties: 0, purchaseLists: 0 };
     }
     invoices.forEach(r => {
       if (r.workOrderId) result[r.workOrderId].invoices = r._count.id;
@@ -1819,6 +1843,9 @@ export class WorkOrdersService {
     });
     warranties.forEach(r => {
       if (r.workOrderId) result[r.workOrderId].warranties = r._count.id;
+    });
+    listItems.forEach(r => {
+      if (r.workOrderId && result[r.workOrderId]) result[r.workOrderId].purchaseLists += 1;
     });
     return result;
   }

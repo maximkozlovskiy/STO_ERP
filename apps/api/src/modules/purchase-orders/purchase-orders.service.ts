@@ -1255,12 +1255,12 @@ export class PurchaseOrdersService {
       select: { supplierId: true },
     });
     if (!po) {
-      return { supplierPayments: [], counterparty: [] };
+      return { supplierPayments: [], counterparty: [], purchaseLists: [] };
     }
 
     // §3.2/§7.1: take: N — захист від OOM при патологічних обсягах.
     const TAKE = 500;
-    const [supplierPayments, counterparty] = await Promise.all([
+    const [supplierPayments, counterparty, listItems] = await Promise.all([
       this.prisma.supplierPayment.findMany({
         where: { purchaseOrderId: poId, orgId, deletedAt: null },
         select: {
@@ -1284,19 +1284,27 @@ export class PurchaseOrdersService {
           phone: true,
         },
       }),
+      // Списки купівлі, з позицій яких створено замовлення (BR-PL-008).
+      this.prisma.purchaseListItem.findMany({
+        where: { purchaseOrderId: poId, orgId, deletedAt: null, list: { deletedAt: null } },
+        select: { list: { select: { id: true, number: true, status: true, createdAt: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: TAKE,
+      }),
     ]);
 
     // §13 API Contract: Prisma Decimal → number у DTO.
     return {
       supplierPayments: supplierPayments.map(sp => ({ ...sp, amount: Number(sp.amount) })),
       counterparty: counterparty ? [counterparty] : [],
+      purchaseLists: Array.from(new Map(listItems.map(i => [i.list.id, i.list])).values()),
     };
   }
 
   async getLinkedCounts(orgId: string, ids: string[]) {
     if (!ids.length) return {};
 
-    const [supplierPayments, orders] = await Promise.all([
+    const [supplierPayments, orders, listItems] = await Promise.all([
       this.prisma.supplierPayment.groupBy({
         by: ['purchaseOrderId'],
         where: { purchaseOrderId: { in: ids }, orgId, deletedAt: null },
@@ -1306,6 +1314,10 @@ export class PurchaseOrdersService {
       this.prisma.purchaseOrder.findMany({
         where: { id: { in: ids }, orgId, deletedAt: null },
         select: { id: true, supplierId: true },
+      }),
+      this.prisma.purchaseListItem.groupBy({
+        by: ['purchaseOrderId', 'listId'],
+        where: { purchaseOrderId: { in: ids }, orgId, deletedAt: null, list: { deletedAt: null } },
       }),
     ]);
 
@@ -1321,7 +1333,11 @@ export class PurchaseOrdersService {
       : [];
     const liveSupplierSet = new Set(liveSuppliers.map(c => c.id));
 
-    const result = initCountsMap(ids, ['supplierPayments', 'counterparty'] as const);
+    const result = initCountsMap(ids, [
+      'supplierPayments',
+      'counterparty',
+      'purchaseLists',
+    ] as const);
     supplierPayments.forEach(r => {
       if (r.purchaseOrderId && result[r.purchaseOrderId]) {
         result[r.purchaseOrderId].supplierPayments = r._count.id;
@@ -1331,6 +1347,10 @@ export class PurchaseOrdersService {
       if (result[po.id]) {
         result[po.id].counterparty = po.supplierId && liveSupplierSet.has(po.supplierId) ? 1 : 0;
       }
+    });
+    listItems.forEach(r => {
+      if (r.purchaseOrderId && result[r.purchaseOrderId])
+        result[r.purchaseOrderId].purchaseLists += 1;
     });
     return result;
   }
