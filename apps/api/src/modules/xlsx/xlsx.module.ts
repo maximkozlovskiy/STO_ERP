@@ -13,6 +13,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { WorkOrderTotalsModule } from '../work-orders/work-order-totals.module';
 import { WorkOrderStockEffectsModule } from '../work-orders/work-order-stock-effects.module';
+import { PurchaseListCoreModule } from '../purchase-lists/purchase-list-core.module';
 import {
   DocumentLineImportAdapterRegistry,
   PurchaseOrderImportAdapter,
@@ -31,6 +32,7 @@ import {
     ExchangeRatesModule,
     WorkOrderTotalsModule,
     WorkOrderStockEffectsModule, // BR-WO-021: надлишок резерву після імпорту товарів наряду
+    PurchaseListCoreModule, // BR-PL-009: звірка позицій списків після імпорту рядків замовлення
   ],
   controllers: [XlsxController],
   providers: [

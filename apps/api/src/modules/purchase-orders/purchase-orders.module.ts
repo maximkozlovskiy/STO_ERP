@@ -17,6 +17,7 @@ import { IntegrationLogsModule } from '../integration-logs/integration-logs.modu
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
 import { LinesSummaryModule } from '../lines-summary/lines-summary.module';
+import { PurchaseListCoreModule } from '../purchase-lists/purchase-list-core.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { LinesSummaryModule } from '../lines-summary/lines-summary.module';
     SettingsModule,
     IntegrationLogsModule,
     ExchangeRatesModule, // мультивалюта (Фаза 3): base-конвертація тоталів замовлення
+    PurchaseListCoreModule, // BR-PO-009/010: позиції списків купівлі й розподіл отриманого
     BullModule.registerQueue({ name: 'nova-poshta-polling', defaultJobOptions: DEFAULT_JOB_OPTS }),
   ],
   controllers: [PurchaseOrdersController, DeliveryProvidersController],
@@ -46,5 +48,7 @@ import { LinesSummaryModule } from '../lines-summary/lines-summary.module';
     DeliveryTrackingService,
     NovaPoshtaPollingProcessor,
   ],
+  // Замовлення зі списку купівлі (BR-PL-008) створює PurchaseListsModule через createInTx.
+  exports: [PurchaseOrdersService],
 })
 export class PurchaseOrdersModule {}

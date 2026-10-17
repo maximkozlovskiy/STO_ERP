@@ -20,7 +20,7 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
-import { exchangeRatesProvider } from './purchase-orders.spec-fixture';
+import { exchangeRatesProvider, purchaseListProviders } from './purchase-orders.spec-fixture';
 
 describe('PurchaseOrdersService.transition — FSM map', () => {
   let service: PurchaseOrdersService;
@@ -86,6 +86,7 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
           useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
         },
         exchangeRatesProvider(),
+        ...purchaseListProviders(),
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);

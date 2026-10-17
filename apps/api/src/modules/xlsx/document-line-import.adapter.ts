@@ -6,6 +6,7 @@ import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calcLineVat } from '../../common/utils/vat';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
+import { PurchaseListLinkService } from '../purchase-lists/purchase-list-link.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 
 export type ImportDocType = 'PURCHASE_ORDER' | 'STOCK_DOCUMENT';
@@ -80,6 +81,8 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly exchangeRates: ExchangeRatesService,
+    // BR-PL-009: рядки чернетки переписано імпортом — позиції списків купівлі звіряються.
+    private readonly purchaseLists: PurchaseListLinkService,
   ) {}
 
   async loadDoc(orgId: string, docId: string): Promise<ImportDocSummary | null> {
@@ -152,6 +155,7 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
         rateUsed: conv.rateUsed,
       },
     });
+    await this.purchaseLists.reconcileDraftOrder(tx, orgId, docId);
   }
 
   async appendLines(
@@ -206,6 +210,7 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
     // Тотали — по ВСІХ активних рядках ПІСЛЯ вставки (не лише по нових), інакше наявні позиції
     // зникли б із суми документа.
     await this.recalcTotals(tx, orgId, docId);
+    await this.purchaseLists.reconcileDraftOrder(tx, orgId, docId);
   }
 
   /**
@@ -242,6 +247,8 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
       cursor = batch[batch.length - 1].id;
     }
     await this.recalcTotals(tx, orgId, docId);
+    // Швидкий імпорт міг змінити кількості наявних рядків (BR-PL-009).
+    await this.purchaseLists.reconcileDraftOrder(tx, orgId, docId);
   }
 
   /** Сума й ПДВ замовлення по всіх активних рядках + сума в базовій валюті. */

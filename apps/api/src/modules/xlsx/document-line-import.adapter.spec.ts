@@ -18,6 +18,9 @@ import type { ExchangeRatesService } from '../exchange-rates/exchange-rates.serv
 const ORG = 'org-1';
 const DOC = 'doc-1';
 
+/** BR-PL-009: хук звірки позицій списків купівлі після запису рядків чернетки. */
+const purchaseLists = { reconcileDraftOrder: vi.fn().mockResolvedValue(undefined) };
+
 describe('PurchaseOrderImportAdapter.appendLines', () => {
   let tx: {
     purchaseOrderLine: {
@@ -58,11 +61,23 @@ describe('PurchaseOrderImportAdapter.appendLines', () => {
       {
         resolveBaseConversion: vi.fn().mockResolvedValue({ amountBase: 0, rateUsed: 1 }),
       } as unknown as ExchangeRatesService,
+      purchaseLists as never,
     );
   });
 
   const lines = (...l: [string, number, number][]): ImportLineInput[] =>
     l.map(([goodId, quantity, price]) => ({ goodId, quantity, price }));
+
+  // guards: BR-PL-009
+  it('після запису рядків (append і replace) позиції списків купівлі звіряються в тій самій транзакції', async () => {
+    purchaseLists.reconcileDraftOrder.mockClear();
+    await adapter.appendLines(tx as never, ORG, DOC, lines(['g-1', 2, 100]));
+    await adapter.replaceLines(tx as never, ORG, DOC, lines(['g-1', 1, 100]));
+    expect(purchaseLists.reconcileDraftOrder.mock.calls).toEqual([
+      [tx, ORG, DOC],
+      [tx, ORG, DOC],
+    ]);
+  });
 
   it('НЕ видаляє наявні рядки (на відміну від replaceLines)', async () => {
     await adapter.appendLines(tx as never, ORG, DOC, lines(['g-1', 2, 100]));
@@ -194,7 +209,16 @@ describe('PurchaseOrderImportAdapter.syncAfterDirectLineWrite', () => {
       {
         resolveBaseConversion: vi.fn().mockResolvedValue({ amountBase: 4720, rateUsed: 40 }),
       } as unknown as ExchangeRatesService,
+      purchaseLists as never,
     );
+  });
+
+  // guards: BR-PL-009
+  it('швидкий імпорт рядків (XLSX у картці) теж звіряє позиції списків купівлі', async () => {
+    purchaseLists.reconcileDraftOrder.mockClear();
+    tx.purchaseOrderLine.findMany.mockResolvedValueOnce([]);
+    await adapter.syncAfterDirectLineWrite(tx as never, ORG, DOC);
+    expect(purchaseLists.reconcileDraftOrder).toHaveBeenCalledWith(tx, ORG, DOC);
   });
 
   // guards: BR-PO-007

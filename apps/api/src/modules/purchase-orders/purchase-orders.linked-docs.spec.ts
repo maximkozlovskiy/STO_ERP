@@ -18,7 +18,7 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
-import { exchangeRatesProvider } from './purchase-orders.spec-fixture';
+import { exchangeRatesProvider, purchaseListProviders } from './purchase-orders.spec-fixture';
 
 describe('PurchaseOrdersService — linked-documents edge cases', () => {
   let service: PurchaseOrdersService;
@@ -53,6 +53,7 @@ describe('PurchaseOrdersService — linked-documents edge cases', () => {
           useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
         },
         exchangeRatesProvider(),
+        ...purchaseListProviders(),
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);

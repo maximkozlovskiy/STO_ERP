@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { createPgAdapter } from '../../prisma/pg-adapter';
 import { randomUUID } from 'node:crypto';
 import { PurchaseOrderImportAdapter, type ImportLineInput } from './document-line-import.adapter';
+import { PurchaseListLinkService } from '../purchase-lists/purchase-list-link.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { SettingsService } from '../settings/settings.service';
 import type { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
@@ -150,6 +151,7 @@ beforeAll(async () => {
       raw as unknown as PrismaService,
       settingsStub,
       exchangeStub,
+      new PurchaseListLinkService(), // BR-PL-009: у чернетці тесту позицій списків немає — no-op
     );
     dbAvailable = true;
   } catch {

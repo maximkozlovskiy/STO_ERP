@@ -24,11 +24,13 @@ import {
 import {
   purchaseListCreateSchema,
   purchaseListFromWorkOrderSchema,
+  purchaseListItemIdsSchema,
   purchaseListManualItemSchema,
   purchaseListMergeSchema,
   purchaseListUpdateSchema,
   type PurchaseListCreateValues,
   type PurchaseListFromWorkOrderValues,
+  type PurchaseListItemIdsValues,
   type PurchaseListManualItemValues,
   type PurchaseListMergeValues,
   type PurchaseListUpdateValues,
@@ -41,8 +43,10 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { LinkedCountsDto } from '../purchase-orders/purchase-orders.dto';
 import { PurchaseListsService } from './purchase-lists.service';
+import { PurchaseListOrdersService } from './purchase-list-orders.service';
 import { PL_READ_ROLES, PL_WRITE_ROLES } from './purchase-lists.helpers';
 import {
+  CreateOrdersResultDto,
   FromWorkOrderResultDto,
   PaginatedPurchaseListsDto,
   PurchaseListDetailDto,
@@ -57,7 +61,10 @@ import {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class PurchaseListsController {
-  constructor(private readonly service: PurchaseListsService) {}
+  constructor(
+    private readonly service: PurchaseListsService,
+    private readonly orders: PurchaseListOrdersService,
+  ) {}
 
   @Get()
   @Roles(...PL_READ_ROLES)
@@ -100,6 +107,18 @@ export class PurchaseListsController {
     @Body(new ZodValidationPipe(purchaseListMergeSchema)) dto: PurchaseListMergeValues,
   ) {
     return this.service.merge(orgId, dto);
+  }
+
+  @Post('create-orders')
+  @Roles(...PL_WRITE_ROLES)
+  @UseInterceptors(IdempotencyInterceptor)
+  @ApiOperation({ summary: 'Створити замовлення постачальникам з позицій (BR-PL-008)' })
+  @ApiCreatedResponse({ type: CreateOrdersResultDto })
+  createOrders(
+    @OrgContext() orgId: string,
+    @Body(new ZodValidationPipe(purchaseListItemIdsSchema)) dto: PurchaseListItemIdsValues,
+  ) {
+    return this.orders.createOrders(orgId, dto.itemIds);
   }
 
   @Post()

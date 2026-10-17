@@ -24,6 +24,8 @@ import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
+import { PurchaseListLinkService } from '../purchase-lists/purchase-list-link.service';
+import { PurchaseListReceiptService } from '../purchase-lists/purchase-list-receipt.service';
 import { calcLineVat } from '../../common/utils/vat';
 import {
   CreatePurchaseOrderDto,
@@ -79,6 +81,35 @@ const PO_SORT_FIELDS: Record<string, string> = {
 // Set hoisted на module-level разом з whitelist — жодного повторного alloc на request.
 const PO_NULLABLE_SORT_FIELDS: ReadonlySet<string> = new Set(['paymentDate']);
 
+const PO_WRITE_INCLUDE = {
+  supplier: { select: { firstName: true, lastName: true, companyName: true } },
+  warehouse: { select: { name: true } },
+  contract: { select: { id: true, number: true } },
+  currency: { select: { code: true } },
+  lines: {
+    where: { deletedAt: null },
+    take: 1000,
+    include: { good: PO_LINE_GOOD_INCLUDE },
+  },
+} as const satisfies Prisma.PurchaseOrderInclude;
+
+/**
+ * Замовлення, готове до запису: перевірки, номер, ПДВ рядків і курс зроблено ДО транзакції
+ * (`prepareCreate`), запис — `createInTx` у транзакції виклику. `create()` і замовлення зі списку
+ * купівлі (BR-PL-008) ідуть тим самим шляхом (BR-PO-010).
+ */
+export interface PreparedPurchaseOrder {
+  data: Prisma.PurchaseOrderUncheckedCreateInput;
+  lines: Array<{
+    goodId: string;
+    quantity: number;
+    price: number;
+    vatRate: number;
+    vatAmount: number;
+  }>;
+  trackingNumber: string | null;
+}
+
 @Injectable()
 export class PurchaseOrdersService {
   constructor(
@@ -90,6 +121,9 @@ export class PurchaseOrdersService {
     private readonly settingsService: SettingsService,
     private readonly deliveryTracking: DeliveryTrackingService,
     private readonly exchangeRates: ExchangeRatesService,
+    // BR-PO-009/010: позиції списків купівлі — хуки життєвого циклу й розподіл отриманого.
+    private readonly purchaseLists: PurchaseListLinkService,
+    private readonly purchaseListReceipt: PurchaseListReceiptService,
   ) {}
 
   /** Нормалізує введений номер накладної: trim, порожнє → null. */
@@ -248,6 +282,21 @@ export class PurchaseOrdersService {
   }
 
   async create(orgId: string, dto: CreatePurchaseOrderDto): Promise<PurchaseOrderResponseDto> {
+    const prepared = await this.prepareCreate(orgId, dto);
+    const po = await this.prisma.$transaction(tx => this.createInTx(tx, orgId, prepared), {
+      timeout: TRANSACTION_TIMEOUT_MS,
+    });
+    // ЕН вказано при створенні → запускаємо опитування статусу доставки (offline-safe .catch усередині).
+    if (prepared.trackingNumber) await this.deliveryTracking.enqueueInitial(orgId, po.id);
+    return this.toDto(po);
+  }
+
+  /**
+   * Перевірки й розрахунки нового замовлення ДО транзакції: постачальник (BR-CP-001), склад,
+   * договір, товари рядків організації, номер (DocumentNumberService відкриває власну транзакцію),
+   * ПДВ рядків, курс. Записує результат `createInTx`.
+   */
+  async prepareCreate(orgId: string, dto: CreatePurchaseOrderDto): Promise<PreparedPurchaseOrder> {
     // sto-optimize: tier-merger Promise.all — supplier+warehouse guards паралельні з
     // contract resolution. Раніше contract auto-pick/validate йшов sequential ПІСЛЯ Promise.all,
     // додаючи 1 RTT навіть коли FK guards проходили миттєво. Auto-pick предикат
@@ -338,62 +387,47 @@ export class PurchaseOrdersService {
         )
       : { rateUsed: 1, amountBase: totalAmount };
 
-    const po = await this.prisma.$transaction(
-      async tx => {
-        const created = await tx.purchaseOrder.create({
-          data: {
-            orgId,
-            supplierId: dto.supplierId,
-            warehouseId: dto.warehouseId,
-            contractId,
-            number,
-            notes: dto.notes,
-            totalAmount,
-            totalVat,
-            currencyId,
-            totalAmountBase: conv.amountBase,
-            rateUsed: conv.rateUsed,
-            documentDate,
-            paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null,
-            // Доставка: якщо ЕН вказано при створенні — статус PENDING, далі опитуємо НП.
-            ...this.trackingFields(createTracking),
-          },
-        });
-        if (computedLines.length) {
-          await tx.purchaseOrderLine.createMany({
-            data: computedLines.map(l => ({
-              orgId,
-              purchaseOrderId: created.id,
-              goodId: l.goodId,
-              quantity: l.quantity,
-              price: l.price,
-              vatRate: l.vatRate,
-              vatAmount: l.vatAmount,
-            })),
-          });
-        }
-        return tx.purchaseOrder.findFirstOrThrow({
-          where: { id: created.id, orgId, deletedAt: null },
-          include: {
-            supplier: { select: { firstName: true, lastName: true, companyName: true } },
-            warehouse: { select: { name: true } },
-            contract: { select: { id: true, number: true } },
-            currency: { select: { code: true } },
-            lines: {
-              where: { deletedAt: null },
-              take: 1000,
-              include: { good: PO_LINE_GOOD_INCLUDE },
-            },
-          },
-        });
+    return {
+      data: {
+        orgId,
+        supplierId: dto.supplierId,
+        warehouseId: dto.warehouseId,
+        contractId,
+        number,
+        notes: dto.notes,
+        totalAmount,
+        totalVat,
+        currencyId,
+        totalAmountBase: conv.amountBase,
+        rateUsed: conv.rateUsed,
+        documentDate,
+        paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null,
+        // Доставка: якщо ЕН вказано при створенні — статус PENDING, далі опитуємо НП.
+        ...this.trackingFields(createTracking),
       },
-      { timeout: TRANSACTION_TIMEOUT_MS },
-    );
+      lines: computedLines.map(l => ({
+        goodId: l.goodId,
+        quantity: l.quantity,
+        price: l.price,
+        vatRate: l.vatRate,
+        vatAmount: l.vatAmount,
+      })),
+      trackingNumber: createTracking,
+    };
+  }
 
-    // ЕН вказано при створенні → запускаємо опитування статусу доставки (offline-safe .catch усередині).
-    if (createTracking) await this.deliveryTracking.enqueueInitial(orgId, po.id);
-
-    return this.toDto(po);
+  /** Запис підготовленого замовлення (`prepareCreate`) у транзакції виклику. */
+  async createInTx(tx: Prisma.TransactionClient, orgId: string, prepared: PreparedPurchaseOrder) {
+    const created = await tx.purchaseOrder.create({ data: prepared.data });
+    if (prepared.lines.length) {
+      await tx.purchaseOrderLine.createMany({
+        data: prepared.lines.map(l => ({ orgId, purchaseOrderId: created.id, ...l })),
+      });
+    }
+    return tx.purchaseOrder.findFirstOrThrow({
+      where: { id: created.id, orgId, deletedAt: null },
+      include: PO_WRITE_INCLUDE,
+    });
   }
 
   async update(
@@ -556,6 +590,8 @@ export class PurchaseOrdersService {
               })),
             });
           }
+          // BR-PL-009: рядки чернетки переписано — позиції списків купівлі звіряються за товаром.
+          await this.purchaseLists.reconcileDraftOrder(tx, orgId, id);
         }
         return tx.purchaseOrder.update({
           where: { id, orgId },
@@ -615,6 +651,10 @@ export class PurchaseOrdersService {
         assertFsmTransition(PO_TRANSITIONS, po.status, newStatus);
 
         await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
+        // BR-PL-010: скасоване замовлення повертає неотримане в позиції списків купівлі.
+        if (newStatus === PurchaseOrderStatus.CANCELLED) {
+          await this.purchaseLists.onOrderCancelledOrDeleted(tx, orgId, id);
+        }
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
@@ -756,6 +796,15 @@ export class PurchaseOrdersService {
           );
         }
 
+        // КРОК 0 — BR-PL-011: наряди, під які резервуватиметься отримане, блокуються ДО змін
+        // залишку — порядок блокувань «наряд → склад», як у переходах наряду.
+        await this.purchaseListReceipt.lockCandidateWorkOrders(
+          tx,
+          orgId,
+          id,
+          activeLines.map(({ line }) => line.goodId),
+        );
+
         // КРОК 1 — CAS-оновлення рядків ПЕРШИМ (до руху залишків/боргу). updateMany where
         // receivedQty=<очікуване> — конкурентний дубль уже змінив receivedQty → count=0 → throw
         // → rollback ДО createMovement/SUPPLIER_CHARGE (жодного подвоєння). Послідовно, щоб при
@@ -802,12 +851,27 @@ export class PurchaseOrdersService {
                 price: Number(line.price),
                 documentType: 'PurchaseOrder',
                 documentId: id,
+                // BR-PO-009: партія прив'язана до рядка замовлення.
+                purchaseOrderLineId: line.id,
                 createdBy: userId,
                 unitOfMeasureId: resolvedUomId,
               },
               tx,
             );
           }),
+        );
+
+        // BR-PL-011: отримане розподіляється між позиціями списків купівлі й резервується під
+        // їхні наряди — після RECEIPT (залишок уже на складі) і до боргу постачальнику.
+        await this.purchaseListReceipt.allocateOnReceipt(
+          tx,
+          orgId,
+          { id, warehouseId: po.warehouseId },
+          activeLines.map(({ recv, line }) => ({
+            goodId: line.goodId,
+            quantity: recv.receivedQty,
+          })),
+          userId,
         );
 
         if (receivedAmount > 0) {
@@ -860,6 +924,10 @@ export class PurchaseOrdersService {
             ...(shouldSetPaymentDate ? { paymentDate: addDaysKyiv(kyivToday(), defer) } : {}),
           },
         });
+        // BR-PL-012: замовлення прийнято повністю — недоотримане за позиціями повертається в OPEN.
+        if (newStatus === PurchaseOrderStatus.RECEIVED) {
+          await this.purchaseLists.onOrderFullyReceived(tx, orgId, id);
+        }
       },
       { timeout: 30_000 }, // large PO (hundreds of lines) × createMovement with batch tracking
     );
@@ -877,11 +945,23 @@ export class PurchaseOrdersService {
       throw new BadRequestException(
         translateError('err.purchaseOrder.onlyDraftDeletable', getLocale()),
       );
-    // Race-safe updateMany з повним compound where (id+orgId+deletedAt:null).
-    await this.prisma.purchaseOrder.updateMany({
-      where: { id, orgId, deletedAt: null },
-      data: { deletedAt: new Date() },
-    });
+    // Race-safe updateMany з повним compound where (id+orgId+deletedAt:null) і статусом DRAFT.
+    // BR-PL-010: у тій самій транзакції позиції списків купівлі повертаються в OPEN.
+    await this.prisma.$transaction(
+      async tx => {
+        const res = await tx.purchaseOrder.updateMany({
+          where: { id, orgId, deletedAt: null, status: PurchaseOrderStatus.DRAFT },
+          data: { deletedAt: new Date() },
+        });
+        if (res.count === 0) {
+          throw new BadRequestException(
+            translateError('err.purchaseOrder.onlyDraftDeletable', getLocale()),
+          );
+        }
+        await this.purchaseLists.onOrderCancelledOrDeleted(tx, orgId, id);
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
   }
 
   async applyPricing(

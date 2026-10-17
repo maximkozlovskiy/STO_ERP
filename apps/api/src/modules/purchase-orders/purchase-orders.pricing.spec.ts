@@ -20,7 +20,7 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
-import { exchangeRatesProvider } from './purchase-orders.spec-fixture';
+import { exchangeRatesProvider, purchaseListProviders } from './purchase-orders.spec-fixture';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { ApplyPricingDto } from './purchase-orders.dto';
@@ -103,6 +103,7 @@ describe('PurchaseOrdersService.applyPricing', () => {
           useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
         },
         exchangeRatesProvider(),
+        ...purchaseListProviders(),
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);

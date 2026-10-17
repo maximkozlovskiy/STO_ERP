@@ -12,6 +12,7 @@ import { PurchaseListItemsController } from './purchase-list-items.controller';
 import { PurchaseListsService } from './purchase-lists.service';
 import { PurchaseListItemsService } from './purchase-list-items.service';
 import { PurchaseShortageService } from './purchase-shortage.service';
+import { PurchaseListOrdersService } from './purchase-list-orders.service';
 
 /**
  * HTTP-контракт списків купівлі: ролі (BR-PL-015) — справжній RolesGuard, тіла — zod-схеми
@@ -46,6 +47,7 @@ const items = {
   releaseReservation: vi.fn().mockResolvedValue({ released: 1, item: {} }),
 };
 const shortage = { shortage: vi.fn().mockResolvedValue({ items: [], truncated: false }) };
+const orders = { createOrders: vi.fn().mockResolvedValue({ orders: [] }) };
 
 let role = 'OWNER';
 const jwt = {
@@ -65,6 +67,7 @@ describe('PurchaseLists — HTTP-контракт', () => {
         { provide: PurchaseListsService, useValue: lists },
         { provide: PurchaseListItemsService, useValue: items },
         { provide: PurchaseShortageService, useValue: shortage },
+        { provide: PurchaseListOrdersService, useValue: orders },
         IdempotencyInterceptor,
         { provide: PrismaService, useValue: { idempotencyKey: { create: vi.fn() } } },
       ],
@@ -114,6 +117,7 @@ describe('PurchaseLists — HTTP-контракт', () => {
     ['PATCH', `/purchase-lists/${ID}`, { name: 'x' }],
     ['POST', `/purchase-lists/${ID}/items`, { goodId: ID, warehouseId: ID2, quantity: 1 }],
     ['POST', '/purchase-lists/merge', { targetListId: ID, sourceListIds: [ID2] }],
+    ['POST', '/purchase-lists/create-orders', { itemIds: [ID] }],
     ['POST', `/purchase-lists/${ID}/close`, undefined],
     ['POST', `/purchase-lists/${ID}/cancel`, undefined],
     ['DELETE', `/purchase-lists/${ID}`, undefined],

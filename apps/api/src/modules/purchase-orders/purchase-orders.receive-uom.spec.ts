@@ -20,7 +20,7 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
-import { exchangeRatesProvider } from './purchase-orders.spec-fixture';
+import { exchangeRatesProvider, purchaseListProviders } from './purchase-orders.spec-fixture';
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 
 describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug #239)', () => {
@@ -89,6 +89,7 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
           useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
         },
         exchangeRatesProvider(),
+        ...purchaseListProviders(),
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);

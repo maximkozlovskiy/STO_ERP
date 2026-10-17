@@ -29,6 +29,8 @@ import { PurchaseListReceiptService } from './purchase-list-receipt.service';
 import { PurchaseShortageService } from './purchase-shortage.service';
 import { PurchaseListsService } from './purchase-lists.service';
 import { PurchaseListItemsService } from './purchase-list-items.service';
+import { PurchaseListOrdersService } from './purchase-list-orders.service';
+import { PurchaseOrdersService } from '../purchase-orders/purchase-orders.service';
 
 export * from '../work-orders/work-order-stock.spec-fixture';
 
@@ -107,8 +109,35 @@ export function procurementHarness(opts: ProcurementOptions = {}) {
     g.unit = 'шт';
     g.preferredSupplierId = g.id === GOOD ? SUPPLIER : null;
   }
-  db.addTable('purchaseOrder', opts.purchaseOrders ?? []);
-  db.addTable('purchaseOrderLine', opts.purchaseOrderLines ?? []);
+  db.addTable('counterpartyContract');
+  db.addTable(
+    'purchaseOrderLine',
+    opts.purchaseOrderLines ?? [],
+    () => ({ createdAt: tick(), deletedAt: null, receivedQty: 0, unitOfMeasureId: null }),
+    { good: r => byId('good', r.goodId) },
+  );
+  db.addTable(
+    'purchaseOrder',
+    opts.purchaseOrders ?? [],
+    () => ({
+      createdAt: tick(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      status: 'DRAFT',
+      paidAmount: 0,
+      paymentDate: null,
+      contractId: null,
+      notes: null,
+    }),
+    {
+      supplier: r => byId('counterparty', r.supplierId),
+      warehouse: r => byId('warehouse', r.warehouseId),
+      contract: () => null,
+      currency: () => null,
+      lines: r =>
+        t.purchaseOrderLine.rows.filter(l => l.purchaseOrderId === r.id && l.deletedAt === null),
+    },
+  );
   db.addTable(
     'purchaseList',
     opts.lists ?? [listRow('list-1')],
@@ -174,6 +203,32 @@ export function procurementHarness(opts: ProcurementOptions = {}) {
   };
   const lists = new PurchaseListsService(prisma, docNumbers as never, shortage);
   const items = new PurchaseListItemsService(prisma, docNumbers as never, inventory, shortage);
+  let poSeq = 0;
+  const poNumbers = {
+    next: vi.fn(() => {
+      poSeq += 1;
+      return Promise.resolve(`ЗП-2026-${String(poSeq).padStart(6, '0')}`);
+    }),
+  };
+  const supplierSettlements = { createTransaction: vi.fn().mockResolvedValue({}) };
+  const purchaseOrders = new PurchaseOrdersService(
+    prisma,
+    inventory,
+    supplierSettlements as never,
+    poNumbers as never,
+    null as never, // pricingService — розцінка тут не задіяна
+    { getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }) } as never,
+    { enqueueInitial: vi.fn().mockResolvedValue(undefined) } as never,
+    {
+      requireBaseCurrencyId: vi.fn().mockResolvedValue('cur-uah'),
+      resolveBaseConversion: vi.fn((_o: string, _c: string, _d: Date, amount: number) =>
+        Promise.resolve({ rateUsed: 1, amountBase: amount }),
+      ),
+    } as never,
+    links,
+    receipt,
+  );
+  const orders = new PurchaseListOrdersService(prisma, purchaseOrders);
   const settlements = { createTransaction: vi.fn().mockResolvedValue({}) };
   const stockEffects = new WorkOrderStockEffectsService(
     prisma,
@@ -238,6 +293,10 @@ export function procurementHarness(opts: ProcurementOptions = {}) {
     settlements,
     stockEffects,
     workOrders,
+    purchaseOrders,
+    orders,
+    poNumbers,
+    supplierSettlements,
     item,
     liveItems,
     list,

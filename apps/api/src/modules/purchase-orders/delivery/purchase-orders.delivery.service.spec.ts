@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { PurchaseOrderStatus } from '@prisma/client';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { PurchaseOrdersService } from '../purchase-orders.service';
+import { purchaseListProviders } from '../purchase-orders.spec-fixture';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { InventoryService } from '../../inventory/inventory.service';
 import { SettlementsService } from '../../settlements/settlements.service';
@@ -107,6 +108,7 @@ describe('PurchaseOrdersService — delivery tracking enqueue-on-ttn', () => {
           },
         },
         { provide: DeliveryTrackingService, useValue: { enqueueInitial } },
+        ...purchaseListProviders(),
         {
           provide: ExchangeRatesService,
           useValue: {

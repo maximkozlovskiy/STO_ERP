@@ -20,6 +20,8 @@
  */
 import { vi } from 'vitest';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { PurchaseListLinkService } from '../purchase-lists/purchase-list-link.service';
+import { PurchaseListReceiptService } from '../purchase-lists/purchase-list-receipt.service';
 
 /**
  * Мультивалюта (Фаза 3): PurchaseOrdersService набув ExchangeRatesService.
@@ -40,3 +42,25 @@ export const exchangeRatesProvider = () => ({
     requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
   },
 });
+
+/**
+ * BR-PO-009/010: хуки позицій списків купівлі й розподіл отриманого — заглушки (ці спеки не про
+ * списки; їх стережуть спеки purchase-lists/*). Factory: новий набір `vi.fn()` на кожен виклик.
+ */
+export const purchaseListProviders = () => [
+  {
+    provide: PurchaseListLinkService,
+    useValue: {
+      reconcileDraftOrder: vi.fn().mockResolvedValue(undefined),
+      onOrderCancelledOrDeleted: vi.fn().mockResolvedValue(undefined),
+      onOrderFullyReceived: vi.fn().mockResolvedValue(undefined),
+    },
+  },
+  {
+    provide: PurchaseListReceiptService,
+    useValue: {
+      lockCandidateWorkOrders: vi.fn().mockResolvedValue(undefined),
+      allocateOnReceipt: vi.fn().mockResolvedValue(undefined),
+    },
+  },
+];
