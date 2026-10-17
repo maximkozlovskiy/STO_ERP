@@ -41,6 +41,8 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { LinkedCountsDto } from '../purchase-orders/purchase-orders.dto';
 import { PurchaseListsService } from './purchase-lists.service';
 import { PurchaseListOrdersService } from './purchase-list-orders.service';
@@ -93,8 +95,10 @@ export class PurchaseListsController {
     @OrgContext() orgId: string,
     @Body(new ZodValidationPipe(purchaseListFromWorkOrderSchema))
     dto: PurchaseListFromWorkOrderValues,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.fromWorkOrder(orgId, dto);
+    // §2.1: очікувану ціну позицій бачать лише ролі із закупівельною ціною (maskItemCost).
+    return this.service.fromWorkOrder(orgId, dto, user.role);
   }
 
   @Post('merge')
@@ -105,8 +109,9 @@ export class PurchaseListsController {
   merge(
     @OrgContext() orgId: string,
     @Body(new ZodValidationPipe(purchaseListMergeSchema)) dto: PurchaseListMergeValues,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.merge(orgId, dto);
+    return this.service.merge(orgId, dto, user.role);
   }
 
   @Post('create-orders')
@@ -174,8 +179,12 @@ export class PurchaseListsController {
   @Roles(...PL_READ_ROLES)
   @ApiOperation({ summary: 'Список купівлі з позиціями' })
   @ApiOkResponse({ type: PurchaseListDetailDto })
-  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findOne(orgId, id);
+  findOne(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.findOne(orgId, id, user.role);
   }
 
   @Patch(':id')

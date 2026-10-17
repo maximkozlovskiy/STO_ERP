@@ -60,6 +60,26 @@ export function toItemDto(i: ItemWithRelations): PurchaseListItemResponseDto {
   };
 }
 
+/**
+ * §2.1: очікувана ціна позиції — закупівельна ціна, фінансово чутливе поле. Бачать її ті самі ролі,
+ * що й `Good.purchasePrice` (goods.service), — приймальня й механік, яким відкрито перегляд позицій
+ * (BR-PL-015), отримують `null`. Невідома роль — теж `null` (fail-closed).
+ */
+const COST_VISIBLE_ROLES: ReadonlySet<string> = new Set([
+  'OWNER',
+  'ADMIN',
+  'STOREKEEPER',
+  'ACCOUNTANT',
+]);
+
+export function maskItemCost(
+  items: PurchaseListItemResponseDto[],
+  role: string | undefined,
+): PurchaseListItemResponseDto[] {
+  if (role && COST_VISIBLE_ROLES.has(role)) return items;
+  return items.map(i => (i.expectedPrice === null ? i : { ...i, expectedPrice: null }));
+}
+
 /** Лічильники позицій списку за статусами (з `groupBy`). */
 export interface ListCounts {
   open: number;

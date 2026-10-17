@@ -21,7 +21,7 @@ import {
 } from '../work-orders/work-order-stock-requirements';
 import { PurchaseShortageService } from './purchase-shortage.service';
 import { assertSupplier, conflict, err, loadItemDtos, loadList } from './purchase-lists.helpers';
-import { ITEM_INCLUDE, toItemDto } from './purchase-lists.mapper';
+import { ITEM_INCLUDE, maskItemCost, toItemDto } from './purchase-lists.mapper';
 import type {
   BulkResultDto,
   PaginatedPurchaseListItemsDto,
@@ -54,6 +54,7 @@ export class PurchaseListItemsService {
   async findAll(
     orgId: string,
     query: PurchaseListItemQueryDto,
+    role?: string,
   ): Promise<PaginatedPurchaseListItemsDto> {
     const where: Prisma.PurchaseListItemWhereInput = {
       orgId,
@@ -83,11 +84,20 @@ export class PurchaseListItemsService {
       }),
       this.prisma.purchaseListItem.count({ where }),
     ]);
-    return { items: rows.map(toItemDto), total, page: query.page, limit: take };
+    return {
+      items: maskItemCost(rows.map(toItemDto), role),
+      total,
+      page: query.page,
+      limit: take,
+    };
   }
 
   /** Позиції наряду (крім скасованих) і нестача кожного його рядка — для картки наряду. */
-  async byWorkOrder(orgId: string, workOrderId: string): Promise<WorkOrderProcurementDto> {
+  async byWorkOrder(
+    orgId: string,
+    workOrderId: string,
+    role?: string,
+  ): Promise<WorkOrderProcurementDto> {
     const wo = await this.prisma.workOrder.findFirst({
       where: { id: workOrderId, orgId, deletedAt: null },
       select: { id: true },
@@ -103,7 +113,7 @@ export class PurchaseListItemsService {
       this.shortage.uncoveredByPart(this.prisma, orgId, workOrderId),
     ]);
     return {
-      items: rows.map(toItemDto),
+      items: maskItemCost(rows.map(toItemDto), role),
       shortage: Array.from(uncovered, ([workOrderPartId, shortage]) => ({
         workOrderPartId,
         shortage,

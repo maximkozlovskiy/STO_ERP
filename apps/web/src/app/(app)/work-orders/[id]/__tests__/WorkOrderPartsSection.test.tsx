@@ -59,6 +59,7 @@ vi.mock('@/components/ui/WorkOrderAddPartModal', () => ({
 // Стан закупівлі рядків (списки купівлі) читає useQuery — тут не предмет тесту.
 vi.mock('@/components/ui/purchase-list/WorkOrderProcurement', () => ({
   useWorkOrderProcurementState: () => undefined,
+  useInvalidateProcurement: () => () => undefined,
   SendToListButton: () => null,
 }));
 

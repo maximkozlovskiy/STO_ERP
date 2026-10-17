@@ -54,6 +54,31 @@ describe('BR-PL-003 надсилання товарів із наряду', () =
   });
 
   // guards: BR-PL-003
+  it('рядок, повторений у тілі, не бере непокриту потребу вдруге → 400, нічого не записано', async () => {
+    const h = harness();
+
+    await expect(send(h, [{ workOrderPartId: 'p1' }, { workOrderPartId: 'p1' }])).rejects.toThrow(
+      /покрит/i,
+    );
+    expect(h.liveItems()).toHaveLength(0);
+  });
+
+  // guards: BR-PL-015 (§2.1: очікувана ціна — закупівельна)
+  it('приймальня не бачить очікуваної ціни позицій у відповіді; комірник бачить', async () => {
+    const h = harness();
+    const res = await send(h, [{ workOrderPartId: 'p1' }]);
+    await h.items.update(ORG, res.items[0].id, { expectedPrice: 40 } as never);
+
+    const asReception = await h.lists.findOne(ORG, res.list.id, 'RECEPTIONIST');
+    const asMechanic = await h.items.byWorkOrder(ORG, WO_A, 'MECHANIC');
+    const asStorekeeper = await h.lists.findOne(ORG, res.list.id, 'STOREKEEPER');
+
+    expect(asReception.items[0].expectedPrice).toBeNull();
+    expect(asMechanic.items[0].expectedPrice).toBeNull();
+    expect(asStorekeeper.items[0].expectedPrice).toBe(40);
+  });
+
+  // guards: BR-PL-003
   it('повторне надсилання: покрито → 400; явна кількість збільшує ту саму OPEN-позицію', async () => {
     const h = harness();
     const first = await send(h, [{ workOrderPartId: 'p1' }]);

@@ -13,6 +13,7 @@ import { WorkOrderAddPartModal } from '@/components/ui/WorkOrderAddPartModal';
 import { ProcurementBadge } from '@/components/ui/purchase-list/ProcurementBadge';
 import {
   SendToListButton,
+  useInvalidateProcurement,
   useWorkOrderProcurementState,
 } from '@/components/ui/purchase-list/WorkOrderProcurement';
 
@@ -73,6 +74,12 @@ export function WorkOrderPartsSection({
   const { confirm, dialogProps } = useConfirm();
   const [partModal, setPartModal] = useState(false);
   const [deletingPartId, setDeletingPartId] = useState<string | null>(null);
+  // Товари наряду змінились — стан закупівлі (нестача рядків, позиції списків) перечитується.
+  const invalidateProcurement = useInvalidateProcurement();
+  const partsChanged = () => {
+    invalidateProcurement();
+    onChanged();
+  };
 
   const removePart = async (partId: string) => {
     if (!(await confirm({ title: t('parts.confirmDelete'), variant: 'destructive' }))) return;
@@ -81,7 +88,7 @@ export function WorkOrderPartsSection({
     try {
       await apiFetch<void>(`/work-orders/${woId}/parts/${partId}`, { method: 'DELETE' });
       if (features.toastEnabled) toast.success(t('parts.deletedToast'));
-      onChanged();
+      partsChanged();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('parts.deleteError');
       onError?.(msg);
@@ -118,7 +125,7 @@ export function WorkOrderPartsSection({
                 <XlsxImportButton
                   templateType="wo-parts"
                   importUrl={`/xlsx/import/work-order-parts/${woId}`}
-                  onImportComplete={onChanged}
+                  onImportComplete={partsChanged}
                 />
                 <button
                   type="button"
@@ -183,7 +190,7 @@ export function WorkOrderPartsSection({
         warehouses={warehouses}
         initialWarehouseId={initialWarehouseId ?? ''}
         onClose={() => setPartModal(false)}
-        onAdded={onChanged}
+        onAdded={partsChanged}
       />
       <ConfirmDialog {...dialogProps} />
     </>

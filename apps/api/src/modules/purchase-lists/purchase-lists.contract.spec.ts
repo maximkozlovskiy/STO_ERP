@@ -166,6 +166,8 @@ describe('PurchaseLists — HTTP-контракт', () => {
     expect(items.findAll).toHaveBeenCalledWith(
       'org-1',
       expect.objectContaining({ supplierId: 'none', status: 'OPEN' }),
+      // §2.1: роль доходить до сервісу — очікувану ціну маскує maskItemCost.
+      'OWNER',
     );
   });
 });

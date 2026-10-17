@@ -449,6 +449,8 @@ export class PurchaseOrdersService {
         // Мультивалюта (Фаза 3): валюта + дата для перерахунку base при зміні тоталу.
         currencyId: true,
         documentDate: true,
+        // BR-PL-009: зміна складу чернетки відв'язує позиції списків купівлі іншого складу.
+        warehouseId: true,
       },
     });
     if (!po) throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
@@ -590,8 +592,18 @@ export class PurchaseOrdersService {
               })),
             });
           }
-          // BR-PL-009: рядки чернетки переписано — позиції списків купівлі звіряються за товаром.
-          await this.purchaseLists.reconcileDraftOrder(tx, orgId, id);
+        }
+        // BR-PL-009: рядки чернетки переписано чи змінено склад — позиції списків купівлі
+        // звіряються за товаром і складом. До запису самого замовлення: порядок блокувань
+        // «позиції → замовлення» той самий, що в прийманні, скасуванні й видаленні.
+        const warehouseChanged = !!dto.warehouseId && dto.warehouseId !== po.warehouseId;
+        if (computedLines !== undefined || warehouseChanged) {
+          await this.purchaseLists.reconcileDraftOrder(
+            tx,
+            orgId,
+            id,
+            dto.warehouseId ?? po.warehouseId ?? undefined,
+          );
         }
         return tx.purchaseOrder.update({
           where: { id, orgId },
@@ -650,11 +662,13 @@ export class PurchaseOrdersService {
 
         assertFsmTransition(PO_TRANSITIONS, po.status, newStatus);
 
-        await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
-        // BR-PL-010: скасоване замовлення повертає неотримане в позиції списків купівлі.
+        // BR-PL-010: скасоване замовлення повертає неотримане в позиції списків купівлі. Позиції —
+        // ДО рядка замовлення: приймання блокує позиції (розподіл) раніше за замовлення (статус),
+        // і зворотний порядок тут давав би deadlock паралельних «Прийняти» і «Скасувати».
         if (newStatus === PurchaseOrderStatus.CANCELLED) {
           await this.purchaseLists.onOrderCancelledOrDeleted(tx, orgId, id);
         }
+        await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
@@ -949,6 +963,9 @@ export class PurchaseOrdersService {
     // BR-PL-010: у тій самій транзакції позиції списків купівлі повертаються в OPEN.
     await this.prisma.$transaction(
       async tx => {
+        // Позиції — до рядка замовлення (порядок блокувань той самий, що в update і transition);
+        // замовлення вже не DRAFT → CAS нижче кидає, і повернення позицій відкочується.
+        await this.purchaseLists.onOrderCancelledOrDeleted(tx, orgId, id);
         const res = await tx.purchaseOrder.updateMany({
           where: { id, orgId, deletedAt: null, status: PurchaseOrderStatus.DRAFT },
           data: { deletedAt: new Date() },
@@ -958,7 +975,6 @@ export class PurchaseOrdersService {
             translateError('err.purchaseOrder.onlyDraftDeletable', getLocale()),
           );
         }
-        await this.purchaseLists.onOrderCancelledOrDeleted(tx, orgId, id);
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );

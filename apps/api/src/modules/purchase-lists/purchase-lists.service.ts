@@ -25,7 +25,13 @@ import {
   loadList,
   loadListDto,
 } from './purchase-lists.helpers';
-import { ITEM_INCLUDE, LIST_INCLUDE, toItemDto, toListDto } from './purchase-lists.mapper';
+import {
+  ITEM_INCLUDE,
+  LIST_INCLUDE,
+  maskItemCost,
+  toItemDto,
+  toListDto,
+} from './purchase-lists.mapper';
 import type {
   FromWorkOrderResultDto,
   PaginatedPurchaseListsDto,
@@ -83,7 +89,7 @@ export class PurchaseListsService {
     };
   }
 
-  async findOne(orgId: string, id: string): Promise<PurchaseListDetailDto> {
+  async findOne(orgId: string, id: string, role?: string): Promise<PurchaseListDetailDto> {
     const [list, items] = await Promise.all([
       loadListDto(this.prisma, orgId, id),
       this.prisma.purchaseListItem.findMany({
@@ -93,7 +99,7 @@ export class PurchaseListsService {
         take: 1000,
       }),
     ]);
-    return { ...list, items: items.map(toItemDto) };
+    return { ...list, items: maskItemCost(items.map(toItemDto), role) };
   }
 
   /** BR-PL-001: номер береться ДО транзакції (пропуск номера при відмові допустимий). */
@@ -180,6 +186,7 @@ export class PurchaseListsService {
   async fromWorkOrder(
     orgId: string,
     dto: PurchaseListFromWorkOrderValues,
+    role?: string,
   ): Promise<FromWorkOrderResultDto> {
     const wo = await this.prisma.workOrder.findFirst({
       where: { id: dto.workOrderId, orgId, deletedAt: null },
@@ -238,6 +245,9 @@ export class PurchaseListsService {
             );
           }
           itemIds.push(await this.addOrIncrement(tx, orgId, listId, part, quantity));
+          // Рядок, повторений у тілі, не бере ту саму непокриту потребу вдруге: позиція вже
+          // покриває надіслане, тож повтор без кількості дає partAlreadyCovered.
+          uncovered.set(part.id, Math.max(0, (uncovered.get(part.id) ?? 0) - quantity));
         }
         return { listId, itemIds };
       },
@@ -247,7 +257,7 @@ export class PurchaseListsService {
       loadListDto(this.prisma, orgId, result.listId),
       loadItemDtos(this.prisma, orgId, Array.from(new Set(result.itemIds))),
     ]);
-    return { list, items };
+    return { list, items: maskItemCost(items, role) };
   }
 
   private async addOrIncrement(
@@ -303,7 +313,11 @@ export class PurchaseListsService {
    * BR-PL-006: ціль і джерела — OPEN; усі невидалені позиції джерел переходять у ціль; джерела →
    * CLOSED з mergedIntoId і closedAt. Склади позицій не обмежуються.
    */
-  async merge(orgId: string, dto: PurchaseListMergeValues): Promise<PurchaseListDetailDto> {
+  async merge(
+    orgId: string,
+    dto: PurchaseListMergeValues,
+    role?: string,
+  ): Promise<PurchaseListDetailDto> {
     const sources = Array.from(new Set(dto.sourceListIds));
     if (sources.includes(dto.targetListId)) {
       throw new BadRequestException(err('err.purchaseList.mergeIntoItself'));
@@ -339,7 +353,7 @@ export class PurchaseListsService {
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
-    return this.findOne(orgId, dto.targetListId);
+    return this.findOne(orgId, dto.targetListId, role);
   }
 
   /** Закрити список вручну (OPEN → CLOSED); позиції лишаються як є. */

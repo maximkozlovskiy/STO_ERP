@@ -1454,6 +1454,8 @@ export function CreateWorkOrderModal({
       postedLineKeysRef.current = new Set();
       postedPartKeysRef.current = new Set();
       dirty.resetDirty();
+      // Товари наряду могли змінитись — стан закупівлі (нестача, позиції списків) перечитується.
+      void queryClient.invalidateQueries({ queryKey: purchaseListsKeys.all });
       onUpdated?.();
       onClose();
     } catch (e: unknown) {

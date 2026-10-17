@@ -30,6 +30,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { PurchaseListItemsService } from './purchase-list-items.service';
 import { PurchaseShortageService } from './purchase-shortage.service';
 import { PL_READ_ROLES, PL_WRITE_ROLES } from './purchase-lists.helpers';
@@ -71,16 +72,22 @@ export class PurchaseListItemsController {
   byWorkOrder(
     @OrgContext() orgId: string,
     @Param('workOrderId', ParseUUIDPipe) workOrderId: string,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.byWorkOrder(orgId, workOrderId);
+    // §2.1: механік і приймальня не бачать очікуваної (закупівельної) ціни — maskItemCost.
+    return this.service.byWorkOrder(orgId, workOrderId, user.role);
   }
 
   @Get()
   @Roles(...PL_READ_ROLES)
   @ApiOperation({ summary: 'Позиції списків купівлі' })
   @ApiOkResponse({ type: PaginatedPurchaseListItemsDto })
-  findAll(@OrgContext() orgId: string, @Query() query: PurchaseListItemQueryDto) {
-    return this.service.findAll(orgId, query);
+  findAll(
+    @OrgContext() orgId: string,
+    @Query() query: PurchaseListItemQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.findAll(orgId, query, user.role);
   }
 
   @Post('move')

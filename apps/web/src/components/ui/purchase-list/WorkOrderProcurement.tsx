@@ -1,12 +1,17 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { ListPlus } from 'lucide-react';
 import { WO_PROCUREMENT_ACTIVE_STATUSES } from '@sto/shared';
 import { useAuth } from '@/lib/auth';
 import { toast } from '@/lib/toast';
-import { useWorkOrderProcurement, type PurchaseListItem } from '@/hooks/api/usePurchaseLists';
+import {
+  purchaseListsKeys,
+  useWorkOrderProcurement,
+  type PurchaseListItem,
+} from '@/hooks/api/usePurchaseLists';
 import { AddToListDialog, type AddToListRow } from './AddToListDialog';
 
 /** Позиції наряду в картці бачать ці ролі (BR-PL-015: + механік). */
@@ -43,6 +48,18 @@ export function useWorkOrderProcurementState(
     const shortageByPart = new Map(data.shortage.map(s => [s.workOrderPartId, s.shortage]));
     return { itemsByPart, shortageByPart };
   }, [data]);
+}
+
+/**
+ * Скидає стан закупівлі після зміни товарів наряду (додано, змінено, видалено, імпорт): новий рядок
+ * інакше не має нестачі в закешованій відповіді, і «До списку купівлі» каже «нестачі немає», а
+ * менша кількість урізає позиції списків (BR-PL-013) — бейдж показував би старі.
+ */
+export function useInvalidateProcurement(): () => void {
+  const qc = useQueryClient();
+  return useCallback(() => {
+    void qc.invalidateQueries({ queryKey: purchaseListsKeys.all });
+  }, [qc]);
 }
 
 interface SendToListButtonProps {

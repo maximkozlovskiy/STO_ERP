@@ -5,6 +5,7 @@ import {
   ORG,
   SUPPLIER,
   WH,
+  WH_2,
   WO_A,
   WO_B,
   itemRow,
@@ -106,6 +107,19 @@ describe('BR-PL-009 звірка чернетки, коли рядки пере�
         workOrderPartId: 'pa',
       }),
     ]);
+  });
+});
+
+describe('BR-PL-009 звірка чернетки, коли змінено склад', () => {
+  // guards: BR-PL-009
+  it('склад чернетки змінено → позиції іншого складу повертаються в OPEN без замовлення', async () => {
+    const h = harness('DRAFT', [line('l1', GOOD, 2)], [itemRow('i1', ordered({ quantity: 2 }))]);
+
+    await h.purchaseOrders.update(ORG, PO, { warehouseId: WH_2 } as never);
+
+    // Приймання розподіляє лише між позиціями складу замовлення (BR-PL-011) — позиція WH
+    // інакше лишилась би ORDERED назавжди, а резерв під наряд не з'явився б.
+    expect(h.item('i1')).toMatchObject({ status: 'OPEN', purchaseOrderId: null });
   });
 });
 

@@ -147,8 +147,9 @@ export class WorkOrderStockEffectsService {
     const db = tx ?? this.prisma;
     const net = await netReservedByWorkOrder(db, orgId, workOrderId);
     await this.releaseExcess(orgId, workOrderId, net, new Map(), userId, db);
-    // BR-PL-013: наряд скасовано чи видалено — його незамовлені позиції списків скасовуються.
-    await this.purchaseLists.onWorkOrderClosed(db, orgId, workOrderId);
+    // BR-PL-013: наряд скасовано чи видалено — його незамовлені позиції списків скасовуються,
+    // а `reservedQty` позицій обнуляється слідом за знятим резервом.
+    await this.purchaseLists.onWorkOrderClosed(db, orgId, workOrderId, { reserveReleased: true });
   }
 
   /**
