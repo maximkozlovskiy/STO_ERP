@@ -173,7 +173,10 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
       queryFn: ({ signal }) => apiFetch('/stock-items?limit=50', { signal }),
       staleTime: 30_000,
     }),
-  '/purchase-orders': qc => {
+  '/purchase-orders': (qc, role) => {
+    // Приймальня бачить на «Купівлі» лише «Управління купівлями» (BR-PL-015): GET /purchase-orders
+    // їй закритий — без цієї умови кожне наведення на пункт меню давало б 403 (клас Bug #879).
+    if (role === 'RECEPTIONIST') return;
     // shape МАЄ збігатися з purchase-orders/page.tsx first-mount.
     const today = kyivToday();
     void qc.prefetchQuery({

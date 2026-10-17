@@ -214,6 +214,8 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
             }}
             leftElement={<Search className="h-4 w-4" />}
             aria-label={t('filters.search')}
+            // Сервер приймає q до 100 символів (@MaxLength) — довший дав би 400.
+            maxLength={100}
           />
         </div>
         <div className="w-44">

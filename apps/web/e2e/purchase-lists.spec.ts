@@ -492,6 +492,8 @@ test.describe('Управління купівлями — від нестачі
     await expect(rows.first().getByRole('checkbox')).toHaveCount(0);
     await expect(rp.getByRole('button', { name: 'Зняти резерв' })).toHaveCount(0);
     await rp.screenshot({ path: test.info().outputPath('pl_e2e_reception_items.png') });
+    // Наведення на «Купівля» в меню не підтягує список замовлень, закритий приймальні (403).
+    await rp.getByRole('link', { name: 'Купівля' }).first().hover();
     await rp.waitForLoadState('networkidle');
     expect(forbidden, 'приймальня не отримує 403 на своїй вкладці').toEqual([]);
     await ctx.close();
