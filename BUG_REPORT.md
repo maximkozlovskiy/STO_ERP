@@ -2839,4 +2839,7 @@ RECEIVED 2/2 + ORDERED 3/0, F — ORDERED 3/0 (обидві з `purchaseOrderId`
 (`common.json` `positions_*`). Наживо: «Перенести 1 позицій»; «Обʼєднати {{count}} списки» дає
 «Обʼєднати 5 списки», «Скасувати {{count}} позицій?» — «Скасувати 1 позицій?».
 **Очікувана поведінка:** форми за числом (uk: позицію / позиції / позицій; en: item / items).
-**Статус:** [ ] відкритий
+**Статус:** [x] виправлено — `items.createOrdersConfirm`, `items.cancelConfirm`,
+`items.dialogs.supplierTitle`, `items.dialogs.moveTitle`, `lists.mergeTitle` — ключі
+`_one/_few/_many/_other` в uk і en. Тест: `i18n/purchaseLists.plural.test.ts` (6 кейсів); мутація —
+одна форма `moveTitle`: 3 failed.
