@@ -572,6 +572,12 @@ function PurchaseOrdersPageClient() {
   // (напр. з «Пов'язаних документів» чи з каси). Читаємо ОДНОРАЗОВО з URL,
   // очищуємо параметр щоб refresh не спамив модалку, і на mount якщо UUID валідний —
   // виставляємо editingPOId. Дзеркалить URL-driven pattern активної вкладки (line 134).
+  // Bug #889: ефект слідкує за САМИМИ параметрами `open`/`openReturn`, а не лише за монтуванням:
+  // «Управління купівлями» живе на цій же сторінці, і номер замовлення в позиції чи списку
+  // (`nav.toPurchaseOrder` → `?open=`) змінював URL без перемонтування — картка не відкривалась.
+  // Оброблений параметр одразу прибирається з URL, тож повторного відкриття немає.
+  const deepLinkOpen = searchParams.get('open');
+  const deepLinkOpenReturn = searchParams.get('openReturn');
   useEffect(() => {
     const { openPurchaseOrderId, openSupplierReturnId, srModalShouldOpen } =
       resolvePurchaseOrdersDeepLink(k => searchParams.get(k));
@@ -592,10 +598,10 @@ function PurchaseOrdersPageClient() {
       params.delete('openReturn');
       router.replace(params.toString() ? `?${params.toString()}` : '?', { scroll: false });
     }
-    // Свідомо без залежності від searchParams: ефект має спрацювати РАЗ при монтуванні
-    // (deep-link з зовнішньої сторінки). Наступні пуші тієї ж сторінки — не reopen.
+    // Без залежності від усього searchParams: зміна вкладки чи фільтра (інші параметри) не
+    // повторює deep-link — лише новий `open`/`openReturn` у URL.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [deepLinkOpen, deepLinkOpenReturn]);
 
   // Supplier returns — useListPage (columns, detail-panel, saved-filters)
   const {
