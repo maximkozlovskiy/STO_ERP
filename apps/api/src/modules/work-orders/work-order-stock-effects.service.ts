@@ -1,7 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { translateError } from '@sto/shared';
-import { safeCoeff } from '../../common/utils/math';
 import { moneyFromDecimal } from '../../common/utils/money';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -9,10 +8,11 @@ import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { postWorkOrderFxInTx } from './work-order-fx';
-
-/** Ключ резерв-мапи: резерв відстежується по парі (товар, склад) — один товар на двох складах
- *  резервується незалежно. */
-const stockKey = (goodId: string, warehouseId: string) => `${goodId}|${warehouseId}`;
+import {
+  fetchPartCoefficients,
+  netReservedByWorkOrder,
+  stockKey,
+} from './work-order-stock-requirements';
 
 /**
  * Bug #780: списує з нетто-резерву наряду не більше ніж `want`, повертає СКІЛЬКИ реально взято
@@ -47,6 +47,7 @@ function takeFromReserve(
  *
  * ⚠️ Уся логіка перенесена ДОСЛІВНО з WorkOrdersService (behavior-identical), окрім однієї виправленої
  * латентної помилки: fetchPartCoefficients тепер фільтрує GoodUoM за orgId (tenant-isolation).
+ * Потреба й net-резерв наряду — у work-order-stock-requirements.ts (спільні зі списками купівлі).
  */
 @Injectable()
 export class WorkOrderStockEffectsService {
@@ -90,7 +91,7 @@ export class WorkOrderStockEffectsService {
     });
     // Batch-fetch GoodUoM coefficients for qty conversion: qty_base = qty * coefficient
     // (coefficient = скільки БАЗОВИХ одиниць в одній альтернативній: «1 пакет = 12 шт» → 12).
-    const coeffMap = await this.fetchPartCoefficients(orgId, parts, db);
+    const coeffMap = await fetchPartCoefficients(db, orgId, parts);
 
     for (const part of parts) {
       const coeff = coeffMap[part.id] ?? 1;
@@ -121,13 +122,13 @@ export class WorkOrderStockEffectsService {
       where: { workOrderId, orgId, deletedAt: null },
       take: 1000,
     });
-    const coeffMap = await this.fetchPartCoefficients(orgId, parts, db);
+    const coeffMap = await fetchPartCoefficients(db, orgId, parts);
 
     // Bug #780: цей наряд міг НЕ резервувати (шлях APPROVED→ON_HOLD→CANCELLED: reserveParts
     // ставить резерв лише на APPROVED→IN_PROGRESS). Тоді безумовний RESERVATION_RELEASE(-q)
     // кидав би "cannotReleaseMoreThanReserved" → скасувати наряд неможливо; або звільняв би
     // чужий резерв. Звільняємо РІВНО свій нетто-резерв по (good,warehouse).
-    const reserveByStock = await this.netReservedByWorkOrder(orgId, workOrderId, db);
+    const reserveByStock = await netReservedByWorkOrder(db, orgId, workOrderId);
 
     for (const part of parts) {
       const coeff = coeffMap[part.id] ?? 1;
@@ -161,7 +162,7 @@ export class WorkOrderStockEffectsService {
       where: { workOrderId: wo.id, orgId, deletedAt: null },
       take: 1000,
     });
-    const coeffMap = await this.fetchPartCoefficients(orgId, parts, db);
+    const coeffMap = await fetchPartCoefficients(db, orgId, parts);
 
     // Bug #780: цей наряд резервує ЛИШЕ на APPROVED→IN_PROGRESS (reserveParts). Шлях
     // APPROVED→ON_HOLD→IN_PROGRESS→COMPLETED НЕ резервує (guard reserveParts вимагає
@@ -171,7 +172,7 @@ export class WorkOrderStockEffectsService {
     // завершити); (б) якщо резерв тримає ІНШИЙ наряд → ми звільняємо ЧУЖИЙ резерв →
     // псування лічильника reserved (фантомна доступність). reserved — агрегат на StockItem,
     // не per-document, тож скільки саме тримає ЦЕЙ наряд рахуємо з його RESERVATION-рухів.
-    const reserveByStock = await this.netReservedByWorkOrder(orgId, wo.id, db);
+    const reserveByStock = await netReservedByWorkOrder(db, orgId, wo.id);
 
     for (const part of parts) {
       const coeff = coeffMap[part.id] ?? 1;
@@ -284,7 +285,7 @@ export class WorkOrderStockEffectsService {
       where: { workOrderId: wo.id, orgId, deletedAt: null },
       take: 1000,
     });
-    const coeffMap = await this.fetchPartCoefficients(orgId, parts, db);
+    const coeffMap = await fetchPartCoefficients(db, orgId, parts);
 
     for (const part of parts) {
       const coeff = coeffMap[part.id] ?? 1;
@@ -334,69 +335,5 @@ export class WorkOrderStockEffectsService {
         db,
       );
     }
-  }
-
-  /**
-   * Bug #780: нетто-резерв, який ЦЕЙ наряд реально тримає на складі, по (goodId|warehouseId).
-   * reserved на StockItem — агрегат (не per-document), тож per-наряд рахуємо з його власних
-   * RESERVATION/RESERVATION_RELEASE-рухів: Σ(quantity) (RESERVATION >0, RESERVATION_RELEASE <0).
-   * Використовується у writeOffPartsAndCharge і releasePartReservations (через takeFromReserve),
-   * щоб звільняти РІВНО свій резерв — не чужий і не фантомний на ON_HOLD-шляху, де резерву
-   * взагалі не було.
-   */
-  private async netReservedByWorkOrder(
-    orgId: string,
-    workOrderId: string,
-    db: Prisma.TransactionClient | typeof this.prisma,
-  ): Promise<Map<string, number>> {
-    const movements = await (db as typeof this.prisma).stockMovement.findMany({
-      where: {
-        orgId,
-        documentType: 'WorkOrder',
-        documentId: workOrderId,
-        type: { in: ['RESERVATION', 'RESERVATION_RELEASE'] },
-      },
-      select: { goodId: true, warehouseId: true, quantity: true },
-      take: 5000,
-    });
-    const net = new Map<string, number>();
-    for (const m of movements) {
-      const key = stockKey(m.goodId, m.warehouseId);
-      net.set(key, (net.get(key) ?? 0) + m.quantity);
-    }
-    return net;
-  }
-
-  private async fetchPartCoefficients(
-    orgId: string,
-    parts: { id: string; unitOfMeasureId?: string | null; goodId: string }[],
-    db: Prisma.TransactionClient | typeof this.prisma,
-  ): Promise<Record<string, number>> {
-    const uomIds = parts.map(p => p.unitOfMeasureId).filter((id): id is string => !!id);
-    if (uomIds.length === 0) return {};
-    // WO-C2: WorkOrderPart.unitOfMeasureId — це FK на UnitOfMeasure.id (addPart зберігає
-    // uomJunction.unitOfMeasureId), а НЕ GoodUoM.id (PK). Тож коефіцієнт беремо з GoodUoM за
-    // парою (unitOfMeasureId, goodId) — унікальною у @@unique([orgId,goodId,unitOfMeasureId]).
-    // Раніше lookup йшов по GoodUoM.id → мапа завжди порожня → coeff=1 → невірні кількості.
-    // A1/A3: +orgId у where — GoodUoM tenant-scoped; без нього tenant-guard кидав би на transition
-    // із UoM-запчастиною (500), а коефіцієнт міг би прийти з чужої org (крос-tenant).
-    const goodIds = parts.map(p => p.goodId);
-    const uoms = await (db as typeof this.prisma).goodUoM.findMany({
-      where: { orgId, unitOfMeasureId: { in: uomIds }, goodId: { in: goodIds } },
-      select: { unitOfMeasureId: true, goodId: true, coefficient: true },
-    });
-    // Ключ = goodId|unitOfMeasureId (коефіцієнт специфічний для товару).
-    const coeffByGoodUom = new Map<string, number>(
-      uoms.map(u => [`${u.goodId}|${u.unitOfMeasureId}`, u.coefficient]),
-    );
-    const result: Record<string, number> = {};
-    for (const part of parts) {
-      if (part.unitOfMeasureId) {
-        // DTO @Min(0.000001) blocks coefficient=0 on write-path, but legacy/seed/direct-SQL
-        // data may have 0. safeCoeff() handles 0/NaN/negative/undefined → 1.
-        result[part.id] = safeCoeff(coeffByGoodUom.get(`${part.goodId}|${part.unitOfMeasureId}`));
-      }
-    }
-    return result;
   }
 }

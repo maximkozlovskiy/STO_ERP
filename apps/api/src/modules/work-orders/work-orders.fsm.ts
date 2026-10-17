@@ -1,5 +1,10 @@
 import type { WorkOrderStatus } from '@prisma/client';
-import { WO_EDITABLE_STATUSES, WO_SHAREABLE_STATUSES, WO_INVOICEABLE_STATUSES } from '@sto/shared';
+import {
+  WO_EDITABLE_STATUSES,
+  WO_SHAREABLE_STATUSES,
+  WO_INVOICEABLE_STATUSES,
+  WO_PROCUREMENT_ACTIVE_STATUSES,
+} from '@sto/shared';
 
 // A5: gate-множини мають ЄДИНЕ джерело у @sto/shared (browser-safe string[]) — backend і frontend
 // читають ті самі значення. Тут лише звужуємо тип до WorkOrderStatus[] (значення ідентичні) —
@@ -50,6 +55,11 @@ export const LINE_ACTUAL_EDITABLE_STATUSES: readonly WorkOrderStatus[] = Object.
 // A5: invoice/completion-act gate — єдине джерело WO_INVOICEABLE_STATUSES у @sto/shared.
 export const INVOICEABLE_STATUSES: readonly WorkOrderStatus[] =
   asWoStatuses(WO_INVOICEABLE_STATUSES);
+// BR-WO-021, BR-PL-011: наряд, під який закуповують товар і тримають резерв (не завершений і не
+// скасований). Єдине джерело — WO_PROCUREMENT_ACTIVE_STATUSES у @sto/shared.
+export const PROCUREMENT_ACTIVE_STATUSES: readonly WorkOrderStatus[] = asWoStatuses(
+  WO_PROCUREMENT_ACTIVE_STATUSES,
+);
 // A5: share/print/SMS gate — єдине джерело WO_SHAREABLE_STATUSES у @sto/shared.
 export const SHAREABLE_STATUSES: readonly WorkOrderStatus[] = asWoStatuses(WO_SHAREABLE_STATUSES);
 
