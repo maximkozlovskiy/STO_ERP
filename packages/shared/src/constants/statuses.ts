@@ -56,6 +56,16 @@ export const WO_EDITABLE_STATUSES: readonly string[] = Object.freeze([
   'ESTIMATE',
   'APPROVED',
 ]);
+// Наряд, під який ще закуповують товар і резервують отримане (BR-PL-011, BR-WO-021): не
+// завершений і не скасований. Поза цими статусами позиції списку купівлі не створюються, а
+// отримане від постачальника під наряд не резервується.
+export const WO_PROCUREMENT_ACTIVE_STATUSES: readonly string[] = Object.freeze([
+  'DRAFT',
+  'ESTIMATE',
+  'APPROVED',
+  'IN_PROGRESS',
+  'ON_HOLD',
+]);
 export const WO_SHAREABLE_STATUSES: readonly string[] = Object.freeze([
   'DRAFT',
   'ESTIMATE',

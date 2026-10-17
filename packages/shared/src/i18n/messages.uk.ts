@@ -77,6 +77,17 @@ export const uk: Record<string, string> = {
   'v.purchaseOrder.supplier.required': 'Оберіть постачальника',
   'v.purchaseOrder.warehouse.required': 'Оберіть склад',
   'v.purchaseOrder.uuid.invalid': 'Невірний UUID формат',
+  'v.purchaseList.uuid.invalid': 'Невірний UUID формат',
+  'v.purchaseList.quantity.min': 'Кількість має бути більшою за 0',
+  'v.purchaseList.price.nonNeg': "Ціна не може бути від'ємною",
+  'v.purchaseList.name.max': 'Назва — до 120 символів',
+  'v.purchaseList.notes.max': 'Примітка — до 1000 символів',
+  'v.purchaseList.items.required': 'Оберіть хоча б одну позицію',
+  'v.purchaseList.items.max': 'Забагато позицій в одному запиті',
+  'v.purchaseList.parts.required': 'Оберіть хоча б один товар наряду',
+  'v.purchaseList.sources.required': "Оберіть списки для об'єднання",
+  'v.purchaseList.good.required': 'Оберіть товар',
+  'v.purchaseList.warehouse.required': 'Оберіть склад',
 
   // ── stock-document.schema.ts ──
   'v.stockDocument.line.good.required': 'Оберіть товар',
@@ -430,6 +441,34 @@ export const uk: Record<string, string> = {
   'err.purchaseOrder.onlyDraftDeletable': 'Видалити можна лише чернетку',
   'err.purchaseOrder.priceOnlyReceived':
     'Розцінити можна лише отримані товари (статус RECEIVED або PARTIAL)',
+
+  // ── Exception-повідомлення: purchase-lists-модуль (BR-PL-*) ──
+  'err.purchaseList.notFound': 'Список купівлі не знайдено',
+  'err.purchaseList.itemNotFound': 'Позицію списку купівлі не знайдено',
+  'err.purchaseList.itemsNotFound': 'Позиції списку купівлі не знайдено: {{missing}}',
+  'err.purchaseList.goodNotFound': 'Товар не знайдено',
+  'err.purchaseList.warehouseNotFound': 'Склад не знайдено',
+  'err.purchaseList.supplierNotFound': 'Постачальника не знайдено',
+  'err.purchaseList.workOrderNotFound': 'Наряд не знайдено',
+  'err.purchaseList.workOrderNotActive':
+    'Наряд закрито або скасовано — товари з нього до списку купівлі не додаються',
+  'err.purchaseList.partNotFound': 'Рядок товару не знайдено в наряді: {{missing}}',
+  'err.purchaseList.partAlreadyCovered':
+    'Товар «{{good}}» уже покритий: зарезервовано або є в списках купівлі',
+  'err.purchaseList.listNotOpen': 'Список купівлі закрито або скасовано — змінювати його не можна',
+  'err.purchaseList.itemNotOpen': 'Змінювати можна лише незамовлені позиції',
+  'err.purchaseList.supplierRequired': 'Не вказано постачальника для позицій: {{goods}}',
+  'err.purchaseList.mergeIntoItself': "Список не можна об'єднати сам із собою",
+  'err.purchaseList.cancelHasOrdered':
+    'Скасувати не можна: у списку є замовлені або отримані позиції',
+  'err.purchaseList.splitQuantityInvalid':
+    'Кількість для розділення має бути більшою за 0 і меншою за кількість позиції',
+  'err.purchaseList.moveToSameList': 'Позиції вже в цьому списку',
+  'err.purchaseList.concurrentChange':
+    'Позицію змінено іншим користувачем — оновіть сторінку й повторіть',
+  'err.purchaseList.allocationConflict':
+    'Позиції списку купівлі змінено під час приймання — повторіть приймання',
+  'err.purchaseList.nothingToRelease': 'Під цю позицію нічого не зарезервовано',
 
   // ── Exception-повідомлення: supplier-returns-модуль ──
   'err.supplierReturn.notFound': 'Повернення не знайдено',

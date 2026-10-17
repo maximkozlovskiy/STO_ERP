@@ -74,6 +74,17 @@ export const en: Record<string, string> = {
   'v.purchaseOrder.supplier.required': 'Select the supplier',
   'v.purchaseOrder.warehouse.required': 'Select the warehouse',
   'v.purchaseOrder.uuid.invalid': 'Invalid UUID format',
+  'v.purchaseList.uuid.invalid': 'Invalid UUID format',
+  'v.purchaseList.quantity.min': 'Quantity must be greater than 0',
+  'v.purchaseList.price.nonNeg': 'Price cannot be negative',
+  'v.purchaseList.name.max': 'Name — up to 120 characters',
+  'v.purchaseList.notes.max': 'Note — up to 1000 characters',
+  'v.purchaseList.items.required': 'Select at least one item',
+  'v.purchaseList.items.max': 'Too many items in one request',
+  'v.purchaseList.parts.required': 'Select at least one work order part',
+  'v.purchaseList.sources.required': 'Select lists to merge',
+  'v.purchaseList.good.required': 'Select a good',
+  'v.purchaseList.warehouse.required': 'Select a warehouse',
 
   // ── stock-document.schema.ts ──
   'v.stockDocument.line.good.required': 'Select the product',
@@ -440,6 +451,33 @@ export const en: Record<string, string> = {
   'err.purchaseOrder.onlyDraftDeletable': 'Only a draft can be deleted',
   'err.purchaseOrder.priceOnlyReceived':
     'Only received goods can be priced (RECEIVED or PARTIAL status)',
+
+  // ── Exception-повідомлення: purchase-lists-модуль (BR-PL-*) ──
+  'err.purchaseList.notFound': 'Purchase list not found',
+  'err.purchaseList.itemNotFound': 'Purchase list item not found',
+  'err.purchaseList.itemsNotFound': 'Purchase list items not found: {{missing}}',
+  'err.purchaseList.goodNotFound': 'Good not found',
+  'err.purchaseList.warehouseNotFound': 'Warehouse not found',
+  'err.purchaseList.supplierNotFound': 'Supplier not found',
+  'err.purchaseList.workOrderNotFound': 'Work order not found',
+  'err.purchaseList.workOrderNotActive':
+    'The work order is closed or cancelled — its parts cannot be added to a purchase list',
+  'err.purchaseList.partNotFound': 'Part line not found in the work order: {{missing}}',
+  'err.purchaseList.partAlreadyCovered':
+    'Good "{{good}}" is already covered: reserved or in purchase lists',
+  'err.purchaseList.listNotOpen': 'The purchase list is closed or cancelled and cannot be changed',
+  'err.purchaseList.itemNotOpen': 'Only items that are not ordered yet can be changed',
+  'err.purchaseList.supplierRequired': 'No supplier set for items: {{goods}}',
+  'err.purchaseList.mergeIntoItself': 'A list cannot be merged into itself',
+  'err.purchaseList.cancelHasOrdered': 'Cannot cancel: the list has ordered or received items',
+  'err.purchaseList.splitQuantityInvalid':
+    'The split quantity must be greater than 0 and less than the item quantity',
+  'err.purchaseList.moveToSameList': 'The items are already in this list',
+  'err.purchaseList.concurrentChange':
+    'The item was changed by another user — refresh and try again',
+  'err.purchaseList.allocationConflict':
+    'Purchase list items changed during receiving — try receiving again',
+  'err.purchaseList.nothingToRelease': 'Nothing is reserved for this item',
 
   // ── Exception messages: supplier-returns module ──
   'err.supplierReturn.notFound': 'Return not found',
