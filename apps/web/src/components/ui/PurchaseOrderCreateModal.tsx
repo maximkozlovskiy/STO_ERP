@@ -931,11 +931,10 @@ export function PurchaseOrderCreateModal({
       });
       setReceiveMode(false);
       setReceiveQtys({});
-      // Reload PO to get updated receivedQty and status
-      const updated = await apiFetch<{ status: string; number: string }>(
-        `/purchase-orders/${purchaseOrderId}`,
-      );
-      setCurrentStatus(updated.status);
+      // Перечитати замовлення ЦІЛКОМ (рядки й статус): лише статус лишав у рядках `receivedQty`
+      // до прийому — «Отримано 0» при «Частково», а другий захід із тієї ж картки рахував
+      // «До отримання» від застарілого значення й отримував 400 (Bug #887).
+      await loadPo(purchaseOrderId, true);
       onSaved?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка оприбуткування');
