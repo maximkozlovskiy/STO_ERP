@@ -162,3 +162,23 @@ export async function lockWorkOrdersForUpdate(
   `;
   return rows.map(r => r.id);
 }
+
+/** Розбирає ключ `goodId|warehouseId` назад на пару. */
+export function splitStockKey(key: string): [goodId: string, warehouseId: string] {
+  const sep = key.indexOf('|');
+  return [key.slice(0, sep), key.slice(sep + 1)];
+}
+
+/** Вільний залишок (`quantity − reserved`) товару на складі; немає рядка складу → 0. */
+export async function availableQty(
+  db: StockDb,
+  orgId: string,
+  goodId: string,
+  warehouseId: string,
+): Promise<number> {
+  const item = await db.stockItem.findFirst({
+    where: { orgId, goodId, warehouseId, deletedAt: null },
+    select: { quantity: true, reserved: true },
+  });
+  return Math.max(0, (item?.quantity ?? 0) - (item?.reserved ?? 0));
+}

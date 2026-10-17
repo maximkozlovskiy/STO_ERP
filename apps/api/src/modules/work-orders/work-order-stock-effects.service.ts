@@ -9,8 +9,12 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { postWorkOrderFxInTx } from './work-order-fx';
 import {
+  availableQty,
   fetchPartCoefficients,
   netReservedByWorkOrder,
+  QTY_EPSILON,
+  requiredByKey,
+  splitStockKey,
   stockKey,
 } from './work-order-stock-requirements';
 
@@ -19,9 +23,7 @@ import {
  * і зменшує залишок у мапі. Мутація мапи критична: кілька рядків наряду можуть вказувати на той
  * самий (good,warehouse), і без декременту другий рядок звільнив би той самий резерв удруге.
  *
- * Спільне для writeOffPartsAndCharge і releasePartReservations — самé обчислення ідентичне,
- * різниться лише реакція на 0 (там `continue`, тут пропуск RELEASE зі збереженням WRITEOFF),
- * тож гілка лишається на місці виклику, а не всередині хелпера.
+ * Використовується у writeOffPartsAndCharge: на 0 RELEASE пропускається, а WRITEOFF лишається.
  */
 function takeFromReserve(
   reserveByStock: Map<string, number>,
@@ -78,6 +80,12 @@ export class WorkOrderStockEffectsService {
     );
   }
 
+  /**
+   * BR-WO-021: «В роботу» дорезервовує лише бракуюче — `потрібно − net-резерв наряду` по (товар,
+   * склад), не більше `available`. Нестача не блокує перехід (рішення власника 2026-10-17): решту
+   * дорезервує приймання від постачальника (BR-PL-011). Ідемпотентний: повторний вхід у «В роботі»
+   * (з «Призупинено») подвійного резерву не дає — net уже покриває потребу.
+   */
   async reserveParts(
     orgId: string,
     workOrderId: string,
@@ -92,16 +100,25 @@ export class WorkOrderStockEffectsService {
     // Batch-fetch GoodUoM coefficients for qty conversion: qty_base = qty * coefficient
     // (coefficient = скільки БАЗОВИХ одиниць в одній альтернативній: «1 пакет = 12 шт» → 12).
     const coeffMap = await fetchPartCoefficients(db, orgId, parts);
+    const required = requiredByKey(parts, coeffMap);
+    const net = await netReservedByWorkOrder(db, orgId, workOrderId);
 
-    for (const part of parts) {
-      const coeff = coeffMap[part.id] ?? 1;
+    // Ключі в стабільному порядку — рядки складу блокуються (upsert у createMovement) в одному
+    // порядку в усіх переходах, а не в порядку рядків наряду.
+    for (const key of Array.from(required.keys()).sort()) {
+      const want = (required.get(key) ?? 0) - Math.max(0, net.get(key) ?? 0);
+      if (want <= QTY_EPSILON) continue;
+      const [goodId, warehouseId] = splitStockKey(key);
+      const available = await availableQty(db, orgId, goodId, warehouseId);
+      const take = Math.min(want, available);
+      if (take <= QTY_EPSILON) continue;
       await this.inventory.createMovement(
         orgId,
         {
-          goodId: part.goodId,
-          warehouseId: part.warehouseId,
+          goodId,
+          warehouseId,
           type: 'RESERVATION',
-          quantity: part.quantity * coeff,
+          quantity: take,
           documentType: 'WorkOrder',
           documentId: workOrderId,
           createdBy: userId,
@@ -111,7 +128,29 @@ export class WorkOrderStockEffectsService {
     }
   }
 
-  async releasePartReservations(
+  /**
+   * BR-WO-021: знімає ВЕСЬ net-резерв наряду за картою його рухів (BR-INVT-018), а не за рядками
+   * товарів — резерв міг лишитись за рядком, якого вже немає, і бути зроблений у будь-якому
+   * активному статусі (приймання від постачальника, BR-PL-011). Скасування з будь-якого статусу,
+   * крім COMPLETED (там резерв знято списанням), і видалення наряду.
+   */
+  async releaseAllNetReservations(
+    orgId: string,
+    workOrderId: string,
+    userId?: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const db = tx ?? this.prisma;
+    const net = await netReservedByWorkOrder(db, orgId, workOrderId);
+    await this.releaseExcess(orgId, workOrderId, net, new Map(), userId, db);
+  }
+
+  /**
+   * BR-WO-021: після зміни товарів наряду (кількість, одиниця, видалення рядка, імпорт XLSX) знімає
+   * надлишок net-резерву над потребою по кожній парі (товар, склад). Викликати в транзакції правки,
+   * ПІСЛЯ запису рядків.
+   */
+  async reconcileAfterPartsChange(
     orgId: string,
     workOrderId: string,
     userId?: string,
@@ -123,25 +162,41 @@ export class WorkOrderStockEffectsService {
       take: 1000,
     });
     const coeffMap = await fetchPartCoefficients(db, orgId, parts);
+    const required = requiredByKey(parts, coeffMap);
+    const net = await netReservedByWorkOrder(db, orgId, workOrderId);
+    await this.releaseExcess(orgId, workOrderId, net, required, userId, db);
+  }
 
-    // Bug #780: цей наряд міг НЕ резервувати (шлях APPROVED→ON_HOLD→CANCELLED: reserveParts
-    // ставить резерв лише на APPROVED→IN_PROGRESS). Тоді безумовний RESERVATION_RELEASE(-q)
-    // кидав би "cannotReleaseMoreThanReserved" → скасувати наряд неможливо; або звільняв би
-    // чужий резерв. Звільняємо РІВНО свій нетто-резерв по (good,warehouse).
-    const reserveByStock = await netReservedByWorkOrder(db, orgId, workOrderId);
-
-    for (const part of parts) {
-      const coeff = coeffMap[part.id] ?? 1;
-      const baseQty = part.quantity * coeff;
-      const releaseQty = takeFromReserve(reserveByStock, part.goodId, part.warehouseId, baseQty);
-      if (releaseQty <= 0) continue;
+  /**
+   * RESERVATION_RELEASE на `net − keep` по кожній парі, де net-резерв наряду перевищує те, що треба
+   * лишити. Не більше `StockItem.reserved`: на зіпсованих історичних даних net наряду може бути
+   * більшим за агрегат складу, і безумовне зняття впало б «cannotReleaseMoreThanReserved».
+   */
+  private async releaseExcess(
+    orgId: string,
+    workOrderId: string,
+    net: Map<string, number>,
+    keep: Map<string, number>,
+    userId: string | undefined,
+    db: Prisma.TransactionClient,
+  ): Promise<void> {
+    for (const key of Array.from(net.keys()).sort()) {
+      const excess = (net.get(key) ?? 0) - (keep.get(key) ?? 0);
+      if (excess <= QTY_EPSILON) continue;
+      const [goodId, warehouseId] = splitStockKey(key);
+      const item = await db.stockItem.findFirst({
+        where: { orgId, goodId, warehouseId, deletedAt: null },
+        select: { reserved: true },
+      });
+      const release = Math.min(excess, item?.reserved ?? 0);
+      if (release <= QTY_EPSILON) continue;
       await this.inventory.createMovement(
         orgId,
         {
-          goodId: part.goodId,
-          warehouseId: part.warehouseId,
+          goodId,
+          warehouseId,
           type: 'RESERVATION_RELEASE',
-          quantity: -releaseQty,
+          quantity: -release,
           documentType: 'WorkOrder',
           documentId: workOrderId,
           createdBy: userId,
@@ -164,14 +219,11 @@ export class WorkOrderStockEffectsService {
     });
     const coeffMap = await fetchPartCoefficients(db, orgId, parts);
 
-    // Bug #780: цей наряд резервує ЛИШЕ на APPROVED→IN_PROGRESS (reserveParts). Шлях
-    // APPROVED→ON_HOLD→IN_PROGRESS→COMPLETED НЕ резервує (guard reserveParts вимагає
-    // попередній статус APPROVED), тож на COMPLETED резерву цього наряду НЕМА. Безумовний
-    // RESERVATION_RELEASE(-baseQty) тоді: (а) якщо reserved===0 → InventoryService кидає
-    // "cannotReleaseMoreThanReserved" → весь перехід COMPLETED падає (наряд неможливо
-    // завершити); (б) якщо резерв тримає ІНШИЙ наряд → ми звільняємо ЧУЖИЙ резерв →
-    // псування лічильника reserved (фантомна доступність). reserved — агрегат на StockItem,
-    // не per-document, тож скільки саме тримає ЦЕЙ наряд рахуємо з його RESERVATION-рухів.
+    // Bug #780: резерв наряду може бути меншим за потребу (нестача на «В роботу», BR-WO-021) або
+    // його може не бути зовсім. Безумовний RESERVATION_RELEASE(-baseQty) тоді: (а) reserved===0 →
+    // "cannotReleaseMoreThanReserved" → наряд неможливо завершити; (б) резерв тримає ІНШИЙ наряд →
+    // звільнили б ЧУЖИЙ резерв. reserved — агрегат на StockItem, не per-document, тож скільки саме
+    // тримає ЦЕЙ наряд рахуємо з його RESERVATION-рухів.
     const reserveByStock = await netReservedByWorkOrder(db, orgId, wo.id);
 
     for (const part of parts) {
@@ -186,9 +238,8 @@ export class WorkOrderStockEffectsService {
       //
       // Bug #780: звільняємо РІВНО стільки, скільки цей наряд реально тримає у резерві для
       // (good,warehouse) — min(baseQty, залишок резерву наряду). 0 → RESERVATION_RELEASE
-      // пропускаємо (ON_HOLD-шлях нічого не резервував), але WRITEOFF нижче ВСЕ ОДНО робимо:
-      // available не включає фантомного резерву цього наряду. Саме тут гілка відрізняється від
-      // releasePartReservations (там releaseQty=0 → `continue`, бо списувати нічого).
+      // пропускаємо (резерву не було), але WRITEOFF нижче ВСЕ ОДНО робимо: available не включає
+      // фантомного резерву цього наряду.
       const releaseQty = takeFromReserve(reserveByStock, part.goodId, part.warehouseId, baseQty);
       if (releaseQty > 0) {
         await this.inventory.createMovement(
@@ -236,6 +287,9 @@ export class WorkOrderStockEffectsService {
         });
       }
     }
+    // BR-WO-021: залишок net-резерву після списання рядків (резерв за рядком, якого вже немає, чи
+    // за одиницею, що змінилась) знімається — інакше «завис» би на складі назавжди.
+    await this.releaseExcess(orgId, wo.id, reserveByStock, new Map(), userId, db);
     // WO-H1: сума боргу — з IN-TX re-read totalAmount (не зі stale pre-tx знімка wo). Concurrent
     // addLine/updatePart міг змінити суму через recalcTotals між pre-tx read і цією транзакцією.
     const freshWo = await db.workOrder.findFirst({

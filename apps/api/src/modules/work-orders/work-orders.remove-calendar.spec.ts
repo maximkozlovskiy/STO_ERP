@@ -56,7 +56,8 @@ function harness(woOver: MemRow = {}, slots: MemRow[] = []) {
   };
   const service = new WorkOrdersService(
     prisma as unknown as PrismaService,
-    null as never, // stockEffects
+    // BR-WO-021: видалення наряду знімає його net-резерв (тут — без резерву).
+    { releaseAllNetReservations: vi.fn().mockResolvedValue(undefined) } as never,
     null as never, // docNumbers
     null as never, // pdf
     { record: vi.fn().mockResolvedValue(undefined) } as never, // audit

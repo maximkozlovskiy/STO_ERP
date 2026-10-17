@@ -13,8 +13,10 @@ import { DocumentLineImportAdapterRegistry } from './document-line-import.adapte
 import { DocumentGridParserService } from './document-grid-parser.service';
 import { CacheService } from '../../redis/cache.service';
 import { WorkOrderTotalsService } from '../work-orders/work-order-totals.service';
+import { WorkOrderStockEffectsService } from '../work-orders/work-order-stock-effects.service';
 
 const workOrderTotals = { recalc: vi.fn().mockResolvedValue(undefined) };
+const workOrderStock = { reconcileAfterPartsChange: vi.fn().mockResolvedValue(undefined) };
 const goodMatcher = { matchMany: vi.fn().mockResolvedValue([]) };
 /** Єдиний пошук товару (BR-GOOD-008) у тестах шукає в переліку, який задає сам тест. */
 const seedCatalog = (goods: CatalogGood[]): void => {
@@ -106,6 +108,8 @@ describe('XlsxService — generic import (preview/apply)', () => {
         { provide: WorkOrderTotalsService, useValue: workOrderTotals },
         // BR-GOOD-008: єдиний пошук товару.
         { provide: GoodMatcherService, useValue: goodMatcher },
+        // BR-WO-021: імпорт товарів наряду знімає надлишок резерву.
+        { provide: WorkOrderStockEffectsService, useValue: workOrderStock },
       ],
     }).compile();
     service = module.get(XlsxService);

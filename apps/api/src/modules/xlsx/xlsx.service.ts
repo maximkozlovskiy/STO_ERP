@@ -17,6 +17,8 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import { WorkOrderTotalsService } from '../work-orders/work-order-totals.service';
+import { WorkOrderStockEffectsService } from '../work-orders/work-order-stock-effects.service';
+import { lockWorkOrdersForUpdate } from '../work-orders/work-order-stock-requirements';
 import {
   DocumentGridParserService,
   type GridSourceKind,
@@ -101,6 +103,8 @@ export class XlsxService {
     private readonly cache: CacheService,
     private readonly workOrderTotals: WorkOrderTotalsService,
     private readonly goodMatcher: GoodMatcherService,
+    // BR-WO-021: імпорт змінив кількості товарів наряду — надлишок резерву знімається.
+    private readonly workOrderStock: WorkOrderStockEffectsService,
   ) {}
 
   /**
@@ -900,9 +904,14 @@ export class XlsxService {
     // BR-WO-007: імпорт змінив запчастини наряду — тотали перераховує єдиний власник. Раніше цей
     // шлях тоталів не оновлював узагалі: сума наряду лишалась старою до першої ручної правки рядка.
     if (result.created > 0 || result.updated > 0) {
-      await this.prisma.$transaction(tx => this.workOrderTotals.recalc(woId, tx, orgId), {
-        timeout: TRANSACTION_TIMEOUT_MS,
-      });
+      await this.prisma.$transaction(
+        async tx => {
+          await lockWorkOrdersForUpdate(tx, orgId, [woId]);
+          await this.workOrderTotals.recalc(woId, tx, orgId);
+          await this.workOrderStock.reconcileAfterPartsChange(orgId, woId, undefined, tx);
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      );
     }
 
     return result;

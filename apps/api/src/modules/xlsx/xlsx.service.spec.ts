@@ -13,8 +13,10 @@ import { DocumentLineImportAdapterRegistry } from './document-line-import.adapte
 import { DocumentGridParserService } from './document-grid-parser.service';
 import { CacheService } from '../../redis/cache.service';
 import { WorkOrderTotalsService } from '../work-orders/work-order-totals.service';
+import { WorkOrderStockEffectsService } from '../work-orders/work-order-stock-effects.service';
 
 const workOrderTotals = { recalc: vi.fn().mockResolvedValue(undefined) };
+const workOrderStock = { reconcileAfterPartsChange: vi.fn().mockResolvedValue(undefined) };
 const goodMatcher = { matchMany: vi.fn().mockResolvedValue([]) };
 /** Єдиний пошук товару (BR-GOOD-008) у тестах шукає в переліку, який задає сам тест. */
 const seedCatalog = (goods: CatalogGood[]): void => {
@@ -85,6 +87,8 @@ describe('XlsxService', () => {
         { provide: WorkOrderTotalsService, useValue: workOrderTotals },
         // BR-GOOD-008: єдиний пошук товару.
         { provide: GoodMatcherService, useValue: goodMatcher },
+        // BR-WO-021: імпорт товарів наряду знімає надлишок резерву.
+        { provide: WorkOrderStockEffectsService, useValue: workOrderStock },
       ],
     }).compile();
     service = module.get(XlsxService);
@@ -641,7 +645,8 @@ describe('XlsxService', () => {
   // справді щось записав: якщо всі рядки дали помилку, рядки наряду не змінились.
   describe('importWOParts — перерахунок тоталів наряду (BR-WO-007)', () => {
     const WO = 'wo-1';
-    const TX = { marker: 'tx' };
+    // $queryRaw — блокування рядка наряду (SELECT … FOR UPDATE) перед перерахунком, BR-WO-021.
+    const TX = { marker: 'tx', $queryRaw: vi.fn().mockResolvedValue([]) };
     let wo: {
       workOrder: { findFirst: ReturnType<typeof vi.fn> };
       workOrderPart: {
@@ -714,6 +719,21 @@ describe('XlsxService', () => {
       expect(workOrderTotals.recalc).toHaveBeenCalledTimes(1);
       expect(workOrderTotals.recalc).toHaveBeenCalledWith(WO, TX, ORG);
       expect(calls).toEqual(['part.update', 'recalc']);
+    });
+
+    // guards: BR-WO-021
+    it('імпорт змінив кількості → надлишок резерву знімається в тій самій транзакції, наряд блокується першим', async () => {
+      workOrderStock.reconcileAfterPartsChange.mockClear();
+      TX.$queryRaw.mockClear();
+      wo.workOrderPart.findMany.mockResolvedValue([{ id: 'p-1', goodId: 'g-1' }]);
+      rows({ sku: 'A-1', quantity: 1, price: 100 });
+
+      await service.importWOParts(ORG, WO, Buffer.from(''));
+
+      expect(workOrderStock.reconcileAfterPartsChange).toHaveBeenCalledWith(ORG, WO, undefined, TX);
+      expect(TX.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        workOrderStock.reconcileAfterPartsChange.mock.invocationCallOrder[0],
+      );
     });
 
     // guards: BR-WO-007

@@ -83,7 +83,7 @@ function setup(preStatus: string) {
       return Promise.resolve();
     }),
     reserveParts: vi.fn().mockResolvedValue(undefined),
-    releasePartReservations: vi.fn().mockResolvedValue(undefined),
+    releaseAllNetReservations: vi.fn().mockResolvedValue(undefined),
     returnPartsAndCredit: vi.fn().mockResolvedValue(undefined),
   };
   const service = new WorkOrdersService(

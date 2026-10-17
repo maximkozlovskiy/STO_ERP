@@ -12,6 +12,7 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { SettingsModule } from '../settings/settings.module';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { WorkOrderTotalsModule } from '../work-orders/work-order-totals.module';
+import { WorkOrderStockEffectsModule } from '../work-orders/work-order-stock-effects.module';
 import {
   DocumentLineImportAdapterRegistry,
   PurchaseOrderImportAdapter,
@@ -29,6 +30,7 @@ import {
     SettingsModule,
     ExchangeRatesModule,
     WorkOrderTotalsModule,
+    WorkOrderStockEffectsModule, // BR-WO-021: надлишок резерву після імпорту товарів наряду
   ],
   controllers: [XlsxController],
   providers: [

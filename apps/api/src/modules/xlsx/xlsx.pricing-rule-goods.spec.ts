@@ -39,9 +39,18 @@ describe('XlsxService — перелік товарів для правила ц
   beforeEach(() => {
     matchMany = vi.fn();
     const unused = {} as never;
-    service = new XlsxService(unused, unused, unused, unused, unused, unused, unused, unused, {
-      matchMany,
-    } as unknown as GoodMatcherService);
+    service = new XlsxService(
+      unused,
+      unused,
+      unused,
+      unused,
+      unused,
+      unused,
+      unused,
+      unused,
+      { matchMany } as unknown as GoodMatcherService,
+      unused, // workOrderStock — імпорт товарів наряду (BR-WO-021) тут не задіяний
+    );
   });
 
   // guards: BR-GOOD-009

@@ -84,6 +84,7 @@ describe('XlsxService.importPOLines — ПДВ рядків і тотали пі
       { get: vi.fn().mockResolvedValue(null), set: vi.fn() } as never,
       unused,
       { matchMany } as unknown as GoodMatcherService,
+      null as never, // workOrderStock — імпорт товарів наряду (BR-WO-021) тут не задіяний
     );
   });
 

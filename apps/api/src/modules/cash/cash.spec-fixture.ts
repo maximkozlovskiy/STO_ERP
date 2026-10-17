@@ -54,7 +54,7 @@ export type MemRow = Record<string, unknown>;
  * що повертає пов'язаний рядок (або null). Без опису зв'язку такий фільтр кидає помилку —
  * тест падає з підказкою, а не мовчки «знаходить» усе.
  */
-export type MemRelations = Record<string, (row: MemRow) => MemRow | null | undefined>;
+export type MemRelations = Record<string, (row: MemRow) => MemRow | MemRow[] | null | undefined>;
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !(v instanceof Date) && !Array.isArray(v);
@@ -105,11 +105,24 @@ export function whereMatches(row: MemRow, where: unknown, relations: MemRelation
     if (key === 'AND') return list.every(w => whereMatches(row, w, relations));
     if (key === 'OR') return list.some(w => whereMatches(row, w, relations));
     if (key === 'NOT') return !list.some(w => whereMatches(row, w, relations));
+    // Складений унікальний ключ Prisma (`orgId_goodId_warehouseId: { orgId, goodId, … }`):
+    // такого поля в рядку немає — умова на кожне з полів.
+    if (!(key in row) && !relations[key] && key.includes('_') && isPlainObject(cond)) {
+      return whereMatches(row, cond, relations);
+    }
     const relation = relations[key];
     if (relation) {
       const linked = relation(row);
       if (cond === null) return linked == null;
       if (!linked) return false;
+      // Зв'язок 1:M: Prisma `some` / `none` / `every`.
+      if (Array.isArray(linked)) {
+        if (!isPlainObject(cond)) return false;
+        if ('some' in cond) return linked.some(l => whereMatches(l, cond.some, relations));
+        if ('none' in cond) return !linked.some(l => whereMatches(l, cond.none, relations));
+        if ('every' in cond) return linked.every(l => whereMatches(l, cond.every, relations));
+        throw new Error("Таблиця в пам'яті: для зв'язку 1:M підтримано лише some/none/every");
+      }
       // Prisma: `is` / `isNot` для 1:1, інакше — умова одразу на полях пов'язаного рядка.
       if (isPlainObject(cond) && 'is' in cond) return whereMatches(linked, cond.is, relations);
       if (isPlainObject(cond) && 'isNot' in cond)
@@ -139,11 +152,49 @@ function applyData(row: MemRow, data: MemRow): void {
   }
 }
 
+type SortDir = 'asc' | 'desc';
+type OrderBy = Record<string, SortDir | { sort: SortDir; nulls?: 'first' | 'last' }>;
+
+/** Порівняння для `orderBy`: дати — за часом, числа — за значенням, null — за `nulls` (типово last). */
+function compareBy(a: MemRow, b: MemRow, orderBy: OrderBy[]): number {
+  for (const spec of orderBy) {
+    for (const [field, dir] of Object.entries(spec)) {
+      const sort = typeof dir === 'string' ? dir : dir.sort;
+      const nulls = typeof dir === 'string' ? 'last' : (dir.nulls ?? 'last');
+      const x = a[field] ?? null;
+      const y = b[field] ?? null;
+      if (x === null && y === null) continue;
+      if (x === null || y === null) return (x === null) === (nulls === 'first') ? -1 : 1;
+      const xv = x instanceof Date ? x.getTime() : isNumeric(x) ? num(x) : String(x);
+      const yv = y instanceof Date ? y.getTime() : isNumeric(y) ? num(y) : String(y);
+      if (xv === yv) continue;
+      const cmp = xv < yv ? -1 : 1;
+      return sort === 'desc' ? -cmp : cmp;
+    }
+  }
+  return 0;
+}
+
+/** Ключі `include` / `select`, для яких описано зв'язок: рядок віддається копією з цими полями. */
+function withRelations(row: MemRow, args: unknown, relations: MemRelations): MemRow {
+  if (!isPlainObject(args)) return row;
+  const shape: unknown = isPlainObject(args.include) ? args.include : args.select;
+  if (!isPlainObject(shape)) return row;
+  const keys = Object.keys(shape).filter(k => relations[k] && shape[k]);
+  if (keys.length === 0) return row;
+  const copy: MemRow = { ...row };
+  for (const k of keys) copy[k] = relations[k](row) ?? null;
+  return copy;
+}
+
+type FindArgs = { where?: unknown; orderBy?: OrderBy | OrderBy[]; skip?: number; take?: number };
+
 /**
  * Делегат Prisma поверх масиву рядків: читання фільтрують за `where`, запис змінює самі рядки.
- * `select` / `include` ігноруються — віддається рядок цілком (надмножина того, що просив сервіс).
- * `update` / `updateMany` розуміють `increment` / `decrement` / `set`; `where` — `gt/gte/lt/lte`
- * і фільтр через зв'язок, якщо його описано в `relations`.
+ * `select` / `include` скалярів ігноруються — віддається рядок цілком (надмножина того, що просив
+ * сервіс); поле-зв'язок, описане в `relations`, додається до копії рядка. `orderBy`, `skip`, `take`
+ * — як у Prisma. `update` / `updateMany` розуміють `increment` / `decrement` / `set`; `where` —
+ * `gt/gte/lt/lte`, складений унікальний ключ і фільтр через зв'язок, якщо його описано в `relations`.
  */
 export function memoryTable(
   rows: MemRow[],
@@ -151,8 +202,20 @@ export function memoryTable(
   relations: MemRelations = {},
 ) {
   let seq = 0;
-  const find = (args?: { where?: unknown }) =>
-    rows.filter(r => whereMatches(r, args?.where, relations));
+  const find = (args?: FindArgs) => {
+    const hits = rows.filter(r => whereMatches(r, args?.where, relations));
+    if (args?.orderBy) {
+      const order = Array.isArray(args.orderBy) ? args.orderBy : [args.orderBy];
+      hits.sort((a, b) => compareBy(a, b, order));
+    }
+    const from = args?.skip ?? 0;
+    return args?.take === undefined ? hits.slice(from) : hits.slice(from, from + args.take);
+  };
+  const read = (args: unknown) => (row: MemRow) => withRelations(row, args, relations);
+  const first = (args?: FindArgs) => {
+    const hit = find(args)[0];
+    return hit ? read(args)(hit) : null;
+  };
   const notFound = () => Object.assign(new Error('No record found'), { code: 'P2025' });
   const insert = (data: MemRow): MemRow => {
     seq += 1;
@@ -163,17 +226,17 @@ export function memoryTable(
   };
   return {
     rows,
-    findFirst: vi.fn((args?: { where?: unknown }) => Promise.resolve(find(args)[0] ?? null)),
-    findUnique: vi.fn((args?: { where?: unknown }) => Promise.resolve(find(args)[0] ?? null)),
-    findFirstOrThrow: vi.fn((args?: { where?: unknown }) => {
-      const hit = find(args)[0];
+    findFirst: vi.fn((args?: FindArgs) => Promise.resolve(first(args))),
+    findUnique: vi.fn((args?: FindArgs) => Promise.resolve(first(args))),
+    findFirstOrThrow: vi.fn((args?: FindArgs) => {
+      const hit = first(args);
       return hit ? Promise.resolve(hit) : Promise.reject(notFound());
     }),
-    findUniqueOrThrow: vi.fn((args?: { where?: unknown }) => {
-      const hit = find(args)[0];
+    findUniqueOrThrow: vi.fn((args?: FindArgs) => {
+      const hit = first(args);
       return hit ? Promise.resolve(hit) : Promise.reject(notFound());
     }),
-    findMany: vi.fn((args?: { where?: unknown }) => Promise.resolve(find(args))),
+    findMany: vi.fn((args?: FindArgs) => Promise.resolve(find(args).map(read(args)))),
     count: vi.fn((args?: { where?: unknown }) => Promise.resolve(find(args).length)),
     aggregate: vi.fn(
       (args: { where?: unknown; _sum?: Record<string, boolean>; _count?: unknown }) => {
@@ -192,7 +255,32 @@ export function memoryTable(
         return Promise.resolve(result);
       },
     ),
-    create: vi.fn((args: { data: MemRow }) => Promise.resolve(insert(args.data))),
+    groupBy: vi.fn((args: { by: string[]; where?: unknown; _sum?: Record<string, boolean> }) => {
+      const groups = new Map<string, MemRow[]>();
+      for (const hit of find(args)) {
+        const key = JSON.stringify(args.by.map(f => hit[f] ?? null));
+        groups.set(key, [...(groups.get(key) ?? []), hit]);
+      }
+      return Promise.resolve(
+        Array.from(groups.values()).map(members => {
+          const out: MemRow = {};
+          for (const f of args.by) out[f] = members[0][f] ?? null;
+          if (args._sum) {
+            const sum: MemRow = {};
+            for (const field of Object.keys(args._sum)) {
+              sum[field] = members.reduce((acc, r) => acc + num(r[field] ?? 0), 0);
+            }
+            out._sum = sum;
+          }
+          return out;
+        }),
+      );
+    }),
+    create: vi.fn((args: { data: MemRow }) => Promise.resolve(read(args)(insert(args.data)))),
+    createMany: vi.fn((args: { data: MemRow[] }) => {
+      for (const data of args.data) insert(data);
+      return Promise.resolve({ count: args.data.length });
+    }),
     upsert: vi.fn((args: { where?: unknown; create: MemRow; update: MemRow }) => {
       const hit = find(args)[0];
       if (hit) {

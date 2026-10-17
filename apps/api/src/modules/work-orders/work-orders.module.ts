@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { WorkOrdersController } from './work-orders.controller';
 import { WorkOrdersPublicController } from './work-orders-public.controller';
 import { WorkOrdersService } from './work-orders.service';
-import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
+import { WorkOrderStockEffectsModule } from './work-order-stock-effects.module';
 import { EstimateExportService } from './work-orders-export.service';
 import { WorkOrderShareService } from './work-order-share.service';
 import { WorkOrderEventHandlers } from './events/work-order.handlers';
@@ -35,6 +35,7 @@ import { CalendarModule } from '../calendar/calendar.module';
     ExchangeRatesModule, // мультивалюта (Фаза 3): base-конвертація тоталів наряду
     WorkOrderTotalsModule, // BR-WO-007: єдиний власник тоталів наряду
     CalendarModule, // BR-WO-019/020: робочі години філії й запис календаря наряду
+    WorkOrderStockEffectsModule, // A3: склад і борг переходів (спільний з імпортом XLSX)
   ],
   controllers: [WorkOrdersController, WorkOrdersPublicController],
   // A2: WorkOrderEventHandlers — @OnEvent-хендлери lifecycle-side-effects (реагують на події з
@@ -42,9 +43,6 @@ import { CalendarModule } from '../calendar/calendar.module';
   // тепер їх споживає хендлер, а не сам сервіс.
   providers: [
     WorkOrdersService,
-    // A3: transaction-critical stock+settlement side-effects FSM-переходів — окремий сервіс,
-    // інжектиться у WorkOrdersService.transition (внутрішня деталь, не експортується).
-    WorkOrderStockEffectsService,
     EstimateExportService,
     WorkOrderShareService,
     WorkOrderEventHandlers,

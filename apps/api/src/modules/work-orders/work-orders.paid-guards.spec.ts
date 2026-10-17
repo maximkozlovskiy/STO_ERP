@@ -93,7 +93,7 @@ function makeHarness(over: MemRow = {}) {
   const stockEffects = {
     writeOffPartsAndCharge: vi.fn().mockResolvedValue(undefined),
     reserveParts: vi.fn().mockResolvedValue(undefined),
-    releasePartReservations: vi.fn().mockResolvedValue(undefined),
+    releaseAllNetReservations: vi.fn().mockResolvedValue(undefined),
     returnPartsAndCredit: vi.fn().mockResolvedValue(undefined),
     postFxIfSettled: vi.fn().mockResolvedValue(undefined),
   };
@@ -155,7 +155,7 @@ describe('WorkOrdersService — сплачений наряд не скасув�
       status: 'ON_HOLD',
       paidAmount: 0,
     });
-    expect(h.stockEffects.releasePartReservations).not.toHaveBeenCalled();
+    expect(h.stockEffects.releaseAllNetReservations).not.toHaveBeenCalled();
   });
 
   // guards: BR-WO-014

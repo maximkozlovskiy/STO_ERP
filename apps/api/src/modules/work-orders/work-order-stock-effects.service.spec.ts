@@ -420,16 +420,17 @@ describe('WorkOrderStockEffectsService.writeOffPartsAndCharge — Bug #780 (rele
 });
 
 /**
- * Bug #780 (симетрія) — releasePartReservations мав ту саму ваду: безумовний RESERVATION_RELEASE
- * при скасуванні наряду, який резерву не тримав (шлях APPROVED→ON_HOLD→CANCELLED: reserveParts
- * спрацьовує лише на APPROVED→IN_PROGRESS). Реальний InventoryService кинув би
- * "cannotReleaseMoreThanReserved" → скасувати наряд неможливо.
+ * Bug #780 (симетрія) — зняття резерву при скасуванні мало ту саму ваду: безумовний
+ * RESERVATION_RELEASE для наряду, який резерву не тримав. Реальний InventoryService кинув би
+ * "cannotReleaseMoreThanReserved" → скасувати наряд неможливо. Тепер (BR-WO-021) знімається
+ * net-резерв за картою рухів, а не за рядками товарів.
  */
-describe('WorkOrderStockEffectsService.releasePartReservations — Bug #780 (release лише свій резерв)', () => {
+describe('WorkOrderStockEffectsService.releaseAllNetReservations — Bug #780 (release лише свій резерв)', () => {
   function makeSvc(opts: {
     reservationMovements: Array<{ goodId: string; warehouseId: string; quantity: number }>;
     initialReserved: number;
   }) {
+    const inv = makeStatefulInventory(opts.initialReserved);
     const prisma = {
       workOrderPart: {
         findMany: vi.fn().mockResolvedValue([
@@ -444,8 +445,13 @@ describe('WorkOrderStockEffectsService.releasePartReservations — Bug #780 (rel
       },
       goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
       stockMovement: { findMany: vi.fn().mockResolvedValue(opts.reservationMovements) },
+      // Зняття обмежене агрегатом складу (StockItem.reserved) — читає його поточне значення.
+      stockItem: {
+        findFirst: vi
+          .fn()
+          .mockImplementation(() => Promise.resolve({ reserved: inv.getReserved() })),
+      },
     } as unknown as PrismaService;
-    const inv = makeStatefulInventory(opts.initialReserved);
     const inventory = { createMovement: inv.createMovement } as unknown as InventoryService;
     const settlements = { createTransaction: vi.fn() } as unknown as SettlementsService;
     return {
@@ -456,7 +462,7 @@ describe('WorkOrderStockEffectsService.releasePartReservations — Bug #780 (rel
 
   it('ON_HOLD-шлях (резерву немає) → CANCELLED НЕ падає, RELEASE пропускається', async () => {
     const { svc, createMovement } = makeSvc({ reservationMovements: [], initialReserved: 0 });
-    await expect(svc.releasePartReservations(ORG, 'wo-1', 'user-1')).resolves.toBeUndefined();
+    await expect(svc.releaseAllNetReservations(ORG, 'wo-1', 'user-1')).resolves.toBeUndefined();
     expect(createMovement.mock.calls.filter(c => c[1].type === 'RESERVATION_RELEASE')).toHaveLength(
       0,
     );
@@ -467,7 +473,7 @@ describe('WorkOrderStockEffectsService.releasePartReservations — Bug #780 (rel
       reservationMovements: [{ goodId: GOOD_ID, warehouseId: WH_ID, quantity: 7 }],
       initialReserved: 7,
     });
-    await svc.releasePartReservations(ORG, 'wo-1', 'user-1');
+    await svc.releaseAllNetReservations(ORG, 'wo-1', 'user-1');
     const rel = createMovement.mock.calls.filter(c => c[1].type === 'RESERVATION_RELEASE');
     expect(rel).toHaveLength(1);
     expect(rel[0][1].quantity).toBe(-7);
@@ -549,6 +555,14 @@ function makeLedgerService(opts: {
     },
     workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: 500 }) },
     goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
+    // Вільний залишок (дорезервування) і агрегат резерву (зняття) — з того самого журналу.
+    stockItem: {
+      findFirst: vi
+        .fn()
+        .mockImplementation((args: { where: { goodId: string } }) =>
+          Promise.resolve({ ...item(args.where.goodId) }),
+        ),
+    },
     stockMovement: {
       findMany: vi
         .fn()
@@ -635,10 +649,18 @@ describe('WorkOrderStockEffectsService — цикли по запчастина�
     { id: 'part-3', goodId: GOOD_ID, quantity: 2 },
   ];
 
+  // Дорезервування й зняття резерву йдуть по парах (товар, склад), а не по рядках (BR-WO-021):
+  // три рядки одного товару дають ОДИН рух. Послідовність перевіряється на трьох різних товарах.
+  const DISTINCT_PARTS = [
+    { id: 'part-1', goodId: GOOD_ID, quantity: 2 },
+    { id: 'part-2', goodId: '55555555-5555-4555-8555-555555555555', quantity: 2 },
+    { id: 'part-3', goodId: '66666666-6666-4666-8666-666666666666', quantity: 2 },
+  ];
+
   // guards: BR-WO-003
   it('reserveParts: наступний RESERVATION стартує лише після завершення попереднього', async () => {
     const { svc, createMovement, getMaxInFlight } = makeLedgerService({
-      parts: PARTS,
+      parts: DISTINCT_PARTS,
       onHand: 6,
       slow: true,
     });
@@ -648,16 +670,16 @@ describe('WorkOrderStockEffectsService — цикли по запчастина�
   });
 
   // guards: BR-WO-003
-  it('releasePartReservations: RESERVATION_RELEASE по рядках ідуть один за одним', async () => {
+  it('releaseAllNetReservations: RESERVATION_RELEASE по товарах ідуть один за одним', async () => {
     const { svc, createMovement, getMaxInFlight, resetMaxInFlight } = makeLedgerService({
-      parts: PARTS,
+      parts: DISTINCT_PARTS,
       onHand: 6,
       slow: true,
     });
     await svc.reserveParts(ORG, LEDGER_WO.id, 'user-1');
     createMovement.mockClear();
     resetMaxInFlight(); // міряємо лише метод під тестом, не підготовчий reserveParts
-    await svc.releasePartReservations(ORG, LEDGER_WO.id, 'user-1');
+    await svc.releaseAllNetReservations(ORG, LEDGER_WO.id, 'user-1');
     expect(createMovement).toHaveBeenCalledTimes(3);
     expect(getMaxInFlight()).toBe(1);
   });

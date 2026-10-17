@@ -12,6 +12,7 @@ import { throwIfExclusionConflict } from '../../common/utils/prisma-errors';
 import type { WorkHours } from '../../common/utils/work-hours';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
 import { WorkOrderTotalsService } from './work-order-totals.service';
+import { lockWorkOrdersForUpdate } from './work-order-stock-requirements';
 import {
   isWorkOrderFullyPaid,
   settleIfFullyPaidInTx,
@@ -33,7 +34,6 @@ import {
   WORK_ORDER_TRANSITIONS,
   CLOSED_STATUSES,
   DELETABLE_STATUSES,
-  RESERVATION_ACTIVE_STATUSES,
   EDITABLE_STATUSES,
   LINE_ACTUAL_EDITABLE_STATUSES,
 } from './work-orders.fsm';
@@ -716,6 +716,8 @@ export class WorkOrdersService {
         });
         if (res.count === 0) return res;
         await this.calendar.removeWorkOrderSlots(tx, orgId, id, deletedAt);
+        // BR-WO-021: чернетка могла тримати резерв отриманого від постачальника (BR-PL-011).
+        await this.stockEffects.releaseAllNetReservations(orgId, id, userId, tx);
         return res;
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
@@ -901,7 +903,7 @@ export class WorkOrdersService {
   ): Promise<WorkOrderResponseDto> {
     // sto-optimize: narrow select — раніше `include: { parts: take:1000 }` тягнув до 1000
     // WorkOrderPart рядків для КОЖНОЇ transition(). Виявилось wo.parts не використовується
-    // в цій функції: reserveParts/releasePartReservations/writeOffPartsAndCharge всі
+    // в цій функції: reserveParts/releaseAllNetReservations/writeOffPartsAndCharge всі
     // re-fetch parts всередині транзакції (свіжі дані з tx-context), а решта тіла читає
     // лише status/number/outMileage/vehicleId/repairCategory/counterpartyId/totalAmount.
     // Знято overfetch для всіх 9 FSM-переходів (DRAFT→ESTIMATE, ESTIMATE→APPROVED, тощо).
@@ -990,10 +992,10 @@ export class WorkOrdersService {
             : new BadRequestException(translateError('err.workOrder.statusChanged', getLocale()));
         }
 
-        // Резервувати ЛИШЕ при першому вході у IN_PROGRESS (з APPROVED). ON_HOLD зберігає
-        // резерв (RESERVATION_ACTIVE_STATUSES), тож ON_HOLD→IN_PROGRESS НЕ має резервувати
-        // повторно — інакше кожен цикл пауза/повернення подвоює reserved (WO-C1, фантомна нестача).
-        if (newStatus === 'IN_PROGRESS' && wo.status === 'APPROVED') {
+        // BR-WO-021: кожен вхід у «В роботі» дорезервовує лише бракуюче (потрібно − net-резерв,
+        // не більше available) — повторний вхід з «Призупинено» резерву не подвоює (WO-C1), а
+        // нестача перехід не блокує.
+        if (newStatus === 'IN_PROGRESS') {
           await this.stockEffects.reserveParts(orgId, id, userId, tx);
         }
 
@@ -1006,8 +1008,10 @@ export class WorkOrdersService {
           await this.stockEffects.writeOffPartsAndCharge(orgId, wo, userId, tx);
         }
 
-        if (newStatus === 'CANCELLED' && RESERVATION_ACTIVE_STATUSES.includes(wo.status)) {
-          await this.stockEffects.releasePartReservations(orgId, id, userId, tx);
+        // BR-WO-021: скасування з будь-якого статусу, крім COMPLETED (там резерв знято списанням),
+        // знімає весь net-резерв наряду — він міг з'явитись і до «В роботі» (приймання, BR-PL-011).
+        if (newStatus === 'CANCELLED' && wo.status !== 'COMPLETED') {
+          await this.stockEffects.releaseAllNetReservations(orgId, id, userId, tx);
         }
 
         // C2: скасування ЗАВЕРШЕНОГО наряду — реверс складу+боргу. На COMPLETED резерв уже
@@ -1481,6 +1485,9 @@ export class WorkOrdersService {
 
     const updated = await this.prisma.$transaction(
       async tx => {
+        // Порядок блокувань «наряд → склад» (як у transition і прийманні, BR-PL-011): потреба
+        // наряду не змінюється, поки приймання резервує під нього.
+        await lockWorkOrdersForUpdate(tx, orgId, [workOrderId]);
         const result = await tx.workOrderPart.update({
           where: { id: partId, orgId },
           data: {
@@ -1496,6 +1503,8 @@ export class WorkOrdersService {
           include: { good: PART_GOOD_INCLUDE },
         });
         await this.recalcTotals(workOrderId, tx, orgId);
+        // BR-WO-021: менша кількість чи інша одиниця — надлишок резерву знімається.
+        await this.stockEffects.reconcileAfterPartsChange(orgId, workOrderId, undefined, tx);
         return { ...result, goodUoM: uomJunction };
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
@@ -1527,11 +1536,14 @@ export class WorkOrdersService {
       throw new NotFoundException(translateError('err.workOrder.lineNotFound', getLocale()));
     await this.prisma.$transaction(
       async tx => {
+        await lockWorkOrdersForUpdate(tx, orgId, [workOrderId]);
         await tx.workOrderPart.update({
           where: { id: partId, orgId },
           data: { deletedAt: new Date() },
         });
         await this.recalcTotals(workOrderId, tx, orgId);
+        // BR-WO-021: резерв за прибраним рядком знімається.
+        await this.stockEffects.reconcileAfterPartsChange(orgId, workOrderId, undefined, tx);
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     ); // explicit timeout: soft-delete + recalcTotals

@@ -126,7 +126,8 @@ function makeService(prisma: PrismaService): WorkOrdersService {
   } as never;
   return new WorkOrdersService(
     prisma,
-    null as never, // stockEffects (A3 — не задіяний у addPart/updatePart-шляху)
+    // A3: у addPart/updatePart лише зняття надлишку резерву після правки (BR-WO-021).
+    { reconcileAfterPartsChange: vi.fn().mockResolvedValue(undefined) } as never,
     null as never, // docNumbers
     null as never, // pdf
     null as never, // audit
@@ -430,6 +431,8 @@ function makePrismaForUpdatePart(batchCostPrice: number | null) {
     },
     workOrderLine: { findMany: lineFindMany },
     workOrderPart: { update: partUpdate, aggregate: partAggregate },
+    // BR-WO-021: правка рядка блокує наряд (SELECT … FOR UPDATE) перед записом.
+    $queryRaw: vi.fn().mockResolvedValue([]),
   };
 
   const prisma = {
