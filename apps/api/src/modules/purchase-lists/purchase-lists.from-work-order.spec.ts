@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   GOOD,
+  GOOD_2,
   ORG,
   SUPPLIER,
   UOM_PACK,
@@ -122,6 +123,53 @@ describe('BR-PL-003 надсилання товарів із наряду', () =
     );
     h.tables.workOrder.rows[0].deletedAt = new Date();
     await expect(send(h, [{ workOrderPartId: 'p1' }])).rejects.toThrow(/Наряд не знайдено/);
+  });
+
+  // guards: BR-PL-003
+  it('кілька рядків у наявний список: OPEN-позиція рядка збільшується, решта створюється — позиції читаються одним запитом', async () => {
+    const h = harness({
+      parts: [
+        partRow('p1', WO_A, { quantity: 3 }),
+        partRow('p2', WO_A, { quantity: 2, goodId: GOOD_2 }),
+      ],
+      stock: {},
+      lists: [listRow('list-1')],
+      items: [
+        itemRow('i-p1', {
+          listId: 'list-1',
+          workOrderId: WO_A,
+          workOrderPartId: 'p1',
+          source: 'WORK_ORDER',
+          quantity: 1,
+        }),
+      ],
+    });
+    h.tables.purchaseListItem.findFirst.mockClear();
+    h.tables.purchaseListItem.findMany.mockClear();
+
+    const res = await send(
+      h,
+      [
+        { workOrderPartId: 'p1', quantity: 1 },
+        { workOrderPartId: 'p2' },
+        { workOrderPartId: 'p2', quantity: 1 },
+      ],
+      { listId: 'list-1' },
+    );
+
+    expect(h.item('i-p1')!.quantity).toBe(2);
+    const p2 = h.liveItems().filter(i => i.workOrderPartId === 'p2');
+    // Повтор рядка в тілі збільшує щойно створену позицію, а не створює другу.
+    expect(p2).toHaveLength(1);
+    expect(p2[0]!.quantity).toBe(3);
+    expect(res.items.map(i => i.id)).toContain('i-p1');
+    // sto-optimize: OPEN-позиції рядків — один `findMany` до циклу, без `findFirst` на рядок.
+    expect(h.tables.purchaseListItem.findFirst).not.toHaveBeenCalled();
+    expect(
+      h.tables.purchaseListItem.findMany.mock.calls.filter(
+        ([a]) => (a as { where?: { listId?: unknown } }).where?.listId === 'list-1',
+      ),
+    ).toHaveLength(1);
   });
 
   // guards: BR-PL-003

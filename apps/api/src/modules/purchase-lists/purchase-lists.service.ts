@@ -43,6 +43,12 @@ import type {
 
 type Tx = Prisma.TransactionClient;
 
+/** OPEN-позиція рядка наряду в цільовому списку: id і кількість для CAS-збільшення. */
+interface OpenItemRef {
+  id: string;
+  quantity: number;
+}
+
 /**
  * Списки купівлі (docs/objects/purchase-list.md): перелік, створення, надсилання з наряду (BR-PL-003),
  * ручні позиції (BR-PL-004), об'єднання (BR-PL-006), закриття, скасування, видалення, зв'язки.
@@ -235,6 +241,11 @@ export class PurchaseListsService {
             ).id;
 
         const uncovered = await this.shortage.uncoveredByPart(tx, orgId, dto.workOrderId);
+        // OPEN-позиції цих рядків у цільовому списку — одним запитом, а не `findFirst` на рядок
+        // (sto-optimize, N+1 у транзакції). Щойно створений список позицій не має — не читаємо.
+        const openByPart = dto.listId
+          ? await this.openItemsByPart(tx, orgId, listId, partIds)
+          : new Map<string, OpenItemRef>();
         const itemIds: string[] = [];
         for (const req of dto.parts) {
           const part = partById.get(req.workOrderPartId)!;
@@ -244,7 +255,7 @@ export class PurchaseListsService {
               err('err.purchaseList.partAlreadyCovered', { good: part.good.name }),
             );
           }
-          itemIds.push(await this.addOrIncrement(tx, orgId, listId, part, quantity));
+          itemIds.push(await this.addOrIncrement(tx, orgId, listId, part, quantity, openByPart));
           // Рядок, повторений у тілі, не бере ту саму непокриту потребу вдруге: позиція вже
           // покриває надіслане, тож повтор без кількості дає partAlreadyCovered.
           uncovered.set(part.id, Math.max(0, (uncovered.get(part.id) ?? 0) - quantity));
@@ -260,6 +271,38 @@ export class PurchaseListsService {
     return { list, items: maskItemCost(items, role) };
   }
 
+  /** Найстаріша OPEN-позиція кожного рядка наряду в списку (`workOrderPartId → позиція`). */
+  private async openItemsByPart(
+    tx: Tx,
+    orgId: string,
+    listId: string,
+    partIds: string[],
+  ): Promise<Map<string, OpenItemRef>> {
+    const rows = await tx.purchaseListItem.findMany({
+      where: {
+        orgId,
+        listId,
+        workOrderPartId: { in: partIds },
+        status: 'OPEN',
+        deletedAt: null,
+      },
+      select: { id: true, quantity: true, workOrderPartId: true },
+      orderBy: { createdAt: 'asc' },
+      take: 1000,
+    });
+    const result = new Map<string, OpenItemRef>();
+    for (const r of rows) {
+      if (r.workOrderPartId && !result.has(r.workOrderPartId)) {
+        result.set(r.workOrderPartId, { id: r.id, quantity: r.quantity });
+      }
+    }
+    return result;
+  }
+
+  /**
+   * OPEN-позиція рядка в списку збільшується, інакше створюється нова. `openByPart` — позиції,
+   * прочитані до циклу; оновлюється тут, тож рядок, повторений у тілі, бачить уже записане.
+   */
   private async addOrIncrement(
     tx: Tx,
     orgId: string,
@@ -272,11 +315,9 @@ export class PurchaseListsService {
       good: { preferredSupplierId: string | null };
     },
     quantity: number,
+    openByPart: Map<string, OpenItemRef>,
   ): Promise<string> {
-    const existing = await tx.purchaseListItem.findFirst({
-      where: { orgId, listId, workOrderPartId: part.id, status: 'OPEN', deletedAt: null },
-      orderBy: { createdAt: 'asc' },
-    });
+    const existing = openByPart.get(part.id);
     if (existing) {
       const res = await tx.purchaseListItem.updateMany({
         where: {
@@ -290,6 +331,7 @@ export class PurchaseListsService {
         data: { quantity: existing.quantity + quantity },
       });
       if (res.count !== 1) throw conflict();
+      openByPart.set(part.id, { id: existing.id, quantity: existing.quantity + quantity });
       return existing.id;
     }
     const created = await tx.purchaseListItem.create({
@@ -306,6 +348,7 @@ export class PurchaseListsService {
       },
       select: { id: true },
     });
+    openByPart.set(part.id, { id: created.id, quantity });
     return created.id;
   }
 
