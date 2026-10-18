@@ -54,6 +54,12 @@ grep -rn "ALTER TYPE.*ADD VALUE" packages/database/prisma/migrations/ | tail -5
       нового поля (`supplierOfferTtlMinutes` undefined → 400). Взірець — `schemaFingerprint(Prisma.<Model>ScalarFieldEnum)`
       у ключі (`settings.service.ts`). Grep: `grep -rn "redis.set(" apps/api/src --include="*.ts" | grep -v spec`
       → для кожного кешу DTO моделі ключ несе відбиток полів (`journal/database.md`, 2026-10-18)
+- [ ] **Новий стан батька «приховує» дочірні записи фільтром у коді (`OF_LIVE_WORK_ORDER`, `status: { not: X }`),
+      а таблиця має EXCLUDE/UNIQUE `WHERE "deletedAt" IS NULL` → бекфіл-міграція старих рядків + заборона
+      створювати/прив'язувати нові до такого батька.** Фільтр бачать `findSlots` і перевірка зайнятості, а
+      констрейнт, онлайн-запис, звіти й sync — ні: невидимий рядок тримає ресурс (409 на «вільному» підйомнику).
+      Grep: `git diff <base> -- apps/api/src | grep -nE "^\+.*status: \{ not:"` → для кожного фільтра
+      звірити `pg_constraint` таблиці й інших читачів (`journal/database.md`, 2026-10-18)
 
 ---
 

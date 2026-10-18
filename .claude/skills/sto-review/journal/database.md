@@ -62,3 +62,17 @@
 **Фікс:** ключ `settings:org:<sha1(ScalarFieldEnum)[0..8]>:<id>` — змінюється сам із кожною колонкою;
 регресія в `settings.service.spec.ts` (старий ключ не читається, мутацією перевірено).
 **Severity:** IMPORTANT
+
+### 2026-10-18 — Прихований фільтром рядок і далі тримає EXCLUDE — §6
+
+**Сигнал:** BR-WO-022 — скасування наряду позначає його записи календаря видаленими, а для старих
+записів додано лише фільтр `OF_LIVE_WORK_ORDER` (`status ≠ CANCELLED`) у `findSlots`/`busyWhere`.
+EXCLUDE `calendar_slots_no_overlap` (`WHERE "deletedAt" IS NULL`), `BookingService`, звіт
+завантаження постів і sync планшета фільтра не мають: живий запис скасованого наряду невидимий, але
+займає підйомник — новий запис отримує 409 «щойно зайняли». Форма календаря ще й дозволяла
+прив'язати НОВИЙ запис до скасованого наряду.
+**Grep:** `git diff <base> -- apps/api/src | grep -nE "^\+.*status: \{ not:"`; `grep -rn "EXCLUDE" packages/database/prisma/migrations`
+**Фікс:** бекфіл-міграція `20261018140000_calendar_slots_of_cancelled_work_orders` (як
+`20261016120000_…deleted_work_orders`, з `syncVersion + 1`); `createSlot`/`updateSlot` — 400
+`err.calendar.workOrderCancelled`; тести в `calendar.deleted-work-order.spec.ts`.
+**Severity:** IMPORTANT
