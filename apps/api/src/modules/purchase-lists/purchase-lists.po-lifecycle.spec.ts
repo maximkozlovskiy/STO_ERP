@@ -240,3 +240,87 @@ describe('BR-PL-012 остача після повного приймання', 
     expect(h.liveItems()).toHaveLength(1);
   });
 });
+
+// Рішення власника 2026-10-18: наряд позиції вже завершено, скасовано чи видалено — решта
+// позиції (недоотримане) отримує «Скасовано», а не «Не замовлено»: закуповувати її для наряду
+// вже не треба. Скасування замовлення (BR-PL-010) і остача повного приймання (BR-PL-012).
+describe('BR-PL-010 / BR-PL-012 решта позиції закритого наряду — «Скасовано»', () => {
+  const closedWo = {
+    COMPLETED: { status: 'COMPLETED' },
+    CANCELLED: { status: 'CANCELLED' },
+    видалений: { status: 'APPROVED', deletedAt: new Date('2026-10-17T09:00:00Z') },
+  } as const;
+  const closed = (state: keyof typeof closedWo, status: string, items: Record<string, unknown>[]) =>
+    procurementHarness({
+      workOrders: [woRow(WO_A, { status: 'APPROVED' }), woRow(WO_B, closedWo[state])],
+      parts: [partRow('pa', WO_A, { quantity: 5 }), partRow('pb', WO_B, { quantity: 5 })],
+      purchaseOrders: [poRow(status)],
+      purchaseOrderLines: [line('l1', GOOD, 4)],
+      items,
+    });
+  const ofB = (over: Record<string, unknown>) =>
+    ordered({ workOrderId: WO_B, workOrderPartId: 'pb', ...over });
+  const restOf = (h: ReturnType<typeof closed>, known: string[]) =>
+    h.liveItems().filter(i => !known.includes(i.id as string));
+
+  // guards: BR-PL-010
+  it.each(Object.keys(closedWo) as (keyof typeof closedWo)[])(
+    'скасоване замовлення, наряд %s: неотримана позиція → «Скасовано», частково отримана — решта «Скасовано»',
+    async state => {
+      const h = closed(state, 'PARTIAL', [
+        itemRow('none', ofB({ quantity: 2 })),
+        itemRow('part', ofB({ quantity: 2, receivedQty: 1 })),
+      ]);
+
+      await h.purchaseOrders.transition(ORG, PO, 'CANCELLED' as never);
+
+      expect(h.item('none')).toMatchObject({ status: 'CANCELLED', purchaseOrderId: null });
+      expect(h.item('part')).toMatchObject({ status: 'RECEIVED', quantity: 1 });
+      expect(restOf(h, ['none', 'part'])).toEqual([
+        expect.objectContaining({ workOrderId: WO_B, status: 'CANCELLED', quantity: 1 }),
+      ]);
+      expect(h.liveItems().filter(i => i.status === 'OPEN')).toEqual([]);
+    },
+  );
+
+  // guards: BR-PL-012
+  it.each(Object.keys(closedWo) as (keyof typeof closedWo)[])(
+    'повне приймання з недостачею, наряд %s: остача → «Скасовано», не «Не замовлено»',
+    async state => {
+      const h = closed(state, 'ORDERED', [itemRow('i1', ofB({ quantity: 6 }))]);
+
+      await h.purchaseOrders.receive(ORG, PO, {
+        lines: [{ lineId: 'l1', receivedQty: 4 }],
+      } as never);
+
+      expect(h.tables.purchaseOrder.rows[0].status).toBe('RECEIVED');
+      expect(h.item('i1')).toMatchObject({ status: 'RECEIVED', quantity: 4, receivedQty: 4 });
+      expect(restOf(h, ['i1'])).toEqual([
+        expect.objectContaining({
+          workOrderId: WO_B,
+          workOrderPartId: 'pb',
+          status: 'CANCELLED',
+          quantity: 2,
+          purchaseOrderId: null,
+        }),
+      ]);
+    },
+  );
+
+  // guards: BR-PL-012
+  it('контроль: наряд у роботі — остача повного приймання знову «Не замовлено»', async () => {
+    const h = procurementHarness({
+      workOrders: [woRow(WO_A, { status: 'IN_PROGRESS' })],
+      parts: [partRow('pa', WO_A, { quantity: 6 })],
+      purchaseOrders: [poRow('ORDERED')],
+      purchaseOrderLines: [line('l1', GOOD, 4)],
+      items: [itemRow('i1', ordered({ quantity: 6 }))],
+    });
+
+    await h.purchaseOrders.receive(ORG, PO, { lines: [{ lineId: 'l1', receivedQty: 4 }] } as never);
+
+    expect(restOf(h as never, ['i1'])).toEqual([
+      expect.objectContaining({ workOrderId: WO_A, status: 'OPEN', quantity: 2 }),
+    ]);
+  });
+});
