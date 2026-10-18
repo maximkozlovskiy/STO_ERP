@@ -299,3 +299,14 @@ unit-спеки реєстру, другий — посилання, а не т�
 `docs/objects/*.md`; `grep -n "@Controller" apps/api/src/modules/<mod>/<mod>.controller.ts` проти
 таблиці. **Фікс:** абзац «E2E:» у дос'є, URL таблиці з префікса контролера (572e4631).
 **Severity:** SUGGESTION
+
+### 2026-10-18 — Тест другої 400-перевірки замаскований першою — §5
+
+**Сигнал:** `supplier-orders.send.spec.ts` перевіряв `orderClosed` так: `supplierApiStatus = 'SENT'`,
+потім `status = 'CANCELLED'` і `rejects.toThrow(BadRequestException)`. Кидала вже `alreadySent`, тож
+мутація `SENDABLE_PO += PARTIALLY_RECEIVED` (і навіть видалення перевірки) лишала тест зеленим; правило
+власника «з «Частково» — 400» (BR-SCON-009) і стеля опитування 30 днів (BR-SCON-012) не мали guard-а.
+**Grep:** `grep -rn "rejects.toThrow(BadRequestException)" apps/api/src --include=*.spec.ts` → для
+кожного: чи не спрацьовує раніше інша перевірка того ж методу. **Фікс:** скинути стан першої
+перевірки, чекати текст помилки, кожен статус окремо; межу — 29/31 дні (292ca2fe).
+**Severity:** IMPORTANT

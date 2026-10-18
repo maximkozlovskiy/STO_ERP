@@ -150,6 +150,20 @@ grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations/ | grep -v "W
       `findFirst({ orgId, X })` (без `deletedAt` filter) → якщо `deletedAt !== null` → `update({ ...dto, deletedAt: null })` замість `create`; якщо active → `ConflictException`
 - [ ] `update()` що змінює unique-поле → re-check: `findFirst({ orgId, X, NOT: { id } })` → `ConflictException`
 
+#### §5.3 Тест guard-а, замаскований попереднім guard-ом (2026-10-18)
+
+```bash
+# Тест, що чекає лише клас помилки (BadRequestException) для другої перевірки підряд
+grep -rn "rejects.toThrow(BadRequestException)" apps/api/src --include=*.spec.ts
+```
+
+- [ ] Метод має кілька послідовних 400-перевірок (статус документа → стан відправки → …), а тест
+      другої лише `rejects.toThrow(BadRequestException)` і лишає стан, на якому спрацює ПЕРША →
+      тест зелений і без другої перевірки. Скинути стан першої (`supplierApiStatus = 'NOT_SENT'`)
+      і чекати ТЕКСТ саме цієї помилки; кожен статус правила — окремо (не лише CANCELLED).
+- [ ] Правило з числовою межею (30 днів, ліміт, стеля) у дос'є → тест по обидва боки межі
+      (29 / 31 дні), доведений мутацією константи.
+
 ---
 
 ### §13 API Contract
