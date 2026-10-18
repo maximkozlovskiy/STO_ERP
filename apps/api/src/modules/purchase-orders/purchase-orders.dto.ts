@@ -14,6 +14,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsDateString,
+  IsBoolean,
   IsBooleanString,
   MaxLength,
 } from 'class-validator';
@@ -27,6 +28,14 @@ export class TransitionPurchaseOrderDto {
   @ApiProperty({ enum: PurchaseOrderStatus })
   @IsEnum(PurchaseOrderStatus)
   status!: PurchaseOrderStatus;
+
+  @ApiPropertyOptional({
+    description:
+      'Скасувати замовлення, вже передане постачальнику через API (BR-PO-012): без нього — 400 cancelSentOrder',
+  })
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean;
 }
 
 export class PurchaseOrderLineDto {

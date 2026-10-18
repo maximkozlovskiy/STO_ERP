@@ -31,6 +31,14 @@ import { SupplierOfferSearchWorker } from './offers/supplier-offer-search.worker
 import { SupplierAllocationService } from './strategy/supplier-allocation.service';
 import { SupplierCatalogProcessor } from './processors/supplier-catalog.processor';
 import { SupplierApiScheduler } from './supplier-api.scheduler';
+import { SupplierOrdersService } from './orders/supplier-orders.service';
+import { SupplierOrderSender } from './orders/supplier-order-sender';
+import { SupplierOrderPoller } from './orders/supplier-order-poller';
+import { SupplierOrdersController } from './orders/supplier-orders.controller';
+import { SupplierOrderProcessor } from './processors/supplier-order.processor';
+import { SupplierMaintenanceProcessor } from './processors/supplier-maintenance.processor';
+import { PurchaseOrdersModule } from '../purchase-orders/purchase-orders.module';
+import { PurchaseListCoreModule } from '../purchase-lists/purchase-list-core.module';
 import {
   SupplierItemOffersController,
   SupplierOffersController,
@@ -49,6 +57,8 @@ import {
     GoodMatcherModule,
     GoodsModule,
     BrandsModule,
+    PurchaseOrdersModule,
+    PurchaseListCoreModule,
     BullModule.registerQueue({ name: 'supplier-search', defaultJobOptions: DEFAULT_JOB_OPTS }),
     BullModule.registerQueue({ name: 'supplier-order', defaultJobOptions: DEFAULT_JOB_OPTS }),
     BullModule.registerQueue({ name: 'supplier-catalog', defaultJobOptions: DEFAULT_JOB_OPTS }),
@@ -59,6 +69,7 @@ import {
     SupplierConnectionsController,
     SupplierOffersController,
     SupplierItemOffersController,
+    SupplierOrdersController,
   ],
   providers: [
     // У production непорожній SUPPLIER_API_DEV_ALLOWED_ORIGINS валить старт (і env.schema).
@@ -91,6 +102,11 @@ import {
     SupplierAllocationService,
     SupplierSearchProcessor,
     SupplierCatalogProcessor,
+    SupplierOrdersService,
+    SupplierOrderSender,
+    SupplierOrderPoller,
+    SupplierOrderProcessor,
+    SupplierMaintenanceProcessor,
     SupplierApiScheduler,
   ],
   exports: [SupplierAdapterRegistry],

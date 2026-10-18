@@ -31,6 +31,7 @@ import { PurchaseListsService } from './purchase-lists.service';
 import { PurchaseListItemsService } from './purchase-list-items.service';
 import { PurchaseListOrdersService } from './purchase-list-orders.service';
 import { PurchaseOrdersService } from '../purchase-orders/purchase-orders.service';
+import { SupplierOrderOutboxService } from '../supplier-api/outbox/supplier-order-outbox.service';
 
 export * from '../work-orders/work-order-stock.spec-fixture';
 
@@ -85,6 +86,10 @@ export interface ProcurementOptions extends StockHarnessOptions {
   items?: MemRow[];
   purchaseOrders?: MemRow[];
   purchaseOrderLines?: MemRow[];
+  /** Передача в API постачальника (BR-PO-011/012): налаштування, підключення, зовнішні замовлення. */
+  orgSettings?: MemRow[];
+  supplierConnections?: MemRow[];
+  supplierOrders?: MemRow[];
 }
 
 export function procurementHarness(opts: ProcurementOptions = {}) {
@@ -128,6 +133,10 @@ export function procurementHarness(opts: ProcurementOptions = {}) {
       paymentDate: null,
       contractId: null,
       notes: null,
+      // Передача в API постачальника — значення за замовчуванням зі схеми (BR-PO-011).
+      supplierApiStatus: 'NOT_SENT',
+      supplierApiSentAt: null,
+      supplierApiError: null,
     }),
     {
       supplier: r => byId('counterparty', r.supplierId),
@@ -182,6 +191,9 @@ export function procurementHarness(opts: ProcurementOptions = {}) {
       purchaseOrder: r => byId('purchaseOrder', r.purchaseOrderId),
     },
   );
+  db.addTable('organisationSettings', opts.orgSettings ?? []);
+  db.addTable('supplierConnection', opts.supplierConnections ?? []);
+  db.addTable('supplierOrder', opts.supplierOrders ?? []);
   // Рядки наряду з наряд/товар/склад — для нестачі (фільтр `workOrder: { status }`).
   db.addTable('workOrderPart', t.workOrderPart.rows, undefined, {
     workOrder: r => byId('workOrder', r.workOrderId),
@@ -211,6 +223,7 @@ export function procurementHarness(opts: ProcurementOptions = {}) {
     }),
   };
   const supplierSettlements = { createTransaction: vi.fn().mockResolvedValue({}) };
+  const outboxEvents = { emit: vi.fn() };
   const purchaseOrders = new PurchaseOrdersService(
     prisma,
     inventory,
@@ -227,6 +240,7 @@ export function procurementHarness(opts: ProcurementOptions = {}) {
     } as never,
     links,
     receipt,
+    new SupplierOrderOutboxService(outboxEvents as never),
   );
   const orders = new PurchaseListOrdersService(prisma, purchaseOrders);
   const settlements = { createTransaction: vi.fn().mockResolvedValue({}) };
@@ -297,6 +311,7 @@ export function procurementHarness(opts: ProcurementOptions = {}) {
     orders,
     poNumbers,
     supplierSettlements,
+    outboxEvents,
     item,
     liveItems,
     list,

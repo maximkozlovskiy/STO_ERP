@@ -158,8 +158,17 @@ export class PurchaseOrdersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити чернетку замовлення' })
   @ApiNoContentResponse()
-  remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.remove(orgId, id);
+  @ApiQuery({
+    name: 'force',
+    required: false,
+    description: 'Видалити, хоч замовлення вже передане постачальнику через API (BR-PO-012)',
+  })
+  remove(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('force') force?: string,
+  ) {
+    return this.service.remove(orgId, id, force === 'true');
   }
 
   @Post(':id/transition')
@@ -171,7 +180,7 @@ export class PurchaseOrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TransitionPurchaseOrderDto,
   ) {
-    return this.service.transition(orgId, id, dto.status);
+    return this.service.transition(orgId, id, dto.status, { force: dto.force === true });
   }
 
   @Post(':id/receive')

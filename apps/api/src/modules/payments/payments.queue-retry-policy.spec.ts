@@ -327,6 +327,7 @@ describe('Політика повторів черг зовнішніх API (с�
       'bank-statement-polling': 2,
       'supplier-search': 2,
       'supplier-catalog': 2,
+      'supplier-order': 3,
     });
     expect(found.registerSites.filter(r => r.name !== null).length).toBeGreaterThanOrEqual(14);
   });

@@ -26,6 +26,7 @@ import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
 import { PurchaseListLinkService } from '../purchase-lists/purchase-list-link.service';
 import { PurchaseListReceiptService } from '../purchase-lists/purchase-list-receipt.service';
+import { SupplierOrderOutboxService } from '../supplier-api/outbox/supplier-order-outbox.service';
 import { calcLineVat } from '../../common/utils/vat';
 import {
   CreatePurchaseOrderDto,
@@ -124,6 +125,8 @@ export class PurchaseOrdersService {
     // BR-PO-009/010: позиції списків купівлі — хуки життєвого циклу й розподіл отриманого.
     private readonly purchaseLists: PurchaseListLinkService,
     private readonly purchaseListReceipt: PurchaseListReceiptService,
+    // BR-PO-011/012: передача в API постачальника (outbox) і захист скасування відправленого.
+    private readonly supplierOutbox: SupplierOrderOutboxService,
   ) {}
 
   /** Нормалізує введений номер накладної: trim, порожнє → null. */
@@ -649,8 +652,9 @@ export class PurchaseOrdersService {
     orgId: string,
     id: string,
     newStatus: POStatus,
+    opts: { force?: boolean } = {},
   ): Promise<PurchaseOrderResponseDto> {
-    await this.prisma.$transaction(
+    const queuedForApi = await this.prisma.$transaction(
       async tx => {
         // sto-optimize: status-only projection — assertFsmTransition потребує лише поточний статус.
         const po = await tx.purchaseOrder.findFirst({
@@ -666,6 +670,8 @@ export class PurchaseOrdersService {
         // ДО рядка замовлення: приймання блокує позиції (розподіл) раніше за замовлення (статус),
         // і зворотний порядок тут давав би deadlock паралельних «Прийняти» і «Скасувати».
         if (newStatus === PurchaseOrderStatus.CANCELLED) {
+          // BR-PO-012: замовлення, вже передане постачальнику через API, — лише з force.
+          await this.supplierOutbox.assertCancellable(tx, orgId, id, opts.force === true);
           await this.purchaseLists.onOrderCancelledOrDeleted(tx, orgId, id);
         }
         // BR-PL-012 (Bug #885): замовлення закрито кнопкою «Отримано» (постачальник більше не
@@ -676,9 +682,14 @@ export class PurchaseOrdersService {
           await this.purchaseLists.onOrderFullyReceived(tx, orgId, id);
         }
         await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
+        // BR-PO-011 / BR-SCON-009: режим «автоматично при «Замовлено»» — outbox у цій же транзакції.
+        return newStatus === PurchaseOrderStatus.ORDERED
+          ? this.supplierOutbox.onOrderedInTx(tx, orgId, id)
+          : false;
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
+    if (queuedForApi) this.supplierOutbox.afterCommit(orgId, id);
     return this.findOne(orgId, id);
   }
 
@@ -955,7 +966,7 @@ export class PurchaseOrdersService {
     return this.findOne(orgId, id);
   }
 
-  async remove(orgId: string, id: string): Promise<void> {
+  async remove(orgId: string, id: string, force = false): Promise<void> {
     // Narrow tenant guard — потрібен лише `status` для DRAFT check.
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id, orgId, deletedAt: null },
@@ -972,6 +983,7 @@ export class PurchaseOrdersService {
       async tx => {
         // Позиції — до рядка замовлення (порядок блокувань той самий, що в update і transition);
         // замовлення вже не DRAFT → CAS нижче кидає, і повернення позицій відкочується.
+        await this.supplierOutbox.assertCancellable(tx, orgId, id, force);
         await this.purchaseLists.onOrderCancelledOrDeleted(tx, orgId, id);
         const res = await tx.purchaseOrder.updateMany({
           where: { id, orgId, deletedAt: null, status: PurchaseOrderStatus.DRAFT },

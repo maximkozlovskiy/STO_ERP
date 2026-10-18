@@ -419,7 +419,9 @@ describe('PurchaseOrders — HTTP Contract', () => {
         payload: { status: 'ORDERED' },
       });
       expect(res.statusCode).toBe(201);
-      expect(serviceMock.transition).toHaveBeenCalledWith('org-1', VALID_UUID, 'ORDERED');
+      expect(serviceMock.transition).toHaveBeenCalledWith('org-1', VALID_UUID, 'ORDERED', {
+        force: false,
+      });
     });
 
     it('Bug #482: POST з status=CANCELLED → 201 (термінальний з DRAFT)', async () => {
@@ -430,7 +432,29 @@ describe('PurchaseOrders — HTTP Contract', () => {
         payload: { status: 'CANCELLED' },
       });
       expect(res.statusCode).toBe(201);
-      expect(serviceMock.transition).toHaveBeenCalledWith('org-1', VALID_UUID, 'CANCELLED');
+      expect(serviceMock.transition).toHaveBeenCalledWith('org-1', VALID_UUID, 'CANCELLED', {
+        force: false,
+      });
+    });
+
+    // guards: BR-PO-012
+    it('скасування відправленого в API: force=true доходить до сервісу; force не boolean → 400', async () => {
+      serviceMock.transition.mockResolvedValueOnce({ id: VALID_UUID, status: 'CANCELLED' });
+      const ok = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/purchase-orders/${VALID_UUID}/transition`,
+        payload: { status: 'CANCELLED', force: true },
+      });
+      expect(ok.statusCode).toBe(201);
+      expect(serviceMock.transition).toHaveBeenLastCalledWith('org-1', VALID_UUID, 'CANCELLED', {
+        force: true,
+      });
+      const bad = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/purchase-orders/${VALID_UUID}/transition`,
+        payload: { status: 'CANCELLED', force: 'yes' },
+      });
+      expect(bad.statusCode).toBe(400);
     });
 
     it('Bug #482: POST з status=RECEIVED → 201 (Bug #481 ORDERED→RECEIVED FSM happy-path)', async () => {
@@ -441,7 +465,9 @@ describe('PurchaseOrders — HTTP Contract', () => {
         payload: { status: 'RECEIVED' },
       });
       expect(res.statusCode).toBe(201);
-      expect(serviceMock.transition).toHaveBeenCalledWith('org-1', VALID_UUID, 'RECEIVED');
+      expect(serviceMock.transition).toHaveBeenCalledWith('org-1', VALID_UUID, 'RECEIVED', {
+        force: false,
+      });
     });
 
     it('Bug #482: POST з невалідним status → 400 (IsEnum whitelist)', async () => {

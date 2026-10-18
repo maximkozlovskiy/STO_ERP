@@ -18,6 +18,7 @@ import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
 import { LinesSummaryModule } from '../lines-summary/lines-summary.module';
 import { PurchaseListCoreModule } from '../purchase-lists/purchase-list-core.module';
+import { SupplierOrderOutboxModule } from '../supplier-api/outbox/supplier-order-outbox.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { PurchaseListCoreModule } from '../purchase-lists/purchase-list-core.mod
     IntegrationLogsModule,
     ExchangeRatesModule, // мультивалюта (Фаза 3): base-конвертація тоталів замовлення
     PurchaseListCoreModule, // BR-PO-009/010: позиції списків купівлі й розподіл отриманого
+    SupplierOrderOutboxModule, // BR-PO-011/012: outbox передачі в API постачальника (листковий модуль)
     BullModule.registerQueue({ name: 'nova-poshta-polling', defaultJobOptions: DEFAULT_JOB_OPTS }),
   ],
   controllers: [PurchaseOrdersController, DeliveryProvidersController],

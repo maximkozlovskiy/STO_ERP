@@ -22,6 +22,7 @@ import { vi } from 'vitest';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { PurchaseListLinkService } from '../purchase-lists/purchase-list-link.service';
 import { PurchaseListReceiptService } from '../purchase-lists/purchase-list-receipt.service';
+import { SupplierOrderOutboxService } from '../supplier-api/outbox/supplier-order-outbox.service';
 
 /**
  * Мультивалюта (Фаза 3): PurchaseOrdersService набув ExchangeRatesService.
@@ -61,6 +62,15 @@ export const purchaseListProviders = () => [
     useValue: {
       lockCandidateWorkOrders: vi.fn().mockResolvedValue(undefined),
       allocateOnReceipt: vi.fn().mockResolvedValue(undefined),
+    },
+  },
+  // BR-PO-011/012: outbox передачі в API постачальника — його стереже supplier-api/outbox/*.
+  {
+    provide: SupplierOrderOutboxService,
+    useValue: {
+      onOrderedInTx: vi.fn().mockResolvedValue(false),
+      afterCommit: vi.fn(),
+      assertCancellable: vi.fn().mockResolvedValue(undefined),
     },
   },
 ];
