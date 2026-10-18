@@ -131,6 +131,9 @@ model CounterpartyStatusLink {
 > запис) — 403. Web: «Позиції» → фільтр і «Постачальник і ціна» (`ItemsView`), пошук постачальника в
 > `PurchaseOrderCreateModal` (другим рядком — ЄДРПОУ; «Відкрити картку» комірнику недоступна).
 > `SupplierConnectionModal` комірник не відкриває — підключення до API лише OWNER/ADMIN (BR-SCON).
+> Сторінки «Контрагенти» в комірника немає: пункт меню й команда палітри йому не показуються
+> (Bug #899, `lib/__tests__/nav-page-roles.test.ts`); «Постачальників немає» — порада звернутися до
+> власника чи адміністратора, а не «додайте контрагента» (Bug #898).
 > Тести: api `counterparties.storekeeper-suppliers.spec.ts`; web `ItemsView.suppliers.test.tsx`,
 > `PurchaseOrderCreateModal.storekeeper-supplier.test.tsx`, `GoodsTab.suppliers-cache.test.tsx` (кеш
 > `cache:suppliers` вкладки — лише id і назва, `lib/supplier-cache-rows.ts`); E2E
