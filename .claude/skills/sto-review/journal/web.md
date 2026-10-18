@@ -424,3 +424,13 @@ FK з наявного стану робить запис нередагован
 **Фікс:** `useSentOrderForce().runMany` — одне спільне підтвердження, повтор із force лише для відправлених;
 SENDING у web-переліку; тести `SupplierApiOrderBlock.test.tsx`, `useSupplierApi.test.tsx`.
 **Severity:** IMPORTANT
+
+### 2026-10-18 — форма зміни запису не шле відкріплений наряд — §8
+
+**Сигнал:** форма запису календаря очищує наряд (поле «×» чи зміна клієнта з діалогом «наряд буде
+відкріплено»), а тіло PATCH має `workOrderId: form.workOrderId || undefined` — сервер зберігав
+зв'язок. Після BR-WO-024 новий час такого запису ще й переносився у ВІДКРІПЛЕНИЙ наряд.
+**Grep:** `grep -rnE "Id: form\.\w+ \|\| undefined" apps/web/src --include=*.tsx`
+**Фікс:** `workOrderId: form.workOrderId || (editingSlotId ? null : undefined)`; тест — тіло PATCH
+після «×» має `workOrderId: null` (мутацією підтверджено), API — `updateCalendarSlot` з `null` не
+чіпає наряд. **Severity:** IMPORTANT

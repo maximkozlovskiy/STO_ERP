@@ -306,3 +306,8 @@ grep -rn "<DatePickerInput" apps/web/src/app --include="*.tsx" | wc -l
       (`CalendarDayGrid.day-view.test.tsx`, review 2026-10-16)
 - [ ] **E2E `afterAll` — `expect.soft` на кожному кроці прибирання і видалення ВСІХ передумов**
       (авто, гараж, клієнт), у порядку залежностей (запис → наряд → авто → клієнт)
+- [ ] **Форма ЗМІНИ шле очищений зв'язок як `null`, а не `|| undefined`** (`workOrderId`,
+      `employeeId`): `undefined` сервер читає «не чіпати», і відкріплення, яке форма показала
+      (діалог «наряд буде відкріплено»), не доходить. Grep:
+      `grep -rnE "Id: form\.\w+ \|\| undefined" apps/web/src --include=*.tsx` → у формі з
+      `editingId` — `|| (editingId ? null : undefined)` (`journal/web.md`, 2026-10-18)
