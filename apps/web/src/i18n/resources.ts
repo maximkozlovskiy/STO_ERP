@@ -29,6 +29,7 @@ import ukBookings from './locales/uk/bookings.json';
 import ukErrorPages from './locales/uk/errorPages.json';
 import ukBankStatements from './locales/uk/bankStatements.json';
 import ukPurchaseLists from './locales/uk/purchaseLists.json';
+import ukSupplierApi from './locales/uk/supplierApi.json';
 
 import enCommon from './locales/en/common.json';
 import enNav from './locales/en/nav.json';
@@ -59,6 +60,7 @@ import enBookings from './locales/en/bookings.json';
 import enErrorPages from './locales/en/errorPages.json';
 import enBankStatements from './locales/en/bankStatements.json';
 import enPurchaseLists from './locales/en/purchaseLists.json';
+import enSupplierApi from './locales/en/supplierApi.json';
 
 export const resources = {
   uk: {
@@ -91,6 +93,7 @@ export const resources = {
     errorPages: ukErrorPages,
     bankStatements: ukBankStatements,
     purchaseLists: ukPurchaseLists,
+    supplierApi: ukSupplierApi,
   },
   en: {
     common: enCommon,
@@ -122,5 +125,6 @@ export const resources = {
     errorPages: enErrorPages,
     bankStatements: enBankStatements,
     purchaseLists: enPurchaseLists,
+    supplierApi: enSupplierApi,
   },
 } as const;

@@ -59,6 +59,7 @@ if (!i18n.isInitialized) {
       'profile',
       'bookings',
       'errorPages',
+      'supplierApi',
     ],
     interpolation: { escapeValue: false }, // React вже екранує
     returnNull: false,

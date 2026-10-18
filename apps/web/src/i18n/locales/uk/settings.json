@@ -11,6 +11,7 @@
     "loyalty": "Лояльність",
     "fiscal": "Фіскалізація",
     "delivery": "Доставка",
+    "supplier-api": "Постачальники API",
     "integrations": "Інтеграції",
     "integration-logs": "Логи інтеграцій",
     "dead-letter": "Невдалі задачі",

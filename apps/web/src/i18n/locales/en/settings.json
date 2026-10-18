@@ -11,6 +11,7 @@
     "loyalty": "Loyalty",
     "fiscal": "Fiscalization",
     "delivery": "Delivery",
+    "supplier-api": "Supplier APIs",
     "integrations": "Integrations",
     "integration-logs": "Integration logs",
     "dead-letter": "Failed jobs",
