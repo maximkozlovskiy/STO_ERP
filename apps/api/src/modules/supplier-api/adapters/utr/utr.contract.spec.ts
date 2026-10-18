@@ -186,9 +186,9 @@ describe('UtrAdapter — контракт проти фейкового UTR', ()
       SupplierReconcileRequired,
     );
     expect(persisted.at(-1)?.step).toBe(RECONCILE_STEP);
-    await expect(adapter.findOrderByReference(conn(), order(), run.state)).resolves.toBeNull();
+    await expect(adapter.findOrderByReference(conn(), order())).resolves.toBeNull();
     await adapter.placeOrder(conn(), order(), runner().run);
-    await expect(adapter.findOrderByReference(conn(), order(), run.state)).resolves.toEqual({
+    await expect(adapter.findOrderByReference(conn(), order())).resolves.toEqual({
       externalOrderId: '6802274',
       externalNumber: 'УЭТ000001',
     });
