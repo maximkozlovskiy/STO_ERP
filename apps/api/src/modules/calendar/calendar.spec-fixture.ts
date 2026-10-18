@@ -155,7 +155,10 @@ export function buildSlotStorePrisma(rows: FakeSlot[]) {
   });
   const calendarSlot = { findFirst, findMany, create, update };
   const exists = () =>
-    vi.fn(({ where }: { where: { id: string } }) => Promise.resolve({ id: where.id }));
+    // status? — наряд може повернути статус (BR-WO-022: скасований наряд не приймає запис).
+    vi.fn(({ where }: { where: { id: string } }): Promise<{ id: string; status?: string }> =>
+      Promise.resolve({ id: where.id }),
+    );
 
   return {
     calendarSlot,
