@@ -427,12 +427,20 @@ export class SyncService {
         .filter(({ field }) => payload[field])
         .map(async ({ field, model }) => {
           const id = payload[field] as string;
-          const record = await this.model(model).findFirst({
+          const isWorkOrder = model === 'workOrder';
+          const record = (await this.model(model).findFirst({
             where: { id, orgId, deletedAt: null },
-            select: { id: true },
-          });
+            select: { id: true, ...(isWorkOrder && { status: true }) },
+          })) as { id: string; status?: string } | null;
           if (!record) {
             throw new Error(`Поле ${field}=${id} не знайдено в межах організації`);
+          }
+          // BR-WO-022: запис календаря не прив'язується до скасованого наряду — так само, як
+          // `CalendarService.createSlot/updateSlot`. Живий запис скасованого наряду ніде не
+          // показується, але EXCLUDE `calendar_slots_no_overlap` його бачить — невидимий тримач
+          // підйомника (409 на вільному з вигляду часі).
+          if (isWorkOrder && record.status === 'CANCELLED') {
+            throw new Error(translateError('err.calendar.workOrderCancelled', getLocale()));
           }
         }),
     );

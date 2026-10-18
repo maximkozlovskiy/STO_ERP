@@ -21,6 +21,8 @@ const MECH_BOTH = '33333333-3333-4333-8333-000000000002';
 const ON_LEAVE = '33333333-3333-4333-8333-000000000003';
 const FIRED = '33333333-3333-4333-8333-000000000004';
 const SLOT_ID = '44444444-4444-4444-8444-000000000001';
+const WO_LIVE = '55555555-5555-4555-8555-000000000001';
+const WO_CANCELLED = '55555555-5555-4555-8555-000000000002';
 
 function employee(id: string, lifts: string[], over: Record<string, unknown> = {}) {
   return {
@@ -41,6 +43,22 @@ const EMPLOYEES = [
   employee(FIRED, [LIFT_1], { status: 'FIRED' }),
 ];
 
+// Наряди — теж таблиця в пам'яті, що виконує `where` і віддає лише поля з `select`: тест
+// бачить, чи сервіс справді ЧИТАЄ статус наряду, а не отримує його з заготовки.
+const WORK_ORDERS = [
+  { id: WO_LIVE, orgId: ORG, status: 'APPROVED', deletedAt: null },
+  { id: WO_CANCELLED, orgId: ORG, status: 'CANCELLED', deletedAt: null },
+];
+
+function pick(row: Record<string, unknown>, select: Record<string, boolean>) {
+  return Object.fromEntries(
+    Object.keys(select)
+      .filter(k => select[k])
+      .map(k => [k, row[k]]),
+  );
+}
+
+const WO_CANCELLED_MSG = translateError('err.calendar.workOrderCancelled', 'uk');
 const NOT_ON_LIFT = translateError('err.calendar.employeeNotOnLift', 'uk');
 const ON_LEAVE_MSG = translateError('err.calendar.employeeOnLeave', 'uk');
 const NOT_FOUND = translateError('err.calendar.employeeNotFound', 'uk');
@@ -66,7 +84,20 @@ function harness(existing: Record<string, unknown> | null = null) {
       }),
     },
     lift: { findFirst: exists() },
-    workOrder: { findFirst: exists() },
+    workOrder: {
+      findFirst: vi.fn(
+        ({
+          where,
+          select,
+        }: {
+          where: Record<string, unknown>;
+          select: Record<string, boolean>;
+        }) => {
+          const found = WORK_ORDERS.find(w => matchesWhere(w, where));
+          return Promise.resolve(found ? pick(found, select) : null);
+        },
+      ),
+    },
     syncJob: { create: vi.fn().mockResolvedValue({}) },
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -230,5 +261,46 @@ describe('SyncService.push calendar_slots — ролі календаря (BR-CA
       unknown
     >;
     expect(select).toEqual({ id: true, syncVersion: true, deletedAt: true });
+  });
+});
+
+describe('SyncService.push calendar_slots — скасований наряд (BR-WO-022)', () => {
+  // guards: BR-WO-022
+  it.each([
+    ['новий запис', null],
+    [
+      'зміна наряду запису',
+      { id: SLOT_ID, syncVersion: 1n, deletedAt: null, workOrderId: null, liftId: LIFT_1 },
+    ],
+  ])('%s зі скасованим нарядом → відмова з причиною, нічого не записано', async (_l, existing) => {
+    const h = harness(existing);
+    const res = await h.service.push(
+      ORG,
+      [
+        record({
+          operation: existing ? 'UPDATE' : 'INSERT',
+          payload: slotPayload({ workOrderId: WO_CANCELLED }),
+        }),
+      ],
+      'ADMIN',
+    );
+    expect(res).toEqual({ accepted: 0, conflicts: 1 });
+    expect(h.prisma.calendarSlot.create).not.toHaveBeenCalled();
+    expect(h.prisma.calendarSlot.update).not.toHaveBeenCalled();
+    expect(h.lastErrors()).toEqual([
+      expect.objectContaining({ status: 'FAILED', lastError: WO_CANCELLED_MSG }),
+    ]);
+  });
+
+  // guards: BR-WO-022
+  it('новий запис живого наряду → прийнято', async () => {
+    const h = harness();
+    const res = await h.service.push(
+      ORG,
+      [record({ payload: slotPayload({ workOrderId: WO_LIVE }) })],
+      'ADMIN',
+    );
+    expect(res).toEqual({ accepted: 1, conflicts: 0 });
+    expect(h.prisma.calendarSlot.create).toHaveBeenCalledTimes(1);
   });
 });
