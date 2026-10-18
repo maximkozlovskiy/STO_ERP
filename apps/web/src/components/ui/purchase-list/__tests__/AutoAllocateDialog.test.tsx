@@ -148,6 +148,47 @@ describe('AutoAllocateDialog', () => {
     });
   });
 
+  // guards: BR-SOFR-002
+  it('Bug #893: постачальник без відповіді (повтор) — перегляд з позначкою, хто не відповів', async () => {
+    const retrying = {
+      ...BATCH,
+      done: false,
+      items: [
+        {
+          ...BATCH.items[0]!,
+          requests: [
+            { connectionId: 'c', supplierName: 'AVD', status: 'DONE', offers: [] },
+            {
+              connectionId: 'c2',
+              supplierName: 'UTR',
+              status: 'RETRYING',
+              nextRetryAt: '2026-10-18T11:51:00.000Z',
+              error: 'UTR: немає зв’язку',
+              offers: [],
+            },
+          ],
+        },
+      ],
+    };
+    const base = apiFetch.getMockImplementation()!;
+    apiFetch.mockImplementation((path: string, init?: { body?: string }) =>
+      path === '/supplier-offers/batches/b-1' || path === '/supplier-offers/search'
+        ? Promise.resolve({
+            ...retrying,
+            queueUnavailable: false,
+            noConnections: false,
+            skippedItemIds: [],
+          })
+        : base(path, init),
+    );
+    renderDialog();
+    await screen.findByText('обрано вручну — лишається');
+    expect(await screen.findByTestId('allocate-unanswered')).toHaveTextContent(
+      /Не відповіли — UTR: Немає зв.язку — повтор о \d{2}:\d{2}/,
+    );
+    expect(screen.getByTestId('allocate-unanswered')).not.toHaveTextContent('AVD');
+  });
+
   // guards: BR-SOFR-009
   it('Ctrl+Enter не застосовує в обхід кнопки, коли застосовувати нічого', async () => {
     renderDialog();

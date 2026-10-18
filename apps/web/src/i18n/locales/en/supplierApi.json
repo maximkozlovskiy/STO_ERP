@@ -203,6 +203,7 @@
     "overrideManualHint": "Unchecked — items with a manually chosen offer stay as they are",
     "searching": "Searching offers: {{done}} of {{total}}",
     "previewing": "Calculating allocation…",
+    "unanswered": "No response — {{suppliers}}. The allocation uses only the offers received.",
     "apply": "Apply",
     "applied_one": "Auto-allocation applied: {{count}} item",
     "applied_few": "Auto-allocation applied: {{count}} items",

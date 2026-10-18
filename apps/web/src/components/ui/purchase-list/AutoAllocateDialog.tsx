@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { SUPPLIER_OFFER_BATCH_MAX, SUPPLIER_STRATEGIES } from '@sto/shared';
@@ -19,6 +19,7 @@ import {
   type SupplierAllocationResult,
   type SupplierStrategy,
 } from '@/hooks/api/useSupplierOffers';
+import { requestChip } from './SupplierOffersDialog';
 import { Modal, ModalFooter } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
@@ -68,6 +69,19 @@ export function AutoAllocateDialog({ ids, onClose, onApplied }: Props) {
         i.requests.some(r => r.status === 'QUEUED' || r.status === 'RUNNING'),
       );
   const tooMany = (ids?.length ?? 0) > SUPPLIER_OFFER_BATCH_MAX;
+  // Перегляд не чекає повторів «немає зв'язку» — але каже, хто не відповів: розподіл рахується лише
+  // з отриманих пропозицій (Bug #893).
+  const unanswered = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const i of batch.data?.items ?? []) {
+      for (const r of i.requests) {
+        if ((r.status === 'RETRYING' || r.status === 'FAILED') && !seen.has(r.connectionId)) {
+          seen.set(r.connectionId, `${r.supplierName}: ${requestChip(r, t).label}`);
+        }
+      }
+    }
+    return [...seen.values()];
+  }, [batch.data, t]);
   const idsKey = ids?.join(',') ?? '';
 
   useEffect(() => {
@@ -264,6 +278,15 @@ export function AutoAllocateDialog({ ids, onClose, onApplied }: Props) {
                 className="text-[13px] rounded-lg px-3 py-2 border text-warning-text bg-warning-subtle border-warning-border"
               >
                 {notice}
+              </div>
+            )}
+            {preview && unanswered.length > 0 && (
+              <div
+                role="status"
+                data-testid="allocate-unanswered"
+                className="text-[13px] rounded-lg px-3 py-2 border text-warning-text bg-warning-subtle border-warning-border"
+              >
+                {t('allocate.unanswered', { suppliers: unanswered.join('; ') })}
               </div>
             )}
             {previewing && !preview && (
