@@ -160,6 +160,8 @@ export function planningHarness(opts: { workOrders?: MemRow[]; slots?: MemRow[] 
     { id: LIFT_2, orgId: ORG, deletedAt: null },
   ]);
   const counterpartyContract = exists([]);
+  // Переходи наряду (BR-WO-022): чернетки актів скасовуються разом із нарядом.
+  const completionAct = exists([]);
 
   const tables: MemRow[][] = [workOrder.rows, calendarSlot.rows];
   const $transaction = vi.fn(async (cb: (tx: unknown) => unknown) => {
@@ -181,14 +183,22 @@ export function planningHarness(opts: { workOrders?: MemRow[]; slots?: MemRow[] 
     counterparty,
     lift,
     counterpartyContract,
+    completionAct,
     $transaction,
   };
 
   const calendar = new CalendarService(prisma as unknown as PrismaService);
   const docNumbers = { next: vi.fn().mockResolvedValue('НРД-8') };
+  // Склад і борг переходів наряду — поза цими спеками; лише заглушки, що нічого не пишуть.
+  const stockEffects = {
+    reserveParts: vi.fn().mockResolvedValue(undefined),
+    releaseAllNetReservations: vi.fn().mockResolvedValue(undefined),
+    writeOffPartsAndCharge: vi.fn().mockResolvedValue(undefined),
+    returnPartsAndCredit: vi.fn().mockResolvedValue(undefined),
+  };
   const service = new WorkOrdersService(
     prisma as unknown as PrismaService,
-    null as never, // stockEffects
+    stockEffects as never,
     docNumbers as never,
     null as never, // pdf
     { record: vi.fn().mockResolvedValue(undefined) } as never, // audit
@@ -204,7 +214,17 @@ export function planningHarness(opts: { workOrders?: MemRow[]; slots?: MemRow[] 
   const liveSlots = (workOrderId = WO_ID) =>
     calendarSlot.rows.filter(r => r.workOrderId === workOrderId && r.deletedAt === null);
 
-  return { service, prisma, workOrder, calendarSlot, createMany, docNumbers, liveSlots };
+  return {
+    service,
+    calendar,
+    prisma,
+    workOrder,
+    calendarSlot,
+    createMany,
+    docNumbers,
+    stockEffects,
+    liveSlots,
+  };
 }
 
 /** Тіло POST /work-orders для BRANCH. */

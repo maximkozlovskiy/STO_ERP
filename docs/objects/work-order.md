@@ -272,12 +272,13 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | рольовий доступ                                                                                                                                                                                                      | `work-orders.role-gate.spec.ts`                          | 24     |
 | сервісна логіка                                                                                                                                                                                                      | `work-orders.service.spec.ts`                            | 23     |
 | видалення звільняє календар (BR-WO-017)                                                                                                                                                                              | `work-orders.remove-calendar.spec.ts`                    | 5      |
+| скасування звільняє календар з будь-якого статусу, зокрема з «Виконано»; чужі записи цілі; відмова — записи живі; підйомник вільний; записи скасованих раніше не показуються (BR-WO-022)                             | `work-orders.cancel-calendar.spec.ts`                    | 12     |
 | планові дати: не в минулому, у робочих годинах філії, лише змінені, Київ/DST, clone без дат (BR-WO-019)                                                                                                              | `work-orders.planned-dates.spec.ts`                      | 22     |
 | запис календаря наряду: створення, перенесення, підйомник і механік, стерті дати, зайнятість → 400 без змін, гонка (EXCLUDE) → 409, два дні, без дубля, tenant, новий наряд — без пошуку власних записів (BR-WO-020) | `work-orders.calendar-slot.spec.ts`                      | 26     |
 | share public                                                                                                                                                                                                         | `work-orders.share-public.spec.ts`                       | 14     |
 | зведення по табличних частинах і виконавці                                                                                                                                                                           | `../lines-summary/lines-summary.service.spec.ts`         | 19     |
 
-Разом: **380** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **392** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для BR-WO-007 — сума наряду з ПДВ:
 
@@ -312,6 +313,15 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 - E2E `apps/web/e2e/work-order-calendar-record.spec.ts` — наряд із датами й підйомником через
   список → запис у «Дні»; минулі дні й години в пікері недоступні; зміна дат і підйомника в картці —
   запис переїхав (той самий id); стерті дати — запис зник; наряд із форми запису — рівно один запис.
+
+Правило → тест для BR-WO-022 — скасування звільняє календар (мітки `// guards:`):
+
+- api: `work-orders.cancel-calendar.spec.ts` — `transition(→CANCELLED)` з кожного дозволеного
+  статусу позначає видаленими якір і продовження в транзакції переходу; записи нарядів, скасованих
+  до 2026-10-18, не показує `GET /calendar/slots` і не бачить перевірка зайнятості
+  (`OF_LIVE_WORK_ORDER` у `calendar.service.ts` — наряд не видалений і не скасований).
+- web: `CreateWorkOrderModal.planned-dates.test.tsx` — після «Скасувати» картка шле
+  `sto:calendar-changed`, відкритий календар перечитує записи; інший перехід — ні.
 
 Правило → тест для BR-WO-015 у web: `components/ui/__tests__/CreateWorkOrderModal.save-delete-error.test.tsx`
 — відмову сервера на видалення рядка («Зберегти зміни» картки) показано в картці, картка не

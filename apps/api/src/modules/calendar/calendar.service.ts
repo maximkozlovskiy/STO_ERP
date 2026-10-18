@@ -1,5 +1,11 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { CalendarSlotStatus, CalendarSlotType, EmployeeStatus, Prisma } from '@prisma/client';
+import {
+  CalendarSlotStatus,
+  CalendarSlotType,
+  EmployeeStatus,
+  Prisma,
+  WorkOrderStatus,
+} from '@prisma/client';
 import {
   DEFAULT_WORK_HOURS,
   formatPersonName,
@@ -87,14 +93,19 @@ const CONFLICT_SELECT = {
 } as const;
 
 /**
- * Запис без наряду або наряду, що не видалений (BR-CAL-011, BR-WO-017). Видалення наряду саме
- * позначає видаленими його записи; ця умова — на випадок записів, які пережили видалення наряду
- * (дані до міграції `20261016120000_calendar_slots_of_deleted_work_orders`): їх не показує
- * `findSlots` і не бачить перевірка зайнятості. `OR` — у `AND`, бо проби вже мають власний `OR`.
- * `is` не пропускає запис без наряду, тому `workOrderId: null` — окремою гілкою.
+ * Запис без наряду або наряду, що не видалений і не скасований (BR-CAL-011, BR-WO-017,
+ * BR-WO-022). Видалення й скасування наряду самі позначають видаленими його записи; ця умова — на
+ * випадок записів, які це пережили (дані до міграції
+ * `20261016120000_calendar_slots_of_deleted_work_orders` і записи нарядів, скасованих до
+ * 2026-10-18): їх не показує `findSlots` і не бачить перевірка зайнятості. `OR` — у `AND`, бо
+ * проби вже мають власний `OR`. `is` не пропускає запис без наряду, тому `workOrderId: null` —
+ * окремою гілкою.
  */
 const OF_LIVE_WORK_ORDER = {
-  OR: [{ workOrderId: null }, { workOrder: { is: { deletedAt: null } } }],
+  OR: [
+    { workOrderId: null },
+    { workOrder: { is: { deletedAt: null, status: { not: WorkOrderStatus.CANCELLED } } } },
+  ],
 };
 
 /**

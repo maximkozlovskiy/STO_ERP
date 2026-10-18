@@ -992,6 +992,13 @@ export class WorkOrdersService {
             : new BadRequestException(translateError('err.workOrder.statusChanged', getLocale()));
         }
 
+        // BR-WO-022: скасування з будь-якого статусу (зокрема з «Виконано») позначає видаленими
+        // всі записи календаря наряду — якір і продовження; підйомник і механік звільняються.
+        // Після CAS наряду — той самий порядок блокувань «наряд → записи», що в update/remove.
+        if (newStatus === 'CANCELLED') {
+          await this.calendar.removeWorkOrderSlots(tx, orgId, id);
+        }
+
         // BR-WO-021: кожен вхід у «В роботі» дорезервовує лише бракуюче (потрібно − net-резерв,
         // не більше available) — повторний вхід з «Призупинено» резерву не подвоює (WO-C1), а
         // нестача перехід не блокує.

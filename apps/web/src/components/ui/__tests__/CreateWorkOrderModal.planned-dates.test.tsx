@@ -271,6 +271,46 @@ describe('CreateWorkOrderModal — планові дати (BR-WO-019, BR-WO-020
     }
   });
 
+  // guards: BR-WO-022
+  it.each([
+    ['Скасувати', 'CANCELLED', 1],
+    ['Кошторис', 'ESTIMATE', 0],
+  ] as const)(
+    'перехід «%s»: відкритий календар перечитує записи лише після скасування',
+    async (label, status, events) => {
+      mockApi({ workStartHour: 8, workEndHour: 18 });
+      const base = apiFetchMock.getMockImplementation()!;
+      apiFetchMock.mockImplementation((path: string, init?: { method?: string }) =>
+        path === `/work-orders/${WO}/transition` ? Promise.resolve({ status }) : base(path, init),
+      );
+      const user = userEvent.setup();
+      const onCalendarChanged = vi.fn();
+      window.addEventListener('sto:calendar-changed', onCalendarChanged);
+      try {
+        await openCard();
+        await user.click(screen.getByRole('button', { name: 'Чернетка' }));
+        // Пункт меню статусу (у картці є й інші кнопки «Скасувати»).
+        const item = (await screen.findAllByRole('button', { name: label })).find(btn =>
+          btn.className.includes('text-left'),
+        );
+        await user.click(item!);
+        await waitFor(() =>
+          expect(
+            (apiFetchMock.mock.calls as Call[]).some(
+              ([p]) => p === `/work-orders/${WO}/transition`,
+            ),
+          ).toBe(true),
+        );
+        await act(async () => {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        });
+        expect(onCalendarChanged).toHaveBeenCalledTimes(events);
+      } finally {
+        window.removeEventListener('sto:calendar-changed', onCalendarChanged);
+      }
+    },
+  );
+
   // guards: BR-WO-020
   it('наряд без підйомника — перевірки зайнятості немає, попередження немає', async () => {
     mockApi({ workStartHour: 8, workEndHour: 18 }, { liftId: null });

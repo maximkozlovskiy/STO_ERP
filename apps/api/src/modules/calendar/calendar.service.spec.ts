@@ -249,7 +249,12 @@ describe('CalendarService.syncWorkOrderSlots', () => {
         // Записи без наряду — теж «чужі»: `{ not: X }` сам по собі відкидає NULL (поведінку
         // стереже calendar.conflicts.spec.ts, describe syncWorkOrderSlots).
         AND: [
-          { OR: [{ workOrderId: null }, { workOrder: { is: { deletedAt: null } } }] },
+          {
+            OR: [
+              { workOrderId: null },
+              { workOrder: { is: { deletedAt: null, status: { not: 'CANCELLED' } } } },
+            ],
+          },
           { OR: [{ workOrderId: null }, { workOrderId: { not: workOrderId } }] },
           {
             OR: [

@@ -429,7 +429,11 @@ describe('CalendarService — конфлікти слотів (BR-CAL-006)', () 
   // `workOrderId <> X` мовчав про записи без наряду (review 2026-10-16).
   describe('checkConflicts з excludeWorkOrderId', () => {
     const OWN_WO = '44444444-4444-4444-8444-444444444444';
-    const own = { workOrderId: OWN_WO, workOrder: { deletedAt: null } } as Partial<FakeSlot>;
+    // Живий наряд: не видалений і не скасований (OF_LIVE_WORK_ORDER, BR-WO-022).
+    const own = {
+      workOrderId: OWN_WO,
+      workOrder: { deletedAt: null, status: 'APPROVED' },
+    } as Partial<FakeSlot>;
 
     // guards: BR-CAL-006
     it('запис без наряду на тому самому підйомнику й у механіка → конфлікт', async () => {
@@ -505,7 +509,7 @@ describe('CalendarService — конфлікти слотів (BR-CAL-006)', () 
       fakeSlot({
         liftId: LIFT_1,
         workOrderId: OWN_WO,
-        workOrder: { deletedAt: null },
+        workOrder: { deletedAt: null, status: 'APPROVED' },
         startAt: at('06:00'),
         endAt: at('07:00'),
       });
