@@ -139,6 +139,17 @@ describe('«Купівля» — вкладка «Управління купі�
     expect(requireAuthMock).toHaveBeenCalledWith(['RECEPTIONIST']);
   });
 
+  // Механік не має жодної вкладки «Купівлі»: лише перенаправлення на /403, без монтування сторінки
+  // замовлень і її запитів (раніше вони йшли й отримували 403 — owner 2026-10-18).
+  it('механік: сторінка замовлень не монтується, лише перенаправлення на /403', () => {
+    role = 'MECHANIC';
+    const { container } = renderPage();
+    expect(usePurchaseOrdersMock).not.toHaveBeenCalled();
+    expect(useSupplierReturnsMock).not.toHaveBeenCalled();
+    expect(requireAuthMock).toHaveBeenCalledWith(['OWNER', 'ADMIN', 'STOREKEEPER']);
+    expect(container).toBeEmptyDOMElement();
+  });
+
   // guards: BR-PL-015
   it('бухгалтер: вкладки немає (лише графік оплат)', () => {
     role = 'ACCOUNTANT';

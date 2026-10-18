@@ -1876,9 +1876,27 @@ function PurchaseProcurementPage() {
   );
 }
 
+/**
+ * Роль без жодної вкладки «Купівлі» (механік, …): лише перенаправлення на /403. Раніше такі ролі
+ * потрапляли в повну сторінку замовлень — її запити встигали піти й отримати 403, поки
+ * `useRequireAuth` перенаправляв (owner 2026-10-18).
+ */
+function PurchaseNoAccess() {
+  useRequireAuth(DOCUMENT_ROLES as string[]);
+  return null;
+}
+
 function PurchaseOrdersRoute() {
   const { employee } = useAuth();
   const role = employee?.role ?? '';
+  if (
+    employee &&
+    !DOCUMENT_ROLES.includes(role) &&
+    !PROCUREMENT_ROLES.includes(role) &&
+    !SCHEDULE_ROLES.includes(role)
+  ) {
+    return <PurchaseNoAccess />;
+  }
   if (PROCUREMENT_ROLES.includes(role) && !DOCUMENT_ROLES.includes(role)) {
     return <PurchaseProcurementPage />;
   }
