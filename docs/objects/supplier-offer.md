@@ -45,6 +45,27 @@
 
 ---
 
+## UI (Web)
+
+**Маршрут UI:** `/purchase-orders?tab=procurement&view=items`
+
+- `purchase-orders/procurement/ItemsView.tsx` — у рядку OPEN-позиції «Пропозиції», під постачальником
+  — бейдж обраної пропозиції (`purchase-list/OfferBadge.tsx`: склад, термін, давність, «застаріла»
+  за TTL — без цін, BR-SOFR-010); масова дія «Підібрати автоматично»; дії — лише OWNER, ADMIN,
+  STOREKEEPER (приймальня не бачить і не питає `GET /supplier-offers/settings`);
+- `components/ui/purchase-list/SupplierOffersDialog.tsx` — відкриття запускає пошук (кеш у межах
+  TTL), «Оновити» — `refresh`; чипи стану кожного підключення («Завантаження…», «Немає зв'язку —
+  повтор о HH:MM», «З кешу від …», «Помилка»); поки підключення не відповіло — останні відомі
+  пропозиції; таблиця: постачальник / склад, артикул і бренд, назва, «у каталозі», аналог, кількість
+  («≥10», кратність), термін, ціна у валюті + в гривні, «Обрати» або причина, чому не можна;
+- `components/ui/purchase-list/AutoAllocateDialog.tsx` — стратегія за замовчуванням з
+  `GET /supplier-offers/settings`, прогрес пошуку, попередній перегляд (`dryRun`), «Перезаписати
+  ручний вибір» (`overrideManual`, типово вимкнено), «Застосувати».
+
+Хук — `hooks/api/useSupplierOffers.ts` (`refetchInterval`, поки є незавершені запити).
+
+---
+
 ## Аспекти і тести, що їх стережуть
 
 **Модуль:** `apps/api/src/modules/supplier-api/`
@@ -63,3 +84,7 @@
 `purchase-lists/purchase-lists.offer-snapshot.spec.ts` — знімок за позицією (BR-PL-017, 019);
 `purchase-lists/purchase-lists.create-orders.spec.ts` — рядки за пропозицією (BR-PL-018).
 Контракти адаптерів (формати пропозицій кожного постачальника) — реєстр [supplier-connection.md](supplier-connection.md).
+Web: `components/ui/purchase-list/__tests__/SupplierOffersDialog.test.tsx` (чипи «повтор о HH:MM» —
+BR-SOFR-002, останні відомі — 003, ціни без ролі — 010), `AutoAllocateDialog.test.tsx` (`overrideManual`,
+dryRun — BR-SOFR-009), `purchase-orders/__tests__/ItemsView.offers.test.tsx` (бейдж, ролі — BR-SOFR-003,
+010), `hooks/api/useSupplierApi.test.tsx`. E2E — `apps/web/e2e/supplier-api.spec.ts`.

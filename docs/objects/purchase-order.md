@@ -93,15 +93,16 @@ DRAFT → ORDERED → PARTIAL → RECEIVED
 
 ## UI (Web)
 
-| Компонент / сторінка   | Файл                                                                                                                 |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Список                 | `app/(app)/purchase-orders/page.tsx`                                                                                 |
-| Модалка створення      | `components/ui/PurchaseOrderCreateModal.tsx`                                                                         |
-| Detail Panel schema    | `lib/panel-schema.ts` → `PURCHASE_ORDER_PANEL_SCHEMA`                                                                |
-| Detail Panel повернень | `lib/panel-schema.ts` → `SUPPLIER_RETURN_PANEL_SCHEMA` (вкладка «Повернення»; ключ панелі `supplier-returns`)        |
-| Hook (TanStack Query)  | `hooks/api/usePurchaseOrders.ts`                                                                                     |
-| Вкладка «Графік оплат» | `app/(app)/purchase-orders/SupplierPaymentScheduleTab.tsx` (`?tab=schedule`; ролі `GET /supplier-payments/schedule`) |
-| Кнопка «Оплатити»      | `components/ui/PurchaseOrderCreateModal.tsx` → `SupplierPaymentCreateModal` (створює й проводить оплату)             |
+| Компонент / сторінка   | Файл                                                                                                                                                  |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Список                 | `app/(app)/purchase-orders/page.tsx`                                                                                                                  |
+| Модалка створення      | `components/ui/PurchaseOrderCreateModal.tsx`                                                                                                          |
+| Detail Panel schema    | `lib/panel-schema.ts` → `PURCHASE_ORDER_PANEL_SCHEMA`                                                                                                 |
+| Detail Panel повернень | `lib/panel-schema.ts` → `SUPPLIER_RETURN_PANEL_SCHEMA` (вкладка «Повернення»; ключ панелі `supplier-returns`)                                         |
+| Hook (TanStack Query)  | `hooks/api/usePurchaseOrders.ts`                                                                                                                      |
+| Вкладка «Графік оплат» | `app/(app)/purchase-orders/SupplierPaymentScheduleTab.tsx` (`?tab=schedule`; ролі `GET /supplier-payments/schedule`)                                  |
+| Кнопка «Оплатити»      | `components/ui/PurchaseOrderCreateModal.tsx` → `SupplierPaymentCreateModal` (створює й проводить оплату)                                              |
+| Передача в API         | `components/ui/purchase-order/SupplierApiOrderBlock.tsx` у картці (BR-PO-011); скасування / видалення відправленого — `useSentOrderForce` (BR-PO-012) |
 
 **Вкладки сторінки «Купівлі»:** «Замовлення» · «Повернення» · «Графік оплат» (колишня сторінка оплат
 постачальникам; бухгалтер бачить лише її). Старі адреси `/supplier-payments*` ведуть на `?tab=schedule`.

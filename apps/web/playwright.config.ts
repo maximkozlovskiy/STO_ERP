@@ -75,24 +75,34 @@ export default defineConfig({
     },
   ],
 
-  // Автозапуск E2E-екземпляра Next.js, якщо він ще не запущений.
-  // CI: пропускаємо (сервер запускається окремо у workflow).
-  // Local: стартуємо на E2E-порту з власним distDir; уже запущений — перевикористовуємо.
+  // Автозапуск E2E-екземпляра Next.js і фейкових постачальників API, якщо вони ще не запущені.
+  // CI: пропускаємо (сервери запускає workflow).
+  // Local: Next.js — на E2E-порту з власним distDir; уже запущений — перевикористовуємо.
+  // Фейки постачальників (tools/supplier-fakes, :4100) потрібні e2e/supplier-api.spec.ts; API має
+  // бути запущений з SUPPLIER_API_DEV_ALLOWED_ORIGINS=http://127.0.0.1:4100 (BR-SCON-005).
   webServer: process.env.CI
     ? undefined
-    : {
-        command: `pnpm --filter @sto/web exec next dev --turbopack -p ${E2E_PORT}`,
-        url: BASE_URL,
-        reuseExistingServer: true,
-        timeout: 60_000,
-        env: {
-          NEXT_PUBLIC_API_URL: API_URL,
-          // Вмикає E2E-auth-hatch у context.tsx (hydrate токена з localStorage + skip refresh).
-          // Гейт build-time — у прод-збірці (без цієї змінної) hatch tree-shake-иться геть.
-          NEXT_PUBLIC_E2E: '1',
-          NEXT_DIST_DIR: '.next-e2e',
+    : [
+        {
+          command: `node ${path.resolve(__dirname, '../../tools/supplier-fakes/bin.js')} --port 4100`,
+          url: 'http://127.0.0.1:4100/__health',
+          reuseExistingServer: true,
+          timeout: 15_000,
         },
-      },
+        {
+          command: `pnpm --filter @sto/web exec next dev --turbopack -p ${E2E_PORT}`,
+          url: BASE_URL,
+          reuseExistingServer: true,
+          timeout: 60_000,
+          env: {
+            NEXT_PUBLIC_API_URL: API_URL,
+            // Вмикає E2E-auth-hatch у context.tsx (hydrate токена з localStorage + skip refresh).
+            // Гейт build-time — у прод-збірці (без цієї змінної) hatch tree-shake-иться геть.
+            NEXT_PUBLIC_E2E: '1',
+            NEXT_DIST_DIR: '.next-e2e',
+          },
+        },
+      ],
 
   outputDir: 'test-results',
 });

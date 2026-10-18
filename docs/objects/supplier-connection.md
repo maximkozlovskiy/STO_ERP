@@ -65,6 +65,31 @@
 
 ---
 
+## UI (Web)
+
+**Маршрути UI:** `/settings?tab=supplier-api`, `/purchase-orders`
+
+- `settings/SupplierApiTab.tsx` — вкладка «Постачальники API» (OWNER, ADMIN): підключення й розділ
+  «Закупівля через API» (`PATCH /settings/organisation`, лише змінені поля: режим відправки,
+  аналоги, стратегія й вага ціни у %, ділення, аналоги в автопідборі, TTL та інтервали);
+- `settings/SupplierConnectionsPanel.tsx` — картки підключень: перемикач, тестовий режим, стан
+  перевірки (`lastVerifiedAt` / `lastError`), «Перевірити», «Синхронізувати каталог» (AVD); список
+  опитується, доки перевірка чи синхронізація триває; результат перевірки — тостом;
+- `settings/SupplierConnectionModal.tsx` — картка підключення: поля кредів, опцій і мапи «наш склад →
+  параметри постачальника» з `GET /supplier-providers`; креди лише на запис (плейсхолдер «збережено»,
+  порожнє не надсилається, BR-SCON-002); «Зберегти і перевірити» тримає картку, доки PENDING;
+- `components/ui/purchase-order/SupplierApiOrderBlock.tsx` — блок у картці замовлення
+  (`PurchaseOrderCreateModal`): підсумок, зовнішні номери й статуси, «запитано / підтверджено»,
+  «Відправити в API» (Idempotency-Key), «Оновити статус», «Повернути непідтверджене в список»;
+  `useSentOrderForce` — скасування в картці й видалення зі списку замовлень: відмова сервера +
+  зовнішнє замовлення вже в постачальника → підтвердження «скасуйте його в кабінеті постачальника» →
+  повтор із `force` (BR-SCON-014).
+
+Хуки: `hooks/api/useSupplierConnections.ts`, `useSupplierApiOrder.ts`; кеш після дій —
+`invalidateProcurementSideEffects`; i18n — простір `supplierApi`.
+
+---
+
 ## Аспекти і тести, що їх стережуть
 
 Правите один аспект — ганяєте один файл:
@@ -100,6 +125,11 @@ cd apps/api && npx vitest run src/modules/supplier-api/<тека>/<файл>.spe
 Поза модулем: `config/env.schema.spec.ts` — відмова старту з allowlist у production (BR-SCON-005);
 `purchase-orders/purchase-orders.contract.spec.ts` — `force` у переході (BR-PO-012);
 `payments/payments.queue-retry-policy.spec.ts` — політика повторів нових черг (BR-SCON-006).
+Web: `settings/__tests__/SupplierApiTab.test.tsx` (креди лише на запис, мапа складів, змінені поля
+налаштувань — BR-SCON-002, 003), `components/ui/purchase-order/__tests__/SupplierApiOrderBlock.test.tsx`
+(підтвердження скасування відправленого — BR-SCON-014; Idempotency-Key — BR-SCON-009; стан — BR-SCON-013),
+`hooks/api/useSupplierApi.test.tsx`. E2E через браузер — `apps/web/e2e/supplier-api.spec.ts` (фейки
+на :4100, API з `SUPPLIER_API_DEV_ALLOWED_ORIGINS`).
 
 Спільне: `supplier-api.spec-fixture.ts` (Redis у пам'яті, справжній HTTP-клієнт з allowlist фейку),
 `orders/supplier-orders.spec-fixture.ts` (поверх `procurementHarness` списків купівлі),

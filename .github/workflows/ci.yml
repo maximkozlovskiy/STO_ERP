@@ -488,7 +488,20 @@ jobs:
       - name: Build shared
         run: pnpm --filter @sto/shared build
 
+      # Фейкові сервери постачальників API (tools/supplier-fakes) — для e2e/supplier-api.spec.ts.
+      - name: Start supplier fakes
+        run: |
+          node tools/supplier-fakes/bin.js --port 4100 > /tmp/supplier-fakes.log 2>&1 &
+          for i in $(seq 1 20); do
+            curl -sf http://127.0.0.1:4100/__health > /dev/null && exit 0
+            sleep 1
+          done
+          echo "фейки постачальників не піднялись:"; cat /tmp/supplier-fakes.log; exit 1
+
       - name: Start API
+        env:
+          # Дозволяє адреси фейків постачальників попри SSRF-захист (BR-SCON-005; лише не production).
+          SUPPLIER_API_DEV_ALLOWED_ORIGINS: http://127.0.0.1:4100,http://localhost:4100
         run: |
           pnpm --filter @sto/api dev > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do
@@ -528,6 +541,7 @@ jobs:
             apps/web/playwright-report/
             /tmp/api.log
             /tmp/web.log
+            /tmp/supplier-fakes.log
           retention-days: 7
 
   installer-scripts:
