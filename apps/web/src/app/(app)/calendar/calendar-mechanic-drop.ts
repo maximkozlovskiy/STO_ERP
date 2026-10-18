@@ -3,7 +3,10 @@ import type { TFunction } from 'i18next';
 /** Чому сервер зняв механіка з перетягнутого запису (BR-CAL-012, `mechanicDroppedReason`). */
 export type MechanicDroppedReason = 'ON_LEAVE' | 'NOT_ON_LIFT' | 'UNAVAILABLE';
 
-/** Відповідь `PATCH /calendar/slots/:id` з `dropMechanicNotOnLift` — лише поля зняття механіка. */
+/**
+ * Відповідь `PATCH /calendar/slots/:id` з `dropMechanicNotOnLift` і `PATCH /work-orders/:id/reschedule`
+ * (запис наряду, BR-WO-023) — лише поля зняття механіка.
+ */
 export interface MechanicDropResponse {
   mechanicDropped?: boolean;
   mechanicDroppedReason?: MechanicDroppedReason;

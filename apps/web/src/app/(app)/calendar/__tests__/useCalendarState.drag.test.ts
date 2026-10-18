@@ -2,9 +2,15 @@
 // хук шле `dropMechanicNotOnLift: true`, сервер знімає механіка, не закріпленого за новим
 // підйомником, і відповідає `mechanicDropped` — користувач бачить «Механіка знято: …». Запис без
 // механіка чи переміщення в межах підйомника — без прапорця й без повідомлення.
+//
+// Запис НАРЯДУ (BR-WO-023, рішення власника 2026-10-18) переміщується разом із нарядом:
+// `PATCH /work-orders/:id/reschedule`, а не зміна самого запису; відмова сервера — тост і запис на
+// місці; після переміщення — кеш нарядів скинуто (картка показує нові дати).
 
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { createQueryWrapper } from '@/__tests__/query-utils';
+import { createElement, type ReactNode } from 'react';
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
+import { createQueryWrapper, makeTestQueryClient } from '@/__tests__/query-utils';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarSlot } from '../calendar.types';
@@ -32,19 +38,27 @@ import { useCalendarState } from '../useCalendarState';
 
 const NOW = new Date('2026-10-15T12:00:00+03:00');
 
+// Запис без наряду: перетягується як раніше — зміною самого запису (BR-CAL-012).
 const SLOT: CalendarSlot = {
   id: 's-1',
   liftId: 'lift-1',
   employeeId: 'mech-1',
   employeeName: 'Коваль Іван',
-  workOrderId: 'wo-1',
-  workOrderNumber: 'НРД-1',
-  workOrderStatus: 'APPROVED',
+  workOrderId: null,
   startAt: new Date('2026-10-20T10:00:00+03:00').toISOString(),
   endAt: new Date('2026-10-20T11:00:00+03:00').toISOString(),
 };
 
+// Запис наряду (BR-WO-023).
+const WO_SLOT: CalendarSlot = {
+  ...SLOT,
+  workOrderId: 'wo-1',
+  workOrderNumber: 'НРД-1',
+  workOrderStatus: 'APPROVED',
+};
+
 let patchResponse: Record<string, unknown> = {};
+let patchError: Error | null = null;
 let daySlots: CalendarSlot[] = [];
 
 beforeEach(() => {
@@ -52,12 +66,14 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
   params = new URLSearchParams('view=day&date=2026-10-20');
   patchResponse = {};
+  patchError = null;
   daySlots = [SLOT];
   toast.warning.mockReset();
   toast.error.mockReset();
   apiFetch.mockReset();
   apiFetch.mockImplementation((url: string, init?: { method?: string }) => {
-    if (init?.method === 'PATCH') return Promise.resolve(patchResponse);
+    if (init?.method === 'PATCH')
+      return patchError ? Promise.reject(patchError) : Promise.resolve(patchResponse);
     if (url === '/calendar/slots?date=2026-10-20') return Promise.resolve(daySlots);
     if (url.startsWith('/calendar/slots?date=')) return Promise.resolve([]);
     if (url.startsWith('/lifts'))
@@ -75,8 +91,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-async function renderDay() {
-  const hook = renderHook(() => useCalendarState(), { wrapper: createQueryWrapper() });
+async function renderDay(client?: QueryClient) {
+  const wrapper = client
+    ? ({ children }: { children: ReactNode }) =>
+        createElement(QueryClientProvider, { client }, children)
+    : createQueryWrapper();
+  const hook = renderHook(() => useCalendarState(), { wrapper });
   await waitFor(() => expect(hook.result.current.slots).toHaveLength(daySlots.length));
   await waitFor(() => expect(hook.result.current.lifts).toHaveLength(2));
   // Сітка в тесті не рендериться — ширину шкали дає заглушка елемента.
@@ -93,8 +113,10 @@ const dropOn = (liftId: string, dx = 0) =>
     over: { data: { current: { liftId } } },
   }) as unknown as DragEndEvent;
 
+const patchCall = () =>
+  apiFetch.mock.calls.find(c => (c[1] as { method?: string })?.method === 'PATCH');
 const patchBody = () => {
-  const call = apiFetch.mock.calls.find(c => (c[1] as { method?: string })?.method === 'PATCH');
+  const call = patchCall();
   return call ? (JSON.parse((call[1] as { body: string }).body) as Record<string, unknown>) : null;
 };
 
@@ -190,5 +212,77 @@ describe('useCalendarState — текст «Механіка знято» за �
     const [text] = toast.warning.mock.calls[0] as [string];
     expect(text).not.toContain('не закріплений');
     expect(text).not.toContain('Пост 2');
+  });
+});
+
+describe('useCalendarState — перетягування запису наряду (BR-WO-023)', () => {
+  // 100 px із 1200 (мінус бічна колонка) на шкалі 08–20 — понад 15 хв, округлюється до 15 хв.
+  // guards: BR-WO-023
+  it('запис наряду → PATCH /work-orders/:id/reschedule (запис, новий початок, рядок), не запис календаря', async () => {
+    daySlots = [WO_SLOT];
+    const client = makeTestQueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const { result } = await renderDay(client);
+
+    await act(() => result.current.handleDragEnd(dropOn('lift-1', 100)));
+
+    const call = patchCall();
+    expect(call?.[0]).toBe('/work-orders/wo-1/reschedule');
+    const body = patchBody()!;
+    expect(body).toMatchObject({ slotId: 's-1', liftId: 'lift-1' });
+    expect(new Date(body.startAt as string).getTime()).toBeGreaterThan(
+      new Date(WO_SLOT.startAt).getTime(),
+    );
+    expect(body).not.toHaveProperty('endAt');
+    expect(apiFetch.mock.calls.some(c => c[0] === '/calendar/slots/s-1')).toBe(false);
+    // Картка наряду й списки — нові дати (кеш нарядів скинуто).
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['work-orders'] });
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-WO-023
+  it('на рядок іншого підйомника → liftId рядка; механіка знято → тост «Механіка знято»', async () => {
+    daySlots = [WO_SLOT];
+    patchResponse = { id: 'wo-1', mechanicDropped: true, mechanicDroppedReason: 'NOT_ON_LIFT' };
+    const { result } = await renderDay();
+
+    await act(() => result.current.handleDragEnd(dropOn('lift-2')));
+
+    expect(patchBody()).toMatchObject({ slotId: 's-1', liftId: 'lift-2' });
+    expect(patchBody()).not.toHaveProperty('dropMechanicNotOnLift');
+    expect(toast.warning).toHaveBeenCalledWith(
+      'Механіка знято: Коваль Іван не закріплений за підйомником «Пост 2»',
+    );
+  });
+
+  // guards: BR-WO-023
+  it('сервер відмовив (зайнятий підйомник) → тост із причиною, запис лишається на місці', async () => {
+    daySlots = [WO_SLOT];
+    patchError = new Error('Підйомник вже зайнятий на цей час');
+    const { result } = await renderDay();
+    const reads = apiFetch.mock.calls.filter(
+      c => c[0] === '/calendar/slots?date=2026-10-20',
+    ).length;
+
+    await act(() => result.current.handleDragEnd(dropOn('lift-2', 100)));
+
+    expect(toast.error).toHaveBeenCalledWith('Підйомник вже зайнятий на цей час');
+    expect(result.current.slots[0]).toMatchObject({ liftId: 'lift-1', startAt: WO_SLOT.startAt });
+    expect(apiFetch.mock.calls.filter(c => c[0] === '/calendar/slots?date=2026-10-20').length).toBe(
+      reads,
+    );
+  });
+
+  // guards: BR-WO-023
+  it('у минулий день → без запиту, попередження', async () => {
+    daySlots = [WO_SLOT];
+    params = new URLSearchParams('view=day&date=2026-10-20');
+    vi.setSystemTime(new Date('2026-10-21T12:00:00+03:00'));
+    const { result } = await renderDay();
+
+    await act(() => result.current.handleDragEnd(dropOn('lift-1', 100)));
+
+    expect(patchCall()).toBeUndefined();
+    expect(toast.warning).toHaveBeenCalled();
   });
 });

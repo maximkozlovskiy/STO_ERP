@@ -9,12 +9,14 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { onCalendarChanged } from '@/lib/calendar-events';
 import { toast } from '@/lib/toast';
+import { workOrdersKeys } from '@/hooks/api/useWorkOrders';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useBranchWorkHours } from '@/hooks/useBranchWorkHours';
 import { useTranslation } from 'react-i18next';
@@ -128,6 +130,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   const { t } = useTranslation('calendar');
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
 
   // URL-persistent view — back/forward and bookmarks work correctly
@@ -964,6 +967,33 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
 
       const liftChanged = newLiftId !== slot.liftId;
       try {
+        // BR-WO-023: запис наряду переміщується лише разом із нарядом — сервер зсуває планові
+        // дати наряду (і підйомник — рядок, на який перенесено) і переносить увесь ланцюжок
+        // записів тими самими перевірками, що й збереження наряду. Відмова — 400: нічого не
+        // змінено, запис лишається на місці, тост — причина.
+        if (slot.workOrderId) {
+          const moved = await apiFetch<MechanicDropResponse>(
+            `/work-orders/${slot.workOrderId}/reschedule`,
+            {
+              method: 'PATCH',
+              body: JSON.stringify({
+                slotId: slot.id,
+                startAt: newStart.toISOString(),
+                ...(newLiftId && { liftId: newLiftId }),
+              }),
+            },
+          );
+          if (moved?.mechanicDropped) {
+            const lift = liftsRef.current.find(l => l.id === newLiftId)?.name ?? '';
+            toast.warning(
+              mechanicDroppedText(t, moved.mechanicDroppedReason, slot.employeeName, lift),
+            );
+          }
+          // Картка наряду, списки нарядів — нові планові дати й підйомник.
+          void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+          load();
+          return;
+        }
         const saved = await apiFetch<MechanicDropResponse>(`/calendar/slots/${slot.id}`, {
           method: 'PATCH',
           body: JSON.stringify({
@@ -985,7 +1015,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         toast.error(e instanceof Error ? e.message : 'Помилка переміщення слоту');
       }
     },
-    [slots, load, nowMs, minHour, t, canManageSlots],
+    [slots, load, nowMs, minHour, t, canManageSlots, queryClient],
   );
 
   // ── Remove slot ───────────────────────────────────────────────────────────
