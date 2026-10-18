@@ -4,12 +4,14 @@ import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { calculatePagination } from '../../common/utils/pagination';
 import { initCountsMap } from '../../common/utils/linked-counts';
+import { searchContains } from '../../common/utils/like-pattern';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { AuditService } from '../audit/audit.service';
 import { CounterpartyStatusesService } from '../counterparty-statuses/counterparty-statuses.service';
 import {
   ContractResponseDto,
+  ContractSupplierLookupDto,
   CounterpartyQueryDto,
   CounterpartyResponseDto,
   CreateContractDto,
@@ -17,9 +19,16 @@ import {
   CreateGarageDto,
   GarageResponseDto,
   PaginatedCounterpartiesDto,
+  PaginatedSupplierLookupsDto,
   UpdateContractDto,
   UpdateCounterpartyDto,
 } from './counterparties.dto';
+
+/** Контрагенти з роллю постачальника (BR-CP-001); їх і лише їх читає комірник (BR-CP-014). */
+const SUPPLIER_TYPES: readonly CounterpartyType[] = [
+  CounterpartyType.SUPPLIER,
+  CounterpartyType.BOTH,
+];
 
 // «Назва» контрагента обов'язкова, але гнучко: має бути companyName АБО firstName/lastName.
 // Cross-field guard — DTO не може це виразити через @IsOptional на кожному полі окремо.
@@ -117,6 +126,96 @@ export class CounterpartiesService {
       page: query.page,
       limit: query.limit,
     };
+  }
+
+  /**
+   * BR-CP-014: постачальники для ролі STOREKEEPER (рішення власника 2026-10-18). Фільтр ролі
+   * постачальника — на сервері: запитані `types`/`type` лише звужують SUPPLIER/BOTH, а не
+   * розширюють (комірник із `types=CLIENT` отримує порожній список). `select` — лише поля
+   * вибору; пошук — за назвою, ім'ям і ЄДРПОУ (не телефоном і не номером авто клієнта);
+   * сортування за балансом не діє (порядок за балансом розкрив би його). Видалених — немає.
+   */
+  async findSupplierLookups(
+    orgId: string,
+    query: CounterpartyQueryDto,
+  ): Promise<PaginatedSupplierLookupsDto> {
+    const requested = query.types?.length ? query.types : query.type ? [query.type] : undefined;
+    const types = requested
+      ? requested.filter(t => SUPPLIER_TYPES.includes(t))
+      : [...SUPPLIER_TYPES];
+    const where: Prisma.CounterpartyWhereInput = {
+      orgId,
+      deletedAt: null,
+      type: { in: types },
+    };
+    const contains = searchContains(query.q);
+    if (contains) {
+      where.OR = [
+        { companyName: contains },
+        { lastName: contains },
+        { firstName: contains },
+        { edrpou: contains },
+      ];
+    }
+    const dir = query.sortDir === 'desc' ? 'desc' : 'asc';
+    const orderBy: Prisma.CounterpartyOrderByWithRelationInput[] =
+      query.sortBy === 'createdAt'
+        ? [{ createdAt: query.sortDir === 'asc' ? 'asc' : 'desc' }]
+        : [{ lastName: dir }, { companyName: 'asc' }];
+    const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
+    const [items, total] = await Promise.all([
+      this.prisma.counterparty.findMany({
+        where,
+        select: {
+          id: true,
+          type: true,
+          firstName: true,
+          lastName: true,
+          companyName: true,
+          edrpou: true,
+        },
+        orderBy,
+        skip,
+        take,
+      }),
+      this.prisma.counterparty.count({ where }),
+    ]);
+    return { items, total, page: query.page, limit: query.limit };
+  }
+
+  /**
+   * BR-CP-014: договори закупівлі постачальника для ролі STOREKEEPER — номер і умови оплати.
+   * Контрагент без ролі постачальника — 404, як неіснуючий (комірник клієнтів не бачить).
+   */
+  async findSupplierContracts(
+    orgId: string,
+    counterpartyId: string,
+  ): Promise<ContractSupplierLookupDto[]> {
+    const [cp, items] = await Promise.all([
+      this.prisma.counterparty.findFirst({
+        where: { id: counterpartyId, orgId, deletedAt: null, type: { in: [...SUPPLIER_TYPES] } },
+        select: { id: true },
+      }),
+      this.prisma.counterpartyContract.findMany({
+        where: {
+          counterpartyId,
+          orgId,
+          deletedAt: null,
+          contractType: ContractType.PURCHASE,
+        },
+        select: {
+          id: true,
+          number: true,
+          contractType: true,
+          isPrimary: true,
+          paymentDeferDays: true,
+        },
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+        take: 200,
+      }),
+    ]);
+    if (!cp) throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
+    return items;
   }
 
   async findOne(orgId: string, id: string): Promise<CounterpartyResponseDto> {

@@ -90,7 +90,7 @@ model CounterpartyStatusLink {
 
 | Метод  | URL                                                     | Дія                                                                            |
 | ------ | ------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| GET    | `/api/counterparties`                                   | Список (фільтри: type, q — пошук по імені/телефону)                            |
+| GET    | `/api/counterparties`                                   | Список (фільтри: type, q — пошук по імені/телефону); STOREKEEPER — BR-CP-014   |
 | GET    | `/api/counterparties/:id`                               | Деталь                                                                         |
 | POST   | `/api/counterparties`                                   | Створити                                                                       |
 | PATCH  | `/api/counterparties/:id`                               | Оновити                                                                        |
@@ -98,7 +98,7 @@ model CounterpartyStatusLink {
 | GET    | `/api/counterparties/:id/garages`                       | Гаражі контрагента                                                             |
 | POST   | `/api/counterparties/:id/garages`                       | Додати гараж                                                                   |
 | DELETE | `/api/counterparties/:id/garages/:garageId`             | Видалити гараж                                                                 |
-| GET    | `/api/counterparties/:id/contracts`                     | Договори (?showDeleted=true → з soft-deleted)                                  |
+| GET    | `/api/counterparties/:id/contracts`                     | Договори (?showDeleted=true → з soft-deleted); STOREKEEPER — BR-CP-014         |
 | POST   | `/api/counterparties/:id/contracts`                     | Додати договір                                                                 |
 | PATCH  | `/api/counterparties/:id/contracts/:contractId`         | Оновити договір                                                                |
 | DELETE | `/api/counterparties/:id/contracts/:contractId`         | Soft-delete договору (→ promote isPrimary на наступний)                        |
@@ -120,6 +120,17 @@ model CounterpartyStatusLink {
 > (лише активні, `deletedAt:null`) — badge-и у таблиці списку + у картці. `edrpou` лишається detail-only
 > (toDto без `includeEdrpou`-прапора мапить statuses, але НЕ edrpou). `counterpartyCount` рахує лише
 > активних контрагентів (`_count.links where counterparty.deletedAt:null` — Bug #723).
+
+> **Комірник (STOREKEEPER, BR-CP-014).** `GET /api/counterparties` віддає йому
+> `PaginatedSupplierLookupsDto`: лише невидалені SUPPLIER/BOTH (`types`/`type` лише звужують,
+> `showDeleted` не діє), поля `id`, `type`, `firstName`, `lastName`, `companyName`, `edrpou`; пошук
+> `q` — за назвою, ім'ям і ЄДРПОУ (не телефоном і не номером авто); сортування за балансом не діє.
+> `GET /api/counterparties/:id/contracts` — `ContractSupplierLookupDto[]`: лише невидалені договори
+> PURCHASE постачальника (`id`, `number`, `contractType`, `isPrimary`, `paymentDeferDays`); контрагент
+> без ролі постачальника — 404. Решта маршрутів (`GET /:id`, гаражі, пов'язані документи, будь-який
+> запис) — 403. Web: «Позиції» → фільтр і «Постачальник і ціна» (`ItemsView`), пошук постачальника в
+> `PurchaseOrderCreateModal` (другим рядком — ЄДРПОУ; «Відкрити картку» комірнику недоступна).
+> `SupplierConnectionModal` комірник не відкриває — підключення до API лише OWNER/ADMIN (BR-SCON).
 
 > Restore авто — `POST /api/vehicles/:id/restore` (OWNER/ADMIN). Перевіряє ланцюг parent'ів:
 > `BadRequest` якщо гараж або контрагент авто видалені (спочатку відновити їх — Bug #601/#602).
@@ -184,19 +195,20 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 
 **Маршрути UI:** `/counterparties`, `/vehicles`
 
-| Аспект                                  | Тест                                            | Кейсів |
-| --------------------------------------- | ----------------------------------------------- | ------ |
-| audit snapshot                          | `counterparties.audit-snapshot.spec.ts`         | 4      |
-| HTTP-контракт (DTO, статуси, валідація) | `counterparties.contract.spec.ts`               | 21     |
-| counterparty contracts                  | `counterparties.counterparty-contracts.spec.ts` | 32     |
-| crud search                             | `counterparties.crud-search.spec.ts`            | 17     |
-| гаражі (isDefault)                      | `counterparties.garages.spec.ts`                | 6      |
-| пов'язані документи                     | `counterparties.linked-docs.spec.ts`            | 4      |
-| рахунок розрахунків (SettlementAccount) | `counterparties.settlement-account.spec.ts`     | 3      |
-| статуси-мітки (assign / unassign)       | `counterparties.status-labels.spec.ts`          | 9      |
-| supplier naming (+ назва обов'язкова)   | `counterparties.supplier-naming.spec.ts`        | 6      |
+| Аспект                                    | Тест                                            | Кейсів |
+| ----------------------------------------- | ----------------------------------------------- | ------ |
+| audit snapshot                            | `counterparties.audit-snapshot.spec.ts`         | 4      |
+| HTTP-контракт (DTO, статуси, валідація)   | `counterparties.contract.spec.ts`               | 21     |
+| counterparty contracts                    | `counterparties.counterparty-contracts.spec.ts` | 32     |
+| crud search                               | `counterparties.crud-search.spec.ts`            | 17     |
+| гаражі (isDefault)                        | `counterparties.garages.spec.ts`                | 6      |
+| пов'язані документи                       | `counterparties.linked-docs.spec.ts`            | 4      |
+| рахунок розрахунків (SettlementAccount)   | `counterparties.settlement-account.spec.ts`     | 3      |
+| статуси-мітки (assign / unassign)         | `counterparties.status-labels.spec.ts`          | 9      |
+| комірник читає постачальників (BR-CP-014) | `counterparties.storekeeper-suppliers.spec.ts`  | 22     |
+| supplier naming (+ назва обов'язкова)     | `counterparties.supplier-naming.spec.ts`        | 6      |
 
-Разом: **102** кейси (цифри з `vitest --reporter=json`, не з grep).
+Разом: **124** кейси (цифри з `vitest --reporter=json`, не з grep).
 
 Поза модулем правила цього агрегату стережуть ще два файли:
 

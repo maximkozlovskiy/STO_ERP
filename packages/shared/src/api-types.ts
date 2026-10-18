@@ -857,7 +857,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Список контрагентів з пошуком */
+        /**
+         * Список контрагентів з пошуком
+         * @description STOREKEEPER отримує лише невидалених постачальників (SUPPLIER/BOTH) і лише id, тип, назву, ім'я та ЄДРПОУ (PaginatedSupplierLookupsDto) — незалежно від `types` і `showDeleted`
+         */
         get: operations["CounterpartiesController_findAll_v1"];
         put?: never;
         /** Створити контрагента (автоматично створює розрахунковий рахунок) */
@@ -979,7 +982,7 @@ export interface paths {
         };
         /**
          * Договори контрагента
-         * @description MECHANIC отримує лише id, номер і тип договору (ContractLookupDto), без видалених
+         * @description MECHANIC отримує лише id, номер і тип договору (ContractLookupDto), без видалених; STOREKEEPER — лише договори закупівлі постачальника: номер і відстрочку (ContractSupplierLookupDto), контрагент без ролі постачальника — 404
          */
         get: operations["CounterpartiesController_findContracts_v1"];
         put?: never;
@@ -6569,6 +6572,21 @@ export interface components {
             page: number;
             limit: number;
         };
+        CounterpartySupplierLookupDto: {
+            id: string;
+            /** @enum {string} */
+            type: "CLIENT" | "SUPPLIER" | "BOTH";
+            firstName?: string | null;
+            lastName?: string | null;
+            companyName?: string | null;
+            edrpou?: string | null;
+        };
+        PaginatedSupplierLookupsDto: {
+            items: components["schemas"]["CounterpartySupplierLookupDto"][];
+            total: number;
+            page: number;
+            limit: number;
+        };
         CounterpartyLinkedInvoiceRowDto: {
             id: string;
             number: string;
@@ -6657,6 +6675,14 @@ export interface components {
             number: string;
             /** @enum {string} */
             contractType: "PURCHASE" | "SALE";
+        };
+        ContractSupplierLookupDto: {
+            id: string;
+            number: string;
+            /** @enum {string} */
+            contractType: "PURCHASE" | "SALE";
+            isPrimary: boolean;
+            paymentDeferDays?: number | null;
         };
         CreateContractDto: {
             /** @description Номер договору (авто якщо не передано) */
@@ -10391,7 +10417,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description MECHANIC і RECEPTIONIST отримують лише поля картки наряду (OrganisationCardSettingsDto) */
+            /** @description MECHANIC, RECEPTIONIST і STOREKEEPER отримують лише поля картки (OrganisationCardSettingsDto) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11934,12 +11960,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description PaginatedSupplierLookupsDto — для ролі STOREKEEPER, PaginatedCounterpartiesDto — для решти */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedCounterpartiesDto"];
+                    "application/json": components["schemas"]["PaginatedCounterpartiesDto"] | components["schemas"]["PaginatedSupplierLookupsDto"];
                 };
             };
         };
@@ -12171,13 +12198,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description ContractLookupDto[] — для ролі MECHANIC, ContractResponseDto[] — для решти */
+            /** @description ContractLookupDto[] — для ролі MECHANIC, ContractSupplierLookupDto[] — для STOREKEEPER, ContractResponseDto[] — для решти */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ContractResponseDto"][] | components["schemas"]["ContractLookupDto"][];
+                    "application/json": components["schemas"]["ContractResponseDto"][] | components["schemas"]["ContractLookupDto"][] | components["schemas"]["ContractSupplierLookupDto"][];
                 };
             };
         };

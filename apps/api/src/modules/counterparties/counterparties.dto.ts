@@ -183,6 +183,27 @@ export class PaginatedCounterpartiesDto {
   @ApiProperty() limit!: number;
 }
 
+/**
+ * Постачальник для ролі STOREKEEPER (BR-CP-014, рішення власника 2026-10-18): лише те, що треба
+ * для вибору постачальника, — назва, тип (роль постачальника) і ЄДРПОУ. Без телефону, e-mail,
+ * адрес, банківських реквізитів, нотаток і балансу.
+ */
+export class CounterpartySupplierLookupDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ enum: CounterpartyType }) type!: CounterpartyType;
+  @ApiPropertyOptional({ type: String, nullable: true }) firstName!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) lastName!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) companyName!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) edrpou!: string | null;
+}
+
+export class PaginatedSupplierLookupsDto {
+  @ApiProperty({ type: [CounterpartySupplierLookupDto] }) items!: CounterpartySupplierLookupDto[];
+  @ApiProperty() total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() limit!: number;
+}
+
 // в”Ђв”Ђв”Ђ CustomerGarage в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export class CreateGarageDto {
@@ -345,6 +366,18 @@ export class ContractLookupDto {
 
 export function toContractLookup(c: ContractLookupDto): ContractLookupDto {
   return { id: c.id, number: c.number, contractType: c.contractType };
+}
+
+/**
+ * Договір закупівлі постачальника для ролі STOREKEEPER (BR-CP-014): номер і умови оплати
+ * (відстрочка), без кредитного ліміту, валюти й дат. Лише PURCHASE, без видалених.
+ */
+export class ContractSupplierLookupDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: ContractType }) contractType!: ContractType;
+  @ApiProperty() isPrimary!: boolean;
+  @ApiPropertyOptional({ type: Number, nullable: true }) paymentDeferDays!: number | null;
 }
 
 // ─── Linked documents (detail) ─────────────────────────────

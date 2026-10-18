@@ -224,7 +224,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "MECHANIC і RECEPTIONIST отримують лише поля картки наряду (OrganisationCardSettingsDto)",
+            "description": "MECHANIC, RECEPTIONIST і STOREKEEPER отримують лише поля картки (OrganisationCardSettingsDto)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2713,6 +2713,7 @@
     },
     "/api/v1/counterparties": {
       "get": {
+        "description": "STOREKEEPER отримує лише невидалених постачальників (SUPPLIER/BOTH) і лише id, тип, назву, ім'я та ЄДРПОУ (PaginatedSupplierLookupsDto) — незалежно від `types` і `showDeleted`",
         "operationId": "CounterpartiesController_findAll_v1",
         "parameters": [
           {
@@ -2813,11 +2814,18 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "PaginatedSupplierLookupsDto — для ролі STOREKEEPER, PaginatedCounterpartiesDto — для решти",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaginatedCounterpartiesDto"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PaginatedCounterpartiesDto"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PaginatedSupplierLookupsDto"
+                    }
+                  ]
                 }
               }
             }
@@ -3201,7 +3209,7 @@
     },
     "/api/v1/counterparties/{id}/contracts": {
       "get": {
-        "description": "MECHANIC отримує лише id, номер і тип договору (ContractLookupDto), без видалених",
+        "description": "MECHANIC отримує лише id, номер і тип договору (ContractLookupDto), без видалених; STOREKEEPER — лише договори закупівлі постачальника: номер і відстрочку (ContractSupplierLookupDto), контрагент без ролі постачальника — 404",
         "operationId": "CounterpartiesController_findContracts_v1",
         "parameters": [
           {
@@ -3223,7 +3231,7 @@
         ],
         "responses": {
           "200": {
-            "description": "ContractLookupDto[] — для ролі MECHANIC, ContractResponseDto[] — для решти",
+            "description": "ContractLookupDto[] — для ролі MECHANIC, ContractSupplierLookupDto[] — для STOREKEEPER, ContractResponseDto[] — для решти",
             "content": {
               "application/json": {
                 "schema": {
@@ -3238,6 +3246,12 @@
                       "type": "array",
                       "items": {
                         "$ref": "#/components/schemas/ContractLookupDto"
+                      }
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ContractSupplierLookupDto"
                       }
                     }
                   ]
@@ -20726,6 +20740,68 @@
           "limit"
         ]
       },
+      "CounterpartySupplierLookupDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "CLIENT",
+              "SUPPLIER",
+              "BOTH"
+            ],
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastName": {
+            "type": "string",
+            "nullable": true
+          },
+          "companyName": {
+            "type": "string",
+            "nullable": true
+          },
+          "edrpou": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ]
+      },
+      "PaginatedSupplierLookupsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CounterpartySupplierLookupDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
       "CounterpartyLinkedInvoiceRowDto": {
         "type": "object",
         "properties": {
@@ -21063,6 +21139,37 @@
           "id",
           "number",
           "contractType"
+        ]
+      },
+      "ContractSupplierLookupDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "contractType": {
+            "enum": [
+              "PURCHASE",
+              "SALE"
+            ],
+            "type": "string"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "paymentDeferDays": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "contractType",
+          "isPrimary"
         ]
       },
       "CreateContractDto": {

@@ -29,6 +29,7 @@ import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import {
   ContractLookupDto,
   ContractResponseDto,
+  ContractSupplierLookupDto,
   CounterpartyQueryDto,
   CounterpartyResponseDto,
   CreateContractDto,
@@ -36,6 +37,7 @@ import {
   GarageResponseDto,
   CounterpartyLinkedDocumentsDto,
   PaginatedCounterpartiesDto,
+  PaginatedSupplierLookupsDto,
   UpdateContractDto,
   toContractLookup,
 } from './counterparties.dto';
@@ -57,10 +59,34 @@ export class CounterpartiesController {
   constructor(private readonly service: CounterpartiesService) {}
 
   @Get()
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Список контрагентів з пошуком' })
-  @ApiResponse({ status: 200, type: PaginatedCounterpartiesDto })
-  findAll(@OrgContext() orgId: string, @Query() query: CounterpartyQueryDto) {
+  // STOREKEEPER — лише постачальники для вибору в позиції списку купівлі й картці замовлення
+  // (BR-CP-014, рішення власника 2026-10-18).
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT', 'STOREKEEPER')
+  @ApiOperation({
+    summary: 'Список контрагентів з пошуком',
+    description:
+      'STOREKEEPER отримує лише невидалених постачальників (SUPPLIER/BOTH) і лише id, тип, ' +
+      "назву, ім'я та ЄДРПОУ (PaginatedSupplierLookupsDto) — незалежно від `types` і `showDeleted`",
+  })
+  @ApiExtraModels(PaginatedCounterpartiesDto, PaginatedSupplierLookupsDto)
+  @ApiResponse({
+    status: 200,
+    description:
+      'PaginatedSupplierLookupsDto — для ролі STOREKEEPER, PaginatedCounterpartiesDto — для решти',
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(PaginatedCounterpartiesDto) },
+        { $ref: getSchemaPath(PaginatedSupplierLookupsDto) },
+      ],
+    },
+  })
+  findAll(
+    @OrgContext() orgId: string,
+    @Query() query: CounterpartyQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<PaginatedCounterpartiesDto | PaginatedSupplierLookupsDto> {
+    // Комірник не довіряє параметрам: роль постачальника, поля й пошук звужує сервер.
+    if (user.role === 'STOREKEEPER') return this.service.findSupplierLookups(orgId, query);
     return this.service.findAll(orgId, query);
   }
 
@@ -183,20 +209,26 @@ export class CounterpartiesController {
 
   @Get(':id/contracts')
   // MECHANIC — договір у картці наряду, лише читання (рішення власника 2026-10-16, employee.md).
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT', 'MECHANIC')
+  // STOREKEEPER — договори закупівлі постачальника (BR-CP-014, рішення власника 2026-10-18).
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT', 'MECHANIC', 'STOREKEEPER')
   @ApiOperation({
     summary: 'Договори контрагента',
     description:
-      'MECHANIC отримує лише id, номер і тип договору (ContractLookupDto), без видалених',
+      'MECHANIC отримує лише id, номер і тип договору (ContractLookupDto), без видалених; ' +
+      'STOREKEEPER — лише договори закупівлі постачальника: номер і відстрочку ' +
+      '(ContractSupplierLookupDto), контрагент без ролі постачальника — 404',
   })
-  @ApiExtraModels(ContractResponseDto, ContractLookupDto)
+  @ApiExtraModels(ContractResponseDto, ContractLookupDto, ContractSupplierLookupDto)
   @ApiResponse({
     status: 200,
-    description: 'ContractLookupDto[] — для ролі MECHANIC, ContractResponseDto[] — для решти',
+    description:
+      'ContractLookupDto[] — для ролі MECHANIC, ContractSupplierLookupDto[] — для STOREKEEPER, ' +
+      'ContractResponseDto[] — для решти',
     schema: {
       oneOf: [
         { type: 'array', items: { $ref: getSchemaPath(ContractResponseDto) } },
         { type: 'array', items: { $ref: getSchemaPath(ContractLookupDto) } },
+        { type: 'array', items: { $ref: getSchemaPath(ContractSupplierLookupDto) } },
       ],
     },
   })
@@ -205,11 +237,12 @@ export class CounterpartiesController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
     @Query('showDeleted') showDeleted?: string,
-  ): Promise<ContractResponseDto[] | ContractLookupDto[]> {
+  ): Promise<ContractResponseDto[] | ContractLookupDto[] | ContractSupplierLookupDto[]> {
     // Механік бачить мінімум (рішення власника 2026-10-16, друге): номер і тип — для поля
     // «Договір» картки наряду; ліміт, відстрочка, валюта й дати — ні. Видалені — теж ні.
     if (user.role === 'MECHANIC')
       return (await this.service.findContracts(orgId, id, false)).map(toContractLookup);
+    if (user.role === 'STOREKEEPER') return this.service.findSupplierContracts(orgId, id);
     return this.service.findContracts(orgId, id, showDeleted === 'true');
   }
 
