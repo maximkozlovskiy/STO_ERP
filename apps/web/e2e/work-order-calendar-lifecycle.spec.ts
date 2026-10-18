@@ -417,5 +417,18 @@ test.describe('Запис наряду: перевʼязка BR-WO-028, вида
     ).toBeDisabled();
     await expect(form.getByLabel('Механік')).toBeEnabled();
     await page.screenshot({ path: test.info().outputPath('wo27_in_progress_form.png') });
+
+    // Примітка змінюється й у нередагованому статусі — «Оновити» без відмови, наряд той самий.
+    const notes = form.locator('label', { hasText: 'Нотатки' }).locator('..').locator('input');
+    await notes.fill('000 E2E примітка в роботі');
+    await form.getByRole('button', { name: 'Оновити', exact: true }).click();
+    await expect(form).toBeHidden({ timeout: 15_000 });
+    expect(await woShape(page, 'locked')).toEqual(before);
+    const notesNow = await api<{ calendarSlots: { id: string; notes: string | null }[] }>(
+      page,
+      'GET',
+      `/work-orders/${state.wo.locked!.id}/linked-documents`,
+    );
+    expect(notesNow.body.calendarSlots.map(s => s.notes)).toEqual(['000 E2E примітка в роботі']);
   });
 });
