@@ -598,3 +598,226 @@ describe("Перев'язка запису на інший наряд (BR-WO-028
     expect(woOf(h)).toMatchObject({ plannedAt: null, dueDate: null });
   });
 });
+
+describe("Відв'язка запису наряду: статус і багатоденний запис (BR-WO-028, Bug #906, #907)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Форма якоря дводенного запису: той самий день якоря (16–18), наряд «×». */
+  const anchorForm = (over: Row = {}) => ({
+    workOrderId: null,
+    liftId: LIFT_1,
+    startAt: iso(D, '16:00'),
+    endAt: iso(D, '18:00'),
+    counterpartyId: CLIENT,
+    employeeId: null,
+    notes: 'Відвʼязано',
+    ...over,
+  });
+
+  // guards: BR-WO-028, BR-WO-026
+  it('відвʼязка ЯКОРЯ дводенного запису з форми → увесь ланцюжок без наряду, примітка всьому ланцюжку, дати стерто (Bug #906)', async () => {
+    const h = twoDays();
+
+    const res = await h.service.updateCalendarSlot(ORG, 'anchor', anchorForm(), USER);
+
+    expect(res).toMatchObject({ id: 'anchor', workOrderId: null });
+    expect(h.liveSlots()).toEqual([]);
+    expect([slotOf(h, 'anchor'), slotOf(h, 'cont')]).toEqual([
+      expect.objectContaining({ workOrderId: null, deletedAt: null, notes: 'Відвʼязано' }),
+      expect.objectContaining({ workOrderId: null, deletedAt: null, notes: 'Відвʼязано' }),
+    ]);
+    expect(slotOf(h, 'cont').counterpartyId).toBe(CLIENT);
+    expect(t(slotOf(h, 'cont').startAt)).toBe(t(kyiv(D2, '08:00')));
+    expect(woOf(h)).toMatchObject({ plannedAt: null, dueDate: null, plannedHours: null });
+    expect(h.audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  // guards: BR-WO-028
+  it('відвʼязка дводенного запису з іншим часом → 400 «редагуйте кожен окремо», нічого не змінено', async () => {
+    const h = twoDays();
+
+    const err = await rejected(
+      h,
+      h.service.updateCalendarSlot(ORG, 'anchor', anchorForm({ startAt: iso(D, '15:00') }), USER),
+    );
+    expect(err.message).toBe(msg('err.calendar.slotSplitTwoDays'));
+  });
+
+  // guards: BR-WO-028, BR-CAL-012
+  it('відвʼязка дводенного запису з механіком, не закріпленим за підйомником → 400, нічого не змінено', async () => {
+    const h = twoDays({ liftId: LIFT_2 });
+    slotOf(h, 'anchor').liftId = LIFT_2;
+    slotOf(h, 'cont').liftId = LIFT_2;
+
+    const err = await rejected(
+      h,
+      h.service.updateCalendarSlot(
+        ORG,
+        'anchor',
+        anchorForm({ liftId: LIFT_2, employeeId: MECH_1 }),
+        USER,
+      ),
+    );
+    expect(err.message).toBe(msg('err.calendar.employeeNotOnLift'));
+  });
+
+  // guards: BR-WO-028, BR-WO-027
+  it('відвʼязка запису наряду «В роботі» → 400 з причиною, дати наряду й запис цілі (Bug #907)', async () => {
+    const h = planned({ wo: { status: 'IN_PROGRESS' } });
+
+    const err = await rejected(
+      h,
+      h.service.updateCalendarSlot(ORG, 'anchor', { workOrderId: null }, USER),
+    );
+    expect(err.message).toBe(msg('err.calendar.workOrderRelinkLocked'));
+    expect(h.audit.record).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-WO-028, BR-WO-027
+  it('наряд став «В роботі» між перевіркою і транзакцією відвʼязки → 400 під блокуванням, нічого не змінено', async () => {
+    const h = planned();
+    h.prisma.$queryRaw.mockImplementationOnce(async () => {
+      woOf(h).status = 'IN_PROGRESS';
+      return [];
+    });
+    const before = structuredClone(h.calendarSlot.rows);
+
+    const err = await h.service
+      .updateCalendarSlot(ORG, 'anchor', { workOrderId: null, counterpartyId: CLIENT }, USER)
+      .then(
+        () => null,
+        (e: unknown) => e as Error,
+      );
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(err!.message).toBe(msg('err.calendar.workOrderRelinkLocked'));
+    expect(h.calendarSlot.rows).toEqual(before);
+    expect(woOf(h)).toMatchObject({ plannedAt: kyiv(D, '10:00'), dueDate: kyiv(D, '12:00') });
+  });
+});
+
+describe('Новий запис календаря для наряду — запис наряду (BR-WO-028, Bug #905)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Тіло форми «+ Слот» з обраним нарядом. */
+  const createForm = (workOrderId: string, over: Row = {}) =>
+    ({
+      workOrderId,
+      liftId: LIFT_2,
+      startAt: iso(D2, '13:00'),
+      endAt: iso(D2, '15:00'),
+      counterpartyId: CLIENT,
+      notes: 'З форми',
+      ...over,
+    }) as never;
+
+  // guards: BR-WO-028, BR-WO-020
+  it('наряд із датами → другого запису немає: запис наряду на його датах отримав механіка й примітку форми', async () => {
+    const h = planned();
+
+    const res = await h.service.createCalendarSlot(
+      ORG,
+      createForm(WO_ID, { liftId: LIFT_1, employeeId: MECH_1 }),
+      USER,
+    );
+
+    expect(h.liveSlots()).toEqual([
+      expect.objectContaining({
+        id: 'anchor',
+        liftId: LIFT_1,
+        employeeId: MECH_1,
+        notes: 'З форми',
+      }),
+    ]);
+    expect(t(slotOf(h, 'anchor').startAt)).toBe(t(kyiv(D, '10:00')));
+    expect(res.slots.map(s => s.id)).toEqual(['anchor']);
+    expect(woOf(h)).toMatchObject({ liftId: LIFT_1, plannedAt: kyiv(D, '10:00') });
+  });
+
+  // guards: BR-WO-028, BR-WO-019
+  it('наряд без дат → час і підйомник запису стають його датами й підйомником, нормогодини — робочі години', async () => {
+    const h = planned();
+
+    const res = await h.service.createCalendarSlot(ORG, createForm(OTHER_WO), USER);
+
+    expect(woOf(h, OTHER_WO)).toMatchObject({ liftId: LIFT_2, plannedHours: 2 });
+    expect(t(woOf(h, OTHER_WO).plannedAt)).toBe(t(kyiv(D2, '13:00')));
+    expect(t(woOf(h, OTHER_WO).dueDate)).toBe(t(kyiv(D2, '15:00')));
+    expect(h.liveSlots(OTHER_WO)).toEqual([
+      expect.objectContaining({ liftId: LIFT_2, notes: 'З форми', parentSlotId: null }),
+    ]);
+    expect(res.slots).toHaveLength(1);
+    // Запис наряду WO_ID не чіпається.
+    expect(h.liveSlots()).toEqual([expect.objectContaining({ id: 'anchor' })]);
+  });
+
+  // guards: BR-WO-028, BR-WO-020
+  it('наряд без дат, запис за кінець робочого дня → два записи (до 18:00 і з 08:00), кінець наряду — наступного дня', async () => {
+    const h = planned();
+
+    const res = await h.service.createCalendarSlot(
+      ORG,
+      createForm(OTHER_WO, { startAt: iso(D2, '17:00'), endAt: iso(D2, '19:00') }),
+      USER,
+    );
+
+    expect(t(woOf(h, OTHER_WO).dueDate)).toBe(t(kyiv('2026-05-24', '09:00')));
+    expect(res.slots.map(s => [s.startAt, s.endAt])).toEqual([
+      [iso(D2, '17:00'), iso(D2, '18:00')],
+      [iso('2026-05-24', '08:00'), iso('2026-05-24', '09:00')],
+    ]);
+  });
+
+  // guards: BR-WO-028, BR-WO-027
+  it('наряд «В роботі» → 400 з причиною, жодного запису, наряд не змінено', async () => {
+    const h = planned({ other: { status: 'IN_PROGRESS' } });
+
+    const err = await rejected(h, h.service.createCalendarSlot(ORG, createForm(OTHER_WO)));
+    expect(err.message).toBe(msg('err.calendar.workOrderSlotLocked'));
+  });
+
+  // guards: BR-WO-022
+  it('скасований наряд → 400, жодного запису', async () => {
+    const h = planned({ other: { status: 'CANCELLED' } });
+
+    const err = await rejected(h, h.service.createCalendarSlot(ORG, createForm(OTHER_WO)));
+    expect(err.message).toBe(msg('err.calendar.workOrderCancelled'));
+  });
+
+  // guards: BR-WO-028, BR-CAL-012
+  it('механік не закріплений за підйомником запису → 400, наряд без дат лишається без дат', async () => {
+    const h = planned();
+
+    const err = await rejected(
+      h,
+      h.service.createCalendarSlot(ORG, createForm(OTHER_WO, { employeeId: MECH_1 })),
+    );
+    expect(err.message).toBe(msg('err.calendar.employeeNotOnLift'));
+  });
+
+  // guards: BR-WO-028, BR-CAL-005
+  it('підйомник зайнятий на час форми → 400 «зайнятий», наряд без дат, записів не додано', async () => {
+    const h = planned({
+      extra: [
+        slotRow('busy', {
+          workOrderId: null,
+          liftId: LIFT_2,
+          startAt: kyiv(D2, '14:00'),
+          endAt: kyiv(D2, '16:00'),
+        }),
+      ],
+    });
+
+    const err = await rejected(h, h.service.createCalendarSlot(ORG, createForm(OTHER_WO)));
+    expect(err.message).toBe(msg('err.calendar.liftBusy'));
+  });
+});

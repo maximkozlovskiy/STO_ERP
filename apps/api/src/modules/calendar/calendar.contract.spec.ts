@@ -12,11 +12,12 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 
 const serviceMock = {
   findSlots: vi.fn(),
-  createSlot: vi.fn(),
   checkConflicts: vi.fn(),
 };
 // BR-WO-024/026: зміну й видалення запису проводить наряд.
 const woServiceMock = {
+  // BR-WO-028 (Bug #905): створення запису йде через наряд — запис для наряду стає записом наряду.
+  createCalendarSlot: vi.fn(),
   updateCalendarSlot: vi.fn(),
   removeCalendarSlot: vi.fn(),
 };
@@ -178,7 +179,7 @@ describe('Calendar — HTTP Contract', () => {
         payload: { notes: 'без часу' },
       });
       expect(res.statusCode).toBe(400);
-      expect(serviceMock.createSlot).not.toHaveBeenCalled();
+      expect(woServiceMock.createCalendarSlot).not.toHaveBeenCalled();
     });
 
     it('повертає 400 коли startAt не ISO-8601', async () => {
@@ -188,7 +189,7 @@ describe('Calendar — HTTP Contract', () => {
         payload: { startAt: '2026/05/22 10:00', endAt: '2026-05-22T11:00:00.000Z' },
       });
       expect(res.statusCode).toBe(400);
-      expect(serviceMock.createSlot).not.toHaveBeenCalled();
+      expect(woServiceMock.createCalendarSlot).not.toHaveBeenCalled();
     });
 
     it('повертає 400 коли liftId не UUID', async () => {
@@ -202,11 +203,11 @@ describe('Calendar — HTTP Contract', () => {
         },
       });
       expect(res.statusCode).toBe(400);
-      expect(serviceMock.createSlot).not.toHaveBeenCalled();
+      expect(woServiceMock.createCalendarSlot).not.toHaveBeenCalled();
     });
 
     it('повертає 400 коли endAt <= startAt (бізнес-правило сервісу)', async () => {
-      serviceMock.createSlot.mockRejectedValueOnce(
+      woServiceMock.createCalendarSlot.mockRejectedValueOnce(
         new BadRequestException('Час завершення має бути після початку'),
       );
       const res = await (app as NestFastifyApplication).inject({
@@ -218,7 +219,7 @@ describe('Calendar — HTTP Contract', () => {
     });
 
     it('повертає 201 + DTO при валідному payload', async () => {
-      serviceMock.createSlot.mockResolvedValueOnce({
+      woServiceMock.createCalendarSlot.mockResolvedValueOnce({
         id: SLOT_ID,
         liftId: LIFT_ID,
         employeeId: null,
@@ -240,9 +241,10 @@ describe('Calendar — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(201);
       expect(res.json()).toMatchObject({ id: SLOT_ID, liftId: LIFT_ID });
-      expect(serviceMock.createSlot).toHaveBeenCalledWith(
+      expect(woServiceMock.createCalendarSlot).toHaveBeenCalledWith(
         'org-1',
         expect.objectContaining({ liftId: LIFT_ID }),
+        'emp-1',
       );
     });
 
@@ -252,7 +254,7 @@ describe('Calendar — HTTP Contract', () => {
     it.each(['AVAILABLE', 'BOOKED', 'BLOCKED'])(
       'приймає status=%s і передає його в сервіс як є (201)',
       async status => {
-        serviceMock.createSlot.mockResolvedValueOnce({ slots: [] });
+        woServiceMock.createCalendarSlot.mockResolvedValueOnce({ slots: [] });
         const res = await (app as NestFastifyApplication).inject({
           method: 'POST',
           url: '/calendar/slots',
@@ -264,9 +266,10 @@ describe('Calendar — HTTP Contract', () => {
           },
         });
         expect(res.statusCode).toBe(201);
-        expect(serviceMock.createSlot).toHaveBeenCalledWith(
+        expect(woServiceMock.createCalendarSlot).toHaveBeenCalledWith(
           'org-1',
           expect.objectContaining({ status }),
+          'emp-1',
         );
       },
     );
@@ -275,7 +278,7 @@ describe('Calendar — HTTP Contract', () => {
     // має зробити '' → undefined для liftId/employeeId/workOrderId/counterpartyId.
     // Без цього sprint c551dd5 буде регресувати у 400 без видимих тестових провалів.
     it('повертає 201 коли liftId="" і employeeId="" (порожні рядки → undefined)', async () => {
-      serviceMock.createSlot.mockResolvedValueOnce({
+      woServiceMock.createCalendarSlot.mockResolvedValueOnce({
         id: SLOT_ID,
         liftId: null,
         employeeId: null,
@@ -299,7 +302,7 @@ describe('Calendar — HTTP Contract', () => {
         },
       });
       expect(res.statusCode).toBe(201);
-      const dtoArg = serviceMock.createSlot.mock.calls[0]![1] as Record<string, unknown>;
+      const dtoArg = woServiceMock.createCalendarSlot.mock.calls[0]![1] as Record<string, unknown>;
       expect(dtoArg.liftId).toBeUndefined();
       expect(dtoArg.employeeId).toBeUndefined();
       expect(dtoArg.workOrderId).toBeUndefined();

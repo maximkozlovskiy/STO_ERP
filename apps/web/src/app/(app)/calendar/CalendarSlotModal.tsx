@@ -759,8 +759,19 @@ export function CalendarSlotModal({
         } else {
           toast.success(t('slot.toastCreated'));
         }
+        // BR-WO-028 (Bug #905): запис для наряду з датами стає на дати й підйомник наряду, а не
+        // на час форми — сказати, чому запис не там, куди його ставили.
+        const first = res.slots[0];
+        if (
+          form.workOrderId &&
+          first &&
+          (new Date(first.startAt).getTime() !== new Date(startIso).getTime() ||
+            (first.liftId ?? '') !== form.liftId)
+        )
+          toast.info(t('slot.toastWoSlotOnWoDates'));
       }
-      onSaved({ workOrderChanged: !!editingSlotId && !!form.workOrderId });
+      // Запис із нарядом (новий теж — BR-WO-028 дає наряду дати) змінює картку й списки нарядів.
+      onSaved({ workOrderChanged: !!form.workOrderId });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('slot.errSaveFallback');
       setError(msg);

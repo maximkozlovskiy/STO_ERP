@@ -73,12 +73,17 @@ export class CalendarController {
   @Roles(...CALENDAR_WRITE_ROLES)
   @ApiOperation({
     summary: 'Створити слот (повертає 1 або 2 слоти якщо виходить за межі робочого дня)',
+    description:
+      'З workOrderId — запис наряду (BR-WO-028): наряд із плановими датами — запис на його датах і ' +
+      'підйомнику (один запис на наряд), без дат — час і підйомник запису стають датами наряду; ' +
+      'лише в статусах «Чернетка», «Кошторис», «Затверджено» (BR-WO-027). Відповідь — записи наряду',
   })
   createSlot(
     @OrgContext() orgId: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateCalendarSlotDto,
   ): Promise<CreateCalendarSlotResponseDto> {
-    return this.service.createSlot(orgId, dto);
+    return this.workOrders.createCalendarSlot(orgId, dto, user.id);
   }
 
   @Patch(':id')

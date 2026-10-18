@@ -352,3 +352,41 @@ describe('CalendarSlotModal — зміна запису наряду (BR-WO-024)
     expect(JSON.parse(patch![1]!.body!)).toHaveProperty('notes', null);
   });
 });
+
+describe('CalendarSlotModal — новий запис для наряду (BR-WO-028, Bug #905)', () => {
+  const NEW = { vehicleId: 'veh-1', workOrderId: WO, workOrderDisplay: 'НЗ-1' };
+  const postReturns = (slot: { startAt: string; liftId: string }) => {
+    const free = apiFetch.getMockImplementation()!;
+    apiFetch.mockImplementation((url: string, init?: { method?: string }) =>
+      url === '/calendar/slots' && init?.method === 'POST'
+        ? Promise.resolve({ slots: [{ id: 'anchor', endAt: slot.startAt, ...slot }] })
+        : free(url, init),
+    );
+  };
+
+  // guards: BR-WO-028
+  it('сервер поставив запис на дати наряду → підказка, onSaved з `workOrderChanged` (наряд змінено)', async () => {
+    const onSaved = vi.fn();
+    // Форма — 10:00 за Києвом; наряд уже має дати на 08:00.
+    postReturns({ startAt: '2026-10-20T05:00:00.000Z', liftId: L1 });
+    render(<Harness initial={NEW} onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ workOrderChanged: true }));
+    expect(toast.info).toHaveBeenCalledWith(
+      'Наряд уже має планові дати — запис стоїть на датах і підйомнику наряду',
+    );
+  });
+
+  // guards: BR-WO-028
+  it('запис на часі форми (наряд узяв дати запису) → без підказки, наряд теж перечитується', async () => {
+    const onSaved = vi.fn();
+    toast.info.mockClear();
+    postReturns({ startAt: '2026-10-20T07:00:00.000Z', liftId: L1 });
+    render(<Harness initial={NEW} onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ workOrderChanged: true }));
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+});

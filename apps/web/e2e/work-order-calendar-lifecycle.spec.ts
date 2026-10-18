@@ -362,6 +362,77 @@ test.describe('Запис наряду: перевʼязка BR-WO-028, вида
     await page.screenshot({ path: test.info().outputPath('wo26_card_no_dates.png') });
   });
 
+  // guards: BR-WO-028
+  test('«+ Слот» з нарядом без дат → наряд отримав час форми; вдруге (дати вже є) — другого запису немає (Bug #905)', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    test.skip(!state.recordId, 'передумови не створено');
+    await dayView(page);
+
+    /** Новий запис формою «+ Слот»: підйомник, початок `hour`:00 на 1 год, клієнт, авто, наряд. */
+    async function newRecord(lift: { name: string }, hour: string) {
+      await page.getByRole('button', { name: /Слот/ }).first().click();
+      const form = page
+        .locator('div.rounded-xl')
+        .filter({ has: page.locator('h3', { hasText: /Новий слот/ }) })
+        .last();
+      await expect(form).toBeVisible({ timeout: 10_000 });
+      await form.getByLabel(/Підйомник/).selectOption({ label: lift.name });
+      const popup = await openPicker(page, form, 'Початок');
+      // Пікер відкривається на поточному місяці, дата тесту — наступного.
+      const day = popup.locator(`[data-day="${targetDate()}"] button`);
+      if ((await day.count()) === 0)
+        await popup.getByRole('button', { name: /next|наступн/i }).click();
+      await day.click();
+      await popup.getByLabel('Година').selectOption(hour);
+      await popup.getByLabel('Хвилини').selectOption('00');
+      await popup.getByRole('button', { name: 'Готово' }).click();
+      await form
+        .locator('label', { hasText: 'Норм-год' })
+        .first()
+        .locator('..')
+        .locator('input')
+        .fill('1');
+      await form
+        .getByPlaceholder(/клієнт/i)
+        .first()
+        .fill(CLIENT);
+      await page
+        .getByRole('option', { name: new RegExp(CLIENT) })
+        .first()
+        .click();
+      const vehicle = form
+        .locator('select')
+        .filter({ has: page.locator('option', { hasText: PLATE }) });
+      await expect(vehicle).toHaveCount(1, { timeout: 10_000 });
+      await vehicle.selectOption({ label: `Toyota Corolla ${PLATE}` });
+      await form.getByPlaceholder('Пошук наряду…').fill(state.wo.noDates!.number);
+      await page.getByRole('option', { name: new RegExp(state.wo.noDates!.number) }).click();
+      await form.getByRole('button', { name: 'Зберегти', exact: true }).click();
+      await expect(form).toBeHidden({ timeout: 15_000 });
+    }
+
+    await newRecord(state.liftA!, '13');
+    await expect
+      .poll(() => woShape(page, 'noDates'), { timeout: 15_000 })
+      .toEqual({ status: 'DRAFT', liftId: state.liftA!.id, start: '13:00', end: '14:00' });
+    const [first] = await slotsOf(page, 'noDates');
+    expect(first).toMatchObject({ liftId: state.liftA!.id });
+
+    // Наряд уже має дати: запис форми на 15:00 підйомника B — це той самий запис наряду.
+    await newRecord(state.liftB!, '15');
+    await expect(page.getByText('запис стоїть на датах і підйомнику наряду')).toBeVisible({
+      timeout: 10_000,
+    });
+    expect((await slotsOf(page, 'noDates')).map(s => [s.id, s.liftId])).toEqual([
+      [first.id, state.liftA!.id],
+    ]);
+    expect(await woShape(page, 'noDates')).toMatchObject({ start: '13:00', end: '14:00' });
+    await expect(woBlock(page, 'noDates')).toHaveCount(1);
+    await page.screenshot({ path: test.info().outputPath('wo28_new_record_for_wo.png') });
+  });
+
   // guards: BR-WO-027
   test('наряд «В роботі»: запис не тягнеться й не розтягується, у формі час і підйомник недоступні', async ({
     page,

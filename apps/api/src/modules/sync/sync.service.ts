@@ -342,6 +342,27 @@ export class SyncService {
       // Validate FK fields belong to the same org to prevent cross-tenant injection
       await this.validateForeignKeys(orgId, rec.table, safePayload);
       if (isSlot) await this.assertSlotMechanic(orgId, safePayload, null);
+      // BR-WO-028 (Bug #905): новий запис із нарядом — запис НАРЯДУ, тим самим шляхом, що й
+      // перев'язка запису без наряду: запис стає на дати наряду або дає йому свої, статус наряду —
+      // BR-WO-027. Відмова — створений запис позначається видаленим, планшет отримує конфлікт.
+      const slotWorkOrderId =
+        isSlot && typeof safePayload.workOrderId === 'string' ? safePayload.workOrderId : null;
+      if (slotWorkOrderId) {
+        const { workOrderId: _wo, ...ownFields } = safePayload;
+        await model.create({ data: { ...ownFields, workOrderId: null, id: rec.id, orgId } });
+        try {
+          await this.workOrders.updateCalendarSlot(
+            orgId,
+            rec.id,
+            { workOrderId: slotWorkOrderId },
+            userId,
+          );
+        } catch (e) {
+          await model.update({ where: { id: rec.id, orgId }, data: { deletedAt: new Date() } });
+          throw e;
+        }
+        return;
+      }
       await model.create({ data: { ...safePayload, id: rec.id, orgId } });
       return;
     }

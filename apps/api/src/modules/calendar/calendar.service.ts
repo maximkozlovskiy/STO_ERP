@@ -864,17 +864,29 @@ export class CalendarService {
    * — для всього ланцюжка (`chain`: якір і продовження) без перебудови: час і підйомник таких
    * записів не змінюються, а збереження наряду закритий наряд не редагує. Механік — вільний на всіх
    * днях ланцюжка (BR-CAL-005); закріплення за підйомником (BR-CAL-012) перевіряє той, хто кличе.
+   *
+   * Відв'язка багатоденного запису від наряду (BR-WO-026, Bug #906) — тим самим шляхом: клієнт і
+   * авто форми для всього ланцюжка; `opts.inTx` — що зробити в транзакції ПЕРЕД записом ланцюжка
+   * (порядок блокувань «наряд → записи»: відв'язати ланцюжок і стерти дати наряду).
    */
   async updateSlotChainDetails(
     orgId: string,
     chain: readonly ({ id: string } & TimeSegment)[],
-    change: { employeeId?: string | null | undefined; notes?: string | null | undefined },
+    change: {
+      employeeId?: string | null | undefined;
+      notes?: string | null | undefined;
+      counterpartyId?: string | null | undefined;
+      vehicleId?: string | null | undefined;
+    },
+    opts: { inTx?: (tx: Prisma.TransactionClient) => Promise<void> } = {},
   ): Promise<void> {
     const data = {
       ...(change.employeeId !== undefined && { employeeId: change.employeeId }),
       ...(change.notes !== undefined && { notes: change.notes }),
+      ...(change.counterpartyId !== undefined && { counterpartyId: change.counterpartyId }),
+      ...(change.vehicleId !== undefined && { vehicleId: change.vehicleId }),
     };
-    if (Object.keys(data).length === 0 || chain.length === 0) return;
+    if ((Object.keys(data).length === 0 && !opts.inTx) || chain.length === 0) return;
     const ids = chain.map(s => s.id);
     const segments = [...chain].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
     const first = segments[0];
@@ -896,13 +908,38 @@ export class CalendarService {
               ),
             );
         }
-        await tx.calendarSlot.updateMany({
-          where: { orgId, id: { in: ids }, deletedAt: null },
-          data,
-        });
+        await opts.inTx?.(tx);
+        if (Object.keys(data).length > 0)
+          await tx.calendarSlot.updateMany({
+            where: { orgId, id: { in: ids }, deletedAt: null },
+            data,
+          });
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
+  }
+
+  /** Живий запис календаря за id (відповідь зміни ланцюжка без перебудови, Bug #906). */
+  async findSlotById(orgId: string, id: string): Promise<CalendarSlotResponseDto | null> {
+    const slot = await this.prisma.calendarSlot.findFirst({
+      where: { id, orgId, deletedAt: null },
+      include: SLOT_INCLUDE,
+    });
+    return slot ? this.toDto(slot) : null;
+  }
+
+  /**
+   * Записи наряду (якір і продовження) за часом — відповідь створення запису для наряду
+   * (`POST /calendar/slots` з `workOrderId`, BR-WO-028, Bug #905): запис стає записом наряду.
+   */
+  async findWorkOrderSlots(orgId: string, workOrderId: string): Promise<CalendarSlotResponseDto[]> {
+    const slots = await this.prisma.calendarSlot.findMany({
+      where: { orgId, workOrderId, deletedAt: null },
+      orderBy: { startAt: 'asc' },
+      include: SLOT_INCLUDE,
+      take: 500,
+    });
+    return slots.map(s => this.toDto(s));
   }
 
   /**

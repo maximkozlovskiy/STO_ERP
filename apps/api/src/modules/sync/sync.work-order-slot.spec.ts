@@ -244,3 +244,66 @@ describe('SyncService.push calendar_slots — видалення запису н
     expect(t(h.wo().plannedAt)).toBe(t(kyiv(D, '10:00')));
   });
 });
+
+describe('SyncService.push calendar_slots — новий запис із нарядом (BR-WO-028, Bug #905)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const create = (workOrderId: string): SyncRecord => ({
+    table: 'calendar_slots',
+    id: 'tablet-1',
+    operation: 'INSERT',
+    syncVersion: 1,
+    payload: {
+      workOrderId,
+      liftId: LIFT_2,
+      startAt: kyiv('2026-05-23', '13:00').toISOString(),
+      endAt: kyiv('2026-05-23', '15:00').toISOString(),
+    },
+  });
+
+  /** Таблиця в пам'яті зберігає рядок як є; Prisma перетворює ISO-рядки дат на `Date`. */
+  function withDates(h: ReturnType<typeof harness>) {
+    const create = h.prisma.calendarSlot.create;
+    h.prisma.calendarSlot.create = ((args: { data: Record<string, unknown> }) => {
+      const data = { ...args.data };
+      for (const k of ['startAt', 'endAt'])
+        if (typeof data[k] === 'string') data[k] = new Date(data[k] as string);
+      return create({ ...args, data });
+    }) as typeof create;
+    return h;
+  }
+
+  // guards: BR-WO-028
+  it('наряд без дат → запис планшета (той самий id) став записом наряду, наряд отримав його дати', async () => {
+    const h = withDates(harness());
+
+    const res = await h.sync.push(ORG, [create(OTHER_WO)], 'ADMIN');
+
+    expect(res).toEqual({ accepted: 1, conflicts: 0 });
+    expect(h.liveSlots(OTHER_WO)).toEqual([
+      expect.objectContaining({ id: 'tablet-1', liftId: LIFT_2 }),
+    ]);
+    const other = h.workOrder.rows.find(w => w.id === OTHER_WO)!;
+    expect(other).toMatchObject({ liftId: LIFT_2 });
+    expect(t(other.plannedAt)).toBe(t(kyiv('2026-05-23', '13:00')));
+  });
+
+  // guards: BR-WO-028, BR-WO-027
+  it('наряд «В роботі» → конфлікт із причиною, створений запис позначено видаленим, наряд без змін', async () => {
+    const h = withDates(harness([], { other: { status: 'IN_PROGRESS' } }));
+
+    const res = await h.sync.push(ORG, [create(OTHER_WO)], 'ADMIN');
+
+    expect(res).toEqual({ accepted: 0, conflicts: 1 });
+    expect(h.lastErrors()).toEqual([translateError('err.calendar.workOrderRelinkLocked', 'uk')]);
+    expect(h.calendarSlot.rows.find(s => s.id === 'tablet-1')).toMatchObject({
+      deletedAt: expect.any(Date),
+    });
+    expect(h.workOrder.rows.find(w => w.id === OTHER_WO)).toMatchObject({ plannedAt: null });
+  });
+});
