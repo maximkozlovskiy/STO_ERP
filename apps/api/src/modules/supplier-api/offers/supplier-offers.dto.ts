@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import {
   OfferChosenBy,
   PurchaseListItemSource,
@@ -105,11 +105,36 @@ export class SupplierOfferSearchResultDto extends SupplierOfferBatchDto {
   skippedItemIds!: string[];
 }
 
-export class SupplierItemOffersDto {
-  @ApiProperty({ type: SupplierOfferItemDto }) item!: SupplierOfferItemDto;
+/** Частина автопідбору: пропозиція × кількість (BR-SOFR-008). */
+export class SupplierAllocationPartDto {
+  @ApiProperty() offerId!: string;
+  @ApiProperty() connectionId!: string;
+  @ApiProperty() supplierId!: string;
+  @ApiProperty() supplierName!: string;
+  @ApiProperty({ type: String, nullable: true }) warehouseName!: string | null;
+  @ApiProperty() offerKey!: string;
+  @ApiProperty() qty!: number;
+  @ApiProperty({ type: Number, nullable: true }) priceUah!: number | null;
+  @ApiProperty() days!: number;
+  @ApiProperty() isAnalog!: boolean;
 }
 
-export class SupplierOfferChooseResultDto {
+export class SupplierAllocationItemDto {
   @ApiProperty() itemId!: string;
-  @ApiPropertyOptional({ description: 'Товар позиції замінено аналогом' }) goodReplaced?: boolean;
+  @ApiProperty() goodName!: string;
+  @ApiProperty() need!: number;
+  @ApiProperty({ type: [SupplierAllocationPartDto] }) parts!: SupplierAllocationPartDto[];
+  @ApiProperty({ description: 'Непокрита решта — окрема OPEN-позиція без пропозиції' })
+  uncovered!: number;
+  @ApiProperty({ type: String, nullable: true, enum: ['itemNotOpen', 'noOffers'] })
+  skippedReason!: 'itemNotOpen' | 'noOffers' | null;
+}
+
+export class SupplierAllocationResultDto {
+  @ApiProperty({ enum: SupplierStrategy }) strategy!: SupplierStrategy;
+  @ApiProperty({ description: 'false — попередній перегляд (dryRun), нічого не записано' })
+  applied!: boolean;
+  @ApiProperty({ type: [SupplierAllocationItemDto] }) items!: SupplierAllocationItemDto[];
+  @ApiProperty({ type: Number, nullable: true, description: 'Сума в гривні (null — ролі без цін)' })
+  totalUah!: number | null;
 }

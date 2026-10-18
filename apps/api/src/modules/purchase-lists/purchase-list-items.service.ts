@@ -22,7 +22,7 @@ import {
 import { PurchaseShortageService } from './purchase-shortage.service';
 import { assertSupplier, conflict, err, loadItemDtos, loadList } from './purchase-lists.helpers';
 import { ITEM_INCLUDE, maskItemCost, toItemDto } from './purchase-lists.mapper';
-import { CLEAR_OFFER_SNAPSHOT, copyOfferSnapshot } from './purchase-list-offer-snapshot';
+import { CLEAR_OFFER_SNAPSHOT, itemPartData } from './purchase-list-offer-snapshot';
 import type {
   BulkResultDto,
   PaginatedPurchaseListItemsDto,
@@ -206,22 +206,9 @@ export class PurchaseListItemsService {
           data: { quantity: item.quantity - dto.quantity },
         });
         if (res.count !== 1) throw conflict();
+        // BR-PL-017: обидві частини лишаються з тією самою пропозицією.
         const created = await tx.purchaseListItem.create({
-          data: {
-            orgId,
-            listId: item.listId,
-            goodId: item.goodId,
-            warehouseId: item.warehouseId,
-            quantity: dto.quantity,
-            source: item.source,
-            workOrderId: item.workOrderId,
-            workOrderPartId: item.workOrderPartId,
-            supplierId: item.supplierId,
-            expectedPrice: item.expectedPrice,
-            notes: item.notes,
-            // BR-PL-017: обидві частини лишаються з тією самою пропозицією.
-            ...copyOfferSnapshot(item),
-          },
+          data: itemPartData(item, dto.quantity),
           select: { id: true },
         });
         return created.id;

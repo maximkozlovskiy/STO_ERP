@@ -10,7 +10,7 @@ import {
   stockKey,
 } from '../work-orders/work-order-stock-requirements';
 import { PROCUREMENT_ACTIVE_STATUSES } from '../work-orders/work-orders.fsm';
-import { CLEAR_OFFER_SNAPSHOT, copyOfferSnapshot } from './purchase-list-offer-snapshot';
+import { CLEAR_OFFER_SNAPSHOT, itemPartData } from './purchase-list-offer-snapshot';
 
 type Tx = Prisma.TransactionClient;
 
@@ -299,28 +299,13 @@ export class PurchaseListLinkService {
     const keepQty = item.quantity - restQty;
     const keepStatus = keepQty - item.receivedQty <= QTY_EPSILON ? 'RECEIVED' : item.status;
     await this.casItem(tx, orgId, item, { quantity: keepQty, status: keepStatus });
+    // BR-PL-017: остача при прийманні / скасуванні лишається з пропозицією; повернення
+    // непідтвердженого постачальником — без неї (BR-SCON-013).
     await tx.purchaseListItem.create({
-      data: {
-        orgId,
-        listId: item.listId,
-        goodId: item.goodId,
-        warehouseId: item.warehouseId,
-        quantity: restQty,
+      data: itemPartData(item, restQty, {
         status: rest.status,
-        source: item.source,
-        workOrderId: item.workOrderId,
-        workOrderPartId: item.workOrderPartId,
-        supplierId: item.supplierId,
-        expectedPrice: item.expectedPrice,
-        notes: item.notes,
-        // BR-PL-017: остача при прийманні / скасуванні лишається з пропозицією; повернення
-        // непідтвердженого постачальником — без неї (BR-SCON-013).
-        ...(rest.copySnapshot === false
-          ? item.originalGoodId
-            ? { originalGoodId: item.originalGoodId }
-            : {}
-          : copyOfferSnapshot(item)),
-      },
+        snapshot: rest.copySnapshot === false ? 'none' : 'copy',
+      }),
     });
   }
 

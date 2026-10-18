@@ -131,3 +131,59 @@ describe('BR-PL-008 створення замовлень зі списку', ()
     expect(shape(rowOf(fromList.id))).toEqual(shape(rowOf(direct.id)));
   });
 });
+
+describe('BR-PL-018 замовлення зі списку з пропозиціями', () => {
+  // guards: BR-PL-018
+  it('рядок — на (товар, ціна, пропозиція): склади постачальника не зливаються, та сама пропозиція — зливається', async () => {
+    const h = procurementHarness({
+      items: [
+        itemRow('i1', {
+          supplierId: SUPPLIER,
+          quantity: 2,
+          expectedPrice: 120,
+          offerKey: '45000|6',
+          offerConnectionId: 'c1',
+        }),
+        itemRow('i2', {
+          supplierId: SUPPLIER,
+          quantity: 3,
+          expectedPrice: 120,
+          offerKey: '45000|15',
+          offerConnectionId: 'c1',
+        }),
+        itemRow('i3', {
+          supplierId: SUPPLIER,
+          quantity: 1,
+          expectedPrice: 120,
+          offerKey: '45000|6',
+          offerConnectionId: 'c1',
+        }),
+      ],
+    });
+    const { orders } = await h.orders.createOrders(ORG, ['i1', 'i2', 'i3']);
+    expect(orders).toHaveLength(1);
+    expect(linesOf(h, orders[0].id)).toEqual([
+      { goodId: GOOD, quantity: 3, price: 120 },
+      { goodId: GOOD, quantity: 3, price: 120 },
+    ]);
+  });
+
+  // guards: BR-PL-018
+  it('замовлення в гривні: ціна рядка — expectedPrice позиції (уже в гривні), валюта — базова', async () => {
+    const h = procurementHarness({
+      items: [
+        itemRow('i1', {
+          supplierId: SUPPLIER,
+          quantity: 2,
+          expectedPrice: 118.3,
+          offerKey: 'k',
+          offerPrice: 2.6,
+          offerCurrencyCode: 'EUR',
+        }),
+      ],
+    });
+    const { orders } = await h.orders.createOrders(ORG, ['i1']);
+    expect(linesOf(h, orders[0].id)).toEqual([{ goodId: GOOD, quantity: 2, price: 118.3 }]);
+    expect(h.tables.purchaseOrder.rows[0]).toMatchObject({ currencyId: 'cur-uah' });
+  });
+});

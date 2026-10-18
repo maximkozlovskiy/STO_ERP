@@ -12,8 +12,10 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  supplierOfferAllocateSchema,
   supplierOfferChooseSchema,
   supplierOfferSearchSchema,
+  type SupplierOfferAllocateValues,
   type SupplierOfferChooseValues,
   type SupplierOfferSearchValues,
 } from '@sto/shared';
@@ -26,7 +28,9 @@ import { CurrentUser } from '../../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../../auth/strategies/jwt.strategy';
 import { PurchaseListItemResponseDto } from '../../purchase-lists/purchase-lists.dto';
 import { SupplierOffersService } from './supplier-offers.service';
+import { SupplierAllocationService } from '../strategy/supplier-allocation.service';
 import {
+  SupplierAllocationResultDto,
   SupplierOfferBatchDto,
   SupplierOfferItemDto,
   SupplierOfferSearchResultDto,
@@ -40,7 +44,10 @@ export const SOFR_ROLES = ['OWNER', 'ADMIN', 'STOREKEEPER'] as const;
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class SupplierOffersController {
-  constructor(private readonly service: SupplierOffersService) {}
+  constructor(
+    private readonly service: SupplierOffersService,
+    private readonly allocation: SupplierAllocationService,
+  ) {}
 
   @Post('search')
   @Roles(...SOFR_ROLES)
@@ -53,6 +60,21 @@ export class SupplierOffersController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.search(orgId, dto, { userId: user.id, role: user.role });
+  }
+
+  @Post('allocate')
+  @Roles(...SOFR_ROLES)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Автопідбір за стратегією: перегляд (dryRun) або застосування (BR-SOFR-009)',
+  })
+  @ApiOkResponse({ type: SupplierAllocationResultDto })
+  allocate(
+    @OrgContext() orgId: string,
+    @Body(new ZodValidationPipe(supplierOfferAllocateSchema)) dto: SupplierOfferAllocateValues,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.allocation.allocate(orgId, dto, user.role);
   }
 
   @Get('batches/:id')

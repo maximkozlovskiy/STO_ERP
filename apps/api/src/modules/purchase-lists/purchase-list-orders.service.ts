@@ -13,14 +13,15 @@ interface OrderGroup {
   supplierId: string;
   warehouseId: string;
   itemIds: string[];
-  /** `goodId|ціна` → рядок замовлення з сумою кількостей позицій. */
+  /** `goodId|ціна|offerKey` → рядок замовлення з сумою кількостей позицій. */
   lines: Map<string, { goodId: string; price: number; quantity: number }>;
 }
 
 /**
  * BR-PL-008: замовлення постачальникам із позицій списків купівлі. Позиції групуються за
- * (постачальник, склад) — одне DRAFT-замовлення на групу; рядок — на (товар, ціна) із сумою
- * кількостей; ціна = `expectedPrice ?? Good.purchasePrice ?? 0`. Перевірки й номери — ДО
+ * (постачальник, склад) — одне DRAFT-замовлення на групу; рядок — на (товар, ціна, пропозиція,
+ * BR-PL-018) із сумою кількостей; ціна = `expectedPrice ?? Good.purchasePrice ?? 0` — у гривні:
+ * замовлення завжди в базовій валюті (ціну пропозиції перераховано при виборі, BR-SOFR-006). Перевірки й номери — ДО
  * транзакції (`PurchaseOrdersService.prepareCreate`); замовлення (`createInTx`) і перехід позицій
  * у ORDERED (CAS на OPEN без замовлення) — в одній транзакції.
  */
@@ -70,7 +71,9 @@ export class PurchaseListOrdersService {
         lines: new Map(),
       };
       const price = moneyFromDecimal(item.expectedPrice ?? item.good.purchasePrice ?? 0);
-      const lineKey = `${item.goodId}|${price}`;
+      // BR-PL-018: рядок — на (товар, ціна, пропозиція): та сама позиція з різних складів
+      // постачальника не зливається, бо в API вона йде різними рядками.
+      const lineKey = `${item.goodId}|${price}|${item.offerKey ?? ''}`;
       const line = group.lines.get(lineKey) ?? { goodId: item.goodId, price, quantity: 0 };
       line.quantity += item.quantity;
       group.lines.set(lineKey, line);

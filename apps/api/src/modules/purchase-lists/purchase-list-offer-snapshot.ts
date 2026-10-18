@@ -53,3 +53,35 @@ export function hasOfferSnapshot(
 ): boolean {
   return !!item.offerKey && !!item.offerConnectionId;
 }
+
+/**
+ * Нова частина позиції з тими самими зв'язками (BR-PL-007, BR-PL-017): список, товар, склад,
+ * джерело, рядок наряду, постачальник, ціна, примітка — і знімок пропозиції (`snapshot: 'copy'`)
+ * або без нього (`'none'` — повернення непідтвердженого, BR-SCON-013). Спільне для «Розділити»,
+ * остачі при прийманні / скасуванні й автопідбору.
+ */
+export function itemPartData(
+  item: PurchaseListItem,
+  quantity: number,
+  opts: { status?: 'OPEN' | 'CANCELLED'; snapshot?: 'copy' | 'none' } = {},
+): Prisma.PurchaseListItemUncheckedCreateInput {
+  return {
+    orgId: item.orgId,
+    listId: item.listId,
+    goodId: item.goodId,
+    warehouseId: item.warehouseId,
+    quantity,
+    ...(opts.status ? { status: opts.status } : {}),
+    source: item.source,
+    workOrderId: item.workOrderId,
+    workOrderPartId: item.workOrderPartId,
+    supplierId: item.supplierId,
+    expectedPrice: item.expectedPrice,
+    notes: item.notes,
+    ...(opts.snapshot === 'none'
+      ? item.originalGoodId
+        ? { originalGoodId: item.originalGoodId }
+        : {}
+      : copyOfferSnapshot(item)),
+  };
+}
