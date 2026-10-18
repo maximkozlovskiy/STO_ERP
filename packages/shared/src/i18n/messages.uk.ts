@@ -511,7 +511,8 @@ export const uk: Record<string, string> = {
   'err.supplierApi.nothingToRelease': 'Непідтвердженої кількості немає',
   'err.supplierApi.noApiLines':
     'У замовленні немає позицій зі списку купівлі з обраною пропозицією — у API нічого відправляти',
-  'err.supplierApi.orderClosed': 'Отримане чи скасоване замовлення не відправляється постачальнику',
+  'err.supplierApi.orderClosed':
+    'Відправити в API можна лише замовлення в статусі «Чернетка» чи «Замовлено»',
 
   // ── Exception-повідомлення: supplier-returns-модуль ──
   'err.supplierReturn.notFound': 'Повернення не знайдено',

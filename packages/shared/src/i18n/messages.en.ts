@@ -521,7 +521,8 @@ export const en: Record<string, string> = {
   'err.supplierApi.nothingToRelease': 'There is no unconfirmed quantity',
   'err.supplierApi.noApiLines':
     'The order has no purchase list items with a chosen offer — nothing to send to the API',
-  'err.supplierApi.orderClosed': 'A received or cancelled order is not sent to the supplier',
+  'err.supplierApi.orderClosed':
+    'Only a draft or ordered purchase order can be sent via the supplier API',
 
   // ── Exception messages: supplier-returns module ──
   'err.supplierReturn.notFound': 'Return not found',
