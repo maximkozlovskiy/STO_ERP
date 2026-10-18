@@ -14,12 +14,12 @@ export function parseQty(raw: unknown): { qty: number; lowerBound: boolean } {
   const s = raw.trim().replace(',', '.');
   if (!s || s === '-') return { qty: 0, lowerBound: false };
   const lowerBound = /^(>|≥|>=)/.test(s) || /\+$/.test(s);
-  const n = Number(
-    s
-      .replace(/^(>=|>|≥)\s*/, '')
-      .replace(/\+$/, '')
-      .trim(),
-  );
+  const rest = s
+    .replace(/^(>=|>|≥)\s*/, '')
+    .replace(/\+$/, '')
+    .trim();
+  // Number('') === 0: голий «>» дав би нуль замість «є, але скільки — невідомо».
+  const n = rest === '' ? Number.NaN : Number(rest);
   if (!Number.isFinite(n)) return { qty: lowerBound ? 1 : 0, lowerBound };
   return { qty: n, lowerBound };
 }
