@@ -327,4 +327,64 @@ describe('SupplierApiTab — «Закупівля через API»', () => {
       expect.objectContaining({ method: 'PATCH' }),
     );
   });
+
+  // Старіша збірка API (dev :3000 від 2026-10-15) не віддає полів `supplier*` — розділ показував
+  // `strategyHint.undefined` і порожні числа. Тепер — значення за замовчуванням зі схеми.
+  // guards: BR-SCON-009, BR-SOFR-007
+  it('відповідь без полів supplier* → значення за замовчуванням, підказка обраної стратегії, без запиту', async () => {
+    apiFetch.mockImplementation((path: string) => {
+      if (path === '/settings/organisation') return Promise.resolve({ invoiceDueDays: 14 });
+      if (path === '/supplier-providers') return Promise.resolve([]);
+      if (path === '/supplier-connections') return Promise.resolve({ items: [], total: 0 });
+      return Promise.reject(new Error(`unexpected ${String(path)}`));
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <SupplierApiTab />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByLabelText('Передача замовлення в API')).toHaveValue('MANUAL');
+    expect(screen.getByLabelText(/Стратегія автопідбору/)).toHaveValue('OPTIMAL');
+    expect(screen.getByText('Баланс ціни й терміну за вагою з налаштувань')).toBeInTheDocument();
+    expect(screen.queryByText(/strategyHint\./)).toBeNull();
+    expect(screen.getByLabelText('«Оптимально»: вага ціни, %')).toHaveValue(70);
+    expect(screen.getByLabelText('Пропозиція застаріла через, хв')).toHaveValue(60);
+    expect(screen.getByLabelText('Синхронізувати каталог AVD кожні, хв')).toHaveValue(360);
+    expect(
+      screen.getByRole('switch', { name: 'Ділити позицію між різними постачальниками' }),
+    ).toHaveAttribute('aria-checked', 'true');
+
+    // Нічого не змінено — збереження без запиту (значення за замовчуванням не «зміна»).
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Зберегти' })).toBeEnabled());
+    expect(apiFetch).not.toHaveBeenCalledWith(
+      '/settings/organisation',
+      expect.objectContaining({ method: 'PATCH' }),
+    );
+  });
+
+  // guards: BR-SOFR-007
+  it('невідома стратегія й вага рядком (Decimal) → стратегія за замовчуванням, вага з відповіді', async () => {
+    apiFetch.mockImplementation((path: string) => {
+      if (path === '/settings/organisation')
+        return Promise.resolve({
+          supplierDefaultStrategy: 'NEW_FROM_FUTURE',
+          supplierOptimalPriceWeight: '0.400',
+        });
+      if (path === '/supplier-providers') return Promise.resolve([]);
+      if (path === '/supplier-connections') return Promise.resolve({ items: [], total: 0 });
+      return Promise.reject(new Error(`unexpected ${String(path)}`));
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <SupplierApiTab />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByLabelText(/Стратегія автопідбору/)).toHaveValue('OPTIMAL');
+    expect(screen.getByLabelText('«Оптимально»: вага ціни, %')).toHaveValue(40);
+  });
 });

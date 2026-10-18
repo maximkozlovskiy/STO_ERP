@@ -71,7 +71,9 @@
 
 - `settings/SupplierApiTab.tsx` — вкладка «Постачальники API» (OWNER, ADMIN): підключення й розділ
   «Закупівля через API» (`PATCH /settings/organisation`, лише змінені поля: режим відправки,
-  аналоги, стратегія й вага ціни у %, ділення, аналоги в автопідборі, TTL та інтервали);
+  аналоги, стратегія й вага ціни у %, ділення, аналоги в автопідборі, TTL та інтервали); поле, якого
+  відповідь не має чи має невідоме значення, — значення за замовчуванням зі схеми
+  (`09_settings.prisma`), тож вкладка не показує сирих ключів і порожніх чисел зі старішим API;
 - `settings/SupplierConnectionsPanel.tsx` — картки підключень: перемикач, тестовий режим, стан
   перевірки (`lastVerifiedAt` / `lastError`), «Перевірити», «Синхронізувати каталог» (AVD); список
   опитується, доки перевірка чи синхронізація триває; результат перевірки — тостом;
@@ -126,7 +128,8 @@ cd apps/api && npx vitest run src/modules/supplier-api/<тека>/<файл>.spe
 `purchase-orders/purchase-orders.contract.spec.ts` — `force` у переході (BR-PO-012);
 `payments/payments.queue-retry-policy.spec.ts` — політика повторів нових черг (BR-SCON-006).
 Web: `settings/__tests__/SupplierApiTab.test.tsx` (креди лише на запис, мапа складів, змінені поля
-налаштувань — BR-SCON-002, 003), `components/ui/purchase-order/__tests__/SupplierApiOrderBlock.test.tsx`
+налаштувань — BR-SCON-002, 003; відповідь без полів `supplier*` (старіша збірка API) — значення за
+замовчуванням зі схеми й підказка стратегії — BR-SCON-009, BR-SOFR-007), `components/ui/purchase-order/__tests__/SupplierApiOrderBlock.test.tsx`
 (підтвердження скасування відправленого — BR-SCON-014; Idempotency-Key — BR-SCON-009; стан — BR-SCON-013),
 `hooks/api/useSupplierApi.test.tsx`. E2E через браузер — `apps/web/e2e/supplier-api.spec.ts` (фейки
 на :4100, API з `SUPPLIER_API_DEV_ALLOWED_ORIGINS`).

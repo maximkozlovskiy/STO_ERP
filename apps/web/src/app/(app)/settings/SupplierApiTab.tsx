@@ -62,6 +62,86 @@ const INT_FIELDS: Array<{ key: IntKey; label: string; min: number; max: number }
   { key: 'supplierUnknownDeliveryDays', label: 'procurement.unknownDays', min: 1, max: 90 },
 ];
 
+/**
+ * Значення за замовчуванням — ті самі, що `@default` полів `OrganisationSettings.supplier*`
+ * (`packages/database/prisma/schema/09_settings.prisma`). Сервер, що ще не віддає цих полів
+ * (старіша збірка API), інакше лишав би розділ із сирими ключами (`strategyHint.undefined`) і
+ * порожніми числами.
+ */
+const SUPPLIER_SETTINGS_DEFAULTS: SupplierSettings = {
+  supplierOrderSendMode: 'MANUAL',
+  supplierAnalogPolicy: 'CATALOG_ONLY',
+  supplierDefaultStrategy: 'OPTIMAL',
+  supplierOptimalPriceWeight: 0.7,
+  supplierAllowSplit: true,
+  supplierAllowAnalogsInAuto: false,
+  supplierOfferTtlMinutes: 60,
+  supplierOfferRetentionDays: 7,
+  supplierOrderPollIntervalMinutes: 30,
+  supplierCatalogSyncIntervalMinutes: 360,
+  supplierUnknownDeliveryDays: 7,
+};
+
+const oneOf = <T extends string>(list: readonly T[], v: unknown, fallback: T): T =>
+  typeof v === 'string' && (list as readonly string[]).includes(v) ? (v as T) : fallback;
+
+/** Число з відповіді (Decimal може прийти рядком); відсутнє чи не число — значення за замовчуванням. */
+const numberOr = (v: unknown, fallback: number): number => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : fallback;
+};
+
+/**
+ * Налаштування з відповіді `GET /settings/organisation`, де кожне відсутнє чи невідоме поле
+ * `supplier*` замінено значенням за замовчуванням (`SUPPLIER_SETTINGS_DEFAULTS`).
+ */
+function withSupplierDefaults(
+  raw: Partial<Record<keyof SupplierSettings, unknown>>,
+): SupplierSettings {
+  const d = SUPPLIER_SETTINGS_DEFAULTS;
+  const bool = (v: unknown, fallback: boolean) => (typeof v === 'boolean' ? v : fallback);
+  return {
+    supplierOrderSendMode: oneOf(
+      SUPPLIER_ORDER_SEND_MODES,
+      raw.supplierOrderSendMode,
+      d.supplierOrderSendMode,
+    ),
+    supplierAnalogPolicy: oneOf(
+      SUPPLIER_ANALOG_POLICIES,
+      raw.supplierAnalogPolicy,
+      d.supplierAnalogPolicy,
+    ),
+    supplierDefaultStrategy: oneOf(
+      SUPPLIER_STRATEGIES,
+      raw.supplierDefaultStrategy,
+      d.supplierDefaultStrategy,
+    ),
+    supplierOptimalPriceWeight: numberOr(
+      raw.supplierOptimalPriceWeight,
+      d.supplierOptimalPriceWeight,
+    ),
+    supplierAllowSplit: bool(raw.supplierAllowSplit, d.supplierAllowSplit),
+    supplierAllowAnalogsInAuto: bool(raw.supplierAllowAnalogsInAuto, d.supplierAllowAnalogsInAuto),
+    supplierOfferTtlMinutes: numberOr(raw.supplierOfferTtlMinutes, d.supplierOfferTtlMinutes),
+    supplierOfferRetentionDays: numberOr(
+      raw.supplierOfferRetentionDays,
+      d.supplierOfferRetentionDays,
+    ),
+    supplierOrderPollIntervalMinutes: numberOr(
+      raw.supplierOrderPollIntervalMinutes,
+      d.supplierOrderPollIntervalMinutes,
+    ),
+    supplierCatalogSyncIntervalMinutes: numberOr(
+      raw.supplierCatalogSyncIntervalMinutes,
+      d.supplierCatalogSyncIntervalMinutes,
+    ),
+    supplierUnknownDeliveryDays: numberOr(
+      raw.supplierUnknownDeliveryDays,
+      d.supplierUnknownDeliveryDays,
+    ),
+  };
+}
+
 interface FormState {
   sendMode: SendMode;
   analogPolicy: AnalogPolicy;
@@ -112,9 +192,10 @@ export default function SupplierApiTab() {
   useEffect(() => {
     if (!isAdmin) return;
     let cancelled = false;
-    apiFetch<SupplierSettings>('/settings/organisation')
-      .then(s => {
+    apiFetch<Partial<SupplierSettings>>('/settings/organisation')
+      .then(raw => {
         if (cancelled) return;
+        const s = withSupplierDefaults(raw);
         setSaved(s);
         setForm(toForm(s));
       })
@@ -163,10 +244,12 @@ export default function SupplierApiTab() {
       const updated =
         Object.keys(patch).length === 0
           ? saved
-          : await apiFetch<SupplierSettings>('/settings/organisation', {
-              method: 'PATCH',
-              body: JSON.stringify(patch),
-            });
+          : withSupplierDefaults(
+              await apiFetch<Partial<SupplierSettings>>('/settings/organisation', {
+                method: 'PATCH',
+                body: JSON.stringify(patch),
+              }),
+            );
       setSaved(updated);
       setForm(toForm(updated));
       // Стратегія, TTL і політика аналогів живуть у діалогах пропозицій (вибірність), режим
