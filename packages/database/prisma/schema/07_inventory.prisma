@@ -243,6 +243,10 @@ model PurchaseOrder {
   deliveryStatus          DeliveryStatus? // нормалізований статус (null поки ЕН не вказано)
   deliveryStatusRaw       String? // сирий текст статусу служби доставки (для тултипа UI)
   deliveryStatusUpdatedAt DateTime? // час останнього оновлення статусу доставки
+  // Передача постачальнику через API (BR-PO-011): підсумок по його SupplierOrder.
+  supplierApiStatus       PurchaseOrderSupplierApiStatus @default(NOT_SENT)
+  supplierApiSentAt       DateTime?
+  supplierApiError        String?
   syncVersion  BigInt              @default(0)
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
@@ -257,12 +261,14 @@ model PurchaseOrder {
   stockDocuments   StockDocument[]
   supplierReturns  SupplierReturn[]
   purchaseListItems PurchaseListItem[]
+  supplierOrders    SupplierOrder[]
 
   @@index([orgId, status, deletedAt, createdAt])
   @@index([orgId, syncVersion])
   @@index([orgId, deletedAt, createdAt])
   @@index([orgId, documentDate, deletedAt])
   @@index([orgId, deliveryStatus, deletedAt])
+  @@index([orgId, supplierApiStatus, deletedAt])
   // T14: ручний partial-unique (orgId, number) WHERE deletedAt IS NULL — міграція 20260909210000 (Prisma не виражає partial-unique у @@unique).
   @@map("purchase_orders")
 }
@@ -350,6 +356,25 @@ model PurchaseListItem {
   expectedPrice   Decimal?               @db.Decimal(12, 2)
   purchaseOrderId String?                @db.Uuid
   notes           String?
+  // Знімок обраної пропозиції постачальника (BR-SOFR, BR-PL-017…019). expectedPrice — у гривні;
+  // offerPrice / offerCurrencyCode — як у постачальника. Копіюється при розділенні позиції.
+  offerConnectionId   String?        @db.Uuid
+  offerKey            String?
+  offerSupplierItemId String?
+  offerArticle        String?
+  offerBrand          String?
+  offerWarehouseCode  String?
+  offerWarehouseName  String?
+  offerDeliveryDays   Int?
+  offerDeliveryDate   DateTime?
+  offerPrice          Decimal?       @db.Decimal(12, 2)
+  offerCurrencyCode   String?
+  offerMultiplicity   Float?
+  offerIsAnalog       Boolean?
+  offeredAt           DateTime?
+  offerChosenBy       OfferChosenBy?
+  // Товар, який замінив аналог (лише ручні позиції, BR-SOFR).
+  originalGoodId      String?        @db.Uuid
   syncVersion     BigInt                 @default(0)
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt

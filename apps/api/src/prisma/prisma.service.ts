@@ -12,6 +12,8 @@ const ENCRYPTED_FIELDS: Record<string, string[]> = {
   CashShift: ['checkboxAccessToken'],
   // credentials = JSON-рядок секретів провайдера (ПРРО/еквайринг) — шифрується цілим полем.
   BranchProviderConfig: ['credentials'],
+  // Підключення до API постачальників (BR-SCON): креди й кеш JWT (UTR/AD) — JSON-рядки цілим полем.
+  SupplierConnection: ['credentials', 'authState'],
 };
 
 // Models that carry syncVersion — auto-incremented on every write, set to 1 on create
@@ -39,6 +41,13 @@ const SYNC_VERSION_MODELS = new Set([
   'PurchaseOrderLine',
   'PurchaseList',
   'PurchaseListItem',
+  'SupplierConnection',
+  'SupplierOfferBatch',
+  'SupplierOfferRequest',
+  'SupplierOffer',
+  'SupplierOrder',
+  'SupplierOrderLine',
+  // SupplierCatalogItem — поза списком: масовий upsert сирим SQL сам пише syncVersion (BR-SCON).
   'StockDocument',
   'StockDocumentLine',
   'Invoice',

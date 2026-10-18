@@ -1,0 +1,248 @@
+// ── Постачальники API (docs/objects/supplier-connection.md BR-SCON-*, supplier-offer.md BR-SOFR-*) ──
+// Підключення до API постачальників автозапчастин, пропозиції (ціна / наявність / термін), дзеркало
+// каталогу AVD і замовлення, передані постачальнику через його API. Рішення власника 2026-10-18.
+// Зовнішні виклики — лише через черги BullMQ (ADR-005); рядки цих таблиць — джерело правди для UI.
+// Усі таблиці поза мобільною синхронізацією (секрети, серверні дані) — коментар у sync.service.ts.
+
+// Підключення організації до API постачальника. Кілька активних одночасно (не як BranchProviderConfig).
+// credentials / authState — JSON-рядки, шифруються at-rest (ENCRYPTED_FIELDS), назовні не віддаються.
+// Partial-unique (orgId, counterpartyId, provider) WHERE deletedAt IS NULL — міграція 20261018120000.
+model SupplierConnection {
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId               String               @db.Uuid
+  counterpartyId      String               @db.Uuid
+  provider            SupplierProvider
+  name                String?
+  enabled             Boolean              @default(true)
+  apiUrl              String?
+  // Тестовий режим: BM — заголовок X-Test-Mode, AVD — dev-хост; для решти не впливає.
+  testMode            Boolean              @default(false)
+  // Розв'язує нічию стратегії (BR-SOFR): менше — пріоритетніше.
+  priority            Int                  @default(100)
+  // Термін постачання, коли пропозиція його не містить (дні).
+  defaultDeliveryDays Int?
+  credentials         String?
+  // Кеш JWT для UTR/AD: {accessToken, refreshToken?, expiresAt}.
+  authState           String?
+  // Несекретні параметри провайдера (мапа «наш склад → точка/отримувач/конфіг доставки»).
+  options             Json                 @default("{}")
+  verifyStatus        SupplierVerifyStatus @default(NEVER)
+  verifyRequestedAt   DateTime?
+  lastVerifiedAt      DateTime?
+  lastError           String?
+  // Дзеркало каталогу (AVD — без пошуку за артикулом у API).
+  catalogSyncedAt     DateTime?
+  catalogSyncStatus   String?
+  catalogSyncError    String?
+  syncVersion         BigInt               @default(0)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  deletedAt           DateTime?
+
+  counterparty   Counterparty           @relation(fields: [counterpartyId], references: [id])
+  offerRequests  SupplierOfferRequest[]
+  offers         SupplierOffer[]
+  catalogItems   SupplierCatalogItem[]
+  supplierOrders SupplierOrder[]
+
+  @@index([orgId, enabled, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("supplier_connections")
+}
+
+// Одна дія користувача: «Пропозиції» для позицій або «Підібрати автоматично».
+model SupplierOfferBatch {
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String            @db.Uuid
+  purpose     OfferChosenBy
+  strategy    SupplierStrategy?
+  requestedBy String?           @db.Uuid
+  itemIds     Json              @default("[]")
+  completedAt DateTime?
+  syncVersion BigInt            @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  deletedAt   DateTime?
+
+  requests SupplierOfferRequest[]
+
+  @@index([orgId, createdAt])
+  @@index([orgId, syncVersion])
+  @@map("supplier_offer_batches")
+}
+
+// Запит пропозицій: позиція (артикул + бренд) × підключення. Статус пише обробник черги.
+model SupplierOfferRequest {
+  id                 String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId              String                     @db.Uuid
+  batchId            String?                    @db.Uuid
+  connectionId       String                     @db.Uuid
+  purchaseListItemId String?                    @db.Uuid
+  goodId             String?                    @db.Uuid
+  article            String
+  articleNormalized  String
+  brand              String?
+  includeAnalogs     Boolean                    @default(true)
+  status             SupplierOfferRequestStatus @default(QUEUED)
+  attemptsMade       Int                        @default(0)
+  nextRetryAt        DateTime?
+  error              String?
+  enqueueError       String?
+  fromCache          Boolean                    @default(false)
+  cacheOfId          String?                    @db.Uuid
+  completedAt        DateTime?
+  syncVersion        BigInt                     @default(0)
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  deletedAt          DateTime?
+
+  batch      SupplierOfferBatch? @relation(fields: [batchId], references: [id])
+  connection SupplierConnection  @relation(fields: [connectionId], references: [id])
+  offers     SupplierOffer[]
+
+  @@index([orgId, batchId])
+  @@index([orgId, connectionId, articleNormalized, includeAnalogs, completedAt])
+  @@index([orgId, status, createdAt])
+  @@index([orgId, syncVersion])
+  @@map("supplier_offer_requests")
+}
+
+// Нормалізована пропозиція постачальника. Зберігається в БД: офлайн і після рестарту видно останні
+// результати; TTL (OrganisationSettings.supplierOfferTtlMinutes) означає «застаріла», а не видалення.
+model SupplierOffer {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId             String    @db.Uuid
+  requestId         String    @db.Uuid
+  connectionId      String    @db.Uuid
+  supplierItemId    String
+  article           String
+  articleNormalized String
+  brand             String?
+  name              String?
+  price             Decimal   @db.Decimal(12, 2)
+  currencyCode      String    @default("UAH")
+  qty               Float
+  // Постачальник показує межу («>10», «5+»): qty — нижня межа.
+  qtyIsLowerBound   Boolean   @default(false)
+  warehouseCode     String?
+  warehouseName     String?
+  deliveryDays      Int?
+  deliveryDate      DateTime?
+  multiplicity      Float?
+  isAnalog          Boolean   @default(false)
+  // Ключ, потрібний постачальнику для замовлення (товар + склад / прайс).
+  offerKey          String
+  matchedGoodId     String?   @db.Uuid
+  matchStatus       String?
+  fetchedAt         DateTime  @default(now())
+  syncVersion       BigInt    @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  request    SupplierOfferRequest @relation(fields: [requestId], references: [id])
+  connection SupplierConnection   @relation(fields: [connectionId], references: [id])
+
+  @@index([orgId, requestId])
+  @@index([orgId, connectionId, articleNormalized])
+  @@index([orgId, fetchedAt])
+  @@index([orgId, syncVersion])
+  @@map("supplier_offers")
+}
+
+// Дзеркало каталогу постачальника без пошуку за артикулом (AVD). Масовий upsert — сирим SQL
+// (INSERT … ON CONFLICT) з явними orgId і syncVersion; рядки, не побачені в синхронізації, — deletedAt.
+model SupplierCatalogItem {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId             String    @db.Uuid
+  connectionId      String    @db.Uuid
+  supplierItemId    String
+  article           String
+  articleNormalized String
+  brand             String?
+  brandNormalized   String?
+  name              String?
+  price             Decimal   @db.Decimal(12, 2)
+  currencyCode      String    @default("UAH")
+  priceType         String?
+  // [{warehouseCode, warehouseName, qty, isCapped}]
+  stock             Json      @default("[]")
+  seenAt            DateTime  @default(now())
+  syncVersion       BigInt    @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  connection SupplierConnection @relation(fields: [connectionId], references: [id])
+
+  @@unique([connectionId, supplierItemId])
+  @@index([orgId, connectionId, articleNormalized])
+  @@index([orgId, syncVersion])
+  @@map("supplier_catalog_items")
+}
+
+// Замовлення, передане постачальнику через API. Одне замовлення постачальнику (PurchaseOrder) → N
+// зовнішніх (по підключенню й, де вимагає провайдер, по складу постачальника). step — крок
+// відновлюваної машини станів відправки; reference — наш ключ ідемпотентності (BR-SCON).
+model SupplierOrder {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId                 String              @db.Uuid
+  purchaseOrderId       String              @db.Uuid
+  connectionId          String              @db.Uuid
+  supplierWarehouseCode String?
+  status                SupplierOrderStatus @default(QUEUED)
+  step                  String?
+  externalCartId        String?
+  externalOrderId       String?
+  externalNumber        String?
+  externalStatusRaw     String?
+  reference             String
+  sentAt                DateTime?
+  confirmedAt           DateTime?
+  lastPolledAt          DateTime?
+  nextPollAt            DateTime?
+  error                 String?
+  syncVersion           BigInt              @default(0)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  deletedAt             DateTime?
+
+  purchaseOrder PurchaseOrder       @relation(fields: [purchaseOrderId], references: [id])
+  connection    SupplierConnection  @relation(fields: [connectionId], references: [id])
+  lines         SupplierOrderLine[]
+
+  @@index([orgId, purchaseOrderId])
+  @@index([orgId, status, nextPollAt])
+  @@index([orgId, syncVersion])
+  @@map("supplier_orders")
+}
+
+// Рядок зовнішнього замовлення — заморожений знімок того, що замовлено (рядки чернетки замовлення
+// перезаписуються, тож пропозиція живе тут і в PurchaseListItem, не в PurchaseOrderLine).
+model SupplierOrderLine {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String    @db.Uuid
+  supplierOrderId String    @db.Uuid
+  goodId          String    @db.Uuid
+  offerKey        String
+  supplierItemId  String
+  warehouseCode   String?
+  qtyRequested    Float
+  qtyConfirmed    Float?
+  priceRequested  Decimal   @db.Decimal(12, 2)
+  priceConfirmed  Decimal?  @db.Decimal(12, 2)
+  currencyCode    String    @default("UAH")
+  externalLineId  String?
+  statusRaw       String?
+  syncVersion     BigInt    @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  supplierOrder SupplierOrder @relation(fields: [supplierOrderId], references: [id])
+  good          Good          @relation(fields: [goodId], references: [id])
+
+  @@index([orgId, supplierOrderId])
+  @@index([orgId, syncVersion])
+  @@map("supplier_order_lines")
+}

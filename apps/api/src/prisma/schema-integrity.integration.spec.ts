@@ -65,6 +65,10 @@ const REQUIRED_NAMED_INDEXES: { name: string; why: string }[] = [
     why: 'унікальність № замовлення серед активних',
   },
   {
+    name: 'supplier_connections_org_cp_provider_active_uq',
+    why: 'одне підключення на постачальника й провайдера серед активних (BR-SCON)',
+  },
+  {
     name: 'purchase_lists_orgId_number_active_uq',
     why: 'унікальність № списку купівлі серед активних (BR-PL-001)',
   },

@@ -67,6 +67,8 @@ const PULL_TABLES = [
 //    поза PULL_TABLES/PUSH_SAFE_TABLES.
 //  - purchase_lists / purchase_list_items: закупівля (етап 1, BR-PL-*) — робота в web; мобільному
 //    клієнтові механіка не потрібна. Мають syncVersion, але свідомо поза PULL_TABLES/PUSH_SAFE_TABLES.
+//  - supplier_* (підключення до API постачальників, пропозиції, дзеркало каталогу, замовлення через API):
+//    креди постачальників і серверні дані черг — mobile не має бачити (BR-SCON).
 
 // Tables safe for push — excludes append-only logs and FSM-controlled models
 const PUSH_SAFE_TABLES = new Set([

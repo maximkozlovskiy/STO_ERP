@@ -151,6 +151,8 @@ describe('Шифрування секретів at-rest — справжній P
   describe('кожне секретне поле пишеться шифротекстом', () => {
     it.each([
       ['BranchProviderConfig', 'credentials', 'ПРРО / платіжний шлюз / служба доставки'],
+      ['SupplierConnection', 'credentials', 'API постачальника (ключ, токен, логін і пароль)'],
+      ['SupplierConnection', 'authState', 'кеш JWT API постачальника (UTR, AD)'],
       ['BranchSettings', 'smsApiKey', 'SMS-провайдер (legacy-колонка)'],
       ['BranchSettings', 'checkboxLicenseKey', 'ПРРО Checkbox (legacy-колонка)'],
       ['BranchSettings', 'checkboxPinCode', 'PIN касира ПРРО (legacy-колонка)'],

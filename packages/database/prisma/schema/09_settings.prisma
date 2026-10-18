@@ -63,6 +63,27 @@ model OrganisationSettings {
   recalcPlannedHoursFromLines      Boolean         @default(true)
   recalcActualHoursFromLines       Boolean         @default(true)
   syncCalendarSlotWithPlannedHours Boolean         @default(true)
+  // ── Закупівля через API постачальників (BR-SCON, BR-SOFR; рішення власника 2026-10-18) ──
+  // Коли передавати замовлення в API: кнопкою в картці чи автоматично при «Замовлено».
+  supplierOrderSendMode              SupplierOrderSendMode @default(MANUAL)
+  // Аналог, якого немає в каталозі (лише ручні позиції).
+  supplierAnalogPolicy               SupplierAnalogPolicy  @default(CATALOG_ONLY)
+  supplierDefaultStrategy            SupplierStrategy      @default(OPTIMAL)
+  // «Оптимально»: вага ціни w ∈ [0,1], вага терміну 1 − w.
+  supplierOptimalPriceWeight         Decimal               @default(0.7) @db.Decimal(4, 3)
+  // Автопідбір може ділити позицію між різними постачальниками (між складами одного — завжди).
+  supplierAllowSplit                 Boolean               @default(true)
+  supplierAllowAnalogsInAuto         Boolean               @default(false)
+  // Пропозиція старша за TTL — «застаріла» (хв, [5,1440]).
+  supplierOfferTtlMinutes            Int                   @default(60)
+  // Скільки днів зберігати пропозиції ([1,90]).
+  supplierOfferRetentionDays         Int                   @default(7)
+  // Інтервал опитування статусу замовлень у постачальників (хв, [5,1440]).
+  supplierOrderPollIntervalMinutes   Int                   @default(30)
+  // Інтервал синхронізації дзеркала каталогу (хв, [60,1440]).
+  supplierCatalogSyncIntervalMinutes Int                   @default(360)
+  // Термін для пропозиції без даних про доставку — штраф стратегії (дні, [1,90]).
+  supplierUnknownDeliveryDays        Int                   @default(7)
   syncVersion                      BigInt          @default(0)
   updatedAt                        DateTime        @updatedAt
 

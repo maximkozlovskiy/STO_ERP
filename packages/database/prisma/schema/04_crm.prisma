@@ -35,6 +35,7 @@ model Counterparty {
   supplierReturns    SupplierReturn[]
   supplierPayments   SupplierPayment[]
   purchaseListItems  PurchaseListItem[]
+  supplierConnections SupplierConnection[]
   invoices           Invoice[]
   workOrders         WorkOrder[]
   payments           Payment[]

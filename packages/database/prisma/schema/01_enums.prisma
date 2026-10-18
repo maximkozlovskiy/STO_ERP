@@ -62,7 +62,7 @@ enum StockMovementType {
   RESERVATION
   RESERVATION_RELEASE
   OPENING_BALANCE
-  RETURN               // Повернення на склад (реверс WRITEOFF): скасування завершеного наряду
+  RETURN // Повернення на склад (реверс WRITEOFF): скасування завершеного наряду
 }
 
 enum StockDocumentType {
@@ -305,10 +305,86 @@ enum PurchaseListItemStatus {
   CANCELLED
 }
 
-// Звідки позиція: з рядка товару наряду чи додана вручну. Етап 3 (автоматичний розподіл) додасть AUTO.
+// Звідки позиція: з рядка товару наряду чи додана вручну. Автопідбір позицій не створює — хто обрав
+// пропозицію, пише PurchaseListItem.offerChosenBy.
 enum PurchaseListItemSource {
   WORK_ORDER
   MANUAL
+}
+
+// ── Постачальники API (BR-SCON-*, BR-SOFR-*) ──
+enum SupplierProvider {
+  TEHNOMIR
+  BM_PARTS
+  UTR
+  AD_UKRAINE
+  AVD_TRADE
+}
+
+enum SupplierVerifyStatus {
+  NEVER
+  PENDING
+  OK
+  FAILED
+}
+
+enum SupplierOfferRequestStatus {
+  QUEUED
+  RUNNING
+  RETRYING
+  DONE
+  FAILED
+}
+
+// Нормалізований статус замовлення в постачальника. Зовнішній статус склад і FSM замовлення не змінює.
+enum SupplierOrderStatus {
+  QUEUED
+  SENDING
+  PLACED
+  CONFIRMED
+  PARTIALLY_CONFIRMED
+  READY
+  SHIPPED
+  REJECTED
+  CANCELLED
+  FAILED
+  UNKNOWN
+}
+
+// Підсумок передачі замовлення постачальнику через API (по всіх його SupplierOrder).
+enum PurchaseOrderSupplierApiStatus {
+  NOT_SENT
+  QUEUED
+  SENT
+  PARTIAL
+  CONFIRMED
+  FAILED
+  NEEDS_ATTENTION
+}
+
+// Коли замовлення передається в API постачальника — налаштування організації.
+enum SupplierOrderSendMode {
+  MANUAL
+  ON_ORDERED
+}
+
+// Аналог, якого немає в каталозі, — налаштування організації. Діє лише для ручних позицій.
+enum SupplierAnalogPolicy {
+  CREATE_AND_REPLACE
+  SHOW_ONLY
+  CATALOG_ONLY
+}
+
+enum SupplierStrategy {
+  FAST
+  CHEAP
+  OPTIMAL
+}
+
+// Хто обрав пропозицію позиції: людина чи автопідбір за стратегією.
+enum OfferChosenBy {
+  MANUAL
+  AUTO
 }
 
 // Нормалізований статус доставки (мапиться зі StatusCode служби доставки, напр. Нової Пошти).

@@ -187,6 +187,7 @@ model Good {
   workOrderParts      WorkOrderPart[]
   purchaseOrderLines  PurchaseOrderLine[]
   purchaseListItems   PurchaseListItem[]
+  supplierOrderLines  SupplierOrderLine[]
   supplierReturnLines SupplierReturnLine[]
   stockDocumentLines  StockDocumentLine[]
   invoiceLines        InvoiceLine[]
