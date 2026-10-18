@@ -380,6 +380,26 @@ describe('Calendar — HTTP Contract', () => {
       expect(dto).toHaveProperty('employeeId', null);
       expect(dto.liftId).toBe(LIFT_ID);
     });
+
+    // Bug #901: стерта у формі примітка приходить `null` — валідація пропускає, сервіс стирає.
+    it('notes: null (примітку стерто у формі) проходить валідацію і доходить до сервісу', async () => {
+      woServiceMock.updateCalendarSlot.mockResolvedValueOnce({
+        id: SLOT_ID,
+        liftId: LIFT_ID,
+        notes: null,
+        startAt: '2026-05-22T09:00:00.000Z',
+        endAt: '2026-05-22T10:00:00.000Z',
+        status: 'BOOKED',
+        type: 'WORK',
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/calendar/slots/${SLOT_ID}`,
+        payload: { liftId: LIFT_ID, notes: null },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(woServiceMock.updateCalendarSlot.mock.calls[0][2]).toHaveProperty('notes', null);
+    });
   });
 
   describe('DELETE /calendar/slots/:id', () => {

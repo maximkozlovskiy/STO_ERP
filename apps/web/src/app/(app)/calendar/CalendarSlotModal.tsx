@@ -718,7 +718,8 @@ export function CalendarSlotModal({
       vehicleId: form.vehicleId || undefined,
       startAt: startIso,
       endAt: endIso,
-      notes: form.notes || undefined,
+      // Стерта примітка у зміні запису — `null` (Bug #901): без нього сервер лишав стару.
+      notes: form.notes || (editingSlotId ? null : undefined),
     };
     try {
       if (editingSlotId) {

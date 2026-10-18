@@ -337,4 +337,18 @@ describe('CalendarSlotModal — зміна запису наряду (BR-WO-024)
     const patch = calls().find(([u, i]) => u === '/calendar/slots/anchor' && i?.method === 'PATCH');
     expect(JSON.parse(patch![1]!.body!)).toMatchObject({ workOrderId: null });
   });
+
+  // Bug #901: `notes || undefined` — стерта примітка не доходила до сервера, і він лишав стару.
+  it('примітку стерто у зміні запису → PATCH з `notes: null`', async () => {
+    render(<Harness initial={{ ...SAVED, notes: '' }} editingSlotId="slot-1" onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+
+    await waitFor(() =>
+      expect(
+        calls().some(([u, i]) => u === '/calendar/slots/slot-1' && i?.method === 'PATCH'),
+      ).toBe(true),
+    );
+    const patch = calls().find(([u, i]) => u === '/calendar/slots/slot-1' && i?.method === 'PATCH');
+    expect(JSON.parse(patch![1]!.body!)).toHaveProperty('notes', null);
+  });
 });
