@@ -1612,7 +1612,9 @@
    "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) checkConflicts: живий наряд у той самий час — конфлікт (контроль фільтра)",
    "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) checkConflicts: запис видаленого наряду не конфлікт ні за підйомником, ні за механіком",
    "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) createSlot: запис ЖИВОГО наряду в той самий час і далі займає підйомник — 400",
+   "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) createSlot: прив'язати запис до СКАСОВАНОГО наряду — 400, запис не створено",
    "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) createSlot: підйомник і механік у час запису видаленого наряду вільні — запис створено",
+   "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) updateSlot: перев'язати запис на СКАСОВАНИЙ наряд — 400, запис без змін",
    "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) updateSlot: перенесення на час запису видаленого наряду — без конфлікту"
   ],
   "apps/api/src/modules/calendar/calendar.mechanic-lift.spec.ts": [
@@ -2312,6 +2314,30 @@
    "CounterpartiesService — статуси-мітки (assign / unassign) unassign: видаляє link лише у своїй org (where містить orgId)",
    "CounterpartiesService — статуси-мітки (assign / unassign) unassign: мітку не призначено (deleteMany.count === 0) → NotFound"
   ],
+  "apps/api/src/modules/counterparties/counterparties.storekeeper-suppliers.spec.ts": [
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) ADMIN — повний список, як раніше (контроль звуження)",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) DELETE /counterparties/55555555-5555-4555-8555-000000000001 → 403 для комірника",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) GET /counterparties/55555555-5555-4555-8555-000000000001 → 403 для комірника",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) GET /counterparties/55555555-5555-4555-8555-000000000001/garages → 403 для комірника",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) GET /counterparties/55555555-5555-4555-8555-000000000001/linked-documents → 403 для комірника",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) GET /counterparties/:id/contracts клієнта → 404: клієнтів комірник не бачить",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) GET /counterparties/:id/contracts: лише договори закупівлі — номер і відстрочка",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) GET /counterparties: лише живі постачальники своєї організації (SUPPLIER і BOTH), без клієнтів",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) GET /counterparties: у постачальника лише id, тип, назва, ім’я та ЄДРПОУ — без телефону, e-mail, балансу",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) GET /counterparties?showDeleted=true: параметри лише звужують роль постачальника",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) GET /counterparties?type=CLIENT: параметри лише звужують роль постачальника",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) GET /counterparties?types=CLIENT&showDeleted=true: параметри лише звужують роль постачальника",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) GET /counterparties?types=CLIENT,SUPPLIER: параметри лише звужують роль постачальника",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) GET /counterparties?types=CLIENT: параметри лише звужують роль постачальника",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) PATCH /counterparties/55555555-5555-4555-8555-000000000001 → 403 для комірника",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) POST /counterparties → 403 для комірника",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) POST /counterparties/55555555-5555-4555-8555-000000000001/contracts → 403 для комірника",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) пошук ЄДРПОУ",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) пошук назвою",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) пошук телефоном — не шукає",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) пошук ім’ям клієнта — не знаходить клієнта",
+   "STOREKEEPER — постачальники для вибору (BR-CP-014) сортування за балансом комірнику не діє — порядок за назвою"
+  ],
   "apps/api/src/modules/counterparties/counterparties.supplier-naming.spec.ts": [
    "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) create CLIENT без жодної назви (лише пробіли/порожньо) → BadRequestException, транзакція не починається",
    "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) create CLIENT лише з firstName (без companyName) → дозволено (guard пропускає)",
@@ -2498,18 +2524,20 @@
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/organisation → 200 для механіка",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/organisation: ADMIN — повні налаштування, як раніше",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/organisation: OWNER — повні налаштування, як раніше",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/organisation: RECEPTIONIST — лише поля картки (ПДВ організації)",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/organisation: STOREKEEPER — лише поля картки (ПДВ організації)",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/organisation: власнику — повні налаштування (контроль звуження)",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/organisation: механіку — лише поля картки наряду",
-   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/organisation: приймальні — лише поля картки наряду (ПДВ організації)",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/tax-rates → 200 для ACCOUNTANT",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/tax-rates → 200 для ADMIN",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/tax-rates → 200 для RECEPTIONIST",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/tax-rates → 200 для STOREKEEPER",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/tax-rates → 200 для механіка",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) GET /settings/tax-rates: лише id, назва, ставка й прапорці",
-   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) PATCH /settings/organisation → 403 для приймальні: читання не дає права змінювати",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) PATCH /settings/organisation → 403 для приймальні й комірника: читання не дає права змінювати",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) PATCH /settings/organisation → 403: змінювати довідники механік не може",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) POST /counterparties/55555555-5555-4555-8555-555555555555/contracts → 403: змінювати довідники механік не може",
-   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) POST /settings/tax-rates → 403 для приймальні: читання не дає права змінювати",
+   "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) POST /settings/tax-rates → 403 для приймальні й комірника: читання не дає права змінювати",
    "MECHANIC — читання довідників картки наряду (employee.md, рішення 2026-10-16) POST /settings/tax-rates → 403: змінювати довідники механік не може"
   ],
   "apps/api/src/modules/employees/employees.remove-guard.spec.ts": [
@@ -4576,6 +4604,13 @@
   "apps/api/src/modules/purchase-lists/purchase-lists.po-lifecycle.spec.ts": [
    "BR-PL-009 звірка чернетки, коли змінено склад склад чернетки змінено → позиції іншого складу повертаються в OPEN без замовлення",
    "BR-PL-009 звірка чернетки, коли рядки переписано товару немає → OPEN; позицій більше, ніж замовлено, → новіша розділяється",
+   "BR-PL-010 / BR-PL-012 решта позиції закритого наряду — «Скасовано» контроль: наряд у роботі — остача повного приймання знову «Не замовлено»",
+   "BR-PL-010 / BR-PL-012 решта позиції закритого наряду — «Скасовано» повне приймання з недостачею, наряд CANCELLED: остача → «Скасовано», не «Не замовлено»",
+   "BR-PL-010 / BR-PL-012 решта позиції закритого наряду — «Скасовано» повне приймання з недостачею, наряд COMPLETED: остача → «Скасовано», не «Не замовлено»",
+   "BR-PL-010 / BR-PL-012 решта позиції закритого наряду — «Скасовано» повне приймання з недостачею, наряд видалений: остача → «Скасовано», не «Не замовлено»",
+   "BR-PL-010 / BR-PL-012 решта позиції закритого наряду — «Скасовано» скасоване замовлення, наряд CANCELLED: неотримана позиція → «Скасовано», частково отримана — решта «Скасовано»",
+   "BR-PL-010 / BR-PL-012 решта позиції закритого наряду — «Скасовано» скасоване замовлення, наряд COMPLETED: неотримана позиція → «Скасовано», частково отримана — решта «Скасовано»",
+   "BR-PL-010 / BR-PL-012 решта позиції закритого наряду — «Скасовано» скасоване замовлення, наряд видалений: неотримана позиція → «Скасовано», частково отримана — решта «Скасовано»",
    "BR-PL-010 видалення й скасування замовлення видалена чернетка: позиції → OPEN без замовлення",
    "BR-PL-010 видалення й скасування замовлення видалити можна лише чернетку — замовлене не чіпається",
    "BR-PL-010 видалення й скасування замовлення скасоване після часткового приймання: отримане → RECEIVED, решта — нова позиція",
@@ -5706,7 +5741,7 @@
    "BR-SCON-013 підсумок supplierApiStatus [{\"status\":\"UNKNOWN\",\"lines\":[{\"qtyRequested\":2,\"qtyConfirmed\":null}]},{\"status\":\"FAILED\",\"lines\":[{\"qtyRequested\":1,\"qtyConfirmed\":null}]}] → NEEDS_ATTENTION"
   ],
   "apps/api/src/modules/supplier-api/orders/supplier-orders.send.spec.ts": [
-   "BR-SCON-009 «Відправити в API» вже відправлене → 400 alreadySent; отримане / скасоване → 400 orderClosed",
+   "BR-SCON-009 «Відправити в API» вже відправлене → 400 alreadySent; частково отримане / отримане / скасоване → 400 orderClosed",
    "BR-SCON-009 «Відправити в API» з «Чернетки»: спершу «Замовлено», потім план і задача place; supplierApiStatus = QUEUED",
    "BR-SCON-009 «Відправити в API» план неможливий (позиція без пропозиції) → 400, статус замовлення не змінено",
    "BR-SCON-009 «Відправити в API» режим MANUAL або замовлення без позицій з пропозицією — перехід outbox не чіпає",
@@ -5727,6 +5762,7 @@
    "BR-SCON-012 статуси й BR-PO-011: склад і FSM не змінюються «Оновити статус»: одна задача на замовлення; невірні креди — без 10 марних повторів",
    "BR-SCON-012 статуси й BR-PO-011: склад і FSM не змінюються зовнішній статус не змінює залишків і FSM замовлення",
    "BR-SCON-012 статуси й BR-PO-011: склад і FSM не змінюються опитування: замовлення видаленого підключення не вибирається — підсумок не переписується",
+   "BR-SCON-012 статуси й BR-PO-011: склад і FSM не змінюються опитування: нетермінальне замовлення старше 30 днів від відправки більше не опитується",
    "BR-SCON-012 статуси й BR-PO-011: склад і FSM не змінюються опитування: сирий → нормалізований за таблицею; невідомий — лише сирий; термінальний — стоп",
    "BR-SCON-013 / BR-SCON-014 / BR-PO-012 FAILED після частини кроків, але з зовнішнім id (резерв є, відвантаження впало) — теж відправлене",
    "BR-SCON-013 / BR-SCON-014 / BR-PO-012 «Повернути непідтверджене»: понад підтверджене — в OPEN без пропозиції; вдруге — 400 nothingToRelease",
@@ -6083,7 +6119,10 @@
    "SyncService.push calendar_slots — ролі календаря (BR-CAL-010) OWNER → запис прийнято",
    "SyncService.push calendar_slots — ролі календаря (BR-CAL-010) RECEPTIONIST → запис прийнято",
    "SyncService.push calendar_slots — ролі календаря (BR-CAL-010) колонки запису календаря читаються лише для calendar_slots (у контрагента їх немає)",
-   "SyncService.push calendar_slots — ролі календаря (BR-CAL-010) роль не стосується інших таблиць: MECHANIC і контрагент — без відмови за роллю"
+   "SyncService.push calendar_slots — ролі календаря (BR-CAL-010) роль не стосується інших таблиць: MECHANIC і контрагент — без відмови за роллю",
+   "SyncService.push calendar_slots — скасований наряд (BR-WO-022) зміна наряду запису зі скасованим нарядом → відмова з причиною, нічого не записано",
+   "SyncService.push calendar_slots — скасований наряд (BR-WO-022) новий запис живого наряду → прийнято",
+   "SyncService.push calendar_slots — скасований наряд (BR-WO-022) новий запис зі скасованим нарядом → відмова з причиною, нічого не записано"
   ],
   "apps/api/src/modules/sync/sync.contract.spec.ts": [
    "Sync — HTTP Contract GET /sync/pull (Bug #128 regression) pull counterparties: phone / email / edrpou НЕ потрапляють у payload (PULL_FIELD_BLACKLIST)",
@@ -6413,6 +6452,28 @@
    "EstimateExportService.getEstimateData — totalAmount semantics (Bug #508/#528) лише запчастини, без рядків робіт → totalAmount = totalParts",
    "EstimateExportService.getEstimateData — totalAmount semantics (Bug #508/#528) у звичайному кейсі (actualHours=null → totalActualLabor === totalLabor) export відповідає wo.totalAmount"
   ],
+  "apps/api/src/modules/work-orders/work-orders.calendar-move.spec.ts": [
+   "PATCH /work-orders/:id/reschedule — ролі й тіло (BR-WO-023) ACCOUNTANT → 403, наряд не змінено",
+   "PATCH /work-orders/:id/reschedule — ролі й тіло (BR-WO-023) MECHANIC → 403, наряд не змінено",
+   "PATCH /work-orders/:id/reschedule — ролі й тіло (BR-WO-023) STOREKEEPER → 403, наряд не змінено",
+   "PATCH /work-orders/:id/reschedule — ролі й тіло (BR-WO-023) некоректне тіло {\"slotId\":\"81111111-1111-4111-8111-111111111111\",\"startAt\":\"2026-05-22T09:00:00.000Z\",\"liftId\":\"x\"} → 400",
+   "PATCH /work-orders/:id/reschedule — ролі й тіло (BR-WO-023) некоректне тіло {\"slotId\":\"81111111-1111-4111-8111-111111111111\",\"startAt\":\"завтра\"} → 400",
+   "PATCH /work-orders/:id/reschedule — ролі й тіло (BR-WO-023) некоректне тіло {\"slotId\":\"not-a-uuid\",\"startAt\":\"2026-05-22T09:00:00.000Z\"} → 400",
+   "PATCH /work-orders/:id/reschedule — ролі й тіло (BR-WO-023) приймальня → 200, наряд перенесено",
+   "WorkOrdersService.reschedule — перетягування запису наряду (BR-WO-023) видалений запис → 404, без змін",
+   "WorkOrdersService.reschedule — перетягування запису наряду (BR-WO-023) за межі робочих годин філії → 400 з годинами філії, без змін",
+   "WorkOrdersService.reschedule — перетягування запису наряду (BR-WO-023) закритий наряд (виконаний) → 400, без змін",
+   "WorkOrdersService.reschedule — перетягування запису наряду (BR-WO-023) запис +2 год на тому самому підйомнику → наряд 12:00–14:00, тривалість та сама, той самий запис",
+   "WorkOrdersService.reschedule — перетягування запису наряду (BR-WO-023) запис чужої організації → 404, без змін",
+   "WorkOrdersService.reschedule — перетягування запису наряду (BR-WO-023) запис іншого наряду → 404, без змін",
+   "WorkOrdersService.reschedule — перетягування запису наряду (BR-WO-023) механік зайнятий у новий час → 400, без змін",
+   "WorkOrdersService.reschedule — перетягування запису наряду (BR-WO-023) механік не закріплений за новим підйомником → знятий, у відповіді причина (BR-CAL-012)",
+   "WorkOrdersService.reschedule — перетягування запису наряду (BR-WO-023) наряд без планових дат (запис прив’язано формою) → наряд отримує дати перетягнутого запису",
+   "WorkOrdersService.reschedule — перетягування запису наряду (BR-WO-023) перетягнуто продовження багатоденного → зсувається весь ланцюжок і наряд",
+   "WorkOrdersService.reschedule — перетягування запису наряду (BR-WO-023) підйомник зайнятий іншим записом → 400 «зайнятий», без змін",
+   "WorkOrdersService.reschedule — перетягування запису наряду (BR-WO-023) рядок іншого підйомника → підйомник наряду змінено, механік, закріплений за обома, лишається",
+   "WorkOrdersService.reschedule — перетягування запису наряду (BR-WO-023) у минуле → 400 «в минулому» (BR-WO-019), наряд і запис не змінено"
+  ],
   "apps/api/src/modules/work-orders/work-orders.calendar-slot.spec.ts": [
    "WorkOrdersService — запис календаря наряду (BR-WO-020) гонка за підйомник (EXCLUDE у БД) зміна дат: EXCLUDE на перенесенні якоря → 409, наряд із попередніми датами",
    "WorkOrdersService — запис календаря наряду (BR-WO-020) гонка за підйомник (EXCLUDE у БД) створення: EXCLUDE на записі → 409, наряду немає",
@@ -6440,6 +6501,20 @@
    "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду лише початок → запису немає і транзакції немає",
    "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду на два дні (16:00 → завтра 11:00, філія 08–18) → 16:00–18:00 і продовження 08:00–11:00",
    "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду новий наряд: власні записи календаря не читаються — їх ще не може бути"
+  ],
+  "apps/api/src/modules/work-orders/work-orders.cancel-calendar.spec.ts": [
+   "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) APPROVED → CANCELLED: якір і продовження позначено видаленими в транзакції переходу",
+   "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) COMPLETED → CANCELLED: якір і продовження позначено видаленими в транзакції переходу",
+   "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) DRAFT → CANCELLED: якір і продовження позначено видаленими в транзакції переходу",
+   "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) ESTIMATE → CANCELLED: якір і продовження позначено видаленими в транзакції переходу",
+   "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) ON_HOLD → CANCELLED: якір і продовження позначено видаленими в транзакції переходу",
+   "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) «Виконано» → «Скасовано»: записи звільнено разом із поверненням складу й боргу",
+   "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) запис наряду, скасованого раніше (дані до 2026-10-18), не показується й не займає підйомник",
+   "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) після скасування підйомник вільний: інший наряд стає на той самий час",
+   "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) скасування не відбулось (оплата між читанням і записом) → записи календаря живі",
+   "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) скасувати можна щонайменше з чернетки, «Призупинено» й «Виконано» (контроль переліку)",
+   "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) чужі записи не чіпає: інший наряд, запис без наряду, інша організація з тим самим наряду",
+   "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) інший перехід (чернетка → кошторис) записів не чіпає (контроль)"
   ],
   "apps/api/src/modules/work-orders/work-orders.complete-recalc.spec.ts": [
    "WorkOrdersService.transition → COMPLETED: перерахунок тоталів (BR-WO-008) перераховує тотали ДО нарахування боргу",

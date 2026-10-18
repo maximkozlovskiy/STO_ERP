@@ -119,7 +119,7 @@ cd apps/api && npx vitest run src/modules/supplier-api/<тека>/<файл>.spe
 | планування відправки й підсумок `supplierApiStatus` — чисті функції (BR-SCON-010, 013)                                                                | `orders/supplier-order-planner.spec.ts`            | 17     |
 | відправка: кнопка, outbox, кроки, звірка, UNKNOWN, статуси, «Повернути непідтверджене», скасування (BR-SCON-009…014, BR-PO-011, 012)                  | `orders/supplier-orders.send.spec.ts`              | 27     |
 
-Разом тут: **166** кейсів; разом із реєстром [supplier-offer.md](supplier-offer.md) — **246** у модулі
+Разом тут: **167** кейсів; разом із реєстром [supplier-offer.md](supplier-offer.md) — **247** у модулі
 (цифри з `vitest --reporter=json`).
 
 Поза модулем: `config/env.schema.spec.ts` — відмова старту з allowlist у production (BR-SCON-005);

@@ -51,7 +51,7 @@
 | видалення: блок за активним нарядом, каскад                                                                                                                                                             | `employees.remove-guard.spec.ts`         | 3      |
 | довідники картки наряду: механік — 200, лише id та ім'я активних механіків і id/номер/тип договору; приймальня й комірник — звужені налаштування й ставки ПДВ; інші ролі — повні відповіді; зміни — 403 | `employees.mechanic-lookups.spec.ts`     | 30     |
 
-Разом: **126** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **128** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Читання довідників механіком (рішення власника 2026-10-16).** Роль MECHANIC отримує лише читання довідників, які запитує картка наряду: `GET /employees?role=MECHANIC`, `GET /settings/organisation`, `GET /settings/tax-rates`, `GET /counterparties/:id/contracts` — без ставок (`rateScheme`) і без персональних даних понад те, що вже бачить RECEPTIONIST; змінювати їх механік не може. Реалізація: `GET /employees` для MECHANIC завжди віддає лише невидалених механіків (інші `role`/`showDeleted` ігноруються); `GET /settings/organisation` для MECHANIC — лише поля картки (`OrganisationCardSettingsDto`: валюта, ПДВ, мова, перерахунок годин, синхронізація запису), без `laborCostRatio`, лояльності й інтеграцій.
 
