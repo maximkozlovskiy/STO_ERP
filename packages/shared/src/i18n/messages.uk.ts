@@ -88,6 +88,17 @@ export const uk: Record<string, string> = {
   'v.purchaseList.sources.required': "Оберіть списки для об'єднання",
   'v.purchaseList.good.required': 'Оберіть товар',
   'v.purchaseList.warehouse.required': 'Оберіть склад',
+  'v.supplierConnection.provider.required': 'Оберіть постачальника API',
+  'v.supplierConnection.counterparty.required': 'Оберіть контрагента-постачальника',
+  'v.supplierConnection.name.max': 'Назва — до 120 символів',
+  'v.supplierConnection.apiUrl.invalid': 'Некоректна адреса API',
+  'v.supplierConnection.priority.range': 'Пріоритет — ціле число від 0 до 1000',
+  'v.supplierConnection.deliveryDays.range': 'Термін — ціле число днів від 0 до 365',
+  'v.supplierConnection.credential.max': 'Значення поля задовге',
+  'v.supplierOffer.uuid.invalid': 'Невірний UUID формат',
+  'v.supplierOffer.items.required': 'Оберіть хоча б одну позицію',
+  'v.supplierOffer.items.max': 'Забагато позицій в одному запиті',
+  'v.supplierOffer.strategy.invalid': 'Оберіть стратегію',
 
   // ── stock-document.schema.ts ──
   'v.stockDocument.line.good.required': 'Оберіть товар',
@@ -469,6 +480,31 @@ export const uk: Record<string, string> = {
   'err.purchaseList.allocationConflict':
     'Позиції списку купівлі змінено під час приймання — повторіть приймання',
   'err.purchaseList.nothingToRelease': 'Під цю позицію нічого не зарезервовано',
+
+  // ── Exception-повідомлення: supplier-api-модуль (BR-SCON-*, BR-SOFR-*) ──
+  'err.supplierConnection.notFound': 'Підключення до API постачальника не знайдено',
+  'err.supplierConnection.duplicate': 'Для цього постачальника таке підключення вже є',
+  'err.supplierConnection.notSupplier': 'Контрагент не є постачальником',
+  'err.supplierConnection.enterCredentialsFirst': 'Спершу введіть дані доступу до API',
+  'err.supplierConnection.invalidOptions': 'Некоректні параметри підключення: {{details}}',
+  'err.supplierConnection.unknownProvider': 'Невідомий постачальник API: {{provider}}',
+  'err.supplierApi.lineWithoutOffer': 'Не обрано пропозицію постачальника для товарів: {{goods}}',
+  'err.supplierApi.ambiguousOffer':
+    'Різні пропозиції на той самий товар із розбіжною кількістю: {{goods}}',
+  'err.supplierApi.offerFromOtherConnection': 'Пропозиція належить іншому постачальнику',
+  'err.supplierApi.connectionDisabled': 'Підключення до API постачальника вимкнене або відсутнє',
+  'err.supplierApi.noWarehouseMapping':
+    'Для складу «{{warehouse}}» не налаштовано параметри доставки постачальника',
+  'err.supplierApi.cancelSentOrder':
+    'Замовлення вже передане постачальнику через API — скасуйте його в кабінеті постачальника й підтвердіть скасування',
+  'err.supplierApi.analogNotSelectable': 'Цей аналог обрати не можна',
+  'err.supplierApi.offerNotFound': 'Пропозицію не знайдено',
+  'err.supplierApi.offerStale': 'Пропозиція застаріла — оновіть пропозиції',
+  'err.supplierApi.noExchangeRate':
+    'Немає курсу валюти {{currency}} — ціну не можна перерахувати в гривню',
+  'err.supplierApi.batchNotFound': 'Пошук пропозицій не знайдено',
+  'err.supplierApi.alreadySent': 'Замовлення вже передане постачальнику',
+  'err.supplierApi.nothingToRelease': 'Непідтвердженої кількості немає',
 
   // ── Exception-повідомлення: supplier-returns-модуль ──
   'err.supplierReturn.notFound': 'Повернення не знайдено',

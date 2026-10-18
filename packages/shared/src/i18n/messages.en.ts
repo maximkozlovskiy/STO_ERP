@@ -85,6 +85,18 @@ export const en: Record<string, string> = {
   'v.purchaseList.sources.required': 'Select lists to merge',
   'v.purchaseList.good.required': 'Select a good',
   'v.purchaseList.warehouse.required': 'Select a warehouse',
+  'v.supplierConnection.provider.required': 'Select a supplier API',
+  'v.supplierConnection.counterparty.required': 'Select a supplier counterparty',
+  'v.supplierConnection.name.max': 'Name — up to 120 characters',
+  'v.supplierConnection.apiUrl.invalid': 'Invalid API address',
+  'v.supplierConnection.priority.range': 'Priority must be an integer from 0 to 1000',
+  'v.supplierConnection.deliveryDays.range':
+    'Delivery time must be a whole number of days from 0 to 365',
+  'v.supplierConnection.credential.max': 'The field value is too long',
+  'v.supplierOffer.uuid.invalid': 'Invalid UUID format',
+  'v.supplierOffer.items.required': 'Select at least one item',
+  'v.supplierOffer.items.max': 'Too many items in one request',
+  'v.supplierOffer.strategy.invalid': 'Select a strategy',
 
   // ── stock-document.schema.ts ──
   'v.stockDocument.line.good.required': 'Select the product',
@@ -478,6 +490,31 @@ export const en: Record<string, string> = {
   'err.purchaseList.allocationConflict':
     'Purchase list items changed during receiving — try receiving again',
   'err.purchaseList.nothingToRelease': 'Nothing is reserved for this item',
+
+  // ── Exception-повідомлення: supplier-api-модуль (BR-SCON-*, BR-SOFR-*) ──
+  'err.supplierConnection.notFound': 'Supplier API connection not found',
+  'err.supplierConnection.duplicate': 'This supplier already has such a connection',
+  'err.supplierConnection.notSupplier': 'The counterparty is not a supplier',
+  'err.supplierConnection.enterCredentialsFirst': 'Enter the API credentials first',
+  'err.supplierConnection.invalidOptions': 'Invalid connection options: {{details}}',
+  'err.supplierConnection.unknownProvider': 'Unknown supplier API: {{provider}}',
+  'err.supplierApi.lineWithoutOffer': 'No supplier offer chosen for goods: {{goods}}',
+  'err.supplierApi.ambiguousOffer':
+    'Different offers for the same good with mismatched quantities: {{goods}}',
+  'err.supplierApi.offerFromOtherConnection': 'The offer belongs to another supplier',
+  'err.supplierApi.connectionDisabled': 'The supplier API connection is disabled or missing',
+  'err.supplierApi.noWarehouseMapping':
+    'Supplier delivery settings are missing for warehouse "{{warehouse}}"',
+  'err.supplierApi.cancelSentOrder':
+    'The order was already sent to the supplier via API — cancel it in the supplier cabinet and confirm the cancellation',
+  'err.supplierApi.analogNotSelectable': 'This analog cannot be selected',
+  'err.supplierApi.offerNotFound': 'Offer not found',
+  'err.supplierApi.offerStale': 'The offer is out of date — refresh the offers',
+  'err.supplierApi.noExchangeRate':
+    'No {{currency}} exchange rate — the price cannot be converted to UAH',
+  'err.supplierApi.batchNotFound': 'Offer search not found',
+  'err.supplierApi.alreadySent': 'The order was already sent to the supplier',
+  'err.supplierApi.nothingToRelease': 'There is no unconfirmed quantity',
 
   // ── Exception messages: supplier-returns module ──
   'err.supplierReturn.notFound': 'Return not found',
