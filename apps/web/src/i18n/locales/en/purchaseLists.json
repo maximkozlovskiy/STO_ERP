@@ -96,6 +96,7 @@
       "supplierTitle_other": "Supplier and price — {{count}} items",
       "suppliersLoadFailed": "The supplier list failed to load — try again",
       "suppliersNone": "There are no suppliers — add a counterparty of type “Supplier”",
+      "suppliersNoneAsk": "There are no suppliers — ask the owner or an administrator to add a counterparty of type “Supplier”",
       "keep": "— keep —",
       "price": "Expected price, ₴",
       "moveTitle_one": "Move {{count}} item",

@@ -126,13 +126,30 @@ describe('ItemsView — постачальники для комірника (BR
     );
   });
 
-  it('постачальників немає — підказка «немає», а не «недоступно ролі»', async () => {
+  // guards: BR-CP-014
+  it('постачальників немає, комірник — «попросіть власника», бо створити контрагента не може', async () => {
     suppliers = () => Promise.resolve({ items: [], total: 0 });
     renderView();
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(SUPPLIERS_URL, expect.anything()));
     const dialog = await openSupplierDialog();
-    expect(await within(dialog).findByText(/Постачальників немає/)).toBeInTheDocument();
+    expect(await within(dialog).findByText(/Постачальників немає/)).toHaveTextContent(
+      /попросіть власника чи адміністратора/,
+    );
+    expect(within(dialog).queryByText(/додайте контрагента/)).toBeNull();
   });
+
+  it.each(['OWNER', 'ADMIN'])(
+    'постачальників немає, %s — «додайте контрагента», а не «недоступно ролі»',
+    async r => {
+      role = r;
+      suppliers = () => Promise.resolve({ items: [], total: 0 });
+      renderView();
+      const dialog = await openSupplierDialog();
+      expect(await within(dialog).findByText(/Постачальників немає/)).toHaveTextContent(
+        /додайте контрагента з типом «Постачальник»/,
+      );
+    },
+  );
 
   it('список не завантажився — підказка про збій', async () => {
     suppliers = () => Promise.reject(new Error('збій мережі'));

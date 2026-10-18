@@ -63,6 +63,13 @@ interface SupplierOption {
 }
 
 /**
+ * Хто створює контрагентів (`POST /counterparties`). Решті — зокрема комірнику (BR-CP-014: лише
+ * читання постачальників) — підказка «немає постачальників» радить звернутися до них, а не
+ * «додайте контрагента», чого вони зробити не можуть.
+ */
+const COUNTERPARTY_CREATE_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'RECEPTIONIST'];
+
+/**
  * Постачальники для фільтра й масової зміни. Комірник читає їх так само (BR-CP-014, рішення
  * власника 2026-10-18): сервер віддає йому лише постачальників і лише поля вибору.
  */
@@ -109,13 +116,15 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
   const [page, setPage] = useState(1);
 
   const { data: warehouses } = useWarehouses();
+  const { employee } = useAuth();
+  const canCreateSupplier = COUNTERPARTY_CREATE_ROLES.includes(employee?.role ?? '');
   const suppliersQuery = useSupplierOptions();
   const suppliers = suppliersQuery.data;
   // Підказка — лише після відповіді: поки список вантажиться, «немає» було б неправдою.
   const suppliersHint = suppliersQuery.isError
     ? t('items.dialogs.suppliersLoadFailed')
     : suppliers && suppliers.length === 0
-      ? t('items.dialogs.suppliersNone')
+      ? t(canCreateSupplier ? 'items.dialogs.suppliersNone' : 'items.dialogs.suppliersNoneAsk')
       : undefined;
   const { data: openLists } = usePurchaseLists({ status: 'OPEN', page: 1, limit: 100 });
   const { data, isLoading, error, refetch } = usePurchaseListItems({
