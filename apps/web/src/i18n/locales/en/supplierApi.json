@@ -277,5 +277,33 @@
     "deleteSentManyMessage_many": "{{count}} orders were already sent to suppliers via API — cancel them in the supplier cabinets. Continue deleting here?",
     "deleteSentManyMessage_other": "{{count}} orders were already sent to suppliers via API — cancel them in the supplier cabinets. Continue deleting here?",
     "cancelSentConfirm": "Yes, cancelled in the cabinet"
+  },
+  "fieldLabels": {
+    "AVD_TRADE": {
+      "apiKey": "API key (x-api-key)",
+      "locationUuid": "AVD sales point (GET /locations)",
+      "forwarderUuid": "AVD carrier (GET /forwarders)",
+      "recipientUuid": "Recipient (GET /recipients; empty — default)"
+    },
+    "UTR": {
+      "email": "Login (email)",
+      "password": "Password",
+      "paymentType": "Payment (nal — cash, beznal — bank transfer)",
+      "deliveryPointId": "UTR delivery point (GET /api/delivery-points)",
+      "transporterId": "UTR carrier (carriers list)"
+    },
+    "BM_PARTS": {
+      "token": "API token (Authorization)",
+      "userAgent": "User-Agent (counterparty code or app name)",
+      "deliveryConfigUuid": "BM delivery settings (GET /delivery/configs); empty — reserve only"
+    },
+    "TEHNOMIR": {
+      "apiToken": "API token (Management → API)"
+    },
+    "AD_UKRAINE": {
+      "login": "Login",
+      "pwd": "Password",
+      "company": "Company"
+    }
   }
 }

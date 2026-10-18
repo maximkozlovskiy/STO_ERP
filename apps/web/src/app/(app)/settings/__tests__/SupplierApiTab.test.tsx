@@ -4,7 +4,8 @@
 
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
+import i18n from '@/i18n/config';
 import type { SupplierConnection, SupplierProviderInfo } from '@/hooks/api/useSupplierConnections';
 
 const apiFetch = vi.fn();
@@ -20,6 +21,11 @@ vi.mock('@/hooks/api/useInfrastructure', () => ({
 import { SupplierConnectionModal } from '../SupplierConnectionModal';
 import SupplierApiTab from '../SupplierApiTab';
 
+// Підписи — з каталогу supplierApi:fieldLabels.AVD_TRADE (uk — як у реєстрі адаптерів).
+const KEY = 'API-ключ (x-api-key)';
+const POINT = 'Торгова точка AVD (GET /locations)';
+const CARRIER = 'Перевізник AVD (GET /forwarders)';
+
 const AVD: SupplierProviderInfo = {
   provider: 'AVD_TRADE',
   name: 'AVD Trade',
@@ -31,13 +37,11 @@ const AVD: SupplierProviderInfo = {
     orderPerWarehouse: false,
     requiresWarehouseMapping: true,
   },
-  credentialFields: [
-    { key: 'apiKey', label: 'API-ключ', secret: true, required: true, type: 'string' },
-  ],
+  credentialFields: [{ key: 'apiKey', label: KEY, secret: true, required: true, type: 'string' }],
   optionFields: [],
   warehouseFields: [
-    { key: 'locationUuid', label: 'Точка', secret: false, required: true, type: 'string' },
-    { key: 'forwarderUuid', label: 'Перевізник', secret: false, required: true, type: 'string' },
+    { key: 'locationUuid', label: POINT, secret: false, required: true, type: 'string' },
+    { key: 'forwarderUuid', label: CARRIER, secret: false, required: true, type: 'string' },
   ],
 };
 
@@ -95,11 +99,15 @@ beforeEach(() => {
   });
 });
 
+afterEach(async () => {
+  await i18n.changeLanguage('uk');
+});
+
 describe('SupplierConnectionModal', () => {
   // guards: BR-SCON-002
   it('креди лише на запис: збережене — плейсхолдер «збережено», порожнє не надсилається', async () => {
     const { onSave } = renderModal(CONN);
-    const key = screen.getByLabelText('API-ключ');
+    const key = screen.getByLabelText(KEY);
     expect(key).toHaveValue('');
     expect(key).toHaveAttribute('placeholder', 'збережено');
     expect(key).toHaveAttribute('type', 'password');
@@ -114,6 +122,37 @@ describe('SupplierConnectionModal', () => {
       apiUrl: null,
       options: { warehouses: {} },
     });
+  });
+
+  // guards: BR-SCON-003
+  it('Bug #892: у локалі en підписи полів — англійською; поле поза каталогом — підпис сервера', async () => {
+    await i18n.changeLanguage('en');
+    const provider: SupplierProviderInfo = {
+      ...AVD,
+      credentialFields: [
+        ...AVD.credentialFields,
+        { key: 'newField', label: 'Нове поле', secret: false, required: false, type: 'string' },
+      ],
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <SupplierConnectionModal
+          open
+          connection={CONN}
+          providers={[provider]}
+          live={CONN}
+          verifying={false}
+          onClose={vi.fn()}
+          onSave={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByLabelText('API key (x-api-key)')).toBeInTheDocument();
+    const wh = screen.getByRole('group', { name: 'Основний' });
+    expect(within(wh).getByLabelText('AVD sales point (GET /locations)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Нове поле')).toBeInTheDocument();
+    expect(screen.queryByLabelText(KEY)).toBeNull();
   });
 
   // guards: BR-SCON-002
@@ -135,18 +174,18 @@ describe('SupplierConnectionModal', () => {
       target: { value: 'cp-1' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Зберегти і перевірити' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Заповніть поле «API-ключ»');
+    expect(await screen.findByRole('alert')).toHaveTextContent(`Заповніть поле «${KEY}»`);
 
-    fireEvent.change(screen.getByLabelText('API-ключ'), { target: { value: 'k-123' } });
+    fireEvent.change(screen.getByLabelText(KEY), { target: { value: 'k-123' } });
     const wh = screen.getByRole('group', { name: 'Основний' });
-    fireEvent.change(within(wh).getByLabelText('Точка'), { target: { value: 'loc-1' } });
+    fireEvent.change(within(wh).getByLabelText(POINT), { target: { value: 'loc-1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Зберегти і перевірити' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Склад «Основний»: заповніть «Перевізник»',
+      `Склад «Основний»: заповніть «${CARRIER}»`,
     );
     expect(onSave).not.toHaveBeenCalled();
 
-    fireEvent.change(within(wh).getByLabelText('Перевізник'), { target: { value: 'fw-1' } });
+    fireEvent.change(within(wh).getByLabelText(CARRIER), { target: { value: 'fw-1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Зберегти і перевірити' }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]).toEqual([

@@ -172,6 +172,10 @@ export function SupplierConnectionModal({
     [providers, form.provider],
   );
   const savedKeys = useMemo(() => new Set(connection?.credentialKeys ?? []), [connection]);
+  // Підписи полів з реєстру адаптерів — українською; перекладаємо за (провайдер, поле), підпис
+  // сервера — запасний для поля, якого ще немає в каталозі (Bug #892).
+  const fieldLabel = (f: SupplierFieldSpec): string =>
+    t(`fieldLabels.${form.provider}.${f.key}`, { defaultValue: f.label });
 
   const patch = (p: Partial<FormState>) => {
     setForm(f => ({ ...f, ...p }));
@@ -190,10 +194,11 @@ export function SupplierConnectionModal({
     }
     for (const f of provider?.credentialFields ?? []) {
       if (f.required && !form.credentials[f.key]?.trim() && !savedKeys.has(f.key))
-        return t('form.required', { field: f.label });
+        return t('form.required', { field: fieldLabel(f) });
     }
     for (const f of provider?.optionFields ?? []) {
-      if (f.required && isBlank(form.options[f.key])) return t('form.required', { field: f.label });
+      if (f.required && isBlank(form.options[f.key]))
+        return t('form.required', { field: fieldLabel(f) });
     }
     for (const w of warehouses ?? []) {
       const entry = form.warehouses[w.id] ?? {};
@@ -202,7 +207,7 @@ export function SupplierConnectionModal({
         f => f.required && !entry[f.key]?.trim(),
       );
       if (missing)
-        return t('form.warehouseIncomplete', { warehouse: w.name, field: missing.label });
+        return t('form.warehouseIncomplete', { warehouse: w.name, field: fieldLabel(missing) });
     }
     return null;
   };
@@ -302,8 +307,8 @@ export function SupplierConnectionModal({
     if (f.type === 'boolean') {
       return (
         <div className="flex items-center justify-between gap-3 py-1" key={id}>
-          <span className="text-[13px] text-foreground">{f.label}</span>
-          <Switch checked={value === true} onChange={onChange} ariaLabel={f.label} />
+          <span className="text-[13px] text-foreground">{fieldLabel(f)}</span>
+          <Switch checked={value === true} onChange={onChange} ariaLabel={fieldLabel(f)} />
         </div>
       );
     }
@@ -312,7 +317,7 @@ export function SupplierConnectionModal({
         <Select
           key={id}
           id={id}
-          label={f.label}
+          label={fieldLabel(f)}
           value={typeof value === 'string' ? value : ''}
           onChange={e => onChange(e.target.value)}
           hint={f.hint}
@@ -330,7 +335,7 @@ export function SupplierConnectionModal({
       <Input
         key={id}
         id={id}
-        label={f.label}
+        label={fieldLabel(f)}
         type={f.secret ? 'password' : 'text'}
         autoComplete={f.secret ? 'new-password' : 'off'}
         value={typeof value === 'string' ? value : ''}

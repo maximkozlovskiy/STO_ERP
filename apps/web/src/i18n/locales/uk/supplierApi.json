@@ -277,5 +277,33 @@
     "deleteSentManyMessage_many": "{{count}} замовлень вже передані постачальникам через API — скасуйте їх у кабінетах постачальників. Продовжити видалення тут?",
     "deleteSentManyMessage_other": "{{count}} замовлення вже передані постачальникам через API — скасуйте їх у кабінетах постачальників. Продовжити видалення тут?",
     "cancelSentConfirm": "Так, скасовано в кабінеті"
+  },
+  "fieldLabels": {
+    "AVD_TRADE": {
+      "apiKey": "API-ключ (x-api-key)",
+      "locationUuid": "Торгова точка AVD (GET /locations)",
+      "forwarderUuid": "Перевізник AVD (GET /forwarders)",
+      "recipientUuid": "Отримувач (GET /recipients; порожньо — за замовчуванням)"
+    },
+    "UTR": {
+      "email": "Логін (email)",
+      "password": "Пароль",
+      "paymentType": "Оплата (nal — готівка, beznal — безготівково)",
+      "deliveryPointId": "Точка доставки UTR (GET /api/delivery-points)",
+      "transporterId": "Перевізник UTR (отримання перевізників)"
+    },
+    "BM_PARTS": {
+      "token": "API-токен (Authorization)",
+      "userAgent": "User-Agent (код контрагента або назва застосунку)",
+      "deliveryConfigUuid": "Налаштування доставки BM (GET /delivery/configs); порожньо — лише резерв"
+    },
+    "TEHNOMIR": {
+      "apiToken": "API-токен (Управління → API)"
+    },
+    "AD_UKRAINE": {
+      "login": "Логін",
+      "pwd": "Пароль",
+      "company": "Компанія"
+    }
   }
 }
