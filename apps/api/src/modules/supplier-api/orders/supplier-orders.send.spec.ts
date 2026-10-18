@@ -81,7 +81,7 @@ describe('BR-SCON-009 «Відправити в API»', () => {
       const sent = x.service.send(ORG, poId);
       await expect(sent, status).rejects.toThrow(BadRequestException);
       await expect(sent, status).rejects.toThrow(
-        'Отримане чи скасоване замовлення не відправляється постачальнику',
+        'Відправити в API можна лише замовлення в статусі «Чернетка» чи «Замовлено»',
       );
     }
     expect(x.supplierOrders()).toHaveLength(0);
