@@ -92,7 +92,8 @@ child:  startAt=2026-06-15 08:00 → endAt=2026-06-15 11:00  (parentSlotId = par
 межі ланцюжка запису після зміни (мін. початок, макс. кінець) плановими датами наряду, підйомник
 запису — підйомником наряду, далі — `applyUpdate` → `upsertWorkOrderSlot` (перебудова ланцюжка в
 транзакції наряду); лише в редагованих статусах наряду (BR-WO-027). Зміна лише примітки чи механіка
-й запис без наряду — як раніше, `updateSlot`. Інший наряд у зміні — перев'язка
+й запис без наряду — як раніше, `updateSlot`; примітка й механік багатоденного запису наряду не в
+редагованому статусі — `updateSlotChainDetails` (увесь ланцюжок, без наряду). Інший наряд у зміні — перев'язка
 (`relinkCalendarSlot`, BR-WO-028), `workOrderId: null` — відв'язка (`unlinkCalendarSlot`);
 видалення запису наряду — `removeCalendarSlot` (BR-WO-026; і з планшета).
 Контролер календаря — у `CalendarApiModule` (імпортує `WorkOrdersModule`), сервіс — у `CalendarModule`.
@@ -247,7 +248,7 @@ E2E: `apps/web/e2e/work-order-lookups-roles.spec.ts` — механік у ві�
 
 **Чого тут НЕМА.** Контракт і аспектні спеки є, але стережуть вони не все:
 
-- Conflict probe стережеться лише над сховищем у пам'яті. Справжній перетин проти БД не ганяє ніхто: integration-спек `apps/api/src/prisma/schema-integrity.integration.spec.ts` перевіряє тільки, що EXCLUDE `calendar_slots_no_overlap` ІСНУЄ, а не що він відхиляє пересічні слоти. `syncWorkOrderSlots` перевірено на моках-заготовках (форма `where`), поведінкою — лише конфлікт із записом без наряду (`calendar.conflicts.spec.ts`).
+- Conflict probe стережеться лише над сховищем у пам'яті. Справжній перетин проти БД не ганяє ніхто: integration-спек `apps/api/src/prisma/schema-integrity.integration.spec.ts` перевіряє тільки, що EXCLUDE `calendar_slots_no_overlap` ІСНУЄ, а не що він відхиляє пересічні слоти. Конфлікт із записом без наряду поведінкою стереже `calendar.conflicts.spec.ts`.
 - `checkConflicts()` (read-only проба для UI, `excludeSlotId` / `excludeWorkOrderId`) unit-тестом не стережеться зовсім: контракт-спек мокає сервіс цілком.
 - Зайнятість механіка страхує лише app-проба: EXCLUDE-констрейнт покриває підйомник, тож дві одночасні транзакції можуть подвоїти механіка — тестом це не відтворюється.
 - Закріплення механіка за підйомником перевіряє лише `CalendarService` (`POST`/`PATCH /calendar`).

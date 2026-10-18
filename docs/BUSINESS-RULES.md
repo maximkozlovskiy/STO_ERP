@@ -385,10 +385,9 @@ const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en', { timeZone: 'Europe/Kyiv', h
 `parentSlotId` — child slot для WO що перетинає опівніч.  
 Інваріант: `parent.endAt < child.startAt`.
 
-При cascade-update (syncWorkOrderSlots):
-
-1. Soft-delete continuations (`parentSlotId IS NOT NULL`)
-2. Update тільки parent (`parentSlotId IS NULL`)
-3. Продовження наступного дня НЕ відтворюються — лишається один якір (endpoint веб не кличе, TECH-DEBT §13.16)
+Ланцюжок запису наряду (якір і продовження) перебудовує лише збереження наряду
+(`CalendarService.upsertWorkOrderSlot` у транзакції наряду, BR-WO-020/024): старі продовження
+позначаються видаленими, якір переноситься, продовження створюються заново за робочими годинами.
+Старий `PATCH /calendar/slots/by-work-order` видалено (BR-WO-026).
 
 **Conflict check обов'язковий** для БУДЬ-ЯКОГО методу що мутує `startAt/endAt` слота.

@@ -118,6 +118,8 @@ describe('Видалення запису наряду стирає дати н�
 
     await h.service.removeCalendarSlot(ORG, 'anchor', USER);
 
+    // Наряд заблоковано (до записів календаря), його дати читаються під блокуванням.
+    expect(h.prisma.$queryRaw).toHaveBeenCalledWith(expect.anything(), ORG, [WO_ID]);
     expect(h.liveSlots()).toEqual([]);
     expect(woOf(h)).toMatchObject({ plannedAt: null, dueDate: null, plannedHours: null });
     expect(h.audit.record).toHaveBeenCalledWith(
@@ -269,6 +271,76 @@ describe('Час і підйомник запису наряду — лише в
 
     expect(woOf(h)).toEqual(before);
     expect(slotOf(h, 'anchor')).toMatchObject({ employeeId: MECH_1, notes: 'Клієнт чекає' });
+  });
+
+  /** Форма дводенного запису (`twoDays`): час і підйомник якоря ті самі, примітка й механік нові. */
+  const chainNoteForm = {
+    liftId: LIFT_1,
+    employeeId: MECH_1,
+    startAt: iso(D, '16:00'),
+    endAt: iso(D, '18:00'),
+    notes: 'Клієнт чекає',
+    workOrderId: WO_ID,
+  };
+
+  // guards: BR-WO-027
+  it.each(['COMPLETED', 'PAID', 'IN_PROGRESS'])(
+    'наряд «%s»: примітка й механік дводенного запису → увесь ланцюжок без перебудови, наряд не чіпається',
+    async status => {
+      const h = twoDays({ status });
+      const before = structuredClone(woOf(h));
+
+      await h.service.updateCalendarSlot(ORG, 'anchor', chainNoteForm, USER);
+
+      expect(woOf(h)).toEqual(before);
+      // Ті самі записи (продовження не перебудовано) на тих самих місцях.
+      expect(h.liveSlots()).toEqual([
+        expect.objectContaining({
+          id: 'anchor',
+          employeeId: MECH_1,
+          notes: 'Клієнт чекає',
+          startAt: kyiv(D, '16:00'),
+        }),
+        expect.objectContaining({
+          id: 'cont',
+          employeeId: MECH_1,
+          notes: 'Клієнт чекає',
+          startAt: kyiv(D2, '08:00'),
+        }),
+      ]);
+    },
+  );
+
+  // guards: BR-WO-027
+  it('наряд «В роботі» без дат: примітка дводенного запису не дає наряду дат', async () => {
+    const h = twoDays({
+      status: 'IN_PROGRESS',
+      plannedAt: null,
+      dueDate: null,
+      plannedHours: null,
+    });
+
+    await h.service.updateCalendarSlot(ORG, 'cont', { notes: 'Клієнт чекає' }, USER);
+
+    expect(woOf(h)).toMatchObject({ plannedAt: null, dueDate: null, plannedHours: null });
+    expect(slotOf(h, 'anchor').notes).toBe('Клієнт чекає');
+  });
+
+  // guards: BR-WO-027, BR-CAL-005
+  it('наряд «Виконано»: механік зайнятий на другому дні ланцюжка → 400, нічого не змінено', async () => {
+    const h = twoDays({ status: 'COMPLETED' });
+    h.calendarSlot.rows.push(
+      slotRow('busy', {
+        workOrderId: null,
+        liftId: LIFT_2,
+        employeeId: MECH_1,
+        startAt: kyiv(D2, '09:00'),
+        endAt: kyiv(D2, '11:00'),
+      }),
+    );
+
+    const err = await rejected(h, h.service.updateCalendarSlot(ORG, 'anchor', chainNoteForm, USER));
+    expect(err.message).toBe(msg('err.calendar.employeeBusyNextDay'));
   });
 
   // guards: BR-WO-027
@@ -426,6 +498,24 @@ describe("Перев'язка запису на інший наряд (BR-WO-028
       h.service.updateCalendarSlot(ORG, 'anchor', relinkForm(OTHER_WO), USER),
     );
     expect(err.message).toBe(msg('err.calendar.workOrderRelinkLocked'));
+  });
+
+  // guards: BR-WO-028, BR-WO-027
+  it('наряди блокуються за id; новий наряд став «В роботі» до транзакції → 400, нічого не змінено', async () => {
+    const h = planned();
+    // Перехід нового наряду між перевіркою статусу і транзакцією перев'язки — у мить блокування.
+    h.prisma.$queryRaw.mockImplementationOnce(async () => {
+      woOf(h, OTHER_WO).status = 'IN_PROGRESS';
+      return [];
+    });
+
+    const err = await rejected(
+      h,
+      h.service.updateCalendarSlot(ORG, 'anchor', relinkForm(OTHER_WO), USER),
+    );
+    expect(err.message).toBe(msg('err.calendar.workOrderRelinkLocked'));
+    // Обидва наряди — одним блокуванням у порядку id (WO_ID < OTHER_WO), хоч новий — OTHER_WO.
+    expect(h.prisma.$queryRaw.mock.calls[0]!.slice(1)).toEqual([ORG, [WO_ID, OTHER_WO]]);
   });
 
   // guards: BR-WO-028

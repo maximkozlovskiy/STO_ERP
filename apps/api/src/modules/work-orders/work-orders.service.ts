@@ -673,7 +673,8 @@ export class WorkOrdersService {
     // Bug #902: запис багатоденного наряду (якір чи продовження) — один ланцюжок. Механік і
     // примітку `CalendarService.updateSlot` якорю з продовженням відмовляв («редагуйте кожен
     // окремо»), а на продовженні вони губились при перебудові ланцюжка. Тож будь-яка його зміна
-    // — шляхом наряду, для всього ланцюжка.
+    // — шляхом наряду, для всього ланцюжка; у наряду не в редагованому статусі примітка й механік
+    // пишуться в ланцюжок без наряду (BR-WO-027, `moveWorkOrderSlot`).
     const moves = movesWorkOrderSlot(slot, dto);
     const viaWorkOrder = moves || (await this.isSlotChain(orgId, slot));
     if (!viaWorkOrder) return this.calendar.updateSlot(orgId, id, dto);
@@ -787,6 +788,17 @@ export class WorkOrdersService {
       !(change.dropMechanicNotOnLift === true && keepsOwnMechanic)
     ) {
       await this.assertSlotMechanic(orgId, employeeId, liftId);
+    }
+
+    // BR-WO-027: наряд не в редагованому статусі (час і підйомник уже відмовлено вище) — примітка
+    // й механік ланцюжка пишуться в сам ланцюжок, а не через наряд: збереження наряду закритий
+    // наряд не редагує (400), а ланцюжок, що розійшовся з нарядом, переписав би його дати.
+    if (!EDITABLE_STATUSES.includes(wo.status)) {
+      await this.calendar.updateSlotChainDetails(orgId, chain, {
+        employeeId: change.employeeId,
+        notes: change.notes,
+      });
+      return null;
     }
 
     // У наряд — лише те, що змінилось: зміна механіка чи примітки ланцюжка (Bug #902) не пише в
@@ -959,6 +971,11 @@ export class WorkOrdersService {
         ...(change.notes !== undefined && { notes: change.notes }),
       },
       inTx: async tx => {
+        // Порядок блокувань: обидва наряди — за id і до записів календаря (як `applyUpdate`: наряд
+        // → записи). Інакше зустрічні перев'язки (A→B і B→A) блокують наряди навхрест — deadlock і
+        // 500. Статуси — ще раз під блокуванням: перехід наряду між перевіркою вище й транзакцією
+        // інакше стер би дати наряду «В роботі» (BR-WO-027).
+        await this.lockRelinkedWorkOrders(tx, orgId, newWorkOrderId, oldWorkOrderId);
         // Один запис на наряд (BR-WO-020): цей ланцюжок замінює наявні записи нового наряду.
         await tx.calendarSlot.updateMany({
           where: {
@@ -986,6 +1003,32 @@ export class WorkOrdersService {
   }
 
   /**
+   * Перев'язка в транзакції `tx`: блокує новий і попередній наряди в порядку id
+   * (`lockWorkOrdersForUpdate`) і перечитує їх під блокуванням — новий наряд живий, обидва в
+   * редагованих статусах (BR-WO-027); інакше 404 / 400, транзакція відкочується.
+   */
+  private async lockRelinkedWorkOrders(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    newWorkOrderId: string,
+    oldWorkOrderId: string | null,
+  ): Promise<void> {
+    const ids = oldWorkOrderId ? [newWorkOrderId, oldWorkOrderId] : [newWorkOrderId];
+    await lockWorkOrdersForUpdate(tx, orgId, ids);
+    const rows = await tx.workOrder.findMany({
+      where: { orgId, id: { in: ids }, deletedAt: null },
+      select: { id: true, status: true },
+      take: ids.length,
+    });
+    if (!rows.some(r => r.id === newWorkOrderId))
+      throw new NotFoundException(translateError('err.calendar.workOrderNotFound', getLocale()));
+    if (rows.some(r => !EDITABLE_STATUSES.includes(r.status)))
+      throw new BadRequestException(
+        translateError('err.calendar.workOrderRelinkLocked', getLocale()),
+      );
+  }
+
+  /**
    * Запис наряду відв'язано від наряду (форма «×», `workOrderId: null` з планшета): за BR-WO-026
    * наряд утрачає запис — ланцюжок запису лишається в календарі без наряду, інші записи наряду
    * позначаються видаленими, планові дати наряду стираються. Сама зміна запису (клієнт, час,
@@ -1006,6 +1049,8 @@ export class WorkOrdersService {
     let released: DatesReleased | null = null;
     const res = await this.calendar.updateSlot(orgId, slot.id, change, {
       inTx: async tx => {
+        // Наряд — перший у транзакції, до записів календаря (як `applyUpdate`: наряд → записи).
+        await lockWorkOrdersForUpdate(tx, orgId, [workOrderId]);
         await tx.calendarSlot.updateMany({
           where: { orgId, id: { in: chainIds }, deletedAt: null },
           data: { workOrderId: null },
@@ -1038,6 +1083,9 @@ export class WorkOrdersService {
     workOrderId: string,
     hours: WorkHours,
   ): Promise<DatesReleased | null> {
+    // Наряд блокується до записів календаря (порядок `applyUpdate`: наряд → записи), і його дати
+    // читаються під блокуванням: збереження наряду поруч не загубить нових дат.
+    await lockWorkOrdersForUpdate(tx, orgId, [workOrderId]);
     const now = new Date();
     await this.calendar.removeWorkOrderSlots(tx, orgId, workOrderId, now);
     const wo = await tx.workOrder.findFirst({

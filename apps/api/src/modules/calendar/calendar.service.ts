@@ -463,7 +463,8 @@ export class CalendarService {
    * (`WorkOrdersService.updateCalendarSlot`, BR-WO-024) — сюди вона не доходить: і
    * `PATCH /calendar/slots/:id`, і синхронізація з планшета ідуть через нього.
    *
-   * `opts.inTx` — що ще зробити в транзакції зміни запису: відв'язаний від наряду запис стирає дати
+   * `opts.inTx` — що ще зробити в транзакції зміни запису, ПЕРЕД записом самого запису (порядок
+   * блокувань «наряд → записи», як у збереженні наряду): відв'язаний від наряду запис стирає дати
    * наряду (BR-WO-026, `WorkOrdersService.unlinkCalendarSlot`).
    */
   async updateSlot(
@@ -581,7 +582,8 @@ export class CalendarService {
             throw new BadRequestException(translateError('err.calendar.employeeBusy', getLocale()));
           }
 
-          const saved = await tx.calendarSlot.update({
+          await opts.inTx?.(tx);
+          return tx.calendarSlot.update({
             where: { id, orgId },
             data: {
               ...(dto.liftId !== undefined && { liftId: dto.liftId }),
@@ -614,8 +616,6 @@ export class CalendarService {
               },
             },
           });
-          await opts.inTx?.(tx);
-          return saved;
         },
         { timeout: TRANSACTION_TIMEOUT_MS },
       );
@@ -857,6 +857,52 @@ export class CalendarService {
       where: { orgId, workOrderId, deletedAt: null },
       data: { deletedAt },
     });
+  }
+
+  /**
+   * BR-WO-027: примітка й механік багатоденного запису наряду, чий наряд не в редагованому статусі,
+   * — для всього ланцюжка (`chain`: якір і продовження) без перебудови: час і підйомник таких
+   * записів не змінюються, а збереження наряду закритий наряд не редагує. Механік — вільний на всіх
+   * днях ланцюжка (BR-CAL-005); закріплення за підйомником (BR-CAL-012) перевіряє той, хто кличе.
+   */
+  async updateSlotChainDetails(
+    orgId: string,
+    chain: readonly ({ id: string } & TimeSegment)[],
+    change: { employeeId?: string | null | undefined; notes?: string | null | undefined },
+  ): Promise<void> {
+    const data = {
+      ...(change.employeeId !== undefined && { employeeId: change.employeeId }),
+      ...(change.notes !== undefined && { notes: change.notes }),
+    };
+    if (Object.keys(data).length === 0 || chain.length === 0) return;
+    const ids = chain.map(s => s.id);
+    const segments = [...chain].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+    const first = segments[0];
+    const { employeeId } = change;
+    await this.prisma.$transaction(
+      async tx => {
+        if (employeeId) {
+          const hit = await tx.calendarSlot.findFirst({
+            where: busyWhere(orgId, { employeeId }, segments, { ids }),
+            select: { startAt: true, endAt: true },
+          });
+          if (hit)
+            throw new BadRequestException(
+              translateError(
+                hit.startAt < first.endAt && hit.endAt > first.startAt
+                  ? 'err.calendar.employeeBusy'
+                  : 'err.calendar.employeeBusyNextDay',
+                getLocale(),
+              ),
+            );
+        }
+        await tx.calendarSlot.updateMany({
+          where: { orgId, id: { in: ids }, deletedAt: null },
+          data,
+        });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
   }
 
   /**

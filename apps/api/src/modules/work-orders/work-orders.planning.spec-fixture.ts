@@ -185,6 +185,11 @@ export function planningHarness(opts: { workOrders?: MemRow[]; slots?: MemRow[] 
     counterpartyContract,
     completionAct,
     $transaction,
+    // `lockWorkOrdersForUpdate` (`SELECT … FOR UPDATE`): блокувань у пам'яті немає — лише виклик,
+    // за яким спек бачить, які наряди й у якому порядку заблоковано.
+    $queryRaw: vi.fn((_sql: TemplateStringsArray, ..._values: unknown[]) =>
+      Promise.resolve([] as unknown[]),
+    ),
   };
 
   const calendar = new CalendarService(prisma as unknown as PrismaService);
