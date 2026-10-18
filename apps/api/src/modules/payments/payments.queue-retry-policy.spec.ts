@@ -165,6 +165,33 @@ function prop(obj: ts.ObjectLiteralExpression, name: string): ts.Expression | un
   return undefined;
 }
 
+/**
+ * Опції задач `addBulk(...)`: масив об'єктів-літералів або `xs.map(x => ({ …, opts }))`. Усі задачі
+ * мусять мати ОДНАКОВИЙ літерал `opts` (інакше сторож не може судити виклик одним сайтом) — тоді
+ * повертається він, інакше undefined (виклик іде в нерозібрані).
+ */
+function bulkJobOpts(arg: ts.Expression | undefined): ts.Expression | undefined {
+  if (!arg) return undefined;
+  let jobs: ts.Expression[] = [];
+  if (ts.isArrayLiteralExpression(arg)) {
+    jobs = [...arg.elements];
+  } else if (
+    ts.isCallExpression(arg) &&
+    ts.isPropertyAccessExpression(arg.expression) &&
+    arg.expression.name.text === 'map' &&
+    arg.arguments[0] &&
+    ts.isArrowFunction(arg.arguments[0])
+  ) {
+    let body: ts.Node = arg.arguments[0].body;
+    while (ts.isParenthesizedExpression(body)) body = body.expression;
+    if (ts.isExpression(body)) jobs = [body];
+  }
+  const all = jobs.map(j => (ts.isObjectLiteralExpression(j) ? prop(j, 'opts') : undefined));
+  if (all.length === 0 || all.some(o => !o)) return undefined;
+  const first = all[0] as ts.Expression;
+  return all.every(o => o?.getText() === first.getText()) ? first : undefined;
+}
+
 function enclosingMember(node: ts.Node): string {
   for (let n: ts.Node | undefined = node.parent; n; n = n.parent) {
     if (ts.isMethodDeclaration(n) || ts.isFunctionDeclaration(n)) {
@@ -249,13 +276,15 @@ function scan(): ScanResult {
               (receiver as ts.PropertyAccessExpression).name.text,
             ) as string;
             const where = `${rel}:${lineOf(node)}`;
-            const opts = node.arguments[2];
-            if (method !== 'add') {
+            // addBulk([...]) / addBulk(xs.map(x => ({ …, opts: {…} }))): опції КОЖНОЇ задачі —
+            // той самий літерал, що й третій аргумент add() (supplier-search, optimize 2026-10-18).
+            const opts = method === 'addBulk' ? bulkJobOpts(node.arguments[0]) : node.arguments[2];
+            if (method === 'upsertJobScheduler') {
               res.unresolved.push(
                 `${where} — ${method}() на черзі '${queue}': сторож його не вміє`,
               );
             } else if (!opts || !ts.isObjectLiteralExpression(opts)) {
-              res.unresolved.push(`${where} — add() на черзі '${queue}' без літерала опцій`);
+              res.unresolved.push(`${where} — ${method}() на черзі '${queue}' без літерала опцій`);
             } else {
               const attempts = prop(opts, 'attempts');
               const backoff = prop(opts, 'backoff');
