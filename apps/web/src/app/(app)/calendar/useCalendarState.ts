@@ -1047,6 +1047,8 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   const removeSlot = useCallback(
     async (id: string) => {
       const slot = slots.find(s => s.id === id);
+      // BR-WO-026: запис наряду не в редагованому статусі не видаляється (сервер відповів би 400).
+      if (slot && workOrderTimeLock(slot)) return;
       const woNumber = slot?.workOrderId ? (slot.workOrderNumber ?? '') : null;
       const ok = await confirm({
         title: t('slot.deleteTitle'),

@@ -1,7 +1,8 @@
 // Форма запису наряду (рішення власника 2026-10-18):
 // - BR-WO-027: наряд не в редагованому статусі — час, тривалість, підйомник, клієнт і наряд запису
 //   недоступні з підказкою; механік і нотатки — доступні, «Оновити» лишається;
-// - BR-WO-026: «Видалити» запису наряду попереджає, що планові дати наряду буде стерто.
+// - BR-WO-026: «Видалити» запису наряду попереджає, що планові дати наряду буде стерто; у
+//   нередагованому статусі наряду «Видалити» недоступна з підказкою (рішення власника 2026-10-19).
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
@@ -91,7 +92,6 @@ describe('CalendarSlotModal — запис наряду не в редагова
     expect(mechanicSelect()).not.toBeDisabled();
     expect(screen.getByDisplayValue('Примітка')).not.toBeDisabled();
     expect(screen.getByRole('button', { name: 'Оновити' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Видалити/ })).toBeInTheDocument();
   });
 
   // guards: BR-WO-027
@@ -109,11 +109,33 @@ describe('CalendarSlotModal — запис наряду не в редагова
 describe('CalendarSlotModal — видалення запису наряду (BR-WO-026)', () => {
   // guards: BR-WO-026
   it('«Видалити» запису наряду — підтвердження, що планові дати наряду буде стерто', async () => {
-    renderForm({ number: 'НРД-1', lockedStatus: 'IN_PROGRESS' });
+    renderForm({ number: 'НРД-1', lockedStatus: null });
 
     fireEvent.click(screen.getByRole('button', { name: /Видалити/ }));
 
     expect(await screen.findByText(/планові дати наряду/)).toHaveTextContent('НРД-1');
+  });
+
+  // guards: BR-WO-026
+  it('наряд «В роботі»: «Видалити» недоступна, причина в підказці й для читача екрана; підтвердження немає', async () => {
+    renderForm({ number: 'НРД-1', lockedStatus: 'IN_PROGRESS' });
+
+    const hint =
+      'Запис наряду в статусі «В роботі» не видаляється — лише в статусах «Чернетка», «Кошторис», «Затверджено»';
+    const btn = screen.getByRole('button', { name: /Видалити/ });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAccessibleDescription(hint);
+    expect(screen.getByTestId('slot-delete-wrap')).toHaveAttribute('title', hint);
+    fireEvent.click(btn);
+    expect(screen.queryByText(/планові дати наряду/)).toBeNull();
+  });
+
+  // guards: BR-WO-026
+  it('контроль: наряд «Кошторис» — «Видалити» доступна без підказки', () => {
+    renderForm({ number: 'НРД-1', lockedStatus: null });
+
+    expect(screen.getByRole('button', { name: /Видалити/ })).not.toBeDisabled();
+    expect(screen.getByTestId('slot-delete-wrap')).not.toHaveAttribute('title');
   });
 
   // guards: BR-WO-026

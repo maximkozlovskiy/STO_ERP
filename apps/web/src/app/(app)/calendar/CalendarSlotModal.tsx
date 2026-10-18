@@ -315,6 +315,11 @@ export function CalendarSlotModal({
   // недоступні (перев'язка теж, BR-WO-028); примітка й механік — як раніше.
   const woLockedStatus = isEditingPast ? null : (editingWorkOrder?.lockedStatus ?? null);
   const fieldsLocked = isEditingPast || woLockedStatus !== null;
+  // BR-WO-026: видалити запис такого наряду не можна (сервер відповів би 400) — кнопка з підказкою.
+  const deleteLockHint = woLockedStatus
+    ? t('slot.woDeleteLocked', { status: woStatusLabel(woLockedStatus) })
+    : null;
+  const deleteHintId = useId();
   const {
     conflict: calConflict,
     check: checkConflict,
@@ -1558,38 +1563,54 @@ export function CalendarSlotModal({
               {isEditingPast ? t('slot.close') : t('slot.cancel')}
             </Button>
             {editingSlotId && !isEditingPast && (
-              <Button
-                variant="destructive"
-                className="ml-auto"
-                onClick={() => {
-                  void (async () => {
-                    // BR-WO-026: видалення запису наряду стирає планові дати наряду — попередити.
-                    const ok = await confirm({
-                      title: t('slot.deleteTitle'),
-                      message: editingWorkOrder
-                        ? t('slot.deleteWoMessage', { number: editingWorkOrder.number })
-                        : t('slot.deleteMessage'),
-                      variant: 'destructive',
-                    });
-                    if (!ok) return;
-                    setSaving(true);
-                    try {
-                      await apiFetch(`/calendar/slots/${editingSlotId}`, { method: 'DELETE' });
-                      toast.success(t('slot.toastDeleted'));
-                      onDeleted();
-                    } catch (e: unknown) {
-                      const msg = e instanceof Error ? e.message : t('slot.errDeleteFallback');
-                      setError(msg);
-                      toast.error(msg);
-                    } finally {
-                      setSaving(false);
-                    }
-                  })();
-                }}
+              // BR-WO-026 (рішення власника 2026-10-19): запис наряду не в редагованому статусі не
+              // видаляється — кнопка недоступна, підказка в `title` обгортки (вимкнена кнопка
+              // подій миші не отримує) і для читача екрана.
+              <span
+                className="ml-auto inline-flex"
+                title={deleteLockHint ?? undefined}
+                data-testid="slot-delete-wrap"
               >
-                <Trash2 className="h-4 w-4 mr-1.5" />
-                {t('slot.delete')}
-              </Button>
+                {deleteLockHint && (
+                  <span id={deleteHintId} className="sr-only">
+                    {deleteLockHint}
+                  </span>
+                )}
+                <Button
+                  variant="destructive"
+                  disabled={deleteLockHint !== null}
+                  aria-describedby={deleteLockHint ? deleteHintId : undefined}
+                  onClick={() => {
+                    if (deleteLockHint) return;
+                    void (async () => {
+                      // BR-WO-026: видалення запису наряду стирає планові дати наряду — попередити.
+                      const ok = await confirm({
+                        title: t('slot.deleteTitle'),
+                        message: editingWorkOrder
+                          ? t('slot.deleteWoMessage', { number: editingWorkOrder.number })
+                          : t('slot.deleteMessage'),
+                        variant: 'destructive',
+                      });
+                      if (!ok) return;
+                      setSaving(true);
+                      try {
+                        await apiFetch(`/calendar/slots/${editingSlotId}`, { method: 'DELETE' });
+                        toast.success(t('slot.toastDeleted'));
+                        onDeleted();
+                      } catch (e: unknown) {
+                        const msg = e instanceof Error ? e.message : t('slot.errDeleteFallback');
+                        setError(msg);
+                        toast.error(msg);
+                      } finally {
+                        setSaving(false);
+                      }
+                    })();
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 mr-1.5" />
+                  {t('slot.delete')}
+                </Button>
+              </span>
             )}
           </div>
         </div>

@@ -147,6 +147,17 @@ function assertSlotTimeEditable(status: WorkOrderStatus): void {
     throw new BadRequestException(translateError('err.calendar.workOrderSlotLocked', getLocale()));
 }
 
+/**
+ * BR-WO-026 (рішення власника 2026-10-19): запис наряду видаляється лише там, де картка наряду
+ * змінює планові дати (`EDITABLE_STATUSES`, як BR-WO-027) — видалення стирає дати наряду.
+ */
+function assertSlotDeletable(status: WorkOrderStatus): void {
+  if (!EDITABLE_STATUSES.includes(status))
+    throw new BadRequestException(
+      translateError('err.calendar.workOrderSlotDeleteLocked', getLocale()),
+    );
+}
+
 /** Планові дати наряду, стерті разом із його записом календаря (BR-WO-026), — для журналу змін. */
 interface DatesReleased {
   old: Record<string, unknown>;
@@ -916,6 +927,10 @@ export class WorkOrdersService {
    * з планшета). В одній транзакції позначається видаленим увесь ланцюжок записів наряду, а
    * планові початок і завершення наряду стираються (нормогодини, виведені з дат, — теж). Запис
    * без наряду — як раніше, сам (`CalendarService.removeSlot`).
+   *
+   * Лише в статусах, де картка змінює планові дати (`EDITABLE_STATUSES`, як BR-WO-027; рішення
+   * власника 2026-10-19): інакше 400 з причиною — і до транзакції, і під блокуванням наряду
+   * (перехід «В роботу» поруч інакше стер би дати наряду, що вже в роботі).
    */
   async removeCalendarSlot(orgId: string, id: string, userId?: string): Promise<void> {
     const slot = await this.prisma.calendarSlot.findFirst({
@@ -926,9 +941,14 @@ export class WorkOrdersService {
       throw new NotFoundException(translateError('err.calendar.slotNotFound', getLocale()));
     const { workOrderId } = slot;
     if (!workOrderId) return this.calendar.removeSlot(orgId, id);
-    const hours = await this.workHoursOfWorkOrder(orgId, workOrderId);
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id: workOrderId, orgId, deletedAt: null },
+      select: { status: true, branchId: true },
+    });
+    if (wo) assertSlotDeletable(wo.status);
+    const hours = await this.calendar.resolveWorkHours(orgId, wo?.branchId ?? null);
     const audit = await this.prisma.$transaction(
-      tx => this.releaseWorkOrderDates(tx, orgId, workOrderId, hours),
+      tx => this.releaseWorkOrderDates(tx, orgId, workOrderId, hours, { editableOnly: true }),
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
     this.recordDatesReleased(orgId, workOrderId, userId, audit);
@@ -1189,36 +1209,31 @@ export class WorkOrdersService {
     return res;
   }
 
-  /** Робочі години філії наряду (для нормогодин, виведених із дат); видалений наряд — типові. */
-  private async workHoursOfWorkOrder(orgId: string, workOrderId: string): Promise<WorkHours> {
-    const wo = await this.prisma.workOrder.findFirst({
-      where: { id: workOrderId, orgId, deletedAt: null },
-      select: { branchId: true },
-    });
-    return this.calendar.resolveWorkHours(orgId, wo?.branchId ?? null);
-  }
-
   /**
    * BR-WO-026 у транзакції `tx`: живі записи наряду позначаються видаленими, планові початок і
    * завершення наряду стираються, а нормогодини — коли вони виведені з дат (дорівнюють робочим
    * годинам між ними, як рахує картка — Bug #903). Повертає старі й нові значення для журналу
    * змін наряду або `null`, якщо дат не було (чи наряд видалено).
+   *
+   * `editableOnly` — видалення запису (BR-WO-026): статус наряду перечитується під блокуванням і
+   * не в редагованому статусі дає 400 до будь-якої зміни.
    */
   private async releaseWorkOrderDates(
     tx: Prisma.TransactionClient,
     orgId: string,
     workOrderId: string,
     hours: WorkHours,
+    opts: { editableOnly?: boolean } = {},
   ): Promise<DatesReleased | null> {
     // Наряд блокується до записів календаря (порядок `applyUpdate`: наряд → записи), і його дати
-    // читаються під блокуванням: збереження наряду поруч не загубить нових дат.
+    // та статус читаються під блокуванням: збереження наряду поруч не загубить нових дат.
     await lockWorkOrdersForUpdate(tx, orgId, [workOrderId]);
-    const now = new Date();
-    await this.calendar.removeWorkOrderSlots(tx, orgId, workOrderId, now);
     const wo = await tx.workOrder.findFirst({
       where: { id: workOrderId, orgId, deletedAt: null },
-      select: { plannedAt: true, dueDate: true, plannedHours: true },
+      select: { plannedAt: true, dueDate: true, plannedHours: true, status: true },
     });
+    if (wo && opts.editableOnly) assertSlotDeletable(wo.status);
+    await this.calendar.removeWorkOrderSlots(tx, orgId, workOrderId, new Date());
     if (!wo || (wo.plannedAt === null && wo.dueDate === null)) return null;
     // Значення «до» — у локальні змінні до запису (таблиця в пам'яті спеків віддає сам рядок).
     const { plannedAt, dueDate, plannedHours } = wo;

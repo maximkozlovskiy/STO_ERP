@@ -668,6 +668,8 @@ export const uk: Record<string, string> = {
     'Час і підйомник запису наряду змінюються лише в статусах «Чернетка», «Кошторис» і «Затверджено»',
   'err.calendar.workOrderRelinkLocked':
     "Перев'язати запис можна лише між нарядами в статусах «Чернетка», «Кошторис» і «Затверджено»",
+  'err.calendar.workOrderSlotDeleteLocked':
+    'Видалити запис наряду можна лише в статусах «Чернетка», «Кошторис» і «Затверджено»',
   'err.calendar.clientNotFound': 'Клієнта не знайдено',
   'err.calendar.vehicleNotFound': 'Автомобіль не знайдено',
   'err.calendar.liftBusy': 'Підйомник вже зайнятий на цей час',

@@ -2,7 +2,8 @@
 // - BR-WO-027: наряд не в редагованому статусі («В роботі», «Виконано»…) — запис не тягнеться й
 //   не розтягується (жодного запиту), форма отримує статус, що блокує час і підйомник;
 // - BR-WO-026: видалення запису наряду з переліку «Без підйомника» попереджає, що дати наряду
-//   буде стерто, і скидає кеш нарядів (картка, списки, лічильники); запис без наряду — як раніше.
+//   буде стерто, і скидає кеш нарядів (картка, списки, лічильники); запис без наряду — як раніше;
+//   запис наряду не в редагованому статусі не видаляється (рішення власника 2026-10-19).
 
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
@@ -169,7 +170,7 @@ describe('useCalendarState — запис наряду не в редагова�
 describe('useCalendarState — видалення запису наряду з переліку (BR-WO-026)', () => {
   // guards: BR-WO-026
   it('запис наряду → підтвердження про стерті дати наряду, DELETE, кеш нарядів скинуто', async () => {
-    daySlots = [woSlot('IN_PROGRESS', { liftId: null })];
+    daySlots = [woSlot('APPROVED', { liftId: null })];
     const client = makeTestQueryClient();
     const invalidate = vi.spyOn(client, 'invalidateQueries');
     const hook = await renderDay(client);
@@ -190,6 +191,18 @@ describe('useCalendarState — видалення запису наряду з �
       ['/calendar/slots/s-1', 'DELETE'],
     ]);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['work-orders'] });
+  });
+
+  // Рішення власника 2026-10-19: лише в редагованому статусі наряду (сервер відповів би 400).
+  // guards: BR-WO-026
+  it('запис наряду «В роботі» → без підтвердження й без DELETE', async () => {
+    daySlots = [woSlot('IN_PROGRESS', { liftId: null })];
+    const hook = await renderDay();
+
+    await act(() => hook.result.current.removeSlot('s-1'));
+
+    expect(hook.result.current.dialogProps.open).toBe(false);
+    expect(writes()).toEqual([]);
   });
 
   // guards: BR-WO-026

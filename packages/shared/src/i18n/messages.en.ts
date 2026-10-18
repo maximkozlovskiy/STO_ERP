@@ -685,6 +685,8 @@ export const en: Record<string, string> = {
     'The time and lift of a work order record change only in the Draft, Estimate and Approved statuses',
   'err.calendar.workOrderRelinkLocked':
     'A record can be moved only between work orders in the Draft, Estimate and Approved statuses',
+  'err.calendar.workOrderSlotDeleteLocked':
+    'A work order record can be deleted only in the Draft, Estimate and Approved statuses',
   'err.calendar.clientNotFound': 'Client not found',
   'err.calendar.vehicleNotFound': 'Vehicle not found',
   'err.calendar.liftBusy': 'The lift is already busy at this time',

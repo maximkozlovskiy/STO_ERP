@@ -743,19 +743,33 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                   )}
                   {s.notes && <span className="ml-2 text-xs text-muted-foreground">{s.notes}</span>}
                 </div>
-                {canManageSlots && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void removeSlot(s.id)}
-                    title={t('day.deleteSlotTitle')}
-                    aria-label={t('day.deleteSlotAria', {
-                      time: `${fmtTime(s.startAt)}–${fmtTime(s.endAt)}`,
-                    })}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                  </Button>
-                )}
+                {canManageSlots &&
+                  (() => {
+                    // BR-WO-026: запис наряду не в редагованому статусі не видаляється — кнопка
+                    // недоступна, причина — у підказці обгортки (вимкнена кнопка без подій миші).
+                    const locked = workOrderTimeLock(s);
+                    const lockHint = locked
+                      ? t('slot.woDeleteLocked', { status: woStatusLabel(locked) })
+                      : null;
+                    return (
+                      <span title={lockHint ?? t('day.deleteSlotTitle')} className="inline-flex">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={lockHint !== null}
+                          onClick={() => void removeSlot(s.id)}
+                          aria-label={
+                            lockHint ??
+                            t('day.deleteSlotAria', {
+                              time: `${fmtTime(s.startAt)}–${fmtTime(s.endAt)}`,
+                            })
+                          }
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </span>
+                    );
+                  })()}
               </div>
             ))}
           </div>

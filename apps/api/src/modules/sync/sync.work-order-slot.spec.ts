@@ -243,6 +243,21 @@ describe('SyncService.push calendar_slots — видалення запису н
     expect(h.liveSlots().map(s => s.id)).toEqual(['anchor']);
     expect(t(h.wo().plannedAt)).toBe(t(kyiv(D, '10:00')));
   });
+
+  // Рішення власника 2026-10-19: лише в WO_EDITABLE_STATUSES.
+  // guards: BR-WO-026
+  it('видалення запису наряду «В роботі» → конфлікт із причиною, запис і дати наряду цілі', async () => {
+    const h = harness([], { wo: { status: 'IN_PROGRESS' } });
+    const before = structuredClone([h.workOrder.rows, h.calendarSlot.rows]);
+
+    const res = await h.sync.push(ORG, [remove(5)], 'ADMIN');
+
+    expect(res).toEqual({ accepted: 0, conflicts: 1 });
+    expect(h.lastErrors()).toEqual([
+      translateError('err.calendar.workOrderSlotDeleteLocked', 'uk'),
+    ]);
+    expect([h.workOrder.rows, h.calendarSlot.rows]).toEqual(before);
+  });
 });
 
 describe('SyncService.push calendar_slots — новий запис із нарядом (BR-WO-028, Bug #905)', () => {

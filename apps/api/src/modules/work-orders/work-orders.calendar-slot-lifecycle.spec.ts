@@ -5,7 +5,8 @@
  *   ланцюжок записів наряду і стирає планові дати наряду (нормогодини, виведені з дат, — теж);
  *   журнал змін наряду фіксує стерті дати.
  * - BR-WO-027: час і підйомник запису наряду змінюються лише в статусах, де картка змінює дати
- *   (`WO_EDITABLE_STATUSES`); інакше 400 з причиною. Примітка й механік — як раніше.
+ *   (`WO_EDITABLE_STATUSES`); інакше 400 з причиною. Примітка й механік — як раніше. Видалення
+ *   запису наряду — лише в тих самих статусах (рішення власника 2026-10-19).
  * - BR-WO-028: перев'язка запису на інший наряд ставить запис на дати й підйомник нового наряду
  *   (або дає йому свої); попередній наряд утрачає запис і дати. Обидва наряди — редаговані.
  *   Відв'язка («×») — втрата запису нарядом, як BR-WO-026.
@@ -203,6 +204,56 @@ describe('Видалення запису наряду стирає дати н�
     const h = planned({ extra: [slotRow('foreign', { orgId: OTHER_ORG, liftId: LIFT_2 })] });
 
     await rejected(h, h.service.removeCalendarSlot(ORG, 'foreign', USER), NotFoundException);
+  });
+
+  // Рішення власника 2026-10-19: видалення — лише там, де картка змінює дати (WO_EDITABLE_STATUSES).
+  // guards: BR-WO-026
+  it.each(['IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'INVOICED', 'PAID'])(
+    'наряд %s → 400 з причиною, ланцюжок і дати наряду цілі, журнал не пишеться',
+    async status => {
+      const h = twoDays({ status });
+
+      const err = await rejected(h, h.service.removeCalendarSlot(ORG, 'cont', USER));
+
+      expect(err.message).toBe(msg('err.calendar.workOrderSlotDeleteLocked'));
+      expect(h.liveSlots().map(s => s.id)).toEqual(['anchor', 'cont']);
+      expect(h.audit.record).not.toHaveBeenCalled();
+    },
+  );
+
+  // guards: BR-WO-026
+  it.each(['ESTIMATE', 'APPROVED'])(
+    'контроль: наряд %s → запис видалено, дати стерто',
+    async status => {
+      const h = planned({ wo: { status } });
+
+      await h.service.removeCalendarSlot(ORG, 'anchor', USER);
+
+      expect(h.liveSlots()).toEqual([]);
+      expect(woOf(h)).toMatchObject({ plannedAt: null, dueDate: null });
+    },
+  );
+
+  // guards: BR-WO-026
+  it('наряд став «В роботі» між перевіркою і транзакцією видалення → 400 під блокуванням, нічого не змінено', async () => {
+    const h = planned();
+    // Перехід наряду в мить блокування — після перевірки статусу до транзакції.
+    h.prisma.$queryRaw.mockImplementationOnce(async () => {
+      woOf(h).status = 'IN_PROGRESS';
+      return [];
+    });
+    const before = structuredClone(h.calendarSlot.rows);
+
+    const err = await h.service.removeCalendarSlot(ORG, 'anchor', USER).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(err!.message).toBe(msg('err.calendar.workOrderSlotDeleteLocked'));
+    expect(h.calendarSlot.rows).toEqual(before);
+    expect(t(woOf(h).plannedAt)).toBe(t(kyiv(D, '10:00')));
+    expect(h.prisma.$queryRaw).toHaveBeenCalledWith(expect.anything(), ORG, [WO_ID]);
   });
 });
 

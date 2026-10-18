@@ -2,6 +2,7 @@
 // картці змінювати дати («В роботі», «Призупинено», «Виконано»…), не перетягується й не
 // розтягується — без ручок зміни меж і курсору перетягування, з підказкою причини; відкривається
 // кліком і з клавіатури. Запис наряду в редагованому статусі й запис без наряду — як раніше.
+// BR-WO-026 (рішення власника 2026-10-19): такий запис і не видаляється з переліку «Без підйомника».
 
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithQueryClient } from '@/__tests__/query-utils';
@@ -123,6 +124,48 @@ describe('Вид «День» — запис наряду не в редагов
       expect(el.querySelectorAll('[data-part^="resize-"]')).toHaveLength(2);
       expect(el.querySelector('[data-part="content"]')).toHaveClass('cursor-grab');
       expect(el.title).not.toContain('не змінюються');
+    }
+  });
+});
+
+// Рішення власника 2026-10-19: запис наряду видаляється лише в редагованому статусі.
+describe('Вид «День» — видалення запису наряду з переліку «Без підйомника» (BR-WO-026)', () => {
+  // guards: BR-WO-026
+  it('наряд «В роботі»: кнопка видалення недоступна, причина в підказці; DELETE не йде', async () => {
+    daySlots = [slot('lk', '13:00', { liftId: null, workOrderStatus: 'IN_PROGRESS' })];
+    await renderDay();
+
+    const hint =
+      'Запис наряду в статусі «В роботі» не видаляється — лише в статусах «Чернетка», «Кошторис», «Затверджено»';
+    const btn = await screen.findByRole('button', { name: hint });
+    expect(btn).toBeDisabled();
+    expect(btn.parentElement).toHaveAttribute('title', hint);
+    fireEvent.click(btn);
+    expect(screen.queryByText('Видалити слот?')).toBeNull();
+    expect(apiFetch).not.toHaveBeenCalledWith(
+      expect.stringMatching(/^\/calendar\/slots\/lk$/),
+      expect.anything(),
+    );
+  });
+
+  // guards: BR-WO-026
+  it('контроль: наряд «Затверджено» і запис без наряду — кнопка «Видалити слот» доступна', async () => {
+    daySlots = [
+      slot('ok', '10:00', { liftId: null }),
+      slot('pl', '15:00', {
+        liftId: null,
+        workOrderId: null,
+        workOrderNumber: undefined,
+        workOrderStatus: null,
+      }),
+    ];
+    await renderDay();
+
+    const buttons = await screen.findAllByRole('button', { name: /^Видалити слот/ });
+    expect(buttons).toHaveLength(2);
+    for (const b of buttons) {
+      expect(b).not.toBeDisabled();
+      expect(b.parentElement).toHaveAttribute('title', 'Видалити слот');
     }
   });
 });
