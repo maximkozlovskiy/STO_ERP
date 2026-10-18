@@ -268,6 +268,10 @@
     "cancelSentTitle": "The order is already with the supplier",
     "cancelSentMessage": "The order was already sent to the supplier via API — cancel it in the supplier cabinet. Continue cancelling here?",
     "deleteSentMessage": "The order was already sent to the supplier via API — cancel it in the supplier cabinet. Continue deleting here?",
+    "deleteSentManyMessage_one": "{{count}} order was already sent to the supplier via API — cancel it in the supplier cabinet. Continue deleting here?",
+    "deleteSentManyMessage_few": "{{count}} orders were already sent to suppliers via API — cancel them in the supplier cabinets. Continue deleting here?",
+    "deleteSentManyMessage_many": "{{count}} orders were already sent to suppliers via API — cancel them in the supplier cabinets. Continue deleting here?",
+    "deleteSentManyMessage_other": "{{count}} orders were already sent to suppliers via API — cancel them in the supplier cabinets. Continue deleting here?",
     "cancelSentConfirm": "Yes, cancelled in the cabinet"
   }
 }

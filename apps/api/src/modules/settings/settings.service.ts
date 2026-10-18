@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type Redis from 'ioredis';
 import {
+  Prisma,
   VatMode,
   BatchCostMethod,
   DocumentType,
@@ -35,6 +37,31 @@ const TTL_SECONDS = 300; // 5 minutes
 // cache on new session); shorter TTL reflects that admins can change work hours quickly.
 // Cache invalidation in updateBranchSettings is the primary mechanism; TTL is defense-in-depth.
 const WORK_HOURS_TTL_SECONDS = 60;
+
+/**
+ * Відбиток схеми моделі для ключа кешу: хеш переліку її скалярних полів із Prisma.
+ *
+ * ЧОМУ: кеш зберігає вже змаплений DTO. Після оновлення з новою колонкою (2026-10-18: поля
+ * `supplier*`) старий об'єкт із Redis жив до TTL без нових полів → `supplierOfferTtlMinutes`
+ * undefined → `POST /supplier-offers/search` 400. Ручна «версія кешу» забувається при наступній
+ * міграції; відбиток від реального переліку полів змінюється сам — старі ключі просто не читаються
+ * і зникають за TTL.
+ */
+export function schemaFingerprint(fields: Record<string, string>): string {
+  return createHash('sha1').update(Object.keys(fields).sort().join(',')).digest('hex').slice(0, 8);
+}
+
+const ORG_SETTINGS_CACHE_VERSION = schemaFingerprint(Prisma.OrganisationSettingsScalarFieldEnum);
+const BRANCH_SETTINGS_CACHE_VERSION = schemaFingerprint(Prisma.BranchSettingsScalarFieldEnum);
+
+/** Ключ кешу налаштувань організації — з відбитком схеми (див. `schemaFingerprint`). */
+export function orgSettingsCacheKey(orgId: string): string {
+  return `settings:org:${ORG_SETTINGS_CACHE_VERSION}:${orgId}`;
+}
+
+function branchSettingsCacheKey(orgId: string, branchId: string): string {
+  return `settings:branch:${BRANCH_SETTINGS_CACHE_VERSION}:${orgId}:${branchId}`;
+}
 
 /** Ключ кешу годин: основна філія організації або конкретна філія. */
 function workHoursCacheKey(orgId: string, branchId?: string): string {
@@ -72,7 +99,7 @@ export class SettingsService {
   }
 
   async getOrganisationSettings(orgId: string): Promise<OrganisationSettingsResponseDto> {
-    const cacheKey = `settings:org:${orgId}`;
+    const cacheKey = orgSettingsCacheKey(orgId);
 
     try {
       const cached = await this.redis.get(cacheKey);
@@ -182,7 +209,7 @@ export class SettingsService {
   }
 
   async getBranchSettings(orgId: string, branchId: string): Promise<BranchSettingsResponseDto> {
-    const cacheKey = `settings:branch:${orgId}:${branchId}`;
+    const cacheKey = branchSettingsCacheKey(orgId, branchId);
 
     try {
       const cached = await this.redis.get(cacheKey);
@@ -328,7 +355,7 @@ export class SettingsService {
 
   async invalidateOrgCache(orgId: string): Promise<void> {
     try {
-      await this.redis.del(`settings:org:${orgId}`);
+      await this.redis.del(orgSettingsCacheKey(orgId));
     } catch {
       // ignore
     }
@@ -336,7 +363,7 @@ export class SettingsService {
 
   async invalidateBranchCache(orgId: string, branchId: string): Promise<void> {
     try {
-      await this.redis.del(`settings:branch:${orgId}:${branchId}`);
+      await this.redis.del(branchSettingsCacheKey(orgId, branchId));
     } catch {
       // ignore
     }

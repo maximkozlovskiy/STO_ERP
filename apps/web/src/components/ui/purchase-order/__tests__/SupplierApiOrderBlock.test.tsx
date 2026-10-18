@@ -135,6 +135,52 @@ describe('useSentOrderForce — скасування відправленого 
     // Повтору з force не було: обидві спроби — без нього.
     expect(attempt.mock.calls).toEqual([[false], [false]]);
   });
+
+  // guards: BR-SCON-014
+  it('масове видалення: відправлені — одне спільне підтвердження і повтор із force, решта відмов лишається', async () => {
+    // po-1 видалено одразу; po-2 — у постачальника; po-3 — відмова з іншої причини (не в API).
+    apiFetch.mockImplementation((url: string) =>
+      Promise.resolve(
+        url === '/purchase-orders/po-2/supplier-api'
+          ? state({ purchaseOrderId: 'po-2' })
+          : state({ purchaseOrderId: 'po-3', orders: [] }),
+      ),
+    );
+    const attempt = vi.fn((id: string, force: boolean) =>
+      id === 'po-1' || (id === 'po-2' && force)
+        ? Promise.resolve('ok')
+        : Promise.reject(new Error(`deny ${id}`)),
+    );
+    function BulkHarness() {
+      const { runMany, dialogProps } = useSentOrderForce();
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              void runMany(['po-1', 'po-2', 'po-3'], attempt).then(
+                r => (document.body.dataset.result = `${r.succeeded}/${r.failed}`),
+              )
+            }
+          >
+            Видалити вибрані
+          </button>
+          <ConfirmDialog {...dialogProps} />
+        </>
+      );
+    }
+    render(<BulkHarness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Видалити вибрані' }));
+    expect(await screen.findByText(/скасуйте його в кабінеті постачальника/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Так, скасовано в кабінеті' }));
+    await waitFor(() => expect(document.body.dataset.result).toBe('2/1'));
+    expect(attempt.mock.calls).toEqual([
+      ['po-1', false],
+      ['po-2', false],
+      ['po-3', false],
+      ['po-2', true],
+    ]);
+  });
 });
 
 describe('SupplierApiOrderBlock', () => {

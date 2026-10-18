@@ -102,7 +102,50 @@ export function useSentOrderForce(nestedOpenRef?: MutableRefObject<boolean>) {
     [confirm, nestedOpenRef, t],
   );
 
-  return { run, dialogProps };
+  /**
+   * Масове видалення (сторінка «Купівля»): ті самі правила, що й для одиночного, — замовлення,
+   * яким сервер відмовив, бо вони вже в постачальника, після ОДНОГО спільного підтвердження
+   * повторюються з `force`; решта відмов лишається відмовами. Повертає підсумок для тосту.
+   */
+  const runMany = useCallback(
+    async (
+      purchaseOrderIds: string[],
+      attempt: (id: string, force: boolean) => Promise<unknown>,
+    ): Promise<{ succeeded: number; failed: number }> => {
+      const first = await Promise.allSettled(purchaseOrderIds.map(id => attempt(id, false)));
+      const rejectedIds = purchaseOrderIds.filter((_, i) => first[i]?.status === 'rejected');
+      let succeeded = first.length - rejectedIds.length;
+      if (rejectedIds.length === 0) return { succeeded, failed: 0 };
+
+      const states = await Promise.allSettled(rejectedIds.map(id => supplierApiOrderApi.get(id)));
+      const sentIds = rejectedIds.filter((_, i) => {
+        const st = states[i];
+        return st?.status === 'fulfilled' && isSentToSupplier(st.value);
+      });
+      if (sentIds.length === 0) return { succeeded, failed: rejectedIds.length };
+
+      if (nestedOpenRef) nestedOpenRef.current = true;
+      const ok = await confirm({
+        title: t('order.cancelSentTitle'),
+        message: t('order.deleteSentManyMessage', { count: sentIds.length }),
+        confirmLabel: t('order.cancelSentConfirm'),
+        cancelLabel: t('common:cancel'),
+        variant: 'destructive',
+      });
+      setTimeout(() => {
+        if (nestedOpenRef) nestedOpenRef.current = false;
+      }, 0);
+      if (!ok) return { succeeded, failed: rejectedIds.length };
+
+      const forced = await Promise.allSettled(sentIds.map(id => attempt(id, true)));
+      const forcedOk = forced.filter(r => r.status === 'fulfilled').length;
+      succeeded += forcedOk;
+      return { succeeded, failed: rejectedIds.length - forcedOk };
+    },
+    [confirm, nestedOpenRef, t],
+  );
+
+  return { run, runMany, dialogProps };
 }
 
 interface Props {

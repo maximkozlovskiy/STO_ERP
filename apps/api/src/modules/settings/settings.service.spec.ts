@@ -1,7 +1,8 @@
 import { Test } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SettingsService } from './settings.service';
+import { Prisma } from '@prisma/client';
+import { SettingsService, orgSettingsCacheKey, schemaFingerprint } from './settings.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
@@ -314,5 +315,112 @@ describe('SettingsService — C1b audit TaxRate', () => {
     const res = await service.createTaxRate(ORG, { name: 'ПДВ 20%', rate: 20 }, USER);
     // мутація успішна попри падіння аудиту
     expect(res).toMatchObject({ id: 'tax-new', rate: 20 });
+  });
+});
+
+/**
+ * Кеш налаштувань організації переживає оновлення схеми (2026-10-18, review блоку «Постачальники
+ * API»): у Redis лежав DTO без полів `supplier*` → `supplierOfferTtlMinutes` undefined →
+ * `POST /supplier-offers/search` 400 перші ≤5 хв після оновлення. Ключ кешу несе відбиток переліку
+ * скалярних полів моделі — після міграції старий запис не читається.
+ */
+describe('SettingsService — кеш налаштувань організації з відбитком схеми', () => {
+  const ORG = 'org-1';
+  let service: SettingsService;
+  let store: Map<string, string>;
+  let findUnique: ReturnType<typeof vi.fn>;
+
+  const row = {
+    orgId: ORG,
+    currency: 'UAH',
+    vatMode: 'NONE',
+    defaultVatRateId: null,
+    invoiceDueDays: 14,
+    autoArchiveDays: 90,
+    defaultWarrantyDays: 30,
+    requireClientApproval: false,
+    allowPartialPayment: true,
+    brandTheme: 'blue',
+    costMethod: 'FIFO',
+    followUpActive: false,
+    followUpDays: 90,
+    uiFeatures: {},
+    recalcPlannedHoursFromLines: true,
+    recalcActualHoursFromLines: true,
+    syncCalendarSlotWithPlannedHours: true,
+    supplierOrderSendMode: 'MANUAL',
+    supplierAnalogPolicy: 'CATALOG_ONLY',
+    supplierDefaultStrategy: 'OPTIMAL',
+    supplierOptimalPriceWeight: 0.7,
+    supplierAllowSplit: true,
+    supplierAllowAnalogsInAuto: false,
+    supplierOfferTtlMinutes: 60,
+    supplierOfferRetentionDays: 7,
+    supplierOrderPollIntervalMinutes: 30,
+    supplierCatalogSyncIntervalMinutes: 360,
+    supplierUnknownDeliveryDays: 7,
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+  };
+
+  beforeEach(async () => {
+    store = new Map();
+    findUnique = vi.fn().mockResolvedValue(row);
+    const module = await Test.createTestingModule({
+      providers: [
+        SettingsService,
+        { provide: PrismaService, useValue: { organisationSettings: { findUnique } } },
+        { provide: AuditService, useValue: { record: vi.fn() } },
+        {
+          provide: REDIS_CLIENT,
+          useValue: {
+            get: vi.fn((k: string) => Promise.resolve(store.get(k) ?? null)),
+            set: vi.fn((k: string, v: string) => {
+              store.set(k, v);
+              return Promise.resolve('OK');
+            }),
+            del: vi.fn((k: string) => Promise.resolve(store.delete(k) ? 1 : 0)),
+          },
+        },
+        { provide: NbuFetchScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+        { provide: BankStatementPullScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+      ],
+    }).compile();
+    service = module.get(SettingsService);
+  });
+
+  it('запис старого формату (без полів supplier*) не читається — повні поля з БД', async () => {
+    const stale = { ...row, updatedAt: row.updatedAt.toISOString() } as Record<string, unknown>;
+    for (const k of Object.keys(stale)) if (k.startsWith('supplier')) delete stale[k];
+    // старий ключ без відбитка — саме так кеш жив до оновлення
+    store.set(`settings:org:${ORG}`, JSON.stringify(stale));
+
+    const s = await service.getOrganisationSettings(ORG);
+
+    expect(findUnique).toHaveBeenCalledTimes(1);
+    expect(s.supplierOfferTtlMinutes).toBe(60);
+    expect(s.supplierUnknownDeliveryDays).toBe(7);
+  });
+
+  it('ключ кешу несе відбиток поточної схеми; повторне читання — з кешу', async () => {
+    expect(orgSettingsCacheKey(ORG)).toBe(
+      `settings:org:${schemaFingerprint(Prisma.OrganisationSettingsScalarFieldEnum)}:${ORG}`,
+    );
+    await service.getOrganisationSettings(ORG);
+    const again = await service.getOrganisationSettings(ORG);
+    expect(findUnique).toHaveBeenCalledTimes(1);
+    expect(again.supplierOfferTtlMinutes).toBe(60);
+    expect(store.has(orgSettingsCacheKey(ORG))).toBe(true);
+  });
+
+  it('нова колонка в моделі змінює відбиток (старі записи стають невидимими)', () => {
+    const before = schemaFingerprint({ a: 'a', b: 'b' });
+    expect(schemaFingerprint({ b: 'b', a: 'a' })).toBe(before);
+    expect(schemaFingerprint({ a: 'a', b: 'b', c: 'c' })).not.toBe(before);
+  });
+
+  it('invalidateOrgCache видаляє саме версійний ключ', async () => {
+    await service.getOrganisationSettings(ORG);
+    await service.invalidateOrgCache(ORG);
+    expect(store.has(orgSettingsCacheKey(ORG))).toBe(false);
   });
 });

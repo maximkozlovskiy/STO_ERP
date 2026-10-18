@@ -261,7 +261,11 @@ function PurchaseOrdersPageClient() {
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
   // Видалення замовлення, вже переданого постачальнику через API, — з підтвердженням (BR-SCON-014).
-  const { run: runSentOrder, dialogProps: sentOrderDialogProps } = useSentOrderForce();
+  const {
+    run: runSentOrder,
+    runMany: runSentOrders,
+    dialogProps: sentOrderDialogProps,
+  } = useSentOrderForce();
 
   // Прийом PO (receive) має побічні ефекти на кількох агрегатах: RECEIPT-рух →
   // inventory (залишки); settlement CHARGE + авто paymentDate → графік оплат
@@ -766,11 +770,11 @@ function PurchaseOrdersPageClient() {
         }))
       )
         return;
-      const results = await Promise.allSettled(
-        ids.map(id => apiFetch(`/purchase-orders/${id}`, { method: 'DELETE' })),
+      // Замовлення, вже передані постачальнику через API, — спільне підтвердження «скасуйте в
+      // кабінеті постачальника» і повтор із force, як для одиночного (BR-SCON-014).
+      const { succeeded, failed } = await runSentOrders(ids, (id, force) =>
+        apiFetch(`/purchase-orders/${id}${force ? '?force=true' : ''}`, { method: 'DELETE' }),
       );
-      const succeeded = results.filter(r => r.status === 'fulfilled').length;
-      const failed = results.length - succeeded;
       bulkSelect.clear();
       // Видалення PO може стосуватися вже отриманого замовлення (реверс RECEIPT +
       // CHARGE) → інвалідуємо повний набір side-effects, а не лише список PO.
@@ -779,13 +783,11 @@ function PurchaseOrdersPageClient() {
         if (succeeded > 0 && failed === 0)
           toast.success(t('toast.bulkDeletedAll', { count: succeeded }));
         else if (succeeded > 0)
-          toast.warning(
-            t('toast.bulkDeletedPartial', { succeeded, total: results.length, failed }),
-          );
+          toast.warning(t('toast.bulkDeletedPartial', { succeeded, total: ids.length, failed }));
         else toast.error(t('toast.bulkDeleteNone'));
       }
     },
-    [confirm, bulkSelect, features.toastEnabled, queryClient, t],
+    [confirm, runSentOrders, bulkSelect, features.toastEnabled, queryClient, t],
   );
 
   const bulkActions = useMemo<BulkAction[]>(
@@ -795,8 +797,8 @@ function PurchaseOrdersPageClient() {
         label: t('actions.bulkDelete'),
         variant: 'destructive',
         // BulkAction.onClick типізований void-returning. `bulkDeleteSelected` не має
-        // шляху, що реджектиться: `confirm()` ніколи не реджектиться, `Promise.allSettled`
-        // поглинає відмову кожного DELETE, а звіт (усі / частково / жодного) іде через toast.
+        // шляху, що реджектиться: `confirm()` ніколи не реджектиться, `runSentOrders` збирає
+        // відмови через `Promise.allSettled`, а звіт (усі / частково / жодного) іде через toast.
         onClick: ids => void bulkDeleteSelected(ids),
       },
     ],
