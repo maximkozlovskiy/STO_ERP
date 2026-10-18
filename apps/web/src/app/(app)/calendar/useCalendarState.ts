@@ -72,15 +72,22 @@ export const EMPTY_FORM: SlotForm = {
 /**
  * Запис, відкритий у формі, на момент відкриття (чи останньої звірки з сервером): механік і
  * підйомник — для недоступної опції збереженого механіка (BR-CAL-012), час — щоб помітити, що
- * наряд переніс запис поверх форми (Bug #884).
+ * наряд переніс запис поверх форми (Bug #884); наряд — щоб відкріплення чи видалення запису
+ * наряду теж скидало кеш нарядів (Bug #904).
  */
-type EditingSaved = { id: string; startAt: string; endAt: string } & SavedMechanic;
+type EditingSaved = {
+  id: string;
+  startAt: string;
+  endAt: string;
+  workOrderId: string | null;
+} & SavedMechanic;
 
 function savedOf(slot: CalendarSlot): EditingSaved {
   return {
     id: slot.id,
     startAt: slot.startAt,
     endAt: slot.endAt,
+    workOrderId: slot.workOrderId ?? null,
     liftId: slot.liftId ?? '',
     employeeId: slot.employeeId ?? '',
     employeeName: slot.employeeName ?? null,
@@ -1191,7 +1198,11 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   const handleModalSaved = useCallback(
     (opts?: { workOrderChanged?: boolean }) => {
       // BR-WO-024: збережено запис наряду — нові планові дати й підйомник у картці й списках.
-      if (opts?.workOrderChanged)
+      // Запис, що на відкритті належав наряду, відкріплено чи видалено — наряд утратив запис
+      // календаря (лічильник у списку нарядів), хоча поля наряду у формі вже немає (Bug #904).
+      const hadWorkOrder =
+        !!editingSlotId && editingSaved?.id === editingSlotId && editingSaved.workOrderId !== null;
+      if (opts?.workOrderChanged || hadWorkOrder)
         void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
       setShowAdd(false);
       setEditingSlotId(null);
@@ -1202,7 +1213,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       // Запис збережено чи видалено з виду «Місяць» — перечитати місяць, а не день (BR-CAL-009).
       refreshView();
     },
-    [refreshView, queryClient],
+    [refreshView, queryClient, editingSlotId, editingSaved],
   );
 
   // Наряд змінив свій запис календаря на сервері (BR-WO-020: збереження планових дат чи

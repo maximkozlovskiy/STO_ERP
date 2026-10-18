@@ -178,4 +178,20 @@ describe('useCalendarState — форма запису наряду збереж
     act(() => hook.result.current.handleModalSaved({ workOrderChanged: true }));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['work-orders'] });
   });
+
+  // Bug #904: у формі наряд відкріплено (чи запис видалено) — `workOrderChanged` false, бо поля
+  // наряду вже немає, а наряд утратив запис календаря.
+  it('запис, відкритий із нарядом, збережено без наряду чи видалено → кеш нарядів скинуто', async () => {
+    const client = makeTestQueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const hook = await renderDay(client);
+
+    act(() => hook.result.current.handleEditSlot(PLAIN));
+    act(() => hook.result.current.handleModalSaved({ workOrderChanged: false }));
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['work-orders'] });
+
+    act(() => hook.result.current.handleEditSlot(WO_SLOT));
+    act(() => hook.result.current.handleModalSaved({ workOrderChanged: false }));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['work-orders'] });
+  });
 });
