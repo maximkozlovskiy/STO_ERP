@@ -116,6 +116,16 @@ describe('SupplierConnectionModal', () => {
     });
   });
 
+  // guards: BR-SCON-002
+  it('Bug #891: стерта назва підключення надсилається як null — очищається', async () => {
+    const { onSave } = renderModal(CONN);
+    await screen.findByRole('option', { name: 'AVD ТОВ' });
+    fireEvent.change(screen.getByLabelText(/Назва/), { target: { value: '  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]![0]).toMatchObject({ name: null });
+  });
+
   // guards: BR-SCON-003
   it('нове: обов’язковий ключ і повна мапа складу; «Зберегти і перевірити» — verify', async () => {
     const { onSave } = renderModal(null);

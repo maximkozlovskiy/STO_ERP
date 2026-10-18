@@ -68,10 +68,14 @@ export const supplierConnectionCreateSchema = z.object({
 });
 export type SupplierConnectionCreateValues = z.infer<typeof supplierConnectionCreateSchema>;
 
-/** null у apiUrl / defaultDeliveryDays — очистити; undefined — не чіпати. */
+/** null у name / apiUrl / defaultDeliveryDays — очистити; undefined — не чіпати. */
 export const supplierConnectionUpdateSchema = z.object({
   counterpartyId: z.string().uuid('v.supplierConnection.counterparty.required').optional(),
-  name: nameField(),
+  // Порожня назва — очистити (null), як apiUrl; undefined — не чіпати (Bug #891).
+  name: z.preprocess(
+    blankToNull,
+    z.union([z.string().max(120, 'v.supplierConnection.name.max'), z.null()]).optional(),
+  ),
   enabled: z.boolean().optional(),
   apiUrl: z.preprocess(blankToNull, z.union([apiUrlField(), z.null()]).optional()),
   testMode: z.boolean().optional(),

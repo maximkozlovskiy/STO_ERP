@@ -253,6 +253,8 @@ export function SupplierConnectionModal({
     const body: SupplierConnectionCreateValues | SupplierConnectionUpdateValues = connection
       ? {
           ...common,
+          // Стерта назва очищається (null), а не лишається попередньою (Bug #891).
+          name: form.name.trim() || null,
           counterpartyId: form.counterpartyId,
           apiUrl: form.apiUrl.trim() || null,
           defaultDeliveryDays: form.defaultDeliveryDays.trim()
