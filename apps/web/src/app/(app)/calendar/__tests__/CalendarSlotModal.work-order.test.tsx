@@ -4,7 +4,7 @@
 // ставить обраного механіка на запис наряду й закривається. Межі дня для переповнення — робочі
 // години філії (windowStart/windowEnd), а не жорсткі 08–20.
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -315,5 +315,26 @@ describe('CalendarSlotModal — зміна запису наряду (BR-WO-024)
     fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ workOrderChanged: false }));
+  });
+
+  // guards: BR-WO-024
+  it('наряд відкріплено у формі → PATCH з `workOrderId: null` (сервер не переносить час у відкріплений наряд)', async () => {
+    const onSaved = vi.fn();
+    render(
+      <Harness
+        initial={{ ...SAVED, workOrderId: WO, workOrderDisplay: 'НЗ-1' }}
+        editingSlotId="anchor"
+        onSaved={onSaved}
+      />,
+    );
+    // «×» поля наряду (у клієнта — своє «Очистити»).
+    const woField = screen.getByText('НЗ-1').parentElement!;
+    fireEvent.click(within(woField).getByRole('button', { name: 'Очистити' }));
+    await waitFor(() => expect(screen.getByTestId('wo-id').textContent).toBe(''));
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ workOrderChanged: false }));
+    const patch = calls().find(([u, i]) => u === '/calendar/slots/anchor' && i?.method === 'PATCH');
+    expect(JSON.parse(patch![1]!.body!)).toMatchObject({ workOrderId: null });
   });
 });

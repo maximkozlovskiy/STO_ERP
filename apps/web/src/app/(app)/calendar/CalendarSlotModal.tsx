@@ -711,7 +711,9 @@ export function CalendarSlotModal({
       liftId: form.liftId || undefined,
       // «— без механіка —» у зміні запису знімає механіка (`null`); у новому — поля просто немає.
       employeeId: form.employeeId || (editingSlotId ? null : undefined),
-      workOrderId: form.workOrderId || undefined,
+      // Наряд відкріплено у зміні запису (очищено поле, змінено клієнта) — `null`, як механік:
+      // без нього сервер лишав наряд, а новий час переносив у ВІДКРІПЛЕНИЙ наряд (BR-WO-024).
+      workOrderId: form.workOrderId || (editingSlotId ? null : undefined),
       counterpartyId: form.counterpartyId || undefined,
       vehicleId: form.vehicleId || undefined,
       startAt: startIso,

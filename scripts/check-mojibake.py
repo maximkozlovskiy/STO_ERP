@@ -21,7 +21,9 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MARK = re.compile(r"в(?:[Ђ†”][^\x00-\x7FА-Яа-яЄєІіЇїҐґ]?|‚ґ)")
+# «В§» перед цифрою — двобайтовий «§» (C2 A7) у cp1251: так зіпсувалось «§2.3» у work-orders.dto
+# (2026-10-18, пропущене першим проходом). Звичайне «В §5» має пробіл і не ловиться.
+MARK = re.compile(r"в(?:[Ђ†”][^\x00-\x7FА-Яа-яЄєІіЇїҐґ]?|‚ґ)|В§\d")
 SKIP_EXT = (".png", ".jpg", ".jpeg", ".ico", ".gif", ".webp", ".woff", ".woff2", ".pdf", ".zip",
             ".gz", ".xlsx", ".traineddata", ".exe", ".dll")
 # Файли, що навмисно МІСТЯТЬ приклади мойібаке (опис самої проблеми).
@@ -44,6 +46,8 @@ def self_test():
         ("`uah` в†’ `UAH`", 1),
         ("// в”Ђв”Ђв”Ђ Vehicle", 1),
         ("example: 'в‚ґ'", 1),
+        ("// В§2.3 Input validation", 1),
+        ("В §5 правил, §2.3", 0),
         ("Рішення власника, СІМ, обов’язково, «в» кінці", 0),
         ("Година (0–23) → ₴ — ───", 0),
     ]

@@ -325,6 +325,24 @@ describe('PATCH /calendar/slots/:id для запису наряду — фор�
   });
 
   // guards: BR-WO-024
+  it('наряд відкріплено у формі (`workOrderId: null`) разом із новим часом → запис сам, наряд не чіпається', async () => {
+    const h = planned();
+    const before = structuredClone(wo(h));
+
+    await h.service.updateCalendarSlot(ORG, 'anchor', {
+      workOrderId: null,
+      liftId: LIFT_1,
+      startAt: iso(D, '13:00'),
+      endAt: iso(D, '14:00'),
+    });
+
+    expect(wo(h)).toEqual(before);
+    const slot = h.calendarSlot.rows.find(r => r.id === 'anchor')!;
+    expect(slot.workOrderId).toBeNull();
+    expect(t(slot.startAt)).toBe(t(kyiv(D, '13:00')));
+  });
+
+  // guards: BR-WO-024
   it('запис без наряду → змінюється сам, як раніше', async () => {
     const h = planned({}, {}, [
       slotRow('plain', {
