@@ -84,7 +84,9 @@ export default defineConfig({
     ? undefined
     : [
         {
-          command: `node ${path.resolve(__dirname, '../../tools/supplier-fakes/bin.js')} --port 4100`,
+          // Шлях — у лапках: у шляху репозиторію буває пробіл («E:\Git\STO ERP»), і без лапок node
+          // отримував «E:\Git\STO» замість файлу — фейки не стартували, весь прогін падав на старті.
+          command: `node "${path.resolve(__dirname, '../../tools/supplier-fakes/bin.js')}" --port 4100`,
           url: 'http://127.0.0.1:4100/__health',
           reuseExistingServer: true,
           timeout: 15_000,
