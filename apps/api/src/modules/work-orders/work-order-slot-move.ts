@@ -1,5 +1,10 @@
 import { addDaysKyiv, kyivYmd } from '../../common/utils/kyiv-date';
-import { kyivHourOnDay, type TimeSegment, type WorkHours } from '../../common/utils/work-hours';
+import {
+  kyivHourOnDay,
+  splitByWorkHours,
+  type TimeSegment,
+  type WorkHours,
+} from '../../common/utils/work-hours';
 
 /**
  * BR-WO-024: зміна запису календаря, що належить наряду, — через дати наряду. Чисті функції
@@ -70,4 +75,17 @@ export function overflowEnd(startAt: Date, endAt: Date, hours: WorkHours): Date 
   if (!(startAt < close && endAt > close)) return endAt;
   const nextOpen = kyivHourOnDay(kyivYmd(addDaysKyiv(startAt, 1)), hours.startHour);
   return new Date(nextOpen.getTime() + (endAt.getTime() - close.getTime()));
+}
+
+/**
+ * Робочі години між датами (у межах годин філії), до сотих — те, що картка наряду показує в
+ * «Нормогодин» і перераховує при зміні дат (`calcPlannedHours` у web). Зміна меж запису змінює
+ * тривалість наряду, тож і його планові нормогодини (Bug #903).
+ */
+export function workHoursBetween(start: Date, end: Date, hours: WorkHours): number {
+  const ms = splitByWorkHours(start, end, hours).reduce(
+    (sum, s) => sum + (s.endAt.getTime() - s.startAt.getTime()),
+    0,
+  );
+  return Math.round((ms / 3_600_000) * 100) / 100;
 }

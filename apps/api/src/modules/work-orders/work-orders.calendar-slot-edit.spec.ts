@@ -342,6 +342,103 @@ describe('PATCH /calendar/slots/:id для запису наряду — фор�
     expect(t(slot.startAt)).toBe(t(kyiv(D, '13:00')));
   });
 
+  // guards: BR-WO-024 — Bug #902: якорю з продовженням `CalendarService.updateSlot` відмовляв
+  // («редагуйте кожен окремо»), хоча час того ж запису форма змінює.
+  it('багатоденний: лише механік і примітка на якорі → для всього ланцюжка, дати наряду ті самі', async () => {
+    const h = twoDays();
+    const before = structuredClone(wo(h));
+
+    await h.service.updateCalendarSlot(ORG, 'anchor', {
+      liftId: LIFT_1,
+      employeeId: MECH_BOTH,
+      startAt: iso(D, '16:00'),
+      endAt: iso(D, '18:00'),
+      notes: 'Два дні',
+      workOrderId: WO_ID,
+    });
+
+    expect(wo(h)).toMatchObject({
+      plannedAt: before.plannedAt,
+      dueDate: before.dueDate,
+      liftId: LIFT_1,
+    });
+    expect(spans(h)).toEqual([
+      [t(kyiv(D, '16:00')), t(kyiv(D, '18:00'))],
+      [t(kyiv(D2, '08:00')), t(kyiv(D2, '10:00'))],
+    ]);
+    expect(h.liveSlots().map(s => [s.employeeId, s.notes])).toEqual([
+      [MECH_BOTH, 'Два дні'],
+      [MECH_BOTH, 'Два дні'],
+    ]);
+  });
+
+  // guards: BR-WO-024 — Bug #902: примітка лише на продовженні губилась при перебудові ланцюжка.
+  it('багатоденний: примітка на продовженні → на всьому ланцюжку (якір її теж має)', async () => {
+    const h = twoDays();
+
+    await h.service.updateCalendarSlot(ORG, 'cont', { notes: 'З продовження' });
+
+    expect(h.liveSlots().map(s => s.notes)).toEqual(['З продовження', 'З продовження']);
+    expect(h.liveSlots().find(s => s.parentSlotId === null)!.id).toBe('anchor');
+  });
+
+  // guards: BR-WO-024 — Bug #902: перевірка механіка (BR-CAL-012) і на шляху ланцюжка.
+  it('багатоденний: механік не закріплений за підйомником ланцюжка → 400, без змін', async () => {
+    const h = planningHarness({
+      workOrders: [
+        woRow({ liftId: LIFT_2, plannedAt: kyiv(D, '16:00'), dueDate: kyiv(D2, '10:00') }),
+      ],
+      slots: [
+        slotRow('anchor', { liftId: LIFT_2, startAt: kyiv(D, '16:00'), endAt: kyiv(D, '18:00') }),
+        slotRow('cont', {
+          liftId: LIFT_2,
+          parentSlotId: 'anchor',
+          startAt: kyiv(D2, '08:00'),
+          endAt: kyiv(D2, '10:00'),
+        }),
+      ],
+    });
+
+    const err = await rejected(
+      h,
+      h.service.updateCalendarSlot(ORG, 'anchor', { employeeId: MECH_1 }),
+    );
+    expect(err.message).toBe(translateError('err.calendar.employeeNotOnLift', 'uk'));
+  });
+
+  // guards: BR-WO-024 — Bug #903: нова тривалість — нові планові нормогодини, як у картці.
+  it('кінець запису 12:00 → 14:00 → «Нормогодин» наряду 2 → 4; перенесення без зміни тривалості — без змін', async () => {
+    const h = planned({ plannedHours: 2 });
+
+    await h.service.updateCalendarSlot(ORG, 'anchor', { endAt: iso(D, '14:00') });
+    expect(wo(h).plannedHours).toBe(4);
+
+    await h.service.updateCalendarSlot(ORG, 'anchor', {
+      startAt: iso(D, '15:00'),
+      endAt: iso(D, '17:00'),
+    });
+    expect(wo(h).plannedHours).toBe(2);
+
+    await h.service.updateCalendarSlot(ORG, 'anchor', {
+      startAt: iso(D, '16:00'),
+      endAt: iso(D, '18:00'),
+    });
+    expect(wo(h).plannedHours).toBe(2);
+  });
+
+  // guards: BR-WO-024 — Bug #903: нормогодини — робочі години між датами, а не доба.
+  it('кінець за закриттям дня (17:00 + 2 год) → «Нормогодин» 2, а не 16', async () => {
+    const h = planned({ plannedHours: 2 });
+
+    await h.service.updateCalendarSlot(ORG, 'anchor', {
+      startAt: iso(D, '17:00'),
+      endAt: iso(D, '19:00'),
+    });
+
+    expect(t(wo(h).dueDate)).toBe(t(kyiv(D2, '09:00')));
+    expect(wo(h).plannedHours).toBe(2);
+  });
+
   // guards: BR-WO-024
   it('запис без наряду → змінюється сам, як раніше', async () => {
     const h = planned({}, {}, [

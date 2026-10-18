@@ -83,6 +83,7 @@ import {
   chainBounds,
   movesWorkOrderSlot,
   overflowEnd,
+  workHoursBetween,
   type SlotChange,
 } from './work-order-slot-move';
 import {
@@ -641,8 +642,15 @@ export class WorkOrdersService {
       },
     });
     const workOrderId = slot?.workOrderId;
-    if (!slot || !workOrderId || !movesWorkOrderSlot(slot, dto))
-      return this.calendar.updateSlot(orgId, id, dto);
+    if (!slot || !workOrderId) return this.calendar.updateSlot(orgId, id, dto);
+    // Bug #902: запис багатоденного наряду (якір чи продовження) — один ланцюжок. Механік і
+    // примітку `CalendarService.updateSlot` якорю з продовженням відмовляв («редагуйте кожен
+    // окремо»), а на продовженні вони губились при перебудові ланцюжка. Тож будь-яка його зміна,
+    // крім відв'язки чи перев'язки до іншого наряду, — шляхом наряду, для всього ланцюжка.
+    const relinks = dto.workOrderId !== undefined && (dto.workOrderId ?? null) !== workOrderId;
+    const viaWorkOrder =
+      movesWorkOrderSlot(slot, dto) || (!relinks && (await this.isSlotChain(orgId, slot)));
+    if (!viaWorkOrder) return this.calendar.updateSlot(orgId, id, dto);
 
     const mechanicDroppedReason = await this.moveWorkOrderSlot(
       orgId,
@@ -656,6 +664,19 @@ export class WorkOrdersService {
     return mechanicDroppedReason
       ? { ...anchor, mechanicDropped: true, mechanicDroppedReason }
       : anchor;
+  }
+
+  /** Запис — частина багатоденного ланцюжка: продовження або якір, що має продовження. */
+  private async isSlotChain(
+    orgId: string,
+    slot: { id: string; parentSlotId: string | null },
+  ): Promise<boolean> {
+    if (slot.parentSlotId) return true;
+    const continuation = await this.prisma.calendarSlot.findFirst({
+      where: { orgId, parentSlotId: slot.id, deletedAt: null },
+      select: { id: true },
+    });
+    return continuation !== null;
   }
 
   /**
@@ -691,7 +712,7 @@ export class WorkOrdersService {
     const [wo, chain] = await Promise.all([
       this.prisma.workOrder.findFirst({
         where: { id: workOrderId, orgId, deletedAt: null },
-        select: { branchId: true },
+        select: { branchId: true, plannedAt: true, dueDate: true, liftId: true },
       }),
       this.prisma.calendarSlot.findMany({
         where: {
@@ -733,10 +754,22 @@ export class WorkOrdersService {
         );
     }
 
+    // У наряд — лише те, що змінилось: зміна механіка чи примітки ланцюжка (Bug #902) не пише в
+    // журнал наряду порожню зміну дат. Нова тривалість — нові планові нормогодини, як у картці
+    // (Bug #903).
+    const same = (a: Date | null, b: Date) => a !== null && a.getTime() === b.getTime();
+    const nextHours = workHoursBetween(bounds.start, bounds.end, hours);
+    const prevHours =
+      wo.plannedAt && wo.dueDate ? workHoursBetween(wo.plannedAt, wo.dueDate, hours) : null;
     const { mechanicDroppedReason } = await this.applyUpdate(
       orgId,
       workOrderId,
-      { plannedAt: bounds.start.toISOString(), dueDate: bounds.end.toISOString(), liftId },
+      {
+        ...(!same(wo.plannedAt, bounds.start) && { plannedAt: bounds.start.toISOString() }),
+        ...(!same(wo.dueDate, bounds.end) && { dueDate: bounds.end.toISOString() }),
+        ...(liftId !== wo.liftId && { liftId }),
+        ...(nextHours !== prevHours && { plannedHours: nextHours }),
+      },
       userId,
       {
         forceSlot: true,
