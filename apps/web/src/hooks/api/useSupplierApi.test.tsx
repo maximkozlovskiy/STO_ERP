@@ -18,6 +18,8 @@ import {
   batchPollInterval,
   batchProgress,
   isOfferStale,
+  supplierOffersKeys,
+  useSupplierOfferBatch,
   useSupplierProcurementSettings,
   type SupplierOfferItem,
 } from './useSupplierOffers';
@@ -57,6 +59,23 @@ describe('batchPollInterval / batchProgress (BR-SOFR-002)', () => {
       done: 2,
       total: 4,
     });
+  });
+});
+
+describe('useSupplierOfferBatch', () => {
+  // sto-optimize 2026-10-18: відповідь `search` уже є повним batch-ем і лежить у кеші — хук не
+  // перечитує його одразу (раніше staleTime 0 давав зайвий GET на кожне відкриття діалогу).
+  it('batch, покладений у кеш відповіддю пошуку, не перечитується одразу', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const done = { id: 'b1', items: [item(['DONE'])] };
+    qc.setQueryData(supplierOffersKeys.batch('b1'), done);
+    const own = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useSupplierOfferBatch('b1'), { wrapper: own });
+    expect(result.current.data).toBe(done);
+    await new Promise(r => setTimeout(r, 50));
+    expect(apiFetch).not.toHaveBeenCalled();
   });
 });
 

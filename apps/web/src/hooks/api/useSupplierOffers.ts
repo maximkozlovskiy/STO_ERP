@@ -69,7 +69,10 @@ export function useSupplierOfferBatch(batchId: string | null) {
     queryKey: supplierOffersKeys.batch(batchId ?? ''),
     queryFn: ({ signal }) => apiFetch(`/supplier-offers/batches/${batchId}`, { signal }),
     enabled: !!batchId,
-    staleTime: 0,
+    // Діалоги кладуть відповідь `search` (повний batch) у кеш і лише тоді дають batchId: зі
+    // staleTime 0 хук одразу перечитував той самий batch (зайвий GET на кожне відкриття).
+    // Опитування це не гальмує — refetchInterval від staleTime не залежить.
+    staleTime: OFFERS_POLL_MS,
     refetchInterval: query => batchPollInterval(query.state.data),
   });
 }

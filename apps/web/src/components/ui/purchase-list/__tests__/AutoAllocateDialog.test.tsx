@@ -108,7 +108,7 @@ function renderDialog() {
       <AutoAllocateDialog ids={['it-1']} onClose={vi.fn()} onApplied={onApplied} />
     </QueryClientProvider>,
   );
-  return { onApplied };
+  return { onApplied, client };
 }
 
 describe('AutoAllocateDialog', () => {
@@ -123,6 +123,20 @@ describe('AutoAllocateDialog', () => {
       overrideManual: false,
     });
     expect(screen.getByRole('button', { name: 'Застосувати' })).toBeDisabled();
+  });
+
+  // sto-optimize 2026-10-18: перегляд залежить від станів запитів, а не від об'єкта batch-у —
+  // перечитаний той самий стан (скидання кешу після «Застосувати», опитування) dryRun не повторює.
+  it('перечитаний batch без змін станів — без повторного dryRun', async () => {
+    const { client } = renderDialog();
+    await screen.findByText('обрано вручну — лишається');
+    expect(allocateBodies).toHaveLength(1);
+    await client.invalidateQueries({ queryKey: ['supplier-offers'] });
+    await waitFor(() =>
+      expect(apiFetch.mock.calls.some(c => c[0] === '/supplier-offers/batches/b-1')).toBe(true),
+    );
+    await new Promise(r => setTimeout(r, 50));
+    expect(allocateBodies).toHaveLength(1);
   });
 
   // guards: BR-SOFR-009

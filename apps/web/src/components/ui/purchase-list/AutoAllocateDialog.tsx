@@ -83,6 +83,17 @@ export function AutoAllocateDialog({ ids, onClose, onApplied }: Props) {
     return [...seen.values()];
   }, [batch.data, t]);
   const idsKey = ids?.join(',') ?? '';
+  // Стани запитів batch-у одним рядком: перегляд перераховується, коли постачальник відповів, а
+  // не на кожен новий об'єкт batch-у — перечитування того самого стану (скидання кешу після
+  // «Застосувати», опитування) інакше слало зайвий dryRun.
+  const requestsKey = useMemo(
+    () =>
+      (batch.data?.items ?? [])
+        .map(i => `${i.itemId}:${i.requests.map(r => `${r.connectionId}=${r.status}`).join(',')}`)
+        .join(';'),
+    [batch.data],
+  );
+  const hasBatch = !!batch.data;
 
   useEffect(() => {
     seq.current += 1;
@@ -143,9 +154,9 @@ export function AutoAllocateDialog({ ids, onClose, onApplied }: Props) {
   // Попередній перегляд — коли постачальники відповіли (повтори «немає зв'язку» не чекаємо:
   // автопідбір бере лише отримані пропозиції) і після зміни стратегії чи прапорця.
   useEffect(() => {
-    if (!open || !batchId || !strategy || searchActive || !batch.data) return;
+    if (!open || !batchId || !strategy || searchActive || !hasBatch) return;
     void runPreview(strategy, overrideManual);
-  }, [open, batchId, strategy, overrideManual, searchActive, batch.data, runPreview]);
+  }, [open, batchId, strategy, overrideManual, searchActive, hasBatch, requestsKey, runPreview]);
 
   const applicable = (preview?.items ?? []).filter(i => i.parts.length > 0).length;
   // Одна умова для кнопки й Ctrl+Enter (Modal onSubmit): застосовується лише показаний перегляд
