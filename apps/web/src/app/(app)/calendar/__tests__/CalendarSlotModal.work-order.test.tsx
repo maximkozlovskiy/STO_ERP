@@ -9,6 +9,7 @@ import { createRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const L1 = '11111111-1111-4111-8111-000000000001';
+const L2 = '11111111-1111-4111-8111-000000000002';
 const KOVAL = '22222222-2222-4222-8222-000000000001';
 const CP = '33333333-3333-4333-8333-000000000001';
 const WO = '44444444-4444-4444-8444-000000000001';
@@ -60,7 +61,7 @@ vi.mock('next/navigation', () => ({
 
 import { CalendarSlotModal } from '../CalendarSlotModal';
 import { EMPTY_FORM } from '../useCalendarState';
-import type { SlotForm } from '../calendar.types';
+import type { SavedMechanic, SlotForm } from '../calendar.types';
 
 const FUTURE = '2026-10-20';
 
@@ -70,12 +71,14 @@ function Harness({
   onSaved,
   windowStart = 8,
   windowEnd = 18,
+  savedMechanic = null,
 }: {
   initial: Partial<SlotForm>;
   editingSlotId?: string | null;
   onSaved: () => void;
   windowStart?: number;
   windowEnd?: number;
+  savedMechanic?: SavedMechanic | null;
 }) {
   const [form, setForm] = useState<SlotForm>({
     ...EMPTY_FORM,
@@ -96,12 +99,15 @@ function Harness({
         onSaved={onSaved}
         onDeleted={() => {}}
         date={FUTURE}
-        lifts={[{ id: L1, name: 'П1' }]}
+        lifts={[
+          { id: L1, name: 'П1' },
+          { id: L2, name: 'П2' },
+        ]}
         form={form}
         setForm={setForm}
         editingSlotId={editingSlotId}
         isEditingPast={false}
-        savedMechanic={null}
+        savedMechanic={savedMechanic}
         pendingSlot={null}
         setPendingSlot={() => {}}
         formMounted
@@ -388,5 +394,54 @@ describe('CalendarSlotModal — новий запис для наряду (BR-WO
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ workOrderChanged: true }));
     expect(toast.info).not.toHaveBeenCalled();
+  });
+});
+
+// Рішення власника 2026-10-19: перев'язка запису на наряд з іншим підйомником знімає механіка, не
+// закріпленого за ним, — сервер повертає причину, форма показує «Механіка знято: …».
+describe("CalendarSlotModal — перев'язка запису знімає механіка (BR-WO-028)", () => {
+  const SAVED = { vehicleId: 'veh-1', startAt: '10:00', endAt: '12:00', normoHours: '2' };
+  const patchReturns = (res: Record<string, unknown>) => {
+    const free = apiFetch.getMockImplementation()!;
+    apiFetch.mockImplementation((url: string, init?: { method?: string }) =>
+      url === '/calendar/slots/anchor' && init?.method === 'PATCH'
+        ? Promise.resolve({ id: 'anchor', ...res })
+        : free(url, init),
+    );
+  };
+  const renderRelink = (onSaved = vi.fn()) =>
+    render(
+      <Harness
+        initial={{ ...SAVED, workOrderId: WO, workOrderDisplay: 'НЗ-2', employeeId: KOVAL }}
+        editingSlotId="anchor"
+        onSaved={onSaved}
+        savedMechanic={{ liftId: L1, employeeId: KOVAL, employeeName: 'Коваль Петро' }}
+      />,
+    );
+
+  // guards: BR-WO-028, BR-CAL-012
+  it('сервер зняв механіка → тост «Механіка знято» з іменем і підйомником нового наряду', async () => {
+    toast.warning.mockClear();
+    const onSaved = vi.fn();
+    patchReturns({ liftId: L2, mechanicDropped: true, mechanicDroppedReason: 'NOT_ON_LIFT' });
+    renderRelink(onSaved);
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ workOrderChanged: true }));
+    expect(toast.warning).toHaveBeenCalledWith(
+      'Механіка знято: Коваль Петро не закріплений за підйомником «П2»',
+    );
+  });
+
+  // guards: BR-WO-028, BR-CAL-012
+  it('контроль: механіка не знято → без попередження', async () => {
+    toast.warning.mockClear();
+    const onSaved = vi.fn();
+    patchReturns({ liftId: L2 });
+    renderRelink(onSaved);
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 });

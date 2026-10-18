@@ -16,6 +16,7 @@ import type { PrismaService } from '../../prisma/prisma.service';
 import {
   LIFT_1,
   LIFT_2,
+  MECH_1,
   NOW,
   ORG,
   OTHER_WO,
@@ -197,6 +198,23 @@ describe('SyncService.push calendar_slots — запис наряду через
     expect(h.lastErrors()).toEqual([translateError('err.calendar.workOrderRelinkLocked', 'uk')]);
     expect([h.workOrder.rows, h.calendarSlot.rows]).toEqual(before);
   });
+
+  // Рішення власника 2026-10-19: механік запису, не закріплений за підйомником нового наряду,
+  // знімається, а не дає конфлікт.
+  // guards: BR-WO-028, BR-CAL-012
+  it("перев'язка на наряд з іншим підйомником → прийнято, механіка запису знято", async () => {
+    const h = harness([], {
+      other: { liftId: LIFT_2, plannedAt: kyiv(D, '14:00'), dueDate: kyiv(D, '16:00') },
+    });
+    h.calendarSlot.rows[0].employeeId = MECH_1;
+
+    const res = await h.sync.push(ORG, [update({ workOrderId: OTHER_WO })], 'ADMIN');
+
+    expect(res).toEqual({ accepted: 1, conflicts: 0 });
+    expect(h.liveSlots(OTHER_WO)).toEqual([
+      expect.objectContaining({ id: 'anchor', liftId: LIFT_2, employeeId: null }),
+    ]);
+  });
 });
 
 describe('SyncService.push calendar_slots — видалення запису наряду (BR-WO-026)', () => {
@@ -320,5 +338,30 @@ describe('SyncService.push calendar_slots — новий запис із нар�
       deletedAt: expect.any(Date),
     });
     expect(h.workOrder.rows.find(w => w.id === OTHER_WO)).toMatchObject({ plannedAt: null });
+  });
+
+  // Механік нового запису — явний вибір (як форма «+ Слот»), а не «свій» механік, якого
+  // перев'язка знімає (BR-WO-028, рішення власника 2026-10-19).
+  // guards: BR-WO-028, BR-CAL-012
+  it('механік нового запису не закріплений за підйомником наряду з датами → конфлікт, запис видалено', async () => {
+    const h = withDates(
+      harness([], {
+        other: {
+          liftId: LIFT_2,
+          plannedAt: kyiv('2026-05-23', '13:00'),
+          dueDate: kyiv('2026-05-23', '15:00'),
+        },
+      }),
+    );
+    const rec = create(OTHER_WO);
+    rec.payload = { ...rec.payload, liftId: LIFT_1, employeeId: MECH_1 };
+
+    const res = await h.sync.push(ORG, [rec], 'ADMIN');
+
+    expect(res).toEqual({ accepted: 0, conflicts: 1 });
+    expect(h.lastErrors()).toEqual([translateError('err.calendar.employeeNotOnLift', 'uk')]);
+    expect(h.calendarSlot.rows.find(s => s.id === 'tablet-1')).toMatchObject({
+      deletedAt: expect.any(Date),
+    });
   });
 });

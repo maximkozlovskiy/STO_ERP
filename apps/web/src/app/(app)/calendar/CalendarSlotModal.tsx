@@ -48,6 +48,7 @@ import {
   toDateString,
 } from './calendar.utils';
 import { CalendarMechanicField } from './CalendarMechanicField';
+import { mechanicDroppedText, type MechanicDropResponse } from './calendar-mechanic-drop';
 import type { CreatedWorkOrder } from '@/components/ui/CreateWorkOrderModal';
 
 /**
@@ -739,11 +740,24 @@ export function CalendarSlotModal({
     };
     try {
       if (editingSlotId) {
-        await apiFetch(`/calendar/slots/${editingSlotId}`, {
-          method: 'PATCH',
-          body: JSON.stringify(body),
-        });
+        const saved = await apiFetch<CalendarSlot & MechanicDropResponse>(
+          `/calendar/slots/${editingSlotId}`,
+          { method: 'PATCH', body: JSON.stringify(body) },
+        );
         toast.success(t('slot.toastUpdated'));
+        // BR-WO-028 (рішення власника 2026-10-19): перев'язка на наряд з іншим підйомником знімає
+        // механіка, не закріпленого за ним, — сказати чому, як при перетягуванні.
+        if (saved?.mechanicDropped) {
+          const lift = lifts.find(l => l.id === saved.liftId)?.name ?? '';
+          toast.warning(
+            mechanicDroppedText(
+              t,
+              saved.mechanicDroppedReason,
+              savedMechanic?.employeeName ?? null,
+              lift,
+            ),
+          );
+        }
       } else {
         const res = await apiFetch<{ slots: CalendarSlot[] }>('/calendar/slots', {
           method: 'POST',

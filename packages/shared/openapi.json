@@ -26207,7 +26207,7 @@
           },
           "mechanicDropped": {
             "type": "boolean",
-            "description": "Механіка знято з запису (лише PATCH з перетягування); причина — mechanicDroppedReason"
+            "description": "Механіка знято з запису (PATCH з перетягування; перев'язка на наряд з іншим підйомником); причина — mechanicDroppedReason"
           },
           "mechanicDroppedReason": {
             "description": "Причина зняття механіка (лише разом із mechanicDropped)",

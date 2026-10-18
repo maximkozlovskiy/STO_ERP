@@ -8130,7 +8130,7 @@ export interface components {
             workOrderStatus?: string | null;
             /** @description Наряд запису видалено (BR-CAL-011). GET /calendar/slots таких записів не повертає */
             workOrderDeleted?: boolean;
-            /** @description Механіка знято з запису (лише PATCH з перетягування); причина — mechanicDroppedReason */
+            /** @description Механіка знято з запису (PATCH з перетягування; перев'язка на наряд з іншим підйомником); причина — mechanicDroppedReason */
             mechanicDropped?: boolean;
             /**
              * @description Причина зняття механіка (лише разом із mechanicDropped)

@@ -348,13 +348,19 @@ export class SyncService {
       const slotWorkOrderId =
         isSlot && typeof safePayload.workOrderId === 'string' ? safePayload.workOrderId : null;
       if (slotWorkOrderId) {
-        const { workOrderId: _wo, ...ownFields } = safePayload;
+        // Механік нового запису — вибір користувача планшета: іде в перев'язку явно (не закріплений
+        // за підйомником наряду — конфлікт, як у формі «+ Слот»), а не як «свій» механік запису,
+        // якого перев'язка знімає мовчки (BR-WO-028, рішення власника 2026-10-19).
+        const { workOrderId: _wo, employeeId, ...ownFields } = safePayload;
         await model.create({ data: { ...ownFields, workOrderId: null, id: rec.id, orgId } });
         try {
           await this.workOrders.updateCalendarSlot(
             orgId,
             rec.id,
-            { workOrderId: slotWorkOrderId },
+            {
+              workOrderId: slotWorkOrderId,
+              ...(typeof employeeId === 'string' && { employeeId }),
+            },
             userId,
           );
         } catch (e) {

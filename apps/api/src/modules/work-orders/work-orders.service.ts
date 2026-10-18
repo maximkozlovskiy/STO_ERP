@@ -962,8 +962,9 @@ export class WorkOrdersService {
    * - Дат немає → межі ланцюжка запису після зміни (як `moveWorkOrderSlot`) і підйомник запису
    *   стають плановими датами й підйомником нового наряду (BR-WO-019, нормогодини — Bug #903).
    *
-   * Перевірки — шляхом збереження наряду (`applyUpdate`: BR-WO-019, BR-WO-020); механік, обраний у
-   * формі чи збережений, — закріплений за підйомником запису (BR-CAL-012), інакше 400. В одній
+   * Перевірки — шляхом збереження наряду (`applyUpdate`: BR-WO-019, BR-WO-020). Механік запису, не
+   * закріплений за підйомником нового наряду, знімається з причиною у відповіді, як при
+   * перетягуванні; механік, обраний явно, — закріплений, інакше 400 (BR-CAL-012). В одній
    * транзакції: інші записи нового наряду позначаються видаленими (один запис на наряд — цей),
    * попередній наряд утрачає свої записи й планові дати (як BR-WO-026). Будь-яка відмова — нічого
    * не змінено.
@@ -1043,8 +1044,14 @@ export class WorkOrdersService {
       };
     }
 
+    // Механік (BR-CAL-012, рішення власника 2026-10-19). Свій механік запису, не закріплений за
+    // підйомником нового наряду з датами, знімається (`upsertWorkOrderSlot`, причина — у
+    // відповіді), як при перетягуванні: підйомник обрав не користувач, а наряд. Механік, обраний
+    // явно разом із перев'язкою, і свій механік на підйомнику, який дала форма (новий наряд без
+    // дат), — вибір користувача: 400, як у формі при зміні часу чи підйомника (BR-WO-024).
     const employeeId = change.employeeId !== undefined ? change.employeeId : slot.employeeId;
-    if (employeeId && (employeeId !== slot.employeeId || liftId !== slot.liftId))
+    const keepsOwnMechanic = employeeId === slot.employeeId;
+    if (employeeId && (!keepsOwnMechanic || (!hasDates && liftId !== slot.liftId)))
       await this.assertSlotMechanic(orgId, employeeId, liftId);
 
     const chainIds = chain.map(s => s.id);
@@ -1053,7 +1060,7 @@ export class WorkOrdersService {
         ? await this.calendar.resolveWorkHours(orgId, previous.branchId)
         : null;
     let released: DatesReleased | null = null;
-    await this.applyUpdate(orgId, newWorkOrderId, datesDto, userId, {
+    const applied = await this.applyUpdate(orgId, newWorkOrderId, datesDto, userId, {
       forceSlot: true,
       slot: {
         employeeId,
@@ -1088,7 +1095,7 @@ export class WorkOrdersService {
       },
     });
     if (oldWorkOrderId) this.recordDatesReleased(orgId, oldWorkOrderId, userId, released);
-    return this.workOrderAnchor(orgId, newWorkOrderId);
+    return this.workOrderAnchor(orgId, newWorkOrderId, applied.mechanicDroppedReason);
   }
 
   /**

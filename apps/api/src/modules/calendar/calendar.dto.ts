@@ -149,13 +149,13 @@ export class CalendarSlotResponseDto {
   })
   workOrderDeleted?: boolean;
   /**
-   * Лише відповідь `PATCH` з `dropMechanicNotOnLift`: механіка знято, бо його вже не можна
-   * поставити на новий підйомник (BR-CAL-012; причина — `mechanicDroppedReason`). Відсутнє —
-   * механіка не знімали.
+   * Лише відповідь `PATCH` з `dropMechanicNotOnLift` і перев'язки запису на наряд з іншим
+   * підйомником (BR-WO-028): механіка знято, бо його вже не можна поставити на новий підйомник
+   * (BR-CAL-012; причина — `mechanicDroppedReason`). Відсутнє — механіка не знімали.
    */
   @ApiPropertyOptional({
     description:
-      'Механіка знято з запису (лише PATCH з перетягування); причина — mechanicDroppedReason',
+      "Механіка знято з запису (PATCH з перетягування; перев'язка на наряд з іншим підйомником); причина — mechanicDroppedReason",
   })
   mechanicDropped?: boolean;
   /**
