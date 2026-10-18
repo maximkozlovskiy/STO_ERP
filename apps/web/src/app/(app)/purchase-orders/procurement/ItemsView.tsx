@@ -3,7 +3,15 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, Search, ShoppingCart, Truck, ArrowRightLeft, XCircle } from 'lucide-react';
+import {
+  ClipboardList,
+  Search,
+  ShoppingCart,
+  Truck,
+  ArrowRightLeft,
+  XCircle,
+  Wand2,
+} from 'lucide-react';
 import { PURCHASE_LIST_ITEM_STATUS_BADGE } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
@@ -17,6 +25,7 @@ import {
   usePurchaseLists,
   type PurchaseListItem,
 } from '@/hooks/api/usePurchaseLists';
+import { useSupplierProcurementSettings } from '@/hooks/api/useSupplierOffers';
 import { invalidateProcurementSideEffects } from '@/lib/cache-invalidation';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { purchaseListItemStatusLabel, poStatusLabel } from '@/i18n/enumLabel';
@@ -33,6 +42,9 @@ import { ListLoadError } from '@/components/ui/list-load-error';
 import { Pagination } from '@/components/ui/pagination';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
+import { SupplierOffersDialog } from '@/components/ui/purchase-list/SupplierOffersDialog';
+import { AutoAllocateDialog } from '@/components/ui/purchase-list/AutoAllocateDialog';
+import { OfferBadge } from '@/components/ui/purchase-list/OfferBadge';
 import {
   Table,
   TableHeader,
@@ -115,6 +127,10 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
   const [supplierDialog, setSupplierDialog] = useState<string[] | null>(null);
   const [moveDialog, setMoveDialog] = useState<string[] | null>(null);
   const [splitItem, setSplitItem] = useState<PurchaseListItem | null>(null);
+  const [offersItem, setOffersItem] = useState<PurchaseListItem | null>(null);
+  const [allocateIds, setAllocateIds] = useState<string[] | null>(null);
+  // TTL пропозиції — для позначки «застаріла»; приймальні запит закритий (Bug #729), тож лише canWrite.
+  const { data: offerSettings } = useSupplierProcurementSettings(canWrite);
 
   const resetPage = () => setPage(1);
   const done = (message: string) => {
@@ -167,6 +183,13 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
     });
 
   const bulkActions: BulkAction[] = [
+    {
+      id: 'auto-allocate',
+      label: t('supplierApi:allocate.action'),
+      icon: <Wand2 className="h-3.5 w-3.5" />,
+      disabled: busy,
+      onClick: ids => setAllocateIds(ids),
+    },
     {
       id: 'orders',
       label: t('items.createOrders'),
@@ -372,6 +395,11 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {i.supplierName ?? <span className="italic">{t('items.noSupplier')}</span>}
+                    {i.offerKey && (
+                      <div>
+                        <OfferBadge item={i} ttlMinutes={offerSettings?.offerTtlMinutes} />
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">
                     {i.expectedPrice != null ? fmtMoney(i.expectedPrice) : '—'}
@@ -410,6 +438,16 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
                   </TableCell>
                   {canWrite && (
                     <TableCell className="text-right whitespace-nowrap">
+                      {i.status === 'OPEN' && (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => setOffersItem(i)}
+                          aria-label={t('supplierApi:offers.actionAria', { good: i.goodName })}
+                        >
+                          {t('supplierApi:offers.action')}
+                        </Button>
+                      )}
                       {i.status === 'OPEN' && (
                         <Button size="xs" variant="ghost" onClick={() => setSplitItem(i)}>
                           {t('items.split')}
@@ -462,6 +500,15 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
         onSaved={() => {
           setSplitItem(null);
           done(t('items.splitDone'));
+        }}
+      />
+      <SupplierOffersDialog item={offersItem} onClose={() => setOffersItem(null)} />
+      <AutoAllocateDialog
+        ids={allocateIds}
+        onClose={() => setAllocateIds(null)}
+        onApplied={() => {
+          setAllocateIds(null);
+          bulk.clear();
         }}
       />
       <ConfirmDialog {...dialogProps} />
