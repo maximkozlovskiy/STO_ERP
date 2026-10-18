@@ -109,6 +109,11 @@ export const supplierOfferAllocateSchema = z.object({
   dryRun: z.boolean().optional(),
   /** true — перезаписати й позиції з ручним вибором (`offerChosenBy = MANUAL`); типово вони лишаються. */
   overrideManual: z.boolean().optional(),
+  /**
+   * Відбиток попереднього перегляду (`previewToken` відповіді dryRun): застосування з ним
+   * відмовляє 409, якщо розподіл відтоді змінився (BR-SOFR-009).
+   */
+  previewToken: z.string().max(128).optional(),
 });
 export type SupplierOfferAllocateValues = z.infer<typeof supplierOfferAllocateSchema>;
 

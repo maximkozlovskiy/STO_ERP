@@ -1450,6 +1450,7 @@ export function PurchaseOrderCreateModal({
                     purchaseOrderId={purchaseOrderId}
                     poStatus={currentStatus}
                     nestedOpenRef={supplierNestedRef}
+                    unsavedChanges={rhfDirty}
                     onChanged={() => {
                       void loadPo(purchaseOrderId, true);
                       onSaved?.();

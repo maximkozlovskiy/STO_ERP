@@ -85,3 +85,15 @@ export function itemPartData(
       : copyOfferSnapshot(item)),
   };
 }
+
+/**
+ * Заміна товару позиції: повернення до оригіналу знімає `originalGoodId`, інша заміна — запам'ятовує
+ * оригінал (перший, не проміжний аналог).
+ */
+export function goodSwap(
+  item: Pick<PurchaseListItem, 'goodId' | 'originalGoodId'>,
+  target: string,
+): { goodId: string; originalGoodId: string | null } {
+  const original = item.originalGoodId ?? item.goodId;
+  return { goodId: target, originalGoodId: target === original ? null : original };
+}

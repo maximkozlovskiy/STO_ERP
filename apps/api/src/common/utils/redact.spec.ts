@@ -55,4 +55,12 @@ describe('redactSecrets', () => {
       'Нова Пошта 500: internal error',
     );
   });
+
+  it('маскує JSON-екрановану й URL-кодовану форму секрету (провайдер віддзеркалив запит не дослівно)', () => {
+    const secret = 'p"a\\ss/w+rd&1'; // лапки й зворотна коса риска — екрануються в JSON
+    const json = JSON.stringify({ echo: { password: secret } });
+    const url = `https://x.ua/login?password=${encodeURIComponent(secret)}`;
+    expect(redactSecrets(json, [secret])).toBe('{"echo":{"password":"***"}}');
+    expect(redactSecrets(url, [secret])).toBe('https://x.ua/login?password=***');
+  });
 });

@@ -150,4 +150,38 @@ describe('BR-PL-019 ручна зміна позиції й пропозиція
     const over = await h.items.update(ORG, 'i1', { quantity: 6 });
     expect(over).toMatchObject({ quantity: 6, offerKey: '45000|15', offerQtyExceeded: true });
   });
+
+  // guards: BR-PL-019
+  it('обмежена кількість пропозиції («≥10») — більше за межу не позначається перевищенням', async () => {
+    const h = procurementHarness({ items: [itemRow('i1', { quantity: 3, ...SNAPSHOT })] });
+    h.addTable('supplierOffer', [
+      {
+        id: 'o-cap',
+        orgId: ORG,
+        connectionId: CONN,
+        offerKey: '45000|15',
+        qty: 10,
+        qtyIsLowerBound: true,
+        fetchedAt: new Date('2026-10-18T08:00:00Z'),
+        deletedAt: null,
+      },
+    ]);
+    const res = await h.items.update(ORG, 'i1', { quantity: 12 });
+    expect(res.offerQtyExceeded).toBeUndefined();
+  });
+
+  // guards: BR-PL-019
+  it('масова зміна постачальника скидає знімок, як і PATCH; той самий постачальник — лишає', async () => {
+    const h = procurementHarness({
+      items: [
+        itemRow('i1', { quantity: 3, ...SNAPSHOT, supplierId: SUPPLIER }),
+        itemRow('i2', { quantity: 3, ...SNAPSHOT, supplierId: SUPPLIER_2 }),
+        itemRow('i3', { quantity: 3, supplierId: null }),
+      ],
+    });
+    await h.items.bulkUpdate(ORG, { itemIds: ['i1', 'i2', 'i3'], supplierId: SUPPLIER_2 });
+    expect(h.item('i1')).toMatchObject({ supplierId: SUPPLIER_2, offerKey: null });
+    expect(h.item('i2')).toMatchObject({ supplierId: SUPPLIER_2, offerKey: '45000|15' });
+    expect(h.item('i3')).toMatchObject({ supplierId: SUPPLIER_2 });
+  });
 });

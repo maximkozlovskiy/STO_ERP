@@ -1,4 +1,11 @@
+import { lookup as dnsLookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { validatePublicUrl } from '../../../common/utils/url-guard';
+
+/** Усі адреси імені (`dns.promises.lookup(host, { all: true })`); підміняється в тестах. */
+export type HostLookup = (host: string) => Promise<Array<{ address: string; family: number }>>;
+
+const defaultLookup: HostLookup = host => dnsLookup(host, { all: true });
 
 /**
  * Куди дозволено ходити HTTP-клієнту постачальників (BR-SCON-005).
@@ -9,13 +16,24 @@ import { validatePublicUrl } from '../../../common/utils/url-guard';
  * `http://127.0.0.1:4100,http://localhost:4100`. Allowlist діє лише поза production: у production
  * сама наявність змінної — відмова старту (env.schema і конструктор нижче), щоб адміністративне
  * поле `apiUrl` не стало SSRF-дірою в локальну мережу СТО.
+ *
+ * Перед запитом ім'я хоста резолвиться (`checkResolved`): публічне ім'я, що веде на приватну
+ * адресу, відхиляється тим самим блок-листом. Залишковий ризик — DNS rebinding між перевіркою й
+ * з'єднанням (fetch резолвить ще раз); закрити його можна лише власним агентом з'єднань.
  */
 export class SupplierUrlPolicy {
-  private constructor(private readonly allowedOrigins: ReadonlySet<string>) {}
+  private constructor(
+    private readonly allowedOrigins: ReadonlySet<string>,
+    private readonly lookup: HostLookup,
+  ) {}
 
-  static fromEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>): SupplierUrlPolicy {
+  static fromEnv(
+    env: NodeJS.ProcessEnv | Record<string, string | undefined>,
+    lookup: HostLookup = defaultLookup,
+  ): SupplierUrlPolicy {
     return new SupplierUrlPolicy(
       parseDevAllowedOrigins(env.SUPPLIER_API_DEV_ALLOWED_ORIGINS, env.NODE_ENV),
+      lookup,
     );
   }
 
@@ -29,6 +47,43 @@ export class SupplierUrlPolicy {
     }
     if (this.allowedOrigins.has(origin)) return null;
     return validatePublicUrl(rawUrl);
+  }
+
+  /**
+   * Адреса `apiUrl` підключення: поза allowlist фейків — лише https (секрети йдуть у заголовках
+   * і тілі), плюс `check`.
+   */
+  checkApiUrl(rawUrl: string): string | null {
+    const reason = this.check(rawUrl);
+    if (reason) return reason;
+    const url = new URL(rawUrl);
+    if (this.allowedOrigins.has(url.origin)) return null;
+    return url.protocol === 'https:' ? null : 'Дозволено лише https://';
+  }
+
+  /**
+   * `check` + резолвинг імені: кожна адреса хоста — під тим самим блок-листом. Ім'я не
+   * резолвиться — null: fetch сам упаде з ENOTFOUND (мережева помилка «не дійшло»).
+   */
+  async checkResolved(rawUrl: string): Promise<string | null> {
+    const reason = this.check(rawUrl);
+    if (reason) return reason;
+    const url = new URL(rawUrl);
+    if (this.allowedOrigins.has(url.origin)) return null;
+    const host = url.hostname.replace(/^\[|\]$/g, '');
+    if (isIP(host)) return null; // літерал уже перевірено
+    let addresses: Array<{ address: string; family: number }>;
+    try {
+      addresses = await this.lookup(host);
+    } catch {
+      return null;
+    }
+    for (const a of addresses) {
+      const literal = a.family === 6 || a.address.includes(':') ? `[${a.address}]` : a.address;
+      const blocked = validatePublicUrl(`http://${literal}/`);
+      if (blocked) return `${host} → ${a.address}: ${blocked}`;
+    }
+    return null;
   }
 
   get devAllowlistActive(): boolean {

@@ -7,6 +7,7 @@ import {
   SUPPLIER_ANALOG_POLICIES,
   SUPPLIER_ORDER_SEND_MODES,
   SUPPLIER_STRATEGIES,
+  type ApiSchema,
   type SupplierStrategyCode,
 } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
@@ -14,6 +15,7 @@ import { useAuth } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { supplierOffersKeys } from '@/hooks/api/useSupplierOffers';
+import { supplierApiOrderKeys } from '@/hooks/api/useSupplierApiOrder';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -23,20 +25,21 @@ import { SupplierConnectionsPanel } from './SupplierConnectionsPanel';
 type SendMode = (typeof SUPPLIER_ORDER_SEND_MODES)[number];
 type AnalogPolicy = (typeof SUPPLIER_ANALOG_POLICIES)[number];
 
-/** Поля `OrganisationSettings.supplier*` (BR-SCON-009, BR-SOFR-003, 005, 007, 008, 015). */
-interface SupplierSettings {
-  supplierOrderSendMode: SendMode;
-  supplierAnalogPolicy: AnalogPolicy;
-  supplierDefaultStrategy: SupplierStrategyCode;
-  supplierOptimalPriceWeight: number;
-  supplierAllowSplit: boolean;
-  supplierAllowAnalogsInAuto: boolean;
-  supplierOfferTtlMinutes: number;
-  supplierOfferRetentionDays: number;
-  supplierOrderPollIntervalMinutes: number;
-  supplierCatalogSyncIntervalMinutes: number;
-  supplierUnknownDeliveryDays: number;
-}
+/** Поля `OrganisationSettings.supplier*` (BR-SCON-009, BR-SOFR-003, 005, 007, 008, 015) — з контракту. */
+type SupplierSettings = Pick<
+  ApiSchema<'OrganisationSettingsResponseDto'>,
+  | 'supplierOrderSendMode'
+  | 'supplierAnalogPolicy'
+  | 'supplierDefaultStrategy'
+  | 'supplierOptimalPriceWeight'
+  | 'supplierAllowSplit'
+  | 'supplierAllowAnalogsInAuto'
+  | 'supplierOfferTtlMinutes'
+  | 'supplierOfferRetentionDays'
+  | 'supplierOrderPollIntervalMinutes'
+  | 'supplierCatalogSyncIntervalMinutes'
+  | 'supplierUnknownDeliveryDays'
+>;
 
 type IntKey =
   | 'supplierOfferTtlMinutes'
@@ -99,7 +102,9 @@ export default function SupplierApiTab() {
   const isAdmin = employee?.role === 'OWNER' || employee?.role === 'ADMIN';
   const [saved, setSaved] = useState<SupplierSettings | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
-  const [loadError, setLoadError] = useState('');
+  // null — помилки немає; '' — помилка без тексту (підпис перекладається при рендері, тож зміна
+  // мови не перезапускає завантаження й не затирає незбережену форму).
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -114,12 +119,12 @@ export default function SupplierApiTab() {
         setForm(toForm(s));
       })
       .catch((e: unknown) => {
-        if (!cancelled) setLoadError(e instanceof Error ? e.message : t('procurement.loadError'));
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : '');
       });
     return () => {
       cancelled = true;
     };
-  }, [t, isAdmin]);
+  }, [isAdmin]);
 
   const buildPatch = (f: FormState, s: SupplierSettings): Partial<SupplierSettings> | string => {
     const out: Partial<SupplierSettings> = {};
@@ -164,8 +169,10 @@ export default function SupplierApiTab() {
             });
       setSaved(updated);
       setForm(toForm(updated));
-      // Стратегія за замовчуванням і TTL у діалогах пропозицій — з окремого запиту.
-      void qc.invalidateQueries({ queryKey: supplierOffersKeys.settings() });
+      // Стратегія, TTL і політика аналогів живуть у діалогах пропозицій (вибірність), режим
+      // відправки — у стані передачі замовлення в API: скидаємо обидва простори ключів.
+      void qc.invalidateQueries({ queryKey: supplierOffersKeys.all });
+      void qc.invalidateQueries({ queryKey: supplierApiOrderKeys.all });
       if (features.toastEnabled) toast.success(t('procurement.saved'));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('procurement.loadError');
@@ -197,9 +204,9 @@ export default function SupplierApiTab() {
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">{t('procurement.description')}</p>
         </div>
-        {loadError && (
+        {loadError !== null && (
           <div className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3">
-            {loadError}
+            {loadError || t('procurement.loadError')}
           </div>
         )}
         {form && (

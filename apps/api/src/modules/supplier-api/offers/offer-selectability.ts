@@ -3,6 +3,7 @@ import type { PurchaseListItemSource, SupplierAnalogPolicy } from '@prisma/clien
 /** Чому пропозицію не можна обрати — код для web (підказка біля «Обрати»). */
 export type OfferNotSelectableReason =
   | 'itemNotOpen'
+  | 'connectionDisabled'
   | 'noExchangeRate'
   | 'analogFromWorkOrder'
   | 'analogShowOnly'
@@ -15,6 +16,8 @@ export interface OfferSelectabilityInput {
   matchedGoodId: string | null;
   itemSource: PurchaseListItemSource;
   itemOpen: boolean;
+  /** Підключення пропозиції вимкнене чи видалене — вибір сервер відхилить (BR-SOFR-006). */
+  connectionDisabled?: boolean;
   policy: SupplierAnalogPolicy;
   /** Ціна в гривні; null — курсу валюти пропозиції немає. */
   priceUah: number | null;
@@ -41,6 +44,7 @@ export function offerSelectability(i: OfferSelectabilityInput): OfferSelectabili
     replacesGood: false,
   });
   if (!i.itemOpen) return no('itemNotOpen');
+  if (i.connectionDisabled) return no('connectionDisabled');
   if (i.priceUah === null) return no('noExchangeRate');
   if (!i.isAnalog) return { selectable: true, reason: null, replacesGood: false };
   if (i.itemSource === 'WORK_ORDER') return no('analogFromWorkOrder');

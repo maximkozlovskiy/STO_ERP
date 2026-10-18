@@ -5,7 +5,7 @@ import { isSupplierError } from '../http/supplier-errors';
 export const RECONCILE_STEP = 'RECONCILE';
 /** Зовнішнє замовлення оформлено — кроків більше немає. */
 export const DONE_STEP = 'DONE';
-const PENDING_SUFFIX = ':PENDING';
+export const PENDING_SUFFIX = ':PENDING';
 
 /** Попередня спроба оборвалась посеред неповторюваного кроку чи впала неоднозначно. */
 export function needsReconcile(step: string | null | undefined): boolean {

@@ -105,7 +105,13 @@ describe('Пошук пропозицій — batch і черга (BR-SOFR-002)'
     expect(h.queueAdd).toHaveBeenCalledWith(
       'search',
       { orgId: ORG, requestId: reqs[0].id },
-      expect.objectContaining({ attempts: 10, backoff: { type: 'exponential', delay: 30_000 } }),
+      // removeOnFail: true — сталий jobId; failed-задача з тим самим id блокувала б перепостановку.
+      expect.objectContaining({
+        attempts: 10,
+        backoff: { type: 'exponential', delay: 30_000 },
+        jobId: `supplier-search-${String(reqs[0].id)}`,
+        removeOnFail: true,
+      }),
     );
   });
 
@@ -216,6 +222,50 @@ describe('Обробник пошуку (BR-SOFR-001, 004)', () => {
       ['a', false, 'notFound'],
       ['b', true, 'notFound'],
       ['c', true, 'notFound'],
+    ]);
+  });
+
+  // guards: BR-SOFR-004
+  it('той самий артикул іншого бренду — аналог (без збігу, неоднозначний збіг, збіг лише за артикулом)', async () => {
+    const h = offersHarness({
+      adapters: [
+        utrAdapter(() =>
+          Promise.resolve([
+            offer({ offerKey: 'same' }),
+            offer({ offerKey: 'other', brand: 'BOSCH' }),
+            offer({ offerKey: 'nobrand', brand: null }),
+          ]),
+        ),
+        avdAdapter,
+      ],
+    });
+    await h.service.search(ORG, { itemIds: [ITEM_MANUAL] });
+    const req = h.t.supplierOfferRequest.rows.find(r => r.connectionId === CONN_UTR)!;
+    await run(h, req.id as string).done;
+    expect(h.t.supplierOffer.rows.map(o => [o.offerKey, o.isAnalog])).toEqual([
+      ['same', false],
+      ['other', true],
+      ['nobrand', false],
+    ]);
+
+    // Неоднозначний збіг і збіг лише за артикулом (бренд пропозиції каталогу не відомий).
+    h.matcher.matchMany.mockImplementationOnce((_o: string, rows: unknown[]) =>
+      Promise.resolve(
+        (rows as unknown[]).map((_r, i) =>
+          i === 0
+            ? { status: 'ambiguous', good: null, matchedBy: 'article', candidates: [] }
+            : { ...matched(GOOD), matchedBy: 'article' },
+        ),
+      ),
+    );
+    h.t.supplierOffer.rows.length = 0;
+    await h.service.search(ORG, { itemIds: [ITEM_MANUAL], refresh: true });
+    const req2 = h.t.supplierOfferRequest.rows.filter(r => r.connectionId === CONN_UTR).at(-1)!;
+    await run(h, req2.id as string).done;
+    expect(h.t.supplierOffer.rows.map(o => [o.offerKey, o.isAnalog])).toEqual([
+      ['same', true],
+      ['other', true],
+      ['nobrand', false],
     ]);
   });
 

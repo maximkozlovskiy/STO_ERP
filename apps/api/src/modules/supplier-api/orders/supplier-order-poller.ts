@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DelayedError, type Job } from 'bullmq';
+import type { Job } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { runWithTenant } from '../../../common/tenant/tenant-context';
 import { forEachActiveOrg } from '../../../common/scheduler/for-each-active-org';
@@ -9,7 +9,7 @@ import { SupplierAdapterRegistry } from '../adapters/supplier-adapter-registry';
 import type { SupplierOrderState } from '../adapters/supplier-adapter.interface';
 import { loadConnection, toConnectionContext } from '../connections/supplier-connection-context';
 import { SupplierRateLimitError } from '../http/supplier-errors';
-import { errorText } from '../processors/supplier-job-errors';
+import { errorText, handleSupplierJobError } from '../processors/supplier-job-errors';
 import {
   adjustForPartial,
   matchConfirmedLines,
@@ -101,11 +101,13 @@ export class SupplierOrderPoller {
     try {
       for (const o of list) await this.pollOne(orgId, o, minutes);
     } catch (e) {
-      if (e instanceof SupplierRateLimitError) {
-        await job.moveToDelayed(Date.now() + e.retryAfterMs, token);
-        throw new DelayedError();
-      }
-      throw e;
+      // Ліміт — відкласти без витрати спроби; авторизація / протокол — без 10 марних повторів.
+      return handleSupplierJobError(job, token, e, {
+        onFinal: message => {
+          this.logger.warn(`Оновлення статусу замовлення ${purchaseOrderId}: ${message}`);
+          return Promise.resolve();
+        },
+      });
     } finally {
       await this.orders.refreshSummary(orgId, purchaseOrderId);
     }

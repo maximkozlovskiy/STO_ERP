@@ -177,4 +177,25 @@ describe('SupplierCatalogService.sync — дзеркало каталогу (BR-
     const offers = await service.searchMirror(conn, 'oc-90');
     expect(offers.map(o => o.offerKey)).toEqual(['a|w1']);
   });
+
+  // guards: BR-SCON-006
+  it('задача синхронізації: сталий jobId і removeOnFail: true (упала не блокує наступну)', async () => {
+    const add = vi.fn(() => Promise.resolve({}));
+    const service = new SupplierCatalogService(
+      {} as PrismaService,
+      new SupplierAdapterRegistry([]),
+      { add } as unknown as Queue,
+    );
+    await expect(service.enqueueSync(ORG, CONN)).resolves.toBe(true);
+    expect(add).toHaveBeenCalledWith(
+      'sync',
+      { orgId: ORG, connectionId: CONN },
+      expect.objectContaining({
+        attempts: 10,
+        backoff: { type: 'exponential', delay: 60_000 },
+        jobId: `supplier-catalog-${CONN}`,
+        removeOnFail: true,
+      }),
+    );
+  });
 });

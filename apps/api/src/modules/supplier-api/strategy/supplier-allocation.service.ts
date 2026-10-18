@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma, PurchaseListItem, SupplierOffer } from '@prisma/client';
 import {
@@ -11,7 +12,7 @@ import { getLocale } from '../../../common/tenant/tenant-context';
 import { money, sumMoney } from '../../../common/utils/money';
 import { SettingsService } from '../../settings/settings.service';
 import { canSeeItemCost } from '../../purchase-lists/purchase-lists.mapper';
-import { itemPartData } from '../../purchase-lists/purchase-list-offer-snapshot';
+import { goodSwap, itemPartData } from '../../purchase-lists/purchase-list-offer-snapshot';
 import { SupplierPriceConverter } from '../offers/supplier-price-converter';
 import { offerSelectability } from '../offers/offer-selectability';
 import { snapshotOf } from '../offers/supplier-offers.service';
@@ -39,6 +40,8 @@ interface ItemPlan {
   connections: Map<string, ConnectionInfo>;
   result: AllocationResult;
   priceById: Map<string, number | null>;
+  /** Товар, на який шукали пропозицію (власний запит позиції): після заміни аналогом це оригінал. */
+  goodByOffer: Map<string, string>;
   skippedReason: 'itemNotOpen' | 'noOffers' | 'manualChoice' | null;
 }
 
@@ -66,8 +69,14 @@ export class SupplierAllocationService {
     role?: string,
   ): Promise<SupplierAllocationResultDto> {
     const plans = await this.plan(orgId, dto);
+    const previewToken = planToken(plans);
+    // BR-SOFR-009: застосовується саме те, що користувач бачив у перегляді. Позиції, пропозиції чи
+    // курс змінились між переглядом і «Застосувати» → 409, нічого не записано.
+    if (!dto.dryRun && dto.previewToken && dto.previewToken !== previewToken) {
+      throw new ConflictException(err('err.supplierApi.allocationChanged'));
+    }
     if (!dto.dryRun) await this.apply(orgId, plans);
-    return this.toDto(dto, plans, role, !dto.dryRun);
+    return { ...this.toDto(dto, plans, role, !dto.dryRun), previewToken };
   }
 
   private async plan(orgId: string, dto: SupplierOfferAllocateValues): Promise<ItemPlan[]> {
@@ -86,15 +95,18 @@ export class SupplierAllocationService {
       }),
       this.prisma.supplierOfferRequest.findMany({
         where: { orgId, batchId: dto.batchId, status: 'DONE', deletedAt: null },
-        select: { id: true, cacheOfId: true, purchaseListItemId: true },
+        select: { id: true, cacheOfId: true, purchaseListItemId: true, goodId: true },
         take: 5000,
       }),
     ]);
     const sourceToItem = new Map<string, string[]>();
+    // (позиція, джерельний запит) → товар, на який шукали (власний запит позиції).
+    const searchedGood = new Map<string, string>();
     for (const r of requests) {
       if (!r.purchaseListItemId) continue;
       const src = r.cacheOfId ?? r.id;
       sourceToItem.set(src, [...(sourceToItem.get(src) ?? []), r.purchaseListItemId]);
+      if (r.goodId) searchedGood.set(`${r.purchaseListItemId}|${src}`, r.goodId);
     }
     const offers = sourceToItem.size
       ? await this.prisma.supplierOffer.findMany({
@@ -108,6 +120,9 @@ export class SupplierAllocationService {
     const toUah = this.converter.forOrg(orgId);
     const now = new Date();
 
+    // Одна пропозиція (спільний кешований запит) може дістатися кільком позиціям batch-у: наявне
+    // ділиться між ними в порядку позицій, а не віддається кожній повністю (BR-SOFR-008).
+    const left = new Map<string, number>();
     const plans: ItemPlan[] = [];
     for (const id of itemIds) {
       const item = items.find(i => i.id === id);
@@ -117,10 +132,15 @@ export class SupplierAllocationService {
       // Ручний вибір користувача автопідбір не перезаписує, доки цього не попросили (BR-SOFR-009).
       const keepManual = open && item.offerChosenBy === 'MANUAL' && !dto.overrideManual;
       const priceById = new Map<string, number | null>();
+      const goodByOffer = new Map<string, string>();
       const input: AllocationOffer[] = [];
       for (const o of own) {
         const c = connections.get(o.connectionId);
         if (!c) continue; // підключення вимкнене чи видалене
+        const searched = searchedGood.get(`${item.id}|${o.requestId}`);
+        if (searched) goodByOffer.set(o.id, searched);
+        const available = left.get(o.id) ?? o.qty;
+        if (available <= 1e-9) continue; // уже розподілено іншим позиціям
         const priceUah = await toUah(o.currencyCode, Number(o.price));
         priceById.set(o.id, priceUah);
         const sel = offerSelectability({
@@ -141,7 +161,7 @@ export class SupplierAllocationService {
           connectionPriority: c.priority,
           offerKey: o.offerKey,
           priceUah,
-          qty: o.qty,
+          qty: available,
           qtyIsLowerBound: o.qtyIsLowerBound,
           multiplicity: o.multiplicity,
           deliveryDays: o.deliveryDays,
@@ -160,12 +180,17 @@ export class SupplierAllocationService {
               now,
             })
           : { parts: [], uncovered: 0 };
+      for (const part of result.parts) {
+        const base = left.get(part.offerId) ?? own.find(o => o.id === part.offerId)?.qty ?? 0;
+        left.set(part.offerId, Math.max(0, base - part.qty));
+      }
       plans.push({
         item,
         offers: new Map(own.map(o => [o.id, o])),
         connections,
         result,
         priceById,
+        goodByOffer,
         skippedReason: !open
           ? 'itemNotOpen'
           : keepManual
@@ -195,14 +220,13 @@ export class SupplierAllocationService {
     const { item, result } = p;
     const dataFor = (offerId: string) => {
       const o = p.offers.get(offerId) as SupplierOffer;
-      const analogGood =
-        o.isAnalog && o.matchedGoodId && o.matchedGoodId !== item.goodId ? o.matchedGoodId : null;
+      // Товар частини: аналог — його товар із каталогу; не аналог — товар, на який шукали
+      // (після попередньої заміни аналогом це оригінал позиції — повертаємо його).
+      const target = o.isAnalog ? o.matchedGoodId : (p.goodByOffer.get(offerId) ?? null);
       return {
         expectedPrice: p.priceById.get(offerId) ?? null,
         ...snapshotOf(o, 'AUTO'),
-        ...(analogGood
-          ? { goodId: analogGood, originalGoodId: item.originalGoodId ?? item.goodId }
-          : {}),
+        ...(target && target !== item.goodId ? goodSwap(item, target) : {}),
       };
     };
     const supplierOf = (offerId: string) =>
@@ -277,7 +301,7 @@ export class SupplierAllocationService {
     plans: ItemPlan[],
     role: string | undefined,
     applied: boolean,
-  ): SupplierAllocationResultDto {
+  ): Omit<SupplierAllocationResultDto, 'previewToken'> {
     const showPrices = canSeeItemCost(role);
     const items: SupplierAllocationItemDto[] = plans.map(p => ({
       itemId: p.item.id,
@@ -307,4 +331,18 @@ export class SupplierAllocationService {
     );
     return { strategy: dto.strategy, applied, items, totalUah: showPrices ? total : null };
   }
+}
+
+/** Відбиток розподілу: що саме буде записано (позиції, частини, ціни) — для BR-SOFR-009. */
+function planToken(plans: ItemPlan[]): string {
+  const shape = plans.map(p => [
+    p.item.id,
+    p.item.quantity,
+    p.item.goodId,
+    p.item.offerKey,
+    p.skippedReason,
+    p.result.uncovered,
+    p.result.parts.map(x => [x.offerId, x.qty, x.priceUah]),
+  ]);
+  return createHash('sha1').update(JSON.stringify(shape)).digest('hex');
 }

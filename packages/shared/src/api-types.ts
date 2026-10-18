@@ -8562,7 +8562,7 @@ export interface components {
             stale: boolean;
             selectable: boolean;
             /** @enum {string|null} */
-            notSelectableReason: "itemNotOpen" | "noExchangeRate" | "analogFromWorkOrder" | "analogShowOnly" | "analogNotInCatalog" | "analogAmbiguous" | null;
+            notSelectableReason: "itemNotOpen" | "connectionDisabled" | "noExchangeRate" | "analogFromWorkOrder" | "analogShowOnly" | "analogNotInCatalog" | "analogAmbiguous" | null;
             /** @description Вибір замінить товар позиції (аналог) */
             replacesGood: boolean;
             /** @description Ця пропозиція обрана в позиції */
@@ -8657,6 +8657,8 @@ export interface components {
             items: components["schemas"]["SupplierAllocationItemDto"][];
             /** @description Сума в гривні (null — ролі без цін) */
             totalUah: number | null;
+            /** @description Відбиток розподілу: передати в застосування — 409, якщо після перегляду щось змінилось (BR-SOFR-009) */
+            previewToken: string;
         };
         SupplierProcurementSettingsDto: {
             /** @enum {string} */
@@ -16899,7 +16901,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

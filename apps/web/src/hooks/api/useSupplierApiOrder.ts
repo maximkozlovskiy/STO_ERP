@@ -21,10 +21,13 @@ export const SUPPLIER_API_READ_ROLES: readonly string[] = [
 export const SUPPLIER_API_SEND_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER'];
 
 /**
- * Зовнішні статуси, з якими замовлення вже в постачальника — скасування чи видалення в нас
- * вимагає підтвердження (`force`, BR-SCON-014). Дзеркало списку бекенду.
+ * Зовнішні статуси, з якими замовлення вже в постачальника (або могло туди дійти) — скасування чи
+ * видалення в нас вимагає підтвердження (`force`, BR-SCON-014). Дзеркало
+ * `SENT_SUPPLIER_ORDER_STATUSES` бекенду: SENDING там є (результат відправки ще невідомий), і без
+ * нього тут сервер відмовляв 400, а web показував голу помилку без підтвердження.
  */
 export const SENT_EXTERNAL_STATUSES: ReadonlySet<string> = new Set([
+  'SENDING',
   'PLACED',
   'CONFIRMED',
   'PARTIALLY_CONFIRMED',

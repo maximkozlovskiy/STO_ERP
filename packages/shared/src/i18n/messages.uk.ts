@@ -500,6 +500,8 @@ export const uk: Record<string, string> = {
   'err.supplierApi.cancelSentOrder':
     'Замовлення вже передане постачальнику через API — скасуйте його в кабінеті постачальника й підтвердіть скасування',
   'err.supplierApi.analogNotSelectable': 'Цей аналог обрати не можна',
+  'err.supplierApi.allocationChanged':
+    'Після попереднього перегляду змінились позиції, пропозиції чи курс — перегляньте розподіл ще раз',
   'err.supplierApi.offerNotFound': 'Пропозицію не знайдено',
   'err.supplierApi.offerStale': 'Пропозиція застаріла — оновіть пропозиції',
   'err.supplierApi.noExchangeRate':

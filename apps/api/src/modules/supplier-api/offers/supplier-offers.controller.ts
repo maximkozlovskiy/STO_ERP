@@ -10,7 +10,13 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiAcceptedResponse,
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import {
   supplierOfferAllocateSchema,
   supplierOfferChooseSchema,
@@ -54,7 +60,7 @@ export class SupplierOffersController {
   @Roles(...SOFR_ROLES)
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Пошук пропозицій для позицій — через чергу (BR-SOFR-002)' })
-  @ApiOkResponse({ type: SupplierOfferSearchResultDto })
+  @ApiAcceptedResponse({ type: SupplierOfferSearchResultDto })
   search(
     @OrgContext() orgId: string,
     @Body(new ZodValidationPipe(supplierOfferSearchSchema)) dto: SupplierOfferSearchValues,

@@ -303,6 +303,9 @@ export function memoryTable(
       for (const data of args.data) insert(data);
       return Promise.resolve({ count: args.data.length });
     }),
+    createManyAndReturn: vi.fn((args: { data: MemRow[] }) =>
+      Promise.resolve(args.data.map(data => read(args)(insert(data)))),
+    ),
     upsert: vi.fn((args: { where?: unknown; create: MemRow; update: MemRow }) => {
       const hit = find(args)[0];
       if (hit) {

@@ -112,20 +112,37 @@ export class AdUkraineAdapter implements SupplierAdapter {
       order.supplierWarehouseCode ?? parseAdOfferKey(order.lines[0]?.offerKey ?? '').location;
     if (!location)
       throw new SupplierProtocolError(NAME, `${NAME}: замовлення без складу постачальника`);
-    await run.step('CREATE', { repeatable: false }, async () => {
-      const r = await this.authed<{ data?: { docNo?: string } }>(conn, '/order/create', {
-        items: order.lines.map(l => ({
-          itemNo: parseAdOfferKey(l.offerKey).itemNo || l.supplierItemId,
-          quantity: Math.ceil(l.qty),
-        })),
-        locationCode: location,
-        customerComment: order.reference,
+    if (run.state.step === 'CREATE') return { status: 'PLACED', statusRaw: null };
+    // Токен — до неповторюваного кроку: тайм-аут логіну всередині кроку дав би хибну звірку.
+    const issuer = this.issuer(conn);
+    const token = await this.session.getToken(conn, issuer, false);
+    const create = (bearer: string) =>
+      run.step('CREATE', { repeatable: false }, async () => {
+        const r = await this.withBearer<{ data?: { docNo?: string } }>(
+          conn,
+          bearer,
+          '/order/create',
+          {
+            items: order.lines.map(l => ({
+              itemNo: parseAdOfferKey(l.offerKey).itemNo || l.supplierItemId,
+              quantity: Math.ceil(l.qty),
+            })),
+            locationCode: location,
+            customerComment: order.reference,
+          },
+        );
+        const docNo = str(r.data?.docNo);
+        if (!docNo)
+          throw new SupplierProtocolError(NAME, `${NAME}: замовлення без docNo`, null, true);
+        return { externalOrderId: docNo, externalNumber: docNo };
       });
-      const docNo = str(r.data?.docNo);
-      if (!docNo)
-        throw new SupplierProtocolError(NAME, `${NAME}: замовлення без docNo`, null, true);
-      return { externalOrderId: docNo, externalNumber: docNo };
-    });
+    try {
+      await create(token);
+    } catch (e) {
+      // 401/403 — виклик відхилено до виконання (крок повернуто); новий токен — поза кроком.
+      if (!(e instanceof SupplierAuthError)) throw e;
+      await create(await this.session.getToken(conn, issuer, true, token));
+    }
     return { status: 'PLACED', statusRaw: null };
   }
 
@@ -199,18 +216,28 @@ export class AdUkraineAdapter implements SupplierAdapter {
   }
 
   private authed<T>(conn: SupplierConnectionContext, path: string, body: unknown): Promise<T> {
-    return this.session.withToken(conn, this.issuer(conn), async token => {
-      const r = await this.http.request<T>({
-        provider: NAME,
-        baseUrl: baseUrlOf(conn, AD_PROD_URL),
-        method: 'POST',
-        path: `${API}${path}`,
-        body,
-        headers: { Authorization: `Bearer ${token}` },
-        secrets: [token],
-        rateScope: `ad:${conn.id}`,
-      });
-      return r.data;
+    return this.session.withToken(conn, this.issuer(conn), token =>
+      this.withBearer<T>(conn, token, path, body),
+    );
+  }
+
+  /** Запит із готовим токеном, без повторної авторизації (для неповторюваного кроку). */
+  private async withBearer<T>(
+    conn: SupplierConnectionContext,
+    token: string,
+    path: string,
+    body: unknown,
+  ): Promise<T> {
+    const r = await this.http.request<T>({
+      provider: NAME,
+      baseUrl: baseUrlOf(conn, AD_PROD_URL),
+      method: 'POST',
+      path: `${API}${path}`,
+      body,
+      headers: { Authorization: `Bearer ${token}` },
+      secrets: [token],
+      rateScope: `ad:${conn.id}`,
     });
+    return r.data;
   }
 }

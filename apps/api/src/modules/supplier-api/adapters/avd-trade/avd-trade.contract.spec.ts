@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { startSupplierFakes, type SupplierFakes } from '../../../../../../../tools/supplier-fakes';
 import { connectionCtx, fakeRedis, httpClient, OUR_WH } from '../../supplier-api.spec-fixture';
 import { SupplierAuthError, SupplierRateLimitError } from '../../http/supplier-errors';
+import type { SupplierHttpClient } from '../../http/supplier-http.client';
 import {
   createPlaceOrderRunner,
   RECONCILE_STEP,
@@ -276,6 +277,38 @@ describe('AvdTradeAdapter — контракт проти фейкового AVD
       SupplierRateLimitError,
     );
     expect(fakes.requests('avd').length).toBe(before);
+  });
+
+  // guards: BR-SCON-012
+  it('checkout: CONFIRMED лише для flow = direct_shipment; shipment_request, невідомий чи відсутній flow → PLACED', async () => {
+    const placeWithFlow = async (flow: string | undefined) => {
+      const http = {
+        request: ({ method, path }: { method: string; path: string }) => {
+          const data =
+            method === 'POST' && path === '/carts'
+              ? { data: { cart: { uuid: 'cart-x' } } }
+              : path.endsWith('/lines')
+                ? { data: { summary: { success: 1 } } }
+                : path.endsWith('/checkout')
+                  ? { data: { processing: { flow, status: 'S' }, lines_result: [] } }
+                  : {};
+          return Promise.resolve({ status: 200, headers: new Headers(), data });
+        },
+      } as unknown as SupplierHttpClient;
+      const a = new AvdTradeAdapter(http);
+      const run = createPlaceOrderRunner(a.orderSteps, emptyState(), () => Promise.resolve());
+      return a.placeOrder(
+        conn({ apiUrl: 'https://api.avdtrade.com.ua/api/v1' }),
+        orderInput(),
+        run,
+      );
+    };
+    expect((await placeWithFlow('direct_shipment')).status).toBe('CONFIRMED');
+    for (const flow of ['shipment_request', 'manager_review', undefined]) {
+      const res = await placeWithFlow(flow);
+      expect(res.status).toBe('PLACED');
+      expect(res.lines).toBeUndefined();
+    }
   });
 });
 

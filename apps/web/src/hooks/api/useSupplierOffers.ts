@@ -124,3 +124,18 @@ export function isOfferStale(
   if (!offeredAt || ttlMinutes === undefined) return null;
   return now.getTime() - new Date(offeredAt).getTime() > ttlMinutes * 60_000;
 }
+
+/**
+ * Термін пропозиції одним текстом — однаково в діалозі пропозицій, бейджі позиції й перегляді
+ * автопідбору: 0 днів — «сьогодні», N — «N дн.», без днів — дата, інакше `fallback`.
+ */
+export function offerTermText(
+  days: number | null,
+  date: string | null,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  fmt: (iso: string) => string,
+  fallback: string | null = null,
+): string | null {
+  if (days !== null) return days === 0 ? t('offers.today') : t('offers.days', { count: days });
+  return date ? fmt(date) : fallback;
+}

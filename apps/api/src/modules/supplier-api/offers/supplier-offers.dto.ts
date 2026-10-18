@@ -11,6 +11,7 @@ import {
 
 const NOT_SELECTABLE_REASONS = [
   'itemNotOpen',
+  'connectionDisabled',
   'noExchangeRate',
   'analogFromWorkOrder',
   'analogShowOnly',
@@ -143,6 +144,11 @@ export class SupplierAllocationResultDto {
   @ApiProperty({ type: [SupplierAllocationItemDto] }) items!: SupplierAllocationItemDto[];
   @ApiProperty({ type: Number, nullable: true, description: 'Сума в гривні (null — ролі без цін)' })
   totalUah!: number | null;
+  @ApiProperty({
+    description:
+      'Відбиток розподілу: передати в застосування — 409, якщо після перегляду щось змінилось (BR-SOFR-009)',
+  })
+  previewToken!: string;
 }
 
 /**

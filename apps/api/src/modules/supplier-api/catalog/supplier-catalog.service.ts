@@ -83,6 +83,7 @@ export class SupplierCatalogService {
   async enqueueSync(orgId: string, connectionId: string): Promise<boolean> {
     try {
       // Сталий jobId: поки синхронізація підключення йде, повторне натискання нової не ставить.
+      // removeOnFail: true — задача з jobId у failed блокувала б наступну назавжди (BullMQ не додає).
       await this.catalogQueue.add(
         'sync',
         { orgId, connectionId },
@@ -91,7 +92,7 @@ export class SupplierCatalogService {
           backoff: { type: 'exponential', delay: 60_000 },
           jobId: `supplier-catalog-${connectionId}`,
           removeOnComplete: true,
-          removeOnFail: 200,
+          removeOnFail: true,
         },
       );
       return true;

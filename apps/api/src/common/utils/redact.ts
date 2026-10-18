@@ -16,7 +16,10 @@ export function redactSecrets(text: string, secrets: (string | null | undefined)
     // Checkbox pin_code: реальний касирський PIN = рівно 4 цифри, і якщо провайдер віддзеркалить
     // його у тілі 4xx-помилки — при поро̆зі >=6 він витік би у IntegrationLog.error (Bug: PIN leak).
     if (!s || s.length < 3) continue;
-    out = out.split(s).join('***');
+    // Провайдер може віддзеркалити секрет не дослівно: у JSON-тілі — з екрануванням (`\"`, `\\`,
+    // `\uXXXX`), у query чи form-тілі — URL-кодованим. Вирізаємо всі три форми.
+    const forms = new Set([s, JSON.stringify(s).slice(1, -1), encodeURIComponent(s)]);
+    for (const f of forms) out = out.split(f).join('***');
   }
   return out;
 }

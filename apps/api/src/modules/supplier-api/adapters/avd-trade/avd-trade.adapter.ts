@@ -39,6 +39,8 @@ const PAGE_SIZE = 5000;
 const MAX_PAGES = 100;
 /** `price/export`: «202 — зачекати 30 секунд і повторити». */
 const EXPORT_POLL_ATTEMPTS = 20;
+/** Межа файлу прайсу (типова межа відповіді клієнта — 20 МБ, прайс більший). */
+const PRICE_FILE_MAX_BYTES = 256 * 1024 * 1024;
 
 /**
  * AVD Trade (https://dev-api.avdtrade.com.ua/openapi.yaml). Ключ — заголовок `x-api-key`; квота
@@ -165,6 +167,7 @@ export class AvdTradeAdapter implements SupplierAdapter {
         absoluteUrl: url,
         responseType: 'text',
         timeoutMs: 300_000,
+        maxBodyBytes: PRICE_FILE_MAX_BYTES,
       });
       if (file.status === 202) {
         if (this.exportPollMs > 0) await new Promise(res => setTimeout(res, this.exportPollMs));
@@ -220,7 +223,9 @@ export class AvdTradeAdapter implements SupplierAdapter {
       const uuid = r.data.data?.cart?.uuid;
       if (!uuid)
         throw new SupplierProtocolError(NAME, `${NAME}: кошик створено без uuid`, null, true);
-      return { externalCartId: uuid, externalOrderId: uuid };
+      // externalOrderId — лише після оформлення: зовнішній id = «замовлення в постачальника вже
+      // є» (BR-SCON-014), а кошик без checkout замовленням не є.
+      return { externalCartId: uuid };
     });
     const cart = run.state.externalCartId as string;
 
@@ -272,6 +277,7 @@ export class AvdTradeAdapter implements SupplierAdapter {
         },
       });
       checkout = r.data.data ?? {};
+      return { externalOrderId: cart };
     });
 
     if (!checkout) return { status: 'PLACED', statusRaw: null };
@@ -279,8 +285,9 @@ export class AvdTradeAdapter implements SupplierAdapter {
     const processing = asRecord(data.processing);
     const statusRaw = str(processing.status);
     // direct_shipment — замовлення оформлено й забезпечено залишками; shipment_request — розглядає
-    // менеджер (кредитний ліміт), підтвердження ще немає.
-    if (str(processing.flow) === 'shipment_request') return { status: 'PLACED', statusRaw };
+    // менеджер (кредитний ліміт), підтвердження ще немає. Інший чи відсутній flow — не вгадуємо:
+    // PLACED, підтвердження покаже опитування статусу.
+    if (str(processing.flow) !== 'direct_shipment') return { status: 'PLACED', statusRaw };
     return { status: 'CONFIRMED', statusRaw, lines: avdCheckoutLines(data) };
   }
 

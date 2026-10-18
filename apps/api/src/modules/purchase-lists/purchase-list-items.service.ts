@@ -165,8 +165,9 @@ export class PurchaseListItemsService {
     if (res.count !== 1) throw conflict();
     const [dtoOut] = await loadItemDtos(this.prisma, orgId, [id]);
     if (!supplierChanged && dto.quantity !== undefined && dto.quantity > prevQty + QTY_EPSILON) {
-      const offerQty = await this.offerQty(orgId, item);
-      if (offerQty !== null && dto.quantity > offerQty + QTY_EPSILON) {
+      const offer = await this.offerQty(orgId, item);
+      // «≥10» (`qtyIsLowerBound`) — нижня межа: більша кількість не означає перевищення.
+      if (offer && !offer.qtyIsLowerBound && dto.quantity > offer.qty + QTY_EPSILON) {
         return { ...dtoOut, offerQtyExceeded: true };
       }
     }
@@ -174,7 +175,10 @@ export class PurchaseListItemsService {
   }
 
   /** Кількість останньої відомої пропозиції зі знімка позиції (null — знімка чи пропозиції немає). */
-  private async offerQty(orgId: string, item: PurchaseListItem): Promise<number | null> {
+  private async offerQty(
+    orgId: string,
+    item: PurchaseListItem,
+  ): Promise<{ qty: number; qtyIsLowerBound: boolean } | null> {
     if (!item.offerConnectionId || !item.offerKey) return null;
     const offer = await this.prisma.supplierOffer.findFirst({
       where: {
@@ -184,9 +188,9 @@ export class PurchaseListItemsService {
         deletedAt: null,
       },
       orderBy: { fetchedAt: 'desc' },
-      select: { qty: true },
+      select: { qty: true, qtyIsLowerBound: true },
     });
-    return offer?.qty ?? null;
+    return offer ?? null;
   }
 
   /** BR-PL-007: `0 < кількість < quantity` → нова OPEN-позиція з тими самими зв'язками. */
@@ -259,11 +263,25 @@ export class PurchaseListItemsService {
         const res = await tx.purchaseListItem.updateMany({
           where: { orgId, id: { in: ids }, ...OPEN_ITEM },
           data: {
-            ...(dto.supplierId !== undefined ? { supplierId: dto.supplierId } : {}),
             ...(dto.expectedPrice !== undefined ? { expectedPrice: dto.expectedPrice } : {}),
           },
         });
         if (res.count !== ids.length) throw conflict();
+        if (dto.supplierId !== undefined) {
+          // BR-PL-019 — як у PATCH позиції: інший постачальник скидає знімок пропозиції (інакше
+          // create-orders згрупує позицію під новим постачальником, а відправка в API впаде на
+          // offerFromOtherConnection). Той самий постачальник знімок лишає.
+          await tx.purchaseListItem.updateMany({
+            // `{ not }` відкидає й NULL — позиції без постачальника беремо окремою гілкою.
+            where: {
+              orgId,
+              id: { in: ids },
+              ...OPEN_ITEM,
+              OR: [{ supplierId: null }, { supplierId: { not: dto.supplierId } }],
+            },
+            data: { supplierId: dto.supplierId, ...CLEAR_OFFER_SNAPSHOT },
+          });
+        }
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );

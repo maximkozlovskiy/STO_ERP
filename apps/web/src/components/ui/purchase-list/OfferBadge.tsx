@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { fmtDate, fmtDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useNow } from '@/hooks/useNow';
-import { isOfferStale } from '@/hooks/api/useSupplierOffers';
+import { isOfferStale, offerTermText } from '@/hooks/api/useSupplierOffers';
 import type { PurchaseListItem } from '@/hooks/api/usePurchaseLists';
 
 /** Давність пропозиції коротко: «щойно», «12 хв тому», «3 год тому», «2 дн. тому». */
@@ -37,12 +37,7 @@ export function OfferBadge({
   const now = useNow(60_000);
   if (!item.offerKey) return null;
   const stale = isOfferStale(item.offeredAt, ttlMinutes, now);
-  const term =
-    item.offerDeliveryDays !== null
-      ? t('offers.days', { count: item.offerDeliveryDays })
-      : item.offerDeliveryDate
-        ? fmtDate(item.offerDeliveryDate)
-        : null;
+  const term = offerTermText(item.offerDeliveryDays, item.offerDeliveryDate, t, fmtDate);
   const parts = [
     item.offerWarehouseName ?? item.offerWarehouseCode,
     term,

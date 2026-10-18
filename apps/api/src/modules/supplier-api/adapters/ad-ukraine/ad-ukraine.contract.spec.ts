@@ -171,13 +171,36 @@ describe('AdUkraineAdapter — контракт проти фейкового AD
     });
   });
 
+  // guards: BR-SCON-011
+  it('збій логіну — до неповторюваного кроку: не RECONCILE, а звичайний повтор; 401 на order/create → новий токен поза кроком', async () => {
+    fakes.setScenario('ad', '500', { times: 1, path: '/auth/login' });
+    const first = runner();
+    const err = await adapter.placeOrder(conn(), order(), first.run).catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(SupplierReconcileRequired);
+    expect(first.persisted).toEqual([]);
+    expect(fakes.requests('ad').some(r => r.path.endsWith('/order/create'))).toBe(false);
+
+    await adapter.verify(conn()); // токен у кеші
+    fakes.state.data.ad.tokens = {}; // постачальник його вже не приймає
+    const second = runner();
+    await adapter.placeOrder(conn(), order(), second.run);
+    expect(second.persisted.map(p => p.step)).toEqual([
+      'CREATE:PENDING',
+      null,
+      'CREATE:PENDING',
+      'CREATE',
+    ]);
+    expect(fakes.requests('ad').filter(r => r.path.endsWith('/order/create'))).toHaveLength(2);
+  });
+
   // guards: BR-SCON-012
-  it('статус: order/one → CONFIRMED з рядками; зникло з невідвантажених → null (не вгадуємо)', async () => {
+  it('статус: словника немає — order/one дає сирий статус і рядки, нормалізований null; зникло з невідвантажених → null', async () => {
     fakes.setScenario('ad', 'partial', { times: 1 });
     const { run } = runner();
     await adapter.placeOrder(conn(), order(), run);
     const a = await adapter.getOrderStatus(conn(), order(), run.state);
-    expect(a).toMatchObject({ status: 'CONFIRMED', statusRaw: '1:Прийнято' });
+    // Не вгадуємо CONFIRMED: невідомий сирий статус нормалізованого не змінює (BR-SCON-012).
+    expect(a).toMatchObject({ status: null, statusRaw: '1:Прийнято' });
     expect(a.lines).toEqual([
       expect.objectContaining({ supplierItemId: 'OC90', warehouseCode: 'КИЕВ2', qtyConfirmed: 2 }),
     ]);

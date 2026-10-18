@@ -161,6 +161,16 @@ describe('BR-SOFR-008 покриття кількості', () => {
   });
 
   // guards: BR-SOFR-008
+  it('дробові частини: залишок плаваючої коми не стає «непокритою» потребою', () => {
+    // 1.1 − 0.2 − 0.9 у double = 1.1e-16, а не 0.
+    const a = offer({ id: 'A', qty: 0.2, multiplicity: 0.1, priceUah: 10 });
+    const b = offer({ id: 'B', qty: 0.9, multiplicity: 0.1, priceUah: 20 });
+    const r = allocateOffers(1.1, [a, b], opts());
+    expect(r.parts.map(p => p.offerId)).toEqual(['A', 'B']);
+    expect(r.uncovered).toBe(0);
+  });
+
+  // guards: BR-SOFR-008
   it('обмежена кількість («>10») вважається рівною межі', () => {
     const capped = offer({ id: 'CAP', qty: 10, qtyIsLowerBound: true });
     expect(allocateOffers(12, [capped], opts())).toEqual({

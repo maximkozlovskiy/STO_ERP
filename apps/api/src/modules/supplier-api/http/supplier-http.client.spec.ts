@@ -220,6 +220,70 @@ describe('SupplierHttpClient — справжній fetch проти локал�
     expect(err).toBeInstanceOf(SupplierProtocolError);
     expect((err as SupplierProtocolError).ambiguous).toBe(true);
   });
+
+  // guards: BR-SCON-011
+  it('заголовки прийшли, тіло «висить» — тайм-аут діє й на читання тіла (неоднозначна)', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.write('{"ok":'); // тіло так і не закінчується
+    };
+    const { client } = httpClient([base]);
+    const started = Date.now();
+    const err = await client
+      .request({
+        provider: 'AVD',
+        baseUrl: base,
+        method: 'POST',
+        path: '/checkout',
+        timeoutMs: 200,
+      })
+      .catch((e: unknown) => e);
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(err).toBeInstanceOf(SupplierNetworkError);
+    expect((err as SupplierNetworkError).ambiguous).toBe(true);
+  });
+
+  // guards: BR-SCON-011
+  it('2xx з обірваним тілом — не «успіх з {}», а мережева неоднозначна', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json', 'content-length': '100' });
+      res.write('{"data":');
+      setTimeout(() => res.destroy(), 20);
+    };
+    const { client } = httpClient([base]);
+    const err = await client
+      .request({ provider: 'AVD', baseUrl: base, method: 'POST', path: '/checkout' })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SupplierNetworkError);
+    expect((err as SupplierNetworkError).ambiguous).toBe(true);
+  });
+
+  it('тіло понад maxBodyBytes → протокольна помилка, не читається до кінця', async () => {
+    handler = reply(200, JSON.stringify({ blob: 'x'.repeat(5000) }));
+    const { client } = httpClient([base]);
+    const err = await client
+      .request({ provider: 'AVD', baseUrl: base, method: 'GET', path: '/big', maxBodyBytes: 1000 })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SupplierProtocolError);
+    expect((err as Error).message).toMatch(/завелика/);
+  });
+
+  // guards: BR-SCON-007
+  it('статус ліміту з rateLimitBodyPattern: ліміт лише коли тіло відповідає шаблону', async () => {
+    const { client } = httpClient([base]);
+    const req = {
+      provider: 'Tehnomir',
+      baseUrl: base,
+      method: 'POST' as const,
+      path: '/x',
+      rateLimitStatuses: [503],
+      rateLimitBodyPattern: /limit/i,
+    };
+    handler = reply(503, '{"success":false,"message":"Exceeded the allowable limit of requests"}');
+    await expect(client.request(req)).rejects.toBeInstanceOf(SupplierRateLimitError);
+    handler = reply(503, '{"success":false,"message":"Service Unavailable"}');
+    await expect(client.request(req)).rejects.toBeInstanceOf(SupplierServerError);
+  });
 });
 
 describe('buildUrl / retryAfterMs', () => {
@@ -236,5 +300,20 @@ describe('buildUrl / retryAfterMs', () => {
     );
     expect(retryAfterMs(new Headers({ 'x-ratelimit-reset': '5' }), now)).toBe(5000);
     expect(retryAfterMs(new Headers({}), now)).toBeNull();
+  });
+
+  // guards: BR-SCON-007
+  it('x-ratelimit-reset як epoch (секунди / мс) — різниця з now; пауза не довша за годину', () => {
+    const now = Date.parse('2026-10-18T10:00:00Z');
+    const inSecs = String(Math.floor(now / 1000) + 90);
+    expect(retryAfterMs(new Headers({ 'x-ratelimit-reset': inSecs }), now)).toBe(90_000);
+    expect(retryAfterMs(new Headers({ 'x-ratelimit-reset': String(now + 45_000) }), now)).toBe(
+      45_000,
+    );
+    expect(retryAfterMs(new Headers({ 'retry-after': '864000' }), now)).toBe(3_600_000);
+    expect(retryAfterMs(new Headers({ 'x-ratelimit-reset': '999999' }), now)).toBe(3_600_000);
+    expect(retryAfterMs(new Headers({ 'retry-after': 'Sun, 25 Oct 2026 10:00:00 GMT' }), now)).toBe(
+      3_600_000,
+    );
   });
 });

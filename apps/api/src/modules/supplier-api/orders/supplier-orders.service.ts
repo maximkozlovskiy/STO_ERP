@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -119,7 +120,12 @@ export class SupplierOrdersService {
     );
   }
 
-  /** Задача відправки; Redis недоступний — замовлення лишається QUEUED, його підхопить sweep. */
+  /**
+   * Задача відправки; Redis недоступний — замовлення лишається QUEUED, його підхопить sweep.
+   * Сталий jobId дедуплікує живу задачу (кнопка ‖ sweep), а `removeOnFail: true` — щоб після
+   * остаточного падіння повторна відправка не губилась: BullMQ мовчки не додає задачу з jobId,
+   * що лежить у failed. Падіння фіксує DLQ (`onFailed` бачить Job у пам'яті), у job.data лише id.
+   */
   async enqueuePlace(orgId: string, purchaseOrderId: string): Promise<boolean> {
     try {
       await this.orderQueue.add(
@@ -130,7 +136,7 @@ export class SupplierOrdersService {
           backoff: { type: 'exponential', delay: 30_000 },
           jobId: `supplier-place-${purchaseOrderId}`,
           removeOnComplete: true,
-          removeOnFail: 200,
+          removeOnFail: true,
         },
       );
       return true;
@@ -142,7 +148,10 @@ export class SupplierOrdersService {
     }
   }
 
-  /** «Оновити статус» — задача опитування цього замовлення. */
+  /**
+   * «Оновити статус» — задача опитування цього замовлення. Сталий jobId: повторні натискання,
+   * поки задача жива, не множать опитування; `removeOnFail: true` — щоб упала не блокувала наступну.
+   */
   async requestPoll(
     orgId: string,
     purchaseOrderId: string,
@@ -156,9 +165,9 @@ export class SupplierOrdersService {
         {
           attempts: 10,
           backoff: { type: 'exponential', delay: 30_000 },
-          jobId: `supplier-poll-${purchaseOrderId}-${Date.now()}`,
+          jobId: `supplier-poll-now-${purchaseOrderId}`,
           removeOnComplete: true,
-          removeOnFail: 200,
+          removeOnFail: true,
         },
       );
     } catch (e) {
@@ -254,14 +263,18 @@ export class SupplierOrdersService {
     const orders = plan ?? (await this.buildPlan(tx, orgId, purchaseOrderId));
     const po = await this.loadPo(tx, orgId, purchaseOrderId);
     for (const [i, o] of orders.entries()) {
+      // Номер замовлення не глобально унікальний (нумерацію можна скинути) — reference, ключ звірки
+      // в кабінеті постачальника, доповнено початком id зовнішнього замовлення.
+      const id = randomUUID();
       const created = await tx.supplierOrder.create({
         data: {
+          id,
           orgId,
           purchaseOrderId,
           connectionId: o.connectionId,
           supplierWarehouseCode: o.supplierWarehouseCode,
           status: 'QUEUED',
-          reference: `STO-${po.number}-${existing.length + i + 1}`,
+          reference: `STO-${po.number}-${existing.length + i + 1}-${id.slice(0, 8)}`,
         },
         select: { id: true },
       });

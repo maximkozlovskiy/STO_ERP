@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { redactSecrets } from '../../../../common/utils/redact';
 import { SupplierHttpClient, type SupplierHttpRequest } from '../../http/supplier-http.client';
 import { SupplierProtocolError } from '../../http/supplier-errors';
 import {
@@ -182,7 +183,7 @@ export class BmPartsAdapter implements SupplierAdapter {
       if (r.result === false) {
         throw new SupplierProtocolError(
           NAME,
-          `${NAME}: резерв відхилено — ${str(r.error) ?? 'без причини'}`,
+          `${NAME}: резерв відхилено — ${bmReason(conn, r.error) ?? 'без причини'}`,
         );
       }
       const uuid = str(r.uuid);
@@ -226,7 +227,7 @@ export class BmPartsAdapter implements SupplierAdapter {
         if (r.result === false)
           throw new SupplierProtocolError(
             NAME,
-            `${NAME}: відвантаження відхилено — ${r.error ?? ''}`,
+            `${NAME}: відвантаження відхилено — ${bmReason(conn, r.error) ?? ''}`,
           );
         return { externalNumber: str(r.document?.number) };
       });
@@ -290,4 +291,13 @@ export class BmPartsAdapter implements SupplierAdapter {
     });
     return r.data;
   }
+}
+
+/**
+ * Причина відмови з тіла 2xx (`result: false`) — без токена: клієнт вирізає секрети лише з
+ * помилкових відповідей, а цей текст іде в `error` рядка й журнал (BR-SCON-002).
+ */
+function bmReason(conn: SupplierConnectionContext, raw: unknown): string | null {
+  const text = str(raw);
+  return text === null ? null : redactSecrets(text, [conn.credentials.token]);
 }

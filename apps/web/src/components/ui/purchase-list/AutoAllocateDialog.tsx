@@ -4,11 +4,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { SUPPLIER_OFFER_BATCH_MAX, SUPPLIER_STRATEGIES } from '@sto/shared';
-import { fmtBankCurrencySuffix, fmtMoney, fmtQty } from '@/lib/format';
+import { fmtBankCurrencySuffix, fmtDate, fmtMoney, fmtQty } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { invalidateProcurementSideEffects } from '@/lib/cache-invalidation';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
 import {
   batchProgress,
+  offerTermText,
   supplierOffersApi,
   supplierOffersKeys,
   useSupplierOfferBatch,
@@ -46,6 +48,7 @@ interface Props {
 export function AutoAllocateDialog({ ids, onClose, onApplied }: Props) {
   const { t } = useTranslation('supplierApi');
   const qc = useQueryClient();
+  const features = useUiFeatures();
   const open = ids !== null;
   const settings = useSupplierProcurementSettings(open);
   const [strategy, setStrategy] = useState<SupplierStrategy | ''>('');
@@ -131,16 +134,31 @@ export function AutoAllocateDialog({ ids, onClose, onApplied }: Props) {
   }, [open, batchId, strategy, overrideManual, searchActive, batch.data, runPreview]);
 
   const applicable = (preview?.items ?? []).filter(i => i.parts.length > 0).length;
+  // Одна умова для кнопки й Ctrl+Enter (Modal onSubmit): застосовується лише показаний перегляд
+  // поточної стратегії, коли пошук і перерахунок завершено.
+  const canApply =
+    !!preview &&
+    preview.strategy === strategy &&
+    !previewing &&
+    !searchActive &&
+    applicable > 0 &&
+    !tooMany;
 
   const apply = async () => {
-    if (!batchId || !strategy || applyingRef.current) return;
+    if (!batchId || !strategy || !preview || !canApply || applyingRef.current) return;
     applyingRef.current = true;
     setApplying(true);
     setNotice('');
     try {
-      const res = await supplierOffersApi.allocate({ batchId, strategy, overrideManual });
+      // Відбиток перегляду: розподіл змінився після показу → 409, нічого не записано (BR-SOFR-009).
+      const res = await supplierOffersApi.allocate({
+        batchId,
+        strategy,
+        overrideManual,
+        previewToken: preview.previewToken,
+      });
       const count = res.items.filter(i => i.parts.length > 0).length;
-      toast.success(t('allocate.applied', { count }));
+      if (features.toastEnabled) toast.success(t('allocate.applied', { count }));
       invalidateProcurementSideEffects(qc);
       onApplied();
     } catch (e: unknown) {
@@ -180,11 +198,7 @@ export function AutoAllocateDialog({ ids, onClose, onApplied }: Props) {
             <Button variant="outline" onClick={handleClose} disabled={applying}>
               {t('common:cancel')}
             </Button>
-            <Button
-              onClick={() => void apply()}
-              loading={applying}
-              disabled={!preview || previewing || applicable === 0 || tooMany}
-            >
+            <Button onClick={() => void apply()} loading={applying} disabled={!canApply}>
               {t('allocate.apply')}
             </Button>
           </div>
@@ -304,7 +318,7 @@ function AllocationRow({ item }: { item: SupplierAllocationItem }) {
                 warehouse: p.warehouseName ? ` · ${p.warehouseName}` : '',
                 qty: fmtQty(p.qty),
                 price: `${fmtMoney(p.priceUah)} ${fmtBankCurrencySuffix('UAH')}`,
-                days: p.days,
+                term: offerTermText(p.days, null, t, fmtDate) ?? '',
               };
               return (
                 <li key={p.offerId}>

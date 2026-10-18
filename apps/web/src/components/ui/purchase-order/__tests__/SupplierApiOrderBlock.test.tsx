@@ -225,6 +225,49 @@ describe('SupplierApiOrderBlock', () => {
     });
   });
 
+  // guards: BR-SCON-009
+  it('незбережені правки картки — «Відправити в API» вимкнено з підказкою', async () => {
+    apiFetch.mockResolvedValue(state({ supplierApiStatus: 'NOT_SENT', canSend: true, orders: [] }));
+    withClient(
+      <SupplierApiOrderBlock
+        purchaseOrderId="po-1"
+        poStatus="DRAFT"
+        onChanged={vi.fn()}
+        unsavedChanges
+      />,
+    );
+    expect(await screen.findByRole('button', { name: 'Відправити в API' })).toBeDisabled();
+    expect(screen.getByText(/Спершу збережіть зміни в замовленні/)).toBeInTheDocument();
+  });
+
+  // guards: BR-SCON-009
+  it('відмова відправки — текстом у блоці; повтор іде з тим самим Idempotency-Key', async () => {
+    let sends = 0;
+    apiFetch.mockImplementation((path: string) => {
+      if (path.endsWith('/send')) {
+        sends += 1;
+        return sends === 1
+          ? Promise.reject(new Error('Немає зв’язку з сервером'))
+          : Promise.resolve(state({ supplierApiStatus: 'QUEUED', orders: [] }));
+      }
+      return Promise.resolve(state({ supplierApiStatus: 'NOT_SENT', canSend: true, orders: [] }));
+    });
+    withClient(
+      <SupplierApiOrderBlock purchaseOrderId="po-1" poStatus="ORDERED" onChanged={vi.fn()} />,
+    );
+    for (let i = 0; i < 2; i++) {
+      fireEvent.click(await screen.findByRole('button', { name: 'Відправити в API' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Так' }));
+      await waitFor(() => expect(sends).toBe(i + 1));
+      if (i === 0) expect(await screen.findByRole('alert')).toHaveTextContent('Немає зв’язку');
+    }
+    const keys = apiFetch.mock.calls
+      .filter(c => String(c[0]).endsWith('/send'))
+      .map(c => (c[1] as { headers: Record<string, string> }).headers['Idempotency-Key']);
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
+  });
+
   it('без підключення і передач — блок не показано; бухгалтер бачить стан без кнопок', async () => {
     apiFetch.mockResolvedValue(
       state({ hasConnection: false, orders: [], supplierApiStatus: 'NOT_SENT' }),

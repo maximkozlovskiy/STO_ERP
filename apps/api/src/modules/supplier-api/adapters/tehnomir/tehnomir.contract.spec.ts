@@ -1,6 +1,13 @@
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { startSupplierFakes, type SupplierFakes } from '../../../../../../../tools/supplier-fakes';
-import { SupplierAuthError, SupplierRateLimitError } from '../../http/supplier-errors';
+import {
+  SupplierAuthError,
+  SupplierProtocolError,
+  SupplierRateLimitError,
+  SupplierServerError,
+} from '../../http/supplier-errors';
 import {
   createPlaceOrderRunner,
   RECONCILE_STEP,
@@ -10,6 +17,22 @@ import { connectionCtx, httpClient, OUR_WH } from '../../supplier-api.spec-fixtu
 import type { SupplierOrderInput, SupplierOrderState } from '../supplier-adapter.interface';
 import { TehnomirAdapter } from './tehnomir.adapter';
 import { classifyTehnomirState, tehnomirOfferKey } from './tehnomir.mapper';
+
+/** Одна відповідь на будь-який запит — для тіл, яких фейк не віддає. */
+async function localServer(status: number, body: unknown) {
+  const server = createServer((_req, res) => {
+    res.writeHead(status, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(body));
+  });
+  await new Promise<void>(r => server.listen(0, '127.0.0.1', () => r()));
+  return {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    close: () => {
+      server.closeAllConnections();
+      return new Promise<void>(r => server.close(() => r()));
+    },
+  };
+}
 
 /** Контракт адаптера Tehnomir проти фейку (tools/supplier-fakes/providers/tehnomir.js, swagger Tehnomir). */
 describe('TehnomirAdapter — контракт проти фейкового Tehnomir', () => {
@@ -226,9 +249,43 @@ describe('TehnomirAdapter — контракт проти фейкового Teh
   });
 
   // guards: BR-SCON-007
-  it('503 «Exceeded the allowable limit» → ліміт, а не помилка сервера', async () => {
+  it('503 — ліміт лише з «Exceeded the allowable limit» у тілі; інша 503 — серверна неоднозначна', async () => {
+    // Фейк віддає 503 з тілом «scenario 503» — без ознаки ліміту.
     fakes.setScenario('tehnomir', '503', { times: 1 });
-    await expect(adapter.verify(conn())).rejects.toBeInstanceOf(SupplierRateLimitError);
+    const plain = await adapter.verify(conn()).catch((e: unknown) => e);
+    expect(plain).toBeInstanceOf(SupplierServerError);
+    expect(plain).toMatchObject({ ambiguous: true });
+
+    const local = await localServer(503, {
+      success: false,
+      message: 'Exceeded the allowable limit of requests',
+    });
+    try {
+      const a = new TehnomirAdapter(httpClient([local.url]).client);
+      await expect(a.verify(conn({ apiUrl: local.url }))).rejects.toBeInstanceOf(
+        SupplierRateLimitError,
+      );
+    } finally {
+      await local.close();
+    }
+  });
+
+  // guards: BR-SCON-002
+  it('success:false на 2xx, що віддзеркалює токен, — у тексті помилки токена немає', async () => {
+    const local = await localServer(200, {
+      success: false,
+      message: 'Unknown product, echo: leak-xyz-123',
+    });
+    try {
+      const a = new TehnomirAdapter(httpClient([local.url]).client);
+      const err = await a
+        .verify(conn({ apiUrl: local.url, credentials: { apiToken: 'leak-xyz-123' } }))
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(SupplierProtocolError);
+      expect((err as Error).message).not.toContain('leak-xyz-123');
+    } finally {
+      await local.close();
+    }
   });
 
   it('класифікація станів позиції (таблиця — звірити наживо)', () => {

@@ -118,9 +118,20 @@ export class SupplierConnectionsService {
     const options =
       dto.options !== undefined ? await this.checkOptions(orgId, adapter, dto.options) : undefined;
     const before = parseCredentials(current.credentials);
-    const merged = dto.credentials ? this.mergeCredentials(adapter, before, dto.credentials) : null;
-    const credsChanged = merged !== null && JSON.stringify(merged) !== JSON.stringify(before);
     const urlChanged = dto.apiUrl !== undefined && dto.apiUrl !== current.apiUrl;
+    // Нова адреса без повторного введення секретів стирає збережені секрети: інакше «Перевірити»
+    // відвезло б їх на хост, який обрав той, хто міняв адресу (BR-SCON-002, 005).
+    const secretKeys = adapter.credentialFields.filter(f => f.secret).map(f => f.key);
+    const wipeSecrets =
+      urlChanged &&
+      !!dto.apiUrl &&
+      !secretKeys.every(k => (dto.credentials?.[k] ?? '').trim() !== '');
+    const kept = wipeSecrets
+      ? Object.fromEntries(Object.entries(before).filter(([k]) => !secretKeys.includes(k)))
+      : before;
+    const touched = dto.credentials !== undefined || wipeSecrets;
+    const merged = touched ? this.mergeCredentials(adapter, kept, dto.credentials) : null;
+    const credsChanged = touched && JSON.stringify(merged ?? {}) !== JSON.stringify(before);
     try {
       // CAS на updatedAt: два адміністратори, що одночасно зливають креди, не затирають одне одного.
       const res = await this.prisma.supplierConnection.updateMany({
@@ -137,7 +148,7 @@ export class SupplierConnectionsService {
             : {}),
           ...(options !== undefined ? { options: options as Prisma.InputJsonValue } : {}),
           // Нові креди чи інша адреса — кеш токена й результат перевірки вже не про це підключення.
-          ...(credsChanged ? { credentials: JSON.stringify(merged) } : {}),
+          ...(credsChanged ? { credentials: merged ? JSON.stringify(merged) : null } : {}),
           ...(credsChanged || urlChanged || dto.testMode !== undefined
             ? { authState: null, verifyStatus: 'NEVER' as const, lastError: null }
             : {}),
@@ -187,7 +198,8 @@ export class SupplierConnectionsService {
           backoff: { type: 'exponential', delay: 30_000 },
           jobId: `supplier-verify-${connectionId}-${requestedAt.getTime()}`,
           removeOnComplete: true,
-          removeOnFail: 200,
+          // sweep перепоставляє той самий jobId — failed-задача з ним мовчки блокувала б повтор.
+          removeOnFail: true,
         },
       );
       return true;
@@ -240,10 +252,10 @@ export class SupplierConnectionsService {
     if (dup) throw new ConflictException(err('err.supplierConnection.duplicate'));
   }
 
-  /** BR-SCON-005: `apiUrl` — лише публічна адреса (або allowlist фейків поза production). */
+  /** BR-SCON-005: `apiUrl` — лише публічна https-адреса (або allowlist фейків поза production). */
   private assertApiUrl(url: string | null): void {
     if (!url) return;
-    const reason = this.urlPolicy.check(url);
+    const reason = this.urlPolicy.checkApiUrl(url);
     if (reason) {
       throw new BadRequestException(
         err('err.supplierConnection.invalidOptions', { details: `apiUrl — ${reason}` }),

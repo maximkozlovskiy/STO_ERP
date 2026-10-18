@@ -221,6 +221,29 @@ describe('Schema integrity — manual-SQL конструкти живі у БД 
     expect(expected.filter(c => !present.has(c))).toEqual([]);
   });
 
+  it('CHECK-констрейнти постачальників API живі (межі налаштувань, ціни й кількості)', async () => {
+    if (!dbAvailable) return;
+    const expected = [
+      'org_settings_supplier_catalog_interval_chk',
+      'org_settings_supplier_offer_retention_chk',
+      'org_settings_supplier_offer_ttl_chk',
+      'org_settings_supplier_poll_interval_chk',
+      'org_settings_supplier_price_weight_chk',
+      'org_settings_supplier_unknown_days_chk',
+      'supplier_catalog_items_price_nonneg_chk',
+      'supplier_offers_price_nonneg_chk',
+      'supplier_offers_qty_nonneg_chk',
+      'supplier_order_lines_confirmed_nonneg_chk',
+      'supplier_order_lines_qty_positive_chk',
+    ];
+    const rows = await raw.$queryRawUnsafe<{ conname: string }[]>(
+      `SELECT conname FROM pg_constraint WHERE contype = 'c' AND conname = ANY($1::text[])`,
+      expected,
+    );
+    const present = new Set(rows.map(r => r.conname));
+    expect(expected.filter(c => !present.has(c))).toEqual([]);
+  });
+
   it('append-only immutability тригери живі (ledger — фізична незмінність)', async () => {
     if (!dbAvailable) return;
     const rows = await raw.$queryRawUnsafe<{ tgname: string }[]>(

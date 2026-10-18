@@ -13,6 +13,10 @@ import {
 
 /** Типовий тайм-аут запиту до постачальника; експорт прайсу й пошук — свій через `timeoutMs`. */
 export const SUPPLIER_HTTP_TIMEOUT_MS = 20_000;
+/** Типова межа тіла відповіді; файл прайсу — свою через `maxBodyBytes`. */
+export const SUPPLIER_HTTP_MAX_BODY_BYTES = 20 * 1024 * 1024;
+/** Найдовша пауза за підказкою постачальника (Retry-After / x-ratelimit-reset). */
+export const MAX_RATE_LIMIT_PAUSE_MS = 3_600_000;
 
 type QueryValue = string | number | boolean | null | undefined | Array<string | number>;
 
@@ -32,6 +36,13 @@ export interface SupplierHttpRequest {
   rateScope?: string;
   /** Статуси, які постачальник віддає замість 429 (Tehnomir — 503 «Exceeded the allowable limit»). */
   rateLimitStatuses?: number[];
+  /**
+   * Статус із `rateLimitStatuses` — ліміт, лише якщо тіло відповідає шаблону (Tehnomir 503 буває
+   * і справжньою серверною помилкою — тоді вона неоднозначна, а не «ліміт» без витрати спроби).
+   */
+  rateLimitBodyPattern?: RegExp;
+  /** Межа тіла відповіді, байтів (типово SUPPLIER_HTTP_MAX_BODY_BYTES). */
+  maxBodyBytes?: number;
   /** Повна адреса замість baseUrl + path (посилання на файл прайсу AVD). */
   absoluteUrl?: string;
   responseType?: 'json' | 'text';
@@ -61,7 +72,7 @@ export class SupplierHttpClient {
 
   async request<T = unknown>(req: SupplierHttpRequest): Promise<SupplierHttpResponse<T>> {
     const url = req.absoluteUrl ?? buildUrl(req.baseUrl, req.path, req.query);
-    const urlError = this.urlPolicy.check(url);
+    const urlError = await this.urlPolicy.checkResolved(url);
     if (urlError) {
       throw new SupplierProtocolError(
         req.provider,
@@ -74,37 +85,66 @@ export class SupplierHttpClient {
     const timer = setTimeout(() => controller.abort(), req.timeoutMs ?? SUPPLIER_HTTP_TIMEOUT_MS);
     const hasBody = req.body !== undefined && req.method !== 'GET';
     let response: Response;
+    let text = '';
+    // Тайм-аут діє й на читання тіла: заголовки прийшли, а тіло «висить» — теж тайм-аут.
     try {
-      response = await fetch(url, {
-        method: req.method,
-        redirect: 'manual',
-        headers: {
-          Accept: 'application/json',
-          ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-          ...(req.headers ?? {}),
-        },
-        body: hasBody ? JSON.stringify(req.body) : undefined,
-        signal: controller.signal,
-      });
-    } catch (e) {
-      throw this.networkError(req, e, controller.signal.aborted);
+      try {
+        response = await fetch(url, {
+          method: req.method,
+          redirect: 'manual',
+          headers: {
+            Accept: 'application/json',
+            ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+            ...(req.headers ?? {}),
+          },
+          body: hasBody ? JSON.stringify(req.body) : undefined,
+          signal: controller.signal,
+        });
+      } catch (e) {
+        throw this.networkError(req, e, controller.signal.aborted);
+      }
+
+      await this.observeQuota(req, response.headers);
+
+      if (response.status >= 300 && response.status < 400) {
+        await response.body?.cancel().catch(() => undefined);
+        throw new SupplierProtocolError(
+          req.provider,
+          `${req.provider} ${response.status}: перенаправлення відхилено`,
+          response.status,
+        );
+      }
+      try {
+        text = await readBody(response, req.maxBodyBytes ?? SUPPLIER_HTTP_MAX_BODY_BYTES);
+      } catch (e) {
+        // Помилкова відповідь класифікується за статусом і без тіла. Успішна без тіла — ні:
+        // постачальник дію виконав, а результату ми не знаємо (оформлення → звірка, BR-SCON-011).
+        if (!response.ok) text = '';
+        else if (e instanceof BodyTooLargeError) {
+          throw new SupplierProtocolError(
+            req.provider,
+            `${req.provider} ${response.status}: відповідь завелика`,
+            response.status,
+            true,
+          );
+        } else {
+          const what = controller.signal.aborted ? 'тайм-аут читання відповіді' : 'обрив відповіді';
+          throw new SupplierNetworkError(
+            req.provider,
+            `${req.provider} ${response.status}: ${what}`,
+            true,
+          );
+        }
+      }
     } finally {
       clearTimeout(timer);
     }
-
-    await this.observeQuota(req, response.headers);
-
-    if (response.status >= 300 && response.status < 400) {
-      throw new SupplierProtocolError(
-        req.provider,
-        `${req.provider} ${response.status}: перенаправлення відхилено`,
-        response.status,
-      );
-    }
-    const text = await response.text().catch(() => '');
     const safeText = redactSecrets(text, req.secrets ?? []).slice(0, ERROR_BODY_MAX);
 
-    if (response.status === 429 || req.rateLimitStatuses?.includes(response.status)) {
+    const limitByStatus =
+      !!req.rateLimitStatuses?.includes(response.status) &&
+      (!req.rateLimitBodyPattern || req.rateLimitBodyPattern.test(text));
+    if (response.status === 429 || limitByStatus) {
       const waitMs = retryAfterMs(response.headers) ?? DEFAULT_RATE_LIMIT_PAUSE_MS;
       if (req.rateScope) await this.rateLimiter.block(req.rateScope, waitMs);
       throw new SupplierRateLimitError(
@@ -176,10 +216,50 @@ export class SupplierHttpClient {
     if (!req.rateScope) return;
     const remaining = headers.get('x-ratelimit-remaining');
     if (remaining === null || Number(remaining) > 0) return;
-    const reset = Number(headers.get('x-ratelimit-reset'));
-    const ms = Number.isFinite(reset) && reset > 0 ? reset * 1000 : DEFAULT_RATE_LIMIT_PAUSE_MS;
+    const ms = resetToMs(headers.get('x-ratelimit-reset')) ?? DEFAULT_RATE_LIMIT_PAUSE_MS;
     await this.rateLimiter.block(req.rateScope, ms);
   }
+}
+
+class BodyTooLargeError extends Error {}
+
+/** Тіло відповіді з межею розміру (декодування — як у `response.text()`: UTF-8 без BOM). */
+async function readBody(response: Response, maxBytes: number): Promise<string> {
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new BodyTooLargeError();
+  }
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw new BodyTooLargeError();
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder('utf-8').decode(Buffer.concat(chunks));
+}
+
+const clampPause = (ms: number) => Math.min(MAX_RATE_LIMIT_PAUSE_MS, Math.max(1000, ms));
+
+/**
+ * Число з заголовка скидання квоти → мс до скидання: секунди «через скільки» або мітка часу
+ * epoch (секунди чи мс) — деякі постачальники віддають саме її. Не довше MAX_RATE_LIMIT_PAUSE_MS.
+ */
+function resetToMs(raw: string | null, now = Date.now()): number | null {
+  if (raw === null || raw.trim() === '') return null;
+  const v = Number(raw);
+  if (!Number.isFinite(v) || v <= 0) return null;
+  if (v > 1e12) return clampPause(v - now); // epoch, мс
+  if (v > 1e9) return clampPause(v * 1000 - now); // epoch, секунди
+  return clampPause(v * 1000);
 }
 
 export function buildUrl(
@@ -199,16 +279,19 @@ export function buildUrl(
   return `${base}${p}${qs ? `?${qs}` : ''}`;
 }
 
-/** `Retry-After` (секунди чи HTTP-дата) → мс; інакше `x-ratelimit-reset` (секунди до скидання). */
+/**
+ * `Retry-After` (секунди чи HTTP-дата) → мс; інакше `x-ratelimit-reset` (секунди до скидання чи
+ * epoch). Пауза — від 1 с до MAX_RATE_LIMIT_PAUSE_MS: кривий заголовок не заморозить чергу на дні.
+ */
 export function retryAfterMs(headers: Headers, now = Date.now()): number | null {
   const ra = headers.get('retry-after');
   if (ra) {
     const secs = Number(ra);
-    if (Number.isFinite(secs) && secs >= 0) return Math.max(1000, secs * 1000);
+    if (ra.trim() !== '' && Number.isFinite(secs) && secs >= 0) {
+      return secs > 1e9 ? clampPause(secs * 1000 - now) : clampPause(secs * 1000);
+    }
     const at = Date.parse(ra);
-    if (Number.isFinite(at)) return Math.max(1000, at - now);
+    if (Number.isFinite(at)) return clampPause(at - now);
   }
-  const reset = Number(headers.get('x-ratelimit-reset'));
-  if (Number.isFinite(reset) && reset > 0) return reset * 1000;
-  return null;
+  return resetToMs(headers.get('x-ratelimit-reset'), now);
 }

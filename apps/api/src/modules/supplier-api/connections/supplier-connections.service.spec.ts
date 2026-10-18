@@ -194,6 +194,34 @@ describe('SupplierConnectionsService — підключення (BR-SCON-001…0
     await expect(
       s.service.create(ORG, { ...base, apiUrl: 'https://dev-api.avdtrade.com.ua/api/v1' }),
     ).resolves.toBeDefined();
+    // Поза allowlist фейків — лише https: секрети йдуть у заголовках і тілі.
+    await expect(
+      s.service.create(ORG, { ...base, provider: 'UTR', apiUrl: 'http://api.example.com/v1' }),
+    ).rejects.toThrow(/https/);
+  });
+
+  // guards: BR-SCON-002
+  it('нова apiUrl без повторного введення секретів стирає збережені секрети й кеш токена', async () => {
+    const c = await s.service.create(ORG, {
+      ...base,
+      provider: 'UTR',
+      credentials: { email: 'a@b.ua', password: 'p1' },
+    });
+    const row = s.supplierConnection.rows[0];
+    row.authState = '{"accessToken":"t"}';
+    await s.service.update(ORG, c.id, { apiUrl: 'https://collector.example.com/api' });
+    // Секрет не поїде на хост, обраний тим, хто міняв адресу; несекретний логін лишається.
+    expect(JSON.parse(row.credentials as string)).toEqual({ email: 'a@b.ua' });
+    expect(row.authState).toBeNull();
+    // Адреса разом із новим секретом — зберігається новий.
+    await s.service.update(ORG, c.id, {
+      apiUrl: 'https://other.example.com/api',
+      credentials: { password: 'p2' },
+    });
+    expect(JSON.parse(row.credentials as string)).toEqual({ email: 'a@b.ua', password: 'p2' });
+    // Інші зміни без адреси секретів не чіпають.
+    await s.service.update(ORG, c.id, { priority: 7 });
+    expect(JSON.parse(row.credentials as string)).toEqual({ email: 'a@b.ua', password: 'p2' });
   });
 
   // guards: BR-SCON-004
@@ -208,7 +236,12 @@ describe('SupplierConnectionsService — підключення (BR-SCON-001…0
     expect(s.queueAdd).toHaveBeenCalledWith(
       'verify',
       { orgId: ORG, connectionId: c.id },
-      expect.objectContaining({ attempts: 10, backoff: { type: 'exponential', delay: 30_000 } }),
+      // removeOnFail: true — sweep перепоставляє той самий jobId, failed-задача його б блокувала.
+      expect.objectContaining({
+        attempts: 10,
+        backoff: { type: 'exponential', delay: 30_000 },
+        removeOnFail: true,
+      }),
     );
     // У job.data — лише id, без кредів.
     expect(JSON.stringify(s.queueAdd.mock.calls[0])).not.toContain('"k"');

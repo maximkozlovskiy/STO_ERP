@@ -142,18 +142,18 @@ export function allocateOffers(
     parts.push({ offerId: s.o.id, qty: take, priceUah: s.price, days: s.days });
     remaining -= take;
   }
-  return { parts, uncovered: Math.max(0, remaining) };
+  // Залишок плаваючої коми (кратність 0.1, 0.2…) — не «непокрита потреба».
+  return { parts, uncovered: remaining <= EPS ? 0 : remaining };
 }
 
 function comparator(all: Scored[], need: number, opts: AllocationOptions) {
   const total = (s: Scored) => s.price * roundUpToStep(need, s.step);
-  const prices = all.map(s => s.price);
-  const days = all.map(s => s.days);
-  const norm = (v: number, list: number[]) => {
-    const min = Math.min(...list);
-    const max = Math.max(...list);
-    return max - min < EPS ? 0 : (v - min) / (max - min);
-  };
+  // Межі нормування — один раз, не на кожне порівняння (було O(n) на compare).
+  const range = (list: number[]) => ({ min: Math.min(...list), max: Math.max(...list) });
+  const prices = range(all.map(s => s.price));
+  const days = range(all.map(s => s.days));
+  const norm = (v: number, r: { min: number; max: number }) =>
+    r.max - r.min < EPS ? 0 : (v - r.min) / (r.max - r.min);
   const w = Math.min(1, Math.max(0, opts.priceWeight));
   const keys = (s: Scored): number[] => {
     switch (opts.strategy) {

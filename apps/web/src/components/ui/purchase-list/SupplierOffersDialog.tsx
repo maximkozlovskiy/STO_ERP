@@ -16,8 +16,10 @@ import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { invalidateProcurementSideEffects } from '@/lib/cache-invalidation';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
 import type { PurchaseListItem } from '@/hooks/api/usePurchaseLists';
 import {
+  offerTermText,
   supplierOffersApi,
   supplierOffersKeys,
   useItemOffers,
@@ -151,6 +153,7 @@ interface Props {
  */
 export function SupplierOffersDialog({ item, onClose }: Props) {
   const { t } = useTranslation('supplierApi');
+  const features = useUiFeatures();
   const qc = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
   const itemId = item?.id ?? null;
@@ -245,10 +248,13 @@ export function SupplierOffersDialog({ item, onClose }: Props) {
     setBusyOfferId(row.offer.id);
     try {
       await supplierOffersApi.choose(item.id, row.offer.id);
-      toast.success(t('offers.chosenToast', { supplier: row.supplierName }));
+      if (features.toastEnabled)
+        toast.success(t('offers.chosenToast', { supplier: row.supplierName }));
       finish();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('offers.loadError'));
+      // Відмова (аналог не обирається, немає курсу, позицію змінено) — у діалозі, не лише тостом:
+      // з вимкненими тостами вона інакше не видна ніде.
+      setNotice({ text: e instanceof Error ? e.message : t('offers.loadError'), variant: 'error' });
       void lastKnown.refetch();
       if (batchId) void batch.refetch();
     } finally {
@@ -263,10 +269,10 @@ export function SupplierOffersDialog({ item, onClose }: Props) {
     setBusyOfferId('clear');
     try {
       await supplierOffersApi.clear(item.id);
-      toast.success(t('offers.clearedToast'));
+      if (features.toastEnabled) toast.success(t('offers.clearedToast'));
       finish();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('offers.loadError'));
+      setNotice({ text: e instanceof Error ? e.message : t('offers.loadError'), variant: 'error' });
     } finally {
       busyRef.current = false;
       setBusyOfferId(null);
@@ -344,6 +350,19 @@ export function SupplierOffersDialog({ item, onClose }: Props) {
               })}
             </div>
           )}
+          {/* Причина збою підключення — текстом, а не лише в підказці при наведенні (клавіатура,
+              читач екрана, сенсорний екран). */}
+          {requests.some(r => r.error && (r.status === 'FAILED' || r.status === 'RETRYING')) && (
+            <ul className="space-y-0.5 text-[12px] text-muted-foreground">
+              {requests
+                .filter(r => r.error && (r.status === 'FAILED' || r.status === 'RETRYING'))
+                .map(r => (
+                  <li key={r.connectionId} className="break-words">
+                    {r.supplierName}: {r.error}
+                  </li>
+                ))}
+            </ul>
+          )}
           {notice && (
             <div
               role={notice.variant === 'error' ? 'alert' : 'status'}
@@ -416,14 +435,7 @@ function OfferTableRow({
   const { t } = useTranslation('supplierApi');
   const o = row.offer;
   const reason = o.notSelectableReason ? t(`offers.reasons.${o.notSelectableReason}`) : null;
-  const term =
-    o.deliveryDays !== null
-      ? o.deliveryDays === 0
-        ? t('offers.today')
-        : t('offers.days', { count: o.deliveryDays })
-      : o.deliveryDate
-        ? fmtDate(o.deliveryDate)
-        : '—';
+  const term = offerTermText(o.deliveryDays, o.deliveryDate, t, fmtDate, '—');
   return (
     <TableRow
       data-testid="supplier-offer-row"

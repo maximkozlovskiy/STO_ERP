@@ -55,12 +55,13 @@ export function adRowToOffers(raw: unknown): NormalizedOffer[] {
 }
 
 /**
- * Замовлення, яке `order/one` ще повертає, — прийняте й невідвантажене: CONFIRMED. Числовий
- * статус і його назву зберігаємо сирими (`<status>:<documentStatusName>`); точнішу таблицю —
- * після живої звірки.
+ * Замовлення з `order/one`: словника `status` специфікація не наводить, тож нормалізований статус
+ * не вгадуємо — `null` (BR-SCON-012: невідомий сирий статус не змінює нормалізованого), сирий
+ * зберігаємо як `<status>:<documentStatusName>`; таблицю — після живої звірки. Підтверджена
+ * кількість — `quantity` рядків (docs/INTEGRATIONS.md, «AD»).
  */
 export function mapAdOrder(data: Record<string, unknown>): {
-  status: SupplierOrderStatus;
+  status: SupplierOrderStatus | null;
   statusRaw: string;
   lines: ConfirmedLine[];
 } {
@@ -80,7 +81,7 @@ export function mapAdOrder(data: Record<string, unknown>): {
     ];
   });
   return {
-    status: 'CONFIRMED',
+    status: null,
     statusRaw: `${str(data.status) ?? ''}:${str(data.documentStatusName) ?? ''}`,
     lines,
   };

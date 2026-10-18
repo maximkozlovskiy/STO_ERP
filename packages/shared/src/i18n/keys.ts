@@ -616,6 +616,7 @@ export const VALIDATION_KEYS = [
   'err.supplierApi.noWarehouseMapping',
   'err.supplierApi.cancelSentOrder',
   'err.supplierApi.analogNotSelectable',
+  'err.supplierApi.allocationChanged',
   'err.supplierApi.offerNotFound',
   'err.supplierApi.offerStale',
   'err.supplierApi.noExchangeRate',

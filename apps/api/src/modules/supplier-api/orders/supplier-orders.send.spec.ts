@@ -1,10 +1,16 @@
 import { BadRequestException } from '@nestjs/common';
 import { UnrecoverableError } from 'bullmq';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import { SupplierAuthError, SupplierNetworkError } from '../http/supplier-errors';
 import { SupplierReconcileRequired } from './place-order-runner';
 import { UNKNOWN_ORDER_MESSAGE } from './supplier-order-sender';
-import { fakeAdapter, offerItem, ordersHarness, ORG } from './supplier-orders.spec-fixture';
+import {
+  fakeAdapter,
+  offerItem,
+  ordersHarness,
+  ORG,
+  SETTINGS,
+} from './supplier-orders.spec-fixture';
 
 /**
  * Відправка замовлення в API постачальника (BR-SCON-009…011, BR-PO-011): кнопка, outbox,
@@ -19,10 +25,13 @@ describe('BR-SCON-009 «Відправити в API»', () => {
     const state = await x.service.send(ORG, poId, 'STOREKEEPER');
     expect(x.po(poId)).toMatchObject({ status: 'ORDERED', supplierApiStatus: 'QUEUED' });
     expect(x.supplierOrders()).toHaveLength(1);
-    expect(x.supplierOrders()[0]).toMatchObject({
+    const so = x.supplierOrders()[0];
+    // reference глобально унікальний: номер замовлення (його нумерацію можна скинути) + id.
+    expect(so).toMatchObject({
       status: 'QUEUED',
-      reference: expect.stringMatching(/^STO-ЗП-2026-\d+-1$/),
+      reference: expect.stringMatching(/^STO-ЗП-2026-\d+-1-[0-9a-f]{8}$/),
     });
+    expect(so.reference).toMatch(new RegExp(`-${String(so.id).slice(0, 8)}$`));
     expect(x.lines()[0]).toMatchObject({
       offerKey: 'p1|w1',
       supplierItemId: 'p1',
@@ -36,6 +45,8 @@ describe('BR-SCON-009 «Відправити в API»', () => {
         attempts: 10,
         backoff: { type: 'exponential', delay: 30_000 },
         jobId: `supplier-place-${poId}`,
+        // Сталий jobId + failed-задача в Redis = повторна відправка / sweep мовчки ігноруються.
+        removeOnFail: true,
       }),
     );
     expect(x.locks).toContain(poId);
@@ -265,6 +276,81 @@ describe('BR-SCON-011 відправка по кроках без подвійн
     expect(x.supplierOrders()[0].status).toBe('CANCELLED');
     expect(x.fa.adapter.placeOrder).not.toHaveBeenCalled();
   });
+
+  // guards: BR-SCON-014
+  it('скасовано між вибіркою й відправкою — рядок не «воскресає» в SENDING, постачальнику нічого', async () => {
+    const x = ordersHarness();
+    const poId = await x.draftFromItems();
+    await x.service.send(ORG, poId);
+    // Налаштування читаються одразу після вибірки рядків — саме тоді «приходить» скасування.
+    (x.settings.getOrganisationSettings as Mock).mockImplementationOnce(() => {
+      x.supplierOrders()[0].status = 'CANCELLED';
+      return Promise.resolve(SETTINGS);
+    });
+    await x.sender.run(x.job(poId), undefined);
+    expect(x.supplierOrders()[0].status).toBe('CANCELLED');
+    expect(x.fa.adapter.placeOrder).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-SCON-014
+  it('outbox-шлях: замовлення скасовано до блокування — план не будується', async () => {
+    const x = ordersHarness();
+    x.h.tables.organisationSettings.rows[0].supplierOrderSendMode = 'ON_ORDERED';
+    const poId = await x.draftFromItems();
+    await x.h.purchaseOrders.transition(ORG, poId, 'ORDERED');
+    expect(x.po(poId).supplierApiStatus).toBe('QUEUED');
+    const prismaRec = x.h.prisma as unknown as Record<string, unknown>;
+    const lock = prismaRec.$queryRaw as (...a: unknown[]) => Promise<unknown>;
+    prismaRec.$queryRaw = vi.fn((...a: unknown[]) => {
+      x.po(poId).status = 'CANCELLED'; // скасування закомітилось між першим читанням і FOR UPDATE
+      return lock(...a);
+    });
+    await x.sender.run(x.job(poId), undefined);
+    expect(x.supplierOrders()).toHaveLength(0);
+    expect(x.fa.adapter.placeOrder).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-SCON-006
+  it('остаточна відмова одного зовнішнього замовлення не лишає решту в QUEUED', async () => {
+    let n = 0;
+    const fa = fakeAdapter({
+      checkout: () =>
+        ++n === 1
+          ? Promise.reject(new SupplierAuthError('AVD', 'AVD 401: ключ', 401))
+          : Promise.resolve(),
+    });
+    const x = ordersHarness({ adapter: fa.adapter });
+    const poId = await x.draftFromItems();
+    await x.service.send(ORG, poId);
+    const [first] = x.supplierOrders();
+    x.t.supplierOrder.rows.push({
+      ...first,
+      id: 'so-2',
+      reference: `${String(first.reference)}-b`,
+      createdAt: new Date((first.createdAt as Date).getTime() + 1000),
+    });
+    x.t.supplierOrderLine.rows.push({ ...x.lines()[0], id: 'sol-2', supplierOrderId: 'so-2' });
+    await expect(x.sender.run(x.job(poId), undefined)).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(x.supplierOrders().map(o => o.status)).toEqual(['FAILED', 'CONFIRMED']);
+    expect(x.po(poId).supplierApiStatus).toBe('FAILED');
+  });
+
+  // guards: BR-SCON-011
+  it('неповторюваний крок почався — sentAt записано одразу (звірка шукає від дати відправки)', async () => {
+    const fa = fakeAdapter({
+      checkout: () => Promise.reject(new SupplierNetworkError('AVD', 'AVD: тайм-аут запиту', true)),
+    });
+    const x = ordersHarness({ adapter: fa.adapter });
+    const poId = await x.draftFromItems();
+    await x.service.send(ORG, poId);
+    await expect(x.sender.run(x.job(poId), undefined)).rejects.toBeInstanceOf(
+      SupplierReconcileRequired,
+    );
+    const sentAt = x.supplierOrders()[0].sentAt;
+    expect(sentAt).toBeInstanceOf(Date);
+    await x.sender.run(x.job(poId, 1), undefined);
+    expect((fa.adapter.findOrderByReference as Mock).mock.calls[0][1]).toMatchObject({ sentAt });
+  });
 });
 
 describe('BR-SCON-012 статуси й BR-PO-011: склад і FSM не змінюються', () => {
@@ -324,6 +410,26 @@ describe('BR-SCON-012 статуси й BR-PO-011: склад і FSM не змі
     expect(so).toMatchObject({ status: 'PLACED', externalOrderId: 'late-1' });
     expect(x.po(poId).supplierApiStatus).toBe('SENT');
   });
+
+  // guards: BR-SCON-006
+  it('«Оновити статус»: одна задача на замовлення; невірні креди — без 10 марних повторів', async () => {
+    const x = ordersHarness();
+    const poId = await x.draftFromItems();
+    await x.service.send(ORG, poId);
+    await x.sender.run(x.job(poId), undefined);
+    await x.service.requestPoll(ORG, poId);
+    expect(x.queueAdd).toHaveBeenLastCalledWith(
+      'poll-now',
+      { orgId: ORG, purchaseOrderId: poId },
+      expect.objectContaining({ jobId: `supplier-poll-now-${poId}`, removeOnFail: true }),
+    );
+    (x.fa.adapter.getOrderStatus as Mock).mockRejectedValueOnce(
+      new SupplierAuthError('AVD', 'AVD 401: ключ', 401),
+    );
+    await expect(x.poller.pollPurchaseOrder(x.job(poId), undefined)).rejects.toBeInstanceOf(
+      UnrecoverableError,
+    );
+  });
 });
 
 describe('BR-SCON-013 / BR-SCON-014 / BR-PO-012', () => {
@@ -372,6 +478,28 @@ describe('BR-SCON-013 / BR-SCON-014 / BR-PO-012', () => {
       (x.fa.adapter.placeOrder as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
     ).toBe(callsBefore);
     expect(x.supplierOrders()[0].status).toBe('CONFIRMED');
+  });
+
+  // guards: BR-SCON-014
+  it('FAILED після частини кроків, але з зовнішнім id (резерв є, відвантаження впало) — теж відправлене', async () => {
+    const x = ordersHarness();
+    const poId = await x.draftFromItems();
+    await x.service.send(ORG, poId);
+    const so = x.supplierOrders()[0];
+    Object.assign(so, { status: 'FAILED', step: 'RESERVE', externalOrderId: 'res-1' });
+    x.po(poId).supplierApiStatus = 'FAILED';
+    await expect(x.h.purchaseOrders.transition(ORG, poId, 'CANCELLED')).rejects.toThrow(
+      /скасуйте його в кабінеті постачальника/,
+    );
+    // Лише кошик (зовнішнього замовлення ще немає) — скасування без force.
+    // (відкат транзакції підміняє рядки копіями — беремо рядок заново)
+    Object.assign(x.supplierOrders()[0], {
+      step: 'CART',
+      externalCartId: 'cart-1',
+      externalOrderId: null,
+    });
+    await x.h.purchaseOrders.transition(ORG, poId, 'CANCELLED');
+    expect(x.po(poId).status).toBe('CANCELLED');
   });
 
   it('стан: попередження про застарілу пропозицію до відправки', async () => {

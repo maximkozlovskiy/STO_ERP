@@ -510,6 +510,8 @@ export const en: Record<string, string> = {
   'err.supplierApi.cancelSentOrder':
     'The order was already sent to the supplier via API — cancel it in the supplier cabinet and confirm the cancellation',
   'err.supplierApi.analogNotSelectable': 'This analog cannot be selected',
+  'err.supplierApi.allocationChanged':
+    'Positions, offers or the exchange rate changed after the preview — review the allocation again',
   'err.supplierApi.offerNotFound': 'Offer not found',
   'err.supplierApi.offerStale': 'The offer is out of date — refresh the offers',
   'err.supplierApi.noExchangeRate':

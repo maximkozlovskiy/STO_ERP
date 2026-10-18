@@ -194,6 +194,24 @@ describe('UtrAdapter — контракт проти фейкового UTR', ()
     });
   });
 
+  // guards: BR-SCON-011
+  it('401 на order/accept — оновлення токена поза неповторюваним кроком: збій refresh не дає хибної звірки', async () => {
+    const steps: Array<string | null | undefined> = [];
+    const run = createPlaceOrderRunner(adapter.orderSteps, empty(), p => {
+      steps.push(p.step);
+      if (p.step === 'ACCEPT:PENDING' && steps.length === 1) {
+        // Токен «спливає» саме на оформленні, а оновлення падає 5xx.
+        fakes.state.data.utr.expireTokens = true;
+        fakes.setScenario('utr', '500', { times: 1, path: '/api/token/refresh' });
+      }
+      return Promise.resolve();
+    });
+    const err = await adapter.placeOrder(conn(), order(), run).catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(SupplierReconcileRequired);
+    expect(steps).toEqual(['ACCEPT:PENDING', null]);
+    expect(fakes.requests('utr').filter(r => r.path === '/api/order/accept')).toHaveLength(1);
+  });
+
   // guards: BR-SCON-012
   it('статус: processing → CONFIRMED; невідомий сирий статус → null (нормалізований не змінюється)', async () => {
     const { run } = runner();

@@ -8,6 +8,7 @@ import {
   GOOD_ANALOG,
   ITEM_MANUAL,
   ITEM_WO,
+  itemRow,
   offersHarness,
   ORG,
   SUP_AVD,
@@ -222,6 +223,91 @@ describe('Автопідбір — застосування (BR-SOFR-009)', () =
     ).rejects.toThrow(ConflictException);
     h.t.purchaseListItem.rows.find(r => r.id === ITEM_WO)!.quantity = 2;
     expect(JSON.stringify(h.t.purchaseListItem.rows)).toBe(before);
+  });
+
+  // guards: BR-SOFR-009
+  it('застосування з відбитком перегляду: розподіл змінився після перегляду → 409, нічого не записано', async () => {
+    const { h, service, offer } = setup();
+    offer(ITEM_MANUAL, CONN_UTR);
+    const preview = await service.allocate(
+      ORG,
+      { batchId: BATCH, strategy: 'CHEAP', dryRun: true },
+      'OWNER',
+    );
+    expect(preview.previewToken).toMatch(/^[0-9a-f]{40}$/);
+    // Між переглядом і «Застосувати» постачальник оновив ціну.
+    h.t.supplierOffer.rows[0]!.price = 90;
+    const before = JSON.stringify(h.t.purchaseListItem.rows);
+    await expect(
+      service.allocate(
+        ORG,
+        { batchId: BATCH, strategy: 'CHEAP', previewToken: preview.previewToken },
+        'OWNER',
+      ),
+    ).rejects.toThrow(ConflictException);
+    expect(JSON.stringify(h.t.purchaseListItem.rows)).toBe(before);
+    // Свіжий перегляд — застосовується.
+    const again = await service.allocate(
+      ORG,
+      { batchId: BATCH, strategy: 'CHEAP', dryRun: true },
+      'OWNER',
+    );
+    const applied = await service.allocate(
+      ORG,
+      { batchId: BATCH, strategy: 'CHEAP', previewToken: again.previewToken },
+      'OWNER',
+    );
+    expect(applied.applied).toBe(true);
+  });
+
+  // guards: BR-SOFR-008
+  it('одна пропозиція (спільний кешований запит) не роздається кільком позиціям понад наявне', async () => {
+    const ITEM_2 = '91111111-1111-4111-8111-000000000009';
+    const { h, service, offer } = setup({
+      items: [itemRow(ITEM_MANUAL, { quantity: 4 }), itemRow(ITEM_2, { quantity: 3 })],
+      itemIds: [ITEM_MANUAL, ITEM_2],
+    });
+    const shared = offer(ITEM_MANUAL, CONN_UTR, { qty: 5 });
+    // Друга позиція того ж товару отримала пропозицію з кешу першої.
+    h.t.supplierOfferRequest.rows.push({
+      id: 'req-cache',
+      orgId: ORG,
+      batchId: BATCH,
+      connectionId: CONN_UTR,
+      purchaseListItemId: ITEM_2,
+      status: 'DONE',
+      cacheOfId: 'req-1',
+      deletedAt: null,
+      createdAt: new Date(),
+    });
+    const res = await service.allocate(
+      ORG,
+      { batchId: BATCH, strategy: 'CHEAP', dryRun: true },
+      'OWNER',
+    );
+    const byItem = new Map(res.items.map(i => [i.itemId, i]));
+    expect(byItem.get(ITEM_MANUAL)!.parts).toEqual([
+      expect.objectContaining({ offerId: shared, qty: 4 }),
+    ]);
+    expect(byItem.get(ITEM_2)!.parts).toEqual([
+      expect.objectContaining({ offerId: shared, qty: 1 }),
+    ]);
+    expect(byItem.get(ITEM_2)!.uncovered).toBe(2);
+  });
+
+  // guards: BR-SOFR-005
+  it('позиція, раніше замінена аналогом: пропозиція на оригінал повертає товар-оригінал', async () => {
+    const { h, service, offer } = setup({
+      items: [itemRow(ITEM_MANUAL, { goodId: GOOD_ANALOG, originalGoodId: GOOD })],
+    });
+    offer(ITEM_MANUAL, CONN_UTR);
+    h.t.supplierOfferRequest.rows[0]!.goodId = GOOD; // шукали для оригіналу (до заміни)
+    await service.allocate(ORG, { batchId: BATCH, strategy: 'CHEAP' }, 'OWNER');
+    expect(h.t.purchaseListItem.rows.find(r => r.id === ITEM_MANUAL)).toMatchObject({
+      goodId: GOOD,
+      originalGoodId: null,
+      offerKey: 'key-1',
+    });
   });
 
   // guards: BR-SOFR-009

@@ -80,9 +80,18 @@ describe('стан передачі замовлення (BR-SCON-012, 014)', ()
 
   // guards: BR-SCON-014
   it('підтвердження скасування — лише коли зовнішнє замовлення вже в постачальника', () => {
-    for (const s of ['PLACED', 'CONFIRMED', 'PARTIALLY_CONFIRMED', 'READY', 'SHIPPED', 'UNKNOWN'])
+    // Дзеркало бекенду SENT_SUPPLIER_ORDER_STATUSES: SENDING — відправка могла дійти.
+    for (const s of [
+      'SENDING',
+      'PLACED',
+      'CONFIRMED',
+      'PARTIALLY_CONFIRMED',
+      'READY',
+      'SHIPPED',
+      'UNKNOWN',
+    ])
       expect(isSentToSupplier(st([s])), s).toBe(true);
-    for (const s of ['QUEUED', 'SENDING', 'FAILED', 'REJECTED', 'CANCELLED'])
+    for (const s of ['QUEUED', 'FAILED', 'REJECTED', 'CANCELLED'])
       expect(isSentToSupplier(st([s])), s).toBe(false);
     expect(isSentToSupplier(null)).toBe(false);
   });

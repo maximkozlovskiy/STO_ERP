@@ -67,6 +67,7 @@ beforeEach(() => {
       return Promise.resolve({
         strategy: body.strategy,
         applied: !body.dryRun,
+        previewToken: `tok-${String(body.strategy)}-${String(body.overrideManual)}`,
         totalUah: manualKept ? 0 : 320,
         items: [
           {
@@ -138,10 +139,21 @@ describe('AutoAllocateDialog', () => {
     await waitFor(() => expect(apply).toBeEnabled());
     fireEvent.click(apply);
     await waitFor(() => expect(onApplied).toHaveBeenCalled());
+    // Застосування несе відбиток показаного перегляду (BR-SOFR-009).
     expect(allocateBodies.at(-1)).toEqual({
       batchId: 'b-1',
       strategy: 'CHEAP',
       overrideManual: true,
+      previewToken: 'tok-CHEAP-true',
     });
+  });
+
+  // guards: BR-SOFR-009
+  it('Ctrl+Enter не застосовує в обхід кнопки, коли застосовувати нічого', async () => {
+    renderDialog();
+    await screen.findByText('обрано вручну — лишається');
+    fireEvent.keyDown(screen.getByTestId('auto-allocate-dialog'), { key: 'Enter', ctrlKey: true });
+    await new Promise(r => setTimeout(r, 0));
+    expect(allocateBodies.every(b => b.dryRun === true)).toBe(true);
   });
 });

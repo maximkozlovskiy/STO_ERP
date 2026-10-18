@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Job } from 'bullmq';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { normalizeArticle } from '../../../common/utils/normalize-article';
 import { GoodMatcherService } from '../../goods/good-matcher.service';
@@ -97,49 +98,62 @@ export class SupplierOfferSearchWorker {
         )
       : [];
     const fetchedAt = new Date();
-    await this.prisma.$transaction(async tx => {
-      if (offers.length) {
-        await tx.supplierOffer.createMany({
-          data: offers.map((o, i) => {
-            const m = matches[i];
-            const matchedGoodId = m?.status === 'matched' ? (m.good?.id ?? null) : null;
-            // Аналог — пропозиція не на товар позиції: збіг з іншим товаром, інший артикул чи
-            // позначка постачальника (крос), якщо збігу немає.
-            const isAnalog = matchedGoodId
-              ? matchedGoodId !== req.goodId
-              : o.isAnalog || normalizeArticle(o.article) !== req.articleNormalized;
-            return {
-              orgId,
-              requestId: req.id,
-              connectionId: conn.id,
-              supplierItemId: o.supplierItemId,
-              article: o.article,
-              articleNormalized: normalizeArticle(o.article),
-              brand: o.brand,
-              name: o.name,
-              price: o.price,
-              currencyCode: o.currencyCode,
-              qty: o.qty,
-              qtyIsLowerBound: o.qtyIsLowerBound,
-              warehouseCode: o.warehouseCode,
-              warehouseName: o.warehouseName,
-              deliveryDays: o.deliveryDays,
-              deliveryDate: o.deliveryDate,
-              multiplicity: o.multiplicity,
-              isAnalog,
-              offerKey: o.offerKey,
-              matchedGoodId,
-              matchStatus: m?.status ?? null,
-              fetchedAt,
-            };
-          }),
+    await this.prisma.$transaction(
+      async tx => {
+        if (offers.length) {
+          await tx.supplierOffer.createMany({
+            data: offers.map((o, i) => {
+              const m = matches[i];
+              const matchedGoodId = m?.status === 'matched' ? (m.good?.id ?? null) : null;
+              // Аналог — пропозиція не на товар позиції: збіг з іншим товаром, інший артикул чи
+              // позначка постачальника (крос), якщо збігу немає. Той самий артикул ІНШОГО бренду —
+              // теж аналог (review 2026-10-18): збіг лише за артикулом (`matchedBy: 'article'`,
+              // бренд пропозиції каталогу не відомий) чи неоднозначний збіг раніше проходили як
+              // «той самий товар» і обирались навіть для позицій з наряду.
+              const brandDiffers =
+                !!req.brand &&
+                !!o.brand &&
+                normalizeArticle(req.brand) !== normalizeArticle(o.brand);
+              const isAnalog = matchedGoodId
+                ? matchedGoodId !== req.goodId || (m?.matchedBy === 'article' && brandDiffers)
+                : o.isAnalog ||
+                  normalizeArticle(o.article) !== req.articleNormalized ||
+                  m?.status === 'ambiguous' ||
+                  brandDiffers;
+              return {
+                orgId,
+                requestId: req.id,
+                connectionId: conn.id,
+                supplierItemId: o.supplierItemId,
+                article: o.article,
+                articleNormalized: normalizeArticle(o.article),
+                brand: o.brand,
+                name: o.name,
+                price: o.price,
+                currencyCode: o.currencyCode,
+                qty: o.qty,
+                qtyIsLowerBound: o.qtyIsLowerBound,
+                warehouseCode: o.warehouseCode,
+                warehouseName: o.warehouseName,
+                deliveryDays: o.deliveryDays,
+                deliveryDate: o.deliveryDate,
+                multiplicity: o.multiplicity,
+                isAnalog,
+                offerKey: o.offerKey,
+                matchedGoodId,
+                matchStatus: m?.status ?? null,
+                fetchedAt,
+              };
+            }),
+          });
+        }
+        await tx.supplierOfferRequest.updateMany({
+          where: { id: req.id, orgId },
+          data: { status: 'DONE', completedAt: fetchedAt, error: null, nextRetryAt: null },
         });
-      }
-      await tx.supplierOfferRequest.updateMany({
-        where: { id: req.id, orgId },
-        data: { status: 'DONE', completedAt: fetchedAt, error: null, nextRetryAt: null },
-      });
-    });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
     if (req.batchId) await this.offers.completeBatchIfDone(orgId, req.batchId);
   }
 

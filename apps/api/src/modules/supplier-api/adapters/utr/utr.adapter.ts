@@ -152,27 +152,38 @@ export class UtrAdapter implements SupplierAdapter {
           `${NAME}: на сьогодні немає варіантів доставки зі складів замовлення`,
         );
       }
-      await run.step('ACCEPT', { repeatable: false }, async () => {
-        const r = await this.authed<unknown[]>(conn, {
-          method: 'POST',
-          path: '/api/order/accept',
-          body: [
-            {
-              comment: order.reference,
-              delivery: Number(variant.id),
-              deliveryDate: date,
-              deliveryPoint: Number(wh.deliveryPointId),
-              items,
-              paymentType: (conn.options.paymentType as string | undefined) ?? 'beznal',
-              withoutDocument: false,
-            },
-          ],
+      // Токен — до неповторюваного кроку: тайм-аут логіну всередині кроку дав би хибну звірку.
+      const issuer = this.issuer(conn);
+      const token = await this.session.getToken(conn, issuer, false);
+      const accept = (bearer: string) =>
+        run.step('ACCEPT', { repeatable: false }, async () => {
+          const r = await this.withBearer<unknown[]>(conn, bearer, {
+            method: 'POST',
+            path: '/api/order/accept',
+            body: [
+              {
+                comment: order.reference,
+                delivery: Number(variant.id),
+                deliveryDate: date,
+                deliveryPoint: Number(wh.deliveryPointId),
+                items,
+                paymentType: (conn.options.paymentType as string | undefined) ?? 'beznal',
+                withoutDocument: false,
+              },
+            ],
+          });
+          accepted = asRecord(asArray(r)[0]);
+          const id = str(accepted.id);
+          if (!id) throw new SupplierProtocolError(NAME, `${NAME}: замовлення без id`, null, true);
+          return { externalOrderId: id, externalNumber: str(accepted.externalCode) };
         });
-        accepted = asRecord(asArray(r)[0]);
-        const id = str(accepted.id);
-        if (!id) throw new SupplierProtocolError(NAME, `${NAME}: замовлення без id`, null, true);
-        return { externalOrderId: id, externalNumber: str(accepted.externalCode) };
-      });
+      try {
+        await accept(token);
+      } catch (e) {
+        // 401/403 — виклик відхилено до виконання (крок повернуто); новий токен — поза кроком.
+        if (!(e instanceof SupplierAuthError)) throw e;
+        await accept(await this.session.getToken(conn, issuer, true, token));
+      }
     }
     if (!accepted) return { status: 'PLACED', statusRaw: null };
     const o = accepted as Record<string, unknown>;
@@ -278,16 +289,25 @@ export class UtrAdapter implements SupplierAdapter {
     conn: SupplierConnectionContext,
     req: Omit<SupplierHttpRequest, 'provider' | 'baseUrl' | 'headers' | 'secrets' | 'rateScope'>,
   ): Promise<T> {
-    return this.session.withToken(conn, this.issuer(conn), async token => {
-      const r = await this.http.request<T>({
-        ...req,
-        provider: NAME,
-        baseUrl: baseUrlOf(conn, UTR_PROD_URL),
-        headers: { Authorization: `Bearer ${token}` },
-        secrets: [token],
-        rateScope: `utr:${conn.id}`,
-      });
-      return r.data;
+    return this.session.withToken(conn, this.issuer(conn), token =>
+      this.withBearer<T>(conn, token, req),
+    );
+  }
+
+  /** Запит із готовим токеном, без повторної авторизації (для неповторюваного кроку). */
+  private async withBearer<T>(
+    conn: SupplierConnectionContext,
+    token: string,
+    req: Omit<SupplierHttpRequest, 'provider' | 'baseUrl' | 'headers' | 'secrets' | 'rateScope'>,
+  ): Promise<T> {
+    const r = await this.http.request<T>({
+      ...req,
+      provider: NAME,
+      baseUrl: baseUrlOf(conn, UTR_PROD_URL),
+      headers: { Authorization: `Bearer ${token}` },
+      secrets: [token],
+      rateScope: `utr:${conn.id}`,
     });
+    return r.data;
   }
 }

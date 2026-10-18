@@ -9,6 +9,7 @@ import { toast } from '@/lib/toast';
 import { useAuth } from '@/lib/auth';
 import { invalidateProcurementSideEffects } from '@/lib/cache-invalidation';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
 import {
   SUPPLIER_API_SEND_ROLES,
   isSentToSupplier,
@@ -156,6 +157,11 @@ interface Props {
   onChanged: () => void;
   /** Прапорець вікна-власника «відкрито вкладене підтвердження» (Escape). */
   nestedOpenRef?: MutableRefObject<boolean>;
+  /**
+   * У картці є незбережені правки: постачальнику пішла б збережена версія, а перечитування картки
+   * після дії мовчки стерло б правки — «Відправити» й «Повернути» вимкнені до збереження.
+   */
+  unsavedChanges?: boolean;
 }
 
 /**
@@ -169,9 +175,16 @@ export function SupplierApiOrderBlock({
   poStatus,
   onChanged,
   nestedOpenRef,
+  unsavedChanges = false,
 }: Props) {
   const { t } = useTranslation('supplierApi');
   const qc = useQueryClient();
+  const features = useUiFeatures();
+  // Помилка дії — у блоці (role=alert), а не лише тостом: з вимкненими тостами її не видно.
+  const [actionError, setActionError] = useState('');
+  // Ключ ідемпотентності живе до успіху: повтор після обриву зв'язку йде з ТИМ САМИМ ключем, і
+  // сервер віддає першу відповідь, а не «уже відправлено» як помилку (BR-SCON-009).
+  const sendKeyRef = useRef<string | null>(null);
   const { employee } = useAuth();
   const canAct = SUPPLIER_API_SEND_ROLES.includes(employee?.role ?? '');
   const { confirm, dialogProps } = useConfirm();
@@ -193,10 +206,13 @@ export function SupplierApiOrderBlock({
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(kind);
+    setActionError('');
     try {
       await fn();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('order.loadError'));
+      const message = e instanceof Error ? e.message : t('order.loadError');
+      setActionError(message);
+      if (features.toastEnabled) toast.error(message);
     } finally {
       busyRef.current = false;
       setBusy(null);
@@ -211,9 +227,11 @@ export function SupplierApiOrderBlock({
         poStatus === 'DRAFT' ? t('order.sendConfirmDraft') : undefined,
       );
       if (!ok) return;
-      const next = await supplierApiOrderApi.send(purchaseOrderId, newIdempotencyKey());
+      sendKeyRef.current ??= newIdempotencyKey();
+      const next = await supplierApiOrderApi.send(purchaseOrderId, sendKeyRef.current);
+      sendKeyRef.current = null;
       qc.setQueryData(supplierApiOrderKeys.state(purchaseOrderId), next);
-      toast.success(t('order.sendQueued'));
+      if (features.toastEnabled) toast.success(t('order.sendQueued'));
       invalidateProcurementSideEffects(qc);
       onChanged();
     });
@@ -222,7 +240,7 @@ export function SupplierApiOrderBlock({
     act('poll', async () => {
       await supplierApiOrderApi.poll(purchaseOrderId);
       setWatchUntil(Date.now() + WATCH_AFTER_POLL_MS);
-      toast.success(t('order.pollQueued'));
+      if (features.toastEnabled) toast.success(t('order.pollQueued'));
     });
 
   const release = () =>
@@ -230,7 +248,7 @@ export function SupplierApiOrderBlock({
       if (!(await ask(t('order.releaseConfirm')))) return;
       const res = await supplierApiOrderApi.release(purchaseOrderId);
       qc.setQueryData(supplierApiOrderKeys.state(purchaseOrderId), res.state);
-      toast.success(t('order.released', { qty: fmtQty(res.released) }));
+      if (features.toastEnabled) toast.success(t('order.released', { qty: fmtQty(res.released) }));
       invalidateProcurementSideEffects(qc);
       onChanged();
     });
@@ -280,7 +298,7 @@ export function SupplierApiOrderBlock({
                 size="xs"
                 onClick={() => void send()}
                 loading={busy === 'send'}
-                disabled={!!busy}
+                disabled={!!busy || unsavedChanges}
                 leftIcon={<Send className="h-3 w-3" aria-hidden="true" />}
               >
                 {t('order.send')}
@@ -304,7 +322,7 @@ export function SupplierApiOrderBlock({
                 variant="outline"
                 onClick={() => void release()}
                 loading={busy === 'release'}
-                disabled={!!busy}
+                disabled={!!busy || unsavedChanges}
                 leftIcon={<Undo2 className="h-3 w-3" aria-hidden="true" />}
               >
                 {t('order.release')}
@@ -314,6 +332,14 @@ export function SupplierApiOrderBlock({
         )}
       </div>
 
+      {unsavedChanges && canAct && (state.canSend || state.canRelease) && (
+        <p className="text-[12px] text-muted-foreground">{t('order.saveFirst')}</p>
+      )}
+      {actionError && (
+        <p className="text-[12px] text-destructive-text break-words" role="alert">
+          {actionError}
+        </p>
+      )}
       {state.supplierApiError && (
         <p className="text-[12px] text-destructive-text break-words">{state.supplierApiError}</p>
       )}

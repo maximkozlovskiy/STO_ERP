@@ -230,7 +230,8 @@ export function SupplierConnectionModal({
   };
 
   const submit = async (verify: boolean) => {
-    if (savingRef.current) return;
+    // Ctrl+Enter під час перевірки — не повторювати збереження.
+    if (savingRef.current || verifying) return;
     const problem = validate();
     if (problem) {
       setError(problem);
@@ -362,7 +363,12 @@ export function SupplierConnectionModal({
             <Button variant="outline" onClick={() => void handleClose()} disabled={saving}>
               {t('common:cancel')}
             </Button>
-            <Button variant="outline" onClick={() => void submit(false)} loading={saving}>
+            <Button
+              variant="outline"
+              onClick={() => void submit(false)}
+              loading={saving}
+              disabled={verifying}
+            >
               {t('form.save')}
             </Button>
             <Button onClick={() => void submit(true)} loading={saving || verifying}>
@@ -371,192 +377,201 @@ export function SupplierConnectionModal({
           </ModalFooter>
         }
       >
-        <div className="space-y-4" data-testid="supplier-connection-form">
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              id="scon-provider"
-              label={t('form.provider')}
-              required
-              value={form.provider}
-              disabled={!!connection}
-              onChange={e =>
-                // Поля кредів і опцій — від провайдера: чужі ключі сервер відхилив би (BR-SCON-003).
-                patch({ provider: e.target.value, credentials: {}, options: {}, warehouses: {} })
-              }
-            >
-              <option value="">{t('form.providerPlaceholder')}</option>
-              {providers.map(p => (
-                <option key={p.provider} value={p.provider}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              id="scon-counterparty"
-              label={t('form.counterparty')}
-              required
-              value={form.counterpartyId}
-              onChange={e => patch({ counterpartyId: e.target.value })}
-              hint={
-                !suppliersLoading && (suppliers ?? []).length === 0
-                  ? t('form.noSuppliers')
-                  : undefined
-              }
-            >
-              <option value="">{t('form.counterpartyPlaceholder')}</option>
-              {(suppliers ?? []).map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </Select>
-            <Input
-              id="scon-name"
-              label={t('form.name')}
-              value={form.name}
-              maxLength={120}
-              onChange={e => patch({ name: e.target.value })}
-            />
-            <Input
-              id="scon-api-url"
-              label={t('form.apiUrl')}
-              value={form.apiUrl}
-              maxLength={500}
-              hint={t('form.apiUrlHint')}
-              onChange={e => patch({ apiUrl: e.target.value })}
-            />
-            <Input
-              id="scon-priority"
-              label={t('form.priority')}
-              type="number"
-              min={0}
-              max={1000}
-              step={1}
-              value={form.priority}
-              hint={t('form.priorityHint')}
-              onChange={e => patch({ priority: e.target.value })}
-            />
-            <Input
-              id="scon-days"
-              label={t('form.defaultDeliveryDays')}
-              type="number"
-              min={0}
-              max={365}
-              step={1}
-              value={form.defaultDeliveryDays}
-              hint={t('form.defaultDeliveryDaysHint')}
-              onChange={e => patch({ defaultDeliveryDays: e.target.value })}
-            />
-          </div>
-
-          <div className="flex flex-wrap gap-6">
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={form.enabled}
-                onChange={v => patch({ enabled: v })}
-                ariaLabel={t('form.enabled')}
+        {/* Поки йде перевірка, поля заблоковано: успіх закриває картку сам, і правка, внесена
+            в цей час, зникла б повз dirty-guard. */}
+        <fieldset disabled={verifying} className="min-w-0 border-0 p-0 m-0">
+          <div className="space-y-4" data-testid="supplier-connection-form">
+            <div className="grid grid-cols-2 gap-3">
+              <Select
+                id="scon-provider"
+                label={t('form.provider')}
+                required
+                value={form.provider}
+                disabled={!!connection}
+                onChange={e =>
+                  // Поля кредів і опцій — від провайдера: чужі ключі сервер відхилив би (BR-SCON-003).
+                  patch({ provider: e.target.value, credentials: {}, options: {}, warehouses: {} })
+                }
+              >
+                <option value="">{t('form.providerPlaceholder')}</option>
+                {providers.map(p => (
+                  <option key={p.provider} value={p.provider}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                id="scon-counterparty"
+                label={t('form.counterparty')}
+                required
+                value={form.counterpartyId}
+                onChange={e => patch({ counterpartyId: e.target.value })}
+                hint={
+                  !suppliersLoading && (suppliers ?? []).length === 0
+                    ? t('form.noSuppliers')
+                    : undefined
+                }
+              >
+                <option value="">{t('form.counterpartyPlaceholder')}</option>
+                {(suppliers ?? []).map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+              <Input
+                id="scon-name"
+                label={t('form.name')}
+                value={form.name}
+                maxLength={120}
+                onChange={e => patch({ name: e.target.value })}
               />
-              <span className="text-[13px]">{t('form.enabled')}</span>
-            </div>
-            <div className="flex items-center gap-2" title={t('form.testModeHint')}>
-              <Switch
-                checked={form.testMode}
-                onChange={v => patch({ testMode: v })}
-                ariaLabel={t('form.testMode')}
+              <Input
+                id="scon-api-url"
+                label={t('form.apiUrl')}
+                value={form.apiUrl}
+                maxLength={500}
+                hint={t('form.apiUrlHint')}
+                onChange={e => patch({ apiUrl: e.target.value })}
               />
-              <span className="text-[13px]">{t('form.testMode')}</span>
+              <Input
+                id="scon-priority"
+                label={t('form.priority')}
+                type="number"
+                min={0}
+                max={1000}
+                step={1}
+                value={form.priority}
+                hint={t('form.priorityHint')}
+                onChange={e => patch({ priority: e.target.value })}
+              />
+              <Input
+                id="scon-days"
+                label={t('form.defaultDeliveryDays')}
+                type="number"
+                min={0}
+                max={365}
+                step={1}
+                value={form.defaultDeliveryDays}
+                hint={t('form.defaultDeliveryDaysHint')}
+                onChange={e => patch({ defaultDeliveryDays: e.target.value })}
+              />
             </div>
-          </div>
 
-          {provider && (
-            <>
-              <section className="space-y-2">
-                <h3 className="text-sm font-semibold text-foreground">{t('form.credentials')}</h3>
-                <p className="text-xs text-muted-foreground">{t('form.credentialsHint')}</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {provider.credentialFields.map(f =>
-                    fieldInput(
-                      f,
-                      form.credentials[f.key] ?? '',
-                      v => patch({ credentials: { ...form.credentials, [f.key]: String(v) } }),
-                      `scon-cred-${f.key}`,
-                      savedKeys.has(f.key) ? t('form.savedPlaceholder') : undefined,
-                    ),
-                  )}
-                </div>
-              </section>
+            <div className="flex flex-wrap gap-6">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={form.enabled}
+                  onChange={v => patch({ enabled: v })}
+                  ariaLabel={t('form.enabled')}
+                />
+                <span className="text-[13px]">{t('form.enabled')}</span>
+              </div>
+              <div className="flex items-center gap-2" title={t('form.testModeHint')}>
+                <Switch
+                  checked={form.testMode}
+                  onChange={v => patch({ testMode: v })}
+                  ariaLabel={t('form.testMode')}
+                />
+                <span className="text-[13px]">{t('form.testMode')}</span>
+              </div>
+            </div>
 
-              {provider.optionFields.length > 0 && (
+            {provider && (
+              <>
                 <section className="space-y-2">
-                  <h3 className="text-sm font-semibold text-foreground">{t('form.options')}</h3>
+                  <h3 className="text-sm font-semibold text-foreground">{t('form.credentials')}</h3>
+                  <p className="text-xs text-muted-foreground">{t('form.credentialsHint')}</p>
                   <div className="grid grid-cols-2 gap-3">
-                    {provider.optionFields.map(f =>
+                    {provider.credentialFields.map(f =>
                       fieldInput(
                         f,
-                        form.options[f.key],
-                        v => patch({ options: { ...form.options, [f.key]: v } }),
-                        `scon-opt-${f.key}`,
+                        form.credentials[f.key] ?? '',
+                        v => patch({ credentials: { ...form.credentials, [f.key]: String(v) } }),
+                        `scon-cred-${f.key}`,
+                        savedKeys.has(f.key) ? t('form.savedPlaceholder') : undefined,
                       ),
                     )}
                   </div>
                 </section>
-              )}
 
-              {provider.warehouseFields.length > 0 && (
-                <section className="space-y-2">
-                  <h3 className="text-sm font-semibold text-foreground">{t('form.warehouses')}</h3>
-                  <p className="text-xs text-muted-foreground">{t('form.warehousesHint')}</p>
-                  {(warehouses ?? []).map(w => (
-                    <fieldset
-                      key={w.id}
-                      className="rounded-lg border border-border p-3 space-y-2"
-                      aria-label={w.name}
-                    >
-                      <legend className="px-1 text-[13px] font-medium">{w.name}</legend>
-                      <div className="grid grid-cols-2 gap-3">
-                        {provider.warehouseFields.map(f =>
-                          fieldInput(
-                            f,
-                            form.warehouses[w.id]?.[f.key] ?? '',
-                            v =>
-                              patch({
-                                warehouses: {
-                                  ...form.warehouses,
-                                  [w.id]: { ...(form.warehouses[w.id] ?? {}), [f.key]: String(v) },
-                                },
-                              }),
-                            `scon-wh-${w.id}-${f.key}`,
-                          ),
-                        )}
-                      </div>
-                    </fieldset>
-                  ))}
-                </section>
-              )}
-            </>
-          )}
+                {provider.optionFields.length > 0 && (
+                  <section className="space-y-2">
+                    <h3 className="text-sm font-semibold text-foreground">{t('form.options')}</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {provider.optionFields.map(f =>
+                        fieldInput(
+                          f,
+                          form.options[f.key],
+                          v => patch({ options: { ...form.options, [f.key]: v } }),
+                          `scon-opt-${f.key}`,
+                        ),
+                      )}
+                    </div>
+                  </section>
+                )}
 
-          {verifyLine && (
-            <p
-              className={
-                verifying
-                  ? 'text-[13px] text-muted-foreground'
-                  : 'text-[13px] text-destructive-text'
-              }
-              role="status"
-            >
-              {verifyLine}
-            </p>
-          )}
-          {error && (
-            <div
-              role="alert"
-              className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2"
-            >
-              {error}
-            </div>
-          )}
-        </div>
+                {provider.warehouseFields.length > 0 && (
+                  <section className="space-y-2">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {t('form.warehouses')}
+                    </h3>
+                    <p className="text-xs text-muted-foreground">{t('form.warehousesHint')}</p>
+                    {(warehouses ?? []).map(w => (
+                      <fieldset
+                        key={w.id}
+                        className="rounded-lg border border-border p-3 space-y-2"
+                        aria-label={w.name}
+                      >
+                        <legend className="px-1 text-[13px] font-medium">{w.name}</legend>
+                        <div className="grid grid-cols-2 gap-3">
+                          {provider.warehouseFields.map(f =>
+                            fieldInput(
+                              f,
+                              form.warehouses[w.id]?.[f.key] ?? '',
+                              v =>
+                                patch({
+                                  warehouses: {
+                                    ...form.warehouses,
+                                    [w.id]: {
+                                      ...(form.warehouses[w.id] ?? {}),
+                                      [f.key]: String(v),
+                                    },
+                                  },
+                                }),
+                              `scon-wh-${w.id}-${f.key}`,
+                            ),
+                          )}
+                        </div>
+                      </fieldset>
+                    ))}
+                  </section>
+                )}
+              </>
+            )}
+
+            {verifyLine && (
+              <p
+                className={
+                  verifying
+                    ? 'text-[13px] text-muted-foreground'
+                    : 'text-[13px] text-destructive-text'
+                }
+                role="status"
+              >
+                {verifyLine}
+              </p>
+            )}
+            {error && (
+              <div
+                role="alert"
+                className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2"
+              >
+                {error}
+              </div>
+            )}
+          </div>
+        </fieldset>
       </Modal>
       <DirtyConfirmDialog {...dirty.dialogProps} />
     </>

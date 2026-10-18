@@ -11760,7 +11760,7 @@
         "operationId": "SupplierOffersController_search_v1",
         "parameters": [],
         "responses": {
-          "200": {
+          "202": {
             "description": "",
             "content": {
               "application/json": {
@@ -27904,6 +27904,7 @@
             "nullable": true,
             "enum": [
               "itemNotOpen",
+              "connectionDisabled",
               "noExchangeRate",
               "analogFromWorkOrder",
               "analogShowOnly",
@@ -28297,13 +28298,18 @@
             "type": "number",
             "nullable": true,
             "description": "Сума в гривні (null — ролі без цін)"
+          },
+          "previewToken": {
+            "type": "string",
+            "description": "Відбиток розподілу: передати в застосування — 409, якщо після перегляду щось змінилось (BR-SOFR-009)"
           }
         },
         "required": [
           "strategy",
           "applied",
           "items",
-          "totalUah"
+          "totalUah",
+          "previewToken"
         ]
       },
       "SupplierProcurementSettingsDto": {

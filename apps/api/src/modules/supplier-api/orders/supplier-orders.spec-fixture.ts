@@ -87,15 +87,13 @@ export function fakeAdapter(b: FakeAdapterBehaviour = {}) {
     placeOrder: vi.fn(async (_c, _o, run) => {
       await run.step('CART', { repeatable: true }, () => {
         calls.cart += 1;
-        return Promise.resolve({
-          externalCartId: `cart-${calls.cart}`,
-          externalOrderId: `cart-${calls.cart}`,
-        });
+        return Promise.resolve({ externalCartId: `cart-${calls.cart}` });
       });
+      // Як AVD: зовнішній id замовлення з'являється лише після оформлення (BR-SCON-014).
       await run.step('CHECKOUT', { repeatable: false }, async () => {
         calls.checkout += 1;
         await (b.checkout ?? (() => Promise.resolve()))();
-        return { externalNumber: 'EXT-1' };
+        return { externalOrderId: run.state.externalCartId, externalNumber: 'EXT-1' };
       });
       return (
         b.result ?? {

@@ -19,6 +19,7 @@ import {
   type SupplierQueuedResponse,
 } from '@/hooks/api/useSupplierConnections';
 import { supplierOffersKeys } from '@/hooks/api/useSupplierOffers';
+import { supplierApiOrderKeys } from '@/hooks/api/useSupplierApiOrder';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -75,6 +76,7 @@ export function SupplierConnectionsPanel() {
     void qc.invalidateQueries({ queryKey: supplierConnectionsKeys.list() });
     // Увімкнене/вимкнене підключення міняє набір пропозицій і стан відправки замовлень.
     void qc.invalidateQueries({ queryKey: supplierOffersKeys.all });
+    void qc.invalidateQueries({ queryKey: supplierApiOrderKeys.all });
   }, [qc]);
 
   useEffect(() => {
@@ -201,6 +203,9 @@ export function SupplierConnectionsPanel() {
     applyConnection(saved);
     if (!withVerify) {
       notify('success', t('connections.toast.saved'));
+      // Скинути й перевірку, запущену раніше з цієї картки: інакше її результат закрив би
+      // наступну відкриту картку того самого підключення.
+      setModalVerifyId(null);
       setModal(null);
       invalidate();
       return;

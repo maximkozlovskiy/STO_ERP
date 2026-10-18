@@ -8,7 +8,12 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import type { Prisma, SupplierOffer, SupplierStrategy } from '@prisma/client';
-import { formatPersonName, translateError, type SupplierOfferSearchValues } from '@sto/shared';
+import {
+  TRANSACTION_TIMEOUT_MS,
+  formatPersonName,
+  translateError,
+  type SupplierOfferSearchValues,
+} from '@sto/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { getLocale } from '../../../common/tenant/tenant-context';
 import { normalizeArticle } from '../../../common/utils/normalize-article';
@@ -17,7 +22,7 @@ import { GoodsService } from '../../goods/goods.service';
 import { BrandsService } from '../../brands/brands.service';
 import { loadItemDtos } from '../../purchase-lists/purchase-lists.helpers';
 import { canSeeItemCost, maskItemCost } from '../../purchase-lists/purchase-lists.mapper';
-import { CLEAR_OFFER_SNAPSHOT } from '../../purchase-lists/purchase-list-offer-snapshot';
+import { CLEAR_OFFER_SNAPSHOT, goodSwap } from '../../purchase-lists/purchase-list-offer-snapshot';
 import type { PurchaseListItemResponseDto } from '../../purchase-lists/purchase-lists.dto';
 import { SupplierPriceConverter } from './supplier-price-converter';
 import { offerSelectability } from './offer-selectability';
@@ -124,73 +129,102 @@ export class SupplierOffersService {
     const now = new Date();
     const freshSince = new Date(now.getTime() - s.supplierOfferTtlMinutes * 60_000);
 
-    const { batchId, toEnqueue } = await this.prisma.$transaction(async tx => {
-      const batch = await tx.supplierOfferBatch.create({
-        data: {
+    // Пари (позиція × підключення) і кандидати кешу — ДО транзакції одним запитом: раніше
+    // findFirst + create на кожну пару в транзакції без timeout (100 позицій × 50 підключень
+    // упиралися в стандартні 5 с інтерактивної транзакції).
+    type Pair = {
+      itemId: string;
+      goodId: string;
+      article: string;
+      articleNormalized: string;
+      brand: string | null;
+      connectionId: string;
+    };
+    const pairs: Pair[] = [];
+    for (const item of items) {
+      const article = item.good.sku?.trim() ?? '';
+      const articleNormalized = normalizeArticle(article);
+      if (!articleNormalized) {
+        skippedItemIds.push(item.id);
+        continue;
+      }
+      const brand = item.good.brand?.name ?? null;
+      for (const c of connections) {
+        pairs.push({
+          itemId: item.id,
+          goodId: item.goodId,
+          article,
+          articleNormalized,
+          brand,
+          connectionId: c.id,
+        });
+      }
+    }
+    const cacheKey = (connectionId: string, articleNormalized: string, brand: string | null) =>
+      `${connectionId}|${articleNormalized}|${brand ?? ''}`;
+    const cacheHits = new Map<string, string>();
+    if (!dto.refresh && pairs.length > 0) {
+      const candidates = await this.prisma.supplierOfferRequest.findMany({
+        where: {
           orgId,
-          purpose: opts.purpose ?? 'MANUAL',
-          strategy: opts.strategy ?? null,
-          requestedBy: opts.userId ?? null,
-          itemIds: ids,
+          connectionId: { in: connections.map(c => c.id) },
+          articleNormalized: { in: Array.from(new Set(pairs.map(p => p.articleNormalized))) },
+          includeAnalogs,
+          status: 'DONE',
+          cacheOfId: null,
+          completedAt: { gte: freshSince },
+          deletedAt: null,
         },
-        select: { id: true },
+        orderBy: { completedAt: 'desc' },
+        select: { id: true, connectionId: true, articleNormalized: true, brand: true },
+        take: 5000,
       });
-      const queued: string[] = [];
-      for (const item of items) {
-        const article = item.good.sku?.trim() ?? '';
-        const articleNormalized = normalizeArticle(article);
-        if (!articleNormalized) {
-          skippedItemIds.push(item.id);
-          continue;
-        }
-        const brand = item.good.brand?.name ?? null;
-        for (const c of connections) {
+      // Перший (найсвіжіший) виконаний запит на (підключення, артикул, бренд).
+      for (const r of candidates) {
+        const k = cacheKey(r.connectionId, r.articleNormalized, r.brand);
+        if (!cacheHits.has(k)) cacheHits.set(k, r.id);
+      }
+    }
+
+    const { batchId, toEnqueue } = await this.prisma.$transaction(
+      async tx => {
+        const batch = await tx.supplierOfferBatch.create({
+          data: {
+            orgId,
+            purpose: opts.purpose ?? 'MANUAL',
+            strategy: opts.strategy ?? null,
+            requestedBy: opts.userId ?? null,
+            itemIds: ids,
+          },
+          select: { id: true },
+        });
+        const rows: Prisma.SupplierOfferRequestCreateManyInput[] = pairs.map(p => {
           const base = {
             orgId,
             batchId: batch.id,
-            connectionId: c.id,
-            purchaseListItemId: item.id,
-            goodId: item.goodId,
-            article,
-            articleNormalized,
-            brand,
+            connectionId: p.connectionId,
+            purchaseListItemId: p.itemId,
+            goodId: p.goodId,
+            article: p.article,
+            articleNormalized: p.articleNormalized,
+            brand: p.brand,
             includeAnalogs,
           };
-          const cached = dto.refresh
-            ? null
-            : await tx.supplierOfferRequest.findFirst({
-                where: {
-                  orgId,
-                  connectionId: c.id,
-                  articleNormalized,
-                  brand,
-                  includeAnalogs,
-                  status: 'DONE',
-                  cacheOfId: null,
-                  completedAt: { gte: freshSince },
-                  deletedAt: null,
-                },
-                orderBy: { completedAt: 'desc' },
-                select: { id: true },
-              });
-          if (cached) {
-            await tx.supplierOfferRequest.create({
-              data: {
-                ...base,
-                status: 'DONE',
-                fromCache: true,
-                cacheOfId: cached.id,
-                completedAt: now,
-              },
-            });
-            continue;
-          }
-          const req = await tx.supplierOfferRequest.create({ data: base, select: { id: true } });
-          queued.push(req.id);
-        }
-      }
-      return { batchId: batch.id, toEnqueue: queued };
-    });
+          const cachedId = cacheHits.get(cacheKey(p.connectionId, p.articleNormalized, p.brand));
+          return cachedId
+            ? { ...base, status: 'DONE', fromCache: true, cacheOfId: cachedId, completedAt: now }
+            : base;
+        });
+        const created = rows.length
+          ? await tx.supplierOfferRequest.createManyAndReturn({
+              data: rows,
+              select: { id: true, fromCache: true },
+            })
+          : [];
+        return { batchId: batch.id, toEnqueue: created.filter(r => !r.fromCache).map(r => r.id) };
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
 
     let queueUnavailable = false;
     for (const requestId of toEnqueue) {
@@ -212,7 +246,8 @@ export class SupplierOffersService {
           backoff: { type: 'exponential', delay: 30_000 },
           jobId: `supplier-search-${requestId}`,
           removeOnComplete: true,
-          removeOnFail: 200,
+          // Сталий jobId: failed-задача з тим самим id блокувала б перепостановку sweep-ом.
+          removeOnFail: true,
         },
       );
       return true;
@@ -328,7 +363,10 @@ export class SupplierOffersService {
       where: { id: offerId, orgId, deletedAt: null },
       include: { connection: { select: { counterpartyId: true, enabled: true, deletedAt: true } } },
     });
-    if (!offer || !(await this.offerBelongsToItem(orgId, item.id, offer.requestId))) {
+    const ownRequest = offer
+      ? await this.offerRequestOfItem(orgId, item.id, offer.requestId)
+      : null;
+    if (!offer || !ownRequest) {
       throw new NotFoundException(err('err.supplierApi.offerNotFound'));
     }
     if (!offer.connection.enabled || offer.connection.deletedAt) {
@@ -352,27 +390,34 @@ export class SupplierOffersService {
     }
     if (!sel.selectable) throw new BadRequestException(err('err.supplierApi.analogNotSelectable'));
 
-    const newGoodId = sel.replacesGood
-      ? await this.analogGood(
-          orgId,
-          item,
-          offer,
-          offer.connection.counterpartyId,
-          priceUah as number,
-        )
-      : null;
-    const res = await this.prisma.purchaseListItem.updateMany({
-      where: { id: item.id, orgId, ...OPEN_ITEM, quantity: item.quantity, goodId: item.goodId },
-      data: {
-        supplierId: offer.connection.counterpartyId,
-        expectedPrice: priceUah as number,
-        ...snapshotOf(offer, 'MANUAL'),
-        ...(newGoodId && newGoodId !== item.goodId
-          ? { goodId: newGoodId, originalGoodId: item.originalGoodId ?? item.goodId }
-          : {}),
-      },
-    });
-    if (res.count !== 1) throw new ConflictException(err('err.purchaseList.concurrentChange'));
+    const write = async (targetGoodId: string | null) => {
+      const res = await this.prisma.purchaseListItem.updateMany({
+        where: { id: item.id, orgId, ...OPEN_ITEM, quantity: item.quantity, goodId: item.goodId },
+        data: {
+          supplierId: offer.connection.counterpartyId,
+          expectedPrice: priceUah as number,
+          ...snapshotOf(offer, 'MANUAL'),
+          ...(targetGoodId && targetGoodId !== item.goodId ? goodSwap(item, targetGoodId) : {}),
+        },
+      });
+      if (res.count !== 1) throw new ConflictException(err('err.purchaseList.concurrentChange'));
+    };
+
+    if (!sel.replacesGood) {
+      // Не аналог — пропозиція на товар, для якого її шукали: після попередньої заміни аналогом
+      // це оригінал позиції, і він повертається (інакше рядок замовлення піде з артикулом
+      // оригіналу під товаром-аналогом).
+      await write(ownRequest.goodId);
+    } else if (offer.matchStatus === 'matched' && offer.matchedGoodId) {
+      const g = await this.prisma.good.findFirst({
+        where: { id: offer.matchedGoodId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!g) throw new BadRequestException(err('err.supplierApi.analogNotSelectable'));
+      await write(g.id);
+    } else {
+      await this.chooseNewAnalog(orgId, item, offer, priceUah as number, write);
+    }
     return this.itemDto(orgId, item.id, role);
   }
 
@@ -422,61 +467,91 @@ export class SupplierOffersService {
     return ids.map(id => items.find(i => i.id === id) as ItemForOffers);
   }
 
-  /** Пропозиція належить запиту цієї позиції (свого чи того, з якого взято кеш). */
-  private async offerBelongsToItem(
+  /** Власний запит позиції, якому належить пропозиція (свій чи той, з якого взято кеш). */
+  private async offerRequestOfItem(
     orgId: string,
     itemId: string,
     requestId: string,
-  ): Promise<boolean> {
-    const hit = await this.prisma.supplierOfferRequest.findFirst({
+  ): Promise<{ goodId: string | null } | null> {
+    return this.prisma.supplierOfferRequest.findFirst({
       where: {
         orgId,
         purchaseListItemId: itemId,
         deletedAt: null,
         OR: [{ id: requestId }, { cacheOfId: requestId }],
       },
-      select: { id: true },
+      select: { goodId: true },
     });
-    return !!hit;
   }
 
   /**
-   * BR-SOFR-005: товар-аналог — знайдений у каталозі (matched) або новий (CREATE_AND_REPLACE):
-   * ціна продажу — як у товару позиції (рішення за замовчуванням), одиниця й категорія — його ж.
+   * BR-SOFR-005, CREATE_AND_REPLACE: аналог, якого немає в каталозі. Під advisory-блокуванням за
+   * (організація, нормалізований артикул): спершу шукається товар, створений раніше (той самий
+   * артикул і бренд — повторний вибір чи одночасний клік), і лише без нього створюється новий —
+   * ціна продажу, одиниця й категорія як у товару позиції. Якщо позицію тим часом змінили (409),
+   * щойно створений товар знімається (soft delete) — каталог не засмічується сиротами. Після
+   * створення пропозиції того ж підключення, артикулу й бренду вважаються знайденими в каталозі.
    */
-  private async analogGood(
+  private async chooseNewAnalog(
     orgId: string,
     item: ItemForOffers,
-    offer: SupplierOffer,
-    supplierId: string,
+    offer: SupplierOffer & { connection: { counterpartyId: string } },
     priceUah: number,
-  ): Promise<string> {
-    if (offer.matchStatus === 'matched' && offer.matchedGoodId) {
-      const g = await this.prisma.good.findFirst({
-        where: { id: offer.matchedGoodId, orgId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!g) throw new BadRequestException(err('err.supplierApi.analogNotSelectable'));
-      return g.id;
-    }
+    write: (goodId: string) => Promise<void>,
+  ): Promise<void> {
+    const skuNormalized = normalizeArticle(offer.article);
     const brand = await this.brands.resolveByNameOrSynonym(orgId, offer.brand);
-    const created = await this.goods.create(
-      orgId,
-      {
-        name: offer.name?.trim() || [offer.brand, offer.article].filter(Boolean).join(' '),
-        sku: offer.article,
-        brandId: brand?.id,
-        unit: item.good.unit ?? 'шт',
-        unitId: item.good.unitId ?? undefined,
-        goodCategoryId: item.good.goodCategoryId ?? undefined,
-        purchasePrice: priceUah,
-        salePrice: Number(item.good.salePrice ?? 0),
-        preferredSupplierId: supplierId,
-        notes: `Аналог для «${item.good.name}» (пропозиція постачальника)`,
+    await this.prisma.$transaction(
+      async tx => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`supplier-analog:${orgId}:${skuNormalized}`}))`;
+        const existing = await tx.good.findFirst({
+          where: { orgId, skuNormalized, brandId: brand?.id ?? null, deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        });
+        if (existing) {
+          await write(existing.id);
+          return;
+        }
+        const created = await this.goods.create(
+          orgId,
+          {
+            name: offer.name?.trim() || [offer.brand, offer.article].filter(Boolean).join(' '),
+            sku: offer.article,
+            brandId: brand?.id,
+            unit: item.good.unit ?? 'шт',
+            unitId: item.good.unitId ?? undefined,
+            goodCategoryId: item.good.goodCategoryId ?? undefined,
+            purchasePrice: priceUah,
+            salePrice: Number(item.good.salePrice ?? 0),
+            preferredSupplierId: offer.connection.counterpartyId,
+            notes: `Аналог для «${item.good.name}» (пропозиція постачальника)`,
+          },
+          'OWNER',
+        );
+        try {
+          await write(created.id);
+        } catch (e) {
+          await this.prisma.good.updateMany({
+            where: { id: created.id, orgId },
+            data: { deletedAt: new Date() },
+          });
+          throw e;
+        }
+        await this.prisma.supplierOffer.updateMany({
+          where: {
+            orgId,
+            connectionId: offer.connectionId,
+            articleNormalized: offer.articleNormalized,
+            brand: offer.brand,
+            matchedGoodId: null,
+            deletedAt: null,
+          },
+          data: { matchedGoodId: created.id, matchStatus: 'matched' },
+        });
       },
-      'OWNER',
+      { timeout: TRANSACTION_TIMEOUT_MS },
     );
-    return created.id;
   }
 
   private async offerSettings(orgId: string): Promise<OfferSettings> {
@@ -507,9 +582,11 @@ export class SupplierOffersService {
     for (const o of offers) byRequest.set(o.requestId, [...(byRequest.get(o.requestId) ?? []), o]);
     const fetchedAt = new Map<string, Date | null>();
     if (requests.some(r => r.cacheOfId)) {
+      const sourceIds = [...new Set(requests.flatMap(r => (r.cacheOfId ? [r.cacheOfId] : [])))];
       const sources = await this.prisma.supplierOfferRequest.findMany({
-        where: { orgId, id: { in: requests.flatMap(r => (r.cacheOfId ? [r.cacheOfId] : [])) } },
+        where: { orgId, id: { in: sourceIds }, deletedAt: null },
         select: { id: true, completedAt: true },
+        take: sourceIds.length,
       });
       for (const src of sources) fetchedAt.set(src.id, src.completedAt);
     }
@@ -533,6 +610,7 @@ export class SupplierOffersService {
             matchedGoodId: o.matchedGoodId,
             itemSource: item.source,
             itemOpen,
+            connectionDisabled: !r.connection.enabled || !!r.connection.deletedAt,
             policy: s.policy,
             priceUah,
           });

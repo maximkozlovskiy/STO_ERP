@@ -1,5 +1,5 @@
 import { HttpException, Injectable } from '@nestjs/common';
-import { UnrecoverableError, type Job } from 'bullmq';
+import { DelayedError, UnrecoverableError, type Job } from 'bullmq';
 import type { Prisma } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -12,8 +12,17 @@ import type {
   SupplierOrderState,
 } from '../adapters/supplier-adapter.interface';
 import { loadConnection, toConnectionContext } from '../connections/supplier-connection-context';
-import { errorText, handleSupplierJobError } from '../processors/supplier-job-errors';
-import { createPlaceOrderRunner, DONE_STEP, needsReconcile } from './place-order-runner';
+import {
+  errorText,
+  handleSupplierJobError,
+  isLastAttempt,
+} from '../processors/supplier-job-errors';
+import {
+  createPlaceOrderRunner,
+  DONE_STEP,
+  needsReconcile,
+  PENDING_SUFFIX,
+} from './place-order-runner';
 import { adjustForPartial, matchConfirmedLines } from './supplier-order-lines';
 import { SupplierOrdersService } from './supplier-orders.service';
 
@@ -54,20 +63,20 @@ export class SupplierOrderSender {
       select: { status: true, number: true, warehouseId: true },
     });
     if (!po) return;
-    if (po.status === 'CANCELLED') {
-      // Скасоване до відправки — нічого не відправляємо (BR-SCON-014).
-      await this.prisma.supplierOrder.updateMany({
-        where: { orgId, purchaseOrderId, deletedAt: null, status: 'QUEUED' },
-        data: { status: 'CANCELLED' },
-      });
-      await this.orders.refreshSummary(orgId, purchaseOrderId);
-      return;
-    }
+    if (po.status === 'CANCELLED') return this.cancelQueued(orgId, purchaseOrderId);
+    let lockedStatus: string | null;
     try {
-      await this.prisma.$transaction(
+      lockedStatus = await this.prisma.$transaction(
         async tx => {
           await this.orders.lockPo(tx, orgId, purchaseOrderId);
+          // Скасування могло закомітитись між першим читанням і блокуванням — план не будуємо.
+          const fresh = await tx.purchaseOrder.findFirst({
+            where: { id: purchaseOrderId, orgId, deletedAt: null },
+            select: { status: true },
+          });
+          if (!fresh || fresh.status === 'CANCELLED') return fresh?.status ?? null;
           await this.orders.ensurePlannedInTx(tx, orgId, purchaseOrderId, null);
+          return fresh.status;
         },
         { timeout: TRANSACTION_TIMEOUT_MS },
       );
@@ -80,6 +89,8 @@ export class SupplierOrderSender {
       }
       throw e;
     }
+    if (lockedStatus === null) return;
+    if (lockedStatus === 'CANCELLED') return this.cancelQueued(orgId, purchaseOrderId);
     const pending = await this.prisma.supplierOrder.findMany({
       where: { orgId, purchaseOrderId, deletedAt: null, status: { in: ['QUEUED', 'SENDING'] } },
       include: ORDER_WITH_LINES,
@@ -87,21 +98,52 @@ export class SupplierOrderSender {
       take: 100,
     });
     const s = await this.settings.getOrganisationSettings(orgId);
+    // Остаточна відмова одного зовнішнього замовлення (рядок уже FAILED / UNKNOWN) не лишає решту
+    // зовнішніх замовлень цього замовлення в QUEUED: обходимо всі, помилку кидаємо наприкінці.
+    // Ліміт (DelayedError — задачу вже відкладено) і повторювана помилка не на останній спробі —
+    // одразу нагору: повтор задачі продовжить із невідправлених.
+    let finalError: Error | null = null;
     try {
       for (const o of pending) {
-        await this.placeOne(
-          job,
-          token,
-          orgId,
-          purchaseOrderId,
-          po,
-          o,
-          s.supplierOrderPollIntervalMinutes,
-        );
+        if (await this.poCancelled(orgId, purchaseOrderId)) break;
+        try {
+          await this.placeOne(
+            job,
+            token,
+            orgId,
+            purchaseOrderId,
+            po,
+            o,
+            s.supplierOrderPollIntervalMinutes,
+          );
+        } catch (e) {
+          const final =
+            e instanceof UnrecoverableError || (!(e instanceof DelayedError) && isLastAttempt(job));
+          if (!final) throw e;
+          finalError ??= e instanceof Error ? e : new Error(String(e));
+        }
       }
     } finally {
       await this.orders.refreshSummary(orgId, purchaseOrderId);
     }
+    if (finalError) throw finalError;
+  }
+
+  /** Скасоване до відправки — нічого не відправляємо (BR-SCON-014). */
+  private async cancelQueued(orgId: string, purchaseOrderId: string): Promise<void> {
+    await this.prisma.supplierOrder.updateMany({
+      where: { orgId, purchaseOrderId, deletedAt: null, status: 'QUEUED' },
+      data: { status: 'CANCELLED' },
+    });
+    await this.orders.refreshSummary(orgId, purchaseOrderId);
+  }
+
+  private async poCancelled(orgId: string, purchaseOrderId: string): Promise<boolean> {
+    const p = await this.prisma.purchaseOrder.findFirst({
+      where: { id: purchaseOrderId, orgId, deletedAt: null },
+      select: { status: true },
+    });
+    return !p || p.status === 'CANCELLED';
   }
 
   private async placeOne(
@@ -113,6 +155,12 @@ export class SupplierOrderSender {
     o: OrderRow,
     pollMinutes: number,
   ): Promise<void> {
+    // Захоплення рядка: скасований між вибіркою й відправкою (CANCELLED) не «воскресає».
+    const claimed = await this.prisma.supplierOrder.updateMany({
+      where: { id: o.id, orgId, deletedAt: null, status: { in: ['QUEUED', 'SENDING'] } },
+      data: { status: 'SENDING' },
+    });
+    if (claimed.count === 0) return;
     const row = await loadConnection(this.prisma, orgId, o.connectionId);
     if (!row || !row.enabled) {
       await this.update(orgId, o.id, {
@@ -137,7 +185,6 @@ export class SupplierOrderSender {
       documentType: 'PurchaseOrder',
       documentId: purchaseOrderId,
     });
-    await this.update(orgId, o.id, { status: 'SENDING' });
     try {
       if (needsReconcile(o.step)) {
         const found = await this.integrationLog.wrap(log('reconcile'), () =>
@@ -160,13 +207,18 @@ export class SupplierOrderSender {
         }
         return;
       }
-      const runner = createPlaceOrderRunner(adapter.orderSteps, state, patch =>
-        this.update(orgId, o.id, patch),
-      );
+      // Неповторюваний крок почався — запит міг дійти: sentAt фіксується вже тут, щоб звірка
+      // (UTR шукає за датою відправки) і стеля опитування рахувались від справжньої відправки.
+      let sentAt = o.sentAt;
+      const runner = createPlaceOrderRunner(adapter.orderSteps, state, patch => {
+        const stamp = !sentAt && !!patch.step?.endsWith(PENDING_SUFFIX);
+        if (stamp) sentAt = new Date();
+        return this.update(orgId, o.id, stamp ? { ...patch, sentAt } : patch);
+      });
       const result = await this.integrationLog.wrap(log('placeOrder'), () =>
         adapter.placeOrder(conn, input, runner),
       );
-      await this.applyPlaced(orgId, o, runner.state, result, pollMinutes);
+      await this.applyPlaced(orgId, { ...o, sentAt }, runner.state, result, pollMinutes);
     } catch (e) {
       return handleSupplierJobError(job, token, e, {
         onFinal: async message => {

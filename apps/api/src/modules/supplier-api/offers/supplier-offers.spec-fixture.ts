@@ -309,7 +309,9 @@ export function offersHarness(opts: OffersHarnessOptions = {}) {
       throw e;
     }
   });
-  const prisma = { ...t, $transaction } as unknown as PrismaService;
+  // Advisory-блокування (pg_advisory_xact_lock) у пам'яті — no-op.
+  const $executeRaw = vi.fn(() => Promise.resolve(1));
+  const prisma = { ...t, $transaction, $executeRaw } as unknown as PrismaService;
 
   const settings = {
     getOrganisationSettings: vi.fn(() =>
@@ -319,7 +321,15 @@ export function offersHarness(opts: OffersHarnessOptions = {}) {
   const goods = {
     create: vi.fn((orgId: string, dto: MemRow) => {
       const id = `good-new-${t.good.rows.length}`;
-      t.good.rows.push({ id, orgId, deletedAt: null, ...dto });
+      // Як GoodsService.create: skuNormalized обчислюється з sku.
+      t.good.rows.push({
+        id,
+        orgId,
+        deletedAt: null,
+        createdAt: new Date(),
+        ...dto,
+        skuNormalized: dto.sku ? normalizeArticle(dto.sku as string) : null,
+      });
       return Promise.resolve({ id });
     }),
   };

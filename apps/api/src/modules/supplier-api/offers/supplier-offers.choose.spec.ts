@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest';
 import type { MemRow } from '../../cash/cash.spec-fixture';
 import { offerSelectability } from './offer-selectability';
 import {
+  CONN_AVD,
   CONN_UTR,
   GOOD,
   GOOD_ANALOG,
   ITEM_MANUAL,
   ITEM_WO,
+  itemRow,
   offersHarness,
   ORG,
   OTHER_ORG,
@@ -263,6 +265,79 @@ describe('Аналоги (BR-SOFR-005)', () => {
     const it = item(h, ITEM_MANUAL);
     expect(it.goodId).toMatch(/^good-new-/);
     expect(it.originalGoodId).toBe(GOOD);
+  });
+
+  // guards: BR-SOFR-005
+  it('CREATE_AND_REPLACE: той самий аналог для другої позиції — наявний товар, без дубля й без 409 skuExists', async () => {
+    const ITEM_2 = '91111111-1111-4111-8111-000000000009';
+    const h = setup({
+      settings: { supplierAnalogPolicy: 'CREATE_AND_REPLACE' },
+      items: [itemRow(ITEM_MANUAL), itemRow(ITEM_2)],
+    });
+    const notInCatalog = { ...analog, matchedGoodId: null, matchStatus: 'notFound' };
+    const first = withOffer(h, ITEM_MANUAL, notInCatalog);
+    // Та сама пропозиція від іншого підключення — позначка «знайдено» її не зачіпає, тож
+    // повторне створення відвертає саме пошук наявного товару під блокуванням.
+    const second = withOffer(h, ITEM_2, {
+      ...notInCatalog,
+      connectionId: CONN_AVD,
+      offerKey: 'avd|1',
+    });
+    const sameConnection = withOffer(h, ITEM_2, { ...notInCatalog, offerKey: '45001|16' });
+    await h.service.chooseOffer(ORG, ITEM_MANUAL, first);
+    // Пропозиції того ж підключення, артикулу й бренду тепер «знайдені в каталозі».
+    expect(h.t.supplierOffer.rows.find(o => o.id === sameConnection)).toMatchObject({
+      matchedGoodId: item(h, ITEM_MANUAL).goodId,
+      matchStatus: 'matched',
+    });
+    expect(h.t.supplierOffer.rows.find(o => o.id === second)?.matchedGoodId).toBeNull();
+    await h.service.chooseOffer(ORG, ITEM_2, second);
+    expect(h.goods.create).toHaveBeenCalledTimes(1);
+    expect(item(h, ITEM_2).goodId).toBe(item(h, ITEM_MANUAL).goodId);
+  });
+
+  // guards: BR-SOFR-005
+  it('CREATE_AND_REPLACE: позицію змінили одночасно (409) — новий товар знято, а не лишено сиротою', async () => {
+    const h = setup({ settings: { supplierAnalogPolicy: 'CREATE_AND_REPLACE' } });
+    const offerId = withOffer(h, ITEM_MANUAL, {
+      ...analog,
+      matchedGoodId: null,
+      matchStatus: 'notFound',
+    });
+    h.goods.create.mockImplementationOnce((orgId: string, dto: MemRow) => {
+      h.t.good.rows.push({ id: 'good-race', orgId, deletedAt: null, ...dto });
+      item(h, ITEM_MANUAL).quantity = 99; // хтось змінив позицію між читанням і записом
+      return Promise.resolve({ id: 'good-race' });
+    });
+    await expect(h.service.chooseOffer(ORG, ITEM_MANUAL, offerId)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    // goods.create у справжньому сервісі комітиться окремо від транзакції вибору, тож відкат її
+    // не прибирає: знімає компенсація (таблиці в пам'яті відкочуються цілком — дивимось на виклик).
+    expect(h.t.good.updateMany).toHaveBeenCalledWith({
+      where: { id: 'good-race', orgId: ORG },
+      data: { deletedAt: expect.any(Date) },
+    });
+  });
+
+  // guards: BR-SOFR-005
+  it('після заміни аналогом вибір пропозиції на оригінал повертає товар позиції', async () => {
+    const h = setup({ settings: { supplierAnalogPolicy: 'CATALOG_ONLY' } });
+    const analogOffer = withOffer(h, ITEM_MANUAL, {
+      ...analog,
+      matchedGoodId: GOOD_ANALOG,
+      matchStatus: 'matched',
+    });
+    await h.service.chooseOffer(ORG, ITEM_MANUAL, analogOffer);
+    expect(item(h, ITEM_MANUAL)).toMatchObject({ goodId: GOOD_ANALOG, originalGoodId: GOOD });
+    // Пропозиція на оригінал — із запиту, зробленого для GOOD (до заміни).
+    const original = withOffer(h, ITEM_MANUAL);
+    await h.service.chooseOffer(ORG, ITEM_MANUAL, original);
+    expect(item(h, ITEM_MANUAL)).toMatchObject({
+      goodId: GOOD,
+      originalGoodId: null,
+      offerKey: '45000|15',
+    });
   });
 
   // guards: BR-SOFR-005

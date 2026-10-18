@@ -84,6 +84,9 @@ export class SupplierOrderOutboxService {
    * BR-SCON-014 / BR-PO-012: скасування чи видалення замовлення, переданого постачальнику, —
    * 400 `cancelSentOrder` без `force`. API постачальника не викликається; ще не відправлені
    * зовнішні замовлення скасовуються тут же, щоб обробник їх не відправив.
+   * Відправленим вважається й рядок, у якого вже є зовнішній id, хоч би який статус, крім
+   * відмови / скасування постачальником: FAILED після частини кроків (BM: резерв створено,
+   * відвантаження впало) — замовлення в постачальника вже є.
    */
   async assertCancellable(
     tx: Tx,
@@ -96,7 +99,10 @@ export class SupplierOrderOutboxService {
         orgId,
         purchaseOrderId,
         deletedAt: null,
-        status: { in: [...SENT_SUPPLIER_ORDER_STATUSES] },
+        OR: [
+          { status: { in: [...SENT_SUPPLIER_ORDER_STATUSES] } },
+          { externalOrderId: { not: null }, status: { notIn: ['REJECTED', 'CANCELLED'] } },
+        ],
       },
     });
     if (sent > 0 && !force) {

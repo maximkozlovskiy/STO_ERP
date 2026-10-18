@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
+import { redactSecrets } from '../../../../common/utils/redact';
 import { SupplierHttpClient } from '../../http/supplier-http.client';
-import { SupplierAuthError, SupplierProtocolError } from '../../http/supplier-errors';
+import {
+  ERROR_BODY_MAX,
+  SupplierAuthError,
+  SupplierProtocolError,
+} from '../../http/supplier-errors';
 import {
   asArray,
   asRecord,
@@ -39,7 +44,7 @@ const positionRef = (reference: string, index: number) => `${reference}-${index 
 /**
  * Tehnomir (swagger https://tehnomir.com.ua/index.php?r=swagger%2Fjson-schema). Усі запити —
  * POST JSON, `apiToken` у тілі (тому секрет вирізається з тексту помилок). Ліміт — 503 «Exceeded
- * the allowable limit of requests». Замовлення — кошик: позиції додаються з нашим `reference`
+ * the allowable limit of requests» (інша 503 — серверна помилка). Замовлення — кошик: позиції додаються з нашим `reference`
  * на кожну («<reference>-<№>»), повторне додавання не дублює (спершу `basket/getPositions`), а
  * `order/create` оформлює ЛИШЕ перелічені `basketIds` — чужі позиції кошика акаунта не
  * замовляються. Звірка — `order/search` за `orderNumber` = reference.
@@ -212,10 +217,15 @@ export class TehnomirAdapter implements SupplierAdapter {
       body: { apiToken, ...body },
       secrets: [apiToken],
       rateScope: `tehnomir:${conn.id}`,
+      // 503 — ліміт лише з «Exceeded the allowable limit…» у тілі; інша 503 — серверна (неоднозначна).
       rateLimitStatuses: [503],
+      rateLimitBodyPattern: /limit/i,
     });
     if (r.data.success === false) {
-      const msg = `${NAME} ${r.status}: ${str(r.data.message) ?? 'success=false'}`;
+      // Тіло 2xx не проходить redactSecrets клієнта, а токен іде в тілі запиту — постачальник міг
+      // віддзеркалити його в message (BR-SCON-002).
+      const reason = redactSecrets(str(r.data.message) ?? 'success=false', [apiToken]);
+      const msg = `${NAME} ${r.status}: ${reason.slice(0, ERROR_BODY_MAX)}`;
       if (/token|токен/i.test(msg)) throw new SupplierAuthError(NAME, msg, r.status);
       throw new SupplierProtocolError(NAME, msg, r.status);
     }
