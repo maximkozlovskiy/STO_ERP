@@ -13,6 +13,7 @@ import {
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  OfferChosenBy,
   PurchaseListItemSource,
   PurchaseListItemStatus,
   PurchaseListStatus,
@@ -154,6 +155,33 @@ export class PurchaseListItemResponseDto {
   @ApiProperty({ enum: PurchaseOrderStatus, nullable: true })
   purchaseOrderStatus!: PurchaseOrderStatus | null;
   @ApiProperty({ type: String, nullable: true }) notes!: string | null;
+  // Знімок обраної пропозиції постачальника (BR-SOFR-006, BR-PL-017…019).
+  @ApiProperty({ type: String, nullable: true }) offerConnectionId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) offerKey!: string | null;
+  @ApiProperty({ type: String, nullable: true }) offerSupplierItemId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) offerArticle!: string | null;
+  @ApiProperty({ type: String, nullable: true }) offerBrand!: string | null;
+  @ApiProperty({ type: String, nullable: true }) offerWarehouseCode!: string | null;
+  @ApiProperty({ type: String, nullable: true }) offerWarehouseName!: string | null;
+  @ApiProperty({ type: Number, nullable: true }) offerDeliveryDays!: number | null;
+  @ApiProperty({ type: String, nullable: true }) offerDeliveryDate!: string | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Ціна пропозиції у валюті постачальника; null для ролей без закупівельних цін',
+  })
+  offerPrice!: number | null;
+  @ApiProperty({ type: String, nullable: true }) offerCurrencyCode!: string | null;
+  @ApiProperty({ type: Number, nullable: true }) offerMultiplicity!: number | null;
+  @ApiProperty({ type: Boolean, nullable: true }) offerIsAnalog!: boolean | null;
+  @ApiProperty({ type: String, nullable: true }) offeredAt!: string | null;
+  @ApiProperty({ enum: OfferChosenBy, nullable: true }) offerChosenBy!: OfferChosenBy | null;
+  @ApiProperty({ type: String, nullable: true, description: 'Товар, який замінив аналог' })
+  originalGoodId!: string | null;
+  @ApiPropertyOptional({
+    description: 'Кількість позиції більша за кількість обраної пропозиції (BR-PL-019)',
+  })
+  offerQtyExceeded?: boolean;
   @ApiProperty() createdAt!: string;
 }
 

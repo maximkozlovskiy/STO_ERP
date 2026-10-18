@@ -39,6 +39,7 @@ function setup(verify: () => Promise<void>) {
     prisma,
     new SupplierAdapterRegistry([adapter]),
     new IntegrationLogService(prisma),
+    {} as never, // пошук пропозицій тут не викликається
     { capture: vi.fn() } as unknown as DeadLetterService,
   );
   const row = supplierConnection.rows[0];

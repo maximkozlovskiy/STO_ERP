@@ -56,6 +56,23 @@ export function toItemDto(i: ItemWithRelations): PurchaseListItemResponseDto {
     purchaseOrderNumber: i.purchaseOrder?.number ?? null,
     purchaseOrderStatus: i.purchaseOrder?.status ?? null,
     notes: i.notes,
+    // `?? null`: позиції, створені до знімка пропозиції (і рядки спек-фікстур), полів не мають.
+    offerConnectionId: i.offerConnectionId ?? null,
+    offerKey: i.offerKey ?? null,
+    offerSupplierItemId: i.offerSupplierItemId ?? null,
+    offerArticle: i.offerArticle ?? null,
+    offerBrand: i.offerBrand ?? null,
+    offerWarehouseCode: i.offerWarehouseCode ?? null,
+    offerWarehouseName: i.offerWarehouseName ?? null,
+    offerDeliveryDays: i.offerDeliveryDays ?? null,
+    offerDeliveryDate: i.offerDeliveryDate ? iso(i.offerDeliveryDate) : null,
+    offerPrice: i.offerPrice == null ? null : Number(i.offerPrice),
+    offerCurrencyCode: i.offerCurrencyCode ?? null,
+    offerMultiplicity: i.offerMultiplicity ?? null,
+    offerIsAnalog: i.offerIsAnalog ?? null,
+    offeredAt: i.offeredAt ? iso(i.offeredAt) : null,
+    offerChosenBy: i.offerChosenBy ?? null,
+    originalGoodId: i.originalGoodId ?? null,
     createdAt: iso(i.createdAt),
   };
 }
@@ -77,7 +94,17 @@ export function maskItemCost(
   role: string | undefined,
 ): PurchaseListItemResponseDto[] {
   if (role && COST_VISIBLE_ROLES.has(role)) return items;
-  return items.map(i => (i.expectedPrice === null ? i : { ...i, expectedPrice: null }));
+  // BR-SOFR-010: ціна обраної пропозиції — та сама закупівельна ціна, тож маскується разом.
+  return items.map(i =>
+    i.expectedPrice === null && i.offerPrice === null
+      ? i
+      : { ...i, expectedPrice: null, offerPrice: null },
+  );
+}
+
+/** Чи бачить роль закупівельні ціни (позиції, пропозиції постачальників). */
+export function canSeeItemCost(role: string | undefined): boolean {
+  return !!role && COST_VISIBLE_ROLES.has(role);
 }
 
 /** Лічильники позицій списку за статусами (з `groupBy`). */

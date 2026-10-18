@@ -43,6 +43,17 @@ let orgRow: {
   // undefined у GET /settings/organisation для нового поля.
   recalcActualHoursFromLines: boolean;
   syncCalendarSlotWithPlannedHours: boolean;
+  supplierOrderSendMode: string;
+  supplierAnalogPolicy: string;
+  supplierDefaultStrategy: string;
+  supplierOptimalPriceWeight: number;
+  supplierAllowSplit: boolean;
+  supplierAllowAnalogsInAuto: boolean;
+  supplierOfferTtlMinutes: number;
+  supplierOfferRetentionDays: number;
+  supplierOrderPollIntervalMinutes: number;
+  supplierCatalogSyncIntervalMinutes: number;
+  supplierUnknownDeliveryDays: number;
   updatedAt: Date;
 };
 
@@ -65,6 +76,17 @@ function freshOrgRow() {
     recalcPlannedHoursFromLines: true,
     recalcActualHoursFromLines: true,
     syncCalendarSlotWithPlannedHours: true,
+    supplierOrderSendMode: 'MANUAL',
+    supplierAnalogPolicy: 'CATALOG_ONLY',
+    supplierDefaultStrategy: 'OPTIMAL',
+    supplierOptimalPriceWeight: 0.7,
+    supplierAllowSplit: true,
+    supplierAllowAnalogsInAuto: false,
+    supplierOfferTtlMinutes: 60,
+    supplierOfferRetentionDays: 7,
+    supplierOrderPollIntervalMinutes: 30,
+    supplierCatalogSyncIntervalMinutes: 360,
+    supplierUnknownDeliveryDays: 7,
     updatedAt: new Date('2026-01-01T00:00:00Z'),
   };
 }
@@ -493,6 +515,53 @@ describe('Settings — HTTP Contract', () => {
       const body = res.json() as Record<string, unknown>;
       expect(body).toHaveProperty('syncCalendarSlotWithPlannedHours');
       expect(typeof body.syncCalendarSlotWithPlannedHours).toBe('boolean');
+    });
+  });
+
+  // Закупівля через API постачальників: поля налаштувань із межами CHECK міграції 20261018120001.
+  describe('Постачальники API: налаштування організації (BR-SCON-009, BR-SOFR-005, 007)', () => {
+    // guards: BR-SCON-009
+    it('PATCH режиму відправки, політики аналогів, стратегії й ваги → 200 і ці значення у відповіді', async () => {
+      redisMock.get.mockResolvedValue(null);
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: {
+          supplierOrderSendMode: 'ON_ORDERED',
+          supplierAnalogPolicy: 'CREATE_AND_REPLACE',
+          supplierDefaultStrategy: 'CHEAP',
+          supplierOptimalPriceWeight: 0.25,
+          supplierAllowSplit: false,
+          supplierOfferTtlMinutes: 30,
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        supplierOrderSendMode: 'ON_ORDERED',
+        supplierAnalogPolicy: 'CREATE_AND_REPLACE',
+        supplierDefaultStrategy: 'CHEAP',
+        supplierOptimalPriceWeight: 0.25,
+        supplierAllowSplit: false,
+        supplierOfferTtlMinutes: 30,
+      });
+    });
+
+    it.each([
+      ['supplierOrderSendMode', 'SOMETIMES'],
+      ['supplierAnalogPolicy', 'ALWAYS'],
+      ['supplierOptimalPriceWeight', 1.5],
+      ['supplierOfferTtlMinutes', 4],
+      ['supplierOfferRetentionDays', 91],
+      ['supplierOrderPollIntervalMinutes', 1441],
+      ['supplierCatalogSyncIntervalMinutes', 59],
+      ['supplierUnknownDeliveryDays', 0],
+    ])('%s = %j → 400 (межі як у CHECK міграції)', async (field, value) => {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/settings/organisation',
+        payload: { [field]: value },
+      });
+      expect(res.statusCode).toBe(400);
     });
   });
 

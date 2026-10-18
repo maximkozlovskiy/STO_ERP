@@ -1,6 +1,14 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type Redis from 'ioredis';
-import { VatMode, BatchCostMethod, DocumentType, ResetPeriod } from '@prisma/client';
+import {
+  VatMode,
+  BatchCostMethod,
+  DocumentType,
+  ResetPeriod,
+  type SupplierAnalogPolicy,
+  type SupplierOrderSendMode,
+  type SupplierStrategy,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
@@ -393,6 +401,17 @@ export class SettingsService {
     recalcPlannedHoursFromLines: boolean;
     recalcActualHoursFromLines: boolean;
     syncCalendarSlotWithPlannedHours: boolean;
+    supplierOrderSendMode: SupplierOrderSendMode;
+    supplierAnalogPolicy: SupplierAnalogPolicy;
+    supplierDefaultStrategy: SupplierStrategy;
+    supplierOptimalPriceWeight: { toNumber(): number } | number;
+    supplierAllowSplit: boolean;
+    supplierAllowAnalogsInAuto: boolean;
+    supplierOfferTtlMinutes: number;
+    supplierOfferRetentionDays: number;
+    supplierOrderPollIntervalMinutes: number;
+    supplierCatalogSyncIntervalMinutes: number;
+    supplierUnknownDeliveryDays: number;
     updatedAt: Date;
   }): OrganisationSettingsResponseDto {
     const toNum = (v: { toNumber(): number } | number) =>
@@ -426,6 +445,17 @@ export class SettingsService {
       recalcPlannedHoursFromLines: s.recalcPlannedHoursFromLines,
       recalcActualHoursFromLines: s.recalcActualHoursFromLines,
       syncCalendarSlotWithPlannedHours: s.syncCalendarSlotWithPlannedHours,
+      supplierOrderSendMode: s.supplierOrderSendMode,
+      supplierAnalogPolicy: s.supplierAnalogPolicy,
+      supplierDefaultStrategy: s.supplierDefaultStrategy,
+      supplierOptimalPriceWeight: toNum(s.supplierOptimalPriceWeight),
+      supplierAllowSplit: s.supplierAllowSplit,
+      supplierAllowAnalogsInAuto: s.supplierAllowAnalogsInAuto,
+      supplierOfferTtlMinutes: s.supplierOfferTtlMinutes,
+      supplierOfferRetentionDays: s.supplierOfferRetentionDays,
+      supplierOrderPollIntervalMinutes: s.supplierOrderPollIntervalMinutes,
+      supplierCatalogSyncIntervalMinutes: s.supplierCatalogSyncIntervalMinutes,
+      supplierUnknownDeliveryDays: s.supplierUnknownDeliveryDays,
       updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
     };
   }

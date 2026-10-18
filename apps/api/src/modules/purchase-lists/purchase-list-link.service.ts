@@ -10,6 +10,7 @@ import {
   stockKey,
 } from '../work-orders/work-order-stock-requirements';
 import { PROCUREMENT_ACTIVE_STATUSES } from '../work-orders/work-orders.fsm';
+import { CLEAR_OFFER_SNAPSHOT, copyOfferSnapshot } from './purchase-list-offer-snapshot';
 
 type Tx = Prisma.TransactionClient;
 
@@ -293,7 +294,7 @@ export class PurchaseListLinkService {
     orgId: string,
     item: ItemRow,
     restQty: number,
-    rest: { status: 'OPEN' | 'CANCELLED' },
+    rest: { status: 'OPEN' | 'CANCELLED'; copySnapshot?: boolean },
   ): Promise<void> {
     const keepQty = item.quantity - restQty;
     const keepStatus = keepQty - item.receivedQty <= QTY_EPSILON ? 'RECEIVED' : item.status;
@@ -312,8 +313,34 @@ export class PurchaseListLinkService {
         supplierId: item.supplierId,
         expectedPrice: item.expectedPrice,
         notes: item.notes,
+        // BR-PL-017: остача при прийманні / скасуванні лишається з пропозицією; повернення
+        // непідтвердженого постачальником — без неї (BR-SCON-013).
+        ...(rest.copySnapshot === false
+          ? item.originalGoodId
+            ? { originalGoodId: item.originalGoodId }
+            : {}
+          : copyOfferSnapshot(item)),
       },
     });
+  }
+
+  /**
+   * BR-SCON-013: «Повернути непідтверджене в список» — `qty` з ORDERED-позиції замовлення
+   * повертається в OPEN БЕЗ пропозиції (постачальник її не підтвердив). Ціла неотримана
+   * позиція — сама стає OPEN; частина — відділяється (`splitOff` без знімка).
+   */
+  async releaseFromOrder(tx: Tx, orgId: string, item: ItemRow, qty: number): Promise<void> {
+    const rest = Math.min(qty, undelivered(item));
+    if (rest <= QTY_EPSILON) return;
+    if (item.receivedQty <= QTY_EPSILON && rest >= item.quantity - QTY_EPSILON) {
+      await this.casItem(tx, orgId, item, {
+        status: 'OPEN',
+        purchaseOrderId: null,
+        ...CLEAR_OFFER_SNAPSHOT,
+      });
+      return;
+    }
+    await this.splitOff(tx, orgId, item, rest, { status: 'OPEN', copySnapshot: false });
   }
 
   /** Зміна позиції за умовою «стан не змінився» (BR-PL-005); інакше 409 і відкат. */

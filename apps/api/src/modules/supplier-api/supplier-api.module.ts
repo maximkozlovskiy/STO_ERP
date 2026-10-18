@@ -2,6 +2,11 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
 import { IntegrationLogsModule } from '../integration-logs/integration-logs.module';
+import { SettingsModule } from '../settings/settings.module';
+import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
+import { GoodMatcherModule } from '../goods/good-matcher.module';
+import { GoodsModule } from '../goods/goods.module';
+import { BrandsModule } from '../brands/brands.module';
 import { SupplierUrlPolicy } from './http/supplier-url-policy';
 import { SupplierRateLimiter } from './http/supplier-rate-limiter';
 import { SupplierHttpClient } from './http/supplier-http.client';
@@ -19,6 +24,14 @@ import {
   SupplierProvidersController,
 } from './connections/supplier-connections.controller';
 import { SupplierSearchProcessor } from './processors/supplier-search.processor';
+import { SupplierCatalogService } from './catalog/supplier-catalog.service';
+import { SupplierPriceConverter } from './offers/supplier-price-converter';
+import { SupplierOffersService } from './offers/supplier-offers.service';
+import { SupplierOfferSearchWorker } from './offers/supplier-offer-search.worker';
+import {
+  SupplierItemOffersController,
+  SupplierOffersController,
+} from './offers/supplier-offers.controller';
 
 /**
  * Постачальники API (docs/objects/supplier-connection.md, supplier-offer.md). Зовнішні виклики —
@@ -28,12 +41,22 @@ import { SupplierSearchProcessor } from './processors/supplier-search.processor'
 @Module({
   imports: [
     IntegrationLogsModule,
+    SettingsModule,
+    ExchangeRatesModule,
+    GoodMatcherModule,
+    GoodsModule,
+    BrandsModule,
     BullModule.registerQueue({ name: 'supplier-search', defaultJobOptions: DEFAULT_JOB_OPTS }),
     BullModule.registerQueue({ name: 'supplier-order', defaultJobOptions: DEFAULT_JOB_OPTS }),
     BullModule.registerQueue({ name: 'supplier-catalog', defaultJobOptions: DEFAULT_JOB_OPTS }),
     BullModule.registerQueue({ name: 'supplier-maintenance', defaultJobOptions: DEFAULT_JOB_OPTS }),
   ],
-  controllers: [SupplierProvidersController, SupplierConnectionsController],
+  controllers: [
+    SupplierProvidersController,
+    SupplierConnectionsController,
+    SupplierOffersController,
+    SupplierItemOffersController,
+  ],
   providers: [
     // У production непорожній SUPPLIER_API_DEV_ALLOWED_ORIGINS валить старт (і env.schema).
     { provide: SupplierUrlPolicy, useFactory: () => SupplierUrlPolicy.fromEnv(process.env) },
@@ -58,6 +81,10 @@ import { SupplierSearchProcessor } from './processors/supplier-search.processor'
     },
     SupplierAdapterRegistry,
     SupplierConnectionsService,
+    SupplierCatalogService,
+    SupplierPriceConverter,
+    SupplierOffersService,
+    SupplierOfferSearchWorker,
     SupplierSearchProcessor,
   ],
   exports: [SupplierAdapterRegistry],

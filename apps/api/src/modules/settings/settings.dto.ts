@@ -23,7 +23,14 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { PHONE_UA_REGEX } from '@sto/shared';
-import { VatMode, BatchCostMethod, ShiftMode } from '@prisma/client';
+import {
+  VatMode,
+  BatchCostMethod,
+  ShiftMode,
+  SupplierAnalogPolicy,
+  SupplierOrderSendMode,
+  SupplierStrategy,
+} from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { emptyToNull } from '../../common/transforms/empty-to-null';
 import { toUpperCurrencyCode } from '../../common/transforms/to-upper-currency-code';
@@ -264,6 +271,107 @@ export class UpdateOrganisationSettingsDto {
   @IsOptional()
   @IsBoolean()
   syncCalendarSlotWithPlannedHours?: boolean;
+
+  // ── Закупівля через API постачальників (BR-SCON-009, BR-SOFR-005…008; межі — CHECK міграції) ──
+  @ApiPropertyOptional({
+    enum: SupplierOrderSendMode,
+    description: 'Передача замовлення в API: кнопкою чи при «Замовлено»',
+  })
+  @IsOptional()
+  @IsEnum(SupplierOrderSendMode)
+  supplierOrderSendMode?: SupplierOrderSendMode;
+
+  @ApiPropertyOptional({
+    enum: SupplierAnalogPolicy,
+    description: 'Аналог поза каталогом (лише ручні позиції)',
+  })
+  @IsOptional()
+  @IsEnum(SupplierAnalogPolicy)
+  supplierAnalogPolicy?: SupplierAnalogPolicy;
+
+  @ApiPropertyOptional({
+    enum: SupplierStrategy,
+    description: 'Стратегія автопідбору за замовчуванням',
+  })
+  @IsOptional()
+  @IsEnum(SupplierStrategy)
+  supplierDefaultStrategy?: SupplierStrategy;
+
+  @ApiPropertyOptional({
+    description: '«Оптимально»: вага ціни [0,1], вага терміну 1 − w',
+    minimum: 0,
+    maximum: 1,
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  @Max(1)
+  supplierOptimalPriceWeight?: number;
+
+  @ApiPropertyOptional({ description: 'Автопідбір ділить позицію між різними постачальниками' })
+  @IsOptional()
+  @IsBoolean()
+  supplierAllowSplit?: boolean;
+
+  @ApiPropertyOptional({ description: 'Аналоги в автопідборі' })
+  @IsOptional()
+  @IsBoolean()
+  supplierAllowAnalogsInAuto?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Пропозиція застаріла після (хв)',
+    minimum: 5,
+    maximum: 1440,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(5)
+  @Max(1440)
+  supplierOfferTtlMinutes?: number;
+
+  @ApiPropertyOptional({
+    description: 'Скільки днів зберігати пропозиції',
+    minimum: 1,
+    maximum: 90,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(90)
+  supplierOfferRetentionDays?: number;
+
+  @ApiPropertyOptional({
+    description: 'Інтервал опитування статусу замовлень (хв)',
+    minimum: 5,
+    maximum: 1440,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(5)
+  @Max(1440)
+  supplierOrderPollIntervalMinutes?: number;
+
+  @ApiPropertyOptional({
+    description: 'Інтервал синхронізації дзеркала каталогу (хв)',
+    minimum: 60,
+    maximum: 1440,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(60)
+  @Max(1440)
+  supplierCatalogSyncIntervalMinutes?: number;
+
+  @ApiPropertyOptional({
+    description: 'Термін для пропозиції без даних про доставку (дні)',
+    minimum: 1,
+    maximum: 90,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(90)
+  supplierUnknownDeliveryDays?: number;
 }
 
 // HH:MM regex (00:00вЂ“23:59). Без regex backend приймає 'foo'/'25:99' в†’
@@ -434,6 +542,17 @@ export class OrganisationSettingsResponseDto {
     description: 'Синхронізувати слот календаря при зміні планових годин наряду',
   })
   syncCalendarSlotWithPlannedHours!: boolean;
+  @ApiProperty({ enum: SupplierOrderSendMode }) supplierOrderSendMode!: SupplierOrderSendMode;
+  @ApiProperty({ enum: SupplierAnalogPolicy }) supplierAnalogPolicy!: SupplierAnalogPolicy;
+  @ApiProperty({ enum: SupplierStrategy }) supplierDefaultStrategy!: SupplierStrategy;
+  @ApiProperty() supplierOptimalPriceWeight!: number;
+  @ApiProperty() supplierAllowSplit!: boolean;
+  @ApiProperty() supplierAllowAnalogsInAuto!: boolean;
+  @ApiProperty() supplierOfferTtlMinutes!: number;
+  @ApiProperty() supplierOfferRetentionDays!: number;
+  @ApiProperty() supplierOrderPollIntervalMinutes!: number;
+  @ApiProperty() supplierCatalogSyncIntervalMinutes!: number;
+  @ApiProperty() supplierUnknownDeliveryDays!: number;
   @ApiProperty() updatedAt!: string;
 }
 

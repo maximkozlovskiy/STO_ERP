@@ -9,6 +9,10 @@ import { IntegrationLogService } from '../../integration-logs/integration-log.se
 import { SupplierAdapterRegistry } from '../adapters/supplier-adapter-registry';
 import { loadConnection, toConnectionContext } from '../connections/supplier-connection-context';
 import { handleSupplierJobError } from './supplier-job-errors';
+import {
+  SupplierOfferSearchWorker,
+  type SupplierSearchJob,
+} from '../offers/supplier-offer-search.worker';
 
 export interface SupplierVerifyJob {
   orgId: string;
@@ -17,7 +21,8 @@ export interface SupplierVerifyJob {
 
 /**
  * Черга `supplier-search` (BR-SCON-004, 006): `verify` — перевірка підключення; `search` —
- * пошук пропозицій (SupplierOfferSearchWorker). У job.data лише id — креди читаються з БД.
+ * пошук пропозицій (SupplierOfferSearchWorker, BR-SOFR-002). У job.data лише id — креди
+ * читаються з БД.
  */
 @Injectable()
 @Processor('supplier-search', { concurrency: 4 })
@@ -28,6 +33,7 @@ export class SupplierSearchProcessor extends DeadLetterWorkerHost {
     private readonly prisma: PrismaService,
     private readonly registry: SupplierAdapterRegistry,
     private readonly integrationLog: IntegrationLogService,
+    private readonly searchWorker: SupplierOfferSearchWorker,
     deadLetter: DeadLetterService,
   ) {
     super(deadLetter);
@@ -38,6 +44,8 @@ export class SupplierSearchProcessor extends DeadLetterWorkerHost {
     if (!data.orgId) throw new UnrecoverableError('supplier-search: job без orgId');
     await runWithTenant({ orgId: data.orgId }, async () => {
       if (job.name === 'verify') await this.verify(job as Job<SupplierVerifyJob>, token);
+      else if (job.name === 'search')
+        await this.searchWorker.run(job as Job<SupplierSearchJob>, token);
       else throw new UnrecoverableError(`supplier-search: невідома задача ${job.name}`);
     });
   }

@@ -22,6 +22,7 @@ import {
 import { PurchaseShortageService } from './purchase-shortage.service';
 import { assertSupplier, conflict, err, loadItemDtos, loadList } from './purchase-lists.helpers';
 import { ITEM_INCLUDE, maskItemCost, toItemDto } from './purchase-lists.mapper';
+import { CLEAR_OFFER_SNAPSHOT, copyOfferSnapshot } from './purchase-list-offer-snapshot';
 import type {
   BulkResultDto,
   PaginatedPurchaseListItemsDto,
@@ -130,7 +131,11 @@ export class PurchaseListItemsService {
     };
   }
 
-  /** BR-PL-005: кількість, постачальник, очікувана ціна, примітка — лише OPEN-позиції. */
+  /**
+   * BR-PL-005: кількість, постачальник, очікувана ціна, примітка — лише OPEN-позиції.
+   * BR-PL-019: інший постачальник скидає знімок пропозиції; кількість понад кількість
+   * пропозиції знімок лишає, а відповідь позначає `offerQtyExceeded`.
+   */
   async update(
     orgId: string,
     id: string,
@@ -138,18 +143,50 @@ export class PurchaseListItemsService {
   ): Promise<PurchaseListItemResponseDto> {
     const item = await this.loadOpenItem(orgId, id);
     if (dto.supplierId) await assertSupplier(this.prisma, orgId, dto.supplierId);
+    const supplierChanged = dto.supplierId !== undefined && dto.supplierId !== item.supplierId;
+    const prevQty = item.quantity;
     const res = await this.prisma.purchaseListItem.updateMany({
-      where: { id, orgId, ...OPEN_ITEM, quantity: item.quantity },
+      where: {
+        id,
+        orgId,
+        ...OPEN_ITEM,
+        quantity: item.quantity,
+        supplierId: item.supplierId,
+        offerKey: item.offerKey,
+      },
       data: {
         ...(dto.quantity !== undefined ? { quantity: dto.quantity } : {}),
         ...(dto.supplierId !== undefined ? { supplierId: dto.supplierId } : {}),
         ...(dto.expectedPrice !== undefined ? { expectedPrice: dto.expectedPrice } : {}),
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+        ...(supplierChanged ? CLEAR_OFFER_SNAPSHOT : {}),
       },
     });
     if (res.count !== 1) throw conflict();
     const [dtoOut] = await loadItemDtos(this.prisma, orgId, [id]);
+    if (!supplierChanged && dto.quantity !== undefined && dto.quantity > prevQty + QTY_EPSILON) {
+      const offerQty = await this.offerQty(orgId, item);
+      if (offerQty !== null && dto.quantity > offerQty + QTY_EPSILON) {
+        return { ...dtoOut, offerQtyExceeded: true };
+      }
+    }
     return dtoOut;
+  }
+
+  /** Кількість останньої відомої пропозиції зі знімка позиції (null — знімка чи пропозиції немає). */
+  private async offerQty(orgId: string, item: PurchaseListItem): Promise<number | null> {
+    if (!item.offerConnectionId || !item.offerKey) return null;
+    const offer = await this.prisma.supplierOffer.findFirst({
+      where: {
+        orgId,
+        connectionId: item.offerConnectionId,
+        offerKey: item.offerKey,
+        deletedAt: null,
+      },
+      orderBy: { fetchedAt: 'desc' },
+      select: { qty: true },
+    });
+    return offer?.qty ?? null;
   }
 
   /** BR-PL-007: `0 < кількість < quantity` → нова OPEN-позиція з тими самими зв'язками. */
@@ -182,6 +219,8 @@ export class PurchaseListItemsService {
             supplierId: item.supplierId,
             expectedPrice: item.expectedPrice,
             notes: item.notes,
+            // BR-PL-017: обидві частини лишаються з тією самою пропозицією.
+            ...copyOfferSnapshot(item),
           },
           select: { id: true },
         });
