@@ -183,6 +183,14 @@ grep -rnE "useRequireAuth\(\[[^]]*,[^]]*,[^]]*,[^]]*\]" apps/web/src/app --inclu
 
 #### §8.5 UX Features
 
+- [ ] **Масова дія над документами повторює правила одиночної** (підтвердження, `force`, перевірка стану).
+      2026-10-18 одиночне видалення замовлення, вже відправленого в API, питало «скасуйте в кабінеті
+      постачальника» і повторювало з `force`, а масове — давало тост «не видалено». Grep: для кожного
+      `runSentOrder`/`confirm` в одиночній дії — `grep -n "bulk" <page>` і та сама гілка там
+      (`journal/web.md`, 2026-10-18)
+- [ ] **Перелік статусів, «дзеркальний» бекенду (`SENT_*_STATUSES`), — звірити з бекендом поелементно.**
+      Web пропустив SENDING: сервер відмовляв 400, а web показував голу помилку замість підтвердження.
+
 ```bash
 # toast без features.toastEnabled guard
 grep -rn "toast\." apps/web/src/app/ apps/web/src/components/ --include="*.tsx" | grep -v "features\.toastEnabled\|// toast\|ToastContainer"

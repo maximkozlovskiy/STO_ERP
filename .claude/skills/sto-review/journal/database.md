@@ -52,3 +52,13 @@
 `buildSlotStorePrisma` (`matchesWhere` моделює SQL-семантику `not`) із записом `workOrderId: null` + контроль
 «власний запис — не конфлікт» (`calendar.conflicts.spec.ts`).
 **Severity:** IMPORTANT
+
+### 2026-10-18 — Redis-кеш DTO переживає міграцію — §6
+
+**Сигнал:** нові поля `OrganisationSettings.supplier*`, `getOrganisationSettings` кешує змаплений DTO
+5 хв під ключем `settings:org:<id>` → перші ≤5 хв після оновлення `supplierOfferTtlMinutes` undefined,
+`POST /supplier-offers/search` 400 (знайшов виконавець блоку «Постачальники API»).
+**Grep:** `grep -rn "redis.set(" apps/api/src --include="*.ts" | grep -v spec`
+**Фікс:** ключ `settings:org:<sha1(ScalarFieldEnum)[0..8]>:<id>` — змінюється сам із кожною колонкою;
+регресія в `settings.service.spec.ts` (старий ключ не читається, мутацією перевірено).
+**Severity:** IMPORTANT

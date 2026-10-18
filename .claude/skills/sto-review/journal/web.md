@@ -414,3 +414,13 @@ FK з наявного стану робить запис нередагован
 **Сигнал:** (1) `CalendarLegend` — панель `role="dialog"` під кнопкою, Escape і клік поза — на `document`; фокус у панель не переходив, вихід фокусу (Tab на картку місяця, відкриття форми) легенду не закривав — вона лишалась над сторінкою, і Escape, призначений модалці, закривав обидві. (2) `useCalendarState`: `monthEditSlot` (знімок запису для правила «минулий за `endAt`», BR-CAL-009) скидали лише `handleModalClose`/`handleModalSaved`; кнопка «+ Слот» закриває форму через `setShowAdd`, і пізніше той самий запис із виду «День» отримував правило місяця. (3) `load` дня без токена запиту; довантаження наступного дня (кінець ланцюжка, BR-CAL-008) додало третій запит у `Promise.all` — пізня відповідь попереднього дня при швидкому «‹ ›» перезаписувала новий.
 **Grep:** `grep -rln 'role="dialog"' apps/web/src --include=*.tsx | xargs grep -L "onBlur\|useFocusTrap\|<Modal"`; `grep -n "const load = useCallback" -A4 apps/web/src/app --include=*.ts -r | grep -c "ReqRef\|cancelled"`
 **Фікс:** (1) `panelRef.focus()` при відкритті, `tabIndex={-1}`, `onBlur` на корені: `relatedTarget` поза коренем → закрити (`null` — ні). (2) `handleEditSlot` скидає знімок, `openMonthSlot` ставить його після. (3) `loadReqRef` + `isStale()` у then/catch/finally. Тести доведені мутацією. Sample: `calendar/CalendarLegend.tsx`, `useCalendarState.ts` (review 60ec2d47). **Severity:** IMPORTANT (1, 3), SUGGESTION (2)
+
+### 2026-10-18 — масова дія без правил одиночної; «дзеркальний» список статусів розійшовся — §8.5
+
+**Сигнал:** сторінка «Купівля»: масове видалення замовлень, вже переданих постачальнику через API, давало
+тост-помилку без підтвердження «скасуйте в кабінеті» і повтору з `force` (BR-SCON-014), хоча одиночне це
+вміло; `SENT_EXTERNAL_STATUSES` у web без SENDING, а бекенд SENDING вважав відправленим.
+**Grep:** `grep -rn "SENT_.*STATUSES" apps/api/src apps/web/src --include="*.ts"` — порівняти множини.
+**Фікс:** `useSentOrderForce().runMany` — одне спільне підтвердження, повтор із force лише для відправлених;
+SENDING у web-переліку; тести `SupplierApiOrderBlock.test.tsx`, `useSupplierApi.test.tsx`.
+**Severity:** IMPORTANT

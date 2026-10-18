@@ -171,3 +171,12 @@
 → для кожного поля відповіді звірити ролі ендпоінтів.
 **Фікс:** `maskItemCost(items, role)` у мапері (fail-closed: невідома роль → `null`), роль із
 `@CurrentUser()` у сервіс. **Severity:** IMPORTANT
+
+### 2026-10-18 — сталий jobId + removeOnFail: N блокує повтор — §2.5
+
+**Сигнал:** `supplier-place-${poId}`, `supplier-catalog-${connectionId}` з `removeOnFail: 200`: після FAILED
+«Відправити в API» і sweep викликали `add()` з тим самим id — BullMQ 5 (`addStandardJob`) повертав наявну
+failed-задачу, нова не ставилась, замовлення висіло QUEUED.
+**Grep:** `grep -rn -A8 "jobId:" apps/api/src/modules --include="*.ts" | grep -B6 "removeOnFail: [0-9]"`
+**Фікс:** `removeOnFail: true` для перепостановлюваних задач або `getJob(id)?.remove()` перед `add`.
+**Severity:** CRITICAL
