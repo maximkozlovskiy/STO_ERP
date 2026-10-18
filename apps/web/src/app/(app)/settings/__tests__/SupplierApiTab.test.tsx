@@ -4,6 +4,8 @@
 
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import i18n from '@/i18n/config';
 import type { SupplierConnection, SupplierProviderInfo } from '@/hooks/api/useSupplierConnections';
@@ -19,7 +21,7 @@ vi.mock('@/hooks/api/useInfrastructure', () => ({
 }));
 
 import { SupplierConnectionModal } from '../SupplierConnectionModal';
-import SupplierApiTab from '../SupplierApiTab';
+import SupplierApiTab, { SUPPLIER_SETTINGS_DEFAULTS } from '../SupplierApiTab';
 
 // Підписи — з каталогу supplierApi:fieldLabels.AVD_TRADE (uk — як у реєстрі адаптерів).
 const KEY = 'API-ключ (x-api-key)';
@@ -386,5 +388,24 @@ describe('SupplierApiTab — «Закупівля через API»', () => {
 
     expect(await screen.findByLabelText(/Стратегія автопідбору/)).toHaveValue('OPTIMAL');
     expect(screen.getByLabelText('«Оптимально»: вага ціни, %')).toHaveValue(40);
+  });
+});
+
+// Значення за замовчуванням вкладки — копія `@default` схеми: поле, змінене лише в схемі, мовчки
+// розійшлося б із тим, що вкладка показує старішому API.
+describe('SupplierApiTab — значення за замовчуванням збігаються зі схемою', () => {
+  // guards: BR-SCON-009, BR-SOFR-007
+  it('кожне поле SUPPLIER_SETTINGS_DEFAULTS = @default у 09_settings.prisma', () => {
+    const schema = readFileSync(
+      resolve(__dirname, '../../../../../../../packages/database/prisma/schema/09_settings.prisma'),
+      'utf8',
+    );
+    const entries = Object.entries(SUPPLIER_SETTINGS_DEFAULTS);
+    expect(entries).toHaveLength(11);
+    for (const [field, value] of entries) {
+      const m = new RegExp(`^\\s*${field}\\s+\\w+\\s+@default\\(([^)]+)\\)`, 'm').exec(schema);
+      expect(m, field).not.toBeNull();
+      expect(m![1], field).toBe(String(value));
+    }
   });
 });

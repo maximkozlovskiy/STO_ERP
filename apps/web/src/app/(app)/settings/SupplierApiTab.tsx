@@ -66,9 +66,9 @@ const INT_FIELDS: Array<{ key: IntKey; label: string; min: number; max: number }
  * Значення за замовчуванням — ті самі, що `@default` полів `OrganisationSettings.supplier*`
  * (`packages/database/prisma/schema/09_settings.prisma`). Сервер, що ще не віддає цих полів
  * (старіша збірка API), інакше лишав би розділ із сирими ключами (`strategyHint.undefined`) і
- * порожніми числами.
+ * порожніми числами. Збіг зі схемою стереже `SupplierApiTab.test.tsx`.
  */
-const SUPPLIER_SETTINGS_DEFAULTS: SupplierSettings = {
+export const SUPPLIER_SETTINGS_DEFAULTS: SupplierSettings = {
   supplierOrderSendMode: 'MANUAL',
   supplierAnalogPolicy: 'CATALOG_ONLY',
   supplierDefaultStrategy: 'OPTIMAL',

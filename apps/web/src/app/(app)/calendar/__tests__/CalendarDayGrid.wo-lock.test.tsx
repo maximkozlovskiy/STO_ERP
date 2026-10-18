@@ -137,8 +137,10 @@ describe('Вид «День» — видалення запису наряду �
 
     const hint =
       'Запис наряду в статусі «В роботі» не видаляється — лише в статусах «Чернетка», «Кошторис», «Затверджено»';
-    const btn = await screen.findByRole('button', { name: hint });
+    // Назва лишає час запису (кілька заблокованих кошиків не звучать однаково), причина — описом.
+    const btn = await screen.findByRole('button', { name: /^Видалити слот 13:00/ });
     expect(btn).toBeDisabled();
+    expect(btn).toHaveAccessibleDescription(hint);
     expect(btn.parentElement).toHaveAttribute('title', hint);
     fireEvent.click(btn);
     expect(screen.queryByText('Видалити слот?')).toBeNull();
@@ -165,6 +167,7 @@ describe('Вид «День» — видалення запису наряду �
     expect(buttons).toHaveLength(2);
     for (const b of buttons) {
       expect(b).not.toBeDisabled();
+      expect(b).not.toHaveAccessibleDescription();
       expect(b.parentElement).toHaveAttribute('title', 'Видалити слот');
     }
   });

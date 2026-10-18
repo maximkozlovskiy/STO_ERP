@@ -2,6 +2,7 @@
 
 import {
   memo,
+  useId,
   useMemo,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -743,38 +744,54 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                   )}
                   {s.notes && <span className="ml-2 text-xs text-muted-foreground">{s.notes}</span>}
                 </div>
-                {canManageSlots &&
-                  (() => {
-                    // BR-WO-026: запис наряду не в редагованому статусі не видаляється — кнопка
-                    // недоступна, причина — у підказці обгортки (вимкнена кнопка без подій миші).
-                    const locked = workOrderTimeLock(s);
-                    const lockHint = locked
-                      ? t('slot.woDeleteLocked', { status: woStatusLabel(locked) })
-                      : null;
-                    return (
-                      <span title={lockHint ?? t('day.deleteSlotTitle')} className="inline-flex">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={lockHint !== null}
-                          onClick={() => void removeSlot(s.id)}
-                          aria-label={
-                            lockHint ??
-                            t('day.deleteSlotAria', {
-                              time: `${fmtTime(s.startAt)}–${fmtTime(s.endAt)}`,
-                            })
-                          }
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                        </Button>
-                      </span>
-                    );
-                  })()}
+                {canManageSlots && (
+                  <UnassignedSlotDeleteButton slot={s} onRemove={id => void removeSlot(id)} />
+                )}
               </div>
             ))}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Кошик запису в переліку «Без підйомника». BR-WO-026 (рішення власника 2026-10-19): запис наряду
+ * не в редагованому статусі не видаляється — кнопка недоступна, причина в `title` обгортки
+ * (вимкнена кнопка подій миші не отримує) і описом для читача екрана; назва кнопки лишає час
+ * запису, щоб кілька заблокованих кошиків не звучали однаково.
+ */
+function UnassignedSlotDeleteButton({
+  slot,
+  onRemove,
+}: {
+  slot: CalendarSlot;
+  onRemove: (id: string) => void;
+}) {
+  const { t } = useTranslation('calendar');
+  const hintId = useId();
+  const locked = workOrderTimeLock(slot);
+  const lockHint = locked ? t('slot.woDeleteLocked', { status: woStatusLabel(locked) }) : null;
+  return (
+    <span title={lockHint ?? t('day.deleteSlotTitle')} className="inline-flex">
+      {lockHint && (
+        <span id={hintId} className="sr-only">
+          {lockHint}
+        </span>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={lockHint !== null}
+        onClick={() => onRemove(slot.id)}
+        aria-label={t('day.deleteSlotAria', {
+          time: `${fmtTime(slot.startAt)}–${fmtTime(slot.endAt)}`,
+        })}
+        aria-describedby={lockHint ? hintId : undefined}
+      >
+        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+      </Button>
+    </span>
   );
 }

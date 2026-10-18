@@ -129,7 +129,7 @@ cd apps/api && npx vitest run src/modules/supplier-api/<тека>/<файл>.spe
 `payments/payments.queue-retry-policy.spec.ts` — політика повторів нових черг (BR-SCON-006).
 Web: `settings/__tests__/SupplierApiTab.test.tsx` (креди лише на запис, мапа складів, змінені поля
 налаштувань — BR-SCON-002, 003; відповідь без полів `supplier*` (старіша збірка API) — значення за
-замовчуванням зі схеми й підказка стратегії — BR-SCON-009, BR-SOFR-007), `components/ui/purchase-order/__tests__/SupplierApiOrderBlock.test.tsx`
+замовчуванням зі схеми й підказка стратегії, збіг цих значень із `@default` схеми — BR-SCON-009, BR-SOFR-007), `components/ui/purchase-order/__tests__/SupplierApiOrderBlock.test.tsx`
 (підтвердження скасування відправленого — BR-SCON-014; Idempotency-Key — BR-SCON-009; стан — BR-SCON-013),
 `hooks/api/useSupplierApi.test.tsx`. E2E через браузер — `apps/web/e2e/supplier-api.spec.ts` (фейки
 на :4100, API з `SUPPLIER_API_DEV_ALLOWED_ORIGINS`).
