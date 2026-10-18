@@ -247,9 +247,18 @@ export function SupplierOffersDialog({ item, onClose }: Props) {
     busyRef.current = true;
     setBusyOfferId(row.offer.id);
     try {
-      await supplierOffersApi.choose(item.id, row.offer.id);
+      const updated = await supplierOffersApi.choose(item.id, row.offer.id);
+      // Кратність пропозиції: сервер округлив кількість позиції вгору (Bug #890) — кажемо про це.
       if (features.toastEnabled)
-        toast.success(t('offers.chosenToast', { supplier: row.supplierName }));
+        toast.success(
+          (updated?.quantity ?? 0) > item.quantity
+            ? t('offers.chosenToastQty', {
+                supplier: row.supplierName,
+                qty: fmtQty(updated.quantity),
+                step: fmtQty(row.offer.multiplicity ?? 1),
+              })
+            : t('offers.chosenToast', { supplier: row.supplierName }),
+        );
       finish();
     } catch (e: unknown) {
       // Відмова (аналог не обирається, немає курсу, позицію змінено) — у діалозі, не лише тостом:

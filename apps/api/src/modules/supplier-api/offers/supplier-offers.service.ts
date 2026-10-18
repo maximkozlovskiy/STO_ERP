@@ -26,6 +26,7 @@ import { CLEAR_OFFER_SNAPSHOT, goodSwap } from '../../purchase-lists/purchase-li
 import type { PurchaseListItemResponseDto } from '../../purchase-lists/purchase-lists.dto';
 import { SupplierPriceConverter } from './supplier-price-converter';
 import { offerSelectability } from './offer-selectability';
+import { roundUpToStep } from '../strategy/offer-allocation';
 import type {
   SupplierOfferBatchDto,
   SupplierOfferDto,
@@ -390,12 +391,17 @@ export class SupplierOffersService {
     }
     if (!sel.selectable) throw new BadRequestException(err('err.supplierApi.analogNotSelectable'));
 
+    // Кратність постачальника (BR-SOFR-006, як автопідбір BR-SOFR-007): кількість позиції —
+    // до кратності вгору, інакше в API піде некратна кількість (Bug #890). Надлишок допускається.
+    const step = offer.multiplicity && offer.multiplicity > 1 ? offer.multiplicity : 1;
+    const quantity = step > 1 ? roundUpToStep(item.quantity, step) : item.quantity;
     const write = async (targetGoodId: string | null) => {
       const res = await this.prisma.purchaseListItem.updateMany({
         where: { id: item.id, orgId, ...OPEN_ITEM, quantity: item.quantity, goodId: item.goodId },
         data: {
           supplierId: offer.connection.counterpartyId,
           expectedPrice: priceUah as number,
+          ...(quantity !== item.quantity ? { quantity } : {}),
           ...snapshotOf(offer, 'MANUAL'),
           ...(targetGoodId && targetGoodId !== item.goodId ? goodSwap(item, targetGoodId) : {}),
         },

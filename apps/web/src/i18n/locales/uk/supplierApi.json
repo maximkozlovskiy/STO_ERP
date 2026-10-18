@@ -180,6 +180,7 @@
     "confirmReplace": "Замінити товар позиції на аналог {{article}} {{brand}}?",
     "confirmReplaceHint": "Попередній товар збережеться як вихідний.",
     "chosenToast": "Обрано пропозицію {{supplier}}",
+    "chosenToastQty": "Обрано пропозицію {{supplier}}; кількість — {{qty}} (кратність {{step}})",
     "clearedToast": "Вибір пропозиції знято"
   },
   "badge": {

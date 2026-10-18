@@ -114,6 +114,19 @@ describe('Вибір пропозиції (BR-SOFR-006)', () => {
   });
 
   // guards: BR-SOFR-006
+  it('Bug #890: кратність пропозиції → кількість позиції до кратності вгору; кратна — без змін', async () => {
+    const h = setup();
+    const offerId = withOffer(h, ITEM_MANUAL, { multiplicity: 3, qty: 10 });
+    await h.service.chooseOffer(ORG, ITEM_MANUAL, offerId, 'OWNER');
+    expect(item(h, ITEM_MANUAL)).toMatchObject({ quantity: 6, offerMultiplicity: 3 });
+
+    const h2 = setup();
+    const offer2 = withOffer(h2, ITEM_MANUAL, { multiplicity: 2 });
+    await h2.service.chooseOffer(ORG, ITEM_MANUAL, offer2, 'OWNER');
+    expect(item(h2, ITEM_MANUAL).quantity).toBe(4);
+  });
+
+  // guards: BR-SOFR-006
   it('немає курсу валюти → 400 noExchangeRate, позиція не змінена', async () => {
     const h = setup({ eurRate: null });
     const offerId = withOffer(h, ITEM_MANUAL, { price: 2.6, currencyCode: 'EUR' });

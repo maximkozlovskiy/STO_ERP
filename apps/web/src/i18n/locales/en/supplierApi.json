@@ -180,6 +180,7 @@
     "confirmReplace": "Replace the item's good with analog {{article}} {{brand}}?",
     "confirmReplaceHint": "The previous good is kept as the original.",
     "chosenToast": "Offer from {{supplier}} chosen",
+    "chosenToastQty": "Offer from {{supplier}} chosen; quantity is now {{qty}} (multiple of {{step}})",
     "clearedToast": "Offer choice cleared"
   },
   "badge": {
