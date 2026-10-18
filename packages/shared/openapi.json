@@ -9785,56 +9785,9 @@
         ]
       }
     },
-    "/api/v1/calendar/slots/by-work-order/{workOrderId}": {
-      "patch": {
-        "description": "startAt/endAt стають плановими початком і завершенням наряду (як PATCH /work-orders/:id, BR-WO-019, BR-WO-020); відмова — 400 без змін (BR-WO-024). Web не викликає",
-        "operationId": "CalendarController_syncWorkOrderSlots_v1",
-        "parameters": [
-          {
-            "name": "workOrderId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SyncWorkOrderSlotsDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SyncWorkOrderSlotsResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Перенести запис наряду на нові дати — через дати наряду",
-        "tags": [
-          "Calendar"
-        ]
-      }
-    },
     "/api/v1/calendar/slots/{id}": {
       "patch": {
-        "description": "Час чи підйомник запису наряду змінюють наряд: межі ланцюжка запису стають плановими датами наряду, підйомник — підйомником наряду, перевірки як у PATCH /work-orders/:id; відмова — 400 без змін (BR-WO-024)",
+        "description": "Час чи підйомник запису наряду змінюють наряд: межі ланцюжка запису стають плановими датами наряду, підйомник — підйомником наряду, перевірки як у PATCH /work-orders/:id; відмова — 400 без змін (BR-WO-024); лише в статусах «Чернетка», «Кошторис», «Затверджено» (BR-WO-027). Інший workOrderId — перев'язка: запис стає на дати нового наряду (чи дає йому свої), попередній наряд утрачає дати (BR-WO-028)",
         "operationId": "CalendarController_updateSlot_v1",
         "parameters": [
           {
@@ -9879,6 +9832,7 @@
         ]
       },
       "delete": {
+        "description": "Запис наряду: позначається видаленим увесь ланцюжок записів наряду, планові дати наряду стираються (нормогодини, виведені з дат, — теж; BR-WO-026)",
         "operationId": "CalendarController_removeSlot_v1",
         "parameters": [
           {
@@ -26437,34 +26391,6 @@
         },
         "required": [
           "slots"
-        ]
-      },
-      "SyncWorkOrderSlotsDto": {
-        "type": "object",
-        "properties": {
-          "startAt": {
-            "type": "string",
-            "description": "Новий startAt для всіх слотів наряду"
-          },
-          "endAt": {
-            "type": "string",
-            "description": "Новий endAt для всіх слотів наряду"
-          }
-        },
-        "required": [
-          "startAt",
-          "endAt"
-        ]
-      },
-      "SyncWorkOrderSlotsResponseDto": {
-        "type": "object",
-        "properties": {
-          "updated": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "updated"
         ]
       },
       "UpdateCalendarSlotDto": {

@@ -681,6 +681,10 @@ export const en: Record<string, string> = {
   'err.calendar.workOrderNotFound': 'Work order not found',
   'err.calendar.workOrderCancelled':
     'The work order is cancelled — it cannot be put in the calendar',
+  'err.calendar.workOrderSlotLocked':
+    'The time and lift of a work order record change only in the Draft, Estimate and Approved statuses',
+  'err.calendar.workOrderRelinkLocked':
+    'A record can be moved only between work orders in the Draft, Estimate and Approved statuses',
   'err.calendar.clientNotFound': 'Client not found',
   'err.calendar.vehicleNotFound': 'Vehicle not found',
   'err.calendar.liftBusy': 'The lift is already busy at this time',

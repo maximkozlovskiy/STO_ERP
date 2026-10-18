@@ -2989,26 +2989,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/calendar/slots/by-work-order/{workOrderId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Перенести запис наряду на нові дати — через дати наряду
-         * @description startAt/endAt стають плановими початком і завершенням наряду (як PATCH /work-orders/:id, BR-WO-019, BR-WO-020); відмова — 400 без змін (BR-WO-024). Web не викликає
-         */
-        patch: operations["CalendarController_syncWorkOrderSlots_v1"];
-        trace?: never;
-    };
     "/api/v1/calendar/slots/{id}": {
         parameters: {
             query?: never;
@@ -3019,13 +2999,16 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Видалити слот */
+        /**
+         * Видалити слот
+         * @description Запис наряду: позначається видаленим увесь ланцюжок записів наряду, планові дати наряду стираються (нормогодини, виведені з дат, — теж; BR-WO-026)
+         */
         delete: operations["CalendarController_removeSlot_v1"];
         options?: never;
         head?: never;
         /**
          * Оновити слот (час, підйомник, наряд)
-         * @description Час чи підйомник запису наряду змінюють наряд: межі ланцюжка запису стають плановими датами наряду, підйомник — підйомником наряду, перевірки як у PATCH /work-orders/:id; відмова — 400 без змін (BR-WO-024)
+         * @description Час чи підйомник запису наряду змінюють наряд: межі ланцюжка запису стають плановими датами наряду, підйомник — підйомником наряду, перевірки як у PATCH /work-orders/:id; відмова — 400 без змін (BR-WO-024); лише в статусах «Чернетка», «Кошторис», «Затверджено» (BR-WO-027). Інший workOrderId — перев'язка: запис стає на дати нового наряду (чи дає йому свої), попередній наряд утрачає дати (BR-WO-028)
          */
         patch: operations["CalendarController_updateSlot_v1"];
         trace?: never;
@@ -8202,15 +8185,6 @@ export interface components {
         };
         CreateCalendarSlotResponseDto: {
             slots: components["schemas"]["CalendarSlotResponseDto"][];
-        };
-        SyncWorkOrderSlotsDto: {
-            /** @description Новий startAt для всіх слотів наряду */
-            startAt: string;
-            /** @description Новий endAt для всіх слотів наряду */
-            endAt: string;
-        };
-        SyncWorkOrderSlotsResponseDto: {
-            updated: number;
         };
         UpdateCalendarSlotDto: {
             /** Format: uuid */
@@ -15900,31 +15874,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CheckConflictsResponseDto"];
-                };
-            };
-        };
-    };
-    CalendarController_syncWorkOrderSlots_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workOrderId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SyncWorkOrderSlotsDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SyncWorkOrderSlotsResponseDto"];
                 };
             };
         };

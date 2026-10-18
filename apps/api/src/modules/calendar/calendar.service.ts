@@ -462,11 +462,15 @@ export class CalendarService {
    * Зміна запису сама по собі. Зміну часу чи підйомника запису НАРЯДУ проводить наряд
    * (`WorkOrdersService.updateCalendarSlot`, BR-WO-024) — сюди вона не доходить: і
    * `PATCH /calendar/slots/:id`, і синхронізація з планшета ідуть через нього.
+   *
+   * `opts.inTx` — що ще зробити в транзакції зміни запису: відв'язаний від наряду запис стирає дати
+   * наряду (BR-WO-026, `WorkOrdersService.unlinkCalendarSlot`).
    */
   async updateSlot(
     orgId: string,
     id: string,
     dto: CalendarSlotEdit,
+    opts: { inTx?: (tx: Prisma.TransactionClient) => Promise<void> } = {},
   ): Promise<CalendarSlotResponseDto> {
     // MVP: slots that have a continuation (split across days) must be edited individually.
     const hasContinuation = await this.prisma.calendarSlot.findFirst({
@@ -577,7 +581,7 @@ export class CalendarService {
             throw new BadRequestException(translateError('err.calendar.employeeBusy', getLocale()));
           }
 
-          return tx.calendarSlot.update({
+          const saved = await tx.calendarSlot.update({
             where: { id, orgId },
             data: {
               ...(dto.liftId !== undefined && { liftId: dto.liftId }),
@@ -610,6 +614,8 @@ export class CalendarService {
               },
             },
           });
+          await opts.inTx?.(tx);
+          return saved;
         },
         { timeout: TRANSACTION_TIMEOUT_MS },
       );

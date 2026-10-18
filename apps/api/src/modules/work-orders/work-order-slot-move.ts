@@ -33,7 +33,7 @@ const instant = (v: string | Date): number => new Date(v).getTime();
 /**
  * Зміна змінює час чи підйомник запису наряду. Порівнюється зі збереженим, а не «поле є в
  * запиті»: форма шле час і підйомник щоразу, і зміна лише примітки чи механіка лишається на
- * записі. Перев'язка запису до іншого наряду чи відв'язка — не зміна запису наряду (як раніше).
+ * записі. Перев'язка запису до іншого наряду чи відв'язка — окремий шлях (`relinksSlot`).
  */
 export function movesWorkOrderSlot(slot: SlotState, change: SlotChange): boolean {
   if (!slot.workOrderId) return false;
@@ -44,6 +44,14 @@ export function movesWorkOrderSlot(slot: SlotState, change: SlotChange): boolean
     (change.endAt != null && instant(change.endAt) !== slot.endAt.getTime()) ||
     (change.liftId !== undefined && (change.liftId ?? null) !== slot.liftId)
   );
+}
+
+/**
+ * Зміна дає запису інший наряд (BR-WO-028) або відв'язує його від наряду: `workOrderId` у зміні
+ * відрізняється від збереженого. Форма шле наряд щоразу, тож той самий наряд — не перев'язка.
+ */
+export function relinksSlot(slot: Pick<SlotState, 'workOrderId'>, change: SlotChange): boolean {
+  return change.workOrderId !== undefined && (change.workOrderId ?? null) !== slot.workOrderId;
 }
 
 /**

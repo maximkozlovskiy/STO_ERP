@@ -189,6 +189,8 @@ export function planningHarness(opts: { workOrders?: MemRow[]; slots?: MemRow[] 
 
   const calendar = new CalendarService(prisma as unknown as PrismaService);
   const docNumbers = { next: vi.fn().mockResolvedValue('НРД-8') };
+  // Журнал змін наряду: BR-WO-026 пише в нього стерті дати.
+  const audit = { record: vi.fn().mockResolvedValue(undefined) };
   // Склад і борг переходів наряду — поза цими спеками; лише заглушки, що нічого не пишуть.
   const stockEffects = {
     reserveParts: vi.fn().mockResolvedValue(undefined),
@@ -201,7 +203,7 @@ export function planningHarness(opts: { workOrders?: MemRow[]; slots?: MemRow[] 
     stockEffects as never,
     docNumbers as never,
     null as never, // pdf
-    { record: vi.fn().mockResolvedValue(undefined) } as never, // audit
+    audit as never,
     null as never, // settingsService
     { requireBaseCurrencyId: vi.fn().mockResolvedValue('cur-uah') } as never, // exchangeRates
     { emit: vi.fn() } as never, // events
@@ -223,6 +225,7 @@ export function planningHarness(opts: { workOrders?: MemRow[]; slots?: MemRow[] 
     createMany,
     docNumbers,
     stockEffects,
+    audit,
     liveSlots,
   };
 }

@@ -28,8 +28,6 @@ import {
   CreateCalendarSlotResponseDto,
   CheckConflictsDto,
   CheckConflictsResponseDto,
-  SyncWorkOrderSlotsDto,
-  SyncWorkOrderSlotsResponseDto,
 } from './calendar.dto';
 
 @ApiTags('Calendar')
@@ -83,24 +81,6 @@ export class CalendarController {
     return this.service.createSlot(orgId, dto);
   }
 
-  @Patch('by-work-order/:workOrderId')
-  @Roles(...CALENDAR_WRITE_ROLES)
-  @ApiOperation({
-    summary: 'Перенести запис наряду на нові дати — через дати наряду',
-    description:
-      'startAt/endAt стають плановими початком і завершенням наряду (як PATCH /work-orders/:id, ' +
-      'BR-WO-019, BR-WO-020); відмова — 400 без змін (BR-WO-024). Web не викликає',
-  })
-  @ApiResponse({ status: 200, type: SyncWorkOrderSlotsResponseDto })
-  syncWorkOrderSlots(
-    @OrgContext() orgId: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('workOrderId', ParseUUIDPipe) workOrderId: string,
-    @Body() dto: SyncWorkOrderSlotsDto,
-  ): Promise<SyncWorkOrderSlotsResponseDto> {
-    return this.workOrders.moveCalendarByDates(orgId, workOrderId, dto, user.id);
-  }
-
   @Patch(':id')
   @Roles(...CALENDAR_WRITE_ROLES)
   @ApiOperation({
@@ -108,7 +88,9 @@ export class CalendarController {
     description:
       'Час чи підйомник запису наряду змінюють наряд: межі ланцюжка запису стають плановими ' +
       'датами наряду, підйомник — підйомником наряду, перевірки як у PATCH /work-orders/:id; ' +
-      'відмова — 400 без змін (BR-WO-024)',
+      'відмова — 400 без змін (BR-WO-024); лише в статусах «Чернетка», «Кошторис», ' +
+      "«Затверджено» (BR-WO-027). Інший workOrderId — перев'язка: запис стає на дати нового " +
+      'наряду (чи дає йому свої), попередній наряд утрачає дати (BR-WO-028)',
   })
   updateSlot(
     @OrgContext() orgId: string,
@@ -122,8 +104,17 @@ export class CalendarController {
   @Delete(':id')
   @Roles(...CALENDAR_WRITE_ROLES)
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Видалити слот' })
-  removeSlot(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.removeSlot(orgId, id);
+  @ApiOperation({
+    summary: 'Видалити слот',
+    description:
+      'Запис наряду: позначається видаленим увесь ланцюжок записів наряду, планові дати наряду ' +
+      'стираються (нормогодини, виведені з дат, — теж; BR-WO-026)',
+  })
+  removeSlot(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    return this.workOrders.removeCalendarSlot(orgId, id, user.id);
   }
 }

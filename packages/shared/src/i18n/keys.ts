@@ -746,6 +746,8 @@ export const VALIDATION_KEYS = [
   'err.calendar.employeeNotFound',
   'err.calendar.workOrderNotFound',
   'err.calendar.workOrderCancelled',
+  'err.calendar.workOrderSlotLocked',
+  'err.calendar.workOrderRelinkLocked',
   'err.calendar.clientNotFound',
   'err.calendar.vehicleNotFound',
   'err.calendar.liftBusy',

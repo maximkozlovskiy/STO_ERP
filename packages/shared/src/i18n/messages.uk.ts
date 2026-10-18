@@ -664,6 +664,10 @@ export const uk: Record<string, string> = {
   'err.calendar.employeeNotFound': 'Співробітника не знайдено',
   'err.calendar.workOrderNotFound': 'Наряд не знайдено',
   'err.calendar.workOrderCancelled': 'Наряд скасовано — записати його в календар не можна',
+  'err.calendar.workOrderSlotLocked':
+    'Час і підйомник запису наряду змінюються лише в статусах «Чернетка», «Кошторис» і «Затверджено»',
+  'err.calendar.workOrderRelinkLocked':
+    "Перев'язати запис можна лише між нарядами в статусах «Чернетка», «Кошторис» і «Затверджено»",
   'err.calendar.clientNotFound': 'Клієнта не знайдено',
   'err.calendar.vehicleNotFound': 'Автомобіль не знайдено',
   'err.calendar.liftBusy': 'Підйомник вже зайнятий на цей час',

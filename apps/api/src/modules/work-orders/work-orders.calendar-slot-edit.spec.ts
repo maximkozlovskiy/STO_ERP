@@ -1,8 +1,8 @@
 /**
  * BR-WO-024 — будь-яка зміна запису наряду в календарі йде через дати наряду (рішення власника
- * 2026-10-18). `PATCH /calendar/slots/:id` (зміна меж у «Дні», форма запису) і старий
- * `PATCH /calendar/slots/by-work-order` змінюють наряд: межі ланцюжка запису після зміни стають
- * плановими початком і завершенням, підйомник запису — підйомником наряду. Перевірки — як у
+ * 2026-10-18). `PATCH /calendar/slots/:id` (зміна меж у «Дні», форма запису) змінює наряд: межі
+ * ланцюжка запису після зміни стають плановими початком і завершенням, підйомник запису —
+ * підйомником наряду. Перевірки — як у
  * збереженні наряду (BR-WO-019, BR-WO-020, механік — BR-CAL-012); відмова — 400, ні наряд, ні
  * записи не змінюються. Примітка й механік без зміни часу, записи без наряду — як раніше.
  *
@@ -324,24 +324,6 @@ describe('PATCH /calendar/slots/:id для запису наряду — фор�
     expect(h.liveSlots()[0]).toMatchObject({ notes: 'Лише примітка' });
   });
 
-  // guards: BR-WO-024
-  it('наряд відкріплено у формі (`workOrderId: null`) разом із новим часом → запис сам, наряд не чіпається', async () => {
-    const h = planned();
-    const before = structuredClone(wo(h));
-
-    await h.service.updateCalendarSlot(ORG, 'anchor', {
-      workOrderId: null,
-      liftId: LIFT_1,
-      startAt: iso(D, '13:00'),
-      endAt: iso(D, '14:00'),
-    });
-
-    expect(wo(h)).toEqual(before);
-    const slot = h.calendarSlot.rows.find(r => r.id === 'anchor')!;
-    expect(slot.workOrderId).toBeNull();
-    expect(t(slot.startAt)).toBe(t(kyiv(D, '13:00')));
-  });
-
   // guards: BR-WO-024 — Bug #902: якорю з продовженням `CalendarService.updateSlot` відмовляв
   // («редагуйте кожен окремо»), хоча час того ж запису форма змінює.
   it('багатоденний: лише механік і примітка на якорі → для всього ланцюжка, дати наряду ті самі', async () => {
@@ -456,63 +438,5 @@ describe('PATCH /calendar/slots/:id для запису наряду — фор�
     expect(wo(h)).toEqual(before);
     const plain = h.calendarSlot.rows.find(r => r.id === 'plain')!;
     expect(t(plain.endAt)).toBe(t(kyiv(D, '15:00')));
-  });
-});
-
-describe('PATCH /calendar/slots/by-work-order — через дати наряду (BR-WO-024)', () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  // guards: BR-WO-024
-  it('нові межі → планові дати наряду й запис на них (той самий запис)', async () => {
-    const h = planned();
-
-    const res = await h.service.moveCalendarByDates(ORG, WO_ID, {
-      startAt: iso(D, '13:00'),
-      endAt: iso(D, '16:00'),
-    });
-
-    expect(res).toEqual({ updated: 1 });
-    expect(t(wo(h).plannedAt)).toBe(t(kyiv(D, '13:00')));
-    expect(t(wo(h).dueDate)).toBe(t(kyiv(D, '16:00')));
-    expect(h.liveSlots().map(s => s.id)).toEqual(['anchor']);
-    expect(spans(h)).toEqual([[t(kyiv(D, '13:00')), t(kyiv(D, '16:00'))]]);
-  });
-
-  // guards: BR-WO-024, BR-CAL-005
-  it('новий час на зайнятому підйомнику → 400 «зайнятий», без змін (перевірка зайнятості та сама)', async () => {
-    const h = planned({}, {}, [
-      slotRow('busy', {
-        workOrderId: OTHER_WO,
-        startAt: kyiv(D, '14:00'),
-        endAt: kyiv(D, '15:00'),
-      }),
-    ]);
-
-    const err = await rejected(
-      h,
-      h.service.moveCalendarByDates(ORG, WO_ID, {
-        startAt: iso(D, '13:00'),
-        endAt: iso(D, '16:00'),
-      }),
-    );
-    expect(err.message).toBe(translateError('err.calendar.liftBusy', 'uk'));
-  });
-
-  // guards: BR-WO-024
-  it('поза робочими годинами (раніше переносило запис без перевірки) → 400, без змін', async () => {
-    const h = planned();
-
-    await rejected(
-      h,
-      h.service.moveCalendarByDates(ORG, WO_ID, {
-        startAt: iso(D, '17:00'),
-        endAt: iso(D, '20:00'),
-      }),
-    );
   });
 });

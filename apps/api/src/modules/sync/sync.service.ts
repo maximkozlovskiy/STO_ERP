@@ -9,7 +9,7 @@ import {
   MECHANIC_REJECT_KEY,
 } from '../calendar/calendar-mechanic';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
-import { movesWorkOrderSlot } from '../work-orders/work-order-slot-move';
+import { movesWorkOrderSlot, relinksSlot } from '../work-orders/work-order-slot-move';
 import type { CalendarSlotEdit } from '../calendar/calendar.dto';
 
 // Minimal interface for the dynamic Prisma model operations used in sync
@@ -316,14 +316,6 @@ export class SyncService {
       if (rec.table === 'counterparties' || rec.table === 'vehicles') {
         throw new Error('Видалення контрагентів та автомобілів через синхронізацію заборонено');
       }
-      // calendar_slots with an active work order must not be deleted via sync
-      // — the operator must cancel the slot through the proper API
-      if (rec.table === 'calendar_slots' && existing) {
-        const slot = existing;
-        if (slot.workOrderId) {
-          throw new Error("Видалення слоту з прив'язаним нарядом через синхронізацію заборонено");
-        }
-      }
       if (existing) {
         // LWW for tombstones too: a DELETE that arrives out of order (older
         // syncVersion than what the server already has) must NOT clobber a newer
@@ -334,7 +326,13 @@ export class SyncService {
           (existing as { syncVersion?: bigint | number | string }).syncVersion ?? 0,
         );
         if (BigInt(rec.syncVersion) > existingVersion) {
-          await model.update({ where: { id: rec.id, orgId }, data: { deletedAt: new Date() } });
+          // BR-WO-026: запис наряду видаляється тим самим шляхом, що й `DELETE /calendar/slots/:id`
+          // — увесь ланцюжок, планові дати наряду стираються.
+          if (isSlot && existing.workOrderId && !existing.deletedAt) {
+            await this.workOrders.removeCalendarSlot(orgId, rec.id, userId);
+          } else {
+            await model.update({ where: { id: rec.id, orgId }, data: { deletedAt: new Date() } });
+          }
         }
       }
       return;
@@ -366,10 +364,12 @@ export class SyncService {
       BigInt((existing as { syncVersion: bigint | number | string }).syncVersion ?? 0)
     ) {
       await this.validateForeignKeys(orgId, rec.table, safePayload);
-      // BR-WO-024: новий час чи підйомник запису наряду змінює наряд — тим самим шляхом, що й
-      // `PATCH /calendar/slots/:id` (перевірки збереження наряду; відмова — конфлікт із причиною).
+      // BR-WO-024/027/028: новий час чи підйомник запису наряду змінює наряд, інший наряд запису —
+      // перев'язка; тим самим шляхом, що й `PATCH /calendar/slots/:id` (перевірки збереження
+      // наряду, статус наряду; відмова — конфлікт із причиною).
       const edit = isSlot ? slotEdit(safePayload) : null;
-      if (edit && movesWorkOrderSlot(slotState(existing), edit)) {
+      const state = edit ? slotState(existing) : null;
+      if (edit && state && (movesWorkOrderSlot(state, edit) || relinksSlot(state, edit))) {
         await this.workOrders.updateCalendarSlot(orgId, rec.id, edit, userId);
         return;
       }
