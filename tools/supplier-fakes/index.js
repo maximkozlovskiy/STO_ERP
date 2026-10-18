@@ -12,7 +12,7 @@
  *
  * Керування (для тестів і E2E):
  *   POST /__scenario {provider, mode, times?, path?, retryAfter?}
- *        mode: ok | 401 | 429 | 500 | timeout | notFound | partial
+ *        mode: ok | 401 | 429 | 500 | 503 | timeout | notFound | partial
  *        times — скільки запитів зачепити (типово безліч); path — підрядок шляху, якого стосується.
  *        `partial` не перехоплює запит: обробник провайдера сам вирішує, що віддати частково.
  *   GET  /__requests?provider=avd  — журнал запитів (заголовки авторизації — як прийшли).
@@ -185,7 +185,7 @@ async function startSupplierFakes(opts = {}) {
         res.on('close', () => pending.delete(res));
         return undefined; // не відповідаємо — клієнт упаде за тайм-аутом
       }
-      const status = { 401: 401, 429: 429, 500: 500, notFound: 404 }[sc.mode] || 500;
+      const status = { 401: 401, 429: 429, 500: 500, 503: 503, notFound: 404 }[sc.mode] || 500;
       const extra =
         status === 429
           ? {

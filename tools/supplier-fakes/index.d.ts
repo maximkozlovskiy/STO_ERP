@@ -1,6 +1,7 @@
 /** Типи для `index.js` — фейкові сервери API постачальників (див. коментар у index.js). */
 export type FakeProvider = 'avd' | 'bm' | 'tehnomir' | 'utr' | 'ad';
-export type FakeScenarioMode = 'ok' | '401' | '429' | '500' | 'timeout' | 'notFound' | 'partial';
+export type FakeScenarioMode =
+  'ok' | '401' | '429' | '500' | '503' | 'timeout' | 'notFound' | 'partial';
 
 export interface FakeRequestLog {
   provider: FakeProvider;
