@@ -311,3 +311,6 @@ grep -rn "<DatePickerInput" apps/web/src/app --include="*.tsx" | wc -l
       (діалог «наряд буде відкріплено»), не доходить. Grep:
       `grep -rnE "Id: form\.\w+ \|\| undefined" apps/web/src --include=*.tsx` → у формі з
       `editingId` — `|| (editingId ? null : undefined)` (`journal/web.md`, 2026-10-18)
+- [ ] **Вимкнена кнопка в переліку («кошик» рядка) лишає НАЗВУ рядка (`Видалити слот 13:00–14:00`),
+      а причину блокування дає описом** (`aria-describedby` + `sr-only`), не заміною `aria-label`:
+      кілька заблокованих кнопок інакше звучать однаково (`journal/web.md`, 2026-10-19)

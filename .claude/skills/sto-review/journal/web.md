@@ -434,3 +434,14 @@ SENDING у web-переліку; тести `SupplierApiOrderBlock.test.tsx`, `u
 **Фікс:** `workOrderId: form.workOrderId || (editingSlotId ? null : undefined)`; тест — тіло PATCH
 після «×» має `workOrderId: null` (мутацією підтверджено), API — `updateCalendarSlot` з `null` не
 чіпає наряд. **Severity:** IMPORTANT
+
+### 2026-10-19 — Причина блокування замість назви кнопки рядка — §8.5
+
+**Сигнал:** у переліку «Без підйомника» заблокований кошик запису наряду (BR-WO-026) отримав
+`aria-label` = текст причини; назва «Видалити слот 13:00–14:00» зникла, і два заблоковані записи
+звучали для читача екрана однаково. Форма запису робила правильно — `aria-describedby`.
+**Grep:** `grep -rn "aria-label={$" -A2 apps/web/src --include=*.tsx | grep -E "Hint \?\?|Locked \?\?"`
+**Фікс:** `aria-label` — назва рядка; причина — `sr-only` з `useId()` + `aria-describedby`; тест —
+`getByRole('button', { name: /^Видалити слот 13:00/ })` + `toHaveAccessibleDescription(hint)`.
+Inline IIFE у JSX заодно винесено в іменований компонент (§8.6).
+**Severity:** SUGGESTION
