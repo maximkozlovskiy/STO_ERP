@@ -3552,6 +3552,262 @@ export interface paths {
         patch: operations["PurchaseListItemsController_update_v1"];
         trace?: never;
     };
+    "/api/v1/supplier-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Постачальники API: можливості, поля кредів і параметрів (BR-SCON-003) */
+        get: operations["SupplierProvidersController_list_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/supplier-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Підключення до API постачальників */
+        get: operations["SupplierConnectionsController_findAll_v1"];
+        put?: never;
+        /** Нове підключення (BR-SCON-001…003) */
+        post: operations["SupplierConnectionsController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/supplier-connections/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Перевірити підключення — через чергу (BR-SCON-004) */
+        post: operations["SupplierConnectionsController_verify_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/supplier-connections/{id}/catalog-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Синхронізувати дзеркало каталогу (AVD) — через чергу (BR-SCON-015) */
+        post: operations["SupplierConnectionsController_catalogSync_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/supplier-connections/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SupplierConnectionsController_findOne_v1"];
+        put?: never;
+        post?: never;
+        delete: operations["SupplierConnectionsController_remove_v1"];
+        options?: never;
+        head?: never;
+        /** Змінити підключення; креди зливаються, порожнє не стирає (BR-SCON-002) */
+        patch: operations["SupplierConnectionsController_update_v1"];
+        trace?: never;
+    };
+    "/api/v1/supplier-offers/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Пошук пропозицій для позицій — через чергу (BR-SOFR-002) */
+        post: operations["SupplierOffersController_search_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/supplier-offers/allocate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Автопідбір за стратегією: перегляд (dryRun) або застосування (BR-SOFR-009) */
+        post: operations["SupplierOffersController_allocate_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/supplier-offers/batches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Стан пошуку пропозицій: підключення й пропозиції (UI опитує) */
+        get: operations["SupplierOffersController_batch_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-list-items/{id}/offers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Останні відомі пропозиції позиції — без мережі (BR-SOFR-003) */
+        get: operations["SupplierItemOffersController_offers_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-list-items/{id}/choose-offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Обрати пропозицію: постачальник, ціна в гривні, знімок (BR-SOFR-006) */
+        post: operations["SupplierItemOffersController_choose_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-list-items/{id}/offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Зняти обрану пропозицію (постачальник і ціна лишаються) */
+        delete: operations["SupplierItemOffersController_clear_v1"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders/{id}/supplier-api": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Передача замовлення постачальнику через API: стан (BR-PO-011) */
+        get: operations["SupplierOrdersController_state_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders/{id}/supplier-api/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Відправити замовлення в API постачальника — через чергу (BR-SCON-009) */
+        post: operations["SupplierOrdersController_send_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders/{id}/supplier-api/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Оновити статус у постачальника — через чергу (BR-SCON-012) */
+        post: operations["SupplierOrdersController_poll_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders/{id}/supplier-api/release-unconfirmed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Повернути непідтверджене постачальником у список купівлі (BR-SCON-013) */
+        post: operations["SupplierOrdersController_release_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/supplier-returns": {
         parameters: {
             query?: never;
@@ -5716,6 +5972,20 @@ export interface components {
             recalcActualHoursFromLines: boolean;
             /** @description Синхронізувати слот календаря при зміні планових годин наряду */
             syncCalendarSlotWithPlannedHours: boolean;
+            /** @enum {string} */
+            supplierOrderSendMode: "MANUAL" | "ON_ORDERED";
+            /** @enum {string} */
+            supplierAnalogPolicy: "CREATE_AND_REPLACE" | "SHOW_ONLY" | "CATALOG_ONLY";
+            /** @enum {string} */
+            supplierDefaultStrategy: "FAST" | "CHEAP" | "OPTIMAL";
+            supplierOptimalPriceWeight: number;
+            supplierAllowSplit: boolean;
+            supplierAllowAnalogsInAuto: boolean;
+            supplierOfferTtlMinutes: number;
+            supplierOfferRetentionDays: number;
+            supplierOrderPollIntervalMinutes: number;
+            supplierCatalogSyncIntervalMinutes: number;
+            supplierUnknownDeliveryDays: number;
             updatedAt: string;
         };
         BaseCurrencyResponseDto: {
@@ -5775,6 +6045,37 @@ export interface components {
             recalcActualHoursFromLines?: boolean;
             /** @description Синхронізувати слот календаря при зміні планових годин наряду */
             syncCalendarSlotWithPlannedHours?: boolean;
+            /**
+             * @description Передача замовлення в API: кнопкою чи при «Замовлено»
+             * @enum {string}
+             */
+            supplierOrderSendMode?: "MANUAL" | "ON_ORDERED";
+            /**
+             * @description Аналог поза каталогом (лише ручні позиції)
+             * @enum {string}
+             */
+            supplierAnalogPolicy?: "CREATE_AND_REPLACE" | "SHOW_ONLY" | "CATALOG_ONLY";
+            /**
+             * @description Стратегія автопідбору за замовчуванням
+             * @enum {string}
+             */
+            supplierDefaultStrategy?: "FAST" | "CHEAP" | "OPTIMAL";
+            /** @description «Оптимально»: вага ціни [0,1], вага терміну 1 − w */
+            supplierOptimalPriceWeight?: number;
+            /** @description Автопідбір ділить позицію між різними постачальниками */
+            supplierAllowSplit?: boolean;
+            /** @description Аналоги в автопідборі */
+            supplierAllowAnalogsInAuto?: boolean;
+            /** @description Пропозиція застаріла після (хв) */
+            supplierOfferTtlMinutes?: number;
+            /** @description Скільки днів зберігати пропозиції */
+            supplierOfferRetentionDays?: number;
+            /** @description Інтервал опитування статусу замовлень (хв) */
+            supplierOrderPollIntervalMinutes?: number;
+            /** @description Інтервал синхронізації дзеркала каталогу (хв) */
+            supplierCatalogSyncIntervalMinutes?: number;
+            /** @description Термін для пропозиції без даних про доставку (дні) */
+            supplierUnknownDeliveryDays?: number;
         };
         BranchSettingsResponseDto: {
             branchId: string;
@@ -7910,6 +8211,8 @@ export interface components {
         TransitionPurchaseOrderDto: {
             /** @enum {string} */
             status: "DRAFT" | "ORDERED" | "RECEIVED" | "PARTIAL" | "CANCELLED";
+            /** @description Скасувати замовлення, вже передане постачальнику через API (BR-PO-012): без нього — 400 cancelSentOrder */
+            force?: boolean;
         };
         ReceiveLineDto: {
             /** Format: uuid */
@@ -8032,6 +8335,27 @@ export interface components {
             /** @enum {string|null} */
             purchaseOrderStatus: "DRAFT" | "ORDERED" | "RECEIVED" | "PARTIAL" | "CANCELLED" | null;
             notes: string | null;
+            offerConnectionId: string | null;
+            offerKey: string | null;
+            offerSupplierItemId: string | null;
+            offerArticle: string | null;
+            offerBrand: string | null;
+            offerWarehouseCode: string | null;
+            offerWarehouseName: string | null;
+            offerDeliveryDays: number | null;
+            offerDeliveryDate: string | null;
+            /** @description Ціна пропозиції у валюті постачальника; null для ролей без закупівельних цін */
+            offerPrice: number | null;
+            offerCurrencyCode: string | null;
+            offerMultiplicity: number | null;
+            offerIsAnalog: boolean | null;
+            offeredAt: string | null;
+            /** @enum {string|null} */
+            offerChosenBy: "MANUAL" | "AUTO" | null;
+            /** @description Товар, який замінив аналог */
+            originalGoodId: string | null;
+            /** @description Кількість позиції більша за кількість обраної пропозиції (BR-PL-019) */
+            offerQtyExceeded?: boolean;
             createdAt: string;
         };
         FromWorkOrderResultDto: {
@@ -8122,6 +8446,267 @@ export interface components {
             /** @description Знято з резерву (базові одиниці) */
             released: number;
             item: components["schemas"]["PurchaseListItemResponseDto"];
+        };
+        SupplierCapabilitiesDto: {
+            /** @enum {string} */
+            search: "online" | "mirror";
+            analogs: boolean;
+            /** @enum {string} */
+            order: "direct" | "cart";
+            sandbox: boolean;
+            orderPerWarehouse: boolean;
+            requiresWarehouseMapping: boolean;
+        };
+        SupplierFieldSpecDto: {
+            key: string;
+            label: string;
+            secret: boolean;
+            required: boolean;
+            /** @enum {string} */
+            type: "string" | "boolean" | "select";
+            options?: string[];
+            hint?: string;
+        };
+        SupplierProviderInfoDto: {
+            /** @enum {string} */
+            provider: "TEHNOMIR" | "BM_PARTS" | "UTR" | "AD_UKRAINE" | "AVD_TRADE";
+            name: string;
+            capabilities: components["schemas"]["SupplierCapabilitiesDto"];
+            credentialFields: components["schemas"]["SupplierFieldSpecDto"][];
+            optionFields: components["schemas"]["SupplierFieldSpecDto"][];
+            /** @description Поля параметрів доставки на кожен наш склад */
+            warehouseFields: components["schemas"]["SupplierFieldSpecDto"][];
+        };
+        SupplierConnectionResponseDto: {
+            id: string;
+            counterpartyId: string;
+            counterpartyName: string;
+            /** @enum {string} */
+            provider: "TEHNOMIR" | "BM_PARTS" | "UTR" | "AD_UKRAINE" | "AVD_TRADE";
+            providerName: string;
+            name: string | null;
+            enabled: boolean;
+            apiUrl: string | null;
+            testMode: boolean;
+            priority: number;
+            defaultDeliveryDays: number | null;
+            hasCredentials: boolean;
+            /** @description Які поля кредів заповнено (без значень) */
+            credentialKeys: string[];
+            /** @description Несекретні параметри */
+            options: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            verifyStatus: "NEVER" | "PENDING" | "OK" | "FAILED";
+            verifyRequestedAt: string | null;
+            lastVerifiedAt: string | null;
+            lastError: string | null;
+            catalogSyncedAt: string | null;
+            catalogSyncStatus: string | null;
+            catalogSyncError: string | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+        PaginatedSupplierConnectionsDto: {
+            items: components["schemas"]["SupplierConnectionResponseDto"][];
+            total: number;
+        };
+        SupplierQueuedResponseDto: {
+            connection: components["schemas"]["SupplierConnectionResponseDto"];
+            queueUnavailable: boolean;
+        };
+        SupplierOfferDto: {
+            id: string;
+            connectionId: string;
+            supplierItemId: string;
+            article: string;
+            brand: string | null;
+            name: string | null;
+            /** @description Ціна у валюті постачальника */
+            price: number | null;
+            currencyCode: string;
+            /** @description Ціна в гривні за поточним курсом */
+            priceUah: number | null;
+            qty: number;
+            qtyIsLowerBound: boolean;
+            warehouseCode: string | null;
+            warehouseName: string | null;
+            deliveryDays: number | null;
+            deliveryDate: string | null;
+            multiplicity: number | null;
+            isAnalog: boolean;
+            offerKey: string;
+            matchedGoodId: string | null;
+            /** @enum {string|null} */
+            matchStatus: "matched" | "ambiguous" | "notFound" | null;
+            fetchedAt: string;
+            /** @description Старша за supplierOfferTtlMinutes */
+            stale: boolean;
+            selectable: boolean;
+            /** @enum {string|null} */
+            notSelectableReason: "itemNotOpen" | "noExchangeRate" | "analogFromWorkOrder" | "analogShowOnly" | "analogNotInCatalog" | "analogAmbiguous" | null;
+            /** @description Вибір замінить товар позиції (аналог) */
+            replacesGood: boolean;
+            /** @description Ця пропозиція обрана в позиції */
+            chosen: boolean;
+        };
+        SupplierOfferRequestDto: {
+            id: string;
+            connectionId: string;
+            connectionName: string;
+            /** @enum {string} */
+            provider: "TEHNOMIR" | "BM_PARTS" | "UTR" | "AD_UKRAINE" | "AVD_TRADE";
+            supplierId: string;
+            supplierName: string;
+            /** @enum {string} */
+            status: "QUEUED" | "RUNNING" | "RETRYING" | "DONE" | "FAILED";
+            fromCache: boolean;
+            /** @description Коли отримано пропозиції */
+            fetchedAt: string | null;
+            stale: boolean;
+            /** @description Дзеркало каталогу старше подвоєного інтервалу (AVD) */
+            mirrorStale: boolean;
+            /** @description Повтор о (немає зв’язку / ліміт) */
+            nextRetryAt: string | null;
+            error: string | null;
+            offers: components["schemas"]["SupplierOfferDto"][];
+        };
+        SupplierOfferItemDto: {
+            itemId: string;
+            goodId: string;
+            goodName: string;
+            article: string | null;
+            brand: string | null;
+            quantity: number;
+            /** @enum {string} */
+            status: "OPEN" | "ORDERED" | "RECEIVED" | "CANCELLED";
+            /** @enum {string} */
+            source: "WORK_ORDER" | "MANUAL";
+            chosenOfferKey: string | null;
+            chosenConnectionId: string | null;
+            /** @enum {string|null} */
+            chosenBy: "MANUAL" | "AUTO" | null;
+            requests: components["schemas"]["SupplierOfferRequestDto"][];
+        };
+        SupplierOfferSearchResultDto: {
+            id: string;
+            /** @enum {string} */
+            purpose: "MANUAL" | "AUTO";
+            /** @enum {string|null} */
+            strategy: "FAST" | "CHEAP" | "OPTIMAL" | null;
+            /** @description Усі запити завершено (готово / помилка) */
+            done: boolean;
+            completedAt: string | null;
+            createdAt: string;
+            items: components["schemas"]["SupplierOfferItemDto"][];
+            /** @description Redis недоступний — запити підхопить sweep */
+            queueUnavailable: boolean;
+            /** @description Немає увімкнених підключень */
+            noConnections: boolean;
+            /** @description Позиції без артикула — не шукались */
+            skippedItemIds: string[];
+        };
+        SupplierAllocationPartDto: {
+            offerId: string;
+            connectionId: string;
+            supplierId: string;
+            supplierName: string;
+            warehouseName: string | null;
+            offerKey: string;
+            qty: number;
+            priceUah: number | null;
+            days: number;
+            isAnalog: boolean;
+        };
+        SupplierAllocationItemDto: {
+            itemId: string;
+            goodName: string;
+            need: number;
+            parts: components["schemas"]["SupplierAllocationPartDto"][];
+            /** @description Непокрита решта — окрема OPEN-позиція без пропозиції */
+            uncovered: number;
+            /** @enum {string|null} */
+            skippedReason: "itemNotOpen" | "noOffers" | null;
+        };
+        SupplierAllocationResultDto: {
+            /** @enum {string} */
+            strategy: "FAST" | "CHEAP" | "OPTIMAL";
+            /** @description false — попередній перегляд (dryRun), нічого не записано */
+            applied: boolean;
+            items: components["schemas"]["SupplierAllocationItemDto"][];
+            /** @description Сума в гривні (null — ролі без цін) */
+            totalUah: number | null;
+        };
+        SupplierOfferBatchDto: {
+            id: string;
+            /** @enum {string} */
+            purpose: "MANUAL" | "AUTO";
+            /** @enum {string|null} */
+            strategy: "FAST" | "CHEAP" | "OPTIMAL" | null;
+            /** @description Усі запити завершено (готово / помилка) */
+            done: boolean;
+            completedAt: string | null;
+            createdAt: string;
+            items: components["schemas"]["SupplierOfferItemDto"][];
+        };
+        SupplierApiOrderLineDto: {
+            id: string;
+            goodId: string;
+            goodName: string;
+            offerKey: string;
+            warehouseCode: string | null;
+            qtyRequested: number;
+            /** @description null — постачальник ще не відповів */
+            qtyConfirmed: number | null;
+            priceRequested: number;
+            priceConfirmed: number | null;
+            currencyCode: string;
+            statusRaw: string | null;
+        };
+        SupplierApiOrderDto: {
+            id: string;
+            connectionId: string;
+            connectionName: string;
+            /** @enum {string} */
+            provider: "TEHNOMIR" | "BM_PARTS" | "UTR" | "AD_UKRAINE" | "AVD_TRADE";
+            supplierWarehouseCode: string | null;
+            /** @enum {string} */
+            status: "QUEUED" | "SENDING" | "PLACED" | "CONFIRMED" | "PARTIALLY_CONFIRMED" | "READY" | "SHIPPED" | "REJECTED" | "CANCELLED" | "FAILED" | "UNKNOWN";
+            step: string | null;
+            externalOrderId: string | null;
+            externalNumber: string | null;
+            externalStatusRaw: string | null;
+            reference: string;
+            sentAt: string | null;
+            confirmedAt: string | null;
+            lastPolledAt: string | null;
+            nextPollAt: string | null;
+            error: string | null;
+            lines: components["schemas"]["SupplierApiOrderLineDto"][];
+        };
+        PurchaseOrderSupplierApiDto: {
+            purchaseOrderId: string;
+            /** @enum {string} */
+            supplierApiStatus: "NOT_SENT" | "QUEUED" | "SENT" | "PARTIAL" | "CONFIRMED" | "FAILED" | "NEEDS_ATTENTION";
+            supplierApiSentAt: string | null;
+            supplierApiError: string | null;
+            /** @enum {string} */
+            sendMode: "MANUAL" | "ON_ORDERED";
+            /** @description Чи має постачальник увімкнене підключення до API */
+            hasConnection: boolean;
+            /** @description Кнопка «Відправити в API» доступна */
+            canSend: boolean;
+            /** @description Є непідтверджена кількість, яку можна повернути в список */
+            canRelease: boolean;
+            /** @description Попередження (застарілі пропозиції) */
+            warnings: string[];
+            orders: components["schemas"]["SupplierApiOrderDto"][];
+        };
+        SupplierApiReleaseResultDto: {
+            /** @description Скільки одиниць повернуто в список купівлі */
+            released: number;
+            state: components["schemas"]["PurchaseOrderSupplierApiDto"];
         };
         SupplierReturnLineResponseDto: {
             id: string;
@@ -15395,7 +15980,10 @@ export interface operations {
     };
     PurchaseOrdersController_remove_v1: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Видалити, хоч замовлення вже передане постачальнику через API (BR-PO-012) */
+                force?: string;
+            };
             header?: never;
             path: {
                 id: string;
@@ -16108,6 +16696,372 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PurchaseListItemResponseDto"];
+                };
+            };
+        };
+    };
+    SupplierProvidersController_list_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierProviderInfoDto"][];
+                };
+            };
+        };
+    };
+    SupplierConnectionsController_findAll_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedSupplierConnectionsDto"];
+                };
+            };
+        };
+    };
+    SupplierConnectionsController_create_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierConnectionResponseDto"];
+                };
+            };
+        };
+    };
+    SupplierConnectionsController_verify_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierQueuedResponseDto"];
+                };
+            };
+        };
+    };
+    SupplierConnectionsController_catalogSync_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierQueuedResponseDto"];
+                };
+            };
+        };
+    };
+    SupplierConnectionsController_findOne_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierConnectionResponseDto"];
+                };
+            };
+        };
+    };
+    SupplierConnectionsController_remove_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SupplierConnectionsController_update_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierConnectionResponseDto"];
+                };
+            };
+        };
+    };
+    SupplierOffersController_search_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierOfferSearchResultDto"];
+                };
+            };
+        };
+    };
+    SupplierOffersController_allocate_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierAllocationResultDto"];
+                };
+            };
+        };
+    };
+    SupplierOffersController_batch_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierOfferBatchDto"];
+                };
+            };
+        };
+    };
+    SupplierItemOffersController_offers_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierOfferItemDto"];
+                };
+            };
+        };
+    };
+    SupplierItemOffersController_choose_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseListItemResponseDto"];
+                };
+            };
+        };
+    };
+    SupplierItemOffersController_clear_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseListItemResponseDto"];
+                };
+            };
+        };
+    };
+    SupplierOrdersController_state_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderSupplierApiDto"];
+                };
+            };
+        };
+    };
+    SupplierOrdersController_send_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderSupplierApiDto"];
+                };
+            };
+        };
+    };
+    SupplierOrdersController_poll_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderSupplierApiDto"];
+                };
+            };
+        };
+    };
+    SupplierOrdersController_release_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierApiReleaseResultDto"];
                 };
             };
         };

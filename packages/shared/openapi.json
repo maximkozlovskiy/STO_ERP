@@ -10195,6 +10195,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "force",
+            "required": false,
+            "in": "query",
+            "description": "Видалити, хоч замовлення вже передане постачальнику через API (BR-PO-012)",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -11494,6 +11503,597 @@
         "summary": "Змінити позицію (лише OPEN, BR-PL-005)",
         "tags": [
           "Purchase Lists"
+        ]
+      }
+    },
+    "/api/v1/supplier-providers": {
+      "get": {
+        "operationId": "SupplierProvidersController_list_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SupplierProviderInfoDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Постачальники API: можливості, поля кредів і параметрів (BR-SCON-003)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/supplier-connections": {
+      "get": {
+        "operationId": "SupplierConnectionsController_findAll_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedSupplierConnectionsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Підключення до API постачальників",
+        "tags": [
+          "Supplier API"
+        ]
+      },
+      "post": {
+        "operationId": "SupplierConnectionsController_create_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierConnectionResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Нове підключення (BR-SCON-001…003)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/supplier-connections/{id}/verify": {
+      "post": {
+        "operationId": "SupplierConnectionsController_verify_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierQueuedResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Перевірити підключення — через чергу (BR-SCON-004)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/supplier-connections/{id}/catalog-sync": {
+      "post": {
+        "operationId": "SupplierConnectionsController_catalogSync_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierQueuedResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Синхронізувати дзеркало каталогу (AVD) — через чергу (BR-SCON-015)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/supplier-connections/{id}": {
+      "get": {
+        "operationId": "SupplierConnectionsController_findOne_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierConnectionResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Supplier API"
+        ]
+      },
+      "patch": {
+        "operationId": "SupplierConnectionsController_update_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierConnectionResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Змінити підключення; креди зливаються, порожнє не стирає (BR-SCON-002)",
+        "tags": [
+          "Supplier API"
+        ]
+      },
+      "delete": {
+        "operationId": "SupplierConnectionsController_remove_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/supplier-offers/search": {
+      "post": {
+        "operationId": "SupplierOffersController_search_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierOfferSearchResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Пошук пропозицій для позицій — через чергу (BR-SOFR-002)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/supplier-offers/allocate": {
+      "post": {
+        "operationId": "SupplierOffersController_allocate_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierAllocationResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Автопідбір за стратегією: перегляд (dryRun) або застосування (BR-SOFR-009)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/supplier-offers/batches/{id}": {
+      "get": {
+        "operationId": "SupplierOffersController_batch_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierOfferBatchDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Стан пошуку пропозицій: підключення й пропозиції (UI опитує)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/purchase-list-items/{id}/offers": {
+      "get": {
+        "operationId": "SupplierItemOffersController_offers_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierOfferItemDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Останні відомі пропозиції позиції — без мережі (BR-SOFR-003)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/purchase-list-items/{id}/choose-offer": {
+      "post": {
+        "operationId": "SupplierItemOffersController_choose_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseListItemResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Обрати пропозицію: постачальник, ціна в гривні, знімок (BR-SOFR-006)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/purchase-list-items/{id}/offer": {
+      "delete": {
+        "operationId": "SupplierItemOffersController_clear_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseListItemResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Зняти обрану пропозицію (постачальник і ціна лишаються)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/purchase-orders/{id}/supplier-api": {
+      "get": {
+        "operationId": "SupplierOrdersController_state_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderSupplierApiDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Передача замовлення постачальнику через API: стан (BR-PO-011)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/purchase-orders/{id}/supplier-api/send": {
+      "post": {
+        "operationId": "SupplierOrdersController_send_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderSupplierApiDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Відправити замовлення в API постачальника — через чергу (BR-SCON-009)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/purchase-orders/{id}/supplier-api/poll": {
+      "post": {
+        "operationId": "SupplierOrdersController_poll_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderSupplierApiDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Оновити статус у постачальника — через чергу (BR-SCON-012)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
+    "/api/v1/purchase-orders/{id}/supplier-api/release-unconfirmed": {
+      "post": {
+        "operationId": "SupplierOrdersController_release_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierApiReleaseResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Повернути непідтверджене постачальником у список купівлі (BR-SCON-013)",
+        "tags": [
+          "Supplier API"
         ]
       }
     },
@@ -18161,6 +18761,53 @@
             "type": "boolean",
             "description": "Синхронізувати слот календаря при зміні планових годин наряду"
           },
+          "supplierOrderSendMode": {
+            "enum": [
+              "MANUAL",
+              "ON_ORDERED"
+            ],
+            "type": "string"
+          },
+          "supplierAnalogPolicy": {
+            "enum": [
+              "CREATE_AND_REPLACE",
+              "SHOW_ONLY",
+              "CATALOG_ONLY"
+            ],
+            "type": "string"
+          },
+          "supplierDefaultStrategy": {
+            "enum": [
+              "FAST",
+              "CHEAP",
+              "OPTIMAL"
+            ],
+            "type": "string"
+          },
+          "supplierOptimalPriceWeight": {
+            "type": "number"
+          },
+          "supplierAllowSplit": {
+            "type": "boolean"
+          },
+          "supplierAllowAnalogsInAuto": {
+            "type": "boolean"
+          },
+          "supplierOfferTtlMinutes": {
+            "type": "number"
+          },
+          "supplierOfferRetentionDays": {
+            "type": "number"
+          },
+          "supplierOrderPollIntervalMinutes": {
+            "type": "number"
+          },
+          "supplierCatalogSyncIntervalMinutes": {
+            "type": "number"
+          },
+          "supplierUnknownDeliveryDays": {
+            "type": "number"
+          },
           "updatedAt": {
             "type": "string"
           }
@@ -18193,6 +18840,17 @@
           "recalcPlannedHoursFromLines",
           "recalcActualHoursFromLines",
           "syncCalendarSlotWithPlannedHours",
+          "supplierOrderSendMode",
+          "supplierAnalogPolicy",
+          "supplierDefaultStrategy",
+          "supplierOptimalPriceWeight",
+          "supplierAllowSplit",
+          "supplierAllowAnalogsInAuto",
+          "supplierOfferTtlMinutes",
+          "supplierOfferRetentionDays",
+          "supplierOrderPollIntervalMinutes",
+          "supplierCatalogSyncIntervalMinutes",
+          "supplierUnknownDeliveryDays",
           "updatedAt"
         ]
       },
@@ -18356,6 +19014,76 @@
           "syncCalendarSlotWithPlannedHours": {
             "type": "boolean",
             "description": "Синхронізувати слот календаря при зміні планових годин наряду"
+          },
+          "supplierOrderSendMode": {
+            "enum": [
+              "MANUAL",
+              "ON_ORDERED"
+            ],
+            "type": "string",
+            "description": "Передача замовлення в API: кнопкою чи при «Замовлено»"
+          },
+          "supplierAnalogPolicy": {
+            "enum": [
+              "CREATE_AND_REPLACE",
+              "SHOW_ONLY",
+              "CATALOG_ONLY"
+            ],
+            "type": "string",
+            "description": "Аналог поза каталогом (лише ручні позиції)"
+          },
+          "supplierDefaultStrategy": {
+            "enum": [
+              "FAST",
+              "CHEAP",
+              "OPTIMAL"
+            ],
+            "type": "string",
+            "description": "Стратегія автопідбору за замовчуванням"
+          },
+          "supplierOptimalPriceWeight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "«Оптимально»: вага ціни [0,1], вага терміну 1 − w"
+          },
+          "supplierAllowSplit": {
+            "type": "boolean",
+            "description": "Автопідбір ділить позицію між різними постачальниками"
+          },
+          "supplierAllowAnalogsInAuto": {
+            "type": "boolean",
+            "description": "Аналоги в автопідборі"
+          },
+          "supplierOfferTtlMinutes": {
+            "type": "number",
+            "minimum": 5,
+            "maximum": 1440,
+            "description": "Пропозиція застаріла після (хв)"
+          },
+          "supplierOfferRetentionDays": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 90,
+            "description": "Скільки днів зберігати пропозиції"
+          },
+          "supplierOrderPollIntervalMinutes": {
+            "type": "number",
+            "minimum": 5,
+            "maximum": 1440,
+            "description": "Інтервал опитування статусу замовлень (хв)"
+          },
+          "supplierCatalogSyncIntervalMinutes": {
+            "type": "number",
+            "minimum": 60,
+            "maximum": 1440,
+            "description": "Інтервал синхронізації дзеркала каталогу (хв)"
+          },
+          "supplierUnknownDeliveryDays": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 90,
+            "description": "Термін для пропозиції без даних про доставку (дні)"
           }
         }
       },
@@ -25814,6 +26542,10 @@
               "CANCELLED"
             ],
             "type": "string"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Скасувати замовлення, вже передане постачальнику через API (BR-PO-012): без нього — 400 cancelSentOrder"
           }
         },
         "required": [
@@ -26280,6 +27012,80 @@
             "type": "string",
             "nullable": true
           },
+          "offerConnectionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "offerKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "offerSupplierItemId": {
+            "type": "string",
+            "nullable": true
+          },
+          "offerArticle": {
+            "type": "string",
+            "nullable": true
+          },
+          "offerBrand": {
+            "type": "string",
+            "nullable": true
+          },
+          "offerWarehouseCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "offerWarehouseName": {
+            "type": "string",
+            "nullable": true
+          },
+          "offerDeliveryDays": {
+            "type": "number",
+            "nullable": true
+          },
+          "offerDeliveryDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "offerPrice": {
+            "type": "number",
+            "nullable": true,
+            "description": "Ціна пропозиції у валюті постачальника; null для ролей без закупівельних цін"
+          },
+          "offerCurrencyCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "offerMultiplicity": {
+            "type": "number",
+            "nullable": true
+          },
+          "offerIsAnalog": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "offeredAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "offerChosenBy": {
+            "nullable": true,
+            "enum": [
+              "MANUAL",
+              "AUTO"
+            ],
+            "type": "string"
+          },
+          "originalGoodId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Товар, який замінив аналог"
+          },
+          "offerQtyExceeded": {
+            "type": "boolean",
+            "description": "Кількість позиції більша за кількість обраної пропозиції (BR-PL-019)"
+          },
           "createdAt": {
             "type": "string"
           }
@@ -26312,6 +27118,22 @@
           "purchaseOrderNumber",
           "purchaseOrderStatus",
           "notes",
+          "offerConnectionId",
+          "offerKey",
+          "offerSupplierItemId",
+          "offerArticle",
+          "offerBrand",
+          "offerWarehouseCode",
+          "offerWarehouseName",
+          "offerDeliveryDays",
+          "offerDeliveryDate",
+          "offerPrice",
+          "offerCurrencyCode",
+          "offerMultiplicity",
+          "offerIsAnalog",
+          "offeredAt",
+          "offerChosenBy",
+          "originalGoodId",
           "createdAt"
         ]
       },
@@ -26670,6 +27492,1091 @@
         "required": [
           "released",
           "item"
+        ]
+      },
+      "SupplierCapabilitiesDto": {
+        "type": "object",
+        "properties": {
+          "search": {
+            "enum": [
+              "online",
+              "mirror"
+            ],
+            "type": "string"
+          },
+          "analogs": {
+            "type": "boolean"
+          },
+          "order": {
+            "enum": [
+              "direct",
+              "cart"
+            ],
+            "type": "string"
+          },
+          "sandbox": {
+            "type": "boolean"
+          },
+          "orderPerWarehouse": {
+            "type": "boolean"
+          },
+          "requiresWarehouseMapping": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "search",
+          "analogs",
+          "order",
+          "sandbox",
+          "orderPerWarehouse",
+          "requiresWarehouseMapping"
+        ]
+      },
+      "SupplierFieldSpecDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "boolean"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "string",
+              "boolean",
+              "select"
+            ],
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "hint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "secret",
+          "required",
+          "type"
+        ]
+      },
+      "SupplierProviderInfoDto": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "enum": [
+              "TEHNOMIR",
+              "BM_PARTS",
+              "UTR",
+              "AD_UKRAINE",
+              "AVD_TRADE"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/SupplierCapabilitiesDto"
+          },
+          "credentialFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplierFieldSpecDto"
+            }
+          },
+          "optionFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplierFieldSpecDto"
+            }
+          },
+          "warehouseFields": {
+            "description": "Поля параметрів доставки на кожен наш склад",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplierFieldSpecDto"
+            }
+          }
+        },
+        "required": [
+          "provider",
+          "name",
+          "capabilities",
+          "credentialFields",
+          "optionFields",
+          "warehouseFields"
+        ]
+      },
+      "SupplierConnectionResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "counterpartyId": {
+            "type": "string"
+          },
+          "counterpartyName": {
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "TEHNOMIR",
+              "BM_PARTS",
+              "UTR",
+              "AD_UKRAINE",
+              "AVD_TRADE"
+            ],
+            "type": "string"
+          },
+          "providerName": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "apiUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "testMode": {
+            "type": "boolean"
+          },
+          "priority": {
+            "type": "number"
+          },
+          "defaultDeliveryDays": {
+            "type": "number",
+            "nullable": true
+          },
+          "hasCredentials": {
+            "type": "boolean"
+          },
+          "credentialKeys": {
+            "description": "Які поля кредів заповнено (без значень)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "options": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Несекретні параметри"
+          },
+          "verifyStatus": {
+            "enum": [
+              "NEVER",
+              "PENDING",
+              "OK",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "verifyRequestedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastVerifiedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastError": {
+            "type": "string",
+            "nullable": true
+          },
+          "catalogSyncedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "catalogSyncStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "catalogSyncError": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "counterpartyId",
+          "counterpartyName",
+          "provider",
+          "providerName",
+          "name",
+          "enabled",
+          "apiUrl",
+          "testMode",
+          "priority",
+          "defaultDeliveryDays",
+          "hasCredentials",
+          "credentialKeys",
+          "options",
+          "verifyStatus",
+          "verifyRequestedAt",
+          "lastVerifiedAt",
+          "lastError",
+          "catalogSyncedAt",
+          "catalogSyncStatus",
+          "catalogSyncError",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "PaginatedSupplierConnectionsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplierConnectionResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ]
+      },
+      "SupplierQueuedResponseDto": {
+        "type": "object",
+        "properties": {
+          "connection": {
+            "$ref": "#/components/schemas/SupplierConnectionResponseDto"
+          },
+          "queueUnavailable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "connection",
+          "queueUnavailable"
+        ]
+      },
+      "SupplierOfferDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "connectionId": {
+            "type": "string"
+          },
+          "supplierItemId": {
+            "type": "string"
+          },
+          "article": {
+            "type": "string"
+          },
+          "brand": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "price": {
+            "type": "number",
+            "nullable": true,
+            "description": "Ціна у валюті постачальника"
+          },
+          "currencyCode": {
+            "type": "string"
+          },
+          "priceUah": {
+            "type": "number",
+            "nullable": true,
+            "description": "Ціна в гривні за поточним курсом"
+          },
+          "qty": {
+            "type": "number"
+          },
+          "qtyIsLowerBound": {
+            "type": "boolean"
+          },
+          "warehouseCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "warehouseName": {
+            "type": "string",
+            "nullable": true
+          },
+          "deliveryDays": {
+            "type": "number",
+            "nullable": true
+          },
+          "deliveryDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "multiplicity": {
+            "type": "number",
+            "nullable": true
+          },
+          "isAnalog": {
+            "type": "boolean"
+          },
+          "offerKey": {
+            "type": "string"
+          },
+          "matchedGoodId": {
+            "type": "string",
+            "nullable": true
+          },
+          "matchStatus": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "matched",
+              "ambiguous",
+              "notFound"
+            ]
+          },
+          "fetchedAt": {
+            "type": "string"
+          },
+          "stale": {
+            "type": "boolean",
+            "description": "Старша за supplierOfferTtlMinutes"
+          },
+          "selectable": {
+            "type": "boolean"
+          },
+          "notSelectableReason": {
+            "nullable": true,
+            "enum": [
+              "itemNotOpen",
+              "noExchangeRate",
+              "analogFromWorkOrder",
+              "analogShowOnly",
+              "analogNotInCatalog",
+              "analogAmbiguous"
+            ],
+            "type": "string"
+          },
+          "replacesGood": {
+            "type": "boolean",
+            "description": "Вибір замінить товар позиції (аналог)"
+          },
+          "chosen": {
+            "type": "boolean",
+            "description": "Ця пропозиція обрана в позиції"
+          }
+        },
+        "required": [
+          "id",
+          "connectionId",
+          "supplierItemId",
+          "article",
+          "brand",
+          "name",
+          "price",
+          "currencyCode",
+          "priceUah",
+          "qty",
+          "qtyIsLowerBound",
+          "warehouseCode",
+          "warehouseName",
+          "deliveryDays",
+          "deliveryDate",
+          "multiplicity",
+          "isAnalog",
+          "offerKey",
+          "matchedGoodId",
+          "matchStatus",
+          "fetchedAt",
+          "stale",
+          "selectable",
+          "notSelectableReason",
+          "replacesGood",
+          "chosen"
+        ]
+      },
+      "SupplierOfferRequestDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "connectionId": {
+            "type": "string"
+          },
+          "connectionName": {
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "TEHNOMIR",
+              "BM_PARTS",
+              "UTR",
+              "AD_UKRAINE",
+              "AVD_TRADE"
+            ],
+            "type": "string"
+          },
+          "supplierId": {
+            "type": "string"
+          },
+          "supplierName": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "RETRYING",
+              "DONE",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "fromCache": {
+            "type": "boolean"
+          },
+          "fetchedAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Коли отримано пропозиції"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "mirrorStale": {
+            "type": "boolean",
+            "description": "Дзеркало каталогу старше подвоєного інтервалу (AVD)"
+          },
+          "nextRetryAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Повтор о (немає зв’язку / ліміт)"
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
+          },
+          "offers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplierOfferDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "connectionId",
+          "connectionName",
+          "provider",
+          "supplierId",
+          "supplierName",
+          "status",
+          "fromCache",
+          "fetchedAt",
+          "stale",
+          "mirrorStale",
+          "nextRetryAt",
+          "error",
+          "offers"
+        ]
+      },
+      "SupplierOfferItemDto": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "goodId": {
+            "type": "string"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "article": {
+            "type": "string",
+            "nullable": true
+          },
+          "brand": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "OPEN",
+              "ORDERED",
+              "RECEIVED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "WORK_ORDER",
+              "MANUAL"
+            ],
+            "type": "string"
+          },
+          "chosenOfferKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "chosenConnectionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "chosenBy": {
+            "nullable": true,
+            "enum": [
+              "MANUAL",
+              "AUTO"
+            ],
+            "type": "string"
+          },
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplierOfferRequestDto"
+            }
+          }
+        },
+        "required": [
+          "itemId",
+          "goodId",
+          "goodName",
+          "article",
+          "brand",
+          "quantity",
+          "status",
+          "source",
+          "chosenOfferKey",
+          "chosenConnectionId",
+          "chosenBy",
+          "requests"
+        ]
+      },
+      "SupplierOfferSearchResultDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "MANUAL",
+              "AUTO"
+            ],
+            "type": "string"
+          },
+          "strategy": {
+            "nullable": true,
+            "enum": [
+              "FAST",
+              "CHEAP",
+              "OPTIMAL"
+            ],
+            "type": "string"
+          },
+          "done": {
+            "type": "boolean",
+            "description": "Усі запити завершено (готово / помилка)"
+          },
+          "completedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplierOfferItemDto"
+            }
+          },
+          "queueUnavailable": {
+            "type": "boolean",
+            "description": "Redis недоступний — запити підхопить sweep"
+          },
+          "noConnections": {
+            "type": "boolean",
+            "description": "Немає увімкнених підключень"
+          },
+          "skippedItemIds": {
+            "description": "Позиції без артикула — не шукались",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "purpose",
+          "strategy",
+          "done",
+          "completedAt",
+          "createdAt",
+          "items",
+          "queueUnavailable",
+          "noConnections",
+          "skippedItemIds"
+        ]
+      },
+      "SupplierAllocationPartDto": {
+        "type": "object",
+        "properties": {
+          "offerId": {
+            "type": "string"
+          },
+          "connectionId": {
+            "type": "string"
+          },
+          "supplierId": {
+            "type": "string"
+          },
+          "supplierName": {
+            "type": "string"
+          },
+          "warehouseName": {
+            "type": "string",
+            "nullable": true
+          },
+          "offerKey": {
+            "type": "string"
+          },
+          "qty": {
+            "type": "number"
+          },
+          "priceUah": {
+            "type": "number",
+            "nullable": true
+          },
+          "days": {
+            "type": "number"
+          },
+          "isAnalog": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "offerId",
+          "connectionId",
+          "supplierId",
+          "supplierName",
+          "warehouseName",
+          "offerKey",
+          "qty",
+          "priceUah",
+          "days",
+          "isAnalog"
+        ]
+      },
+      "SupplierAllocationItemDto": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "need": {
+            "type": "number"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplierAllocationPartDto"
+            }
+          },
+          "uncovered": {
+            "type": "number",
+            "description": "Непокрита решта — окрема OPEN-позиція без пропозиції"
+          },
+          "skippedReason": {
+            "nullable": true,
+            "enum": [
+              "itemNotOpen",
+              "noOffers"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "itemId",
+          "goodName",
+          "need",
+          "parts",
+          "uncovered",
+          "skippedReason"
+        ]
+      },
+      "SupplierAllocationResultDto": {
+        "type": "object",
+        "properties": {
+          "strategy": {
+            "enum": [
+              "FAST",
+              "CHEAP",
+              "OPTIMAL"
+            ],
+            "type": "string"
+          },
+          "applied": {
+            "type": "boolean",
+            "description": "false — попередній перегляд (dryRun), нічого не записано"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplierAllocationItemDto"
+            }
+          },
+          "totalUah": {
+            "type": "number",
+            "nullable": true,
+            "description": "Сума в гривні (null — ролі без цін)"
+          }
+        },
+        "required": [
+          "strategy",
+          "applied",
+          "items",
+          "totalUah"
+        ]
+      },
+      "SupplierOfferBatchDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "MANUAL",
+              "AUTO"
+            ],
+            "type": "string"
+          },
+          "strategy": {
+            "nullable": true,
+            "enum": [
+              "FAST",
+              "CHEAP",
+              "OPTIMAL"
+            ],
+            "type": "string"
+          },
+          "done": {
+            "type": "boolean",
+            "description": "Усі запити завершено (готово / помилка)"
+          },
+          "completedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplierOfferItemDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "purpose",
+          "strategy",
+          "done",
+          "completedAt",
+          "createdAt",
+          "items"
+        ]
+      },
+      "SupplierApiOrderLineDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "goodId": {
+            "type": "string"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "offerKey": {
+            "type": "string"
+          },
+          "warehouseCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "qtyRequested": {
+            "type": "number"
+          },
+          "qtyConfirmed": {
+            "type": "number",
+            "nullable": true,
+            "description": "null — постачальник ще не відповів"
+          },
+          "priceRequested": {
+            "type": "number"
+          },
+          "priceConfirmed": {
+            "type": "number",
+            "nullable": true
+          },
+          "currencyCode": {
+            "type": "string"
+          },
+          "statusRaw": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "goodId",
+          "goodName",
+          "offerKey",
+          "warehouseCode",
+          "qtyRequested",
+          "qtyConfirmed",
+          "priceRequested",
+          "priceConfirmed",
+          "currencyCode",
+          "statusRaw"
+        ]
+      },
+      "SupplierApiOrderDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "connectionId": {
+            "type": "string"
+          },
+          "connectionName": {
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "TEHNOMIR",
+              "BM_PARTS",
+              "UTR",
+              "AD_UKRAINE",
+              "AVD_TRADE"
+            ],
+            "type": "string"
+          },
+          "supplierWarehouseCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "enum": [
+              "QUEUED",
+              "SENDING",
+              "PLACED",
+              "CONFIRMED",
+              "PARTIALLY_CONFIRMED",
+              "READY",
+              "SHIPPED",
+              "REJECTED",
+              "CANCELLED",
+              "FAILED",
+              "UNKNOWN"
+            ],
+            "type": "string"
+          },
+          "step": {
+            "type": "string",
+            "nullable": true
+          },
+          "externalOrderId": {
+            "type": "string",
+            "nullable": true
+          },
+          "externalNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "externalStatusRaw": {
+            "type": "string",
+            "nullable": true
+          },
+          "reference": {
+            "type": "string"
+          },
+          "sentAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "confirmedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastPolledAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "nextPollAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplierApiOrderLineDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "connectionId",
+          "connectionName",
+          "provider",
+          "supplierWarehouseCode",
+          "status",
+          "step",
+          "externalOrderId",
+          "externalNumber",
+          "externalStatusRaw",
+          "reference",
+          "sentAt",
+          "confirmedAt",
+          "lastPolledAt",
+          "nextPollAt",
+          "error",
+          "lines"
+        ]
+      },
+      "PurchaseOrderSupplierApiDto": {
+        "type": "object",
+        "properties": {
+          "purchaseOrderId": {
+            "type": "string"
+          },
+          "supplierApiStatus": {
+            "enum": [
+              "NOT_SENT",
+              "QUEUED",
+              "SENT",
+              "PARTIAL",
+              "CONFIRMED",
+              "FAILED",
+              "NEEDS_ATTENTION"
+            ],
+            "type": "string"
+          },
+          "supplierApiSentAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "supplierApiError": {
+            "type": "string",
+            "nullable": true
+          },
+          "sendMode": {
+            "enum": [
+              "MANUAL",
+              "ON_ORDERED"
+            ],
+            "type": "string"
+          },
+          "hasConnection": {
+            "type": "boolean",
+            "description": "Чи має постачальник увімкнене підключення до API"
+          },
+          "canSend": {
+            "type": "boolean",
+            "description": "Кнопка «Відправити в API» доступна"
+          },
+          "canRelease": {
+            "type": "boolean",
+            "description": "Є непідтверджена кількість, яку можна повернути в список"
+          },
+          "warnings": {
+            "description": "Попередження (застарілі пропозиції)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplierApiOrderDto"
+            }
+          }
+        },
+        "required": [
+          "purchaseOrderId",
+          "supplierApiStatus",
+          "supplierApiSentAt",
+          "supplierApiError",
+          "sendMode",
+          "hasConnection",
+          "canSend",
+          "canRelease",
+          "warnings",
+          "orders"
+        ]
+      },
+      "SupplierApiReleaseResultDto": {
+        "type": "object",
+        "properties": {
+          "released": {
+            "type": "number",
+            "description": "Скільки одиниць повернуто в список купівлі"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PurchaseOrderSupplierApiDto"
+          }
+        },
+        "required": [
+          "released",
+          "state"
         ]
       },
       "SupplierReturnLineResponseDto": {
