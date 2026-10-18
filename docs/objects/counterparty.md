@@ -132,7 +132,8 @@ model CounterpartyStatusLink {
 > `PurchaseOrderCreateModal` (другим рядком — ЄДРПОУ; «Відкрити картку» комірнику недоступна).
 > `SupplierConnectionModal` комірник не відкриває — підключення до API лише OWNER/ADMIN (BR-SCON).
 > Тести: api `counterparties.storekeeper-suppliers.spec.ts`; web `ItemsView.suppliers.test.tsx`,
-> `PurchaseOrderCreateModal.storekeeper-supplier.test.tsx`; E2E
+> `PurchaseOrderCreateModal.storekeeper-supplier.test.tsx`, `GoodsTab.suppliers-cache.test.tsx` (кеш
+> `cache:suppliers` вкладки — лише id і назва, `lib/supplier-cache-rows.ts`); E2E
 > `apps/web/e2e/purchase-storekeeper-suppliers.spec.ts` (комірник через інтерфейс: список, позиція,
 > «Постачальник і ціна», пошук у картці замовлення — без 403, лише поля постачальника).
 

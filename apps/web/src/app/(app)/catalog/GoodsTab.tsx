@@ -19,6 +19,7 @@ import {
 import { apiFetch } from '@/lib/api-client';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { getCached, setCache } from '@/lib/ref-cache';
+import { supplierCacheRows } from '@/lib/supplier-cache-rows';
 import {
   CategoryTree,
   collectDescendantIds,
@@ -383,7 +384,8 @@ export default function GoodsTab() {
       setUnits(unitsRes);
       setCache('cache:units', unitsRes);
       setSuppliers(suppliersRes.items);
-      setCache('cache:suppliers', suppliersRes.items);
+      // Лише поля вибору: відповідь звужується за роллю, а кеш вкладки переживає вихід (BR-CP-014).
+      setCache('cache:suppliers', supplierCacheRows(suppliersRes.items));
       setGoodCatTree(goodCatsRes);
       setCache('cache:good-categories', goodCatsRes);
     });
