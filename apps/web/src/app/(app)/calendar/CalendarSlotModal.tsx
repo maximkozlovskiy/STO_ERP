@@ -244,6 +244,12 @@ interface CalendarSlotModalProps {
   readOnly?: boolean;
   /** Механік і підйомник запису, що редагується (BR-CAL-012); `null` — новий запис. */
   savedMechanic?: SavedMechanic | null;
+  /**
+   * Наряд запису, що редагується (як збережено), або `null`: `number` — у підтвердженні
+   * видалення (BR-WO-026 стирає дати наряду), `lockedStatus` — статус наряду, у якому час,
+   * підйомник і наряд запису не змінюються (BR-WO-027); примітка й механік — доступні.
+   */
+  editingWorkOrder?: { number: string; lockedStatus: string | null } | null;
   pendingSlot: PendingSlot | null;
   setPendingSlot: Dispatch<SetStateAction<PendingSlot | null>>;
 
@@ -283,6 +289,7 @@ export function CalendarSlotModal({
   isEditingPast: isPastLocked,
   readOnly = false,
   savedMechanic = null,
+  editingWorkOrder = null,
   pendingSlot,
   setPendingSlot,
   formMounted,
@@ -304,6 +311,10 @@ export function CalendarSlotModal({
   const { confirm, dialogProps } = useConfirm();
   // Усе, що для минулого запису заблоковано, заблоковано й без права змінювати записи.
   const isEditingPast = isPastLocked || readOnly;
+  // BR-WO-027: наряд не в редагованому статусі — час, підйомник, клієнт і наряд запису
+  // недоступні (перев'язка теж, BR-WO-028); примітка й механік — як раніше.
+  const woLockedStatus = isEditingPast ? null : (editingWorkOrder?.lockedStatus ?? null);
+  const fieldsLocked = isEditingPast || woLockedStatus !== null;
   const {
     conflict: calConflict,
     check: checkConflict,
@@ -853,6 +864,15 @@ export function CalendarSlotModal({
               <span>{readOnly ? t('slot.roleLocked') : t('slot.pastLocked')}</span>
             </div>
           )}
+          {woLockedStatus && (
+            <div
+              className="flex items-center gap-2 text-[13px] text-warning-text bg-warning-subtle border border-warning/20 rounded-lg px-3 py-2"
+              data-testid="slot-wo-time-locked"
+            >
+              <span aria-hidden="true">🔒</span>
+              <span>{t('slot.woTimeLocked', { status: woStatusLabel(woLockedStatus) })}</span>
+            </div>
+          )}
 
           {/* П'ять полів у рядок — лише від xl: на 1024 стовпець вужчий за дату й час (Bug #878) */}
           <div className="grid grid-cols-3 xl:grid-cols-5 gap-3 items-start">
@@ -866,7 +886,7 @@ export function CalendarSlotModal({
               <Select
                 id={liftSelectId}
                 value={form.liftId}
-                disabled={isEditingPast}
+                disabled={fieldsLocked}
                 onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
                 className="h-8 text-[13px] py-0.5 px-2 pr-7"
               >
@@ -891,7 +911,7 @@ export function CalendarSlotModal({
                 value={date && form.startAt ? `${date}T${form.startAt}` : ''}
                 minHour={editingSlotId ? windowStart : minHour}
                 maxHour={windowEnd - 1}
-                disabled={isEditingPast}
+                disabled={fieldsLocked}
                 inputClassName="h-8 text-[13px]"
                 onChange={val => {
                   const start = val ? val.slice(11, 16) : '';
@@ -928,7 +948,7 @@ export function CalendarSlotModal({
                 step="0.5"
                 min="0.5"
                 value={form.normoHours}
-                disabled={isEditingPast}
+                disabled={fieldsLocked}
                 className="h-8 text-[13px]"
                 onChange={e => {
                   const nh = e.target.value;
@@ -983,7 +1003,7 @@ export function CalendarSlotModal({
                 value={endDate && form.endAt ? `${endDate}T${form.endAt}` : ''}
                 minHour={windowStart}
                 maxHour={23}
-                disabled={isEditingPast}
+                disabled={fieldsLocked}
                 inputClassName="h-8 text-[13px]"
                 onChange={val => {
                   const endAt = val ? val.slice(11, 16) : '';
@@ -1009,11 +1029,11 @@ export function CalendarSlotModal({
                     className="h-8 text-[13px]"
                     display={form.counterpartyDisplay}
                     placeholder={t('slot.clientPlaceholder')}
-                    disabled={isEditingPast}
-                    hidePick={isEditingPast}
+                    disabled={fieldsLocked}
+                    hidePick={fieldsLocked}
                     onOpenDetail={form.counterpartyId ? () => void openCpDetail() : undefined}
                     onPick={() => setCpPickerOpen(true)}
-                    onSearch={!isEditingPast ? fetchCpItems : undefined}
+                    onSearch={!fieldsLocked ? fetchCpItems : undefined}
                     onSearchSelect={item => {
                       void (async () => {
                         if (
@@ -1068,7 +1088,7 @@ export function CalendarSlotModal({
                     }}
                   />
                 </div>
-                {!isEditingPast && (
+                {!fieldsLocked && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -1097,7 +1117,7 @@ export function CalendarSlotModal({
               <select
                 className="w-full h-8 rounded-md border border-input bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                 value={form.vehicleId}
-                disabled={isEditingPast || cpVehicles.length === 0}
+                disabled={fieldsLocked || cpVehicles.length === 0}
                 onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
               >
                 {cpVehicles.length === 0 ? (
@@ -1129,8 +1149,8 @@ export function CalendarSlotModal({
                   className="h-8 text-[13px]"
                   display={form.workOrderDisplay}
                   placeholder={t('slot.workOrderPlaceholder')}
-                  disabled={isEditingPast}
-                  hidePick={isEditingPast}
+                  disabled={fieldsLocked}
+                  hidePick={fieldsLocked}
                   onOpenDetail={
                     form.workOrderId
                       ? () => {
@@ -1140,7 +1160,7 @@ export function CalendarSlotModal({
                       : undefined
                   }
                   onPick={() => setWoPickerOpen(true)}
-                  onSearch={!isEditingPast ? fetchWoItems : undefined}
+                  onSearch={!fieldsLocked ? fetchWoItems : undefined}
                   onSearchSelect={item => {
                     void (async () => {
                       const display = item.counterpartyName
@@ -1199,7 +1219,7 @@ export function CalendarSlotModal({
                   onClear={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
                 />
               </div>
-              {!isEditingPast && (
+              {!fieldsLocked && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -1532,9 +1552,12 @@ export function CalendarSlotModal({
                 className="ml-auto"
                 onClick={() => {
                   void (async () => {
+                    // BR-WO-026: видалення запису наряду стирає планові дати наряду — попередити.
                     const ok = await confirm({
                       title: t('slot.deleteTitle'),
-                      message: t('slot.deleteMessage'),
+                      message: editingWorkOrder
+                        ? t('slot.deleteWoMessage', { number: editingWorkOrder.number })
+                        : t('slot.deleteMessage'),
                       variant: 'destructive',
                     });
                     if (!ok) return;

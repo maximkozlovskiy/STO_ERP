@@ -20,7 +20,7 @@ import { fmtQty } from '@/lib/format';
 import type { BookingSlot, CalendarSlot, GhostSlot, Lift, PendingSlot } from './calendar.types';
 import { SIDEBAR_W, decimalHoursToHHMM, fmtTime, kyivHours, pad } from './calendar.utils';
 import { CATEGORY_VIEW, SLOT_TYPE_ICON, slotType, type SlotCategory } from './calendar-categories';
-import { daySlotCategory, liftLoadHours } from './calendar-day';
+import { daySlotCategory, liftLoadHours, workOrderTimeLock } from './calendar-day';
 import { PENDING_DRAG_ID, type CalendarState } from './useCalendarState';
 
 // Module-level stable refs — `useMemo<[]>(() => [], [])` всередині компонента
@@ -76,10 +76,14 @@ const DraggableSlot = memo(function DraggableSlot({
   const left = ((visStart - windowStart) / totalHours) * 100;
   const width = ((visEnd - visStart) / totalHours) * 100;
 
+  // BR-WO-027: запис наряду не в редагованому статусі («В роботі», «Виконано»…) не
+  // перетягується й не розтягується — без ручок і курсору перетягування; підказка — у title.
+  const lockedStatus = workOrderTimeLock(slot);
+  const movable = canManage && !lockedStatus;
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: slot.id,
     data: { slot },
-    disabled: !canManage,
+    disabled: !movable,
   });
   // Тіло блоку — кнопка для клавіатури в обох ролях: Enter і пробіл відкривають запис. Сенсор
   // перетягування лише вказівний (`PointerSensor`), тож `listeners` клавіш не обробляють — без
@@ -90,7 +94,7 @@ const DraggableSlot = memo(function DraggableSlot({
     e.preventDefault();
     onEdit(slot);
   };
-  const contentProps = canManage
+  const contentProps = movable
     ? { ...listeners, ...attributes, onKeyDown }
     : { role: 'button', tabIndex: 0, onKeyDown };
   const style: CSSProperties = {
@@ -122,6 +126,9 @@ const DraggableSlot = memo(function DraggableSlot({
     slot.vehicleSummary ?? null,
     slot.vehiclePlate ?? null,
     `${typeLabel} · ${categoryLabel}`,
+    canManage && lockedStatus
+      ? t('day.woTimeLocked', { status: woStatusLabel(lockedStatus) })
+      : null,
   ]
     .filter(Boolean)
     .join('\n');
@@ -132,13 +139,14 @@ const DraggableSlot = memo(function DraggableSlot({
       style={style}
       data-calendar-slot
       data-category={category}
+      data-time-locked={lockedStatus ? true : undefined}
       data-editing={isEditing || undefined}
       // Світлий фон і смуга категорії, темний текст (BR-CAL-011). Блок, що редагується, —
       // бурштинова рамка: amber-600 — 3,2:1 до білого, 5,6:1 до темного фону (WCAG 1.4.11).
       className={`absolute top-1 bottom-1 rounded border border-border border-l-4 ${barClassName} ${bgClassName} text-foreground text-xs overflow-hidden group select-none ring-offset-1 ring-offset-surface flex flex-col ${isEditing ? 'ring-2 ring-amber-600 shadow-md' : ''}`}
       title={titleTooltip}
     >
-      {canManage && (
+      {movable && (
         <div
           className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-foreground/10 rounded-l flex items-center justify-center"
           onPointerDown={e => {
@@ -153,7 +161,7 @@ const DraggableSlot = memo(function DraggableSlot({
       )}
 
       <div
-        className={`@container flex-1 flex flex-col px-3 min-w-0 py-1 relative ${canManage ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
+        className={`@container flex-1 flex flex-col px-3 min-w-0 py-1 relative ${movable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
         data-part="content"
         {...contentProps}
         onClick={() => onEdit(slot)}
@@ -182,6 +190,11 @@ const DraggableSlot = memo(function DraggableSlot({
           />
         </span>
         <span className="sr-only">{` ${typeLabel}. ${categoryLabel}. `}</span>
+        {canManage && lockedStatus && (
+          <span className="sr-only">
+            {`${t('day.woTimeLocked', { status: woStatusLabel(lockedStatus) })}. `}
+          </span>
+        )}
         {/* Main info — centered */}
         <div className="flex-1 flex flex-col justify-center gap-0.5 min-w-0">
           {slot.workOrderNumber && (
@@ -210,7 +223,7 @@ const DraggableSlot = memo(function DraggableSlot({
         </div>
       </div>
 
-      {canManage && (
+      {movable && (
         <div
           className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-foreground/10 rounded-r flex items-center justify-center"
           onPointerDown={e => {

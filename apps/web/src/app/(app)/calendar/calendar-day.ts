@@ -1,3 +1,4 @@
+import { WO_EDITABLE_STATUSES } from '@sto/shared';
 import type { CalendarSlot } from './calendar.types';
 import { slotCategory, type SlotCategory } from './calendar-categories';
 import { chainKey, countsAsLoad } from './calendar-month';
@@ -20,6 +21,18 @@ export function daySlotCategory(
     },
     nowMs,
   );
+}
+
+/**
+ * BR-WO-027: час і підйомник запису наряду змінюються лише там, де картка наряду змінює планові
+ * дати (`WO_EDITABLE_STATUSES`). Повертає статус наряду, що блокує зміну, або `null` — запис без
+ * наряду чи наряд у редагованому статусі.
+ */
+export function workOrderTimeLock(
+  slot: Pick<CalendarSlot, 'workOrderId' | 'workOrderStatus'>,
+): string | null {
+  const status = slot.workOrderStatus;
+  return slot.workOrderId && status && !WO_EDITABLE_STATUSES.includes(status) ? status : null;
 }
 
 /** Поточний час за Києвом як частка робочого вікна дня, %; `null` — не сьогодні. */

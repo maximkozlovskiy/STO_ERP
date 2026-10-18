@@ -47,7 +47,7 @@ import {
   toDateString,
 } from './calendar.utils';
 import { buildMonthSlots, chainEnds, liveSlots } from './calendar-month';
-import { nowLinePercent, pastPercent } from './calendar-day';
+import { nowLinePercent, pastPercent, workOrderTimeLock } from './calendar-day';
 import { mechanicDroppedText, type MechanicDropResponse } from './calendar-mechanic-drop';
 
 // Shared drag-id for the pending-slot block (used both by the draggable in JSX
@@ -73,13 +73,16 @@ export const EMPTY_FORM: SlotForm = {
  * Запис, відкритий у формі, на момент відкриття (чи останньої звірки з сервером): механік і
  * підйомник — для недоступної опції збереженого механіка (BR-CAL-012), час — щоб помітити, що
  * наряд переніс запис поверх форми (Bug #884); наряд — щоб відкріплення чи видалення запису
- * наряду теж скидало кеш нарядів (Bug #904).
+ * наряду теж скидало кеш нарядів (Bug #904); номер і статус наряду — чи можна змінити час і
+ * підйомник (BR-WO-027) і текст підтвердження видалення (BR-WO-026).
  */
 type EditingSaved = {
   id: string;
   startAt: string;
   endAt: string;
   workOrderId: string | null;
+  workOrderNumber: string | null;
+  workOrderStatus: string | null;
 } & SavedMechanic;
 
 function savedOf(slot: CalendarSlot): EditingSaved {
@@ -88,6 +91,8 @@ function savedOf(slot: CalendarSlot): EditingSaved {
     startAt: slot.startAt,
     endAt: slot.endAt,
     workOrderId: slot.workOrderId ?? null,
+    workOrderNumber: slot.workOrderNumber ?? null,
+    workOrderStatus: slot.workOrderStatus ?? null,
     liftId: slot.liftId ?? '',
     employeeId: slot.employeeId ?? '',
     employeeName: slot.employeeName ?? null,
@@ -680,7 +685,8 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       e.stopPropagation();
       if (!canManageSlots) return;
       const slot = slots.find(s => s.id === slotId);
-      if (!slot) return;
+      // BR-WO-027: ручок у такого запису немає; сторож — на випадок застарілого рендера.
+      if (!slot || workOrderTimeLock(slot)) return;
       setResizing({
         slotId,
         edge,
@@ -955,7 +961,8 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       }
 
       const slot = slots.find(s => s.id === active.id);
-      if (!slot || !canManageSlots) return;
+      // BR-WO-027: запис наряду не в редагованому статусі не перетягується (сервер відповів би 400).
+      if (!slot || !canManageSlots || workOrderTimeLock(slot)) return;
       const newLiftId: string | null = over?.data?.current?.liftId ?? slot.liftId ?? null;
       const containerWidth = timelineRef.current?.getBoundingClientRect().width ?? 0;
       if (!containerWidth) return;
@@ -1039,16 +1046,29 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
 
   const removeSlot = useCallback(
     async (id: string) => {
-      if (!(await confirm({ title: 'Видалити слот?', variant: 'destructive' }))) return;
+      const slot = slots.find(s => s.id === id);
+      const woNumber = slot?.workOrderId ? (slot.workOrderNumber ?? '') : null;
+      const ok = await confirm({
+        title: t('slot.deleteTitle'),
+        message:
+          woNumber !== null
+            ? t('slot.deleteWoMessage', { number: woNumber })
+            : t('slot.deleteMessage'),
+        variant: 'destructive',
+      });
+      if (!ok) return;
       try {
         await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' });
         toast.success(t('slot.slotDeleted'));
+        // BR-WO-026: запис наряду стер планові дати наряду — картка, списки й лічильники нарядів.
+        if (woNumber !== null) void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
         load();
       } catch (e: unknown) {
-        if (mountedRef.current) toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+        if (mountedRef.current)
+          toast.error(e instanceof Error ? e.message : t('slot.errDeleteFallback'));
       }
     },
-    [load, confirm, t],
+    [slots, load, confirm, t, queryClient],
   );
 
   // ── Memoized slot data ────────────────────────────────────────────────────
@@ -1155,6 +1175,21 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     return false;
   }, [editingSlotId, monthEditSlot, slots, nowMs, minHour]);
 
+  /**
+   * Наряд запису, відкритого у формі (як збережено): номер — для підтвердження видалення
+   * (BR-WO-026), `lockedStatus` — статус, у якому час і підйомник запису не змінюються (BR-WO-027).
+   */
+  const editingWorkOrder = useMemo(
+    () =>
+      editingSlotId && editingSaved?.id === editingSlotId && editingSaved.workOrderId
+        ? {
+            number: editingSaved.workOrderNumber ?? '',
+            lockedStatus: workOrderTimeLock(editingSaved),
+          }
+        : null,
+    [editingSlotId, editingSaved],
+  );
+
   const savedMechanic = useMemo<SavedMechanic | null>(
     () =>
       editingSlotId && editingSaved?.id === editingSlotId
@@ -1242,7 +1277,8 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       saved.startAt === editingSaved.startAt &&
       saved.endAt === editingSaved.endAt &&
       saved.liftId === editingSaved.liftId &&
-      saved.employeeId === editingSaved.employeeId
+      saved.employeeId === editingSaved.employeeId &&
+      saved.workOrderStatus === editingSaved.workOrderStatus
     )
       return;
     setEditingSaved(saved);
@@ -1351,6 +1387,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     setEditingSlotId,
     isEditingPast,
     savedMechanic,
+    editingWorkOrder,
     error,
     setError,
     saving,
