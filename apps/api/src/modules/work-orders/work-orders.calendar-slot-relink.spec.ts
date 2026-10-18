@@ -14,6 +14,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import {
   CLIENT,
   LIFT_1,
@@ -285,7 +286,29 @@ describe("Перев'язка запису на інший наряд (BR-WO-028
         USER,
       ),
     );
-    expect(err.message).toBe(msg('err.calendar.employeeNotOnLift'));
+    // Bug #909: у формі — П1, за яким механік закріплений; відповідь називає підйомник наряду.
+    expect(err.message).toBe(
+      translateError('err.calendar.employeeNotOnWorkOrderLift', 'uk', { lift: 'П2' }),
+    );
+  });
+
+  // guards: BR-WO-028, BR-CAL-012
+  it('механік, обраний разом із перевʼязкою на наряд із датами без підйомника → 400 «наряд без підйомника» (Bug #909)', async () => {
+    const h = planned({
+      anchor: { employeeId: MECH_BOTH },
+      other: { liftId: null, plannedAt: kyiv(D2, '13:00'), dueDate: kyiv(D2, '15:00') },
+    });
+
+    const err = await rejected(
+      h,
+      h.service.updateCalendarSlot(
+        ORG,
+        'anchor',
+        relinkForm(OTHER_WO, { employeeId: MECH_1 }),
+        USER,
+      ),
+    );
+    expect(err.message).toBe(msg('err.calendar.employeeWorkOrderNoLift'));
   });
 
   // Наряд без дат бере підйомник із форми — зміна підйомника є вибором користувача (BR-WO-024).
@@ -548,6 +571,24 @@ describe('Новий запис календаря для наряду — за�
       h.service.createCalendarSlot(ORG, createForm(OTHER_WO, { employeeId: MECH_1 })),
     );
     expect(err.message).toBe(msg('err.calendar.employeeNotOnLift'));
+  });
+
+  // guards: BR-WO-028, BR-CAL-012
+  it('наряд із датами на іншому підйомнику, механік форми не закріплений за ним → 400 з назвою підйомника наряду (Bug #909)', async () => {
+    const h = planned({
+      other: { liftId: LIFT_2, plannedAt: kyiv(D2, '13:00'), dueDate: kyiv(D2, '15:00') },
+    });
+
+    const err = await rejected(
+      h,
+      h.service.createCalendarSlot(
+        ORG,
+        createForm(OTHER_WO, { liftId: LIFT_1, employeeId: MECH_1 }),
+      ),
+    );
+    expect(err.message).toBe(
+      translateError('err.calendar.employeeNotOnWorkOrderLift', 'uk', { lift: 'П2' }),
+    );
   });
 
   // guards: BR-WO-028, BR-CAL-005

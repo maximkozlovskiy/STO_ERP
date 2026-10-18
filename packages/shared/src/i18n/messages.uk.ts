@@ -659,6 +659,10 @@ export const uk: Record<string, string> = {
   'err.calendar.endBeforeStart': 'Час завершення має бути після початку',
   'err.calendar.employeeOnLeave': 'Механік у відпустці',
   'err.calendar.employeeNotOnLift': 'Механік не закріплений за цим підйомником',
+  'err.calendar.employeeNotOnWorkOrderLift':
+    'Механік не закріплений за підйомником наряду «{{lift}}» — запис стає на дати й підйомник наряду',
+  'err.calendar.employeeWorkOrderNoLift':
+    'Наряд без підйомника — механіка на його запис не призначити (запис стає на дати наряду)',
   'err.calendar.syncRoleForbidden':
     'Записи календаря змінюють лише власник, адміністратор і приймальня',
   'err.calendar.employeeNotFound': 'Співробітника не знайдено',

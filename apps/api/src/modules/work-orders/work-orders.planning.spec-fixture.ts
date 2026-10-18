@@ -156,8 +156,8 @@ export function planningHarness(opts: { workOrders?: MemRow[]; slots?: MemRow[] 
   const vehicle = exists([{ id: VEHICLE, orgId: ORG, deletedAt: null }]);
   const counterparty = exists([{ id: CLIENT, orgId: ORG, deletedAt: null, type: 'CLIENT' }]);
   const lift = exists([
-    { id: LIFT_1, orgId: ORG, deletedAt: null },
-    { id: LIFT_2, orgId: ORG, deletedAt: null },
+    { id: LIFT_1, orgId: ORG, deletedAt: null, name: 'П1' },
+    { id: LIFT_2, orgId: ORG, deletedAt: null, name: 'П2' },
   ]);
   const counterpartyContract = exists([]);
   // Переходи наряду (BR-WO-022): чернетки актів скасовуються разом із нарядом.

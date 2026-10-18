@@ -675,6 +675,10 @@ export const en: Record<string, string> = {
   'err.calendar.endBeforeStart': 'The end time must be after the start time',
   'err.calendar.employeeOnLeave': 'The mechanic is on leave',
   'err.calendar.employeeNotOnLift': 'The mechanic is not assigned to this lift',
+  'err.calendar.employeeNotOnWorkOrderLift':
+    'The mechanic is not assigned to the work order lift "{{lift}}" — the record moves to the work order dates and lift',
+  'err.calendar.employeeWorkOrderNoLift':
+    'The work order has no lift — a mechanic cannot be assigned to its record (the record moves to the work order dates)',
   'err.calendar.syncRoleForbidden':
     'Only the owner, an administrator or the reception can change calendar records',
   'err.calendar.employeeNotFound': 'Employee not found',

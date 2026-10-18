@@ -359,7 +359,10 @@ describe('SyncService.push calendar_slots — новий запис із нар�
     const res = await h.sync.push(ORG, [rec], 'ADMIN');
 
     expect(res).toEqual({ accepted: 0, conflicts: 1 });
-    expect(h.lastErrors()).toEqual([translateError('err.calendar.employeeNotOnLift', 'uk')]);
+    // Bug #909: перевірено підйомник наряду, не планшета — відповідь його називає.
+    expect(h.lastErrors()).toEqual([
+      translateError('err.calendar.employeeNotOnWorkOrderLift', 'uk', { lift: 'П2' }),
+    ]);
     expect(h.calendarSlot.rows.find(s => s.id === 'tablet-1')).toMatchObject({
       deletedAt: expect.any(Date),
     });

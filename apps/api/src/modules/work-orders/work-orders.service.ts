@@ -756,7 +756,7 @@ export class WorkOrdersService {
       };
     }
     const employeeId = dto.employeeId ?? null;
-    if (employeeId) await this.assertSlotMechanic(orgId, employeeId, liftId);
+    if (employeeId) await this.assertSlotMechanic(orgId, employeeId, liftId, dto.liftId ?? null);
 
     await this.applyUpdate(orgId, workOrderId, datesDto, userId, {
       forceSlot: true,
@@ -909,17 +909,40 @@ export class WorkOrdersService {
     return mechanicDroppedReason;
   }
 
-  /** BR-CAL-012: механік, обраний явно, — активний MECHANIC, закріплений за підйомником; інакше 400. */
+  /**
+   * BR-CAL-012: механік, обраний явно, — активний MECHANIC, закріплений за підйомником; інакше 400.
+   *
+   * `shownLiftId` — підйомник, який користувач бачив у формі, коли запис стане на ІНШИЙ — підйомник
+   * наряду з датами (BR-WO-028: перев'язка, «+ Слот», створення з планшета). Механік зі списку
+   * підйомника форми там закріплений, тож «не закріплений за цим підйомником» нічого не пояснює —
+   * відповідь називає підйомник наряду (Bug #909).
+   */
   private async assertSlotMechanic(
     orgId: string,
     employeeId: string,
     liftId: string | null,
+    shownLiftId: string | null = liftId,
   ): Promise<void> {
     const mechanic = await findMechanicOnLift(this.prisma, orgId, employeeId, liftId);
-    if (!mechanic.ok)
+    if (mechanic.ok) return;
+    if (mechanic.reason === 'NOT_ON_LIFT' && liftId !== shownLiftId) {
+      const lift = liftId
+        ? await this.prisma.lift.findFirst({
+            where: { id: liftId, orgId, deletedAt: null },
+            select: { name: true },
+          })
+        : null;
       throw new BadRequestException(
-        translateError(MECHANIC_REJECT_KEY[mechanic.reason], getLocale()),
+        lift
+          ? translateError('err.calendar.employeeNotOnWorkOrderLift', getLocale(), {
+              lift: lift.name,
+            })
+          : translateError('err.calendar.employeeWorkOrderNoLift', getLocale()),
       );
+    }
+    throw new BadRequestException(
+      translateError(MECHANIC_REJECT_KEY[mechanic.reason], getLocale()),
+    );
   }
 
   /**
@@ -1052,7 +1075,12 @@ export class WorkOrdersService {
     const employeeId = change.employeeId !== undefined ? change.employeeId : slot.employeeId;
     const keepsOwnMechanic = employeeId === slot.employeeId;
     if (employeeId && (!keepsOwnMechanic || (!hasDates && liftId !== slot.liftId)))
-      await this.assertSlotMechanic(orgId, employeeId, liftId);
+      await this.assertSlotMechanic(
+        orgId,
+        employeeId,
+        liftId,
+        change.liftId !== undefined ? (change.liftId ?? null) : slot.liftId,
+      );
 
     const chainIds = chain.map(s => s.id);
     const previousHours =
