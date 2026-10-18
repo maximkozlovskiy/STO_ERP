@@ -13,15 +13,23 @@ test.describe.configure({ mode: 'serial' });
  *  3. BR-WO-026 — «Видалити» у формі запису наряду: підтвердження попереджає, дати наряду стерто
  *     (картка — порожні поля), записів наряду немає;
  *  4. BR-WO-027 — запис наряду «В роботі» не перетягується й не розтягується (без ручок, тягнення
- *     мишею нічого не змінює), у формі час і підйомник недоступні з підказкою.
+ *     мишею нічого не змінює), у формі час і підйомник недоступні з підказкою; BR-WO-026 — і
+ *     «Видалити» недоступна з підказкою (рішення власника 2026-10-19);
+ *  5. BR-WO-028 — перев'язка запису з механіком на наряд з іншим підйомником, за яким механік не
+ *     закріплений: механіка знято з повідомленням «Механіка знято: …» (рішення власника 2026-10-19).
  *
  * Документи — через інтерфейс: НАРЯДИ створюються в списку нарядів, статуси — на сторінці наряду,
- * ЗАПИСИ — формою запису. Клієнт і авто — передумови через API. Дата — 27-ме наступного місяця.
+ * ЗАПИСИ — формою запису. Клієнт, авто, механік і його закріплення за підйомником — передумови
+ * через API (як `calendar-owner-decisions.spec.ts`). Дата — 27-ме наступного місяця.
  */
 
 const uid = Date.now().toString().slice(-6);
 const CLIENT = `000 E2E Перев'язка запису ${uid}`;
 const PLATE = `WL${uid.slice(-5)}`;
+const MECH_LAST = `000 E2E Перевʼязка ${uid}`;
+const MECH_NAME = `${MECH_LAST} Механік`;
+// Пароль механіка — лише в пам'яті прогону.
+const MECH_PASSWORD = `E2e-${Math.random().toString(36).slice(2, 10)}`;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const kyivToday = () =>
@@ -42,6 +50,7 @@ const kyivHHMM = (iso: string) =>
 interface SlotDto {
   id: string;
   liftId?: string | null;
+  employeeId?: string | null;
   workOrderId?: string | null;
   startAt: string;
   endAt: string;
@@ -52,7 +61,7 @@ interface WoDto {
   plannedAt: string | null;
   dueDate: string | null;
 }
-type WoKey = 'withDates' | 'target' | 'noDates' | 'locked';
+type WoKey = 'withDates' | 'target' | 'noDates' | 'locked' | 'mechSrc' | 'mechDst';
 
 const state: {
   token?: string;
@@ -61,6 +70,7 @@ const state: {
   vehicleId?: string;
   liftA?: { id: string; name: string };
   liftB?: { id: string; name: string };
+  employeeId?: string;
   wo: Partial<Record<WoKey, { id: string; number: string }>>;
   recordId?: string;
 } = { wo: {} };
@@ -226,6 +236,11 @@ test.describe('Запис наряду: перевʼязка BR-WO-028, вида
       }
       const res = await apiRequest(request, token, 'DELETE', `/work-orders/${wo.id}`);
       expect.soft([200, 204, 404], `DELETE наряду ${wo.number}`).toContain(res.status);
+    }
+    // Механік — після нарядів (його записи пішли разом із ними).
+    if (state.employeeId) {
+      const res = await apiRequest(request, token, 'DELETE', `/employees/${state.employeeId}`);
+      expect.soft(res.status, 'DELETE механіка').toBeLessThan(300);
     }
     if (state.vehicleId) {
       const res = await apiRequest(request, token, 'DELETE', `/vehicles/${state.vehicleId}`);
@@ -433,7 +448,7 @@ test.describe('Запис наряду: перевʼязка BR-WO-028, вида
     await page.screenshot({ path: test.info().outputPath('wo28_new_record_for_wo.png') });
   });
 
-  // guards: BR-WO-027
+  // guards: BR-WO-027, BR-WO-026
   test('наряд «В роботі»: запис не тягнеться й не розтягується, у формі час і підйомник недоступні', async ({
     page,
   }) => {
@@ -487,6 +502,12 @@ test.describe('Запис наряду: перевʼязка BR-WO-028, вида
       form.locator('label', { hasText: 'Початок' }).first().locator('..').locator('input'),
     ).toBeDisabled();
     await expect(form.getByLabel('Механік')).toBeEnabled();
+    // BR-WO-026 (рішення власника 2026-10-19): «Видалити» недоступна, причина — у підказці.
+    await expect(form.getByRole('button', { name: /Видалити/ })).toBeDisabled();
+    await expect(form.getByTestId('slot-delete-wrap')).toHaveAttribute(
+      'title',
+      'Запис наряду в статусі «В роботі» не видаляється — лише в статусах «Чернетка», «Кошторис», «Затверджено»',
+    );
     await page.screenshot({ path: test.info().outputPath('wo27_in_progress_form.png') });
 
     // Примітка змінюється й у нередагованому статусі — «Оновити» без відмови, наряд той самий.
@@ -501,5 +522,70 @@ test.describe('Запис наряду: перевʼязка BR-WO-028, вида
       `/work-orders/${state.wo.locked!.id}/linked-documents`,
     );
     expect(notesNow.body.calendarSlots.map(s => s.notes)).toEqual(['000 E2E примітка в роботі']);
+  });
+
+  // guards: BR-WO-028, BR-CAL-012
+  test('перевʼязка запису з механіком на наряд з іншим підйомником → механіка знято з повідомленням', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    test.skip(!state.cpId, 'передумови не створено');
+    // Запити API — зі сторінки застосунку (на about:blank fetch не має origin).
+    await dayView(page);
+    // Механік, закріплений лише за підйомником A, — передумова через API.
+    const mech = await api<{ id: string }>(page, 'POST', '/employees', {
+      firstName: 'Механік',
+      lastName: MECH_LAST,
+      role: 'MECHANIC',
+      loginEmail: `e2e-relink-${uid}@sto.local`,
+      password: MECH_PASSWORD,
+      rateScheme: { type: 'percent_normo', params: { percent: 40 } },
+    });
+    expect(mech.status, `механік: ${JSON.stringify(mech.body)}`).toBe(201);
+    state.employeeId = mech.body.id;
+    const assign = await api(page, 'POST', `/employees/${mech.body.id}/lifts`, {
+      liftIds: [state.liftA!.id],
+    });
+    expect(assign.status).toBeLessThan(300);
+
+    await createWorkOrder(page, 'mechSrc', { lift: state.liftA!, start: '16', hours: '1' });
+    await createWorkOrder(page, 'mechDst', { lift: state.liftB!, start: '17', hours: '1' });
+
+    // Механік — на запис наряду A формою запису.
+    await dayView(page);
+    let form = await openRecord(page, 'mechSrc');
+    const mechSelect = form.getByLabel('Механік');
+    await expect(mechSelect.locator('option', { hasText: MECH_NAME })).toHaveCount(1, {
+      timeout: 10_000,
+    });
+    await mechSelect.selectOption({ label: MECH_NAME });
+    await form.getByRole('button', { name: 'Оновити', exact: true }).click();
+    await expect(form).toBeHidden({ timeout: 15_000 });
+    await expect
+      .poll(async () => (await slotsOf(page, 'mechSrc'))[0]?.employeeId, { timeout: 15_000 })
+      .toBe(state.employeeId);
+    const [record] = await slotsOf(page, 'mechSrc');
+
+    // Перев'язка на наряд B (підйомник B, механік за ним не закріплений) — без відмови.
+    form = await openRecord(page, 'mechSrc');
+    await relinkTo(page, form, 'mechDst');
+    await expect(
+      page.getByText(
+        `Механіка знято: ${MECH_NAME} не закріплений за підйомником «${state.liftB!.name}»`,
+      ),
+    ).toBeVisible({ timeout: 15_000 });
+    await page.screenshot({
+      path: test.info().outputPath('wo28_relink_mechanic_dropped.png'),
+      animations: 'disabled',
+    });
+
+    await expect
+      .poll(() => slotsOf(page, 'mechDst'), { timeout: 15_000 })
+      .toEqual([
+        expect.objectContaining({ id: record.id, liftId: state.liftB!.id, employeeId: null }),
+      ]);
+    const [slot] = await slotsOf(page, 'mechDst');
+    expect([kyivHHMM(slot.startAt), kyivHHMM(slot.endAt)]).toEqual(['17:00', '18:00']);
+    expect(await woShape(page, 'mechSrc')).toMatchObject({ start: null, end: null });
   });
 });
