@@ -272,3 +272,15 @@ export const NAV_GROUPS: NavGroup[] = (() => {
  * Автогенерується з MASTER_NAV_ITEMS — не редагувати вручну.
  */
 export const NAV_GROUPS_FUNCTIONS: NavGroup[] = [{ items: MASTER_NAV_ITEMS }];
+
+/**
+ * Чи пускає сторінка `href` роль — за `roles` пункту меню (їх звіряє з guard-ом сторінки
+ * `lib/__tests__/nav-page-roles.test.ts`). Пункт без `roles` — для всіх. Для посилань на
+ * документ іншого розділу: комірник бачить номер наряду в «Нестачі», але сторінки нарядів не має
+ * — номер для нього текст, а не посилання на 403 (Bug #900).
+ */
+export function canOpenRoute(href: string, role: string | null | undefined): boolean {
+  const item = MASTER_NAV_ITEMS.find(i => i.href === href);
+  if (!item?.roles) return true;
+  return !!role && item.roles.includes(role);
+}

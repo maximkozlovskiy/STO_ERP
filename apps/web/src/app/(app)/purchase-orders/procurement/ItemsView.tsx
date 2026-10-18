@@ -15,6 +15,7 @@ import {
 import { PURCHASE_LIST_ITEM_STATUS_BADGE } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
+import { canOpenRoute } from '@/lib/nav';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -118,6 +119,8 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
   const { data: warehouses } = useWarehouses();
   const { employee } = useAuth();
   const canCreateSupplier = COUNTERPARTY_CREATE_ROLES.includes(employee?.role ?? '');
+  // Комірник сторінки нарядів не має (Bug #900): номер наряду — текст, а не посилання на 403.
+  const canOpenWorkOrder = canOpenRoute('/work-orders', employee?.role);
   const suppliersQuery = useSupplierOptions();
   const suppliers = suppliersQuery.data;
   // Підказка — лише після відповіді: поки список вантажиться, «немає» було б неправдою.
@@ -420,7 +423,9 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
                     {i.expectedPrice != null ? fmtMoney(i.expectedPrice) : '—'}
                   </TableCell>
                   <TableCell>
-                    {i.workOrderId ? (
+                    {i.workOrderId && !canOpenWorkOrder ? (
+                      <span>{i.workOrderNumber}</span>
+                    ) : i.workOrderId ? (
                       <button
                         type="button"
                         className="text-primary hover:underline"
