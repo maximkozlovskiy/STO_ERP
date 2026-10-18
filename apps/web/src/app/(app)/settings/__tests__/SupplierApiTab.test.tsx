@@ -155,6 +155,40 @@ describe('SupplierConnectionModal', () => {
     expect(screen.queryByLabelText(KEY)).toBeNull();
   });
 
+  // guards: BR-SCON-001
+  it('Bug #894: контрагент підключення поза першими 200 — у списку; більше 200 — пошук на сервері', async () => {
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith('/counterparties'))
+        return Promise.resolve(
+          path.includes('&q=')
+            ? { items: [{ id: 'cp-9', companyName: 'Знайдений ТОВ' }], total: 1 }
+            : { items: [{ id: 'cp-2', companyName: 'Інший ТОВ' }], total: 250 },
+        );
+      return Promise.reject(new Error(`unexpected ${String(path)}`));
+    });
+    const { onSave } = renderModal(CONN);
+    expect(await screen.findByRole('option', { name: 'Інший ТОВ' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Контрагент-постачальник/)).toHaveValue('cp-1');
+    expect(screen.getByRole('option', { name: 'AVD ТОВ' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Пошук постачальника'), { target: { value: 'Знай' } });
+    expect(await screen.findByRole('option', { name: 'Знайдений ТОВ' })).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/counterparties?types=SUPPLIER&types=BOTH&limit=200&q=%D0%97'),
+      expect.anything(),
+    );
+    fireEvent.change(screen.getByLabelText(/Контрагент-постачальник/), {
+      target: { value: 'cp-9' },
+    });
+    fireEvent.change(screen.getByLabelText('Пошук постачальника'), { target: { value: '' } });
+    await waitFor(() =>
+      expect(screen.queryByRole('option', { name: 'Знайдений ТОВ' })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]![0]).toMatchObject({ counterpartyId: 'cp-9' });
+  });
+
   // guards: BR-SCON-002
   it('Bug #891: стерта назва підключення надсилається як null — очищається', async () => {
     const { onSave } = renderModal(CONN);

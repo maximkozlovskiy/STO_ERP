@@ -91,10 +91,16 @@ interface SupplierOption {
   name: string;
 }
 
-/** Постачальники-контрагенти для підключення (BR-SCON-001 — роль постачальника). */
-function useSupplierCounterparties(enabled: boolean) {
-  return useQuery<SupplierOption[]>({
-    queryKey: [...supplierConnectionsKeys.all, 'counterparties'],
+/** Скільки постачальників тягнемо за раз; більше — пошук за назвою на сервері (Bug #894). */
+const SUPPLIER_PAGE = 200;
+
+/**
+ * Постачальники-контрагенти для підключення (BR-SCON-001 — роль постачальника). Перші
+ * SUPPLIER_PAGE за абеткою; `q` — пошук на сервері, коли постачальників більше (Bug #894).
+ */
+function useSupplierCounterparties(enabled: boolean, q: string) {
+  return useQuery<{ items: SupplierOption[]; total: number }>({
+    queryKey: [...supplierConnectionsKeys.all, 'counterparties', q],
     queryFn: ({ signal }) =>
       apiFetch<{
         items: Array<{
@@ -103,11 +109,22 @@ function useSupplierCounterparties(enabled: boolean) {
           firstName?: string | null;
           lastName?: string | null;
         }>;
-      }>('/counterparties?types=SUPPLIER&types=BOTH&limit=200', { signal }).then(r =>
-        (r.items ?? []).map(c => ({ id: c.id, name: displayCounterpartyName(c) || c.id })),
-      ),
+        total?: number;
+      }>(
+        `/counterparties?types=SUPPLIER&types=BOTH&limit=${SUPPLIER_PAGE}${
+          q ? `&q=${encodeURIComponent(q)}` : ''
+        }`,
+        { signal },
+      ).then(r => {
+        const items = (r.items ?? []).map(c => ({
+          id: c.id,
+          name: displayCounterpartyName(c) || c.id,
+        }));
+        return { items, total: r.total ?? items.length };
+      }),
     enabled,
     staleTime: 60_000,
+    placeholderData: prev => prev,
   });
 }
 
@@ -155,12 +172,38 @@ export function SupplierConnectionModal({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
-  const { data: suppliers, isLoading: suppliersLoading } = useSupplierCounterparties(open);
+  const [supplierQuery, setSupplierQuery] = useState('');
+  const [supplierQueryDebounced, setSupplierQueryDebounced] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setSupplierQueryDebounced(supplierQuery.trim()), 300);
+    return () => clearTimeout(id);
+  }, [supplierQuery]);
+  const { data: supplierPage, isLoading: suppliersLoading } = useSupplierCounterparties(
+    open,
+    supplierQueryDebounced,
+  );
+  // Обраний контрагент (поточний у підключення чи обраний до пошуку) завжди серед варіантів:
+  // інакше картка з контрагентом поза першими 200 відкривалась із порожнім полем (Bug #894).
+  const [pickedSupplier, setPickedSupplier] = useState<SupplierOption | null>(null);
+  const suppliers = useMemo(() => {
+    const list = supplierPage?.items ?? [];
+    const keep =
+      pickedSupplier?.id === form.counterpartyId
+        ? pickedSupplier
+        : connection && connection.counterpartyId === form.counterpartyId
+          ? { id: connection.counterpartyId, name: connection.counterpartyName }
+          : null;
+    return keep && !list.some(s => s.id === keep.id) ? [keep, ...list] : list;
+  }, [supplierPage, pickedSupplier, connection, form.counterpartyId]);
+  const suppliersTruncated =
+    !!supplierQueryDebounced || (supplierPage?.total ?? 0) > (supplierPage?.items.length ?? 0);
   const { data: warehouses } = useWarehouses();
 
   useEffect(() => {
     if (!open) return;
     setForm(connection ? fromConnection(connection) : EMPTY);
+    setSupplierQuery('');
+    setPickedSupplier(null);
     setError('');
     dirty.resetDirty();
     // dirty — стабільні колбеки; синхронізуємо форму лише при відкритті / іншому підключенні.
@@ -407,25 +450,42 @@ export function SupplierConnectionModal({
                   </option>
                 ))}
               </Select>
-              <Select
-                id="scon-counterparty"
-                label={t('form.counterparty')}
-                required
-                value={form.counterpartyId}
-                onChange={e => patch({ counterpartyId: e.target.value })}
-                hint={
-                  !suppliersLoading && (suppliers ?? []).length === 0
-                    ? t('form.noSuppliers')
-                    : undefined
-                }
-              >
-                <option value="">{t('form.counterpartyPlaceholder')}</option>
-                {(suppliers ?? []).map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </Select>
+              <div className="space-y-1.5">
+                {suppliersTruncated && (
+                  <Input
+                    id="scon-counterparty-search"
+                    label={t('form.counterpartySearch')}
+                    value={supplierQuery}
+                    onChange={e => setSupplierQuery(e.target.value)}
+                    placeholder={t('form.counterpartySearchPlaceholder')}
+                  />
+                )}
+                <Select
+                  id="scon-counterparty"
+                  label={t('form.counterparty')}
+                  required
+                  value={form.counterpartyId}
+                  onChange={e => {
+                    const id = e.target.value;
+                    setPickedSupplier(suppliers.find(x => x.id === id) ?? null);
+                    patch({ counterpartyId: id });
+                  }}
+                  hint={
+                    !suppliersLoading && suppliers.length === 0
+                      ? supplierQueryDebounced
+                        ? t('form.noSuppliersFound')
+                        : t('form.noSuppliers')
+                      : undefined
+                  }
+                >
+                  <option value="">{t('form.counterpartyPlaceholder')}</option>
+                  {suppliers.map(x => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
               <Input
                 id="scon-name"
                 label={t('form.name')}
