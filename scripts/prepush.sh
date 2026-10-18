@@ -76,6 +76,8 @@ bg "agent scopes contract" $PY scripts/test-agent-scopes.py
 bg "schema drift self-test" $PY scripts/check-schema-drift.py --self-test
 bg "skill size" $PY scripts/check-skill-size.py
 bg "doc links" $PY scripts/check-doc-links.py
+# Подвійно закодований UTF-8 («0вЂ“23» замість «0–23») — 2026-10-18 жив у DTO й Swagger місяцями.
+bg "mojibake" $PY scripts/check-mojibake.py
 # Що бачить `next build` В ОБРАЗІ: файли, виключені .dockerignore, не мають бути потрібні збиранню
 # (2026-10-16 CI docker-build упав на TS2307, хоча локальні tsc були чисті).
 bg "docker context (web)" $PY scripts/check-docker-context.py
