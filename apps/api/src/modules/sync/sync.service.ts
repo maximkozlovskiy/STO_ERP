@@ -8,6 +8,9 @@ import {
   findMechanicOnLift,
   MECHANIC_REJECT_KEY,
 } from '../calendar/calendar-mechanic';
+import { WorkOrdersService } from '../work-orders/work-orders.service';
+import { movesWorkOrderSlot } from '../work-orders/work-order-slot-move';
+import type { CalendarSlotEdit } from '../calendar/calendar.dto';
 
 // Minimal interface for the dynamic Prisma model operations used in sync
 interface DynamicPrismaModel {
@@ -137,7 +140,10 @@ const PUSH_FIELD_WHITELIST: Record<string, Set<string>> = {
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly workOrders: WorkOrdersService,
+  ) {}
 
   private model(tableName: string): DynamicPrismaModel {
     // First, try the explicit table → singular-camelCase map (covers all PULL_TABLES).
@@ -224,6 +230,7 @@ export class SyncService {
     orgId: string,
     records: SyncRecord[],
     role: string,
+    userId?: string,
   ): Promise<{ accepted: number; conflicts: number }> {
     let accepted = 0;
     let conflicts = 0;
@@ -236,7 +243,7 @@ export class SyncService {
       }
 
       try {
-        await this.applyRecord(orgId, rec, role);
+        await this.applyRecord(orgId, rec, role, userId);
         accepted++;
       } catch (err) {
         conflicts++;
@@ -259,7 +266,12 @@ export class SyncService {
     return { accepted, conflicts };
   }
 
-  private async applyRecord(orgId: string, rec: SyncRecord, role: string): Promise<void> {
+  private async applyRecord(
+    orgId: string,
+    rec: SyncRecord,
+    role: string,
+    userId?: string,
+  ): Promise<void> {
     const model = this.model(rec.table);
     if (!model) throw new Error(`Unknown model for table: ${rec.table}`);
 
@@ -278,7 +290,13 @@ export class SyncService {
         id: true,
         syncVersion: true,
         deletedAt: true,
-        ...(isSlot && { workOrderId: true, liftId: true, employeeId: true }),
+        ...(isSlot && {
+          workOrderId: true,
+          liftId: true,
+          employeeId: true,
+          startAt: true,
+          endAt: true,
+        }),
       },
     });
 
@@ -348,6 +366,13 @@ export class SyncService {
       BigInt((existing as { syncVersion: bigint | number | string }).syncVersion ?? 0)
     ) {
       await this.validateForeignKeys(orgId, rec.table, safePayload);
+      // BR-WO-024: новий час чи підйомник запису наряду змінює наряд — тим самим шляхом, що й
+      // `PATCH /calendar/slots/:id` (перевірки збереження наряду; відмова — конфлікт із причиною).
+      const edit = isSlot ? slotEdit(safePayload) : null;
+      if (edit && movesWorkOrderSlot(slotState(existing), edit)) {
+        await this.workOrders.updateCalendarSlot(orgId, rec.id, edit, userId);
+        return;
+      }
       if (isSlot) await this.assertSlotMechanic(orgId, safePayload, existing);
       const data =
         mileageToWrite !== undefined
@@ -486,6 +511,38 @@ export class SyncService {
       maxSyncVersion,
     };
   }
+}
+
+/** Збережений запис календаря з вибірки `applyRecord` — для порівняння зі зміною (BR-WO-024). */
+function slotState(row: Record<string, unknown>) {
+  const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+  return {
+    workOrderId: str(row.workOrderId),
+    liftId: str(row.liftId),
+    startAt: new Date(row.startAt as Date),
+    endAt: new Date(row.endAt as Date),
+  };
+}
+
+/**
+ * Поля запису календаря з планшета (уже з білого списку) — у формі зміни запису API. Невалідна
+ * дата лишається рядком: її відхиляє перевірка зміни з перекладеною причиною, а не `RangeError`.
+ */
+function slotEdit(payload: Record<string, unknown>): CalendarSlotEdit {
+  const ref = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+  const edit: CalendarSlotEdit = {};
+  if ('liftId' in payload) edit.liftId = ref(payload.liftId);
+  if ('employeeId' in payload) edit.employeeId = ref(payload.employeeId);
+  if ('workOrderId' in payload) edit.workOrderId = ref(payload.workOrderId);
+  for (const key of ['startAt', 'endAt'] as const) {
+    const v = payload[key];
+    if (v == null) continue;
+    const d = new Date(v as string | number | Date);
+    if (!Number.isNaN(d.getTime())) edit[key] = d.toISOString();
+    else edit[key] = typeof v === 'string' ? v : '';
+  }
+  if ('notes' in payload) edit.notes = typeof payload.notes === 'string' ? payload.notes : null;
+  return edit;
 }
 
 function toCamel(snake: string): string {

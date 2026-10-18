@@ -67,6 +67,6 @@ export class SyncController {
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Push local changes to server' })
   push(@OrgContext() orgId: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: PushDto) {
-    return this.service.push(orgId, dto.records, user.role);
+    return this.service.push(orgId, dto.records, user.role, user.id);
   }
 }

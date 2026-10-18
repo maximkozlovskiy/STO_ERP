@@ -6,16 +6,20 @@ import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { CalendarController } from './calendar.controller';
 import { CalendarService } from './calendar.service';
+import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 
 const serviceMock = {
   findSlots: vi.fn(),
   createSlot: vi.fn(),
-  updateSlot: vi.fn(),
   removeSlot: vi.fn(),
   checkConflicts: vi.fn(),
-  syncWorkOrderSlots: vi.fn(),
+};
+// BR-WO-024: зміну запису (і старий by-work-order) проводить наряд.
+const woServiceMock = {
+  updateCalendarSlot: vi.fn(),
+  moveCalendarByDates: vi.fn(),
 };
 
 let jwtAllow = true;
@@ -42,7 +46,10 @@ describe('Calendar — HTTP Contract', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [CalendarController],
-      providers: [{ provide: CalendarService, useValue: serviceMock }],
+      providers: [
+        { provide: CalendarService, useValue: serviceMock },
+        { provide: WorkOrdersService, useValue: woServiceMock },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue(mockJwtGuard)
@@ -309,11 +316,13 @@ describe('Calendar — HTTP Contract', () => {
         payload: { notes: 'x' },
       });
       expect(res.statusCode).toBe(400);
-      expect(serviceMock.updateSlot).not.toHaveBeenCalled();
+      expect(woServiceMock.updateCalendarSlot).not.toHaveBeenCalled();
     });
 
     it('повертає 404 коли слот належить іншому orgId (сервіс кидає NotFound)', async () => {
-      serviceMock.updateSlot.mockRejectedValueOnce(new NotFoundException('Слот не знайдено'));
+      woServiceMock.updateCalendarSlot.mockRejectedValueOnce(
+        new NotFoundException('Слот не знайдено'),
+      );
       const res = await (app as NestFastifyApplication).inject({
         method: 'PATCH',
         url: `/calendar/slots/${SLOT_ID}`,
@@ -323,7 +332,7 @@ describe('Calendar — HTTP Contract', () => {
     });
 
     it('повертає 200 + оновлений слот при валідному PATCH', async () => {
-      serviceMock.updateSlot.mockResolvedValueOnce({
+      woServiceMock.updateCalendarSlot.mockResolvedValueOnce({
         id: SLOT_ID,
         liftId: LIFT_ID,
         employeeId: null,
@@ -341,16 +350,18 @@ describe('Calendar — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(200);
       expect(res.json()).toMatchObject({ id: SLOT_ID });
-      expect(serviceMock.updateSlot).toHaveBeenCalledWith(
+      // guards: BR-WO-024 — зміна запису йде через наряд, з користувачем для журналу наряду.
+      expect(woServiceMock.updateCalendarSlot).toHaveBeenCalledWith(
         'org-1',
         SLOT_ID,
         expect.objectContaining({ startAt: '2026-05-22T09:00:00.000Z' }),
+        'emp-1',
       );
     });
 
     // guards: BR-CAL-012
     it('employeeId: null («— без механіка —» у формі) проходить валідацію і доходить до сервісу', async () => {
-      serviceMock.updateSlot.mockResolvedValueOnce({
+      woServiceMock.updateCalendarSlot.mockResolvedValueOnce({
         id: SLOT_ID,
         liftId: LIFT_ID,
         employeeId: null,
@@ -365,7 +376,7 @@ describe('Calendar — HTTP Contract', () => {
         payload: { liftId: LIFT_ID, employeeId: null },
       });
       expect(res.statusCode).toBe(200);
-      const dto = serviceMock.updateSlot.mock.calls[0][2];
+      const dto = woServiceMock.updateCalendarSlot.mock.calls[0][2];
       expect(dto).toHaveProperty('employeeId', null);
       expect(dto.liftId).toBe(LIFT_ID);
     });
@@ -463,10 +474,9 @@ describe('Calendar — HTTP Contract', () => {
     });
   });
 
-  // Bug #443: contract spec для PATCH /calendar/slots/by-work-order/:workOrderId
-  // — endpoint доданий разом із syncCalendarSlotWithPlannedHours feature
-  // (commit 307d1e39), але контракт-тест відсутній → регресія UUID-validation,
-  // DTO whitelist, або service-binding пройде CI зеленим.
+  // Bug #443: contract spec для PATCH /calendar/slots/by-work-order/:workOrderId — регресія
+  // UUID-validation, DTO whitelist чи service-binding інакше пройшла б CI зеленим. З BR-WO-024
+  // ендпоінт веде в дати наряду (`WorkOrdersService.moveCalendarByDates`).
   describe('PATCH /calendar/slots/by-work-order/:workOrderId', () => {
     it('повертає 400 коли :workOrderId не UUID', async () => {
       const res = await (app as NestFastifyApplication).inject({
@@ -478,7 +488,7 @@ describe('Calendar — HTTP Contract', () => {
         },
       });
       expect(res.statusCode).toBe(400);
-      expect(serviceMock.syncWorkOrderSlots).not.toHaveBeenCalled();
+      expect(woServiceMock.moveCalendarByDates).not.toHaveBeenCalled();
     });
 
     it('повертає 400 коли startAt/endAt відсутні (IsISO8601)', async () => {
@@ -488,7 +498,7 @@ describe('Calendar — HTTP Contract', () => {
         payload: {},
       });
       expect(res.statusCode).toBe(400);
-      expect(serviceMock.syncWorkOrderSlots).not.toHaveBeenCalled();
+      expect(woServiceMock.moveCalendarByDates).not.toHaveBeenCalled();
     });
 
     it('повертає 400 коли startAt не ISO-8601', async () => {
@@ -501,11 +511,11 @@ describe('Calendar — HTTP Contract', () => {
         },
       });
       expect(res.statusCode).toBe(400);
-      expect(serviceMock.syncWorkOrderSlots).not.toHaveBeenCalled();
+      expect(woServiceMock.moveCalendarByDates).not.toHaveBeenCalled();
     });
 
     it('повертає 404 коли наряд не знайдено / належить іншій org', async () => {
-      serviceMock.syncWorkOrderSlots.mockRejectedValueOnce(
+      woServiceMock.moveCalendarByDates.mockRejectedValueOnce(
         new NotFoundException('Наряд не знайдено'),
       );
       const res = await (app as NestFastifyApplication).inject({
@@ -520,7 +530,7 @@ describe('Calendar — HTTP Contract', () => {
     });
 
     it('повертає 400 коли endAt <= startAt (сервіс)', async () => {
-      serviceMock.syncWorkOrderSlots.mockRejectedValueOnce(
+      woServiceMock.moveCalendarByDates.mockRejectedValueOnce(
         new BadRequestException('Час завершення має бути після початку'),
       );
       const res = await (app as NestFastifyApplication).inject({
@@ -535,7 +545,7 @@ describe('Calendar — HTTP Contract', () => {
     });
 
     it('повертає 200 + { updated } коли успішно', async () => {
-      serviceMock.syncWorkOrderSlots.mockResolvedValueOnce({ updated: 1 });
+      woServiceMock.moveCalendarByDates.mockResolvedValueOnce({ updated: 1 });
       const res = await (app as NestFastifyApplication).inject({
         method: 'PATCH',
         url: `/calendar/slots/by-work-order/${WO_ID}`,
@@ -546,18 +556,22 @@ describe('Calendar — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(200);
       expect(res.json()).toMatchObject({ updated: 1 });
-      expect(serviceMock.syncWorkOrderSlots).toHaveBeenCalledWith(
+      // guards: BR-WO-024 — нові межі йдуть у дати наряду, з користувачем для журналу наряду.
+      expect(woServiceMock.moveCalendarByDates).toHaveBeenCalledWith(
         'org-1',
         WO_ID,
         expect.objectContaining({
           startAt: '2026-05-22T10:00:00.000Z',
           endAt: '2026-05-22T11:00:00.000Z',
         }),
+        'emp-1',
       );
     });
 
-    it('повертає 200 + { updated: 0 } коли у наряду немає слотів (silent no-op)', async () => {
-      serviceMock.syncWorkOrderSlots.mockResolvedValueOnce({ updated: 0 });
+    it('повертає 400 причину відмови наряду (BR-WO-019/020) як є', async () => {
+      woServiceMock.moveCalendarByDates.mockRejectedValueOnce(
+        new BadRequestException('Підйомник вже зайнятий на цей час'),
+      );
       const res = await (app as NestFastifyApplication).inject({
         method: 'PATCH',
         url: `/calendar/slots/by-work-order/${WO_ID}`,
@@ -566,15 +580,15 @@ describe('Calendar — HTTP Contract', () => {
           endAt: '2026-05-22T11:00:00.000Z',
         },
       });
-      expect(res.statusCode).toBe(200);
-      expect(res.json()).toMatchObject({ updated: 0 });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({ message: 'Підйомник вже зайнятий на цей час' });
     });
 
     it('MECHANIC не може робити sync (RolesGuard блокує)', async () => {
       // RolesGuard mock у тестах повертає true завжди — це лімітація mock-у.
       // У продакшні @Roles('OWNER','ADMIN','RECEPTIONIST') виключає MECHANIC.
       // Це тест-стуб документує очікувану поведінку.
-      serviceMock.syncWorkOrderSlots.mockResolvedValueOnce({ updated: 1 });
+      woServiceMock.moveCalendarByDates.mockResolvedValueOnce({ updated: 1 });
       jwtRole = 'MECHANIC';
       const res = await (app as NestFastifyApplication).inject({
         method: 'PATCH',

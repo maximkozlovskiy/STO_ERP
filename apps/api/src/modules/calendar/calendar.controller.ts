@@ -20,6 +20,7 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { CalendarService } from './calendar.service';
+import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { CALENDAR_WRITE_ROLES } from './calendar-mechanic';
 import {
   CreateCalendarSlotDto,
@@ -36,7 +37,11 @@ import {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class CalendarController {
-  constructor(private readonly service: CalendarService) {}
+  constructor(
+    private readonly service: CalendarService,
+    // BR-WO-024: зміна часу чи підйомника запису наряду проходить через наряд.
+    private readonly workOrders: WorkOrdersService,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
@@ -80,25 +85,38 @@ export class CalendarController {
 
   @Patch('by-work-order/:workOrderId')
   @Roles(...CALENDAR_WRITE_ROLES)
-  @ApiOperation({ summary: 'Синхронізувати всі слоти наряду з новими датами' })
+  @ApiOperation({
+    summary: 'Перенести запис наряду на нові дати — через дати наряду',
+    description:
+      'startAt/endAt стають плановими початком і завершенням наряду (як PATCH /work-orders/:id, ' +
+      'BR-WO-019, BR-WO-020); відмова — 400 без змін (BR-WO-024). Web не викликає',
+  })
   @ApiResponse({ status: 200, type: SyncWorkOrderSlotsResponseDto })
   syncWorkOrderSlots(
     @OrgContext() orgId: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('workOrderId', ParseUUIDPipe) workOrderId: string,
     @Body() dto: SyncWorkOrderSlotsDto,
   ): Promise<SyncWorkOrderSlotsResponseDto> {
-    return this.service.syncWorkOrderSlots(orgId, workOrderId, dto);
+    return this.workOrders.moveCalendarByDates(orgId, workOrderId, dto, user.id);
   }
 
   @Patch(':id')
   @Roles(...CALENDAR_WRITE_ROLES)
-  @ApiOperation({ summary: 'Оновити слот (час, підйомник, наряд)' })
+  @ApiOperation({
+    summary: 'Оновити слот (час, підйомник, наряд)',
+    description:
+      'Час чи підйомник запису наряду змінюють наряд: межі ланцюжка запису стають плановими ' +
+      'датами наряду, підйомник — підйомником наряду, перевірки як у PATCH /work-orders/:id; ' +
+      'відмова — 400 без змін (BR-WO-024)',
+  })
   updateSlot(
     @OrgContext() orgId: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCalendarSlotDto,
   ) {
-    return this.service.updateSlot(orgId, id, dto);
+    return this.workOrders.updateCalendarSlot(orgId, id, dto, user.id);
   }
 
   @Delete(':id')

@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
-import { CalendarController } from './calendar.controller';
 import { CalendarService } from './calendar.service';
 
+/**
+ * Сервіс календаря без HTTP: його імпортують наряди (BR-WO-019/020) і онлайн-запис. Контролер —
+ * у `CalendarApiModule`, бо зміну запису наряду проводить `WorkOrdersService` (BR-WO-024), а
+ * наряди самі імпортують цей модуль.
+ */
 @Module({
-  controllers: [CalendarController],
   providers: [CalendarService],
   exports: [CalendarService],
 })

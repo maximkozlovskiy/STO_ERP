@@ -3002,7 +3002,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Синхронізувати всі слоти наряду з новими датами */
+        /**
+         * Перенести запис наряду на нові дати — через дати наряду
+         * @description startAt/endAt стають плановими початком і завершенням наряду (як PATCH /work-orders/:id, BR-WO-019, BR-WO-020); відмова — 400 без змін (BR-WO-024). Web не викликає
+         */
         patch: operations["CalendarController_syncWorkOrderSlots_v1"];
         trace?: never;
     };
@@ -3020,7 +3023,10 @@ export interface paths {
         delete: operations["CalendarController_removeSlot_v1"];
         options?: never;
         head?: never;
-        /** Оновити слот (час, підйомник, наряд) */
+        /**
+         * Оновити слот (час, підйомник, наряд)
+         * @description Час чи підйомник запису наряду змінюють наряд: межі ланцюжка запису стають плановими датами наряду, підйомник — підйомником наряду, перевірки як у PATCH /work-orders/:id; відмова — 400 без змін (BR-WO-024)
+         */
         patch: operations["CalendarController_updateSlot_v1"];
         trace?: never;
     };

@@ -46,7 +46,7 @@ import { XlsxModule } from './modules/xlsx/xlsx.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { SettlementsModule } from './modules/settlements/settlements.module';
 import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
-import { CalendarModule } from './modules/calendar/calendar.module';
+import { CalendarApiModule } from './modules/calendar/calendar-api.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { PurchaseListsModule } from './modules/purchase-lists/purchase-lists.module';
 import { SupplierApiModule } from './modules/supplier-api/supplier-api.module';
@@ -209,7 +209,7 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
     InventoryModule,
     SettlementsModule,
     WorkOrdersModule,
-    CalendarModule,
+    CalendarApiModule,
     PurchaseOrdersModule,
     PurchaseListsModule,
     SupplierApiModule,

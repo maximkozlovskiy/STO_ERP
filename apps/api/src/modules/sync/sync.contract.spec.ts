@@ -5,6 +5,7 @@ import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { SyncController } from './sync.controller';
 import { SyncService } from './sync.service';
+import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -70,7 +71,11 @@ describe('Sync — HTTP Contract', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [SyncController],
-      providers: [SyncService, { provide: PrismaService, useValue: prismaMock }],
+      providers: [
+        SyncService,
+        { provide: PrismaService, useValue: prismaMock },
+        { provide: WorkOrdersService, useValue: { updateCalendarSlot: vi.fn() } },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue(mockJwtGuard)

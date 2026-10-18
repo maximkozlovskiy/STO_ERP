@@ -120,6 +120,12 @@ export class UpdateCalendarSlotDto {
   dropMechanicNotOnLift?: boolean;
 }
 
+/**
+ * Зміна запису на рівні сервісу: тіло `PATCH /calendar/slots/:id` або запис синхронізації з
+ * планшета, де `notes: null` стирає примітку (BR-WO-024).
+ */
+export type CalendarSlotEdit = Omit<UpdateCalendarSlotDto, 'notes'> & { notes?: string | null };
+
 export class CalendarSlotResponseDto {
   @ApiProperty() id!: string;
   @ApiPropertyOptional() liftId?: string | null;

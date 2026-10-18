@@ -68,7 +68,23 @@ import {
   RescheduleWorkOrderDto,
   WorkOrderRescheduleResponseDto,
 } from './work-orders.dto';
-import type { MechanicRejectReason } from '../calendar/calendar-mechanic';
+import {
+  findMechanicOnLift,
+  MECHANIC_REJECT_KEY,
+  type MechanicRejectReason,
+} from '../calendar/calendar-mechanic';
+import type {
+  CalendarSlotEdit,
+  CalendarSlotResponseDto,
+  SyncWorkOrderSlotsDto,
+  SyncWorkOrderSlotsResponseDto,
+} from '../calendar/calendar.dto';
+import {
+  chainBounds,
+  movesWorkOrderSlot,
+  overflowEnd,
+  type SlotChange,
+} from './work-order-slot-move';
 import {
   mapWorkOrderToDto,
   mapWorkOrderLineToDto,
@@ -598,14 +614,175 @@ export class WorkOrdersService {
   }
 
   /**
+   * BR-WO-024: зміна запису календаря — `PATCH /calendar/slots/:id` (форма запису, зміна меж у
+   * «Дні») і синхронізація з планшета. Час чи підйомник запису, що належить наряду, змінюють
+   * наряд (`moveWorkOrderSlot`); зміна лише примітки чи механіка, запис без наряду, перев'язка до
+   * іншого наряду — як раніше, самим записом (`CalendarService.updateSlot`).
+   *
+   * Відповідь — запис після зміни; коли зміну провів наряд — якір його запису (продовження
+   * перебудовуються з новими id).
+   */
+  async updateCalendarSlot(
+    orgId: string,
+    id: string,
+    dto: CalendarSlotEdit,
+    userId?: string,
+  ): Promise<CalendarSlotResponseDto> {
+    const slot = await this.prisma.calendarSlot.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: {
+        id: true,
+        workOrderId: true,
+        parentSlotId: true,
+        startAt: true,
+        endAt: true,
+        liftId: true,
+        employeeId: true,
+      },
+    });
+    const workOrderId = slot?.workOrderId;
+    if (!slot || !workOrderId || !movesWorkOrderSlot(slot, dto))
+      return this.calendar.updateSlot(orgId, id, dto);
+
+    const mechanicDroppedReason = await this.moveWorkOrderSlot(
+      orgId,
+      { ...slot, workOrderId },
+      dto,
+      userId,
+    );
+    const anchor = await this.calendar.findWorkOrderAnchor(orgId, workOrderId);
+    if (!anchor)
+      throw new NotFoundException(translateError('err.calendar.slotNotFound', getLocale()));
+    return mechanicDroppedReason
+      ? { ...anchor, mechanicDropped: true, mechanicDroppedReason }
+      : anchor;
+  }
+
+  /**
+   * BR-WO-024: запис наряду отримав новий час чи підйомник. Нові межі ланцюжка запису (якір і
+   * продовження) стають плановими початком і завершенням наряду, підйомник запису — підйомником
+   * наряду; далі — той самий шлях, що й `PATCH /work-orders/:id` (`applyUpdate`): BR-WO-019,
+   * BR-WO-020 і BR-CAL-012. Механік, обраний явно (форма, планшет), перевіряється тут і відповідає
+   * 400, як форма запису; `dropMechanicNotOnLift` знімає свого механіка (BR-CAL-012). Будь-яка
+   * відмова — до запису чи в транзакції наряду: ні наряд, ні записи не змінюються.
+   *
+   * Повертає причину, з якої механіка знято, або `null`.
+   */
+  private async moveWorkOrderSlot(
+    orgId: string,
+    slot: {
+      id: string;
+      workOrderId: string;
+      parentSlotId: string | null;
+      startAt: Date;
+      endAt: Date;
+      liftId: string | null;
+      employeeId: string | null;
+    },
+    change: SlotChange & {
+      employeeId?: string | null | undefined;
+      notes?: string | null | undefined;
+      dropMechanicNotOnLift?: boolean | undefined;
+    },
+    userId?: string,
+  ): Promise<MechanicRejectReason | null> {
+    const { workOrderId } = slot;
+    const anchorId = slot.parentSlotId ?? slot.id;
+    const [wo, chain] = await Promise.all([
+      this.prisma.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        select: { branchId: true },
+      }),
+      this.prisma.calendarSlot.findMany({
+        where: {
+          orgId,
+          workOrderId,
+          deletedAt: null,
+          OR: [{ id: anchorId }, { parentSlotId: anchorId }],
+        },
+        select: { id: true, startAt: true, endAt: true },
+        take: 500,
+      }),
+    ]);
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
+
+    const startAt = change.startAt != null ? new Date(change.startAt) : slot.startAt;
+    const rawEnd = change.endAt != null ? new Date(change.endAt) : slot.endAt;
+    if (Number.isNaN(startAt.getTime()) || Number.isNaN(rawEnd.getTime()))
+      throw new BadRequestException(translateError('err.calendar.invalidDateFormat', getLocale()));
+    if (rawEnd <= startAt)
+      throw new BadRequestException(translateError('err.calendar.endBeforeStart', getLocale()));
+    const hours = await this.calendar.resolveWorkHours(orgId, wo.branchId);
+    const bounds = chainBounds(chain, slot.id, {
+      startAt,
+      endAt: overflowEnd(startAt, rawEnd, hours),
+    });
+
+    const liftId = change.liftId !== undefined ? (change.liftId ?? null) : slot.liftId;
+    const employeeId = change.employeeId !== undefined ? change.employeeId : slot.employeeId;
+    const keepsOwnMechanic = employeeId === slot.employeeId;
+    if (
+      employeeId &&
+      (!keepsOwnMechanic || liftId !== slot.liftId) &&
+      !(change.dropMechanicNotOnLift === true && keepsOwnMechanic)
+    ) {
+      const mechanic = await findMechanicOnLift(this.prisma, orgId, employeeId, liftId);
+      if (!mechanic.ok)
+        throw new BadRequestException(
+          translateError(MECHANIC_REJECT_KEY[mechanic.reason], getLocale()),
+        );
+    }
+
+    const { mechanicDroppedReason } = await this.applyUpdate(
+      orgId,
+      workOrderId,
+      { plannedAt: bounds.start.toISOString(), dueDate: bounds.end.toISOString(), liftId },
+      userId,
+      {
+        forceSlot: true,
+        slot: {
+          ...(change.employeeId !== undefined && { employeeId: change.employeeId }),
+          ...(change.notes !== undefined && { notes: change.notes }),
+        },
+      },
+    );
+    return mechanicDroppedReason;
+  }
+
+  /**
+   * BR-WO-024: старий `PATCH /calendar/slots/by-work-order/:id` (web не кличе з BR-WO-020) —
+   * нові межі запису стають плановими датами наряду тим самим шляхом, що й
+   * `PATCH /work-orders/:id`, а не переносять записи окремо від наряду.
+   */
+  async moveCalendarByDates(
+    orgId: string,
+    id: string,
+    dto: SyncWorkOrderSlotsDto,
+    userId?: string,
+  ): Promise<SyncWorkOrderSlotsResponseDto> {
+    await this.applyUpdate(orgId, id, { plannedAt: dto.startAt, dueDate: dto.endAt }, userId, {
+      forceSlot: true,
+    });
+    return { updated: 1 };
+  }
+
+  /**
    * Тіло `update`: ще й причина зняття механіка з запису наряду (BR-CAL-012), коли підйомник
    * змінився, — її показує перетягування в календарі (`reschedule`).
+   *
+   * `opts` — зміна, що прийшла з запису календаря (BR-WO-024): `forceSlot` перебудовує запис
+   * наряду, навіть коли дати й підйомник наряду ті самі (запис міг розійтися з нарядом раніше),
+   * `slot` — механік і примітка для запису наряду з форми чи планшета.
    */
   private async applyUpdate(
     orgId: string,
     id: string,
     dto: UpdateWorkOrderDto,
     userId?: string,
+    opts: {
+      forceSlot?: boolean;
+      slot?: { employeeId?: string | null; notes?: string | null };
+    } = {},
   ): Promise<{
     workOrder: WorkOrderResponseDto;
     mechanicDroppedReason: MechanicRejectReason | null;
@@ -697,7 +874,7 @@ export class WorkOrdersService {
     const { plannedAt, dueDate } = next;
     const slotAction: 'upsert' | 'remove' | null =
       plannedAt && dueDate
-        ? datesChanged || nextLiftId !== wo.liftId
+        ? datesChanged || nextLiftId !== wo.liftId || opts.forceSlot
           ? 'upsert'
           : null
         : wo.plannedAt && wo.dueDate
@@ -753,6 +930,7 @@ export class WorkOrdersService {
                   vehicleId: wo.vehicleId,
                   counterpartyId: wo.counterpartyId,
                   ...(hours && { hours }),
+                  ...opts.slot,
                 }));
               }
               return res;

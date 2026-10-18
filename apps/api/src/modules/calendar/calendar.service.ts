@@ -31,12 +31,11 @@ import {
 } from '../../common/utils/work-hours';
 import {
   CreateCalendarSlotDto,
-  UpdateCalendarSlotDto,
   CalendarSlotResponseDto,
   CreateCalendarSlotResponseDto,
   CheckConflictsDto,
   CheckConflictsResponseDto,
-  SyncWorkOrderSlotsDto,
+  type CalendarSlotEdit,
 } from './calendar.dto';
 import {
   findMechanicOnLift,
@@ -459,10 +458,15 @@ export class CalendarService {
     return { slots: slots.map(s => this.toDto(s)) };
   }
 
+  /**
+   * Зміна запису сама по собі. Зміну часу чи підйомника запису НАРЯДУ проводить наряд
+   * (`WorkOrdersService.updateCalendarSlot`, BR-WO-024) — сюди вона не доходить: і
+   * `PATCH /calendar/slots/:id`, і синхронізація з планшета ідуть через нього.
+   */
   async updateSlot(
     orgId: string,
     id: string,
-    dto: UpdateCalendarSlotDto,
+    dto: CalendarSlotEdit,
   ): Promise<CalendarSlotResponseDto> {
     // MVP: slots that have a continuation (split across days) must be edited individually.
     const hasContinuation = await this.prisma.calendarSlot.findFirst({
@@ -674,107 +678,6 @@ export class CalendarService {
     };
   }
 
-  async syncWorkOrderSlots(
-    orgId: string,
-    workOrderId: string,
-    dto: SyncWorkOrderSlotsDto,
-  ): Promise<{ updated: number }> {
-    const startAt = new Date(dto.startAt);
-    const endAt = new Date(dto.endAt);
-    if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
-      throw new BadRequestException(translateError('err.calendar.invalidDateFormat', getLocale()));
-    }
-    if (endAt <= startAt)
-      throw new BadRequestException(translateError('err.calendar.endBeforeStart', getLocale()));
-
-    // Slots can be split across working-day boundary (parent + continuation children).
-    // Collapsing all of them onto the same {startAt, endAt} corrupts the parent/child interval.
-    // Strategy: update ONLY the parent slot (parentSlotId IS NULL) to the new range, and soft-delete
-    // any continuation children — the user can recreate them via the calendar UI if needed.
-    // This keeps the invariant: each WO has 1 canonical anchor slot after sync.
-    let result: { updated: number };
-    try {
-      result = await this.prisma.$transaction(
-        async tx => {
-          // sto-optimize: tenant guard + parentSlot lookup are independent reads — run in parallel
-          // to save 1 RTT. Both are needed before any mutation: workOrder for 404 guard,
-          // parentSlot for conflict OR clause. Promise.all inside $transaction
-          // executes both queries on the same Prisma connection concurrently.
-          const [workOrder, parentSlot] = await Promise.all([
-            // Tenant-isolation guard: without this check cross-tenant workOrderId silently
-            // returns { updated: 0 } instead of 404 → enumeration probe vector (attacker with
-            // valid JWT from another org can verify existence of WO-IDs).
-            tx.workOrder.findFirst({
-              where: { id: workOrderId, orgId, deletedAt: null },
-              select: { id: true },
-            }),
-            // Need parentSlot's liftId/employeeId for the conflict OR clause.
-            tx.calendarSlot.findFirst({
-              where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
-              select: { id: true, liftId: true, employeeId: true },
-            }),
-          ]);
-          if (!workOrder)
-            throw new NotFoundException(
-              translateError('err.calendar.workOrderNotFound', getLocale()),
-            );
-
-          // Conflict check vs OTHER WO slots on same lift/employee. This alternate mutation
-          // endpoint must replicate the guard from createSlot()/updateSlot() — without it,
-          // moving WO planned dates can silently overlap another WO's slot → broken capacity invariant.
-          //
-          // If no parent slot exists or has no resources, the conflict probe is a no-op.
-          if (parentSlot && (parentSlot.liftId || parentSlot.employeeId)) {
-            const orConflicts: Array<{ liftId?: string; employeeId?: string }> = [];
-            if (parentSlot.liftId) orConflicts.push({ liftId: parentSlot.liftId });
-            if (parentSlot.employeeId) orConflicts.push({ employeeId: parentSlot.employeeId });
-
-            const conflict = await tx.calendarSlot.findFirst({
-              where: busyWhere(orgId, { OR: orConflicts }, [{ startAt, endAt }], { workOrderId }),
-              select: { id: true, liftId: true, employeeId: true },
-            });
-            if (conflict) {
-              if (parentSlot.liftId && conflict.liftId === parentSlot.liftId) {
-                throw new BadRequestException(translateError('err.calendar.liftBusy', getLocale()));
-              }
-              throw new BadRequestException(
-                translateError('err.calendar.employeeBusy', getLocale()),
-              );
-            }
-          }
-
-          // sto-optimize: child soft-delete + parent update оперують над DISJOINT row sets
-          // (parentSlotId IS NOT NULL vs IS NULL) — independent writes. Promise.all дає одну
-          // round-trip замість двох. Race-safe — обидва updateMany scope-овані orgId+workOrderId.
-          const deletedAt = new Date();
-          const [, parentResult] = await Promise.all([
-            tx.calendarSlot.updateMany({
-              where: { orgId, workOrderId, parentSlotId: { not: null }, deletedAt: null },
-              data: { deletedAt },
-            }),
-            tx.calendarSlot.updateMany({
-              where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
-              data: { startAt, endAt },
-            }),
-          ]);
-          return { updated: parentResult.count };
-        },
-        { timeout: TRANSACTION_TIMEOUT_MS },
-      );
-    } catch (err) {
-      // CAL-C1 backstop: UPDATE парент-слота на новий {startAt, endAt} перевіряється EXCLUDE-
-      // констрейнтом так само як INSERT. Concurrent race, що обійшов app-probe вище (findFirst на
-      // stale-snapshot), ловиться DB → 23P01. Конвертуємо у 409 UA замість generic 500 —
-      // симетрично createSlot()/updateSlot() (раніше цей alternate-mutation endpoint пропускав це).
-      throwIfExclusionConflict(
-        err,
-        CALENDAR_SLOT_EXCLUSION,
-        translateError('err.calendar.liftBusy', getLocale()),
-      );
-    }
-    return result;
-  }
-
   /**
    * BR-WO-020: запис календаря наряду з плановими початком і завершенням — у транзакції
    * збереження наряду (`tx`), тож зайнятий підйомник чи механік (400) відкочує й сам наряд.
@@ -794,6 +697,10 @@ export class CalendarService {
    * - `isNew` — наряд створено в цій самій транзакції: власних записів у нього ще немає, тож
    *   їх пошук (завжди порожній) пропускається — на один запит до БД менше на створення.
    *
+   * - `employeeId` / `notes` — зміна запису наряду з форми чи планшета (BR-WO-024): механік і
+   *   примітка для всього ланцюжка замість збережених на якорі. Механіка, обраного явно,
+   *   перевіряє той, хто кличе (форма відповідає 400, а не знімає його).
+   *
    * Повертає причину, з якої механіка запису знято (BR-CAL-012), або `null` — перетягування
    * запису наряду показує за нею «Механіка знято: …» (BR-WO-023).
    */
@@ -810,6 +717,8 @@ export class CalendarService {
       counterpartyId: string | null;
       hours?: WorkHours;
       isNew?: boolean;
+      employeeId?: string | null;
+      notes?: string | null;
     },
   ): Promise<{ mechanicDroppedReason: MechanicRejectReason | null }> {
     const { orgId, workOrderId, liftId } = args;
@@ -839,7 +748,8 @@ export class CalendarService {
         });
     const anchor = own.find(s => s.parentSlotId === null) ?? null;
 
-    let employeeId = anchor?.employeeId ?? null;
+    let employeeId = args.employeeId !== undefined ? args.employeeId : (anchor?.employeeId ?? null);
+    const notes = args.notes !== undefined ? args.notes : (anchor?.notes ?? null);
     let mechanicDroppedReason: MechanicRejectReason | null = null;
     if (anchor && employeeId && liftId !== anchor.liftId) {
       const mechanic = await findMechanicOnLift(tx, orgId, employeeId, liftId);
@@ -890,13 +800,19 @@ export class CalendarService {
       counterpartyId: args.counterpartyId,
       status: anchor?.status ?? CalendarSlotStatus.BOOKED,
       type: anchor?.type ?? CalendarSlotType.WORK,
-      notes: anchor?.notes ?? null,
+      notes,
     };
     let anchorId: string;
     if (anchor) {
       await tx.calendarSlot.update({
         where: { id: anchor.id, orgId },
-        data: { liftId, employeeId, startAt: first.startAt, endAt: first.endAt },
+        data: {
+          liftId,
+          employeeId,
+          startAt: first.startAt,
+          endAt: first.endAt,
+          ...(args.notes !== undefined && { notes }),
+        },
         select: { id: true },
       });
       anchorId = anchor.id;
@@ -935,6 +851,22 @@ export class CalendarService {
       where: { orgId, workOrderId, deletedAt: null },
       data: { deletedAt },
     });
+  }
+
+  /**
+   * Якір запису наряду (BR-WO-024) — відповідь зміни запису, яку провів наряд: продовження сервер
+   * перебудовує (нові id), тож змінений запис міг зникнути, а якір лишається.
+   */
+  async findWorkOrderAnchor(
+    orgId: string,
+    workOrderId: string,
+  ): Promise<CalendarSlotResponseDto | null> {
+    const slot = await this.prisma.calendarSlot.findFirst({
+      where: { orgId, workOrderId, parentSlotId: null, deletedAt: null },
+      orderBy: { startAt: 'asc' },
+      include: SLOT_INCLUDE,
+    });
+    return slot ? this.toDto(slot) : null;
   }
 
   async removeSlot(orgId: string, id: string): Promise<void> {
