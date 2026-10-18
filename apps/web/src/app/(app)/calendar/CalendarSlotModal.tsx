@@ -218,7 +218,11 @@ function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => voi
 interface CalendarSlotModalProps {
   open: boolean;
   onClose: () => void;
-  onSaved: () => void;
+  /**
+   * Запис збережено. `workOrderChanged` — змінено запис наряду: час і підйомник сервер переносить
+   * у наряд (BR-WO-024), тож картка й списки нарядів мають перечитати планові дати.
+   */
+  onSaved: (opts?: { workOrderChanged?: boolean }) => void;
   onDeleted: () => void;
   /**
    * Наряд змінено з його картки, відкритої з форми (статус, план): категорія й колір записів
@@ -742,7 +746,7 @@ export function CalendarSlotModal({
           toast.success(t('slot.toastCreated'));
         }
       }
-      onSaved();
+      onSaved({ workOrderChanged: !!editingSlotId && !!form.workOrderId });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('slot.errSaveFallback');
       setError(msg);

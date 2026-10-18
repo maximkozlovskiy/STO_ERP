@@ -681,6 +681,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         origEndH: kyivHours(slot.endAt),
         pointerStartX: e.clientX,
         liftId: slot.liftId ?? null,
+        workOrderId: slot.workOrderId ?? null,
       });
       setResizePreview({
         id: slotId,
@@ -846,7 +847,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       const res = resizingRef.current;
       const preview = resizePreviewRef.current;
       if (res && preview) {
-        const { slotId, origStartH, origEndH } = res;
+        const { slotId, origStartH, origEndH, workOrderId } = res;
         const { startH, endH } = preview;
         setResizing(null);
         setResizePreview(null);
@@ -861,6 +862,8 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
           return;
         }
         try {
+          // BR-WO-024: нові межі запису наряду сервер робить плановими датами наряду (ті самі
+          // перевірки, що й збереження наряду); відмова — 400, запис повертається на місце.
           await apiFetch(`/calendar/slots/${slotId}`, {
             method: 'PATCH',
             body: JSON.stringify({
@@ -868,7 +871,12 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
               endAt: decimalHoursToISO(dateRef.current, endH),
             }),
           });
-          load();
+          if (workOrderId) {
+            // Картка й списки нарядів — нові планові дати; ланцюжок записів сервер перебудовує,
+            // тож вид перечитується з resync відкритої форми (як після перетягування, Bug #884).
+            void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+            notifyCalendarChanged();
+          } else load();
         } catch (err: unknown) {
           toast.error(err instanceof Error ? err.message : 'Помилка оновлення слоту');
           load();
@@ -906,7 +914,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       window.removeEventListener('pointerup', onUpListener);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [pxToDecimalHours, load, t]);
+  }, [pxToDecimalHours, load, t, queryClient]);
 
   // ── Drag-and-drop ─────────────────────────────────────────────────────────
 
@@ -1180,16 +1188,22 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     });
   }, [calView, load, loadMonth, yearMonth]);
 
-  const handleModalSaved = useCallback(() => {
-    setShowAdd(false);
-    setEditingSlotId(null);
-    setMonthEditSlot(null);
-    setPendingSlot(null);
-    setForm(EMPTY_FORM);
-    setCpDisplay('');
-    // Запис збережено чи видалено з виду «Місяць» — перечитати місяць, а не день (BR-CAL-009).
-    refreshView();
-  }, [refreshView]);
+  const handleModalSaved = useCallback(
+    (opts?: { workOrderChanged?: boolean }) => {
+      // BR-WO-024: збережено запис наряду — нові планові дати й підйомник у картці й списках.
+      if (opts?.workOrderChanged)
+        void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+      setShowAdd(false);
+      setEditingSlotId(null);
+      setMonthEditSlot(null);
+      setPendingSlot(null);
+      setForm(EMPTY_FORM);
+      setCpDisplay('');
+      // Запис збережено чи видалено з виду «Місяць» — перечитати місяць, а не день (BR-CAL-009).
+      refreshView();
+    },
+    [refreshView, queryClient],
+  );
 
   // Наряд змінив свій запис календаря на сервері (BR-WO-020: збереження планових дат чи
   // підйомника з картки наряду поверх календаря) — перечитати поточний вид.

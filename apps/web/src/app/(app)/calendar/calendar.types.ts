@@ -90,6 +90,8 @@ export interface ResizeState {
   origEndH: number;
   pointerStartX: number;
   liftId: string | null;
+  /** Наряд запису: нові межі запису наряду змінюють його дати (BR-WO-024). */
+  workOrderId: string | null;
 }
 
 /** Resize state for pending slot edges */

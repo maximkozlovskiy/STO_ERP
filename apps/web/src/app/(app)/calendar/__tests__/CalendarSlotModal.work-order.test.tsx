@@ -26,6 +26,13 @@ const { apiFetch, created } = vi.hoisted(() => ({
   },
 }));
 vi.mock('@/lib/api-client', () => ({ apiFetch }));
+const toast = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+}));
+vi.mock('@/lib/toast', () => ({ toast }));
 // Картка наряду — заглушка: показує prefill і по кліку «створює» наряд `created.current`.
 vi.mock('next/dynamic', () => ({
   default:
@@ -246,5 +253,67 @@ describe('CalendarSlotModal — попередження про зайнятіс
     const warning = await screen.findByText(/Підйомник зайнятий/, undefined, { timeout: 3_000 });
     expect(warning.textContent).toMatch(/буде відхилено/);
     expect(warning.textContent).not.toMatch(/Можна зберегти/);
+  });
+});
+
+describe('CalendarSlotModal — зміна запису наряду (BR-WO-024)', () => {
+  // Збережений запис: клієнт з авто (без авто кнопка «Оновити» недоступна).
+  const SAVED = { vehicleId: 'veh-1', startAt: '10:00', endAt: '12:00', normoHours: '2' };
+
+  // guards: BR-WO-024
+  it('запис наряду збережено → onSaved з `workOrderChanged` (картка й списки нарядів перечитують дати)', async () => {
+    const onSaved = vi.fn();
+    render(
+      <Harness
+        initial={{ ...SAVED, workOrderId: WO, workOrderDisplay: 'НЗ-1' }}
+        editingSlotId="anchor"
+        onSaved={onSaved}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ workOrderChanged: true }));
+    const patch = calls().find(([u, i]) => u === '/calendar/slots/anchor' && i?.method === 'PATCH');
+    expect(JSON.parse(patch![1]!.body!)).toMatchObject({ workOrderId: WO, liftId: L1 });
+  });
+
+  // guards: BR-WO-024
+  it('сервер відмовив (поза робочими годинами) → причина у формі, форма не закривається', async () => {
+    const onSaved = vi.fn();
+    const free = apiFetch.getMockImplementation()!;
+    apiFetch.mockImplementation((url: string, init?: { method?: string }) =>
+      url === '/calendar/slots/anchor' && init?.method === 'PATCH'
+        ? Promise.reject(new Error('Плановий час — у робочих годинах філії 08:00–18:00'))
+        : free(url, init),
+    );
+    render(
+      <Harness
+        initial={{ ...SAVED, workOrderId: WO, workOrderDisplay: 'НЗ-1' }}
+        editingSlotId="anchor"
+        onSaved={onSaved}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+
+    await waitFor(() =>
+      expect(
+        calls().some(([u, i]) => u === '/calendar/slots/anchor' && i?.method === 'PATCH'),
+      ).toBe(true),
+    );
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'Плановий час — у робочих годинах філії 08:00–18:00',
+      ),
+    );
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-WO-024
+  it('запис без наряду → onSaved без `workOrderChanged`', async () => {
+    const onSaved = vi.fn();
+    render(<Harness initial={SAVED} editingSlotId="slot-1" onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ workOrderChanged: false }));
   });
 });
