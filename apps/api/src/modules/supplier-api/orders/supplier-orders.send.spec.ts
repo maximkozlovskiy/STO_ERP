@@ -66,15 +66,25 @@ describe('BR-SCON-009 «Відправити в API»', () => {
     expect(x.supplierOrders()).toHaveLength(0);
   });
 
-  it('вже відправлене → 400 alreadySent; отримане / скасоване → 400 orderClosed', async () => {
+  // guards: BR-SCON-009 — відправка лише з «Чернетки» чи «Замовлено» (рішення власника 2026-10-18)
+  it('вже відправлене → 400 alreadySent; частково отримане / отримане / скасоване → 400 orderClosed', async () => {
     const x = ordersHarness();
     const poId = await x.draftFromItems();
     x.po(poId).supplierApiStatus = 'SENT';
     await expect(x.service.send(ORG, poId)).rejects.toThrow(
       'Замовлення вже передане постачальнику',
     );
-    x.po(poId).status = 'CANCELLED';
-    await expect(x.service.send(ORG, poId)).rejects.toThrow(BadRequestException);
+    // NOT_SENT — інакше 400 alreadySent замаскував би відсутню перевірку статусу замовлення.
+    x.po(poId).supplierApiStatus = 'NOT_SENT';
+    for (const status of ['PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED']) {
+      x.po(poId).status = status;
+      const sent = x.service.send(ORG, poId);
+      await expect(sent, status).rejects.toThrow(BadRequestException);
+      await expect(sent, status).rejects.toThrow(
+        'Отримане чи скасоване замовлення не відправляється постачальнику',
+      );
+    }
+    expect(x.supplierOrders()).toHaveLength(0);
   });
 
   // guards: BR-SCON-009
@@ -373,6 +383,26 @@ describe('BR-SCON-012 статуси й BR-PO-011: склад і FSM не змі
     so.nextPollAt = new Date(Date.now() - 1000);
     await x.poller.pollDue();
     expect(so).toMatchObject({ status: 'SHIPPED', nextPollAt: null });
+  });
+
+  // guards: BR-SCON-012 — опитування не довше 30 днів від відправки (рішення власника 2026-10-18)
+  it('опитування: нетермінальне замовлення старше 30 днів від відправки більше не опитується', async () => {
+    const fa = fakeAdapter();
+    const x = ordersHarness({ adapter: fa.adapter });
+    const poId = await x.draftFromItems();
+    await x.service.send(ORG, poId);
+    await x.sender.run(x.job(poId), undefined);
+    const so = x.supplierOrders()[0];
+    const DAY = 86_400_000;
+    so.sentAt = new Date(Date.now() - 29 * DAY);
+    so.nextPollAt = new Date(Date.now() - 1000);
+    await x.poller.pollDue();
+    expect(so.status).toBe('READY');
+    expect(so.nextPollAt).toBeInstanceOf(Date);
+    so.sentAt = new Date(Date.now() - 31 * DAY);
+    so.nextPollAt = new Date(Date.now() - 1000);
+    await x.poller.pollDue();
+    expect(so).toMatchObject({ status: 'READY', nextPollAt: null });
   });
 
   // sto-optimize 2026-10-18: замовлення видаленого підключення опитати нічим, і nextPollAt у нього

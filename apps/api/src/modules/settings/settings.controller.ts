@@ -75,8 +75,8 @@ class UpdateTaxRateDto {
 }
 
 /**
- * Ролі, яким `GET /settings/organisation` віддає лише поля картки наряду
- * (`OrganisationCardSettingsDto`), — рішення власника 2026-10-16 (employee.md).
+ * Ролі, яким `GET /settings/organisation` віддає лише поля картки наряду / замовлення постачальнику
+ * (`OrganisationCardSettingsDto`), — рішення власника 2026-10-16 і 2026-10-18 (employee.md).
  */
 const CARD_SETTINGS_ONLY_ROLES: ReadonlySet<string> = new Set([
   'MECHANIC',
@@ -102,7 +102,7 @@ export class SettingsController {
     status: 200,
     type: OrganisationSettingsResponseDto,
     description:
-      'MECHANIC і RECEPTIONIST отримують лише поля картки наряду (OrganisationCardSettingsDto)',
+      'MECHANIC, RECEPTIONIST і STOREKEEPER отримують лише поля картки (OrganisationCardSettingsDto)',
   })
   getOrganisation(
     @OrgContext() orgId: string,
