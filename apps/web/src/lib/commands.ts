@@ -36,6 +36,7 @@ const NAV_COMMANDS: CommandDef[] = [
     label: 'Наряди',
     group: 'navigation',
     href: '/work-orders',
+    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT'],
     keywords: ['наряд', 'ремонт', 'work order'],
   },
   {
@@ -43,6 +44,7 @@ const NAV_COMMANDS: CommandDef[] = [
     label: 'Календар',
     group: 'navigation',
     href: '/calendar',
+    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC'],
     keywords: ['розклад', 'запис', 'слот'],
   },
   {
@@ -50,6 +52,7 @@ const NAV_COMMANDS: CommandDef[] = [
     label: 'Контрагенти',
     group: 'navigation',
     href: '/counterparties',
+    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT'],
     keywords: ['клієнти', 'постачальники', 'crm'],
   },
   {
@@ -64,6 +67,7 @@ const NAV_COMMANDS: CommandDef[] = [
     label: 'Купівля',
     group: 'navigation',
     href: '/purchase-orders',
+    roles: ['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'ACCOUNTANT'],
     keywords: ['закупівля', 'постачальник'],
   },
   {
@@ -71,6 +75,7 @@ const NAV_COMMANDS: CommandDef[] = [
     label: 'Склад',
     group: 'navigation',
     href: '/stock-documents',
+    roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
     keywords: ['прихід', 'списання', 'складський', 'документи складу'],
   },
   {
@@ -78,6 +83,7 @@ const NAV_COMMANDS: CommandDef[] = [
     label: 'Рахунки',
     group: 'navigation',
     href: '/invoices',
+    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
     keywords: ['рахунок', 'виставити'],
   },
   // Сторінок оплат немає: готівкові оплати клієнтів і постачальникам проводять у касі, тож
@@ -95,6 +101,7 @@ const NAV_COMMANDS: CommandDef[] = [
     label: 'Розрахунки',
     group: 'navigation',
     href: '/settlements',
+    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
     keywords: ['оплата', 'баланс'],
   },
   {
@@ -155,6 +162,8 @@ const ACTION_COMMANDS: CommandDef[] = [
     label: 'Новий наряд',
     group: 'action',
     href: '/work-orders?action=new',
+    // Створюють власник, адміністратор і приймальня (backend @Roles) — решті сторінка 403.
+    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
     keywords: ['створити наряд', 'новий ремонт'],
   },
   {
@@ -162,6 +171,7 @@ const ACTION_COMMANDS: CommandDef[] = [
     label: 'Новий контрагент',
     group: 'action',
     href: '/counterparties?action=new',
+    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
     keywords: ['новий клієнт', 'постачальник'],
   },
 ];

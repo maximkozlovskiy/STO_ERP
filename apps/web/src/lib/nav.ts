@@ -86,6 +86,9 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     label: 'Календар',
     icon: CalendarDays,
     section: 'top',
+    // Ролі пунктів без власного `roles` — як у guard-і сторінки (`useRequireAuth`), інакше
+    // пункт веде на 403 (Bug #899). Звіряє `lib/__tests__/nav-page-roles.test.ts`.
+    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC'],
   },
 
   // ─── Документи ────────────────────────────────────────────────────
@@ -95,6 +98,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     label: 'Наряди',
     icon: Wrench,
     section: 'documents',
+    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT'],
   },
   {
     href: '/purchase-orders',
@@ -102,6 +106,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     label: 'Купівля',
     icon: ShoppingCart,
     section: 'documents',
+    roles: ['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'ACCOUNTANT'],
   },
   {
     href: '/stock-documents',
@@ -120,6 +125,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     label: 'Рахунки клієнтам',
     icon: Receipt,
     section: 'settlements',
+    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
   },
   {
     href: '/bank-statements',
@@ -174,6 +180,8 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     label: 'Контрагенти',
     icon: Users,
     section: 'refs',
+    // Комірник читає постачальників лише для вибору (BR-CP-014), сторінки контрагентів не має.
+    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT'],
   },
   {
     href: '/catalog',
