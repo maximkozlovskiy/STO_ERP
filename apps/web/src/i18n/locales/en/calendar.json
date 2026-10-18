@@ -227,6 +227,8 @@
     "slotDeleted": "Slot deleted",
     "mechanicDropped": "Mechanic removed: {{name}} is not assigned to lift \"{{lift}}\"",
     "mechanicDroppedNoName": "Mechanic removed: not assigned to lift \"{{lift}}\"",
+    "mechanicDroppedNoLift": "Mechanic removed: {{name}} — the record has no lift",
+    "mechanicDroppedNoLiftNoName": "Mechanic removed: the record has no lift",
     "mechanicDroppedOnLeave": "Mechanic removed: {{name}} is on leave",
     "mechanicDroppedOnLeaveNoName": "Mechanic removed: the mechanic is on leave",
     "mechanicDroppedUnavailable": "Mechanic removed: {{name}} is unavailable (dismissed or not a mechanic)",

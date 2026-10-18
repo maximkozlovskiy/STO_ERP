@@ -227,6 +227,8 @@
     "slotDeleted": "Слот видалено",
     "mechanicDropped": "Механіка знято: {{name}} не закріплений за підйомником «{{lift}}»",
     "mechanicDroppedNoName": "Механіка знято: не закріплений за підйомником «{{lift}}»",
+    "mechanicDroppedNoLift": "Механіка знято: {{name}} — запис без підйомника",
+    "mechanicDroppedNoLiftNoName": "Механіка знято: запис без підйомника",
     "mechanicDroppedOnLeave": "Механіка знято: {{name}} у відпустці",
     "mechanicDroppedOnLeaveNoName": "Механіка знято: механік у відпустці",
     "mechanicDroppedUnavailable": "Механіка знято: {{name}} недоступний (звільнений чи не механік)",

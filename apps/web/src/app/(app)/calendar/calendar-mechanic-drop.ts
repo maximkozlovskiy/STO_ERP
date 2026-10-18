@@ -33,6 +33,10 @@ export function mechanicDroppedText(
     return name
       ? t('slot.mechanicDroppedUnavailable', { name })
       : t('slot.mechanicDroppedUnavailableNoName');
+  // Запис без підйомника (перев'язка на наряд без підйомника, Bug #908): назви немає — «запис
+  // без підйомника», а не порожні лапки «».
+  if (!lift)
+    return name ? t('slot.mechanicDroppedNoLift', { name }) : t('slot.mechanicDroppedNoLiftNoName');
   return name
     ? t('slot.mechanicDropped', { name, lift })
     : t('slot.mechanicDroppedNoName', { lift });

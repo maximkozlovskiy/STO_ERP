@@ -434,6 +434,20 @@ describe("CalendarSlotModal — перев'язка запису знімає м
   });
 
   // guards: BR-WO-028, BR-CAL-012
+  it('наряд без підйомника → «запис без підйомника», а не порожні лапки (Bug #908)', async () => {
+    toast.warning.mockClear();
+    const onSaved = vi.fn();
+    patchReturns({ liftId: null, mechanicDropped: true, mechanicDroppedReason: 'NOT_ON_LIFT' });
+    renderRelink(onSaved);
+    fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ workOrderChanged: true }));
+    expect(toast.warning).toHaveBeenCalledWith(
+      'Механіка знято: Коваль Петро — запис без підйомника',
+    );
+  });
+
+  // guards: BR-WO-028, BR-CAL-012
   it('контроль: механіка не знято → без попередження', async () => {
     toast.warning.mockClear();
     const onSaved = vi.fn();
