@@ -52,6 +52,11 @@ export class SupplierOrderPoller {
               deletedAt: null,
               status: { in: [...POLLABLE_SUPPLIER_ORDER_STATUSES] },
               nextPollAt: { lte: new Date() },
+              // Підключення видалене — опитати нічим (pollOne виходить, nextPollAt не рухається):
+              // такі замовлення лишались «на черзі» назавжди, кожні 5 хв читались разом із
+              // підсумком замовлення (і переписували його syncVersion), а набравши DUE_BATCH —
+              // витісняли живі замовлення з вибірки.
+              connection: { deletedAt: null },
             },
             include: ORDER_WITH_LINES,
             orderBy: { nextPollAt: 'asc' },

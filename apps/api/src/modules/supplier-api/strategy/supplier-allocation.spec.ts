@@ -40,7 +40,7 @@ function setup(opts: OffersHarnessOptions & { itemIds?: string[] } = {}) {
   const service = new SupplierAllocationService(
     h.prisma,
     h.settings,
-    new SupplierPriceConverter(h.prisma, new ExchangeRatesService(h.prisma)),
+    new SupplierPriceConverter(h.prisma, new ExchangeRatesService(h.prisma), h.settings),
   );
   let reqSeq = 0;
   const offer = (itemId: string, connectionId: string, over: MemRow = {}) => {

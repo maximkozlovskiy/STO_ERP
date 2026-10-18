@@ -358,14 +358,20 @@ export function offersHarness(opts: OffersHarnessOptions = {}) {
     ),
   };
   const queueAdd = opts.queueAdd ?? vi.fn(() => Promise.resolve({}));
-  const converter = new SupplierPriceConverter(prisma, new ExchangeRatesService(prisma));
+  // addBulk як у BullMQ: пачка задач одним викликом; кожна задача — через `queueAdd`, щоб тести
+  // на склад задач (jobId, спроби) і на недоступний Redis лишались спільними для add і addBulk.
+  const addOne = queueAdd as unknown as (name: string, data: unknown, opts: unknown) => unknown;
+  const queueAddBulk = vi.fn((jobs: Array<{ name: string; data: unknown; opts: unknown }>) =>
+    Promise.all(jobs.map(j => addOne(j.name, j.data, j.opts))),
+  );
+  const converter = new SupplierPriceConverter(prisma, new ExchangeRatesService(prisma), settings);
   const service = new SupplierOffersService(
     prisma,
     settings,
     converter,
     goods as unknown as GoodsService,
     brands as unknown as BrandsService,
-    { add: queueAdd } as unknown as Queue,
+    { add: queueAdd, addBulk: queueAddBulk } as unknown as Queue,
   );
   const registry = new SupplierAdapterRegistry(opts.adapters ?? []);
   const worker = new SupplierOfferSearchWorker(
@@ -376,7 +382,7 @@ export function offersHarness(opts: OffersHarnessOptions = {}) {
     new IntegrationLogService(prisma),
     service,
   );
-  return { t, prisma, service, worker, queueAdd, goods, matcher, settings };
+  return { t, prisma, service, worker, queueAdd, queueAddBulk, goods, matcher, settings };
 }
 
 export const matched = (goodId: string): GoodMatchResult => ({

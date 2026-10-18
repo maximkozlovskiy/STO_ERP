@@ -115,6 +115,15 @@ describe('Пошук пропозицій — batch і черга (BR-SOFR-002)'
     );
   });
 
+  // sto-optimize 2026-10-18: по одній `add` на пару 100 позицій × 5 підключень тримали відповідь
+  // ~300 мс лише на обмінах з Redis; пачка — один `addBulk`.
+  it('задачі всіх пар batch-у — одним addBulk, не окремим add на кожну', async () => {
+    const h = offersHarness();
+    await h.service.search(ORG, { itemIds: [ITEM_MANUAL, ITEM_WO] });
+    expect(h.queueAddBulk).toHaveBeenCalledTimes(1);
+    expect(h.queueAddBulk.mock.calls[0][0]).toHaveLength(4);
+  });
+
   // guards: BR-SOFR-002
   it('свіжий виконаний запит того ж підключення, артикулу й бренду — з кешу без задачі; refresh — заново', async () => {
     const h = offersHarness();

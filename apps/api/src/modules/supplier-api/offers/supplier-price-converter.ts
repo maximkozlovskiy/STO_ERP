@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { convertToBase } from '../../../common/utils/currency';
 import { ExchangeRatesService } from '../../exchange-rates/exchange-rates.service';
+import { SettingsService } from '../../settings/settings.service';
 
 /**
  * Ціна пропозиції → гривня (базова валюта організації) за курсом на момент вибору / підбору
@@ -9,13 +10,16 @@ import { ExchangeRatesService } from '../../exchange-rates/exchange-rates.servic
  * `ExchangeRatesService.getRateAsOf` (найближчий не пізніше моменту), без підстановки 1:
  * курсу немає — null, і пропозицію не обирають.
  *
- * Один конвертер на запит: курс кожної валюти читається один раз (`cache`).
+ * Один конвертер на запит: курс кожної валюти читається один раз (`cache`). Код базової валюти —
+ * з налаштувань організації (кеш Redis), а не `getBaseCurrency` (два SQL на кожне опитування
+ * batch-у, хоч id валюти тут не потрібен).
  */
 @Injectable()
 export class SupplierPriceConverter {
   constructor(
     private readonly prisma: PrismaService,
     private readonly exchangeRates: ExchangeRatesService,
+    private readonly settings: SettingsService,
   ) {}
 
   forOrg(
@@ -25,7 +29,9 @@ export class SupplierPriceConverter {
     let baseCode: Promise<string> | null = null;
     const rates = new Map<string, Promise<{ rate: number; coefficient: number } | null>>();
     const base = () =>
-      (baseCode ??= this.exchangeRates.getBaseCurrency(orgId).then(b => b.code.toUpperCase()));
+      (baseCode ??= this.settings
+        .getOrganisationSettings(orgId)
+        .then(s => (s.currency || 'UAH').toUpperCase()));
     const rateOf = (code: string) => {
       let p = rates.get(code);
       if (!p) {

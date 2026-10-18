@@ -375,6 +375,24 @@ describe('BR-SCON-012 статуси й BR-PO-011: склад і FSM не змі
     expect(so).toMatchObject({ status: 'SHIPPED', nextPollAt: null });
   });
 
+  // sto-optimize 2026-10-18: замовлення видаленого підключення опитати нічим, і nextPollAt у нього
+  // не рухався — воно лишалось «на черзі» назавжди: кожні 5 хв читалось, переписувало підсумок
+  // замовлення (syncVersion) і, набравши DUE_BATCH, витісняло живі замовлення.
+  it('опитування: замовлення видаленого підключення не вибирається — підсумок не переписується', async () => {
+    const fa = fakeAdapter();
+    const x = ordersHarness({ adapter: fa.adapter });
+    const poId = await x.draftFromItems();
+    await x.service.send(ORG, poId);
+    await x.sender.run(x.job(poId), undefined);
+    const so = x.supplierOrders()[0];
+    so.nextPollAt = new Date(Date.now() - 1000);
+    x.t.supplierConnection.rows.find(c => c.id === so.connectionId)!.deletedAt = new Date();
+    const refresh = vi.spyOn(x.service, 'refreshSummary');
+    await x.poller.pollDue();
+    expect(refresh).not.toHaveBeenCalled();
+    expect(fa.calls.status).toBe(0);
+  });
+
   // guards: BR-PO-011
   it('зовнішній статус не змінює залишків і FSM замовлення', async () => {
     const fa = fakeAdapter({ status: { statusRaw: 'Відвантажено', status: 'SHIPPED' } });

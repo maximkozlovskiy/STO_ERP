@@ -74,6 +74,8 @@ type RequestRow = Prisma.SupplierOfferRequestGetPayload<{ include: typeof REQUES
 
 /** Межа пропозицій на один запит у відповіді (постачальник може віддати сотні складів). */
 const OFFERS_PER_REQUEST = 200;
+/** Задач пошуку на один `addBulk` — межа розміру однієї транзакції Redis. */
+const ENQUEUE_CHUNK = 500;
 
 /** Налаштування, від яких залежить показ пропозицій. */
 interface OfferSettings {
@@ -227,10 +229,7 @@ export class SupplierOffersService {
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
 
-    let queueUnavailable = false;
-    for (const requestId of toEnqueue) {
-      if (!(await this.enqueueSearch(orgId, requestId))) queueUnavailable = true;
-    }
+    const queueUnavailable = !(await this.enqueueSearchMany(orgId, toEnqueue));
     if (toEnqueue.length === 0) await this.completeBatchIfDone(orgId, batchId);
     const batch = await this.getBatch(orgId, batchId, opts.role);
     return { ...batch, queueUnavailable, noConnections: connections.length === 0, skippedItemIds };
@@ -238,29 +237,44 @@ export class SupplierOffersService {
 
   /** Постановка пошуку в чергу; false — Redis недоступний (рядок лишається QUEUED для sweep). */
   async enqueueSearch(orgId: string, requestId: string): Promise<boolean> {
-    try {
-      await this.searchQueue.add(
-        'search',
-        { orgId, requestId },
-        {
-          attempts: 10,
-          backoff: { type: 'exponential', delay: 30_000 },
-          jobId: `supplier-search-${requestId}`,
-          removeOnComplete: true,
-          // Сталий jobId: failed-задача з тим самим id блокувала б перепостановку sweep-ом.
-          removeOnFail: true,
-        },
-      );
-      return true;
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      this.logger.warn(`Пошук ${requestId} не поставлено в чергу: ${message}`);
-      await this.prisma.supplierOfferRequest.updateMany({
-        where: { id: requestId, orgId, status: 'QUEUED' },
-        data: { enqueueError: message.slice(0, 300) },
-      });
-      return false;
+    return this.enqueueSearchMany(orgId, [requestId]);
+  }
+
+  /**
+   * Пошуки batch-у — у чергу пачками `addBulk` (один обмін з Redis на пачку): по одній `add`
+   * 100 позицій × 5 підключень тримали відповідь `search` ~300 мс лише на постановці.
+   * false — Redis недоступний: рядки пачки лишаються QUEUED з причиною, їх підхопить sweep.
+   */
+  async enqueueSearchMany(orgId: string, requestIds: string[]): Promise<boolean> {
+    let ok = true;
+    for (let i = 0; i < requestIds.length; i += ENQUEUE_CHUNK) {
+      const chunk = requestIds.slice(i, i + ENQUEUE_CHUNK);
+      try {
+        await this.searchQueue.addBulk(
+          chunk.map(requestId => ({
+            name: 'search',
+            data: { orgId, requestId },
+            opts: {
+              attempts: 10,
+              backoff: { type: 'exponential', delay: 30_000 },
+              jobId: `supplier-search-${requestId}`,
+              removeOnComplete: true,
+              // Сталий jobId: failed-задача з тим самим id блокувала б перепостановку sweep-ом.
+              removeOnFail: true,
+            },
+          })),
+        );
+      } catch (e) {
+        ok = false;
+        const message = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`Пошуки (${chunk.length}) не поставлено в чергу: ${message}`);
+        await this.prisma.supplierOfferRequest.updateMany({
+          where: { id: { in: chunk }, orgId, status: 'QUEUED' },
+          data: { enqueueError: message.slice(0, 300) },
+        });
+      }
     }
+    return ok;
   }
 
   /** Batch завершено, коли всі його запити DONE / FAILED. */

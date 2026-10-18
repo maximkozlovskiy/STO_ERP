@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { MemRow } from '../../cash/cash.spec-fixture';
 import { offerSelectability } from './offer-selectability';
 import {
@@ -111,6 +111,20 @@ describe('Вибір пропозиції (BR-SOFR-006)', () => {
       offerPrice: 2.6,
       offerCurrencyCode: 'EUR',
     });
+  });
+
+  // sto-optimize 2026-10-18: код базової валюти — з налаштувань організації (кеш Redis); раніше
+  // `getBaseCurrency` давав два SQL (налаштування + валюта) на кожне опитування batch-у.
+  it('гривнева пропозиція: базова валюта з налаштувань, без SQL до налаштувань і валют', async () => {
+    const h = setup();
+    withOffer(h, ITEM_MANUAL);
+    const settingsSql = vi.spyOn(h.t.organisationSettings, 'findFirst');
+    const currencySql = vi.spyOn(h.t.currency, 'findFirst');
+    const dto = await h.service.itemOffers(ORG, ITEM_MANUAL, 'OWNER');
+    expect(dto.requests[0].offers[0].priceUah).toBe(134.28);
+    expect(h.settings.getOrganisationSettings).toHaveBeenCalled();
+    expect(settingsSql).not.toHaveBeenCalled();
+    expect(currencySql).not.toHaveBeenCalled();
   });
 
   // guards: BR-SOFR-006
