@@ -361,7 +361,7 @@ export function offersHarness(opts: OffersHarnessOptions = {}) {
   const worker = new SupplierOfferSearchWorker(
     prisma,
     registry,
-    new SupplierCatalogService(prisma),
+    new SupplierCatalogService(prisma, registry, { add: vi.fn() } as unknown as Queue),
     matcher as unknown as GoodMatcherService,
     new IntegrationLogService(prisma),
     service,

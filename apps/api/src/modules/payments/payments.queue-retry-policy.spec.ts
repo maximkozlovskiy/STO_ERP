@@ -325,7 +325,8 @@ describe('Політика повторів черг зовнішніх API (с�
       'nova-poshta-polling': 2,
       'nbu-fetch': 3,
       'bank-statement-polling': 2,
-      'supplier-search': 1,
+      'supplier-search': 2,
+      'supplier-catalog': 2,
     });
     expect(found.registerSites.filter(r => r.name !== null).length).toBeGreaterThanOrEqual(14);
   });

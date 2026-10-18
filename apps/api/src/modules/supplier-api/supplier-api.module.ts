@@ -29,6 +29,8 @@ import { SupplierPriceConverter } from './offers/supplier-price-converter';
 import { SupplierOffersService } from './offers/supplier-offers.service';
 import { SupplierOfferSearchWorker } from './offers/supplier-offer-search.worker';
 import { SupplierAllocationService } from './strategy/supplier-allocation.service';
+import { SupplierCatalogProcessor } from './processors/supplier-catalog.processor';
+import { SupplierApiScheduler } from './supplier-api.scheduler';
 import {
   SupplierItemOffersController,
   SupplierOffersController,
@@ -88,6 +90,8 @@ import {
     SupplierOfferSearchWorker,
     SupplierAllocationService,
     SupplierSearchProcessor,
+    SupplierCatalogProcessor,
+    SupplierApiScheduler,
   ],
   exports: [SupplierAdapterRegistry],
 })

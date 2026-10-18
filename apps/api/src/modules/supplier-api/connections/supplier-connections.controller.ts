@@ -25,6 +25,7 @@ import { Roles } from '../../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../../auth/decorators/org-context.decorator';
 import { SupplierAdapterRegistry } from '../adapters/supplier-adapter-registry';
 import { SupplierConnectionsService } from './supplier-connections.service';
+import { SupplierCatalogService } from '../catalog/supplier-catalog.service';
 import {
   PaginatedSupplierConnectionsDto,
   SupplierConnectionResponseDto,
@@ -58,7 +59,10 @@ export class SupplierProvidersController {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class SupplierConnectionsController {
-  constructor(private readonly service: SupplierConnectionsService) {}
+  constructor(
+    private readonly service: SupplierConnectionsService,
+    private readonly catalog: SupplierCatalogService,
+  ) {}
 
   @Get()
   @Roles(...SCON_ADMIN_ROLES)
@@ -87,6 +91,16 @@ export class SupplierConnectionsController {
   @ApiOkResponse({ type: SupplierQueuedResponseDto })
   verify(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.requestVerify(orgId, id);
+  }
+
+  @Post(':id/catalog-sync')
+  @Roles(...SCON_ADMIN_ROLES)
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Синхронізувати дзеркало каталогу (AVD) — через чергу (BR-SCON-015)' })
+  @ApiOkResponse({ type: SupplierQueuedResponseDto })
+  async catalogSync(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    const { queued } = await this.catalog.requestSync(orgId, id);
+    return { connection: await this.service.findOne(orgId, id), queueUnavailable: !queued };
   }
 
   @Get(':id')
