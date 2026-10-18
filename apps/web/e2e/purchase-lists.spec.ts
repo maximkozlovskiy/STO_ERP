@@ -445,8 +445,8 @@ test.describe('Управління купівлями — від нестачі
     const card = await openWoCard(page, state.woB!.number);
     await card.getByRole('button', { name: 'Чернетка' }).first().click();
     await card.getByRole('button', { name: 'Скасувати' }).first().click();
-    const confirm = page.getByRole('button', { name: 'Так' });
-    if (await confirm.isVisible({ timeout: 2_000 }).catch(() => false)) await confirm.click();
+    // BR-WO-025: скасування в картці — після підтвердження.
+    await page.getByRole('button', { name: 'Так, скасувати' }).click();
     await expect
       .poll(
         async () =>

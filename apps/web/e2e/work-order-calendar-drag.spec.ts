@@ -389,8 +389,8 @@ test.describe('Запис наряду в календарі — BR-WO-023 / BR-
     await expect(card).toBeVisible({ timeout: 30_000 });
     await card.getByRole('button', { name: 'Чернетка' }).first().click();
     await card.getByRole('button', { name: 'Скасувати' }).first().click();
-    const confirm = page.getByRole('button', { name: 'Так' });
-    if (await confirm.isVisible().catch(() => false)) await confirm.click();
+    // BR-WO-025: скасування в картці — після підтвердження.
+    await page.getByRole('button', { name: 'Так, скасувати' }).click();
     await expect
       .poll(async () => (await woNow(page)).status, { timeout: 15_000 })
       .toBe('CANCELLED');

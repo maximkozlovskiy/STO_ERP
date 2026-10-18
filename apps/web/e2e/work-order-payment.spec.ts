@@ -396,7 +396,8 @@ test.describe('Оплата наряду з документа наряду', ()
 
     await openWorkOrderPage(page, wo);
     await page.getByRole('button', { name: 'Скасувати', exact: true }).click();
-    await page.getByRole('button', { name: 'Так', exact: true }).click();
+    // BR-WO-025: підтвердження скасування — той самий текст, що в картці наряду.
+    await page.getByRole('button', { name: 'Так, скасувати', exact: true }).click();
 
     await expect(page.getByText(/спершу сторнуйте оплату/).first()).toBeVisible({
       timeout: 10_000,
