@@ -131,6 +131,10 @@ model CounterpartyStatusLink {
 > запис) — 403. Web: «Позиції» → фільтр і «Постачальник і ціна» (`ItemsView`), пошук постачальника в
 > `PurchaseOrderCreateModal` (другим рядком — ЄДРПОУ; «Відкрити картку» комірнику недоступна).
 > `SupplierConnectionModal` комірник не відкриває — підключення до API лише OWNER/ADMIN (BR-SCON).
+> Тести: api `counterparties.storekeeper-suppliers.spec.ts`; web `ItemsView.suppliers.test.tsx`,
+> `PurchaseOrderCreateModal.storekeeper-supplier.test.tsx`; E2E
+> `apps/web/e2e/purchase-storekeeper-suppliers.spec.ts` (комірник через інтерфейс: список, позиція,
+> «Постачальник і ціна», пошук у картці замовлення — без 403, лише поля постачальника).
 
 > Restore авто — `POST /api/vehicles/:id/restore` (OWNER/ADMIN). Перевіряє ланцюг parent'ів:
 > `BadRequest` якщо гараж або контрагент авто видалені (спочатку відновити їх — Bug #601/#602).

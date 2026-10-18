@@ -14,7 +14,7 @@ import { PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-ki
 
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
-import { onCalendarChanged } from '@/lib/calendar-events';
+import { notifyCalendarChanged, onCalendarChanged } from '@/lib/calendar-events';
 import { toast } from '@/lib/toast';
 import { workOrdersKeys } from '@/hooks/api/useWorkOrders';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -991,7 +991,9 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
           }
           // Картка наряду, списки нарядів — нові планові дати й підйомник.
           void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
-          load();
+          // Ланцюжок записів сервер перебудовує (продовження — нові записи), тож перечитуємо вид
+          // з resync відкритої форми запису (refreshView через подію), а не лише сітку (Bug #884).
+          notifyCalendarChanged();
           return;
         }
         const saved = await apiFetch<MechanicDropResponse>(`/calendar/slots/${slot.id}`, {

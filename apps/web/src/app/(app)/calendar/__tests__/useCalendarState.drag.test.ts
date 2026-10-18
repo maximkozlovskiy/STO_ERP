@@ -238,6 +238,12 @@ describe('useCalendarState — перетягування запису наря�
     // Картка наряду й списки — нові дати (кеш нарядів скинуто).
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['work-orders'] });
     expect(toast.error).not.toHaveBeenCalled();
+    // Вид перечитано (ланцюжок записів перебудовано на сервері).
+    await waitFor(() =>
+      expect(
+        apiFetch.mock.calls.filter(c => c[0] === '/calendar/slots?date=2026-10-20').length,
+      ).toBeGreaterThan(1),
+    );
   });
 
   // guards: BR-WO-023
