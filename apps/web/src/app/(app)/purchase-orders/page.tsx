@@ -50,6 +50,7 @@ import {
 import { poStatusLabel, supplierReturnStatusLabel, deliveryStatusLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useSentOrderForce } from '@/components/ui/purchase-order/SupplierApiOrderBlock';
 import { Pagination } from '@/components/ui/pagination';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -259,6 +260,8 @@ function PurchaseOrdersPageClient() {
 
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
+  // Видалення замовлення, вже переданого постачальнику через API, — з підтвердженням (BR-SCON-014).
+  const { run: runSentOrder, dialogProps: sentOrderDialogProps } = useSentOrderForce();
 
   // Прийом PO (receive) має побічні ефекти на кількох агрегатах: RECEIPT-рух →
   // inventory (залишки); settlement CHARGE + авто paymentDate → графік оплат
@@ -810,7 +813,10 @@ function PurchaseOrdersPageClient() {
       )
         return;
       try {
-        await apiFetch(`/purchase-orders/${po.id}`, { method: 'DELETE' });
+        const res = await runSentOrder(po.id, 'delete', force =>
+          apiFetch(`/purchase-orders/${po.id}${force ? '?force=true' : ''}`, { method: 'DELETE' }),
+        );
+        if (!res.done) return;
         setSelectedPO(prev => (prev?.id === po.id ? null : prev));
         // Отримане PO при видаленні реверсить склад/баланс → повний side-effects набір.
         invalidatePurchaseSideEffects(queryClient);
@@ -820,7 +826,7 @@ function PurchaseOrdersPageClient() {
           toast.error(e instanceof Error ? e.message : t('errors.deleteFailed'));
       }
     },
-    [confirm, queryClient, features.toastEnabled, t],
+    [confirm, runSentOrder, queryClient, features.toastEnabled, t],
   );
 
   const openReceiveWithLines = useCallback((po: PurchaseOrder) => {
@@ -1777,6 +1783,7 @@ function PurchaseOrdersPageClient() {
       </Modal>
       <DirtyConfirmDialog {...dirty.dialogProps} />
       <ConfirmDialog {...dialogProps} />
+      <ConfirmDialog {...sentOrderDialogProps} />
 
       {/* Supplier returns modal */}
       <SupplierReturnCreateModal

@@ -64,6 +64,11 @@ import {
 } from '@/components/ui/SupplierPaymentCreateModal';
 import type { SupplierPayment } from '@/hooks/api/useSupplierPayments';
 import { RulePricerModal } from '@/components/ui/purchase-order/RulePricerModal';
+import {
+  SupplierApiOrderBlock,
+  useSentOrderForce,
+} from '@/components/ui/purchase-order/SupplierApiOrderBlock';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
 import { ExcelImportWizard } from '@/components/ui/ExcelImportWizard';
@@ -246,6 +251,11 @@ export function PurchaseOrderCreateModal({
 
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
+  // Відкрито підтвердження передачі в API (блок або скасування відправленого) — Escape у ньому
+  // не має закривати картку (GOTCHAS 2026-10-12).
+  const supplierNestedRef = useRef(false);
+  const { run: runSentOrder, dialogProps: sentOrderDialogProps } =
+    useSentOrderForce(supplierNestedRef);
   const statusMenuRef = useRef<HTMLDivElement>(null);
   // Bug #639: async авто-вибір єдиного складу — програмна зміна (не дія користувача).
   // Через setValue({shouldDirty:false}) значення не вмикає dirty-guard.
@@ -629,10 +639,18 @@ export function PurchaseOrderCreateModal({
       setTransitioningBoth(true);
       setError('');
       try {
-        await apiFetch(`/purchase-orders/${purchaseOrderId}/transition`, {
-          method: 'POST',
-          body: JSON.stringify({ status: newStatus }),
-        });
+        const transition = (force: boolean) =>
+          apiFetch(`/purchase-orders/${purchaseOrderId}/transition`, {
+            method: 'POST',
+            body: JSON.stringify(force ? { status: newStatus, force } : { status: newStatus }),
+          });
+        if (newStatus === 'CANCELLED') {
+          // Замовлення вже в постачальника — підтвердження й повтор із force (BR-SCON-014).
+          const res = await runSentOrder(purchaseOrderId, 'cancel', transition);
+          if (!res.done) return;
+        } else {
+          await transition(false);
+        }
         setCurrentStatus(newStatus);
         onSaved?.();
       } catch (e: unknown) {
@@ -641,7 +659,7 @@ export function PurchaseOrderCreateModal({
         setTransitioningBoth(false);
       }
     },
-    [purchaseOrderId, viewOnly, onSaved],
+    [purchaseOrderId, viewOnly, onSaved, runSentOrder],
   );
 
   // ── Lines ─────────────────────────────────────────────────────────────────
@@ -887,6 +905,7 @@ export function PurchaseOrderCreateModal({
   };
 
   const handleModalClose = useCallback(async () => {
+    if (supplierNestedRef.current) return;
     if (savingRef.current || transitioningRef.current) return;
     if (!(await dirty.confirmClose())) return;
     onClose();
@@ -1424,6 +1443,19 @@ export function PurchaseOrderCreateModal({
                   placeholder="Додаткова інформація…"
                   className="h-8 text-[13px]"
                 />
+
+                {/* Передача в API постачальника (BR-SCON-009…014) */}
+                {isEditMode && purchaseOrderId && !viewOnly && (
+                  <SupplierApiOrderBlock
+                    purchaseOrderId={purchaseOrderId}
+                    poStatus={currentStatus}
+                    nestedOpenRef={supplierNestedRef}
+                    onChanged={() => {
+                      void loadPo(purchaseOrderId, true);
+                      onSaved?.();
+                    }}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -2132,6 +2164,7 @@ export function PurchaseOrderCreateModal({
         onSaved={() => setPaymentOpen(false)}
       />
       <DirtyConfirmDialog {...dirty.dialogProps} />
+      <ConfirmDialog {...sentOrderDialogProps} />
     </>
   );
 }

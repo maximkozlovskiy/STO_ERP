@@ -1,0 +1,128 @@
+// Хуки постачальників API: коли опитувати пошук пропозицій (BR-SOFR-002), стан передачі замовлення
+// й підключень (BR-SCON-004, 012); «застаріла» пропозиція за TTL (BR-SOFR-003); які зовнішні
+// статуси вимагають підтвердження скасування (BR-SCON-014); ключ і роль-гейт запиту стану.
+
+import { renderHook, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import { vi, it, expect, describe, beforeEach } from 'vitest';
+
+const apiFetch = vi.fn();
+vi.mock('@/lib/api-client', () => ({ apiFetch: (...a: unknown[]) => apiFetch(...a) }));
+let role = 'RECEPTIONIST';
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ employee: { id: 'e1', role } }) }));
+
+import {
+  OFFERS_POLL_MS,
+  OFFERS_RETRY_POLL_MS,
+  batchPollInterval,
+  batchProgress,
+  isOfferStale,
+  useSupplierProcurementSettings,
+  type SupplierOfferItem,
+} from './useSupplierOffers';
+import {
+  isSentToSupplier,
+  supplierOrderMoving,
+  usePurchaseOrderSupplierApi,
+  type PurchaseOrderSupplierApi,
+} from './useSupplierApiOrder';
+import { connectionBusy, type SupplierConnection } from './useSupplierConnections';
+
+const item = (statuses: string[]) =>
+  ({ requests: statuses.map(status => ({ status })) }) as unknown as SupplierOfferItem;
+
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    {children}
+  </QueryClientProvider>
+);
+
+beforeEach(() => {
+  apiFetch.mockReset();
+  role = 'RECEPTIONIST';
+});
+
+describe('batchPollInterval / batchProgress (BR-SOFR-002)', () => {
+  // guards: BR-SOFR-002
+  it('часто — поки є черга/виконання; рідко — лише повтори; ні — все завершено', () => {
+    expect(batchPollInterval({ items: [item(['DONE', 'QUEUED'])] })).toBe(OFFERS_POLL_MS);
+    expect(batchPollInterval({ items: [item(['RUNNING'])] })).toBe(OFFERS_POLL_MS);
+    expect(batchPollInterval({ items: [item(['DONE', 'RETRYING'])] })).toBe(OFFERS_RETRY_POLL_MS);
+    expect(batchPollInterval({ items: [item(['DONE', 'FAILED'])] })).toBe(false);
+    expect(batchPollInterval(undefined)).toBe(false);
+    expect(
+      batchProgress({ items: [item(['DONE', 'FAILED', 'RETRYING']), item(['QUEUED'])] }),
+    ).toEqual({
+      done: 2,
+      total: 4,
+    });
+  });
+});
+
+describe('isOfferStale (BR-SOFR-003)', () => {
+  // guards: BR-SOFR-003
+  it('старша за TTL — застаріла; TTL невідомий — null (позначки немає)', () => {
+    const now = new Date('2026-10-18T12:00:00.000Z');
+    expect(isOfferStale('2026-10-18T10:59:00.000Z', 60, now)).toBe(true);
+    expect(isOfferStale('2026-10-18T11:30:00.000Z', 60, now)).toBe(false);
+    expect(isOfferStale('2026-10-18T10:00:00.000Z', undefined, now)).toBeNull();
+    expect(isOfferStale(null, 60, now)).toBeNull();
+  });
+});
+
+describe('стан передачі замовлення (BR-SCON-012, 014)', () => {
+  const st = (orderStatuses: string[], summary = 'SENT') =>
+    ({
+      supplierApiStatus: summary,
+      orders: orderStatuses.map(status => ({ status })),
+    }) as unknown as PurchaseOrderSupplierApi;
+
+  // guards: BR-SCON-014
+  it('підтвердження скасування — лише коли зовнішнє замовлення вже в постачальника', () => {
+    for (const s of ['PLACED', 'CONFIRMED', 'PARTIALLY_CONFIRMED', 'READY', 'SHIPPED', 'UNKNOWN'])
+      expect(isSentToSupplier(st([s])), s).toBe(true);
+    for (const s of ['QUEUED', 'SENDING', 'FAILED', 'REJECTED', 'CANCELLED'])
+      expect(isSentToSupplier(st([s])), s).toBe(false);
+    expect(isSentToSupplier(null)).toBe(false);
+  });
+
+  it('опитування — поки відправка в черзі чи йде', () => {
+    expect(supplierOrderMoving(st([], 'QUEUED'))).toBe(true);
+    expect(supplierOrderMoving(st(['SENDING']))).toBe(true);
+    expect(supplierOrderMoving(st(['PLACED']))).toBe(false);
+  });
+
+  it('роль без доступу до стану — запиту немає; бухгалтер — читає', async () => {
+    renderHook(() => usePurchaseOrderSupplierApi('po-1'), { wrapper });
+    await new Promise(r => setTimeout(r, 0));
+    expect(apiFetch).not.toHaveBeenCalled();
+    role = 'ACCOUNTANT';
+    apiFetch.mockResolvedValue({ supplierApiStatus: 'NOT_SENT', orders: [] });
+    renderHook(() => usePurchaseOrderSupplierApi('po-1'), { wrapper });
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/purchase-orders/po-1/supplier-api',
+        expect.anything(),
+      ),
+    );
+  });
+});
+
+describe('інше', () => {
+  // guards: BR-SCON-004
+  it('підключення «зайняте», поки перевірка чи синхронізація каталогу триває', () => {
+    const c = (verifyStatus: string, catalogSyncStatus: string | null) =>
+      ({ verifyStatus, catalogSyncStatus }) as unknown as SupplierConnection;
+    expect(connectionBusy(c('PENDING', null))).toBe(true);
+    expect(connectionBusy(c('OK', 'RUNNING'))).toBe(true);
+    expect(connectionBusy(c('OK', 'OK'))).toBe(false);
+    expect(connectionBusy(c('FAILED', 'FAILED'))).toBe(false);
+  });
+
+  it('налаштування закупівлі не читаються приймальнею навіть із enabled', async () => {
+    renderHook(() => useSupplierProcurementSettings(true), { wrapper });
+    await new Promise(r => setTimeout(r, 0));
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+});

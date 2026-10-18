@@ -14,6 +14,8 @@ import { paymentsKeys } from '@/hooks/api/usePayments';
 import { vehicleMileageKeys } from '@/hooks/api/useVehicleMileage';
 import { cashKeys } from '@/hooks/api/useCash';
 import { purchaseListsKeys } from '@/hooks/api/usePurchaseLists';
+import { supplierOffersKeys } from '@/hooks/api/useSupplierOffers';
+import { supplierApiOrderKeys } from '@/hooks/api/useSupplierApiOrder';
 
 /**
  * Спільні cross-cache інвалідатори (WEB-H1/H2 з аудиту).
@@ -115,18 +117,24 @@ export function invalidatePurchaseSideEffects(qc: QueryClient): void {
   // скасування й видалення замовлення повертає позиції в «Не замовлено» (BR-PL-010).
   void qc.invalidateQueries({ queryKey: purchaseListsKeys.all });
   void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+  // Скасування чи видалення замовлення змінює стан його передачі в API (BR-SCON-014).
+  void qc.invalidateQueries({ queryKey: supplierApiOrderKeys.all });
   invalidateStockAffected(qc);
   invalidateBalanceAffected(qc);
 }
 
 /**
- * Дії «Управління купівлями» (списки, позиції, замовлення зі списку, «Зняти резерв»): власні
- * ключі списків і позицій (зокрема стан товарів у картці наряду), замовлення постачальникам
- * (create-orders створює DRAFT) і склад (зняття резерву міняє «вільно»).
+ * Дії «Управління купівлями» (списки, позиції, замовлення зі списку, «Зняти резерв», вибір і
+ * автопідбір пропозицій, передача замовлення в API): власні ключі списків і позицій (зокрема стан
+ * товарів у картці наряду), замовлення постачальникам (create-orders створює DRAFT, «Відправити в
+ * API» з чернетки — «Замовлено»), пропозиції позицій (позначка «обрано»), стан передачі в API і
+ * склад (зняття резерву міняє «вільно»).
  */
 export function invalidateProcurementSideEffects(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: purchaseListsKeys.all });
   void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+  void qc.invalidateQueries({ queryKey: supplierOffersKeys.all });
+  void qc.invalidateQueries({ queryKey: supplierApiOrderKeys.all });
   invalidateStockAffected(qc);
 }
 
