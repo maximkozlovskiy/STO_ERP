@@ -16,6 +16,8 @@ export interface Supplier {
   lastName: string | null;
   companyName: string | null;
   phone?: string | null;
+  /** Лише у відповіді комірнику (BR-CP-014): йому замість телефону — ЄДРПОУ. */
+  edrpou?: string | null;
 }
 
 export interface Good {

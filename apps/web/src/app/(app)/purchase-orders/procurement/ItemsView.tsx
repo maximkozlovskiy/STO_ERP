@@ -63,9 +63,8 @@ interface SupplierOption {
 }
 
 /**
- * Постачальники для фільтра й масової зміни. `GET /counterparties` закритий комірнику (ролі
- * контрагентів), тож для нього список порожній — постачальник позиції лишається тим, що дав
- * товар (бажаний постачальник), а змінює його власник чи адміністратор.
+ * Постачальники для фільтра й масової зміни. Комірник читає їх так само (BR-CP-014, рішення
+ * власника 2026-10-18): сервер віддає йому лише постачальників і лише поля вибору.
  */
 function useSupplierOptions() {
   const { employee } = useAuth();
@@ -85,7 +84,7 @@ function useSupplierOptions() {
           name: c.companyName || [c.lastName, c.firstName].filter(Boolean).join(' ') || c.id,
         })),
       ),
-    enabled: !!employee && employee.role !== 'STOREKEEPER',
+    enabled: !!employee,
     staleTime: 5 * 60_000,
   });
 }
@@ -110,7 +109,14 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
   const [page, setPage] = useState(1);
 
   const { data: warehouses } = useWarehouses();
-  const { data: suppliers } = useSupplierOptions();
+  const suppliersQuery = useSupplierOptions();
+  const suppliers = suppliersQuery.data;
+  // Підказка — лише після відповіді: поки список вантажиться, «немає» було б неправдою.
+  const suppliersHint = suppliersQuery.isError
+    ? t('items.dialogs.suppliersLoadFailed')
+    : suppliers && suppliers.length === 0
+      ? t('items.dialogs.suppliersNone')
+      : undefined;
   const { data: openLists } = usePurchaseLists({ status: 'OPEN', page: 1, limit: 100 });
   const { data, isLoading, error, refetch } = usePurchaseListItems({
     status: status || undefined,
@@ -479,6 +485,7 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
       <SupplierPriceDialog
         ids={supplierDialog}
         suppliers={suppliers ?? []}
+        suppliersHint={suppliersHint}
         onClose={() => setSupplierDialog(null)}
         onSaved={count => {
           setSupplierDialog(null);
@@ -530,11 +537,13 @@ function DialogError({ message }: { message: string }) {
 function SupplierPriceDialog({
   ids,
   suppliers,
+  suppliersHint,
   onClose,
   onSaved,
 }: {
   ids: string[] | null;
   suppliers: SupplierOption[];
+  suppliersHint: string | undefined;
   onClose: () => void;
   onSaved: (count: number) => void;
 }) {
@@ -594,7 +603,7 @@ function SupplierPriceDialog({
           label={t('columns.supplier')}
           value={supplier}
           onChange={e => setSupplier(e.target.value)}
-          hint={suppliers.length === 0 ? t('items.dialogs.suppliersUnavailable') : undefined}
+          hint={suppliersHint}
         >
           <option value="">{t('items.dialogs.keep')}</option>
           <option value={NONE}>{t('filters.noSupplier')}</option>

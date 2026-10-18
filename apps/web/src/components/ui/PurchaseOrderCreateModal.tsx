@@ -132,6 +132,11 @@ const emptyDefaults = (): PurchaseOrderFormInput => ({
  * (Bug #851).
  */
 const SUPPLIER_PAYMENT_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
+/**
+ * Кому відкривається картка постачальника (`GET /counterparties/:id`). Комірник обирає
+ * постачальника зі звуженого списку (BR-CP-014), а картку контрагента не читає й не змінює.
+ */
+const COUNTERPARTY_CARD_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT'];
 
 export interface PurchaseOrderCreateModalProps {
   open: boolean;
@@ -157,6 +162,7 @@ export function PurchaseOrderCreateModal({
   const features = useUiFeatures();
   const { employee } = useAuth();
   const canPaySupplier = SUPPLIER_PAYMENT_ROLES.includes(employee?.role ?? '');
+  const canOpenSupplierCard = COUNTERPARTY_CARD_ROLES.includes(employee?.role ?? '');
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const { minimizeModal } = useTabBarContext();
 
@@ -489,10 +495,11 @@ export function PurchaseOrderCreateModal({
       ? `/counterparties?q=${encodeURIComponent(q.trim())}&types=SUPPLIER&types=BOTH&limit=30`
       : `/counterparties?types=SUPPLIER&types=BOTH&limit=30`;
     const data = await apiFetch<{ items: Supplier[] }>(url);
+    // Комірнику телефон не приходить (BR-CP-014) — тоді другим рядком ЄДРПОУ.
     return data.items.map(c => ({
       id: c.id,
       primary: displayCounterpartyName(c),
-      secondary: c.phone ?? undefined,
+      secondary: c.phone ?? c.edrpou ?? undefined,
     }));
   }, []);
 
@@ -1363,7 +1370,11 @@ export function PurchaseOrderCreateModal({
                       className="h-8 text-[13px]"
                       disabled={!canEdit}
                       onPick={() => setSupplierPickerOpen(true)}
-                      onOpenDetail={supplierIdValue ? () => void openSupplierDetail() : undefined}
+                      onOpenDetail={
+                        supplierIdValue && canOpenSupplierCard
+                          ? () => void openSupplierDetail()
+                          : undefined
+                      }
                       onSearch={fetchSupplierItems}
                       onSearchSelect={item => {
                         setSupplierDisplay(item.primary);
