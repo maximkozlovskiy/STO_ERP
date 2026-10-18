@@ -29,7 +29,7 @@ import {
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { toUpperCurrencyCode } from '../../common/transforms/to-upper-currency-code';
 
-// в”Ђв”Ђв”Ђ Counterparty в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Counterparty ────────────────────────────────────────
 
 export class CreateCounterpartyDto {
   @ApiProperty({ enum: CounterpartyType })
@@ -204,7 +204,7 @@ export class PaginatedSupplierLookupsDto {
   @ApiProperty() limit!: number;
 }
 
-// в”Ђв”Ђв”Ђ CustomerGarage в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── CustomerGarage ──────────────────────────────────────
 
 export class CreateGarageDto {
   @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(200) name!: string;
@@ -223,7 +223,7 @@ export class GarageResponseDto {
   @ApiProperty() createdAt!: string;
 }
 
-// в”Ђв”Ђв”Ђ CounterpartyContract в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── CounterpartyContract ─────────────────────────────────
 
 export class CreateContractDto {
   // @MaxLength anti-DoS — номер документа має реалістичний верхній ліміт.
@@ -262,9 +262,9 @@ export class CreateContractDto {
   @Min(0)
   creditLimit?: number;
 
-  // toUpperCurrencyCode нормалізує `uah` в†’ `UAH` (Currency.code UPPERCASE
+  // toUpperCurrencyCode нормалізує `uah` → `UAH` (Currency.code UPPERCASE
   // у DB-сіді, lookup case-sensitive). Replaces emptyToUndefined — той helper лише
-  // мапить '' в†’ undefined, не upper-cases.
+  // мапить '' → undefined, не upper-cases.
   @ApiPropertyOptional({ description: 'ISO код валюти (напр. UAH, USD, EUR)' })
   @IsOptional()
   @Transform(toUpperCurrencyCode)
@@ -319,9 +319,9 @@ export class UpdateContractDto {
   @Min(0)
   creditLimit?: number;
 
-  // toUpperCurrencyCode нормалізує `uah` в†’ `UAH` (Currency.code UPPERCASE
+  // toUpperCurrencyCode нормалізує `uah` → `UAH` (Currency.code UPPERCASE
   // у DB-сіді, lookup case-sensitive). Replaces emptyToUndefined — той helper лише
-  // мапить '' в†’ undefined, не upper-cases.
+  // мапить '' → undefined, не upper-cases.
   @ApiPropertyOptional({ description: 'ISO код валюти (напр. UAH, USD, EUR)' })
   @IsOptional()
   @Transform(toUpperCurrencyCode)

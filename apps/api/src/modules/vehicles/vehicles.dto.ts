@@ -11,7 +11,7 @@ import {
 import { Transform } from 'class-transformer';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import type { VehicleMileagePoint } from '@sto/shared';
-// в”Ђв”Ђв”Ђ Vehicle в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Vehicle ─────────────────────────────────────────────
 
 export class CreateVehicleDto {
   @ApiProperty()
@@ -96,7 +96,7 @@ export class VehicleResponseDto {
   deletedAt?: string | null;
 }
 
-// в”Ђв”Ђв”Ђ VehicleNode в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── VehicleNode ─────────────────────────────────────────
 
 export class CreateVehicleNodeDto {
   @ApiProperty({ example: 'engine' }) @IsString() @IsNotEmpty() category!: string;

@@ -17,7 +17,7 @@ import { ZoneType, LiftType, LiftStatus } from '@prisma/client';
 import { UUID_REGEX } from '@sto/shared';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
-// в”Ђв”Ђв”Ђ Zone DTOs в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Zone DTOs ───────────────────────────────────────────
 
 export class CreateZoneDto {
   @ApiProperty()
@@ -58,7 +58,7 @@ export class ZoneResponseDto {
   @ApiPropertyOptional() deletedAt?: string | null;
 }
 
-// в”Ђв”Ђв”Ђ Lift DTOs в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Lift DTOs ───────────────────────────────────────────
 
 export class CreateLiftDto {
   @ApiProperty()

@@ -24,7 +24,7 @@ export class CreateWorkDto {
   categoryId!: string;
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
   @ApiProperty({ description: 'Нормо-годин' }) @IsNumber() @Min(0) normoHours!: number;
-  @ApiProperty({ description: 'Ціна, в‚ґ' }) @IsNumber() @Min(0) price!: number;
+  @ApiProperty({ description: 'Ціна, ₴' }) @IsNumber() @Min(0) price!: number;
 
   @ApiPropertyOptional()
   @IsOptional()

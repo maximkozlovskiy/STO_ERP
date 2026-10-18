@@ -18803,7 +18803,7 @@
           },
           "nbuFetchHour": {
             "type": "number",
-            "description": "Година автозавантаження курсів НБУ (0вЂ“23)"
+            "description": "Година автозавантаження курсів НБУ (0–23)"
           },
           "deliveryPollIntervalMinutes": {
             "type": "number",
@@ -19042,7 +19042,7 @@
             "type": "number",
             "minimum": 0,
             "maximum": 23,
-            "description": "Година автозавантаження курсів НБУ (0вЂ“23)"
+            "description": "Година автозавантаження курсів НБУ (0–23)"
           },
           "deliveryPollIntervalMinutes": {
             "type": "number",
@@ -21665,7 +21665,7 @@
           "price": {
             "type": "number",
             "minimum": 0,
-            "description": "Ціна, в‚ґ"
+            "description": "Ціна, ₴"
           },
           "description": {
             "type": "string"
@@ -21699,7 +21699,7 @@
           "price": {
             "type": "number",
             "minimum": 0,
-            "description": "Ціна, в‚ґ"
+            "description": "Ціна, ₴"
           },
           "description": {
             "type": "string"
@@ -32897,7 +32897,7 @@
           },
           "symbol": {
             "type": "string",
-            "example": "в‚ґ"
+            "example": "₴"
           },
           "nbuFetchEnabled": {
             "type": "boolean",
@@ -32908,7 +32908,7 @@
             "nullable": true,
             "minimum": 0,
             "maximum": 100,
-            "description": "Відсоток нарахування до курсу НБУ (0вЂ“100)"
+            "description": "Відсоток нарахування до курсу НБУ (0–100)"
           }
         },
         "required": [
@@ -32943,7 +32943,7 @@
             "nullable": true,
             "minimum": 0,
             "maximum": 100,
-            "description": "Відсоток нарахування до курсу НБУ (0вЂ“100)"
+            "description": "Відсоток нарахування до курсу НБУ (0–100)"
           }
         }
       },

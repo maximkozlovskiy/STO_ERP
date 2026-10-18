@@ -22,7 +22,7 @@ export class CreateCurrencyDto {
   @IsNotEmpty()
   code!: string;
 
-  @ApiPropertyOptional({ example: 'в‚ґ' })
+  @ApiPropertyOptional({ example: '₴' })
   @IsOptional()
   @IsString()
   symbol?: string;
@@ -35,7 +35,7 @@ export class CreateCurrencyDto {
   nbuFetchEnabled?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Відсоток нарахування до курсу НБУ (0вЂ“100)',
+    description: 'Відсоток нарахування до курсу НБУ (0–100)',
     minimum: 0,
     maximum: 100,
   })
@@ -82,7 +82,7 @@ export class UpdateCurrencyDto {
   nbuFetchEnabled?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Відсоток нарахування до курсу НБУ (0вЂ“100)',
+    description: 'Відсоток нарахування до курсу НБУ (0–100)',
     minimum: 0,
     maximum: 100,
   })

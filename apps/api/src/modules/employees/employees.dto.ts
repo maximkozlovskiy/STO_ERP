@@ -27,7 +27,7 @@ import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 export { rateSchemeSchema, type RateScheme } from '@sto/shared';
 import type { RateScheme } from '@sto/shared';
 
-// в”Ђв”Ђв”Ђ DTOs в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── DTOs ────────────────────────────────────────────────
 
 export class CreateEmployeeDto {
   @ApiProperty({ example: 'Іван' })
@@ -160,7 +160,7 @@ export class UpdateEmployeeDto {
   dateOfFire?: string;
 }
 
-// Query DTO for `GET /employees` вЂ” without it the controller silently dropped q/role/showDeleted
+// Query DTO for `GET /employees` — without it the controller silently dropped q/role/showDeleted
 // (NestJS @Query without DTO has no whitelisting, so the params arrived but were never read).
 export class EmployeesQueryDto {
   @ApiPropertyOptional({

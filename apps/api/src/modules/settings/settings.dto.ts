@@ -64,9 +64,9 @@ export const UI_FEATURES_DEFAULTS: UiFeatures = {
 export class UpdateOrganisationSettingsDto {
   // ISO 4217 валюта обліку — посилається на Currency.code (3-10 символів).
   // Bug review (currency feature): без поля у DTO `forbidNonWhitelisted: true`
-  // глобально відхиляв PATCH з `currency` в†’ save валюти у Settings в†’ Org мовчки
+  // глобально відхиляв PATCH з `currency` → save валюти у Settings → Org мовчки
   // фейлився 400-кою для користувача.
-  // toUpperCurrencyCode нормалізує `uah` в†’ `UAH` + trim + @MaxLength(10)
+  // toUpperCurrencyCode нормалізує `uah` → `UAH` + trim + @MaxLength(10)
   // anti-DoS. Currency.code @db.VarChar(10) у схемі — поза 10 символів не пройде.
   @ApiPropertyOptional({ description: 'ISO код валюти обліку (UAH, USD, EUR)' })
   @IsOptional()
@@ -77,7 +77,7 @@ export class UpdateOrganisationSettingsDto {
   })
   currency?: string;
 
-  // emptyToUndefined gap вЂ” settings selects з default `''` в†’ 400.
+  // emptyToUndefined gap — settings selects з default `''` → 400.
   @ApiPropertyOptional({ enum: VatMode })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -139,7 +139,7 @@ export class UpdateOrganisationSettingsDto {
   @IsEnum(BatchCostMethod)
   costMethod?: BatchCostMethod;
 
-  // B8: follow-up reminder settings. Bug #84 вЂ” Schema/DB had these fields, but
+  // B8: follow-up reminder settings. Bug #84 — Schema/DB had these fields, but
   // DTO/whitelist silently dropped them on PATCH and they never came back on GET.
   @ApiPropertyOptional({ description: 'Активувати follow-up нагадування' })
   @IsOptional()
@@ -169,7 +169,7 @@ export class UpdateOrganisationSettingsDto {
   maintenanceForecastDays?: number;
 
   @ApiPropertyOptional({
-    description: 'Година автозавантаження курсів НБУ (0вЂ“23)',
+    description: 'Година автозавантаження курсів НБУ (0–23)',
     minimum: 0,
     maximum: 23,
   })
@@ -374,11 +374,11 @@ export class UpdateOrganisationSettingsDto {
   supplierUnknownDeliveryDays?: number;
 }
 
-// HH:MM regex (00:00вЂ“23:59). Без regex backend приймає 'foo'/'25:99' в†’
+// HH:MM regex (00:00–23:59). Без regex backend приймає 'foo'/'25:99' →
 // БД корумпована → getBranchSettings повертає сміття → frontend settings form
-// показує невалідні значення; gorshe вЂ” workStartTime='20:00' + workEndTime='09:00'
-// проходить (обидва валідні строки) в†’ getWorkHours повертає інвертовані години →
-// frontend dynHours=[] в†’ NaN у CSS в†’ DOM crash.
+// показує невалідні значення; gorshe — workStartTime='20:00' + workEndTime='09:00'
+// проходить (обидва валідні строки) → getWorkHours повертає інвертовані години →
+// frontend dynHours=[] → NaN у CSS → DOM crash.
 const HH_MM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export class UpdateBranchSettingsDto {
@@ -513,7 +513,7 @@ export class OrganisationSettingsResponseDto {
   @ApiProperty() followUpDays!: number;
   @ApiProperty() maintenanceForecastDays!: number;
   @ApiProperty({
-    description: 'Година автозавантаження курсів НБУ (0вЂ“23)',
+    description: 'Година автозавантаження курсів НБУ (0–23)',
   })
   nbuFetchHour!: number;
   @ApiProperty({ description: 'Інтервал опитування служби доставки (хв)' })

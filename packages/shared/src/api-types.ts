@@ -5990,7 +5990,7 @@ export interface components {
             followUpActive: boolean;
             followUpDays: number;
             maintenanceForecastDays: number;
-            /** @description Година автозавантаження курсів НБУ (0вЂ“23) */
+            /** @description Година автозавантаження курсів НБУ (0–23) */
             nbuFetchHour: number;
             /** @description Інтервал опитування служби доставки (хв) */
             deliveryPollIntervalMinutes: number;
@@ -6059,7 +6059,7 @@ export interface components {
             followUpDays?: number;
             /** @description Горизонт прогнозу нагадувань про ТО (днів наперед) */
             maintenanceForecastDays?: number;
-            /** @description Година автозавантаження курсів НБУ (0вЂ“23) */
+            /** @description Година автозавантаження курсів НБУ (0–23) */
             nbuFetchHour?: number;
             /** @description Інтервал опитування служби доставки (хв). clamp [5,1440]. */
             deliveryPollIntervalMinutes?: number;
@@ -6839,7 +6839,7 @@ export interface components {
             name: string;
             /** @description Нормо-годин */
             normoHours: number;
-            /** @description Ціна, в‚ґ */
+            /** @description Ціна, ₴ */
             price: number;
             description?: string;
             /** @description Гарантійна робота (виконується безкоштовно) */
@@ -6850,7 +6850,7 @@ export interface components {
             name?: string;
             /** @description Нормо-годин */
             normoHours?: number;
-            /** @description Ціна, в‚ґ */
+            /** @description Ціна, ₴ */
             price?: number;
             description?: string;
             /** @description Гарантійна робота (виконується безкоштовно) */
@@ -9950,11 +9950,11 @@ export interface components {
             internationalName?: string;
             /** @example UAH */
             code: string;
-            /** @example в‚ґ */
+            /** @example ₴ */
             symbol?: string;
             /** @description Завантажувати курс з НБУ автоматично */
             nbuFetchEnabled?: boolean;
-            /** @description Відсоток нарахування до курсу НБУ (0вЂ“100) */
+            /** @description Відсоток нарахування до курсу НБУ (0–100) */
             nbuMarkupPercent?: number | null;
         };
         UpdateCurrencyDto: {
@@ -9965,7 +9965,7 @@ export interface components {
             symbol?: string;
             /** @description Завантажувати курс з НБУ автоматично */
             nbuFetchEnabled?: boolean;
-            /** @description Відсоток нарахування до курсу НБУ (0вЂ“100) */
+            /** @description Відсоток нарахування до курсу НБУ (0–100) */
             nbuMarkupPercent?: number | null;
         };
         DeadLetterJobResponseDto: {

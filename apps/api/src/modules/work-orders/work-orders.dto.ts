@@ -30,7 +30,7 @@ import {
 } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
-// в”Ђв”Ђв”Ђ Work Order в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Work Order ───────────────────────────────────────────
 
 export class CreateWorkOrderDto {
   @ApiProperty()
@@ -54,8 +54,8 @@ export class CreateWorkOrderDto {
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) inMileage?: number;
 
-  // emptyToUndefined gap вЂ” sprint cycle 3 пропустив work-orders DTO.
-  // Frontend селекти що шлють `''` при default state в†’ 400 без трансформу.
+  // emptyToUndefined gap — sprint cycle 3 пропустив work-orders DTO.
+  // Frontend селекти що шлють `''` при default state → 400 без трансформу.
   @ApiPropertyOptional({ enum: WorkOrderPriority })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -68,7 +68,7 @@ export class CreateWorkOrderDto {
   @IsEnum(RepairCategory)
   repairCategory?: RepairCategory;
 
-  // emptyToUndefined gap вЂ” datetime-local input шле `''` при reset в†’ 400.
+  // emptyToUndefined gap — datetime-local input шле `''` при reset → 400.
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -129,7 +129,7 @@ export class UpdateWorkOrderDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() clientApproval?: boolean;
 
   // Nullable: passing `null` explicitly clears the field; omitting keeps it.
-  // emptyToUndefined: `''` від UI шле скинуте поле → undefined в†’ omit (keeps existing).
+  // emptyToUndefined: `''` від UI шле скинуте поле → undefined → omit (keeps existing).
   @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -215,7 +215,7 @@ export class WorkOrderQueryDto {
   @IsUUID()
   vehicleId?: string;
 
-  // F6: "Мої наряди" chip вЂ” filter by assigned mechanic. The filter joins through workOrderLines.employeeId,
+  // F6: "Мої наряди" chip — filter by assigned mechanic. The filter joins through workOrderLines.employeeId,
   // so an employee sees an order if ANY of its line items reference them as the executor.
   @ApiPropertyOptional({
     description: 'Фільтр за виконавцем (через рядки робіт)',
@@ -412,7 +412,7 @@ export class PaginatedWorkOrdersDto {
   @ApiProperty() limit!: number;
 }
 
-// в”Ђв”Ђв”Ђ Work Order Line в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Work Order Line ──────────────────────────────────────
 
 export class CreateWorkOrderLineDto {
   @ApiProperty()
@@ -438,10 +438,10 @@ export class CreateWorkOrderLineDto {
 export class UpdateWorkOrderLineDto extends PartialType(
   OmitType(CreateWorkOrderLineDto, ['actualHours'] as const),
 ) {
-  // nullable handling вЂ” frontend save() надсилає `null` коли користувач
+  // nullable handling — frontend save() надсилає `null` коли користувач
   // очистив inline "Год (факт.)" → без `ValidateIf(o => o.actualHours !== null)`
   // class-validator кидав 400 і будь-який save() з порожнім actualHours лагав
-  // partial-PATCH (work-order рівень пройшов, line PATCH вЂ” fail в†’ corrupted state).
+  // partial-PATCH (work-order рівень пройшов, line PATCH — fail → corrupted state).
   // Симетрія з UpdateWorkOrderDto.actualHours (work-orders.dto.ts:148) та Bug #426.
   @ApiPropertyOptional({
     description: 'Фактично витрачені години',
@@ -471,7 +471,7 @@ export class WorkOrderLineResponseDto {
   @ApiProperty() createdAt!: string;
 }
 
-// в”Ђв”Ђв”Ђ Work Order Part в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Work Order Part ──────────────────────────────────────
 
 export class CreateWorkOrderPartDto {
   @ApiProperty()
@@ -511,14 +511,14 @@ export class WorkOrderPartResponseDto {
   @ApiProperty() createdAt!: string;
 }
 
-// в”Ђв”Ђв”Ђ Work Order Detail (full card) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Work Order Detail (full card) ───────────────────────
 
 export class WorkOrderDetailDto extends WorkOrderResponseDto {
   @ApiProperty({ type: [WorkOrderLineResponseDto] }) lines!: WorkOrderLineResponseDto[];
   @ApiProperty({ type: [WorkOrderPartResponseDto] }) parts!: WorkOrderPartResponseDto[];
 }
 
-// в”Ђв”Ђв”Ђ Public Estimate (shared via shareToken вЂ” no auth) в”Ђв”Ђв”Ђв”Ђ
+// ─── Public Estimate (shared via shareToken — no auth) ────
 // IMPORTANT: цей DTO навмисно НЕ містить orgId, всі FK (vehicleId, counterpartyId,
 // contractId, branchId, liftId, employeeId), paidAmount, clientApproval, slot*,
 // outMileage, dueDate, syncVersion, deletedAt тощо.
@@ -563,7 +563,7 @@ export class EstimatePublicDto {
   @ApiProperty({ type: [EstimatePublicPartDto] }) parts!: EstimatePublicPartDto[];
 }
 
-// в”Ђв”Ђв”Ђ Send estimate SMS (authenticated) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Send estimate SMS (authenticated) ───────────────────
 // baseUrl навмисно НЕ приймається з клієнта (open-redirect/phishing ризик):
 // сервер сам визначає публічний URL через ConfigService('WEB_PUBLIC_URL').
 
@@ -572,8 +572,8 @@ export class SendEstimateSmsDto {
   // class-validator забезпечить що жодні зайві поля не приймаються (whitelist у ValidationPipe).
 }
 
-// в”Ђв”Ђв”Ђ Linked documents (batch counts) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-// В§2.3 Input validation: без DTO @Body() приймав довільний JSON в†’ DoS-вектор
+// ─── Linked documents (batch counts) ───────────────────────
+// В§2.3 Input validation: без DTO @Body() приймав довільний JSON → DoS-вектор
 // (мільйон IDs у where: { in: [...] } спричиняє важкий B-tree lookup) + потенційно
 // non-UUID значення доходили до Prisma. ArrayMaxSize обмежує batch до page-size+запас.
 
