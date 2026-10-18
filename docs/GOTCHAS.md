@@ -4,6 +4,20 @@
 
 ---
 
+## CI `e2e-full`: сотня падінь `ERR_CONNECTION_REFUSED` на :3001 — впав `next dev`, не тести (2026-10-18)
+
+Прогін `b6432e44`: 111 failed, усі — `page.goto: net::ERR_CONNECTION_REFUSED` (або `RESET`) на
+`http://localhost:3001/…`. Тести не винні: web-сервер CI (`next dev --turbopack`) помер посеред
+прогону з внутрішньою панікою Turbopack — `thread 'tokio-rt-worker' panicked … turbo-tasks-backend …
+Restore of All for task … failed` / «This is a bug in turbo-tasks/Turbopack». Локально повний E2E
+того самого коміту — 430 passed. Повторний запуск job-а — перший крок.
+
+Як дістати причину без прав адміністратора репозиторію: анотації job-а (`github`-репортер) показують
+лише перші 10 падінь, а `web.log`/`api.log` лежать в артефакті `e2e-full-artifacts`
+(`GET /repos/…/actions/runs/<id>/artifacts` → `archive_download_url`, потрібен токен, той самий, що
+й для `git push`). Повтор лише впалих job-ів — `POST /repos/…/actions/runs/<id>/rerun-failed-jobs`.
+Якщо паніка повториться — переводити job із `--turbopack` на webpack чи `next start` після збірки.
+
 ## `${VAR//[[:space:]]/}` на великому виводі — квадратично в bash під MSYS (2026-10-16)
 
 Новий git-хук `pre-push` (`scripts/prepush.sh`) «висів» 20+ хв на кроці lint, хоча сам lint
