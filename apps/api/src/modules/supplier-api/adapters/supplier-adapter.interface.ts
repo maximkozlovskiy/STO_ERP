@@ -180,6 +180,8 @@ export interface SupplierAdapter {
   readonly optionFields: SupplierFieldSpec[];
   /** Поля параметрів доставки на КОЖЕН наш склад (`options.warehouses[<id>]`). */
   readonly warehouseFields: SupplierFieldSpec[];
+  /** Кроки відправки замовлення в порядку виконання (`SupplierOrder.step`, BR-SCON-011). */
+  readonly orderSteps: readonly string[];
 
   /** Перевірка кредів без побічних ефектів (BR-SCON-004). */
   verify(conn: SupplierConnectionContext): Promise<void>;
