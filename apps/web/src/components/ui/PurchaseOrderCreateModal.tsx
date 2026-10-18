@@ -1035,7 +1035,9 @@ export function PurchaseOrderCreateModal({
         size="content"
         hideClose
         headerContent={
-          <div className="flex items-center gap-6">
+          // flex-wrap: п'ять полів шапки на вікні 1280 px не вміщались в один рядок — «Статус»
+          // виходив за край картки й був недосяжний; тепер він переноситься на другий рядок.
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <div className="flex items-center gap-2 text-[13px] text-muted-foreground shrink-0">
               <span className="font-medium">Номер:</span>
               <span className="text-foreground">
