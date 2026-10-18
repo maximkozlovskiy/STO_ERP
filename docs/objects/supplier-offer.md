@@ -78,7 +78,7 @@
 | стратегії й покриття — вичерпні таблиці (BR-SOFR-007, 008)                                                                                                                | `strategy/offer-allocation.spec.ts`     | 15     |
 | застосування автопідбору: dryRun, одна транзакція, поділ зі знімками, 409, ручний вибір і `overrideManual` (BR-SOFR-008, 009)                                             | `strategy/supplier-allocation.spec.ts`  | 12     |
 
-Разом тут: **78** кейсів.
+Разом тут: **80** кейсів.
 
 Поза модулем: `settings/settings.contract.spec.ts` — поля налаштувань `supplier*` і межі (BR-SOFR-005, 007);
 `purchase-lists/purchase-lists.offer-snapshot.spec.ts` — знімок за позицією (BR-PL-017, 019);
