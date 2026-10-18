@@ -288,7 +288,13 @@ describe('Settings — HTTP Contract', () => {
       expect(rolesOf('getBaseCurrency')).toEqual(
         expect.arrayContaining(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST', 'STOREKEEPER']),
       );
-      expect(rolesOf('getOrganisation')).toEqual(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
+      expect(rolesOf('getOrganisation')).toEqual([
+        'OWNER',
+        'ADMIN',
+        'RECEPTIONIST',
+        'MECHANIC',
+        'STOREKEEPER',
+      ]);
     });
   });
 

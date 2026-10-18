@@ -266,17 +266,21 @@ describe('MECHANIC — читання довідників картки наря
   // ── Рішення власника 2026-10-16, друге (employee.md, «Звуження й приймальня»): приймальня —
   // звужені налаштування й ставки ПДВ; механік — мінімум полів у працівниках і договорах.
 
-  it('GET /settings/organisation: приймальні — лише поля картки наряду (ПДВ організації)', async () => {
-    role = 'RECEPTIONIST';
-    const res = await get('/settings/organisation');
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(CARD_FIELDS);
-    expect(body).toMatchObject({ vatMode: 'EXCLUSIVE', defaultVatRateId: 'vat-20' });
-    expect(body).not.toHaveProperty('laborCostRatio');
-    expect(body).not.toHaveProperty('loyaltyEnabled');
-    expect(body).not.toHaveProperty('invoiceDueDays');
-  });
+  // Комірник — ті самі поля для ПДВ картки замовлення постачальнику (рішення власника 2026-10-18).
+  it.each(['RECEPTIONIST', 'STOREKEEPER'])(
+    'GET /settings/organisation: %s — лише поля картки (ПДВ організації)',
+    async r => {
+      role = r;
+      const res = await get('/settings/organisation');
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as Record<string, unknown>;
+      expect(Object.keys(body).sort()).toEqual(CARD_FIELDS);
+      expect(body).toMatchObject({ vatMode: 'EXCLUSIVE', defaultVatRateId: 'vat-20' });
+      expect(body).not.toHaveProperty('laborCostRatio');
+      expect(body).not.toHaveProperty('loyaltyEnabled');
+      expect(body).not.toHaveProperty('invoiceDueDays');
+    },
+  );
 
   it.each(['ADMIN', 'OWNER'])(
     'GET /settings/organisation: %s — повні налаштування, як раніше',
@@ -288,7 +292,7 @@ describe('MECHANIC — читання довідників картки наря
     },
   );
 
-  it.each(['RECEPTIONIST', 'ACCOUNTANT', 'ADMIN'])(
+  it.each(['RECEPTIONIST', 'STOREKEEPER', 'ACCOUNTANT', 'ADMIN'])(
     'GET /settings/tax-rates → 200 для %s',
     async r => {
       role = r;
@@ -304,11 +308,13 @@ describe('MECHANIC — читання довідників картки наря
     ['PATCH', '/settings/organisation', { invoiceDueDays: 10 }],
     ['POST', '/settings/tax-rates', { name: 'X', rate: 7 }],
   ] as const)(
-    '%s %s → 403 для приймальні: читання не дає права змінювати',
+    '%s %s → 403 для приймальні й комірника: читання не дає права змінювати',
     async (method, url, payload) => {
-      role = 'RECEPTIONIST';
-      const res = await app.inject({ method, url, payload });
-      expect(res.statusCode).toBe(403);
+      for (const r of ['RECEPTIONIST', 'STOREKEEPER']) {
+        role = r;
+        const res = await app.inject({ method, url, payload });
+        expect(res.statusCode, r).toBe(403);
+      }
     },
   );
 

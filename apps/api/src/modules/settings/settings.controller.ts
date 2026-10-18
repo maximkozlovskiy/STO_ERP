@@ -78,7 +78,11 @@ class UpdateTaxRateDto {
  * Ролі, яким `GET /settings/organisation` віддає лише поля картки наряду
  * (`OrganisationCardSettingsDto`), — рішення власника 2026-10-16 (employee.md).
  */
-const CARD_SETTINGS_ONLY_ROLES: ReadonlySet<string> = new Set(['MECHANIC', 'RECEPTIONIST']);
+const CARD_SETTINGS_ONLY_ROLES: ReadonlySet<string> = new Set([
+  'MECHANIC',
+  'RECEPTIONIST',
+  'STOREKEEPER',
+]);
 
 @ApiTags('Налаштування')
 @Controller('settings')
@@ -90,7 +94,9 @@ export class SettingsController {
   @Get('organisation')
   // MECHANIC і RECEPTIONIST — лише читання полів картки наряду (рішення власника 2026-10-16,
   // employee.md): ПДВ, валюта, мова, перерахунок годин і синхронізація запису календаря.
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
+  // STOREKEEPER — ті самі поля для ПДВ картки замовлення постачальнику (рішення власника 2026-10-18:
+  // без них картка комірника рахувала замовлення «без ПДВ» і сипала 403 у консоль).
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
   @ApiOperation({ summary: 'Налаштування організації' })
   @ApiResponse({
     status: 200,
@@ -224,9 +230,9 @@ export class SettingsController {
   // pre-edit copy for up to 5 minutes after a save (Bug #299 class; brands - owner report 2026-10-12).
   // The server-side Redis cache, invalidated on every write, keeps the response fast.
   @Header('Cache-Control', 'private, no-cache')
-  // MECHANIC і RECEPTIONIST — ставка ПДВ картки наряду (рішення власника 2026-10-16); список без
-  // чутливих полів.
-  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST', 'MECHANIC')
+  // MECHANIC і RECEPTIONIST — ставка ПДВ картки наряду (рішення власника 2026-10-16); STOREKEEPER —
+  // ставка ПДВ картки замовлення постачальнику (2026-10-18); список без чутливих полів.
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
   @ApiOperation({ summary: 'Список ставок ПДВ' })
   getTaxRates(@OrgContext() orgId: string) {
     return this.service.getTaxRates(orgId);
