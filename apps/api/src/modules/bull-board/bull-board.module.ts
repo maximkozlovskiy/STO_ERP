@@ -23,7 +23,7 @@ import { BullBoardAuthModule } from './bull-board-auth.module';
  * оновленням і тепер стверджував протилежне до встановленого. Лінійка bull-board мусить
  * відповідати мажору Fastify: розбіжність дає FST_ERR на старті, а не зрозумілу помилку.
  *
- * 14 черг: forFeature резолвить Queue за іменем через `moduleRef.get(getQueueToken(name), {strict:false})`.
+ * 18 черг: forFeature резолвить Queue за іменем через `moduleRef.get(getQueueToken(name), {strict:false})`.
  * Queue-провайдери з registerQueue у feature-модулях scoped до тих модулів, тож реєструємо ті самі імена
  * локально тут (registerQueue ідемпотентний — BullMQ дедуплікує з'єднання за іменем; BullMQAdapter лише
  * читає стан, окремого воркера не піднімає).
@@ -43,6 +43,11 @@ const QUEUE_NAMES = [
   'checkbox',
   'payment-polling',
   'bank-statement-polling',
+  // Постачальники API (BR-SCON-006): три зовнішні черги й внутрішня.
+  'supplier-search',
+  'supplier-order',
+  'supplier-catalog',
+  'supplier-maintenance',
 ] as const;
 
 @Module({})

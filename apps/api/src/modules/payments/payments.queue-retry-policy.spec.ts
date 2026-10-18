@@ -34,6 +34,9 @@ const EXTERNAL_API_QUEUES: Record<string, string> = {
   'nova-poshta-polling': 'служба доставки (Нова Пошта)',
   'nbu-fetch': 'API курсів НБУ',
   'bank-statement-polling': 'API банку (виписки)',
+  'supplier-search': 'API постачальників автозапчастин (перевірка, пошук пропозицій)',
+  'supplier-order': 'API постачальників автозапчастин (замовлення, статуси)',
+  'supplier-catalog': 'API постачальника (дзеркало каталогу AVD)',
 };
 
 /** Черги, чий процесор працює лише з власною БД/Redis (правило про зовнішні API їх не стосується). */
@@ -45,6 +48,8 @@ const INTERNAL_QUEUES = new Set([
   'idempotency-purge',
   'integration-log-purge',
   'dead-letter-purge',
+  // Перепостановка завислих задач постачальників і очищення пропозицій — лише БД і Redis.
+  'supplier-maintenance',
 ]);
 
 const MIN_ATTEMPTS = 10;
@@ -320,6 +325,7 @@ describe('Політика повторів черг зовнішніх API (с�
       'nova-poshta-polling': 2,
       'nbu-fetch': 3,
       'bank-statement-polling': 2,
+      'supplier-search': 1,
     });
     expect(found.registerSites.filter(r => r.name !== null).length).toBeGreaterThanOrEqual(14);
   });

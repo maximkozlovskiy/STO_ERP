@@ -608,6 +608,7 @@ export const VALIDATION_KEYS = [
   'err.supplierConnection.enterCredentialsFirst',
   'err.supplierConnection.invalidOptions',
   'err.supplierConnection.unknownProvider',
+  'err.supplierConnection.concurrentChange',
   'err.supplierApi.lineWithoutOffer',
   'err.supplierApi.ambiguousOffer',
   'err.supplierApi.offerFromOtherConnection',
@@ -621,6 +622,8 @@ export const VALIDATION_KEYS = [
   'err.supplierApi.batchNotFound',
   'err.supplierApi.alreadySent',
   'err.supplierApi.nothingToRelease',
+  'err.supplierApi.noApiLines',
+  'err.supplierApi.orderClosed',
   // Exception-повідомлення: supplier-returns-модуль
   'err.supplierReturn.notFound',
   'err.supplierReturn.supplierNotFound',

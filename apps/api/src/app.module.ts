@@ -49,6 +49,7 @@ import { WorkOrdersModule } from './modules/work-orders/work-orders.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { PurchaseListsModule } from './modules/purchase-lists/purchase-lists.module';
+import { SupplierApiModule } from './modules/supplier-api/supplier-api.module';
 import { SupplierReturnsModule } from './modules/supplier-returns/supplier-returns.module';
 import { SupplierPaymentsModule } from './modules/supplier-payments/supplier-payments.module';
 import { StockDocumentsModule } from './modules/stock-documents/stock-documents.module';
@@ -211,6 +212,7 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
     CalendarModule,
     PurchaseOrdersModule,
     PurchaseListsModule,
+    SupplierApiModule,
     SupplierReturnsModule,
     SupplierPaymentsModule,
     StockDocumentsModule,

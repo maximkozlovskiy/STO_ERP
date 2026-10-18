@@ -488,6 +488,8 @@ export const uk: Record<string, string> = {
   'err.supplierConnection.enterCredentialsFirst': 'Спершу введіть дані доступу до API',
   'err.supplierConnection.invalidOptions': 'Некоректні параметри підключення: {{details}}',
   'err.supplierConnection.unknownProvider': 'Невідомий постачальник API: {{provider}}',
+  'err.supplierConnection.concurrentChange':
+    'Підключення змінено іншим користувачем — оновіть сторінку й повторіть',
   'err.supplierApi.lineWithoutOffer': 'Не обрано пропозицію постачальника для товарів: {{goods}}',
   'err.supplierApi.ambiguousOffer':
     'Різні пропозиції на той самий товар із розбіжною кількістю: {{goods}}',
@@ -505,6 +507,9 @@ export const uk: Record<string, string> = {
   'err.supplierApi.batchNotFound': 'Пошук пропозицій не знайдено',
   'err.supplierApi.alreadySent': 'Замовлення вже передане постачальнику',
   'err.supplierApi.nothingToRelease': 'Непідтвердженої кількості немає',
+  'err.supplierApi.noApiLines':
+    'У замовленні немає позицій зі списку купівлі з обраною пропозицією — у API нічого відправляти',
+  'err.supplierApi.orderClosed': 'Отримане чи скасоване замовлення не відправляється постачальнику',
 
   // ── Exception-повідомлення: supplier-returns-модуль ──
   'err.supplierReturn.notFound': 'Повернення не знайдено',

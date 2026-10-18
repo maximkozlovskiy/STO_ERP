@@ -498,6 +498,8 @@ export const en: Record<string, string> = {
   'err.supplierConnection.enterCredentialsFirst': 'Enter the API credentials first',
   'err.supplierConnection.invalidOptions': 'Invalid connection options: {{details}}',
   'err.supplierConnection.unknownProvider': 'Unknown supplier API: {{provider}}',
+  'err.supplierConnection.concurrentChange':
+    'The connection was changed by another user — refresh the page and try again',
   'err.supplierApi.lineWithoutOffer': 'No supplier offer chosen for goods: {{goods}}',
   'err.supplierApi.ambiguousOffer':
     'Different offers for the same good with mismatched quantities: {{goods}}',
@@ -515,6 +517,9 @@ export const en: Record<string, string> = {
   'err.supplierApi.batchNotFound': 'Offer search not found',
   'err.supplierApi.alreadySent': 'The order was already sent to the supplier',
   'err.supplierApi.nothingToRelease': 'There is no unconfirmed quantity',
+  'err.supplierApi.noApiLines':
+    'The order has no purchase list items with a chosen offer — nothing to send to the API',
+  'err.supplierApi.orderClosed': 'A received or cancelled order is not sent to the supplier',
 
   // ── Exception messages: supplier-returns module ──
   'err.supplierReturn.notFound': 'Return not found',
