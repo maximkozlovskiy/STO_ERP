@@ -294,6 +294,9 @@ describe('CreateWorkOrderModal — планові дати (BR-WO-019, BR-WO-020
           btn.className.includes('text-left'),
         );
         await user.click(item!);
+        // BR-WO-025: скасування — після підтвердження.
+        if (status === 'CANCELLED')
+          await user.click(await screen.findByRole('button', { name: 'Так, скасувати' }));
         await waitFor(() =>
           expect(
             (apiFetchMock.mock.calls as Call[]).some(

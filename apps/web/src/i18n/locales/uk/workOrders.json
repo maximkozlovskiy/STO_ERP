@@ -110,6 +110,9 @@
     "parts": "Запчастини",
     "paid": "Оплачено",
     "confirmTransition": "Перевести наряд у статус \"{{label}}\"?",
+    "cancelCompletedWarning": "Наряд уже виконано: товари повернуться на склад, а борг клієнта буде сторновано.",
+    "cancelConfirmYes": "Так, скасувати",
+    "cancelConfirmNo": "Ні",
     "transitionError": "Помилка переходу",
     "statusChanged": "Статус змінено: {{label}}",
     "act": {

@@ -74,6 +74,7 @@ import { Modal } from '@/components/ui/modal';
 import { ClientPaymentModal } from '@/components/ui/ClientPaymentModal';
 import { invoiceRemaining } from '@/lib/invoice-payment';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { cancelConfirmOptions } from '@/components/ui/work-order/cancel-confirm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
@@ -580,6 +581,23 @@ export function CreateWorkOrderModal({
     conflictWoNumbers,
   } = useConflictCheck();
   const { confirm, dialogProps: confirmDialogProps } = useConfirm();
+  // Підтвердження поверх картки (BR-WO-025): «Ні» чи Escape закривають лише його. Прапорець
+  // знімається ПІСЛЯ події (setTimeout) — інакше той самий Escape закрив би й картку (GOTCHAS
+  // 2026-10-12).
+  const confirmOpenRef = useRef(false);
+  const confirmOverCard = useCallback(
+    async (opts: Parameters<typeof confirm>[0]) => {
+      confirmOpenRef.current = true;
+      try {
+        return await confirm(opts);
+      } finally {
+        setTimeout(() => {
+          confirmOpenRef.current = false;
+        }, 0);
+      }
+    },
+    [confirm],
+  );
   const { minimizeModal } = useTabBarContext();
   const deletedLineIds = useRef<string[]>([]);
   const deletedPartIds = useRef<string[]>([]);
@@ -1473,7 +1491,7 @@ export function CreateWorkOrderModal({
       currentStatus === 'COMPLETED' &&
       linkedDocsCounts?.invoices === 0
     ) {
-      const ok = await confirm({
+      const ok = await confirmOverCard({
         title: 'Створити рахунок?',
         message: 'Рахунок для цього наряду відсутній. Створити рахунок зараз?',
         confirmLabel: 'Створити рахунок',
@@ -1486,7 +1504,7 @@ export function CreateWorkOrderModal({
       // ok=false → продовжуємо переводити статус без рахунку
     }
     if (newStatus === 'IN_PROGRESS' && calConflict?.anyConflict) {
-      const ok = await confirm({
+      const ok = await confirmOverCard({
         title: 'Перевести наряд в "В роботі"?',
         message: `У календарі є перетин слотів (${calConflict.conflictSlots.length} шт.)${
           conflictWoNumbers ? ': ' + conflictWoNumbers : ''
@@ -1496,6 +1514,13 @@ export function CreateWorkOrderModal({
       });
       if (!ok) return;
     }
+    // BR-WO-025: скасування — лише після підтвердження; з «Виконано» — попередження про повернення
+    // товарів на склад і сторно боргу клієнта (той самий текст, що на сторінці наряду).
+    if (
+      newStatus === 'CANCELLED' &&
+      !(await confirmOverCard(cancelConfirmOptions(t, currentStatus)))
+    )
+      return;
     setTransitioningBoth(true);
     setError('');
     try {
@@ -1717,8 +1742,8 @@ export function CreateWorkOrderModal({
   // save/transition; зараз лише при зміні onClose у parent).
   const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
-    // Escape над вікном оплати чи «До списку купівлі» закриває лише його.
-    if (payOpenRef.current || addToListOpenRef.current) return;
+    // Escape над вікном оплати, «До списку купівлі» чи підтвердженням закриває лише їх.
+    if (payOpenRef.current || addToListOpenRef.current || confirmOpenRef.current) return;
     if (!(await dirty.confirmClose())) return;
     setActiveTab('main');
     onClose();

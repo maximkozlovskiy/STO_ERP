@@ -37,6 +37,7 @@ import { ClientPaymentModal } from '@/components/ui/ClientPaymentModal';
 import { invoiceRemaining } from '@/lib/invoice-payment';
 import { WorkOrderPrintButtons } from './WorkOrderPrintButtons';
 import { woStatusLabel, woPriorityLabel, woCategoryLabel } from '@/i18n/enumLabel';
+import { cancelConfirmOptions } from '@/components/ui/work-order/cancel-confirm';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Badge } from '@/components/ui/badge';
 import { WorkOrderLinesSection } from './WorkOrderLinesSection';
@@ -527,8 +528,15 @@ export default function WorkOrderCardPage() {
   // викликаються через `void`: проміс нікому не потрібен і реджекту бути не може.
   const transition = async (newStatus: string) => {
     const label = woStatusLabel(newStatus);
-    if (!(await confirm({ title: t('detail.confirmTransition', { label }) }))) return;
     if (!wo) return;
+    // BR-WO-025: скасування — те саме підтвердження, що в картці наряду (з «Виконано» —
+    // попередження про повернення товарів і сторно боргу).
+    const ok = await confirm(
+      newStatus === 'CANCELLED'
+        ? cancelConfirmOptions(t, wo.status)
+        : { title: t('detail.confirmTransition', { label }) },
+    );
+    if (!ok) return;
 
     const previousStatus = wo.status;
 
