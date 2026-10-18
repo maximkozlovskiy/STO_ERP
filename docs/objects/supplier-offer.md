@@ -29,6 +29,36 @@
 
 ---
 
+## API Endpoints
+
+| Метод  | URL                                     | Ролі                      | Що робить                                                                            |
+| ------ | --------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------ |
+| POST   | `/supplier-offers/search`               | OWNER, ADMIN, STOREKEEPER | batch і запити (позиція × увімкнене підключення), кеш у межах TTL, 202 (BR-SOFR-002) |
+| GET    | `/supplier-offers/batches/:id`          | OWNER, ADMIN, STOREKEEPER | стан batch: підключення, «повтор о», пропозиції з `selectable` і причиною            |
+| POST   | `/supplier-offers/allocate`             | OWNER, ADMIN, STOREKEEPER | автопідбір `{batchId, strategy, dryRun}` (BR-SOFR-007…009)                           |
+| GET    | `/purchase-list-items/:id/offers`       | OWNER, ADMIN, STOREKEEPER | останні відомі пропозиції позиції без мережі (BR-SOFR-003)                           |
+| POST   | `/purchase-list-items/:id/choose-offer` | OWNER, ADMIN, STOREKEEPER | ручний вибір (BR-SOFR-005, 006)                                                      |
+| DELETE | `/purchase-list-items/:id/offer`        | OWNER, ADMIN, STOREKEEPER | зняти вибір                                                                          |
+
+Налаштування — `PATCH /settings/organisation` (`supplier*`), межі в DTO й CHECK міграції.
+
+---
+
 ## Аспекти і тести, що їх стережуть
 
-Реєстр заповнює виконавець разом зі спеками (`apps/api/src/modules/supplier-api/`).
+**Модуль:** `apps/api/src/modules/supplier-api/`
+
+| Аспект                                                                                                                                           | Тест                                    | Кейсів |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- | ------ |
+| нормалізація: кількість «>10» / «5+» / «>», ціна, дата, відкидання qty ≤ 0 і price ≤ 0 (BR-SOFR-001)                                             | `adapters/adapter-utils.spec.ts`        | 14     |
+| пошук: batch і запити, кеш у межах TTL, Redis недоступний, обробник, звірка з каталогом, дзеркало AVD, повтор о, ліміт, офлайн (BR-SOFR-001…004) | `offers/supplier-offers.search.spec.ts` | 12     |
+| ручний вибір: гривня за курсом, немає курсу, чужа пропозиція, CAS, зняття, аналоги за політикою, видимість цін (BR-SOFR-005, 006, 010)           | `offers/supplier-offers.choose.spec.ts` | 20     |
+| стратегії й покриття — вичерпні таблиці (BR-SOFR-007, 008)                                                                                       | `strategy/offer-allocation.spec.ts`     | 14     |
+| застосування автопідбору: dryRun, одна транзакція, поділ зі знімками, 409 (BR-SOFR-008, 009)                                                     | `strategy/supplier-allocation.spec.ts`  | 7      |
+
+Разом тут: **67** кейсів.
+
+Поза модулем: `settings/settings.contract.spec.ts` — поля налаштувань `supplier*` і межі (BR-SOFR-005, 007);
+`purchase-lists/purchase-lists.offer-snapshot.spec.ts` — знімок за позицією (BR-PL-017, 019);
+`purchase-lists/purchase-lists.create-orders.spec.ts` — рядки за пропозицією (BR-PL-018).
+Контракти адаптерів (формати пропозицій кожного постачальника) — реєстр [supplier-connection.md](supplier-connection.md).

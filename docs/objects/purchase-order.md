@@ -242,7 +242,7 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 | `create` — Σ(lines.amount) === totalAmount                     | `purchase-orders.totals.spec.ts`                                 | 1      |
 | швидкий імпорт рядків XLSX: виклик перерахунку                 | `../xlsx/xlsx.po-lines-import-totals.spec.ts`                    | 3      |
 | імпорт рядків: ПДВ рядків і тотали, звірка списків (адаптер)   | `../xlsx/document-line-import.adapter.spec.ts`                   | 14     |
-| HTTP-контракт (DTO, статуси, валідація)                        | `purchase-orders.contract.spec.ts`                               | 47     |
+| HTTP-контракт (DTO, статуси, валідація)                        | `purchase-orders.contract.spec.ts`                               | 48     |
 | документ, позначений на видалення, — лише перегляд (BR-WO-012) | `purchase-orders.with-deleted.spec.ts`                           | 11     |
 | Доставка (Нова Пошта)                                          | `delivery/*.spec.ts`, `purchase-orders.delivery.service.spec.ts` | —      |
 
@@ -251,6 +251,10 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 `purchaseOrderLineId`, резерв до боргу), `purchase-lists.create-orders.spec.ts` (`createInTx` —
 той самий шлях, що й `create()`), `purchase-lists.po-lifecycle.spec.ts` (звірка чернетки,
 видалення й скасування, остача після RECEIVED); адаптер імпорту — `document-line-import.adapter.spec.ts`.
+
+Передача в API постачальника (BR-PO-011, 012) — спеки модуля `supplier-api`
+(`orders/supplier-orders.send.spec.ts`, реєстр — [supplier-connection.md](supplier-connection.md));
+тут — лише `force` у переході (`purchase-orders.contract.spec.ts`).
 
 Спільні DI-провайдери — `purchase-orders.spec-fixture.ts` (`purchaseListProviders()` — заглушки
 хуків списків купівлі й розподілу отриманого). Якщо у конструктор

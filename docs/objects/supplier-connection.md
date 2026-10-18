@@ -39,6 +39,32 @@
 
 ---
 
+## API Endpoints
+
+Модуль `apps/api/src/modules/supplier-api/` (контролери `connections/`, `orders/`).
+
+| Метод         | URL                                                                                                 | Ролі                                  | Що робить                                                                           |
+| ------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------- |
+| GET           | `/supplier-providers`                                                                               | OWNER, ADMIN                          | постачальники API: можливості, поля кредів, опцій і параметрів складу (BR-SCON-003) |
+| GET           | `/supplier-connections`                                                                             | OWNER, ADMIN                          | підключення організації (без секретів)                                              |
+| GET           | `/supplier-connections/:id`                                                                         | OWNER, ADMIN                          | одне підключення                                                                    |
+| POST          | `/supplier-connections`                                                                             | OWNER, ADMIN                          | нове підключення (BR-SCON-001…003, 005)                                             |
+| PATCH         | `/supplier-connections/:id`                                                                         | OWNER, ADMIN                          | зміна; креди зливаються, порожнє не стирає (BR-SCON-002)                            |
+| DELETE        | `/supplier-connections/:id`                                                                         | OWNER, ADMIN                          | soft delete                                                                         |
+| POST          | `/supplier-connections/:id/verify`                                                                  | OWNER, ADMIN                          | перевірка — задача `supplier-search`, 202 (BR-SCON-004)                             |
+| POST          | `/supplier-connections/:id/catalog-sync`                                                            | OWNER, ADMIN                          | синхронізація дзеркала AVD — задача `supplier-catalog`, 202 (BR-SCON-015)           |
+| GET           | `/purchase-orders/:id/supplier-api`                                                                 | OWNER, ADMIN, STOREKEEPER, ACCOUNTANT | стан передачі: підсумок, зовнішні замовлення, рядки, попередження (BR-PO-011)       |
+| POST          | `/purchase-orders/:id/supplier-api/send`                                                            | OWNER, ADMIN, STOREKEEPER             | «Відправити в API», Idempotency-Key, 202 (BR-SCON-009, 010)                         |
+| POST          | `/purchase-orders/:id/supplier-api/poll`                                                            | OWNER, ADMIN, STOREKEEPER             | «Оновити статус» — задача `poll-now`, 202 (BR-SCON-012)                             |
+| POST          | `/purchase-orders/:id/supplier-api/release-unconfirmed`                                             | OWNER, ADMIN, STOREKEEPER             | повернути непідтверджене в список (BR-SCON-013)                                     |
+| POST / DELETE | `/purchase-orders/:id/transition` `{status: 'CANCELLED', force}`, `/purchase-orders/:id?force=true` | як у замовлення                       | скасування / видалення відправленого — лише з `force` (BR-SCON-014)                 |
+
+Черги: `supplier-search` (`verify`, `search`), `supplier-order` (`place`, `poll-now`, повторювана `poll-due`),
+`supplier-catalog` (`sync`, повторювана `sync-due`) — зовнішні, кожен `add()` з `attempts: 10` і
+експоненційним backoff; `supplier-maintenance` (`sweep`) — внутрішня (ADR-005).
+
+---
+
 ## Аспекти і тести, що їх стережуть
 
 Правите один аспект — ганяєте один файл:
@@ -49,13 +75,33 @@ cd apps/api && npx vitest run src/modules/supplier-api/<тека>/<файл>.spe
 
 **Модуль:** `apps/api/src/modules/supplier-api/`
 
-| Аспект                                                                                                        | Тест                                         | Кейсів |
-| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ------ |
-| HTTP до постачальника: адреси, redirect, тайм-аут, типізовані помилки, секрети, квота (BR-SCON-005, 007, 011) | `http/supplier-http.client.spec.ts`          | 14     |
-| allowlist локальних фейків лише поза production (BR-SCON-005)                                                 | `http/supplier-url-policy.spec.ts`           | 4      |
-| JWT постачальника: кеш, оновлення під м'ютексом, одна повторна авторизація (BR-SCON-008)                      | `auth/supplier-auth.session.spec.ts`         | 8      |
-| реєстр адаптерів і опції з опису провайдера (BR-SCON-003)                                                     | `adapters/supplier-adapter-registry.spec.ts` | 4      |
+| Аспект                                                                                                                                                | Тест                                               | Кейсів |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ------ |
+| HTTP-контракт: ролі (BR-SCON-001, 009; BR-SOFR-002), zod-тіла, 202 для черги                                                                          | `supplier-api.contract.spec.ts`                    | 17     |
+| HTTP до постачальника: адреси, redirect, тайм-аут, типізовані помилки, секрети, квота (BR-SCON-005, 007, 011)                                         | `http/supplier-http.client.spec.ts`                | 14     |
+| allowlist локальних фейків лише поза production (BR-SCON-005)                                                                                         | `http/supplier-url-policy.spec.ts`                 | 4      |
+| JWT постачальника: кеш, оновлення під м’ютексом, одна повторна авторизація (BR-SCON-008)                                                              | `auth/supplier-auth.session.spec.ts`               | 8      |
+| реєстр адаптерів і опції з опису провайдера (BR-SCON-003)                                                                                             | `adapters/supplier-adapter-registry.spec.ts`       | 4      |
+| AVD проти фейку: ключ, дзеркало (items/query, export 202), кошик replace, звірка за кошиком, статуси, спільна квота (BR-SCON-007, 008, 011, 012, 015) | `adapters/avd-trade/avd-trade.contract.spec.ts`    | 11     |
+| UTR проти фейку: логін і refresh, пошук, order/accept, звірка за коментарем, невідомий статус (BR-SCON-008, 010…012)                                  | `adapters/utr/utr.contract.spec.ts`                | 7      |
+| BM Parts проти фейку: заголовки, strict-пошук з аналогами, кошик → резерв → відвантаження, статуси (BR-SCON-008, 010…012)                             | `adapters/bm-parts/bm-parts.contract.spec.ts`      | 8      |
+| Tehnomir проти фейку: токен у тілі, позиції кошика з reference, order/create лише своїх, стани позицій, 503 = ліміт (BR-SCON-007, 008, 011, 012)      | `adapters/tehnomir/tehnomir.contract.spec.ts`      | 8      |
+| AD проти фейку: JWT з exp, повторний логін, order/create по складу, звірка, статус (BR-SCON-008, 010…012)                                             | `adapters/ad-ukraine/ad-ukraine.contract.spec.ts`  | 6      |
+| підключення: роль постачальника, дубль, креди лише на запис, опції, перевірка через чергу (BR-SCON-001…006)                                           | `connections/supplier-connections.service.spec.ts` | 10     |
+| обробник `verify`: OK / FAILED, UnrecoverableError, ліміт без витрати спроби (BR-SCON-004, 006, 007)                                                  | `processors/supplier-search.verify.spec.ts`        | 5      |
+| `sweep`: перепостановка загублених рядків, очищення пропозицій (BR-SCON-006, BR-SOFR-003)                                                             | `processors/supplier-maintenance.sweep.spec.ts`    | 2      |
+| дзеркало AVD: upsert сирим SQL, зняття не побачених, збій без видалення (BR-SCON-015)                                                                 | `catalog/supplier-catalog.sync.spec.ts`            | 5      |
+| планування відправки й підсумок `supplierApiStatus` — чисті функції (BR-SCON-010, 013)                                                                | `orders/supplier-order-planner.spec.ts`            | 17     |
+| відправка: кнопка, outbox, кроки, звірка, UNKNOWN, статуси, «Повернути непідтверджене», скасування (BR-SCON-009…014, BR-PO-011, 012)                  | `orders/supplier-orders.send.spec.ts`              | 19     |
 
-Поза модулем: `config/env.schema.spec.ts` — відмова старту з allowlist у production (BR-SCON-005).
+Разом тут: **145** кейсів; разом із реєстром [supplier-offer.md](supplier-offer.md) — **212** у модулі
+(цифри з `vitest --reporter=json`).
 
-Фейкові сервери постачальників для контрактних тестів і E2E — `tools/supplier-fakes` (`node tools/supplier-fakes/bin.js --port 4100`).
+Поза модулем: `config/env.schema.spec.ts` — відмова старту з allowlist у production (BR-SCON-005);
+`purchase-orders/purchase-orders.contract.spec.ts` — `force` у переході (BR-PO-012);
+`payments/payments.queue-retry-policy.spec.ts` — політика повторів нових черг (BR-SCON-006).
+
+Спільне: `supplier-api.spec-fixture.ts` (Redis у пам'яті, справжній HTTP-клієнт з allowlist фейку),
+`orders/supplier-orders.spec-fixture.ts` (поверх `procurementHarness` списків купівлі),
+`offers/supplier-offers.spec-fixture.ts`. Фейкові сервери постачальників — `tools/supplier-fakes`
+(`node tools/supplier-fakes/bin.js --port 4100`; керування `/__scenario`, `/__requests`, `/__reset`).

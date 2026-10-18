@@ -12,13 +12,14 @@
 
 ## Зведена таблиця
 
-| Провайдер   | Файл                                                          | Тест-доступ                                                                           | Shape vs код                                       | Статус                                 |
-| ----------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------- | -------------------------------------- |
-| LiqPay      | `payments/gateways/liqpay.gateway.ts`                         | ключі `sandbox_*` після реєстрації                                                    | ✅ підпис/status точні; checkout GET vs POST-форма | звірити QR на живому                   |
-| Checkbox    | `payments/fiscal/checkbox.provider.ts` + `checkbox.client.ts` | my.checkbox.ua → тест-акаунт + тест-сертифікат; sandbox-хост `dev-api.checkbox.in.ua` | ✅ endpoint/auth точні                             | косметика (хост, X-Client-\*)          |
-| Вчасно.Каса | `payments/fiscal/vchasno.provider.ts`                         | реєстрація кабінету → авто тест-каса, токен per-каса                                  | ✅ **переписано під v3** (74fa2254)                | звірити імена полів чека на живій касі |
-| Нова Пошта  | `purchase-orders/delivery/nova-poshta.*`                      | `new.novaposhta.ua → Безпека → Створити ключ` (бойовий ключ, тест-статус `0000`)      | ✅ транспорт; mapStatus **виправлено** (8e6c8f78)  | —                                      |
-| monobank    | `payments/monobank.client.ts`                                 | тест-токен у кабінеті api.monobank.ua; тест-картки за Luhn                            | ✅ endpoint/status точні                           | звірити на живому                      |
+| Провайдер                                      | Файл                                                          | Тест-доступ                                                                           | Shape vs код                                       | Статус                                 |
+| ---------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------- | -------------------------------------- |
+| LiqPay                                         | `payments/gateways/liqpay.gateway.ts`                         | ключі `sandbox_*` після реєстрації                                                    | ✅ підпис/status точні; checkout GET vs POST-форма | звірити QR на живому                   |
+| Checkbox                                       | `payments/fiscal/checkbox.provider.ts` + `checkbox.client.ts` | my.checkbox.ua → тест-акаунт + тест-сертифікат; sandbox-хост `dev-api.checkbox.in.ua` | ✅ endpoint/auth точні                             | косметика (хост, X-Client-\*)          |
+| Вчасно.Каса                                    | `payments/fiscal/vchasno.provider.ts`                         | реєстрація кабінету → авто тест-каса, токен per-каса                                  | ✅ **переписано під v3** (74fa2254)                | звірити імена полів чека на живій касі |
+| Нова Пошта                                     | `purchase-orders/delivery/nova-poshta.*`                      | `new.novaposhta.ua → Безпека → Створити ключ` (бойовий ключ, тест-статус `0000`)      | ✅ транспорт; mapStatus **виправлено** (8e6c8f78)  | —                                      |
+| monobank                                       | `payments/monobank.client.ts`                                 | тест-токен у кабінеті api.monobank.ua; тест-картки за Luhn                            | ✅ endpoint/status точні                           | звірити на живому                      |
+| Постачальники API (AVD, BM, Tehnomir, UTR, AD) | `supplier-api/adapters/*`                                     | ключі — лише клієнтам; BM `X-Test-Mode`, AVD dev-хост                                 | за специфікаціями, перевірено проти фейків         | **звірити наживо** (див. розділ нижче) |
 
 ---
 
@@ -85,6 +86,46 @@
 - **Примітка:** `hold` (дворівнева оплата) виникає лише при `paymentType:'hold'`; ми шлемо default
   `debit` → `hold` не з'явиться, мапінг у pending безпечний.
 - Джерела: monobank.ua/en/api-docs/acquiring · api.monobank.ua/docs/acquiring.html
+
+---
+
+## Постачальники автозапчастин (API) — 2026-10-18
+
+> Модуль `apps/api/src/modules/supplier-api/` (BR-SCON-_, BR-SOFR-_;
+> [supplier-connection.md](objects/supplier-connection.md), [supplier-offer.md](objects/supplier-offer.md)).
+> **Ключів жодного постачальника на момент реалізації немає** — адаптери написані строго за
+> офіційними специфікаціями (прочитано 2026-10-18) і перевірені лише проти локальних фейків
+> `tools/supplier-fakes` (`node tools/supplier-fakes/bin.js --port 4100`; API з
+> `SUPPLIER_API_DEV_ALLOWED_ORIGINS=http://127.0.0.1:4100`). Усе, позначене **«звірити наживо»**, —
+> припущення, яке треба перевірити першим же ключем. Джерело кожного поля — коментар у
+> `adapters/<провайдер>/*.mapper.ts`.
+
+| Постачальник             | Специфікація                                                    | Авторизація                                                                                                              | Пошук                                                                                                                            | Замовлення                                                                                                                                                                            | Звірка (`reference`)                                                                     |
+| ------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| AVD Trade                | `https://dev-api.avdtrade.com.ua/openapi.yaml` (1.2.0)          | `x-api-key`; квота спільна для всіх ключів клієнта                                                                       | дзеркало: `POST /items/query` (page ≤ 100, per_page ≤ 5000, `has_stock`); запасний — `GET /price/export` (202 → опитування)      | `POST /carts` → `PATCH` коментар-reference → `POST /carts/{uuid}/lines` `operation:'replace'` → `POST /carts/{uuid}/checkout`                                                         | uuid кошика = uuid замовлення: `GET /orders?order_uuid=`; кошик «Запит на відвантаження» |
+| BM Parts                 | `https://developer.bm.parts/openapi.json` + tutorials/test-mode | `Authorization: <токен>` (без «Bearer»), обов'язковий `User-Agent` (без нього 403), `X-Test-Mode: 1`; 10 000 запитів/год | `GET /search/products?q=&search_mode=strict&products_as=arr&warehouses=all`; аналоги — `GET /product/{uuid}?analogs_available=1` | по складу BM: `POST /shopping/carts` → `POST /shopping/reserve/process` (коментар-reference) → за конфігом доставки `GET /processing/departures` + `POST /processing/reserve/process` | `GET /shopping/reserves` за коментарем                                                   |
+| Tehnomir                 | `https://tehnomir.com.ua/index.php?r=swagger%2Fjson-schema`     | `apiToken` у тілі POST; ліміт — 503                                                                                      | `POST /price/search {code, isShowAnalogs}`; прайс (`priceLogo`) = склад                                                          | `POST /basket/add` з `reference` на позицію → `POST /order/create {orderNumber, basketIds}`                                                                                           | `POST /order/search {orderNumber}`                                                       |
+| UTR (UniqTrade)          | вікі `https://api.utr.ua` (API v2)                              | `POST /api/login_check?browser_fingerprint=` → JWT + refresh (`/api/token/refresh`); 412 — невірні дані                  | `GET /api/search/{oem}?brand=`                                                                                                   | `POST /api/deliveries/{date}/{point}/{transporter}` → `POST /api/order/accept` (коментар-reference)                                                                                   | `GET /api/order-list/{date}` за коментарем                                               |
+| AD Ukraine / АвтоТехнікс | `https://api.ad.ua/swagger/eCom.OpenApi.v2/swagger.json`        | `POST /api/v2/ecom/auth/login {login, pwd, company}` → JWT (`Authorization: Bearer`); прострочений — повторний логін     | `POST /api/v2/ecom/item/search {code}` (≤ 100 рядків)                                                                            | `POST /api/v2/ecom/order/create {items, locationCode, customerComment}` по складу AD                                                                                                  | `POST /api/v2/ecom/order/list` за `customerComment`                                      |
+
+**Звірити наживо (по постачальниках):**
+
+- **AVD:** формат CSV `price/export` специфікація не описує (розбір за заголовками, колонки складів — за
+  назвою складу → uuid з `GET /warehouses`); терміну постачання пропозиції немає (береться з підключення);
+  чи бачить `GET /orders` замовлення одразу після checkout.
+- **BM Parts:** схема `product.analogs` порожня (приймаємо мапу uuid → картка і масив); `quantity` «>» без
+  числа (рахуємо 1 як нижню межу); словника статусів резервів немає — гілка `reserves` → CONFIRMED,
+  `picking` → READY, зник із переліку → статус не змінюється; чи повторне `processing/reserve/process` того
+  ж резерву справді відхиляється (крок SHIP вважається повторюваним).
+- **Tehnomir:** назви станів позицій (`/info/getPositionStatuses`) — класифікація за ключовими словами
+  (відмова / видано / на складі); чи `order/create` з `basketIds` справді не зачіпає інших позицій кошика
+  (рекомендація — окремий API-акаунт для СТО); валюта прайсів EUR → курс на момент вибору.
+- **UTR:** окрім `processing` статуси замовлення не задокументовані (невідомий — статус не змінюється);
+  аналоги недоступні (`/api/analogs/*` виведено 07.10.2026 — 410); `expires_at` вважаємо київським часом.
+- **AD:** валюту ціни відповідь не містить (вважаємо гривнею); словника `status` немає; `order/one` віддає
+  лише невідвантажені — зникле замовлення статус не змінює; підтверджена кількість — `quantity` рядка
+  (`reserve` не використовується).
+- **Усі:** ліміти запитів (окрім AVD і BM) не задокументовані — 429 / `Retry-After` обробляються загально.
 
 ---
 

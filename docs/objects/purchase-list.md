@@ -161,19 +161,20 @@ cd apps/api && npx vitest run src/modules/purchase-lists/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/purchase-lists/`
 
-| Аспект                                                                                       | Тест                                        | Кейсів |
-| -------------------------------------------------------------------------------------------- | ------------------------------------------- | ------ |
-| HTTP-контракт: ролі (BR-PL-015), zod-тіла                                                    | `purchase-lists.contract.spec.ts`           | 26     |
-| надсилання з наряду, нумерація, базові одиниці (BR-PL-001…003), позиції в картці наряду      | `purchase-lists.from-work-order.spec.ts`    | 18     |
-| ручна позиція, лише OPEN, об'єднання, перенесення й розділення (BR-PL-004…007)               | `purchase-lists.merge-split.spec.ts`        | 14     |
-| нестача по нарядах (BR-PL-014)                                                               | `purchase-lists.shortage.spec.ts`           | 4      |
-| вплив змін наряду на позиції (BR-PL-013)                                                     | `purchase-lists.work-order-changes.spec.ts` | 8      |
-| замовлення зі списку (BR-PL-008, BR-PO-010)                                                  | `purchase-lists.create-orders.spec.ts`      | 5      |
-| розподіл отриманого й резерв (BR-PL-011, BR-PO-009, BR-INVT-018), «Зняти резерв» (BR-PL-016) | `purchase-lists.receive-allocation.spec.ts` | 13     |
-| звірка чернетки, видалення й скасування, остача (BR-PL-009, 010, 012)                        | `purchase-lists.po-lifecycle.spec.ts`       | 8      |
-| звʼязки списку й наряду                                                                      | `purchase-lists.linked-docs.spec.ts`        | 3      |
+| Аспект                                                                                                                              | Тест                                        | Кейсів |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------ |
+| HTTP-контракт: ролі (BR-PL-015), zod-тіла                                                                                           | `purchase-lists.contract.spec.ts`           | 26     |
+| надсилання з наряду, нумерація, базові одиниці (BR-PL-001…003), позиції в картці наряду                                             | `purchase-lists.from-work-order.spec.ts`    | 18     |
+| ручна позиція, лише OPEN, об'єднання, перенесення й розділення (BR-PL-004…007)                                                      | `purchase-lists.merge-split.spec.ts`        | 14     |
+| нестача по нарядах (BR-PL-014)                                                                                                      | `purchase-lists.shortage.spec.ts`           | 4      |
+| вплив змін наряду на позиції (BR-PL-013)                                                                                            | `purchase-lists.work-order-changes.spec.ts` | 8      |
+| замовлення зі списку, рядки за пропозицією (BR-PL-008, 018, BR-PO-010)                                                              | `purchase-lists.create-orders.spec.ts`      | 7      |
+| розподіл отриманого й резерв (BR-PL-011, BR-PO-009, BR-INVT-018), «Зняти резерв» (BR-PL-016)                                        | `purchase-lists.receive-allocation.spec.ts` | 13     |
+| звірка чернетки, видалення й скасування, остача (BR-PL-009, 010, 012)                                                               | `purchase-lists.po-lifecycle.spec.ts`       | 8      |
+| звʼязки списку й наряду                                                                                                             | `purchase-lists.linked-docs.spec.ts`        | 3      |
+| знімок пропозиції постачальника: розділення, остача, повернення непідтвердженого, зміна постачальника (BR-PL-017, 019, BR-SCON-013) | `purchase-lists.offer-snapshot.spec.ts`     | 5      |
 
-Разом: **99** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **106** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Спеки — справжні сервіси над таблицями в пам'яті (`purchase-lists.spec-fixture.ts` поверх
 `work-orders/work-order-stock.spec-fixture.ts`: справжній InventoryService, відкат транзакції,
