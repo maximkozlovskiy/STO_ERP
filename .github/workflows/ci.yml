@@ -142,8 +142,8 @@ jobs:
       - name: Doc links resolve
         run: python3 scripts/check-doc-links.py
 
-      # Подвійно закодований UTF-8 (UTF-8, прочитаний як cp1251): «0вЂ“23», «в†’», «в‚ґ» замість «0–23»,
-      # «→», «₴». 2026-10-18 знайдено в DTO api, Swagger і api-types.ts — жило непоміченим.
+      # Подвійно закодований UTF-8 (UTF-8, прочитаний як cp1251): тире, стрілки й знак гривні ставали
+      # «в» + службові символи. 2026-10-18 знайдено в DTO api, Swagger і api-types.ts — жило непоміченим.
       - name: No double-encoded UTF-8
         run: python3 scripts/check-mojibake.py --self-test && python3 scripts/check-mojibake.py
 
