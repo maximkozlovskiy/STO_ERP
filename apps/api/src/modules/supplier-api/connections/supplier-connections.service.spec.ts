@@ -161,6 +161,25 @@ describe('SupplierConnectionsService — підключення (BR-SCON-001…0
     expect(row.authState).toBe('{"accessToken":"t2"}');
   });
 
+  // guards: BR-SCON-004
+  it('Bug #896: збереження картки з тим самим тестовим режимом не скидає перевірку й кеш токена; зміна режиму — скидає', async () => {
+    const c = await s.service.create(ORG, {
+      ...base,
+      provider: 'UTR',
+      credentials: { email: 'a@b.ua', password: 'p1' },
+    });
+    const row = s.supplierConnection.rows[0];
+    Object.assign(row, { authState: '{"accessToken":"t"}', verifyStatus: 'OK', testMode: false });
+    await s.service.update(ORG, c.id, { name: 'Нова назва', testMode: false, priority: 7 });
+    expect(row).toMatchObject({
+      verifyStatus: 'OK',
+      authState: '{"accessToken":"t"}',
+      priority: 7,
+    });
+    await s.service.update(ORG, c.id, { testMode: true });
+    expect(row).toMatchObject({ verifyStatus: 'NEVER', authState: null, testMode: true });
+  });
+
   // guards: BR-SCON-002
   it('невідоме поле кредів → 400 invalidOptions', async () => {
     await expect(s.service.create(ORG, { ...base, credentials: { token: 'x' } })).rejects.toThrow(

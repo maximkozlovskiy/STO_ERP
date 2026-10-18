@@ -132,6 +132,8 @@ export class SupplierConnectionsService {
     const touched = dto.credentials !== undefined || wipeSecrets;
     const merged = touched ? this.mergeCredentials(adapter, kept, dto.credentials) : null;
     const credsChanged = touched && JSON.stringify(merged ?? {}) !== JSON.stringify(before);
+    // Картка шле testMode завжди — скидає перевірку лише справжня зміна режиму (Bug #896).
+    const testModeChanged = dto.testMode !== undefined && dto.testMode !== current.testMode;
     try {
       // CAS на updatedAt: два адміністратори, що одночасно зливають креди, не затирають одне одного.
       const res = await this.prisma.supplierConnection.updateMany({
@@ -149,7 +151,7 @@ export class SupplierConnectionsService {
           ...(options !== undefined ? { options: options as Prisma.InputJsonValue } : {}),
           // Нові креди чи інша адреса — кеш токена й результат перевірки вже не про це підключення.
           ...(credsChanged ? { credentials: merged ? JSON.stringify(merged) : null } : {}),
-          ...(credsChanged || urlChanged || dto.testMode !== undefined
+          ...(credsChanged || urlChanged || testModeChanged
             ? { authState: null, verifyStatus: 'NEVER' as const, lastError: null }
             : {}),
         },
