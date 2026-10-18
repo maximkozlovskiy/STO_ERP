@@ -325,7 +325,7 @@ export class CalendarService {
       dto.workOrderId
         ? this.prisma.workOrder.findFirst({
             where: { id: dto.workOrderId, orgId, deletedAt: null },
-            select: { id: true },
+            select: { id: true, status: true },
           })
         : Promise.resolve(null),
       dto.counterpartyId
@@ -349,6 +349,11 @@ export class CalendarService {
       );
     if (dto.workOrderId && !workOrder)
       throw new NotFoundException(translateError('err.calendar.workOrderNotFound', getLocale()));
+    // BR-WO-022: запис скасованого наряду ніде не показується і не рахується зайнятим, але
+    // EXCLUDE `calendar_slots_no_overlap` його бачить — живий запис став би невидимим тримачем
+    // підйомника (409 на вільному з вигляду часі).
+    if (workOrder?.status === WorkOrderStatus.CANCELLED)
+      throw new BadRequestException(translateError('err.calendar.workOrderCancelled', getLocale()));
     if (dto.counterpartyId && !counterparty)
       throw new NotFoundException(translateError('err.calendar.clientNotFound', getLocale()));
     if (dto.vehicleId && !vehicle)
@@ -486,7 +491,7 @@ export class CalendarService {
       checkWorkOrder
         ? this.prisma.workOrder.findFirst({
             where: { id: dto.workOrderId!, orgId, deletedAt: null },
-            select: { id: true },
+            select: { id: true, status: true },
           })
         : Promise.resolve(null),
       checkCounterparty
@@ -508,6 +513,9 @@ export class CalendarService {
       throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
     if (checkWorkOrder && !workOrder)
       throw new NotFoundException(translateError('err.calendar.workOrderNotFound', getLocale()));
+    // BR-WO-022: див. createSlot — запис не прив'язується до скасованого наряду.
+    if (workOrder?.status === WorkOrderStatus.CANCELLED)
+      throw new BadRequestException(translateError('err.calendar.workOrderCancelled', getLocale()));
     if (checkCounterparty && !counterparty)
       throw new NotFoundException(translateError('err.calendar.clientNotFound', getLocale()));
     if (checkVehicle && !vehicle)

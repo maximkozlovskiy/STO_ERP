@@ -150,7 +150,10 @@ if (conflicts.length > 0) throw new ConflictException('Підйомник вже
   лишається на місці з тостом причини. Записи без наряду — `PATCH /calendar/slots/:id`, як раніше.
   Зміна меж (resize) і форма запису наряду поки змінюють сам запис — питання власнику в
   [TECH-DEBT](../TECH-DEBT.md). `GET /calendar/slots` і перевірка зайнятості не бачать записів
-  скасованих нарядів (і тих, що лишились від нарядів, скасованих до 2026-10-18).
+  скасованих нарядів; записи нарядів, скасованих до 2026-10-18, вирівняла міграція
+  `20261018140000_calendar_slots_of_cancelled_work_orders` (EXCLUDE `calendar_slots_no_overlap`
+  бачить кожен живий запис). Прив'язати запис до скасованого наряду (`POST`/`PATCH
+/calendar/slots`) — 400 «Наряд скасовано — записати його в календар не можна».
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md) (CalendarSlot split-day invariant)
 
@@ -174,7 +177,7 @@ cd apps/api && npx vitest run src/modules/calendar/<файл>.spec.ts
 | конфлікти слотів у `createSlot` / `updateSlot` (підйомник, механік, split-day, 409); `checkConflicts` картки наряду — без власних записів, але із записами без наряду; `syncWorkOrderSlots` — те саме                                                                      | `calendar.conflicts.spec.ts`          | 31     |
 | межі дня у `findSlots` (київська доба, переведення годинника, перевірка дати)                                                                                                                                                                                              | `calendar.day-bounds.spec.ts`         | 18     |
 | механік запису закріплений за підйомником: create/update, зміна підйомника, продовження, відпустка, перетягування знімає механіка; причина 400 і `mechanicDroppedReason` — у відпустці / не закріплений / інше; без підйомника — точна причина одним читанням (BR-CAL-012) | `calendar.mechanic-lift.spec.ts`      | 36     |
-| записи видаленого наряду: не в `findSlots`, не займають підйомник і механіка (BR-CAL-011)                                                                                                                                                                                  | `calendar.deleted-work-order.spec.ts` | 7      |
+| записи видаленого наряду: не в `findSlots`, не займають підйомник і механіка (BR-CAL-011); запис не прив'язується до скасованого наряду — 400 (BR-WO-022)                                                                                                                  | `calendar.deleted-work-order.spec.ts` | 9      |
 | синхронізація з планшета: механік за підйомником і ролі календаря, причина в `lastError` (BR-CAL-012, BR-CAL-010)                                                                                                                                                          | `../sync/sync.calendar-slots.spec.ts` | 16     |
 
 Разом: **177** кейсів (цифри з `vitest --reporter=json`, не з grep).

@@ -663,6 +663,7 @@ export const uk: Record<string, string> = {
     'Записи календаря змінюють лише власник, адміністратор і приймальня',
   'err.calendar.employeeNotFound': 'Співробітника не знайдено',
   'err.calendar.workOrderNotFound': 'Наряд не знайдено',
+  'err.calendar.workOrderCancelled': 'Наряд скасовано — записати його в календар не можна',
   'err.calendar.clientNotFound': 'Клієнта не знайдено',
   'err.calendar.vehicleNotFound': 'Автомобіль не знайдено',
   'err.calendar.liftBusy': 'Підйомник вже зайнятий на цей час',

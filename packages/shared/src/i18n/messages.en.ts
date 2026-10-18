@@ -679,6 +679,8 @@ export const en: Record<string, string> = {
     'Only the owner, an administrator or the reception can change calendar records',
   'err.calendar.employeeNotFound': 'Employee not found',
   'err.calendar.workOrderNotFound': 'Work order not found',
+  'err.calendar.workOrderCancelled':
+    'The work order is cancelled — it cannot be put in the calendar',
   'err.calendar.clientNotFound': 'Client not found',
   'err.calendar.vehicleNotFound': 'Vehicle not found',
   'err.calendar.liftBusy': 'The lift is already busy at this time',
