@@ -224,6 +224,56 @@ describe('Автопідбір — застосування (BR-SOFR-009)', () =
     expect(JSON.stringify(h.t.purchaseListItem.rows)).toBe(before);
   });
 
+  // guards: BR-SOFR-009
+  it('ручний вибір не перезаписується без overrideManual — пропущено з причиною manualChoice', async () => {
+    const { h, service, offer } = setup({ itemIds: [ITEM_MANUAL, ITEM_WO] });
+    const manual = h.t.purchaseListItem.rows.find(r => r.id === ITEM_MANUAL)!;
+    Object.assign(manual, {
+      offerChosenBy: 'MANUAL',
+      offerKey: 'manual-key',
+      supplierId: SUP_UTR,
+      expectedPrice: 150,
+    });
+    offer(ITEM_MANUAL, CONN_AVD, { price: 80 });
+    offer(ITEM_WO, CONN_AVD, { price: 80 });
+    const before = JSON.stringify(manual);
+    const res = await service.allocate(ORG, { batchId: BATCH, strategy: 'CHEAP' }, 'OWNER');
+    expect(res.items.find(i => i.itemId === ITEM_MANUAL)).toMatchObject({
+      skippedReason: 'manualChoice',
+      parts: [],
+    });
+    expect(JSON.stringify(h.t.purchaseListItem.rows.find(r => r.id === ITEM_MANUAL))).toBe(before);
+    // Інша позиція того самого пошуку підібрана як звичайно.
+    expect(h.t.purchaseListItem.rows.find(r => r.id === ITEM_WO)).toMatchObject({
+      supplierId: SUP_AVD,
+      offerChosenBy: 'AUTO',
+    });
+  });
+
+  // guards: BR-SOFR-009
+  it('overrideManual: true — ручний вибір замінюється автопідбором', async () => {
+    const { h, service, offer } = setup();
+    Object.assign(
+      h.t.purchaseListItem.rows.find(r => r.id === ITEM_MANUAL)!,
+      {
+        offerChosenBy: 'MANUAL',
+        offerKey: 'manual-key',
+        supplierId: SUP_UTR,
+      },
+    );
+    offer(ITEM_MANUAL, CONN_AVD, { price: 80 });
+    await service.allocate(
+      ORG,
+      { batchId: BATCH, strategy: 'CHEAP', overrideManual: true },
+      'OWNER',
+    );
+    expect(h.t.purchaseListItem.rows.find(r => r.id === ITEM_MANUAL)).toMatchObject({
+      supplierId: SUP_AVD,
+      offerChosenBy: 'AUTO',
+      expectedPrice: 80,
+    });
+  });
+
   it('позиція не OPEN — пропущена з причиною; ролі без цін бачать null', async () => {
     const { h, service, offer } = setup();
     offer(ITEM_MANUAL, CONN_UTR);

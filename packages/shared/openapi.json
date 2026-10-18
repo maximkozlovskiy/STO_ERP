@@ -11809,6 +11809,33 @@
         ]
       }
     },
+    "/api/v1/supplier-offers/settings": {
+      "get": {
+        "operationId": "SupplierOffersController_procurementSettings_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierProcurementSettingsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Налаштування закупівлі через API для діалогів: стратегія за замовчуванням, TTL",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
     "/api/v1/supplier-offers/batches/{id}": {
       "get": {
         "operationId": "SupplierOffersController_batch_v1",
@@ -28229,9 +28256,11 @@
             "nullable": true,
             "enum": [
               "itemNotOpen",
-              "noOffers"
+              "noOffers",
+              "manualChoice"
             ],
-            "type": "string"
+            "type": "string",
+            "description": "manualChoice — позиція з ручним вибором, а перезапис не просили"
           }
         },
         "required": [
@@ -28275,6 +28304,44 @@
           "applied",
           "items",
           "totalUah"
+        ]
+      },
+      "SupplierProcurementSettingsDto": {
+        "type": "object",
+        "properties": {
+          "defaultStrategy": {
+            "enum": [
+              "FAST",
+              "CHEAP",
+              "OPTIMAL"
+            ],
+            "type": "string"
+          },
+          "offerTtlMinutes": {
+            "type": "number",
+            "description": "Пропозиція застаріла після (хв)"
+          },
+          "allowSplit": {
+            "type": "boolean"
+          },
+          "allowAnalogsInAuto": {
+            "type": "boolean"
+          },
+          "analogPolicy": {
+            "enum": [
+              "CREATE_AND_REPLACE",
+              "SHOW_ONLY",
+              "CATALOG_ONLY"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "defaultStrategy",
+          "offerTtlMinutes",
+          "allowSplit",
+          "allowAnalogsInAuto",
+          "analogPolicy"
         ]
       },
       "SupplierOfferBatchDto": {

@@ -34,6 +34,7 @@ import {
   SupplierOfferBatchDto,
   SupplierOfferItemDto,
   SupplierOfferSearchResultDto,
+  SupplierProcurementSettingsDto,
 } from './supplier-offers.dto';
 
 /** Пропозиції, вибір, автопідбір — ті, хто веде закупівлю (план, BR-SOFR-002). */
@@ -75,6 +76,16 @@ export class SupplierOffersController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.allocation.allocate(orgId, dto, user.role);
+  }
+
+  @Get('settings')
+  @Roles(...SOFR_ROLES)
+  @ApiOperation({
+    summary: 'Налаштування закупівлі через API для діалогів: стратегія за замовчуванням, TTL',
+  })
+  @ApiOkResponse({ type: SupplierProcurementSettingsDto })
+  procurementSettings(@OrgContext() orgId: string) {
+    return this.service.procurementSettings(orgId);
   }
 
   @Get('batches/:id')

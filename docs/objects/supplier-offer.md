@@ -24,21 +24,22 @@
 - **BR-SOFR-006**: **Ручний вибір** (`POST /purchase-list-items/:id/choose-offer`). Лише OPEN-позиція (BR-PL-005, CAS); пропозиція — цієї організації й одного з запитів позиції (інакше 404 `offerNotFound`). Вибір ставить `supplierId` = контрагент підключення, `expectedPrice` = ціна пропозиції **в гривні** за курсом на момент вибору (`ExchangeRatesService.getRateAsOf`; немає курсу → 400), знімок `offer*` (ціна й валюта — як у постачальника), `offeredAt`, `offerChosenBy = MANUAL`. Зняття вибору (`DELETE …/offer`) очищає знімок, постачальника й ціну не чіпає.
 - **BR-SOFR-007**: **Стратегії** (`strategy/offer-allocation.ts`, чиста функція). Ціни порівнюються в гривні; пропозиція без курсу виключається. Термін = `deliveryDays` ?? дні до `deliveryDate` ?? `defaultDeliveryDays` підключення ?? `supplierUnknownDeliveryDays`. Замовна кількість — до кратності вгору; обмежена кількість (`qtyIsLowerBound`) вважається рівною межі. Оцінка (менше — краще): «дешево» — сума замовлення, нічия — за терміном; «швидко» — термін, нічия — за сумою; «оптимально» — `w · norm(ціна) + (1 − w) · norm(термін)` з `w = supplierOptimalPriceWeight`, нормування min–max серед допустимих пропозицій позиції. Остаточна нічия — `priority` підключення, далі `offerKey`: результат детермінований за будь-якого порядку пропозицій.
 - **BR-SOFR-008**: **Покриття кількості.** Перша — найкраща пропозиція, що покриває всю потребу. Якщо такої немає — жадібно за оцінкою: між складами одного постачальника — завжди, між різними постачальниками — лише коли `supplierAllowSplit` (рішення власника); інакше — найкраща часткова. Непокрита решта лишається окремою OPEN-позицією без пропозиції. Аналоги в автопідборі — лише коли `supplierAllowAnalogsInAuto` і політика BR-SOFR-005 дозволяє вибір.
-- **BR-SOFR-009**: **Застосування автопідбору** (`POST /supplier-offers/allocate {batchId, strategy, dryRun}`). `dryRun` повертає розподіл без запису. Застосування — одна транзакція: кожна позиція — CAS BR-PL-005; одна частка — знімок на позицію; кілька — позиція ділиться (знімок на кожну частину, BR-PL-017); `offerChosenBy = AUTO`; `expectedPrice` — у гривні. Позиції, змінені між попереднім переглядом і застосуванням, → 409 `concurrentChange`, нічого не записано.
+- **BR-SOFR-009**: **Застосування автопідбору** (`POST /supplier-offers/allocate {batchId, strategy, dryRun}`). `dryRun` повертає розподіл без запису. Застосування — одна транзакція: кожна позиція — CAS BR-PL-005; одна частка — знімок на позицію; кілька — позиція ділиться (знімок на кожну частину, BR-PL-017); `offerChosenBy = AUTO`; `expectedPrice` — у гривні. Позиції, змінені між попереднім переглядом і застосуванням, → 409 `concurrentChange`, нічого не записано. Позицію з ручним вибором (`offerChosenBy = MANUAL`) автопідбір не чіпає (`skippedReason: manualChoice`), доки запит не містить `overrideManual: true` (рішення за замовчуванням 2026-10-18; у web — прапорець «Перезаписати ручний вибір», типово вимкнений).
 - **BR-SOFR-010**: **Видимість цін.** Ціни пропозицій і знімка (`offerPrice`) бачать OWNER, ADMIN, STOREKEEPER; RECEPTIONIST і MECHANIC отримують `null` — як очікувану закупівельну ціну (`maskItemCost`).
 
 ---
 
 ## API Endpoints
 
-| Метод  | URL                                     | Ролі                      | Що робить                                                                            |
-| ------ | --------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------ |
-| POST   | `/supplier-offers/search`               | OWNER, ADMIN, STOREKEEPER | batch і запити (позиція × увімкнене підключення), кеш у межах TTL, 202 (BR-SOFR-002) |
-| GET    | `/supplier-offers/batches/:id`          | OWNER, ADMIN, STOREKEEPER | стан batch: підключення, «повтор о», пропозиції з `selectable` і причиною            |
-| POST   | `/supplier-offers/allocate`             | OWNER, ADMIN, STOREKEEPER | автопідбір `{batchId, strategy, dryRun}` (BR-SOFR-007…009)                           |
-| GET    | `/purchase-list-items/:id/offers`       | OWNER, ADMIN, STOREKEEPER | останні відомі пропозиції позиції без мережі (BR-SOFR-003)                           |
-| POST   | `/purchase-list-items/:id/choose-offer` | OWNER, ADMIN, STOREKEEPER | ручний вибір (BR-SOFR-005, 006)                                                      |
-| DELETE | `/purchase-list-items/:id/offer`        | OWNER, ADMIN, STOREKEEPER | зняти вибір                                                                          |
+| Метод  | URL                                     | Ролі                      | Що робить                                                                                |
+| ------ | --------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------- |
+| POST   | `/supplier-offers/search`               | OWNER, ADMIN, STOREKEEPER | batch і запити (позиція × увімкнене підключення), кеш у межах TTL, 202 (BR-SOFR-002)     |
+| GET    | `/supplier-offers/batches/:id`          | OWNER, ADMIN, STOREKEEPER | стан batch: підключення, «повтор о», пропозиції з `selectable` і причиною                |
+| POST   | `/supplier-offers/allocate`             | OWNER, ADMIN, STOREKEEPER | автопідбір `{batchId, strategy, dryRun, overrideManual}` (BR-SOFR-007…009)               |
+| GET    | `/supplier-offers/settings`             | OWNER, ADMIN, STOREKEEPER | стратегія за замовчуванням, TTL, ділення, аналоги — для діалогів (без інших налаштувань) |
+| GET    | `/purchase-list-items/:id/offers`       | OWNER, ADMIN, STOREKEEPER | останні відомі пропозиції позиції без мережі (BR-SOFR-003)                               |
+| POST   | `/purchase-list-items/:id/choose-offer` | OWNER, ADMIN, STOREKEEPER | ручний вибір (BR-SOFR-005, 006)                                                          |
+| DELETE | `/purchase-list-items/:id/offer`        | OWNER, ADMIN, STOREKEEPER | зняти вибір                                                                              |
 
 Налаштування — `PATCH /settings/organisation` (`supplier*`), межі в DTO й CHECK міграції.
 
@@ -54,9 +55,9 @@
 | пошук: batch і запити, кеш у межах TTL, Redis недоступний, обробник, звірка з каталогом, дзеркало AVD, повтор о, ліміт, офлайн (BR-SOFR-001…004) | `offers/supplier-offers.search.spec.ts` | 12     |
 | ручний вибір: гривня за курсом, немає курсу, чужа пропозиція, CAS, зняття, аналоги за політикою, видимість цін (BR-SOFR-005, 006, 010)           | `offers/supplier-offers.choose.spec.ts` | 20     |
 | стратегії й покриття — вичерпні таблиці (BR-SOFR-007, 008)                                                                                       | `strategy/offer-allocation.spec.ts`     | 14     |
-| застосування автопідбору: dryRun, одна транзакція, поділ зі знімками, 409 (BR-SOFR-008, 009)                                                     | `strategy/supplier-allocation.spec.ts`  | 7      |
+| застосування автопідбору: dryRun, одна транзакція, поділ зі знімками, 409, ручний вибір і `overrideManual` (BR-SOFR-008, 009)                    | `strategy/supplier-allocation.spec.ts`  | 9      |
 
-Разом тут: **67** кейсів.
+Разом тут: **69** кейсів.
 
 Поза модулем: `settings/settings.contract.spec.ts` — поля налаштувань `supplier*` і межі (BR-SOFR-005, 007);
 `purchase-lists/purchase-lists.offer-snapshot.spec.ts` — знімок за позицією (BR-PL-017, 019);

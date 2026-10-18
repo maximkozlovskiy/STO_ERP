@@ -3672,6 +3672,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/supplier-offers/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Налаштування закупівлі через API для діалогів: стратегія за замовчуванням, TTL */
+        get: operations["SupplierOffersController_procurementSettings_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/supplier-offers/batches/{id}": {
         parameters: {
             query?: never;
@@ -8626,8 +8643,11 @@ export interface components {
             parts: components["schemas"]["SupplierAllocationPartDto"][];
             /** @description Непокрита решта — окрема OPEN-позиція без пропозиції */
             uncovered: number;
-            /** @enum {string|null} */
-            skippedReason: "itemNotOpen" | "noOffers" | null;
+            /**
+             * @description manualChoice — позиція з ручним вибором, а перезапис не просили
+             * @enum {string|null}
+             */
+            skippedReason: "itemNotOpen" | "noOffers" | "manualChoice" | null;
         };
         SupplierAllocationResultDto: {
             /** @enum {string} */
@@ -8637,6 +8657,16 @@ export interface components {
             items: components["schemas"]["SupplierAllocationItemDto"][];
             /** @description Сума в гривні (null — ролі без цін) */
             totalUah: number | null;
+        };
+        SupplierProcurementSettingsDto: {
+            /** @enum {string} */
+            defaultStrategy: "FAST" | "CHEAP" | "OPTIMAL";
+            /** @description Пропозиція застаріла після (хв) */
+            offerTtlMinutes: number;
+            allowSplit: boolean;
+            allowAnalogsInAuto: boolean;
+            /** @enum {string} */
+            analogPolicy: "CREATE_AND_REPLACE" | "SHOW_ONLY" | "CATALOG_ONLY";
         };
         SupplierOfferBatchDto: {
             id: string;
@@ -16894,6 +16924,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupplierAllocationResultDto"];
+                };
+            };
+        };
+    };
+    SupplierOffersController_procurementSettings_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierProcurementSettingsDto"];
                 };
             };
         };

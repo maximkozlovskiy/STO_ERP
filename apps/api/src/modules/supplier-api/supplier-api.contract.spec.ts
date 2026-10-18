@@ -45,6 +45,7 @@ const offers = {
   itemOffers: vi.fn().mockResolvedValue({ itemId: ID, requests: [] }),
   chooseOffer: vi.fn().mockResolvedValue({ id: ID }),
   clearOffer: vi.fn().mockResolvedValue({ id: ID }),
+  procurementSettings: vi.fn().mockResolvedValue({ defaultStrategy: 'OPTIMAL' }),
 };
 const allocation = { allocate: vi.fn().mockResolvedValue({ items: [], applied: false }) };
 const orders = {
@@ -143,7 +144,12 @@ describe('Постачальники API — HTTP-контракт', () => {
   const procurement = [
     ['POST', '/supplier-offers/search', { itemIds: [ID] }],
     ['GET', `/supplier-offers/batches/${ID}`, undefined],
-    ['POST', '/supplier-offers/allocate', { batchId: ID, strategy: 'CHEAP', dryRun: true }],
+    [
+      'POST',
+      '/supplier-offers/allocate',
+      { batchId: ID, strategy: 'CHEAP', dryRun: true, overrideManual: true },
+    ],
+    ['GET', '/supplier-offers/settings', undefined],
     ['GET', `/purchase-list-items/${ID}/offers`, undefined],
     ['POST', `/purchase-list-items/${ID}/choose-offer`, { offerId: ID2 }],
     ['DELETE', `/purchase-list-items/${ID}/offer`, undefined],
@@ -177,6 +183,13 @@ describe('Постачальники API — HTTP-контракт', () => {
       { userId: 'emp-1', role: 'STOREKEEPER' },
     );
     expect(orders.send).toHaveBeenCalledWith('org-1', ID, 'STOREKEEPER');
+    // Прапорець «перезаписати ручний вибір» доходить до сервісу (BR-SOFR-009).
+    expect(allocation.allocate).toHaveBeenCalledWith(
+      'org-1',
+      { batchId: ID, strategy: 'CHEAP', dryRun: true, overrideManual: true },
+      'STOREKEEPER',
+    );
+    expect(offers.procurementSettings).toHaveBeenCalledWith('org-1');
   });
 
   it('стан передачі в API бачить і бухгалтер; приймальня — ні', async () => {

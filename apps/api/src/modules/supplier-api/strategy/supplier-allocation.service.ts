@@ -39,7 +39,7 @@ interface ItemPlan {
   connections: Map<string, ConnectionInfo>;
   result: AllocationResult;
   priceById: Map<string, number | null>;
-  skippedReason: 'itemNotOpen' | 'noOffers' | null;
+  skippedReason: 'itemNotOpen' | 'noOffers' | 'manualChoice' | null;
 }
 
 /**
@@ -114,6 +114,8 @@ export class SupplierAllocationService {
       if (!item) continue;
       const own = offers.filter(o => (sourceToItem.get(o.requestId) ?? []).includes(item.id));
       const open = item.status === 'OPEN' && item.purchaseOrderId === null;
+      // Ручний вибір користувача автопідбір не перезаписує, доки цього не попросили (BR-SOFR-009).
+      const keepManual = open && item.offerChosenBy === 'MANUAL' && !dto.overrideManual;
       const priceById = new Map<string, number | null>();
       const input: AllocationOffer[] = [];
       for (const o of own) {
@@ -148,22 +150,29 @@ export class SupplierAllocationService {
           selectable: sel.selectable && analogOk,
         });
       }
-      const result = open
-        ? allocateOffers(item.quantity, input, {
-            strategy: dto.strategy,
-            priceWeight: s.supplierOptimalPriceWeight,
-            allowSplit: s.supplierAllowSplit,
-            unknownDeliveryDays: s.supplierUnknownDeliveryDays,
-            now,
-          })
-        : { parts: [], uncovered: 0 };
+      const result =
+        open && !keepManual
+          ? allocateOffers(item.quantity, input, {
+              strategy: dto.strategy,
+              priceWeight: s.supplierOptimalPriceWeight,
+              allowSplit: s.supplierAllowSplit,
+              unknownDeliveryDays: s.supplierUnknownDeliveryDays,
+              now,
+            })
+          : { parts: [], uncovered: 0 };
       plans.push({
         item,
         offers: new Map(own.map(o => [o.id, o])),
         connections,
         result,
         priceById,
-        skippedReason: !open ? 'itemNotOpen' : result.parts.length === 0 ? 'noOffers' : null,
+        skippedReason: !open
+          ? 'itemNotOpen'
+          : keepManual
+            ? 'manualChoice'
+            : result.parts.length === 0
+              ? 'noOffers'
+              : null,
       });
     }
     return plans;

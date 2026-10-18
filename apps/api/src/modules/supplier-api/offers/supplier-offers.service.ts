@@ -27,6 +27,7 @@ import type {
   SupplierOfferItemDto,
   SupplierOfferRequestDto,
   SupplierOfferSearchResultDto,
+  SupplierProcurementSettingsDto,
 } from './supplier-offers.dto';
 
 const err = (key: string, params?: Record<string, string | number>) =>
@@ -270,6 +271,18 @@ export class SupplierOffersService {
       items: itemIds
         .map(id => itemDtos.find(i => i.itemId === id))
         .filter((i): i is SupplierOfferItemDto => !!i),
+    };
+  }
+
+  /** Стратегія за замовчуванням і TTL — для діалогів пропозицій (комірник налаштувань не читає). */
+  async procurementSettings(orgId: string): Promise<SupplierProcurementSettingsDto> {
+    const s = await this.settings.getOrganisationSettings(orgId);
+    return {
+      defaultStrategy: s.supplierDefaultStrategy,
+      offerTtlMinutes: s.supplierOfferTtlMinutes,
+      allowSplit: s.supplierAllowSplit,
+      allowAnalogsInAuto: s.supplierAllowAnalogsInAuto,
+      analogPolicy: s.supplierAnalogPolicy,
     };
   }
 

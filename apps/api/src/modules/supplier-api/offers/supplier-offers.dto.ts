@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import {
   OfferChosenBy,
   PurchaseListItemSource,
+  SupplierAnalogPolicy,
   PurchaseListItemStatus,
   SupplierOfferRequestStatus,
   SupplierProvider,
@@ -126,8 +127,13 @@ export class SupplierAllocationItemDto {
   @ApiProperty({ type: [SupplierAllocationPartDto] }) parts!: SupplierAllocationPartDto[];
   @ApiProperty({ description: 'Непокрита решта — окрема OPEN-позиція без пропозиції' })
   uncovered!: number;
-  @ApiProperty({ type: String, nullable: true, enum: ['itemNotOpen', 'noOffers'] })
-  skippedReason!: 'itemNotOpen' | 'noOffers' | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: ['itemNotOpen', 'noOffers', 'manualChoice'],
+    description: 'manualChoice — позиція з ручним вибором, а перезапис не просили',
+  })
+  skippedReason!: 'itemNotOpen' | 'noOffers' | 'manualChoice' | null;
 }
 
 export class SupplierAllocationResultDto {
@@ -137,4 +143,16 @@ export class SupplierAllocationResultDto {
   @ApiProperty({ type: [SupplierAllocationItemDto] }) items!: SupplierAllocationItemDto[];
   @ApiProperty({ type: Number, nullable: true, description: 'Сума в гривні (null — ролі без цін)' })
   totalUah!: number | null;
+}
+
+/**
+ * Налаштування закупівлі через API, потрібні тим, хто веде закупівлю (комірник не читає
+ * `GET /settings/organisation`): стратегія автопідбору за замовчуванням і TTL пропозиції.
+ */
+export class SupplierProcurementSettingsDto {
+  @ApiProperty({ enum: SupplierStrategy }) defaultStrategy!: SupplierStrategy;
+  @ApiProperty({ description: 'Пропозиція застаріла після (хв)' }) offerTtlMinutes!: number;
+  @ApiProperty() allowSplit!: boolean;
+  @ApiProperty() allowAnalogsInAuto!: boolean;
+  @ApiProperty({ enum: SupplierAnalogPolicy }) analogPolicy!: SupplierAnalogPolicy;
 }

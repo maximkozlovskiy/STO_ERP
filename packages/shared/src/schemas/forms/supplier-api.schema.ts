@@ -107,6 +107,8 @@ export const supplierOfferAllocateSchema = z.object({
   batchId: z.string().uuid('v.supplierOffer.uuid.invalid'),
   strategy: z.enum(SUPPLIER_STRATEGIES, { message: 'v.supplierOffer.strategy.invalid' }),
   dryRun: z.boolean().optional(),
+  /** true — перезаписати й позиції з ручним вибором (`offerChosenBy = MANUAL`); типово вони лишаються. */
+  overrideManual: z.boolean().optional(),
 });
 export type SupplierOfferAllocateValues = z.infer<typeof supplierOfferAllocateSchema>;
 
