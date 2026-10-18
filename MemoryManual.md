@@ -29,7 +29,7 @@ bash scripts/measure.sh              # тести + E2E + роути + розм�
 bash scripts/verdict.sh --cmd "<мітка>" -- <команда>   # «чисто / не чисто»
 bash scripts/prepush.sh             # перед git push (його ж запускає git-хук pre-push), ~2–3 хв
 python scripts/count-untyped-routes.py                 # роути без типу
-python scripts/check-doc-links.py                      # посилання між доками
+python scripts/check-doc-links.py; python scripts/check-mojibake.py   # посилання; зіпсований UTF-8
 ```
 
 ---
