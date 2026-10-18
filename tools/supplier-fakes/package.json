@@ -1,0 +1,15 @@
+{
+  "name": "@sto/supplier-fakes",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Локальні фейкові сервери API постачальників (AVD, BM Parts, Tehnomir, UTR, AD) для тестів і E2E",
+  "type": "commonjs",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "bin": {
+    "supplier-fakes": "bin.js"
+  },
+  "scripts": {
+    "start": "node bin.js"
+  }
+}

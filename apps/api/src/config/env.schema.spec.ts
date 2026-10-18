@@ -32,6 +32,19 @@ describe('validateEnv — fail-fast env валідація', () => {
     expect(() => validateEnv(prodBase)).not.toThrow();
   });
 
+  // guards: BR-SCON-005
+  it('production: SUPPLIER_API_DEV_ALLOWED_ORIGINS задано → кидає (виняток лише для локальних фейків)', () => {
+    expect(() =>
+      validateEnv({ ...prodBase, SUPPLIER_API_DEV_ALLOWED_ORIGINS: 'http://127.0.0.1:4100' }),
+    ).toThrow(/SUPPLIER_API_DEV_ALLOWED_ORIGINS/);
+    expect(() =>
+      validateEnv({
+        NODE_ENV: 'development',
+        SUPPLIER_API_DEV_ALLOWED_ORIGINS: 'http://127.0.0.1:4100',
+      }),
+    ).not.toThrow();
+  });
+
   it('production: відсутній DATABASE_URL → кидає з переліком', () => {
     const { DATABASE_URL, ...rest } = prodBase;
     expect(() => validateEnv(rest)).toThrow(/DATABASE_URL обовʼязковий у production/);

@@ -64,6 +64,11 @@ export const envSchema = z
     WEB_ORIGIN: z.string().url('WEB_ORIGIN має бути валідним URL').optional(),
     WEB_PUBLIC_URL: z.string().url('WEB_PUBLIC_URL має бути валідним URL').optional(),
 
+    // ── API постачальників (BR-SCON-005) ─────────────────────────────────────────
+    // Origin-и локальних фейкових серверів через кому (tools/supplier-fakes, E2E). Лише поза
+    // production: у production непорожнє значення — відмова старту (checkProdStrict нижче).
+    SUPPLIER_API_DEV_ALLOWED_ORIGINS: z.string().optional(),
+
     // ── Sentry (опційне; вимкнене у dev) ──────────────────────────────────────
     SENTRY_DSN: z.string().optional(),
     SENTRY_AUTH_TOKEN: z.string().optional(),
@@ -122,6 +127,16 @@ function checkProdStrict(config: Record<string, unknown>): Issue[] {
     'WEB_ORIGIN',
     'WEB_ORIGIN обовʼязковий у production (інакше CORS бере dev-fallback)',
   );
+  // Виняток SSRF-захисту для локальних фейків постачальників не має жити в production:
+  // поле `apiUrl` підключення адміністратор заповнює сам, і allowlist відкрив би йому локальну
+  // мережу СТО (SupplierUrlPolicy).
+  if (!isBlank(config.SUPPLIER_API_DEV_ALLOWED_ORIGINS)) {
+    issues.push({
+      path: 'SUPPLIER_API_DEV_ALLOWED_ORIGINS',
+      message:
+        'SUPPLIER_API_DEV_ALLOWED_ORIGINS заборонено у production (лише для локальних фейкових серверів)',
+    });
+  }
   const encKey = config.NOTIFICATION_ENC_KEY;
   if (isBlank(encKey)) {
     issues.push({

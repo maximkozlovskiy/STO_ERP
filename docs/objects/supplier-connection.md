@@ -41,4 +41,21 @@
 
 ## Аспекти і тести, що їх стережуть
 
-Реєстр заповнює виконавець разом зі спеками (`apps/api/src/modules/supplier-api/`).
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/supplier-api/<тека>/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/supplier-api/`
+
+| Аспект                                                                                                        | Тест                                         | Кейсів |
+| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ------ |
+| HTTP до постачальника: адреси, redirect, тайм-аут, типізовані помилки, секрети, квота (BR-SCON-005, 007, 011) | `http/supplier-http.client.spec.ts`          | 14     |
+| allowlist локальних фейків лише поза production (BR-SCON-005)                                                 | `http/supplier-url-policy.spec.ts`           | 4      |
+| JWT постачальника: кеш, оновлення під м'ютексом, одна повторна авторизація (BR-SCON-008)                      | `auth/supplier-auth.session.spec.ts`         | 8      |
+| реєстр адаптерів і опції з опису провайдера (BR-SCON-003)                                                     | `adapters/supplier-adapter-registry.spec.ts` | 4      |
+
+Поза модулем: `config/env.schema.spec.ts` — відмова старту з allowlist у production (BR-SCON-005).
+
+Фейкові сервери постачальників для контрактних тестів і E2E — `tools/supplier-fakes` (`node tools/supplier-fakes/bin.js --port 4100`).
