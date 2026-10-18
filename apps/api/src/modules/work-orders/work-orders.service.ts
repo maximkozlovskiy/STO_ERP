@@ -65,7 +65,10 @@ import {
   CreateWorkOrderPartDto,
   UpdateWorkOrderPartDto,
   WorkOrderPartResponseDto,
+  RescheduleWorkOrderDto,
+  WorkOrderRescheduleResponseDto,
 } from './work-orders.dto';
+import type { MechanicRejectReason } from '../calendar/calendar-mechanic';
 import {
   mapWorkOrderToDto,
   mapWorkOrderLineToDto,
@@ -519,6 +522,94 @@ export class WorkOrdersService {
     dto: UpdateWorkOrderDto,
     userId?: string,
   ): Promise<WorkOrderResponseDto> {
+    return (await this.applyUpdate(orgId, id, dto, userId)).workOrder;
+  }
+
+  /**
+   * BR-WO-023: запис наряду перетягнуто в календарі. Планові початок і завершення наряду
+   * зсуваються на ту саму різницю, що й перетягнутий запис ланцюжка (тривалість зберігається),
+   * перенесення на рядок іншого підйомника змінює підйомник наряду. Далі — той самий шлях, що й
+   * `PATCH /work-orders/:id`: BR-WO-019 (не в минулому, робочі години філії), BR-WO-020 (запис
+   * на дні, зайнятість підйомника й механіка) і механік за BR-CAL-012 — будь-яка відмова 400, ні
+   * наряд, ні записи не змінюються.
+   *
+   * Наряд без планових дат (запис прив'язано формою календаря до наряду без дат): база — межі
+   * ланцюжка перетягнутого запису (якір і його продовження), тож наряд отримує дати запису.
+   */
+  async reschedule(
+    orgId: string,
+    id: string,
+    dto: RescheduleWorkOrderDto,
+    userId?: string,
+  ): Promise<WorkOrderRescheduleResponseDto> {
+    const [wo, slot] = await Promise.all([
+      this.prisma.workOrder.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { plannedAt: true, dueDate: true },
+      }),
+      this.prisma.calendarSlot.findFirst({
+        where: { id: dto.slotId, orgId, workOrderId: id, deletedAt: null },
+        select: { id: true, startAt: true, parentSlotId: true },
+      }),
+    ]);
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
+    if (!slot)
+      throw new NotFoundException(translateError('err.calendar.slotNotFound', getLocale()));
+
+    const shiftMs = new Date(dto.startAt).getTime() - slot.startAt.getTime();
+    let base: { start: Date; end: Date };
+    if (wo.plannedAt && wo.dueDate) {
+      base = { start: wo.plannedAt, end: wo.dueDate };
+    } else {
+      const anchorId = slot.parentSlotId ?? slot.id;
+      const chain = await this.prisma.calendarSlot.findMany({
+        where: {
+          orgId,
+          workOrderId: id,
+          deletedAt: null,
+          OR: [{ id: anchorId }, { parentSlotId: anchorId }],
+        },
+        select: { startAt: true, endAt: true },
+        take: 500,
+      });
+      base = {
+        start: new Date(Math.min(...chain.map(c => c.startAt.getTime()))),
+        end: new Date(Math.max(...chain.map(c => c.endAt.getTime()))),
+      };
+    }
+    const shifted = (d: Date) => new Date(d.getTime() + shiftMs).toISOString();
+    const { workOrder, mechanicDroppedReason } = await this.applyUpdate(
+      orgId,
+      id,
+      {
+        plannedAt: shifted(base.start),
+        dueDate: shifted(base.end),
+        ...(dto.liftId !== undefined && { liftId: dto.liftId }),
+      },
+      userId,
+    );
+    return {
+      id: workOrder.id,
+      plannedAt: workOrder.plannedAt ?? null,
+      dueDate: workOrder.dueDate ?? null,
+      liftId: workOrder.liftId ?? null,
+      ...(mechanicDroppedReason && { mechanicDropped: true, mechanicDroppedReason }),
+    };
+  }
+
+  /**
+   * Тіло `update`: ще й причина зняття механіка з запису наряду (BR-CAL-012), коли підйомник
+   * змінився, — її показує перетягування в календарі (`reschedule`).
+   */
+  private async applyUpdate(
+    orgId: string,
+    id: string,
+    dto: UpdateWorkOrderDto,
+    userId?: string,
+  ): Promise<{
+    workOrder: WorkOrderResponseDto;
+    mechanicDroppedReason: MechanicRejectReason | null;
+  }> {
     // sto-optimize: tier merger — wo (parent guard) + optional lift FK validation у
     // єдиний Promise.all. Раніше: послідовні 2 RTT (wo, потім lift). Тепер: 1 RTT
     // паралельно. Lift FK сам себе захищає (orgId+deletedAt у where) — безпечно
@@ -642,6 +733,7 @@ export class WorkOrdersService {
         include: WO_WRITE_INCLUDE,
       });
 
+    let mechanicDroppedReason: MechanicRejectReason | null = null;
     const persist =
       slotAction === null
         ? updateWo(this.prisma)
@@ -651,7 +743,7 @@ export class WorkOrdersService {
               if (slotAction === 'remove') {
                 await this.calendar.removeWorkOrderSlots(tx, orgId, id);
               } else {
-                await this.calendar.upsertWorkOrderSlot(tx, {
+                ({ mechanicDroppedReason } = await this.calendar.upsertWorkOrderSlot(tx, {
                   orgId,
                   workOrderId: id,
                   branchId: wo.branchId,
@@ -661,7 +753,7 @@ export class WorkOrdersService {
                   vehicleId: wo.vehicleId,
                   counterpartyId: wo.counterpartyId,
                   ...(hours && { hours }),
-                });
+                }));
               }
               return res;
             },
@@ -687,7 +779,7 @@ export class WorkOrdersService {
         );
     }
 
-    return this.toDto(updated);
+    return { workOrder: this.toDto(updated), mechanicDroppedReason };
   }
 
   async remove(orgId: string, id: string, userId?: string): Promise<void> {

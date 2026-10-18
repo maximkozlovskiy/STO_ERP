@@ -59,6 +59,8 @@ import {
   type WithDeletedOption,
 } from '../../common/pipes/with-deleted-query.pipe';
 import {
+  RescheduleWorkOrderDto,
+  WorkOrderRescheduleResponseDto,
   TransitionWorkOrderDto,
   WorkOrderQueryDto,
   SendEstimateSmsDto,
@@ -159,6 +161,27 @@ export class WorkOrdersController {
     @Body(new ZodValidationPipe(workOrderCreateSchema)) dto: WorkOrderCreateValues,
   ) {
     return this.service.create(orgId, dto, user.id);
+  }
+
+  // BR-WO-023: перетягування запису наряду в календарі. Ролі — ті, що й змінюють наряд і записи
+  // календаря (BR-CAL-010). Оголошено ПЕРЕД @Patch(':id') — Fastify route ordering.
+  @Patch(':id/reschedule')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({
+    summary: 'Перенести наряд за перетягнутим записом календаря',
+    description:
+      'Планові початок і завершення наряду зсуваються на різницю перетягнутого запису ' +
+      '(тривалість зберігається); liftId — новий підйомник. Перевірки — як у PATCH /work-orders/:id ' +
+      '(BR-WO-019, BR-WO-020, BR-CAL-012); відмова — 400 без змін',
+  })
+  @ApiOkResponse({ type: WorkOrderRescheduleResponseDto })
+  reschedule(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RescheduleWorkOrderDto,
+    @CurrentUser() user: { id: string },
+  ): Promise<WorkOrderRescheduleResponseDto> {
+    return this.service.reschedule(orgId, id, dto, user.id);
   }
 
   @Patch(':id')

@@ -8432,6 +8432,53 @@
         ]
       }
     },
+    "/api/v1/work-orders/{id}/reschedule": {
+      "patch": {
+        "description": "Планові початок і завершення наряду зсуваються на різницю перетягнутого запису (тривалість зберігається); liftId — новий підйомник. Перевірки — як у PATCH /work-orders/:id (BR-WO-019, BR-WO-020, BR-CAL-012); відмова — 400 без змін",
+        "operationId": "WorkOrdersController_reschedule_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RescheduleWorkOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderRescheduleResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Перенести наряд за перетягнутим записом календаря",
+        "tags": [
+          "Work Orders"
+        ]
+      }
+    },
     "/api/v1/work-orders/{id}/pdf": {
       "get": {
         "operationId": "WorkOrdersController_downloadPdf_v1",
@@ -25566,6 +25613,66 @@
           "updatedAt",
           "lines",
           "parts"
+        ]
+      },
+      "RescheduleWorkOrderDto": {
+        "type": "object",
+        "properties": {
+          "slotId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Перетягнутий запис календаря цього наряду"
+          },
+          "startAt": {
+            "type": "string",
+            "description": "Новий початок перетягнутого запису (ISO 8601)"
+          },
+          "liftId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "description": "Новий підйомник наряду (рядок, на який перенесено запис)"
+          }
+        },
+        "required": [
+          "slotId",
+          "startAt"
+        ]
+      },
+      "WorkOrderRescheduleResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "plannedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "dueDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "liftId": {
+            "type": "string",
+            "nullable": true
+          },
+          "mechanicDropped": {
+            "type": "boolean",
+            "description": "Механіка запису знято: не закріплений за новим підйомником (BR-CAL-012)"
+          },
+          "mechanicDroppedReason": {
+            "enum": [
+              "ON_LEAVE",
+              "NOT_ON_LIFT",
+              "UNAVAILABLE"
+            ],
+            "type": "string",
+            "description": "Причина зняття механіка (лише разом із mechanicDropped)"
+          }
+        },
+        "required": [
+          "id"
         ]
       },
       "TransitionWorkOrderDto": {

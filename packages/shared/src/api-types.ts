@@ -2472,6 +2472,26 @@ export interface paths {
         patch: operations["WorkOrdersController_update_v1"];
         trace?: never;
     };
+    "/api/v1/work-orders/{id}/reschedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Перенести наряд за перетягнутим записом календаря
+         * @description Планові початок і завершення наряду зсуваються на різницю перетягнутого запису (тривалість зберігається); liftId — новий підйомник. Перевірки — як у PATCH /work-orders/:id (BR-WO-019, BR-WO-020, BR-CAL-012); відмова — 400 без змін
+         */
+        patch: operations["WorkOrdersController_reschedule_v1"];
+        trace?: never;
+    };
     "/api/v1/work-orders/{id}/pdf": {
         parameters: {
             query?: never;
@@ -7934,6 +7954,33 @@ export interface components {
             deletedAt?: string | null;
             lines: components["schemas"]["WorkOrderLineResponseDto"][];
             parts: components["schemas"]["WorkOrderPartResponseDto"][];
+        };
+        RescheduleWorkOrderDto: {
+            /**
+             * Format: uuid
+             * @description Перетягнутий запис календаря цього наряду
+             */
+            slotId: string;
+            /** @description Новий початок перетягнутого запису (ISO 8601) */
+            startAt: string;
+            /**
+             * Format: uuid
+             * @description Новий підйомник наряду (рядок, на який перенесено запис)
+             */
+            liftId?: string | null;
+        };
+        WorkOrderRescheduleResponseDto: {
+            id: string;
+            plannedAt?: string | null;
+            dueDate?: string | null;
+            liftId?: string | null;
+            /** @description Механіка запису знято: не закріплений за новим підйомником (BR-CAL-012) */
+            mechanicDropped?: boolean;
+            /**
+             * @description Причина зняття механіка (лише разом із mechanicDropped)
+             * @enum {string}
+             */
+            mechanicDroppedReason?: "ON_LEAVE" | "NOT_ON_LIFT" | "UNAVAILABLE";
         };
         TransitionWorkOrderDto: {
             /** @enum {string} */
@@ -15040,6 +15087,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkOrderResponseDto"];
+                };
+            };
+        };
+    };
+    WorkOrdersController_reschedule_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RescheduleWorkOrderDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderRescheduleResponseDto"];
                 };
             };
         };

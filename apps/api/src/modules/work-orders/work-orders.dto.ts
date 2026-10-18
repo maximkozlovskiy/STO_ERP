@@ -305,6 +305,47 @@ export class WorkOrderQueryDto {
   limit: number = 20;
 }
 
+/**
+ * BR-WO-023: запис наряду перетягнуто в календарі — `PATCH /work-orders/:id/reschedule`.
+ * `startAt` — новий початок перетягнутого запису (будь-якого в ланцюжку); наряд зсувається на
+ * ту саму різницю. `liftId` — лише коли запис перенесено на рядок іншого підйомника.
+ */
+export class RescheduleWorkOrderDto {
+  @ApiProperty({ description: 'Перетягнутий запис календаря цього наряду' })
+  @IsUUID()
+  slotId!: string;
+
+  @ApiProperty({ description: 'Новий початок перетягнутого запису (ISO 8601)' })
+  @IsISO8601({ strict: true })
+  startAt!: string;
+
+  @ApiPropertyOptional({
+    description: 'Новий підйомник наряду (рядок, на який перенесено запис)',
+    type: String,
+    nullable: true,
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  liftId?: string | null;
+}
+
+export class WorkOrderRescheduleResponseDto {
+  @ApiProperty() id!: string;
+  @ApiPropertyOptional({ type: String, nullable: true }) plannedAt!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) dueDate!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) liftId!: string | null;
+  @ApiPropertyOptional({
+    description: 'Механіка запису знято: не закріплений за новим підйомником (BR-CAL-012)',
+  })
+  mechanicDropped?: boolean;
+  @ApiPropertyOptional({
+    enum: ['ON_LEAVE', 'NOT_ON_LIFT', 'UNAVAILABLE'],
+    description: 'Причина зняття механіка (лише разом із mechanicDropped)',
+  })
+  mechanicDroppedReason?: 'ON_LEAVE' | 'NOT_ON_LIFT' | 'UNAVAILABLE';
+}
+
 export class WorkOrderResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() orgId!: string;

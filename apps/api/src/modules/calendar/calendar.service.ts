@@ -785,6 +785,9 @@ export class CalendarService {
    *   нарядів не рахуються (BR-CAL-011); власні записи наряду — не конфлікт.
    * - `isNew` — наряд створено в цій самій транзакції: власних записів у нього ще немає, тож
    *   їх пошук (завжди порожній) пропускається — на один запит до БД менше на створення.
+   *
+   * Повертає причину, з якої механіка запису знято (BR-CAL-012), або `null` — перетягування
+   * запису наряду показує за нею «Механіка знято: …» (BR-WO-023).
    */
   async upsertWorkOrderSlot(
     tx: Prisma.TransactionClient,
@@ -800,7 +803,7 @@ export class CalendarService {
       hours?: WorkHours;
       isNew?: boolean;
     },
-  ): Promise<void> {
+  ): Promise<{ mechanicDroppedReason: MechanicRejectReason | null }> {
     const { orgId, workOrderId, liftId } = args;
     const hours = args.hours ?? (await this.resolveWorkHours(orgId, args.branchId));
     const split = splitByWorkHours(args.startAt, args.endAt, hours);
@@ -829,9 +832,13 @@ export class CalendarService {
     const anchor = own.find(s => s.parentSlotId === null) ?? null;
 
     let employeeId = anchor?.employeeId ?? null;
+    let mechanicDroppedReason: MechanicRejectReason | null = null;
     if (anchor && employeeId && liftId !== anchor.liftId) {
       const mechanic = await findMechanicOnLift(tx, orgId, employeeId, liftId);
-      if (!mechanic.ok) employeeId = null;
+      if (!mechanic.ok) {
+        employeeId = null;
+        mechanicDroppedReason = mechanic.reason;
+      }
     }
 
     const ownIds = own.map(s => s.id);
@@ -902,6 +909,7 @@ export class CalendarService {
         })),
       });
     }
+    return { mechanicDroppedReason };
   }
 
   /**

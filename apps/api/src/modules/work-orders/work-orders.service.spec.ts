@@ -74,9 +74,7 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     { emit: vi.fn() } as never, // events (EventEmitter2)
     new WorkOrderTotalsService(null as never, exchangeRates),
     null as never, // orgPrintInfo
-    // BR-WO-022: скасування позначає видаленими записи календаря наряду (поведінку стереже
-    // work-orders.cancel-calendar.spec.ts) — тут лише заглушка.
-    { removeWorkOrderSlots: vi.fn().mockResolvedValue(undefined) } as never, // calendar
+    { removeWorkOrderSlots: vi.fn().mockResolvedValue(undefined) } as never, // calendar, BR-WO-022
   );
 }
 
