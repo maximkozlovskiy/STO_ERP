@@ -3,7 +3,8 @@
 //   не розтягується (жодного запиту), форма отримує статус, що блокує час і підйомник;
 // - BR-WO-026: видалення запису наряду з переліку «Без підйомника» попереджає, що дати наряду
 //   буде стерто, і скидає кеш нарядів (картка, списки, лічильники); запис без наряду — як раніше;
-//   запис наряду не в редагованому статусі не видаляється (рішення власника 2026-10-19).
+//   запис наряду не в редагованому статусі не видаляється, крім скасованого — дати не змінюються
+//   (рішення власника 2026-10-19).
 
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
@@ -203,6 +204,29 @@ describe('useCalendarState — видалення запису наряду з �
 
     expect(hook.result.current.dialogProps.open).toBe(false);
     expect(writes()).toEqual([]);
+  });
+
+  // Рішення власника 2026-10-19: запис скасованого наряду видаляється, дати наряду не змінюються.
+  // guards: BR-WO-026
+  it('запис скасованого наряду → підтвердження «дати не зміняться», DELETE', async () => {
+    daySlots = [woSlot('CANCELLED', { liftId: null })];
+    const hook = await renderDay();
+
+    let done: Promise<void> = Promise.resolve();
+    act(() => {
+      done = hook.result.current.removeSlot('s-1');
+    });
+    await waitFor(() => expect(hook.result.current.dialogProps.open).toBe(true));
+    const dialog = hook.result.current.dialogProps as { message?: string; onConfirm: () => void };
+    expect(dialog.message).toContain('скасованого наряду НРД-1');
+    expect(dialog.message).toContain('дати наряду не зміняться');
+    expect(dialog.message).not.toContain('стерто');
+    act(() => dialog.onConfirm());
+    await act(() => done);
+
+    expect(writes().map(c => [c[0], (c[1] as { method: string }).method])).toEqual([
+      ['/calendar/slots/s-1', 'DELETE'],
+    ]);
   });
 
   // guards: BR-WO-026

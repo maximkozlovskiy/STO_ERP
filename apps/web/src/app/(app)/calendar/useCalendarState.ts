@@ -47,7 +47,13 @@ import {
   toDateString,
 } from './calendar.utils';
 import { buildMonthSlots, chainEnds, liveSlots } from './calendar-month';
-import { nowLinePercent, pastPercent, workOrderTimeLock } from './calendar-day';
+import {
+  isCancelledWorkOrderSlot,
+  nowLinePercent,
+  pastPercent,
+  workOrderDeleteLock,
+  workOrderTimeLock,
+} from './calendar-day';
 import { mechanicDroppedText, type MechanicDropResponse } from './calendar-mechanic-drop';
 
 // Shared drag-id for the pending-slot block (used both by the draggable in JSX
@@ -1047,14 +1053,21 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   const removeSlot = useCallback(
     async (id: string) => {
       const slot = slots.find(s => s.id === id);
-      // BR-WO-026: запис наряду не в редагованому статусі не видаляється (сервер відповів би 400).
-      if (slot && workOrderTimeLock(slot)) return;
+      // BR-WO-026: запис наряду не в редагованому статусі не видаляється (сервер відповів би 400),
+      // крім скасованого наряду — його запис видаляється без зміни дат наряду.
+      const timeLock = slot ? workOrderTimeLock(slot) : null;
+      if (workOrderDeleteLock(timeLock)) return;
       const woNumber = slot?.workOrderId ? (slot.workOrderNumber ?? '') : null;
       const ok = await confirm({
         title: t('slot.deleteTitle'),
         message:
           woNumber !== null
-            ? t('slot.deleteWoMessage', { number: woNumber })
+            ? t(
+                isCancelledWorkOrderSlot(timeLock)
+                  ? 'slot.deleteCancelledWoMessage'
+                  : 'slot.deleteWoMessage',
+                { number: woNumber },
+              )
             : t('slot.deleteMessage'),
         variant: 'destructive',
       });

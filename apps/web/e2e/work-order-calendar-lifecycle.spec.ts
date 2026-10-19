@@ -506,7 +506,7 @@ test.describe('Запис наряду: перевʼязка BR-WO-028, вида
     await expect(form.getByRole('button', { name: /Видалити/ })).toBeDisabled();
     await expect(form.getByTestId('slot-delete-wrap')).toHaveAttribute(
       'title',
-      'Запис наряду в статусі «В роботі» не видаляється — лише в статусах «Чернетка», «Кошторис», «Затверджено»',
+      'Запис наряду в статусі «В роботі» не видаляється — лише в статусах «Чернетка», «Кошторис», «Затверджено» або «Скасовано»',
     );
     await page.screenshot({ path: test.info().outputPath('wo27_in_progress_form.png') });
 

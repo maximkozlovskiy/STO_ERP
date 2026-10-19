@@ -21,7 +21,13 @@ import { fmtQty } from '@/lib/format';
 import type { BookingSlot, CalendarSlot, GhostSlot, Lift, PendingSlot } from './calendar.types';
 import { SIDEBAR_W, decimalHoursToHHMM, fmtTime, kyivHours, pad } from './calendar.utils';
 import { CATEGORY_VIEW, SLOT_TYPE_ICON, slotType, type SlotCategory } from './calendar-categories';
-import { daySlotCategory, liftLoadHours, workOrderTimeLock } from './calendar-day';
+import {
+  daySlotCategory,
+  isCancelledWorkOrderSlot,
+  liftLoadHours,
+  workOrderDeleteLock,
+  workOrderTimeLock,
+} from './calendar-day';
 import { PENDING_DRAG_ID, type CalendarState } from './useCalendarState';
 
 // Module-level stable refs — `useMemo<[]>(() => [], [])` всередині компонента
@@ -81,6 +87,11 @@ const DraggableSlot = memo(function DraggableSlot({
   // перетягується й не розтягується — без ручок і курсору перетягування; підказка — у title.
   const lockedStatus = workOrderTimeLock(slot);
   const movable = canManage && !lockedStatus;
+  // Скасований наряд: час і підйомник так само заблоковані, але запис видаляється (BR-WO-026).
+  const lockedHint = (status: string) =>
+    t(isCancelledWorkOrderSlot(status) ? 'day.woTimeLockedCancelled' : 'day.woTimeLocked', {
+      status: woStatusLabel(status),
+    });
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: slot.id,
     data: { slot },
@@ -127,9 +138,7 @@ const DraggableSlot = memo(function DraggableSlot({
     slot.vehicleSummary ?? null,
     slot.vehiclePlate ?? null,
     `${typeLabel} · ${categoryLabel}`,
-    canManage && lockedStatus
-      ? t('day.woTimeLocked', { status: woStatusLabel(lockedStatus) })
-      : null,
+    canManage && lockedStatus ? lockedHint(lockedStatus) : null,
   ]
     .filter(Boolean)
     .join('\n');
@@ -192,9 +201,7 @@ const DraggableSlot = memo(function DraggableSlot({
         </span>
         <span className="sr-only">{` ${typeLabel}. ${categoryLabel}. `}</span>
         {canManage && lockedStatus && (
-          <span className="sr-only">
-            {`${t('day.woTimeLocked', { status: woStatusLabel(lockedStatus) })}. `}
-          </span>
+          <span className="sr-only">{`${lockedHint(lockedStatus)}. `}</span>
         )}
         {/* Main info — centered */}
         <div className="flex-1 flex flex-col justify-center gap-0.5 min-w-0">
@@ -771,7 +778,7 @@ function UnassignedSlotDeleteButton({
 }) {
   const { t } = useTranslation('calendar');
   const hintId = useId();
-  const locked = workOrderTimeLock(slot);
+  const locked = workOrderDeleteLock(workOrderTimeLock(slot));
   const lockHint = locked ? t('slot.woDeleteLocked', { status: woStatusLabel(locked) }) : null;
   return (
     <span title={lockHint ?? t('day.deleteSlotTitle')} className="inline-flex">

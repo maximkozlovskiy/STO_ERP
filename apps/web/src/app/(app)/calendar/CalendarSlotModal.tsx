@@ -49,6 +49,7 @@ import {
 } from './calendar.utils';
 import { CalendarMechanicField } from './CalendarMechanicField';
 import { mechanicDroppedText, type MechanicDropResponse } from './calendar-mechanic-drop';
+import { isCancelledWorkOrderSlot, workOrderDeleteLock } from './calendar-day';
 import type { CreatedWorkOrder } from '@/components/ui/CreateWorkOrderModal';
 
 /**
@@ -248,7 +249,8 @@ interface CalendarSlotModalProps {
   /**
    * Наряд запису, що редагується (як збережено), або `null`: `number` — у підтвердженні
    * видалення (BR-WO-026 стирає дати наряду), `lockedStatus` — статус наряду, у якому час,
-   * підйомник і наряд запису не змінюються (BR-WO-027); примітка й механік — доступні.
+   * підйомник і наряд запису не змінюються (BR-WO-027); примітка й механік — доступні, а запис
+   * скасованого наряду ще й видаляється (без зміни його дат).
    */
   editingWorkOrder?: { number: string; lockedStatus: string | null } | null;
   pendingSlot: PendingSlot | null;
@@ -317,9 +319,12 @@ export function CalendarSlotModal({
   const woLockedStatus = isEditingPast ? null : (editingWorkOrder?.lockedStatus ?? null);
   const fieldsLocked = isEditingPast || woLockedStatus !== null;
   // BR-WO-026: видалити запис такого наряду не можна (сервер відповів би 400) — кнопка з підказкою.
-  const deleteLockHint = woLockedStatus
-    ? t('slot.woDeleteLocked', { status: woStatusLabel(woLockedStatus) })
+  // Виняток — скасований наряд (рішення власника 2026-10-19): запис видаляється, дати наряду ті самі.
+  const deleteLockedStatus = workOrderDeleteLock(woLockedStatus);
+  const deleteLockHint = deleteLockedStatus
+    ? t('slot.woDeleteLocked', { status: woStatusLabel(deleteLockedStatus) })
     : null;
+  const cancelledWorkOrder = isCancelledWorkOrderSlot(editingWorkOrder?.lockedStatus ?? null);
   const deleteHintId = useId();
   const {
     conflict: calConflict,
@@ -900,7 +905,11 @@ export function CalendarSlotModal({
               data-testid="slot-wo-time-locked"
             >
               <span aria-hidden="true">🔒</span>
-              <span>{t('slot.woTimeLocked', { status: woStatusLabel(woLockedStatus) })}</span>
+              <span>
+                {t(cancelledWorkOrder ? 'slot.woTimeLockedCancelled' : 'slot.woTimeLocked', {
+                  status: woStatusLabel(woLockedStatus),
+                })}
+              </span>
             </div>
           )}
 
@@ -1601,7 +1610,12 @@ export function CalendarSlotModal({
                       const ok = await confirm({
                         title: t('slot.deleteTitle'),
                         message: editingWorkOrder
-                          ? t('slot.deleteWoMessage', { number: editingWorkOrder.number })
+                          ? t(
+                              cancelledWorkOrder
+                                ? 'slot.deleteCancelledWoMessage'
+                                : 'slot.deleteWoMessage',
+                              { number: editingWorkOrder.number },
+                            )
                           : t('slot.deleteMessage'),
                         variant: 'destructive',
                       });

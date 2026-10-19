@@ -35,6 +35,21 @@ export function workOrderTimeLock(
   return slot.workOrderId && status && !WO_EDITABLE_STATUSES.includes(status) ? status : null;
 }
 
+/**
+ * BR-WO-026: видалення запису наряду заблоковане там само, де час і підйомник (`timeLock` —
+ * результат `workOrderTimeLock`), крім скасованого наряду (рішення власника 2026-10-19): його
+ * запис — залишок старих даних, видаляється без зміни дат закритого наряду. Повертає статус, що
+ * блокує видалення, або `null`.
+ */
+export function workOrderDeleteLock(timeLock: string | null): string | null {
+  return timeLock === 'CANCELLED' ? null : timeLock;
+}
+
+/** Запис скасованого наряду: видалення не стирає дат наряду (BR-WO-026) — інше підтвердження. */
+export function isCancelledWorkOrderSlot(timeLock: string | null): boolean {
+  return timeLock === 'CANCELLED';
+}
+
 /** Поточний час за Києвом як частка робочого вікна дня, %; `null` — не сьогодні. */
 function kyivTodayHours(nowMs: number, date: string): number | null {
   if (!nowMs || !date) return null;

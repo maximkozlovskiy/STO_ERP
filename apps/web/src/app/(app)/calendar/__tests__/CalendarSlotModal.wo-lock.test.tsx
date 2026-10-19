@@ -2,7 +2,8 @@
 // - BR-WO-027: наряд не в редагованому статусі — час, тривалість, підйомник, клієнт і наряд запису
 //   недоступні з підказкою; механік і нотатки — доступні, «Оновити» лишається;
 // - BR-WO-026: «Видалити» запису наряду попереджає, що планові дати наряду буде стерто; у
-//   нередагованому статусі наряду «Видалити» недоступна з підказкою (рішення власника 2026-10-19).
+//   нередагованому статусі наряду «Видалити» недоступна з підказкою (рішення власника 2026-10-19),
+//   крім скасованого наряду — запис видаляється, дати наряду не змінюються.
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
@@ -121,12 +122,33 @@ describe('CalendarSlotModal — видалення запису наряду (BR
     renderForm({ number: 'НРД-1', lockedStatus: 'IN_PROGRESS' });
 
     const hint =
-      'Запис наряду в статусі «В роботі» не видаляється — лише в статусах «Чернетка», «Кошторис», «Затверджено»';
+      'Запис наряду в статусі «В роботі» не видаляється — лише в статусах «Чернетка», «Кошторис», «Затверджено» або «Скасовано»';
     const btn = screen.getByRole('button', { name: /Видалити/ });
     expect(btn).toBeDisabled();
     expect(btn).toHaveAccessibleDescription(hint);
     expect(screen.getByTestId('slot-delete-wrap')).toHaveAttribute('title', hint);
     fireEvent.click(btn);
+    expect(screen.queryByText(/планові дати наряду/)).toBeNull();
+  });
+
+  // Рішення власника 2026-10-19: запис скасованого наряду видаляється, дати наряду ті самі.
+  // guards: BR-WO-026
+  it('скасований наряд: «Видалити» доступна, підтвердження — дати наряду не зміняться', async () => {
+    renderForm({ number: 'НРД-1', lockedStatus: 'CANCELLED' });
+
+    // Час і підйомник лишаються заблокованими, підказка каже, що запис видалити можна.
+    expect(screen.getByTestId('slot-wo-time-locked')).toHaveTextContent(
+      'а запис — видалити (дати наряду не зміняться)',
+    );
+    const btn = screen.getByRole('button', { name: /Видалити/ });
+    expect(btn).not.toBeDisabled();
+    expect(btn).not.toHaveAccessibleDescription();
+    expect(screen.getByTestId('slot-delete-wrap')).not.toHaveAttribute('title');
+    fireEvent.click(btn);
+
+    expect(await screen.findByText(/скасованого наряду НРД-1/)).toHaveTextContent(
+      'дати наряду не зміняться',
+    );
     expect(screen.queryByText(/планові дати наряду/)).toBeNull();
   });
 
