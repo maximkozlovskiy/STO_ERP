@@ -6,7 +6,7 @@ import type { PrismaService } from '../../prisma/prisma.service';
 import type { InventoryService } from '../inventory/inventory.service';
 import type { SettlementsService } from '../settlements/settlements.service';
 import type { WorkOrderQueryDto } from './work-orders.dto';
-import { WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
+import { CLOSED_STATUSES, WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
 import type { WorkOrderStatus } from '@prisma/client';
 
 // ─── Query-shape regression spec (Bug #163 / #171 pattern) ────────────────────
@@ -368,7 +368,8 @@ describe('WorkOrdersService.update — query shape (Bug #350 follow-up)', () => 
 
     await service.update(ORG, WO_ID, { description: 'new' });
     const arg = update.mock.calls[0][0];
-    expect(arg.where).toEqual({ id: WO_ID, orgId: ORG });
+    // Bug #910: статус — в умові запису (закритий наряд між читанням і записом → P2025).
+    expect(arg.where).toEqual({ id: WO_ID, orgId: ORG, status: { notIn: CLOSED_STATUSES } });
   });
 
   it('returned dto carries contractNumber from the included contract.number', async () => {

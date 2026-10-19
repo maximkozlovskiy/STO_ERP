@@ -184,3 +184,111 @@ describe('WorkOrdersService.transition → CANCELLED — записи кален
     expect(h.liveSlots(OTHER_WO)).toHaveLength(1);
   });
 });
+
+/**
+ * Bug #910: скасування (чи «В роботу»), що встигло між перевіркою статусу і транзакцією запису
+ * наряду. Транзакція переходу вже прибрала записи; запис календаря після неї не з'являється, дати
+ * наряду не змінюються — статус стоїть в умові самого запису наряду.
+ */
+describe('Зміна запису наряду ‖ скасування наряду (Bug #910)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const CANCELLED_MSG = 'Наряд скасовано — записати його в календар не можна';
+
+  /** Наряд APPROVED на LIFT_1 з датами D 10:00–12:00 і записом `anchor` (або без дат і записів). */
+  function approved(withDates = true) {
+    return planningHarness({
+      workOrders: [
+        woRow({
+          status: 'APPROVED',
+          liftId: withDates ? LIFT_1 : null,
+          plannedAt: withDates ? kyiv(D, '10:00') : null,
+          dueDate: withDates ? kyiv(D, '12:00') : null,
+        }),
+      ],
+      slots: withDates ? [slotRow('anchor', { startAt: kyiv(D, '10:00') })] : [],
+    });
+  }
+
+  /** Перехід у `status`, закомічений перед транзакцією зміни (скасування прибирає записи). */
+  function transitionBeforeTx(h: ReturnType<typeof approved>, status: string) {
+    const original = h.prisma.$transaction.getMockImplementation()!;
+    h.prisma.$transaction.mockImplementationOnce(async cb => {
+      h.workOrder.rows.find(w => w.id === WO_ID)!.status = status;
+      if (status === 'CANCELLED')
+        for (const s of h.calendarSlot.rows) if (s.workOrderId === WO_ID) s.deletedAt = new Date();
+      return original(cb);
+    });
+  }
+
+  // guards: BR-WO-022
+  it('новий запис із нарядом без дат («+ Слот») → 400, запису немає, дат у наряду немає', async () => {
+    const h = approved(false);
+    transitionBeforeTx(h, 'CANCELLED');
+
+    await expect(
+      h.service.createCalendarSlot(ORG, {
+        workOrderId: WO_ID,
+        liftId: LIFT_1,
+        startAt: kyiv(D, '13:00').toISOString(),
+        endAt: kyiv(D, '14:00').toISOString(),
+      } as never),
+    ).rejects.toThrow(CANCELLED_MSG);
+
+    expect(h.liveSlots()).toEqual([]);
+    expect(h.workOrder.rows[0]).toMatchObject({ status: 'CANCELLED', plannedAt: null });
+  });
+
+  // guards: BR-WO-022
+  it('зміна меж запису наряду → 400, запис не повертається, дати наряду ті самі', async () => {
+    const h = approved();
+    transitionBeforeTx(h, 'CANCELLED');
+
+    await expect(
+      h.service.updateCalendarSlot(ORG, 'anchor', {
+        startAt: kyiv(D, '13:00').toISOString(),
+        endAt: kyiv(D, '15:00').toISOString(),
+      }),
+    ).rejects.toThrow(CANCELLED_MSG);
+
+    expect(h.liveSlots()).toEqual([]);
+    expect(h.workOrder.rows[0].plannedAt).toEqual(kyiv(D, '10:00'));
+  });
+
+  // guards: BR-WO-027
+  it('наряд став «В роботі» → зміна меж запису 400, запис і дати наряду на місці', async () => {
+    const h = approved();
+    transitionBeforeTx(h, 'IN_PROGRESS');
+
+    await expect(
+      h.service.updateCalendarSlot(ORG, 'anchor', {
+        startAt: kyiv(D, '13:00').toISOString(),
+        endAt: kyiv(D, '15:00').toISOString(),
+      }),
+    ).rejects.toThrow('Час і підйомник запису наряду змінюються лише');
+
+    expect(h.liveSlots().map(s => [s.id, s.startAt])).toEqual([['anchor', kyiv(D, '10:00')]]);
+    expect(h.workOrder.rows[0].plannedAt).toEqual(kyiv(D, '10:00'));
+  });
+
+  // guards: BR-WO-022
+  it('картка: нові дати наряду → 400 «закритий наряд», запису немає', async () => {
+    const h = approved();
+    transitionBeforeTx(h, 'CANCELLED');
+
+    await expect(
+      h.service.update(ORG, WO_ID, {
+        plannedAt: kyiv(D, '13:00').toISOString(),
+        dueDate: kyiv(D, '15:00').toISOString(),
+      } as never),
+    ).rejects.toThrow('Не можна редагувати закритий наряд');
+
+    expect(h.liveSlots()).toEqual([]);
+    expect(h.workOrder.rows[0].plannedAt).toEqual(kyiv(D, '10:00'));
+  });
+});

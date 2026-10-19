@@ -636,6 +636,7 @@ export class WorkOrdersService {
         ...(dto.liftId !== undefined && { liftId: dto.liftId }),
       },
       userId,
+      { editableOnly: true },
     );
     return {
       id: workOrder.id,
@@ -762,6 +763,7 @@ export class WorkOrdersService {
 
     await this.applyUpdate(orgId, workOrderId, datesDto, userId, {
       forceSlot: true,
+      editableOnly: true,
       slot: {
         // Механік форми чи збережений на записі наряду; «без механіка» нового запису поля не шле.
         ...(employeeId && { employeeId }),
@@ -902,6 +904,7 @@ export class WorkOrdersService {
       userId,
       {
         forceSlot: true,
+        editableOnly: true,
         slot: {
           ...(change.employeeId !== undefined && { employeeId: change.employeeId }),
           ...(change.notes !== undefined && { notes: change.notes }),
@@ -1093,6 +1096,7 @@ export class WorkOrdersService {
     let released: DatesReleased | null = null;
     const applied = await this.applyUpdate(orgId, newWorkOrderId, datesDto, userId, {
       forceSlot: true,
+      editableOnly: true,
       slot: {
         employeeId,
         ...(change.notes !== undefined && { notes: change.notes }),
@@ -1316,6 +1320,11 @@ export class WorkOrdersService {
    * наряду, навіть коли дати й підйомник наряду ті самі (запис міг розійтися з нарядом раніше),
    * `slot` — механік і примітка для запису наряду з форми чи планшета, `inTx` — що ще зробити в
    * транзакції наряду перед його записом календаря (перев'язка запису, BR-WO-028).
+   * `editableOnly` — зміна з календаря: наряд лише в `EDITABLE_STATUSES` (BR-WO-027).
+   *
+   * Статус перевіряється й у самому записі наряду (Bug #910): скасування чи «В роботу», що
+   * встигли між читанням і транзакцією, інакше лишали б живий запис скасованого наряду
+   * (BR-WO-022) чи нові дати наряду, що вже в роботі.
    */
   private async applyUpdate(
     orgId: string,
@@ -1326,6 +1335,7 @@ export class WorkOrdersService {
       forceSlot?: boolean;
       slot?: { employeeId?: string | null; notes?: string | null };
       inTx?: (tx: Prisma.TransactionClient) => Promise<void>;
+      editableOnly?: boolean;
     } = {},
   ): Promise<{
     workOrder: WorkOrderResponseDto;
@@ -1429,7 +1439,15 @@ export class WorkOrdersService {
       db.workOrder.update({
         // BR-WO-015: умова «нічого не сплачено» — у самому записі зміни валюти: оплата, що прийшла
         // між читанням і записом, інакше лишила б «сплачено» в одній валюті, а наряд — в іншій.
-        where: { id, orgId, ...(currencyChanging && { paidAmount: 0 }) },
+        where: {
+          id,
+          orgId,
+          ...(currencyChanging && { paidAmount: 0 }),
+          // Bug #910: статус — у самій умові запису (рядок блокує скасування, що вже йде).
+          status: opts.editableOnly
+            ? { in: [...EDITABLE_STATUSES] }
+            : { notIn: [...CLOSED_STATUSES] },
+        },
         data: {
           description: dto.description,
           inMileage: dto.inMileage,
@@ -1482,11 +1500,13 @@ export class WorkOrdersService {
             },
             { timeout: TRANSACTION_TIMEOUT_MS },
           );
-    const updated = await persist.catch((e: unknown) => {
-      if (currencyChanging && (e as { code?: string } | null)?.code === 'P2025') {
-        throw new BadRequestException(
-          translateError('err.workOrder.paidCurrencyLocked', getLocale()),
-        );
+    const updated = await persist.catch(async (e: unknown) => {
+      if ((e as { code?: string } | null)?.code === 'P2025') {
+        await this.assertStillUpdatable(orgId, id, opts.editableOnly === true);
+        if (currencyChanging)
+          throw new BadRequestException(
+            translateError('err.workOrder.paidCurrencyLocked', getLocale()),
+          );
       }
       if (slotAction !== null || opts.inTx)
         throwIfExclusionConflict(e, CALENDAR_SLOT_EXCLUSION, slotRaceMessage());
@@ -1503,6 +1523,28 @@ export class WorkOrdersService {
     }
 
     return { workOrder: this.toDto(updated), mechanicDroppedReason };
+  }
+
+  /**
+   * Bug #910: запис наряду в `applyUpdate` не знайшов рядка (P2025) — статус змінився після
+   * перевірки (скасування, «В роботу») чи наряд видалено. Причина — та сама, що дала б перевірка
+   * до транзакції; інакше повертається, і рішення лишається за викликачем.
+   */
+  private async assertStillUpdatable(
+    orgId: string,
+    id: string,
+    editableOnly: boolean,
+  ): Promise<void> {
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: { status: true },
+    });
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
+    if (editableOnly && wo.status === WorkOrderStatus.CANCELLED)
+      throw new BadRequestException(translateError('err.calendar.workOrderCancelled', getLocale()));
+    if (CLOSED_STATUSES.includes(wo.status))
+      throw new BadRequestException(translateError('err.workOrder.cannotEditClosed', getLocale()));
+    if (editableOnly) assertSlotTimeEditable(wo.status);
   }
 
   async remove(orgId: string, id: string, userId?: string): Promise<void> {
