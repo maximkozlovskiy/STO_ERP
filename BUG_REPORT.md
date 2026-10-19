@@ -3227,4 +3227,4 @@ RECEIVED 2/2 + ORDERED 3/0, F — ORDERED 3/0 (обидві з `purchaseOrderId`
 **Опис:** типові підписи кнопок підтвердження захардкожено українською (`confirmLabel = 'Так'`, `cancelLabel = 'Скасувати'`). В en-локалі підтвердження видалення запису: «Delete slot? … This action cannot be undone.» з кнопками «Скасувати» і «Так». Стосується всіх `confirm()` без власних підписів (видалення, скасування, переходи).
 **Очікувана поведінка:** «Cancel» / «Yes» в en, «Скасувати» / «Так» в uk — з `common.cancel` / `common.yes`.
 **Фактична поведінка:** завжди українською.
-**Статус:** [ ] відкритий
+**Статус:** [x] виправлено — типові підписи з `common.yes` / `common.cancel` (`useTranslation('common')`), явні `confirmLabel`/`cancelLabel` як раніше. Тест: `confirm-dialog.test.tsx` +1 (en → «Yes» / «Cancel»), мутація з українськими дефолтами — 1 failed.

@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal } from './modal';
 import { Button } from './button';
 
@@ -19,12 +20,16 @@ export function ConfirmDialog({
   open,
   title,
   message,
-  confirmLabel = 'Так',
-  cancelLabel = 'Скасувати',
+  confirmLabel: confirmLabelProp,
+  cancelLabel: cancelLabelProp,
   variant = 'default',
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  // Bug #911: типові підписи — з локалі («Так» / «Скасувати», «Yes» / «Cancel»).
+  const { t } = useTranslation('common');
+  const confirmLabel = confirmLabelProp ?? t('yes');
+  const cancelLabel = cancelLabelProp ?? t('cancel');
   // Зберігаємо останній відкритий стан щоб контент не зникав під час exit-анімації
   const lastRef = useRef({ title, message, confirmLabel, cancelLabel, variant });
   if (open) lastRef.current = { title, message, confirmLabel, cancelLabel, variant };

@@ -1,6 +1,7 @@
 import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
+import i18n from '@/i18n/config';
 import { ConfirmDialog } from '../confirm-dialog';
 
 /**
@@ -21,6 +22,19 @@ describe('ConfirmDialog', () => {
     expect(screen.getByText('Цю дію не можна скасувати')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Так' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Скасувати' })).toBeInTheDocument();
+  });
+
+  // Bug #911: типові підписи кнопок — з локалі, а не українські завжди.
+  it('en-локаль: типові кнопки «Yes» / «Cancel»', async () => {
+    await i18n.changeLanguage('en');
+    try {
+      render(<ConfirmDialog open title="Delete?" message="Sure?" />);
+      expect(screen.getByRole('button', { name: 'Yes' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Так' })).not.toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage('uk');
+    }
   });
 
   it('кастомні confirmLabel/cancelLabel рендеряться замість дефолтних', () => {
