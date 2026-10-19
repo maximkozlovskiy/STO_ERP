@@ -4,7 +4,8 @@
  *
  * - BR-WO-026: видалення запису наряду (`DELETE /calendar/slots/:id`) позначає видаленим увесь
  *   ланцюжок записів наряду і стирає планові дати наряду (нормогодини, виведені з дат, — теж);
- *   журнал змін наряду фіксує стерті дати.
+ *   журнал змін наряду фіксує стерті дати. Запис скасованого наряду видаляється, дати
+ *   закритого наряду не змінюються (рішення власника 2026-10-19).
  * - BR-WO-027: час і підйомник запису наряду змінюються лише в статусах, де картка змінює дати
  *   (`WO_EDITABLE_STATUSES`); інакше 400 з причиною. Примітка й механік — як раніше. Видалення
  *   запису наряду — лише в тих самих статусах (рішення власника 2026-10-19).
@@ -169,6 +170,40 @@ describe('Видалення запису наряду стирає дати н�
       expect(woOf(h)).toMatchObject({ plannedAt: null, dueDate: null });
     },
   );
+
+  // Рішення власника 2026-10-19: запис скасованого наряду (залишок старих даних) видаляється,
+  // дати закритого документа не змінюються.
+  // guards: BR-WO-026
+  it('скасований наряд → увесь ланцюжок видалено, дати й нормогодини наряду ті самі, журнал не пишеться', async () => {
+    const h = twoDays({ status: 'CANCELLED' });
+
+    await h.service.removeCalendarSlot(ORG, 'cont', USER);
+
+    expect(h.liveSlots()).toEqual([]);
+    expect(slotOf(h, 'anchor').deletedAt).toBeInstanceOf(Date);
+    expect(t(woOf(h).plannedAt)).toBe(t(kyiv(D, '16:00')));
+    expect(t(woOf(h).dueDate)).toBe(t(kyiv(D2, '10:00')));
+    expect(woOf(h)).toMatchObject({ status: 'CANCELLED', plannedHours: 4 });
+    expect(h.audit.record).not.toHaveBeenCalled();
+    // Статус перечитано під блокуванням наряду.
+    expect(h.prisma.$queryRaw).toHaveBeenCalledWith(expect.anything(), ORG, [WO_ID]);
+  });
+
+  // guards: BR-WO-026
+  it('наряд скасовано між перевіркою і транзакцією видалення → записи видалено, дати наряду ті самі', async () => {
+    const h = planned();
+    h.prisma.$queryRaw.mockImplementationOnce(async () => {
+      woOf(h).status = 'CANCELLED';
+      return [];
+    });
+
+    await h.service.removeCalendarSlot(ORG, 'anchor', USER);
+
+    expect(h.liveSlots()).toEqual([]);
+    expect(t(woOf(h).plannedAt)).toBe(t(kyiv(D, '10:00')));
+    expect(t(woOf(h).dueDate)).toBe(t(kyiv(D, '12:00')));
+    expect(h.audit.record).not.toHaveBeenCalled();
+  });
 
   // guards: BR-WO-026
   it('наряд став «В роботі» між перевіркою і транзакцією видалення → 400 під блокуванням, нічого не змінено', async () => {

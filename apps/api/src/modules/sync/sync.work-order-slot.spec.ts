@@ -262,6 +262,28 @@ describe('SyncService.push calendar_slots — видалення запису н
     expect(t(h.wo().plannedAt)).toBe(t(kyiv(D, '10:00')));
   });
 
+  // Рішення власника 2026-10-19: запис скасованого наряду видаляється, дати наряду лишаються.
+  // guards: BR-WO-026
+  it('видалення запису скасованого наряду → прийнято, ланцюжок видалено, дати наряду ті самі', async () => {
+    const h = harness(
+      [
+        slotRow('cont', {
+          parentSlotId: 'anchor',
+          startAt: kyiv('2026-05-23', '08:00'),
+          endAt: kyiv('2026-05-23', '09:00'),
+        }),
+      ],
+      { wo: { status: 'CANCELLED' } },
+    );
+
+    const res = await h.sync.push(ORG, [remove(5)], 'ADMIN');
+
+    expect(res).toEqual({ accepted: 1, conflicts: 0 });
+    expect(h.liveSlots()).toEqual([]);
+    expect(t(h.wo().plannedAt)).toBe(t(kyiv(D, '10:00')));
+    expect(t(h.wo().dueDate)).toBe(t(kyiv(D, '12:00')));
+  });
+
   // Рішення власника 2026-10-19: лише в WO_EDITABLE_STATUSES.
   // guards: BR-WO-026
   it('видалення запису наряду «В роботі» → конфлікт із причиною, запис і дати наряду цілі', async () => {

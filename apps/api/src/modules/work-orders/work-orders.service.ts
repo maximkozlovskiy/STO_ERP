@@ -150,9 +150,11 @@ function assertSlotTimeEditable(status: WorkOrderStatus): void {
 /**
  * BR-WO-026 (рішення власника 2026-10-19): запис наряду видаляється лише там, де картка наряду
  * змінює планові дати (`EDITABLE_STATUSES`, як BR-WO-027) — видалення стирає дати наряду.
+ * Виняток — скасований наряд: його запис (залишок старих даних) видаляється, а дати закритого
+ * документа не змінюються (`releaseWorkOrderDates`).
  */
 function assertSlotDeletable(status: WorkOrderStatus): void {
-  if (!EDITABLE_STATUSES.includes(status))
+  if (status !== WorkOrderStatus.CANCELLED && !EDITABLE_STATUSES.includes(status))
     throw new BadRequestException(
       translateError('err.calendar.workOrderSlotDeleteLocked', getLocale()),
     );
@@ -953,7 +955,8 @@ export class WorkOrdersService {
    *
    * Лише в статусах, де картка змінює планові дати (`EDITABLE_STATUSES`, як BR-WO-027; рішення
    * власника 2026-10-19): інакше 400 з причиною — і до транзакції, і під блокуванням наряду
-   * (перехід «В роботу» поруч інакше стер би дати наряду, що вже в роботі).
+   * (перехід «В роботу» поруч інакше стер би дати наряду, що вже в роботі). Скасований наряд —
+   * виняток: ланцюжок видаляється, дати закритого наряду лишаються (рішення власника 2026-10-19).
    */
   async removeCalendarSlot(orgId: string, id: string, userId?: string): Promise<void> {
     const slot = await this.prisma.calendarSlot.findFirst({
@@ -1251,7 +1254,8 @@ export class WorkOrdersService {
    * змін наряду або `null`, якщо дат не було (чи наряд видалено).
    *
    * `editableOnly` — видалення запису (BR-WO-026): статус наряду перечитується під блокуванням і
-   * не в редагованому статусі дає 400 до будь-якої зміни.
+   * не в редагованому статусі дає 400 до будь-якої зміни; у скасованого наряду видаляються лише
+   * записи, дати закритого документа не змінюються.
    */
   private async releaseWorkOrderDates(
     tx: Prisma.TransactionClient,
@@ -1270,6 +1274,8 @@ export class WorkOrdersService {
     if (wo && opts.editableOnly) assertSlotDeletable(wo.status);
     await this.calendar.removeWorkOrderSlots(tx, orgId, workOrderId, new Date());
     if (!wo || (wo.plannedAt === null && wo.dueDate === null)) return null;
+    // BR-WO-026: скасований наряд — документ закритий, його дати лишаються (рішення власника).
+    if (opts.editableOnly && wo.status === WorkOrderStatus.CANCELLED) return null;
     // Значення «до» — у локальні змінні до запису (таблиця в пам'яті спеків віддає сам рядок).
     const { plannedAt, dueDate, plannedHours } = wo;
     const derived =
