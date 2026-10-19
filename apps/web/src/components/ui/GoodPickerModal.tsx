@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { Modal } from './modal';
 import { Button } from './button';
@@ -76,15 +77,23 @@ export function GoodPickerModal({
   onSelect,
   multiple = false,
   selectedIds,
-  doneLabel = 'Готово',
-  addedLabel = 'додано',
+  doneLabel: doneLabelProp,
+  addedLabel: addedLabelProp,
   onDeselect,
   onSelectMany,
   onDeselectMany,
-  selectAllLabel = 'Відмітити всі',
-  deselectAllLabel = 'Зняти всі',
-  countLabel = (added, shown) => `Додано ${added} з ${shown} показаних`,
+  selectAllLabel: selectAllLabelProp,
+  deselectAllLabel: deselectAllLabelProp,
+  countLabel: countLabelProp,
 }: Props) {
+  // Типові підписи — з локалі, як у ConfirmDialog (Bug #911).
+  const { t } = useTranslation('common');
+  const doneLabel = doneLabelProp ?? t('goodPicker.done');
+  const addedLabel = addedLabelProp ?? t('goodPicker.added');
+  const selectAllLabel = selectAllLabelProp ?? t('goodPicker.selectAll');
+  const deselectAllLabel = deselectAllLabelProp ?? t('goodPicker.deselectAll');
+  const countLabel =
+    countLabelProp ?? ((added: number, shown: number) => t('goodPicker.count', { added, shown }));
   // Множина, а не `includes` на кожен рядок і кожен рендер: у списку правила до 5000 товарів.
   const selectedSet = useMemo(() => new Set(selectedIds ?? []), [selectedIds]);
   const [query, setQuery] = useState('');
@@ -172,14 +181,14 @@ export function GoodPickerModal({
             })
             .catch((e: unknown) => {
               if (reqId !== reqRef.current) return;
-              setError(e instanceof Error ? e.message : 'Помилка завантаження');
+              setError(e instanceof Error ? e.message : t('goodPicker.loadError'));
               setLoading(false);
             });
         },
         q ? 300 : 0,
       );
     },
-    [categories],
+    [categories, t],
   );
 
   useEffect(() => {
@@ -258,13 +267,13 @@ export function GoodPickerModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Оберіть товар"
+      title={t('goodPicker.title')}
       size="lg"
       footer={multiple ? <Button onClick={onClose}>{doneLabel}</Button> : undefined}
     >
       <div className="flex flex-col gap-3">
         <Input
-          placeholder="Пошук товару / штрих-код..."
+          placeholder={t('goodPicker.searchPlaceholder')}
           value={query}
           autoFocus
           onChange={e => setQuery(e.target.value)}
@@ -306,7 +315,7 @@ export function GoodPickerModal({
                 })
                 .catch((err: unknown) => {
                   if (reqId !== reqRef.current) return;
-                  setError(err instanceof Error ? err.message : 'Помилка завантаження');
+                  setError(err instanceof Error ? err.message : t('goodPicker.loadError'));
                   setLoading(false);
                 });
               return;
@@ -370,7 +379,9 @@ export function GoodPickerModal({
                 <Spinner size="sm" />
               </div>
             ) : items.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-10 text-center">Нічого не знайдено</p>
+              <p className="text-sm text-muted-foreground py-10 text-center">
+                {t('goodPicker.nothingFound')}
+              </p>
             ) : (
               <div className="space-y-1">
                 {items.map(item => {
@@ -415,7 +426,9 @@ export function GoodPickerModal({
                         )}
                         <span>{item.salePrice} ₴</span>
                         <span className={qty > 0 ? 'text-success' : 'text-destructive-text'}>
-                          {qty > 0 ? `${qtyLabel} на складі` : 'немає на складі'}
+                          {qty > 0
+                            ? t('goodPicker.inStock', { qty: qtyLabel })
+                            : t('goodPicker.outOfStock')}
                         </span>
                       </div>
                     </button>
@@ -430,7 +443,7 @@ export function GoodPickerModal({
             tree={categories}
             selectedId={selectedCatId}
             onSelect={setSelectedCatId}
-            label="Категорії товарів"
+            label={t('goodPicker.categories')}
             storageKey="sto:cat-tree:good-picker"
             hideInactive
             className="ml-0 border-l rounded-none rounded-r-xl"

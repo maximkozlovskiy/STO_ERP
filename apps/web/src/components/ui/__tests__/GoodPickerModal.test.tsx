@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
+import i18n from '@/i18n/config';
 import { GoodPickerModal } from '../GoodPickerModal';
 import type { CategoryNode } from '../category-tree';
 
@@ -547,5 +548,51 @@ describe('GoodPickerModal — множинний вибір', () => {
       expect(onDeselect).not.toHaveBeenCalled();
       expect(onSelect).not.toHaveBeenCalled();
     });
+  });
+});
+
+// Типові підписи — з локалі, як у ConfirmDialog (Bug #911): без пропів англійський інтерфейс
+// показував «Оберіть товар», «Готово», «додано», «немає на складі».
+describe('GoodPickerModal — типові підписи за мовою інтерфейсу', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    if (typeof localStorage !== 'undefined') localStorage.clear();
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/good-categories') return Promise.resolve(mockCategories);
+      if (path.startsWith('/goods/stock-totals')) return Promise.resolve([]);
+      if (path.startsWith('/goods')) return Promise.resolve({ items: mockGoods });
+      return Promise.resolve({ items: [] });
+    });
+  });
+
+  it('en-локаль: заголовок, пошук, кнопки, позначка й залишок англійською', async () => {
+    await i18n.changeLanguage('en');
+    try {
+      render(
+        <GoodPickerModal
+          open
+          onClose={vi.fn()}
+          onSelect={vi.fn()}
+          onSelectMany={vi.fn()}
+          onDeselectMany={vi.fn()}
+          multiple
+          selectedIds={['g1']}
+        />,
+      );
+
+      await screen.findByRole('button', { name: /Mobil 5W-30/ });
+      expect(screen.getByText('Select a good')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Search good / barcode...')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Select all' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Deselect all' })).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('Added 1 of 1 shown');
+      expect(screen.getByText(/added/)).toBeInTheDocument();
+      expect(screen.getByText('out of stock')).toBeInTheDocument();
+      expect(screen.getByText('Good categories')).toBeInTheDocument();
+      expect(screen.queryByText('Готово')).not.toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage('uk');
+    }
   });
 });

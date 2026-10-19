@@ -17,6 +17,25 @@
   "status": "Статус",
   "total": "Разом",
   "noData": "Немає даних",
+  "expand": "Розгорнути",
+  "collapse": "Згорнути",
+  "documentHeader": "Шапка документа",
+  "expandHeader": "Розгорнути шапку",
+  "expiresSoon": "Закінчується",
+  "goodPicker": {
+    "title": "Оберіть товар",
+    "searchPlaceholder": "Пошук товару / штрих-код...",
+    "loadError": "Помилка завантаження",
+    "nothingFound": "Нічого не знайдено",
+    "inStock": "{{qty}} на складі",
+    "outOfStock": "немає на складі",
+    "categories": "Категорії товарів",
+    "done": "Готово",
+    "added": "додано",
+    "selectAll": "Відмітити всі",
+    "deselectAll": "Зняти всі",
+    "count": "Додано {{added}} з {{shown}} показаних"
+  },
   "language": {
     "savedLocallyOnly": "Мову застосовано лише на цьому пристрої — не вдалося зберегти у профілі."
   },

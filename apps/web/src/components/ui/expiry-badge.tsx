@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { daysUntil } from '@/lib/utils';
 
 interface ExpiryBadgeProps {
@@ -23,9 +24,11 @@ export function ExpiryBadge({
   date,
   nowMs,
   expiredLabel,
-  soonLabel = 'Закінчується',
+  soonLabel,
   soonDays = 30,
 }: ExpiryBadgeProps) {
+  // Типовий підпис «скоро» — з локалі, як у ConfirmDialog (Bug #911).
+  const { t } = useTranslation('common');
   const diff = daysUntil(date, nowMs);
   if (diff === null) return null;
   if (diff < 0) {
@@ -38,7 +41,7 @@ export function ExpiryBadge({
   if (diff <= soonDays) {
     return (
       <span className="text-[11px] px-1.5 py-0.5 bg-warning-subtle text-warning rounded font-medium">
-        {soonLabel}
+        {soonLabel ?? t('expiresSoon')}
       </span>
     );
   }

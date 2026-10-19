@@ -17,6 +17,25 @@
   "status": "Status",
   "total": "Total",
   "noData": "No data",
+  "expand": "Expand",
+  "collapse": "Collapse",
+  "documentHeader": "Document header",
+  "expandHeader": "Expand header",
+  "expiresSoon": "Expiring soon",
+  "goodPicker": {
+    "title": "Select a good",
+    "searchPlaceholder": "Search good / barcode...",
+    "loadError": "Failed to load",
+    "nothingFound": "Nothing found",
+    "inStock": "{{qty}} in stock",
+    "outOfStock": "out of stock",
+    "categories": "Good categories",
+    "done": "Done",
+    "added": "added",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "count": "Added {{added}} of {{shown}} shown"
+  },
   "language": {
     "savedLocallyOnly": "Language applied on this device only — could not save it to your profile."
   },

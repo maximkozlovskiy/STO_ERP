@@ -2,6 +2,7 @@
 
 import { ChevronUp } from 'lucide-react';
 import { type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export interface CollapsibleHeaderChip {
   /** Text shown in the chip. Falsy value → chip is not rendered. */
@@ -40,9 +41,11 @@ export function CollapsibleHeader({
   collapsed,
   onToggle,
   chips,
-  emptyLabel = 'Розгорнути шапку',
+  emptyLabel,
   collapsedExtra,
 }: CollapsibleHeaderProps) {
+  // Типові підписи — з локалі, як у ConfirmDialog (Bug #911).
+  const { t } = useTranslation('common');
   const visibleChips = chips.filter(c => !!c.label);
 
   return (
@@ -74,14 +77,14 @@ export function CollapsibleHeader({
               {collapsedExtra}
             </>
           ) : (
-            <span className="text-muted-foreground">{emptyLabel}</span>
+            <span className="text-muted-foreground">{emptyLabel ?? t('expandHeader')}</span>
           )
         ) : (
-          <span className="text-muted-foreground">Шапка документа</span>
+          <span className="text-muted-foreground">{t('documentHeader')}</span>
         )}
       </span>
       <span className="flex items-center gap-1 text-muted-foreground shrink-0">
-        {collapsed ? 'Розгорнути' : 'Згорнути'}
+        {collapsed ? t('expand') : t('collapse')}
         <ChevronUp
           className="h-3 w-3 transition-transform duration-300"
           style={{ transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)' }}
