@@ -467,7 +467,10 @@ test.describe('Управління купівлями — від нестачі
   }) => {
     test.setTimeout(120_000);
     // Приймальня з входом — формою «Новий співробітник».
-    state.receptionId = await createEmployeeViaUi(page, {
+    await createEmployeeViaUi(page, {
+      onCreated: id => {
+        state.receptionId = id;
+      },
       firstName: 'Приймальня',
       lastName: `000 E2E купівля ${uid}`,
       role: 'RECEPTIONIST',

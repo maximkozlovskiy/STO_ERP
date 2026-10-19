@@ -236,8 +236,10 @@ describe('Час і підйомник запису наряду — лише в
     vi.useRealTimers();
   });
 
+  // CANCELLED: запис скасованого наряду видаляється (виняток BR-WO-026), але час і підйомник
+  // лишаються заблокованими — виняток не має поширитися на зміну меж.
   // guards: BR-WO-027
-  it.each(['IN_PROGRESS', 'ON_HOLD', 'COMPLETED'])(
+  it.each(['IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED'])(
     'наряд «%s»: зміна меж запису → 400 з причиною, без змін',
     async status => {
       const h = planned({ wo: { status } });

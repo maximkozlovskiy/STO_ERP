@@ -531,7 +531,10 @@ test.describe('Запис наряду: перевʼязка BR-WO-028, вида
     test.setTimeout(240_000);
     test.skip(!state.cpId, 'передумови не створено');
     // Механік, закріплений лише за підйомником A, — сторінкою «Співробітники».
-    state.employeeId = await createEmployeeViaUi(page, {
+    await createEmployeeViaUi(page, {
+      onCreated: id => {
+        state.employeeId = id;
+      },
       firstName: 'Механік',
       lastName: MECH_LAST,
       liftNames: [state.liftA!.name],

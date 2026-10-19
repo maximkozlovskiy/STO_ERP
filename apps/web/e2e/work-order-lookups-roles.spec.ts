@@ -257,7 +257,10 @@ test.describe('Картка наряду — довідники за ролям�
     expect(lifts.body.length, 'потрібні два підйомники').toBeGreaterThanOrEqual(2);
     [state.liftA, state.liftB] = lifts.body;
     // ── Працівники — сторінкою «Співробітники» ───────────────────────────
-    state.mechId = await createEmployeeViaUi(page, {
+    await createEmployeeViaUi(page, {
+      onCreated: id => {
+        state.mechId = id;
+      },
       firstName: MECH.first,
       lastName: MECH.last,
       login: MECH_LOGIN,
@@ -265,12 +268,18 @@ test.describe('Картка наряду — довідники за ролям�
     });
     const mech = await api<{ liftIds: string[] }>(page, 'GET', `/employees/${state.mechId}`);
     expect(mech.body.liftIds, 'механік закріплений за підйомником A').toEqual([state.liftA!.id]);
-    state.adminId = await createEmployeeViaUi(page, {
+    await createEmployeeViaUi(page, {
+      onCreated: id => {
+        state.adminId = id;
+      },
       firstName: ADMIN.first,
       lastName: ADMIN.last,
       role: 'ADMIN',
     });
-    state.receptionId = await createEmployeeViaUi(page, {
+    await createEmployeeViaUi(page, {
+      onCreated: id => {
+        state.receptionId = id;
+      },
       firstName: RECEPTION.first,
       lastName: RECEPTION.last,
       role: 'RECEPTIONIST',

@@ -174,7 +174,10 @@ test.describe('Календар — рішення власника 2026-10-16',
     [state.liftA, state.liftB] = lifts.body;
 
     // ── Механік із входом, закріплений за підйомником A, — сторінкою «Співробітники» ──
-    state.employeeId = await createEmployeeViaUi(page, {
+    await createEmployeeViaUi(page, {
+      onCreated: id => {
+        state.employeeId = id;
+      },
       firstName: 'Механік',
       lastName: MECH_LAST,
       login: { email: MECH_EMAIL, password: MECH_PASSWORD },

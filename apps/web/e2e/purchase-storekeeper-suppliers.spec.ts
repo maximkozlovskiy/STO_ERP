@@ -113,7 +113,10 @@ test.describe('Комірник обирає постачальника — BR-C
     expect(client.status).toBe(201);
     state.clientId = client.body.id;
     // Комірник із входом — формою «Новий співробітник».
-    state.employeeId = await createEmployeeViaUi(page, {
+    await createEmployeeViaUi(page, {
+      onCreated: id => {
+        state.employeeId = id;
+      },
       firstName: 'Комірник',
       lastName: TAG,
       role: 'STOREKEEPER',

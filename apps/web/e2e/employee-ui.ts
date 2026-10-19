@@ -18,6 +18,12 @@ export interface EmployeeUiInput {
   login?: { email: string; password: string };
   /** Назви підйомників, за якими закріпити співробітника (картка, «Зони та підйомники»). */
   liftNames?: string[];
+  /**
+   * Викликається одразу після 201 — id потрапляє в стан спеку для `afterAll`, навіть якщо далі
+   * (закриття форми, закріплення за підйомником) щось упаде: інакше співробітник із входом
+   * лишився б у базі.
+   */
+  onCreated?: (id: string) => void;
 }
 
 const isPost = (path: RegExp) => (r: { url(): string; request(): { method(): string } }) =>
@@ -26,10 +32,8 @@ const isPost = (path: RegExp) => (r: { url(): string; request(): { method(): str
 /** Створює співробітника формою «Новий співробітник»; повертає id з відповіді сервера. */
 export async function createEmployeeViaUi(page: Page, input: EmployeeUiInput): Promise<string> {
   await page.goto('/employees');
-  // Кнопка — «Співробітник», заголовок сторінки — «Співробітники».
-  const addBtn = page
-    .locator('button:has-text("Співробітник"):not(:has-text("Співробітники"))')
-    .first();
+  // Кнопка — «Співробітник» (точна назва), заголовок сторінки — «Співробітники».
+  const addBtn = page.getByRole('button', { name: 'Співробітник', exact: true }).first();
   await expect(addBtn).toBeVisible({ timeout: 30_000 });
   await addBtn.click();
   const modal = page.getByRole('dialog').filter({ hasText: 'Новий співробітник' });
@@ -50,6 +54,7 @@ export async function createEmployeeViaUi(page: Page, input: EmployeeUiInput): P
   const res = await created;
   expect(res.status(), `співробітник ${input.lastName}: ${await res.text()}`).toBe(201);
   const { id } = (await res.json()) as { id: string };
+  input.onCreated?.(id);
   await expect(modal).toBeHidden({ timeout: 15_000 });
 
   if (input.liftNames?.length) await assignLiftsViaUi(page, input.lastName, input.liftNames);

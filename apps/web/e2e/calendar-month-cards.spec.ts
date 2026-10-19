@@ -225,7 +225,10 @@ test.describe('Календар «Місяць» — картки записів
     const lift = lifts.body[0];
     const mechLastName = `000 E2E ${uid}`;
     const mechName = `${mechLastName} Механік`;
-    state.employeeId = await createEmployeeViaUi(page, {
+    await createEmployeeViaUi(page, {
+      onCreated: id => {
+        state.employeeId = id;
+      },
       firstName: 'Механік',
       lastName: mechLastName,
       liftNames: [lift.name],
