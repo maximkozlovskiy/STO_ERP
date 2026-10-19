@@ -170,7 +170,7 @@ export function GoodPickerModal({
                 apiFetch<StockTotal[]>(`/goods/stock-totals?ids=${ids}`)
                   .then(totals => {
                     if (reqId !== reqRef.current) return;
-                    setStockMap(new Map(totals.map(t => [t.goodId, t.totalQuantity])));
+                    setStockMap(new Map(totals.map(s => [s.goodId, s.totalQuantity])));
                   })
                   .catch(() => {
                     /* non-critical — залишки не показуємо якщо помилка */

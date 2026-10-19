@@ -590,6 +590,10 @@ describe('GoodPickerModal — типові підписи за мовою інт
       expect(screen.getByText(/added/)).toBeInTheDocument();
       expect(screen.getByText('out of stock')).toBeInTheDocument();
       expect(screen.getByText('Good categories')).toBeInTheDocument();
+      // Вбудоване дерево категорій теж за мовою: рядок «Всі» і кнопка «Розгорнути всі».
+      expect(screen.getByText('All')).toBeInTheDocument();
+      expect(screen.getByTitle('Expand all')).toBeInTheDocument();
+      expect(screen.queryByText('Всі')).not.toBeInTheDocument();
       expect(screen.queryByText('Готово')).not.toBeInTheDocument();
     } finally {
       await i18n.changeLanguage('uk');

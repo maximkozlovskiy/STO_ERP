@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { MouseEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight, ChevronDown, Settings2, X, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -220,6 +221,8 @@ export function CategoryTree({
   className,
   hideInactive = false,
 }: CategoryTreeProps) {
+  // Власні підписи дерева — з локалі: дерево вбудоване в GoodPickerModal і каталоги (Bug #911).
+  const { t } = useTranslation('common');
   const visibleTree = hideInactive ? filterActiveNodes(tree) : tree;
   // expandedIds — Set ID вузлів що зараз розгорнуті
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() =>
@@ -276,7 +279,7 @@ export function CategoryTree({
         <div className="flex items-center gap-0.5 shrink-0 -mr-1">
           <button
             type="button"
-            title={allCollapsed ? 'Розгорнути всі' : 'Згорнути всі'}
+            title={allCollapsed ? t('categoryTree.expandAll') : t('categoryTree.collapseAll')}
             onClick={toggleAll}
             className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
@@ -285,7 +288,7 @@ export function CategoryTree({
           {onManage && (
             <button
               type="button"
-              title="Управління категоріями"
+              title={t('categoryTree.manage')}
               onClick={onManage}
               className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
@@ -316,7 +319,7 @@ export function CategoryTree({
           )}
         >
           <span className="w-3.5 shrink-0" />
-          <span>Всі</span>
+          <span>{t('categoryTree.all')}</span>
           {selectedId !== null && (
             <X
               className="h-3 w-3 ml-auto opacity-40 hover:opacity-100"
@@ -333,7 +336,7 @@ export function CategoryTree({
       <nav className="flex-1 overflow-y-auto px-2 pb-2 pt-1">
         {visibleTree.length === 0 ? (
           <p className="px-2 py-3 text-[12px] text-muted-foreground text-center">
-            Категорій не знайдено
+            {t('categoryTree.notFound')}
           </p>
         ) : (
           <ul>

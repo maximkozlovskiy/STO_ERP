@@ -36,6 +36,13 @@
     "deselectAll": "Deselect all",
     "count": "Added {{added}} of {{shown}} shown"
   },
+  "categoryTree": {
+    "all": "All",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "manage": "Manage categories",
+    "notFound": "No categories found"
+  },
   "language": {
     "savedLocallyOnly": "Language applied on this device only — could not save it to your profile."
   },
