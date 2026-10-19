@@ -154,6 +154,10 @@ grep -rn "zodResolver(" apps/web/src --include="*.tsx" | grep -v "i18nZodResolve
 - [ ] Мігрований рядок: uk-значення BYTE-IDENTICAL до оригіналу (тести асертять; звірити проти `git show <sha>~1`)
 - [ ] Новий validation-key → у `messages.uk` + `messages.en` + `VALIDATION_KEYS` (guard: `validation-i18n-parity.spec`)
 - [ ] Форми: `i18nZodResolver` (не `zodResolver`); recursive tree-walk skip-list не пропускає ім'я поля (`type`/`name`/`root`) — Bug #763
+- [ ] Компонент «перекладено цілком» → перевірити й ВБУДОВАНІ спільні дочірні компоненти: 2026-10-19
+      `GoodPickerModal` переклали, а вкладений `CategoryTree` лишив «Всі», «Розгорнути всі», «Категорій не
+      знайдено» в en. Grep: для кожного `import { X } from './…'` у зміненому компоненті —
+      `grep -n '[А-Яа-яІіЇїЄєҐґ]' <файл X> | grep -v '//'`; en-тест компонента асертить і текст дитини
 - [ ] Dead-translation: новий ключ-мапа має споживача (`t()` у рендері), інакше mute-гілка (Bug #762)
 - [ ] `@sto/shared` змінено → `pnpm --filter @sto/shared build` перед api tsc (api на dist/cjs)
 
