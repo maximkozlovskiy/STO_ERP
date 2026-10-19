@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { apiCall, getToken } from './api-helpers';
 import { createCounterparty } from './cash-desk.helpers';
+import { createEmployeeViaUi } from './employee-ui';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -14,8 +15,9 @@ test.describe.configure({ mode: 'serial' });
  *     тому самому підйомнику створюється новий запис (BR-WO-017, BR-CAL-011).
  *
  * За правилом власника документи — через інтерфейс: НАРЯД створюється й видаляється в списку
- * нарядів, ЗАПИСИ календаря — формою «+ Слот», переміщення — мишею. Клієнт, авто, механік і його
- * закріплення за підйомником — передумови через API. Дата — 12-те число наступного місяця.
+ * нарядів, ЗАПИСИ календаря — формою «+ Слот», переміщення — мишею, МЕХАНІК і його закріплення за
+ * підйомником — сторінкою «Співробітники» (рішення власника 2026-10-19). Клієнт і авто — передумови
+ * через API. Дата — 12-те число наступного місяця.
  */
 
 const uid = Date.now().toString().slice(-6);
@@ -147,7 +149,7 @@ test.describe('Календар — рішення власника 2026-10-16',
     const token = await getToken(page);
     state.token = token;
 
-    // ── Передумови через API: клієнт, авто, механік з входом і закріпленням ──
+    // ── Передумови через API: клієнт, авто ──
     state.cpId = await createCounterparty(page, token, 'CLIENT', CLIENT);
     const garage = await apiCall<{ id: string }>(
       page,
@@ -170,22 +172,24 @@ test.describe('Календар — рішення власника 2026-10-16',
     const lifts = await apiCall<{ id: string; name: string }[]>(page, token, 'GET', '/lifts');
     expect(lifts.body.length, 'потрібні два підйомники').toBeGreaterThanOrEqual(2);
     [state.liftA, state.liftB] = lifts.body;
-    const mech = await apiCall<{ id: string }>(page, token, 'POST', '/employees', {
+
+    // ── Механік із входом, закріплений за підйомником A, — сторінкою «Співробітники» ──
+    state.employeeId = await createEmployeeViaUi(page, {
       firstName: 'Механік',
       lastName: MECH_LAST,
-      role: 'MECHANIC',
-      loginEmail: MECH_EMAIL,
-      password: MECH_PASSWORD,
-      rateScheme: { type: 'percent_normo', params: { percent: 40 } },
+      login: { email: MECH_EMAIL, password: MECH_PASSWORD },
+      liftNames: [state.liftA!.name],
     });
-    expect(mech.status, `механік: ${JSON.stringify(mech.body)}`).toBe(201);
-    state.employeeId = mech.body.id;
-    const assign = await apiCall(page, token, 'POST', `/employees/${mech.body.id}/lifts`, {
-      liftIds: [state.liftA!.id],
-    });
-    expect(assign.status).toBeLessThan(300);
+    const mech = await apiCall<{ liftIds: string[] }>(
+      page,
+      token,
+      'GET',
+      `/employees/${state.employeeId}`,
+    );
+    expect(mech.body.liftIds, 'механік закріплений за підйомником A').toEqual([state.liftA!.id]);
 
     // ── Наряд — через інтерфейс ───────────────────────────────────────────
+    await page.goto('/work-orders');
     await page
       .getByRole('button', { name: /^Наряд$/ })
       .first()

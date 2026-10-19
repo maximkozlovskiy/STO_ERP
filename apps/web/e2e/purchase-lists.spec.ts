@@ -1,5 +1,6 @@
 import { test, expect, type Browser, type Locator, type Page } from '@playwright/test';
 import { apiCall, apiRequest, getToken } from './api-helpers';
+import { createEmployeeViaUi } from './employee-ui';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -15,7 +16,8 @@ test.describe.configure({ mode: 'serial' });
  *  5. скасування другого наряду знімає його резерв;
  *  6. приймальня бачить лише «Управління купівлями», позиції — без масових дій (BR-PL-015).
  *
- * Документи (наряди, список, замовлення, приймання) — через інтерфейс; клієнт з авто, постачальник
+ * Документи (наряди, список, замовлення, приймання) і приймальня з входом (сторінка
+ * «Співробітники», рішення власника 2026-10-19) — через інтерфейс; клієнт з авто, постачальник
  * і товар — передумови через API. Замовлення, отримане й список із отриманими позиціями лишаються
  * в базі навмисно (фінансовий і складський слід); наряди й клієнта прибираємо.
  */
@@ -464,17 +466,13 @@ test.describe('Управління купівлями — від нестачі
     browser,
   }) => {
     test.setTimeout(120_000);
-    await page.goto('/purchase-orders');
-    const reception = await api<{ id: string }>(page, 'POST', '/employees', {
+    // Приймальня з входом — формою «Новий співробітник».
+    state.receptionId = await createEmployeeViaUi(page, {
       firstName: 'Приймальня',
       lastName: `000 E2E купівля ${uid}`,
       role: 'RECEPTIONIST',
-      loginEmail: RECEPTION_LOGIN.email,
-      password: RECEPTION_LOGIN.password,
-      rateScheme: { type: 'percent_normo', params: { percent: 0 } },
+      login: RECEPTION_LOGIN,
     });
-    expect(reception.status, JSON.stringify(reception.body)).toBe(201);
-    state.receptionId = reception.body.id;
 
     const { ctx, page: rp } = await loginAs(browser, RECEPTION_LOGIN);
     const forbidden: string[] = [];

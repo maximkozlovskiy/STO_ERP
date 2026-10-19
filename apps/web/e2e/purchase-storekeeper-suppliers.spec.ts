@@ -1,5 +1,6 @@
 import { test, expect, type Browser, type Page, type Response } from '@playwright/test';
 import { apiCall, apiRequest, getToken } from './api-helpers';
+import { createEmployeeViaUi } from './employee-ui';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -14,7 +15,8 @@ test.describe.configure({ mode: 'serial' });
  *     тесту, телефонів, e-mail, балансу немає).
  *
  * За правилом власника документи — через інтерфейс (список купівлі й позиція — комірником).
- * Постачальник, клієнт і комірник (працівник із входом) — передумови через API; товар — наявний.
+ * Комірник (працівник із входом) — сторінкою «Співробітники» (рішення власника 2026-10-19);
+ * постачальник і клієнт — передумови через API; товар — наявний.
  */
 
 const uid = Date.now().toString().slice(-6);
@@ -110,16 +112,13 @@ test.describe('Комірник обирає постачальника — BR-C
     });
     expect(client.status).toBe(201);
     state.clientId = client.body.id;
-    const emp = await api<{ id: string }>(page, 'POST', '/employees', {
+    // Комірник із входом — формою «Новий співробітник».
+    state.employeeId = await createEmployeeViaUi(page, {
       firstName: 'Комірник',
       lastName: TAG,
       role: 'STOREKEEPER',
-      loginEmail: LOGIN.email,
-      password: LOGIN.password,
-      rateScheme: { type: 'percent_normo', params: { percent: 40 } },
+      login: LOGIN,
     });
-    expect(emp.status, JSON.stringify(emp.body)).toBe(201);
-    state.employeeId = emp.body.id;
     const goods = await api<{ items: { id: string; name: string }[] }>(
       page,
       'GET',

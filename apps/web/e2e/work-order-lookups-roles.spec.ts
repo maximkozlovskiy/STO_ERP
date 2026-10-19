@@ -1,5 +1,6 @@
 import { test, expect, type Browser, type Locator, type Page } from '@playwright/test';
 import { API } from './api-url';
+import { createEmployeeViaUi } from './employee-ui';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -18,9 +19,10 @@ test.describe.configure({ mode: 'serial' });
  *
  * За правилом власника документи — через інтерфейс: НАРЯД створюється в списку нарядів, рядок
  * роботи — у картці, ЗАПИСИ календаря — формою «+ Слот», переміщення — мишею, статус механіка —
- * карткою співробітника. Клієнт, авто, договір, працівники та їхнє закріплення — передумови через
- * API. Рядок із виконавцем-адміністратором — теж через API: інтерфейс такого виконавця обрати
- * вже не дає (це й перевіряється), а такі рядки лишились у старих нарядах.
+ * карткою співробітника, ПРАЦІВНИКИ (механік із входом і закріпленням за підйомником, адміністратор,
+ * приймальня з входом) — сторінкою «Співробітники» (рішення власника 2026-10-19). Клієнт, авто й
+ * договір — передумови через API. Рядок із виконавцем-адміністратором — теж через API: інтерфейс
+ * такого виконавця обрати вже не дає (це й перевіряється), а такі рядки лишились у старих нарядах.
  */
 
 const uid = Date.now().toString().slice(-6);
@@ -254,40 +256,26 @@ test.describe('Картка наряду — довідники за ролям�
     const lifts = await api<{ id: string; name: string }[]>(page, 'GET', '/lifts');
     expect(lifts.body.length, 'потрібні два підйомники').toBeGreaterThanOrEqual(2);
     [state.liftA, state.liftB] = lifts.body;
-    const scheme = { type: 'percent_normo', params: { percent: 40 } };
-    const mech = await api<{ id: string }>(page, 'POST', '/employees', {
+    // ── Працівники — сторінкою «Співробітники» ───────────────────────────
+    state.mechId = await createEmployeeViaUi(page, {
       firstName: MECH.first,
       lastName: MECH.last,
-      role: 'MECHANIC',
-      phone: '+380501112233',
-      loginEmail: MECH_LOGIN.email,
-      password: MECH_LOGIN.password,
-      rateScheme: scheme,
+      login: MECH_LOGIN,
+      liftNames: [state.liftA!.name],
     });
-    expect(mech.status, JSON.stringify(mech.body)).toBe(201);
-    state.mechId = mech.body.id;
-    const assign = await api(page, 'POST', `/employees/${state.mechId}/lifts`, {
-      liftIds: [state.liftA!.id],
-    });
-    expect(assign.status).toBeLessThan(300);
-    const admin = await api<{ id: string }>(page, 'POST', '/employees', {
+    const mech = await api<{ liftIds: string[] }>(page, 'GET', `/employees/${state.mechId}`);
+    expect(mech.body.liftIds, 'механік закріплений за підйомником A').toEqual([state.liftA!.id]);
+    state.adminId = await createEmployeeViaUi(page, {
       firstName: ADMIN.first,
       lastName: ADMIN.last,
       role: 'ADMIN',
-      rateScheme: scheme,
     });
-    expect(admin.status, JSON.stringify(admin.body)).toBe(201);
-    state.adminId = admin.body.id;
-    const reception = await api<{ id: string }>(page, 'POST', '/employees', {
+    state.receptionId = await createEmployeeViaUi(page, {
       firstName: RECEPTION.first,
       lastName: RECEPTION.last,
       role: 'RECEPTIONIST',
-      loginEmail: RECEPTION_LOGIN.email,
-      password: RECEPTION_LOGIN.password,
-      rateScheme: scheme,
+      login: RECEPTION_LOGIN,
     });
-    expect(reception.status, JSON.stringify(reception.body)).toBe(201);
-    state.receptionId = reception.body.id;
     const works = await api<{ items: { id: string; name: string }[] }>(
       page,
       'GET',
@@ -297,9 +285,9 @@ test.describe('Картка наряду — довідники за ролям�
     state.workName = works.body.items[0].name;
 
     // ── Наряд — через інтерфейс ───────────────────────────────────────────
-    // Картка наряду читає довідники при монтуванні сторінки — перезавантажуємо, щоб механік
-    // тесту, створений щойно, був у довіднику.
-    await page.reload();
+    // Картка наряду читає довідники при монтуванні сторінки — сторінка нарядів після створення
+    // працівників, щоб механік тесту був у довіднику.
+    await page.goto('/work-orders');
     await page
       .getByRole('button', { name: /^Наряд$/ })
       .first()

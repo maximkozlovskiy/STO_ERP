@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { apiCall, apiRequest, getToken } from './api-helpers';
+import { createEmployeeViaUi } from './employee-ui';
 
 // Висока сторінка: у dev-базі підйомників багато, обидва рядки тесту мають бути на екрані разом.
 test.use({ storageState: 'e2e/.auth/admin.json', viewport: { width: 1280, height: 1400 } });
@@ -19,8 +20,9 @@ test.describe.configure({ mode: 'serial' });
  *     закріплений: механіка знято з повідомленням «Механіка знято: …» (рішення власника 2026-10-19).
  *
  * Документи — через інтерфейс: НАРЯДИ створюються в списку нарядів, статуси — на сторінці наряду,
- * ЗАПИСИ — формою запису. Клієнт, авто, механік і його закріплення за підйомником — передумови
- * через API (як `calendar-owner-decisions.spec.ts`). Дата — 27-ме наступного місяця.
+ * ЗАПИСИ — формою запису, МЕХАНІК і його закріплення за підйомником — сторінкою «Співробітники»
+ * (рішення власника 2026-10-19). Клієнт і авто — передумови через API. Дата — 27-ме наступного
+ * місяця.
  */
 
 const uid = Date.now().toString().slice(-6);
@@ -28,8 +30,6 @@ const CLIENT = `000 E2E Перев'язка запису ${uid}`;
 const PLATE = `WL${uid.slice(-5)}`;
 const MECH_LAST = `000 E2E Перевʼязка ${uid}`;
 const MECH_NAME = `${MECH_LAST} Механік`;
-// Пароль механіка — лише в пам'яті прогону.
-const MECH_PASSWORD = `E2e-${Math.random().toString(36).slice(2, 10)}`;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const kyivToday = () =>
@@ -530,23 +530,16 @@ test.describe('Запис наряду: перевʼязка BR-WO-028, вида
   }) => {
     test.setTimeout(240_000);
     test.skip(!state.cpId, 'передумови не створено');
-    // Запити API — зі сторінки застосунку (на about:blank fetch не має origin).
-    await dayView(page);
-    // Механік, закріплений лише за підйомником A, — передумова через API.
-    const mech = await api<{ id: string }>(page, 'POST', '/employees', {
+    // Механік, закріплений лише за підйомником A, — сторінкою «Співробітники».
+    state.employeeId = await createEmployeeViaUi(page, {
       firstName: 'Механік',
       lastName: MECH_LAST,
-      role: 'MECHANIC',
-      loginEmail: `e2e-relink-${uid}@sto.local`,
-      password: MECH_PASSWORD,
-      rateScheme: { type: 'percent_normo', params: { percent: 40 } },
+      liftNames: [state.liftA!.name],
     });
-    expect(mech.status, `механік: ${JSON.stringify(mech.body)}`).toBe(201);
-    state.employeeId = mech.body.id;
-    const assign = await api(page, 'POST', `/employees/${mech.body.id}/lifts`, {
-      liftIds: [state.liftA!.id],
-    });
-    expect(assign.status).toBeLessThan(300);
+    const mech = await api<{ liftIds: string[] }>(page, 'GET', `/employees/${state.employeeId}`);
+    expect(mech.body.liftIds, 'механік закріплений лише за підйомником A').toEqual([
+      state.liftA!.id,
+    ]);
 
     await createWorkOrder(page, 'mechSrc', { lift: state.liftA!, start: '16', hours: '1' });
     await createWorkOrder(page, 'mechDst', { lift: state.liftB!, start: '17', hours: '1' });

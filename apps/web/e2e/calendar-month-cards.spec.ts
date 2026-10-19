@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { apiCall, getToken } from './api-helpers';
 import { createCounterparty } from './cash-desk.helpers';
+import { createEmployeeViaUi } from './employee-ui';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -10,8 +11,9 @@ test.describe.configure({ mode: 'serial' });
  *
  * За правилом власника документи тестуються через браузер: НАРЯД створюється через інтерфейс
  * («Наряд» → картка), ЗАПИС календаря з цим нарядом — через «+ Слот» і вибір наряду у формі,
- * потім у формі змінюються час запису й механік. Механіка закріплено за підйомником через картку
- * співробітника (BR-CAL-012). Клієнт, авто й сам механік — лише передумови, їх створює API.
+ * потім у формі змінюються час запису й механік. Механік створюється сторінкою «Співробітники» й
+ * закріплюється за підйомником через картку співробітника (BR-CAL-012). Клієнт і авто — лише
+ * передумови, їх створює API.
  * Дата — 10-те число наступного місяця: завжди в майбутньому, тож запис редагується.
  */
 
@@ -216,44 +218,23 @@ test.describe('Календар «Місяць» — картки записів
     await expect(woCard).toBeHidden({ timeout: 10_000 });
 
     // ── 1a. Механік підйомника (BR-CAL-012) ─────────────────────────────────
-    // Сам механік — передумова через API; закріплення за підйомником — через картку співробітника.
+    // Механік і його закріплення за підйомником — сторінкою «Співробітники» (рішення власника
+    // 2026-10-19): форма «Новий співробітник», потім вкладка «Зони та підйомники» картки.
     const lifts = await apiCall<{ id: string; name: string }[]>(page, token, 'GET', '/lifts');
     expect(lifts.status).toBe(200);
     const lift = lifts.body[0];
     const mechLastName = `000 E2E ${uid}`;
     const mechName = `${mechLastName} Механік`;
-    const mech = await apiCall<{ id: string }>(page, token, 'POST', '/employees', {
+    state.employeeId = await createEmployeeViaUi(page, {
       firstName: 'Механік',
       lastName: mechLastName,
-      role: 'MECHANIC',
-      rateScheme: { type: 'percent_normo', params: { percent: 40 } },
+      liftNames: [lift.name],
     });
-    expect(mech.status, `механік: ${JSON.stringify(mech.body)}`).toBe(201);
-    state.employeeId = mech.body.id;
-
-    await page.goto('/employees');
-    await page.getByPlaceholder("Пошук за ім'ям...").fill(mechLastName);
-    const empRow = page.locator('table tbody tr', { hasText: mechLastName }).first();
-    await expect(empRow).toBeVisible({ timeout: 15_000 });
-    await empRow.hover();
-    await empRow.getByTitle('Редагувати').click();
-    const empModal = page.getByRole('dialog').filter({ hasText: mechLastName });
-    await expect(empModal).toBeVisible({ timeout: 15_000 });
-    await empModal.getByRole('button', { name: /Зони та підйомники/ }).click();
-    const liftBox = empModal
-      .locator('div.mb-3')
-      .filter({ has: page.locator('label', { hasText: /^Підйомники$/ }) });
-    await liftBox
-      .locator('label', { hasText: lift.name })
-      .locator('input[type="checkbox"]')
-      .check();
-    await empModal.getByRole('button', { name: 'Зберегти', exact: true }).click();
-    await expect(empModal).toBeHidden({ timeout: 15_000 });
     const assigned = await apiCall<{ liftIds: string[] }>(
       page,
       token,
       'GET',
-      `/employees/${mech.body.id}`,
+      `/employees/${state.employeeId}`,
     );
     expect(assigned.body.liftIds, 'механік закріплений за підйомником').toEqual([lift.id]);
 
@@ -319,7 +300,7 @@ test.describe('Календар «Місяць» — картки записів
     expect(edited).toHaveLength(1);
     expect(kyivHHMM(edited[0].startAt)).toBe('15:00');
     expect(kyivHHMM(edited[0].endAt)).toBe('16:00');
-    expect(edited[0].employeeId, 'механік, обраний у формі').toBe(mech.body.id);
+    expect(edited[0].employeeId, 'механік, обраний у формі').toBe(state.employeeId);
     expect(edited[0].employeeName).toBe(mechName);
 
     // ── 3a. Вид «День»: підсумок дня за іконками і легенда «?» (BR-CAL-008) ──
