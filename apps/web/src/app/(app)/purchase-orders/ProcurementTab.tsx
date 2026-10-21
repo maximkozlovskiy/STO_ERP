@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
+import { PROCUREMENT_WRITE_ROLES } from '@sto/shared';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { ShortageView } from './procurement/ShortageView';
@@ -10,9 +11,6 @@ import { ItemsView } from './procurement/ItemsView';
 import { ListsView } from './procurement/ListsView';
 
 export type ProcurementView = 'shortage' | 'items' | 'lists';
-
-/** Редагування списків і позицій — BR-PL-015 (приймальня лише переглядає й надсилає з наряду). */
-const PROCUREMENT_WRITE_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER'];
 
 /**
  * Вкладка «Управління купівлями» (docs/objects/purchase-list.md): нестача по нарядах, позиції
@@ -22,6 +20,7 @@ const PROCUREMENT_WRITE_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEP
 export function ProcurementTab() {
   const { t } = useTranslation('purchaseLists');
   const { employee } = useAuth();
+  // BR-PL-015: приймальня лише переглядає й надсилає з наряду.
   const canWrite = PROCUREMENT_WRITE_ROLES.includes(employee?.role ?? '');
   const searchParams = useSearchParams();
   const router = useRouter();

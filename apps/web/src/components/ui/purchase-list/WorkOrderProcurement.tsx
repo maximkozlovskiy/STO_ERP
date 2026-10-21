@@ -4,8 +4,9 @@ import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { ListPlus } from 'lucide-react';
-import { WO_PROCUREMENT_ACTIVE_STATUSES } from '@sto/shared';
+import { PROCUREMENT_READ_ROLES, WO_PROCUREMENT_ACTIVE_STATUSES } from '@sto/shared';
 import { useAuth } from '@/lib/auth';
+import { groupBy } from '@/lib/group-by';
 import { toast } from '@/lib/toast';
 import {
   purchaseListsKeys,
@@ -16,8 +17,6 @@ import { AddToListDialog, type AddToListRow } from './AddToListDialog';
 
 /** Позиції наряду в картці бачать ці ролі (BR-PL-015: + механік). */
 const VIEW_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC'];
-/** Надсилати товари з наряду до списку купівлі (BR-PL-003, BR-PL-015). */
-const SEND_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST'];
 
 export interface WorkOrderProcurementState {
   itemsByPart: Map<string, PurchaseListItem[]>;
@@ -43,16 +42,13 @@ export function useWorkOrderProcurementState(
   return useMemo(() => {
     // Відповідь неочікуваної форми (старий API, заглушка) не має ламати картку наряду.
     if (!data || !Array.isArray(data.items) || !Array.isArray(data.shortage)) return undefined;
-    const itemsByPart = new Map<string, PurchaseListItem[]>();
+    const linked = data.items.filter(
+      (i): i is PurchaseListItem & { workOrderPartId: string } => !!i.workOrderPartId,
+    );
+    const itemsByPart: Map<string, PurchaseListItem[]> = groupBy(linked, i => i.workOrderPartId);
     const unitByPart = new Map<string, string>();
-    for (const item of data.items) {
-      if (!item.workOrderPartId) continue;
-      itemsByPart.set(item.workOrderPartId, [
-        ...(itemsByPart.get(item.workOrderPartId) ?? []),
-        item,
-      ]);
+    for (const item of linked)
       if (item.goodUnit) unitByPart.set(item.workOrderPartId, item.goodUnit);
-    }
     const shortageByPart = new Map(data.shortage.map(s => [s.workOrderPartId, s.shortage]));
     for (const s of data.shortage) if (s.goodUnit) unitByPart.set(s.workOrderPartId, s.goodUnit);
     return { itemsByPart, shortageByPart, unitByPart };
@@ -100,7 +96,8 @@ export function SendToListButton({
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<AddToListRow[]>([]);
 
-  if (!SEND_ROLES.includes(employee?.role ?? '')) return null;
+  // Надсилати товари з наряду до списку купівлі (BR-PL-003, BR-PL-015).
+  if (!PROCUREMENT_READ_ROLES.includes(employee?.role ?? '')) return null;
   if (!WO_PROCUREMENT_ACTIVE_STATUSES.includes(status)) return null;
 
   const openDialog = () => {

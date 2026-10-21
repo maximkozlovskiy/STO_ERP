@@ -9,6 +9,12 @@ import type { ReactNode } from 'react';
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
+  // Як справжній apiPost: без тіла — без ключа `body`.
+  apiPost: (path: string, body?: unknown) =>
+    apiFetchMock(path, {
+      method: 'POST',
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }),
 }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ employee: { id: 'e1', role: 'OWNER' } }) }));
 

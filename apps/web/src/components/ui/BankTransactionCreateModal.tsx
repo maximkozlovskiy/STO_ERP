@@ -52,6 +52,7 @@ import {
   type BankTxDirection,
   type CreateBankTransactionInput,
 } from '@/hooks/api/useBankStatements';
+import { newIdempotencyKey } from '@/lib/idempotency-key';
 
 interface Props {
   open: boolean;
@@ -75,12 +76,6 @@ interface IncomingErrors {
   counterpartyId?: string;
   invoiceId?: string;
 }
-
-// crypto.randomUUID є лише в secure context; on-prem сервер СТО відкривають по http у LAN.
-const newIdempotencyKey = (): string =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 
 const emptyDefaults = (direction: BankTxDirection): BankTransactionCreateFormValues => ({
   bankAccountId: '',

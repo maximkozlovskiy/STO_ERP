@@ -48,9 +48,9 @@ import {
 } from './calendar.utils';
 import { buildMonthSlots, chainEnds, liveSlots } from './calendar-month';
 import {
-  isCancelledWorkOrderSlot,
   nowLinePercent,
   pastPercent,
+  slotDeleteConfirmOptions,
   workOrderDeleteLock,
   workOrderTimeLock,
 } from './calendar-day';
@@ -149,6 +149,10 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  // Запис наряду змінено чи видалено — картка, списки й лічильники нарядів (BR-WO-024, BR-WO-026).
+  const invalidateWorkOrders = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+  }, [queryClient]);
   const { confirm, dialogProps } = useConfirm();
 
   // URL-persistent view — back/forward and bookmarks work correctly
@@ -893,7 +897,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
           if (workOrderId) {
             // Картка й списки нарядів — нові планові дати; ланцюжок записів сервер перебудовує,
             // тож вид перечитується з resync відкритої форми (як після перетягування, Bug #884).
-            void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+            invalidateWorkOrders();
             notifyCalendarChanged();
           } else load();
         } catch (err: unknown) {
@@ -933,7 +937,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       window.removeEventListener('pointerup', onUpListener);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [pxToDecimalHours, load, t, queryClient]);
+  }, [pxToDecimalHours, load, t, invalidateWorkOrders]);
 
   // ── Drag-and-drop ─────────────────────────────────────────────────────────
 
@@ -1018,7 +1022,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
             );
           }
           // Картка наряду, списки нарядів — нові планові дати й підйомник.
-          void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+          invalidateWorkOrders();
           // Ланцюжок записів сервер перебудовує (продовження — нові записи), тож перечитуємо вид
           // з resync відкритої форми запису (refreshView через подію), а не лише сітку (Bug #884).
           notifyCalendarChanged();
@@ -1045,7 +1049,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         toast.error(e instanceof Error ? e.message : t('slot.errMoveFallback'));
       }
     },
-    [slots, load, nowMs, minHour, t, canManageSlots, queryClient],
+    [slots, load, nowMs, minHour, t, canManageSlots, invalidateWorkOrders],
   );
 
   // ── Remove slot ───────────────────────────────────────────────────────────
@@ -1058,32 +1062,20 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       const timeLock = slot ? workOrderTimeLock(slot) : null;
       if (workOrderDeleteLock(timeLock)) return;
       const woNumber = slot?.workOrderId ? (slot.workOrderNumber ?? '') : null;
-      const ok = await confirm({
-        title: t('slot.deleteTitle'),
-        message:
-          woNumber !== null
-            ? t(
-                isCancelledWorkOrderSlot(timeLock)
-                  ? 'slot.deleteCancelledWoMessage'
-                  : 'slot.deleteWoMessage',
-                { number: woNumber },
-              )
-            : t('slot.deleteMessage'),
-        variant: 'destructive',
-      });
+      const ok = await confirm(slotDeleteConfirmOptions(t, woNumber, timeLock));
       if (!ok) return;
       try {
         await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' });
         toast.success(t('slot.slotDeleted'));
         // BR-WO-026: запис наряду стер планові дати наряду — картка, списки й лічильники нарядів.
-        if (woNumber !== null) void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+        if (woNumber !== null) invalidateWorkOrders();
         load();
       } catch (e: unknown) {
         if (mountedRef.current)
           toast.error(e instanceof Error ? e.message : t('slot.errDeleteFallback'));
       }
     },
-    [slots, load, confirm, t, queryClient],
+    [slots, load, confirm, t, invalidateWorkOrders],
   );
 
   // ── Memoized slot data ────────────────────────────────────────────────────
@@ -1190,31 +1182,37 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     return false;
   }, [editingSlotId, monthEditSlot, slots, nowMs, minHour]);
 
+  /** Запис, відкритий у формі, як збережено; `null` — новий запис чи збережений ще не прочитано. */
+  const editingSavedSlot = useMemo(
+    () => (editingSlotId && editingSaved?.id === editingSlotId ? editingSaved : null),
+    [editingSlotId, editingSaved],
+  );
+
   /**
    * Наряд запису, відкритого у формі (як збережено): номер — для підтвердження видалення
    * (BR-WO-026), `lockedStatus` — статус, у якому час і підйомник запису не змінюються (BR-WO-027).
    */
   const editingWorkOrder = useMemo(
     () =>
-      editingSlotId && editingSaved?.id === editingSlotId && editingSaved.workOrderId
+      editingSavedSlot?.workOrderId
         ? {
-            number: editingSaved.workOrderNumber ?? '',
-            lockedStatus: workOrderTimeLock(editingSaved),
+            number: editingSavedSlot.workOrderNumber ?? '',
+            lockedStatus: workOrderTimeLock(editingSavedSlot),
           }
         : null,
-    [editingSlotId, editingSaved],
+    [editingSavedSlot],
   );
 
   const savedMechanic = useMemo<SavedMechanic | null>(
     () =>
-      editingSlotId && editingSaved?.id === editingSlotId
+      editingSavedSlot
         ? {
-            liftId: editingSaved.liftId,
-            employeeId: editingSaved.employeeId,
-            employeeName: editingSaved.employeeName,
+            liftId: editingSavedSlot.liftId,
+            employeeId: editingSavedSlot.employeeId,
+            employeeName: editingSavedSlot.employeeName,
           }
         : null,
-    [editingSlotId, editingSaved],
+    [editingSavedSlot],
   );
 
   // ── Modal close / save callbacks ──────────────────────────────────────────
@@ -1250,10 +1248,8 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       // BR-WO-024: збережено запис наряду — нові планові дати й підйомник у картці й списках.
       // Запис, що на відкритті належав наряду, відкріплено чи видалено — наряд утратив запис
       // календаря (лічильник у списку нарядів), хоча поля наряду у формі вже немає (Bug #904).
-      const hadWorkOrder =
-        !!editingSlotId && editingSaved?.id === editingSlotId && editingSaved.workOrderId !== null;
-      if (opts?.workOrderChanged || hadWorkOrder)
-        void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+      const hadWorkOrder = !!editingSavedSlot && editingSavedSlot.workOrderId !== null;
+      if (opts?.workOrderChanged || hadWorkOrder) invalidateWorkOrders();
       setShowAdd(false);
       setEditingSlotId(null);
       setMonthEditSlot(null);
@@ -1263,7 +1259,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       // Запис збережено чи видалено з виду «Місяць» — перечитати місяць, а не день (BR-CAL-009).
       refreshView();
     },
-    [refreshView, queryClient, editingSlotId, editingSaved],
+    [refreshView, invalidateWorkOrders, editingSavedSlot],
   );
 
   // Наряд змінив свій запис календаря на сервері (BR-WO-020: збереження планових дат чи

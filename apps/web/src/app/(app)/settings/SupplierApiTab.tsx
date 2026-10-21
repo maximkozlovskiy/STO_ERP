@@ -14,8 +14,7 @@ import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
-import { supplierOffersKeys } from '@/hooks/api/useSupplierOffers';
-import { supplierApiOrderKeys } from '@/hooks/api/useSupplierApiOrder';
+import { invalidateSupplierApiSettingsAffected } from '@/lib/cache-invalidation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -254,8 +253,7 @@ export default function SupplierApiTab() {
       setForm(toForm(updated));
       // Стратегія, TTL і політика аналогів живуть у діалогах пропозицій (вибірність), режим
       // відправки — у стані передачі замовлення в API: скидаємо обидва простори ключів.
-      void qc.invalidateQueries({ queryKey: supplierOffersKeys.all });
-      void qc.invalidateQueries({ queryKey: supplierApiOrderKeys.all });
+      invalidateSupplierApiSettingsAffected(qc);
       if (features.toastEnabled) toast.success(t('procurement.saved'));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('procurement.loadError');

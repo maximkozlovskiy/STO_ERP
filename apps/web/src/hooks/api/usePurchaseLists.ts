@@ -1,12 +1,15 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type {
   ApiSchema,
+  PurchaseListCreateValues,
   PurchaseListFromWorkOrderValues,
+  PurchaseListItemUpdateValues,
   PurchaseListItemsBulkUpdateValues,
   PurchaseListItemsMoveValues,
+  PurchaseListManualItemValues,
   PurchaseListMergeValues,
 } from '@sto/shared';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { buildParams, usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
@@ -23,7 +26,6 @@ export type ShortageResponse = ApiSchema<'ShortageResponseDto'>;
 export type WorkOrderProcurement = ApiSchema<'WorkOrderProcurementDto'>;
 export type FromWorkOrderResult = ApiSchema<'FromWorkOrderResultDto'>;
 export type CreateOrdersResult = ApiSchema<'CreateOrdersResultDto'>;
-export type PurchaseListItemStatusValue = PurchaseListItem['status'];
 
 export interface PurchaseListsFilter extends Record<string, unknown> {
   page?: number;
@@ -112,53 +114,36 @@ export function useWorkOrderProcurement(workOrderId: string | null | undefined, 
   });
 }
 
-// ─── Мутації (тонкі обгортки apiFetch; кеш скидає викличний компонент) ─────────
-
-const post = <T>(path: string, body?: unknown) =>
-  apiFetch<T>(path, {
-    method: 'POST',
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+// ─── Мутації (тонкі обгортки apiPost/apiFetch; кеш скидає викличний компонент) ─────────
 
 export const purchaseListsApi = {
   fromWorkOrder: (body: PurchaseListFromWorkOrderValues) =>
-    post<FromWorkOrderResult>('/purchase-lists/from-work-order', body),
-  createList: (body: { name?: string; warehouseId?: string; notes?: string }) =>
-    post<PurchaseList>('/purchase-lists', body),
-  addItem: (
-    listId: string,
-    body: {
-      goodId: string;
-      warehouseId: string;
-      quantity: number;
-      supplierId?: string;
-      expectedPrice?: number;
-    },
-  ) => post<PurchaseListItem>(`/purchase-lists/${listId}/items`, body),
-  merge: (body: PurchaseListMergeValues) => post<PurchaseListDetail>('/purchase-lists/merge', body),
+    apiPost<FromWorkOrderResult>('/purchase-lists/from-work-order', body),
+  createList: (body: PurchaseListCreateValues) => apiPost<PurchaseList>('/purchase-lists', body),
+  addItem: (listId: string, body: PurchaseListManualItemValues) =>
+    apiPost<PurchaseListItem>(`/purchase-lists/${listId}/items`, body),
+  merge: (body: PurchaseListMergeValues) =>
+    apiPost<PurchaseListDetail>('/purchase-lists/merge', body),
   createOrders: (itemIds: string[]) =>
-    post<CreateOrdersResult>('/purchase-lists/create-orders', { itemIds }),
-  close: (id: string) => post<PurchaseList>(`/purchase-lists/${id}/close`),
-  cancel: (id: string) => post<PurchaseList>(`/purchase-lists/${id}/cancel`),
+    apiPost<CreateOrdersResult>('/purchase-lists/create-orders', { itemIds }),
+  close: (id: string) => apiPost<PurchaseList>(`/purchase-lists/${id}/close`),
+  cancel: (id: string) => apiPost<PurchaseList>(`/purchase-lists/${id}/cancel`),
   remove: (id: string) => apiFetch<void>(`/purchase-lists/${id}`, { method: 'DELETE' }),
-  updateItem: (
-    id: string,
-    body: { quantity?: number; supplierId?: string | null; expectedPrice?: number | null },
-  ) =>
+  updateItem: (id: string, body: PurchaseListItemUpdateValues) =>
     apiFetch<PurchaseListItem>(`/purchase-list-items/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
   split: (id: string, quantity: number) =>
-    post<PurchaseListItem[]>(`/purchase-list-items/${id}/split`, { quantity }),
+    apiPost<PurchaseListItem[]>(`/purchase-list-items/${id}/split`, { quantity }),
   move: (body: PurchaseListItemsMoveValues) =>
-    post<{ count: number }>('/purchase-list-items/move', body),
+    apiPost<{ count: number }>('/purchase-list-items/move', body),
   bulkUpdate: (body: PurchaseListItemsBulkUpdateValues) =>
-    post<{ count: number }>('/purchase-list-items/bulk-update', body),
+    apiPost<{ count: number }>('/purchase-list-items/bulk-update', body),
   bulkCancel: (itemIds: string[]) =>
-    post<{ count: number }>('/purchase-list-items/bulk-cancel', { itemIds }),
+    apiPost<{ count: number }>('/purchase-list-items/bulk-cancel', { itemIds }),
   releaseReservation: (id: string) =>
-    post<{ released: number; item: PurchaseListItem }>(
+    apiPost<{ released: number; item: PurchaseListItem }>(
       `/purchase-list-items/${id}/release-reservation`,
     ),
 };

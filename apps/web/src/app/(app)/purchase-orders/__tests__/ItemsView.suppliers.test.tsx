@@ -9,7 +9,14 @@ import { vi, it, expect, describe, beforeEach } from 'vitest';
 import type { PurchaseListItem } from '@/hooks/api/usePurchaseLists';
 
 const apiFetch = vi.fn();
-vi.mock('@/lib/api-client', () => ({ apiFetch: (...a: unknown[]) => apiFetch(...a) }));
+vi.mock('@/lib/api-client', () => ({
+  apiFetch: (...a: unknown[]) => apiFetch(...a),
+  apiPost: (path: string, body?: unknown) =>
+    apiFetch(path, {
+      method: 'POST',
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }),
+}));
 vi.mock('@/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/linked-nav', () => ({
   useLinkedNav: () => ({ toWorkOrder: vi.fn(), toPurchaseOrder: vi.fn() }),

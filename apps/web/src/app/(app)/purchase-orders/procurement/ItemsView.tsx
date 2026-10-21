@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ClipboardList,
   Search,
@@ -13,13 +12,14 @@ import {
   Wand2,
 } from 'lucide-react';
 import { PURCHASE_LIST_ITEM_STATUS_BADGE, WO_PROCUREMENT_ACTIVE_STATUSES } from '@sto/shared';
-import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { canOpenRoute } from '@/lib/nav';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
+import { useNow } from '@/hooks/useNow';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useWarehouses } from '@/hooks/api/useInfrastructure';
+import { useSupplierOptions, type SupplierOption } from '@/hooks/api/useCounterparties';
 import {
   purchaseListsApi,
   usePurchaseListItems,
@@ -27,16 +27,16 @@ import {
   type PurchaseListItem,
 } from '@/hooks/api/usePurchaseLists';
 import { useSupplierProcurementSettings } from '@/hooks/api/useSupplierOffers';
-import { invalidateProcurementSideEffects } from '@/lib/cache-invalidation';
+import { PURCHASE_DOCUMENT_ROLES } from '../purchase-roles';
+import { FormDialog } from './FormDialog';
+import { createOrdersFromItems, useProcurementAction } from './useProcurementAction';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { purchaseListItemStatusLabel, poStatusLabel } from '@/i18n/enumLabel';
 import { fmtMoney, fmtQty } from '@/lib/format';
-import { toast } from '@/lib/toast';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { Modal } from '@/components/ui/modal';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ListLoadError } from '@/components/ui/list-load-error';
@@ -58,11 +58,6 @@ import {
 const PAGE_SIZE = 50;
 const NONE = 'none';
 
-interface SupplierOption {
-  id: string;
-  name: string;
-}
-
 /**
  * Хто створює контрагентів (`POST /counterparties`). Решті — зокрема комірнику (BR-CP-014: лише
  * читання постачальників) — підказка «немає постачальників» радить звернутися до них, а не
@@ -71,40 +66,11 @@ interface SupplierOption {
 const COUNTERPARTY_CREATE_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'RECEPTIONIST'];
 
 /**
- * Постачальники для фільтра й масової зміни. Комірник читає їх так само (BR-CP-014, рішення
- * власника 2026-10-18): сервер віддає йому лише постачальників і лише поля вибору.
- */
-function useSupplierOptions() {
-  const { employee } = useAuth();
-  return useQuery<SupplierOption[]>({
-    queryKey: ['purchase-lists', 'supplier-options'],
-    queryFn: ({ signal }) =>
-      apiFetch<{
-        items: Array<{
-          id: string;
-          companyName?: string | null;
-          firstName?: string | null;
-          lastName?: string | null;
-        }>;
-      }>('/counterparties?types=SUPPLIER&types=BOTH&limit=200', { signal }).then(r =>
-        (r.items ?? []).map(c => ({
-          id: c.id,
-          name: c.companyName || [c.lastName, c.firstName].filter(Boolean).join(' ') || c.id,
-        })),
-      ),
-    enabled: !!employee,
-    staleTime: 5 * 60_000,
-  });
-}
-
-/**
  * «Позиції»: що закуповуємо — з нарядів і вручну. Фільтри: статус, постачальник (зокрема «без
  * постачальника»), склад, список, пошук. Масові дії (власник, адміністратор, комірник —
  * BR-PL-015): постачальник і ціна, перенесення, «Створити замовлення» (BR-PL-008), скасування;
  * у рядку — «Розділити» й «Зняти резерв» (BR-PL-016).
  */
-/** Ролі з карткою замовлення постачальнику — `DOCUMENT_ROLES` сторінки «Купівля». */
-const PURCHASE_ORDER_DOCUMENT_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER'];
 
 /**
  * «Зняти резерв» (BR-PL-016) має сенс, лише поки наряд позиції тримає резерв: на «Виконано»
@@ -120,7 +86,6 @@ function reservationReleasable(i: PurchaseListItem): boolean {
 
 export function ItemsView({ canWrite }: { canWrite: boolean }) {
   const { t } = useTranslation('purchaseLists');
-  const qc = useQueryClient();
   const nav = useLinkedNav();
   const { confirm, dialogProps } = useConfirm();
   const [status, setStatus] = useState('OPEN');
@@ -138,9 +103,9 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
   const canOpenWorkOrder = canOpenRoute('/work-orders', employee?.role);
   // Приймальня відкриває «Купівлю» лише на вкладці «Управління купівлями» (BR-PL-015), картки
   // замовлення їй не відкрити (`GET /purchase-orders/:id` — 403): номер — текст (Bug #914).
-  const canOpenPurchaseOrder = PURCHASE_ORDER_DOCUMENT_ROLES.includes(employee?.role ?? '');
-  const suppliersQuery = useSupplierOptions();
-  const suppliers = suppliersQuery.data;
+  const canOpenPurchaseOrder = PURCHASE_DOCUMENT_ROLES.includes(employee?.role ?? '');
+  const suppliersQuery = useSupplierOptions('', !!employee);
+  const suppliers = suppliersQuery.data?.items;
   // Підказка — лише після відповіді: поки список вантажиться, «немає» було б неправдою.
   const suppliersHint = suppliersQuery.isError
     ? t('items.dialogs.suppliersLoadFailed')
@@ -159,7 +124,7 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
   });
   const items = useMemo(() => data?.items ?? [], [data]);
   const bulk = useBulkSelect(items);
-  const [busy, setBusy] = useState(false);
+  const { busy, run, done } = useProcurementAction(bulk.clear);
   const [supplierDialog, setSupplierDialog] = useState<string[] | null>(null);
   const [moveDialog, setMoveDialog] = useState<string[] | null>(null);
   const [splitItem, setSplitItem] = useState<PurchaseListItem | null>(null);
@@ -167,32 +132,11 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
   const [allocateIds, setAllocateIds] = useState<string[] | null>(null);
   // TTL пропозиції — для позначки «застаріла»; приймальні запит закритий (Bug #729), тож лише canWrite.
   const { data: offerSettings } = useSupplierProcurementSettings(canWrite);
+  // Давність і «застаріла» в бейджах пропозицій — один щохвилинний таймер на таблицю.
+  const now = useNow(60_000);
 
   const resetPage = () => setPage(1);
-  const done = (message: string) => {
-    toast.success(message);
-    bulk.clear();
-    invalidateProcurementSideEffects(qc);
-  };
-  const run = async (fn: () => Promise<void>) => {
-    setBusy(true);
-    try {
-      await fn();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('errors.action'));
-      invalidateProcurementSideEffects(qc);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const createOrders = (ids: string[]) =>
-    run(async () => {
-      if (!(await confirm({ title: t('items.createOrdersConfirm', { count: ids.length }) })))
-        return;
-      const res = await purchaseListsApi.createOrders(ids);
-      done(t('items.ordersCreated', { numbers: res.orders.map(o => o.number).join(', ') }));
-    });
+  const createOrders = (ids: string[]) => run(() => createOrdersFromItems(ids, confirm, t));
   const cancelItems = (ids: string[]) =>
     run(async () => {
       if (
@@ -201,9 +145,9 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
           variant: 'destructive',
         }))
       )
-        return;
+        return null;
       await purchaseListsApi.bulkCancel(ids);
-      done(t('items.cancelled', { count: ids.length }));
+      return t('items.cancelled', { count: ids.length });
     });
   const releaseReservation = (item: PurchaseListItem) =>
     run(async () => {
@@ -213,9 +157,9 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
           message: t('items.releaseHint'),
         }))
       )
-        return;
+        return null;
       const res = await purchaseListsApi.releaseReservation(item.id);
-      done(t('items.released', { qty: fmtQty(res.released) }));
+      return t('items.released', { qty: fmtQty(res.released) });
     });
 
   const bulkActions: BulkAction[] = [
@@ -433,7 +377,11 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
                     {i.supplierName ?? <span className="italic">{t('items.noSupplier')}</span>}
                     {i.offerKey && (
                       <div>
-                        <OfferBadge item={i} ttlMinutes={offerSettings?.offerTtlMinutes} />
+                        <OfferBadge
+                          item={i}
+                          ttlMinutes={offerSettings?.offerTtlMinutes}
+                          now={now}
+                        />
                       </div>
                     )}
                   </TableCell>
@@ -559,15 +507,6 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
 
 // ─── Діалоги масових дій ─────────────────────────────────────────────────────────
 
-function DialogError({ message }: { message: string }) {
-  if (!message) return null;
-  return (
-    <div className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">
-      {message}
-    </div>
-  );
-}
-
 function SupplierPriceDialog({
   ids,
   suppliers,
@@ -584,81 +523,57 @@ function SupplierPriceDialog({
   const { t } = useTranslation('purchaseLists');
   const [supplier, setSupplier] = useState('');
   const [price, setPrice] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-  const open = ids !== null;
 
-  const save = async () => {
-    if (!ids) return;
-    const body: { itemIds: string[]; supplierId?: string | null; expectedPrice?: number | null } = {
-      itemIds: ids,
-    };
-    if (supplier === NONE) body.supplierId = null;
-    else if (supplier) body.supplierId = supplier;
-    if (price.trim()) body.expectedPrice = Number(price);
-    if (body.supplierId === undefined && body.expectedPrice === undefined) {
-      setErr(t('items.dialogs.nothingToChange'));
-      return;
-    }
-    setSaving(true);
-    setErr('');
-    try {
-      const res = await purchaseListsApi.bulkUpdate(body);
-      setSupplier('');
-      setPrice('');
-      onSaved(res.count);
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : t('errors.action'));
-    } finally {
-      setSaving(false);
-    }
+  const body: { itemIds: string[]; supplierId?: string | null; expectedPrice?: number | null } = {
+    itemIds: ids ?? [],
   };
+  if (supplier === NONE) body.supplierId = null;
+  else if (supplier) body.supplierId = supplier;
+  if (price.trim()) body.expectedPrice = Number(price);
 
   return (
-    <Modal
-      open={open}
+    <FormDialog
+      open={ids !== null}
       onClose={onClose}
       title={t('items.dialogs.supplierTitle', { count: ids?.length ?? 0 })}
-      size="sm"
-      onSubmit={() => void save()}
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            {t('common.cancel')}
-          </Button>
-          <Button variant="primary" onClick={() => void save()} loading={saving}>
-            {t('common.save')}
-          </Button>
-        </div>
+      submitLabel={t('common.save')}
+      validate={() =>
+        body.supplierId === undefined && body.expectedPrice === undefined
+          ? t('items.dialogs.nothingToChange')
+          : undefined
       }
+      onSubmit={async () => {
+        if (!ids) return;
+        const res = await purchaseListsApi.bulkUpdate(body);
+        setSupplier('');
+        setPrice('');
+        onSaved(res.count);
+      }}
     >
-      <div className="space-y-3">
-        <Select
-          label={t('columns.supplier')}
-          value={supplier}
-          onChange={e => setSupplier(e.target.value)}
-          hint={suppliersHint}
-        >
-          <option value="">{t('items.dialogs.keep')}</option>
-          <option value={NONE}>{t('filters.noSupplier')}</option>
-          {suppliers.map(s => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </Select>
-        <Input
-          label={t('items.dialogs.price')}
-          type="number"
-          min="0"
-          step="0.01"
-          value={price}
-          onChange={e => setPrice(e.target.value)}
-          placeholder={t('items.dialogs.keep')}
-        />
-        <DialogError message={err} />
-      </div>
-    </Modal>
+      <Select
+        label={t('columns.supplier')}
+        value={supplier}
+        onChange={e => setSupplier(e.target.value)}
+        hint={suppliersHint}
+      >
+        <option value="">{t('items.dialogs.keep')}</option>
+        <option value={NONE}>{t('filters.noSupplier')}</option>
+        {suppliers.map(s => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+          </option>
+        ))}
+      </Select>
+      <Input
+        label={t('items.dialogs.price')}
+        type="number"
+        min="0"
+        step="0.01"
+        value={price}
+        onChange={e => setPrice(e.target.value)}
+        placeholder={t('items.dialogs.keep')}
+      />
+    </FormDialog>
   );
 }
 
@@ -676,72 +591,47 @@ function MoveDialog({
   const { t } = useTranslation('purchaseLists');
   const [targetId, setTargetId] = useState('');
   const [newName, setNewName] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-
-  const save = async () => {
-    if (!ids) return;
-    setSaving(true);
-    setErr('');
-    try {
-      const res = await purchaseListsApi.move(
-        targetId
-          ? { itemIds: ids, targetListId: targetId }
-          : { itemIds: ids, newListName: newName.trim() || undefined },
-      );
-      setTargetId('');
-      setNewName('');
-      onSaved(res.count);
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : t('errors.action'));
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
-    <Modal
+    <FormDialog
       open={ids !== null}
       onClose={onClose}
       title={t('items.dialogs.moveTitle', { count: ids?.length ?? 0 })}
-      size="sm"
-      onSubmit={() => void save()}
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            {t('common.cancel')}
-          </Button>
-          <Button variant="primary" onClick={() => void save()} loading={saving}>
-            {t('items.move')}
-          </Button>
-        </div>
-      }
+      submitLabel={t('items.move')}
+      onSubmit={async () => {
+        if (!ids) return;
+        const res = await purchaseListsApi.move(
+          targetId
+            ? { itemIds: ids, targetListId: targetId }
+            : { itemIds: ids, newListName: newName.trim() || undefined },
+        );
+        setTargetId('');
+        setNewName('');
+        onSaved(res.count);
+      }}
     >
-      <div className="space-y-3">
-        <Select
-          label={t('items.dialogs.targetList')}
-          value={targetId}
-          onChange={e => setTargetId(e.target.value)}
-        >
-          <option value="">{t('items.dialogs.newList')}</option>
-          {lists.map(l => (
-            <option key={l.id} value={l.id}>
-              {l.number}
-              {l.name ? ` — ${l.name}` : ''}
-            </option>
-          ))}
-        </Select>
-        {!targetId && (
-          <Input
-            label={t('items.dialogs.newListName')}
-            value={newName}
-            maxLength={120}
-            onChange={e => setNewName(e.target.value)}
-          />
-        )}
-        <DialogError message={err} />
-      </div>
-    </Modal>
+      <Select
+        label={t('items.dialogs.targetList')}
+        value={targetId}
+        onChange={e => setTargetId(e.target.value)}
+      >
+        <option value="">{t('items.dialogs.newList')}</option>
+        {lists.map(l => (
+          <option key={l.id} value={l.id}>
+            {l.number}
+            {l.name ? ` — ${l.name}` : ''}
+          </option>
+        ))}
+      </Select>
+      {!targetId && (
+        <Input
+          label={t('items.dialogs.newListName')}
+          value={newName}
+          maxLength={120}
+          onChange={e => setNewName(e.target.value)}
+        />
+      )}
+    </FormDialog>
   );
 }
 
@@ -756,61 +646,37 @@ function SplitDialog({
 }) {
   const { t } = useTranslation('purchaseLists');
   const [qty, setQty] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-
-  const save = async () => {
-    if (!item) return;
-    const n = Number(qty);
-    if (!Number.isFinite(n) || n <= 0 || n >= item.quantity) {
-      setErr(t('items.dialogs.splitInvalid', { max: fmtQty(item.quantity) }));
-      return;
-    }
-    setSaving(true);
-    setErr('');
-    try {
-      await purchaseListsApi.split(item.id, n);
-      setQty('');
-      onSaved();
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : t('errors.action'));
-    } finally {
-      setSaving(false);
-    }
-  };
+  const n = Number(qty);
 
   return (
-    <Modal
+    <FormDialog
       open={item !== null}
       onClose={onClose}
       title={t('items.dialogs.splitTitle', { good: item?.goodName ?? '' })}
-      size="sm"
-      onSubmit={() => void save()}
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            {t('common.cancel')}
-          </Button>
-          <Button variant="primary" onClick={() => void save()} loading={saving}>
-            {t('items.split')}
-          </Button>
-        </div>
+      submitLabel={t('items.split')}
+      validate={() =>
+        item && (!Number.isFinite(n) || n <= 0 || n >= item.quantity)
+          ? t('items.dialogs.splitInvalid', { max: fmtQty(item.quantity) })
+          : undefined
       }
+      onSubmit={async () => {
+        if (!item) return;
+        await purchaseListsApi.split(item.id, n);
+        setQty('');
+        onSaved();
+      }}
     >
-      <div className="space-y-3">
-        <p className="text-[13px] text-muted-foreground">
-          {t('items.dialogs.splitHint', { qty: fmtQty(item?.quantity ?? 0) })}
-        </p>
-        <Input
-          label={t('items.dialogs.splitQuantity')}
-          type="number"
-          min="0.001"
-          step="any"
-          value={qty}
-          onChange={e => setQty(e.target.value)}
-        />
-        <DialogError message={err} />
-      </div>
-    </Modal>
+      <p className="text-[13px] text-muted-foreground">
+        {t('items.dialogs.splitHint', { qty: fmtQty(item?.quantity ?? 0) })}
+      </p>
+      <Input
+        label={t('items.dialogs.splitQuantity')}
+        type="number"
+        min="0.001"
+        step="any"
+        value={qty}
+        onChange={e => setQty(e.target.value)}
+      />
+    </FormDialog>
   );
 }

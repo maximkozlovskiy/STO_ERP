@@ -155,15 +155,15 @@ export function SupplierOffersDialog({ item, onClose }: Props) {
   const { t } = useTranslation('supplierApi');
   const features = useUiFeatures();
   const qc = useQueryClient();
-  const { confirm, dialogProps } = useConfirm();
+  // `nestedOpenRef` — підтвердження відкрите: Escape у ньому не має закривати й цей діалог
+  // (знімається після події, GOTCHAS 2026-10-12).
+  const { confirm, dialogProps, openRef: nestedOpenRef } = useConfirm();
   const itemId = item?.id ?? null;
   const [batchId, setBatchId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; variant: 'warning' | 'error' } | null>(null);
   const [searching, setSearching] = useState(false);
   const [busyOfferId, setBusyOfferId] = useState<string | null>(null);
   const busyRef = useRef(false);
-  // Відкрите підтвердження: Escape у ньому не має закривати й цей діалог (GOTCHAS 2026-10-12).
-  const nestedOpenRef = useRef(false);
   const searchSeq = useRef(0);
 
   const lastKnown = useItemOffers(itemId);
@@ -230,7 +230,6 @@ export function SupplierOffersDialog({ item, onClose }: Props) {
   const choose = async (row: OfferRow) => {
     if (!item || busyRef.current) return;
     if (row.offer.replacesGood) {
-      nestedOpenRef.current = true;
       const ok = await confirm({
         title: t('offers.confirmReplace', {
           article: row.offer.article,
@@ -238,10 +237,6 @@ export function SupplierOffersDialog({ item, onClose }: Props) {
         }),
         message: t('offers.confirmReplaceHint'),
       });
-      // Знімаємо після події: Escape підтвердження ще обходить слухачі цього діалогу.
-      setTimeout(() => {
-        nestedOpenRef.current = false;
-      }, 0);
       if (!ok) return;
     }
     busyRef.current = true;

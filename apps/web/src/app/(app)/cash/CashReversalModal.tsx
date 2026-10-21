@@ -17,6 +17,7 @@ import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { useReverseCashOperation, type CashOperation } from '@/hooks/api/useCash';
+import { newIdempotencyKey } from '@/lib/idempotency-key';
 
 interface Props {
   open: boolean;
@@ -40,12 +41,6 @@ const CONSEQUENCE_REASONS = new Set([
 
 /** Межа довжини причини — зі спільної схеми, щоб лічильник не розійшовся з валідацією. */
 const REASON_MAX = cashReversalSchema.shape.reason.maxLength ?? undefined;
-
-// crypto.randomUUID є лише в secure context; on-prem сервер СТО відкривають по http у LAN.
-const newIdempotencyKey = (): string =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 
 /**
  * Картка сторно касової операції (BR-CASH-023…025). Зразок — скасування рознесення банківського

@@ -1,4 +1,7 @@
+import type { TFunction } from 'i18next';
 import { WO_EDITABLE_STATUSES } from '@sto/shared';
+import type { ConfirmOptions } from '@/hooks/useConfirm';
+import { woStatusLabel } from '@/i18n/enumLabel';
 import type { CalendarSlot } from './calendar.types';
 import { slotCategory, type SlotCategory } from './calendar-categories';
 import { chainKey, countsAsLoad } from './calendar-month';
@@ -48,6 +51,39 @@ export function workOrderDeleteLock(timeLock: string | null): string | null {
 /** Запис скасованого наряду: видалення не стирає дат наряду (BR-WO-026) — інше підтвердження. */
 export function isCancelledWorkOrderSlot(timeLock: string | null): boolean {
   return timeLock === 'CANCELLED';
+}
+
+/**
+ * Підказка «запис наряду не видаляється» (BR-WO-026) для кнопки видалення; `null` — видалити
+ * можна. `t` — простір імен `calendar`; `timeLock` — результат `workOrderTimeLock`.
+ */
+export function slotDeleteLockHint(t: TFunction, timeLock: string | null): string | null {
+  const locked = workOrderDeleteLock(timeLock);
+  return locked ? t('slot.woDeleteLocked', { status: woStatusLabel(locked) }) : null;
+}
+
+/**
+ * Підтвердження видалення запису (BR-WO-026): запис наряду стирає планові дати наряду, запис
+ * скасованого наряду — ні, запис без наряду (`woNumber` — `null`) — звичайне підтвердження.
+ */
+export function slotDeleteConfirmOptions(
+  t: TFunction,
+  woNumber: string | null,
+  timeLock: string | null,
+): ConfirmOptions {
+  return {
+    title: t('slot.deleteTitle'),
+    message:
+      woNumber !== null
+        ? t(
+            isCancelledWorkOrderSlot(timeLock)
+              ? 'slot.deleteCancelledWoMessage'
+              : 'slot.deleteWoMessage',
+            { number: woNumber },
+          )
+        : t('slot.deleteMessage'),
+    variant: 'destructive',
+  };
 }
 
 /** Поточний час за Києвом як частка робочого вікна дня, %; `null` — не сьогодні. */

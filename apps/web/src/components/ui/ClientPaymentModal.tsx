@@ -13,6 +13,7 @@ import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { newIdempotencyKey } from '@/lib/idempotency-key';
 
 /** Спосіб оплати у вікні: код, назва і куди за замовчуванням надходять кошти. */
 type PaymentMethodDto = ApiSchema<'PaymentMethodResponseDto'>;
@@ -31,12 +32,6 @@ const EMPTY_CASH_REGISTERS: CashRegister[] = [];
 const QR_METHOD_CODE = 'monobank_qr';
 // Коди QR-способів оплати — `<шлюз>_qr` (monobank_qr, privat24_qr, liqpay_qr; setup.service).
 const QR_CODE_SUFFIX = '_qr';
-
-// crypto.randomUUID є лише в secure context; on-prem сервер СТО відкривають по http у LAN.
-const newIdempotencyKey = (): string =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 
 /**
  * Що оплачується. `invoice` — рахунок (сторінка рахунків; наряд сервер виводить із рахунку,

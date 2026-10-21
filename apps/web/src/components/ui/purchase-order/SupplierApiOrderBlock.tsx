@@ -19,11 +19,10 @@ import {
   type PurchaseOrderSupplierApi,
   type SupplierApiOrder,
 } from '@/hooks/api/useSupplierApiOrder';
-import { Badge } from '@/components/ui/badge';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-
-type BadgeVariant = 'secondary' | 'info' | 'success' | 'warning' | 'destructive';
+import { newIdempotencyKey } from '@/lib/idempotency-key';
 
 const SUMMARY_BADGE: Record<PurchaseOrderSupplierApi['supplierApiStatus'], BadgeVariant> = {
   NOT_SENT: 'secondary',
@@ -52,12 +51,6 @@ const EXTERNAL_BADGE: Record<SupplierApiOrder['status'], BadgeVariant> = {
 /** Скільки після «Оновити статус» опитувати стан: задача постачальнику йде через чергу. */
 const WATCH_AFTER_POLL_MS = 30_000;
 
-// crypto.randomUUID є лише в secure context; on-prem сервер СТО відкривають по http у LAN.
-const newIdempotencyKey = (): string =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-
 /**
  * Скасування / видалення замовлення, вже переданого постачальнику (BR-SCON-014, рішення власника):
  * спершу звичайний запит; якщо сервер відмовив, а замовлення справді вже в постачальника, —
@@ -67,7 +60,7 @@ const newIdempotencyKey = (): string =>
  */
 export function useSentOrderForce(nestedOpenRef?: MutableRefObject<boolean>) {
   const { t } = useTranslation('supplierApi');
-  const { confirm, dialogProps } = useConfirm();
+  const { confirm, dialogProps } = useConfirm(nestedOpenRef);
 
   const run = useCallback(
     async <T,>(
@@ -85,7 +78,6 @@ export function useSentOrderForce(nestedOpenRef?: MutableRefObject<boolean>) {
           throw e;
         }
         if (!isSentToSupplier(state)) throw e;
-        if (nestedOpenRef) nestedOpenRef.current = true;
         const ok = await confirm({
           title: t('order.cancelSentTitle'),
           message: t(kind === 'cancel' ? 'order.cancelSentMessage' : 'order.deleteSentMessage'),
@@ -93,14 +85,11 @@ export function useSentOrderForce(nestedOpenRef?: MutableRefObject<boolean>) {
           cancelLabel: t('common:cancel'),
           variant: 'destructive',
         });
-        setTimeout(() => {
-          if (nestedOpenRef) nestedOpenRef.current = false;
-        }, 0);
         if (!ok) return { done: false };
         return { done: true, result: await attempt(true) };
       }
     },
-    [confirm, nestedOpenRef, t],
+    [confirm, t],
   );
 
   /**
@@ -125,7 +114,6 @@ export function useSentOrderForce(nestedOpenRef?: MutableRefObject<boolean>) {
       });
       if (sentIds.length === 0) return { succeeded, failed: rejectedIds.length };
 
-      if (nestedOpenRef) nestedOpenRef.current = true;
       const ok = await confirm({
         title: t('order.cancelSentTitle'),
         message: t('order.deleteSentManyMessage', { count: sentIds.length }),
@@ -133,9 +121,6 @@ export function useSentOrderForce(nestedOpenRef?: MutableRefObject<boolean>) {
         cancelLabel: t('common:cancel'),
         variant: 'destructive',
       });
-      setTimeout(() => {
-        if (nestedOpenRef) nestedOpenRef.current = false;
-      }, 0);
       if (!ok) return { succeeded, failed: rejectedIds.length };
 
       const forced = await Promise.allSettled(sentIds.map(id => attempt(id, true)));
@@ -143,7 +128,7 @@ export function useSentOrderForce(nestedOpenRef?: MutableRefObject<boolean>) {
       succeeded += forcedOk;
       return { succeeded, failed: rejectedIds.length - forcedOk };
     },
-    [confirm, nestedOpenRef, t],
+    [confirm, t],
   );
 
   return { run, runMany, dialogProps };
@@ -187,20 +172,14 @@ export function SupplierApiOrderBlock({
   const sendKeyRef = useRef<string | null>(null);
   const { employee } = useAuth();
   const canAct = SUPPLIER_API_SEND_ROLES.includes(employee?.role ?? '');
-  const { confirm, dialogProps } = useConfirm();
+  // Підтвердження позначається в прапорці картки-власника (Escape закриває лише його).
+  const { confirm, dialogProps } = useConfirm(nestedOpenRef);
   const [watchUntil, setWatchUntil] = useState(0);
   const [busy, setBusy] = useState<'send' | 'poll' | 'release' | null>(null);
   const busyRef = useRef(false);
   const { data: state, error, refetch } = usePurchaseOrderSupplierApi(purchaseOrderId, watchUntil);
 
-  const ask = async (title: string, message?: string) => {
-    if (nestedOpenRef) nestedOpenRef.current = true;
-    const ok = await confirm({ title, message });
-    setTimeout(() => {
-      if (nestedOpenRef) nestedOpenRef.current = false;
-    }, 0);
-    return ok;
-  };
+  const ask = (title: string, message?: string) => confirm({ title, message });
 
   const act = async (kind: 'send' | 'poll' | 'release', fn: () => Promise<void>) => {
     if (busyRef.current) return;

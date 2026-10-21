@@ -29,6 +29,28 @@ export interface GoodPickerItem {
   barcodes?: string[];
 }
 
+/** Рядок `GET /goods` для пікера: одиниця приходить як `unit`, пікер показує `unitShortName`. */
+type GoodSearchRow = Omit<GoodPickerItem, 'unitShortName'> & { unit?: string | null };
+
+/**
+ * Пошук товарів для поля з підказками (`EntityPickerField.onSearch`): перші 20 за `q`, у форматі
+ * пункту пікера. `secondary` — другий рядок пункту (типово артикул).
+ */
+export function fetchGoodPickerItems(
+  q: string,
+  secondary: (g: GoodSearchRow) => string | undefined = g => g.sku ?? undefined,
+): Promise<GoodPickerItem[]> {
+  return apiFetch<{ items: GoodSearchRow[] }>(`/goods?q=${encodeURIComponent(q)}&limit=20`).then(
+    r =>
+      (r.items ?? []).map(g => ({
+        ...g,
+        unitShortName: g.unit ?? null,
+        primary: g.name,
+        secondary: secondary(g),
+      })),
+  );
+}
+
 interface StockTotal {
   goodId: string;
   totalQuantity: number;

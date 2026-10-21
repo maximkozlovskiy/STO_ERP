@@ -24,6 +24,7 @@ import {
 import { useAuth, useRequireAuth } from '@/lib/auth';
 import { SupplierPaymentScheduleTab } from './SupplierPaymentScheduleTab';
 import { ProcurementTab } from './ProcurementTab';
+import { PURCHASE_DOCUMENT_ROLES } from './purchase-roles';
 import { apiFetch } from '@/lib/api-client';
 import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
 import { TabDivider } from '@/components/ui/tab-divider';
@@ -45,6 +46,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   PO_STATUS_BADGE,
   PO_STATUS_DESCRIPTIONS,
+  PROCUREMENT_READ_ROLES,
   SUPPLIER_RETURN_STATUS_DESCRIPTIONS,
 } from '@sto/shared';
 import { poStatusLabel, supplierReturnStatusLabel, deliveryStatusLabel } from '@/i18n/enumLabel';
@@ -212,15 +214,12 @@ type PurchaseTab = 'orders' | 'returns' | 'procurement' | 'schedule';
 
 // «Графік оплат» читає GET /supplier-payments/schedule — ролі цього endpoint-а (без комірника).
 const SCHEDULE_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
-// Замовлення й повернення — ролі сторінки закупівель (картки документів бухгалтеру недоступні).
-const DOCUMENT_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER'];
-// «Управління купівлями» (BR-PL-015): ролі документів + приймальня (лише ця вкладка).
-const PROCUREMENT_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST'];
 
 const TAB_BUTTON =
   'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm';
 
 function PurchaseOrdersPageClient() {
+  // Літерал, а не PURCHASE_DOCUMENT_ROLES: guard сторінки читає тест меню (nav-page-roles.test).
   const { employee } = useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
   const canSeeSchedule = SCHEDULE_ROLES.includes(employee?.role ?? '');
   const { t } = useTranslation('purchaseOrders');
@@ -1882,7 +1881,7 @@ function PurchaseProcurementPage() {
  * `useRequireAuth` перенаправляв (owner 2026-10-18).
  */
 function PurchaseNoAccess() {
-  useRequireAuth(DOCUMENT_ROLES as string[]);
+  useRequireAuth(PURCHASE_DOCUMENT_ROLES as string[]);
   return null;
 }
 
@@ -1891,16 +1890,16 @@ function PurchaseOrdersRoute() {
   const role = employee?.role ?? '';
   if (
     employee &&
-    !DOCUMENT_ROLES.includes(role) &&
-    !PROCUREMENT_ROLES.includes(role) &&
+    !PURCHASE_DOCUMENT_ROLES.includes(role) &&
+    !PROCUREMENT_READ_ROLES.includes(role) &&
     !SCHEDULE_ROLES.includes(role)
   ) {
     return <PurchaseNoAccess />;
   }
-  if (PROCUREMENT_ROLES.includes(role) && !DOCUMENT_ROLES.includes(role)) {
+  if (PROCUREMENT_READ_ROLES.includes(role) && !PURCHASE_DOCUMENT_ROLES.includes(role)) {
     return <PurchaseProcurementPage />;
   }
-  if (SCHEDULE_ROLES.includes(role) && !DOCUMENT_ROLES.includes(role)) {
+  if (SCHEDULE_ROLES.includes(role) && !PURCHASE_DOCUMENT_ROLES.includes(role)) {
     return <PurchaseSchedulePage />;
   }
   return <PurchaseOrdersPageClient />;

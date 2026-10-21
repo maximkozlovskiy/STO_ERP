@@ -124,6 +124,15 @@ export function invalidatePurchaseSideEffects(qc: QueryClient): void {
 }
 
 /**
+ * Налаштування API постачальників (підключення увімкнено/вимкнено, стратегія й TTL пропозицій,
+ * режим відправки): змінюють набір пропозицій позицій і стан передачі замовлень в API.
+ */
+export function invalidateSupplierApiSettingsAffected(qc: QueryClient): void {
+  void qc.invalidateQueries({ queryKey: supplierOffersKeys.all });
+  void qc.invalidateQueries({ queryKey: supplierApiOrderKeys.all });
+}
+
+/**
  * Дії «Управління купівлями» (списки, позиції, замовлення зі списку, «Зняти резерв», вибір і
  * автопідбір пропозицій, передача замовлення в API): власні ключі списків і позицій (зокрема стан
  * товарів у картці наряду), замовлення постачальникам (create-orders створює DRAFT, «Відправити в

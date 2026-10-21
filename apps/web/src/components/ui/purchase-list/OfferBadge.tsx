@@ -3,7 +3,6 @@
 import { useTranslation } from 'react-i18next';
 import { fmtDate, fmtDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { useNow } from '@/hooks/useNow';
 import { isOfferStale, offerTermText } from '@/hooks/api/useSupplierOffers';
 import type { PurchaseListItem } from '@/hooks/api/usePurchaseLists';
 
@@ -25,16 +24,18 @@ export function ageText(ms: number, t: (k: string, o?: Record<string, unknown>) 
  * Обрана пропозиція позиції (знімок `offer*`, BR-SOFR-006): склад, термін, давність, позначка
  * «застаріла» (старша за TTL; невідомий TTL — без позначки). Ціни не показує: ціну позиції
  * (у гривні) показує колонка «Ціна», замаскована для ролей без закупівельних цін (BR-SOFR-010).
+ * `now` — один щохвилинний `useNow` на таблицю, а не таймер у кожному бейджі.
  */
 export function OfferBadge({
   item,
   ttlMinutes,
+  now,
 }: {
   item: PurchaseListItem;
   ttlMinutes: number | undefined;
+  now: Date;
 }) {
   const { t } = useTranslation('supplierApi');
-  const now = useNow(60_000);
   if (!item.offerKey) return null;
   const stale = isOfferStale(item.offeredAt, ttlMinutes, now);
   const term = offerTermText(item.offerDeliveryDays, item.offerDeliveryDate, t, fmtDate);

@@ -49,7 +49,11 @@ import {
 } from './calendar.utils';
 import { CalendarMechanicField } from './CalendarMechanicField';
 import { mechanicDroppedText, type MechanicDropResponse } from './calendar-mechanic-drop';
-import { isCancelledWorkOrderSlot, workOrderDeleteLock } from './calendar-day';
+import {
+  isCancelledWorkOrderSlot,
+  slotDeleteConfirmOptions,
+  slotDeleteLockHint,
+} from './calendar-day';
 import type { CreatedWorkOrder } from '@/components/ui/CreateWorkOrderModal';
 
 /**
@@ -320,10 +324,7 @@ export function CalendarSlotModal({
   const fieldsLocked = isEditingPast || woLockedStatus !== null;
   // BR-WO-026: видалити запис такого наряду не можна (сервер відповів би 400) — кнопка з підказкою.
   // Виняток — скасований наряд (рішення власника 2026-10-19): запис видаляється, дати наряду ті самі.
-  const deleteLockedStatus = workOrderDeleteLock(woLockedStatus);
-  const deleteLockHint = deleteLockedStatus
-    ? t('slot.woDeleteLocked', { status: woStatusLabel(deleteLockedStatus) })
-    : null;
+  const deleteLockHint = slotDeleteLockHint(t, woLockedStatus);
   const cancelledWorkOrder = isCancelledWorkOrderSlot(editingWorkOrder?.lockedStatus ?? null);
   const deleteHintId = useId();
   const {
@@ -1607,18 +1608,13 @@ export function CalendarSlotModal({
                     if (deleteLockHint) return;
                     void (async () => {
                       // BR-WO-026: видалення запису наряду стирає планові дати наряду — попередити.
-                      const ok = await confirm({
-                        title: t('slot.deleteTitle'),
-                        message: editingWorkOrder
-                          ? t(
-                              cancelledWorkOrder
-                                ? 'slot.deleteCancelledWoMessage'
-                                : 'slot.deleteWoMessage',
-                              { number: editingWorkOrder.number },
-                            )
-                          : t('slot.deleteMessage'),
-                        variant: 'destructive',
-                      });
+                      const ok = await confirm(
+                        slotDeleteConfirmOptions(
+                          t,
+                          editingWorkOrder ? editingWorkOrder.number : null,
+                          editingWorkOrder?.lockedStatus ?? null,
+                        ),
+                      );
                       if (!ok) return;
                       setSaving(true);
                       try {

@@ -35,7 +35,7 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConflictCheck } from '@/hooks/useConflictCheck';
-import { useConfirm } from '@/hooks/useConfirm';
+import { releaseNestedOpen, useConfirm } from '@/hooks/useConfirm';
 import { useReferenceData } from '@/hooks/useReferenceData';
 import type { Branch } from '@/hooks/useReferenceData';
 import { useStockTotals } from '@/hooks/useStockTotals';
@@ -84,7 +84,8 @@ import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search
 import { CollapsibleHeader } from '@/components/ui/collapsible-header';
 import { WorkPickerModal, type WorkPickerItem } from '@/components/ui/WorkPickerModal';
 import { ServicePickerModal, type ServicePickerItem } from '@/components/ui/ServicePickerModal';
-import { GoodPickerModal, type GoodPickerItem } from '@/components/ui/GoodPickerModal';
+import { GoodPickerModal, fetchGoodPickerItems } from '@/components/ui/GoodPickerModal';
+import { newIdempotencyKey } from '@/lib/idempotency-key';
 import { PartsTable } from './work-order/PartsTable';
 import { WorksTable } from './work-order/WorksTable';
 import { InvoiceConflictDialog } from './work-order/InvoiceConflictDialog';
@@ -98,10 +99,9 @@ import {
 import { workOrderLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { CurrencySelect } from '@/components/ui/CurrencySelect';
-import { useQueryClient } from '@tanstack/react-query';
-import { purchaseListsKeys } from '@/hooks/api/usePurchaseLists';
 import {
   SendToListButton,
+  useInvalidateProcurement,
   useWorkOrderProcurementState,
 } from '@/components/ui/purchase-list/WorkOrderProcurement';
 
@@ -279,12 +279,9 @@ interface Props {
   onMinimize?: () => void; // called before onClose when user clicks "−"
 }
 
-// Crypto-randomUUID gives globally-unique row keys without relying on a
-// module-level counter (which would survive HMR/StrictMode and risk reuse).
-const nextKey = () =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `k${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+// Глобально унікальний ключ рядка без лічильника рівня модуля (той переживав би HMR/StrictMode
+// і ризикував повтором) — той самий генератор, що й ключі ідемпотентності.
+const nextKey = newIdempotencyKey;
 
 // Планові нормогодини / автокінець — у робочих годинах філії: `work-order/planned-dates.ts`
 // (calcPlannedHours / calcEndFromHours), години — useBranchWorkHours (BR-WO-019).
@@ -544,10 +541,7 @@ export function CreateWorkOrderModal({
   const addToListOpenRef = useRef(false);
   const onAddToListOpenChange = useCallback((isOpen: boolean) => {
     if (isOpen) addToListOpenRef.current = true;
-    else
-      setTimeout(() => {
-        addToListOpenRef.current = false;
-      }, 0);
+    else releaseNestedOpen(addToListOpenRef);
   }, []);
   // Наряд, відкритий у картці зараз: пізня відповідь для попереднього (вкладки) не пишеться.
   const workOrderIdRef = useRef(workOrderId);
@@ -580,24 +574,14 @@ export function CreateWorkOrderModal({
     clear: clearConflict,
     conflictWoNumbers,
   } = useConflictCheck();
-  const { confirm, dialogProps: confirmDialogProps } = useConfirm();
   // Підтвердження поверх картки (BR-WO-025): «Ні» чи Escape закривають лише його. Прапорець
-  // знімається ПІСЛЯ події (setTimeout) — інакше той самий Escape закрив би й картку (GOTCHAS
+  // `confirmOpenRef` знімається ПІСЛЯ події — інакше той самий Escape закрив би й картку (GOTCHAS
   // 2026-10-12).
-  const confirmOpenRef = useRef(false);
-  const confirmOverCard = useCallback(
-    async (opts: Parameters<typeof confirm>[0]) => {
-      confirmOpenRef.current = true;
-      try {
-        return await confirm(opts);
-      } finally {
-        setTimeout(() => {
-          confirmOpenRef.current = false;
-        }, 0);
-      }
-    },
-    [confirm],
-  );
+  const {
+    confirm: confirmOverCard,
+    dialogProps: confirmDialogProps,
+    openRef: confirmOpenRef,
+  } = useConfirm();
   const { minimizeModal } = useTabBarContext();
   const deletedLineIds = useRef<string[]>([]);
   const deletedPartIds = useRef<string[]>([]);
@@ -914,22 +898,13 @@ export function CreateWorkOrderModal({
 
   const fetchGoods = useCallback(
     (q: string) =>
-      apiFetch<{
-        items: (Omit<GoodPickerItem, 'unitShortName'> & { unit?: string | null })[];
-      }>(`/goods?q=${encodeURIComponent(q)}&limit=20`).then(r =>
-        (r.items ?? []).map(g => ({
-          ...g,
-          unitShortName: g.unit ?? null,
-          primary: g.name,
-          secondary: g.sku ? `${g.sku} · ${g.salePrice} ₴` : `${g.salePrice} ₴`,
-        })),
-      ),
+      fetchGoodPickerItems(q, g => (g.sku ? `${g.sku} · ${g.salePrice} ₴` : `${g.salePrice} ₴`)),
     [],
   );
 
   // Стан закупівлі збережених рядків (списки купівлі, замовлення, нестача) — бейдж і
   // «До списку купівлі» (docs/objects/purchase-list.md).
-  const queryClient = useQueryClient();
+  const invalidateProcurement = useInvalidateProcurement();
   const procurement = useWorkOrderProcurementState(isEditMode ? workOrderId : null);
   const savedPartsForProcurement = useMemo(
     () =>
@@ -1473,7 +1448,7 @@ export function CreateWorkOrderModal({
       postedPartKeysRef.current = new Set();
       dirty.resetDirty();
       // Товари наряду могли змінитись — стан закупівлі (нестача, позиції списків) перечитується.
-      void queryClient.invalidateQueries({ queryKey: purchaseListsKeys.all });
+      invalidateProcurement();
       onUpdated?.();
       onClose();
     } catch (e: unknown) {
@@ -1537,7 +1512,7 @@ export function CreateWorkOrderModal({
       // «Виконано» перераховує суму наряду — перечитуємо гроші для «Оплатити».
       void reloadPayState();
       // Перехід міняє резерв і позиції списків купівлі наряду (BR-WO-021, BR-PL-013).
-      void queryClient.invalidateQueries({ queryKey: purchaseListsKeys.all });
+      invalidateProcurement();
       onUpdated?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
@@ -1675,9 +1650,7 @@ export function CreateWorkOrderModal({
   };
   const closePay = useCallback(() => {
     setPayOpen(false);
-    setTimeout(() => {
-      payOpenRef.current = false;
-    }, 0);
+    releaseNestedOpen(payOpenRef);
   }, []);
   const handlePaid = (_amount: number, formatted: string) => {
     closePay();

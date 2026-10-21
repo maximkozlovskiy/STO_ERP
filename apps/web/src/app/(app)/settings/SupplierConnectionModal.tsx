@@ -2,15 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
 import type { SupplierConnectionCreateValues, SupplierConnectionUpdateValues } from '@sto/shared';
-import { apiFetch } from '@/lib/api-client';
-import { displayCounterpartyName } from '@/lib/utils';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useWarehouses } from '@/hooks/api/useInfrastructure';
+import { useSupplierOptions, type SupplierOption } from '@/hooks/api/useCounterparties';
 import {
-  supplierConnectionsKeys,
   type SupplierConnection,
   type SupplierFieldSpec,
   type SupplierProviderInfo,
@@ -86,48 +83,6 @@ function fromConnection(c: SupplierConnection): FormState {
   };
 }
 
-interface SupplierOption {
-  id: string;
-  name: string;
-}
-
-/** Скільки постачальників тягнемо за раз; більше — пошук за назвою на сервері (Bug #894). */
-const SUPPLIER_PAGE = 200;
-
-/**
- * Постачальники-контрагенти для підключення (BR-SCON-001 — роль постачальника). Перші
- * SUPPLIER_PAGE за абеткою; `q` — пошук на сервері, коли постачальників більше (Bug #894).
- */
-function useSupplierCounterparties(enabled: boolean, q: string) {
-  return useQuery<{ items: SupplierOption[]; total: number }>({
-    queryKey: [...supplierConnectionsKeys.all, 'counterparties', q],
-    queryFn: ({ signal }) =>
-      apiFetch<{
-        items: Array<{
-          id: string;
-          companyName?: string | null;
-          firstName?: string | null;
-          lastName?: string | null;
-        }>;
-        total?: number;
-      }>(
-        `/counterparties?types=SUPPLIER&types=BOTH&limit=${SUPPLIER_PAGE}${
-          q ? `&q=${encodeURIComponent(q)}` : ''
-        }`,
-        { signal },
-      ).then(r => {
-        const items = (r.items ?? []).map(c => ({
-          id: c.id,
-          name: displayCounterpartyName(c) || c.id,
-        }));
-        return { items, total: r.total ?? items.length };
-      }),
-    enabled,
-    staleTime: 60_000,
-    placeholderData: prev => prev,
-  });
-}
-
 const isBlank = (v: OptionValue | undefined) => v === undefined || v === '' || v === false;
 
 export interface SupplierConnectionSaveResult {
@@ -178,9 +133,9 @@ export function SupplierConnectionModal({
     const id = setTimeout(() => setSupplierQueryDebounced(supplierQuery.trim()), 300);
     return () => clearTimeout(id);
   }, [supplierQuery]);
-  const { data: supplierPage, isLoading: suppliersLoading } = useSupplierCounterparties(
-    open,
+  const { data: supplierPage, isLoading: suppliersLoading } = useSupplierOptions(
     supplierQueryDebounced,
+    open,
   );
   // Обраний контрагент (поточний у підключення чи обраний до пошуку) завжди серед варіантів:
   // інакше картка з контрагентом поза першими 200 відкривалась із порожнім полем (Bug #894).

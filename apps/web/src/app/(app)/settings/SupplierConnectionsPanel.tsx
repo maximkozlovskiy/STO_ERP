@@ -18,17 +18,14 @@ import {
   type SupplierConnection,
   type SupplierQueuedResponse,
 } from '@/hooks/api/useSupplierConnections';
-import { supplierOffersKeys } from '@/hooks/api/useSupplierOffers';
-import { supplierApiOrderKeys } from '@/hooks/api/useSupplierApiOrder';
-import { Badge } from '@/components/ui/badge';
+import { invalidateSupplierApiSettingsAffected } from '@/lib/cache-invalidation';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Spinner } from '@/components/ui/spinner';
 import { ListLoadError } from '@/components/ui/list-load-error';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { SupplierConnectionModal } from './SupplierConnectionModal';
-
-type BadgeVariant = 'secondary' | 'success' | 'destructive' | 'info' | 'warning';
 
 /** Стан підключення — результат перевірки, запитаної о `requestedAt` (а не попередньої). */
 function isResultOf(c: SupplierConnection, requestedAt: string | null): boolean {
@@ -75,8 +72,7 @@ export function SupplierConnectionsPanel() {
   const invalidate = useCallback(() => {
     void qc.invalidateQueries({ queryKey: supplierConnectionsKeys.list() });
     // Увімкнене/вимкнене підключення міняє набір пропозицій і стан відправки замовлень.
-    void qc.invalidateQueries({ queryKey: supplierOffersKeys.all });
-    void qc.invalidateQueries({ queryKey: supplierApiOrderKeys.all });
+    invalidateSupplierApiSettingsAffected(qc);
   }, [qc]);
 
   useEffect(() => {

@@ -25,7 +25,7 @@ import {
   daySlotCategory,
   isCancelledWorkOrderSlot,
   liftLoadHours,
-  workOrderDeleteLock,
+  slotDeleteLockHint,
   workOrderTimeLock,
 } from './calendar-day';
 import { PENDING_DRAG_ID, type CalendarState } from './useCalendarState';
@@ -778,8 +778,7 @@ function UnassignedSlotDeleteButton({
 }) {
   const { t } = useTranslation('calendar');
   const hintId = useId();
-  const locked = workOrderDeleteLock(workOrderTimeLock(slot));
-  const lockHint = locked ? t('slot.woDeleteLocked', { status: woStatusLabel(locked) }) : null;
+  const lockHint = slotDeleteLockHint(t, workOrderTimeLock(slot));
   return (
     <span title={lockHint ?? t('day.deleteSlotTitle')} className="inline-flex">
       {lockHint && (

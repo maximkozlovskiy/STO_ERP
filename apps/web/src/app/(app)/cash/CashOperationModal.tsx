@@ -28,6 +28,7 @@ import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { useCreateCashOperation, type CashRegister } from '@/hooks/api/useCash';
 import { useExpenseCategories, flattenActiveByType } from '@/hooks/api/useExpenseCategories';
+import { newIdempotencyKey } from '@/lib/idempotency-key';
 
 interface Props {
   open: boolean;
@@ -61,12 +62,6 @@ interface DocumentRow {
 }
 
 type Picker = 'counterparty' | 'employee' | 'baseDocument' | null;
-
-// crypto.randomUUID є лише в secure context; on-prem сервер СТО відкривають по http у LAN.
-const newIdempotencyKey = (): string =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 
 const asText = (v: unknown): string => (typeof v === 'string' ? v : '');
 

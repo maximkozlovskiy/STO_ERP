@@ -1,11 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { ListChecks, Merge, Plus, Search } from 'lucide-react';
 import { PURCHASE_LIST_ITEM_STATUS_BADGE, PURCHASE_LIST_STATUS_BADGE } from '@sto/shared';
-import { apiFetch } from '@/lib/api-client';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -17,6 +16,8 @@ import {
   type PurchaseList,
 } from '@/hooks/api/usePurchaseLists';
 import { invalidateProcurementSideEffects } from '@/lib/cache-invalidation';
+import { FormDialog } from './FormDialog';
+import { createOrdersFromItems, useProcurementAction } from './useProcurementAction';
 import { purchaseListItemStatusLabel, purchaseListStatusLabel } from '@/i18n/enumLabel';
 import { fmtDate, fmtQty } from '@/lib/format';
 import { toast } from '@/lib/toast';
@@ -31,7 +32,7 @@ import { ListLoadError } from '@/components/ui/list-load-error';
 import { Pagination } from '@/components/ui/pagination';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
-import { type GoodPickerItem } from '@/components/ui/GoodPickerModal';
+import { fetchGoodPickerItems, type GoodPickerItem } from '@/components/ui/GoodPickerModal';
 import {
   Table,
   TableHeader,
@@ -250,52 +251,28 @@ function CreateListDialog({
 }) {
   const { t } = useTranslation('purchaseLists');
   const [name, setName] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-
-  const save = async () => {
-    setSaving(true);
-    setErr('');
-    try {
-      const list = await purchaseListsApi.createList(name.trim() ? { name: name.trim() } : {});
-      setName('');
-      onCreated(list);
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : t('errors.action'));
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
-    <Modal
+    <FormDialog
       open={open}
       onClose={onClose}
       title={t('lists.create')}
-      size="sm"
-      onSubmit={() => void save()}
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            {t('common.cancel')}
-          </Button>
-          <Button variant="primary" onClick={() => void save()} loading={saving}>
-            {t('lists.create')}
-          </Button>
-        </div>
-      }
+      submitLabel={t('lists.create')}
+      errorAs="text"
+      onSubmit={async () => {
+        const list = await purchaseListsApi.createList(name.trim() ? { name: name.trim() } : {});
+        setName('');
+        onCreated(list);
+      }}
     >
-      <div className="space-y-3">
-        <Input
-          label={t('columns.name')}
-          value={name}
-          maxLength={120}
-          onChange={e => setName(e.target.value)}
-          placeholder={t('lists.namePlaceholder')}
-        />
-        {err && <p className="text-sm text-destructive-text">{err}</p>}
-      </div>
-    </Modal>
+      <Input
+        label={t('columns.name')}
+        value={name}
+        maxLength={120}
+        onChange={e => setName(e.target.value)}
+        placeholder={t('lists.namePlaceholder')}
+      />
+    </FormDialog>
   );
 }
 
@@ -312,69 +289,43 @@ function MergeDialog({
 }) {
   const { t } = useTranslation('purchaseLists');
   const [targetId, setTargetId] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
 
   useEffect(() => {
-    if (open) {
-      setTargetId(lists[0]?.id ?? '');
-      setErr('');
-    }
+    if (open) setTargetId(lists[0]?.id ?? '');
   }, [open, lists]);
 
-  const save = async () => {
-    const target = lists.find(l => l.id === targetId);
-    if (!target) return;
-    setSaving(true);
-    setErr('');
-    try {
-      await purchaseListsApi.merge({
-        targetListId: target.id,
-        sourceListIds: lists.filter(l => l.id !== target.id).map(l => l.id),
-      });
-      onMerged(target.number);
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : t('errors.action'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
-    <Modal
+    <FormDialog
       open={open}
       onClose={onClose}
       title={t('lists.mergeTitle', { count: lists.length })}
       description={t('lists.mergeHint')}
-      size="sm"
-      onSubmit={() => void save()}
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            {t('common.cancel')}
-          </Button>
-          <Button variant="primary" onClick={() => void save()} loading={saving}>
-            {t('lists.merge')}
-          </Button>
-        </div>
-      }
+      submitLabel={t('lists.merge')}
+      resetErrorOnOpen
+      errorAs="text"
+      onSubmit={async () => {
+        const target = lists.find(l => l.id === targetId);
+        if (!target) return;
+        await purchaseListsApi.merge({
+          targetListId: target.id,
+          sourceListIds: lists.filter(l => l.id !== target.id).map(l => l.id),
+        });
+        onMerged(target.number);
+      }}
     >
-      <div className="space-y-3">
-        <Select
-          label={t('lists.mergeTarget')}
-          value={targetId}
-          onChange={e => setTargetId(e.target.value)}
-        >
-          {lists.map(l => (
-            <option key={l.id} value={l.id}>
-              {l.number}
-              {l.name ? ` — ${l.name}` : ''}
-            </option>
-          ))}
-        </Select>
-        {err && <p className="text-sm text-destructive-text">{err}</p>}
-      </div>
-    </Modal>
+      <Select
+        label={t('lists.mergeTarget')}
+        value={targetId}
+        onChange={e => setTargetId(e.target.value)}
+      >
+        {lists.map(l => (
+          <option key={l.id} value={l.id}>
+            {l.number}
+            {l.name ? ` — ${l.name}` : ''}
+          </option>
+        ))}
+      </Select>
+    </FormDialog>
   );
 }
 
@@ -396,23 +347,10 @@ function ListDetailModal({
   const items = useMemo(() => list?.items ?? [], [list]);
   const openItems = useMemo(() => items.filter(i => i.status === 'OPEN'), [items]);
   const bulk = useBulkSelect(openItems);
-  const [busy, setBusy] = useState(false);
+  // Відмова в підтвердженні тут повертає '' (а не null): вибір знімається й список перечитується.
+  const { busy, run: act } = useProcurementAction(bulk.clear);
   const [addOpen, setAddOpen] = useState(false);
   const isOpen = list?.status === 'OPEN';
-
-  const act = async (fn: () => Promise<string>) => {
-    setBusy(true);
-    try {
-      const message = await fn();
-      if (message) toast.success(message);
-      bulk.clear();
-      invalidateProcurementSideEffects(qc);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('errors.action'));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const ids = Array.from(bulk.selected);
   const splitOut = () =>
@@ -423,13 +361,7 @@ function ListDetailModal({
       });
       return t('lists.splitDone', { count: res.count });
     });
-  const createOrders = () =>
-    act(async () => {
-      if (!(await confirm({ title: t('items.createOrdersConfirm', { count: ids.length }) })))
-        return '';
-      const res = await purchaseListsApi.createOrders(ids);
-      return t('items.ordersCreated', { numbers: res.orders.map(o => o.number).join(', ') });
-    });
+  const createOrders = () => act(async () => (await createOrdersFromItems(ids, confirm, t)) ?? '');
   const closeList = () =>
     act(async () => {
       if (!list) return '';
@@ -637,15 +569,12 @@ function ManualItemDialog({
   const [warehouseId, setWarehouseId] = useState('');
   const [qty, setQty] = useState('1');
   const [price, setPrice] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setGood(null);
     setQty('1');
     setPrice('');
-    setErr('');
   }, [open]);
   useEffect(() => {
     if (!warehouseId && warehouses?.length) {
@@ -653,112 +582,76 @@ function ManualItemDialog({
     }
   }, [warehouses, warehouseId]);
 
-  const fetchGoods = useCallback(
-    (q: string) =>
-      apiFetch<{
-        items: (Omit<GoodPickerItem, 'unitShortName'> & { unit?: string | null })[];
-      }>(`/goods?q=${encodeURIComponent(q)}&limit=20`).then(r =>
-        (r.items ?? []).map(g => ({
-          ...g,
-          unitShortName: g.unit ?? null,
-          primary: g.name,
-          secondary: g.sku ?? undefined,
-        })),
-      ),
-    [],
-  );
-
-  const save = async () => {
-    const quantity = Number(qty);
-    if (!good || !warehouseId) {
-      setErr(t('lists.manual.required'));
-      return;
-    }
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      setErr(t('addToList.errors.quantity'));
-      return;
-    }
-    setSaving(true);
-    setErr('');
-    try {
-      await purchaseListsApi.addItem(listId, {
-        goodId: good.id,
-        warehouseId,
-        quantity,
-        ...(price.trim() ? { expectedPrice: Number(price) } : {}),
-      });
-      onAdded();
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : t('errors.action'));
-    } finally {
-      setSaving(false);
-    }
-  };
+  const quantity = Number(qty);
 
   return (
-    <Modal
+    <FormDialog
       open={open}
       onClose={onClose}
       title={t('lists.addItem')}
       size="md"
-      onSubmit={() => void save()}
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            {t('common.cancel')}
-          </Button>
-          <Button variant="primary" onClick={() => void save()} loading={saving}>
-            {t('lists.addItem')}
-          </Button>
-        </div>
-      }
+      submitLabel={t('lists.addItem')}
+      resetErrorOnOpen
+      errorAs="text"
+      validate={() => {
+        if (!good || !warehouseId) return t('lists.manual.required');
+        if (!Number.isFinite(quantity) || quantity <= 0) return t('addToList.errors.quantity');
+        return undefined;
+      }}
+      onSubmit={async () => {
+        if (!good) return;
+        await purchaseListsApi.addItem(listId, {
+          goodId: good.id,
+          warehouseId,
+          quantity,
+          ...(price.trim() ? { expectedPrice: Number(price) } : {}),
+        });
+        onAdded();
+      }}
     >
-      <div className="space-y-3">
-        <EntityPickerField<GoodPickerItem>
-          label={t('columns.good')}
-          required
-          display={good?.name ?? ''}
-          placeholder={t('lists.manual.goodPlaceholder')}
-          ariaLabel={t('columns.good')}
-          hidePick
-          onSearch={fetchGoods}
-          onSearchSelect={g => setGood(g)}
-          onClear={() => setGood(null)}
+      <EntityPickerField<GoodPickerItem>
+        label={t('columns.good')}
+        required
+        display={good?.name ?? ''}
+        placeholder={t('lists.manual.goodPlaceholder')}
+        ariaLabel={t('columns.good')}
+        hidePick
+        onSearch={fetchGoodPickerItems}
+        onSearchSelect={g => setGood(g)}
+        onClear={() => setGood(null)}
+      />
+      <Select
+        label={t('columns.warehouse')}
+        value={warehouseId}
+        onChange={e => setWarehouseId(e.target.value)}
+      >
+        {(warehouses ?? []).map(w => (
+          <option key={w.id} value={w.id}>
+            {w.name}
+          </option>
+        ))}
+      </Select>
+      <div className="grid grid-cols-2 gap-3">
+        <Input
+          label={t('lists.manual.quantity')}
+          type="number"
+          min="0.001"
+          step="any"
+          value={qty}
+          onChange={e => setQty(e.target.value)}
+          hint={
+            good?.unitShortName ? t('lists.manual.unit', { unit: good.unitShortName }) : undefined
+          }
         />
-        <Select
-          label={t('columns.warehouse')}
-          value={warehouseId}
-          onChange={e => setWarehouseId(e.target.value)}
-        >
-          {(warehouses ?? []).map(w => (
-            <option key={w.id} value={w.id}>
-              {w.name}
-            </option>
-          ))}
-        </Select>
-        <div className="grid grid-cols-2 gap-3">
-          <Input
-            label={t('lists.manual.quantity')}
-            type="number"
-            min="0.001"
-            step="any"
-            value={qty}
-            onChange={e => setQty(e.target.value)}
-            hint={
-              good?.unitShortName ? t('lists.manual.unit', { unit: good.unitShortName }) : undefined
-            }
-          />
-          <Input
-            label={t('items.dialogs.price')}
-            type="number"
-            min="0"
-            step="0.01"
-            value={price}
-            onChange={e => setPrice(e.target.value)}
-          />
-        </div>
-        {err && <p className="text-sm text-destructive-text">{err}</p>}
+        <Input
+          label={t('items.dialogs.price')}
+          type="number"
+          min="0"
+          step="0.01"
+          value={price}
+          onChange={e => setPrice(e.target.value)}
+        />
       </div>
-    </Modal>
+    </FormDialog>
   );
 }
