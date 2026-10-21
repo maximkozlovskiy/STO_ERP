@@ -3563,3 +3563,23 @@ Escape: вікно запчастини питає «Є незбережені �
 **Фактична поведінка:** закривається картка; меню «Зберегти як» переживає закриття.
 **Статус:** [x] виправлено — `useEscapeCapture` для обох меню й `setSaveAsOpen(false)` у скиданні при
 відкритті. Тест: `document-cards.nested-escape.test.tsx` › меню складського документа, без фіксу — failed.
+
+## Bug #933 — [MEDIUM] Складський документ: Escape у підтвердженні переходу закриває і його, і картку
+
+**Файл:** `apps/web/src/components/ui/StockDocumentCreateModal.tsx` (`handleModalClose`)
+**Severity:** MEDIUM
+**Категорія:** frontend / вкладені модалки (клас Bug #923 / #931: прапорець підтвердження з `useConfirm`)
+
+**Опис:** review циклу 3: «Підтвердити» / «Скасувати» в меню статусу чи стрілкою відкриває
+`confirm(…)` поверх картки, але `handleModalClose` перевіряв лише `nestedOpenRef` (вікна вибору, Excel),
+а не `openRef` підтвердження; `transitioningRef` до відповіді ще `false`. Інші картки перевірено: наряд
+уже тримає `confirmOpenRef`; рахунок, оплата й повернення постачальнику підтвердження перед переходом
+не відкривають; підтвердження скасування відправленого замовлення ставить `supplierNestedRef` і йде під
+`transitioningRef` — пропуску немає.
+**Очікувана поведінка:** Escape закриває лише підтвердження, картка лишається.
+**Фактична поведінка:** закриваються обидва (зі змінами — питання «Є незбережені зміни»).
+**Статус:** [x] виправлено — `openRef: confirmOpenRef` з `useConfirm()` і
+`if (nestedOpenRef.current || confirmOpenRef.current) return;`. Разом: меню статусу без переходів більше
+не забирає Escape (`statusMenuShown` у `useEscapeCapture`), стрілки ◀/▶ закривають меню
+(`setStatusMenuOpen(false)` у `doTransition`) — у картках наряду, рахунку, замовлення, складського
+документа. Тести: `document-cards.nested-escape.test.tsx` (+3), без кожного фіксу — failed.

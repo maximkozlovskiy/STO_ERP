@@ -36,6 +36,7 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConflictCheck } from '@/hooks/useConflictCheck';
 import { useEscapeCapture } from '@/hooks/useEscapeCapture';
+import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
 import { releaseNestedOpen, useConfirm } from '@/hooks/useConfirm';
 import { useReferenceData } from '@/hooks/useReferenceData';
 import type { Branch } from '@/hooks/useReferenceData';
@@ -534,10 +535,6 @@ export function CreateWorkOrderModal({
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
   const [payState, setPayState] = useState<WorkOrderPayState | null>(null);
   const [payOpen, setPayOpen] = useState(false);
-  // Вікно оплати відкрите поверх картки: Escape має закрити лише його. Прапорець знімається ПІСЛЯ
-  // події (setTimeout), а не в ефекті — інакше той самий Escape закрив би й картку (GOTCHAS
-  // 2026-10-12).
-  const payOpenRef = useRef(false);
   // Те саме для діалогу «До списку купівлі» над карткою (прапорець знімається після події).
   const addToListOpenRef = useRef(false);
   const onAddToListOpenChange = useCallback((isOpen: boolean) => {
@@ -687,7 +684,6 @@ export function CreateWorkOrderModal({
     setCurrentStatus('DRAFT');
     setPayState(null);
     setPayOpen(false);
-    payOpenRef.current = false;
     // A fresh modal session starts without a prior partial create.
     createdWoRef.current = null;
     postedLineKeysRef.current = new Set();
@@ -1461,6 +1457,9 @@ export function CreateWorkOrderModal({
   };
 
   const doTransition = async (newStatus: string) => {
+    // Стрілки ◀/▶ лежать у тому ж контейнері, що й меню: клік по них меню не закриває, а відкрите
+    // меню під підтвердженням з'їло б його перший Escape.
+    setStatusMenuOpen(false);
     if (!workOrderId || viewOnly) return;
     // При переході COMPLETED→INVOICED пропонуємо створити рахунок якщо його ще немає.
     if (
@@ -1649,14 +1648,8 @@ export function CreateWorkOrderModal({
     WO_PAYABLE_STATUSES.includes(currentStatus) &&
     PAYMENT_CREATE_ROLES.includes(employee?.role ?? '');
   const payRemaining = payState ? invoiceRemaining(payState.totalAmount, payState.paidAmount) : 0;
-  const openPay = () => {
-    payOpenRef.current = true;
-    setPayOpen(true);
-  };
-  const closePay = useCallback(() => {
-    setPayOpen(false);
-    releaseNestedOpen(payOpenRef);
-  }, []);
+  const openPay = () => setPayOpen(true);
+  const closePay = useCallback(() => setPayOpen(false), []);
   const handlePaid = (_amount: number, formatted: string) => {
     closePay();
     if (features.toastEnabled) toast.success(t('payment.paidToast', { amount: formatted }));
@@ -1706,7 +1699,9 @@ export function CreateWorkOrderModal({
   // Меню статусу й «Зберегти як» — шари над карткою: Escape закриває лише їх (Bug #924, клас Bug #783),
   // а не картку. Меню «Зберегти як» живе в `useWorkOrderActions` і скиданням при відкритті вище не
   // покрите — без цього картка відкривалась із розгорнутим меню (Bug #925).
-  useEscapeCapture(statusMenuOpen, () => setStatusMenuOpen(false));
+  // Меню видно лише за наявності переходів: інакше перехоплювач «ковтав» би Escape без меню.
+  const statusMenuShown = statusMenuOpen && allowedTransitions.length > 0;
+  useEscapeCapture(statusMenuShown, () => setStatusMenuOpen(false));
   useEscapeCapture(saveAsOpen, () => setSaveAsOpen(false));
   useEffect(() => {
     if (open) setSaveAsOpen(false);
@@ -1727,11 +1722,8 @@ export function CreateWorkOrderModal({
   // повинні бути у deps. Stable identity → Modal keydown listener не перевідв'язується
   // при кожному flip saving/transitioning (раніше re-attach на START + END кожного
   // save/transition; зараз лише при зміні onClose у parent).
-  // Вікна вибору (клієнт, роботи, послуги, товари) і конфлікт рахунку — вкладені Modal: їхній Escape
-  // доходить і до картки. Прапорець знімається ПІСЛЯ події (GOTCHAS 2026-10-12): у браузері React
-  // рендерить між двома слухачами того самого Escape, і коли слухач вікна вибору стоїть першим,
-  // знятий в ефекті прапорець картка побачила б уже `false`. Таймер скасовується, якщо вікно
-  // відкрили знову до його спрацювання (інакше він зняв би прапорець відкритого вікна).
+  // Вікна вибору (клієнт, роботи, послуги, товари), конфлікт рахунку й оплата — вкладені Modal: їхній
+  // Escape доходить і до картки. Прапорець знімається ПІСЛЯ події (GOTCHAS 2026-10-12).
   const nestedPickerOpen =
     cpPickerOpen ||
     workPickerOpen ||
@@ -1740,29 +1732,13 @@ export function CreateWorkOrderModal({
     goodPickerOpen ||
     editGoodPickerOpen ||
     !!invoiceConflict;
-  const nestedPickerOpenRef = useRef(false);
-  useEffect(() => {
-    if (nestedPickerOpen) {
-      nestedPickerOpenRef.current = true;
-      return;
-    }
-    const timer = setTimeout(() => {
-      nestedPickerOpenRef.current = false;
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [nestedPickerOpen]);
+  const nestedPickerOpenRef = useNestedOpenFlag(nestedPickerOpen || payOpen);
 
   const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
     // Escape над вікном оплати, «До списку купівлі», підтвердженням, вікном вибору чи конфлікту
     // рахунку закриває лише їх (Bug #923: вибір клієнта закривав картку з усім введеним).
-    if (
-      payOpenRef.current ||
-      addToListOpenRef.current ||
-      confirmOpenRef.current ||
-      nestedPickerOpenRef.current
-    )
-      return;
+    if (addToListOpenRef.current || confirmOpenRef.current || nestedPickerOpenRef.current) return;
     if (!(await dirty.confirmClose())) return;
     setActiveTab('main');
     onClose();
@@ -1839,7 +1815,7 @@ export function CreateWorkOrderModal({
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                 </button>
-                {statusMenuOpen && allowedTransitions.length > 0 && (
+                {statusMenuShown && (
                   <div className="absolute top-full left-0 mt-1 z-50 min-w-[160px] rounded-lg border border-border bg-surface shadow-lg py-1">
                     {allowedTransitions.map(s => (
                       <button

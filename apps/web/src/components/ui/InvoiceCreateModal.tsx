@@ -417,6 +417,9 @@ export function InvoiceCreateModal({
   }, [currentStatus, allowedTransitions]);
 
   const doTransition = async (newStatus: string) => {
+    // Стрілки ◀/▶ лежать у тому ж контейнері, що й меню: клік по них меню не закриває, а відкрите
+    // меню під підтвердженням з'їло б його перший Escape.
+    setStatusMenuOpen(false);
     if (!invoiceId || viewOnly) return;
     setTransitioningBoth(true);
     setError('');
@@ -608,7 +611,9 @@ export function InvoiceCreateModal({
   // картка його пропускає (Bug #931, клас Bug #923).
   const nestedOpenRef = useNestedOpenFlag(cpPickerOpen);
   // Меню статусу й «Зберегти як» — шари над карткою: Escape закриває лише їх (Bug #932, клас Bug #924).
-  useEscapeCapture(statusMenuOpen, () => setStatusMenuOpen(false));
+  // Меню видно лише за наявності переходів: інакше перехоплювач «ковтав» би Escape без меню.
+  const statusMenuShown = statusMenuOpen && allowedTransitions.length > 0;
+  useEscapeCapture(statusMenuShown, () => setStatusMenuOpen(false));
   useEscapeCapture(saveAsOpen, () => setSaveAsOpen(false));
   const handleModalClose = useCallback(async () => {
     if (nestedOpenRef.current) return;
@@ -711,7 +716,7 @@ export function InvoiceCreateModal({
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                 </button>
-                {statusMenuOpen && allowedTransitions.length > 0 && (
+                {statusMenuShown && (
                   <div className="absolute top-full left-0 mt-1 z-50 min-w-40 rounded-lg border border-border bg-surface shadow-lg py-1">
                     {allowedTransitions.map(s => (
                       <button

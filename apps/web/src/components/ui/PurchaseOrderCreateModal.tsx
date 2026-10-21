@@ -645,6 +645,9 @@ export function PurchaseOrderCreateModal({
   // resolve-иться. Тому в JSX вони викликаються через `void` — чекати проміс нема кому.
   const doTransition = useCallback(
     async (newStatus: string) => {
+      // Стрілки ◀/▶ лежать у тому ж контейнері, що й меню: клік по них меню не закриває, а відкрите
+      // меню під підтвердженням з'їло б його перший Escape.
+      setStatusMenuOpen(false);
       if (!purchaseOrderId || viewOnly) return;
       setTransitioningBoth(true);
       setError('');
@@ -926,7 +929,9 @@ export function PurchaseOrderCreateModal({
       paymentOpen,
   );
   // Меню статусу й «Зберегти як» — шари над карткою: Escape закриває лише їх (Bug #932, клас Bug #924).
-  useEscapeCapture(statusMenuOpen, () => setStatusMenuOpen(false));
+  // Меню видно лише за наявності переходів: інакше перехоплювач «ковтав» би Escape без меню.
+  const statusMenuShown = statusMenuOpen && allowedTransitions.length > 0;
+  useEscapeCapture(statusMenuShown, () => setStatusMenuOpen(false));
   useEscapeCapture(saveAsOpen, () => setSaveAsOpen(false));
   const handleModalClose = useCallback(async () => {
     if (nestedOpenRef.current) return;
@@ -1173,7 +1178,7 @@ export function PurchaseOrderCreateModal({
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                 </button>
-                {statusMenuOpen && allowedTransitions.length > 0 && (
+                {statusMenuShown && (
                   <div className="absolute top-full left-0 mt-1 z-50 min-w-40 rounded-lg border border-border bg-surface shadow-lg py-1">
                     {allowedTransitions.map(s => (
                       <button

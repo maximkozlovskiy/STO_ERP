@@ -252,7 +252,9 @@ export function StockDocumentCreateModal({
   // користувач не бачить (Bug #844). Разом із «видалено» це дає картку лише на перегляд.
   const notLoaded = !!stockDocumentId && loadedDocId !== stockDocumentId;
   const viewOnly = isDeleted || notLoaded;
-  const { confirm, dialogProps: confirmDialogProps } = useConfirm();
+  // Підтвердження переходу — над карткою: його Escape не має закривати й картку (прапорець знімається
+  // після події, GOTCHAS 2026-10-12).
+  const { confirm, dialogProps: confirmDialogProps, openRef: confirmOpenRef } = useConfirm();
 
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
@@ -503,6 +505,9 @@ export function StockDocumentCreateModal({
   }, [currentStatus, allowedTransitions]);
 
   const doTransition = async (newStatus: string) => {
+    // Стрілки ◀/▶ лежать у тому ж контейнері, що й меню: клік по них меню не закриває, а відкрите
+    // меню під підтвердженням з'їло б його перший Escape.
+    setStatusMenuOpen(false);
     if (!stockDocumentId || viewOnly) return;
     if (transitioningRef.current) return;
     // Проведення незворотне (рухи складу), скасування — теж: питаємо перед запитом.
@@ -627,10 +632,12 @@ export function StockDocumentCreateModal({
   // картка його пропускає (Bug #931, клас Bug #923).
   const nestedOpenRef = useNestedOpenFlag(goodSearchOpen || poPickerOpen || excelWizardOpen);
   // Меню статусу й «Зберегти як» — шари над карткою: Escape закриває лише їх (Bug #932, клас Bug #924).
-  useEscapeCapture(statusMenuOpen, () => setStatusMenuOpen(false));
+  // Меню видно лише за наявності переходів: інакше перехоплювач «ковтав» би Escape без меню.
+  const statusMenuShown = statusMenuOpen && allowedTransitions.length > 0;
+  useEscapeCapture(statusMenuShown, () => setStatusMenuOpen(false));
   useEscapeCapture(saveAsOpen, () => setSaveAsOpen(false));
   const handleModalClose = useCallback(async () => {
-    if (nestedOpenRef.current) return;
+    if (nestedOpenRef.current || confirmOpenRef.current) return;
     if (savingRef.current || transitioningRef.current) return;
     if (!(await dirty.confirmClose())) return;
     onClose();
@@ -722,7 +729,7 @@ export function StockDocumentCreateModal({
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                 </button>
-                {statusMenuOpen && allowedTransitions.length > 0 && (
+                {statusMenuShown && (
                   <div className="absolute top-full left-0 mt-1 z-50 min-w-40 rounded-lg border border-border bg-surface shadow-lg py-1">
                     {allowedTransitions.map(s => (
                       <button

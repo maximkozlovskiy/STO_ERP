@@ -13,7 +13,7 @@ import { SearchCombobox } from '@/components/ui/search-combobox';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { pickScannedGood } from '@/lib/barcode';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
-import { releaseNestedOpen } from '@/hooks/useConfirm';
+import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { GoodEditModal, type GoodForModal } from '@/components/ui/GoodEditModal';
@@ -136,11 +136,8 @@ export function WorkOrderAddPartModal({
   // Картка товару — окремий <Modal> поверх цього: її Escape доходить і сюди. Поки вона відкрита,
   // власний Escape цього вікна — не його (Bug #927); прапорець знімається ПІСЛЯ події (GOTCHAS
   // 2026-10-12), інакше той самий Escape закрив би й вікно запчастини.
-  const goodDetailOpenRef = useRef(false);
-  const closeGoodDetail = useCallback(() => {
-    setGoodDetailOpen(false);
-    releaseNestedOpen(goodDetailOpenRef);
-  }, []);
+  const goodDetailOpenRef = useNestedOpenFlag(goodDetailOpen);
+  const closeGoodDetail = useCallback(() => setGoodDetailOpen(false), []);
 
   useEffect(() => {
     if (open) {
@@ -221,7 +218,6 @@ export function WorkOrderAddPartModal({
     try {
       const g = await apiFetch<GoodForModal>(`/goods/${form.goodId}`);
       setGoodDetailData(g);
-      goodDetailOpenRef.current = true;
       setGoodDetailOpen(true);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Помилка завантаження товару');
