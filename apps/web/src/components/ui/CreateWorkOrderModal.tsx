@@ -35,6 +35,7 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConflictCheck } from '@/hooks/useConflictCheck';
+import { useEscapeCapture } from '@/hooks/useEscapeCapture';
 import { releaseNestedOpen, useConfirm } from '@/hooks/useConfirm';
 import { useReferenceData } from '@/hooks/useReferenceData';
 import type { Branch } from '@/hooks/useReferenceData';
@@ -1701,6 +1702,15 @@ export function CreateWorkOrderModal({
     woNumber,
     role: employee?.role,
   });
+
+  // Меню статусу й «Зберегти як» — шари над карткою: Escape закриває лише їх (Bug #924, клас Bug #783),
+  // а не картку. Меню «Зберегти як» живе в `useWorkOrderActions` і скиданням при відкритті вище не
+  // покрите — без цього картка відкривалась із розгорнутим меню (Bug #925).
+  useEscapeCapture(statusMenuOpen, () => setStatusMenuOpen(false));
+  useEscapeCapture(saveAsOpen, () => setSaveAsOpen(false));
+  useEffect(() => {
+    if (open) setSaveAsOpen(false);
+  }, [open, workOrderId, setSaveAsOpen]);
 
   // sto-optimize: stable onClose ref для Modal. Modal має useEffect що додає
   // document.addEventListener('keydown') з useCallback([onClose]) — кожен новий
