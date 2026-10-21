@@ -121,6 +121,20 @@ describe('GoodsService.stockTotals — вільна кількість по ск
     ]);
   });
 
+  // guards: BR-WO-029
+  it('float-дрейф залишку (сума рухів) не дає «вільно» 4e-16: available округлено до 3 знаків', async () => {
+    const service = await serviceWith([
+      // Рухи 2.2 + 0.1 = 2.3000000000000003 при резерві 2.3 — вільного немає.
+      row({ goodId: 'g3', warehouseId: 'wh-main', quantity: 2.2 + 0.1, reserved: 2.3 }),
+      row({ goodId: 'g3', warehouseId: 'wh-2', quantity: 0.3, reserved: 0.1 }),
+    ]);
+    const [g3] = await service.stockTotals('org-1', ['g3']);
+    expect(g3!.byWarehouse.map(w => [w.warehouseId, w.available])).toEqual([
+      ['wh-main', 0],
+      ['wh-2', 0.2],
+    ]);
+  });
+
   it('totalQuantity лишається сумою фізичної наявності (колонка «На складі»), без резерву', async () => {
     const service = await serviceWith(rows);
     const res = await service.stockTotals('org-1', ['g1', 'g2']);

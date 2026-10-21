@@ -202,3 +202,53 @@ describe('CreateWorkOrderModal — «Створити рахунок?» при �
     expect(invoiceCalls()).toEqual([]);
   });
 });
+
+/**
+ * Варіант A (review 2026-10-22): шапку згортає «Згорнути» в першій секції (кнопка ховається разом
+ * із шапкою), розгортає картка-зведення (вона зникає). Без перенесення фокусу він лишався на
+ * схованій кнопці або падав на <body> — з клавіатури шлях губився.
+ * Mutation-verify: прибрати ефект фокусу → падають обидві перевірки activeElement.
+ */
+describe('CreateWorkOrderModal — фокус після згортання й розгортання шапки', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+  });
+
+  it('«Згорнути» → фокус на «Розгорнути»; «Розгорнути» → фокус знову на «Згорнути»', async () => {
+    const { user } = await openCard('DRAFT');
+    const collapse = screen.getByRole('button', { name: /^Згорнути$/ });
+    await user.click(collapse);
+
+    const expand = await screen.findByRole('button', { name: /Розгорнути/ });
+    expect(expand).toHaveAttribute('aria-expanded', 'false');
+    await waitFor(() => expect(document.activeElement).toBe(expand));
+
+    await user.click(expand);
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Розгорнути/ })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(collapse));
+  });
+});
+
+/**
+ * Картка «лише перегляд» (статус поза WO_EDITABLE_STATUSES): кнопок «Додати» немає, тож порожня
+ * таблична частина не радить «Натисніть «Додати»…», а каже «Рядки відсутні» (як DocLinesEmptyRow).
+ */
+describe('CreateWorkOrderModal — порожні секції без права змінювати', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+  });
+
+  it('«Виконано» без рядків — «Рядки відсутні» в обох секціях, без підказки про «Додати»', async () => {
+    await openCard('COMPLETED');
+    expect(await screen.findAllByText('Рядки відсутні')).toHaveLength(2);
+    expect(screen.queryByText(/Натисніть «Додати»/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Додати' })).toBeNull();
+  });
+
+  it('«Чернетка» без рядків — підказка про «Додати» лишається', async () => {
+    await openCard('DRAFT');
+    expect(await screen.findByText('Натисніть «Додати» щоб додати роботу')).toBeTruthy();
+    expect(screen.getByText('Натисніть «Додати» щоб додати товар')).toBeTruthy();
+    expect(screen.queryByText('Рядки відсутні')).toBeNull();
+  });
+});

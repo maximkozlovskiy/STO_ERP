@@ -42,8 +42,11 @@ export interface PartsTableProps {
   // Stock
   stockTotalsMap: Map<string, number>;
   stockWarehouseMap: Map<string, number>;
-  /** Вільна кількість по складах для обраних товарів (BR-WO-029); запису немає — ще не отримано. */
-  stockFreeByGood: Map<string, WarehouseFree[]>;
+  /**
+   * Вільна кількість по складах для обраних товарів (BR-WO-029); запису немає — ще не отримано,
+   * `null` — отримати не вдалося (підпис без кількості).
+   */
+  stockFreeByGood: Map<string, WarehouseFree[] | null>;
   /** Товар обрано пошуком у рядку — картка ставить поля товару й підбирає склад (BR-WO-029). */
   onGoodPicked: (row: PartRow, good: GoodPickerItem) => void;
   /** Склад обрано вручну — автовибір його вже не перезапише, доки не змінено товар. */
@@ -151,7 +154,11 @@ export function PartsTable(props: PartsTableProps) {
       data-testid="wo-parts-section"
     >
       {parts.length === 0 && !showPartInput ? (
-        <DocumentSectionEmpty>Натисніть «Додати» щоб додати товар</DocumentSectionEmpty>
+        <DocumentSectionEmpty>
+          {/* Без права змінювати кнопки «Додати» немає — підказка про неї вводила б в оману
+              (як DocLinesEmptyRow). */}
+          {canEdit ? t('card.partsEmpty') : t('card.noLines')}
+        </DocumentSectionEmpty>
       ) : (
         <div className="overflow-visible pb-2">
           <table className="w-full table-fixed text-[13px]">

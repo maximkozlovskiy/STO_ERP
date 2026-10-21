@@ -918,11 +918,13 @@ export class GoodsService {
       const reserved = Number(r.reserved);
       // BR-WO-029: склад рядка наряду показує й обирає за ВІЛЬНОЮ кількістю (як freeQty
       // у work-order-stock-requirements): резерв понад наявність не дає від'ємного числа.
+      // Залишок — сума Float по рухах (Bug #841): 2.0000000000000004 − 2 дає «вільно» 4e-16, і
+      // автовибір обрав би склад, де показано «0». Округлення до 3 знаків — як fmtQty у web.
       whMap.get(key)!.push({
         warehouseId: r.warehouseId,
         quantity,
         reserved,
-        available: Math.max(0, quantity - reserved),
+        available: Math.max(0, Math.round((quantity - reserved) * 1000) / 1000),
       });
     }
     return totals.map(r => ({

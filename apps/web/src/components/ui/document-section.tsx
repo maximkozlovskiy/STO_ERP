@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useId, type ComponentProps, type ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -82,13 +82,16 @@ const ACTION_VARIANTS: Record<SectionActionVariant, string> = {
   accent: 'bg-primary/10 font-semibold text-primary hover:bg-primary/15',
 };
 
-/** Кнопка дії в заголовку `DocumentSection`: «outline» — другорядна, «accent» — основна («Додати»). */
+/**
+ * Кнопка дії в заголовку `DocumentSection`: «outline» — другорядна, «accent» — основна («Додати»).
+ * Приймає `ref` (React 19 — звичайний проп): картка повертає на неї фокус після «Розгорнути».
+ */
 export function SectionActionButton({
   variant = 'outline',
   className,
   type = 'button',
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: SectionActionVariant }) {
+}: ComponentProps<'button'> & { variant?: SectionActionVariant }) {
   return (
     <button
       type={type}

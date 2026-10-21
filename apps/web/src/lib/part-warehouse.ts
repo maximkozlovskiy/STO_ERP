@@ -35,10 +35,14 @@ export interface StockByWarehouseRow {
   available?: number;
 }
 
-/** Вільна кількість рядка складу; відповідь без `available` — з `quantity − reserved`. */
+/**
+ * Вільна кількість рядка складу; відповідь без `available` — з `quantity − reserved`.
+ * Округлено до 3 знаків, як `fmtQty`: залишок — сума Float по рухах (Bug #841), і без округлення
+ * дрейф `2.3000000000000003 − 2.3` = 4e-16 рахувався б вільним — склад з підписом «0» обирався б сам.
+ */
 export function freeOf(row: StockByWarehouseRow): number {
   const free = row.available ?? Number(row.quantity) - Number(row.reserved ?? 0);
-  return Number.isFinite(free) ? Math.max(0, free) : 0;
+  return Number.isFinite(free) ? Math.max(0, Math.round(free * 1000) / 1000) : 0;
 }
 
 export function pickPartWarehouse(

@@ -326,6 +326,9 @@
     "parts": "Goods and parts",
     "plan": "Plan",
     "actual": "Actual",
-    "actualHint": "filled in during the work"
+    "actualHint": "filled in during the work",
+    "worksEmpty": "Click “Add” to add labor",
+    "partsEmpty": "Click “Add” to add a good",
+    "noLines": "No lines"
   }
 }

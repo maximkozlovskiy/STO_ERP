@@ -1,7 +1,7 @@
 'use client';
 
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { type ReactNode } from 'react';
+import { type ReactNode, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export interface CollapsibleHeaderChip {
@@ -28,6 +28,8 @@ interface CollapsibleHeaderProps {
    * розгорнуту шапку згортає дія в заголовку першої секції.
    */
   variant?: 'strip' | 'card';
+  /** Кнопка перемикача — щоб власник повернув на неї фокус (картка `card` зникає з розгортанням). */
+  toggleRef?: Ref<HTMLButtonElement>;
 }
 
 /**
@@ -50,6 +52,7 @@ export function CollapsibleHeader({
   emptyLabel,
   collapsedExtra,
   variant = 'strip',
+  toggleRef,
 }: CollapsibleHeaderProps) {
   // Типові підписи — з локалі, як у ConfirmDialog (Bug #911).
   const { t } = useTranslation('common');
@@ -59,6 +62,7 @@ export function CollapsibleHeader({
     if (!collapsed) return null;
     return (
       <button
+        ref={toggleRef}
         type="button"
         onClick={onToggle}
         aria-expanded={false}
@@ -99,6 +103,7 @@ export function CollapsibleHeader({
 
   return (
     <button
+      ref={toggleRef}
       type="button"
       onClick={onToggle}
       className={[

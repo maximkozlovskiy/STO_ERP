@@ -62,10 +62,13 @@ interface Warehouse {
   deletedAt?: string | null;
 }
 
-/** Вільна кількість обраного товару по складах; `goodId` — щоб відповідь іншого товару не підмінила. */
+/**
+ * Вільна кількість обраного товару по складах; `goodId` — щоб відповідь іншого товару не підмінила.
+ * `free: null` — залишки отримати не вдалося: підписи без кількості, склад — як «вільної немає».
+ */
 interface GoodFreeStock {
   goodId: string;
-  free: WarehouseFree[];
+  free: WarehouseFree[] | null;
 }
 
 interface Brand {
@@ -203,7 +206,9 @@ export function WorkOrderAddPartModal({
         });
       })
       .catch(() => {
-        if (!cancelled) setGoodStock(null);
+        // Без відповіді склад однаково підставляється (основний), інакше поле лишилось би порожнім
+        // назавжди — до BR-WO-029 воно мало склад одразу.
+        if (!cancelled) setGoodStock({ goodId, free: null });
       })
       .finally(() => {
         if (!cancelled) setStockLoading(false);
@@ -217,7 +222,7 @@ export function WorkOrderAddPartModal({
     if (!goodStock || autoPickGoodRef.current !== goodStock.goodId) return;
     if (warehouseOptions.length === 0) return;
     autoPickGoodRef.current = null;
-    const warehouseId = pickPartWarehouse(goodStock.free, warehouseOptions);
+    const warehouseId = pickPartWarehouse(goodStock.free ?? [], warehouseOptions);
     setForm(f => (f.goodId === goodStock.goodId ? { ...f, warehouseId } : f));
   }, [goodStock, warehouseOptions]);
 

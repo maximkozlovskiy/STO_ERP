@@ -196,7 +196,7 @@ cd apps/api && npx vitest run src/modules/goods/<файл>.spec.ts
 | HTTP-контракт (DTO, статуси, валідація)   | `goods-stock-totals.contract.spec.ts`     | 13     |
 | рольовий доступ                           | `goods.role-gate.spec.ts`                 | 14     |
 | сервісна логіка                           | `goods.service.spec.ts`                   | 58     |
-| вільна кількість по складах (BR-WO-029)   | `goods.stock-free.spec.ts`                | 3      |
+| вільна кількість по складах (BR-WO-029)   | `goods.stock-free.spec.ts`                | 4      |
 | статуси-мітки (assign / unassign, ролі)   | `goods.statuses.spec.ts`                  | 11     |
 | бренди: одне написання — один бренд       | `../brands/brands.synonym-unique.spec.ts` | 19     |
 | пошук товару за рядком файла (каскад)     | `good-matcher.spec.ts`                    | 20     |

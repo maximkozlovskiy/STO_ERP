@@ -85,8 +85,10 @@ const STOCK: Record<string, WhRow[]> = {
 };
 
 let stockGate: Promise<void> | null = null;
+let stockFail = false;
 
 function stockTotals(path: string) {
+  if (stockFail) return Promise.reject(new Error('Сервер недоступний'));
   const ids = new URL(path, 'http://x').searchParams.get('ids')!.split(',');
   const rows = ids
     .filter(id => STOCK[id])
@@ -179,6 +181,7 @@ describe('CreateWorkOrderModal — склад рядка товару (BR-WO-029
   beforeEach(() => {
     apiFetchMock.mockReset();
     stockGate = null;
+    stockFail = false;
     mockApi();
   });
 
@@ -249,6 +252,22 @@ describe('CreateWorkOrderModal — склад рядка товару (BR-WO-029
     await user.click(within(row).getByRole('button', { name: 'Очистити' }));
     await pickGood(user, row, 'Олива на основному й бічному');
     await waitFor(() => expect(warehouseSelect(row).value).toBe(W_MAIN));
+  });
+
+  // guards: BR-WO-029
+  it('залишки не отримано (запит упав) → склад основний, підписи без кількості', async () => {
+    stockFail = true;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { user, row } = await openInputRow();
+    await pickGood(user, row, 'Фільтр лише на бічному');
+    // Без запасного шляху поле лишалось порожнім назавжди, і «+» рядка — недоступним.
+    await waitFor(() => expect(warehouseSelect(row).value).toBe(W_MAIN));
+    expect(
+      Array.from(warehouseSelect(row).options)
+        .slice(1)
+        .map(o => o.textContent),
+    ).toEqual(['Бічний', 'Основний', 'Третій']);
+    expect(within(row).getByTitle('Зберегти рядок')).toHaveProperty('disabled', false);
   });
 
   // guards: BR-WO-029, BR-WO-021

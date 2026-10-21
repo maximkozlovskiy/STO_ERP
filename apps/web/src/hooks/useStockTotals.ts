@@ -15,12 +15,14 @@ import { freeOf, type StockByWarehouseRow, type WarehouseFree } from '@/lib/part
  *
  * BR-WO-029: `stockFreeByGood` — вільна кількість (`available`) по складах для кожного запитаного
  * товару; запис є для КОЖНОГО goodId останньої відповіді (порожній масив — залишків немає), тож
- * «запис є» = «залишки цього товару отримано» (автовибір складу чекає саме на це).
+ * «запис є» = «залишки цього товару отримано» (автовибір складу чекає саме на це). Запит упав →
+ * товарам без запису ставиться `null`: підписи складів без кількості, автовибір — як «вільної
+ * немає» (основний склад), а не порожнє поле назавжди.
  */
 export interface StockTotals {
   stockTotalsMap: Map<string, number>;
   stockWarehouseMap: Map<string, number>;
-  stockFreeByGood: Map<string, WarehouseFree[]>;
+  stockFreeByGood: Map<string, WarehouseFree[] | null>;
 }
 
 export function useStockTotals(
@@ -31,7 +33,9 @@ export function useStockTotals(
   const [stockTotalsMap, setStockTotalsMap] = useState<Map<string, number>>(new Map());
   // key = `${goodId}:${warehouseId}` → quantity on that specific warehouse
   const [stockWarehouseMap, setStockWarehouseMap] = useState<Map<string, number>>(new Map());
-  const [stockFreeByGood, setStockFreeByGood] = useState<Map<string, WarehouseFree[]>>(new Map());
+  const [stockFreeByGood, setStockFreeByGood] = useState<Map<string, WarehouseFree[] | null>>(
+    new Map(),
+  );
 
   // derive a *stable string key* from the set of goodId-s. The previous
   // dep array re-fired the effect on ANY parts mutation — including typing in
@@ -69,7 +73,7 @@ export function useStockTotals(
         if (cancelled) return;
         const nextTotals = new Map<string, number>(goodIds.map(id => [id, 0]));
         const nextWh = new Map<string, number>();
-        const nextFree = new Map<string, WarehouseFree[]>(goodIds.map(id => [id, []]));
+        const nextFree = new Map<string, WarehouseFree[] | null>(goodIds.map(id => [id, []]));
         for (const r of rows) {
           nextTotals.set(r.goodId, r.totalQuantity);
           const free: WarehouseFree[] = [];
@@ -86,6 +90,11 @@ export function useStockTotals(
       .catch(err => {
         if (cancelled) return;
         console.error('[stock-totals] fetch failed', err);
+        setStockFreeByGood(prev => {
+          const next = new Map(prev);
+          for (const id of goodIds) if (!next.has(id)) next.set(id, null);
+          return next;
+        });
       });
     return () => {
       cancelled = true;

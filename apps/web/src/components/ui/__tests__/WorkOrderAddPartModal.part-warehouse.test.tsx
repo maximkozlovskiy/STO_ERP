@@ -63,6 +63,7 @@ const STOCK: Record<string, ReturnType<typeof wh>[]> = {
 };
 
 let stockGate: Promise<void> | null = null;
+let stockFail = false;
 
 function mockApi() {
   apiFetchMock.mockImplementation((path: string, init?: { method?: string }) => {
@@ -78,6 +79,7 @@ function mockApi() {
       });
     }
     if (path.startsWith('/goods/stock-totals')) {
+      if (stockFail) return Promise.reject(new Error('Сервер недоступний'));
       const id = new URL(path, 'http://x').searchParams.get('ids')!;
       const rows = STOCK[id] ? [{ goodId: id, totalQuantity: 0, byWarehouse: STOCK[id] }] : [];
       return stockGate ? stockGate.then(() => rows) : Promise.resolve(rows);
@@ -117,6 +119,7 @@ describe('WorkOrderAddPartModal — склад запчастини (BR-WO-029)'
   beforeEach(() => {
     apiFetchMock.mockReset();
     stockGate = null;
+    stockFail = false;
     mockApi();
   });
 
@@ -167,6 +170,17 @@ describe('WorkOrderAddPartModal — склад запчастини (BR-WO-029)'
     await waitFor(() => expect(optionTexts()).toContain('Третій — 0'));
     await new Promise(r => setTimeout(r, 50));
     expect(select().value).toBe(W_THIRD);
+  });
+
+  // guards: BR-WO-029
+  it('залишки не отримано (запит упав) → склад основний, підписи без кількості, «Додати» доступна', async () => {
+    stockFail = true;
+    const user = renderModal();
+    await pickGood(user, 'Фільтр лише на бічному');
+    // Без запасного шляху поле лишалось порожнім (товар його очистив), і «Додати» — недоступною.
+    await waitFor(() => expect(select().value).toBe(W_MAIN));
+    expect(optionTexts()).toEqual(['Основний', 'Бічний', 'Третій']);
+    expect(screen.getByRole('button', { name: 'Додати' })).toBeEnabled();
   });
 
   // guards: BR-WO-029, BR-WO-021

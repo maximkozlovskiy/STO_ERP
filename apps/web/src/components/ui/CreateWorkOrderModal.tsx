@@ -669,6 +669,26 @@ export function CreateWorkOrderModal({
   // A3-modal: stock-totals кеш винесено у useStockTotals (Bug #452-454 збережено). Виклик — після
   // оголошення parts/newPart/editingPart нижче.
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  // Перемикач шапки в картці — дві різні кнопки: «Згорнути» в першій секції (ховається разом із
+  // шапкою) і картка-зведення «Розгорнути» (зникає з розгортанням). Після кліку фокус переходить на
+  // кнопку протилежної дії, а не лишається на схованій / не падає на <body>. Лише клік людини —
+  // автозгортання під час правки рядка фокус не забирає.
+  const headerCollapseBtnRef = useRef<HTMLButtonElement>(null);
+  const headerExpandBtnRef = useRef<HTMLButtonElement>(null);
+  const headerToggleFocusRef = useRef(false);
+  const toggleHeaderByUser = useCallback((collapsed: boolean) => {
+    headerToggleFocusRef.current = true;
+    setHeaderCollapsed(collapsed);
+  }, []);
+  useEffect(() => {
+    if (!headerToggleFocusRef.current) return;
+    headerToggleFocusRef.current = false;
+    // preventScroll: шапка ще анімується з 0fr у контейнері overflow-hidden — фокус без нього
+    // прокрутив би той контейнер, і верх шапки лишився б зрізаним після розгортання.
+    (headerCollapsed ? headerExpandBtnRef : headerCollapseBtnRef).current?.focus({
+      preventScroll: true,
+    });
+  }, [headerCollapsed]);
 
   // A3-modal: vehicleReqRef/contractReqRef перенесено у useReferenceData (race-guard там же).
 
@@ -954,9 +974,10 @@ export function CreateWorkOrderModal({
     const apply = (row: PartRow, goodId: string, set: typeof setNewPart): void => {
       if (!goodId || pending[row] !== goodId) return;
       const free = stockFreeByGood.get(goodId);
-      if (!free) return;
+      if (free === undefined) return;
       pending[row] = null;
-      const warehouseId = pickPartWarehouse(free, warehouses);
+      // `null` — залишки не отримано: як «вільної немає» (основний), а не порожнє поле назавжди.
+      const warehouseId = pickPartWarehouse(free ?? [], warehouses);
       set(p => (p.goodId === goodId ? { ...p, warehouseId } : p));
     };
     apply('new', newPart.goodId, setNewPart);
@@ -2202,7 +2223,11 @@ export function CreateWorkOrderModal({
                       icon={UserRound}
                       title={t('card.clientVehicle')}
                       actions={
-                        <SectionActionButton aria-expanded onClick={() => setHeaderCollapsed(true)}>
+                        <SectionActionButton
+                          ref={headerCollapseBtnRef}
+                          aria-expanded
+                          onClick={() => toggleHeaderByUser(true)}
+                        >
                           {t('common:collapse')}
                           <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
                         </SectionActionButton>
@@ -2404,8 +2429,9 @@ export function CreateWorkOrderModal({
               <div className="flex-1 min-h-0 flex flex-col gap-4">
                 <CollapsibleHeader
                   variant="card"
+                  toggleRef={headerExpandBtnRef}
                   collapsed={headerCollapsed}
-                  onToggle={() => setHeaderCollapsed(c => !c)}
+                  onToggle={() => toggleHeaderByUser(false)}
                   chips={[
                     { label: counterpartyDisplayName, primary: true, maxWidth: 'max-w-50' },
                     { label: cpPhone, maxWidth: 'max-w-35' },

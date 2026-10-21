@@ -126,7 +126,11 @@ export function WorksTable(props: WorksTableProps) {
       data-testid="wo-works-section"
     >
       {lines.length === 0 && !showLineInput ? (
-        <DocumentSectionEmpty>Натисніть «Додати» щоб додати роботу</DocumentSectionEmpty>
+        <DocumentSectionEmpty>
+          {/* Без права змінювати кнопки «Додати» немає — підказка про неї вводила б в оману
+              (як DocLinesEmptyRow). */}
+          {canEdit ? t('card.worksEmpty') : t('card.noLines')}
+        </DocumentSectionEmpty>
       ) : (
         <div className="overflow-visible pb-2">
           <table className="w-full table-fixed text-[13px]">

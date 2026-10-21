@@ -100,4 +100,14 @@ describe('freeOf — вільна кількість рядка складу', (
     expect(freeOf({ warehouseId: SIDE, quantity: 2, reserved: 5 })).toBe(0);
     expect(freeOf({ warehouseId: SIDE, quantity: 3 })).toBe(3);
   });
+
+  // guards: BR-WO-029
+  it('float-дрейф залишку (сума рухів) — не вільна кількість: склад з підписом «0» не обирається', () => {
+    const drift = freeOf({ warehouseId: SIDE, quantity: 2.2 + 0.1, reserved: 2.3 });
+    expect(drift).toBe(0);
+    expect(freeOf({ warehouseId: SIDE, quantity: 0.3, reserved: 0.1 })).toBe(0.2);
+    expect(freeOf({ warehouseId: SIDE, quantity: 1, reserved: 0, available: 1e-16 })).toBe(0);
+    // Без округлення SIDE мав би «вільну» 4e-16 і підставився б замість основного.
+    expect(pickPartWarehouse([{ warehouseId: SIDE, available: drift }], list)).toBe(MAIN);
+  });
 });
