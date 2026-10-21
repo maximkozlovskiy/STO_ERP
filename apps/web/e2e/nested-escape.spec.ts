@@ -197,7 +197,7 @@ test.describe('Escape у вкладених вікнах закриває лиш
       .first()
       .click();
     const inputRow = created.locator('tr', { has: page.getByTitle('Зберегти рядок') });
-    await inputRow.locator('select').first().selectOption({ label: state.warehouse!.name });
+    await inputRow.locator('select').first().selectOption(state.warehouse!.id);
     await inputRow.getByPlaceholder('0').first().fill('1');
     await inputRow.getByTitle('Зберегти рядок').click();
     await created.getByRole('button', { name: 'Зберегти зміни' }).click();

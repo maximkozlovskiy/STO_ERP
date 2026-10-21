@@ -147,7 +147,7 @@ async function createWoWithPart(page: Page, description: string): Promise<WoRef>
     .first()
     .click();
   const inputRow = card.locator('tr', { has: page.getByTitle('Зберегти рядок') });
-  await inputRow.locator('select').first().selectOption({ label: state.warehouse!.name });
+  await inputRow.locator('select').first().selectOption(state.warehouse!.id);
   await inputRow.getByPlaceholder('0').first().fill('1');
   await inputRow.getByTitle('Зберегти рядок').click();
   await card.getByRole('button', { name: 'Зберегти зміни' }).click();
