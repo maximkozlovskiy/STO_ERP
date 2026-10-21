@@ -252,7 +252,7 @@ done
 
   ```bash
   grep -rlE "set[A-Za-z]*Open\(false\)" apps/web/src/components/ui --include=*.tsx | grep -v __tests__ \
-    | xargs grep -lE "key === 'Escape'" | xargs grep -LE "addEventListener\('keydown'"
+    | xargs grep -lE "key === 'Escape'" | xargs grep -LE "addEventListener\('keydown'|useEscapeCapture"
   ```
 
   Перевірка в браузері для КОЖНОГО способу відкрити попап (фокус у полі / клік по кнопці / Tab усередину): Escape → попап закрито, `[role="dialog"]` на місці. Фікс — capture-слухач на `document` зі `stopImmediatePropagation()`, доки попап відкритий.
