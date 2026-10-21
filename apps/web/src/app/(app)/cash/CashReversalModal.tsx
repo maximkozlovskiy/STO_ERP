@@ -48,7 +48,7 @@ const REASON_MAX = cashReversalSchema.shape.reason.maxLength ?? undefined;
  * причина обов'язкова (спільна `cashReversalSchema`, MP-F6).
  *
  * Сторно незворотне, тому «Сторнувати» спершу просить підтвердження в самій картці, а не
- * вкладеним діалогом: вкладена модалка ділила б із карткою Escape (docs/GOTCHAS.md, 2026-10-12).
+ * вкладеним діалогом.
  *
  * `void` перед `submit()`/`close()` у JSX: відмову сервера `reverse` пише в банер картки, а
  * `confirmClose()` не реджектиться — проміс нікому не потрібен.

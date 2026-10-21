@@ -117,7 +117,7 @@ describe('MatchBankTransactionModal', () => {
   });
 
   // Bug #861: Escape у пікері закривав і саме вікно рознесення (docs/GOTCHAS.md 2026-10-12).
-  // Mutation-verify: прибрати `if (pickerOpenRef.current) return;` у close → кейс падає.
+  // Mutation-verify: у lib/escape-layers кликати всі шари замість верхнього → кейс падає.
   it('Escape у пікері контрагента закриває лише пікер, вікно лишається', async () => {
     apiFetchMock.mockResolvedValue({ items: [] });
     const onClose = vi.fn();

@@ -2,7 +2,7 @@
 
 // Діалог конфлікту «рахунок уже існує» для наряду (TD3-декомпозиція CreateWorkOrderModal).
 // Винесено без зміни поведінки: самодостатній суб-діалог з вузькою surface (стан із
-// useWorkOrderActions). ESC обробляється глобальним document-listener у батьку (як і було).
+// useWorkOrderActions). ESC — шар Escape у `useWorkOrderActions` (useEscapeLayer).
 import { Button } from '@/components/ui/button';
 
 export interface InvoiceConflictDialogProps {
@@ -22,8 +22,8 @@ export function InvoiceConflictDialog({
 }: InvoiceConflictDialogProps) {
   if (!open) return null;
   return (
-    // ESC обробляється глобальним document listener (див. useWorkOrderActions —
-    // onKeyDown на <div role="presentation"> без tabIndex/focus не фaйрить).
+    // ESC — шар Escape у useWorkOrderActions (onKeyDown на <div role="presentation"> без
+    // tabIndex/focus не спрацював би).
     // Overlay click + autoFocus для модального UX.
     <div
       className="fixed inset-0 z-60 flex items-center justify-center bg-black/50"

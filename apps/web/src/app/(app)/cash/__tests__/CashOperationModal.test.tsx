@@ -686,7 +686,7 @@ describe('CashOperationModal', () => {
       const { onClose } = renderModal({ direction: 'IN' });
       chooseReason('SALE_PAYMENT');
       await pick(COUNTERPARTY, 'Коваль Олег');
-      // Одразу після пікера Escape ще належить йому (прапорець знімається наступним тиком).
+      // Пікер закрито — тепер Escape належить картці (верхній шар Escape).
       await waitFor(() => {
         escape();
         expect(screen.getByText(UNSAVED)).toBeVisible();

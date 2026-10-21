@@ -156,10 +156,8 @@ export function useWorkOrderActions({
     }
   };
 
-  // useCapture + stopImmediatePropagation: батьківський <Modal> теж слухає Esc на document
-  // (bubble-фаза), тож без capture+stop Esc закрив би одразу і conflict-dialog, і WO modal.
-  // Capture-фаза гарантує що наш listener fire-ить ПЕРШИМ; stopImmediatePropagation відсікає
-  // подальші listeners на document (включно з Modal handler).
+  // Діалог конфлікту — власний оверлей, не <Modal>: шар Escape над карткою наряду. Esc закриває лише
+  // його (поки запит не в польоті), картка лишається.
   useEscapeLayer(invoiceConflict, () => {
     if (!invoiceLoading) setInvoiceConflict(false);
   });

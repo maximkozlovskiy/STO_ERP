@@ -92,7 +92,7 @@ export function MatchBankTransactionModal({
     }
   }, [transaction, counterpartyId, type, invoiceId, matchMut, t, onMatched, onClose]);
 
-  // Стабільний onClose для Modal: його keydown-слухач не переприв'язується на кожен рендер.
+  // Стабільний onClose: картка не перестворює обробник на кожен рендер.
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const close = useCallback(() => onCloseRef.current(), []);

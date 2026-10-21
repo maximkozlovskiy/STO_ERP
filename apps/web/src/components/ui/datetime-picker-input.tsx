@@ -229,10 +229,9 @@ export function DateTimePickerInput({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Escape закриває ЛИШЕ попап. Capture + stopImmediatePropagation: попап живе у порталі
-  // на document.body, а батьківський <Modal> слухає Escape на document у bubble-фазі —
-  // без перехоплення те саме натискання закривало всю модалку (разом із формою).
-  // Фокус може бути і в інпуті, і в <select> попапа, тож onKeyDown на інпуті не досить.
+  // Escape закриває ЛИШЕ попап: відкритий попап — шар Escape над вікном (lib/escape-layers), тож
+  // до батьківського <Modal> клавіша не доходить. Шар без scopeRef: фокус може бути і в інпуті, і в
+  // <select> попапа (він у порталі на document.body).
   useEscapeLayer(open, () => setOpen(false));
 
   // Reposition on scroll/resize.

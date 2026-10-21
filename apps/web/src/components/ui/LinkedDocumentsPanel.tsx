@@ -101,9 +101,8 @@ function PreviewPopup({
     setStyle({ top, left: Math.max(8, left), opacity: 1 });
   }, [anchorRef, item]);
 
-  // Capture + stopImmediatePropagation: PreviewPopup може рендеритися всередині
-  // батьківського <Modal> (напр. вкладка «Документи»), який теж слухає Esc на document.
-  // Без capture-фази Esc закрив би одразу і preview, і весь модал.
+  // PreviewPopup може рендеритися всередині батьківського <Modal> (напр. вкладка «Документи»):
+  // як шар Escape, відкритий пізніше, він верхній — Esc закриває лише preview, а не весь модал.
   useEscapeLayer(true, onClose);
 
   // Portal to <body>: the preview is `position: fixed`, but it is rendered inside containers that

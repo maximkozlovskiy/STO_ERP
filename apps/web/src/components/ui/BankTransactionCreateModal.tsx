@@ -334,7 +334,7 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
     );
   };
 
-  // Стабільний onClose для Modal: його keydown-слухач не переприв'язується на кожен рендер.
+  // Стабільний onClose: картка не перестворює обробник на кожен рендер.
   const busyRef = useRef(busy);
   busyRef.current = busy;
   const onCloseRef = useRef(onClose);

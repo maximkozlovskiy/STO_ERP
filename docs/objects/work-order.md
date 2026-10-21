@@ -428,7 +428,7 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 - web: `components/ui/__tests__/CreateWorkOrderModal.cancel-confirm.test.tsx` (4) — «Скасувати»
   відкриває підтвердження без переходу, «Так, скасувати» — перехід; з «Виконано» — попередження
   «товари повернуться на склад, борг клієнта буде сторновано»; «Ні» й Escape закривають лише
-  підтвердження, картка відкрита (прапорець `confirmOpenRef` знімається після події). Текст — з
+  підтвердження, картка відкрита (підтвердження — верхній шар Escape, `useEscapeLayer`). Текст — з
   `components/ui/work-order/cancel-confirm.ts`, той самий на сторінці наряду (`PageClient.tsx`).
   `CreateWorkOrderModal.planned-dates.test.tsx` (BR-WO-022) підтверджує скасування перед переходом.
 - E2E `apps/web/e2e/work-order-calendar-edit.spec.ts` — наряд до «Виконано» кнопками сторінки; «Скасувати»

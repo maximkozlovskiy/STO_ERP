@@ -103,7 +103,7 @@ const invoiceCalls = () =>
     ([p, init]) => p.startsWith('/invoices/from-work-order') && init?.method === 'POST',
   );
 
-/** Escape обходить слухачі document, а прапорці вкладених шарів знімаються таймером після події. */
+/** Escape + один тик: React устигає закрити верхній шар до наступного натискання. */
 async function pressEscape(user: ReturnType<typeof userEvent.setup>) {
   await user.keyboard('{Escape}');
   await act(async () => {

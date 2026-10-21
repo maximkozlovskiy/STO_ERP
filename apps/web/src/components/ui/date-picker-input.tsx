@@ -105,8 +105,7 @@ export function DatePickerInput({
   // Escape закриває ЛИШЕ календар, де б не був фокус: у полі, на кнопці-іконці чи на дні
   // в попапі. Обробник лише на <input> цього не покривав — календар, відкритий кнопкою
   // (фокус на ній), на Escape закривав усю модалку-батька разом із незбереженою формою.
-  // Capture + stopImmediatePropagation, як у DateTimePickerInput: <Modal> слухає Escape на
-  // document у bubble-фазі, тож перехопити треба раніше за нього.
+  // Відкритий календар — шар Escape над вікном (lib/escape-layers), тож до вікна клавіша не доходить.
   useEscapeLayer(open, () => setOpen(false));
 
   // parse min/max bounds and enforce them in both manual typing and DayPicker.

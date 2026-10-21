@@ -101,7 +101,7 @@ export function SearchCombobox<T extends { id: string }>({
   }, []);
 
   // Escape при відкритому випадному списку закриває ЛИШЕ його (Bug #920, клас Bug #783/#919):
-  // <Modal> слухає Escape на document, обробник лише на <input> віддавав подію далі — вікно
+  // <Modal> слухав Escape на document, обробник лише на <input> віддавав подію далі — вікно
   // («+ Запчастина» в наряді) закривалось разом зі списком. Лише Escape зсередини поля (Bug #922).
   const listVisible = open && items.length > 0;
   const statusVisible = open && !loading && items.length === 0 && !!query.trim();

@@ -140,7 +140,7 @@ describe('StockDocumentCreateModal — шари над карткою й Escape 
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: 'Складський документ' })).toBeTruthy();
 
-    // Контроль: прапорець знято після події — наступний Escape закриває картку.
+    // Контроль: підтвердження закрито — наступний Escape закриває картку.
     await pressEscape(user);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
