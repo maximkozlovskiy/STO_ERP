@@ -14,6 +14,7 @@ import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { displayCounterpartyName } from '@/lib/utils';
@@ -375,7 +376,11 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
 
   const handleSave = handleSubmit(onValid);
 
+  // Вкладене вікно (вибір, картка контрагента/товару) над карткою: його Escape доходить і сюди —
+  // картка його пропускає (Bug #931, клас Bug #923).
+  const nestedOpenRef = useNestedOpenFlag(supplierPickerOpen || poPickerOpen);
   const handleModalClose = useCallback(async () => {
+    if (nestedOpenRef.current) return;
     if (savingRef.current) return;
     if (!(await dirty.confirmClose())) return;
     onClose();

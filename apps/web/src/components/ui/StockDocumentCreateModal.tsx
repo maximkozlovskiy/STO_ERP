@@ -28,6 +28,8 @@ import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
+import { useEscapeCapture } from '@/hooks/useEscapeCapture';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -321,6 +323,7 @@ export function StockDocumentCreateModal({
     dirty.resetDirty();
     setError('');
     setStatusMenuOpen(false);
+    setSaveAsOpen(false);
     setHeaderCollapsed(false);
     setDocNumber('');
     setCurrentStatus('DRAFT');
@@ -620,7 +623,14 @@ export function StockDocumentCreateModal({
     }
   });
 
+  // Вкладене вікно (вибір, картка контрагента/товару) над карткою: його Escape доходить і сюди —
+  // картка його пропускає (Bug #931, клас Bug #923).
+  const nestedOpenRef = useNestedOpenFlag(goodSearchOpen || poPickerOpen || excelWizardOpen);
+  // Меню статусу й «Зберегти як» — шари над карткою: Escape закриває лише їх (Bug #932, клас Bug #924).
+  useEscapeCapture(statusMenuOpen, () => setStatusMenuOpen(false));
+  useEscapeCapture(saveAsOpen, () => setSaveAsOpen(false));
   const handleModalClose = useCallback(async () => {
+    if (nestedOpenRef.current) return;
     if (savingRef.current || transitioningRef.current) return;
     if (!(await dirty.confirmClose())) return;
     onClose();
