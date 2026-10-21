@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type MutableRefObject } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { Controller, type UseFormReturn } from 'react-hook-form';
@@ -159,8 +159,6 @@ interface Props {
   supplierMode: SupplierMode;
   onSupplierModeChange?: (next: SupplierMode) => void;
   candidatesQuery?: UseQueryResult<SupplierPaymentCandidate[]>;
-  /** Прапорець «відкрито пікер» для вікна-власника (Escape у пікері не закриває вікно). */
-  pickerOpenRef?: MutableRefObject<boolean>;
 }
 
 export function OutgoingAllocationFields({
@@ -174,7 +172,6 @@ export function OutgoingAllocationFields({
   supplierMode,
   onSupplierModeChange,
   candidatesQuery,
-  pickerOpenRef,
 }: Props) {
   const { t } = useTranslation('bankStatements');
   const {
@@ -192,17 +189,8 @@ export function OutgoingAllocationFields({
   const cashRegisterId = asText(watch('cashRegisterId'));
 
   const [picker, setPicker] = useState<Picker>(null);
-  const openPicker = (next: Exclude<Picker, null>) => {
-    if (pickerOpenRef) pickerOpenRef.current = true;
-    setPicker(next);
-  };
-  const closePicker = () => {
-    setPicker(null);
-    if (pickerOpenRef)
-      setTimeout(() => {
-        pickerOpenRef.current = false;
-      }, 0);
-  };
+  const openPicker = (next: Exclude<Picker, null>) => setPicker(next);
+  const closePicker = () => setPicker(null);
   const setLabels = (patch: Partial<OutgoingAllocationLabels>) =>
     onLabelsChange({ ...labels, ...patch });
 

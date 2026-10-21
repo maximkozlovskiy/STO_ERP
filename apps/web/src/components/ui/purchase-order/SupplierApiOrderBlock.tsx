@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Send, Undo2 } from 'lucide-react';
@@ -55,12 +55,11 @@ const WATCH_AFTER_POLL_MS = 30_000;
  * Скасування / видалення замовлення, вже переданого постачальнику (BR-SCON-014, рішення власника):
  * спершу звичайний запит; якщо сервер відмовив, а замовлення справді вже в постачальника, —
  * підтвердження «скасуйте його в кабінеті постачальника» і повтор із `force`. API постачальника
- * не викликається. `nestedOpenRef` — для вікна-власника: Escape підтвердження не має закривати й
- * його (прапорець знімається після події, GOTCHAS 2026-10-12).
+ * не викликається.
  */
-export function useSentOrderForce(nestedOpenRef?: MutableRefObject<boolean>) {
+export function useSentOrderForce() {
   const { t } = useTranslation('supplierApi');
-  const { confirm, dialogProps } = useConfirm(nestedOpenRef);
+  const { confirm, dialogProps } = useConfirm();
 
   const run = useCallback(
     async <T,>(
@@ -140,8 +139,6 @@ interface Props {
   poStatus: string;
   /** Замовлення змінилось на сервері (статус, позиції) — картка перечитує себе й сторінку. */
   onChanged: () => void;
-  /** Прапорець вікна-власника «відкрито вкладене підтвердження» (Escape). */
-  nestedOpenRef?: MutableRefObject<boolean>;
   /**
    * У картці є незбережені правки: постачальнику пішла б збережена версія, а перечитування картки
    * після дії мовчки стерло б правки — «Відправити» й «Повернути» вимкнені до збереження.
@@ -159,7 +156,6 @@ export function SupplierApiOrderBlock({
   purchaseOrderId,
   poStatus,
   onChanged,
-  nestedOpenRef,
   unsavedChanges = false,
 }: Props) {
   const { t } = useTranslation('supplierApi');
@@ -172,8 +168,7 @@ export function SupplierApiOrderBlock({
   const sendKeyRef = useRef<string | null>(null);
   const { employee } = useAuth();
   const canAct = SUPPLIER_API_SEND_ROLES.includes(employee?.role ?? '');
-  // Підтвердження позначається в прапорці картки-власника (Escape закриває лише його).
-  const { confirm, dialogProps } = useConfirm(nestedOpenRef);
+  const { confirm, dialogProps } = useConfirm();
   const [watchUntil, setWatchUntil] = useState(0);
   const [busy, setBusy] = useState<'send' | 'poll' | 'release' | null>(null);
   const busyRef = useRef(false);

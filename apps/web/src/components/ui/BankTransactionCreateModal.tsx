@@ -147,11 +147,6 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
   // Синхронний guard від подвійного кліку в одному tick-у (disabled ще не застосувався).
   const savingRef = useRef(false);
   const autoSelectedRef = useRef(false);
-  // Escape у пікері контрагента / рахунку не має закривати саме вікно з уведеним
-  // (docs/GOTCHAS.md, 2026-10-12): прапорець ставлять і знімають поля рознесення.
-  const pickerOpenRef = useRef(false);
-  // Поки відкрито запит «Є незбережені зміни», Escape — його, а не цього вікна.
-  const closingRef = useRef(false);
 
   const clearAllocation = () => {
     setAllocType('');
@@ -170,8 +165,6 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
     idempotencyKeyRef.current = newIdempotencyKey();
     savingRef.current = false;
     autoSelectedRef.current = false;
-    pickerOpenRef.current = false;
-    closingRef.current = false;
     dirty.resetDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -351,17 +344,11 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   const close = useCallback(async () => {
-    if (pickerOpenRef.current || busyRef.current || closingRef.current) return;
+    if (busyRef.current) return;
     const guard = dirtyRef.current;
     if (hasInputRef.current()) guard.markDirty();
     else guard.resetDirty();
-    closingRef.current = true;
-    const leave = await guard.confirmClose();
-    // Знімається ПІСЛЯ події: той самий Escape, що закрив запит, не має закрити й вікно.
-    setTimeout(() => {
-      closingRef.current = false;
-    }, 0);
-    if (leave) onCloseRef.current();
+    if (await guard.confirmClose()) onCloseRef.current();
   }, []);
   const requestClose = useCallback(() => void close(), [close]);
 
@@ -610,7 +597,6 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
                   showType={false}
                   counterpartyError={incomingErrors.counterpartyId}
                   invoiceError={incomingErrors.invoiceId}
-                  pickerOpenRef={pickerOpenRef}
                 />
               )}
 
@@ -624,7 +610,6 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
                   labels={outLabels}
                   onLabelsChange={setOutLabels}
                   supplierMode="new"
-                  pickerOpenRef={pickerOpenRef}
                 />
               )}
             </div>

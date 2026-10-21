@@ -13,7 +13,6 @@ import { SearchCombobox } from '@/components/ui/search-combobox';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { pickScannedGood } from '@/lib/barcode';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
-import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { GoodEditModal, type GoodForModal } from '@/components/ui/GoodEditModal';
@@ -133,10 +132,6 @@ export function WorkOrderAddPartModal({
   // Good detail modal
   const [goodDetailOpen, setGoodDetailOpen] = useState(false);
   const [goodDetailData, setGoodDetailData] = useState<GoodForModal | null>(null);
-  // Картка товару — окремий <Modal> поверх цього: її Escape доходить і сюди. Поки вона відкрита,
-  // власний Escape цього вікна — не його (Bug #927); прапорець знімається ПІСЛЯ події (GOTCHAS
-  // 2026-10-12), інакше той самий Escape закрив би й вікно запчастини.
-  const goodDetailOpenRef = useNestedOpenFlag(goodDetailOpen);
   const closeGoodDetail = useCallback(() => setGoodDetailOpen(false), []);
 
   useEffect(() => {
@@ -225,7 +220,6 @@ export function WorkOrderAddPartModal({
   }, [form.goodId]);
 
   const handleClose = useCallback(async () => {
-    if (goodDetailOpenRef.current) return;
     if (!(await dirty.confirmClose())) return;
     onClose();
   }, [dirty, onClose]);

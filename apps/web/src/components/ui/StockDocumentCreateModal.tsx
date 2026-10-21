@@ -28,7 +28,6 @@ import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
-import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -252,9 +251,7 @@ export function StockDocumentCreateModal({
   // користувач не бачить (Bug #844). Разом із «видалено» це дає картку лише на перегляд.
   const notLoaded = !!stockDocumentId && loadedDocId !== stockDocumentId;
   const viewOnly = isDeleted || notLoaded;
-  // Підтвердження переходу — над карткою: його Escape не має закривати й картку (прапорець знімається
-  // після події, GOTCHAS 2026-10-12).
-  const { confirm, dialogProps: confirmDialogProps, openRef: confirmOpenRef } = useConfirm();
+  const { confirm, dialogProps: confirmDialogProps } = useConfirm();
 
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
@@ -628,16 +625,12 @@ export function StockDocumentCreateModal({
     }
   });
 
-  // Вкладене вікно (вибір, картка контрагента/товару) над карткою: його Escape доходить і сюди —
-  // картка його пропускає (Bug #931, клас Bug #923).
-  const nestedOpenRef = useNestedOpenFlag(goodSearchOpen || poPickerOpen || excelWizardOpen);
   // Меню статусу й «Зберегти як» — шари над карткою: Escape закриває лише їх (Bug #932, клас Bug #924).
   // Меню видно лише за наявності переходів: інакше перехоплювач «ковтав» би Escape без меню.
   const statusMenuShown = statusMenuOpen && allowedTransitions.length > 0;
   useEscapeLayer(statusMenuShown, () => setStatusMenuOpen(false));
   useEscapeLayer(saveAsOpen, () => setSaveAsOpen(false));
   const handleModalClose = useCallback(async () => {
-    if (nestedOpenRef.current || confirmOpenRef.current) return;
     if (savingRef.current || transitioningRef.current) return;
     if (!(await dirty.confirmClose())) return;
     onClose();

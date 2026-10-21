@@ -43,15 +43,11 @@ export function MatchBankTransactionModal({
 
   const [value, setValue] = useState<IncomingAllocationValue>(emptyIncomingAllocation);
   const [error, setError] = useState('');
-  // Escape у пікері контрагента / рахунку закриває лише пікер, не саме вікно (Bug #861,
-  // docs/GOTCHAS.md 2026-10-12): прапорець ставлять і знімають поля рознесення.
-  const pickerOpenRef = useRef(false);
 
   // Prefill з підказки авто-матчу — раз на кожне відкриття.
   useEffect(() => {
     if (!open) return;
     setError('');
-    pickerOpenRef.current = false;
     setValue(
       emptyIncomingAllocation(
         suggestedMatchType && isBankTxInMatchType(suggestedMatchType)
@@ -99,10 +95,7 @@ export function MatchBankTransactionModal({
   // Стабільний onClose для Modal: його keydown-слухач не переприв'язується на кожен рендер.
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const close = useCallback(() => {
-    if (pickerOpenRef.current) return;
-    onCloseRef.current();
-  }, []);
+  const close = useCallback(() => onCloseRef.current(), []);
 
   return (
     <Modal
@@ -152,7 +145,7 @@ export function MatchBankTransactionModal({
           </div>
         )}
 
-        <IncomingAllocationFields value={value} onChange={setValue} pickerOpenRef={pickerOpenRef} />
+        <IncomingAllocationFields value={value} onChange={setValue} />
       </div>
     </Modal>
   );

@@ -158,9 +158,7 @@ export function SupplierOffersDialog({ item, onClose }: Props) {
   const { t } = useTranslation('supplierApi');
   const features = useUiFeatures();
   const qc = useQueryClient();
-  // `nestedOpenRef` — підтвердження відкрите: Escape у ньому не має закривати й цей діалог
-  // (знімається після події, GOTCHAS 2026-10-12).
-  const { confirm, dialogProps, openRef: nestedOpenRef } = useConfirm();
+  const { confirm, dialogProps } = useConfirm();
   const itemId = item?.id ?? null;
   const [batchId, setBatchId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; variant: 'warning' | 'error' } | null>(null);
@@ -290,7 +288,6 @@ export function SupplierOffersDialog({ item, onClose }: Props) {
   };
 
   const handleClose = () => {
-    if (nestedOpenRef.current) return;
     searchSeq.current += 1;
     onClose();
   };

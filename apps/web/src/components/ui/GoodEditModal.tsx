@@ -13,7 +13,6 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { ModalTabs } from '@/components/ui/modal-tabs';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
-import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
@@ -251,13 +250,10 @@ export function GoodEditModal({
   );
 
   // ── Close handler ──────────────────────────────────────────────────────────
-  // Картка постачальника — окремий <Modal> поверх цієї: її Escape доходить і сюди (Bug #930).
-  const supplierCardOpenRef = useNestedOpenFlag(cpDetailOpen);
   const handleClose = useCallback(async () => {
-    if (supplierCardOpenRef.current) return;
     if (!(await dirty.confirmClose())) return;
     onClose();
-  }, [dirty, onClose, supplierCardOpenRef]);
+  }, [dirty, onClose]);
 
   // ── Save (create or update) ────────────────────────────────────────────────
   // Валідація — через zodResolver (per-field помилки); onValid отримує коерснуті значення

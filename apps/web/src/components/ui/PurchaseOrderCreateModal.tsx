@@ -33,7 +33,6 @@ import { useAuth } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
-import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTabBarContext } from '@/contexts/TabBarContext';
@@ -259,11 +258,7 @@ export function PurchaseOrderCreateModal({
 
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
-  // Відкрито підтвердження передачі в API (блок або скасування відправленого) — Escape у ньому
-  // не має закривати картку (GOTCHAS 2026-10-12).
-  const supplierNestedRef = useRef(false);
-  const { run: runSentOrder, dialogProps: sentOrderDialogProps } =
-    useSentOrderForce(supplierNestedRef);
+  const { run: runSentOrder, dialogProps: sentOrderDialogProps } = useSentOrderForce();
   const statusMenuRef = useRef<HTMLDivElement>(null);
   // Bug #639: async авто-вибір єдиного складу — програмна зміна (не дія користувача).
   // Через setValue({shouldDirty:false}) значення не вмикає dirty-guard.
@@ -917,25 +912,12 @@ export function PurchaseOrderCreateModal({
     }
   };
 
-  // Вкладене вікно (вибір, картка контрагента/товару) над карткою: його Escape доходить і сюди —
-  // картка його пропускає (Bug #931, клас Bug #923).
-  const nestedOpenRef = useNestedOpenFlag(
-    supplierPickerOpen ||
-      supplierDetailOpen ||
-      goodDetailOpen ||
-      goodSearchOpen ||
-      excelWizardOpen ||
-      rulePricerOpen ||
-      paymentOpen,
-  );
   // Меню статусу й «Зберегти як» — шари над карткою: Escape закриває лише їх (Bug #932, клас Bug #924).
   // Меню видно лише за наявності переходів: інакше перехоплювач «ковтав» би Escape без меню.
   const statusMenuShown = statusMenuOpen && allowedTransitions.length > 0;
   useEscapeLayer(statusMenuShown, () => setStatusMenuOpen(false));
   useEscapeLayer(saveAsOpen, () => setSaveAsOpen(false));
   const handleModalClose = useCallback(async () => {
-    if (nestedOpenRef.current) return;
-    if (supplierNestedRef.current) return;
     if (savingRef.current || transitioningRef.current) return;
     if (!(await dirty.confirmClose())) return;
     onClose();
@@ -1483,7 +1465,6 @@ export function PurchaseOrderCreateModal({
                   <SupplierApiOrderBlock
                     purchaseOrderId={purchaseOrderId}
                     poStatus={currentStatus}
-                    nestedOpenRef={supplierNestedRef}
                     unsavedChanges={rhfDirty}
                     onChanged={() => {
                       void loadPo(purchaseOrderId, true);

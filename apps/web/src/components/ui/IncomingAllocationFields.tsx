@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type MutableRefObject } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BANK_TX_IN_MATCH_TYPE_VALUES, type BankTxInMatchTypeValue } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
@@ -77,11 +77,6 @@ interface Props {
   showType?: boolean;
   counterpartyError?: string;
   invoiceError?: string;
-  /**
-   * Прапорець «відкрито пікер» для вікна-власника: Escape у пікері не має закривати саме вікно
-   * (docs/GOTCHAS.md, 2026-10-12). Знімається ПІСЛЯ події, а не в ефекті.
-   */
-  pickerOpenRef?: MutableRefObject<boolean>;
 }
 
 const FIELD_ERROR = 'text-[12px] text-destructive leading-tight mt-1';
@@ -92,22 +87,12 @@ export function IncomingAllocationFields({
   showType = true,
   counterpartyError,
   invoiceError,
-  pickerOpenRef,
 }: Props) {
   const { t } = useTranslation('bankStatements');
   const [picker, setPicker] = useState<Picker>(null);
 
-  const openPicker = (next: Exclude<Picker, null>) => {
-    if (pickerOpenRef) pickerOpenRef.current = true;
-    setPicker(next);
-  };
-  const closePicker = () => {
-    setPicker(null);
-    if (pickerOpenRef)
-      setTimeout(() => {
-        pickerOpenRef.current = false;
-      }, 0);
-  };
+  const openPicker = (next: Exclude<Picker, null>) => setPicker(next);
+  const closePicker = () => setPicker(null);
 
   return (
     <>

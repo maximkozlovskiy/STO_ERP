@@ -86,11 +86,10 @@ describe('CreateWorkOrderModal — Escape у вікні вибору (Bug #923)'
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: 'Новий наряд' })).toBeInTheDocument();
   });
-  // GOTCHAS 2026-10-12: у браузері React рендерить між двома слухачами того самого Escape. Коли
-  // слухач вікна вибору стоїть першим, картка бачить уже закрите вікно — прапорець, знятий в
-  // ефекті, її не стримує. Два синхронні act() відтворюють цей рендер між слухачами; таймер ще не
-  // спрацював, тож прапорець мусить триматись.
-  it('прапорець вікна вибору тримається до кінця події, потім Escape закриває картку', async () => {
+  // GOTCHAS 2026-10-12: у браузері React рендерить між слухачами того самого Escape, і картка
+  // бачила вже закрите вікно вибору. Тепер Escape має один слухач (стек шарів): кожна подія закриває
+  // рівно один шар — навіть два Escape підряд без пауз.
+  it('два Escape підряд: перший закриває вікно вибору, другий — картку', async () => {
     const onClose = vi.fn();
     renderWithQueryClient(<CreateWorkOrderModal open onClose={onClose} />);
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/branches'));
@@ -100,21 +99,16 @@ describe('CreateWorkOrderModal — Escape у вікні вибору (Bug #923)'
     act(() => {
       fireEvent.keyDown(document.body, { key: 'Escape' });
     });
-    // Вікно вибору вже закрите (іде анімація виходу) — рендер між слухачами відбувся.
+    // Вікно вибору вже закрите (іде анімація виходу), картка — ні.
     expect(picker).toHaveAttribute('data-state', 'closed');
-    act(() => {
-      fireEvent.keyDown(document.body, { key: 'Escape' });
-    });
     await act(async () => {
       await Promise.resolve();
     });
     expect(onClose).not.toHaveBeenCalled();
 
-    // Контроль: після події прапорець знято, і Escape закриває картку тим самим шляхом.
-    await act(async () => {
-      await new Promise(r => setTimeout(r, 0));
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'Escape' });
     });
-    fireEvent.keyDown(document.body, { key: 'Escape' });
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });

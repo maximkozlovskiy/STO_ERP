@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -147,36 +147,6 @@ export default function RuleFormModal({
   const categoryOverridden = dimension === 'brand';
   const typeOverridden = dimension === 'brand' || dimension === 'category';
 
-  // Escape закриває КОЖНУ відкриту модалку (слухач на document у кожної). Поки над формою
-  // відкрито вибір товару, підтвердження чи картку постачальника, саму форму не закриваємо —
-  // інакше Escape у вкладеній модалці забрав би разом із собою незбережений список товарів.
-  // Прапорець знімається ПІСЛЯ поточної події (setTimeout): якщо слухач вкладеної модалки
-  // спрацьовує першим, React встигає перерендерити форму ще до її слухача, і синхронно знятий
-  // прапорець пропускав той самий Escape до форми (у браузері: додати товар → Escape).
-  const overlayOpenRef = useRef(false);
-  const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const goodsOverlayRef = useRef(false);
-  const supplierOverlayRef = useRef(false);
-  const syncOverlay = useCallback(() => {
-    clearTimeout(overlayTimerRef.current);
-    if (goodsOverlayRef.current || supplierOverlayRef.current) {
-      overlayOpenRef.current = true;
-      return;
-    }
-    overlayTimerRef.current = setTimeout(() => {
-      overlayOpenRef.current = false;
-    }, 0);
-  }, []);
-  useEffect(() => {
-    supplierOverlayRef.current = supplierPickerOpen || supplierDetailOpen;
-    syncOverlay();
-  }, [supplierPickerOpen, supplierDetailOpen, syncOverlay]);
-  useEffect(() => () => clearTimeout(overlayTimerRef.current), []);
-  const closeForm = () => {
-    if (overlayOpenRef.current) return;
-    onClose();
-  };
-
   const set = (patch: Partial<RuleForm>) => setForm(f => ({ ...f, ...patch }));
 
   type SupplierItem = SearchPickerItem;
@@ -287,7 +257,7 @@ export default function RuleFormModal({
     <>
       <Modal
         open={open}
-        onClose={closeForm}
+        onClose={onClose}
         title={initial.name ? t('form.editTitle') : t('form.createTitle')}
         size="xl"
         footer={
@@ -499,10 +469,6 @@ export default function RuleFormModal({
               onChange={goods => set({ goods, goodsTouched: true })}
               load={goodsLoad}
               onRetry={retryGoods}
-              onOverlayOpenChange={isOpen => {
-                goodsOverlayRef.current = isOpen;
-                syncOverlay();
-              }}
             />
 
             {dimension === 'goods' ? (

@@ -73,8 +73,6 @@ interface SendToListButtonProps {
   /** Збережені рядки товарів наряду (з `id`). Одиниця — базова з `procurement.unitByPart`. */
   parts: Array<{ id: string; goodName: string }>;
   procurement: WorkOrderProcurementState | undefined;
-  /** Діалог поверх картки-модалки: картка не закривається тим самим Escape (GOTCHAS 2026-10-12). */
-  onOpenChange?: (open: boolean) => void;
   disabled?: boolean;
 }
 
@@ -88,7 +86,6 @@ export function SendToListButton({
   status,
   parts,
   procurement,
-  onOpenChange,
   disabled,
 }: SendToListButtonProps) {
   const { t } = useTranslation('purchaseLists');
@@ -117,13 +114,9 @@ export function SendToListButton({
         unit: procurement?.unitByPart.get(part.id) ?? null,
       })),
     );
-    onOpenChange?.(true);
     setOpen(true);
   };
-  const close = () => {
-    setOpen(false);
-    onOpenChange?.(false);
-  };
+  const close = () => setOpen(false);
 
   return (
     <>

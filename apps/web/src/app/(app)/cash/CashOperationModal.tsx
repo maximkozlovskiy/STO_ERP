@@ -146,21 +146,8 @@ export function CashOperationModal({
   const [employeeName, setEmployeeName] = useState('');
   const [baseDocumentNumber, setBaseDocumentNumber] = useState('');
   const [picker, setPicker] = useState<Picker>(null);
-  // Кожна модалка слухає Escape на document, і слухач картки може стояти першим: без цього
-  // прапорця Escape у пікері закривав би саму картку разом із введеним. Знімаємо його ПІСЛЯ
-  // події (setTimeout), а не в ефекті — між двома слухачами однієї події React устигає
-  // перерендерити (docs/GOTCHAS.md, 2026-10-12).
-  const pickerOpenRef = useRef(false);
-  const openPicker = (next: Exclude<Picker, null>) => {
-    pickerOpenRef.current = true;
-    setPicker(next);
-  };
-  const closePicker = useCallback(() => {
-    setPicker(null);
-    setTimeout(() => {
-      pickerOpenRef.current = false;
-    }, 0);
-  }, []);
+  const openPicker = (next: Exclude<Picker, null>) => setPicker(next);
+  const closePicker = useCallback(() => setPicker(null), []);
   const [error, setError] = useState('');
 
   // Один ключ на відкриття картки: повтор після обриву на відповіді не створить другу оплату.
@@ -205,7 +192,6 @@ export function CashOperationModal({
     setEmployeeName('');
     setBaseDocumentNumber('');
     setPicker(null);
-    pickerOpenRef.current = false;
     setError('');
     idempotencyKeyRef.current = newIdempotencyKey();
     savingRef.current = false;
@@ -265,7 +251,7 @@ export function CashOperationModal({
     );
   };
   const close = async () => {
-    if (pickerOpenRef.current || createOp.isPending) return;
+    if (createOp.isPending) return;
     if (hasInput()) dirty.markDirty();
     else dirty.resetDirty();
     if (!(await dirty.confirmClose())) return;

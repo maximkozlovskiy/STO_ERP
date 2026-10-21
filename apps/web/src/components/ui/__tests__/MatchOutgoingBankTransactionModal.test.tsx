@@ -40,23 +40,33 @@ vi.mock('@/hooks/api/useInfrastructure', () => ({
   useBranches: () => ({ data: [{ id: 'br-1', name: 'Центральна' }] }),
 }));
 
-// Пікер — стуб: «pick» обирає перший елемент, який повернув fetchItems (тобто реальний URL
-// довідника проходить через apiFetch-мок і його можна перевірити).
-vi.mock('@/components/ui/search-picker-modal', () => ({
-  SearchPickerModal: (p: {
-    open: boolean;
-    title: string;
-    onSelect: (item: { id: string; primary: string }) => void;
-    fetchItems: (q: string) => Promise<{ id: string; primary: string }[]>;
-  }) =>
-    p.open ? (
-      <div data-testid="picker" data-title={p.title}>
-        <button type="button" onClick={() => void p.fetchItems('').then(i => p.onSelect(i[0]!))}>
-          pick
-        </button>
-      </div>
-    ) : null,
-}));
+// Пікер — стуб у справжньому <Modal> (як SearchPickerModal, тож і шар Escape той самий): «pick»
+// обирає перший елемент, який повернув fetchItems (тобто реальний URL довідника проходить через
+// apiFetch-мок і його можна перевірити).
+vi.mock('@/components/ui/search-picker-modal', async () => {
+  const { Modal } = await vi.importActual<typeof import('../modal')>('../modal');
+  return {
+    SearchPickerModal: (p: {
+      open: boolean;
+      title: string;
+      onClose: () => void;
+      onSelect: (item: { id: string; primary: string }) => void;
+      fetchItems: (q: string) => Promise<{ id: string; primary: string }[]>;
+    }) =>
+      p.open ? (
+        <Modal open onClose={p.onClose} title={p.title}>
+          <div data-testid="picker" data-title={p.title}>
+            <button
+              type="button"
+              onClick={() => void p.fetchItems('').then(i => p.onSelect(i[0]!))}
+            >
+              pick
+            </button>
+          </div>
+        </Modal>
+      ) : null,
+  };
+});
 
 import { MatchOutgoingBankTransactionModal } from '../MatchOutgoingBankTransactionModal';
 import { renderWithQueryClient } from '../../../__tests__/query-utils';
@@ -412,8 +422,8 @@ describe('MatchOutgoingBankTransactionModal — SUPPLIER_PAYMENT', () => {
     });
   });
 
-  // Bug #861: Escape у пікері постачальника закривав і саме вікно рознесення.
-  // Mutation-verify: прибрати `pickerOpenRef.current ||` у close → кейс падає.
+  // Bug #861: Escape у пікері постачальника закривав і саме вікно рознесення. Тепер пікер — верхній
+  // шар Escape (useEscapeLayer у Modal).
   it('Escape у пікері постачальника вікна не закриває', async () => {
     mockApi({ candidates: [] });
     const { onClose } = open();
@@ -423,6 +433,7 @@ describe('MatchOutgoingBankTransactionModal — SUPPLIER_PAYMENT', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByTestId('picker')).not.toBeInTheDocument());
   });
 
   it('«Назад» із підтвердження повертає форму без запиту', async () => {

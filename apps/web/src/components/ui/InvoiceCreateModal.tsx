@@ -29,7 +29,6 @@ import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
-import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTabBarContext } from '@/contexts/TabBarContext';
@@ -607,9 +606,6 @@ export function InvoiceCreateModal({
     }
   });
 
-  // Вкладене вікно (вибір, картка контрагента/товару) над карткою: його Escape доходить і сюди —
-  // картка його пропускає (Bug #931, клас Bug #923).
-  const nestedOpenRef = useNestedOpenFlag(cpPickerOpen);
   // Меню статусу й «Зберегти як» — шари над карткою: Escape закриває лише їх (Bug #932, клас Bug #924).
   // Меню видно лише за наявності переходів: інакше перехоплювач «ковтав» би Escape без меню.
   const statusMenuShown = statusMenuOpen && allowedTransitions.length > 0;
@@ -626,7 +622,6 @@ export function InvoiceCreateModal({
     newLineInputRef,
   );
   const handleModalClose = useCallback(async () => {
-    if (nestedOpenRef.current) return;
     if (savingRef.current || transitioningRef.current) return;
     if (!(await dirty.confirmClose())) return;
     onClose();

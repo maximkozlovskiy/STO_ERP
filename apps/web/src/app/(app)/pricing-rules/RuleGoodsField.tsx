@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, Plus, Trash2, Upload, X } from 'lucide-react';
 import { PRICING_RULE_MAX_GOODS } from '@sto/shared';
@@ -37,15 +37,12 @@ export default function RuleGoodsField({
   onChange,
   load,
   onRetry,
-  onOverlayOpenChange,
 }: {
   goods: RuleGood[];
   onChange: (next: RuleGood[]) => void;
   /** Стан довантаження повного списку при редагуванні; для нового правила — `ready`. */
   load: RuleGoodsLoad;
   onRetry: () => void;
-  /** Повідомляє формі, що над нею відкрито модалку вибору товару або підтвердження. */
-  onOverlayOpenChange?: (open: boolean) => void;
 }) {
   const { t } = useTranslation('pricingRules');
   const { confirm, dialogProps } = useConfirm();
@@ -58,14 +55,6 @@ export default function RuleGoodsField({
   const [importSeq, setImportSeq] = useState(0);
   const [notice, setNotice] = useState<Notice | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  const overlayOpen = pickerOpen || dialogProps.open;
-  const overlayCbRef = useRef(onOverlayOpenChange);
-  overlayCbRef.current = onOverlayOpenChange;
-  useEffect(() => {
-    overlayCbRef.current?.(overlayOpen);
-    return () => overlayCbRef.current?.(false);
-  }, [overlayOpen]);
 
   const ready = load.status === 'ready';
   const selectedIds = useMemo(() => goods.map(g => g.id), [goods]);

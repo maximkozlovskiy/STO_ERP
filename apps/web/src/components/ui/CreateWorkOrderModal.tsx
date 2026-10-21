@@ -36,8 +36,7 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConflictCheck } from '@/hooks/useConflictCheck';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
-import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
-import { releaseNestedOpen, useConfirm } from '@/hooks/useConfirm';
+import { useConfirm } from '@/hooks/useConfirm';
 import { useReferenceData } from '@/hooks/useReferenceData';
 import type { Branch } from '@/hooks/useReferenceData';
 import { useStockTotals } from '@/hooks/useStockTotals';
@@ -535,12 +534,6 @@ export function CreateWorkOrderModal({
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
   const [payState, setPayState] = useState<WorkOrderPayState | null>(null);
   const [payOpen, setPayOpen] = useState(false);
-  // Те саме для діалогу «До списку купівлі» над карткою (прапорець знімається після події).
-  const addToListOpenRef = useRef(false);
-  const onAddToListOpenChange = useCallback((isOpen: boolean) => {
-    if (isOpen) addToListOpenRef.current = true;
-    else releaseNestedOpen(addToListOpenRef);
-  }, []);
   // Наряд, відкритий у картці зараз: пізня відповідь для попереднього (вкладки) не пишеться.
   const workOrderIdRef = useRef(workOrderId);
   workOrderIdRef.current = workOrderId;
@@ -572,14 +565,12 @@ export function CreateWorkOrderModal({
     clear: clearConflict,
     conflictWoNumbers,
   } = useConflictCheck();
-  // Підтвердження поверх картки (BR-WO-025): «Ні» чи Escape закривають лише його. Прапорець
-  // `confirmOpenRef` знімається ПІСЛЯ події — інакше той самий Escape закрив би й картку (GOTCHAS
-  // 2026-10-12).
+  // Підтвердження поверх картки (BR-WO-025): «Ні» чи Escape закривають лише його — воно верхній шар
+  // Escape (useEscapeLayer у Modal).
   const {
     confirm: confirmOverCard,
     choose: chooseOverCard,
     dialogProps: confirmDialogProps,
-    openRef: confirmOpenRef,
   } = useConfirm();
   const { minimizeModal } = useTabBarContext();
   const deletedLineIds = useRef<string[]>([]);
@@ -1707,38 +1698,15 @@ export function CreateWorkOrderModal({
     if (open) setSaveAsOpen(false);
   }, [open, workOrderId, setSaveAsOpen]);
 
-  // sto-optimize: stable onClose ref для Modal. Modal має useEffect що додає
-  // document.addEventListener('keydown') з useCallback([onClose]) — кожен новий
-  // ref → effect re-fires → removeEventListener + addEventListener + body
-  // overflow re-write. Без useCallback ця модалка (з частим typing у inputs)
-  // тригерила re-attach на КОЖЕН keystroke.
-  //
   // regression: читаємо `saving`/`transitioning` ВИКЛЮЧНО з ref'ів —
   // вони оновлюються СИНХРОННО у setSavingBoth/setTransitioningBoth ДО React state-flush.
   // Без ref'а closure захоплює застарілий saving=false коли `create()` ще у `await POST`
   // → Modal закривається на Escape всупереч guard'у (race window що ловить test #381).
   //
-  // Бонус: deps = [onClose] (не [saving, transitioning, onClose]) — ref reads не
-  // повинні бути у deps. Stable identity → Modal keydown listener не перевідв'язується
-  // при кожному flip saving/transitioning (раніше re-attach на START + END кожного
-  // save/transition; зараз лише при зміні onClose у parent).
-  // Вікна вибору (клієнт, роботи, послуги, товари), конфлікт рахунку й оплата — вкладені Modal: їхній
-  // Escape доходить і до картки. Прапорець знімається ПІСЛЯ події (GOTCHAS 2026-10-12).
-  const nestedPickerOpen =
-    cpPickerOpen ||
-    workPickerOpen ||
-    servicePickerOpen ||
-    editWorkPickerOpen ||
-    goodPickerOpen ||
-    editGoodPickerOpen ||
-    !!invoiceConflict;
-  const nestedPickerOpenRef = useNestedOpenFlag(nestedPickerOpen || payOpen);
-
+  // Escape у вкладених вікнах (вибір, оплата, «До списку купівлі», підтвердження, конфлікт рахунку)
+  // сюди не доходить — вони вищі шари Escape (Bug #923).
   const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
-    // Escape над вікном оплати, «До списку купівлі», підтвердженням, вікном вибору чи конфлікту
-    // рахунку закриває лише їх (Bug #923: вибір клієнта закривав картку з усім введеним).
-    if (addToListOpenRef.current || confirmOpenRef.current || nestedPickerOpenRef.current) return;
     if (!(await dirty.confirmClose())) return;
     setActiveTab('main');
     onClose();
@@ -2463,7 +2431,6 @@ export function CreateWorkOrderModal({
                         status={currentStatus}
                         parts={savedPartsForProcurement}
                         procurement={procurement}
-                        onOpenChange={onAddToListOpenChange}
                         disabled={saving}
                       />
                     ) : undefined
