@@ -4,6 +4,10 @@
 
 ## Крок 1 — Backend аудит
 
+> **Postgres MCP (лише читання, `.mcp.json`)** — вимір замість здогадки: `get_top_queries` (що реально
+> дороге), `explain_query` (план до/після правки), `analyze_query_indexes` / `analyze_workload_indexes`
+> (чи потрібен індекс). Новий індекс — лише через міграцію (`/sto-database`), не з MCP.
+
 ### 1.1 N+1 запити
 
 ```bash

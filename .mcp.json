@@ -6,6 +6,35 @@
       "env": {
         "PLAYWRIGHT_BASE_URL": "http://localhost:3001"
       }
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headersHelper": "node scripts/mcp/github-auth-headers.cjs"
+    },
+    "postgres": {
+      "command": "wsl",
+      "args": [
+        "-e",
+        "docker",
+        "run",
+        "-i",
+        "--rm",
+        "--network",
+        "host",
+        "-e",
+        "DATABASE_URI",
+        "crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b",
+        "--access-mode=restricted"
+      ],
+      "env": {
+        "DATABASE_URI": "${STO_DB_READONLY_URI:-}",
+        "WSLENV": "DATABASE_URI"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@4.4.4"]
     }
   }
 }
