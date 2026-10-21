@@ -1713,10 +1713,33 @@ export function CreateWorkOrderModal({
   // повинні бути у deps. Stable identity → Modal keydown listener не перевідв'язується
   // при кожному flip saving/transitioning (раніше re-attach на START + END кожного
   // save/transition; зараз лише при зміні onClose у parent).
+  // Вікна вибору (клієнт, роботи, послуги, товари) і конфлікт рахунку — вкладені Modal: їхній Escape
+  // доходить і до картки. Ref оновлюється після рендера, тож під час події Escape він ще true —
+  // відкладене зняття (`releaseNestedOpen`) тут не потрібне.
+  const nestedPickerOpen =
+    cpPickerOpen ||
+    workPickerOpen ||
+    servicePickerOpen ||
+    editWorkPickerOpen ||
+    goodPickerOpen ||
+    editGoodPickerOpen ||
+    !!invoiceConflict;
+  const nestedPickerOpenRef = useRef(false);
+  useEffect(() => {
+    nestedPickerOpenRef.current = nestedPickerOpen;
+  }, [nestedPickerOpen]);
+
   const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
-    // Escape над вікном оплати, «До списку купівлі» чи підтвердженням закриває лише їх.
-    if (payOpenRef.current || addToListOpenRef.current || confirmOpenRef.current) return;
+    // Escape над вікном оплати, «До списку купівлі», підтвердженням, вікном вибору чи конфлікту
+    // рахунку закриває лише їх (Bug #923: вибір клієнта закривав картку з усім введеним).
+    if (
+      payOpenRef.current ||
+      addToListOpenRef.current ||
+      confirmOpenRef.current ||
+      nestedPickerOpenRef.current
+    )
+      return;
     if (!(await dirty.confirmClose())) return;
     setActiveTab('main');
     onClose();
