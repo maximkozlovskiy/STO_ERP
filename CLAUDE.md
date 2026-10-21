@@ -518,6 +518,15 @@ dev-сервер `:3001` заради Playwright не зупиняти.
 Нова машина: `powershell -File scripts/mcp/setup-readonly-db.ps1` (роль + змінна `STO_DB_READONLY_URI`),
 перезапуск VS Code; GitHub бере токен, який git уже має. Стан серверів — `claude mcp list`.
 
+**`sentry`** — на рівні користувача (вхід особистий, тому не в `.mcp.json`): організація `for-aself`
+(регіон EU), проєкти `node` (api) і `javascript` (web). Коли: баг-репорт «у клієнта впало» чи перед
+виправленням помилки з продакшену — `search_issues` / `search_events` / `get_sentry_resource` дають
+стек і частоту. Межа: лише читання — `update_issue` (resolve, assign) тільки на прохання власника.
+Підключення: `npx -y @sentry/mcp-server@0.42.0 auth login` (код пристрою, підтвердити в браузері;
+сесія ~30 днів, далі повторити) і `claude mcp add sentry -s user -- npx -y @sentry/mcp-server@0.42.0`.
+Токен організації `sntrys_…` (для source maps у CI) MCP не підходить. SDK Sentry у коді api/web поки
+не підключено (`SENTRY_DSN` у схемі змінних не використовується) — подій із застосунку немає.
+
 ## Безперервне вдосконалення скілів (ОБОВ'ЯЗКОВО)
 
 Після кожного запуску `/sto-review` або `/sto-tester` — запитай себе:
