@@ -312,20 +312,26 @@ export class PurchaseListLinkService {
   /**
    * BR-SCON-013: «Повернути непідтверджене в список» — `qty` з ORDERED-позиції замовлення
    * повертається в OPEN БЕЗ пропозиції (постачальник її не підтвердив). Ціла неотримана
-   * позиція — сама стає OPEN; частина — відділяється (`splitOff` без знімка).
+   * позиція — сама стає OPEN; частина — відділяється (`splitOff` без знімка). Наряд позиції вже
+   * завершено, скасовано чи видалено — повернене стає «Скасовано», а не «Не замовлено», як решта
+   * при скасуванні й прийманні (BR-PL-010, 012; Bug #912).
    */
   async releaseFromOrder(tx: Tx, orgId: string, item: ItemRow, qty: number): Promise<void> {
     const rest = Math.min(qty, undelivered(item));
     if (rest <= QTY_EPSILON) return;
+    const reopen =
+      item.workOrderId === null ||
+      (await this.activeWorkOrderIds(tx, orgId, [item])).has(item.workOrderId);
+    const status = reopen ? 'OPEN' : 'CANCELLED';
     if (item.receivedQty <= QTY_EPSILON && rest >= item.quantity - QTY_EPSILON) {
       await this.casItem(tx, orgId, item, {
-        status: 'OPEN',
+        status,
         purchaseOrderId: null,
         ...CLEAR_OFFER_SNAPSHOT,
       });
       return;
     }
-    await this.splitOff(tx, orgId, item, rest, { status: 'OPEN', copySnapshot: false });
+    await this.splitOff(tx, orgId, item, rest, { status, copySnapshot: false });
   }
 
   /** Зміна позиції за умовою «стан не змінився» (BR-PL-005); інакше 409 і відкат. */

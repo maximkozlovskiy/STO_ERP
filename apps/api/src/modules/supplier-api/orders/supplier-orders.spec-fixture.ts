@@ -121,10 +121,14 @@ export function ordersHarness(
     settings?: Partial<typeof SETTINGS>;
     adapter?: SupplierAdapter;
     connection?: MemRow;
+    workOrders?: MemRow[];
+    parts?: MemRow[];
   } = {},
 ) {
   const h = procurementHarness({
     items: opts.items ?? [offerItem('i1')],
+    workOrders: opts.workOrders,
+    parts: opts.parts,
     orgSettings: [
       { orgId: ORG, supplierOrderSendMode: opts.settings?.supplierOrderSendMode ?? 'MANUAL' },
     ],

@@ -11,6 +11,7 @@ import {
   ORG,
   SETTINGS,
 } from './supplier-orders.spec-fixture';
+import { WO_A, partRow, woRow } from '../../purchase-lists/purchase-lists.spec-fixture';
 
 /**
  * Відправка замовлення в API постачальника (BR-SCON-009…011, BR-PO-011): кнопка, outbox,
@@ -505,6 +506,71 @@ describe('BR-SCON-013 / BR-SCON-014 / BR-PO-012', () => {
     await expect(x.service.releaseUnconfirmed(ORG, poId)).rejects.toThrow(
       'Непідтвердженої кількості немає',
     );
+  });
+
+  // guards: BR-SCON-013
+  it.each([
+    ['скасовано', { status: 'CANCELLED' }],
+    ['завершено', { status: 'COMPLETED' }],
+    ['видалено', { status: 'APPROVED', deletedAt: new Date('2026-10-20T09:00:00Z') }],
+  ])(
+    '«Повернути непідтверджене»: наряд позиції %s → повернене «Скасовано», не «Не замовлено» (Bug #912)',
+    async (_state, wo) => {
+      const fa = fakeAdapter({
+        result: {
+          status: 'CONFIRMED',
+          statusRaw: 'ok',
+          lines: [{ supplierItemId: 'p1', warehouseCode: 'w1', qtyConfirmed: 1 }],
+        },
+      });
+      const x = ordersHarness({
+        adapter: fa.adapter,
+        items: [
+          offerItem('i1', { source: 'WORK_ORDER', workOrderId: WO_A, workOrderPartId: 'pa' }),
+        ],
+        workOrders: [woRow(WO_A, { status: 'APPROVED' })],
+        parts: [partRow('pa', WO_A, { quantity: 4 })],
+      });
+      const poId = await x.draftFromItems();
+      await x.service.send(ORG, poId);
+      await x.sender.run(x.job(poId), undefined);
+      Object.assign(x.t.workOrder.rows[0], wo);
+
+      expect((await x.service.releaseUnconfirmed(ORG, poId, 'OWNER')).released).toBe(3);
+
+      const back = x.h.liveItems().find(r => r.id !== 'i1')!;
+      expect(back).toMatchObject({ status: 'CANCELLED', quantity: 3, workOrderId: WO_A });
+      expect(back.purchaseOrderId ?? null).toBeNull();
+      expect(x.h.liveItems().filter(r => r.status === 'OPEN')).toEqual([]);
+    },
+  );
+
+  // guards: BR-SCON-013
+  it('«Повернути непідтверджене»: потребу наряду зменшили, поки замовлення в постачальника → OPEN лише на непокрите (Bug #912)', async () => {
+    const fa = fakeAdapter({
+      result: {
+        status: 'CONFIRMED',
+        statusRaw: 'ok',
+        lines: [{ supplierItemId: 'p1', warehouseCode: 'w1', qtyConfirmed: 1 }],
+      },
+    });
+    const x = ordersHarness({
+      adapter: fa.adapter,
+      items: [offerItem('i1', { source: 'WORK_ORDER', workOrderId: WO_A, workOrderPartId: 'pa' })],
+      workOrders: [woRow(WO_A, { status: 'APPROVED' })],
+      parts: [partRow('pa', WO_A, { quantity: 4 })],
+    });
+    const poId = await x.draftFromItems();
+    await x.service.send(ORG, poId);
+    await x.sender.run(x.job(poId), undefined);
+    x.t.workOrderPart.rows[0].quantity = 2; // 4 → 2: ORDERED не урізаються (BR-PL-013)
+
+    await x.service.releaseUnconfirmed(ORG, poId, 'OWNER');
+
+    // Підтверджено 1 (ORDERED) + OPEN мусить дати рівно потребу 2, а не 1 + 3.
+    expect(x.h.item('i1')).toMatchObject({ status: 'ORDERED', quantity: 1 });
+    const open = x.h.liveItems().filter(r => r.status === 'OPEN');
+    expect(open.reduce((s, r) => s + (r.quantity as number), 0)).toBe(1);
   });
 
   // guards: BR-SCON-014

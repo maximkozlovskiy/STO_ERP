@@ -13,6 +13,7 @@ import {
   PurchaseListLinkService,
   undelivered,
 } from '../../purchase-lists/purchase-list-link.service';
+import { lockWorkOrdersForUpdate } from '../../work-orders/work-order-stock-requirements';
 import { SupplierAdapterRegistry } from '../adapters/supplier-adapter-registry';
 import { parseOptions } from '../connections/supplier-connection-context';
 import {
@@ -353,8 +354,21 @@ export class SupplierOrdersService {
     await this.loadPo(this.prisma, orgId, purchaseOrderId);
     const released = await this.prisma.$transaction(
       async tx => {
+        // Наряди позицій блокуються ДО читання й зміни позицій (за id) — той самий порядок, що в
+        // прийманні й переходах наряду: повернене звіряється з потребою наряду нижче (Bug #912).
+        const woRows = await tx.purchaseListItem.findMany({
+          where: { orgId, purchaseOrderId, status: 'ORDERED', deletedAt: null },
+          select: { workOrderId: true },
+          take: 1000,
+        });
+        await lockWorkOrdersForUpdate(
+          tx,
+          orgId,
+          woRows.map(r => r.workOrderId).filter((id): id is string => id !== null),
+        );
         const excess = await this.unconfirmed(tx, orgId, purchaseOrderId);
         let total = 0;
+        const touchedWo = new Set<string>();
         for (const { items, qty } of excess.values()) {
           let rest = qty;
           for (const item of items) {
@@ -362,11 +376,15 @@ export class SupplierOrdersService {
             const cut = Math.min(rest, undelivered(item));
             if (cut <= EPS) continue;
             await this.links.releaseFromOrder(tx, orgId, item, cut);
+            if (item.workOrderId) touchedWo.add(item.workOrderId);
             rest -= cut;
             total += cut;
           }
         }
         if (total <= EPS) throw new BadRequestException(err('err.supplierApi.nothingToRelease'));
+        // Повернене в OPEN не покриває більше, ніж наряду ще треба: потребу могли зменшити, поки
+        // замовлення було в постачальника (ORDERED тоді не урізаються, BR-PL-013).
+        for (const woId of touchedWo) await this.links.onWorkOrderPartsChanged(tx, orgId, woId);
         return total;
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
