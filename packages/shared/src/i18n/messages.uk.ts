@@ -682,6 +682,8 @@ export const uk: Record<string, string> = {
   'err.calendar.employeeBusyNextDay': 'Співробітник вже зайнятий на наступний день',
   'err.calendar.slotSplitTwoDays': 'Слот розбитий на 2 дні — редагуйте кожен окремо',
   'err.calendar.slotNotFound': 'Слот не знайдено',
+  'err.calendar.serviceSlotNoClient':
+    "Службовий запис (обслуговування, перерва, нарада) не прив'язується до клієнта, автомобіля чи наряду",
   'err.calendar.invalidTimeInterval': 'Невірний інтервал часу',
   'err.calendar.invalidDateFormat': 'Невірний формат дати',
   'err.list.invalidDateFilter': 'Невірна дата у відборі: очікується РРРР-ММ-ДД',

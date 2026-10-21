@@ -699,6 +699,8 @@ export const en: Record<string, string> = {
   'err.calendar.employeeBusyNextDay': 'The employee is already busy on the next day',
   'err.calendar.slotSplitTwoDays': 'The slot spans 2 days — edit each one separately',
   'err.calendar.slotNotFound': 'Slot not found',
+  'err.calendar.serviceSlotNoClient':
+    'A service record (maintenance, break, meeting) cannot be linked to a client, vehicle or work order',
   'err.calendar.invalidTimeInterval': 'Invalid time interval',
   'err.calendar.invalidDateFormat': 'Invalid date format',
   'err.list.invalidDateFilter': 'Invalid date in the filter: expected YYYY-MM-DD',
