@@ -81,7 +81,10 @@
   /* ─── Border / Input ─── */
   --color-border:       hsl(214 32% 91%);
   --color-border-hover: hsl(214 32% 80%);
-  --color-input:        hsl(214 32% 91%);
+  /* Рамка поля вводу (Input, Select, пікери): ≥ 3:1 проти білого й фону сторінки (WCAG 1.4.11).
+     Розділювачі таблиць і карток лишаються на --color-border. */
+  --color-input:        hsl(215 20% 55%);
+  --color-input-hover:  hsl(215 20% 42%);
   --color-ring:         var(--color-brand-500);
 
   /* ─── Sidebar (dark navy) ─── */
@@ -440,7 +443,8 @@ button, a, input, select, textarea {
   --color-foreground-faint:   hsl(215 20% 45%);
   --color-border:             hsl(222 35% 20%);
   --color-border-hover:       hsl(222 35% 32%);
-  --color-input:              hsl(222 35% 20%);
+  --color-input:              hsl(215 16% 46%);
+  --color-input-hover:        hsl(215 16% 58%);
   --color-secondary:          hsl(222 35% 16%);
   --color-secondary-foreground: hsl(213 31% 91%);
   --color-muted:              hsl(222 35% 16%);
@@ -477,13 +481,14 @@ button, a, input, select, textarea {
 .dark textarea {
   background-color: hsl(222 47% 14%) !important;
   color: hsl(213 31% 91%);
-  border-color: hsl(222 35% 24%);
+  /* ≥ 3:1 і проти поля (14%), і проти картки (11%) — WCAG 1.4.11 */
+  border-color: var(--color-input);
 }
 
 .dark input:not([type="checkbox"]):not([type="radio"]):hover,
 .dark select:hover,
 .dark textarea:hover {
-  border-color: hsl(222 35% 34%);
+  border-color: var(--color-input-hover);
 }
 
 .dark input:not([type="checkbox"]):not([type="radio"]):focus,
@@ -516,6 +521,8 @@ button, a, input, select, textarea {
     --color-foreground-faint:   hsl(215 20% 45%);
     --color-border:             hsl(222 35% 20%);
     --color-border-hover:       hsl(222 35% 30%);
+    --color-input:              hsl(215 16% 46%);
+    --color-input-hover:        hsl(215 16% 58%);
     --color-secondary:          hsl(222 35% 16%);
     --color-muted:              hsl(222 35% 16%);
     --color-card:               hsl(222 47% 11%);

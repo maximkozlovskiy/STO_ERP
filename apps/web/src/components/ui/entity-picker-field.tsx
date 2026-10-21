@@ -207,7 +207,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
     <div
       ref={containerRef}
       className={cn(
-        'relative flex items-center gap-1 rounded border border-border bg-surface px-3 h-9 min-w-0',
+        'relative flex items-center gap-1 rounded border border-input bg-surface px-3 h-9 min-w-0',
         className,
       )}
     >

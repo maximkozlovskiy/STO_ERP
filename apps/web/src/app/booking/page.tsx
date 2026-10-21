@@ -180,7 +180,7 @@ export default function BookingPage() {
                     className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-colors ${
                       selectedBranch?.id === b.id
                         ? 'border-primary bg-primary/10 text-foreground'
-                        : 'border-border bg-input text-foreground hover:bg-secondary'
+                        : 'border-border bg-surface text-foreground hover:bg-secondary'
                     }`}
                   >
                     <div className="font-medium">{b.name}</div>
@@ -235,7 +235,7 @@ export default function BookingPage() {
                           className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
                             isSelected
                               ? 'border-primary bg-primary/10 text-foreground font-medium'
-                              : 'border-border bg-input text-foreground hover:bg-secondary'
+                              : 'border-border bg-surface text-foreground hover:bg-secondary'
                           }`}
                         >
                           {SLOT_TIME_FMT.format(new Date(s.startAt))}

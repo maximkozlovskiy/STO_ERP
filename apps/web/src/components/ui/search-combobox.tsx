@@ -251,7 +251,7 @@ export function SearchCombobox<T extends { id: string }>({
           <div
             className={cn(
               'flex items-center h-9 w-full rounded border text-[14px] text-foreground bg-surface px-3 pr-8',
-              'border-border',
+              'border-input',
               hasError && 'border-destructive',
               disabled && 'opacity-60',
             )}
@@ -273,7 +273,7 @@ export function SearchCombobox<T extends { id: string }>({
           <div
             className={cn(
               'flex items-center h-9 w-full rounded border text-[14px] text-muted-foreground bg-surface px-3',
-              'border-border',
+              'border-input',
               hasError && 'border-destructive',
               disabled && 'opacity-60',
             )}
@@ -310,7 +310,7 @@ export function SearchCombobox<T extends { id: string }>({
               className={cn(
                 'h-9 w-full rounded border text-[14px] text-foreground bg-surface',
                 'pl-8 pr-8 py-2 outline-none transition-all duration-150',
-                'border-border hover:border-border-hover',
+                'border-input hover:border-input-hover',
                 'focus:border-primary focus:ring-3 focus:ring-brand-100',
                 'disabled:opacity-60 disabled:cursor-not-allowed',
                 hasError && 'border-destructive',

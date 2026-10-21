@@ -217,7 +217,7 @@ export default function ExchangeRatesTab() {
               onChange={e =>
                 setNbuFetchHour(Math.max(0, Math.min(23, Math.floor(Number(e.target.value)))))
               }
-              className="w-20 h-8 px-2 text-[13px] border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-20 h-8 px-2 text-[13px] border border-input rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
             <p className="text-xs text-muted-foreground mt-1">
               {t('exchangeRates.fetchHourDaily', { hour: nbuFetchHour })}

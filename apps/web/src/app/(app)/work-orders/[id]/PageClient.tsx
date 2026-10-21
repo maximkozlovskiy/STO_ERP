@@ -1217,7 +1217,7 @@ export default function WorkOrderCardPage() {
                         };
                         setInspectionPoints(pts);
                       }}
-                      className="w-full h-8 rounded-lg border border-border bg-input px-2 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="w-full h-8 rounded-lg border border-input bg-surface px-2 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="OK">{t('detail.inspection.statusOk')}</option>
                       <option value="WARN">{t('detail.inspection.statusWarn')}</option>

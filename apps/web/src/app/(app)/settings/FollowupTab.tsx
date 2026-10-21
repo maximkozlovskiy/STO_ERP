@@ -88,7 +88,7 @@ export default function FollowupTab() {
                 followUpDays: Math.max(30, Math.min(365, Number(e.target.value))),
               })
             }
-            className="w-32 px-3 py-2 text-sm border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="w-32 px-3 py-2 text-sm border border-input rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
           <p className="text-xs text-muted-foreground mt-1.5">{t('followup.daysHint')}</p>
         </div>

@@ -283,7 +283,7 @@ export function DateTimePickerInput({
             'w-full h-9 rounded border bg-surface px-3 text-[14px] text-foreground placeholder:text-muted-foreground cursor-pointer',
             // Місце під іконку календаря; з кнопкою очищення — під обидві.
             showClear ? 'pr-14' : 'pr-9',
-            'border-border hover:border-border-hover',
+            'border-input hover:border-input-hover',
             'focus:outline-none focus:border-primary focus:ring-3 focus:ring-brand-100 transition-all duration-150',
             disabled && 'opacity-60 cursor-not-allowed bg-secondary',
             inputClassName,
@@ -359,7 +359,7 @@ export function DateTimePickerInput({
                     aria-label="Година"
                     value={selectedHour}
                     onChange={e => applyTime(e.target.value, selectedMinute)}
-                    className="h-9 rounded border border-border bg-surface text-[14px] text-foreground px-2 focus:outline-none focus:border-primary focus:ring-3 focus:ring-brand-100"
+                    className="h-9 rounded border border-input bg-surface text-[14px] text-foreground px-2 focus:outline-none focus:border-primary focus:ring-3 focus:ring-brand-100"
                   >
                     {hourOptions.map(h => (
                       <option key={h} value={h} disabled={!availableHours.includes(h)}>
@@ -375,7 +375,7 @@ export function DateTimePickerInput({
                     aria-label="Хвилини"
                     value={selectedMinute}
                     onChange={e => applyTime(selectedHour, e.target.value)}
-                    className="h-9 rounded border border-border bg-surface text-[14px] text-foreground px-2 focus:outline-none focus:border-primary focus:ring-3 focus:ring-brand-100"
+                    className="h-9 rounded border border-input bg-surface text-[14px] text-foreground px-2 focus:outline-none focus:border-primary focus:ring-3 focus:ring-brand-100"
                   >
                     {minuteOptions.map(m => (
                       <option key={m} value={m} disabled={!availableMinutes.includes(m)}>

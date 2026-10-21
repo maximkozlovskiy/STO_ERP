@@ -35,7 +35,7 @@ function fmtDateTime(iso: string): string {
 }
 
 const inputCls =
-  'px-3 py-2 text-sm border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20';
+  'px-3 py-2 text-sm border border-input rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20';
 
 export default function IntegrationLogsTab() {
   const { t } = useTranslation('settings');

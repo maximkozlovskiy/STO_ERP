@@ -202,11 +202,13 @@ export function DatePickerInput({
           disabled={disabled}
           maxLength={10}
           className={cn(
-            'w-full h-9 rounded-lg border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground',
+            'w-full h-9 rounded-lg border bg-surface px-3 text-sm text-foreground placeholder:text-muted-foreground',
             // Місце під іконку календаря; з кнопкою очищення — під обидві.
             showClear ? 'pr-14' : 'pr-9',
             'focus:outline-none focus:ring-2 focus:ring-ring transition-colors',
-            errorMessage ? 'border-destructive-border focus:ring-destructive/20' : 'border-border',
+            errorMessage
+              ? 'border-destructive-border focus:ring-destructive/20'
+              : 'border-input hover:border-input-hover',
             disabled && 'opacity-50 cursor-not-allowed',
           )}
         />
