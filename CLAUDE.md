@@ -527,6 +527,11 @@ dev-сервер `:3001` заради Playwright не зупиняти.
 
 Нова машина: `powershell -File scripts/mcp/setup-readonly-db.ps1` (роль + змінна `STO_DB_READONLY_URI`),
 перезапуск VS Code; GitHub бере токен, який git уже має. Стан серверів — `claude mcp list`.
+GitHub працює лише в ДОВІРЕНІЙ теці: `headersHelper` — код із репозиторію, і без довіри Claude Code його
+не запускає, а GitHub без заголовка пропонує OAuth, якого Claude Code тут не вміє («does not support
+dynamic client registration»). Довіра — діалог при першому `claude` у теці (у VS Code його може не бути:
+тоді `hasTrustDialogAccepted` у `~/.claude.json` для обох написань шляху, `E:/` і `e:/`).
+Діагностика — журнал `%LOCALAPPDATA%/claude-cli-nodejs/Cache/<тека>/mcp-logs-<сервер>/`.
 
 **`sentry`** — на рівні користувача (вхід особистий, тому не в `.mcp.json`): організація `for-aself`
 (регіон EU), проєкти `node` (api) і `javascript` (web). Коли: баг-репорт «у клієнта впало» чи перед
