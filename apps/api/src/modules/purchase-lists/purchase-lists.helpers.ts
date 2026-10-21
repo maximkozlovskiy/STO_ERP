@@ -1,7 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import type { Prisma, PurchaseList } from '@prisma/client';
-import { translateError } from '@sto/shared';
-import { getLocale } from '../../common/tenant/tenant-context';
+import { err } from '../../common/utils/err';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import {
   ITEM_INCLUDE,
@@ -19,8 +18,13 @@ export const PL_READ_ROLES = ['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST'] a
 /** Ролі редагування списків і позицій (BR-PL-015). */
 export const PL_WRITE_ROLES = ['OWNER', 'ADMIN', 'STOREKEEPER'] as const;
 
-export const err = (key: string, params?: Record<string, string | number>): string =>
-  translateError(key, getLocale(), params);
+export { err };
+
+/** Відкрита позиція: ще не в замовленні й не видалена — лише її можна змінювати (BR-PL-005). */
+export const OPEN_ITEM_WHERE = { status: 'OPEN' as const, purchaseOrderId: null, deletedAt: null };
+
+export const isItemOpen = (item: { status: string; purchaseOrderId: string | null }): boolean =>
+  item.status === 'OPEN' && item.purchaseOrderId === null;
 
 export const conflict = (): ConflictException =>
   new ConflictException(err('err.purchaseList.concurrentChange'));

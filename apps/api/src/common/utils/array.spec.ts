@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deduplicateBy } from './array';
+import { deduplicateBy, groupBy } from './array';
 
 // Bug #487: regression-guard для нового utility — інші файли common/utils/
 // (fsm/math/pagination/url-guard) мають парні spec. Без unit-тесту майбутній refactor
@@ -89,5 +89,24 @@ describe('deduplicateBy', () => {
     const before = JSON.stringify(items);
     deduplicateBy(items, x => x.id);
     expect(JSON.stringify(items)).toBe(before);
+  });
+});
+
+describe('groupBy', () => {
+  it('групує за ключем, зберігаючи порядок елементів і порядок першої появи ключів', () => {
+    const rows = [
+      { k: 'b', v: 1 },
+      { k: 'a', v: 2 },
+      { k: 'b', v: 3 },
+    ];
+    const g = groupBy(rows, r => r.k);
+    expect([...g.keys()]).toEqual(['b', 'a']);
+    expect(g.get('b')?.map(r => r.v)).toEqual([1, 3]);
+    expect(g.get('a')?.map(r => r.v)).toEqual([2]);
+  });
+
+  it('порожній вхід — порожня мапа; приймає будь-який Iterable', () => {
+    expect(groupBy([], x => x).size).toBe(0);
+    expect(groupBy(new Set([1, 2, 3]), x => x % 2).get(1)).toEqual([1, 3]);
   });
 });

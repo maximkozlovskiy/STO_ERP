@@ -122,6 +122,41 @@ export const PAYMENT_CREATE_ROLES: readonly string[] = Object.freeze([
  * наряду для інших ролей не рендериться і не запитується — інакше 403 у консолі.
  */
 export const AUDIT_VIEW_ROLES: readonly string[] = Object.freeze(['OWNER', 'ADMIN', 'ACCOUNTANT']);
+/**
+ * Ролі, яким видно закупівельні ціни: собівартість товару, ціна рядка наряду, очікувана ціна й
+ * ціна пропозиції позиції списку купівлі (BR-SOFR-010). Решта ролей отримує `null` (fail-closed).
+ */
+export const PURCHASE_PRICE_VISIBLE_ROLES: readonly string[] = Object.freeze([
+  'OWNER',
+  'ADMIN',
+  'STOREKEEPER',
+  'ACCOUNTANT',
+]);
+/** Перегляд «Управління купівлями» й надсилання товарів наряду в список (BR-PL-015). */
+export const PROCUREMENT_READ_ROLES: readonly string[] = Object.freeze([
+  'OWNER',
+  'ADMIN',
+  'STOREKEEPER',
+  'RECEPTIONIST',
+]);
+/**
+ * Редагування списків і позицій, пропозиції постачальників і автопідбір, відправка замовлення
+ * в API постачальника (BR-PL-015, BR-SOFR-002, BR-SCON-009).
+ */
+export const PROCUREMENT_WRITE_ROLES: readonly string[] = Object.freeze([
+  'OWNER',
+  'ADMIN',
+  'STOREKEEPER',
+]);
+/** Перегляд стану замовлення в API постачальника (блок у картці замовлення). */
+export const SUPPLIER_API_READ_ROLES: readonly string[] = Object.freeze([
+  'OWNER',
+  'ADMIN',
+  'STOREKEEPER',
+  'ACCOUNTANT',
+]);
+/** Налаштування підключень до API постачальників. */
+export const SUPPLIER_CONNECTION_ADMIN_ROLES: readonly string[] = Object.freeze(['OWNER', 'ADMIN']);
 
 // Single source of truth: must mirror backend `WORK_ORDER_TRANSITIONS`
 // in apps/api/src/modules/work-orders/work-orders.fsm.ts. Backend is authoritative —

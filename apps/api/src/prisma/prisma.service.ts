@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { withTenantGuard } from './tenant-guard.extension';
 import { createPgAdapter } from './pg-adapter';
@@ -224,6 +225,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     super({
       adapter: createPgAdapter(),
       log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+      // Тайм-аут інтерактивної транзакції за замовчуванням — для ВСІХ `$transaction(async tx => …)`,
+      // а не лише тих, де виклик передав `{ timeout }` (§5). Довші — явно в місці виклику.
+      transactionOptions: { timeout: TRANSACTION_TIMEOUT_MS },
     });
   }
 

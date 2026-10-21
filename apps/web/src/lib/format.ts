@@ -17,7 +17,7 @@ import { getCurrentIntlLocale } from '@/i18n/locale';
 const KYIV_TZ = 'Europe/Kyiv';
 
 // Per-locale memo-кеші: форматер будується раз на локаль, далі лише `.format()`.
-function memoByLocale<T>(build: (intlLocale: string) => T): () => T {
+export function memoByLocale<T>(build: (intlLocale: string) => T): () => T {
   const cache = new Map<string, T>();
   return () => {
     const loc = getCurrentIntlLocale();
