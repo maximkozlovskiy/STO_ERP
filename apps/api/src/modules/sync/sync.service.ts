@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SyncRecord, translateError } from '@sto/shared';
-import { getLocale } from '../../common/tenant/tenant-context';
+import { SyncRecord } from '@sto/shared';
+import { err } from '../../common/utils/err';
 import {
   canWriteCalendar,
   findMechanicOnLift,
@@ -210,8 +210,8 @@ export class SyncService {
               payload,
             };
           });
-        } catch (err) {
-          this.logger.warn(`pull: skipped table ${table}: ${err}`);
+        } catch (e) {
+          this.logger.warn(`pull: skipped table ${table}: ${e}`);
           return [];
         }
       }),
@@ -245,9 +245,9 @@ export class SyncService {
       try {
         await this.applyRecord(orgId, rec, role, userId);
         accepted++;
-      } catch (err) {
+      } catch (e) {
         conflicts++;
-        this.logger.error(`push: conflict on ${rec.table}/${rec.id}: ${err}`);
+        this.logger.error(`push: conflict on ${rec.table}/${rec.id}: ${e}`);
         await this.prisma.syncJob.create({
           data: {
             orgId,
@@ -257,7 +257,7 @@ export class SyncService {
             syncVersion: BigInt(rec.syncVersion),
             payload: rec.payload as Prisma.InputJsonValue,
             status: 'FAILED',
-            lastError: err instanceof Error ? err.message : 'Конфлікт під час синхронізації',
+            lastError: e instanceof Error ? e.message : 'Конфлікт під час синхронізації',
           },
         });
       }
@@ -279,7 +279,7 @@ export class SyncService {
     // BR-CAL-010: записи календаря змінюють лише власник, адміністратор і приймальня — і з
     // планшета теж, будь-якою операцією.
     if (isSlot && !canWriteCalendar(role)) {
-      throw new Error(translateError('err.calendar.syncRoleForbidden', getLocale()));
+      throw new Error(err('err.calendar.syncRoleForbidden'));
     }
 
     // Колонки запису календаря — лише для `calendar_slots`: у контрагента, авто й гаража їх
@@ -444,7 +444,7 @@ export class SyncService {
     const mechanic = await findMechanicOnLift(this.prisma, orgId, employeeId, liftId);
     if (!mechanic.ok) {
       // Та сама причина, що й у 400 API: «у відпустці» окремо від «не закріплений».
-      throw new Error(translateError(MECHANIC_REJECT_KEY[mechanic.reason], getLocale()));
+      throw new Error(err(MECHANIC_REJECT_KEY[mechanic.reason]));
     }
   }
 
@@ -492,7 +492,7 @@ export class SyncService {
           // показується, але EXCLUDE `calendar_slots_no_overlap` його бачить — невидимий тримач
           // підйомника (409 на вільному з вигляду часі).
           if (isWorkOrder && record.status === 'CANCELLED') {
-            throw new Error(translateError('err.calendar.workOrderCancelled', getLocale()));
+            throw new Error(err('err.calendar.workOrderCancelled'));
           }
         }),
     );

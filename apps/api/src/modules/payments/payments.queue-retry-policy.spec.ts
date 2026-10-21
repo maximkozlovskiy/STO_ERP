@@ -166,11 +166,77 @@ function prop(obj: ts.ObjectLiteralExpression, name: string): ts.Expression | un
 }
 
 /**
- * Опції задач `addBulk(...)`: масив об'єктів-літералів або `xs.map(x => ({ …, opts }))`. Усі задачі
- * мусять мати ОДНАКОВИЙ літерал `opts` (інакше сторож не може судити виклик одним сайтом) — тоді
- * повертається він, інакше undefined (виклик іде в нерозібрані).
+ * Фабрики задач файлу: `const placeJob = (…) => ({ name, data, opts: {…} })` на рівні модуля — одне
+ * джерело опцій для `add()` і `addBulk()` того самого виду задач (simplify 2026-10-21). Сторож судить
+ * літерал `opts` фабрики так само, як літерал біля виклику.
  */
-function bulkJobOpts(arg: ts.Expression | undefined): ts.Expression | undefined {
+type JobFactories = Map<string, ts.ObjectLiteralExpression>;
+
+function collectJobFactories(sf: ts.SourceFile): JobFactories {
+  const out: JobFactories = new Map();
+  for (const st of sf.statements) {
+    if (!ts.isVariableStatement(st)) continue;
+    for (const d of st.declarationList.declarations) {
+      if (!ts.isIdentifier(d.name) || !d.initializer || !ts.isArrowFunction(d.initializer))
+        continue;
+      let body: ts.Node = d.initializer.body;
+      while (ts.isParenthesizedExpression(body)) body = body.expression;
+      if (ts.isObjectLiteralExpression(body) && prop(body, 'opts')) out.set(d.name.text, body);
+    }
+  }
+  return out;
+}
+
+/** Об'єкт задачі: літерал або виклик фабрики файлу (`placeJob(orgId, id)`). */
+function jobLiteral(
+  expr: ts.Expression,
+  factories: JobFactories,
+): ts.ObjectLiteralExpression | undefined {
+  while (ts.isParenthesizedExpression(expr)) expr = expr.expression;
+  if (ts.isObjectLiteralExpression(expr)) return expr;
+  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression)) {
+    return factories.get(expr.expression.text);
+  }
+  return undefined;
+}
+
+/**
+ * Третій аргумент `add(name, data, opts)`: літерал, або змінна з деструктуризації виклику фабрики в
+ * тій самій функції (`const { name, data, opts } = placeJob(…)`).
+ */
+function addOpts(call: ts.CallExpression, factories: JobFactories): ts.Expression | undefined {
+  const arg = call.arguments[2];
+  if (!arg || !ts.isIdentifier(arg)) return arg;
+  let fn: ts.Node | undefined = call.parent;
+  while (fn && !ts.isFunctionLike(fn)) fn = fn.parent;
+  let found: ts.Expression | undefined;
+  const find = (n: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(n) &&
+      ts.isObjectBindingPattern(n.name) &&
+      n.initializer &&
+      n.name.elements.some(e => e.name.getText() === arg.text && !e.propertyName)
+    ) {
+      found = prop(
+        jobLiteral(n.initializer, factories) ?? ts.factory.createObjectLiteralExpression(),
+        arg.text,
+      );
+    }
+    if (!found) ts.forEachChild(n, find);
+  };
+  if (fn) find(fn);
+  return found;
+}
+
+/**
+ * Опції задач `addBulk(...)`: масив об'єктів-літералів або `xs.map(x => ({ …, opts }))` чи
+ * `xs.map(x => fabric(…))`. Усі задачі мусять мати ОДНАКОВИЙ літерал `opts` (інакше сторож не може
+ * судити виклик одним сайтом) — тоді повертається він, інакше undefined (виклик іде в нерозібрані).
+ */
+function bulkJobOpts(
+  arg: ts.Expression | undefined,
+  factories: JobFactories,
+): ts.Expression | undefined {
   if (!arg) return undefined;
   let jobs: ts.Expression[] = [];
   if (ts.isArrayLiteralExpression(arg)) {
@@ -186,7 +252,10 @@ function bulkJobOpts(arg: ts.Expression | undefined): ts.Expression | undefined 
     while (ts.isParenthesizedExpression(body)) body = body.expression;
     if (ts.isExpression(body)) jobs = [body];
   }
-  const all = jobs.map(j => (ts.isObjectLiteralExpression(j) ? prop(j, 'opts') : undefined));
+  const all = jobs.map(j => {
+    const lit = jobLiteral(j, factories);
+    return lit ? prop(lit, 'opts') : undefined;
+  });
   if (all.length === 0 || all.some(o => !o)) return undefined;
   const first = all[0] as ts.Expression;
   return all.every(o => o?.getText() === first.getText()) ? first : undefined;
@@ -217,6 +286,7 @@ function scan(): ScanResult {
     const rel = relative(SRC_DIR, file).replace(/\\/g, '/');
     const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
     const lineOf = (n: ts.Node) => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
+    const factories = collectJobFactories(sf);
 
     // 1. Властивість класу → ім'я черги (`@InjectQueue('checkbox') private readonly checkboxQueue`).
     const queueByProp = new Map<string, string>();
@@ -278,7 +348,10 @@ function scan(): ScanResult {
             const where = `${rel}:${lineOf(node)}`;
             // addBulk([...]) / addBulk(xs.map(x => ({ …, opts: {…} }))): опції КОЖНОЇ задачі —
             // той самий літерал, що й третій аргумент add() (supplier-search, optimize 2026-10-18).
-            const opts = method === 'addBulk' ? bulkJobOpts(node.arguments[0]) : node.arguments[2];
+            const opts =
+              method === 'addBulk'
+                ? bulkJobOpts(node.arguments[0], factories)
+                : addOpts(node, factories);
             if (method === 'upsertJobScheduler') {
               res.unresolved.push(
                 `${where} — ${method}() на черзі '${queue}': сторож його не вміє`,
@@ -355,8 +428,8 @@ describe('Політика повторів черг зовнішніх API (с�
       'nbu-fetch': 3,
       'bank-statement-polling': 2,
       'supplier-search': 2,
-      'supplier-catalog': 2,
-      'supplier-order': 3,
+      'supplier-catalog': 3,
+      'supplier-order': 4,
     });
     expect(found.registerSites.filter(r => r.name !== null).length).toBeGreaterThanOrEqual(14);
   });

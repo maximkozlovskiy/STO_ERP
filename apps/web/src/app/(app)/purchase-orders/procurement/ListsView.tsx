@@ -342,7 +342,9 @@ function ListDetailModal({
 }) {
   const { t } = useTranslation('purchaseLists');
   const qc = useQueryClient();
-  const { confirm, dialogProps } = useConfirm();
+  // `confirmOpenRef` — підтвердження поверх картки відкрите: його Escape не закриває картку
+  // (знімається після події, GOTCHAS 2026-10-12).
+  const { confirm, dialogProps, openRef: confirmOpenRef } = useConfirm();
   const { data: list, isLoading, error } = usePurchaseListDetail(listId);
   const items = useMemo(() => list?.items ?? [], [list]);
   const openItems = useMemo(() => items.filter(i => i.status === 'OPEN'), [items]);
@@ -402,7 +404,7 @@ function ListDetailModal({
       <Modal
         open={listId !== null}
         onClose={() => {
-          if (!addOpen) onClose();
+          if (!addOpen && !confirmOpenRef.current) onClose();
         }}
         title={list ? t('lists.detailTitle', { number: list.number }) : t('lists.detailLoading')}
         description={list?.name ?? undefined}

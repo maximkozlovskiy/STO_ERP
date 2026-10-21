@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal } from '@/components/ui/modal';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { fmtQty } from '@/lib/format';
+import { groupBy } from '@/lib/group-by';
 import { toast } from '@/lib/toast';
 import { invalidateProcurementSideEffects } from '@/lib/cache-invalidation';
 import { purchaseListsApi, usePurchaseLists } from '@/hooks/api/usePurchaseLists';
@@ -51,6 +52,9 @@ export function AddToListDialog({ open, onClose, rows, onDone }: AddToListDialog
   const [newName, setNewName] = useState('');
   const [listId, setListId] = useState('');
   const [saving, setSaving] = useState(false);
+  // Запит уже йде: Ctrl+Enter (Modal onSubmit) кнопка `loading` не блокує — повтор надіслав би
+  // ті самі товари вдруге (кількість позиції подвоїлась би).
+  const savingRef = useRef(false);
   const [formError, setFormError] = useState('');
 
   // Відкриті списки потрібні лише відкритому діалогу: сам діалог змонтований у картці наряду й на
@@ -87,6 +91,7 @@ export function AddToListDialog({ open, onClose, rows, onDone }: AddToListDialog
     });
 
   const submit = async () => {
+    if (savingRef.current) return;
     if (chosen.length === 0) {
       setFormError(t('addToList.errors.nothingSelected'));
       return;
@@ -100,12 +105,11 @@ export function AddToListDialog({ open, onClose, rows, onDone }: AddToListDialog
       setFormError(t('addToList.errors.quantity'));
       return;
     }
+    savingRef.current = true;
     setSaving(true);
     setFormError('');
     try {
-      const byWo = new Map<string, typeof parsed>();
-      for (const p of parsed)
-        byWo.set(p.row.workOrderId, [...(byWo.get(p.row.workOrderId) ?? []), p]);
+      const byWo = groupBy(parsed, p => p.row.workOrderId);
       let targetListId = target === 'existing' ? listId : '';
       let listNumber = lists.find(l => l.id === listId)?.number ?? '';
       let count = 0;
@@ -133,6 +137,7 @@ export function AddToListDialog({ open, onClose, rows, onDone }: AddToListDialog
       invalidateProcurementSideEffects(qc);
       setFormError(e instanceof Error ? e.message : t('addToList.errors.failed'));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };

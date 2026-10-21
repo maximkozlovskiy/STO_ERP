@@ -485,10 +485,12 @@ export class SupplierOrdersService {
         take: 100,
       }),
       this.settings.getOrganisationSettings(orgId),
+      // Постачальники з увімкненим підключенням — по одному рядку на постачальника (distinct), без
+      // обрізання: `take` відкидав би постачальника замовлення, коли підключень багато (review 2026-10-21).
       this.prisma.supplierConnection.findMany({
         where: { orgId, enabled: true, deletedAt: null },
         select: { counterpartyId: true },
-        take: 200,
+        distinct: ['counterpartyId'],
       }),
       // ORDERED-позиції з пропозицією: знімок (offeredAt) — для попередження про застарілі,
       // offerKey — для непідтвердженого.
@@ -505,7 +507,7 @@ export class SupplierOrdersService {
         take: 1000,
       }),
     ]);
-    const connections = enabledConnections.filter(c => c.counterpartyId === po.supplierId).length;
+    const hasConnection = enabledConnections.some(c => c.counterpartyId === po.supplierId);
     const excess = unconfirmedFrom(
       orders,
       offerItems.filter(i => i.offerKey !== null),
@@ -525,8 +527,8 @@ export class SupplierOrdersService {
       supplierApiSentAt: po.supplierApiSentAt?.toISOString() ?? null,
       supplierApiError: po.supplierApiError,
       sendMode: s.supplierOrderSendMode,
-      hasConnection: connections > 0,
-      canSend: SENDABLE_PO.has(po.status) && notSent && connections > 0,
+      hasConnection,
+      canSend: SENDABLE_PO.has(po.status) && notSent && hasConnection,
       canRelease: excess.size > 0,
       warnings:
         notSent && stale.length > 0

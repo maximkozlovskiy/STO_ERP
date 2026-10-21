@@ -163,10 +163,6 @@ async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-/**
- * Bug #77: PDF/blob downloads must also do silent refresh on 401.
- * Same auth/refresh logic as `apiFetch`, but returns a `Blob` (no JSON parsing).
- */
 /** POST із JSON-тілом (тіло не передано — без тіла). Заголовки — додатково, напр. Idempotency-Key. */
 export function apiPost<T>(
   path: string,
@@ -180,6 +176,10 @@ export function apiPost<T>(
   });
 }
 
+/**
+ * Bug #77: PDF/blob downloads must also do silent refresh on 401.
+ * Same auth/refresh logic as `apiFetch`, but returns a `Blob` (no JSON parsing).
+ */
 export async function apiBlobFetch(path: string, init?: RequestInit): Promise<Blob> {
   const token = getToken();
 

@@ -730,4 +730,20 @@ describe('BR-SCON-013 / BR-SCON-014 / BR-PO-012', () => {
     });
     expect(state.warnings).toEqual([expect.stringMatching(/Пропозиція застаріла.*Фільтр/)]);
   });
+
+  // guards: BR-SCON-009 — «Відправити в API» не зникає, коли увімкнених підключень інших
+  // постачальників понад 200: перелік постачальників з підключенням не обрізається (review 2026-10-21).
+  it('стан: підключення постачальника замовлення знайдено й серед 250 підключень інших постачальників', async () => {
+    const x = ordersHarness();
+    const own = x.h.tables.supplierConnection.rows;
+    const others = Array.from({ length: 250 }, (_, i) => ({
+      ...own[0],
+      id: `7${String(i).padStart(7, '0')}-1111-4111-8111-111111111111`,
+      counterpartyId: `9${String(i).padStart(7, '0')}-1111-4111-8111-111111111111`,
+    }));
+    own.unshift(...others);
+    const poId = await x.draftFromItems();
+    const state = await x.service.getState(ORG, poId);
+    expect(state).toMatchObject({ hasConnection: true, canSend: true });
+  });
 });

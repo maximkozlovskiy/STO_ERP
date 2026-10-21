@@ -21,13 +21,16 @@ export function releaseNestedOpen(ref: MutableRefObject<boolean>): void {
 
 /**
  * Діалог підтвердження як проміс. `openRef` — «підтвердження відкрите»: true від `confirm()` до
- * відповіді, знімається після події (`releaseNestedOpen`). Вікно-власник ігнорує свій Escape,
+ * відповіді, знімається після події (як `releaseNestedOpen`). Вікно-власник ігнорує свій Escape,
  * поки прапорець стоїть. `nestedOpenRef` — прапорець власника, коли його веде не цей хук (блок
  * усередині картки позначає підтвердження в прапорці картки).
  */
 export function useConfirm(nestedOpenRef?: MutableRefObject<boolean>) {
   const ownOpenRef = useRef(false);
   const openRef = nestedOpenRef ?? ownOpenRef;
+  // Номер останнього `confirm()`: відкладене зняття прапорця від попереднього підтвердження не
+  // знімає його, якщо виклик одразу відкрив наступне (інакше Escape другого закрив би власника).
+  const seqRef = useRef(0);
   const [state, setState] = useState<(ConfirmOptions & { resolve: (v: boolean) => void }) | null>(
     null,
   );
@@ -35,10 +38,13 @@ export function useConfirm(nestedOpenRef?: MutableRefObject<boolean>) {
   const confirm = useCallback(
     (opts: ConfirmOptions): Promise<boolean> => {
       openRef.current = true;
+      const seq = ++seqRef.current;
       return new Promise<boolean>(resolve => {
         setState({ ...opts, resolve });
       }).then(ok => {
-        releaseNestedOpen(openRef);
+        setTimeout(() => {
+          if (seqRef.current === seq) openRef.current = false;
+        }, 0);
         return ok;
       });
     },

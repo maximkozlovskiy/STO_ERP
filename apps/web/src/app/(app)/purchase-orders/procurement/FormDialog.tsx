@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -55,6 +55,9 @@ export function FormDialog({
 }: FormDialogProps) {
   const { t } = useTranslation('purchaseLists');
   const [saving, setSaving] = useState(false);
+  // Запит уже йде: Ctrl+Enter (Modal onSubmit) кнопка `loading` не блокує — повтор інакше
+  // створив би другий список / позицію.
+  const savingRef = useRef(false);
   const [err, setErr] = useState('');
 
   useEffect(() => {
@@ -62,11 +65,13 @@ export function FormDialog({
   }, [open, resetErrorOnOpen]);
 
   const submit = async () => {
+    if (savingRef.current) return;
     const invalid = validate?.();
     if (invalid) {
       setErr(invalid);
       return;
     }
+    savingRef.current = true;
     setSaving(true);
     setErr('');
     try {
@@ -74,6 +79,7 @@ export function FormDialog({
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : t('errors.action'));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
