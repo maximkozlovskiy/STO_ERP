@@ -22,7 +22,12 @@ import {
 const PO = 'po-1';
 
 function harness(
-  over: { woA?: Record<string, unknown>; partA?: number; items?: Record<string, unknown>[] } = {},
+  over: {
+    woA?: Record<string, unknown>;
+    partA?: number;
+    partAWarehouse?: string;
+    items?: Record<string, unknown>[];
+  } = {},
 ) {
   return procurementHarness({
     workOrders: [
@@ -30,7 +35,10 @@ function harness(
       woRow(WO_B, { status: 'DRAFT' }),
     ],
     parts: [
-      partRow('pa', WO_A, { quantity: over.partA ?? 2 }),
+      partRow('pa', WO_A, {
+        quantity: over.partA ?? 2,
+        ...(over.partAWarehouse ? { warehouseId: over.partAWarehouse } : {}),
+      }),
       partRow('pb', WO_B, { quantity: 1 }),
     ],
     purchaseOrders: [
@@ -145,6 +153,7 @@ describe('BR-PL-011 розподіл отриманого між позиція�
   // guards: BR-PL-011
   it('позиція іншого складу не отримує товару складу замовлення', async () => {
     const h = harness({
+      partAWarehouse: WH_2, // рядок наряду й позиція — на іншому складі, ніж замовлення
       items: [
         itemRow('ia', { ...ordered(WO_A, 'pa', 2), warehouseId: WH_2 }),
         itemRow('ib', ordered(WO_B, 'pb', 1)),

@@ -178,6 +178,8 @@ export class PurchaseListLinkService {
    * BR-PL-009: рядки DRAFT-замовлення переписано. Позиції замовлення звіряються за товаром:
    * товару в рядках немає → позиція повертається в OPEN; позицій більше, ніж замовлено, → новіші
    * відв'язуються (або розділяються: замовлене лишається ORDERED, решта — нова OPEN-позиція).
+   * Відв'язане від завершеного, скасованого чи видаленого наряду — «Скасовано», не OPEN (як
+   * BR-PL-010/012); від живого — урізається до непокритої потреби наряду (BR-PL-013; Bug #916).
    */
   async reconcileDraftOrder(
     tx: Tx,
@@ -192,15 +194,37 @@ export class PurchaseListLinkService {
       take: 1000,
     });
     if (all.length === 0) return;
+    const activeWo = await this.activeWorkOrderIds(tx, orgId, all);
+    const touchedWo = new Set<string>();
+    const freed = (item: ItemRow): 'OPEN' | 'CANCELLED' => {
+      if (item.workOrderId === null) return 'OPEN';
+      touchedWo.add(item.workOrderId);
+      return activeWo.has(item.workOrderId) ? 'OPEN' : 'CANCELLED';
+    };
     // Склад замовлення змінено: позиції іншого складу замовлення вже не покриває — приймання
     // розподіляє отримане лише між позиціями складу замовлення (BR-PL-011), тож вони
     // повертаються в OPEN, а не чекають товару, який прийде на інший склад.
     const items = warehouseId ? all.filter(i => i.warehouseId === warehouseId) : all;
     for (const item of all) {
       if (items.includes(item)) continue;
-      await this.casItem(tx, orgId, item, { status: 'OPEN', purchaseOrderId: null });
+      await this.casItem(tx, orgId, item, { status: freed(item), purchaseOrderId: null });
     }
-    if (items.length === 0) return;
+    if (items.length > 0) await this.unbindOverOrdered(tx, orgId, purchaseOrderId, items, freed);
+    // Відв'язане від живого наряду не покриває більше, ніж наряду ще треба: потребу могли
+    // зменшити, поки позиція була в чернетці (ORDERED тоді не урізаються, BR-PL-013).
+    for (const woId of touchedWo) {
+      if (activeWo.has(woId)) await this.onWorkOrderPartsChanged(tx, orgId, woId);
+    }
+  }
+
+  /** BR-PL-009: позицій товару більше, ніж у рядках чернетки, — новіші відв'язуються. */
+  private async unbindOverOrdered(
+    tx: Tx,
+    orgId: string,
+    purchaseOrderId: string,
+    items: ItemRow[],
+    freed: (item: ItemRow) => 'OPEN' | 'CANCELLED',
+  ): Promise<void> {
     const lines = await tx.purchaseOrderLine.findMany({
       where: { orgId, purchaseOrderId, deletedAt: null },
       select: { goodId: true, quantity: true },
@@ -219,10 +243,10 @@ export class PurchaseListLinkService {
         if (item.quantity <= room + QTY_EPSILON) {
           room -= item.quantity;
         } else if (room > QTY_EPSILON) {
-          await this.splitOff(tx, orgId, item, item.quantity - room, { status: 'OPEN' });
+          await this.splitOff(tx, orgId, item, item.quantity - room, { status: freed(item) });
           room = 0;
         } else {
-          await this.casItem(tx, orgId, item, { status: 'OPEN', purchaseOrderId: null });
+          await this.casItem(tx, orgId, item, { status: freed(item), purchaseOrderId: null });
         }
       }
     }
@@ -253,9 +277,13 @@ export class PurchaseListLinkService {
     });
     if (items.length === 0) return;
     const activeWo = await this.activeWorkOrderIds(tx, orgId, items);
+    const reopened = new Set<string>();
     for (const item of items) {
       const reopen = item.workOrderId === null || activeWo.has(item.workOrderId);
       const restStatus = reopen ? 'OPEN' : 'CANCELLED';
+      if (reopen && item.workOrderId !== null && undelivered(item) > QTY_EPSILON) {
+        reopened.add(item.workOrderId);
+      }
       if (item.receivedQty <= QTY_EPSILON) {
         await this.casItem(tx, orgId, item, { status: restStatus, purchaseOrderId: null });
       } else if (undelivered(item) <= QTY_EPSILON) {
@@ -264,6 +292,9 @@ export class PurchaseListLinkService {
         await this.splitOff(tx, orgId, item, undelivered(item), { status: restStatus });
       }
     }
+    // Повернене в OPEN не покриває більше, ніж наряду ще треба: потребу могли зменшити, поки
+    // позиція була в замовленні (ORDERED тоді не урізаються, BR-PL-013; Bug #916).
+    for (const woId of reopened) await this.onWorkOrderPartsChanged(tx, orgId, woId);
   }
 
   /** Наряди позицій, що ще в WO_PROCUREMENT_ACTIVE_STATUSES і не видалені. */

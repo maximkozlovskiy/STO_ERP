@@ -72,7 +72,10 @@ const harness = (
 ) =>
   procurementHarness({
     workOrders: [woRow(WO_A, { status: 'APPROVED' }), woRow(WO_B, { status: 'CANCELLED' })],
-    parts: [partRow('pa', WO_A, { quantity: 5 })],
+    parts: [
+      partRow('pa', WO_A, { quantity: 5 }),
+      partRow('pa2', WO_A, { goodId: GOOD_2, quantity: 1 }),
+    ],
     purchaseOrders: [poRow(status)],
     purchaseOrderLines: lines,
     items,
@@ -87,7 +90,7 @@ describe('BR-PL-009 звірка чернетки, коли рядки пере�
       [
         itemRow('i1', ordered({ quantity: 2 })),
         itemRow('i2', ordered({ quantity: 2 })),
-        itemRow('i3', ordered({ quantity: 1, goodId: GOOD_2 })),
+        itemRow('i3', ordered({ quantity: 1, goodId: GOOD_2, workOrderPartId: 'pa2' })),
       ],
     );
 
@@ -107,6 +110,51 @@ describe('BR-PL-009 звірка чернетки, коли рядки пере�
         workOrderPartId: 'pa',
       }),
     ]);
+  });
+});
+
+// Bug #916: відв'язане від чернетки й повернене зі скасованого замовлення не відкривається для
+// закритого наряду і не покриває більше, ніж живому наряду ще треба (потребу зменшили, поки
+// позиція була в замовленні — ORDERED тоді не урізаються, BR-PL-013).
+describe('BR-PL-009 / BR-PL-010 відв’язане — за станом і потребою наряду (Bug #916)', () => {
+  // guards: BR-PL-009
+  it('рядок чернетки прибрано, наряд скасовано → позиція «Скасовано», не OPEN', async () => {
+    const h = harness(
+      'DRAFT',
+      [line('l1', GOOD, 2), line('l2', GOOD_2, 1)],
+      [itemRow('i1', ordered({ quantity: 2, workOrderId: WO_B, workOrderPartId: 'pb' }))],
+    );
+
+    await h.purchaseOrders.update(ORG, PO, {
+      lines: [{ goodId: GOOD_2, quantity: 1, price: 50 }],
+    } as never);
+
+    expect(h.item('i1')).toMatchObject({ status: 'CANCELLED', purchaseOrderId: null });
+  });
+
+  // guards: BR-PL-009
+  it('кількість у чернетці зменшено, потреба наряду вже менша → OPEN лише на непокрите', async () => {
+    const h = harness('DRAFT', [line('l1', GOOD, 4)], [itemRow('i1', ordered({ quantity: 4 }))]);
+    h.tables.workOrderPart.rows.find(r => r.id === 'pa')!.quantity = 2; // 5 → 2, ORDERED не урізано
+
+    await h.purchaseOrders.update(ORG, PO, {
+      lines: [{ goodId: GOOD, quantity: 1, price: 50 }],
+    } as never);
+
+    expect(h.item('i1')).toMatchObject({ status: 'ORDERED', quantity: 1 });
+    const open = h.liveItems().filter(i => i.status === 'OPEN');
+    expect(open.reduce((sum, i) => sum + (i.quantity as number), 0)).toBe(1);
+  });
+
+  // guards: BR-PL-010
+  it('скасоване замовлення, потреба наряду вже менша → OPEN лише на непокрите', async () => {
+    const h = harness('ORDERED', [line('l1', GOOD, 4)], [itemRow('i1', ordered({ quantity: 4 }))]);
+    h.tables.workOrderPart.rows.find(r => r.id === 'pa')!.quantity = 1;
+
+    await h.purchaseOrders.transition(ORG, PO, 'CANCELLED' as never);
+
+    const open = h.liveItems().filter(i => i.status === 'OPEN');
+    expect(open.reduce((sum, i) => sum + (i.quantity as number), 0)).toBe(1);
   });
 });
 
