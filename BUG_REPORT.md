@@ -3409,4 +3409,4 @@ RECEIVED 2/2 + ORDERED 3/0, F — ORDERED 3/0 (обидві з `purchaseOrderId`
 (`cpPickerOpen`, `workPickerOpen`, `goodPickerOpen` …) не враховані.
 **Очікувана поведінка:** Escape закриває лише вікно вибору.
 **Фактична поведінка:** закривається картка наряду, вікно вибору лишається.
-**Статус:** [x] виправлено — `handleModalClose` пропускає Escape, поки відкрите будь-яке вікно вибору (клієнт, роботи, послуги, товари) чи конфлікт рахунку (`nestedPickerOpenRef`, оновлюється після рендера — під час події ще true). Тест: `CreateWorkOrderModal.picker-escape.test.tsx` (1), без перевірки — 1 failed.
+**Статус:** [x] виправлено — `handleModalClose` пропускає Escape, поки відкрите будь-яке вікно вибору (клієнт, роботи, послуги, товари) чи конфлікт рахунку (`nestedPickerOpenRef`; review циклу 3: знімається ПІСЛЯ події таймером, а не в ефекті — GOTCHAS 2026-10-12). Тест: `CreateWorkOrderModal.picker-escape.test.tsx` (2): без перевірки — 1 failed; зняття в ефекті — 1 failed.

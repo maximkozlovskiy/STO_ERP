@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithQueryClient } from '@/__tests__/query-utils';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
@@ -85,5 +85,36 @@ describe('CreateWorkOrderModal — Escape у вікні вибору (Bug #923)'
     );
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: 'Новий наряд' })).toBeInTheDocument();
+  });
+  // GOTCHAS 2026-10-12: у браузері React рендерить між двома слухачами того самого Escape. Коли
+  // слухач вікна вибору стоїть першим, картка бачить уже закрите вікно — прапорець, знятий в
+  // ефекті, її не стримує. Два синхронні act() відтворюють цей рендер між слухачами; таймер ще не
+  // спрацював, тож прапорець мусить триматись.
+  it('прапорець вікна вибору тримається до кінця події, потім Escape закриває картку', async () => {
+    const onClose = vi.fn();
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={onClose} />);
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/branches'));
+    await userEvent.click(screen.getAllByRole('button', { name: 'Обрати' })[0]!);
+    const picker = await screen.findByRole('dialog', { name: 'Оберіть клієнта' });
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+    });
+    // Вікно вибору вже закрите (іде анімація виходу) — рендер між слухачами відбувся.
+    expect(picker).toHaveAttribute('data-state', 'closed');
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Контроль: після події прапорець знято, і Escape закриває картку тим самим шляхом.
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 0));
+    });
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });

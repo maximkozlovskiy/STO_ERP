@@ -1714,8 +1714,10 @@ export function CreateWorkOrderModal({
   // при кожному flip saving/transitioning (раніше re-attach на START + END кожного
   // save/transition; зараз лише при зміні onClose у parent).
   // Вікна вибору (клієнт, роботи, послуги, товари) і конфлікт рахунку — вкладені Modal: їхній Escape
-  // доходить і до картки. Ref оновлюється після рендера, тож під час події Escape він ще true —
-  // відкладене зняття (`releaseNestedOpen`) тут не потрібне.
+  // доходить і до картки. Прапорець знімається ПІСЛЯ події (GOTCHAS 2026-10-12): у браузері React
+  // рендерить між двома слухачами того самого Escape, і коли слухач вікна вибору стоїть першим,
+  // знятий в ефекті прапорець картка побачила б уже `false`. Таймер скасовується, якщо вікно
+  // відкрили знову до його спрацювання (інакше він зняв би прапорець відкритого вікна).
   const nestedPickerOpen =
     cpPickerOpen ||
     workPickerOpen ||
@@ -1726,7 +1728,14 @@ export function CreateWorkOrderModal({
     !!invoiceConflict;
   const nestedPickerOpenRef = useRef(false);
   useEffect(() => {
-    nestedPickerOpenRef.current = nestedPickerOpen;
+    if (nestedPickerOpen) {
+      nestedPickerOpenRef.current = true;
+      return;
+    }
+    const timer = setTimeout(() => {
+      nestedPickerOpenRef.current = false;
+    }, 0);
+    return () => clearTimeout(timer);
   }, [nestedPickerOpen]);
 
   const handleModalClose = useCallback(async () => {

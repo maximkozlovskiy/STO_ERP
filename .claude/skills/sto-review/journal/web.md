@@ -454,3 +454,14 @@ Inline IIFE у JSX заодно винесено в іменований ком�
 лише `*.tsx`. **Grep:** `grep -rnE "(toast\.[a-z]+|setError)\(.*: '[^']*[А-Яа-яІіЇїЄєҐґ]" apps/web/src --include="*.ts" | grep -v "__tests__\|\.test\."`
 **Фікс:** ключі `calendar:slot.errLoad|errMoveFallback|errUpdateFallback`, `t` у залежностях колбеків;
 en-тест на відмову PATCH без `Error`. **Severity:** SUGGESTION
+
+### 2026-10-21 — Прапорець вікна вибору знову знятий в ефекті «бо під час події він ще true» — §3.1
+
+**Сигнал:** Bug #923 (`CreateWorkOrderModal`, `nestedPickerOpenRef`) — фікс тестувальника знімав
+прапорець у `useEffect` із коментарем «ref оновлюється після рендера, відкладене зняття не потрібне».
+Це правда лише поки слухач картки стоїть першим; у браузері React рендерить між слухачами однієї
+події (запис 2026-10-12). Чекліст §3.1 правило мав, але детектора не було.
+**Grep:** `grep -rnE -B1 "^\s+[a-zA-Z]+OpenRef\.current = [a-zA-Z!][a-zA-Z.!]*;" apps/web/src --include=*.tsx | grep -A1 useEffect`
+**Фікс:** `true` — одразу, `false` — `setTimeout(…, 0)` з `clearTimeout` у cleanup (повторне
+відкриття до спрацювання). Тест: два синхронні `act(() => fireEvent.keyDown(…))` — рендер між
+ними відтворює рендер між слухачами; мутація «зняти в ефекті» валить його. **Severity:** IMPORTANT
