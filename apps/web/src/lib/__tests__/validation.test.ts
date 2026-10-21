@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateContactFields } from '../validation';
+import { validateContactFields, validationText } from '../validation';
 
 // T11: клієнтська Zod-валідація на спільних @sto/shared схемах.
 describe('validateContactFields', () => {
@@ -34,5 +34,19 @@ describe('validateContactFields', () => {
   it('повертає ПЕРШУ помилку (телефон перед email)', () => {
     const msg = validateContactFields({ phone: 'bad', email: 'also-bad' });
     expect(msg).toContain('телефон');
+  });
+});
+
+// Bug #934: ручний safeParse спільної схеми віддає ключ перекладу — у банер іде лише через validationText.
+describe('validationText', () => {
+  it('ключ схеми наряду → текст мовою інтерфейсу', () => {
+    expect(validationText('v.workOrder.counterparty.required')).not.toMatch(/^v\./);
+    expect(validationText('v.purchaseOrder.warehouse.required')).toBe('Оберіть склад');
+  });
+
+  it('готовий текст (запасне повідомлення) лишається як є', () => {
+    expect(validationText('Перевірте правильність заповнення полів')).toBe(
+      'Перевірте правильність заповнення полів',
+    );
   });
 });

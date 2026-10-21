@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import type { ChangeEvent } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
+import { validationText } from '@/lib/validation';
 import {
   workOrderFormSchema,
   type WorkOrderFormInput,
@@ -1103,7 +1104,11 @@ export function CreateWorkOrderModal({
         parts: [...(getValues('parts') ?? []), ...flushPart],
       });
       if (!parsed.success) {
-        setError(parsed.error.issues[0]?.message ?? 'Перевірте правильність заповнення полів');
+        setError(
+          validationText(
+            parsed.error.issues[0]?.message ?? 'Перевірте правильність заповнення полів',
+          ),
+        );
         return;
       }
     }
@@ -1251,7 +1256,11 @@ export function CreateWorkOrderModal({
         parts: getValues('parts') ?? [],
       });
       if (!parsed.success) {
-        setError(parsed.error.issues[0]?.message ?? 'Перевірте правильність заповнення полів');
+        setError(
+          validationText(
+            parsed.error.issues[0]?.message ?? 'Перевірте правильність заповнення полів',
+          ),
+        );
         return;
       }
     }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
+import { validationText } from '@/lib/validation';
 import {
   purchaseOrderFormSchema,
   type PurchaseOrderFormInput,
@@ -104,10 +105,12 @@ function firstSchemaError(err: SchemaError): string {
   const issue = err.issues[0];
   if (!issue) return 'Перевірте заповнення форми';
   const path = issue.path;
+  // issue.message — ключ перекладу спільної схеми, не текст (Bug #934).
+  const message = validationText(issue.message);
   if (path[0] === 'lines' && typeof path[1] === 'number') {
-    return `Рядок ${path[1] + 1}: ${issue.message}`;
+    return `Рядок ${path[1] + 1}: ${message}`;
   }
-  return issue.message;
+  return message;
 }
 
 // «Чиста» база форми — reset() до неї на open дає rhfDirty=false (Bug #639: авто-вибір

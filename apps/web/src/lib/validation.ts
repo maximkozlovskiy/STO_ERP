@@ -11,6 +11,16 @@ import { getCurrentLocale } from '@/i18n/locale';
 
 type OptionalStr = string | null | undefined;
 
+/**
+ * Текст помилки спільної схеми мовою інтерфейсу. Схеми `@sto/shared` кладуть у `issue.message`
+ * ключ (`v.purchaseOrder.warehouse.required`): під полями його перекладає `i18nZodResolver`, а
+ * ручний `safeParse` у банер мусить пропустити його через цю функцію — інакше користувач бачить
+ * сам ключ (Bug #934).
+ */
+export function validationText(message: string): string {
+  return translateValidation(message, getCurrentLocale());
+}
+
 /** Перевіряє одне значення схемою, лише якщо воно непорожнє. Повертає повідомлення або null. */
 function checkOptional(
   schema: {
