@@ -13,11 +13,6 @@ import type { PurchaseListItemResponseDto, PurchaseListResponseDto } from './pur
 
 type Db = Prisma.TransactionClient;
 
-/** Ролі перегляду й надсилання з наряду (BR-PL-015). */
-export const PL_READ_ROLES = ['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST'] as const;
-/** Ролі редагування списків і позицій (BR-PL-015). */
-export const PL_WRITE_ROLES = ['OWNER', 'ADMIN', 'STOREKEEPER'] as const;
-
 export { err };
 
 /** Відкрита позиція: ще не в замовленні й не видалена — лише її можна змінювати (BR-PL-005). */

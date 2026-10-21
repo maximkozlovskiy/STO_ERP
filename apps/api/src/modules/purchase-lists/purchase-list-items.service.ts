@@ -20,7 +20,15 @@ import {
   stockKey,
 } from '../work-orders/work-order-stock-requirements';
 import { PurchaseShortageService } from './purchase-shortage.service';
-import { assertSupplier, conflict, err, loadItemDtos, loadList } from './purchase-lists.helpers';
+import {
+  assertSupplier,
+  conflict,
+  err,
+  isItemOpen,
+  loadItemDtos,
+  loadList,
+  OPEN_ITEM_WHERE,
+} from './purchase-lists.helpers';
 import { ITEM_INCLUDE, maskItemCost, toItemDto } from './purchase-lists.mapper';
 import { CLEAR_OFFER_SNAPSHOT, itemPartData } from './purchase-list-offer-snapshot';
 import type {
@@ -35,9 +43,6 @@ import type {
 type Tx = Prisma.TransactionClient;
 
 const ITEM_SORT_FIELDS: Record<string, string> = { createdAt: 'createdAt', quantity: 'quantity' };
-
-/** Умова «позицію ще можна змінювати» (BR-PL-005): OPEN, без замовлення, не видалена. */
-const OPEN_ITEM = { status: 'OPEN' as const, purchaseOrderId: null, deletedAt: null };
 
 /**
  * Позиції списків купівлі: перелік, позиції наряду для його картки, зміна OPEN-позицій
@@ -149,7 +154,7 @@ export class PurchaseListItemsService {
       where: {
         id,
         orgId,
-        ...OPEN_ITEM,
+        ...OPEN_ITEM_WHERE,
         quantity: item.quantity,
         supplierId: item.supplierId,
         offerKey: item.offerKey,
@@ -206,7 +211,7 @@ export class PurchaseListItemsService {
     const newId = await this.prisma.$transaction(
       async tx => {
         const res = await tx.purchaseListItem.updateMany({
-          where: { id, orgId, ...OPEN_ITEM, quantity: item.quantity },
+          where: { id, orgId, ...OPEN_ITEM_WHERE, quantity: item.quantity },
           data: { quantity: item.quantity - dto.quantity },
         });
         if (res.count !== 1) throw conflict();
@@ -243,7 +248,7 @@ export class PurchaseListItemsService {
               })
             ).id;
         const res = await tx.purchaseListItem.updateMany({
-          where: { orgId, id: { in: ids }, ...OPEN_ITEM },
+          where: { orgId, id: { in: ids }, ...OPEN_ITEM_WHERE },
           data: { listId: targetId },
         });
         if (res.count !== ids.length) throw conflict();
@@ -261,7 +266,7 @@ export class PurchaseListItemsService {
     await this.prisma.$transaction(
       async tx => {
         const res = await tx.purchaseListItem.updateMany({
-          where: { orgId, id: { in: ids }, ...OPEN_ITEM },
+          where: { orgId, id: { in: ids }, ...OPEN_ITEM_WHERE },
           data: {
             ...(dto.expectedPrice !== undefined ? { expectedPrice: dto.expectedPrice } : {}),
           },
@@ -276,7 +281,7 @@ export class PurchaseListItemsService {
             where: {
               orgId,
               id: { in: ids },
-              ...OPEN_ITEM,
+              ...OPEN_ITEM_WHERE,
               OR: [{ supplierId: null }, { supplierId: { not: dto.supplierId } }],
             },
             data: { supplierId: dto.supplierId, ...CLEAR_OFFER_SNAPSHOT },
@@ -295,7 +300,7 @@ export class PurchaseListItemsService {
     await this.prisma.$transaction(
       async tx => {
         const res = await tx.purchaseListItem.updateMany({
-          where: { orgId, id: { in: ids }, ...OPEN_ITEM },
+          where: { orgId, id: { in: ids }, ...OPEN_ITEM_WHERE },
           data: { status: 'CANCELLED' },
         });
         if (res.count !== ids.length) throw conflict();
@@ -370,7 +375,7 @@ export class PurchaseListItemsService {
       where: { id, orgId, deletedAt: null },
     });
     if (!item) throw new NotFoundException(err('err.purchaseList.itemNotFound'));
-    if (item.status !== 'OPEN' || item.purchaseOrderId !== null) {
+    if (!isItemOpen(item)) {
       throw new BadRequestException(err('err.purchaseList.itemNotOpen'));
     }
     return item;
@@ -390,7 +395,7 @@ export class PurchaseListItemsService {
         }),
       );
     }
-    if (items.some(i => i.status !== 'OPEN' || i.purchaseOrderId !== null)) {
+    if (!items.every(isItemOpen)) {
       throw new BadRequestException(err('err.purchaseList.itemNotOpen'));
     }
     return items;

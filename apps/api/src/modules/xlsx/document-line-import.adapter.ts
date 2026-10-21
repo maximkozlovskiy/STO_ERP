@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { translateError, MAX_QUERY_LIMIT } from '@sto/shared';
-import { getLocale } from '../../common/tenant/tenant-context';
+import { MAX_QUERY_LIMIT } from '@sto/shared';
+import { err } from '../../common/utils/err';
 import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calcLineVat } from '../../common/utils/vat';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -95,7 +95,7 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
 
   assertDraft(status: string): void {
     if (status !== 'DRAFT') {
-      throw new ForbiddenException(translateError('err.xlsx.purchaseOrderNotDraft', getLocale()));
+      throw new ForbiddenException(err('err.xlsx.purchaseOrderNotDraft'));
     }
   }
 
@@ -318,7 +318,7 @@ export class StockDocumentImportAdapter implements DocumentLineImportAdapter {
 
   assertDraft(status: string): void {
     if (status !== 'DRAFT') {
-      throw new ForbiddenException(translateError('err.xlsx.stockDocumentNotDraft', getLocale()));
+      throw new ForbiddenException(err('err.xlsx.stockDocumentNotDraft'));
     }
   }
 

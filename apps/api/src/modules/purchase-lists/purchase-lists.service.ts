@@ -24,6 +24,7 @@ import {
   loadItemDtos,
   loadList,
   loadListDto,
+  OPEN_ITEM_WHERE,
 } from './purchase-lists.helpers';
 import {
   ITEM_INCLUDE,
@@ -320,14 +321,7 @@ export class PurchaseListsService {
     const existing = openByPart.get(part.id);
     if (existing) {
       const res = await tx.purchaseListItem.updateMany({
-        where: {
-          id: existing.id,
-          orgId,
-          status: 'OPEN',
-          purchaseOrderId: null,
-          quantity: existing.quantity,
-          deletedAt: null,
-        },
+        where: { id: existing.id, orgId, ...OPEN_ITEM_WHERE, quantity: existing.quantity },
         data: { quantity: existing.quantity + quantity },
       });
       if (res.count !== 1) throw conflict();
@@ -495,17 +489,16 @@ export class PurchaseListsService {
 
   async getLinkedCounts(orgId: string, ids: string[]) {
     if (!ids.length) return {};
-    const [items, merged] = await Promise.all([
-      this.prisma.purchaseListItem.findMany({
-        where: { orgId, listId: { in: ids }, deletedAt: null },
-        select: {
-          listId: true,
-          workOrderId: true,
-          purchaseOrderId: true,
-          workOrder: { select: { deletedAt: true } },
-          purchaseOrder: { select: { deletedAt: true } },
-        },
-        take: 5000,
+    // Пари (список, наряд) і (список, замовлення) — `groupBy` у БД, а не всі позиції списків.
+    const itemsWhere = { orgId, listId: { in: ids }, deletedAt: null };
+    const [woPairs, poPairs, merged] = await Promise.all([
+      this.prisma.purchaseListItem.groupBy({
+        by: ['listId', 'workOrderId'],
+        where: { ...itemsWhere, workOrder: { deletedAt: null } },
+      }),
+      this.prisma.purchaseListItem.groupBy({
+        by: ['listId', 'purchaseOrderId'],
+        where: { ...itemsWhere, purchaseOrder: { deletedAt: null } },
       }),
       this.prisma.purchaseList.groupBy({
         by: ['mergedIntoId'],
@@ -514,19 +507,9 @@ export class PurchaseListsService {
       }),
     ]);
     const result = initCountsMap(ids, ['workOrders', 'purchaseOrders', 'purchaseLists'] as const);
-    const wo = new Map<string, Set<string>>();
-    const po = new Map<string, Set<string>>();
-    for (const i of items) {
-      if (i.workOrderId && i.workOrder && i.workOrder.deletedAt === null) {
-        wo.set(i.listId, (wo.get(i.listId) ?? new Set()).add(i.workOrderId));
-      }
-      if (i.purchaseOrderId && i.purchaseOrder && i.purchaseOrder.deletedAt === null) {
-        po.set(i.listId, (po.get(i.listId) ?? new Set()).add(i.purchaseOrderId));
-      }
-    }
-    for (const id of ids) {
-      result[id].workOrders = wo.get(id)?.size ?? 0;
-      result[id].purchaseOrders = po.get(id)?.size ?? 0;
+    for (const g of woPairs) if (g.workOrderId && result[g.listId]) result[g.listId].workOrders++;
+    for (const g of poPairs) {
+      if (g.purchaseOrderId && result[g.listId]) result[g.listId].purchaseOrders++;
     }
     for (const g of merged) {
       if (g.mergedIntoId && result[g.mergedIntoId]) {

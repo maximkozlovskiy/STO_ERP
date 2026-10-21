@@ -65,7 +65,7 @@ describe('BR-PL-017 знімок пропозиції йде за позиціє
         }),
       ],
     });
-    await h.links.onOrderCancelledOrDeleted(h.prisma as never, ORG, 'po-1');
+    await h.links.onOrderClosed(h.prisma as never, ORG, 'po-1');
     const rest = h.liveItems().find(r => r.id !== 'i1')!;
     expect(h.item('i1')).toMatchObject({ status: 'RECEIVED', quantity: 1 });
     expect(rest).toMatchObject({ status: 'OPEN', quantity: 3 });

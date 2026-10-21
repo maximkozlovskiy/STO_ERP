@@ -1,16 +1,17 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import type { Prisma, PurchaseListItem } from '@prisma/client';
-import { translateError } from '@sto/shared';
-import { getLocale } from '../../common/tenant/tenant-context';
+import { groupBy } from '../../common/utils/array';
+import { err } from '../../common/utils/err';
 import { InventoryService } from '../inventory/inventory.service';
 import {
-  availableQty,
   fetchPartCoefficients,
+  freeQty,
   lockWorkOrdersForUpdate,
   netReservedByWorkOrders,
   QTY_EPSILON,
   requiredByKey,
   stockKey,
+  stockLevels,
 } from '../work-orders/work-order-stock-requirements';
 import { PROCUREMENT_ACTIVE_STATUSES } from '../work-orders/work-orders.fsm';
 import { undelivered } from './purchase-list-link.service';
@@ -108,11 +109,20 @@ export class PurchaseListReceiptService {
     if (items.length === 0) return;
 
     const need = await this.openNeedByWorkOrder(tx, orgId, items);
+    // Вільний залишок товарів приймання на складі замовлення — один запит до циклу; далі він
+    // зменшується на кожен зроблений тут резерв (інших змін рядка складу в циклі немає).
+    const available = new Map<string, number>();
+    if (need.size > 0) {
+      const keys = Array.from(receivedByGood.keys(), goodId => stockKey(goodId, po.warehouseId));
+      const stock = await stockLevels(tx, orgId, keys);
+      for (const key of keys) available.set(key, freeQty(stock.get(key)));
+    }
+    const itemsByGood = groupBy(items, i => i.goodId);
 
     for (const [goodId, qty] of receivedByGood) {
       let remaining = qty;
       const key = stockKey(goodId, po.warehouseId);
-      for (const item of this.strategy.order(items.filter(i => i.goodId === goodId))) {
+      for (const item of this.strategy.order(itemsByGood.get(goodId) ?? [])) {
         if (remaining <= QTY_EPSILON) break;
         const take = Math.min(remaining, undelivered(item));
         if (take <= QTY_EPSILON) continue;
@@ -122,10 +132,12 @@ export class PurchaseListReceiptService {
         let reserve = 0;
         if (woNeed) {
           const open = woNeed.get(key) ?? 0;
-          const available = await availableQty(tx, orgId, goodId, po.warehouseId);
-          reserve = Math.max(0, Math.min(take, open, available));
-          if (reserve > QTY_EPSILON) woNeed.set(key, open - reserve);
-          else reserve = 0;
+          const free = available.get(key) ?? 0;
+          reserve = Math.max(0, Math.min(take, open, free));
+          if (reserve > QTY_EPSILON) {
+            woNeed.set(key, open - reserve);
+            available.set(key, free - reserve);
+          } else reserve = 0;
         }
 
         const receivedQty = item.receivedQty + take;
@@ -144,9 +156,7 @@ export class PurchaseListReceiptService {
           },
         });
         if (res.count !== 1) {
-          throw new ConflictException(
-            translateError('err.purchaseList.allocationConflict', getLocale()),
-          );
+          throw new ConflictException(err('err.purchaseList.allocationConflict'));
         }
         if (reserve > 0 && item.workOrderId) {
           await this.inventory.createMovement(
@@ -201,11 +211,9 @@ export class PurchaseListReceiptService {
       netReservedByWorkOrders(tx, orgId, activeIds),
     ]);
     const coeffMap = await fetchPartCoefficients(tx, orgId, parts);
+    const partsByWo = groupBy(parts, p => p.workOrderId);
     for (const woId of activeIds) {
-      const required = requiredByKey(
-        parts.filter(p => p.workOrderId === woId),
-        coeffMap,
-      );
+      const required = requiredByKey(partsByWo.get(woId) ?? [], coeffMap);
       const woNet = net.get(woId) ?? new Map<string, number>();
       const open = new Map<string, number>();
       for (const [key, qty] of required) open.set(key, qty - Math.max(0, woNet.get(key) ?? 0));

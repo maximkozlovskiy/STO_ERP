@@ -135,6 +135,29 @@ describe('BR-PL-011 розподіл отриманого між позиція�
   });
 
   // guards: BR-PL-011
+  it('вільного залишку менше за потребу: резерв не більший за available, наступній позиції — решта', async () => {
+    const h = harness();
+    // Зіпсований історичний стан: резерв без залишку — після приймання 3 вільно лише 1.
+    h.tables.stockItem.rows.push({
+      id: 'si-old',
+      orgId: ORG,
+      goodId: GOOD,
+      warehouseId: WH,
+      quantity: 0,
+      reserved: 2,
+      deletedAt: null,
+    });
+
+    await receive(h, 3);
+
+    expect(h.item('ia')).toMatchObject({ status: 'RECEIVED', receivedQty: 2, reservedQty: 1 });
+    expect(h.item('ib')).toMatchObject({ status: 'RECEIVED', receivedQty: 1, reservedQty: 0 });
+    expect(h.netOf(WO_A)).toBe(1);
+    expect(h.netOf(WO_B)).toBe(0);
+    expect(h.reserved()).toBe(3); // 2 давні + 1 для WO_A — не більше за залишок 3
+  });
+
+  // guards: BR-PL-011
   it.each([
     ['COMPLETED', {}],
     ['CANCELLED', {}],

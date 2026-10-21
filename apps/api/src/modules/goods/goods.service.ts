@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
+import { PURCHASE_PRICE_VISIBLE_ROLES, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizeArticle } from '../../common/utils/normalize-article';
@@ -27,15 +27,9 @@ import { GoodStatusesService } from '../good-statuses/good-statuses.service';
 // §2.1 Auth: purchasePrice (закупівельна ціна) — фінансово чутливе поле.
 // MECHANIC/RECEPTIONIST бачать каталог запчастин (Roles на @Get/findAll/findOne),
 // але НЕ повинні бачити закупівельну ціну (cost leakage → можна вирахувати маржу).
-// Дозволено лише ролям з фінансовим/складським доступом.
-const PURCHASE_PRICE_VISIBLE_ROLES = new Set<string>([
-  'OWNER',
-  'ADMIN',
-  'STOREKEEPER',
-  'ACCOUNTANT',
-]);
+// Дозволено лише ролям з фінансовим/складським доступом (PURCHASE_PRICE_VISIBLE_ROLES).
 const canSeePurchasePrice = (role?: string | null): boolean =>
-  !!role && PURCHASE_PRICE_VISIBLE_ROLES.has(role);
+  !!role && PURCHASE_PRICE_VISIBLE_ROLES.includes(role);
 
 // Статуси-мітки товару (M:N) для include у findAll/findOne. toDto фільтрує deletedAt:null.
 const STATUS_LINKS_INCLUDE = {

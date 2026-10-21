@@ -53,8 +53,7 @@ export const purchaseListProviders = () => [
     provide: PurchaseListLinkService,
     useValue: {
       reconcileDraftOrder: vi.fn().mockResolvedValue(undefined),
-      onOrderCancelledOrDeleted: vi.fn().mockResolvedValue(undefined),
-      onOrderFullyReceived: vi.fn().mockResolvedValue(undefined),
+      onOrderClosed: vi.fn().mockResolvedValue(undefined),
     },
   },
   {

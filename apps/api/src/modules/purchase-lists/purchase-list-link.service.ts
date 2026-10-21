@@ -1,21 +1,26 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { Prisma, PurchaseListItem } from '@prisma/client';
-import { translateError } from '@sto/shared';
-import { getLocale } from '../../common/tenant/tenant-context';
+import { groupBy } from '../../common/utils/array';
 import {
-  fetchPartCoefficients,
   netReservedByWorkOrder,
   QTY_EPSILON,
-  requiredByKey,
+  requiredForWorkOrder,
   stockKey,
 } from '../work-orders/work-order-stock-requirements';
 import { PROCUREMENT_ACTIVE_STATUSES } from '../work-orders/work-orders.fsm';
 import { CLEAR_OFFER_SNAPSHOT, itemPartData } from './purchase-list-offer-snapshot';
+import { conflict } from './purchase-lists.helpers';
 
 type Tx = Prisma.TransactionClient;
 
 /** Позиція в обсязі, потрібному хукам (усі поля таблиці, крім службових). */
 type ItemRow = PurchaseListItem;
+
+/** Скільки з ORDERED-позиції повертається в список (базові одиниці). */
+interface ReturnPart {
+  item: ItemRow;
+  qty: number;
+}
 
 /** Скільки ще не отримано за ORDERED-позицією (базові одиниці). */
 export const undelivered = (item: { quantity: number; receivedQty: number }): number =>
@@ -81,12 +86,7 @@ export class PurchaseListLinkService {
     net: Map<string, number>,
   ): Promise<void> {
     const reserved = items.filter(i => i.reservedQty > QTY_EPSILON);
-    const byKey = new Map<string, ItemRow[]>();
-    for (const item of reserved) {
-      const key = stockKey(item.goodId, item.warehouseId);
-      byKey.set(key, [...(byKey.get(key) ?? []), item]);
-    }
-    for (const [key, group] of byKey) {
+    for (const [key, group] of groupBy(reserved, i => stockKey(i.goodId, i.warehouseId))) {
       let excess = group.reduce((s, i) => s + i.reservedQty, 0) - Math.max(0, net.get(key) ?? 0);
       for (const item of group) {
         if (excess <= QTY_EPSILON) break;
@@ -96,11 +96,7 @@ export class PurchaseListLinkService {
           where: { id: item.id, orgId, deletedAt: null, reservedQty: item.reservedQty },
           data: { reservedQty: next <= QTY_EPSILON ? 0 : next },
         });
-        if (res.count !== 1) {
-          throw new ConflictException(
-            translateError('err.purchaseList.concurrentChange', getLocale()),
-          );
-        }
+        if (res.count !== 1) throw conflict();
         excess -= cut;
       }
     }
@@ -139,13 +135,8 @@ export class PurchaseListLinkService {
     if (hasReserved) await this.capReserved(tx, orgId, all, net);
     if (!hasOpen) return;
 
-    const need = required ?? (await this.requiredOf(tx, orgId, workOrderId));
-    const byKey = new Map<string, ItemRow[]>();
-    for (const item of items) {
-      const key = stockKey(item.goodId, item.warehouseId);
-      byKey.set(key, [...(byKey.get(key) ?? []), item]);
-    }
-    for (const [key, group] of byKey) {
+    const need = required ?? (await requiredForWorkOrder(tx, orgId, workOrderId));
+    for (const [key, group] of groupBy(items, i => stockKey(i.goodId, i.warehouseId))) {
       const covered =
         Math.max(0, net.get(key) ?? 0) +
         group.reduce((s, i) => s + (i.status === 'OPEN' ? i.quantity : undelivered(i)), 0);
@@ -165,21 +156,11 @@ export class PurchaseListLinkService {
     }
   }
 
-  /** Потреба наряду по (товар, склад) у базових одиницях — з його рядків у цій транзакції. */
-  private async requiredOf(tx: Tx, orgId: string, workOrderId: string) {
-    const parts = await tx.workOrderPart.findMany({
-      where: { workOrderId, orgId, deletedAt: null },
-      take: 1000,
-    });
-    return requiredByKey(parts, await fetchPartCoefficients(tx, orgId, parts));
-  }
-
   /**
    * BR-PL-009: рядки DRAFT-замовлення переписано. Позиції замовлення звіряються за товаром:
-   * товару в рядках немає → позиція повертається в OPEN; позицій більше, ніж замовлено, → новіші
-   * відв'язуються (або розділяються: замовлене лишається ORDERED, решта — нова OPEN-позиція).
-   * Відв'язане від завершеного, скасованого чи видаленого наряду — «Скасовано», не OPEN (як
-   * BR-PL-010/012); від живого — урізається до непокритої потреби наряду (BR-PL-013; Bug #916).
+   * товару в рядках немає → позиція повертається в список; позицій більше, ніж замовлено, → новіші
+   * відв'язуються (або розділяються: замовлене лишається ORDERED, решта — нова позиція). Статус і
+   * урізання до потреби наряду — `returnToList` (Bug #916).
    */
   async reconcileDraftOrder(
     tx: Tx,
@@ -188,43 +169,28 @@ export class PurchaseListLinkService {
     /** Склад замовлення після правки — передається, коли його могли змінити (PATCH). */
     warehouseId?: string,
   ): Promise<void> {
-    const all = await tx.purchaseListItem.findMany({
-      where: { orgId, purchaseOrderId, status: 'ORDERED', deletedAt: null },
-      orderBy: { createdAt: 'asc' },
-      take: 1000,
-    });
+    const all = await this.orderedItems(tx, orgId, purchaseOrderId);
     if (all.length === 0) return;
     const activeWo = await this.activeWorkOrderIds(tx, orgId, all);
-    const touchedWo = new Set<string>();
-    const freed = (item: ItemRow): 'OPEN' | 'CANCELLED' => {
-      if (item.workOrderId === null) return 'OPEN';
-      touchedWo.add(item.workOrderId);
-      return activeWo.has(item.workOrderId) ? 'OPEN' : 'CANCELLED';
-    };
     // Склад замовлення змінено: позиції іншого складу замовлення вже не покриває — приймання
     // розподіляє отримане лише між позиціями складу замовлення (BR-PL-011), тож вони
-    // повертаються в OPEN, а не чекають товару, який прийде на інший склад.
+    // повертаються в список, а не чекають товару, який прийде на інший склад.
     const items = warehouseId ? all.filter(i => i.warehouseId === warehouseId) : all;
-    for (const item of all) {
-      if (items.includes(item)) continue;
-      await this.casItem(tx, orgId, item, { status: freed(item), purchaseOrderId: null });
-    }
-    if (items.length > 0) await this.unbindOverOrdered(tx, orgId, purchaseOrderId, items, freed);
-    // Відв'язане від живого наряду не покриває більше, ніж наряду ще треба: потребу могли
-    // зменшити, поки позиція була в чернетці (ORDERED тоді не урізаються, BR-PL-013).
-    for (const woId of touchedWo) {
-      if (activeWo.has(woId)) await this.onWorkOrderPartsChanged(tx, orgId, woId);
-    }
+    const parts: ReturnPart[] = all
+      .filter(item => !items.includes(item))
+      .map(item => ({ item, qty: item.quantity }));
+    if (items.length > 0)
+      parts.push(...(await this.overOrdered(tx, orgId, purchaseOrderId, items)));
+    await this.returnToList(tx, orgId, parts, activeWo, { snapshot: 'copy', trimToNeed: true });
   }
 
   /** BR-PL-009: позицій товару більше, ніж у рядках чернетки, — новіші відв'язуються. */
-  private async unbindOverOrdered(
+  private async overOrdered(
     tx: Tx,
     orgId: string,
     purchaseOrderId: string,
     items: ItemRow[],
-    freed: (item: ItemRow) => 'OPEN' | 'CANCELLED',
-  ): Promise<void> {
+  ): Promise<ReturnPart[]> {
     const lines = await tx.purchaseOrderLine.findMany({
       where: { orgId, purchaseOrderId, deletedAt: null },
       select: { goodId: true, quantity: true },
@@ -234,66 +200,94 @@ export class PurchaseListLinkService {
     for (const l of lines)
       orderedByGood.set(l.goodId, (orderedByGood.get(l.goodId) ?? 0) + l.quantity);
 
-    const byGood = new Map<string, ItemRow[]>();
-    for (const item of items) byGood.set(item.goodId, [...(byGood.get(item.goodId) ?? []), item]);
-    for (const [goodId, group] of byGood) {
+    const parts: ReturnPart[] = [];
+    for (const [goodId, group] of groupBy(items, i => i.goodId)) {
       // Старші позиції лишаються замовленими першими; новіші відв'язуються.
       let room = orderedByGood.get(goodId) ?? 0;
       for (const item of group) {
         if (item.quantity <= room + QTY_EPSILON) {
           room -= item.quantity;
-        } else if (room > QTY_EPSILON) {
-          await this.splitOff(tx, orgId, item, item.quantity - room, { status: freed(item) });
-          room = 0;
         } else {
-          await this.casItem(tx, orgId, item, { status: freed(item), purchaseOrderId: null });
+          parts.push({ item, qty: room > QTY_EPSILON ? item.quantity - room : item.quantity });
+          room = 0;
         }
       }
     }
+    return parts;
   }
 
   /**
-   * BR-PL-010: замовлення видалено (DRAFT) чи скасовано. Позиція без жодної отриманої одиниці →
-   * OPEN без замовлення; частково отримана → RECEIVED з `quantity = receivedQty` і нова позиція на
-   * решту. Решта наряду, що вже закритий, не відкривається знову — нова позиція CANCELLED.
+   * Замовлення закрито — неотримане за його ORDERED-позиціями повертається в список:
+   * - BR-PL-010: замовлення видалено (DRAFT) чи скасовано;
+   * - BR-PL-012: замовлення прийняте повністю (RECEIVED, зокрема FSM-переходом «Отримано» —
+   *   Bug #885), а постачальник привіз менше, ніж у позиціях.
+   * Позиція без жодної отриманої одиниці повертається ціла; частково отримана → RECEIVED з
+   * `quantity = receivedQty` і нова позиція з тими самими зв'язками на решту; отримана повністю →
+   * RECEIVED. Статус поверненого й урізання до потреби наряду — `returnToList`.
    */
-  async onOrderCancelledOrDeleted(tx: Tx, orgId: string, purchaseOrderId: string): Promise<void> {
-    await this.returnUndelivered(tx, orgId, purchaseOrderId);
+  async onOrderClosed(tx: Tx, orgId: string, purchaseOrderId: string): Promise<void> {
+    const items = await this.orderedItems(tx, orgId, purchaseOrderId);
+    if (items.length === 0) return;
+    const activeWo = await this.activeWorkOrderIds(tx, orgId, items);
+    const parts = items.map(item => ({ item, qty: undelivered(item) }));
+    await this.returnToList(tx, orgId, parts, activeWo, { snapshot: 'copy', trimToNeed: true });
   }
 
-  /**
-   * BR-PL-012: замовлення повністю прийняте (RECEIVED), а постачальник привіз менше, ніж у
-   * позиціях: отримана частина → RECEIVED, на решту — нова OPEN-позиція з тими самими зв'язками.
-   */
-  async onOrderFullyReceived(tx: Tx, orgId: string, purchaseOrderId: string): Promise<void> {
-    await this.returnUndelivered(tx, orgId, purchaseOrderId);
-  }
-
-  private async returnUndelivered(tx: Tx, orgId: string, purchaseOrderId: string): Promise<void> {
-    const items = await tx.purchaseListItem.findMany({
+  /** ORDERED-позиції замовлення, старші першими. */
+  private orderedItems(tx: Tx, orgId: string, purchaseOrderId: string): Promise<ItemRow[]> {
+    return tx.purchaseListItem.findMany({
       where: { orgId, purchaseOrderId, status: 'ORDERED', deletedAt: null },
       orderBy: { createdAt: 'asc' },
       take: 1000,
     });
-    if (items.length === 0) return;
-    const activeWo = await this.activeWorkOrderIds(tx, orgId, items);
+  }
+
+  /**
+   * Спільне для всіх шляхів «повернути позицію із замовлення в список» (BR-PL-009, 010, 012,
+   * BR-SCON-013). Пари (позиція, кількість) — у порядку `parts`:
+   * - кількість ≈ 0 — повертати нічого: позиція отримана повністю → RECEIVED;
+   * - ціла неотримана позиція сама виходить із замовлення;
+   * - частина відділяється (`splitOff`): замовлене лишається в замовленні, решта — нова позиція.
+   * Повернене від завершеного, скасованого чи видаленого наряду — «Скасовано», а не «Не
+   * замовлено» (Bug #912); від живого (`activeWo`) чи без наряду — OPEN. `snapshot` — пропозиція
+   * поверненого: `copy` лишає її (BR-PL-017), `clear` скидає (непідтверджене, BR-SCON-013).
+   *
+   * `trimToNeed`: повернене в OPEN не покриває більше, ніж наряду ще треба — потребу могли
+   * зменшити, поки позиція була в замовленні (ORDERED тоді не урізаються, BR-PL-013; Bug #916).
+   * Лише живі наряди: у закритого повернене вже «Скасовано», а резерв завершеного списано, не
+   * знято — `reservedQty` його позицій лишається. Наряди тут не блокуються: шлях замовлення пише
+   * позиції першими, і `FOR UPDATE` на наряді перевернув би порядок блокувань.
+   */
+  private async returnToList(
+    tx: Tx,
+    orgId: string,
+    parts: ReturnPart[],
+    activeWo: ReadonlySet<string>,
+    opts: { snapshot: 'copy' | 'clear'; trimToNeed: boolean },
+  ): Promise<void> {
     const reopened = new Set<string>();
-    for (const item of items) {
-      const reopen = item.workOrderId === null || activeWo.has(item.workOrderId);
-      const restStatus = reopen ? 'OPEN' : 'CANCELLED';
-      if (reopen && item.workOrderId !== null && undelivered(item) > QTY_EPSILON) {
-        reopened.add(item.workOrderId);
-      }
-      if (item.receivedQty <= QTY_EPSILON) {
-        await this.casItem(tx, orgId, item, { status: restStatus, purchaseOrderId: null });
-      } else if (undelivered(item) <= QTY_EPSILON) {
+    for (const { item, qty } of parts) {
+      if (qty <= QTY_EPSILON) {
         await this.casItem(tx, orgId, item, { status: 'RECEIVED' });
-      } else {
-        await this.splitOff(tx, orgId, item, undelivered(item), { status: restStatus });
+        continue;
       }
+      const reopen = item.workOrderId === null || activeWo.has(item.workOrderId);
+      const status = reopen ? 'OPEN' : 'CANCELLED';
+      if (item.receivedQty <= QTY_EPSILON && qty >= item.quantity - QTY_EPSILON) {
+        await this.casItem(tx, orgId, item, {
+          status,
+          purchaseOrderId: null,
+          ...(opts.snapshot === 'clear' ? CLEAR_OFFER_SNAPSHOT : {}),
+        });
+      } else {
+        await this.splitOff(tx, orgId, item, qty, {
+          status,
+          copySnapshot: opts.snapshot === 'copy',
+        });
+      }
+      if (reopen && item.workOrderId !== null) reopened.add(item.workOrderId);
     }
-    // Повернене в OPEN не покриває більше, ніж наряду ще треба: потребу могли зменшити, поки
-    // позиція була в замовленні (ORDERED тоді не урізаються, BR-PL-013; Bug #916).
+    if (!opts.trimToNeed) return;
     for (const woId of reopened) await this.onWorkOrderPartsChanged(tx, orgId, woId);
   }
 
@@ -333,7 +327,7 @@ export class PurchaseListLinkService {
     orgId: string,
     item: ItemRow,
     restQty: number,
-    rest: { status: 'OPEN' | 'CANCELLED'; copySnapshot?: boolean },
+    rest: { status: 'OPEN' | 'CANCELLED'; copySnapshot: boolean },
   ): Promise<void> {
     const keepQty = item.quantity - restQty;
     const keepStatus = keepQty - item.receivedQty <= QTY_EPSILON ? 'RECEIVED' : item.status;
@@ -343,17 +337,15 @@ export class PurchaseListLinkService {
     await tx.purchaseListItem.create({
       data: itemPartData(item, restQty, {
         status: rest.status,
-        snapshot: rest.copySnapshot === false ? 'none' : 'copy',
+        snapshot: rest.copySnapshot ? 'copy' : 'none',
       }),
     });
   }
 
   /**
    * BR-SCON-013: «Повернути непідтверджене в список» — `qty` з ORDERED-позиції замовлення
-   * повертається в OPEN БЕЗ пропозиції (постачальник її не підтвердив). Ціла неотримана
-   * позиція — сама стає OPEN; частина — відділяється (`splitOff` без знімка). Наряд позиції вже
-   * завершено, скасовано чи видалено — повернене стає «Скасовано», а не «Не замовлено», як решта
-   * при скасуванні й прийманні (BR-PL-010, 012; Bug #912).
+   * повертається БЕЗ пропозиції (постачальник її не підтвердив); статус — як у `returnToList`
+   * (Bug #912). Урізання до потреби наряду робить виклик — один раз після всіх позицій.
    *
    * `activeWo` — живі наряди позицій (`activeWorkOrderIds`), уже прочитані викликом, що повертає
    * кілька позицій; без неї — читається тут.
@@ -367,19 +359,11 @@ export class PurchaseListLinkService {
   ): Promise<void> {
     const rest = Math.min(qty, undelivered(item));
     if (rest <= QTY_EPSILON) return;
-    const reopen =
-      item.workOrderId === null ||
-      (activeWo ?? (await this.activeWorkOrderIds(tx, orgId, [item]))).has(item.workOrderId);
-    const status = reopen ? 'OPEN' : 'CANCELLED';
-    if (item.receivedQty <= QTY_EPSILON && rest >= item.quantity - QTY_EPSILON) {
-      await this.casItem(tx, orgId, item, {
-        status,
-        purchaseOrderId: null,
-        ...CLEAR_OFFER_SNAPSHOT,
-      });
-      return;
-    }
-    await this.splitOff(tx, orgId, item, rest, { status, copySnapshot: false });
+    const active = activeWo ?? (await this.activeWorkOrderIds(tx, orgId, [item]));
+    await this.returnToList(tx, orgId, [{ item, qty: rest }], active, {
+      snapshot: 'clear',
+      trimToNeed: false,
+    });
   }
 
   /** Зміна позиції за умовою «стан не змінився» (BR-PL-005); інакше 409 і відкат. */
@@ -400,8 +384,6 @@ export class PurchaseListLinkService {
       },
       data,
     });
-    if (res.count !== 1) {
-      throw new ConflictException(translateError('err.purchaseList.concurrentChange', getLocale()));
-    }
+    if (res.count !== 1) throw conflict();
   }
 }

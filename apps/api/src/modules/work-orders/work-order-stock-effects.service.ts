@@ -1,8 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { translateError } from '@sto/shared';
 import { moneyFromDecimal } from '../../common/utils/money';
-import { getLocale } from '../../common/tenant/tenant-context';
+import { err } from '../../common/utils/err';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -10,13 +9,14 @@ import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { postWorkOrderFxInTx } from './work-order-fx';
 import { PurchaseListLinkService } from '../purchase-lists/purchase-list-link.service';
 import {
-  availableQty,
   fetchPartCoefficients,
+  freeQty,
   netReservedByWorkOrder,
   QTY_EPSILON,
-  requiredByKey,
+  requiredForWorkOrder,
   splitStockKey,
   stockKey,
+  stockLevels,
 } from './work-order-stock-requirements';
 
 /**
@@ -97,25 +97,24 @@ export class WorkOrderStockEffectsService {
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
     const db = tx ?? this.prisma;
-    const parts = await db.workOrderPart.findMany({
-      where: { workOrderId, orgId, deletedAt: null },
-      take: 1000,
-    });
-    // Batch-fetch GoodUoM coefficients for qty conversion: qty_base = qty * coefficient
-    // (coefficient = скільки БАЗОВИХ одиниць в одній альтернативній: «1 пакет = 12 шт» → 12).
-    const coeffMap = await fetchPartCoefficients(db, orgId, parts);
-    const required = requiredByKey(parts, coeffMap);
+    // Потреба в базових одиницях: qty × коефіцієнт одиниці рядка («1 пакет = 12 шт» → 12).
+    const required = await requiredForWorkOrder(db, orgId, workOrderId);
     const net = await netReservedByWorkOrder(db, orgId, workOrderId);
 
     // Ключі в стабільному порядку — рядки складу блокуються (upsert у createMovement) в одному
     // порядку в усіх переходах, а не в порядку рядків наряду.
+    const missing = new Map<string, number>();
     for (const key of Array.from(required.keys()).sort()) {
       const want = (required.get(key) ?? 0) - Math.max(0, net.get(key) ?? 0);
-      if (want <= QTY_EPSILON) continue;
-      const [goodId, warehouseId] = splitStockKey(key);
-      const available = await availableQty(db, orgId, goodId, warehouseId);
-      const take = Math.min(want, available);
+      if (want > QTY_EPSILON) missing.set(key, want);
+    }
+    // Вільний залишок — одним запитом на всі пари: кожна пара резервується один раз, тож рух
+    // однієї не змінює прочитаного для іншої.
+    const stock = await stockLevels(db, orgId, missing.keys());
+    for (const [key, want] of missing) {
+      const take = Math.min(want, freeQty(stock.get(key)));
       if (take <= QTY_EPSILON) continue;
+      const [goodId, warehouseId] = splitStockKey(key);
       await this.inventory.createMovement(
         orgId,
         {
@@ -164,12 +163,7 @@ export class WorkOrderStockEffectsService {
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
     const db = tx ?? this.prisma;
-    const parts = await db.workOrderPart.findMany({
-      where: { workOrderId, orgId, deletedAt: null },
-      take: 1000,
-    });
-    const coeffMap = await fetchPartCoefficients(db, orgId, parts);
-    const required = requiredByKey(parts, coeffMap);
+    const required = await requiredForWorkOrder(db, orgId, workOrderId);
     const net = await netReservedByWorkOrder(db, orgId, workOrderId);
     await this.releaseExcess(orgId, workOrderId, net, required, userId, db);
     // BR-PL-013: надлишок покриття знімається з OPEN-позицій наряду (після зняття резерву).
@@ -190,16 +184,17 @@ export class WorkOrderStockEffectsService {
     userId: string | undefined,
     db: Prisma.TransactionClient,
   ): Promise<void> {
+    const excessByKey = new Map<string, number>();
     for (const key of Array.from(net.keys()).sort()) {
       const excess = (net.get(key) ?? 0) - (keep.get(key) ?? 0);
-      if (excess <= QTY_EPSILON) continue;
-      const [goodId, warehouseId] = splitStockKey(key);
-      const item = await db.stockItem.findFirst({
-        where: { orgId, goodId, warehouseId, deletedAt: null },
-        select: { reserved: true },
-      });
-      const release = Math.min(excess, item?.reserved ?? 0);
+      if (excess > QTY_EPSILON) excessByKey.set(key, excess);
+    }
+    // Агрегат резерву — одним запитом на всі пари (кожна знімається один раз).
+    const stock = await stockLevels(db, orgId, excessByKey.keys());
+    for (const [key, excess] of excessByKey) {
+      const release = Math.min(excess, stock.get(key)?.reserved ?? 0);
       if (release <= QTY_EPSILON) continue;
+      const [goodId, warehouseId] = splitStockKey(key);
       await this.inventory.createMovement(
         orgId,
         {
@@ -311,9 +306,7 @@ export class WorkOrderStockEffectsService {
     });
     const chargeAmount = moneyFromDecimal(freshWo?.totalAmount ?? wo.totalAmount);
     if (chargeAmount <= 0)
-      throw new BadRequestException(
-        translateError('err.workOrder.totalZeroCannotComplete', getLocale()),
-      );
+      throw new BadRequestException(err('err.workOrder.totalZeroCannotComplete'));
     await this.settlements.createTransaction(
       orgId,
       {

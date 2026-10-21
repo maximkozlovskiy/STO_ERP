@@ -22,6 +22,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  PROCUREMENT_READ_ROLES,
+  PROCUREMENT_WRITE_ROLES,
   purchaseListCreateSchema,
   purchaseListFromWorkOrderSchema,
   purchaseListItemIdsSchema,
@@ -46,7 +48,6 @@ import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { LinkedCountsDto } from '../purchase-orders/purchase-orders.dto';
 import { PurchaseListsService } from './purchase-lists.service';
 import { PurchaseListOrdersService } from './purchase-list-orders.service';
-import { PL_READ_ROLES, PL_WRITE_ROLES } from './purchase-lists.helpers';
 import {
   CreateOrdersResultDto,
   FromWorkOrderResultDto,
@@ -69,7 +70,7 @@ export class PurchaseListsController {
   ) {}
 
   @Get()
-  @Roles(...PL_READ_ROLES)
+  @Roles(...PROCUREMENT_READ_ROLES)
   @ApiOperation({ summary: 'Списки купівлі' })
   @ApiOkResponse({ type: PaginatedPurchaseListsDto })
   findAll(@OrgContext() orgId: string, @Query() query: PurchaseListQueryDto) {
@@ -79,7 +80,7 @@ export class PurchaseListsController {
   // Специфічні маршрути ПЕРЕД :id — Fastify route ordering.
 
   @Post('linked-counts')
-  @Roles(...PL_READ_ROLES)
+  @Roles(...PROCUREMENT_READ_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Кількість пов'язаних документів для списків (batch)" })
   getLinkedCounts(@OrgContext() orgId: string, @Body() dto: LinkedCountsDto) {
@@ -87,7 +88,7 @@ export class PurchaseListsController {
   }
 
   @Post('from-work-order')
-  @Roles(...PL_READ_ROLES)
+  @Roles(...PROCUREMENT_READ_ROLES)
   @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({ summary: 'Товари наряду → до списку купівлі (BR-PL-003)' })
   @ApiCreatedResponse({ type: FromWorkOrderResultDto })
@@ -102,7 +103,7 @@ export class PurchaseListsController {
   }
 
   @Post('merge')
-  @Roles(...PL_WRITE_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Об'єднати списки (BR-PL-006)" })
   @ApiOkResponse({ type: PurchaseListDetailDto })
@@ -115,7 +116,7 @@ export class PurchaseListsController {
   }
 
   @Post('create-orders')
-  @Roles(...PL_WRITE_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({ summary: 'Створити замовлення постачальникам з позицій (BR-PL-008)' })
   @ApiCreatedResponse({ type: CreateOrdersResultDto })
@@ -127,7 +128,7 @@ export class PurchaseListsController {
   }
 
   @Post()
-  @Roles(...PL_READ_ROLES)
+  @Roles(...PROCUREMENT_READ_ROLES)
   @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({ summary: 'Створити список купівлі' })
   @ApiCreatedResponse({ type: PurchaseListResponseDto })
@@ -139,14 +140,14 @@ export class PurchaseListsController {
   }
 
   @Get(':id/linked-documents')
-  @Roles(...PL_READ_ROLES)
+  @Roles(...PROCUREMENT_READ_ROLES)
   @ApiOperation({ summary: "Пов'язані документи списку (наряди, замовлення, злиті списки)" })
   getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getLinkedDocuments(orgId, id);
   }
 
   @Post(':id/items')
-  @Roles(...PL_WRITE_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @ApiOperation({ summary: 'Ручна позиція (BR-PL-004)' })
   @ApiCreatedResponse({ type: PurchaseListItemResponseDto })
   addItem(
@@ -158,7 +159,7 @@ export class PurchaseListsController {
   }
 
   @Post(':id/close')
-  @Roles(...PL_WRITE_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Закрити список' })
   @ApiOkResponse({ type: PurchaseListResponseDto })
@@ -167,7 +168,7 @@ export class PurchaseListsController {
   }
 
   @Post(':id/cancel')
-  @Roles(...PL_WRITE_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Скасувати список (без замовлених позицій)' })
   @ApiOkResponse({ type: PurchaseListResponseDto })
@@ -176,7 +177,7 @@ export class PurchaseListsController {
   }
 
   @Get(':id')
-  @Roles(...PL_READ_ROLES)
+  @Roles(...PROCUREMENT_READ_ROLES)
   @ApiOperation({ summary: 'Список купівлі з позиціями' })
   @ApiOkResponse({ type: PurchaseListDetailDto })
   findOne(
@@ -188,7 +189,7 @@ export class PurchaseListsController {
   }
 
   @Patch(':id')
-  @Roles(...PL_WRITE_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @ApiOperation({ summary: 'Змінити список (назва, склад, примітка)' })
   @ApiOkResponse({ type: PurchaseListResponseDto })
   update(
@@ -200,7 +201,7 @@ export class PurchaseListsController {
   }
 
   @Delete(':id')
-  @Roles(...PL_WRITE_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити список (без замовлених позицій)' })
   @ApiNoContentResponse()

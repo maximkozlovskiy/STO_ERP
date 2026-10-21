@@ -6,7 +6,7 @@ import {
   PurchaseOrdersService,
   type PreparedPurchaseOrder,
 } from '../purchase-orders/purchase-orders.service';
-import { conflict, err } from './purchase-lists.helpers';
+import { conflict, err, isItemOpen, OPEN_ITEM_WHERE } from './purchase-lists.helpers';
 import type { CreateOrdersResultDto } from './purchase-lists.dto';
 
 interface OrderGroup {
@@ -22,7 +22,7 @@ interface OrderGroup {
  * (постачальник, склад) — одне DRAFT-замовлення на групу; рядок — на (товар, ціна, пропозиція,
  * BR-PL-018) із сумою кількостей; ціна = `expectedPrice ?? Good.purchasePrice ?? 0` — у гривні:
  * замовлення завжди в базовій валюті (ціну пропозиції перераховано при виборі, BR-SOFR-006). Перевірки й номери — ДО
- * транзакції (`PurchaseOrdersService.prepareCreate`); замовлення (`createInTx`) і перехід позицій
+ * транзакції (`PurchaseOrdersService.prepareCreate`); замовлення (`insertInTx`) і перехід позицій
  * у ORDERED (CAS на OPEN без замовлення) — в одній транзакції.
  */
 @Injectable()
@@ -48,7 +48,7 @@ export class PurchaseListOrdersService {
         }),
       );
     }
-    if (items.some(i => i.status !== 'OPEN' || i.purchaseOrderId !== null)) {
+    if (!items.every(isItemOpen)) {
       throw new BadRequestException(err('err.purchaseList.itemNotOpen'));
     }
     const noSupplier = items.filter(i => !i.supplierId);
@@ -96,15 +96,9 @@ export class PurchaseListOrdersService {
       async tx => {
         const created: CreateOrdersResultDto['orders'] = [];
         for (const { group, po } of prepared) {
-          const order = await this.purchaseOrders.createInTx(tx, orgId, po);
+          const order = await this.purchaseOrders.insertInTx(tx, orgId, po);
           const res = await tx.purchaseListItem.updateMany({
-            where: {
-              orgId,
-              id: { in: group.itemIds },
-              status: 'OPEN',
-              purchaseOrderId: null,
-              deletedAt: null,
-            },
+            where: { orgId, id: { in: group.itemIds }, ...OPEN_ITEM_WHERE },
             data: { status: 'ORDERED', purchaseOrderId: order.id },
           });
           if (res.count !== group.itemIds.length) throw conflict();

@@ -4,6 +4,18 @@ import type { PrismaService } from '../../prisma/prisma.service';
 import type { InventoryService } from '../inventory/inventory.service';
 import type { SettlementsService } from '../settlements/settlements.service';
 
+/** Аргументи `stockItem.findMany` пакетного читання рядків складу (`stockLevels`). */
+type StockItemFindManyArgs = { where: { goodId: { in: string[] }; warehouseId: { in: string[] } } };
+
+/** Рядок складу на кожну пару (товар, склад) запиту — зі стану, який веде тест. */
+const stockRows = (
+  args: StockItemFindManyArgs,
+  level: (goodId: string) => { quantity: number; reserved: number },
+) =>
+  args.where.goodId.in.flatMap(goodId =>
+    args.where.warehouseId.in.map(warehouseId => ({ goodId, warehouseId, ...level(goodId) })),
+  );
+
 /**
  * A3 — WorkOrderStockEffectsService (винесено з WorkOrdersService.transition). Основне логічне
  * покриття stock-математики (writeoff/charge/return/coeff) лишається у work-orders.service.spec
@@ -472,11 +484,14 @@ describe('WorkOrderStockEffectsService.releaseAllNetReservations — Bug #780 (r
       },
       goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
       stockMovement: { findMany: vi.fn().mockResolvedValue(opts.reservationMovements) },
-      // Зняття обмежене агрегатом складу (StockItem.reserved) — читає його поточне значення.
+      // Зняття обмежене агрегатом складу (StockItem.reserved) — читає його поточне значення
+      // (один запит на всі пари товар×склад).
       stockItem: {
-        findFirst: vi
+        findMany: vi
           .fn()
-          .mockImplementation(() => Promise.resolve({ reserved: inv.getReserved() })),
+          .mockImplementation((args: StockItemFindManyArgs) =>
+            Promise.resolve(stockRows(args, () => ({ quantity: 0, reserved: inv.getReserved() }))),
+          ),
       },
     } as unknown as PrismaService;
     const inventory = { createMovement: inv.createMovement } as unknown as InventoryService;
@@ -593,10 +608,10 @@ function makeLedgerService(opts: {
     goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
     // Вільний залишок (дорезервування) і агрегат резерву (зняття) — з того самого журналу.
     stockItem: {
-      findFirst: vi
+      findMany: vi
         .fn()
-        .mockImplementation((args: { where: { goodId: string } }) =>
-          Promise.resolve({ ...item(args.where.goodId) }),
+        .mockImplementation((args: StockItemFindManyArgs) =>
+          Promise.resolve(stockRows(args, goodId => ({ ...item(goodId) }))),
         ),
     },
     stockMovement: {

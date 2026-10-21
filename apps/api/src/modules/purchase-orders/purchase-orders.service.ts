@@ -9,14 +9,9 @@ import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagina
 import { deduplicateBy } from '../../common/utils/array';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
-import { getLocale } from '../../common/tenant/tenant-context';
+import { err } from '../../common/utils/err';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  formatPersonName,
-  TRANSACTION_TIMEOUT_MS,
-  MAX_QUERY_LIMIT,
-  translateError,
-} from '@sto/shared';
+import { formatPersonName, TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -155,7 +150,7 @@ export class PurchaseOrdersService {
       const found = new Set(goods.map(g => g.id));
       const missing = goodIds.find(gid => !found.has(gid));
       throw new NotFoundException(
-        translateError('err.purchaseOrder.goodNotFound', getLocale(), { missing: String(missing) }),
+        err('err.purchaseOrder.goodNotFound', { missing: String(missing) }),
       );
     }
   }
@@ -280,7 +275,7 @@ export class PurchaseOrdersService {
         },
       },
     });
-    if (!po) throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
+    if (!po) throw new NotFoundException(err('err.purchaseOrder.notFound'));
     return this.toDto(po);
   }
 
@@ -338,19 +333,11 @@ export class PurchaseOrdersService {
             select: { id: true },
           }),
     ]);
-    if (!supplier)
-      throw new NotFoundException(
-        translateError('err.purchaseOrder.supplierNotFound', getLocale()),
-      );
+    if (!supplier) throw new NotFoundException(err('err.purchaseOrder.supplierNotFound'));
     assertCounterpartyRole(supplier.type, 'supplier'); // BR-CP-001
-    if (!warehouse)
-      throw new NotFoundException(
-        translateError('err.purchaseOrder.warehouseNotFound', getLocale()),
-      );
+    if (!warehouse) throw new NotFoundException(err('err.purchaseOrder.warehouseNotFound'));
     if (hasContractId && !contract)
-      throw new NotFoundException(
-        translateError('err.purchaseOrder.contractNotFound', getLocale()),
-      );
+      throw new NotFoundException(err('err.purchaseOrder.contractNotFound'));
     const contractId: string | null = hasContractId
       ? (contract as { id: string }).id
       : (contract?.id ?? null);
@@ -419,14 +406,30 @@ export class PurchaseOrdersService {
     };
   }
 
-  /** Запис підготовленого замовлення (`prepareCreate`) у транзакції виклику. */
-  async createInTx(tx: Prisma.TransactionClient, orgId: string, prepared: PreparedPurchaseOrder) {
-    const created = await tx.purchaseOrder.create({ data: prepared.data });
+  /**
+   * Запис підготовленого замовлення (`prepareCreate`) у транзакції виклику, без перечитування:
+   * виклику, якому треба лише `id`/`number` (замовлення зі списку купівлі, BR-PL-008).
+   */
+  async insertInTx(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    prepared: PreparedPurchaseOrder,
+  ): Promise<{ id: string; number: string }> {
+    const created = await tx.purchaseOrder.create({
+      data: prepared.data,
+      select: { id: true, number: true },
+    });
     if (prepared.lines.length) {
       await tx.purchaseOrderLine.createMany({
         data: prepared.lines.map(l => ({ orgId, purchaseOrderId: created.id, ...l })),
       });
     }
+    return created;
+  }
+
+  /** Запис підготовленого замовлення (`insertInTx`) і перечитування у формі відповіді. */
+  async createInTx(tx: Prisma.TransactionClient, orgId: string, prepared: PreparedPurchaseOrder) {
+    const created = await this.insertInTx(tx, orgId, prepared);
     return tx.purchaseOrder.findFirstOrThrow({
       where: { id: created.id, orgId, deletedAt: null },
       include: PO_WRITE_INCLUDE,
@@ -456,11 +459,9 @@ export class PurchaseOrdersService {
         warehouseId: true,
       },
     });
-    if (!po) throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
+    if (!po) throw new NotFoundException(err('err.purchaseOrder.notFound'));
     if (po.status !== PurchaseOrderStatus.DRAFT)
-      throw new BadRequestException(
-        translateError('err.purchaseOrder.onlyDraftEditable', getLocale()),
-      );
+      throw new BadRequestException(err('err.purchaseOrder.onlyDraftEditable'));
 
     // Доставка: обробляємо ЕН лише коли клієнт явно надіслав поле (undefined → не чіпати).
     //  - непорожній новий ЕН (змінився)  → deliveryStatus=PENDING + запустити опитування;
@@ -519,19 +520,13 @@ export class PurchaseOrdersService {
     ]);
 
     if (dto.supplierId && !supplier)
-      throw new NotFoundException(
-        translateError('err.purchaseOrder.supplierNotFound', getLocale()),
-      );
+      throw new NotFoundException(err('err.purchaseOrder.supplierNotFound'));
     // BR-CP-001: only when the supplier actually changes - a legacy PO stays editable.
     if (supplier && supplierChanged) assertCounterpartyRole(supplier.type, 'supplier');
     if (dto.warehouseId && !warehouse)
-      throw new NotFoundException(
-        translateError('err.purchaseOrder.warehouseNotFound', getLocale()),
-      );
+      throw new NotFoundException(err('err.purchaseOrder.warehouseNotFound'));
     if (shouldValidateContract && !contract)
-      throw new NotFoundException(
-        translateError('err.purchaseOrder.contractNotFound', getLocale()),
-      );
+      throw new NotFoundException(err('err.purchaseOrder.contractNotFound'));
 
     const newContractId: string | null | undefined =
       shouldValidateContract && contract
@@ -661,8 +656,7 @@ export class PurchaseOrdersService {
           where: { id, orgId, deletedAt: null },
           select: { status: true },
         });
-        if (!po)
-          throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
+        if (!po) throw new NotFoundException(err('err.purchaseOrder.notFound'));
 
         assertFsmTransition(PO_TRANSITIONS, po.status, newStatus);
 
@@ -672,14 +666,14 @@ export class PurchaseOrdersService {
         if (newStatus === PurchaseOrderStatus.CANCELLED) {
           // BR-PO-012: замовлення, вже передане постачальнику через API, — лише з force.
           await this.supplierOutbox.assertCancellable(tx, orgId, id, opts.force === true);
-          await this.purchaseLists.onOrderCancelledOrDeleted(tx, orgId, id);
+          await this.purchaseLists.onOrderClosed(tx, orgId, id);
         }
         // BR-PL-012 (Bug #885): замовлення закрито кнопкою «Отримано» (постачальник більше не
         // привезе) — остача позицій повертається в OPEN так само, як при повному прийманні.
         // Інакше позиції лишались ORDERED на закритому замовленні, а нестача рахувала їхнє
         // недоотримане покриттям.
         if (newStatus === PurchaseOrderStatus.RECEIVED) {
-          await this.purchaseLists.onOrderFullyReceived(tx, orgId, id);
+          await this.purchaseLists.onOrderClosed(tx, orgId, id);
         }
         await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
         // BR-PO-011 / BR-SCON-009: режим «автоматично при «Замовлено»» — outbox у цій же транзакції.
@@ -712,11 +706,9 @@ export class PurchaseOrdersService {
         contract: { select: { paymentDeferDays: true, deletedAt: true } },
       },
     });
-    if (!po) throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
+    if (!po) throw new NotFoundException(err('err.purchaseOrder.notFound'));
     if (po.status !== PurchaseOrderStatus.ORDERED && po.status !== PurchaseOrderStatus.PARTIAL) {
-      throw new BadRequestException(
-        translateError('err.purchaseOrder.receiveOnlyOrderedOrPartial', getLocale()),
-      );
+      throw new BadRequestException(err('err.purchaseOrder.receiveOnlyOrderedOrPartial'));
     }
 
     // §2.2 Tenant isolation: validate that any unitOfMeasureId override the caller passed
@@ -741,9 +733,7 @@ export class PurchaseOrdersService {
       allowedUomIds = new Set(allowed.map(u => u.id));
       const missing = overrideUomIds.filter(id => !allowedUomIds.has(id));
       if (missing.length) {
-        throw new BadRequestException(
-          translateError('err.purchaseOrder.unitNotFoundInOrg', getLocale()),
-        );
+        throw new BadRequestException(err('err.purchaseOrder.unitNotFoundInOrg'));
       }
     }
 
@@ -752,9 +742,7 @@ export class PurchaseOrdersService {
     const seen = new Set<string>();
     for (const recv of dto.lines) {
       if (seen.has(recv.lineId)) {
-        throw new BadRequestException(
-          translateError('err.purchaseOrder.receiveLineMustBeUnique', getLocale()),
-        );
+        throw new BadRequestException(err('err.purchaseOrder.receiveLineMustBeUnique'));
       }
       seen.add(recv.lineId);
     }
@@ -789,7 +777,7 @@ export class PurchaseOrdersService {
         // до 2 знаків суто для читабельності.
         const remaining = Math.round(Math.max(0, line.quantity - line.receivedQty) * 100) / 100;
         throw new BadRequestException(
-          translateError('err.purchaseOrder.receiveExceedsLineRemaining', getLocale(), {
+          err('err.purchaseOrder.receiveExceedsLineRemaining', {
             quantity: line.quantity,
             received: line.receivedQty,
             remaining,
@@ -818,11 +806,10 @@ export class PurchaseOrdersService {
           where: { id, orgId, deletedAt: null },
           select: { status: true },
         });
-        if (!fresh)
-          throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
+        if (!fresh) throw new NotFoundException(err('err.purchaseOrder.notFound'));
         if (fresh.status !== po.status) {
           throw new BadRequestException(
-            translateError('err.purchaseOrder.statusChangedRetry', getLocale(), {
+            err('err.purchaseOrder.statusChangedRetry', {
               status: fresh.status,
             }),
           );
@@ -857,9 +844,7 @@ export class PurchaseOrdersService {
             },
           });
           if (casResult.count === 0) {
-            throw new BadRequestException(
-              translateError('err.purchaseOrder.receiveAlreadyProcessed', getLocale()),
-            );
+            throw new BadRequestException(err('err.purchaseOrder.receiveAlreadyProcessed'));
           }
         }
 
@@ -958,7 +943,7 @@ export class PurchaseOrdersService {
         });
         // BR-PL-012: замовлення прийнято повністю — недоотримане за позиціями повертається в OPEN.
         if (newStatus === PurchaseOrderStatus.RECEIVED) {
-          await this.purchaseLists.onOrderFullyReceived(tx, orgId, id);
+          await this.purchaseLists.onOrderClosed(tx, orgId, id);
         }
       },
       { timeout: 30_000 }, // large PO (hundreds of lines) × createMovement with batch tracking
@@ -972,11 +957,9 @@ export class PurchaseOrdersService {
       where: { id, orgId, deletedAt: null },
       select: { status: true },
     });
-    if (!po) throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
+    if (!po) throw new NotFoundException(err('err.purchaseOrder.notFound'));
     if (po.status !== PurchaseOrderStatus.DRAFT)
-      throw new BadRequestException(
-        translateError('err.purchaseOrder.onlyDraftDeletable', getLocale()),
-      );
+      throw new BadRequestException(err('err.purchaseOrder.onlyDraftDeletable'));
     // Race-safe updateMany з повним compound where (id+orgId+deletedAt:null) і статусом DRAFT.
     // BR-PL-010: у тій самій транзакції позиції списків купівлі повертаються в OPEN.
     await this.prisma.$transaction(
@@ -984,15 +967,13 @@ export class PurchaseOrdersService {
         // Позиції — до рядка замовлення (порядок блокувань той самий, що в update і transition);
         // замовлення вже не DRAFT → CAS нижче кидає, і повернення позицій відкочується.
         await this.supplierOutbox.assertCancellable(tx, orgId, id, force);
-        await this.purchaseLists.onOrderCancelledOrDeleted(tx, orgId, id);
+        await this.purchaseLists.onOrderClosed(tx, orgId, id);
         const res = await tx.purchaseOrder.updateMany({
           where: { id, orgId, deletedAt: null, status: PurchaseOrderStatus.DRAFT },
           data: { deletedAt: new Date() },
         });
         if (res.count === 0) {
-          throw new BadRequestException(
-            translateError('err.purchaseOrder.onlyDraftDeletable', getLocale()),
-          );
+          throw new BadRequestException(err('err.purchaseOrder.onlyDraftDeletable'));
         }
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
@@ -1043,13 +1024,11 @@ export class PurchaseOrdersService {
         },
       },
     });
-    if (!po) throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
+    if (!po) throw new NotFoundException(err('err.purchaseOrder.notFound'));
     // Defense-in-depth: розцінювати можна лише отримані товари (UI рендерить кнопку
     // тільки для RECEIVED/PARTIAL, але клієнт міг бути обійдений)
     if (po.status !== PurchaseOrderStatus.RECEIVED && po.status !== PurchaseOrderStatus.PARTIAL) {
-      throw new BadRequestException(
-        translateError('err.purchaseOrder.priceOnlyReceived', getLocale()),
-      );
+      throw new BadRequestException(err('err.purchaseOrder.priceOnlyReceived'));
     }
 
     // Prefetch active rules once to avoid N+1 (each line previously fetched rules in a loop

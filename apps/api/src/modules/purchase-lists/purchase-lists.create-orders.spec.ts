@@ -13,7 +13,7 @@ import {
 
 /**
  * Замовлення постачальникам із позицій (BR-PL-008) і спільний шлях створення замовлення
- * (BR-PO-010, `createInTx`) — справжні PurchaseListOrdersService і PurchaseOrdersService над
+ * (BR-PO-010, `insertInTx`) — справжні PurchaseListOrdersService і PurchaseOrdersService над
  * таблицями в пам'яті.
  */
 
@@ -110,7 +110,7 @@ describe('BR-PL-008 створення замовлень зі списку', ()
   });
 
   // guards: BR-PO-010
-  it('замовлення зі списку створює той самий createInTx, що й POST /purchase-orders', async () => {
+  it('замовлення зі списку пише той самий insertInTx, що й POST /purchase-orders', async () => {
     const h = procurementHarness({ items: [itemRow('i1', { supplierId: SUPPLIER, quantity: 2 })] });
 
     const direct = await h.purchaseOrders.create(ORG, {

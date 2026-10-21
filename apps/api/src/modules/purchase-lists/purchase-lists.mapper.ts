@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { formatPersonName } from '@sto/shared';
+import { formatPersonName, PURCHASE_PRICE_VISIBLE_ROLES } from '@sto/shared';
 import type { PurchaseListItemResponseDto, PurchaseListResponseDto } from './purchase-lists.dto';
 
 /** Зв'язки позиції для відповіді — одна форма для всіх маршрутів (без дрейфу include). */
@@ -79,21 +79,14 @@ export function toItemDto(i: ItemWithRelations): PurchaseListItemResponseDto {
 
 /**
  * §2.1: очікувана ціна позиції — закупівельна ціна, фінансово чутливе поле. Бачать її ті самі ролі,
- * що й `Good.purchasePrice` (goods.service), — приймальня й механік, яким відкрито перегляд позицій
- * (BR-PL-015), отримують `null`. Невідома роль — теж `null` (fail-closed).
+ * що й `Good.purchasePrice` (PURCHASE_PRICE_VISIBLE_ROLES), — приймальня й механік, яким відкрито
+ * перегляд позицій (BR-PL-015), отримують `null`. Невідома роль — теж `null` (fail-closed).
  */
-const COST_VISIBLE_ROLES: ReadonlySet<string> = new Set([
-  'OWNER',
-  'ADMIN',
-  'STOREKEEPER',
-  'ACCOUNTANT',
-]);
-
 export function maskItemCost(
   items: PurchaseListItemResponseDto[],
   role: string | undefined,
 ): PurchaseListItemResponseDto[] {
-  if (role && COST_VISIBLE_ROLES.has(role)) return items;
+  if (canSeeItemCost(role)) return items;
   // BR-SOFR-010: ціна обраної пропозиції — та сама закупівельна ціна, тож маскується разом.
   return items.map(i =>
     i.expectedPrice === null && i.offerPrice === null
@@ -104,7 +97,7 @@ export function maskItemCost(
 
 /** Чи бачить роль закупівельні ціни (позиції, пропозиції постачальників). */
 export function canSeeItemCost(role: string | undefined): boolean {
-  return !!role && COST_VISIBLE_ROLES.has(role);
+  return !!role && PURCHASE_PRICE_VISIBLE_ROLES.includes(role);
 }
 
 /** Лічильники позицій списку за статусами (з `groupBy`). */

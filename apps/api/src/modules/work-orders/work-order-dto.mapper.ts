@@ -1,5 +1,5 @@
 import type { Prisma, WorkOrderStatus, WorkOrderPriority, RepairCategory } from '@prisma/client';
-import { formatPersonName } from '@sto/shared';
+import { formatPersonName, PURCHASE_PRICE_VISIBLE_ROLES } from '@sto/shared';
 import { safeCoeff } from '../../common/utils/math';
 import type {
   WorkOrderResponseDto,
@@ -14,10 +14,9 @@ import type {
  * специ сервісу покривають ці функції наскрізь (вивід ідентичний до/після виділення).
  */
 
-// §2.1 Auth: costPrice видимий лише цим ролям (fail-closed для решти).
-const COST_PRICE_VISIBLE_ROLES = new Set<string>(['OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT']);
+// §2.1 Auth: costPrice видимий лише ролям PURCHASE_PRICE_VISIBLE_ROLES (fail-closed для решти).
 const canSeeCostPrice = (role?: string | null): boolean =>
-  !!role && COST_PRICE_VISIBLE_ROLES.has(role);
+  !!role && PURCHASE_PRICE_VISIBLE_ROLES.includes(role);
 
 export function mapWorkOrderToDto(wo: {
   id: string;
@@ -185,7 +184,7 @@ export function mapWorkOrderPartToDto(
     // Populated when unitOfMeasureId is set — per-good GoodUoM record (id not needed for DTO).
     goodUoM?: { coefficient: number; unitOfMeasure: { shortName: string } } | null;
   },
-  // §2.1 Auth: костПрайс маскується для ролей не в COST_PRICE_VISIBLE_ROLES.
+  // §2.1 Auth: костПрайс маскується для ролей не в PURCHASE_PRICE_VISIBLE_ROLES.
   // Default = undefined → не показувати (fail-closed). Усі mutation-endpoints
   // (findOne / addPart / updatePart) приймають userRole і передають сюди —
   // консистентна поведінка: OWNER/ADMIN/STOREKEEPER/ACCOUNTANT бачать costPrice

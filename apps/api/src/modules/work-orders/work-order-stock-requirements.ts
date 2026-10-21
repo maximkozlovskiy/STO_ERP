@@ -82,6 +82,19 @@ export function requiredByKey(
   return required;
 }
 
+/** Потреба наряду по (товар, склад) у базових одиницях — з його невидалених рядків у `db`. */
+export async function requiredForWorkOrder(
+  db: StockDb,
+  orgId: string,
+  workOrderId: string,
+): Promise<Map<string, number>> {
+  const parts = await db.workOrderPart.findMany({
+    where: { workOrderId, orgId, deletedAt: null },
+    take: 1000,
+  });
+  return requiredByKey(parts, await fetchPartCoefficients(db, orgId, parts));
+}
+
 /**
  * Bug #780: нетто-резерв, який ЦЕЙ наряд реально тримає на складі, по (goodId|warehouseId).
  * reserved на StockItem — агрегат (не per-document), тож per-наряд рахуємо з його власних
@@ -169,16 +182,39 @@ export function splitStockKey(key: string): [goodId: string, warehouseId: string
   return [key.slice(0, sep), key.slice(sep + 1)];
 }
 
-/** Вільний залишок (`quantity − reserved`) товару на складі; немає рядка складу → 0. */
-export async function availableQty(
+/** Залишок і резерв рядка складу. */
+export interface StockLevel {
+  quantity: number;
+  reserved: number;
+}
+
+/**
+ * Рядки складу по парах (товар, склад) — один запит на всі пари `keys` (`goodId|warehouseId`).
+ * Пари без рядка складу в мапі відсутні.
+ */
+export async function stockLevels(
   db: StockDb,
   orgId: string,
-  goodId: string,
-  warehouseId: string,
-): Promise<number> {
-  const item = await db.stockItem.findFirst({
-    where: { orgId, goodId, warehouseId, deletedAt: null },
-    select: { quantity: true, reserved: true },
+  keys: Iterable<string>,
+): Promise<Map<string, StockLevel>> {
+  const wanted = new Set(keys);
+  const result = new Map<string, StockLevel>();
+  if (wanted.size === 0) return result;
+  const pairs = Array.from(wanted, splitStockKey);
+  const goodIds = Array.from(new Set(pairs.map(([goodId]) => goodId)));
+  const warehouseIds = Array.from(new Set(pairs.map(([, warehouseId]) => warehouseId)));
+  const rows = await db.stockItem.findMany({
+    where: { orgId, goodId: { in: goodIds }, warehouseId: { in: warehouseIds }, deletedAt: null },
+    select: { goodId: true, warehouseId: true, quantity: true, reserved: true },
+    take: goodIds.length * warehouseIds.length,
   });
-  return Math.max(0, (item?.quantity ?? 0) - (item?.reserved ?? 0));
+  for (const r of rows) {
+    const key = stockKey(r.goodId, r.warehouseId);
+    if (wanted.has(key)) result.set(key, { quantity: r.quantity, reserved: r.reserved });
+  }
+  return result;
 }
+
+/** Вільний залишок (`quantity − reserved`); немає рядка складу → 0. */
+export const freeQty = (level: StockLevel | undefined): number =>
+  Math.max(0, (level?.quantity ?? 0) - (level?.reserved ?? 0));

@@ -50,7 +50,7 @@ import { SupplierOrderOutboxModule } from '../supplier-api/outbox/supplier-order
     DeliveryTrackingService,
     NovaPoshtaPollingProcessor,
   ],
-  // Замовлення зі списку купівлі (BR-PL-008) створює PurchaseListsModule через createInTx.
+  // Замовлення зі списку купівлі (BR-PL-008) створює PurchaseListsModule через insertInTx.
   exports: [PurchaseOrdersService],
 })
 export class PurchaseOrdersModule {}

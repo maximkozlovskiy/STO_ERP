@@ -13,6 +13,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  PROCUREMENT_READ_ROLES,
+  PROCUREMENT_WRITE_ROLES,
   purchaseListItemIdsSchema,
   purchaseListItemSplitSchema,
   purchaseListItemsBulkUpdateSchema,
@@ -33,7 +35,6 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { PurchaseListItemsService } from './purchase-list-items.service';
 import { PurchaseShortageService } from './purchase-shortage.service';
-import { PL_READ_ROLES, PL_WRITE_ROLES } from './purchase-lists.helpers';
 import {
   BulkResultDto,
   PaginatedPurchaseListItemsDto,
@@ -57,7 +58,7 @@ export class PurchaseListItemsController {
   ) {}
 
   @Get('shortage')
-  @Roles(...PL_READ_ROLES)
+  @Roles(...PROCUREMENT_READ_ROLES)
   @ApiOperation({ summary: 'Нестача товарів по нарядах (BR-PL-014)' })
   @ApiOkResponse({ type: ShortageResponseDto })
   getShortage(@OrgContext() orgId: string, @Query() query: ShortageQueryDto) {
@@ -66,7 +67,7 @@ export class PurchaseListItemsController {
 
   @Get('by-work-order/:workOrderId')
   // MECHANIC бачить стан товарів у картці наряду (BR-PL-015).
-  @Roles(...PL_READ_ROLES, 'MECHANIC')
+  @Roles(...PROCUREMENT_READ_ROLES, 'MECHANIC')
   @ApiOperation({ summary: 'Позиції списків купівлі наряду й нестача його рядків' })
   @ApiOkResponse({ type: WorkOrderProcurementDto })
   byWorkOrder(
@@ -79,7 +80,7 @@ export class PurchaseListItemsController {
   }
 
   @Get()
-  @Roles(...PL_READ_ROLES)
+  @Roles(...PROCUREMENT_READ_ROLES)
   @ApiOperation({ summary: 'Позиції списків купівлі' })
   @ApiOkResponse({ type: PaginatedPurchaseListItemsDto })
   findAll(
@@ -91,7 +92,7 @@ export class PurchaseListItemsController {
   }
 
   @Post('move')
-  @Roles(...PL_WRITE_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Перенести позиції в інший список (BR-PL-007)' })
   @ApiOkResponse({ type: BulkResultDto })
@@ -103,7 +104,7 @@ export class PurchaseListItemsController {
   }
 
   @Post('bulk-update')
-  @Roles(...PL_WRITE_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Масово: постачальник і очікувана ціна' })
   @ApiOkResponse({ type: BulkResultDto })
@@ -116,7 +117,7 @@ export class PurchaseListItemsController {
   }
 
   @Post('bulk-cancel')
-  @Roles(...PL_WRITE_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Масово скасувати позиції' })
   @ApiOkResponse({ type: BulkResultDto })
@@ -128,7 +129,7 @@ export class PurchaseListItemsController {
   }
 
   @Post(':id/split')
-  @Roles(...PL_WRITE_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Розділити позицію (BR-PL-007)' })
   @ApiOkResponse({ type: [PurchaseListItemResponseDto] })
@@ -141,7 +142,7 @@ export class PurchaseListItemsController {
   }
 
   @Post(':id/release-reservation')
-  @Roles(...PL_WRITE_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Зняти резерв отриманого з позиції (BR-PL-016)' })
   @ApiOkResponse({ type: ReleaseReservationResultDto })
@@ -154,7 +155,7 @@ export class PurchaseListItemsController {
   }
 
   @Patch(':id')
-  @Roles(...PL_WRITE_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @ApiOperation({ summary: 'Змінити позицію (лише OPEN, BR-PL-005)' })
   @ApiOkResponse({ type: PurchaseListItemResponseDto })
   update(
