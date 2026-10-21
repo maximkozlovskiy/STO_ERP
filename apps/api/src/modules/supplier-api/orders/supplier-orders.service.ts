@@ -366,7 +366,11 @@ export class SupplierOrdersService {
           orgId,
           woRows.map(r => r.workOrderId).filter((id): id is string => id !== null),
         );
-        const excess = await this.unconfirmed(tx, orgId, purchaseOrderId);
+        // Стан нарядів під блокуванням — один запит на всі позиції, а не на кожну (sto-optimize).
+        const [activeWo, excess] = await Promise.all([
+          this.links.activeWorkOrderIds(tx, orgId, woRows),
+          this.unconfirmed(tx, orgId, purchaseOrderId),
+        ]);
         let total = 0;
         const touchedWo = new Set<string>();
         for (const { items, qty } of excess.values()) {
@@ -375,15 +379,17 @@ export class SupplierOrdersService {
             if (rest <= EPS) break;
             const cut = Math.min(rest, undelivered(item));
             if (cut <= EPS) continue;
-            await this.links.releaseFromOrder(tx, orgId, item, cut);
-            if (item.workOrderId) touchedWo.add(item.workOrderId);
+            await this.links.releaseFromOrder(tx, orgId, item, cut, activeWo);
+            if (item.workOrderId && activeWo.has(item.workOrderId)) touchedWo.add(item.workOrderId);
             rest -= cut;
             total += cut;
           }
         }
         if (total <= EPS) throw new BadRequestException(err('err.supplierApi.nothingToRelease'));
         // Повернене в OPEN не покриває більше, ніж наряду ще треба: потребу могли зменшити, поки
-        // замовлення було в постачальника (ORDERED тоді не урізаються, BR-PL-013).
+        // замовлення було в постачальника (ORDERED тоді не урізаються, BR-PL-013). Лише живі
+        // наряди, як `returnUndelivered`: у закритого повернене вже «Скасовано», а резерв
+        // завершеного списано, не знято — `reservedQty` його позицій лишається (BR-PL-013).
         for (const woId of touchedWo) await this.links.onWorkOrderPartsChanged(tx, orgId, woId);
         return total;
       },

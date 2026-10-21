@@ -11,7 +11,7 @@ import {
   ORG,
   SETTINGS,
 } from './supplier-orders.spec-fixture';
-import { WO_A, partRow, woRow } from '../../purchase-lists/purchase-lists.spec-fixture';
+import { WO_A, WO_B, partRow, woRow } from '../../purchase-lists/purchase-lists.spec-fixture';
 
 /**
  * Відправка замовлення в API постачальника (BR-SCON-009…011, BR-PO-011): кнопка, outbox,
@@ -571,6 +571,67 @@ describe('BR-SCON-013 / BR-SCON-014 / BR-PO-012', () => {
     expect(x.h.item('i1')).toMatchObject({ status: 'ORDERED', quantity: 1 });
     const open = x.h.liveItems().filter(r => r.status === 'OPEN');
     expect(open.reduce((s, r) => s + (r.quantity as number), 0)).toBe(1);
+  });
+
+  // guards: BR-SCON-013
+  it('«Повернути непідтверджене» з позицій кількох нарядів: стан нарядів — одним запитом; завершений наряд не перераховується', async () => {
+    const fa = fakeAdapter({
+      result: {
+        status: 'CONFIRMED',
+        statusRaw: 'ok',
+        lines: [{ supplierItemId: 'p1', warehouseCode: 'w1', qtyConfirmed: 0 }],
+      },
+    });
+    const WO_C = '61111111-1111-4111-8111-333333333333';
+    const x = ordersHarness({
+      adapter: fa.adapter,
+      items: [
+        offerItem('i1', { source: 'WORK_ORDER', workOrderId: WO_A, workOrderPartId: 'pa' }),
+        offerItem('i2', { source: 'WORK_ORDER', workOrderId: WO_B, workOrderPartId: 'pb' }),
+        offerItem('i3', { source: 'WORK_ORDER', workOrderId: WO_C, workOrderPartId: 'pc' }),
+      ],
+      workOrders: [
+        woRow(WO_A, { status: 'APPROVED' }),
+        woRow(WO_B, { status: 'APPROVED' }),
+        woRow(WO_C, { status: 'APPROVED' }),
+      ],
+      parts: [
+        partRow('pa', WO_A, { quantity: 4 }),
+        partRow('pb', WO_B, { quantity: 4 }),
+        partRow('pc', WO_C, { quantity: 4 }),
+      ],
+    });
+    const poId = await x.draftFromItems(['i1', 'i2', 'i3']);
+    await x.service.send(ORG, poId);
+    await x.sender.run(x.job(poId), undefined);
+    Object.assign(
+      x.t.workOrder.rows.find(r => r.id === WO_C)!,
+      { status: 'COMPLETED' },
+    );
+    const woReads = x.t.workOrder.findMany as Mock;
+    const itemReads = x.t.purchaseListItem.findMany as Mock;
+    woReads.mockClear();
+    itemReads.mockClear();
+
+    expect((await x.service.releaseUnconfirmed(ORG, poId)).released).toBe(12);
+
+    // sto-optimize: стан нарядів позицій — один запит на все повернення, а не на кожну позицію.
+    expect(woReads).toHaveBeenCalledTimes(1);
+    // Позиції читаються: блокування нарядів, непідтверджене, по одному на кожен ЖИВИЙ наряд
+    // (BR-PL-013) і стан після повернення; завершений наряд не перераховується.
+    const perWorkOrder = itemReads.mock.calls.filter(
+      ([args]) => (args as { where: { workOrderId?: string } }).where.workOrderId !== undefined,
+    );
+    expect(
+      perWorkOrder
+        .map(([args]) => (args as { where: { workOrderId: string } }).where.workOrderId)
+        .sort(),
+    ).toEqual([WO_A, WO_B].sort());
+    // Нічого не підтверджено — позиції повертаються цілими: живих нарядів у «Не замовлено»,
+    // завершеного — «Скасовано» (Bug #912).
+    expect(x.h.item('i1')).toMatchObject({ status: 'OPEN', quantity: 4, purchaseOrderId: null });
+    expect(x.h.item('i2')).toMatchObject({ status: 'OPEN', quantity: 4, purchaseOrderId: null });
+    expect(x.h.item('i3')).toMatchObject({ status: 'CANCELLED', purchaseOrderId: null });
   });
 
   // guards: BR-SCON-014

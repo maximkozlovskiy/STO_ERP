@@ -119,7 +119,7 @@ cd apps/api && npx vitest run src/modules/supplier-api/<тека>/<файл>.spe
 | `sweep`: перепостановка загублених рядків, очищення пропозицій (BR-SCON-006, BR-SOFR-003)                                                             | `processors/supplier-maintenance.sweep.spec.ts`    | 2      |
 | дзеркало AVD: upsert сирим SQL, зняття не побачених, збій без видалення (BR-SCON-015)                                                                 | `catalog/supplier-catalog.sync.spec.ts`            | 6      |
 | планування відправки й підсумок `supplierApiStatus` — чисті функції (BR-SCON-010, 013)                                                                | `orders/supplier-order-planner.spec.ts`            | 17     |
-| відправка: кнопка, outbox, кроки, звірка, UNKNOWN, статуси, «Повернути непідтверджене», скасування (BR-SCON-009…014, BR-PO-011, 012)                  | `orders/supplier-orders.send.spec.ts`              | 31     |
+| відправка: кнопка, outbox, кроки, звірка, UNKNOWN, статуси, «Повернути непідтверджене», скасування (BR-SCON-009…014, BR-PO-011, 012)                  | `orders/supplier-orders.send.spec.ts`              | 32     |
 
 Разом тут: **171** кейс; разом із реєстром [supplier-offer.md](supplier-offer.md) — **251** у модулі
 (цифри з `vitest --reporter=json`).

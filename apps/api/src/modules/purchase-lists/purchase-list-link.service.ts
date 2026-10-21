@@ -297,8 +297,16 @@ export class PurchaseListLinkService {
     for (const woId of reopened) await this.onWorkOrderPartsChanged(tx, orgId, woId);
   }
 
-  /** Наряди позицій, що ще в WO_PROCUREMENT_ACTIVE_STATUSES і не видалені. */
-  private async activeWorkOrderIds(tx: Tx, orgId: string, items: ItemRow[]): Promise<Set<string>> {
+  /**
+   * Наряди позицій, що ще в WO_PROCUREMENT_ACTIVE_STATUSES і не видалені. Один запит на всі
+   * позиції — виклик, що повертає кілька позицій (`releaseFromOrder` у циклі), читає стан нарядів
+   * ним один раз і передає множину далі (sto-optimize: не запит на кожну позицію).
+   */
+  async activeWorkOrderIds(
+    tx: Tx,
+    orgId: string,
+    items: ReadonlyArray<{ workOrderId: string | null }>,
+  ): Promise<Set<string>> {
     const ids = Array.from(
       new Set(items.map(i => i.workOrderId).filter((id): id is string => id !== null)),
     );
@@ -346,13 +354,22 @@ export class PurchaseListLinkService {
    * позиція — сама стає OPEN; частина — відділяється (`splitOff` без знімка). Наряд позиції вже
    * завершено, скасовано чи видалено — повернене стає «Скасовано», а не «Не замовлено», як решта
    * при скасуванні й прийманні (BR-PL-010, 012; Bug #912).
+   *
+   * `activeWo` — живі наряди позицій (`activeWorkOrderIds`), уже прочитані викликом, що повертає
+   * кілька позицій; без неї — читається тут.
    */
-  async releaseFromOrder(tx: Tx, orgId: string, item: ItemRow, qty: number): Promise<void> {
+  async releaseFromOrder(
+    tx: Tx,
+    orgId: string,
+    item: ItemRow,
+    qty: number,
+    activeWo?: ReadonlySet<string>,
+  ): Promise<void> {
     const rest = Math.min(qty, undelivered(item));
     if (rest <= QTY_EPSILON) return;
     const reopen =
       item.workOrderId === null ||
-      (await this.activeWorkOrderIds(tx, orgId, [item])).has(item.workOrderId);
+      (activeWo ?? (await this.activeWorkOrderIds(tx, orgId, [item]))).has(item.workOrderId);
     const status = reopen ? 'OPEN' : 'CANCELLED';
     if (item.receivedQty <= QTY_EPSILON && rest >= item.quantity - QTY_EPSILON) {
       await this.casItem(tx, orgId, item, {
