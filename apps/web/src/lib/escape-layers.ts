@@ -46,6 +46,8 @@ function topLayerFor(target: EventTarget | null): EscapeLayer | undefined {
 
 function handleKeyDown(e: KeyboardEvent): void {
   if (e.key !== 'Escape') return;
+  // Escape під час набору через IME скасовує набір у полі — це не команда закрити шар.
+  if (e.isComposing) return;
   const top = topLayerFor(e.target);
   if (!top) return;
   // Жоден інший слухач (зокрема React onKeyDown полів під шаром) цей Escape не отримує.

@@ -535,9 +535,9 @@ function ListDetailModal({
         <ManualItemDialog
           open={addOpen}
           listId={list.id}
-          onClose={() => setTimeout(() => setAddOpen(false), 0)}
+          onClose={() => setAddOpen(false)}
           onAdded={() => {
-            setTimeout(() => setAddOpen(false), 0);
+            setAddOpen(false);
             invalidateProcurementSideEffects(qc);
             toast.success(t('lists.itemAdded'));
           }}

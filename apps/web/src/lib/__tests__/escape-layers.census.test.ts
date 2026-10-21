@@ -15,6 +15,22 @@ const ALLOWED_KEYDOWN_ESCAPE = new Set([
   'components/ui/command-palette.tsx',
 ]);
 
+/**
+ * React-обробник Escape (`onKeyDown`) у вікні мертвий: стек зупиняє подію в capture на document,
+ * до кореня React вона не доходить. Тут — лише поля на сторінках-списках, поза будь-яким вікном.
+ * Новий файл з `key === 'Escape'` — або `useEscapeLayer(editing, cancel, inputRef)`, або рядок тут
+ * із перевіркою, що компонент ніколи не рендериться у `<Modal>`.
+ */
+const ALLOWED_REACT_ESCAPE = new Set([
+  ...ALLOWED_KEYDOWN_ESCAPE,
+  'app/(app)/catalog/UnitsTab.tsx',
+  'app/(app)/work-orders/page.tsx',
+  'components/ui/columns-dropdown.tsx',
+  'components/ui/NavEditor.tsx',
+  'components/ui/saved-filters-bar.tsx',
+]);
+const REACT_ESCAPE = /key\s*[!=]==?\s*['"]Escape['"]|case\s+['"]Escape['"]/;
+
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap(name => {
     const full = join(dir, name);
@@ -46,8 +62,16 @@ describe('стек шарів Escape — сторож', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('перевірка `key === Escape` — лише у файлах зі списку (поза вікнами)', () => {
+    const offenders = files
+      .filter(f => !ALLOWED_REACT_ESCAPE.has(f.path))
+      .filter(f => REACT_ESCAPE.test(f.text))
+      .map(f => f.path);
+    expect(offenders).toEqual([]);
+  });
+
   it('сам перелік винятків живий (файли існують і справді слухають Escape)', () => {
-    for (const path of ALLOWED_KEYDOWN_ESCAPE) {
+    for (const path of ALLOWED_REACT_ESCAPE) {
       const file = files.find(f => f.path === path);
       expect(file, path).toBeDefined();
       expect(file!.text).toMatch(/['"]Escape['"]/);

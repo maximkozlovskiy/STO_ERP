@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, type RefObject } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { nextEscapeLayerOrder, registerEscapeLayer } from '@/lib/escape-layers';
 
 /**
@@ -28,7 +28,10 @@ export function useEscapeLayer(
   if (!active) orderRef.current = 0;
   else if (orderRef.current === 0) orderRef.current = nextEscapeLayerOrder();
 
-  useEffect(() => {
+  // Layout-ефект, а не звичайний: шар мусить бути в стеку вже на коміті, до першого кадру. Пасивний
+  // ефект оновлення не з події (підтвердження після відповіді сервера) виконується ПІСЛЯ відмальовки —
+  // у цьому вікні видимий діалог ще не шар, і Escape закрив би вікно під ним.
+  useLayoutEffect(() => {
     if (!active) return;
     return registerEscapeLayer({ order: orderRef.current, onEscape: onEscapeRef, scopeRef });
   }, [active, scopeRef]);

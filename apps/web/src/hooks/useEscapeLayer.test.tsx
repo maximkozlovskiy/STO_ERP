@@ -2,7 +2,7 @@
 // слухачів (вікно під ним, React onKeyDown полів) його не бачать. Замінив useEscapeCapture і
 // прапорці «вкладене відкрито» (useNestedOpenFlag, useConfirm().openRef) — техборг §15.12.
 
-import { useState, type ReactNode } from 'react';
+import { useLayoutEffect, useState, type ReactNode } from 'react';
 import { act, render, renderHook } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach, afterEach, type Mock } from 'vitest';
 import { useEscapeLayer } from './useEscapeLayer';
@@ -56,6 +56,42 @@ describe('useEscapeLayer — один шар', () => {
     press(outside, 'Enter');
     expect(onEscape).not.toHaveBeenCalled();
     expect(bubbleListener).toHaveBeenCalledTimes(1);
+  });
+
+  it('Escape під час набору через IME (isComposing) шар не закриває і йде полю', () => {
+    const onEscape = vi.fn();
+    renderHook(() => useEscapeLayer(true, onEscape));
+    act(() => {
+      outside.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, isComposing: true }),
+      );
+    });
+    expect(onEscape).not.toHaveBeenCalled();
+    expect(bubbleListener).toHaveBeenCalledTimes(1);
+  });
+
+  it('шар у стеку вже на коміті — до пасивних ефектів (до першого кадру)', () => {
+    // Пасивний ефект оновлення не з події йде після відмальовки: видимий діалог у цьому вікні ще не
+    // шар, і Escape закрив би вікно під ним. Layout-ефекти сусіда йдуть після layout-ефектів шару,
+    // але раніше за будь-який useEffect.
+    let countAtLayout = -1;
+    function Layer() {
+      useEscapeLayer(true, vi.fn());
+      return null;
+    }
+    function Probe() {
+      useLayoutEffect(() => {
+        countAtLayout = escapeLayerCount();
+      }, []);
+      return null;
+    }
+    render(
+      <>
+        <Layer />
+        <Probe />
+      </>,
+    );
+    expect(countAtLayout).toBe(1);
   });
 
   it('після деактивації шару немає, а без шарів немає й слухача', () => {
