@@ -108,12 +108,24 @@ const { saved, save, remove } = useSavedFilters<Filters>('page-key');
 - **Retry-safety**: `createdRefId` зберігає id після POST, до рядків
 - **disabled**: умовний (`saving || !required || (TRANSFER && !targetWarehouseId)`)
 - **Шапка табличної частини (рішення власника 2026-10-14):** назва ліворуч, «+ Додати» праворуч
-  НАД таблицею, як «Товари / Запчастини» в наряді — компонент `DocLinesHeader`
+  НАД таблицею — компонент `DocLinesHeader` (наряд перейшов на `DocumentSection`, див. нижче)
   (`components/ui/doc-lines-header.tsx`); імпорт та інші дії таблиці — його `children`.
   Кнопка додавання під таблицею або з іншим підписом («Додати товар», «Додати позицію») —
   відхилення від стандарту. Порожня таблиця показує `DocLinesEmptyRow` з того самого файла
   («Натисніть «Додати» для початку»; на перегляд — «Рядки відсутні»); у незавантаженій картці
   (`notLoaded`) підказки немає. Місце кнопки тримає `DocumentCards.lines-header.test.tsx`.
+- **Картка документа з секціями — `DocumentSection` (варіант A, рішення власника 2026-10-22;
+  перший — наряд, далі рахунок, замовлення, складський документ замість `DocLinesHeader`):**
+  - `Modal bodyClassName="bg-secondary" footerClassName="bg-surface"` — сіре тіло, білий футер;
+  - кожен блок — `DocumentSection({ icon, title, count?, subtitle?, actions?, flush? })`
+    (`components/ui/document-section.tsx`): біла картка, заголовок `h3` (ним підписано `section`),
+    лічильник рядків, дії праворуч — `SectionActionButton` (`outline` / `accent` для «Додати»);
+    таблиця — `flush`, заголовок колонок звичайним регістром на `bg-secondary`;
+  - порожня таблична частина — `DocumentSectionEmpty` (пунктирна рамка) замість порожньої таблиці;
+  - згортання шапки — `CollapsibleHeader variant="card"` (картка-зведення з чипами й «Розгорнути»),
+    згортає дія «Згорнути» в заголовку першої секції;
+  - підсумок — `VatTotalsSummary layout="inline"` у футері ліворуч (один примірник), кнопки праворуч.
+    Тримають `document-section.test.tsx` і тести `CreateWorkOrderModal*`.
 
 ---
 
@@ -435,13 +447,21 @@ const bulkActions: BulkAction[] = [
 ```
 bg-surface          bg-surface-hover      bg-surface-raised
 text-primary        text-secondary        text-muted
-border-border
+border-border       border-input (рамка поля)
 ring-ring
 text-destructive    bg-destructive
 text-primary-foreground  bg-primary
 ```
 
 Заборонено: arbitrary values (`w-[37px]`, `text-[#333]`), raw colors (`bg-gray-100`), pixel magic.
+
+**Рамка поля — `border-input`, розділювач — `border-border` (рішення власника 2026-10-22).** Токен
+`--color-input` — рамка поля вводу, не фон: світла hsl(215 20% 55%) — 3,6:1 проти білого, темна
+hsl(215 16% 46%) — 3,4:1 проти поля і 3,7:1 проти картки (WCAG 1.4.11; давніше 1,24:1). Спільні
+поля (`Input`, `Select`, `DateTimePickerInput`, `DatePickerInput`, `EntityPickerField`,
+`SearchCombobox`) — `border-input hover:border-input-hover`; сирий `<input>` у таблиці документа —
+те саме. Темна тема — блок `.dark input/select/textarea` у `globals.css` бере той самий токен.
+`bg-input` як фон не вживати (поле — `bg-surface`). Тримає `field-border-token.test.tsx`.
 
 ---
 
