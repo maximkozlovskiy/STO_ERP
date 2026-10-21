@@ -199,6 +199,33 @@ describe('SyncService.push calendar_slots — запис наряду через
     expect([h.workOrder.rows, h.calendarSlot.rows]).toEqual(before);
   });
 
+  // BR-CAL-003: службовий запис (перерва) не стає записом наряду і з планшета — конфлікт із
+  // причиною, ні перерва, ні наряди не змінюються.
+  // guards: BR-CAL-003
+  it('перерва з планшета отримала наряд → конфлікт «службовий запис», без змін', async () => {
+    const h = harness([
+      slotRow('svc', {
+        type: 'BREAK',
+        workOrderId: null,
+        liftId: LIFT_2,
+        startAt: kyiv(D, '14:00'),
+        endAt: kyiv(D, '15:00'),
+        syncVersion: 1n,
+      }),
+    ]);
+    const before = structuredClone([h.workOrder.rows, h.calendarSlot.rows]);
+
+    const res = await h.sync.push(
+      ORG,
+      [{ ...update({ workOrderId: OTHER_WO }), id: 'svc' }],
+      'ADMIN',
+    );
+
+    expect(res).toEqual({ accepted: 0, conflicts: 1 });
+    expect(h.lastErrors()).toEqual([translateError('err.calendar.serviceSlotNoClient', 'uk')]);
+    expect([h.workOrder.rows, h.calendarSlot.rows]).toEqual(before);
+  });
+
   // Рішення власника 2026-10-19: механік запису, не закріплений за підйомником нового наряду,
   // знімається, а не дає конфлікт.
   // guards: BR-WO-028, BR-CAL-012

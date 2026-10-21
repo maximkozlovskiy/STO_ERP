@@ -317,6 +317,56 @@ describe('CalendarService — види слотів (BR-CAL)', () => {
     expect(prisma._rows).toHaveLength(1);
   });
 
+  // Зміна запису самим `CalendarService.updateSlot` (не лише через наряд, який перевіряє раніше):
+  // службовий запис і тут не отримує клієнта, авто чи наряду.
+  // guards: BR-CAL-003
+  it.each([
+    ['клієнт', { counterpartyId: COUNTERPARTY_ID }],
+    ['автомобіль', { vehicleId: VEHICLE_ID }],
+    ['наряд', { workOrderId: SLOT_ID }],
+  ] as const)('updateSlot перерви: %s → 400, запис не змінено', async (_l, links) => {
+    const row = fakeSlot({
+      liftId: LIFT_ID,
+      type: 'BREAK',
+      startAt: new Date(START_AT),
+      endAt: new Date(END_AT),
+    });
+    const prisma = buildSlotStorePrisma([row]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const service = new CalendarService(prisma as any);
+
+    const err = await service.updateSlot(FAKE_ORG_ID, row.id, links).then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as Error).message).toBe(SERVICE_NO_CLIENT);
+    expect(prisma._update).not.toHaveBeenCalled();
+  });
+
+  // Контроль до кейсу вище: той самий шлях без прив'язок (і зі знятими — `null`) змінює запис.
+  // guards: BR-CAL-003
+  it('updateSlot перерви: примітка, наряд і клієнт null → змінено, тип той самий', async () => {
+    const row = fakeSlot({
+      liftId: LIFT_ID,
+      type: 'BREAK',
+      startAt: new Date(START_AT),
+      endAt: new Date(END_AT),
+    });
+    const prisma = buildSlotStorePrisma([row]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const service = new CalendarService(prisma as any);
+
+    await service.updateSlot(FAKE_ORG_ID, row.id, {
+      workOrderId: null,
+      counterpartyId: null,
+      notes: 'Обід пізніше',
+    });
+
+    expect(prisma._rows[0]).toMatchObject({ type: 'BREAK', notes: 'Обід пізніше' });
+  });
+
   // «Відкритих» слотів немає: слот без явного статусу — це вже зайнятий час.
   // guards: BR-CAL-004
   it('status не передано → слот створюється як BOOKED, а не AVAILABLE', async () => {

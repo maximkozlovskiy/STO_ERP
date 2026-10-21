@@ -147,6 +147,26 @@ describe('CalendarSlotModal — тип запису (BR-CAL-003)', () => {
     });
   });
 
+  // Телефон клієнта — окремий стан форми: службовий тип скидає і його, інакше після повернення
+  // на «Роботу» під порожнім полем «Клієнт» лишався б телефон знятого клієнта.
+  // guards: BR-CAL-003
+  it('«Перерва» скидає й телефон клієнта: назад на «Роботу» — телефону знятого клієнта немає', async () => {
+    const base = apiFetch.getMockImplementation()!;
+    apiFetch.mockImplementation((url: string, init?: unknown) =>
+      url === `/counterparties/${CP}`
+        ? Promise.resolve({ phone: '+380671234567' })
+        : base(url, init),
+    );
+    render(<Harness initial={{ counterpartyId: CP, counterpartyDisplay: 'Клієнт Іван' }} />);
+    expect(await screen.findByText('+380671234567')).toBeInTheDocument();
+
+    fireEvent.change(typeSelect(), { target: { value: 'BREAK' } });
+    fireEvent.change(typeSelect(), { target: { value: 'WORK' } });
+
+    expect(clientLabel()).toBeInTheDocument();
+    expect(screen.queryByText('+380671234567')).not.toBeInTheDocument();
+  });
+
   // guards: BR-CAL-003
   it('«Перерва» без клієнта: «Зберегти» доступне, POST несе тип і не несе клієнта, авто й наряду', async () => {
     render(<Harness initial={{ notes: 'Обід' }} />);

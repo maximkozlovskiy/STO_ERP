@@ -489,6 +489,9 @@ export class CalendarService {
         : Promise.resolve(null),
     ]);
     if (!existing) throw new NotFoundException(err('err.calendar.slotNotFound'));
+    // BR-CAL-003: службовий запис не отримує клієнта, авто чи наряду — і поза
+    // `WorkOrdersService.updateCalendarSlot` (той перевіряє раніше), як `createSlot`.
+    assertServiceSlotUnlinked(existing.type, dto);
     if (checkLift && !lift) throw new NotFoundException(err('err.lift.notFound'));
     if (checkWorkOrder && !workOrder)
       throw new NotFoundException(err('err.calendar.workOrderNotFound'));
