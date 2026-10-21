@@ -204,7 +204,10 @@ export function useWorkOrderActions({
       const disposition = res.headers.get('content-disposition') ?? '';
       const match =
         disposition.match(/filename\*=UTF-8''(.+)/i) ?? disposition.match(/filename="?([^"]+)"?/i);
-      const filename = match ? decodeURIComponent(match[1]) : `Кошторис.${format}`;
+      // Назва — із Content-Disposition сервера («Кошторис-<номер>.<формат>»). Якщо заголовка не
+      // видно (проксі чи CORS його сховали), запасна назва теж несе номер наряду.
+      const safeNumber = (woNumber || workOrderId).replace(/[/\\:*?"<>|]/g, '-');
+      const filename = match ? decodeURIComponent(match[1]) : `Кошторис-${safeNumber}.${format}`;
       downloadBlob(blob, filename);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка';
