@@ -732,9 +732,9 @@ describe('GoodsService', () => {
         { goodId: 'g2', _sum: { quantity: 3 } },
       ]);
       prisma.stockItem.findMany.mockResolvedValueOnce([
-        { goodId: 'g1', warehouseId: 'wh-1', quantity: 10 },
-        { goodId: 'g1', warehouseId: 'wh-2', quantity: 5 },
-        { goodId: 'g2', warehouseId: 'wh-1', quantity: 3 },
+        { goodId: 'g1', warehouseId: 'wh-1', quantity: 10, reserved: 0 },
+        { goodId: 'g1', warehouseId: 'wh-2', quantity: 5, reserved: 0 },
+        { goodId: 'g2', warehouseId: 'wh-1', quantity: 3, reserved: 0 },
       ]);
       const res = await service.stockTotals('org-1', ['g1', 'g2']);
       expect(res).toEqual([
@@ -742,11 +742,15 @@ describe('GoodsService', () => {
           goodId: 'g1',
           totalQuantity: 15,
           byWarehouse: [
-            { warehouseId: 'wh-1', quantity: 10 },
-            { warehouseId: 'wh-2', quantity: 5 },
+            { warehouseId: 'wh-1', quantity: 10, reserved: 0, available: 10 },
+            { warehouseId: 'wh-2', quantity: 5, reserved: 0, available: 5 },
           ],
         },
-        { goodId: 'g2', totalQuantity: 3, byWarehouse: [{ warehouseId: 'wh-1', quantity: 3 }] },
+        {
+          goodId: 'g2',
+          totalQuantity: 3,
+          byWarehouse: [{ warehouseId: 'wh-1', quantity: 3, reserved: 0, available: 3 }],
+        },
       ]);
       // findMany застосовує ті ж guards: orgId, deletedAt: null, goodId IN [...]
       const findManyArgs = prisma.stockItem.findMany.mock.calls[0][0];

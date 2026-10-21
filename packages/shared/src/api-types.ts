@@ -6902,7 +6902,12 @@ export interface components {
         };
         GoodStockByWarehouseDto: {
             warehouseId: string;
+            /** @description Фізична наявність на складі */
             quantity: number;
+            /** @description Зарезервовано на складі */
+            reserved: number;
+            /** @description Вільно: max(0, quantity − reserved) (BR-WO-029) */
+            available: number;
         };
         GoodStockTotalDto: {
             goodId: string;

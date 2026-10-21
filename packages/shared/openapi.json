@@ -21851,12 +21851,23 @@
             "type": "string"
           },
           "quantity": {
-            "type": "number"
+            "type": "number",
+            "description": "Фізична наявність на складі"
+          },
+          "reserved": {
+            "type": "number",
+            "description": "Зарезервовано на складі"
+          },
+          "available": {
+            "type": "number",
+            "description": "Вільно: max(0, quantity − reserved) (BR-WO-029)"
           }
         },
         "required": [
           "warehouseId",
-          "quantity"
+          "quantity",
+          "reserved",
+          "available"
         ]
       },
       "GoodStockTotalDto": {

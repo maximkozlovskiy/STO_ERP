@@ -261,7 +261,10 @@ export class GoodUoMResponseDto {
 
 export class GoodStockByWarehouseDto {
   @ApiProperty() warehouseId!: string;
-  @ApiProperty() quantity!: number;
+  @ApiProperty({ description: 'Фізична наявність на складі' }) quantity!: number;
+  @ApiProperty({ description: 'Зарезервовано на складі' }) reserved!: number;
+  @ApiProperty({ description: 'Вільно: max(0, quantity − reserved) (BR-WO-029)' })
+  available!: number;
 }
 
 export class GoodStockTotalDto {

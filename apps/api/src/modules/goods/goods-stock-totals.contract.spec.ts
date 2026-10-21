@@ -115,6 +115,20 @@ describe('GET /goods/stock-totals — HTTP Contract', () => {
     expect(serviceMock.stockTotals).toHaveBeenCalledWith('org-1', [VALID_UUID_1, VALID_UUID_2]);
   });
 
+  // guards: BR-WO-029
+  it('по складу віддає quantity, reserved і available — поля доходять до клієнта без втрат', async () => {
+    const byWarehouse = [{ warehouseId: VALID_UUID_2, quantity: 2, reserved: 5, available: 0 }];
+    serviceMock.stockTotals.mockResolvedValueOnce([
+      { goodId: VALID_UUID_1, totalQuantity: 2, byWarehouse },
+    ]);
+    const res = await (app as NestFastifyApplication).inject({
+      method: 'GET',
+      url: `/goods/stock-totals?ids=${VALID_UUID_1}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([{ goodId: VALID_UUID_1, totalQuantity: 2, byWarehouse }]);
+  });
+
   it('Bug #453: trim whitespace навколо UUIDs, пропускає порожні token-и', async () => {
     serviceMock.stockTotals.mockResolvedValueOnce([]);
     const res = await (app as NestFastifyApplication).inject({

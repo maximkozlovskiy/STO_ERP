@@ -887,7 +887,7 @@ export class GoodsService {
     {
       goodId: string;
       totalQuantity: number;
-      byWarehouse: { warehouseId: string; quantity: number }[];
+      byWarehouse: { warehouseId: string; quantity: number; reserved: number; available: number }[];
     }[]
   > {
     if (goodIds.length === 0) return [];
@@ -899,7 +899,7 @@ export class GoodsService {
       }),
       this.prisma.stockItem.findMany({
         where: { orgId, goodId: { in: goodIds }, deletedAt: null },
-        select: { goodId: true, warehouseId: true, quantity: true },
+        select: { goodId: true, warehouseId: true, quantity: true, reserved: true },
         // Defensive cap: goodIds is controller-capped at 100; with typical
         // ≤10 warehouses per org the result is ~1000 rows. Hard-cap protects
         // against pathological tenants with hundreds of warehouses (and meets
@@ -907,11 +907,23 @@ export class GoodsService {
         take: 2000,
       }),
     ]);
-    const whMap = new Map<string, { warehouseId: string; quantity: number }[]>();
+    const whMap = new Map<
+      string,
+      { warehouseId: string; quantity: number; reserved: number; available: number }[]
+    >();
     for (const r of byWarehouse) {
       const key = r.goodId;
       if (!whMap.has(key)) whMap.set(key, []);
-      whMap.get(key)!.push({ warehouseId: r.warehouseId, quantity: Number(r.quantity) });
+      const quantity = Number(r.quantity);
+      const reserved = Number(r.reserved);
+      // BR-WO-029: склад рядка наряду показує й обирає за ВІЛЬНОЮ кількістю (як freeQty
+      // у work-order-stock-requirements): резерв понад наявність не дає від'ємного числа.
+      whMap.get(key)!.push({
+        warehouseId: r.warehouseId,
+        quantity,
+        reserved,
+        available: Math.max(0, quantity - reserved),
+      });
     }
     return totals.map(r => ({
       goodId: r.goodId,
