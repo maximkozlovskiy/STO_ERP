@@ -13,6 +13,7 @@ import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import { createQueryWrapper, makeTestQueryClient } from '@/__tests__/query-utils';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '@/i18n/config';
 import type { CalendarSlot } from '../calendar.types';
 
 let params = new URLSearchParams('view=day&date=2026-10-20');
@@ -290,5 +291,39 @@ describe('useCalendarState — перетягування запису наря�
 
     expect(patchCall()).toBeUndefined();
     expect(toast.warning).toHaveBeenCalled();
+  });
+});
+
+// Запасний текст відмови, коли сервер не дав причини (не `Error`): мовою інтерфейсу, а не
+// жорстко українською (review 2026-10-21 — рядок «Помилка переміщення слоту» лишався без i18n).
+describe('useCalendarState — відмова перетягування без причини (i18n)', () => {
+  const rejectPatchWithoutReason = () => {
+    const free = apiFetch.getMockImplementation()!;
+    apiFetch.mockImplementation((url: string, init?: { method?: string }) =>
+      init?.method === 'PATCH' ? Promise.reject({ status: 500 }) : free(url, init),
+    );
+  };
+
+  afterEach(async () => {
+    await i18n.changeLanguage('uk');
+  });
+
+  it('uk → «Помилка переміщення слоту»', async () => {
+    rejectPatchWithoutReason();
+    const { result } = await renderDay();
+
+    await act(() => result.current.handleDragEnd(dropOn('lift-2')));
+
+    expect(toast.error).toHaveBeenCalledWith('Помилка переміщення слоту');
+  });
+
+  it('en → «Failed to move the record»', async () => {
+    await i18n.changeLanguage('en');
+    rejectPatchWithoutReason();
+    const { result } = await renderDay();
+
+    await act(() => result.current.handleDragEnd(dropOn('lift-2')));
+
+    expect(toast.error).toHaveBeenCalledWith('Failed to move the record');
   });
 });

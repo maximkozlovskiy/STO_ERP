@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { runWithTenant } from '../../../common/tenant/tenant-context';
 import { forEachActiveOrg } from '../../../common/scheduler/for-each-active-org';
@@ -178,33 +179,36 @@ export class SupplierOrderPoller {
     const updates = matchConfirmedLines(o.lines, res.lines);
     const status = adjustForPartial(res.status ?? o.status, o.lines, updates);
     const terminal = TERMINAL_SUPPLIER_ORDER_STATUSES.includes(status);
-    await this.prisma.$transaction(async tx => {
-      for (const u of updates) {
-        await tx.supplierOrderLine.updateMany({
-          where: { id: u.id, orgId },
+    await this.prisma.$transaction(
+      async tx => {
+        for (const u of updates) {
+          await tx.supplierOrderLine.updateMany({
+            where: { id: u.id, orgId },
+            data: {
+              qtyConfirmed: u.qtyConfirmed,
+              priceConfirmed: u.priceConfirmed,
+              statusRaw: u.statusRaw,
+              externalLineId: u.externalLineId,
+            },
+          });
+        }
+        await tx.supplierOrder.updateMany({
+          where: { id: o.id, orgId },
           data: {
-            qtyConfirmed: u.qtyConfirmed,
-            priceConfirmed: u.priceConfirmed,
-            statusRaw: u.statusRaw,
-            externalLineId: u.externalLineId,
+            status,
+            externalStatusRaw: res.statusRaw.slice(0, 300),
+            externalNumber: res.externalNumber ?? o.externalNumber,
+            lastPolledAt: now,
+            nextPollAt: terminal ? null : this.stopAfter(o, next),
+            ...(!o.confirmedAt &&
+            ['CONFIRMED', 'PARTIALLY_CONFIRMED', 'READY', 'SHIPPED'].includes(status)
+              ? { confirmedAt: now }
+              : {}),
           },
         });
-      }
-      await tx.supplierOrder.updateMany({
-        where: { id: o.id, orgId },
-        data: {
-          status,
-          externalStatusRaw: res.statusRaw.slice(0, 300),
-          externalNumber: res.externalNumber ?? o.externalNumber,
-          lastPolledAt: now,
-          nextPollAt: terminal ? null : this.stopAfter(o, next),
-          ...(!o.confirmedAt &&
-          ['CONFIRMED', 'PARTIALLY_CONFIRMED', 'READY', 'SHIPPED'].includes(status)
-            ? { confirmedAt: now }
-            : {}),
-        },
-      });
-    });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
   }
 
   /** Замовлення, що не завершилось за MAX_POLL_AGE_MS, більше не опитується (стеля). */

@@ -248,34 +248,37 @@ export class SupplierOrderSender {
     const updates = matchConfirmedLines(o.lines, result.lines);
     const status = adjustForPartial(result.status, o.lines, updates);
     const now = new Date();
-    await this.prisma.$transaction(async tx => {
-      for (const u of updates) {
-        await tx.supplierOrderLine.updateMany({
-          where: { id: u.id, orgId },
+    await this.prisma.$transaction(
+      async tx => {
+        for (const u of updates) {
+          await tx.supplierOrderLine.updateMany({
+            where: { id: u.id, orgId },
+            data: {
+              qtyConfirmed: u.qtyConfirmed,
+              priceConfirmed: u.priceConfirmed,
+              statusRaw: u.statusRaw,
+              externalLineId: u.externalLineId,
+            },
+          });
+        }
+        await tx.supplierOrder.updateMany({
+          where: { id: o.id, orgId },
           data: {
-            qtyConfirmed: u.qtyConfirmed,
-            priceConfirmed: u.priceConfirmed,
-            statusRaw: u.statusRaw,
-            externalLineId: u.externalLineId,
+            status,
+            step: DONE_STEP,
+            externalCartId: state.externalCartId,
+            externalOrderId: state.externalOrderId,
+            externalNumber: state.externalNumber,
+            externalStatusRaw: result.statusRaw?.slice(0, 300) ?? null,
+            sentAt: o.sentAt ?? now,
+            confirmedAt: status === 'CONFIRMED' || status === 'PARTIALLY_CONFIRMED' ? now : null,
+            nextPollAt: new Date(now.getTime() + pollMinutes * 60_000),
+            error: null,
           },
         });
-      }
-      await tx.supplierOrder.updateMany({
-        where: { id: o.id, orgId },
-        data: {
-          status,
-          step: DONE_STEP,
-          externalCartId: state.externalCartId,
-          externalOrderId: state.externalOrderId,
-          externalNumber: state.externalNumber,
-          externalStatusRaw: result.statusRaw?.slice(0, 300) ?? null,
-          sentAt: o.sentAt ?? now,
-          confirmedAt: status === 'CONFIRMED' || status === 'PARTIALLY_CONFIRMED' ? now : null,
-          nextPollAt: new Date(now.getTime() + pollMinutes * 60_000),
-          error: null,
-        },
-      });
-    });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
   }
 
   private async update(

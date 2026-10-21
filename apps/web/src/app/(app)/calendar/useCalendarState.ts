@@ -373,10 +373,10 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       },
       (e: unknown) => {
         if (mountedRef.current && !cached)
-          setError(e instanceof Error ? e.message : 'Помилка завантаження');
+          setError(e instanceof Error ? e.message : t('slot.errLoad'));
       },
     );
-  }, []);
+  }, [t]);
 
   const monthAbortRef = useRef<AbortController | null>(null);
 
@@ -584,12 +584,12 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         setBookingSlots(assigned);
       })
       .catch((e: unknown) => {
-        if (!isStale()) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+        if (!isStale()) setError(e instanceof Error ? e.message : t('slot.errLoad'));
       })
       .finally(() => {
         if (!isStale()) setLoading(false);
       });
-  }, [date]);
+  }, [date, t]);
 
   // Skip day-view fetch when user is in stats/month view — saves N round-trips
   // on date changes that affect only the other view's data.
@@ -897,7 +897,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
             notifyCalendarChanged();
           } else load();
         } catch (err: unknown) {
-          toast.error(err instanceof Error ? err.message : 'Помилка оновлення слоту');
+          toast.error(err instanceof Error ? err.message : t('slot.errUpdateFallback'));
           load();
         }
       }
@@ -1042,7 +1042,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         }
         load();
       } catch (e: unknown) {
-        toast.error(e instanceof Error ? e.message : 'Помилка переміщення слоту');
+        toast.error(e instanceof Error ? e.message : t('slot.errMoveFallback'));
       }
     },
     [slots, load, nowMs, minHour, t, canManageSlots, queryClient],
