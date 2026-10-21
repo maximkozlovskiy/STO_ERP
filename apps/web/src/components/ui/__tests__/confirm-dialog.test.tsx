@@ -157,3 +157,34 @@ describe('ConfirmDialog', () => {
     });
   });
 });
+
+// Bug #926: коли кнопка скасування сама є дією («Тільки перевести статус»), Escape — окрема відповідь.
+describe('ConfirmDialog — Escape і onDismiss', () => {
+  it('без onDismiss Escape = кнопка скасування', async () => {
+    const onCancel = vi.fn();
+    render(<ConfirmDialog open title="Т" message="x" onCancel={onCancel} />);
+    await userEvent.keyboard('{Escape}');
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('з onDismiss Escape кличе лише його, кнопка скасування — onCancel', async () => {
+    const onCancel = vi.fn();
+    const onDismiss = vi.fn();
+    render(
+      <ConfirmDialog
+        open
+        title="Т"
+        message="x"
+        cancelLabel="Тільки перевести статус"
+        onCancel={onCancel}
+        onDismiss={onDismiss}
+      />,
+    );
+    await userEvent.keyboard('{Escape}');
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Тільки перевести статус' }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});

@@ -31,16 +31,16 @@ export function useConfirm(nestedOpenRef?: MutableRefObject<boolean>) {
   // Номер останнього `confirm()`: відкладене зняття прапорця від попереднього підтвердження не
   // знімає його, якщо виклик одразу відкрив наступне (інакше Escape другого закрив би власника).
   const seqRef = useRef(0);
-  const [state, setState] = useState<(ConfirmOptions & { resolve: (v: boolean) => void }) | null>(
-    null,
-  );
+  const [state, setState] = useState<
+    (ConfirmOptions & { resolve: (v: boolean | null) => void; dismissAsNull: boolean }) | null
+  >(null);
 
-  const confirm = useCallback(
-    (opts: ConfirmOptions): Promise<boolean> => {
+  const ask = useCallback(
+    (opts: ConfirmOptions, dismissAsNull: boolean): Promise<boolean | null> => {
       openRef.current = true;
       const seq = ++seqRef.current;
-      return new Promise<boolean>(resolve => {
-        setState({ ...opts, resolve });
+      return new Promise<boolean | null>(resolve => {
+        setState({ ...opts, resolve, dismissAsNull });
       }).then(ok => {
         setTimeout(() => {
           if (seqRef.current === seq) openRef.current = false;
@@ -49,6 +49,21 @@ export function useConfirm(nestedOpenRef?: MutableRefObject<boolean>) {
       });
     },
     [openRef],
+  );
+
+  /** Так / ні. Escape, хрестик і клік поза вікном — «ні». */
+  const confirm = useCallback(
+    (opts: ConfirmOptions): Promise<boolean> => ask(opts, false).then(ok => ok === true),
+    [ask],
+  );
+
+  /**
+   * Вибір із двох ДІЙ, коли «ні» — теж дія («Тільки перевести статус»): Escape, хрестик і клік поза
+   * вікном дають `null` — відмову від обох (Bug #926: Escape переводив наряд у «Виставлено»).
+   */
+  const choose = useCallback(
+    (opts: ConfirmOptions): Promise<boolean | null> => ask(opts, true),
+    [ask],
   );
 
   const handleConfirm = useCallback(() => {
@@ -65,9 +80,22 @@ export function useConfirm(nestedOpenRef?: MutableRefObject<boolean>) {
     });
   }, []);
 
+  const handleDismiss = useCallback(() => {
+    setState(s => {
+      s?.resolve(s.dismissAsNull ? null : false);
+      return null;
+    });
+  }, []);
+
   const dialogProps = state
-    ? { open: true as const, ...state, onConfirm: handleConfirm, onCancel: handleCancel }
+    ? {
+        open: true as const,
+        ...state,
+        onConfirm: handleConfirm,
+        onCancel: handleCancel,
+        onDismiss: handleDismiss,
+      }
     : { open: false as const };
 
-  return { confirm, dialogProps, openRef };
+  return { confirm, choose, dialogProps, openRef };
 }

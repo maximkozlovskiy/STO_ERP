@@ -579,6 +579,7 @@ export function CreateWorkOrderModal({
   // 2026-10-12).
   const {
     confirm: confirmOverCard,
+    choose: chooseOverCard,
     dialogProps: confirmDialogProps,
     openRef: confirmOpenRef,
   } = useConfirm();
@@ -1466,17 +1467,20 @@ export function CreateWorkOrderModal({
       currentStatus === 'COMPLETED' &&
       linkedDocsCounts?.invoices === 0
     ) {
-      const ok = await confirmOverCard({
+      // Обидві кнопки — дії; Escape / хрестик — відмова від обох (Bug #926: Escape переводив наряд
+      // у «Виставлено», а назад FSM не веде).
+      const choice = await chooseOverCard({
         title: 'Створити рахунок?',
         message: 'Рахунок для цього наряду відсутній. Створити рахунок зараз?',
         confirmLabel: 'Створити рахунок',
         cancelLabel: 'Тільки перевести статус',
       });
-      if (ok) {
+      if (choice === null) return;
+      if (choice) {
         void handleInvoice();
         return;
       }
-      // ok=false → продовжуємо переводити статус без рахунку
+      // false — «Тільки перевести статус»: переводимо без рахунку
     }
     if (newStatus === 'IN_PROGRESS' && calConflict?.anyConflict) {
       const ok = await confirmOverCard({

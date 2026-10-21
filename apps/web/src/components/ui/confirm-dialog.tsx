@@ -14,6 +14,11 @@ interface ConfirmDialogProps {
   variant?: 'default' | 'destructive';
   onConfirm?: () => void;
   onCancel?: () => void;
+  /**
+   * Escape, хрестик, клік поза вікном. Без нього — те саме, що кнопка скасування. Окремо — коли
+   * кнопка скасування сама є дією (Bug #926).
+   */
+  onDismiss?: () => void;
 }
 
 export function ConfirmDialog({
@@ -25,6 +30,7 @@ export function ConfirmDialog({
   variant = 'default',
   onConfirm,
   onCancel,
+  onDismiss,
 }: ConfirmDialogProps) {
   // Bug #911: типові підписи — з локалі («Так» / «Скасувати», «Yes» / «Cancel»).
   const { t } = useTranslation('common');
@@ -36,7 +42,7 @@ export function ConfirmDialog({
   const c = lastRef.current;
 
   return (
-    <Modal open={open} onClose={onCancel ?? (() => {})} title={c.title} size="sm">
+    <Modal open={open} onClose={onDismiss ?? onCancel ?? (() => {})} title={c.title} size="sm">
       {c.message && <p className="text-sm text-muted-foreground mb-4">{c.message}</p>}
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onCancel}>
