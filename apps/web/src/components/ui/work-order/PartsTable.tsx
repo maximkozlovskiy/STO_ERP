@@ -7,8 +7,12 @@ import { type GoodPickerItem } from '@/components/ui/GoodPickerModal';
 import { calcVatOnBase, lineAmount } from '@/lib/utils';
 import { fmtQty } from '@/lib/format';
 import type { LocalPart, Warehouse, Unit } from './types';
+import type { WarehouseFree } from '@/lib/part-warehouse';
 import { ProcurementBadge } from '@/components/ui/purchase-list/ProcurementBadge';
 import type { WorkOrderProcurementState } from '@/components/ui/purchase-list/WorkOrderProcurement';
+
+/** Рядок, у якому обирають товар і склад: рядок введення або незбережений рядок у правці. */
+export type PartRow = 'new' | 'edit';
 
 export interface PartsTableProps {
   // Parts state
@@ -32,6 +36,12 @@ export interface PartsTableProps {
   // Stock
   stockTotalsMap: Map<string, number>;
   stockWarehouseMap: Map<string, number>;
+  /** Вільна кількість по складах для обраних товарів (BR-WO-029); запису немає — ще не отримано. */
+  stockFreeByGood: Map<string, WarehouseFree[]>;
+  /** Товар обрано пошуком у рядку — картка ставить поля товару й підбирає склад (BR-WO-029). */
+  onGoodPicked: (row: PartRow, good: GoodPickerItem) => void;
+  /** Склад обрано вручну — автовибір його вже не перезапише, доки не змінено товар. */
+  onWarehousePicked: (row: PartRow, warehouseId: string) => void;
   // VAT / totals
   vatMode: 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE';
   vatRate: number;
@@ -71,6 +81,9 @@ export function PartsTable(props: PartsTableProps) {
     unitsById,
     stockTotalsMap,
     stockWarehouseMap,
+    stockFreeByGood,
+    onGoodPicked,
+    onWarehousePicked,
     vatMode,
     vatRate,
     partsTotals,
@@ -90,6 +103,13 @@ export function PartsTable(props: PartsTableProps) {
   const warehouseStock = (goodId: string, warehouseId: string): string =>
     fmtQty(stockWarehouseMap.get(`${goodId}:${warehouseId}`) ?? 0);
   const totalStock = (goodId: string): string => fmtQty(stockTotalsMap.get(goodId) ?? 0);
+
+  // BR-WO-029: коли товар обрано і його залишки отримано — біля складу вільна кількість товару.
+  const warehouseLabel = (w: Warehouse, goodId: string): string => {
+    const free = goodId ? stockFreeByGood.get(goodId) : undefined;
+    if (!free) return w.name;
+    return `${w.name} — ${fmtQty(free.find(f => f.warehouseId === w.id)?.available ?? 0)}`;
+  };
 
   return (
     <div className="pt-4 pb-2">
@@ -205,19 +225,7 @@ export function PartsTable(props: PartsTableProps) {
                             ariaLabel="Товар"
                             onPick={() => setEditGoodPickerOpen(true)}
                             onSearch={fetchGoods}
-                            onSearchSelect={g =>
-                              setEditingPart(p => ({
-                                ...p,
-                                goodId: g.id,
-                                goodName: g.name,
-                                goodInternalCode: g.internalCode ?? null,
-                                goodSku: g.sku ?? null,
-                                goodBrandName: g.brandName ?? null,
-                                price: String(g.salePrice),
-                                unitOfMeasureId: g.unitId ?? '',
-                                unitShortName: g.unitShortName ?? '',
-                              }))
-                            }
+                            onSearchSelect={g => onGoodPicked('edit', g)}
                             onClear={() =>
                               setEditingPart(p => ({
                                 ...p,
@@ -243,15 +251,14 @@ export function PartsTable(props: PartsTableProps) {
                       ) : (
                         <td className="px-2 py-1.5">
                           <Select
+                            aria-label="Склад"
                             value={editingPart.warehouseId}
-                            onChange={e =>
-                              setEditingPart(p => ({ ...p, warehouseId: e.target.value }))
-                            }
+                            onChange={e => onWarehousePicked('edit', e.target.value)}
                           >
                             <option value="">Склад</option>
                             {warehouses.map(w => (
                               <option key={w.id} value={w.id}>
-                                {w.name}
+                                {warehouseLabel(w, editingPart.goodId)}
                               </option>
                             ))}
                           </Select>
@@ -486,28 +493,20 @@ export function PartsTable(props: PartsTableProps) {
                     ariaLabel="Товар"
                     onPick={() => setGoodPickerOpen(true)}
                     onSearch={fetchGoods}
-                    onSearchSelect={g =>
-                      setNewPart(p => ({
-                        ...p,
-                        goodId: g.id,
-                        goodName: g.name,
-                        price: String(g.salePrice),
-                        unitOfMeasureId: g.unitId ?? '',
-                        unitShortName: g.unitShortName ?? '',
-                      }))
-                    }
+                    onSearchSelect={g => onGoodPicked('new', g)}
                     onClear={() => setNewPart(p => ({ ...EMPTY_PART, warehouseId: p.warehouseId }))}
                   />
                 </td>
                 <td className="px-2 py-1.5">
                   <Select
+                    aria-label="Склад"
                     value={newPart.warehouseId}
-                    onChange={e => setNewPart(p => ({ ...p, warehouseId: e.target.value }))}
+                    onChange={e => onWarehousePicked('new', e.target.value)}
                   >
                     <option value="">Склад</option>
                     {warehouses.map(w => (
                       <option key={w.id} value={w.id}>
-                        {w.name}
+                        {warehouseLabel(w, newPart.goodId)}
                       </option>
                     ))}
                   </Select>

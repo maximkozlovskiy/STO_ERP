@@ -2,6 +2,7 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { toIdMap } from '@/lib/utils';
+import { isPartWarehouse } from '@/lib/part-warehouse';
 import {
   ACTIVE_MECHANICS_URL,
   activeMechanics,
@@ -28,8 +29,13 @@ export interface Warehouse {
   id: string;
   name: string;
   type?: string;
+  /** Основний склад організації — автовибір складу рядка товару (BR-WO-029). */
+  isMain?: boolean;
   deletedAt?: string | null;
 }
+
+/** Перелік вибору складу рядка товару: без видалених і без «Шинного готелю» (BR-WO-029). */
+const partWarehouses = (all: Warehouse[]): Warehouse[] => all.filter(isPartWarehouse);
 export interface Employee {
   id: string;
   firstName: string;
@@ -108,12 +114,13 @@ export function useReferenceData() {
       })
       .catch(() => {});
 
+    // Кеш вкладки пишуть і сторінки, що не відсіюють «Шинний готель» (наряд, склад) — відсіяти й тут.
     const cachedWarehouses = getCached<Warehouse[]>('cache:warehouses');
-    if (cachedWarehouses) setWarehouses(cachedWarehouses);
+    if (cachedWarehouses) setWarehouses(partWarehouses(cachedWarehouses));
     apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses')
       .then(r => {
         const all = Array.isArray(r) ? r : (r.items ?? []);
-        const list = all.filter(w => !w.deletedAt && w.type !== 'TIRE_HOTEL');
+        const list = partWarehouses(all);
         setWarehouses(list);
         setCache('cache:warehouses', list);
       })

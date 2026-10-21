@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -12,6 +12,14 @@ import { Select } from '@/components/ui/select';
 import { SearchCombobox } from '@/components/ui/search-combobox';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { pickScannedGood } from '@/lib/barcode';
+import { fmtQty } from '@/lib/format';
+import {
+  freeOf,
+  isPartWarehouse,
+  pickPartWarehouse,
+  type StockByWarehouseRow,
+  type WarehouseFree,
+} from '@/lib/part-warehouse';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { usePendingOpen } from '@/hooks/usePendingOpen';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
@@ -27,6 +35,12 @@ import type { CategoryNode } from '@/components/ui/category-tree';
  * `toast.error`, `openGoodDetail` показує `toast.error` при збої завантаження картки товару,
  * а єдиний `await` у `handleClose` — `dirty.confirmClose()`, який ніколи не реджектиться.
  * Користувач уже бачить результат, тож проміс обробника нікому не потрібен.
+ *
+ * Склад (BR-WO-029): біля кожного складу — вільна кількість обраного товару
+ * (`GET /goods/stock-totals`, дозволено й механіку); щойно товар обрано, склад підставляється за
+ * `pickPartWarehouse`. `initialWarehouseId` — склад до вибору товару. Ручний вибір складу
+ * автовибір не перезаписує, доки не змінено товар. Нестача вільного залишку додавання не блокує
+ * (товар під замовлення, BR-WO-021) — індикатор лише показує її.
  */
 
 interface Good {
@@ -34,6 +48,8 @@ interface Good {
   name: string;
   sku?: string;
   salePrice: number;
+  /** Базова одиниця товару — нею рахується вільний залишок. */
+  unit?: string | null;
   barcode?: string | null;
   barcodes?: string[];
 }
@@ -42,6 +58,14 @@ interface Warehouse {
   id: string;
   name: string;
   isMain: boolean;
+  type?: string;
+  deletedAt?: string | null;
+}
+
+/** Вільна кількість обраного товару по складах; `goodId` — щоб відповідь іншого товару не підмінила. */
+interface GoodFreeStock {
+  goodId: string;
+  free: WarehouseFree[];
 }
 
 interface Brand {
@@ -126,9 +150,14 @@ export function WorkOrderAddPartModal({
   };
   const [error, setError] = useState('');
   const [goodDisplay, setGoodDisplay] = useState('');
+  const [goodUnit, setGoodUnit] = useState('');
   const [goodUoMs, setGoodUoMs] = useState<GoodUoM[]>([]);
-  const [stockAvailable, setStockAvailable] = useState<number | null>(null);
+  const [goodStock, setGoodStock] = useState<GoodFreeStock | null>(null);
   const [stockLoading, setStockLoading] = useState(false);
+  // BR-WO-029: товар, для якого ще чекаємо автовибору складу; ручний вибір складу знімає.
+  const autoPickGoodRef = useRef<string | null>(null);
+
+  const warehouseOptions = useMemo(() => warehouses.filter(isPartWarehouse), [warehouses]);
 
   // Good detail modal
   const [goodDetailOpen, setGoodDetailOpen] = useState(false);
@@ -139,31 +168,42 @@ export function WorkOrderAddPartModal({
     if (open) {
       setForm({ ...EMPTY_FORM, warehouseId: initialWarehouseId });
       setGoodDisplay('');
+      setGoodUnit('');
       setGoodUoMs([]);
       setError('');
-      setStockAvailable(null);
+      setGoodStock(null);
+      autoPickGoodRef.current = null;
       dirty.resetDirty();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialWarehouseId]);
 
-  // Stock indicator
+  // Вільний залишок обраного товару по складах — один запит на товар, не на кожен склад.
   useEffect(() => {
-    if (!features.stockIndicatorEnabled || !form.goodId || !form.warehouseId) {
-      setStockAvailable(null);
+    if (!form.goodId) {
+      setGoodStock(null);
+      setStockLoading(false);
       return;
     }
+    const goodId = form.goodId;
     let cancelled = false;
     setStockLoading(true);
-    apiFetch<{ items: { available: number }[] }>(
-      `/stock-items?goodId=${form.goodId}&warehouseId=${form.warehouseId}&limit=1`,
+    apiFetch<{ goodId: string; byWarehouse?: StockByWarehouseRow[] }[]>(
+      `/goods/stock-totals?ids=${goodId}`,
     )
-      .then(r => {
+      .then(rows => {
         if (cancelled) return;
-        setStockAvailable(r.items[0]?.available ?? 0);
+        const row = rows.find(r => r.goodId === goodId);
+        setGoodStock({
+          goodId,
+          free: (row?.byWarehouse ?? []).map(w => ({
+            warehouseId: w.warehouseId,
+            available: freeOf(w),
+          })),
+        });
       })
       .catch(() => {
-        if (!cancelled) setStockAvailable(null);
+        if (!cancelled) setGoodStock(null);
       })
       .finally(() => {
         if (!cancelled) setStockLoading(false);
@@ -171,7 +211,19 @@ export function WorkOrderAddPartModal({
     return () => {
       cancelled = true;
     };
-  }, [features.stockIndicatorEnabled, form.goodId, form.warehouseId]);
+  }, [form.goodId]);
+
+  useEffect(() => {
+    if (!goodStock || autoPickGoodRef.current !== goodStock.goodId) return;
+    if (warehouseOptions.length === 0) return;
+    autoPickGoodRef.current = null;
+    const warehouseId = pickPartWarehouse(goodStock.free, warehouseOptions);
+    setForm(f => (f.goodId === goodStock.goodId ? { ...f, warehouseId } : f));
+  }, [goodStock, warehouseOptions]);
+
+  const stockOfGood = goodStock && goodStock.goodId === form.goodId ? goodStock.free : null;
+  const freeOn = (warehouseId: string): number =>
+    stockOfGood?.find(w => w.warehouseId === warehouseId)?.available ?? 0;
 
   // Race guard: швидка зміна товару A→B не повинна дати повільнішій відповіді A
   // (UoM-списку) перезаписати UoM обраного B.
@@ -179,10 +231,13 @@ export function WorkOrderAddPartModal({
   const selectGood = useCallback(
     (item: Good) => {
       const reqId = ++uomReqRef.current;
+      autoPickGoodRef.current = item.id;
       setGoodDisplay(item.name);
+      setGoodUnit(item.unit ?? '');
       setForm(f => ({
         ...f,
         goodId: item.id,
+        warehouseId: '',
         price: item.salePrice ? String(item.salePrice) : f.price,
         unitOfMeasureId: '',
       }));
@@ -203,8 +258,10 @@ export function WorkOrderAddPartModal({
     // bump reqRef: скасовуємо будь-яку in-flight UoM-відповідь, щоб вона не
     // репопулювала список після очищення товару.
     uomReqRef.current += 1;
+    autoPickGoodRef.current = null;
     setForm(f => ({ ...f, goodId: '', price: '', unitOfMeasureId: '' }));
     setGoodDisplay('');
+    setGoodUnit('');
     setGoodUoMs([]);
     dirty.markDirty();
   }, [dirty]);
@@ -305,39 +362,40 @@ export function WorkOrderAddPartModal({
               Склад <span className="text-destructive">*</span>
             </label>
             <Select
+              aria-label="Склад"
               value={form.warehouseId}
               onChange={e => {
+                autoPickGoodRef.current = null;
                 setForm(f => ({ ...f, warehouseId: e.target.value }));
                 dirty.markDirty();
               }}
             >
               <option value="">— Оберіть —</option>
-              {warehouses.map(w => (
+              {warehouseOptions.map(w => (
                 <option key={w.id} value={w.id}>
-                  {w.name}
+                  {stockOfGood ? `${w.name} — ${fmtQty(freeOn(w.id))}` : w.name}
                 </option>
               ))}
             </Select>
             {features.stockIndicatorEnabled && form.goodId && form.warehouseId && (
               <p
+                data-testid="part-stock-indicator"
                 className={cn(
                   'mt-1.5 text-[12px]',
-                  stockLoading
+                  stockLoading || !stockOfGood
                     ? 'text-muted-foreground'
-                    : stockAvailable === null
-                      ? 'text-muted-foreground'
-                      : stockAvailable > 0
-                        ? 'text-success'
-                        : 'text-destructive',
+                    : freeOn(form.warehouseId) > 0
+                      ? 'text-success'
+                      : 'text-destructive',
                 )}
               >
                 {stockLoading
                   ? 'Перевірка залишку...'
-                  : stockAvailable === null
+                  : !stockOfGood
                     ? ''
-                    : stockAvailable > 0
-                      ? `Доступно: ${stockAvailable} шт.`
-                      : 'Немає в наявності'}
+                    : freeOn(form.warehouseId) > 0
+                      ? `Вільно: ${fmtQty(freeOn(form.warehouseId))}${goodUnit ? ` ${goodUnit}` : ''}`
+                      : 'Вільного залишку немає'}
               </p>
             )}
           </div>
@@ -406,14 +464,7 @@ export function WorkOrderAddPartModal({
           <Button
             onClick={() => void handleAdd()}
             loading={saving}
-            disabled={
-              !form.goodId ||
-              !form.warehouseId ||
-              !form.quantity ||
-              (features.stockIndicatorEnabled &&
-                stockAvailable !== null &&
-                stockAvailable < Number(form.quantity))
-            }
+            disabled={!form.goodId || !form.warehouseId || !form.quantity}
             className="w-full"
           >
             Додати

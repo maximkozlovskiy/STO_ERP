@@ -86,9 +86,14 @@ import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search
 import { CollapsibleHeader } from '@/components/ui/collapsible-header';
 import { WorkPickerModal, type WorkPickerItem } from '@/components/ui/WorkPickerModal';
 import { ServicePickerModal, type ServicePickerItem } from '@/components/ui/ServicePickerModal';
-import { GoodPickerModal, fetchGoodPickerItems } from '@/components/ui/GoodPickerModal';
+import {
+  GoodPickerModal,
+  fetchGoodPickerItems,
+  type GoodPickerItem,
+} from '@/components/ui/GoodPickerModal';
+import { pickPartWarehouse } from '@/lib/part-warehouse';
 import { newIdempotencyKey } from '@/lib/idempotency-key';
-import { PartsTable } from './work-order/PartsTable';
+import { PartsTable, type PartRow } from './work-order/PartsTable';
 import { WorksTable } from './work-order/WorksTable';
 import { InvoiceConflictDialog } from './work-order/InvoiceConflictDialog';
 import { PlannedActualMetrics } from './work-order/PlannedActualMetrics';
@@ -228,6 +233,18 @@ const EMPTY_PART: Omit<LocalPart, '_key'> = {
   unitOfMeasureId: '',
   unitShortName: '',
 };
+
+/** Поля товару, які рядок бере з вибраного товару (пошуком у рядку чи вікном вибору). */
+const partGoodFields = (g: GoodPickerItem) => ({
+  goodId: g.id,
+  goodName: g.name,
+  goodInternalCode: g.internalCode ?? null,
+  goodSku: g.sku ?? null,
+  goodBrandName: g.brandName ?? null,
+  price: String(g.salePrice),
+  unitOfMeasureId: g.unitId ?? '',
+  unitShortName: g.unitShortName ?? '',
+});
 
 const EMPTY_TRANSITIONS: readonly string[] = Object.freeze([]);
 
@@ -639,6 +656,9 @@ export function CreateWorkOrderModal({
   const [editingLine, setEditingLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
   const [editingPartKey, setEditingPartKey] = useState<string | null>(null);
   const [editingPart, setEditingPart] = useState<Omit<LocalPart, '_key'>>(EMPTY_PART);
+  // BR-WO-029: товар, для якого рядок ще чекає автовибору складу (залишки ще не прийшли).
+  // Ручний вибір складу знімає очікування — пізня відповідь його не перезапише.
+  const partAutoPickRef = useRef<Record<PartRow, string | null>>({ new: null, edit: null });
 
   // Accumulated pre-save rows: lines/parts тепер джерело правди — RHF field-array (оголошено
   // вгорі як watch()-shim lines/parts + setLines/setParts→replace). Старий useState прибрано.
@@ -667,6 +687,7 @@ export function CreateWorkOrderModal({
     setContracts([]);
     setNewLine(EMPTY_LINE);
     setNewPart(EMPTY_PART);
+    partAutoPickRef.current = { new: null, edit: null };
     setShowLineInput(false);
     setShowPartInput(false);
     setEditingLineKey(null);
@@ -846,13 +867,6 @@ export function CreateWorkOrderModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branches, open, isEditMode]);
 
-  // Auto-select first warehouse for new parts when warehouses load
-  useEffect(() => {
-    if (warehouses.length === 1) {
-      setNewPart(p => (p.warehouseId ? p : { ...p, warehouseId: warehouses[0].id }));
-    }
-  }, [warehouses]);
-
   // Auto-collapse header when user starts adding/editing table rows
   useEffect(() => {
     if (showLineInput || showPartInput || !!editingLineKey || !!editingPartKey) {
@@ -905,11 +919,45 @@ export function CreateWorkOrderModal({
   );
 
   // A3-modal: stock-totals кеш винесено у useStockTotals (Bug #452-454 збережено ДОСЛІВНО).
-  const { stockTotalsMap, stockWarehouseMap } = useStockTotals(
+  const { stockTotalsMap, stockWarehouseMap, stockFreeByGood } = useStockTotals(
     parts,
     newPart.goodId,
     editingPart.goodId,
   );
+
+  // BR-WO-029: товар обрано → склад очищується й підбирається, щойно прийдуть залишки товару.
+  const pickPartGood = useCallback((row: PartRow, g: GoodPickerItem) => {
+    partAutoPickRef.current[row] = g.id;
+    const set = row === 'new' ? setNewPart : setEditingPart;
+    set(p => ({ ...p, ...partGoodFields(g), warehouseId: '' }));
+  }, []);
+
+  const pickPartWarehouseManually = useCallback((row: PartRow, warehouseId: string) => {
+    partAutoPickRef.current[row] = null;
+    const set = row === 'new' ? setNewPart : setEditingPart;
+    set(p => ({ ...p, warehouseId }));
+  }, []);
+
+  // Інший рядок у правці — очікування попереднього не стосується його товару.
+  useEffect(() => {
+    partAutoPickRef.current.edit = null;
+  }, [editingPartKey]);
+
+  useEffect(() => {
+    // До відповіді `/warehouses` перелік порожній — «основного немає» тут ще не означає нічого.
+    if (warehouses.length === 0) return;
+    const pending = partAutoPickRef.current;
+    const apply = (row: PartRow, goodId: string, set: typeof setNewPart): void => {
+      if (!goodId || pending[row] !== goodId) return;
+      const free = stockFreeByGood.get(goodId);
+      if (!free) return;
+      pending[row] = null;
+      const warehouseId = pickPartWarehouse(free, warehouses);
+      set(p => (p.goodId === goodId ? { ...p, warehouseId } : p));
+    };
+    apply('new', newPart.goodId, setNewPart);
+    apply('edit', editingPart.goodId, setEditingPart);
+  }, [stockFreeByGood, warehouses, newPart.goodId, editingPart.goodId]);
 
   // Counterparty search for the header picker.
   // Wrapped in useCallback so EntityPickerField's outside-click listener
@@ -2422,6 +2470,9 @@ export function CreateWorkOrderModal({
                   unitsById={unitsById}
                   stockTotalsMap={stockTotalsMap}
                   stockWarehouseMap={stockWarehouseMap}
+                  stockFreeByGood={stockFreeByGood}
+                  onGoodPicked={pickPartGood}
+                  onWarehousePicked={pickPartWarehouseManually}
                   vatMode={vatMode}
                   vatRate={vatRate}
                   partsTotals={partsTotals}
@@ -2522,19 +2573,7 @@ export function CreateWorkOrderModal({
         open={goodPickerOpen}
         onClose={() => setGoodPickerOpen(false)}
         selectedId={newPart.goodId}
-        onSelect={g =>
-          setNewPart(p => ({
-            ...p,
-            goodId: g.id,
-            goodName: g.name,
-            goodInternalCode: g.internalCode ?? null,
-            goodSku: g.sku ?? null,
-            goodBrandName: g.brandName ?? null,
-            price: String(g.salePrice),
-            unitOfMeasureId: g.unitId ?? '',
-            unitShortName: g.unitShortName ?? '',
-          }))
-        }
+        onSelect={g => pickPartGood('new', g)}
       />
 
       {/* Good picker for inline edit row */}
@@ -2542,19 +2581,7 @@ export function CreateWorkOrderModal({
         open={editGoodPickerOpen}
         onClose={() => setEditGoodPickerOpen(false)}
         selectedId={editingPart.goodId}
-        onSelect={g =>
-          setEditingPart(p => ({
-            ...p,
-            goodId: g.id,
-            goodName: g.name,
-            goodInternalCode: g.internalCode ?? null,
-            goodSku: g.sku ?? null,
-            goodBrandName: g.brandName ?? null,
-            price: String(g.salePrice),
-            unitOfMeasureId: g.unitId ?? '',
-            unitShortName: g.unitShortName ?? '',
-          }))
-        }
+        onSelect={g => pickPartGood('edit', g)}
       />
 
       <InvoiceConflictDialog

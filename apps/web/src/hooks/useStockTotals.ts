@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { apiFetch } from '@/lib/api-client';
+import { freeOf, type StockByWarehouseRow, type WarehouseFree } from '@/lib/part-warehouse';
 
 /**
  * A3-modal: stock-totals кеш для parts-таблиці, винесений з CreateWorkOrderModal.
@@ -11,15 +12,26 @@ import { apiFetch } from '@/lib/api-client';
  *  - #452 порожній набір → НЕ б'є /goods/stock-totals (early-return з очищенням мап);
  *  - #454 fetch-error лише console.error, НЕ throw (форма не блокується);
  *  - re-fetch ЛИШЕ коли змінюється НАБІР goodId-ів (не на кожен keystroke qty/price).
+ *
+ * BR-WO-029: `stockFreeByGood` — вільна кількість (`available`) по складах для кожного запитаного
+ * товару; запис є для КОЖНОГО goodId останньої відповіді (порожній масив — залишків немає), тож
+ * «запис є» = «залишки цього товару отримано» (автовибір складу чекає саме на це).
  */
+export interface StockTotals {
+  stockTotalsMap: Map<string, number>;
+  stockWarehouseMap: Map<string, number>;
+  stockFreeByGood: Map<string, WarehouseFree[]>;
+}
+
 export function useStockTotals(
   parts: { goodId: string }[],
   newPartGoodId: string,
   editingPartGoodId: string,
-): { stockTotalsMap: Map<string, number>; stockWarehouseMap: Map<string, number> } {
+): StockTotals {
   const [stockTotalsMap, setStockTotalsMap] = useState<Map<string, number>>(new Map());
   // key = `${goodId}:${warehouseId}` → quantity on that specific warehouse
   const [stockWarehouseMap, setStockWarehouseMap] = useState<Map<string, number>>(new Map());
+  const [stockFreeByGood, setStockFreeByGood] = useState<Map<string, WarehouseFree[]>>(new Map());
 
   // derive a *stable string key* from the set of goodId-s. The previous
   // dep array re-fired the effect on ANY parts mutation — including typing in
@@ -41,6 +53,7 @@ export function useStockTotals(
     if (!stockGoodIdsKey) {
       setStockTotalsMap(new Map());
       setStockWarehouseMap(new Map());
+      setStockFreeByGood(new Map());
       return;
     }
     const goodIds = stockGoodIdsKey.split(',');
@@ -49,21 +62,26 @@ export function useStockTotals(
       {
         goodId: string;
         totalQuantity: number;
-        byWarehouse: { warehouseId: string; quantity: number }[];
+        byWarehouse?: StockByWarehouseRow[];
       }[]
     >(`/goods/stock-totals?ids=${stockGoodIdsKey}`)
       .then(rows => {
         if (cancelled) return;
         const nextTotals = new Map<string, number>(goodIds.map(id => [id, 0]));
         const nextWh = new Map<string, number>();
+        const nextFree = new Map<string, WarehouseFree[]>(goodIds.map(id => [id, []]));
         for (const r of rows) {
           nextTotals.set(r.goodId, r.totalQuantity);
-          for (const w of r.byWarehouse) {
+          const free: WarehouseFree[] = [];
+          for (const w of r.byWarehouse ?? []) {
             nextWh.set(`${r.goodId}:${w.warehouseId}`, w.quantity);
+            free.push({ warehouseId: w.warehouseId, available: freeOf(w) });
           }
+          nextFree.set(r.goodId, free);
         }
         setStockTotalsMap(nextTotals);
         setStockWarehouseMap(nextWh);
+        setStockFreeByGood(nextFree);
       })
       .catch(err => {
         if (cancelled) return;
@@ -74,5 +92,5 @@ export function useStockTotals(
     };
   }, [stockGoodIdsKey]);
 
-  return { stockTotalsMap, stockWarehouseMap };
+  return { stockTotalsMap, stockWarehouseMap, stockFreeByGood };
 }
