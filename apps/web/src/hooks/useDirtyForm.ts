@@ -90,6 +90,10 @@ export function useDirtyForm({ enabled = true }: UseDirtyFormOptions = {}) {
 
   const handleConfirm = useCallback(() => {
     setDialogOpen(false);
+    // «Покинути»: зміни відкинуто — їх більше не охороняємо. Картки змонтовані й закритими, тож без
+    // скидання `beforeunload` питав би про вже відкинуте при переході в інший розділ (Bug #928).
+    isDirtyRef.current = false;
+    setIsDirty(false);
     resolveRef.current?.(true);
     resolveRef.current = null;
   }, []);
