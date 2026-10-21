@@ -314,8 +314,13 @@ test.describe('Наряд — повний FSM цикл DRAFT→PAID', () => {
     await expect(dialog).toBeHidden({ timeout: 10_000 });
     await expect(page.locator('text=Оплачено').first()).toBeVisible({ timeout: 10_000 });
 
-    // Cleanup — наряд у фінальному статусі, просто видаляємо
-    await apiCall(page, 'DELETE', `/work-orders/${woId}`);
+    // Cleanup — оплачений наряд API не видаляє (раніше DELETE мовчки повертав помилку, і кожен
+    // прогін лишав «Оплачено» наряд з оплатою й гарантією серед робочих). Архівуємо його:
+    // «Оплачено → Архів» — останній крок циклу; у списку за замовчуванням архів не видно.
+    const archived = (await apiCall(page, 'POST', `/work-orders/${woId}/transition`, {
+      status: 'ARCHIVED',
+    })) as { status?: string } | null;
+    expect(archived?.status, 'наряд після тесту має піти в архів').toBe('ARCHIVED');
     woId = null;
   });
 });
