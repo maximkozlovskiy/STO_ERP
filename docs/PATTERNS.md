@@ -54,6 +54,10 @@ useEscapeLayer(editing, cancelEdit, inputRef);
 Власний `addEventListener('keydown')` з Escape чи `onKeyDown` з Escape у вікні — ні (сторож
 `escape-layers.census.test.ts`, GOTCHAS 2026-10-21).
 
+Картка, що відкривається ПІСЛЯ запиту («Відкрити картку» товару / постачальника), — через
+`usePendingOpen`: поки йде запит, відкриття — шар, Escape його скасовує, а не закриває вікно під ним
+(Bug #935).
+
 ### Патерн: per-user overlay-resolver поверх статичних дефолтів
 
 Коли треба дозволити користувачу кастомізувати статичний конфіг (порядок/приховані/групування), НЕ
