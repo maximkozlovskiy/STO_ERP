@@ -12,7 +12,7 @@ import {
   XCircle,
   Wand2,
 } from 'lucide-react';
-import { PURCHASE_LIST_ITEM_STATUS_BADGE } from '@sto/shared';
+import { PURCHASE_LIST_ITEM_STATUS_BADGE, WO_PROCUREMENT_ACTIVE_STATUSES } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { canOpenRoute } from '@/lib/nav';
@@ -103,6 +103,21 @@ function useSupplierOptions() {
  * BR-PL-015): постачальник і ціна, перенесення, «Створити замовлення» (BR-PL-008), скасування;
  * у рядку — «Розділити» й «Зняти резерв» (BR-PL-016).
  */
+/** Ролі з карткою замовлення постачальнику — `DOCUMENT_ROLES` сторінки «Купівля». */
+const PURCHASE_ORDER_DOCUMENT_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER'];
+
+/**
+ * «Зняти резерв» (BR-PL-016) має сенс, лише поки наряд позиції тримає резерв: на «Виконано»
+ * резерв списано, на «Скасовано» / видаленні — знято (BR-WO-021), і кнопка давала б 400
+ * `nothingToRelease` (Bug #913). `reservedQty` завершеного наряду лишається як історія.
+ */
+function reservationReleasable(i: PurchaseListItem): boolean {
+  return (
+    i.workOrderId === null ||
+    (i.workOrderStatus != null && WO_PROCUREMENT_ACTIVE_STATUSES.includes(i.workOrderStatus))
+  );
+}
+
 export function ItemsView({ canWrite }: { canWrite: boolean }) {
   const { t } = useTranslation('purchaseLists');
   const qc = useQueryClient();
@@ -121,6 +136,9 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
   const canCreateSupplier = COUNTERPARTY_CREATE_ROLES.includes(employee?.role ?? '');
   // Комірник сторінки нарядів не має (Bug #900): номер наряду — текст, а не посилання на 403.
   const canOpenWorkOrder = canOpenRoute('/work-orders', employee?.role);
+  // Приймальня відкриває «Купівлю» лише на вкладці «Управління купівлями» (BR-PL-015), картки
+  // замовлення їй не відкрити (`GET /purchase-orders/:id` — 403): номер — текст (Bug #914).
+  const canOpenPurchaseOrder = PURCHASE_ORDER_DOCUMENT_ROLES.includes(employee?.role ?? '');
   const suppliersQuery = useSupplierOptions();
   const suppliers = suppliersQuery.data;
   // Підказка — лише після відповіді: поки список вантажиться, «немає» було б неправдою.
@@ -439,7 +457,9 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
                   </TableCell>
                   <TableCell className="text-muted-foreground">{i.listNumber}</TableCell>
                   <TableCell>
-                    {i.purchaseOrderId ? (
+                    {i.purchaseOrderId && !canOpenPurchaseOrder ? (
+                      <span>{i.purchaseOrderNumber}</span>
+                    ) : i.purchaseOrderId ? (
                       <button
                         type="button"
                         className="text-primary hover:underline"
@@ -473,7 +493,7 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
                           {t('items.split')}
                         </Button>
                       )}
-                      {i.reservedQty > 0 && (
+                      {i.reservedQty > 0 && reservationReleasable(i) && (
                         <Button
                           size="xs"
                           variant="ghost"
