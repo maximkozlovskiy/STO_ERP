@@ -1,4 +1,5 @@
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { useState } from 'react';
+import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { EntityPickerField } from '../entity-picker-field';
@@ -405,6 +406,83 @@ describe('EntityPickerField — search mode (regression guards for 7b58af2c / c7
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     // Placeholder span замість input
     expect(screen.getByText('Обрати…')).toBeInTheDocument();
+  });
+});
+
+// Bug #922: capture-слухач Escape відкритого списку реагував на БУДЬ-ЯКИЙ Escape у документі —
+// у вкладеному вікні вибору (кнопка «…») перший Escape «ковтав» невидимий під ним список.
+describe('EntityPickerField — Escape не з поля не перехоплюється (Bug #922)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function openList(user: ReturnType<typeof userEvent.setup>) {
+    await user.type(screen.getByRole('combobox'), 'а');
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByRole('listbox')).toBeInTheDocument());
+  }
+
+  function WithPicker({ onPickerClose }: { onPickerClose: () => void }) {
+    const [picker, setPicker] = useState(false);
+    return (
+      <Modal open onClose={vi.fn()} title="Нова позиція">
+        <EntityPickerField<CpItem>
+          display=""
+          onSearch={vi.fn(async () => ITEMS)}
+          onSearchSelect={vi.fn()}
+          onPick={() => setPicker(true)}
+          onClear={vi.fn()}
+        />
+        <Modal
+          open={picker}
+          onClose={() => {
+            onPickerClose();
+            setPicker(false);
+          }}
+          title="Оберіть контрагента"
+        >
+          <input aria-label="Пошук у вікні вибору" />
+        </Modal>
+      </Modal>
+    );
+  }
+
+  it('«…» при відкритому списку: список закрито, перший Escape у вікні вибору закриває його', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onPickerClose = vi.fn();
+    render(<WithPicker onPickerClose={onPickerClose} />);
+    await openList(user);
+
+    fireEvent.click(screen.getByLabelText('Обрати'));
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    fireEvent.keyDown(await screen.findByLabelText('Пошук у вікні вибору'), { key: 'Escape' });
+    expect(onPickerClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('список відкритий, Escape з елемента поза полем — до вікна, а не до списку', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onClose = vi.fn();
+    render(
+      <Modal open onClose={onClose} title="Нова позиція">
+        <EntityPickerField<CpItem>
+          display=""
+          onSearch={vi.fn(async () => ITEMS)}
+          onSearchSelect={vi.fn()}
+          onClear={vi.fn()}
+        />
+        <input aria-label="Коментар" />
+      </Modal>,
+    );
+    await openList(user);
+
+    fireEvent.keyDown(screen.getByLabelText('Коментар'), { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 

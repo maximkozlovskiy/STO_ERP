@@ -4,6 +4,7 @@ import { useId, useRef, useState, useEffect, useCallback } from 'react';
 import { MoreHorizontal, Search, X } from 'lucide-react';
 import { Spinner } from './spinner';
 import { cn } from '@/lib/utils';
+import { useEscapeCapture } from '@/hooks/useEscapeCapture';
 
 interface SearchItem {
   id: string;
@@ -119,18 +120,11 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
   // Escape при відкритому випадному списку закриває ЛИШЕ його (Bug #919, клас Bug #783): <Modal>
   // слухає Escape на document, і обробник лише на <input> віддавав подію далі — вікно-власник
   // (ручна позиція списку купівлі, форми з пошуком контрагента чи авто) закривалось разом зі
-  // списком і губило введене. Capture + stopImmediatePropagation, як у DatePickerInput.
-  const popupVisible = open && (items.length > 0 || (!loading && !!query.trim()));
-  useEffect(() => {
-    if (!popupVisible) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopImmediatePropagation();
-      setOpen(false);
-    };
-    document.addEventListener('keydown', handler, true);
-    return () => document.removeEventListener('keydown', handler, true);
-  }, [popupVisible]);
+  // списком і губило введене. Лише Escape зсередини поля (Bug #922): список не в порталі, а
+  // Escape у вкладеному вікні чи після Tab-у з поля не повинен «ковтатись» відкритим списком.
+  const listVisible = open && items.length > 0;
+  const statusVisible = open && !loading && items.length === 0 && !!query.trim();
+  useEscapeCapture(listVisible || statusVisible, () => setOpen(false), containerRef);
 
   // Reset query when selection changes externally (e.g. cleared via onClear)
   useEffect(() => {
@@ -239,8 +233,6 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
             } else if (e.key === 'Enter' && activeIndex >= 0) {
               e.preventDefault();
               handleSelect(items[activeIndex]);
-            } else if (e.key === 'Escape') {
-              setOpen(false);
             }
           }}
           onFocus={() => {
@@ -304,7 +296,11 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
       {!hidePick && onPick && (
         <button
           type="button"
-          onClick={onPick}
+          onClick={() => {
+            // Список закривається ДО вікна вибору: інакше лишався б відкритим під ним (Bug #922).
+            setOpen(false);
+            onPick();
+          }}
           disabled={disabled}
           className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Обрати"
@@ -315,7 +311,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
       )}
 
       {/* Dropdown */}
-      {open && items.length > 0 && (
+      {listVisible && (
         <ul
           id={listboxId}
           role="listbox"
@@ -344,7 +340,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
         </ul>
       )}
 
-      {open && !loading && items.length === 0 && query.trim() && (
+      {statusVisible && (
         <div
           role="status"
           aria-live="polite"

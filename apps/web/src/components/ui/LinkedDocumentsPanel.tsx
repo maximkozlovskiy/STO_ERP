@@ -13,6 +13,7 @@ import { X, ExternalLink, AlertCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
+import { useEscapeCapture } from '@/hooks/useEscapeCapture';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 
 // ─── Generic config-driven API ────────────────────────────
@@ -103,15 +104,7 @@ function PreviewPopup({
   // Capture + stopImmediatePropagation: PreviewPopup може рендеритися всередині
   // батьківського <Modal> (напр. вкладка «Документи»), який теж слухає Esc на document.
   // Без capture-фази Esc закрив би одразу і preview, і весь модал.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopImmediatePropagation();
-      onClose();
-    };
-    document.addEventListener('keydown', handler, true);
-    return () => document.removeEventListener('keydown', handler, true);
-  }, [onClose]);
+  useEscapeCapture(true, onClose);
 
   // Portal to <body>: the preview is `position: fixed`, but it is rendered inside containers that
   // carry a CSS transform (the linked-documents popup is centred with translate) and scroll. Inside

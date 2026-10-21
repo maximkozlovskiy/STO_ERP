@@ -12,6 +12,7 @@ import {
 import { Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Spinner } from './spinner';
+import { useEscapeCapture } from '@/hooks/useEscapeCapture';
 
 export interface ComboboxItem {
   id: string;
@@ -101,18 +102,10 @@ export function SearchCombobox<T extends { id: string }>({
 
   // Escape при відкритому випадному списку закриває ЛИШЕ його (Bug #920, клас Bug #783/#919):
   // <Modal> слухає Escape на document, обробник лише на <input> віддавав подію далі — вікно
-  // («+ Запчастина» в наряді) закривалось разом зі списком. Capture + stopImmediatePropagation.
-  const popupVisible = open && (items.length > 0 || (!loading && !!query.trim()));
-  useEffect(() => {
-    if (!popupVisible) return;
-    const handler = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopImmediatePropagation();
-      setOpen(false);
-    };
-    document.addEventListener('keydown', handler, true);
-    return () => document.removeEventListener('keydown', handler, true);
-  }, [popupVisible]);
+  // («+ Запчастина» в наряді) закривалось разом зі списком. Лише Escape зсередини поля (Bug #922).
+  const listVisible = open && items.length > 0;
+  const statusVisible = open && !loading && items.length === 0 && !!query.trim();
+  useEscapeCapture(listVisible || statusVisible, () => setOpen(false), containerRef);
 
   const search = useCallback(
     (q: string) => {
@@ -228,8 +221,6 @@ export function SearchCombobox<T extends { id: string }>({
         e.preventDefault();
         handleSelect(picked);
       }
-    } else if (e.key === 'Escape') {
-      setOpen(false);
     }
   };
 
@@ -295,7 +286,7 @@ export function SearchCombobox<T extends { id: string }>({
               ref={inputRef}
               type="text"
               role="combobox"
-              aria-expanded={open && items.length > 0}
+              aria-expanded={listVisible}
               aria-controls={listboxId}
               aria-autocomplete="list"
               aria-activedescendant={open && activeIndex >= 0 ? optionId(activeIndex) : undefined}
@@ -326,7 +317,7 @@ export function SearchCombobox<T extends { id: string }>({
           </>
         )}
 
-        {open && items.length > 0 && (
+        {listVisible && (
           <ul
             ref={listRef}
             id={listboxId}
@@ -360,7 +351,7 @@ export function SearchCombobox<T extends { id: string }>({
           </ul>
         )}
 
-        {open && !loading && items.length === 0 && query.trim() && (
+        {statusVisible && (
           <div
             role="status"
             aria-live="polite"

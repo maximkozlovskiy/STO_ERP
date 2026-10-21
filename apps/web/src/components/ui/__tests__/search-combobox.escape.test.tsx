@@ -48,3 +48,29 @@ describe('SearchCombobox — Escape у вікні (Bug #920)', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+// Bug #922: слухач реагував на Escape з будь-якого місця документа — у вкладеному вікні чи поза
+// полем перший Escape «ковтав» відкритий список, а не доходив до вікна.
+describe('SearchCombobox — Escape не з поля не перехоплюється (Bug #922)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('список відкритий, Escape з елемента поза полем — до вікна', async () => {
+    const onClose = vi.fn();
+    render(
+      <Modal open onClose={onClose} title="Додати запчастину">
+        <SearchCombobox<Good>
+          value=""
+          onSelect={vi.fn()}
+          fetchItems={vi.fn(async () => [{ id: 'a', primary: 'Фільтр оливи' }])}
+        />
+        <input aria-label="Кількість" />
+      </Modal>,
+    );
+    await typeAndSettle(screen.getByRole('combobox'), 'фі');
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByLabelText('Кількість'), { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
