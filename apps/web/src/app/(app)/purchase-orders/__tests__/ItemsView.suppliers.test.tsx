@@ -165,3 +165,68 @@ describe('ItemsView — постачальники для комірника (BR
     expect(await within(dialog).findByText(/не завантажився/)).toBeInTheDocument();
   });
 });
+
+describe('ItemsView — постачальник поза першими 200 (Bug #918)', () => {
+  const FAR = {
+    id: 's-far',
+    type: 'SUPPLIER',
+    companyName: 'Ярило Запчастини',
+    edrpou: '30000099',
+  };
+  const FAR_URL = `${SUPPLIERS_URL}&q=${encodeURIComponent('Ярило')}`;
+
+  beforeEach(() => {
+    // Перша сторінка — 200 постачальників (тут один), усього 250: «Ярило» лише пошуком.
+    suppliers = () =>
+      Promise.resolve({
+        items: [{ id: 's-1', type: 'SUPPLIER', companyName: 'ТОВ Запчастини' }],
+        total: 250,
+      });
+    apiFetch.mockImplementation((path: string) => {
+      if (path === SUPPLIERS_URL) return suppliers();
+      if (path === FAR_URL) return Promise.resolve({ items: [FAR], total: 1 });
+      if (path === '/supplier-offers/settings') return Promise.resolve({ offerTtlMinutes: 60 });
+      if (path === '/purchase-list-items/bulk-update') return Promise.resolve({ count: 1 });
+      return Promise.reject(new Error(`unexpected ${String(path)}`));
+    });
+  });
+
+  it('фільтр: пошук на сервері знаходить постачальника, обраний лишається після нового пошуку', async () => {
+    renderView();
+    const search = await screen.findByRole('textbox', { name: 'Пошук постачальника' });
+    fireEvent.change(search, { target: { value: 'Ярило' } });
+    const filter = screen.getByRole('combobox', { name: 'Постачальник' });
+    await waitFor(() =>
+      expect(within(filter).getByRole('option', { name: 'Ярило Запчастини' })).toBeInTheDocument(),
+    );
+    fireEvent.change(filter, { target: { value: 's-far' } });
+    expect(filter).toHaveValue('s-far');
+    fireEvent.change(search, { target: { value: '' } });
+    await waitFor(() =>
+      expect(within(filter).getByRole('option', { name: 'ТОВ Запчастини' })).toBeInTheDocument(),
+    );
+    expect(filter).toHaveValue('s-far');
+  });
+
+  it('«Постачальник і ціна»: постачальник пошуком ставиться позиції', async () => {
+    renderView();
+    const dialog = await openSupplierDialog();
+    fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Пошук постачальника' }), {
+      target: { value: 'Ярило' },
+    });
+    const select = within(dialog).getByRole('combobox', { name: 'Постачальник' });
+    await waitFor(() =>
+      expect(within(select).getByRole('option', { name: 'Ярило Запчастини' })).toBeInTheDocument(),
+    );
+    fireEvent.change(select, { target: { value: 's-far' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Зберегти' }));
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/purchase-list-items/bulk-update',
+        expect.objectContaining({
+          body: JSON.stringify({ itemIds: ['it-1'], supplierId: 's-far' }),
+        }),
+      ),
+    );
+  });
+});

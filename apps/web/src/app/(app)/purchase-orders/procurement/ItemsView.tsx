@@ -19,7 +19,6 @@ import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useNow } from '@/hooks/useNow';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useWarehouses } from '@/hooks/api/useInfrastructure';
-import { useSupplierOptions, type SupplierOption } from '@/hooks/api/useCounterparties';
 import {
   purchaseListsApi,
   usePurchaseListItems,
@@ -29,6 +28,7 @@ import {
 import { useSupplierProcurementSettings } from '@/hooks/api/useSupplierOffers';
 import { PURCHASE_DOCUMENT_ROLES } from '../purchase-roles';
 import { FormDialog } from './FormDialog';
+import { SupplierOptionsSelect } from './SupplierOptionsSelect';
 import { createOrdersFromItems, useProcurementAction } from './useProcurementAction';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { purchaseListItemStatusLabel, poStatusLabel } from '@/i18n/enumLabel';
@@ -104,14 +104,10 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
   // Приймальня відкриває «Купівлю» лише на вкладці «Управління купівлями» (BR-PL-015), картки
   // замовлення їй не відкрити (`GET /purchase-orders/:id` — 403): номер — текст (Bug #914).
   const canOpenPurchaseOrder = PURCHASE_DOCUMENT_ROLES.includes(employee?.role ?? '');
-  const suppliersQuery = useSupplierOptions('', !!employee);
-  const suppliers = suppliersQuery.data?.items;
-  // Підказка — лише після відповіді: поки список вантажиться, «немає» було б неправдою.
-  const suppliersHint = suppliersQuery.isError
-    ? t('items.dialogs.suppliersLoadFailed')
-    : suppliers && suppliers.length === 0
-      ? t(canCreateSupplier ? 'items.dialogs.suppliersNone' : 'items.dialogs.suppliersNoneAsk')
-      : undefined;
+  // Постачальників понад перші 200 — пошуком на сервері (Bug #918), тому вибір — окремий компонент.
+  const suppliersNoneHint = t(
+    canCreateSupplier ? 'items.dialogs.suppliersNone' : 'items.dialogs.suppliersNoneAsk',
+  );
   const { data: openLists } = usePurchaseLists({ status: 'OPEN', page: 1, limit: 100 });
   const { data, isLoading, error, refetch } = usePurchaseListItems({
     status: status || undefined,
@@ -239,23 +235,23 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
             ))}
           </Select>
         </div>
-        <div className="w-52">
-          <Select
+        <div>
+          <SupplierOptionsSelect
+            layout="row"
             value={supplierId}
-            onChange={e => {
-              setSupplierId(e.target.value);
+            onChange={id => {
+              setSupplierId(id);
               resetPage();
             }}
-            aria-label={t('filters.supplier')}
-          >
-            <option value="">{t('filters.allSuppliers')}</option>
-            <option value={NONE}>{t('filters.noSupplier')}</option>
-            {(suppliers ?? []).map(s => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </Select>
+            ariaLabel={t('filters.supplier')}
+            enabled={!!employee}
+            leading={
+              <>
+                <option value="">{t('filters.allSuppliers')}</option>
+                <option value={NONE}>{t('filters.noSupplier')}</option>
+              </>
+            }
+          />
         </div>
         <div className="w-44">
           <Select
@@ -466,8 +462,8 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
 
       <SupplierPriceDialog
         ids={supplierDialog}
-        suppliers={suppliers ?? []}
-        suppliersHint={suppliersHint}
+        suppliersNoneHint={suppliersNoneHint}
+        enabled={!!employee}
         onClose={() => setSupplierDialog(null)}
         onSaved={count => {
           setSupplierDialog(null);
@@ -509,14 +505,14 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
 
 function SupplierPriceDialog({
   ids,
-  suppliers,
-  suppliersHint,
+  suppliersNoneHint,
+  enabled,
   onClose,
   onSaved,
 }: {
   ids: string[] | null;
-  suppliers: SupplierOption[];
-  suppliersHint: string | undefined;
+  suppliersNoneHint: string;
+  enabled: boolean;
   onClose: () => void;
   onSaved: (count: number) => void;
 }) {
@@ -550,20 +546,19 @@ function SupplierPriceDialog({
         onSaved(res.count);
       }}
     >
-      <Select
+      <SupplierOptionsSelect
         label={t('columns.supplier')}
         value={supplier}
-        onChange={e => setSupplier(e.target.value)}
-        hint={suppliersHint}
-      >
-        <option value="">{t('items.dialogs.keep')}</option>
-        <option value={NONE}>{t('filters.noSupplier')}</option>
-        {suppliers.map(s => (
-          <option key={s.id} value={s.id}>
-            {s.name}
-          </option>
-        ))}
-      </Select>
+        onChange={setSupplier}
+        noneHint={suppliersNoneHint}
+        enabled={enabled && ids !== null}
+        leading={
+          <>
+            <option value="">{t('items.dialogs.keep')}</option>
+            <option value={NONE}>{t('filters.noSupplier')}</option>
+          </>
+        }
+      />
       <Input
         label={t('items.dialogs.price')}
         type="number"
