@@ -151,6 +151,33 @@ describe('Вид «День» — блок запису (BR-CAL-011)', () => {
     expect(within(el).getByText(/Робота\. Заплановано\./).className).toContain('sr-only');
   });
 
+  // guards: BR-CAL-003, BR-CAL-011
+  it('службовий запис без наряду: на блоці назва типу й примітка; без примітки — лише назва', async () => {
+    const service = { workOrderId: null, workOrderNumber: undefined, workOrderStatus: null };
+    byDay['2026-10-15'] = [
+      slot('b', '2026-10-15T13:00', '2026-10-15T14:00', {
+        ...service,
+        type: 'BREAK',
+        notes: 'Обід',
+      }),
+      // Механіку примітка не приходить — блок лишається з назвою типу.
+      slot('m', '2026-10-15T15:00', '2026-10-15T16:00', { ...service, type: 'MAINTENANCE' }),
+    ];
+    await renderDay();
+
+    const brk = screen.getByText('Обід').closest<HTMLElement>('[data-calendar-slot]')!;
+    expect(
+      within(brk).getByText('Перерва', { selector: '[data-part="service-type"]' }),
+    ).toBeInTheDocument();
+    expect(brk.title).toContain('Обід');
+    expect(brk.dataset.category).toBe('other');
+    const mnt = screen
+      .getByText('Обслуговування', { selector: '[data-part="service-type"]' })
+      .closest<HTMLElement>('[data-calendar-slot]')!;
+    expect(within(mnt).queryByText('Обід')).toBeNull();
+    expect(mnt.querySelector('[data-part="notes"]')).toBeNull();
+  });
+
   // guards: BR-CAL-011
   it('механік на блоці й у підказці; без механіка — рядка немає', async () => {
     byDay['2026-10-15'] = [

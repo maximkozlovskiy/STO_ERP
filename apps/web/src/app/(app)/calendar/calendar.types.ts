@@ -13,7 +13,7 @@ export interface CalendarSlot {
   notes?: string | null;
   /** AVAILABLE/BOOKED/BLOCKED — UI наразі створює лише BOOKED (WO-прив'язані) слоти. */
   status?: string;
-  /** WORK/MAINTENANCE/BREAK/MEETING — UI наразі створює лише WORK-слоти. */
+  /** WORK/MAINTENANCE/BREAK/MEETING (BR-CAL-003); без значення — «Робота». */
   type?: string;
   workOrderNumber?: string;
   workOrderStatus?: string | null;
@@ -138,7 +138,15 @@ export type MonthSlots = Record<
   }
 >;
 
+/**
+ * Тип запису календаря (BR-CAL-003): «Робота» або службовий — обслуговування, перерва, нарада
+ * (без клієнта, авто й наряду). Перелік і іконки — `calendar-categories.ts` (`SLOT_TYPES`).
+ */
+export type SlotType = 'WORK' | 'MAINTENANCE' | 'BREAK' | 'MEETING';
+
 export interface SlotForm {
+  /** Тип запису: обирається лише в новому записі, далі не змінюється (BR-CAL-003). */
+  type: SlotType;
   liftId: string;
   employeeId: string;
   counterpartyId: string;

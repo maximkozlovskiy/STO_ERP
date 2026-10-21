@@ -37,7 +37,9 @@ import type {
   PendingSlot,
   SavedMechanic,
   SlotForm,
+  SlotType,
 } from './calendar.types';
+import { SLOT_TYPES, isServiceSlotType, slotType } from './calendar-categories';
 import {
   UUID_RE,
   decimalHoursToHHMM,
@@ -336,6 +338,10 @@ export function CalendarSlotModal({
   } = useConflictCheck();
   const mountedRef = useRef(true);
   const liftSelectId = useId();
+  const typeSelectId = useId();
+  const typeHintId = useId();
+  // BR-CAL-003: службовий запис (обслуговування, перерва, нарада) — без клієнта, авто й наряду.
+  const serviceType = isServiceSlotType(form.type);
   const setMechanic = useCallback(
     (employeeId: string) => setForm(f => ({ ...f, employeeId })),
     [setForm],
@@ -379,6 +385,30 @@ export function CalendarSlotModal({
   const [cpPhone, setCpPhone] = useState<string | null>(null);
   const [cpVehicles, setCpVehicles] = useState<VehicleOption[]>([]);
   const [vehiclesRefetchKey, setVehiclesRefetchKey] = useState(0);
+
+  /**
+   * Тип нового запису (BR-CAL-003). Службовий тип знімає клієнта, авто й наряд, які могли бути
+   * обрані до нього: сервер їх для службового запису відхилив би (400), а прихованих полів
+   * користувач не бачить.
+   */
+  const changeType = (type: SlotType) => {
+    if (!isServiceSlotType(type)) {
+      setForm(f => ({ ...f, type }));
+      return;
+    }
+    setCpDisplay('');
+    setCpPhone(null);
+    setCpVehicles([]);
+    setForm(f => ({
+      ...f,
+      type,
+      counterpartyId: '',
+      counterpartyDisplay: '',
+      vehicleId: '',
+      workOrderId: '',
+      workOrderDisplay: '',
+    }));
+  };
 
   // New counterparty wizard modal
   const [newCpOpen, setNewCpOpen] = useState(false);
@@ -680,7 +710,7 @@ export function CalendarSlotModal({
       setError(t('slot.errEndAfterStart'));
       return;
     }
-    if (!form.counterpartyId && !form.workOrderId) {
+    if (!serviceType && !form.counterpartyId && !form.workOrderId) {
       setError(t('slot.errSelectClient'));
       return;
     }
@@ -774,9 +804,10 @@ export function CalendarSlotModal({
           );
         }
       } else {
+        // Тип — лише в новому записі: після створення він не змінюється (PATCH з `type` — 400).
         const res = await apiFetch<{ slots: CalendarSlot[] }>('/calendar/slots', {
           method: 'POST',
-          body: JSON.stringify(body),
+          body: JSON.stringify({ ...body, type: form.type }),
         });
         if (res.slots.length === 2) {
           const s1 = res.slots[0];
@@ -923,8 +954,36 @@ export function CalendarSlotModal({
             </div>
           )}
 
-          {/* П'ять полів у рядок — лише від xl: на 1024 стовпець вужчий за дату й час (Bug #878) */}
-          <div className="grid grid-cols-3 xl:grid-cols-5 gap-3 items-start">
+          {/* Шість полів у рядок — лише від 2xl: вужчий стовпець обрізав би дату й час (Bug #878) */}
+          <div className="grid grid-cols-3 2xl:grid-cols-6 gap-3 items-start">
+            <div title={editingSlotId ? t('slot.typeLocked') : undefined}>
+              <label
+                htmlFor={typeSelectId}
+                className="block text-[13px] font-medium text-muted-foreground mb-1"
+              >
+                {t('slot.fieldType')}
+              </label>
+              <Select
+                id={typeSelectId}
+                value={form.type}
+                // BR-CAL-003: тип обирають лише в новому записі; після створення — незмінний.
+                disabled={!!editingSlotId || isEditingPast}
+                aria-describedby={editingSlotId ? typeHintId : undefined}
+                onChange={e => changeType(slotType(e.target.value))}
+                className="h-8 text-[13px] py-0.5 px-2 pr-7"
+              >
+                {SLOT_TYPES.map(type => (
+                  <option key={type} value={type}>
+                    {t(`month.type.${type}`)}
+                  </option>
+                ))}
+              </Select>
+              {editingSlotId && (
+                <span id={typeHintId} className="sr-only">
+                  {t('slot.typeLocked')}
+                </span>
+              )}
+            </div>
             <div>
               <label
                 htmlFor={liftSelectId}
@@ -1066,38 +1125,52 @@ export function CalendarSlotModal({
             </div>
           </div>
 
-          {/* Клієнт + Автомобіль — в одному рядку */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[13px] font-medium text-muted-foreground mb-1">
-                {t('slot.fieldClient')} <span className="text-destructive-text">*</span>
-              </label>
-              <div className="flex items-center gap-1">
-                <div className="flex-1 min-w-0">
-                  <EntityPickerField<CpItem>
-                    className="h-8 text-[13px]"
-                    display={form.counterpartyDisplay}
-                    placeholder={t('slot.clientPlaceholder')}
-                    disabled={fieldsLocked}
-                    hidePick={fieldsLocked}
-                    onOpenDetail={form.counterpartyId ? () => void openCpDetail() : undefined}
-                    onPick={() => setCpPickerOpen(true)}
-                    onSearch={!fieldsLocked ? fetchCpItems : undefined}
-                    onSearchSelect={item => {
-                      void (async () => {
-                        if (
-                          form.workOrderId &&
-                          form.counterpartyId &&
-                          item.id !== form.counterpartyId
-                        ) {
-                          const ok = await confirm({
-                            title: t('slot.changeClientConfirmTitle'),
-                            message: t('slot.changeClientConfirmMessage', {
-                              wo: form.workOrderDisplay,
-                            }),
-                            variant: 'destructive',
-                          });
-                          if (!ok) return;
+          {/* Клієнт + Автомобіль — в одному рядку; службовому запису їх немає (BR-CAL-003) */}
+          {!serviceType && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[13px] font-medium text-muted-foreground mb-1">
+                  {t('slot.fieldClient')} <span className="text-destructive-text">*</span>
+                </label>
+                <div className="flex items-center gap-1">
+                  <div className="flex-1 min-w-0">
+                    <EntityPickerField<CpItem>
+                      className="h-8 text-[13px]"
+                      display={form.counterpartyDisplay}
+                      placeholder={t('slot.clientPlaceholder')}
+                      disabled={fieldsLocked}
+                      hidePick={fieldsLocked}
+                      onOpenDetail={form.counterpartyId ? () => void openCpDetail() : undefined}
+                      onPick={() => setCpPickerOpen(true)}
+                      onSearch={!fieldsLocked ? fetchCpItems : undefined}
+                      onSearchSelect={item => {
+                        void (async () => {
+                          if (
+                            form.workOrderId &&
+                            form.counterpartyId &&
+                            item.id !== form.counterpartyId
+                          ) {
+                            const ok = await confirm({
+                              title: t('slot.changeClientConfirmTitle'),
+                              message: t('slot.changeClientConfirmMessage', {
+                                wo: form.workOrderDisplay,
+                              }),
+                              variant: 'destructive',
+                            });
+                            if (!ok) return;
+                            setCpDisplay(item.primary);
+                            setCpPhone(item.phone ?? null);
+                            setCpVehicles([]);
+                            setForm(f => ({
+                              ...f,
+                              counterpartyId: item.id,
+                              counterpartyDisplay: item.primary,
+                              vehicleId: '',
+                              workOrderId: '',
+                              workOrderDisplay: '',
+                            }));
+                            return;
+                          }
                           setCpDisplay(item.primary);
                           setCpPhone(item.phone ?? null);
                           setCpVehicles([]);
@@ -1106,128 +1179,140 @@ export function CalendarSlotModal({
                             counterpartyId: item.id,
                             counterpartyDisplay: item.primary,
                             vehicleId: '',
-                            workOrderId: '',
-                            workOrderDisplay: '',
                           }));
-                          return;
-                        }
-                        setCpDisplay(item.primary);
-                        setCpPhone(item.phone ?? null);
+                        })();
+                      }}
+                      onClear={() => {
+                        setCpDisplay('');
+                        setCpPhone(null);
                         setCpVehicles([]);
                         setForm(f => ({
                           ...f,
-                          counterpartyId: item.id,
-                          counterpartyDisplay: item.primary,
+                          counterpartyId: '',
+                          counterpartyDisplay: '',
                           vehicleId: '',
+                          workOrderId: '',
+                          workOrderDisplay: '',
                         }));
-                      })();
-                    }}
-                    onClear={() => {
-                      setCpDisplay('');
-                      setCpPhone(null);
-                      setCpVehicles([]);
-                      setForm(f => ({
-                        ...f,
-                        counterpartyId: '',
-                        counterpartyDisplay: '',
-                        vehicleId: '',
-                        workOrderId: '',
-                        workOrderDisplay: '',
-                      }));
-                    }}
-                  />
+                      }}
+                    />
+                  </div>
+                  {!fieldsLocked && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openNewCpWizard}
+                      title={t('slot.newClientTitle')}
+                      className="h-8 w-8 p-0 shrink-0"
+                    >
+                      <UserPlus className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
-                {!fieldsLocked && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={openNewCpWizard}
-                    title={t('slot.newClientTitle')}
-                    className="h-8 w-8 p-0 shrink-0"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                  </Button>
+                {cpPhone && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    📞{' '}
+                    <a href={`tel:${cpPhone}`} className="hover:text-foreground transition-colors">
+                      {cpPhone}
+                    </a>
+                  </p>
                 )}
               </div>
-              {cpPhone && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  📞{' '}
-                  <a href={`tel:${cpPhone}`} className="hover:text-foreground transition-colors">
-                    {cpPhone}
-                  </a>
-                </p>
-              )}
-            </div>
 
+              <div>
+                <label className="block text-[13px] font-medium text-muted-foreground mb-1">
+                  {t('slot.fieldVehicle')} <span className="text-destructive-text">*</span>
+                </label>
+                <select
+                  className="w-full h-8 rounded-md border border-input bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                  value={form.vehicleId}
+                  disabled={fieldsLocked || cpVehicles.length === 0}
+                  onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
+                >
+                  {cpVehicles.length === 0 ? (
+                    <option value="">
+                      {form.counterpartyId ? t('slot.noVehicles') : t('slot.selectClientFirst')}
+                    </option>
+                  ) : (
+                    <>
+                      <option value="">{t('slot.selectVehicle')}</option>
+                      {cpVehicles.map(v => (
+                        <option key={v.id} value={v.id}>
+                          {[v.make, v.model, v.licensePlate].filter(Boolean).join(' ')}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Наряд; службовому запису його немає (BR-CAL-003) */}
+          {!serviceType && (
             <div>
               <label className="block text-[13px] font-medium text-muted-foreground mb-1">
-                {t('slot.fieldVehicle')} <span className="text-destructive-text">*</span>
+                {t('slot.fieldWorkOrder')}
               </label>
-              <select
-                className="w-full h-8 rounded-md border border-input bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                value={form.vehicleId}
-                disabled={fieldsLocked || cpVehicles.length === 0}
-                onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-              >
-                {cpVehicles.length === 0 ? (
-                  <option value="">
-                    {form.counterpartyId ? t('slot.noVehicles') : t('slot.selectClientFirst')}
-                  </option>
-                ) : (
-                  <>
-                    <option value="">{t('slot.selectVehicle')}</option>
-                    {cpVehicles.map(v => (
-                      <option key={v.id} value={v.id}>
-                        {[v.make, v.model, v.licensePlate].filter(Boolean).join(' ')}
-                      </option>
-                    ))}
-                  </>
-                )}
-              </select>
-            </div>
-          </div>
+              <div className="flex items-center gap-1">
+                <div className="flex-1 min-w-0">
+                  <EntityPickerField<WoItem>
+                    className="h-8 text-[13px]"
+                    display={form.workOrderDisplay}
+                    placeholder={t('slot.workOrderPlaceholder')}
+                    disabled={fieldsLocked}
+                    hidePick={fieldsLocked}
+                    onOpenDetail={
+                      form.workOrderId
+                        ? () => {
+                            setCreateWoEditId(form.workOrderId || undefined);
+                            setCreateWoOpen(true);
+                          }
+                        : undefined
+                    }
+                    onPick={() => setWoPickerOpen(true)}
+                    onSearch={!fieldsLocked ? fetchWoItems : undefined}
+                    onSearchSelect={item => {
+                      void (async () => {
+                        const display = item.counterpartyName
+                          ? `${item.primary} · ${item.counterpartyName}`
+                          : item.primary;
 
-          {/* Наряд */}
-          <div>
-            <label className="block text-[13px] font-medium text-muted-foreground mb-1">
-              {t('slot.fieldWorkOrder')}
-            </label>
-            <div className="flex items-center gap-1">
-              <div className="flex-1 min-w-0">
-                <EntityPickerField<WoItem>
-                  className="h-8 text-[13px]"
-                  display={form.workOrderDisplay}
-                  placeholder={t('slot.workOrderPlaceholder')}
-                  disabled={fieldsLocked}
-                  hidePick={fieldsLocked}
-                  onOpenDetail={
-                    form.workOrderId
-                      ? () => {
-                          setCreateWoEditId(form.workOrderId || undefined);
-                          setCreateWoOpen(true);
+                        if (
+                          item.counterpartyId &&
+                          form.counterpartyId &&
+                          item.counterpartyId !== form.counterpartyId
+                        ) {
+                          const replace = await confirm({
+                            title: t('slot.replaceClientTitle'),
+                            message: t('slot.replaceClientMessage', {
+                              client: item.counterpartyName ?? item.counterpartyId,
+                            }),
+                          });
+                          if (replace) {
+                            const cpDisp = item.counterpartyName ?? '';
+                            setCpDisplay(cpDisp);
+                            setCpPhone(null);
+                            setCpVehicles([]);
+                            setForm(f => ({
+                              ...f,
+                              workOrderId: item.id,
+                              workOrderDisplay: display,
+                              counterpartyId: item.counterpartyId!,
+                              counterpartyDisplay: cpDisp,
+                              vehicleId: '',
+                            }));
+                          } else {
+                            setForm(f => ({
+                              ...f,
+                              workOrderId: item.id,
+                              workOrderDisplay: display,
+                            }));
+                          }
+                          return;
                         }
-                      : undefined
-                  }
-                  onPick={() => setWoPickerOpen(true)}
-                  onSearch={!fieldsLocked ? fetchWoItems : undefined}
-                  onSearchSelect={item => {
-                    void (async () => {
-                      const display = item.counterpartyName
-                        ? `${item.primary} · ${item.counterpartyName}`
-                        : item.primary;
 
-                      if (
-                        item.counterpartyId &&
-                        form.counterpartyId &&
-                        item.counterpartyId !== form.counterpartyId
-                      ) {
-                        const replace = await confirm({
-                          title: t('slot.replaceClientTitle'),
-                          message: t('slot.replaceClientMessage', {
-                            client: item.counterpartyName ?? item.counterpartyId,
-                          }),
-                        });
-                        if (replace) {
+                        if (item.counterpartyId && !form.counterpartyId) {
                           const cpDisp = item.counterpartyName ?? '';
                           setCpDisplay(cpDisp);
                           setCpPhone(null);
@@ -1240,50 +1325,32 @@ export function CalendarSlotModal({
                             counterpartyDisplay: cpDisp,
                             vehicleId: '',
                           }));
-                        } else {
-                          setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+                          return;
                         }
-                        return;
-                      }
 
-                      if (item.counterpartyId && !form.counterpartyId) {
-                        const cpDisp = item.counterpartyName ?? '';
-                        setCpDisplay(cpDisp);
-                        setCpPhone(null);
-                        setCpVehicles([]);
-                        setForm(f => ({
-                          ...f,
-                          workOrderId: item.id,
-                          workOrderDisplay: display,
-                          counterpartyId: item.counterpartyId!,
-                          counterpartyDisplay: cpDisp,
-                          vehicleId: '',
-                        }));
-                        return;
-                      }
-
-                      setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
-                    })();
-                  }}
-                  onClear={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
-                />
+                        setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+                      })();
+                    }}
+                    onClear={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
+                  />
+                </div>
+                {!fieldsLocked && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setCreateWoEditId(undefined);
+                      setCreateWoOpen(true);
+                    }}
+                    title={t('slot.newWorkOrderTitle')}
+                    className="h-8 w-8 p-0 shrink-0"
+                  >
+                    <FilePlus className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
-              {!fieldsLocked && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setCreateWoEditId(undefined);
-                    setCreateWoOpen(true);
-                  }}
-                  title={t('slot.newWorkOrderTitle')}
-                  className="h-8 w-8 p-0 shrink-0"
-                >
-                  <FilePlus className="h-4 w-4" />
-                </Button>
-              )}
             </div>
-          </div>
+          )}
 
           {/* New client wizard modal */}
           <Modal
@@ -1585,8 +1652,10 @@ export function CalendarSlotModal({
                 disabled={
                   !form.startAt ||
                   !form.endAt ||
-                  (!form.counterpartyId && !form.workOrderId) ||
-                  (!!form.counterpartyId && !form.vehicleId)
+                  // Клієнт (з авто) чи наряд — лише для «Роботи»; службовий запис їх не має.
+                  (!serviceType &&
+                    ((!form.counterpartyId && !form.workOrderId) ||
+                      (!!form.counterpartyId && !form.vehicleId)))
                 }
               >
                 {editingSlotId ? t('slot.update') : t('slot.save')}

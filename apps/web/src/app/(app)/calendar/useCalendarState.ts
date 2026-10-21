@@ -47,6 +47,7 @@ import {
   toDateString,
 } from './calendar.utils';
 import { buildMonthSlots, chainEnds, liveSlots } from './calendar-month';
+import { slotType } from './calendar-categories';
 import {
   nowLinePercent,
   pastPercent,
@@ -62,6 +63,7 @@ export const PENDING_DRAG_ID = '__pending__';
 
 // Module-level constant — stable ref avoids re-creation on every render.
 export const EMPTY_FORM: SlotForm = {
+  type: 'WORK',
   liftId: '',
   employeeId: '',
   counterpartyId: '',
@@ -111,6 +113,7 @@ function slotToForm(slot: CalendarSlot): SlotForm {
   const startH = kyivHours(slot.startAt);
   const endH = kyivHours(slot.endAt);
   return {
+    type: slotType(slot.type),
     liftId: slot.liftId ?? '',
     employeeId: slot.employeeId ?? '',
     counterpartyId: slot.counterpartyId ?? '',
@@ -653,17 +656,11 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     setError('');
     setCpDisplay('');
     setForm({
+      ...EMPTY_FORM,
       liftId: p.liftId,
-      employeeId: '',
-      counterpartyId: '',
-      counterpartyDisplay: '',
-      vehicleId: '',
-      workOrderId: '',
-      workOrderDisplay: '',
       startAt: decimalHoursToHHMM(p.startH),
       endAt: decimalHoursToHHMM(p.endH),
       normoHours: String(+(p.endH - p.startH).toFixed(2)),
-      notes: '',
     });
     setShowAdd(true);
   }, []);
@@ -839,17 +836,11 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         setError('');
         setCpDisplay('');
         setForm({
+          ...EMPTY_FORM,
           liftId,
-          employeeId: '',
-          counterpartyId: '',
-          counterpartyDisplay: '',
-          vehicleId: '',
-          workOrderId: '',
-          workOrderDisplay: '',
           startAt: decimalHoursToHHMM(startH),
           endAt: decimalHoursToHHMM(clampedEnd),
           normoHours: String(+(clampedEnd - startH).toFixed(2)),
-          notes: '',
         });
         setShowAdd(true);
         return;

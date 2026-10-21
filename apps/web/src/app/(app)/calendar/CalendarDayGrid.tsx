@@ -20,7 +20,13 @@ import { fmtQty } from '@/lib/format';
 
 import type { BookingSlot, CalendarSlot, GhostSlot, Lift, PendingSlot } from './calendar.types';
 import { SIDEBAR_W, decimalHoursToHHMM, fmtTime, kyivHours, pad } from './calendar.utils';
-import { CATEGORY_VIEW, SLOT_TYPE_ICON, slotType, type SlotCategory } from './calendar-categories';
+import {
+  CATEGORY_VIEW,
+  SLOT_TYPE_ICON,
+  isServiceSlotType,
+  slotType,
+  type SlotCategory,
+} from './calendar-categories';
 import {
   daySlotCategory,
   isCancelledWorkOrderSlot,
@@ -128,6 +134,9 @@ const DraggableSlot = memo(function DraggableSlot({
   const TypeIcon = SLOT_TYPE_ICON[type];
   const categoryLabel = t(`month.category.${category}`);
   const typeLabel = t(`month.type.${type}`);
+  // BR-CAL-003: службовий запис без наряду й клієнта — назва типу й примітка, щоб блок не був
+  // порожнім (механіку примітка не приходить — лише назва).
+  const service = isServiceSlotType(type) && !slot.workOrderNumber;
   const titleTooltip = [
     timeLabel,
     slot.workOrderNumber ? `· ${slot.workOrderNumber}` : null,
@@ -137,6 +146,7 @@ const DraggableSlot = memo(function DraggableSlot({
     slot.cpPhone ?? null,
     slot.vehicleSummary ?? null,
     slot.vehiclePlate ?? null,
+    service ? (slot.notes ?? null) : null,
     `${typeLabel} · ${categoryLabel}`,
     canManage && lockedStatus ? lockedHint(lockedStatus) : null,
   ]
@@ -205,6 +215,21 @@ const DraggableSlot = memo(function DraggableSlot({
         )}
         {/* Main info — centered */}
         <div className="flex-1 flex flex-col justify-center gap-0.5 min-w-0">
+          {service && (
+            // Читач екрана чує тип у тексті вище — тут лише видима назва.
+            <span
+              className="font-bold truncate leading-tight"
+              data-part="service-type"
+              aria-hidden="true"
+            >
+              {typeLabel}
+            </span>
+          )}
+          {service && slot.notes && (
+            <span className="truncate leading-tight" data-part="notes">
+              {slot.notes}
+            </span>
+          )}
           {slot.workOrderNumber && (
             <span className="font-bold truncate leading-tight">{slot.workOrderNumber}</span>
           )}

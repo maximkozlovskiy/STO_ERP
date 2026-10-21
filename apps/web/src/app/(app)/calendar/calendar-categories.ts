@@ -13,10 +13,10 @@ import {
   Wrench,
   XCircle,
 } from 'lucide-react';
-import type { CategoryInput } from './calendar.types';
+import type { CategoryInput, SlotType } from './calendar.types';
 
 // Типи живуть у calendar.types.ts (інакше цикл імпортів types ↔ categories).
-export type { CategoryInput, MonthEntry } from './calendar.types';
+export type { CategoryInput, MonthEntry, SlotType } from './calendar.types';
 
 /**
  * Категорія запису календаря для лічильників дня у виді «Місяць» (BR-CAL-008).
@@ -139,9 +139,16 @@ export const CATEGORY_VIEW: Record<
   },
 };
 
-/** Тип запису календаря (`CalendarSlot.type`) — іконка на картці й рядок легенди. */
-export const SLOT_TYPES = ['WORK', 'MAINTENANCE', 'BREAK', 'MEETING'] as const;
-export type SlotType = (typeof SLOT_TYPES)[number];
+/**
+ * Тип запису календаря (`CalendarSlot.type`, BR-CAL-003) — поле «Тип запису» форми, іконка на
+ * картці й рядок легенди. Порядок — порядок опцій у формі.
+ */
+export const SLOT_TYPES = [
+  'WORK',
+  'MAINTENANCE',
+  'BREAK',
+  'MEETING',
+] as const satisfies readonly SlotType[];
 
 export const SLOT_TYPE_ICON: Record<SlotType, LucideIcon> = {
   WORK: Car,
@@ -153,7 +160,15 @@ export const SLOT_TYPE_ICON: Record<SlotType, LucideIcon> = {
 const KNOWN_TYPES: ReadonlySet<string> = new Set(SLOT_TYPES);
 const isSlotType = (type: string): type is SlotType => KNOWN_TYPES.has(type);
 
-/** Тип без значення (старі записи) чи невідомий — робота: UI створює лише WORK-слоти. */
+/** Тип без значення (старі записи) чи невідомий — «Робота», типовий тип запису. */
 export function slotType(type: string | undefined): SlotType {
   return type && isSlotType(type) ? type : 'WORK';
+}
+
+/**
+ * Службовий запис — обслуговування, перерва, нарада (BR-CAL-003): без клієнта, авто й наряду;
+ * на картці й блоці замість номера наряду — назва типу.
+ */
+export function isServiceSlotType(type: SlotType): boolean {
+  return type !== 'WORK';
 }

@@ -137,19 +137,23 @@ describe('CalendarMonthView — картки записів дня (BR-CAL-009)'
     expect(card).toHaveAttribute('data-category', 'planned');
   });
 
-  // guards: BR-CAL-009
-  it('запис без наряду — «Без наряду» (+ клієнт чи примітка), іконка типу з назвою', () => {
+  // guards: BR-CAL-009, BR-CAL-003
+  it('запис без наряду — «Без наряду» (+ клієнт чи примітка); службовий — назва типу й примітка', () => {
     renderMonth(
       monthOf([
         slot('a', '09:00', { type: 'BREAK', notes: 'Обід' }),
         slot('b', '10:00', { counterpartyName: 'ТОВ Ромашка' }),
+        slot('c', '11:00', { type: 'MEETING' }),
       ]),
     );
-    const [brk, client] = within(cell()).getAllByTestId('month-slot-card');
-    expect(brk).toHaveTextContent('09:00Без наряду· Обід');
+    const [brk, client, meeting] = within(cell()).getAllByTestId('month-slot-card');
+    expect(brk).toHaveTextContent('09:00Перерва· Обід');
     expect(brk).toHaveAttribute('data-category', 'other');
-    expect(brk).toHaveAccessibleName('09:00 Без наряду · Обід. Перерва. Без наряду');
+    expect(brk).toHaveAccessibleName('09:00 Перерва · Обід. Перерва. Без наряду');
+    // Другий рядок підказки (замість «Без наряду») — назва типу.
+    expect(brk.title.split(/\n/)[1]).toBe('Перерва');
     expect(client).toHaveTextContent('10:00Без наряду· ТОВ Ромашка');
+    expect(meeting).toHaveTextContent('11:00Нарада');
   });
 
   // guards: BR-CAL-009

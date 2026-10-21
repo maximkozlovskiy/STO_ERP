@@ -149,6 +149,8 @@
     "woTimeLocked": "Work order status “{{status}}”: the record time, lift and work order change, and the record can be deleted, only in the Draft, Estimate and Approved statuses (deletion — also for a cancelled work order). The note and mechanic can be changed.",
     "woTimeLockedCancelled": "Work order status “{{status}}”: the record time, lift and work order do not change. The note and mechanic can be changed, and the record can be deleted (the work order dates stay the same).",
     "woDeleteLocked": "A record of a work order in the “{{status}}” status cannot be deleted — only in the Draft, Estimate, Approved or Cancelled statuses",
+    "fieldType": "Record type",
+    "typeLocked": "The record type cannot be changed after creation",
     "fieldLift": "Lift",
     "liftAny": "— any —",
     "fieldMechanic": "Mechanic",

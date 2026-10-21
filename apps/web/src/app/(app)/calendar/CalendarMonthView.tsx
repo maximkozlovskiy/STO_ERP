@@ -10,6 +10,7 @@ import { fmtTime, toDateString } from './calendar.utils';
 import {
   CATEGORY_VIEW,
   SLOT_TYPE_ICON,
+  isServiceSlotType,
   slotCategory,
   slotType,
   type MonthEntry,
@@ -77,10 +78,11 @@ const MonthSlotCard = memo(function MonthSlotCard({ entry, nowMs, onOpen }: Mont
   const time = fmtTime(slot.startAt);
   const categoryLabel = t(`month.category.${category}`);
   const typeLabel = t(`month.type.${type}`);
-  // Головне — номер наряду (без наряду — «Без наряду»): не обрізається. Другорядне — клієнт
-  // (без наряду — клієнт або примітка) — обрізається. Механік клієнта не отримує (API віддає
-  // лише номер наряду) — тоді другорядного немає.
-  const main = slot.workOrderNumber ?? t('month.card.noWorkOrder');
+  // Головне — номер наряду (без наряду — «Без наряду», службовий запис — назва типу, BR-CAL-003):
+  // не обрізається. Другорядне — клієнт (без наряду — клієнт або примітка) — обрізається. Механік
+  // клієнта не отримує (API віддає лише номер наряду) — тоді другорядного немає.
+  const noWorkOrder = isServiceSlotType(type) ? typeLabel : t('month.card.noWorkOrder');
+  const main = slot.workOrderNumber ?? noWorkOrder;
   const secondary = slot.workOrderNumber
     ? slot.counterpartyName
     : (slot.counterpartyName ?? slot.notes);
@@ -89,7 +91,7 @@ const MonthSlotCard = memo(function MonthSlotCard({ entry, nowMs, onOpen }: Mont
     `${time}–${fmtTime(slot.endAt)}${slot.parentSlotId ? ` (${t('month.card.continuation')})` : ''}`,
     slot.workOrderNumber
       ? `${slot.workOrderNumber}${slot.workOrderStatus ? ` · ${woStatusLabel(slot.workOrderStatus)}` : ''}`
-      : t('month.card.noWorkOrder'),
+      : noWorkOrder,
     slot.counterpartyName,
     slot.cpPhone,
     [slot.vehicleSummary, slot.vehiclePlate].filter(Boolean).join(' ') || null,
