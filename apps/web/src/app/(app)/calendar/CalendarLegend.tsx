@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CircleHelp } from 'lucide-react';
 import { CATEGORY_VIEW, SLOT_CATEGORIES, SLOT_TYPES, SLOT_TYPE_ICON } from './calendar-categories';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 
 /**
  * Кнопка «?» у шапці календаря: пояснює іконки й кольори категорій записів і типи записів
@@ -26,19 +27,15 @@ export function CalendarLegend() {
       if (e.target instanceof Node && rootRef.current?.contains(e.target)) return;
       setOpen(false);
     };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      setOpen(false);
-      // Фокус повертається на кнопку — інакше з клавіатури він губиться на <body>.
-      buttonRef.current?.focus();
-    };
     document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
+    return () => document.removeEventListener('mousedown', onPointerDown);
   }, [open]);
+
+  useEscapeLayer(open, () => {
+    setOpen(false);
+    // Фокус повертається на кнопку — інакше з клавіатури він губиться на <body>.
+    buttonRef.current?.focus();
+  });
 
   return (
     <div

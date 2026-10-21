@@ -30,7 +30,7 @@ import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
-import { useEscapeCapture } from '@/hooks/useEscapeCapture';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTabBarContext } from '@/contexts/TabBarContext';
 import { displayCounterpartyName, cn } from '@/lib/utils';
@@ -613,8 +613,18 @@ export function InvoiceCreateModal({
   // Меню статусу й «Зберегти як» — шари над карткою: Escape закриває лише їх (Bug #932, клас Bug #924).
   // Меню видно лише за наявності переходів: інакше перехоплювач «ковтав» би Escape без меню.
   const statusMenuShown = statusMenuOpen && allowedTransitions.length > 0;
-  useEscapeCapture(statusMenuShown, () => setStatusMenuOpen(false));
-  useEscapeCapture(saveAsOpen, () => setSaveAsOpen(false));
+  useEscapeLayer(statusMenuShown, () => setStatusMenuOpen(false));
+  useEscapeLayer(saveAsOpen, () => setSaveAsOpen(false));
+  // Escape в описі нової позиції скасовує лише її, а не закриває рахунок.
+  const newLineInputRef = useRef<HTMLInputElement>(null);
+  useEscapeLayer(
+    canEdit && showLineInput,
+    () => {
+      setShowLineInput(false);
+      setNewLine(EMPTY_LINE);
+    },
+    newLineInputRef,
+  );
   const handleModalClose = useCallback(async () => {
     if (nestedOpenRef.current) return;
     if (savingRef.current || transitioningRef.current) return;
@@ -1099,16 +1109,13 @@ export function InvoiceCreateModal({
                   <tr className="bg-primary/5">
                     <td className="px-2 py-1.5">
                       <input
+                        ref={newLineInputRef}
                         autoFocus
                         type="text"
                         value={newLine.description}
                         onChange={e => setNewLine(l => ({ ...l, description: e.target.value }))}
                         onKeyDown={e => {
                           if (e.key === 'Enter') addLine();
-                          if (e.key === 'Escape') {
-                            setShowLineInput(false);
-                            setNewLine(EMPTY_LINE);
-                          }
                         }}
                         placeholder="Опис позиції…"
                         className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-ring"

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, X, Check } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 
 interface StatusBadge {
   id: string;
@@ -84,6 +85,8 @@ export function GoodStatusManager({
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
+  // Escape закриває лише список статусів, а не картку товару під ним.
+  useEscapeLayer(open, () => setOpen(false));
 
   const assignedIds = new Set(effectiveAssigned.map(s => s.id));
   const available = directory.filter(s => !assignedIds.has(s.id));

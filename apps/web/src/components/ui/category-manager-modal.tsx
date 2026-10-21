@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, ChevronDown, Plus, Pencil, Trash2 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { apiFetch } from '@/lib/api-client';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -69,6 +70,25 @@ function ManagerNode({
   }
   const [addMode, setAddMode] = useState(false);
   const [newName, setNewName] = useState('');
+  // Escape у полі назви скасовує лише редагування, а не закриває вікно менеджера.
+  const editInputRef = useRef<HTMLInputElement>(null);
+  const addInputRef = useRef<HTMLInputElement>(null);
+  useEscapeLayer(
+    editMode,
+    () => {
+      setEditMode(false);
+      setEditName(node.name);
+    },
+    editInputRef,
+  );
+  useEscapeLayer(
+    addMode,
+    () => {
+      setAddMode(false);
+      setNewName('');
+    },
+    addInputRef,
+  );
   const hasChildren = node.children.length > 0;
   const endpoint = type === 'work' ? '/work-categories' : '/good-categories';
 
@@ -185,16 +205,13 @@ function ManagerNode({
         {/* Name / edit input */}
         {editMode ? (
           <input
+            ref={editInputRef}
             autoFocus
             value={editName}
             onChange={e => setEditName(e.target.value)}
             onBlur={() => void handleRename()}
             onKeyDown={e => {
               if (e.key === 'Enter') void handleRename();
-              if (e.key === 'Escape') {
-                setEditMode(false);
-                setEditName(node.name);
-              }
             }}
             className="flex-1 min-w-0 bg-transparent border-b border-primary text-[13px] outline-none"
           />
@@ -258,16 +275,13 @@ function ManagerNode({
           style={{ paddingLeft: `${(depth + 1) * 16 + 8 + 16}px` }}
         >
           <input
+            ref={addInputRef}
             autoFocus
             placeholder="Назва нової категорії..."
             value={newName}
             onChange={e => setNewName(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter') void handleAddChild();
-              if (e.key === 'Escape') {
-                setAddMode(false);
-                setNewName('');
-              }
             }}
             className="flex-1 text-[13px] bg-transparent border-b border-primary outline-none py-0.5"
           />

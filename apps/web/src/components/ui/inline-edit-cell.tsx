@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 
 interface InlineEditCellProps {
   value: string;
@@ -28,6 +29,9 @@ export function InlineEditCell({
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Escape скасовує лише редагування клітинки — і в картці теж: вікно під нею лишається.
+  useEscapeLayer(true, onCancel, inputRef);
+
   useEffect(() => {
     inputRef.current?.focus();
     // `select()` is unsupported on date/datetime-local inputs and throws
@@ -50,10 +54,6 @@ export function InlineEditCell({
           if (e.key === 'Enter') {
             e.preventDefault();
             onCommit(value);
-          }
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            onCancel();
           }
         }}
         onBlur={() => onCommit(value)}

@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 
 interface WorkOrderMedia {
   id: string;
@@ -43,14 +44,7 @@ export function WorkOrderMediaSection({
 
   // Escape closes lightbox + a11y. Without this keyboard users can't
   // dismiss the photo preview at all.
-  useEffect(() => {
-    if (!lightboxUrl) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLightboxUrl(null);
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [lightboxUrl]);
+  useEscapeLayer(!!lightboxUrl, () => setLightboxUrl(null));
 
   const handleMediaUpload = async (files: FileList) => {
     setUploadingMedia(true);

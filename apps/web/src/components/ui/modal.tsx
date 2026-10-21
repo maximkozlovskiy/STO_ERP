@@ -2,7 +2,6 @@
 
 import {
   useEffect,
-  useCallback,
   useState,
   useRef,
   useId,
@@ -16,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { useAnimatedPresence } from '@/hooks/useAnimatedPresence';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 
 type ModalSize = 'sm' | 'md' | 'lg' | 'wide' | 'xl' | 'full' | 'content';
 
@@ -217,12 +217,9 @@ export function Modal({
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const handleKey = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    },
-    [onClose],
-  );
+  // Escape закриває лише верхнє вікно: відкрите вкладене (вибір, підтвердження, інша картка) —
+  // вище в стеку шарів, і до цього вікна Escape не доходить.
+  useEscapeLayer(open, onClose);
 
   useEffect(() => {
     setMounted(true);
@@ -230,13 +227,11 @@ export function Modal({
 
   useEffect(() => {
     if (!open) return;
-    document.addEventListener('keydown', handleKey);
     document.body.style.overflow = 'hidden';
     return () => {
-      document.removeEventListener('keydown', handleKey);
       document.body.style.overflow = '';
     };
-  }, [open, handleKey]);
+  }, [open]);
 
   // E2: focus-trap — фокус тримається у панелі поки модалка видима; повертається на закритті.
   // `visible` (не `open`) — щоб трап жив під час exit-анімації теж; panelRef прикріплений на рендері.

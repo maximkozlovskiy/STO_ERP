@@ -1,4 +1,5 @@
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
+import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { Modal, AnimatedBody } from '../modal';
@@ -75,6 +76,45 @@ describe('Modal', () => {
     );
     await userEvent.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalled();
+  });
+
+  // Стек шарів Escape (техборг §15.12): вікно над вікном — Escape закриває лише верхнє. Раніше
+  // кожен Modal слухав Escape сам, і власник рятувався прапорцем «вкладене відкрито».
+  describe('Escape у вкладеному вікні', () => {
+    function Nested({ onOuterClose }: { onOuterClose: () => void }) {
+      const [inner, setInner] = useState(true);
+      // Нова стрілка onClose на кожен рендер — як у карток; ререндер власника не міняє порядок.
+      return (
+        <Modal open onClose={() => onOuterClose()} title="Картка">
+          <Modal open={inner} onClose={() => setInner(false)} title="Вибір">
+            Вкладене
+          </Modal>
+        </Modal>
+      );
+    }
+
+    it('перший Escape закриває лише вкладене, другий — картку', async () => {
+      const onOuterClose = vi.fn();
+      render(<Nested onOuterClose={onOuterClose} />);
+      await userEvent.keyboard('{Escape}');
+      expect(onOuterClose).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog', { name: 'Вибір' })).toHaveAttribute('data-state', 'closed');
+      await userEvent.keyboard('{Escape}');
+      expect(onOuterClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('два Escape підряд без пауз (рендер між ними) — так само по одному вікну', () => {
+      const onOuterClose = vi.fn();
+      render(<Nested onOuterClose={onOuterClose} />);
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'Escape' });
+      });
+      expect(onOuterClose).not.toHaveBeenCalled();
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'Escape' });
+      });
+      expect(onOuterClose).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ─── Ctrl+Enter → onSubmit (Feature 6: keyboard в модалках) ────────────────

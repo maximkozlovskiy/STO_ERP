@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 
@@ -219,6 +220,9 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
     setEditingUoMId(null);
     setUomError('');
   };
+  // Escape у полі коефіцієнта скасовує лише редагування, а не закриває картку товару.
+  const uomInputRef = useRef<HTMLInputElement>(null);
+  useEscapeLayer(editingUoMId !== null, cancelEditUoM, uomInputRef);
 
   const saveUoMEdit = async (uomId: string) => {
     if (!editUoMForm.coefficient.trim()) {
@@ -404,6 +408,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                         </td>
                         <td className="px-3 py-2">
                           <input
+                            ref={uomInputRef}
                             autoFocus
                             type="number"
                             min="0"
@@ -413,7 +418,6 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                               setEditUoMForm(f => ({ ...f, coefficient: e.target.value }))
                             }
                             onKeyDown={e => {
-                              if (e.key === 'Escape') cancelEditUoM();
                               if (e.key === 'Enter') void saveUoMEdit(u.id);
                             }}
                             className="w-24 rounded border border-primary/40 bg-surface px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"

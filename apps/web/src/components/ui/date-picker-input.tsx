@@ -8,7 +8,7 @@ import { Calendar, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
-import { useEscapeCapture } from '@/hooks/useEscapeCapture';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 
 // Module-level class name table — DayPicker `classNames` має бути stable reference,
 // інакше внутрішня memoization інвалідовується на кожен ререндер батьківського компоненту.
@@ -107,7 +107,7 @@ export function DatePickerInput({
   // (фокус на ній), на Escape закривав усю модалку-батька разом із незбереженою формою.
   // Capture + stopImmediatePropagation, як у DateTimePickerInput: <Modal> слухає Escape на
   // document у bubble-фазі, тож перехопити треба раніше за нього.
-  useEscapeCapture(open, () => setOpen(false));
+  useEscapeLayer(open, () => setOpen(false));
 
   // parse min/max bounds and enforce them in both manual typing and DayPicker.
   // Memoize: parseApiDate створює новий Date об'єкт на кожен виклик. Без useMemo

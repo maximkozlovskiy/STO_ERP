@@ -4,7 +4,7 @@ import { useId, useRef, useState, useEffect, useCallback } from 'react';
 import { MoreHorizontal, Search, X } from 'lucide-react';
 import { Spinner } from './spinner';
 import { cn } from '@/lib/utils';
-import { useEscapeCapture } from '@/hooks/useEscapeCapture';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 
 interface SearchItem {
   id: string;
@@ -124,7 +124,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
   // Escape у вкладеному вікні чи після Tab-у з поля не повинен «ковтатись» відкритим списком.
   const listVisible = open && items.length > 0;
   const statusVisible = open && !loading && items.length === 0 && !!query.trim();
-  useEscapeCapture(listVisible || statusVisible, () => setOpen(false), containerRef);
+  useEscapeLayer(listVisible || statusVisible, () => setOpen(false), containerRef);
 
   // Reset query when selection changes externally (e.g. cleared via onClear)
   useEffect(() => {

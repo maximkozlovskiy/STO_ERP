@@ -8,7 +8,7 @@ import {
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { downloadBlob, printPdf } from '@/lib/download';
-import { useEscapeCapture } from './useEscapeCapture';
+import { useEscapeLayer } from './useEscapeLayer';
 
 /**
  * Ролі, яким сервер дозволяє і `GET /invoices/from-work-order/:id/find`, і `GET /invoices/:id/pdf`
@@ -160,7 +160,7 @@ export function useWorkOrderActions({
   // (bubble-фаза), тож без capture+stop Esc закрив би одразу і conflict-dialog, і WO modal.
   // Capture-фаза гарантує що наш listener fire-ить ПЕРШИМ; stopImmediatePropagation відсікає
   // подальші listeners на document (включно з Modal handler).
-  useEscapeCapture(invoiceConflict, () => {
+  useEscapeLayer(invoiceConflict, () => {
     if (!invoiceLoading) setInvoiceConflict(false);
   });
 

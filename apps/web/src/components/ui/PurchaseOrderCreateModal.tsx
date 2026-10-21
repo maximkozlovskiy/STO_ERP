@@ -34,7 +34,7 @@ import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
-import { useEscapeCapture } from '@/hooks/useEscapeCapture';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTabBarContext } from '@/contexts/TabBarContext';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -931,8 +931,8 @@ export function PurchaseOrderCreateModal({
   // Меню статусу й «Зберегти як» — шари над карткою: Escape закриває лише їх (Bug #932, клас Bug #924).
   // Меню видно лише за наявності переходів: інакше перехоплювач «ковтав» би Escape без меню.
   const statusMenuShown = statusMenuOpen && allowedTransitions.length > 0;
-  useEscapeCapture(statusMenuShown, () => setStatusMenuOpen(false));
-  useEscapeCapture(saveAsOpen, () => setSaveAsOpen(false));
+  useEscapeLayer(statusMenuShown, () => setStatusMenuOpen(false));
+  useEscapeLayer(saveAsOpen, () => setSaveAsOpen(false));
   const handleModalClose = useCallback(async () => {
     if (nestedOpenRef.current) return;
     if (supplierNestedRef.current) return;
@@ -1913,7 +1913,7 @@ export function PurchaseOrderCreateModal({
                                 });
                               }}
                               onKeyDown={e => {
-                                if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur();
+                                if (e.key === 'Enter') e.currentTarget.blur();
                               }}
                               className="w-full bg-transparent text-[12px] tabular-nums outline-none border-b border-transparent focus:border-primary caret-primary placeholder:text-muted-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               placeholder="—"

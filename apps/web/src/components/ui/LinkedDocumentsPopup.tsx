@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import {
   LinkedDocumentsPanel,
   type LinkedEntityConfig,
 } from '@/components/ui/LinkedDocumentsPanel';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 
 /**
  * Правий floating-попап зі списком пов'язаних документів. Раніше цей shell
@@ -24,21 +24,9 @@ export function LinkedDocumentsPopup({
   onClose: () => void;
   ariaLabel?: string;
 }) {
-  // onClose у ref — callers передають інлайн-стрілку щоразу, тож без ref
-  // keydown-listener пере-біндився б на КОЖЕН ре-рендер батька.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  // Escape закриває попап. Компонент монтується лише коли попап відкритий,
-  // тож listener живе рівно стільки, скільки треба (cleanup на unmount).
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current();
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-    // Біндимо РАЗ на mount (onClose через ref) — listener не пере-біндиться на ре-рендери.
-  }, []);
+  // Escape закриває попап. Компонент монтується лише коли попап відкритий, тож шар живе рівно
+  // стільки, скільки треба.
+  useEscapeLayer(true, onClose);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/30" onClick={onClose} role="presentation">

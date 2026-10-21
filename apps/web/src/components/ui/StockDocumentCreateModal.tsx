@@ -29,7 +29,7 @@ import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
-import { useEscapeCapture } from '@/hooks/useEscapeCapture';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -634,8 +634,8 @@ export function StockDocumentCreateModal({
   // Меню статусу й «Зберегти як» — шари над карткою: Escape закриває лише їх (Bug #932, клас Bug #924).
   // Меню видно лише за наявності переходів: інакше перехоплювач «ковтав» би Escape без меню.
   const statusMenuShown = statusMenuOpen && allowedTransitions.length > 0;
-  useEscapeCapture(statusMenuShown, () => setStatusMenuOpen(false));
-  useEscapeCapture(saveAsOpen, () => setSaveAsOpen(false));
+  useEscapeLayer(statusMenuShown, () => setStatusMenuOpen(false));
+  useEscapeLayer(saveAsOpen, () => setSaveAsOpen(false));
   const handleModalClose = useCallback(async () => {
     if (nestedOpenRef.current || confirmOpenRef.current) return;
     if (savingRef.current || transitioningRef.current) return;

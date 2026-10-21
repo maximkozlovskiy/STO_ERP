@@ -9,7 +9,7 @@ import { Calendar, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { isoToKyivLocalDateTime, kyivToday } from '@/lib/format';
-import { useEscapeCapture } from '@/hooks/useEscapeCapture';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 
 const DAY_PICKER_CLASS_NAMES = {
   root: 'rdp-root',
@@ -233,7 +233,7 @@ export function DateTimePickerInput({
   // на document.body, а батьківський <Modal> слухає Escape на document у bubble-фазі —
   // без перехоплення те саме натискання закривало всю модалку (разом із формою).
   // Фокус може бути і в інпуті, і в <select> попапа, тож onKeyDown на інпуті не досить.
-  useEscapeCapture(open, () => setOpen(false));
+  useEscapeLayer(open, () => setOpen(false));
 
   // Reposition on scroll/resize.
   // sto-optimize: passive listeners — обробник не викликає preventDefault, тому позначення

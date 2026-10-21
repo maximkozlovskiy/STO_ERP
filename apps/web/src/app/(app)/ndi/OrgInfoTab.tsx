@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { useBankAccountOptions } from '@/hooks/api/useBankStatements';
 import type { ApiSchema } from '@sto/shared';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 
 type OrgInfo = ApiSchema<'OrganisationResponseDto'>;
 
@@ -41,14 +42,7 @@ export default function OrgInfoTab() {
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Close lightbox on Escape (a11y)
-  useEffect(() => {
-    if (!logoLightbox) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLogoLightbox(null);
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [logoLightbox]);
+  useEscapeLayer(!!logoLightbox, () => setLogoLightbox(null));
 
   useEffect(() => {
     let cancelled = false;

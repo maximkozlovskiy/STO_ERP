@@ -35,7 +35,7 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConflictCheck } from '@/hooks/useConflictCheck';
-import { useEscapeCapture } from '@/hooks/useEscapeCapture';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { useNestedOpenFlag } from '@/hooks/useNestedOpenFlag';
 import { releaseNestedOpen, useConfirm } from '@/hooks/useConfirm';
 import { useReferenceData } from '@/hooks/useReferenceData';
@@ -1701,8 +1701,8 @@ export function CreateWorkOrderModal({
   // покрите — без цього картка відкривалась із розгорнутим меню (Bug #925).
   // Меню видно лише за наявності переходів: інакше перехоплювач «ковтав» би Escape без меню.
   const statusMenuShown = statusMenuOpen && allowedTransitions.length > 0;
-  useEscapeCapture(statusMenuShown, () => setStatusMenuOpen(false));
-  useEscapeCapture(saveAsOpen, () => setSaveAsOpen(false));
+  useEscapeLayer(statusMenuShown, () => setStatusMenuOpen(false));
+  useEscapeLayer(saveAsOpen, () => setSaveAsOpen(false));
   useEffect(() => {
     if (open) setSaveAsOpen(false);
   }, [open, workOrderId, setSaveAsOpen]);

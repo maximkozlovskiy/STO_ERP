@@ -12,7 +12,7 @@ import {
 import { Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Spinner } from './spinner';
-import { useEscapeCapture } from '@/hooks/useEscapeCapture';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 
 export interface ComboboxItem {
   id: string;
@@ -105,7 +105,7 @@ export function SearchCombobox<T extends { id: string }>({
   // («+ Запчастина» в наряді) закривалось разом зі списком. Лише Escape зсередини поля (Bug #922).
   const listVisible = open && items.length > 0;
   const statusVisible = open && !loading && items.length === 0 && !!query.trim();
-  useEscapeCapture(listVisible || statusVisible, () => setOpen(false), containerRef);
+  useEscapeLayer(listVisible || statusVisible, () => setOpen(false), containerRef);
 
   const search = useCallback(
     (q: string) => {
