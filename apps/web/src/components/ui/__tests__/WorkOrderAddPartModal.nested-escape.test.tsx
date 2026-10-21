@@ -60,7 +60,7 @@ describe('WorkOrderAddPartModal — Escape у картці товару (Bug #92
       <WorkOrderAddPartModal
         open
         workOrderId="wo1"
-        warehouses={[{ id: 'w1', name: 'Склад' }]}
+        warehouses={[{ id: 'w1', name: 'Склад', isMain: true }]}
         onClose={onClose}
         onAdded={vi.fn()}
       />,
