@@ -13,6 +13,7 @@ import { SearchCombobox } from '@/components/ui/search-combobox';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { pickScannedGood } from '@/lib/barcode';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { releaseNestedOpen } from '@/hooks/useConfirm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { GoodEditModal, type GoodForModal } from '@/components/ui/GoodEditModal';
@@ -132,6 +133,14 @@ export function WorkOrderAddPartModal({
   // Good detail modal
   const [goodDetailOpen, setGoodDetailOpen] = useState(false);
   const [goodDetailData, setGoodDetailData] = useState<GoodForModal | null>(null);
+  // Картка товару — окремий <Modal> поверх цього: її Escape доходить і сюди. Поки вона відкрита,
+  // власний Escape цього вікна — не його (Bug #927); прапорець знімається ПІСЛЯ події (GOTCHAS
+  // 2026-10-12), інакше той самий Escape закрив би й вікно запчастини.
+  const goodDetailOpenRef = useRef(false);
+  const closeGoodDetail = useCallback(() => {
+    setGoodDetailOpen(false);
+    releaseNestedOpen(goodDetailOpenRef);
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -212,6 +221,7 @@ export function WorkOrderAddPartModal({
     try {
       const g = await apiFetch<GoodForModal>(`/goods/${form.goodId}`);
       setGoodDetailData(g);
+      goodDetailOpenRef.current = true;
       setGoodDetailOpen(true);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Помилка завантаження товару');
@@ -219,6 +229,7 @@ export function WorkOrderAddPartModal({
   }, [form.goodId]);
 
   const handleClose = useCallback(async () => {
+    if (goodDetailOpenRef.current) return;
     if (!(await dirty.confirmClose())) return;
     onClose();
   }, [dirty, onClose]);
@@ -420,11 +431,11 @@ export function WorkOrderAddPartModal({
         units={units}
         suppliers={suppliers}
         goodCatTree={goodCatTree}
-        onClose={() => setGoodDetailOpen(false)}
+        onClose={closeGoodDetail}
         onSaved={updated => {
           setGoodDetailData(updated);
           setGoodDisplay(updated.name);
-          setGoodDetailOpen(false);
+          closeGoodDetail();
         }}
       />
     </>
