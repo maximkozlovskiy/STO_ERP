@@ -14,8 +14,12 @@ import type { WorkHoursWindow } from './planned-dates';
 
 const NOOP_DT_CHANGE: (v: string) => void = () => {};
 
-/** Початок · завершення · нормогодини; дата з часом «ДД.ММ.РРРР ГГ:ХХ» не обрізається (Bug #878). */
-const METRICS_GRID = 'grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5.5rem] gap-2.5';
+/**
+ * Початок · завершення · нормогодини; дата з часом «ДД.ММ.РРРР ГГ:ХХ» не обрізається (Bug #878).
+ * `items-end`: підпис, що переноситься у вузькій колонці («Дата та час завершення»), не зсуває
+ * поле нижче за сусідні — поля стоять в одну лінію, і з ними підйомник картки (Bug #937).
+ */
+const METRICS_GRID = 'grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5.5rem] items-end gap-2.5';
 const HOURS_LABEL = 'block text-[13px] font-medium text-foreground';
 const HOURS_INPUT =
   'h-9 w-full rounded border border-input bg-surface px-3 text-[14px] text-right tabular-nums ' +

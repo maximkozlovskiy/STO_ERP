@@ -333,4 +333,21 @@ describe('CreateWorkOrderModal — планові дати (BR-WO-019, BR-WO-020
     expect(checks).toEqual([]);
     expect(screen.queryByText(/Підйомник зайнятий/)).not.toBeInTheDocument();
   });
+
+  it('підйомник — у тій самій сітці, що «План», і притиснутий до низу рядка: поле в лінію з датами (Bug #937)', async () => {
+    mockApi({ workStartHour: 8, workEndHour: 18 });
+    await openCard();
+    // «План» / «Факт» мають рядок-легенду над підписами полів; без притискання до низу поле
+    // підйомника стояло на висоту легенди вище за поля дат.
+    const lift = screen.getByLabelText('Підйомник').closest('[data-testid="wo-lift"]')!;
+    expect(lift).not.toBeNull();
+    expect(lift.className).toContain('md:self-end');
+    // Підпис і поле — під одним батьком; сам блок — елемент тієї ж сітки, що й fieldset «План».
+    expect(lift.contains(screen.getByText('Підйомник'))).toBe(true);
+    expect(lift.parentElement).toBe(screen.getByTestId('wo-planned').parentElement);
+    // Поля «План» / «Факт» теж притиснуті до низу: перенесений підпис не зсуває поле.
+    expect(screen.getByTestId('wo-planned').querySelector('.grid')!.className).toContain(
+      'items-end',
+    );
+  });
 });

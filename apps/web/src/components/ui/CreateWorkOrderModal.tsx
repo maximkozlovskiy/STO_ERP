@@ -2396,19 +2396,24 @@ export function CreateWorkOrderModal({
                       {/* Підйомник · План · Факт: на широкому екрані в один ряд, вужче — «Факт»
                           під «Планом» (дата з часом не обрізається, Bug #878). */}
                       <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-[minmax(9rem,13rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(9rem,13rem)_minmax(0,1fr)_minmax(0,1fr)]">
-                        <Select
-                          label="Підйомник"
-                          value={form.liftId}
-                          onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
-                          disabled={!canEdit}
-                        >
-                          <option value="">— Без підйомника —</option>
-                          {lifts.map(l => (
-                            <option key={l.id} value={l.id}>
-                              {l.name}
-                            </option>
-                          ))}
-                        </Select>
+                        {/* «План» і «Факт» мають рядок-легенду над підписами полів, підйомник — ні:
+                            притиснутий до низу рядка сітки, його поле стоїть в одну лінію з датами
+                            (Bug #937). Вузько — окремим рядком, вирівнювати нема з чим. */}
+                        <div className="md:self-end" data-testid="wo-lift">
+                          <Select
+                            label="Підйомник"
+                            value={form.liftId}
+                            onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
+                            disabled={!canEdit}
+                          >
+                            <option value="">— Без підйомника —</option>
+                            {lifts.map(l => (
+                              <option key={l.id} value={l.id}>
+                                {l.name}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
                         <PlannedActualMetrics
                           canEdit={canEdit}
                           plannedStartAt={form.plannedStartAt}
