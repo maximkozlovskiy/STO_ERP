@@ -102,6 +102,29 @@ useEffect(() => {
 }, []);
 ```
 
+### Escape — лише через стек шарів (`useEscapeLayer`)
+
+Escape отримує ЛИШЕ шар, відкритий останнім (`lib/escape-layers`, GOTCHAS 2026-10-21). `<Modal>` —
+уже шар; власник вікна прапорців «вкладене відкрито» не тримає (Bug #919–#933).
+
+```tsx
+// ❌ власний слухач / прапорець — один Escape закриває і попап, і вікно під ним
+useEffect(() => {
+  const h = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+  document.addEventListener('keydown', h);
+  return () => document.removeEventListener('keydown', h);
+}, []);
+const handleClose = () => {
+  if (pickerOpenRef.current) return;
+  onClose();
+};
+<input onKeyDown={e => e.key === 'Escape' && cancel()} />; // у вікні не спрацює: стек зупиняє подію
+
+// ✅ шар, поки видимий; поле в режимі редагування — scoped-шар
+useEscapeLayer(open, () => setOpen(false));
+useEscapeLayer(editing, cancel, inputRef);
+```
+
 ### Завантаження даних — loading state init
 
 ```typescript

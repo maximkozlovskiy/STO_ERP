@@ -36,6 +36,23 @@
 | `useConflictCheck`     | `useConflictCheck.ts`     | Conflict probe для calendar slots                                            |
 | `useTabBar`            | `useTabBar.ts`            | activateTab/closeTab                                                         |
 | `useNavConfig`         | `useNavConfig.ts`         | Per-user кастомізація sidebar (user-preferences `nav_layout` + localStorage) |
+| `useEscapeLayer`       | `useEscapeLayer.ts`       | Шар стеку Escape: закривається лише верхній (див. нижче)                     |
+
+### Патерн: шар Escape (`useEscapeLayer`, `lib/escape-layers`)
+
+Escape отримує лише шар, відкритий останнім. `Modal` — уже шар; власник вікна прапорців не тримає.
+
+```tsx
+// Попап / меню в картці — шар, поки видимий:
+useEscapeLayer(menuOpen, () => setMenuOpen(false));
+// Список пошуку в DOM поля — лише Escape зсередини поля (Tab із поля → Escape вікну):
+useEscapeLayer(listVisible, () => setOpen(false), containerRef);
+// Поле в режимі редагування у вікні — скасовує редагування, вікно лишається:
+useEscapeLayer(editing, cancelEdit, inputRef);
+```
+
+Власний `addEventListener('keydown')` з Escape чи `onKeyDown` з Escape у вікні — ні (сторож
+`escape-layers.census.test.ts`, GOTCHAS 2026-10-21).
 
 ### Патерн: per-user overlay-resolver поверх статичних дефолтів
 

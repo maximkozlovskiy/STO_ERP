@@ -30,12 +30,12 @@ grep -rnE "^\s*requestAnimationFrame\(" apps/web/src/app apps/web/src/components
 grep -rnE "\.style\.(height|transition|marginBottom|opacity|transform)\s*=" apps/web/src/app --include="*.tsx"
 # Anchored popup useLayoutEffect deps [anchorRef] — стейл позиція при re-open
 grep -rnE "useLayoutEffect\(.*\}, \[anchorRef\]\)" apps/web/src/components/ui --include="*.tsx"
-# Nested overlay Esc handler у bubble-фазі — закриває батьківський Modal
-grep -rnE "document\.addEventListener\(['\"]keydown" apps/web/src/components/ui --include="*.tsx" --include="*.ts"
-# Портальний попап (createPortal) БЕЗ власного Esc — у <Modal> Escape закриє модалку, а не попап
+# Власний keydown з Escape — поза стеком шарів (має бути useEscapeLayer; сторож escape-layers.census)
+grep -rlE "addEventListener\(['\"]keydown" apps/web/src --include="*.ts*" | xargs grep -l "'Escape'"
+# Портальний попап (createPortal) без шару Escape — у <Modal> Escape закриє модалку, а не попап
 # (tooltip.tsx у виводі — норма: неінтерактивний)
 grep -rl "createPortal" apps/web/src/components/ui --include="*.tsx" | grep -v __tests__ \
-  | xargs -d '\n' grep -L "keydown\|onKeyDown\|<Modal\|useFocusTrap"
+  | xargs -d '\n' grep -L "useEscapeLayer\|<Modal\|useFocusTrap"
 # Spread SyntheticEvent з заміною target — ламає прототип
 grep -rnE "\{\s*\.\.\.e\s*,\s*target:\s*\{\s*\.\.\.e\.target" apps/web/src/ --include="*.tsx" --include="*.ts"
 # Skip-first-run ref поруч з toggle-useEffect — перевірити скидання у parent-key useEffect (дубль-fetch на switch)
@@ -273,10 +273,9 @@ grep -rn "<DatePickerInput" apps/web/src/app --include="*.tsx" | wc -l
 
 - [ ] **Підпис поля винесено з `label=` у сусідній `<span>` (рядок фільтрів «в лінію») → полю потрібна `aria-label` / `ariaLabel`.** `<span>` із полем не пов'язаний: читач екрана називає поле за placeholder-ом, і два поля періоду звучать однаково — «ДД.ММ.РРРР». Відбір «З … По …» — готовий `<DateRangeFilter>` (`components/ui/date-range-filter.tsx`), не дві копії блоку. Sample: `payments/page.tsx` втратив `label=` під час переходу на рядок фільтрів (review 2026-10-09)
 
-- [ ] **Прапорець «над формою відкрито вкладену модалку» знімається ПІСЛЯ події
-      (`setTimeout(…, 0)`), не в `useEffect`** — інакше той самий Escape доходить до форми, щойно
-      слухач вкладеної модалки стає першим. Перевіряти в браузері / E2E, jsdom цього не бачить.
-      Форма з дочірнім списком шле його в PATCH лише після зміни користувачем
+- [ ] **Escape — лише через `useEscapeLayer` (стек шарів), без прапорців «вкладене відкрито» в
+      `handleClose`**: вкладений `Modal`/попап — сам верхній шар; `onKeyDown` з Escape у вікні не
+      спрацює. Форма з дочірнім списком шле його в PATCH лише після зміни користувачем
       (`journal/web.md`, 2026-10-12)
 - [ ] **Кнопка, яка після власного кліку стає недіяльною («Відмітити всі», «Далі» на останньому
       кроці) → `aria-disabled` + перевірка в `onClick`, не `disabled`.** Атрибут `disabled` на
