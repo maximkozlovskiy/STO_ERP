@@ -445,3 +445,12 @@ SENDING у web-переліку; тести `SupplierApiOrderBlock.test.tsx`, `u
 `getByRole('button', { name: /^Видалити слот 13:00/ })` + `toHaveAccessibleDescription(hint)`.
 Inline IIFE у JSX заодно винесено в іменований компонент (§8.6).
 **Severity:** SUGGESTION
+
+### 2026-10-21 — Запасний текст помилки в `.ts`-хуку без i18n — §8.2.2
+
+**Сигнал:** `useCalendarState.ts` показував `toast.error(e instanceof Error ? e.message : 'Помилка переміщення слоту')`
+(і ще три такі рядки) поруч із уже перекладеними `t('slot.errDeleteFallback')`; в en-інтерфейсі відмова
+перетягування без причини давала український тост. Блоковий review його не бачив: grep §8.2.2 шукав
+лише `*.tsx`. **Grep:** `grep -rnE "(toast\.[a-z]+|setError)\(.*: '[^']*[А-Яа-яІіЇїЄєҐґ]" apps/web/src --include="*.ts" | grep -v "__tests__\|\.test\."`
+**Фікс:** ключі `calendar:slot.errLoad|errMoveFallback|errUpdateFallback`, `t` у залежностях колбеків;
+en-тест на відмову PATCH без `Error`. **Severity:** SUGGESTION

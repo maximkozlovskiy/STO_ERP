@@ -143,6 +143,8 @@ grep -rnE "setForm.*[a-zA-Z]+Id:\s*['\"]['\"]|useState\(\{[^}]*[a-zA-Z]+Id:\s*['
 # Хардкод-кирилиця у НОВОМУ/зміненому UI (має бути t()) — виключаємо коментарі/em-dash/₴/defaultValue
 grep -rnE "'[^']*[А-Яа-яІіЇїЄєҐґ][^']*'|>[^<]*[А-Яа-яІіЇїЄєҐґ][^<]*<" apps/web/src/app apps/web/src/components \
   --include="*.tsx" | grep -vE "__tests__|// |'—'|₴|defaultValue|labelKey"
+# .ts-хуки: toast/setError-fallback (journal/web.md 2026-10-21)
+grep -rnE "(toast\.[a-z]+|setError)\(.*: '[^']*[А-Яа-яІіЇїЄєҐґ]" apps/web/src --include="*.ts" | grep -v test
 # zod-повідомлення інлайн-рядком (мають бути KEY 'v.*')
 grep -rnE "\.(min|max|regex|email|refine)\([^)]*['\"][А-Яа-яІіЇїЄєҐґ]" packages/shared/src/schemas
 # zodResolver напряму (має бути i18nZodResolver)
