@@ -204,6 +204,13 @@ export function SearchCombobox<T extends { id: string }>({
         });
       return;
     }
+    // Список, закритий Escape-ом (фокус лишився в полі), повертає стрілка вниз — як у combobox
+    // за WAI-ARIA; інакше лише зміна тексту (Bug #929).
+    if (!open && e.key === 'ArrowDown' && items.length > 0) {
+      e.preventDefault();
+      setOpen(true);
+      return;
+    }
     if (!open || items.length === 0) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();

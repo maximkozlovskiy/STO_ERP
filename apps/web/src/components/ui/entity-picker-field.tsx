@@ -223,6 +223,12 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
             runSearch(e.target.value);
           }}
           onKeyDown={e => {
+            // Список, закритий Escape-ом, повертає стрілка вниз (Bug #929).
+            if (!open && e.key === 'ArrowDown' && items.length > 0) {
+              e.preventDefault();
+              setOpen(true);
+              return;
+            }
             if (!open || items.length === 0) return;
             if (e.key === 'ArrowDown') {
               e.preventDefault();

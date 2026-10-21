@@ -74,3 +74,22 @@ describe('SearchCombobox — Escape не з поля не перехоплюєт
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+// Bug #929: після Escape фокус лишається в полі з тим самим текстом — стрілка вниз повертає список.
+describe('SearchCombobox — список після Escape (Bug #929)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('Escape закрив список — ArrowDown відкриває його знову, без нового запиту', async () => {
+    const fetchItems = vi.fn(async () => [{ id: 'a', primary: 'Фільтр оливи' }]);
+    render(<SearchCombobox<Good> value="" onSelect={vi.fn()} fetchItems={fetchItems} />);
+    const input = screen.getByRole('combobox');
+    await typeAndSettle(input, 'фі');
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(fetchItems).toHaveBeenCalledTimes(1);
+  });
+});

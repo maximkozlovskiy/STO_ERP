@@ -522,3 +522,37 @@ describe('EntityPickerField — label prop (вирівнювання по одн
     expect(document.querySelector('label')?.textContent).not.toContain('*');
   });
 });
+
+// Bug #929: після Escape фокус лишається в полі з тим самим текстом — стрілка вниз повертає список.
+describe('EntityPickerField — список після Escape (Bug #929)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('Escape закрив список — ArrowDown відкриває його знову', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(
+      <EntityPickerField<CpItem>
+        display=""
+        onSearch={vi.fn(async () => ITEMS)}
+        onSearchSelect={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByRole('combobox'), 'а');
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByRole('listbox')).toBeInTheDocument());
+
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' });
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+  });
+});
