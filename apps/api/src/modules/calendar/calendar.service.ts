@@ -37,6 +37,7 @@ import {
   MECHANIC_REJECT_KEY,
   type MechanicRejectReason,
 } from './calendar-mechanic';
+import { assertServiceSlotUnlinked } from './calendar-slot-type';
 
 /** Новий запис календаря без наряду (`createSlot`): запис наряду створює наряд (BR-WO-028). */
 export type FreeSlotInput = Omit<CreateCalendarSlotDto, 'workOrderId'> & { workOrderId?: never };
@@ -300,6 +301,7 @@ export class CalendarService {
     const endAt = new Date(dto.endAt);
 
     if (endAt <= startAt) throw new BadRequestException(err('err.calendar.endBeforeStart'));
+    assertServiceSlotUnlinked(dto.type, dto);
 
     // Validate FK ownership to prevent cross-tenant injection — independent checks run in parallel.
     // Narrow projection — потрібне лише існування (NotFoundException), не дані.

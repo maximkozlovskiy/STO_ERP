@@ -40,6 +40,7 @@ import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { CalendarService, CALENDAR_SLOT_EXCLUSION } from '../calendar/calendar.service';
+import { assertServiceSlotUnlinked } from '../calendar/calendar-slot-type';
 import {
   changedPlannedDates,
   plannedDatesError,
@@ -191,6 +192,7 @@ const SLOT_EDIT_SELECT = {
   endAt: true,
   liftId: true,
   employeeId: true,
+  type: true,
 } as const satisfies Prisma.CalendarSlotSelect;
 type SlotEditRow = Prisma.CalendarSlotGetPayload<{ select: typeof SLOT_EDIT_SELECT }>;
 /** Запис наряду (`workOrderId` є). */
@@ -742,6 +744,8 @@ export class WorkOrdersService {
       where: { id, orgId, deletedAt: null },
       select: SLOT_EDIT_SELECT,
     });
+    // BR-CAL-003: службовий запис не отримує клієнта, авто чи наряду — і перев'язкою з планшета.
+    if (slot) assertServiceSlotUnlinked(slot.type, dto);
     if (slot && relinksSlot(slot, dto)) {
       if (dto.workOrderId)
         return this.relinkCalendarSlot(orgId, slot, dto.workOrderId, dto, userId);
@@ -791,6 +795,8 @@ export class WorkOrdersService {
     dto: CreateCalendarSlotDto,
     userId?: string,
   ): Promise<CreateCalendarSlotResponseDto> {
+    // BR-CAL-003: службовий запис із нарядом не стає мовчки «Роботою» — 400 до будь-яких змін.
+    assertServiceSlotUnlinked(dto.type, dto);
     const { workOrderId, ...freeSlot } = dto;
     if (!workOrderId) return this.calendar.createSlot(orgId, freeSlot);
     // Наряд — цілим рядком: `applyUpdate` бере його замість власного читання (sto-optimize).

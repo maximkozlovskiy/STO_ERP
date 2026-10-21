@@ -310,6 +310,54 @@ describe('Calendar — HTTP Contract', () => {
     });
   });
 
+  describe('POST /calendar/slots — тип запису (BR-CAL-003)', () => {
+    // guards: BR-CAL-003
+    it.each(['WORK', 'MAINTENANCE', 'BREAK', 'MEETING'])(
+      'type=%s → 201, тип доходить до сервісу',
+      async type => {
+        woServiceMock.createCalendarSlot.mockResolvedValueOnce({ slots: [] });
+        const res = await (app as NestFastifyApplication).inject({
+          method: 'POST',
+          url: '/calendar/slots',
+          payload: {
+            liftId: LIFT_ID,
+            type,
+            startAt: '2026-05-22T10:00:00.000Z',
+            endAt: '2026-05-22T11:00:00.000Z',
+          },
+        });
+        expect(res.statusCode).toBe(201);
+        expect(woServiceMock.createCalendarSlot.mock.calls[0]![1]).toHaveProperty('type', type);
+      },
+    );
+
+    // guards: BR-CAL-003
+    it('невідомий тип → 400, сервіс не викликано', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/calendar/slots',
+        payload: {
+          type: 'VACATION',
+          startAt: '2026-05-22T10:00:00.000Z',
+          endAt: '2026-05-22T11:00:00.000Z',
+        },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(woServiceMock.createCalendarSlot).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-CAL-003
+    it('PATCH з type → 400: тип після створення не змінюється, сервіс не викликано', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/calendar/slots/${SLOT_ID}`,
+        payload: { type: 'BREAK' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(woServiceMock.updateCalendarSlot).not.toHaveBeenCalled();
+    });
+  });
+
   describe('PATCH /calendar/slots/:id', () => {
     it('повертає 400 коли :id не UUID (ParseUUIDPipe)', async () => {
       const res = await (app as NestFastifyApplication).inject({

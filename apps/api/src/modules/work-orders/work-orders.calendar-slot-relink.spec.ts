@@ -7,6 +7,9 @@
  *   механік запису, не закріплений за підйомником нового наряду, знімається з причиною; обраний у
  *   формі явно — 400. Відв'язка («×») — втрата запису нарядом, як BR-WO-026 (Bug #906, #907).
  *   Новий запис для наряду — запис наряду (Bug #905).
+ * - BR-CAL-003: службовий запис (обслуговування, перерва, нарада) не стає записом наряду і не
+ *   отримує клієнта чи авто — ні новим записом із нарядом, ні зміною, ні перев'язкою (планшет іде
+ *   тим самим `updateCalendarSlot`).
  *
  * Справжні WorkOrdersService + CalendarService над таблицями в пам'яті
  * (`work-orders.planning.spec-fixture.ts`; `$transaction` відкочує таблиці при винятку).
@@ -24,6 +27,7 @@ import {
   NOW,
   ORG,
   OTHER_WO,
+  VEHICLE,
   WO_ID,
   kyiv,
   slotRow,
@@ -606,5 +610,91 @@ describe('Новий запис календаря для наряду — за�
 
     const err = await rejected(h, h.service.createCalendarSlot(ORG, createForm(OTHER_WO)));
     expect(err.message).toBe(msg('err.calendar.liftBusy'));
+  });
+});
+
+describe('Службовий запис — без наряду, клієнта й авто (BR-CAL-003)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Перерва `svc` на LIFT_2 (D 14:00–15:00) поруч із записом наряду WO_ID. */
+  const withBreak = () =>
+    planned({
+      extra: [
+        slotRow('svc', {
+          type: 'BREAK',
+          workOrderId: null,
+          liftId: LIFT_2,
+          startAt: kyiv(D, '14:00'),
+          endAt: kyiv(D, '15:00'),
+          notes: 'Обід',
+        }),
+      ],
+    });
+
+  // guards: BR-CAL-003
+  it.each(['MAINTENANCE', 'BREAK', 'MEETING'] as const)(
+    'новий запис type=%s з нарядом → 400, жодного запису, наряд не змінено',
+    async type => {
+      const h = planned();
+
+      const err = await rejected(
+        h,
+        h.service.createCalendarSlot(
+          ORG,
+          {
+            type,
+            workOrderId: OTHER_WO,
+            liftId: LIFT_2,
+            startAt: iso(D2, '13:00'),
+            endAt: iso(D2, '15:00'),
+          },
+          USER,
+        ),
+      );
+      expect(err.message).toBe(msg('err.calendar.serviceSlotNoClient'));
+    },
+  );
+
+  // guards: BR-CAL-003
+  it.each([
+    ["перев'язка на наряд", { workOrderId: OTHER_WO }],
+    ['клієнт', { counterpartyId: CLIENT }],
+    ['автомобіль', { vehicleId: VEHICLE }],
+  ])('зміна перерви: %s → 400, запис і наряди не змінено', async (_l, change) => {
+    const h = withBreak();
+
+    const err = await rejected(h, h.service.updateCalendarSlot(ORG, 'svc', change, USER));
+    expect(err.message).toBe(msg('err.calendar.serviceSlotNoClient'));
+  });
+
+  // guards: BR-CAL-003
+  it('зміна перерви з формою (наряд null, без клієнта) → час і примітка змінено, тип той самий', async () => {
+    const h = withBreak();
+
+    await h.service.updateCalendarSlot(
+      ORG,
+      'svc',
+      {
+        workOrderId: null,
+        liftId: LIFT_2,
+        startAt: iso(D, '15:00'),
+        endAt: iso(D, '16:00'),
+        notes: 'Обід пізніше',
+      },
+      USER,
+    );
+
+    expect(slotOf(h, 'svc')).toMatchObject({
+      type: 'BREAK',
+      workOrderId: null,
+      counterpartyId: null,
+      notes: 'Обід пізніше',
+    });
+    expect(t(slotOf(h, 'svc').startAt)).toBe(t(kyiv(D, '15:00')));
   });
 });

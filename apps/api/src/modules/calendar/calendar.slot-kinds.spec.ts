@@ -1,8 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
+import { BadRequestException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { CalendarService } from './calendar.service';
+import { buildSlotStorePrisma, fakeSlot, FAKE_ORG_ID } from './calendar.spec-fixture';
 
 // Аспект «види слотів»: які комбінації полів CalendarSlot сервіс приймає і зберігає як є —
-// прямий клієнт без наряду, підйомник без механіка, службові типи без наряду й клієнта.
+// прямий клієнт без наряду, підйомник без механіка, службові типи без наряду й клієнта (і
+// відмова службовому запису з клієнтом чи авто, BR-CAL-003).
 // Правила — docs/objects/calendar.md, секція «Бізнес-правила (BR-CAL)».
 
 const ORG_ID = 'org-1';
@@ -10,6 +14,8 @@ const LIFT_ID = '22222222-2222-4222-8222-222222222222';
 const EMPLOYEE_ID = '33333333-3333-4333-8333-333333333333';
 const COUNTERPARTY_ID = '44444444-4444-4444-8444-444444444444';
 const SLOT_ID = '55555555-5555-4555-8555-555555555555';
+const VEHICLE_ID = '66666666-6666-4666-8666-666666666666';
+const SERVICE_NO_CLIENT = translateError('err.calendar.serviceSlotNoClient', 'uk');
 
 // 13:00–14:00 Kyiv (травень, +03:00) — у межах робочого дня, split не спрацьовує.
 const START_AT = '2026-05-22T10:00:00.000Z';
@@ -186,6 +192,130 @@ describe('CalendarService — види слотів (BR-CAL)', () => {
       expect(result.slots[0]).toMatchObject({ type, workOrderId: null, counterpartyId: null });
     },
   );
+
+  // guards: BR-CAL-003
+  it.each([
+    ['MAINTENANCE', 'клієнтом', { counterpartyId: COUNTERPARTY_ID }],
+    ['BREAK', 'автомобілем', { vehicleId: VEHICLE_ID }],
+    [
+      'MEETING',
+      'клієнтом і автомобілем',
+      { counterpartyId: COUNTERPARTY_ID, vehicleId: VEHICLE_ID },
+    ],
+  ] as const)(
+    'type=%s з %s → 400 «службовий запис без клієнта», слот не створено',
+    async (type, _label, links) => {
+      const prisma = buildCreatePrisma();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+
+      const err = await service
+        .createSlot(ORG_ID, { liftId: LIFT_ID, type, startAt: START_AT, endAt: END_AT, ...links })
+        .then(
+          () => null,
+          (e: unknown) => e,
+        );
+
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as Error).message).toBe(SERVICE_NO_CLIENT);
+      expect(prisma._create).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    },
+  );
+
+  // guards: BR-CAL-003
+  it('type=WORK з клієнтом і автомобілем → створюється, як і раніше', async () => {
+    const prisma = buildCreatePrisma();
+    prisma.vehicle.findFirst.mockResolvedValue({ id: VEHICLE_ID });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const service = new CalendarService(prisma as any);
+
+    await service.createSlot(ORG_ID, {
+      liftId: LIFT_ID,
+      type: 'WORK',
+      counterpartyId: COUNTERPARTY_ID,
+      vehicleId: VEHICLE_ID,
+      startAt: START_AT,
+      endAt: END_AT,
+    });
+
+    expect(prisma._create.mock.calls[0][0].data).toMatchObject({
+      type: 'WORK',
+      counterpartyId: COUNTERPARTY_ID,
+      vehicleId: VEHICLE_ID,
+    });
+  });
+
+  // Службовий запис займає підйомник так само, як «Робота» (BR-CAL-003 → BR-CAL-006): перетин
+  // в обидва боки — над сховищем у пам'яті, що виконує `where` проби.
+  // guards: BR-CAL-003, BR-CAL-006
+  it.each([
+    ['перерва поверх запису «Робота»', 'WORK', 'BREAK'],
+    ['«Робота» поверх перерви', 'BREAK', 'WORK'],
+    ['нарада поверх обслуговування', 'MAINTENANCE', 'MEETING'],
+  ] as const)(
+    '%s на тому самому підйомнику → 400 «підйомник зайнятий»',
+    async (_l, held, asked) => {
+      const rows = [
+        fakeSlot({
+          liftId: LIFT_ID,
+          type: held,
+          startAt: new Date(START_AT),
+          endAt: new Date(END_AT),
+        }),
+      ];
+      const prisma = buildSlotStorePrisma(rows);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+
+      const err = await service
+        .createSlot(FAKE_ORG_ID, {
+          liftId: LIFT_ID,
+          type: asked,
+          startAt: '2026-05-22T10:30:00.000Z',
+          endAt: '2026-05-22T11:30:00.000Z',
+        })
+        .then(
+          () => null,
+          (e: unknown) => e,
+        );
+
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as Error).message).toBe(translateError('err.calendar.liftBusy', 'uk'));
+      expect(prisma._rows).toHaveLength(1);
+    },
+  );
+
+  // guards: BR-CAL-003, BR-CAL-006
+  it('перерва механіка → його ж «Робота» в цей час на іншому підйомнику — 400 «механік зайнятий»', async () => {
+    const rows = [
+      fakeSlot({
+        liftId: LIFT_ID,
+        employeeId: EMPLOYEE_ID,
+        type: 'BREAK',
+        startAt: new Date(START_AT),
+        endAt: new Date(END_AT),
+      }),
+    ];
+    const prisma = buildSlotStorePrisma(rows);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const service = new CalendarService(prisma as any);
+
+    const err = await service
+      .createSlot(FAKE_ORG_ID, {
+        liftId: '22222222-2222-4222-8222-999999999999',
+        employeeId: EMPLOYEE_ID,
+        startAt: START_AT,
+        endAt: END_AT,
+      })
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+    expect((err as Error).message).toBe(translateError('err.calendar.employeeBusy', 'uk'));
+    expect(prisma._rows).toHaveLength(1);
+  });
 
   // «Відкритих» слотів немає: слот без явного статусу — це вже зайнятий час.
   // guards: BR-CAL-004
