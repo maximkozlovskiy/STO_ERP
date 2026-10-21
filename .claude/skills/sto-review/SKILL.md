@@ -175,6 +175,7 @@ done
 - [ ] Всі `findMany` мають `take: N`
 - [ ] Canonical Tailwind tokens (не `[var(--...)]`, не inline HSL)
 - [ ] Немає UTF-8 BOM (`ef bb bf`) у .ts/.tsx — Windows/PowerShell редактори додають мовчки; tsc толерує, але неконсистентно й ламає деякі парсери/JSON-імпорти
+- [ ] Рефакторинг перейменував чи прибрав функцію/константу → її старе ім'я не лишилось у детекторах скілів і docs: `grep -rn "<старе ім'я>" .claude/skills docs` (tsc їх не бачить; 2026-10-21 `snapshotOf` → `offerSnapshot` лишив мертвий grep у журналі sto-tester)
 
 ---
 
