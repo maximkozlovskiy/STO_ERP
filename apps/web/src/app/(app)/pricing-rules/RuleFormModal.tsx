@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/CounterpartyEditModal';
 import { flattenCategoryTree, type CategoryNode } from '@/components/ui/category-tree';
 import { apiFetch } from '@/lib/api-client';
+import { usePendingOpen } from '@/hooks/usePendingOpen';
 import { toast } from '@/lib/toast';
 import { displayCounterpartyName } from '@/lib/utils';
 import { fmtDate, kyivToday } from '@/lib/format';
@@ -53,18 +54,26 @@ export default function RuleFormModal({
   const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
   const [supplierDetailData, setSupplierDetailData] = useState<CounterpartyForModal | null>(null);
 
+  // Картка відкривається після запиту: Escape під час нього скасовує відкриття, а не закриває
+  // вікно-власника (Bug #935).
+  const openAfterLoad = usePendingOpen(open);
+
   const openSupplierDetail = useCallback(async () => {
     if (!form.supplierId) return;
     try {
-      const cp = await apiFetch<CounterpartyForModal>(`/counterparties/${form.supplierId}`);
-      setSupplierDetailData(cp);
-      setSupplierDetailOpen(true);
+      await openAfterLoad(
+        () => apiFetch<CounterpartyForModal>(`/counterparties/${form.supplierId}`),
+        cp => {
+          setSupplierDetailData(cp);
+          setSupplierDetailOpen(true);
+        },
+      );
     } catch (e: unknown) {
       // Раніше тут був порожній `catch { /* ignore */ }`: при збої картка постачальника
       // просто не відкривалась, і користувач не розумів, чи клік зареєструвався.
       toast.error(e instanceof Error ? e.message : t('formErrors.supplierDetailLoad'));
     }
-  }, [form.supplierId, t]);
+  }, [form.supplierId, t, openAfterLoad]);
 
   useEffect(() => {
     if (open) {

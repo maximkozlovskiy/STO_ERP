@@ -35,6 +35,7 @@ import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
+import { usePendingOpen } from '@/hooks/usePendingOpen';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTabBarContext } from '@/contexts/TabBarContext';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -504,74 +505,89 @@ export function PurchaseOrderCreateModal({
     }));
   }, []);
 
+  // Картки постачальника й товару відкриваються після запиту: Escape під час нього скасовує
+  // відкриття, а не закриває замовлення (Bug #935).
+  const openAfterLoad = usePendingOpen(open);
+
   const openSupplierDetail = useCallback(async () => {
     const supId = getValues('supplierId');
     if (!supId) return;
     try {
-      const cp = await apiFetch<CounterpartyForModal>(`/counterparties/${supId}`);
-      setSupplierDetailData(cp);
-      setSupplierDetailOpen(true);
+      await openAfterLoad(
+        () => apiFetch<CounterpartyForModal>(`/counterparties/${supId}`),
+        cp => {
+          setSupplierDetailData(cp);
+          setSupplierDetailOpen(true);
+        },
+      );
     } catch (e: unknown) {
       // Раніше тут був порожній `catch { /* ignore */ }`: при збої картка постачальника
       // просто не відкривалась і користувач не бачив ЖОДНОГО сигналу — клік «у нікуди».
       toast.error(e instanceof Error ? e.message : 'Помилка завантаження постачальника');
     }
-  }, [getValues]);
+  }, [getValues, openAfterLoad]);
 
-  const openGoodDetail = useCallback(async (goodId: string) => {
-    if (!goodId) return;
-    type Brand = { id: string; name: string };
-    type UnitRef = {
-      id: string;
-      name: string;
-      shortName: string;
-      isSystem: boolean;
-      coefficient: number;
-    };
-    type SupplierRef = {
-      id: string;
-      firstName: string | null;
-      lastName: string | null;
-      companyName: string | null;
-    };
-    try {
-      const [good, brandsRes, unitsRes, suppliersRes, goodCatsRes] = await Promise.all([
-        apiFetch<GoodForModal>(`/goods/${goodId}`),
-        Promise.resolve(getCached<Brand[]>('cache:brands')).then(
-          c =>
-            c ??
-            apiFetch<{ items: Brand[] }>('/brands?limit=200')
-              .then(r => r.items)
-              .catch(() => [] as Brand[]),
-        ),
-        Promise.resolve(getCached<UnitRef[]>('cache:units')).then(
-          c => c ?? apiFetch<UnitRef[]>('/units').catch(() => [] as UnitRef[]),
-        ),
-        Promise.resolve(getCached<SupplierRef[]>('cache:suppliers')).then(
-          c =>
-            c ??
-            apiFetch<{ items: SupplierRef[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200')
-              .then(r => r.items)
-              .catch(() => [] as SupplierRef[]),
-        ),
-        Promise.resolve(getCached<CategoryNode[]>('cache:good-categories')).then(
-          c => c ?? apiFetch<CategoryNode[]>('/good-categories').catch(() => [] as CategoryNode[]),
-        ),
-      ]);
-      setGoodDetailData(good);
-      setGoodRefData({
-        brands: brandsRes,
-        units: unitsRes,
-        suppliers: suppliersRes,
-        goodCatTree: goodCatsRes,
-      });
-      setGoodDetailOpen(true);
-    } catch (e: unknown) {
-      // Раніше порожній `catch { /* ignore */ }`: при збої картка товару не відкривалась
-      // мовчки — користувач клікав і нічого не відбувалось.
-      toast.error(e instanceof Error ? e.message : 'Помилка завантаження товару');
-    }
-  }, []);
+  const openGoodDetail = useCallback(
+    async (goodId: string) => {
+      if (!goodId) return;
+      type Brand = { id: string; name: string };
+      type UnitRef = {
+        id: string;
+        name: string;
+        shortName: string;
+        isSystem: boolean;
+        coefficient: number;
+      };
+      type SupplierRef = {
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+        companyName: string | null;
+      };
+      const loadGood = () =>
+        Promise.all([
+          apiFetch<GoodForModal>(`/goods/${goodId}`),
+          Promise.resolve(getCached<Brand[]>('cache:brands')).then(
+            c =>
+              c ??
+              apiFetch<{ items: Brand[] }>('/brands?limit=200')
+                .then(r => r.items)
+                .catch(() => [] as Brand[]),
+          ),
+          Promise.resolve(getCached<UnitRef[]>('cache:units')).then(
+            c => c ?? apiFetch<UnitRef[]>('/units').catch(() => [] as UnitRef[]),
+          ),
+          Promise.resolve(getCached<SupplierRef[]>('cache:suppliers')).then(
+            c =>
+              c ??
+              apiFetch<{ items: SupplierRef[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200')
+                .then(r => r.items)
+                .catch(() => [] as SupplierRef[]),
+          ),
+          Promise.resolve(getCached<CategoryNode[]>('cache:good-categories')).then(
+            c =>
+              c ?? apiFetch<CategoryNode[]>('/good-categories').catch(() => [] as CategoryNode[]),
+          ),
+        ]);
+      try {
+        await openAfterLoad(loadGood, ([good, brandsRes, unitsRes, suppliersRes, goodCatsRes]) => {
+          setGoodDetailData(good);
+          setGoodRefData({
+            brands: brandsRes,
+            units: unitsRes,
+            suppliers: suppliersRes,
+            goodCatTree: goodCatsRes,
+          });
+          setGoodDetailOpen(true);
+        });
+      } catch (e: unknown) {
+        // Раніше порожній `catch { /* ignore */ }`: при збої картка товару не відкривалась
+        // мовчки — користувач клікав і нічого не відбувалось.
+        toast.error(e instanceof Error ? e.message : 'Помилка завантаження товару');
+      }
+    },
+    [openAfterLoad],
+  );
 
   // ── Good picker ───────────────────────────────────────────────────────────
 

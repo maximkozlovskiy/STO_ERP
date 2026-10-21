@@ -13,6 +13,7 @@ import { SearchCombobox } from '@/components/ui/search-combobox';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { pickScannedGood } from '@/lib/barcode';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { usePendingOpen } from '@/hooks/usePendingOpen';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { GoodEditModal, type GoodForModal } from '@/components/ui/GoodEditModal';
@@ -208,16 +209,24 @@ export function WorkOrderAddPartModal({
     dirty.markDirty();
   }, [dirty]);
 
+  // Картка відкривається після запиту: Escape під час нього скасовує відкриття, а не закриває
+  // вікно-власника (Bug #935).
+  const openAfterLoad = usePendingOpen(open);
+
   const openGoodDetail = useCallback(async () => {
     if (!form.goodId) return;
     try {
-      const g = await apiFetch<GoodForModal>(`/goods/${form.goodId}`);
-      setGoodDetailData(g);
-      setGoodDetailOpen(true);
+      await openAfterLoad(
+        () => apiFetch<GoodForModal>(`/goods/${form.goodId}`),
+        g => {
+          setGoodDetailData(g);
+          setGoodDetailOpen(true);
+        },
+      );
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Помилка завантаження товару');
     }
-  }, [form.goodId]);
+  }, [form.goodId, openAfterLoad]);
 
   const handleClose = useCallback(async () => {
     if (!(await dirty.confirmClose())) return;

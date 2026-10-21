@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import dynamic from 'next/dynamic';
 import { UserPlus, FilePlus, Trash2, ExternalLink } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { usePendingOpen } from '@/hooks/usePendingOpen';
 import { WO_STATUS_BADGE } from '@sto/shared';
 import { woStatusLabel } from '@/i18n/enumLabel';
 import { addDaysISO, fmtMoney, fmtDate, kyivDateTimeToISO } from '@/lib/format';
@@ -344,18 +345,26 @@ export function CalendarSlotModal({
   const [cpDetailOpen, setCpDetailOpen] = useState(false);
   const [cpDetailData, setCpDetailData] = useState<CounterpartyForModal | null>(null);
 
+  // Картка відкривається після запиту: Escape під час нього скасовує відкриття, а не закриває
+  // вікно-власника (Bug #935).
+  const openAfterLoad = usePendingOpen(open);
+
   const openCpDetail = useCallback(async () => {
     if (!form.counterpartyId) return;
     try {
-      const cp = await apiFetch<CounterpartyForModal>(`/counterparties/${form.counterpartyId}`);
-      setCpDetailData(cp);
-      setCpDetailOpen(true);
+      await openAfterLoad(
+        () => apiFetch<CounterpartyForModal>(`/counterparties/${form.counterpartyId}`),
+        cp => {
+          setCpDetailData(cp);
+          setCpDetailOpen(true);
+        },
+      );
     } catch (e: unknown) {
       // Раніше тут був порожній `catch { /* ignore */ }`: при збої картка клієнта просто
       // не відкривалась, і користувач не розумів, чи клік узагалі зареєструвався.
       toast.error(e instanceof Error ? e.message : t('slot.errCpDetailLoad'));
     }
-  }, [form.counterpartyId, t]);
+  }, [form.counterpartyId, t, openAfterLoad]);
   useEffect(() => {
     mountedRef.current = true;
     return () => {

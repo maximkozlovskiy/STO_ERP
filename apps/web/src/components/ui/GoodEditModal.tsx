@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { ModalTabs } from '@/components/ui/modal-tabs';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { usePendingOpen } from '@/hooks/usePendingOpen';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
@@ -226,18 +227,24 @@ export function GoodEditModal({
   }, [rhfDirty]);
 
   // ── Supplier picker handlers ───────────────────────────────────────────────
+  // Картка відкривається після запиту: Escape під час нього скасовує відкриття, а не закриває
+  // вікно-власника (Bug #935).
+  const openAfterLoad = usePendingOpen(open);
+
   const openSupplierDetail = useCallback(async () => {
     if (!watchPreferredSupplierId) return;
     try {
-      const cp = await apiFetch<CounterpartyForModal>(
-        `/counterparties/${watchPreferredSupplierId}`,
+      await openAfterLoad(
+        () => apiFetch<CounterpartyForModal>(`/counterparties/${watchPreferredSupplierId}`),
+        cp => {
+          setCpDetailData(cp);
+          setCpDetailOpen(true);
+        },
       );
-      setCpDetailData(cp);
-      setCpDetailOpen(true);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Помилка завантаження постачальника');
     }
-  }, [watchPreferredSupplierId]);
+  }, [watchPreferredSupplierId, openAfterLoad]);
 
   // Stable onSearch reference — prevents EntityPickerField from re-attaching
   // its outside-click listener on every parent render.
