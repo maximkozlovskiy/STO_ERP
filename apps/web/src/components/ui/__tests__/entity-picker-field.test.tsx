@@ -2,6 +2,7 @@ import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { EntityPickerField } from '../entity-picker-field';
+import { Modal } from '../modal';
 
 interface CpItem {
   id: string;
@@ -233,6 +234,41 @@ describe('EntityPickerField — search mode (regression guards for 7b58af2c / c7
     await waitFor(() => expect(screen.getByRole('listbox')).toBeInTheDocument());
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  // Bug #919: <Modal> слухає Escape на document — без перехоплення список і вікно-власник
+  // закривались разом, і введене у вікні губилось.
+  it.each([
+    ['список результатів', ITEMS],
+    ['«Нічого не знайдено»', [] as CpItem[]],
+  ])('Escape у вікні з відкритим: %s — закриває лише його, вікно лишається', async (_, found) => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onClose = vi.fn();
+    render(
+      <Modal open onClose={onClose} title="Нова позиція">
+        <EntityPickerField<CpItem>
+          display=""
+          onSearch={vi.fn(async () => found)}
+          onSearchSelect={vi.fn()}
+          onClear={vi.fn()}
+        />
+      </Modal>,
+    );
+    await user.type(screen.getByRole('combobox'), 'а');
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole('listbox') ?? screen.getByText('Нічого не знайдено')).toBeTruthy(),
+    );
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.queryByText('Нічого не знайдено')).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    // Список уже закрито — наступний Escape закриває вікно, як і раніше.
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('race protection: stale "a" не перетирає новіші "ab" результати', async () => {

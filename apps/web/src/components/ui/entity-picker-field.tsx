@@ -116,6 +116,22 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
     return () => document.removeEventListener('mousedown', handler);
   }, [searchEnabled]);
 
+  // Escape при відкритому випадному списку закриває ЛИШЕ його (Bug #919, клас Bug #783): <Modal>
+  // слухає Escape на document, і обробник лише на <input> віддавав подію далі — вікно-власник
+  // (ручна позиція списку купівлі, форми з пошуком контрагента чи авто) закривалось разом зі
+  // списком і губило введене. Capture + stopImmediatePropagation, як у DatePickerInput.
+  const popupVisible = open && (items.length > 0 || (!loading && !!query.trim()));
+  useEffect(() => {
+    if (!popupVisible) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      setOpen(false);
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [popupVisible]);
+
   // Reset query when selection changes externally (e.g. cleared via onClear)
   useEffect(() => {
     if (!display) setQuery('');
