@@ -99,6 +99,21 @@ export function SearchCombobox<T extends { id: string }>({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // Escape при відкритому випадному списку закриває ЛИШЕ його (Bug #920, клас Bug #783/#919):
+  // <Modal> слухає Escape на document, обробник лише на <input> віддавав подію далі — вікно
+  // («+ Запчастина» в наряді) закривалось разом зі списком. Capture + stopImmediatePropagation.
+  const popupVisible = open && (items.length > 0 || (!loading && !!query.trim()));
+  useEffect(() => {
+    if (!popupVisible) return;
+    const handler = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      setOpen(false);
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [popupVisible]);
+
   const search = useCallback(
     (q: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);

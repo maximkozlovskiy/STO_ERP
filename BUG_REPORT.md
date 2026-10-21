@@ -3337,3 +3337,19 @@ RECEIVED 2/2 + ORDERED 3/0, F — ORDERED 3/0 (обидві з `purchaseOrderId`
 `stopImmediatePropagation()` (як `DatePickerInput`). Тест: `entity-picker-field.test.tsx` (справжній
 `Modal`, список і «Нічого не знайдено»), без фіксу — 2 failed. Наживо: Escape закрив лише список,
 кількість 7 на місці, другий Escape закрив діалог.
+
+## Bug #920 — [MEDIUM] Escape у відкритому списку `SearchCombobox` закриває вікно «+ Запчастина» в наряді
+
+**Файл:** `apps/web/src/components/ui/search-combobox.tsx`
+**Severity:** MEDIUM
+**Категорія:** frontend / клавіатура (клас Bug #783 / #919, T1.3-049)
+
+**Опис:** той самий клас, що Bug #919, у сусідньому полі пошуку. Детектор T1.3-049 після фіксу
+#919 назвав `search-combobox.tsx`: Escape оброблявся лише на `<input>` і доходив до `<Modal>`. Наживо:
+сторінка наряду → «+ Запчастина» → «TST22 К» → випадний список → Escape — вікно закрилось разом зі
+списком.
+**Очікувана поведінка:** перший Escape закриває лише список (чи «Нічого не знайдено»), другий — вікно.
+**Фактична поведінка:** один Escape закриває вікно.
+**Статус:** [x] виправлено — capture-слухач на `document` зі `stopImmediatePropagation()`, поки список
+видимий. Тест: `search-combobox.escape.test.tsx` (справжній `Modal`, список і «Нічого не знайдено»),
+без фіксу — 2 failed. Наживо: перший Escape — лише список, вікно на місці; другий — вікно.
