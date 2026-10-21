@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Prisma } from '@prisma/client';
+import { Prisma, type WorkOrder } from '@prisma/client';
 
 import { kyivToday, dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
 import { lineAmount, money, moneyFromDecimal } from '../../common/utils/money';
@@ -129,6 +129,52 @@ const WO_WRITE_INCLUDE = {
   lift: { select: { name: true } },
 } as const satisfies Prisma.WorkOrderInclude;
 
+type WorkOrderWriteRow = Prisma.WorkOrderGetPayload<{ include: typeof WO_WRITE_INCLUDE }>;
+
+/** Зміна наряду з календаря (`applyUpdate` з `lean`): лише те, що віддає календар, без зв'язків. */
+const LEAN_WO_SELECT = {
+  id: true,
+  plannedAt: true,
+  dueDate: true,
+  liftId: true,
+} as const satisfies Prisma.WorkOrderSelect;
+type LeanWorkOrderRow = Prisma.WorkOrderGetPayload<{ select: typeof LEAN_WO_SELECT }>;
+type LeanWorkOrder = {
+  id: string;
+  plannedAt: string | null;
+  dueDate: string | null;
+  liftId: string | null;
+};
+const leanWorkOrder = (row: LeanWorkOrderRow): LeanWorkOrder => ({
+  id: row.id,
+  plannedAt: row.plannedAt ? row.plannedAt.toISOString() : null,
+  dueDate: row.dueDate ? row.dueDate.toISOString() : null,
+  liftId: row.liftId ?? null,
+});
+
+/** Дати й статус наряду, прочитані під блокуванням (`releaseWorkOrderDates`, BR-WO-026). */
+const LOCKED_WO_DATES_SELECT = {
+  plannedAt: true,
+  dueDate: true,
+  plannedHours: true,
+  status: true,
+} as const satisfies Prisma.WorkOrderSelect;
+type LockedWorkOrderDates = Prisma.WorkOrderGetPayload<{ select: typeof LOCKED_WO_DATES_SELECT }>;
+
+/** Що ще знає виклик `applyUpdate` (зміна з календаря, BR-WO-024), див. його опис. */
+interface ApplyUpdateOpts {
+  forceSlot?: boolean;
+  slot?: { employeeId?: string | null; notes?: string | null };
+  inTx?: (tx: Prisma.TransactionClient) => Promise<void>;
+  editableOnly?: boolean;
+  current?: WorkOrder;
+  hours?: WorkHours;
+}
+interface ApplyUpdateResult<T> {
+  workOrder: T;
+  mechanicDroppedReason: MechanicRejectReason | null;
+}
+
 /** 409 гонки за підйомник — тим самим перекладеним текстом, що й 400 перевірки зайнятості. */
 const slotRaceMessage = (): string => translateError('err.calendar.liftBusy', getLocale());
 
@@ -227,10 +273,12 @@ export class WorkOrdersService {
     branchId: string,
     next: PlannedDates,
     prev: PlannedDates | null,
+    /** Робочі години філії, уже прочитані викликом. */
+    known?: WorkHours,
   ): Promise<WorkHours | null> {
     const changed = changedPlannedDates(next, prev);
     if (!changed.start && !changed.end) return null;
-    const hours = await this.calendar.resolveWorkHours(orgId, branchId);
+    const hours = known ?? (await this.calendar.resolveWorkHours(orgId, branchId));
     const err = plannedDatesError(next, prev, new Date(), hours);
     if (err) {
       throw new BadRequestException(
@@ -590,11 +638,9 @@ export class WorkOrdersService {
     dto: RescheduleWorkOrderDto,
     userId?: string,
   ): Promise<WorkOrderRescheduleResponseDto> {
+    // Наряд — цілим рядком: `applyUpdate` бере його замість власного читання (sto-optimize).
     const [wo, slot] = await Promise.all([
-      this.prisma.workOrder.findFirst({
-        where: { id, orgId, deletedAt: null },
-        select: { plannedAt: true, dueDate: true, status: true },
-      }),
+      this.prisma.workOrder.findFirst({ where: { id, orgId, deletedAt: null } }),
       this.prisma.calendarSlot.findFirst({
         where: { id: dto.slotId, orgId, workOrderId: id, deletedAt: null },
         select: { id: true, startAt: true, parentSlotId: true },
@@ -636,13 +682,13 @@ export class WorkOrdersService {
         ...(dto.liftId !== undefined && { liftId: dto.liftId }),
       },
       userId,
-      { editableOnly: true },
+      { editableOnly: true, current: wo, lean: true },
     );
     return {
       id: workOrder.id,
-      plannedAt: workOrder.plannedAt ?? null,
-      dueDate: workOrder.dueDate ?? null,
-      liftId: workOrder.liftId ?? null,
+      plannedAt: workOrder.plannedAt,
+      dueDate: workOrder.dueDate,
+      liftId: workOrder.liftId,
       ...(mechanicDroppedReason && { mechanicDropped: true, mechanicDroppedReason }),
     };
   }
@@ -727,9 +773,9 @@ export class WorkOrdersService {
   ): Promise<CreateCalendarSlotResponseDto> {
     const workOrderId = dto.workOrderId;
     if (!workOrderId) return this.calendar.createSlot(orgId, dto);
+    // Наряд — цілим рядком: `applyUpdate` бере його замість власного читання (sto-optimize).
     const wo = await this.prisma.workOrder.findFirst({
       where: { id: workOrderId, orgId, deletedAt: null },
-      select: { status: true, branchId: true, plannedAt: true, dueDate: true, liftId: true },
     });
     if (!wo)
       throw new NotFoundException(translateError('err.calendar.workOrderNotFound', getLocale()));
@@ -739,6 +785,7 @@ export class WorkOrdersService {
 
     let datesDto: UpdateWorkOrderDto = {};
     let liftId = wo.liftId;
+    let hours: WorkHours | undefined;
     if (wo.plannedAt === null || wo.dueDate === null) {
       const startAt = new Date(dto.startAt);
       const rawEnd = new Date(dto.endAt);
@@ -748,7 +795,7 @@ export class WorkOrdersService {
         );
       if (rawEnd <= startAt)
         throw new BadRequestException(translateError('err.calendar.endBeforeStart', getLocale()));
-      const hours = await this.calendar.resolveWorkHours(orgId, wo.branchId);
+      hours = await this.calendar.resolveWorkHours(orgId, wo.branchId);
       const endAt = overflowEnd(startAt, rawEnd, hours);
       liftId = dto.liftId ?? null;
       datesDto = {
@@ -764,6 +811,9 @@ export class WorkOrdersService {
     await this.applyUpdate(orgId, workOrderId, datesDto, userId, {
       forceSlot: true,
       editableOnly: true,
+      current: wo,
+      lean: true,
+      ...(hours && { hours }),
       slot: {
         // Механік форми чи збережений на записі наряду; «без механіка» нового запису поля не шле.
         ...(employeeId && { employeeId }),
@@ -841,11 +891,9 @@ export class WorkOrdersService {
     moves: boolean,
   ): Promise<MechanicRejectReason | null> {
     const { workOrderId } = slot;
+    // Наряд — цілим рядком: `applyUpdate` бере його замість власного читання (sto-optimize).
     const [wo, chain] = await Promise.all([
-      this.prisma.workOrder.findFirst({
-        where: { id: workOrderId, orgId, deletedAt: null },
-        select: { branchId: true, plannedAt: true, dueDate: true, liftId: true, status: true },
-      }),
+      this.prisma.workOrder.findFirst({ where: { id: workOrderId, orgId, deletedAt: null } }),
       this.slotChain(orgId, slot),
     ]);
     if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
@@ -905,6 +953,9 @@ export class WorkOrdersService {
       {
         forceSlot: true,
         editableOnly: true,
+        current: wo,
+        hours,
+        lean: true,
         slot: {
           ...(change.employeeId !== undefined && { employeeId: change.employeeId }),
           ...(change.notes !== undefined && { notes: change.notes }),
@@ -1014,19 +1065,9 @@ export class WorkOrdersService {
     userId?: string,
   ): Promise<CalendarSlotResponseDto> {
     const oldWorkOrderId = slot.workOrderId;
+    // Новий наряд — цілим рядком: `applyUpdate` бере його замість власного читання (sto-optimize).
     const [target, previous, chain] = await Promise.all([
-      this.prisma.workOrder.findFirst({
-        where: { id: newWorkOrderId, orgId, deletedAt: null },
-        select: {
-          status: true,
-          branchId: true,
-          plannedAt: true,
-          dueDate: true,
-          liftId: true,
-          vehicleId: true,
-          counterpartyId: true,
-        },
-      }),
+      this.prisma.workOrder.findFirst({ where: { id: newWorkOrderId, orgId, deletedAt: null } }),
       oldWorkOrderId
         ? this.prisma.workOrder.findFirst({
             where: { id: oldWorkOrderId, orgId, deletedAt: null },
@@ -1048,7 +1089,13 @@ export class WorkOrdersService {
       );
 
     const hasDates = target.plannedAt !== null && target.dueDate !== null;
-    const hours = await this.calendar.resolveWorkHours(orgId, target.branchId);
+    // Робочі години нового й попереднього нарядів — разом; та сама філія — одне читання.
+    const [hours, otherBranchHours] = await Promise.all([
+      this.calendar.resolveWorkHours(orgId, target.branchId),
+      previous && previous.branchId !== target.branchId
+        ? this.calendar.resolveWorkHours(orgId, previous.branchId)
+        : Promise.resolve(null),
+    ]);
     let datesDto: UpdateWorkOrderDto = {};
     let liftId = target.liftId;
     if (!hasDates) {
@@ -1089,14 +1136,14 @@ export class WorkOrdersService {
       );
 
     const chainIds = chain.map(s => s.id);
-    const previousHours =
-      oldWorkOrderId && previous
-        ? await this.calendar.resolveWorkHours(orgId, previous.branchId)
-        : null;
+    const previousHours = oldWorkOrderId && previous ? (otherBranchHours ?? hours) : null;
     let released: DatesReleased | null = null;
     const applied = await this.applyUpdate(orgId, newWorkOrderId, datesDto, userId, {
       forceSlot: true,
       editableOnly: true,
+      current: target,
+      hours,
+      lean: true,
       slot: {
         employeeId,
         ...(change.notes !== undefined && { notes: change.notes }),
@@ -1106,7 +1153,12 @@ export class WorkOrdersService {
         // → записи). Інакше зустрічні перев'язки (A→B і B→A) блокують наряди навхрест — deadlock і
         // 500. Статуси — ще раз під блокуванням: перехід наряду між перевіркою вище й транзакцією
         // інакше стер би дати наряду «В роботі» (BR-WO-027).
-        await this.lockRelinkedWorkOrders(tx, orgId, newWorkOrderId, oldWorkOrderId);
+        const lockedOld = await this.lockRelinkedWorkOrders(
+          tx,
+          orgId,
+          newWorkOrderId,
+          oldWorkOrderId,
+        );
         // Один запис на наряд (BR-WO-020): цей ланцюжок замінює наявні записи нового наряду.
         await tx.calendarSlot.updateMany({
           where: {
@@ -1126,7 +1178,9 @@ export class WorkOrdersService {
           },
         });
         if (oldWorkOrderId && previousHours)
-          released = await this.releaseWorkOrderDates(tx, orgId, oldWorkOrderId, previousHours);
+          released = await this.releaseWorkOrderDates(tx, orgId, oldWorkOrderId, previousHours, {
+            lockedRow: lockedOld,
+          });
       },
     });
     if (oldWorkOrderId) this.recordDatesReleased(orgId, oldWorkOrderId, userId, released);
@@ -1137,18 +1191,21 @@ export class WorkOrdersService {
    * Перев'язка в транзакції `tx`: блокує новий і попередній наряди в порядку id
    * (`lockWorkOrdersForUpdate`) і перечитує їх під блокуванням — новий наряд живий, обидва в
    * редагованих статусах (BR-WO-027); інакше 404 / 400, транзакція відкочується.
+   *
+   * Повертає рядок попереднього наряду, прочитаний під блокуванням (`null` — немає чи видалено):
+   * `releaseWorkOrderDates` бере його замість повторного блокування й читання (sto-optimize).
    */
   private async lockRelinkedWorkOrders(
     tx: Prisma.TransactionClient,
     orgId: string,
     newWorkOrderId: string,
     oldWorkOrderId: string | null,
-  ): Promise<void> {
+  ): Promise<LockedWorkOrderDates | null> {
     const ids = oldWorkOrderId ? [newWorkOrderId, oldWorkOrderId] : [newWorkOrderId];
     await lockWorkOrdersForUpdate(tx, orgId, ids);
     const rows = await tx.workOrder.findMany({
       where: { orgId, id: { in: ids }, deletedAt: null },
-      select: { id: true, status: true },
+      select: { id: true, ...LOCKED_WO_DATES_SELECT },
       take: ids.length,
     });
     if (!rows.some(r => r.id === newWorkOrderId))
@@ -1157,6 +1214,7 @@ export class WorkOrdersService {
       throw new BadRequestException(
         translateError('err.calendar.workOrderRelinkLocked', getLocale()),
       );
+    return rows.find(r => r.id === oldWorkOrderId) ?? null;
   }
 
   /**
@@ -1206,7 +1264,7 @@ export class WorkOrdersService {
       await lockWorkOrdersForUpdate(tx, orgId, [workOrderId]);
       const locked = await tx.workOrder.findFirst({
         where: { id: workOrderId, orgId, deletedAt: null },
-        select: { status: true },
+        select: LOCKED_WO_DATES_SELECT,
       });
       if (locked && !EDITABLE_STATUSES.includes(locked.status))
         throw new BadRequestException(
@@ -1216,7 +1274,10 @@ export class WorkOrdersService {
         where: { orgId, id: { in: chainIds }, deletedAt: null },
         data: { workOrderId: null },
       });
-      released = await this.releaseWorkOrderDates(tx, orgId, workOrderId, hours);
+      // Наряд уже заблоковано й прочитано вище — без повторного блокування й читання.
+      released = await this.releaseWorkOrderDates(tx, orgId, workOrderId, hours, {
+        lockedRow: locked,
+      });
     };
 
     let res: CalendarSlotResponseDto;
@@ -1260,21 +1321,30 @@ export class WorkOrdersService {
    * `editableOnly` — видалення запису (BR-WO-026): статус наряду перечитується під блокуванням і
    * не в редагованому статусі дає 400 до будь-якої зміни; у скасованого наряду видаляються лише
    * записи, дати закритого документа не змінюються.
+   *
+   * `lockedRow` — виклик уже заблокував наряд у цій транзакції й прочитав його під блокуванням
+   * (`null` — наряду немає чи видалено): рядок не змінювався, тож блокування й читання не
+   * повторюються (sto-optimize: −2 SQL на відв'язку й перев'язку).
    */
   private async releaseWorkOrderDates(
     tx: Prisma.TransactionClient,
     orgId: string,
     workOrderId: string,
     hours: WorkHours,
-    opts: { editableOnly?: boolean } = {},
+    opts: { editableOnly?: boolean; lockedRow?: LockedWorkOrderDates | null } = {},
   ): Promise<DatesReleased | null> {
     // Наряд блокується до записів календаря (порядок `applyUpdate`: наряд → записи), і його дати
     // та статус читаються під блокуванням: збереження наряду поруч не загубить нових дат.
-    await lockWorkOrdersForUpdate(tx, orgId, [workOrderId]);
-    const wo = await tx.workOrder.findFirst({
-      where: { id: workOrderId, orgId, deletedAt: null },
-      select: { plannedAt: true, dueDate: true, plannedHours: true, status: true },
-    });
+    let wo: LockedWorkOrderDates | null;
+    if (opts.lockedRow !== undefined) {
+      wo = opts.lockedRow;
+    } else {
+      await lockWorkOrdersForUpdate(tx, orgId, [workOrderId]);
+      wo = await tx.workOrder.findFirst({
+        where: { id: workOrderId, orgId, deletedAt: null },
+        select: LOCKED_WO_DATES_SELECT,
+      });
+    }
     if (wo && opts.editableOnly) assertSlotDeletable(wo.status);
     await this.calendar.removeWorkOrderSlots(tx, orgId, workOrderId, new Date());
     if (!wo || (wo.plannedAt === null && wo.dueDate === null)) return null;
@@ -1325,29 +1395,40 @@ export class WorkOrdersService {
    * Статус перевіряється й у самому записі наряду (Bug #910): скасування чи «В роботу», що
    * встигли між читанням і транзакцією, інакше лишали б живий запис скасованого наряду
    * (BR-WO-022) чи нові дати наряду, що вже в роботі.
+   *
+   * sto-optimize (зміни з календаря): `current` — наряд, уже прочитаний викликом цілим рядком (не
+   * перечитується), `hours` — робочі години його філії, уже прочитані викликом (ні перевірка дат,
+   * ні перебудова запису не читають їх удруге), `lean` — відповідь лише з датами й підйомником, без
+   * шести зв'язків картки (`WO_WRITE_INCLUDE`), яких виклик із календаря не віддає.
    */
   private async applyUpdate(
     orgId: string,
     id: string,
     dto: UpdateWorkOrderDto,
     userId?: string,
-    opts: {
-      forceSlot?: boolean;
-      slot?: { employeeId?: string | null; notes?: string | null };
-      inTx?: (tx: Prisma.TransactionClient) => Promise<void>;
-      editableOnly?: boolean;
-    } = {},
-  ): Promise<{
-    workOrder: WorkOrderResponseDto;
-    mechanicDroppedReason: MechanicRejectReason | null;
-  }> {
+    opts?: ApplyUpdateOpts & { lean?: false },
+  ): Promise<ApplyUpdateResult<WorkOrderResponseDto>>;
+  private async applyUpdate(
+    orgId: string,
+    id: string,
+    dto: UpdateWorkOrderDto,
+    userId: string | undefined,
+    opts: ApplyUpdateOpts & { lean: true },
+  ): Promise<ApplyUpdateResult<LeanWorkOrder>>;
+  private async applyUpdate(
+    orgId: string,
+    id: string,
+    dto: UpdateWorkOrderDto,
+    userId?: string,
+    opts: ApplyUpdateOpts & { lean?: boolean } = {},
+  ): Promise<ApplyUpdateResult<WorkOrderResponseDto | LeanWorkOrder>> {
     // sto-optimize: tier merger — wo (parent guard) + optional lift FK validation у
     // єдиний Promise.all. Раніше: послідовні 2 RTT (wo, потім lift). Тепер: 1 RTT
     // паралельно. Lift FK сам себе захищає (orgId+deletedAt у where) — безпечно
     // запустити до status-перевірки. wo тримається full-row, бо trackField нижче
     // читає 8+ полів для audit diff (old values).
     const [wo, lift] = await Promise.all([
-      this.prisma.workOrder.findFirst({ where: { id, orgId, deletedAt: null } }),
+      opts.current ?? this.prisma.workOrder.findFirst({ where: { id, orgId, deletedAt: null } }),
       dto.liftId
         ? this.prisma.lift.findFirst({
             where: { id: dto.liftId, orgId, deletedAt: null },
@@ -1418,7 +1499,7 @@ export class WorkOrdersService {
       plannedAt: nextDate(dto.plannedAt, wo.plannedAt),
       dueDate: nextDate(dto.dueDate, wo.dueDate),
     };
-    const hours = await this.assertPlannedDates(orgId, wo.branchId, next, wo);
+    const hours = await this.assertPlannedDates(orgId, wo.branchId, next, wo, opts.hours);
     // BR-WO-020: запис календаря наряду переноситься, коли змінились дати чи підйомник, і
     // позначається видаленим, коли наряд мав обидві дати, а тепер — ні. Форма шле дати й
     // підйомник щоразу, тож порівнюється зі збереженим, а не «поле є в запиті».
@@ -1435,42 +1516,46 @@ export class WorkOrdersService {
           ? 'remove'
           : null;
 
-    const updateWo = (db: Prisma.TransactionClient) =>
-      db.workOrder.update({
-        // BR-WO-015: умова «нічого не сплачено» — у самому записі зміни валюти: оплата, що прийшла
-        // між читанням і записом, інакше лишила б «сплачено» в одній валюті, а наряд — в іншій.
-        where: {
-          id,
-          orgId,
-          ...(currencyChanging && { paidAmount: 0 }),
-          // Bug #910: статус — у самій умові запису (рядок блокує скасування, що вже йде).
-          status: opts.editableOnly
-            ? { in: [...EDITABLE_STATUSES] }
-            : { notIn: [...CLOSED_STATUSES] },
-        },
-        data: {
-          description: dto.description,
-          inMileage: dto.inMileage,
-          outMileage: dto.outMileage,
-          priority: dto.priority,
-          repairCategory: dto.repairCategory,
-          clientApproval: dto.clientApproval,
-          // Distinguish "field omitted" (undefined → skip) from "field cleared"
-          // (null → set NULL). `dto.plannedAt === null` writes NULL.
-          plannedAt: dto.plannedAt === undefined ? undefined : next.plannedAt,
-          dueDate: dto.dueDate === undefined ? undefined : next.dueDate,
-          documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
-          // Мультивалюта (Фаза 3): totalAmountBase/rateUsed лишаються зі старого курсу до
-          // наступного recalcTotals (той самий lazy-патерн, що вже для documentDate вище) —
-          // НЕ перераховуємо тут, щоб не дублювати recalc-логіку поза transaction.
-          currencyId: dto.currencyId === undefined ? undefined : (dto.currencyId ?? null),
-          liftId: dto.liftId === undefined ? undefined : (dto.liftId ?? null),
-          plannedHours: dto.plannedHours === undefined ? undefined : (dto.plannedHours ?? null),
-          actualHours: dto.actualHours === undefined ? undefined : (dto.actualHours ?? null),
-        },
-        // PATCH response must include contract so contractNumber doesn't vanish after any field edit.
-        include: WO_WRITE_INCLUDE,
-      });
+    const write = {
+      // BR-WO-015: умова «нічого не сплачено» — у самому записі зміни валюти: оплата, що прийшла
+      // між читанням і записом, інакше лишила б «сплачено» в одній валюті, а наряд — в іншій.
+      where: {
+        id,
+        orgId,
+        ...(currencyChanging && { paidAmount: 0 }),
+        // Bug #910: статус — у самій умові запису (рядок блокує скасування, що вже йде).
+        status: opts.editableOnly
+          ? { in: [...EDITABLE_STATUSES] }
+          : { notIn: [...CLOSED_STATUSES] },
+      },
+      data: {
+        description: dto.description,
+        inMileage: dto.inMileage,
+        outMileage: dto.outMileage,
+        priority: dto.priority,
+        repairCategory: dto.repairCategory,
+        clientApproval: dto.clientApproval,
+        // Distinguish "field omitted" (undefined → skip) from "field cleared"
+        // (null → set NULL). `dto.plannedAt === null` writes NULL.
+        plannedAt: dto.plannedAt === undefined ? undefined : next.plannedAt,
+        dueDate: dto.dueDate === undefined ? undefined : next.dueDate,
+        documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
+        // Мультивалюта (Фаза 3): totalAmountBase/rateUsed лишаються зі старого курсу до
+        // наступного recalcTotals (той самий lazy-патерн, що вже для documentDate вище) —
+        // НЕ перераховуємо тут, щоб не дублювати recalc-логіку поза transaction.
+        currencyId: dto.currencyId === undefined ? undefined : (dto.currencyId ?? null),
+        liftId: dto.liftId === undefined ? undefined : (dto.liftId ?? null),
+        plannedHours: dto.plannedHours === undefined ? undefined : (dto.plannedHours ?? null),
+        actualHours: dto.actualHours === undefined ? undefined : (dto.actualHours ?? null),
+      },
+    } satisfies Pick<Prisma.WorkOrderUpdateArgs, 'where' | 'data'>;
+    const updateWo = (
+      db: Prisma.TransactionClient,
+    ): Promise<WorkOrderWriteRow | LeanWorkOrderRow> =>
+      opts.lean
+        ? db.workOrder.update({ ...write, select: LEAN_WO_SELECT })
+        : // PATCH response must include contract so contractNumber doesn't vanish after any field edit.
+          db.workOrder.update({ ...write, include: WO_WRITE_INCLUDE });
 
     let mechanicDroppedReason: MechanicRejectReason | null = null;
     const persist =
@@ -1492,7 +1577,7 @@ export class WorkOrdersService {
                   endAt: dueDate!,
                   vehicleId: wo.vehicleId,
                   counterpartyId: wo.counterpartyId,
-                  ...(hours && { hours }),
+                  ...((hours ?? opts.hours) && { hours: hours ?? opts.hours }),
                   ...opts.slot,
                 }));
               }
@@ -1522,7 +1607,10 @@ export class WorkOrdersService {
         );
     }
 
-    return { workOrder: this.toDto(updated), mechanicDroppedReason };
+    const workOrder = opts.lean
+      ? leanWorkOrder(updated)
+      : this.toDto(updated as WorkOrderWriteRow);
+    return { workOrder, mechanicDroppedReason };
   }
 
   /**
