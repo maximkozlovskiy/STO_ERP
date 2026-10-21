@@ -180,10 +180,10 @@ cd apps/api && npx vitest run src/modules/calendar/<файл>.spec.ts
 | конфлікти слотів у `createSlot` / `updateSlot` (підйомник, механік, split-day, 409); `checkConflicts` картки наряду — без власних записів, але із записами без наряду                                                                                                      | `calendar.conflicts.spec.ts`          | 29     |
 | межі дня у `findSlots` (київська доба, переведення годинника, перевірка дати)                                                                                                                                                                                              | `calendar.day-bounds.spec.ts`         | 18     |
 | механік запису закріплений за підйомником: create/update, зміна підйомника, продовження, відпустка, перетягування знімає механіка; причина 400 і `mechanicDroppedReason` — у відпустці / не закріплений / інше; без підйомника — точна причина одним читанням (BR-CAL-012) | `calendar.mechanic-lift.spec.ts`      | 36     |
-| записи видаленого наряду: не в `findSlots`, не займають підйомник і механіка (BR-CAL-011); запис не прив'язується до скасованого наряду — 400 (BR-WO-022)                                                                                                                  | `calendar.deleted-work-order.spec.ts` | 9      |
+| записи видаленого наряду: не в `findSlots`, не займають підйомник і механіка (BR-CAL-011); перев'язка запису (`updateSlot`) на скасований наряд — 400 (BR-WO-022)                                                                                                          | `calendar.deleted-work-order.spec.ts` | 8      |
 | синхронізація з планшета: механік за підйомником і ролі календаря, причина в `lastError`; запис не прив'язується до скасованого наряду (BR-CAL-012, BR-CAL-010, BR-WO-022)                                                                                                 | `../sync/sync.calendar-slots.spec.ts` | 19     |
 
-Разом: **162** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **161** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Web:** вид «Місяць» (BR-CAL-008, BR-CAL-009) і «День» (BR-CAL-011), тека `apps/web/src/app/(app)/calendar/__tests__/`:
 

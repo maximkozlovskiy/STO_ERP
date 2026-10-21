@@ -144,22 +144,7 @@ describe('CalendarService — записи видаленого наряду (BR
 
   // Запис скасованого наряду так само невидимий (BR-WO-022), але EXCLUDE `calendar_slots_no_overlap`
   // бачить кожен живий запис: прив'язаний до скасованого наряду, він тримав би підйомник непомітно.
-  // guards: BR-WO-022
-  it("createSlot: прив'язати запис до СКАСОВАНОГО наряду — 400, запис не створено", async () => {
-    const { prisma, service } = serviceOver([]);
-    prisma.workOrder.findFirst.mockResolvedValueOnce({ id: 'wo-cancelled', status: 'CANCELLED' });
-
-    await expect(
-      service.createSlot(FAKE_ORG_ID, {
-        liftId: LIFT,
-        workOrderId: 'wo-cancelled',
-        startAt: iso('07:00'),
-        endAt: iso('09:00'),
-      }),
-    ).rejects.toThrow('Наряд скасовано');
-    expect(prisma._create).not.toHaveBeenCalled();
-  });
-
+  // Новий запис наряду створює наряд (`createCalendarSlot` — `work-orders.calendar-slot-relink.spec.ts`).
   // guards: BR-WO-022
   it("updateSlot: перев'язати запис на СКАСОВАНИЙ наряд — 400, запис без змін", async () => {
     const moving = live();

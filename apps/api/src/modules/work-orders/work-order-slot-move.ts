@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+import { err } from '../../common/utils/err';
 import { addDaysKyiv, kyivYmd } from '../../common/utils/kyiv-date';
 import {
   kyivHourOnDay,
@@ -7,9 +9,9 @@ import {
 } from '../../common/utils/work-hours';
 
 /**
- * BR-WO-024: зміна запису календаря, що належить наряду, — через дати наряду. Чисті функції
- * шляху «запис змінено → наряд»: чи зміна його стосується, межі ланцюжка після зміни і кінець
- * запису форми, що виходить за робочий день.
+ * BR-WO-024: зміна запису календаря, що належить наряду, — через дати наряду. Функції шляху
+ * «запис змінено → наряд» без звернень до БД: чи зміна його стосується, межі ланцюжка після зміни,
+ * вікно запису з перевіркою дат (`slotWindow` — 400 на невалідні) і кінець, що виходить за робочий день.
  */
 
 /** Збережений запис календаря — те, з чим порівнюється зміна. */
@@ -65,11 +67,45 @@ export function chainBounds(
   editedId: string,
   edited: TimeSegment,
 ): { start: Date; end: Date } {
-  const parts = [...chain.filter(s => s.id !== editedId), edited];
+  return bounds([...chain.filter(s => s.id !== editedId), edited]);
+}
+
+/** Найраніший початок і найпізніше завершення записів (межі ланцюжка). */
+export function bounds(parts: readonly TimeSegment[]): { start: Date; end: Date } {
   return {
     start: new Date(Math.min(...parts.map(s => s.startAt.getTime()))),
     end: new Date(Math.max(...parts.map(s => s.endAt.getTime()))),
   };
+}
+
+/** Підйомник запису після зміни: `liftId` у зміні або збережений. */
+export const nextLift = (
+  change: Pick<SlotChange, 'liftId'>,
+  slot: Pick<SlotState, 'liftId'>,
+): string | null => (change.liftId !== undefined ? (change.liftId ?? null) : slot.liftId);
+
+/** Механік запису після зміни: `employeeId` у зміні або збережений. */
+export const nextMechanic = (
+  change: { employeeId?: string | null | undefined },
+  slot: { employeeId: string | null },
+): string | null => (change.employeeId !== undefined ? change.employeeId : slot.employeeId);
+
+/**
+ * Проміжок запису після зміни — час зі зміни чи збережений (`stored`): 400, якщо дата не
+ * розбирається або кінець не пізніше за початок. Кінець, що виходить за робочий день, переходить
+ * на наступний (`overflowEnd`).
+ */
+export function slotWindow(
+  change: Pick<SlotChange, 'startAt' | 'endAt'>,
+  stored: TimeSegment | null,
+  hours: WorkHours,
+): TimeSegment {
+  const startAt = change.startAt != null ? new Date(change.startAt) : stored?.startAt;
+  const rawEnd = change.endAt != null ? new Date(change.endAt) : stored?.endAt;
+  if (!startAt || !rawEnd || Number.isNaN(startAt.getTime()) || Number.isNaN(rawEnd.getTime()))
+    throw new BadRequestException(err('err.calendar.invalidDateFormat'));
+  if (rawEnd <= startAt) throw new BadRequestException(err('err.calendar.endBeforeStart'));
+  return { startAt, endAt: overflowEnd(startAt, rawEnd, hours) };
 }
 
 /**

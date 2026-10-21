@@ -488,7 +488,7 @@ export class SyncService {
             throw new Error(`Поле ${field}=${id} не знайдено в межах організації`);
           }
           // BR-WO-022: запис календаря не прив'язується до скасованого наряду — так само, як
-          // `CalendarService.createSlot/updateSlot`. Живий запис скасованого наряду ніде не
+          // `CalendarService.updateSlot` і `WorkOrdersService.createCalendarSlot`. Живий запис скасованого наряду ніде не
           // показується, але EXCLUDE `calendar_slots_no_overlap` його бачить — невидимий тримач
           // підйомника (409 на вільному з вигляду часі).
           if (isWorkOrder && record.status === 'CANCELLED') {
