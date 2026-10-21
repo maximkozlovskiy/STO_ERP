@@ -13,6 +13,7 @@ import {
   useWorkOrderProcurement,
   type PurchaseListItem,
 } from '@/hooks/api/usePurchaseLists';
+import { SectionActionButton } from '@/components/ui/document-section';
 import { AddToListDialog, type AddToListRow } from './AddToListDialog';
 
 /** Позиції наряду в картці бачать ці ролі (BR-PL-015: + механік). */
@@ -74,6 +75,8 @@ interface SendToListButtonProps {
   parts: Array<{ id: string; goodName: string }>;
   procurement: WorkOrderProcurementState | undefined;
   disabled?: boolean;
+  /** `link` (типово) — посилання над таблицею; `section` — кнопка в заголовку `DocumentSection`. */
+  appearance?: 'link' | 'section';
 }
 
 /**
@@ -87,6 +90,7 @@ export function SendToListButton({
   parts,
   procurement,
   disabled,
+  appearance = 'link',
 }: SendToListButtonProps) {
   const { t } = useTranslation('purchaseLists');
   const { employee } = useAuth();
@@ -120,16 +124,27 @@ export function SendToListButton({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={openDialog}
-        disabled={disabled || parts.length === 0}
-        title={parts.length === 0 ? t('card.saveFirst') : undefined}
-        className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        <ListPlus className="h-3.5 w-3.5" />
-        {t('card.addToList')}
-      </button>
+      {appearance === 'section' ? (
+        <SectionActionButton
+          onClick={openDialog}
+          disabled={disabled || parts.length === 0}
+          title={parts.length === 0 ? t('card.saveFirst') : undefined}
+        >
+          <ListPlus className="h-3.5 w-3.5" aria-hidden="true" />
+          {t('card.addToList')}
+        </SectionActionButton>
+      ) : (
+        <button
+          type="button"
+          onClick={openDialog}
+          disabled={disabled || parts.length === 0}
+          title={parts.length === 0 ? t('card.saveFirst') : undefined}
+          className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <ListPlus className="h-3.5 w-3.5" />
+          {t('card.addToList')}
+        </button>
+      )}
       <AddToListDialog open={open} onClose={close} rows={rows} />
     </>
   );

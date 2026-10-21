@@ -38,6 +38,13 @@ interface ModalProps {
    */
   fixedHeight?: boolean | 'full';
   className?: string;
+  /**
+   * Класи області тіла (вона ж прокручується): фон картки документа з секціями —
+   * `bg-secondary`, на якому стоять білі `DocumentSection`.
+   */
+  bodyClassName?: string;
+  /** Класи футера: у картці з сірим тілом футер білий (`bg-surface`), щоб відділявся від тіла. */
+  footerClassName?: string;
   hideClose?: boolean;
   /** Extra action buttons rendered to the left of the × close button */
   extraHeaderActions?: ReactNode;
@@ -86,11 +93,14 @@ export function AnimatedBody({
   className,
   fill = false,
   bodyStyle,
+  outerClassName,
 }: {
   children: ReactNode;
   className?: string;
   fill?: boolean;
   bodyStyle?: CSSProperties;
+  /** Fill-режим: класи зовнішнього (прокручуваного) блоку — наприклад, фон тіла вікна. */
+  outerClassName?: string;
 }) {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -133,7 +143,11 @@ export function AnimatedBody({
     // Fill-режим: outer — flex-1, бере залишок висоти, сам скролить.
     // Inner — лише padding (через className), без власного overflow.
     return (
-      <div ref={outerRef} className="flex-1 min-h-0 overflow-y-auto" style={bodyStyle}>
+      <div
+        ref={outerRef}
+        className={cn('flex-1 min-h-0 overflow-y-auto', outerClassName)}
+        style={bodyStyle}
+      >
         <div ref={innerRef} className={className}>
           {children}
         </div>
@@ -202,6 +216,8 @@ export function Modal({
   bodyMinHeight,
   fixedHeight,
   className,
+  bodyClassName,
+  footerClassName,
   hideClose,
   extraHeaderActions,
   headerContent,
@@ -316,6 +332,7 @@ export function Modal({
         <AnimatedBody
           fill
           className="px-6 py-5"
+          outerClassName={bodyClassName}
           bodyStyle={bodyMinHeight ? { minHeight: bodyMinHeight } : undefined}
         >
           {children}
@@ -323,7 +340,12 @@ export function Modal({
 
         {/* Footer */}
         {footer && (
-          <div className="shrink-0 flex items-center justify-end gap-2 px-6 py-4 border-t border-border bg-secondary rounded-b-xl">
+          <div
+            className={cn(
+              'shrink-0 flex items-center justify-end gap-2 px-6 py-4 border-t border-border bg-secondary rounded-b-xl',
+              footerClassName,
+            )}
+          >
             {footer}
           </div>
         )}
