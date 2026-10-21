@@ -24,7 +24,7 @@
     "list": "Список",
     "allLists": "Усі відкриті списки",
     "supplierSearch": "Пошук постачальника",
-    "supplierSearchPlaceholder": "Назва — список показує перші 200"
+    "supplierSearchPlaceholder": "Назва — список показує перші {{count}}"
   },
   "columns": {
     "workOrder": "Наряд",

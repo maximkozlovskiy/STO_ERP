@@ -3,13 +3,25 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useSupplierOptions, type SupplierOption } from '@/hooks/api/useCounterparties';
+import {
+  SUPPLIER_OPTIONS_PAGE,
+  useSupplierOptions,
+  type SupplierOption,
+} from '@/hooks/api/useCounterparties';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 
 interface SupplierOptionsSelectProps {
   value: string;
-  onChange: (id: string) => void;
+  /**
+   * Обраний постачальник — тримає ВЛАСНИК (отримує його в `onChange`): компонент додає його до
+   * варіантів, коли той не в поточній сторінці чи результатах пошуку. У стані компонента він губився
+   * при демонтажі (діалог після «Скасувати»), і `<select>` показував «— не змінювати —», хоча
+   * значення лишалось (Bug #921).
+   */
+  selected: SupplierOption | null;
+  /** `option` — обраний постачальник; `null` для службових варіантів. */
+  onChange: (id: string, option: SupplierOption | null) => void;
   /** Видимий підпис (діалог) — або лише `ariaLabel` (фільтр у рядку фільтрів). */
   label?: string;
   ariaLabel?: string;
@@ -29,6 +41,7 @@ interface SupplierOptionsSelectProps {
  */
 export function SupplierOptionsSelect({
   value,
+  selected,
   onChange,
   label,
   ariaLabel,
@@ -41,14 +54,13 @@ export function SupplierOptionsSelect({
   const [query, setQuery] = useState('');
   const debounced = useDebounce(query.trim(), 300);
   const { data, isError, isFetching } = useSupplierOptions(debounced, enabled);
-  const [picked, setPicked] = useState<SupplierOption | null>(null);
 
   const options = useMemo(() => {
     const list = data?.items ?? [];
-    return picked && picked.id === value && !list.some(s => s.id === picked.id)
-      ? [picked, ...list]
+    return selected && selected.id === value && !list.some(s => s.id === selected.id)
+      ? [selected, ...list]
       : list;
-  }, [data, picked, value]);
+  }, [data, selected, value]);
   const truncated = !!debounced || (data?.total ?? 0) > (data?.items.length ?? 0);
 
   // Підказка — лише після відповіді: поки список вантажиться, «немає» було б неправдою.
@@ -74,6 +86,7 @@ export function SupplierOptionsSelect({
             // У рядку фільтрів поле вузьке — довга підказка обрізалась би.
             placeholder={t(
               layout === 'row' ? 'filters.supplierSearch' : 'filters.supplierSearchPlaceholder',
+              { count: SUPPLIER_OPTIONS_PAGE },
             )}
           />
         </div>
@@ -85,8 +98,7 @@ export function SupplierOptionsSelect({
           value={value}
           onChange={e => {
             const id = e.target.value;
-            setPicked(options.find(s => s.id === id) ?? null);
-            onChange(id);
+            onChange(id, options.find(s => s.id === id) ?? null);
           }}
           hint={hint}
         >

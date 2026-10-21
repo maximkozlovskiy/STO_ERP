@@ -229,4 +229,52 @@ describe('ItemsView — постачальник поза першими 200 (Bu
       ),
     );
   });
+
+  // Bug #921: діалог змонтований завжди, а обраний пошуком постачальник жив у демонтованому полі —
+  // після «Скасувати» / Escape наступне відкриття показувало «— не змінювати —», а «Зберегти»
+  // слало прихованого постачальника разом із ціною.
+  it.each([
+    [
+      '«Скасувати»',
+      (dialog: HTMLElement) =>
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Скасувати' })),
+    ],
+    ['Escape', () => fireEvent.keyDown(document, { key: 'Escape' })],
+  ])(
+    '«Постачальник і ціна»: обрано пошуком, %s, відкрито знову — збереження без прихованого постачальника',
+    async (_, dismiss) => {
+      renderView();
+      const dialog = await openSupplierDialog();
+      fireEvent.change(
+        await within(dialog).findByRole('textbox', { name: 'Пошук постачальника' }),
+        { target: { value: 'Ярило' } },
+      );
+      const select = within(dialog).getByRole('combobox', { name: 'Постачальник' });
+      await waitFor(() =>
+        expect(
+          within(select).getByRole('option', { name: 'Ярило Запчастини' }),
+        ).toBeInTheDocument(),
+      );
+      fireEvent.change(select, { target: { value: 's-far' } });
+      dismiss(dialog);
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+      // Позиція лишилась обраною — та сама масова дія ще раз.
+      fireEvent.click(screen.getByRole('button', { name: /Постачальник і ціна/ }));
+      const again = await screen.findByRole('dialog');
+      expect(within(again).getByRole('combobox', { name: 'Постачальник' })).toHaveValue('');
+      fireEvent.change(within(again).getByLabelText('Очікувана ціна, ₴'), {
+        target: { value: '150' },
+      });
+      fireEvent.click(within(again).getByRole('button', { name: 'Зберегти' }));
+      await waitFor(() =>
+        expect(apiFetch).toHaveBeenCalledWith(
+          '/purchase-list-items/bulk-update',
+          expect.objectContaining({
+            body: JSON.stringify({ itemIds: ['it-1'], expectedPrice: 150 }),
+          }),
+        ),
+      );
+    },
+  );
 });

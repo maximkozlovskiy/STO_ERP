@@ -26,6 +26,7 @@ import {
   type PurchaseListItem,
 } from '@/hooks/api/usePurchaseLists';
 import { useSupplierProcurementSettings } from '@/hooks/api/useSupplierOffers';
+import type { SupplierOption } from '@/hooks/api/useCounterparties';
 import { PURCHASE_DOCUMENT_ROLES } from '../purchase-roles';
 import { FormDialog } from './FormDialog';
 import { SupplierOptionsSelect } from './SupplierOptionsSelect';
@@ -90,6 +91,7 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
   const { confirm, dialogProps } = useConfirm();
   const [status, setStatus] = useState('OPEN');
   const [supplierId, setSupplierId] = useState('');
+  const [supplierOption, setSupplierOption] = useState<SupplierOption | null>(null);
   const [warehouseId, setWarehouseId] = useState('');
   const [listId, setListId] = useState('');
   const [q, setQ] = useState('');
@@ -239,8 +241,10 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
           <SupplierOptionsSelect
             layout="row"
             value={supplierId}
-            onChange={id => {
+            selected={supplierOption}
+            onChange={(id, option) => {
               setSupplierId(id);
+              setSupplierOption(option);
               resetPage();
             }}
             ariaLabel={t('filters.supplier')}
@@ -518,7 +522,20 @@ function SupplierPriceDialog({
 }) {
   const { t } = useTranslation('purchaseLists');
   const [supplier, setSupplier] = useState('');
+  const [supplierOption, setSupplierOption] = useState<SupplierOption | null>(null);
   const [price, setPrice] = useState('');
+  // Діалог змонтований завжди, а поле вибору — лише поки він відкритий: «Скасувати» / Escape мусять
+  // скидати чернетку, інакше наступне відкриття (для інших позицій) зберегло б постачальника, якого
+  // не видно в полі (Bug #921).
+  const reset = () => {
+    setSupplier('');
+    setSupplierOption(null);
+    setPrice('');
+  };
+  const close = () => {
+    reset();
+    onClose();
+  };
 
   const body: { itemIds: string[]; supplierId?: string | null; expectedPrice?: number | null } = {
     itemIds: ids ?? [],
@@ -530,7 +547,7 @@ function SupplierPriceDialog({
   return (
     <FormDialog
       open={ids !== null}
-      onClose={onClose}
+      onClose={close}
       title={t('items.dialogs.supplierTitle', { count: ids?.length ?? 0 })}
       submitLabel={t('common.save')}
       validate={() =>
@@ -541,15 +558,18 @@ function SupplierPriceDialog({
       onSubmit={async () => {
         if (!ids) return;
         const res = await purchaseListsApi.bulkUpdate(body);
-        setSupplier('');
-        setPrice('');
+        reset();
         onSaved(res.count);
       }}
     >
       <SupplierOptionsSelect
         label={t('columns.supplier')}
         value={supplier}
-        onChange={setSupplier}
+        selected={supplierOption}
+        onChange={(id, option) => {
+          setSupplier(id);
+          setSupplierOption(option);
+        }}
         noneHint={suppliersNoneHint}
         enabled={enabled && ids !== null}
         leading={
