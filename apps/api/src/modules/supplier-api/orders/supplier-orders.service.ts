@@ -485,8 +485,10 @@ export class SupplierOrdersService {
         take: 100,
       }),
       this.settings.getOrganisationSettings(orgId),
-      // Постачальники з увімкненим підключенням — по одному рядку на постачальника (distinct), без
-      // обрізання: `take` відкидав би постачальника замовлення, коли підключень багато (review 2026-10-21).
+      // Постачальники з увімкненим підключенням, без обрізання: `take` відкидав би постачальника
+      // замовлення, коли підключень багато (review 2026-10-21). `distinct` Prisma знімає дублі в пам'яті —
+      // SQL читає всі увімкнені підключення організації; їх одиниці (partial-unique на постачальника й
+      // провайдера), а фільтр за `po.supplierId` додав би RTT (зв'язку з контрагентом у моделі немає).
       this.prisma.supplierConnection.findMany({
         where: { orgId, enabled: true, deletedAt: null },
         select: { counterpartyId: true },
