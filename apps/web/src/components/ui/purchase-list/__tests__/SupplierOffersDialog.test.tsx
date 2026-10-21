@@ -211,6 +211,56 @@ describe('SupplierOffersDialog', () => {
     );
   });
 
+  // guards: BR-SOFR-003 — два «Оновити» поспіль без зв'язку: виконаний перший пошук лишається
+  // джерелом останніх відомих пропозицій, навіть коли `lastKnown`, завантажений при відкритті,
+  // його ще не має (E2E supplier-api, крок 5, 2026-10-21).
+  it('два «Оновити» без зв’язку поспіль — пропозиції першого пошуку лишаються на місці', async () => {
+    const retrying = itemDto([
+      request({
+        id: 'r-2',
+        status: 'RETRYING',
+        nextRetryAt: '2026-10-18T10:29:00.000Z',
+        offers: [],
+      }),
+    ]);
+    const searches = [itemDto([request()]), retrying, retrying];
+    let n = 0;
+    apiFetch.mockImplementation((path: string) => {
+      if (path === '/supplier-offers/search') {
+        const item = searches[Math.min(n, searches.length - 1)];
+        const id = `b-${++n}`;
+        return Promise.resolve({
+          id,
+          purpose: 'MANUAL',
+          strategy: null,
+          done: false,
+          completedAt: null,
+          createdAt: '2026-10-18T10:00:00.000Z',
+          items: [item],
+          queueUnavailable: false,
+          noConnections: false,
+          skippedItemIds: [],
+        });
+      }
+      if (path.startsWith('/supplier-offers/batches/'))
+        return Promise.resolve({ id: path.split('/')[3], done: false, items: [], requests: [] });
+      if (path === '/purchase-list-items/it-1/offers') return Promise.resolve(itemDto([]));
+      return Promise.reject(new Error(`unexpected ${String(path)}`));
+    });
+    renderDialog();
+    expect(await screen.findAllByTestId('supplier-offer-row')).toHaveLength(1);
+    for (const expected of [2, 3]) {
+      fireEvent.click(screen.getByRole('button', { name: 'Оновити' }));
+      await waitFor(() =>
+        expect(apiFetch.mock.calls.filter(c => c[0] === '/supplier-offers/search')).toHaveLength(
+          expected,
+        ),
+      );
+      expect(await screen.findByText(/повтор о 13:29/)).toBeInTheDocument();
+      expect(screen.getAllByTestId('supplier-offer-row')).toHaveLength(1);
+    }
+  });
+
   it('«Обрати» — choose-offer з id пропозиції і закриття; кількість «≥10», ціна + у гривні', async () => {
     routes(itemDto([request()]), itemDto([]));
     const { onClose } = renderDialog();

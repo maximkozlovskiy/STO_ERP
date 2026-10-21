@@ -104,6 +104,9 @@ interface OfferRow {
   fromLastKnown: boolean;
 }
 
+/** Скільки попередніх пошуків діалог пам'ятає як джерело останніх відомих пропозицій. */
+const PREVIOUS_SEARCHES_KEPT = 5;
+
 /**
  * Запити для показу: поточні з пошуку; якщо підключення ще не відповіло (немає зв'язку), а
  * раніше пропозиції були — показуємо останні відомі (BR-SOFR-003).
@@ -168,9 +171,11 @@ export function SupplierOffersDialog({ item, onClose }: Props) {
 
   const lastKnown = useItemOffers(itemId);
   const batch = useSupplierOfferBatch(batchId);
-  // Результат попереднього пошуку в цьому діалозі: після «Оновити» без зв'язку його пропозиції
-  // лишаються видимими як останні відомі.
-  const [previous, setPrevious] = useState<SupplierOfferItem | undefined>(undefined);
+  // Результати попередніх пошуків у цьому діалозі: після «Оновити» без зв'язку їхні виконані
+  // пропозиції лишаються видимими як останні відомі. Накопичуються, а не лише останній: два
+  // «Оновити» поспіль без зв'язку інакше губили виконаний перший результат, і рядки трималися лише
+  // на `lastKnown`, завантаженому при відкритті — можливо, раніше за перший пошук.
+  const [previous, setPrevious] = useState<SupplierOfferItem[]>([]);
   const currentRef = useRef<SupplierOfferItem | undefined>(undefined);
 
   const search = useCallback(
@@ -182,7 +187,8 @@ export function SupplierOffersDialog({ item, onClose }: Props) {
         const res = await supplierOffersApi.search({ itemIds: [id], refresh });
         if (seq !== searchSeq.current) return;
         qc.setQueryData(supplierOffersKeys.batch(res.id), res);
-        if (currentRef.current) setPrevious(currentRef.current);
+        const last = currentRef.current;
+        if (last) setPrevious(p => [last, ...p].slice(0, PREVIOUS_SEARCHES_KEPT));
         setBatchId(res.id);
         if (res.noConnections) setNotice({ text: t('offers.noConnections'), variant: 'warning' });
         else if (res.skippedItemIds.includes(id))
@@ -205,7 +211,7 @@ export function SupplierOffersDialog({ item, onClose }: Props) {
   useEffect(() => {
     setBatchId(null);
     setNotice(null);
-    setPrevious(undefined);
+    setPrevious([]);
     currentRef.current = undefined;
     if (itemId) void search(itemId, false);
     else searchSeq.current += 1;
@@ -214,7 +220,7 @@ export function SupplierOffersDialog({ item, onClose }: Props) {
   const current = batch.data?.items.find(i => i.itemId === itemId);
   const view = current ?? lastKnown.data;
   const { requests, rows } = useMemo(
-    () => mergeRequests(current, previous, lastKnown.data),
+    () => mergeRequests(current, ...previous, lastKnown.data),
     [current, previous, lastKnown.data],
   );
   useEffect(() => {
