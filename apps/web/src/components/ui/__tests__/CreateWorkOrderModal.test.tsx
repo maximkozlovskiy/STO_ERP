@@ -169,7 +169,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
     // the source: hasHalfLine/hasHalfPart pre-check runs synchronously before setSaving.
     // Confirm modal still renders with all required pieces:
     expect(screen.getByText(/Роботи/)).toBeInTheDocument();
-    expect(screen.getByText(/Товари \/ Запчастини/)).toBeInTheDocument();
+    expect(screen.getByText(/Товари і запчастини/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Створити наряд/ })).toBeInTheDocument();
   });
 
@@ -410,7 +410,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
       await new Promise(r => setTimeout(r, 50));
 
       // Форма не зламана: модальна нагорі видима (Modal залишилось у DOM)
-      expect(screen.getByText(/Товари \/ Запчастини/)).toBeInTheDocument();
+      expect(screen.getByText(/Товари і запчастини/)).toBeInTheDocument();
       // console.error викликаний (а не silent .catch(() => {}))
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         '[stock-totals] fetch failed',

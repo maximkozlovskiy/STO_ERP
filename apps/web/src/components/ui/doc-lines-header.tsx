@@ -25,7 +25,7 @@ export function DocLinesEmptyRow({ colSpan, canEdit }: { colSpan: number; canEdi
 }
 
 /**
- * Стандарт шапки табличної частини документа (еталон — «Товари / Запчастини» в картці наряду):
+ * Стандарт шапки табличної частини документа (рахунок, замовлення, складський документ):
  * назва ліворуч, «+ Додати» праворуч НАД таблицею. Кнопка під таблицею — відхилення від стандарту.
  */
 export function DocLinesHeader({ title, onAdd, children }: DocLinesHeaderProps) {

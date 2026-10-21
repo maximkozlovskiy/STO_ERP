@@ -4,13 +4,23 @@
 // Винесено без зміни поведінки — cohesive суб-форма (дати/нормогодини). Фактична колонка
 // read-only (заповнюється з ліній): дати завжди disabled+NOOP, нормогодини = liveActualHours
 // (обчислені з ліній) або form.actualHours, disabled коли live-значення присутнє.
-import { memo, useMemo, type ChangeEvent } from 'react';
+import { memo, useId, useMemo, type ChangeEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
 import { localDateTimeToISO } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { useNow } from '@/hooks/useNow';
 import type { WorkHoursWindow } from './planned-dates';
 
 const NOOP_DT_CHANGE: (v: string) => void = () => {};
+
+/** Початок · завершення · нормогодини; дата з часом «ДД.ММ.РРРР ГГ:ХХ» не обрізається (Bug #878). */
+const METRICS_GRID = 'grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5.5rem] gap-2.5';
+const HOURS_LABEL = 'block text-[13px] font-medium text-foreground';
+const HOURS_INPUT =
+  'h-9 w-full rounded border border-input bg-surface px-3 text-[14px] text-right tabular-nums ' +
+  'hover:border-input-hover focus:outline-none focus:border-primary focus:ring-3 focus:ring-brand-100 ' +
+  'disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-secondary';
 
 export interface PlannedActualMetricsProps {
   canEdit: boolean;
@@ -46,6 +56,9 @@ function PlannedActualMetricsBase({
 }: PlannedActualMetricsProps) {
   // «Зараз» (оновлюється щохвилини): минулі дні й години недоступні (BR-WO-019). Таймер тут, а
   // не в картці наряду: щохвилинне оновлення ре-рендерить лише цю панель.
+  const { t } = useTranslation('workOrders');
+  const plannedHoursId = useId();
+  const actualHoursId = useId();
   const now = useNow(60_000);
   // Завершення — пізніше за початок: найраніше — хвилина після початку, якщо він у майбутньому.
   const endMin = useMemo(() => {
@@ -53,24 +66,23 @@ function PlannedActualMetricsBase({
     const start = iso ? new Date(iso).getTime() + 60_000 : NaN;
     return Number.isFinite(start) && start > now.getTime() ? new Date(start) : now;
   }, [plannedStartAt, now]);
+  // Факт ще не ведеться (немає ні введених, ні обчислених з рядків годин) — поля пунктирні.
+  const actualTracked = liveActualHours != null || actualHours !== '';
+  const actualFieldClass = actualTracked ? '' : 'border-dashed bg-secondary';
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
-      <div className="grid grid-cols-2 divide-x divide-border">
-        <div className="px-3 py-1.5 bg-secondary/50 text-xs font-medium text-muted-foreground">
-          Планові показники
-        </div>
-        <div className="px-3 py-1.5 bg-secondary/50 text-xs font-medium text-muted-foreground">
-          Фактичні показники
-        </div>
-      </div>
-      <div className="grid grid-cols-2 divide-x divide-border">
-        <div className="grid grid-cols-[1fr_1fr_auto] gap-3 p-3">
+    // Два fieldset-и — окремі елементи сітки секції «Планування» (поруч або один під одним).
+    // План стоїть першим у DOM: на порядок полів спираються тести (Нормогодин [0] — план).
+    <>
+      <fieldset className="m-0 min-w-0 border-0 p-0" data-testid="wo-planned">
+        <legend className="mb-1.5 p-0 text-[13px] font-semibold text-primary">
+          {t('card.plan')}
+        </legend>
+        <div className={METRICS_GRID}>
           <DateTimePickerInput
             label="Дата та час початку"
             value={plannedStartAt}
             onChange={onPlannedStartChange}
             disabled={!canEdit}
-            inputClassName="h-8 text-[13px]"
             minDateTime={now}
             minHour={workHours.startHour}
             maxHour={workHours.endHour - 1}
@@ -81,15 +93,17 @@ function PlannedActualMetricsBase({
             value={plannedEndAt}
             onChange={onPlannedEndChange}
             disabled={!canEdit}
-            inputClassName="h-8 text-[13px]"
             minDateTime={endMin}
             minHour={workHours.startHour}
             closeHour={workHours.endHour}
             clearable
           />
-          <div className="flex flex-col gap-1 min-w-20">
-            <label className="text-[11px] text-muted-foreground font-medium">Нормогодин</label>
+          <div className="flex flex-col gap-1">
+            <label htmlFor={plannedHoursId} className={HOURS_LABEL}>
+              Нормогодин
+            </label>
             <input
+              id={plannedHoursId}
               type="number"
               min="0"
               step="0.5"
@@ -97,28 +111,41 @@ function PlannedActualMetricsBase({
               onChange={onPlannedHoursChange}
               disabled={!canEdit}
               placeholder="0"
-              className="h-8 w-full rounded-md border border-input bg-background px-2 text-[13px] tabular-nums disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-ring"
+              className={HOURS_INPUT}
             />
           </div>
         </div>
-        <div className="grid grid-cols-[1fr_1fr_auto] gap-3 p-3">
+      </fieldset>
+      {/* У сітці «Планування»: вужче 2xl — під «Планом» (колонка 2), ширше — третя колонка. */}
+      <fieldset
+        className="m-0 min-w-0 border-0 p-0 md:col-start-2 2xl:col-start-3"
+        data-testid="wo-actual"
+      >
+        <legend className="mb-1.5 p-0 text-[13px] font-semibold text-foreground-muted">
+          {t('card.actual')}{' '}
+          <span className="font-normal text-muted-foreground">— {t('card.actualHint')}</span>
+        </legend>
+        <div className={METRICS_GRID}>
           <DateTimePickerInput
             label="Дата та час початку"
             value=""
             onChange={NOOP_DT_CHANGE}
             disabled
-            inputClassName="h-8 text-[13px]"
+            inputClassName={actualFieldClass}
           />
           <DateTimePickerInput
             label="Дата та час завершення"
             value=""
             onChange={NOOP_DT_CHANGE}
             disabled
-            inputClassName="h-8 text-[13px]"
+            inputClassName={actualFieldClass}
           />
-          <div className="flex flex-col gap-1 min-w-20">
-            <label className="text-[11px] text-muted-foreground font-medium">Нормогодин</label>
+          <div className="flex flex-col gap-1">
+            <label htmlFor={actualHoursId} className={HOURS_LABEL}>
+              Нормогодин
+            </label>
             <input
+              id={actualHoursId}
               type="number"
               min="0"
               step="0.5"
@@ -126,12 +153,12 @@ function PlannedActualMetricsBase({
               onChange={onActualHoursChange}
               disabled={!canEdit || liveActualHours != null}
               placeholder="0"
-              className="h-8 w-full rounded-md border border-input bg-background px-2 text-[13px] tabular-nums disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-ring"
+              className={cn(HOURS_INPUT, actualFieldClass)}
             />
           </div>
         </div>
-      </div>
-    </div>
+      </fieldset>
+    </>
   );
 }
 

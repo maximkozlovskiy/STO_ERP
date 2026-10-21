@@ -26,6 +26,9 @@ import {
   Shield,
   Minus,
   Download,
+  ChevronUp,
+  UserRound,
+  CalendarClock,
 } from 'lucide-react';
 import { useTabBarContext } from '@/contexts/TabBarContext';
 import { apiFetch } from '@/lib/api-client';
@@ -84,6 +87,7 @@ import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { CollapsibleHeader } from '@/components/ui/collapsible-header';
+import { DocumentSection, SectionActionButton } from '@/components/ui/document-section';
 import { WorkPickerModal, type WorkPickerItem } from '@/components/ui/WorkPickerModal';
 import { ServicePickerModal, type ServicePickerItem } from '@/components/ui/ServicePickerModal';
 import {
@@ -1770,7 +1774,12 @@ export function CreateWorkOrderModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose]);
 
-  // Column header widths (shared between table header and input row grid)
+  // Підсумок документа — у футері ліворуч, один примірник для обох режимів (варіант A).
+  const totalsSummary =
+    lines.length > 0 || parts.length > 0 ? (
+      <VatTotalsSummary split={documentTotals} currencySymbol="" layout="inline" />
+    ) : null;
+
   return (
     <>
       <Modal
@@ -1781,6 +1790,9 @@ export function CreateWorkOrderModal({
         size="content"
         // A card with tabs keeps a stable size: the short "documents" tab must not shrink the window.
         fixedHeight={isEditMode ? 'full' : false}
+        // Варіант A «Картки секцій»: білі секції на сірому тілі, підсумок і кнопки — у білому футері.
+        bodyClassName="bg-secondary"
+        footerClassName="bg-surface"
         hideClose
         headerContent={
           <div className="flex items-center gap-6">
@@ -1820,12 +1832,13 @@ export function CreateWorkOrderModal({
                     disabled={transitioning || !isEditMode || viewOnly}
                     onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
                     className={cn(
-                      'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
+                      'inline-flex items-center gap-1.5 h-7 text-[13px] font-semibold px-3 rounded-full transition-colors',
                       STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
                       isEditMode && !transitioning && 'cursor-pointer hover:opacity-80',
                       !isEditMode && 'cursor-default',
                     )}
                   >
+                    <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-current" />
                     {isEditMode ? woStatusLabel(currentStatus) : woStatusLabel('DRAFT')}
                   </button>
                 </Tooltip>
@@ -1898,8 +1911,9 @@ export function CreateWorkOrderModal({
         }
         footer={
           isEditMode ? (
-            <div className="flex items-center justify-between w-full gap-2">
-              <div>
+            <div className="flex flex-wrap items-center w-full gap-x-4 gap-y-2">
+              {totalsSummary}
+              <div className="flex gap-2 items-center flex-wrap justify-end ml-auto">
                 {allowedTransitions.includes('CANCELLED') && (
                   <Button
                     variant="destructive"
@@ -1911,8 +1925,6 @@ export function CreateWorkOrderModal({
                     Скасувати
                   </Button>
                 )}
-              </div>
-              <div className="flex gap-2 items-center flex-wrap">
                 {/* BR-WO-012: «Друк», «Зберегти як», «Поділитись» і SMS ідуть через токен поширення
                     (POST /work-orders/:id/share-token), а сервер видаленого наряду не знаходить —
                     у картці перегляду весь блок сховано. */}
@@ -2076,14 +2088,17 @@ export function CreateWorkOrderModal({
               </div>
             </div>
           ) : (
-            <Button
-              onClick={() => void create()}
-              loading={saving}
-              disabled={!form.branchId || !form.counterpartyId || !form.vehicleId}
-              className="w-full sm:w-auto"
-            >
-              Створити наряд
-            </Button>
+            <div className="flex flex-wrap items-center w-full gap-x-4 gap-y-2">
+              {totalsSummary}
+              <Button
+                onClick={() => void create()}
+                loading={saving}
+                disabled={!form.branchId || !form.counterpartyId || !form.vehicleId}
+                className="w-full sm:w-auto sm:ml-auto"
+              >
+                Створити наряд
+              </Button>
+            </div>
           )
         }
       >
@@ -2174,134 +2189,87 @@ export function CreateWorkOrderModal({
             )}
 
             <div className="flex flex-col min-h-[70dvh]">
-              {/* ── Collapsible header ────────────────────────────────────── */}
+              {/* ── Шапка документа: картки «Клієнт і автомобіль» і «Планування» (варіант A).
+                  Згортаються разом у картку-зведення нижче; автозгортання під час правки рядка
+                  робіт / товарів — як і раніше (ефект headerCollapsed). ───────────────── */}
               <div
                 className="grid transition-[grid-template-rows] duration-300 ease-in-out shrink-0"
                 style={{ gridTemplateRows: headerCollapsed ? '0fr' : '1fr' }}
               >
                 <div className="overflow-hidden">
-                  <div className="space-y-4 pb-1">
-                    {/* Рядок 2: Філія | Підйомник | Пріоритет */}
-                    <div className="grid grid-cols-3 gap-4">
-                      <Select
-                        label="Філія"
-                        required
-                        value={form.branchId}
-                        onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
-                        disabled={!canEdit || isEditMode || branches.length === 1}
-                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                      >
-                        {branches.length !== 1 && <option value="">— Оберіть —</option>}
-                        {branches.map(b => (
-                          <option key={b.id} value={b.id}>
-                            {b.name}
-                          </option>
-                        ))}
-                      </Select>
-                      <Select
-                        label="Підйомник"
-                        value={form.liftId}
-                        onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
-                        disabled={!canEdit}
-                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                      >
-                        <option value="">— Без підйомника —</option>
-                        {lifts.map(l => (
-                          <option key={l.id} value={l.id}>
-                            {l.name}
-                          </option>
-                        ))}
-                      </Select>
-                      <Select
-                        label="Пріоритет"
-                        value={form.priority}
-                        onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
-                        disabled={!canEdit}
-                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                      >
-                        {Object.keys(WO_PRIORITY_LABELS).map(k => (
-                          <option key={k} value={k}>
-                            {woPriorityLabel(k)}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-
-                    {/* Планові та фактичні показники */}
-                    <PlannedActualMetrics
-                      canEdit={canEdit}
-                      plannedStartAt={form.plannedStartAt}
-                      plannedEndAt={form.plannedEndAt}
-                      plannedHours={form.plannedHours}
-                      actualHours={form.actualHours}
-                      liveActualHours={liveActualHours}
-                      onPlannedStartChange={handlePlannedStartChange}
-                      onPlannedEndChange={handlePlannedEndChange}
-                      onPlannedHoursChange={handlePlannedHoursChange}
-                      onActualHoursChange={handleActualHoursChange}
-                      workHours={workHours}
-                    />
-
-                    {/* Попередження про конфлікт у календарі */}
-                    {calConflict?.anyConflict && (
-                      <div className="rounded-md bg-warning-subtle border border-warning/20 px-3 py-2 text-[12px] text-warning">
-                        ⚠{calConflict.liftConflict && ' Підйомник зайнятий.'}
-                        {calConflict.employeeConflict && ' Механік зайнятий.'} Є перетин з{' '}
-                        {calConflict.conflictSlots.length} слотом(и) у календарі
-                        {conflictWoNumbers && <> ({conflictWoNumbers})</>}. Збереження з цим часом і
-                        підйомником буде відхилено — оберіть інший час або підйомник.
-                      </div>
-                    )}
-
-                    {/* Клієнт | Договір / Автомобіль | Категорія */}
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-4">
-                        <EntityPickerField<HeaderCpItem>
-                          label="Клієнт"
+                  <div className="flex flex-col gap-4 pb-4">
+                    <DocumentSection
+                      icon={UserRound}
+                      title={t('card.clientVehicle')}
+                      actions={
+                        <SectionActionButton aria-expanded onClick={() => setHeaderCollapsed(true)}>
+                          {t('common:collapse')}
+                          <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+                        </SectionActionButton>
+                      }
+                    >
+                      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                        <div className="col-span-2">
+                          <EntityPickerField<HeaderCpItem>
+                            label="Клієнт"
+                            required
+                            display={counterpartyDisplayName}
+                            placeholder="Пошук клієнта…"
+                            ariaLabel="Клієнт"
+                            onPick={() => setCpPickerOpen(true)}
+                            onSearch={fetchCpHeaderItems}
+                            onSearchSelect={item => {
+                              setCounterpartyDisplayName(item.primary);
+                              setCpPhone(item.phone ?? '');
+                              setForm(f => ({
+                                ...f,
+                                counterpartyId: item.id,
+                                vehicleId: '',
+                                contractId: '',
+                              }));
+                              setVehicles([]);
+                              setContracts([]);
+                              loadVehicles(item.id);
+                              loadContracts(item.id);
+                            }}
+                            onClear={() => {
+                              setCounterpartyDisplayName('');
+                              setCpPhone('');
+                              setForm(f => ({
+                                ...f,
+                                counterpartyId: '',
+                                vehicleId: '',
+                                contractId: '',
+                              }));
+                              setVehicles([]);
+                              setContracts([]);
+                            }}
+                            hidePick={false}
+                            // Як решта полів шапки: у картці лише на перегляд (статус не дозволяє
+                            // правку або наряд позначено на видалення) клієнта не змінити й не очистити.
+                            disabled={!canEdit}
+                          />
+                        </div>
+                        <Select
+                          label="Автомобіль"
                           required
-                          display={counterpartyDisplayName}
-                          className="h-8 text-[13px]"
-                          placeholder="Пошук клієнта…"
-                          ariaLabel="Клієнт"
-                          onPick={() => setCpPickerOpen(true)}
-                          onSearch={fetchCpHeaderItems}
-                          onSearchSelect={item => {
-                            setCounterpartyDisplayName(item.primary);
-                            setCpPhone(item.phone ?? '');
-                            setForm(f => ({
-                              ...f,
-                              counterpartyId: item.id,
-                              vehicleId: '',
-                              contractId: '',
-                            }));
-                            setVehicles([]);
-                            setContracts([]);
-                            loadVehicles(item.id);
-                            loadContracts(item.id);
-                          }}
-                          onClear={() => {
-                            setCounterpartyDisplayName('');
-                            setCpPhone('');
-                            setForm(f => ({
-                              ...f,
-                              counterpartyId: '',
-                              vehicleId: '',
-                              contractId: '',
-                            }));
-                            setVehicles([]);
-                            setContracts([]);
-                          }}
-                          hidePick={false}
-                          // Як решта полів шапки: у картці лише на перегляд (статус не дозволяє
-                          // правку або наряд позначено на видалення) клієнта не змінити й не очистити.
-                          disabled={!canEdit}
-                        />
+                          value={form.vehicleId}
+                          onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
+                          disabled={!canEdit || !form.counterpartyId}
+                        >
+                          <option value="">— Оберіть —</option>
+                          {vehicles.map(v => (
+                            <option key={v.id} value={v.id}>
+                              {v.make} {v.model}
+                              {v.licensePlate ? ` (${v.licensePlate})` : ''}
+                            </option>
+                          ))}
+                        </Select>
                         <Select
                           label="Договір"
                           value={form.contractId}
                           onChange={e => setForm(f => ({ ...f, contractId: e.target.value }))}
                           disabled={!canEdit || !form.counterpartyId || contracts.length === 0}
-                          className="h-8 text-[13px] py-0.5 px-2 pr-7"
                         >
                           <option value="">— Без договору —</option>
                           {contracts.map(c => (
@@ -2313,21 +2281,17 @@ export function CreateWorkOrderModal({
                             </option>
                           ))}
                         </Select>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
                         <Select
-                          label="Автомобіль"
+                          label="Філія"
                           required
-                          value={form.vehicleId}
-                          onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
-                          disabled={!canEdit || !form.counterpartyId}
-                          className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                          value={form.branchId}
+                          onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+                          disabled={!canEdit || isEditMode || branches.length === 1}
                         >
-                          <option value="">— Оберіть —</option>
-                          {vehicles.map(v => (
-                            <option key={v.id} value={v.id}>
-                              {v.make} {v.model}
-                              {v.licensePlate ? ` (${v.licensePlate})` : ''}
+                          {branches.length !== 1 && <option value="">— Оберіть —</option>}
+                          {branches.map(b => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}
                             </option>
                           ))}
                         </Select>
@@ -2336,7 +2300,6 @@ export function CreateWorkOrderModal({
                           value={form.repairCategory}
                           onChange={e => setForm(f => ({ ...f, repairCategory: e.target.value }))}
                           disabled={!canEdit}
-                          className="h-8 text-[13px] py-0.5 px-2 pr-7"
                         >
                           <option value="">— Не вказано —</option>
                           {Object.keys(WO_CATEGORY_LABELS).map(k => (
@@ -2345,76 +2308,128 @@ export function CreateWorkOrderModal({
                             </option>
                           ))}
                         </Select>
+                        <div>
+                          <Controller
+                            control={control}
+                            name="currencyId"
+                            render={({ field }) => (
+                              <CurrencySelect
+                                value={typeof field.value === 'string' ? field.value : ''}
+                                onChange={id => field.onChange(id)}
+                                // Bug #747/#766-клас: авто-дефолт базової валюти — програмна зміна,
+                                // не дія користувача → shouldDirty:false, щоб незаймана модалка не
+                                // вважалась брудною (єдиний патерн із Invoice/PO модалками).
+                                onAutoDefault={id =>
+                                  setValue('currencyId', id, { shouldDirty: false })
+                                }
+                                disabled={!canEdit}
+                              />
+                            )}
+                          />
+                        </div>
+                        <Select
+                          label="Пріоритет"
+                          value={form.priority}
+                          onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
+                          disabled={!canEdit}
+                        >
+                          {Object.keys(WO_PRIORITY_LABELS).map(k => (
+                            <option key={k} value={k}>
+                              {woPriorityLabel(k)}
+                            </option>
+                          ))}
+                        </Select>
+                        <div className="col-span-2 lg:col-span-4">
+                          <Input
+                            label="Опис"
+                            value={form.description}
+                            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                            disabled={!canEdit}
+                            placeholder="Заміна масла, колодок..."
+                          />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <Controller
-                          control={control}
-                          name="currencyId"
-                          render={({ field }) => (
-                            <CurrencySelect
-                              value={typeof field.value === 'string' ? field.value : ''}
-                              onChange={id => field.onChange(id)}
-                              // Bug #747/#766-клас: авто-дефолт базової валюти — програмна зміна,
-                              // не дія користувача → shouldDirty:false, щоб незаймана модалка не
-                              // вважалась брудною (єдиний патерн із Invoice/PO модалками).
-                              onAutoDefault={id =>
-                                setValue('currencyId', id, { shouldDirty: false })
-                              }
-                              disabled={!canEdit}
-                            />
-                          )}
+                    </DocumentSection>
+
+                    <DocumentSection
+                      icon={CalendarClock}
+                      title={t('card.planning')}
+                      subtitle={t('card.planningHint')}
+                    >
+                      {/* Підйомник · План · Факт: на широкому екрані в один ряд, вужче — «Факт»
+                          під «Планом» (дата з часом не обрізається, Bug #878). */}
+                      <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-[minmax(9rem,13rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(9rem,13rem)_minmax(0,1fr)_minmax(0,1fr)]">
+                        <Select
+                          label="Підйомник"
+                          value={form.liftId}
+                          onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
+                          disabled={!canEdit}
+                        >
+                          <option value="">— Без підйомника —</option>
+                          {lifts.map(l => (
+                            <option key={l.id} value={l.id}>
+                              {l.name}
+                            </option>
+                          ))}
+                        </Select>
+                        <PlannedActualMetrics
+                          canEdit={canEdit}
+                          plannedStartAt={form.plannedStartAt}
+                          plannedEndAt={form.plannedEndAt}
+                          plannedHours={form.plannedHours}
+                          actualHours={form.actualHours}
+                          liveActualHours={liveActualHours}
+                          onPlannedStartChange={handlePlannedStartChange}
+                          onPlannedEndChange={handlePlannedEndChange}
+                          onPlannedHoursChange={handlePlannedHoursChange}
+                          onActualHoursChange={handleActualHoursChange}
+                          workHours={workHours}
                         />
                       </div>
-                    </div>
-
-                    {/* Секція: Опис */}
-                    <div>
-                      <Input
-                        label="Опис"
-                        value={form.description}
-                        onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                        disabled={!canEdit}
-                        placeholder="Заміна масла, колодок..."
-                        className="h-8 text-[13px]"
-                      />
-                    </div>
+                      {calConflict?.anyConflict && (
+                        <div className="mt-4 rounded-md bg-warning-subtle border border-warning/20 px-3 py-2 text-[12px] text-warning">
+                          ⚠{calConflict.liftConflict && ' Підйомник зайнятий.'}
+                          {calConflict.employeeConflict && ' Механік зайнятий.'} Є перетин з{' '}
+                          {calConflict.conflictSlots.length} слотом(и) у календарі
+                          {conflictWoNumbers && <> ({conflictWoNumbers})</>}. Збереження з цим часом
+                          і підйомником буде відхилено — оберіть інший час або підйомник.
+                        </div>
+                      )}
+                    </DocumentSection>
                   </div>
                 </div>
-                {/* /overflow-hidden */}
               </div>
-              {/* /grid collapsible */}
 
-              {/* ── Header toggle strip ───────────────────────────────────── */}
-              <CollapsibleHeader
-                collapsed={headerCollapsed}
-                onToggle={() => setHeaderCollapsed(c => !c)}
-                chips={[
-                  { label: counterpartyDisplayName, primary: true, maxWidth: 'max-w-50' },
-                  { label: cpPhone, maxWidth: 'max-w-35' },
-                  {
-                    label: (() => {
-                      const v = form.vehicleId ? vehiclesById.get(form.vehicleId) : null;
-                      return v
-                        ? `${v.make} ${v.model}${v.licensePlate ? ` · ${v.licensePlate}` : ''}`
-                        : null;
-                    })(),
-                    primary: true,
-                    maxWidth: 'max-w-45',
-                  },
-                  {
-                    label: form.liftId ? (liftsById.get(form.liftId)?.name ?? null) : null,
-                    maxWidth: 'max-w-30',
-                  },
-                  {
-                    label: form.branchId ? (branchesById.get(form.branchId)?.name ?? null) : null,
-                    maxWidth: 'max-w-35',
-                  },
-                ]}
-              />
+              {/* ── Секції табличних частин (+ картка-зведення згорнутої шапки) ─────── */}
+              <div className="flex-1 min-h-0 flex flex-col gap-4">
+                <CollapsibleHeader
+                  variant="card"
+                  collapsed={headerCollapsed}
+                  onToggle={() => setHeaderCollapsed(c => !c)}
+                  chips={[
+                    { label: counterpartyDisplayName, primary: true, maxWidth: 'max-w-50' },
+                    { label: cpPhone, maxWidth: 'max-w-35' },
+                    {
+                      label: (() => {
+                        const v = form.vehicleId ? vehiclesById.get(form.vehicleId) : null;
+                        return v
+                          ? `${v.make} ${v.model}${v.licensePlate ? ` · ${v.licensePlate}` : ''}`
+                          : null;
+                      })(),
+                      primary: true,
+                      maxWidth: 'max-w-45',
+                    },
+                    {
+                      label: form.liftId ? (liftsById.get(form.liftId)?.name ?? null) : null,
+                      maxWidth: 'max-w-30',
+                    },
+                    {
+                      label: form.branchId ? (branchesById.get(form.branchId)?.name ?? null) : null,
+                      maxWidth: 'max-w-35',
+                    },
+                  ]}
+                />
 
-              {/* ── Tables area — takes remaining space ──────────────────── */}
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                {/* Секція: Роботи — винесено у WorksTable (pure move, byte-identical JSX) */}
                 <WorksTable
                   lines={lines}
                   setLines={setLines}
@@ -2450,7 +2465,6 @@ export function CreateWorkOrderModal({
                   setServicePickerOpen={setServicePickerOpen}
                 />
 
-                {/* Секція: Товари */}
                 <PartsTable
                   parts={parts}
                   setParts={setParts}
@@ -2487,6 +2501,7 @@ export function CreateWorkOrderModal({
                   headerAction={
                     isEditMode && workOrderId && !viewOnly ? (
                       <SendToListButton
+                        appearance="section"
                         workOrderId={workOrderId}
                         status={currentStatus}
                         parts={savedPartsForProcurement}
@@ -2496,14 +2511,7 @@ export function CreateWorkOrderModal({
                     ) : undefined
                   }
                 />
-
-                {(lines.length > 0 || parts.length > 0) && (
-                  <div className="flex justify-end px-3 py-3">
-                    <VatTotalsSummary split={documentTotals} currencySymbol="" />
-                  </div>
-                )}
               </div>
-              {/* /flex-1 tables area */}
             </div>
             {/* /flex-col */}
           </>

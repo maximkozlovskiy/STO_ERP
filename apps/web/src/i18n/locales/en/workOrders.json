@@ -318,5 +318,14 @@
     "payTitle": "Payment for work order {{number}}",
     "paidToast": "Payment of {{amount}} recorded",
     "nothingToPay": "Nothing left to pay"
+  },
+  "card": {
+    "clientVehicle": "Client and vehicle",
+    "planning": "Planning",
+    "planningHint": "Lift and calendar time",
+    "parts": "Goods and parts",
+    "plan": "Plan",
+    "actual": "Actual",
+    "actualHint": "filled in during the work"
   }
 }
