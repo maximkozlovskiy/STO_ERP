@@ -34,6 +34,10 @@ export const CORS_OPTIONS = {
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   credentials: true,
   maxAge: 86400,
+  // Назва файла завантаження (кошторис «Зберегти як» — `Кошторис-<номер>.xlsx`) приходить у
+  // `Content-Disposition`. Без цього браузер на cross-origin запиті (web :3001 → API :3000) його
+  // не показує, і сторінка зберігала файл під запасною назвою без номера наряду.
+  exposedHeaders: ['Content-Disposition'],
   // `satisfies`, а не анотація: тип звіряється з тим, чого чекає САМЕ Fastify-адаптер
   // (generic `CorsOptions` із @nestjs/common ширший і не підходить — ще один прояв тієї
   // самої розбіжності Express/Fastify, що й дала Bug #779), але литерал лишається

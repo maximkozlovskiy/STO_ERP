@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Controller, Delete, Module, Patch } from '@nestjs/common';
+import { Controller, Delete, Get, Header, Module, Patch } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { CORS_OPTIONS, DEV_WEB_ORIGINS, REQUIRED_CORS_METHODS } from './cors.options';
@@ -47,6 +47,11 @@ class ProbeController {
   }
   @Patch(':id') patch(): { ok: boolean } {
     return { ok: true };
+  }
+  @Get('file')
+  @Header('Content-Disposition', "attachment; filename*=UTF-8''probe.xlsx")
+  file(): string {
+    return 'x';
   }
 }
 
@@ -130,6 +135,30 @@ describe('CORS — живий preflight через Fastify-адаптер', () =
         });
       expect(res.headers['access-control-allow-origin']).toBe(ORIGIN);
       expect(res.headers['access-control-allow-credentials']).toBe('true');
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Назва завантаженого файла (кошторис `Кошторис-<номер наряду>.xlsx`) — у Content-Disposition.
+  // Браузер читає його на cross-origin відповіді лише тоді, коли сервер назвав його в
+  // access-control-expose-headers; інакше сторінка бере запасну назву без номера.
+  it('Content-Disposition відкритий браузеру (access-control-expose-headers)', async () => {
+    const app = await NestFactory.create<NestFastifyApplication>(
+      ProbeModule,
+      new FastifyAdapter(),
+      { logger: false },
+    );
+    app.enableCors(CORS_OPTIONS);
+    await app.init();
+    try {
+      const res = await app
+        .getHttpAdapter()
+        .getInstance()
+        .inject({ method: 'GET', url: '/probe/file', headers: { origin: ORIGIN } });
+      expect(String(res.headers['access-control-expose-headers'] ?? '').toLowerCase()).toContain(
+        'content-disposition',
+      );
     } finally {
       await app.close();
     }
