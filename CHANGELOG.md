@@ -5,6 +5,17 @@
 
 ---
 
+### 9cff845f..HEAD QA-цикл bcf2f8e7..HEAD: sync · review · tester · optimize · e2e · simplify · code-review · security (2026-10-21)
+
+- Tester: #912–#916 — повернене зі замовлення в список іде за станом і потребою наряду; «Зняти резерв»
+  лише для активного наряду; заголовки календаря за мовою. Review: тайм-аут транзакцій замовлень API,
+  запасні тексти календаря. Optimize: календарні шляхи наряду 20→12 / 27→18 / 31→22 SQL.
+- Simplify: одна функція повернення в список (`returnToList`), `onOrderClosed`, легке опитування
+  batch-у пропозицій (`GET /supplier-offers/batches/:id/status`), AVD-дзеркало без перезапису незмінних
+  рядків, ролі в `@sto/shared`, `err`/`groupBy`/`apiPost`, `FormDialog`, `useConfirm().openRef`.
+  Code-review: Escape над вкладеним підтвердженням, подвійне надсилання, підключення понад 200.
+  Security: знахідок немає. Відкладене — техборг §15.
+
 ### f6d86e06..HEAD fix(i18n): типові підписи спільних компонентів за мовою інтерфейсу (2026-10-19)
 
 - `GoodPickerModal` (увесь, з деревом категорій `CategoryTree`), `CollapsibleHeader`, `ExpiryBadge`:

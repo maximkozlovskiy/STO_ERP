@@ -119,9 +119,9 @@ cd apps/api && npx vitest run src/modules/supplier-api/<тека>/<файл>.spe
 | `sweep`: перепостановка загублених рядків (пошуки й відправки — `addBulk`), очищення пропозицій (BR-SCON-006, BR-SOFR-003)                                                            | `processors/supplier-maintenance.sweep.spec.ts`    | 2      |
 | дзеркало AVD: upsert сирим SQL (незмінний рядок — лише `seenAt`), зняття не побачених, збій без видалення, `sync-due` одним `addBulk` (BR-SCON-006, 015)                              | `catalog/supplier-catalog.sync.spec.ts`            | 7      |
 | планування відправки й підсумок `supplierApiStatus` — чисті функції (BR-SCON-010, 013)                                                                                                | `orders/supplier-order-planner.spec.ts`            | 17     |
-| відправка: кнопка, outbox, кроки, звірка, UNKNOWN, статуси (опитування без N+1), «Повернути непідтверджене», скасування, sweep одним `addBulk` (BR-SCON-006, 009…014, BR-PO-011, 012) | `orders/supplier-orders.send.spec.ts`              | 34     |
+| відправка: кнопка, outbox, кроки, звірка, UNKNOWN, статуси (опитування без N+1), «Повернути непідтверджене», скасування, sweep одним `addBulk` (BR-SCON-006, 009…014, BR-PO-011, 012) | `orders/supplier-orders.send.spec.ts`              | 35     |
 
-Разом тут: **175** кейсів; разом із реєстром [supplier-offer.md](supplier-offer.md) — **257** у модулі
+Разом тут: **176** кейсів; разом із реєстром [supplier-offer.md](supplier-offer.md) — **258** у модулі
 (цифри з `vitest --reporter=json`).
 
 Поза модулем: `config/env.schema.spec.ts` — відмова старту з allowlist у production (BR-SCON-005);

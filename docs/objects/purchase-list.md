@@ -186,6 +186,6 @@ cd apps/api && npx vitest run src/modules/purchase-lists/<файл>.spec.ts
 Поза модулем: `work-orders/work-order-stock-effects.reservation-lifecycle.spec.ts` (BR-WO-021,
 BR-INVT-018), `xlsx/document-line-import.adapter.spec.ts` і `xlsx/xlsx.service.spec.ts` (імпорт рядків —
 BR-PL-009, BR-WO-021). Web: `purchase-orders/__tests__/PurchaseOrdersPage.procurement-tab.test.tsx`,
-`ProcurementTab.test.tsx`, `ItemsView.po-link-release.test.tsx` (номер замовлення для приймальні — текст, «Зняти резерв» лише для активного наряду), `components/ui/purchase-list/__tests__/*`,
+`ProcurementTab.test.tsx`, `ItemsView.po-link-release.test.tsx` (номер замовлення для приймальні — текст, «Зняти резерв» лише для активного наряду), `procurement/__tests__/FormDialog.test.tsx` (повторне надсилання, поки запит іде), `components/ui/purchase-list/__tests__/*`,
 `components/ui/__tests__/CreateWorkOrderModal.procurement.test.tsx`,
 `settings/__tests__/NumbersTab.purchase-list.test.tsx`. E2E через браузер — `apps/web/e2e/purchase-lists.spec.ts`.
