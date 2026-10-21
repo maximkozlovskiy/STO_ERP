@@ -1,5 +1,14 @@
 import type { SupplierOrderStatus } from '@prisma/client';
-import { asArray, asRecord, parsePrice, parseQty, positiveIntOrNull, str } from '../adapter-utils';
+import {
+  asArray,
+  asRecord,
+  joinOfferKey,
+  parsePrice,
+  parseQty,
+  positiveIntOrNull,
+  splitOfferKey,
+  str,
+} from '../adapter-utils';
 import type { ConfirmedLine, NormalizedOffer } from '../supplier-adapter.interface';
 
 /**
@@ -19,11 +28,10 @@ import type { ConfirmedLine, NormalizedOffer } from '../supplier-adapter.interfa
  * Терміну постачання пошук не віддає.
  */
 
-export const bmOfferKey = (productUuid: string, warehouseUuid: string) =>
-  `${productUuid}|${warehouseUuid}`;
+export const bmOfferKey = joinOfferKey;
 
 export function parseBmOfferKey(key: string): { productUuid: string; warehouseUuid: string } {
-  const [productUuid = '', warehouseUuid = ''] = key.split('|');
+  const [productUuid, warehouseUuid] = splitOfferKey(key);
   return { productUuid, warehouseUuid };
 }
 

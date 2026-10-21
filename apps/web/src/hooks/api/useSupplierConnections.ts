@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import type {
-  ApiSchema,
-  SupplierConnectionCreateValues,
-  SupplierConnectionUpdateValues,
+import {
+  SUPPLIER_CONNECTION_ADMIN_ROLES,
+  type ApiSchema,
+  type SupplierConnectionCreateValues,
+  type SupplierConnectionUpdateValues,
 } from '@sto/shared';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, apiPost } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 
 /**
@@ -16,8 +17,6 @@ export type SupplierFieldSpec = ApiSchema<'SupplierFieldSpecDto'>;
 export type SupplierConnection = ApiSchema<'SupplierConnectionResponseDto'>;
 export type SupplierQueuedResponse = ApiSchema<'SupplierQueuedResponseDto'>;
 export type SupplierProviderCode = SupplierConnection['provider'];
-
-const ADMIN_ROLES: readonly string[] = ['OWNER', 'ADMIN'];
 
 export const supplierConnectionsKeys = {
   all: ['supplier-connections'] as const,
@@ -35,15 +34,24 @@ export function connectionBusy(c: SupplierConnection): boolean {
   );
 }
 
-/** Інтервал опитування, поки триває перевірка чи синхронізація (BR-SCON-004: результат пише обробник). */
+/** Інтервал опитування, поки триває перевірка (BR-SCON-004: результат пише обробник за секунди). */
 export const CONNECTIONS_POLL_MS = 2_000;
+/** Синхронізація каталогу (BR-SCON-015) триває хвилинами — опитуємо рідше. */
+export const CATALOG_SYNC_POLL_MS = 15_000;
+
+/** Часто — поки йде перевірка; рідше — поки лише синхронізація каталогу; інакше — ні. */
+export function connectionsPollInterval(items: SupplierConnection[] | undefined): number | false {
+  if (!items) return false;
+  if (items.some(c => c.verifyStatus === 'PENDING')) return CONNECTIONS_POLL_MS;
+  return items.some(connectionBusy) ? CATALOG_SYNC_POLL_MS : false;
+}
 
 export function useSupplierProviders() {
   const { employee } = useAuth();
   return useQuery<SupplierProviderInfo[]>({
     queryKey: supplierConnectionsKeys.providers(),
     queryFn: ({ signal }) => apiFetch('/supplier-providers', { signal }),
-    enabled: ADMIN_ROLES.includes(employee?.role ?? ''),
+    enabled: SUPPLIER_CONNECTION_ADMIN_ROLES.includes(employee?.role ?? ''),
     staleTime: 10 * 60_000,
   });
 }
@@ -53,26 +61,22 @@ export function useSupplierConnections() {
   return useQuery<{ items: SupplierConnection[]; total: number }>({
     queryKey: supplierConnectionsKeys.list(),
     queryFn: ({ signal }) => apiFetch('/supplier-connections', { signal }),
-    enabled: ADMIN_ROLES.includes(employee?.role ?? ''),
+    enabled: SUPPLIER_CONNECTION_ADMIN_ROLES.includes(employee?.role ?? ''),
     staleTime: 0,
-    refetchInterval: query =>
-      query.state.data?.items.some(connectionBusy) ? CONNECTIONS_POLL_MS : false,
+    refetchInterval: query => connectionsPollInterval(query.state.data?.items),
   });
 }
 
-const json = (method: string, body?: unknown) => ({
-  method,
-  ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-});
-
 export const supplierConnectionsApi = {
   create: (body: SupplierConnectionCreateValues) =>
-    apiFetch<SupplierConnection>('/supplier-connections', json('POST', body)),
+    apiPost<SupplierConnection>('/supplier-connections', body),
   update: (id: string, body: SupplierConnectionUpdateValues) =>
-    apiFetch<SupplierConnection>(`/supplier-connections/${id}`, json('PATCH', body)),
+    apiFetch<SupplierConnection>(`/supplier-connections/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   remove: (id: string) => apiFetch<void>(`/supplier-connections/${id}`, { method: 'DELETE' }),
-  verify: (id: string) =>
-    apiFetch<SupplierQueuedResponse>(`/supplier-connections/${id}/verify`, json('POST')),
+  verify: (id: string) => apiPost<SupplierQueuedResponse>(`/supplier-connections/${id}/verify`),
   catalogSync: (id: string) =>
-    apiFetch<SupplierQueuedResponse>(`/supplier-connections/${id}/catalog-sync`, json('POST')),
+    apiPost<SupplierQueuedResponse>(`/supplier-connections/${id}/catalog-sync`),
 };

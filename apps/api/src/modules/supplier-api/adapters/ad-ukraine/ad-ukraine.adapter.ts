@@ -4,7 +4,7 @@ import {
   jwtExpiresAt,
   type AuthTokenState,
 } from '../../auth/supplier-auth.session';
-import { SupplierHttpClient } from '../../http/supplier-http.client';
+import { SupplierHttpClient, type SupplierHttpRequest } from '../../http/supplier-http.client';
 import { SupplierAuthError, SupplierProtocolError } from '../../http/supplier-errors';
 import {
   asArray,
@@ -216,28 +216,35 @@ export class AdUkraineAdapter implements SupplierAdapter {
   }
 
   private authed<T>(conn: SupplierConnectionContext, path: string, body: unknown): Promise<T> {
-    return this.session.withToken(conn, this.issuer(conn), token =>
-      this.withBearer<T>(conn, token, path, body),
+    return this.session.authedRequest<T>(
+      this.http,
+      conn,
+      this.issuer(conn),
+      adReq(conn, path, body),
     );
   }
 
   /** Запит із готовим токеном, без повторної авторизації (для неповторюваного кроку). */
-  private async withBearer<T>(
+  private withBearer<T>(
     conn: SupplierConnectionContext,
     token: string,
     path: string,
     body: unknown,
   ): Promise<T> {
-    const r = await this.http.request<T>({
-      provider: NAME,
-      baseUrl: baseUrlOf(conn, AD_PROD_URL),
-      method: 'POST',
-      path: `${API}${path}`,
-      body,
-      headers: { Authorization: `Bearer ${token}` },
-      secrets: [token],
-      rateScope: `ad:${conn.id}`,
-    });
-    return r.data;
+    return this.session.bearerRequest<T>(this.http, token, adReq(conn, path, body));
   }
 }
+
+/** Усі методи AD — POST з JSON-тілом під `/api/v1`. */
+const adReq = (
+  conn: SupplierConnectionContext,
+  path: string,
+  body: unknown,
+): SupplierHttpRequest => ({
+  provider: NAME,
+  baseUrl: baseUrlOf(conn, AD_PROD_URL),
+  method: 'POST',
+  path: `${API}${path}`,
+  body,
+  rateScope: `ad:${conn.id}`,
+});

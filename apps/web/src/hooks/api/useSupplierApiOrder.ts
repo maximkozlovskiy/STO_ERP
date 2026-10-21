@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { ApiSchema } from '@sto/shared';
+import { PROCUREMENT_WRITE_ROLES, SUPPLIER_API_READ_ROLES, type ApiSchema } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 
@@ -12,13 +12,9 @@ export type PurchaseOrderSupplierApi = ApiSchema<'PurchaseOrderSupplierApiDto'>;
 export type SupplierApiOrder = ApiSchema<'SupplierApiOrderDto'>;
 export type SupplierApiReleaseResult = ApiSchema<'SupplierApiReleaseResultDto'>;
 
-export const SUPPLIER_API_READ_ROLES: readonly string[] = [
-  'OWNER',
-  'ADMIN',
-  'STOREKEEPER',
-  'ACCOUNTANT',
-];
-export const SUPPLIER_API_SEND_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER'];
+/** Ролі — ті самі, що в `@Roles` бекенду (`@sto/shared`). */
+export { SUPPLIER_API_READ_ROLES };
+export const SUPPLIER_API_SEND_ROLES = PROCUREMENT_WRITE_ROLES;
 
 /**
  * Зовнішні статуси, з якими замовлення вже в постачальника (або могло туди дійти) — скасування чи

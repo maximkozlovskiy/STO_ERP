@@ -67,9 +67,9 @@ function setup() {
       { id: 'o-new', orgId: ORG, deletedAt: null, fetchedAt: ago(DAY) },
     ]),
   };
-  const offers = { enqueueSearch: vi.fn(() => Promise.resolve(true)) };
+  const offers = { enqueueSearchMany: vi.fn(() => Promise.resolve(true)) };
   const connections = { enqueueVerify: vi.fn(() => Promise.resolve(true)) };
-  const orders = { enqueuePlace: vi.fn(() => Promise.resolve(true)) };
+  const orders = { enqueuePlaceMany: vi.fn(() => Promise.resolve(true)) };
   const settings = {
     getOrganisationSettings: vi.fn(() => Promise.resolve({ supplierOfferRetentionDays: 7 })),
   };
@@ -89,9 +89,10 @@ describe('supplier-maintenance sweep', () => {
   it('загублені QUEUED-пошуки, PENDING-перевірки й QUEUED-замовлення — знову в чергу (лише свої й старші 2 хв)', async () => {
     const { proc, offers, connections, orders } = setup();
     await proc.sweepOrg(ORG);
-    expect(offers.enqueueSearch.mock.calls).toEqual([[ORG, 'stuck']]);
+    // Пошуки й відправки — одним addBulk на прохід, не окремою задачею на рядок.
+    expect(offers.enqueueSearchMany.mock.calls).toEqual([[ORG, ['stuck']]]);
     expect(connections.enqueueVerify.mock.calls).toEqual([[ORG, 'c-pending', expect.any(Date)]]);
-    expect(orders.enqueuePlace.mock.calls).toEqual([[ORG, 'po-q']]);
+    expect(orders.enqueuePlaceMany.mock.calls).toEqual([[ORG, ['po-q']]]);
   });
 
   // guards: BR-SOFR-003

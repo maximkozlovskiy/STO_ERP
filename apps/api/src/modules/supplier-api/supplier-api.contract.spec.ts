@@ -42,6 +42,7 @@ const catalog = { requestSync: vi.fn().mockResolvedValue({ queued: true }) };
 const offers = {
   search: vi.fn().mockResolvedValue({ id: ID, items: [] }),
   getBatch: vi.fn().mockResolvedValue({ id: ID, items: [] }),
+  getBatchStatus: vi.fn().mockResolvedValue({ id: ID, done: false, requests: [] }),
   itemOffers: vi.fn().mockResolvedValue({ itemId: ID, requests: [] }),
   chooseOffer: vi.fn().mockResolvedValue({ id: ID }),
   clearOffer: vi.fn().mockResolvedValue({ id: ID }),
@@ -144,6 +145,7 @@ describe('Постачальники API — HTTP-контракт', () => {
   const procurement = [
     ['POST', '/supplier-offers/search', { itemIds: [ID] }],
     ['GET', `/supplier-offers/batches/${ID}`, undefined],
+    ['GET', `/supplier-offers/batches/${ID}/status`, undefined],
     [
       'POST',
       '/supplier-offers/allocate',
@@ -190,6 +192,16 @@ describe('Постачальники API — HTTP-контракт', () => {
       'STOREKEEPER',
     );
     expect(offers.procurementSettings).toHaveBeenCalledWith('org-1');
+  });
+
+  // guards: BR-SOFR-002
+  it('легкий стан batch-у для опитування — окремий маршрут, не повний batch', async () => {
+    role = 'STOREKEEPER';
+    const res = await call('GET', `/supplier-offers/batches/${ID}/status`);
+    expect(res.statusCode).toBe(200);
+    expect(offers.getBatchStatus).toHaveBeenCalledWith('org-1', ID);
+    expect(offers.getBatch).not.toHaveBeenCalled();
+    expect((await call('GET', '/supplier-offers/batches/nope/status')).statusCode).toBe(400);
   });
 
   it('стан передачі в API бачить і бухгалтер; приймальня — ні', async () => {

@@ -11854,6 +11854,42 @@
         ]
       }
     },
+    "/api/v1/supplier-offers/batches/{id}/status": {
+      "get": {
+        "operationId": "SupplierOffersController_batchStatus_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierOfferBatchStatusDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Легкий стан пошуку для опитування: лише статуси запитів (BR-SOFR-002)",
+        "tags": [
+          "Supplier API"
+        ]
+      }
+    },
     "/api/v1/supplier-offers/batches/{id}": {
       "get": {
         "operationId": "SupplierOffersController_batch_v1",
@@ -28491,6 +28527,71 @@
           "allowSplit",
           "allowAnalogsInAuto",
           "analogPolicy"
+        ]
+      },
+      "SupplierOfferRequestStatusDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "RETRYING",
+              "DONE",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "nextRetryAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Повтор о (немає зв’язку / ліміт)"
+          },
+          "fromCache": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "nextRetryAt",
+          "fromCache",
+          "error"
+        ]
+      },
+      "SupplierOfferBatchStatusDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "done": {
+            "type": "boolean",
+            "description": "Усі запити завершено (готово / помилка)"
+          },
+          "completedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SupplierOfferRequestStatusDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "done",
+          "completedAt",
+          "requests"
         ]
       },
       "SupplierOfferBatchDto": {

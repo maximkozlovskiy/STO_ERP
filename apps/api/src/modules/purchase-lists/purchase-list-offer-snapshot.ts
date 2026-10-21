@@ -1,4 +1,4 @@
-import type { Prisma, PurchaseListItem } from '@prisma/client';
+import type { Prisma, PurchaseListItem, SupplierOffer } from '@prisma/client';
 
 /**
  * Знімок обраної пропозиції постачальника на позиції списку купівлі (BR-SOFR-006, BR-PL-017).
@@ -48,10 +48,25 @@ export const CLEAR_OFFER_SNAPSHOT = Object.freeze(
   Object.fromEntries(OFFER_SNAPSHOT_KEYS.map(k => [k, null])),
 ) as { [K in SnapshotKey]: null };
 
-export function hasOfferSnapshot(
-  item: Pick<PurchaseListItem, 'offerKey' | 'offerConnectionId'>,
-): boolean {
-  return !!item.offerKey && !!item.offerConnectionId;
+/** Знімок обраної пропозиції для позиції (BR-SOFR-006): ціна й валюта — як у постачальника. */
+export function offerSnapshot(offer: SupplierOffer, chosenBy: 'MANUAL' | 'AUTO'): OfferSnapshot {
+  return {
+    offerConnectionId: offer.connectionId,
+    offerKey: offer.offerKey,
+    offerSupplierItemId: offer.supplierItemId,
+    offerArticle: offer.article,
+    offerBrand: offer.brand,
+    offerWarehouseCode: offer.warehouseCode,
+    offerWarehouseName: offer.warehouseName,
+    offerDeliveryDays: offer.deliveryDays,
+    offerDeliveryDate: offer.deliveryDate,
+    offerPrice: offer.price,
+    offerCurrencyCode: offer.currencyCode,
+    offerMultiplicity: offer.multiplicity,
+    offerIsAnalog: offer.isAnalog,
+    offeredAt: new Date(),
+    offerChosenBy: chosenBy,
+  };
 }
 
 /**

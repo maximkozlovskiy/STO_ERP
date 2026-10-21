@@ -75,11 +75,18 @@ export class SupplierMaintenanceProcessor extends DeadLetterWorkerHost {
         take: BATCH,
       }),
     ]);
-    for (const r of requests) await this.offers.enqueueSearch(orgId, r.id);
+    // Пошуки й відправки — одним addBulk кожні, а не окремим add на рядок.
+    await this.offers.enqueueSearchMany(
+      orgId,
+      requests.map(r => r.id),
+    );
     for (const c of verifies) {
       await this.connections.enqueueVerify(orgId, c.id, c.verifyRequestedAt ?? new Date());
     }
-    for (const po of queuedPos) await this.orders.enqueuePlace(orgId, po.id);
+    await this.orders.enqueuePlaceMany(
+      orgId,
+      queuedPos.map(po => po.id),
+    );
 
     const s = await this.settings.getOrganisationSettings(orgId);
     const cutoff = new Date(Date.now() - s.supplierOfferRetentionDays * 86_400_000);

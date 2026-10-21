@@ -99,6 +99,28 @@ export class SupplierOfferBatchDto {
   @ApiProperty({ type: [SupplierOfferItemDto] }) items!: SupplierOfferItemDto[];
 }
 
+/** Статус одного запиту для опитування batch-у (без позицій і пропозицій). */
+export class SupplierOfferRequestStatusDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ enum: SupplierOfferRequestStatus }) status!: SupplierOfferRequestStatus;
+  @ApiProperty({ type: String, nullable: true, description: 'Повтор о (немає зв’язку / ліміт)' })
+  nextRetryAt!: string | null;
+  @ApiProperty() fromCache!: boolean;
+  @ApiProperty({ type: String, nullable: true }) error!: string | null;
+}
+
+/**
+ * Легкий стан batch-у (BR-SOFR-002): UI опитує його, а повний batch перечитує, лише коли запит
+ * перейшов у DONE / FAILED.
+ */
+export class SupplierOfferBatchStatusDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ description: 'Усі запити завершено (готово / помилка)' }) done!: boolean;
+  @ApiProperty({ type: String, nullable: true }) completedAt!: string | null;
+  @ApiProperty({ type: [SupplierOfferRequestStatusDto] })
+  requests!: SupplierOfferRequestStatusDto[];
+}
+
 export class SupplierOfferSearchResultDto extends SupplierOfferBatchDto {
   @ApiProperty({ description: 'Redis недоступний — запити підхопить sweep' })
   queueUnavailable!: boolean;

@@ -113,7 +113,10 @@ export class SupplierCatalogProcessor extends DeadLetterWorkerHost {
             select: { id: true },
             take: 100,
           });
-          for (const c of due) await this.catalog.enqueueSync(orgId, c.id);
+          await this.catalog.enqueueSyncMany(
+            orgId,
+            due.map(c => c.id),
+          );
         });
       }
     });

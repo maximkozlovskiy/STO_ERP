@@ -18,6 +18,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  PROCUREMENT_WRITE_ROLES,
   supplierOfferAllocateSchema,
   supplierOfferChooseSchema,
   supplierOfferSearchSchema,
@@ -38,13 +39,11 @@ import { SupplierAllocationService } from '../strategy/supplier-allocation.servi
 import {
   SupplierAllocationResultDto,
   SupplierOfferBatchDto,
+  SupplierOfferBatchStatusDto,
   SupplierOfferItemDto,
   SupplierOfferSearchResultDto,
   SupplierProcurementSettingsDto,
 } from './supplier-offers.dto';
-
-/** Пропозиції, вибір, автопідбір — ті, хто веде закупівлю (план, BR-SOFR-002). */
-export const SOFR_ROLES = ['OWNER', 'ADMIN', 'STOREKEEPER'] as const;
 
 @ApiTags('Supplier API')
 @Controller('supplier-offers')
@@ -57,7 +56,7 @@ export class SupplierOffersController {
   ) {}
 
   @Post('search')
-  @Roles(...SOFR_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Пошук пропозицій для позицій — через чергу (BR-SOFR-002)' })
   @ApiAcceptedResponse({ type: SupplierOfferSearchResultDto })
@@ -70,7 +69,7 @@ export class SupplierOffersController {
   }
 
   @Post('allocate')
-  @Roles(...SOFR_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Автопідбір за стратегією: перегляд (dryRun) або застосування (BR-SOFR-009)',
@@ -85,7 +84,7 @@ export class SupplierOffersController {
   }
 
   @Get('settings')
-  @Roles(...SOFR_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @ApiOperation({
     summary: 'Налаштування закупівлі через API для діалогів: стратегія за замовчуванням, TTL',
   })
@@ -94,8 +93,18 @@ export class SupplierOffersController {
     return this.service.procurementSettings(orgId);
   }
 
+  @Get('batches/:id/status')
+  @Roles(...PROCUREMENT_WRITE_ROLES)
+  @ApiOperation({
+    summary: 'Легкий стан пошуку для опитування: лише статуси запитів (BR-SOFR-002)',
+  })
+  @ApiOkResponse({ type: SupplierOfferBatchStatusDto })
+  batchStatus(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getBatchStatus(orgId, id);
+  }
+
   @Get('batches/:id')
-  @Roles(...SOFR_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @ApiOperation({ summary: 'Стан пошуку пропозицій: підключення й пропозиції (UI опитує)' })
   @ApiOkResponse({ type: SupplierOfferBatchDto })
   batch(
@@ -115,7 +124,7 @@ export class SupplierItemOffersController {
   constructor(private readonly service: SupplierOffersService) {}
 
   @Get(':id/offers')
-  @Roles(...SOFR_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @ApiOperation({ summary: 'Останні відомі пропозиції позиції — без мережі (BR-SOFR-003)' })
   @ApiOkResponse({ type: SupplierOfferItemDto })
   offers(
@@ -127,7 +136,7 @@ export class SupplierItemOffersController {
   }
 
   @Post(':id/choose-offer')
-  @Roles(...SOFR_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Обрати пропозицію: постачальник, ціна в гривні, знімок (BR-SOFR-006)' })
   @ApiOkResponse({ type: PurchaseListItemResponseDto })
@@ -141,7 +150,7 @@ export class SupplierItemOffersController {
   }
 
   @Delete(':id/offer')
-  @Roles(...SOFR_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @ApiOperation({ summary: 'Зняти обрану пропозицію (постачальник і ціна лишаються)' })
   @ApiOkResponse({ type: PurchaseListItemResponseDto })
   clear(

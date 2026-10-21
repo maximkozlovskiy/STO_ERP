@@ -2,9 +2,8 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
-import { translateError } from '@sto/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { getLocale } from '../../../common/tenant/tenant-context';
+import { err } from '../../../common/utils/err';
 import { normalizeArticle } from '../../../common/utils/normalize-article';
 import type {
   CatalogMirrorRow,
@@ -15,13 +14,44 @@ import type {
 import { SupplierAdapterRegistry } from '../adapters/supplier-adapter-registry';
 import { mirrorRowToOffers } from '../adapters/avd-trade/avd-trade.mapper';
 
+/**
+ * Дані рядка дзеркала відрізняються від нових (або рядок був знятий). Незмінний рядок повна
+ * синхронізація лише позначає «бачили» (`seenAt`): `syncVersion` і `updatedAt` не рухаються, інакше
+ * кожна синхронізація переписувала б весь каталог для sync-outbox.
+ */
+const ROW_CHANGED = Prisma.raw(`(
+  "supplier_catalog_items"."article", "supplier_catalog_items"."articleNormalized",
+  "supplier_catalog_items"."brand", "supplier_catalog_items"."brandNormalized",
+  "supplier_catalog_items"."name", "supplier_catalog_items"."price",
+  "supplier_catalog_items"."currencyCode", "supplier_catalog_items"."priceType",
+  "supplier_catalog_items"."stock", "supplier_catalog_items"."deletedAt"
+) IS DISTINCT FROM (
+  EXCLUDED."article", EXCLUDED."articleNormalized", EXCLUDED."brand", EXCLUDED."brandNormalized",
+  EXCLUDED."name", EXCLUDED."price", EXCLUDED."currencyCode", EXCLUDED."priceType",
+  EXCLUDED."stock", EXCLUDED."deletedAt"
+)`);
+
 /** Межа рядків дзеркала на один артикул (той самий артикул у різних брендів). */
 const MIRROR_HITS = 50;
 /** Рядків на один INSERT: 18 параметрів × 500 ≪ 32767 (межа параметрів Postgres). */
 const UPSERT_CHUNK = 500;
 
-const err = (key: string, params?: Record<string, string>) =>
-  translateError(key, getLocale(), params);
+/**
+ * Задача синхронізації. Сталий jobId: поки синхронізація підключення йде, повторне натискання
+ * нової не ставить. removeOnFail: true — задача з jobId у failed блокувала б наступну назавжди
+ * (BullMQ не додає).
+ */
+const syncJob = (orgId: string, connectionId: string) => ({
+  name: 'sync',
+  data: { orgId, connectionId },
+  opts: {
+    attempts: 10,
+    backoff: { type: 'exponential', delay: 60_000 },
+    jobId: `supplier-catalog-${connectionId}`,
+    removeOnComplete: true,
+    removeOnFail: true,
+  },
+});
 
 /**
  * Дзеркало каталогу постачальника без пошуку за артикулом (AVD, BR-SCON-015). Пошук пропозицій —
@@ -82,23 +112,26 @@ export class SupplierCatalogService {
 
   async enqueueSync(orgId: string, connectionId: string): Promise<boolean> {
     try {
-      // Сталий jobId: поки синхронізація підключення йде, повторне натискання нової не ставить.
-      // removeOnFail: true — задача з jobId у failed блокувала б наступну назавжди (BullMQ не додає).
-      await this.catalogQueue.add(
-        'sync',
-        { orgId, connectionId },
-        {
-          attempts: 10,
-          backoff: { type: 'exponential', delay: 60_000 },
-          jobId: `supplier-catalog-${connectionId}`,
-          removeOnComplete: true,
-          removeOnFail: true,
-        },
-      );
+      const { name, data, opts } = syncJob(orgId, connectionId);
+      await this.catalogQueue.add(name, data, opts);
       return true;
     } catch (e) {
       this.logger.warn(
         `Синхронізацію каталогу ${connectionId} не поставлено в чергу: ${e instanceof Error ? e.message : e}`,
+      );
+      return false;
+    }
+  }
+
+  /** Синхронізації кількох підключень одним `addBulk` (`sync-due`); false — Redis недоступний. */
+  async enqueueSyncMany(orgId: string, connectionIds: string[]): Promise<boolean> {
+    if (connectionIds.length === 0) return true;
+    try {
+      await this.catalogQueue.addBulk(connectionIds.map(id => syncJob(orgId, id)));
+      return true;
+    } catch (e) {
+      this.logger.warn(
+        `Синхронізації каталогу (${connectionIds.length}) не поставлено в чергу: ${e instanceof Error ? e.message : e}`,
       );
       return false;
     }
@@ -166,8 +199,11 @@ export class SupplierCatalogService {
           "priceType" = EXCLUDED."priceType",
           "stock" = EXCLUDED."stock",
           "seenAt" = EXCLUDED."seenAt",
-          "syncVersion" = "supplier_catalog_items"."syncVersion" + 1,
-          "updatedAt" = now(),
+          "syncVersion" = CASE WHEN ${ROW_CHANGED}
+            THEN "supplier_catalog_items"."syncVersion" + 1
+            ELSE "supplier_catalog_items"."syncVersion" END,
+          "updatedAt" = CASE WHEN ${ROW_CHANGED}
+            THEN now() ELSE "supplier_catalog_items"."updatedAt" END,
           "deletedAt" = NULL
         WHERE "supplier_catalog_items"."orgId" = EXCLUDED."orgId"`;
     }

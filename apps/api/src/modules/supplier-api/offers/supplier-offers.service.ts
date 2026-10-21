@@ -1,34 +1,38 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
-import type { Prisma, SupplierOffer, SupplierStrategy } from '@prisma/client';
+import type { Prisma, SupplierOffer, SupplierOfferBatch, SupplierStrategy } from '@prisma/client';
 import {
   TRANSACTION_TIMEOUT_MS,
   formatPersonName,
-  translateError,
   type SupplierOfferSearchValues,
 } from '@sto/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { getLocale } from '../../../common/tenant/tenant-context';
+import { err } from '../../../common/utils/err';
+import { groupBy } from '../../../common/utils/array';
 import { normalizeArticle } from '../../../common/utils/normalize-article';
 import { SettingsService } from '../../settings/settings.service';
 import { GoodsService } from '../../goods/goods.service';
 import { BrandsService } from '../../brands/brands.service';
-import { loadItemDtos } from '../../purchase-lists/purchase-lists.helpers';
+import {
+  conflict,
+  isItemOpen,
+  loadItemDtos,
+  OPEN_ITEM_WHERE,
+} from '../../purchase-lists/purchase-lists.helpers';
 import { canSeeItemCost, maskItemCost } from '../../purchase-lists/purchase-lists.mapper';
-import { CLEAR_OFFER_SNAPSHOT, goodSwap } from '../../purchase-lists/purchase-list-offer-snapshot';
+import {
+  CLEAR_OFFER_SNAPSHOT,
+  goodSwap,
+  offerSnapshot,
+} from '../../purchase-lists/purchase-list-offer-snapshot';
 import type { PurchaseListItemResponseDto } from '../../purchase-lists/purchase-lists.dto';
 import { SupplierPriceConverter } from './supplier-price-converter';
 import { offerSelectability } from './offer-selectability';
 import { roundUpToStep } from '../strategy/offer-allocation';
 import type {
   SupplierOfferBatchDto,
+  SupplierOfferBatchStatusDto,
   SupplierOfferDto,
   SupplierOfferItemDto,
   SupplierOfferRequestDto,
@@ -36,10 +40,6 @@ import type {
   SupplierProcurementSettingsDto,
 } from './supplier-offers.dto';
 
-const err = (key: string, params?: Record<string, string | number>) =>
-  translateError(key, getLocale(), params);
-
-const OPEN_ITEM = { status: 'OPEN' as const, purchaseOrderId: null, deletedAt: null };
 const ITEM_FOR_OFFERS = {
   good: {
     select: {
@@ -117,11 +117,12 @@ export class SupplierOffersService {
     } = {},
   ): Promise<SupplierOfferSearchResultDto> {
     const ids = Array.from(new Set(dto.itemIds));
-    const items = await this.loadItems(orgId, ids);
-    const [connections, s] = await Promise.all([
+    const [items, connections, s] = await Promise.all([
+      this.loadItems(orgId, ids),
+      // Поля підключення для відповіді — одразу: batch будується з уже прочитаного, без getBatch.
       this.prisma.supplierConnection.findMany({
         where: { orgId, enabled: true, deletedAt: null },
-        select: { id: true },
+        select: REQUEST_INCLUDE.connection.select,
         orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
         take: 50,
       }),
@@ -189,7 +190,10 @@ export class SupplierOffersService {
       }
     }
 
-    const { batchId, toEnqueue } = await this.prisma.$transaction(
+    const allCached = pairs.every(p =>
+      cacheHits.has(cacheKey(p.connectionId, p.articleNormalized, p.brand)),
+    );
+    const { batch, created } = await this.prisma.$transaction(
       async tx => {
         const batch = await tx.supplierOfferBatch.create({
           data: {
@@ -198,8 +202,10 @@ export class SupplierOffersService {
             strategy: opts.strategy ?? null,
             requestedBy: opts.userId ?? null,
             itemIds: ids,
+            // Задач немає (усе з кешу чи нема пар) — batch завершено одразу.
+            completedAt: allCached ? now : null,
           },
-          select: { id: true },
+          select: { id: true, purpose: true, strategy: true, completedAt: true, createdAt: true },
         });
         const rows: Prisma.SupplierOfferRequestCreateManyInput[] = pairs.map(p => {
           const base = {
@@ -219,20 +225,31 @@ export class SupplierOffersService {
             : base;
         });
         const created = rows.length
-          ? await tx.supplierOfferRequest.createManyAndReturn({
-              data: rows,
-              select: { id: true, fromCache: true },
-            })
+          ? await tx.supplierOfferRequest.createManyAndReturn({ data: rows })
           : [];
-        return { batchId: batch.id, toEnqueue: created.filter(r => !r.fromCache).map(r => r.id) };
+        return { batch, created };
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
 
+    const toEnqueue = created.filter(r => !r.fromCache).map(r => r.id);
     const queueUnavailable = !(await this.enqueueSearchMany(orgId, toEnqueue));
-    if (toEnqueue.length === 0) await this.completeBatchIfDone(orgId, batchId);
-    const batch = await this.getBatch(orgId, batchId, opts.role);
-    return { ...batch, queueUnavailable, noConnections: connections.length === 0, skippedItemIds };
+    // Відповідь — з уже прочитаних позицій і підключень та щойно створених запитів, у порядку пар
+    // (позиція × підключення за пріоритетом); getBatch перечитав би все те саме ще раз.
+    const connById = new Map(connections.map(c => [c.id, c]));
+    const order = new Map(pairs.map((p, i) => [`${p.itemId}|${p.connectionId}`, i]));
+    const pairIndex = (r: { purchaseListItemId: string | null; connectionId: string }) =>
+      order.get(`${r.purchaseListItemId}|${r.connectionId}`) ?? 0;
+    const requests: RequestRow[] = created
+      .map(r => ({ ...r, connection: connById.get(r.connectionId) as RequestRow['connection'] }))
+      .sort((a, b) => pairIndex(a) - pairIndex(b));
+    const itemDtos = await this.buildItems(orgId, items, requests, opts.role);
+    return {
+      ...toBatchDto(batch, ids, itemDtos, requests),
+      queueUnavailable,
+      noConnections: connections.length === 0,
+      skippedItemIds,
+    };
   }
 
   /** Постановка пошуку в чергу; false — Redis недоступний (рядок лишається QUEUED для sweep). */
@@ -310,17 +327,38 @@ export class SupplierOffersService {
       }),
     ]);
     const itemDtos = await this.buildItems(orgId, items, requests, role);
-    const done = requests.every(r => r.status === 'DONE' || r.status === 'FAILED');
+    return toBatchDto(batch, itemIds, itemDtos, requests);
+  }
+
+  /**
+   * BR-SOFR-002: легкий стан batch-у для опитування UI — лише статуси запитів, без позицій і
+   * пропозицій. Повний batch UI перечитує, коли запит перейшов у DONE / FAILED.
+   */
+  async getBatchStatus(orgId: string, batchId: string): Promise<SupplierOfferBatchStatusDto> {
+    const [batch, requests] = await Promise.all([
+      this.prisma.supplierOfferBatch.findFirst({
+        where: { id: batchId, orgId, deletedAt: null },
+        select: { id: true, completedAt: true },
+      }),
+      this.prisma.supplierOfferRequest.findMany({
+        where: { orgId, batchId, deletedAt: null },
+        select: { id: true, status: true, nextRetryAt: true, fromCache: true, error: true },
+        orderBy: { createdAt: 'asc' },
+        take: 5000,
+      }),
+    ]);
+    if (!batch) throw new NotFoundException(err('err.supplierApi.batchNotFound'));
     return {
       id: batch.id,
-      purpose: batch.purpose,
-      strategy: batch.strategy,
-      done,
+      done: requests.every(r => isFinalStatus(r.status)),
       completedAt: batch.completedAt?.toISOString() ?? null,
-      createdAt: batch.createdAt.toISOString(),
-      items: itemIds
-        .map(id => itemDtos.find(i => i.itemId === id))
-        .filter((i): i is SupplierOfferItemDto => !!i),
+      requests: requests.map(r => ({
+        id: r.id,
+        status: r.status,
+        nextRetryAt: r.nextRetryAt?.toISOString() ?? null,
+        fromCache: r.fromCache,
+        error: r.error,
+      })),
     };
   }
 
@@ -371,9 +409,7 @@ export class SupplierOffersService {
     role?: string,
   ): Promise<PurchaseListItemResponseDto> {
     const [item] = await this.loadItems(orgId, [itemId]);
-    if (item.status !== 'OPEN' || item.purchaseOrderId !== null) {
-      throw new BadRequestException(err('err.purchaseList.itemNotOpen'));
-    }
+    if (!isItemOpen(item)) throw new BadRequestException(err('err.purchaseList.itemNotOpen'));
     const offer = await this.prisma.supplierOffer.findFirst({
       where: { id: offerId, orgId, deletedAt: null },
       include: { connection: { select: { counterpartyId: true, enabled: true, deletedAt: true } } },
@@ -411,16 +447,22 @@ export class SupplierOffersService {
     const quantity = step > 1 ? roundUpToStep(item.quantity, step) : item.quantity;
     const write = async (targetGoodId: string | null) => {
       const res = await this.prisma.purchaseListItem.updateMany({
-        where: { id: item.id, orgId, ...OPEN_ITEM, quantity: item.quantity, goodId: item.goodId },
+        where: {
+          id: item.id,
+          orgId,
+          ...OPEN_ITEM_WHERE,
+          quantity: item.quantity,
+          goodId: item.goodId,
+        },
         data: {
           supplierId: offer.connection.counterpartyId,
           expectedPrice: priceUah as number,
           ...(quantity !== item.quantity ? { quantity } : {}),
-          ...snapshotOf(offer, 'MANUAL'),
+          ...offerSnapshot(offer, 'MANUAL'),
           ...(targetGoodId && targetGoodId !== item.goodId ? goodSwap(item, targetGoodId) : {}),
         },
       });
-      if (res.count !== 1) throw new ConflictException(err('err.purchaseList.concurrentChange'));
+      if (res.count !== 1) throw conflict();
     };
 
     if (!sel.replacesGood) {
@@ -448,14 +490,18 @@ export class SupplierOffersService {
     role?: string,
   ): Promise<PurchaseListItemResponseDto> {
     const [item] = await this.loadItems(orgId, [itemId]);
-    if (item.status !== 'OPEN' || item.purchaseOrderId !== null) {
-      throw new BadRequestException(err('err.purchaseList.itemNotOpen'));
-    }
+    if (!isItemOpen(item)) throw new BadRequestException(err('err.purchaseList.itemNotOpen'));
     const res = await this.prisma.purchaseListItem.updateMany({
-      where: { id: item.id, orgId, ...OPEN_ITEM, quantity: item.quantity, offerKey: item.offerKey },
+      where: {
+        id: item.id,
+        orgId,
+        ...OPEN_ITEM_WHERE,
+        quantity: item.quantity,
+        offerKey: item.offerKey,
+      },
       data: { ...CLEAR_OFFER_SNAPSHOT },
     });
-    if (res.count !== 1) throw new ConflictException(err('err.purchaseList.concurrentChange'));
+    if (res.count !== 1) throw conflict();
     return this.itemDto(orgId, item.id, role);
   }
 
@@ -484,7 +530,8 @@ export class SupplierOffersService {
         }),
       );
     }
-    return ids.map(id => items.find(i => i.id === id) as ItemForOffers);
+    const byId = new Map(items.map(i => [i.id, i]));
+    return ids.map(id => byId.get(id) as ItemForOffers);
   }
 
   /** Власний запит позиції, якому належить пропозиція (свій чи той, з якого взято кеш). */
@@ -598,8 +645,8 @@ export class SupplierOffersService {
           take: OFFERS_PER_REQUEST * sourceIds.length,
         })
       : [];
-    const byRequest = new Map<string, SupplierOffer[]>();
-    for (const o of offers) byRequest.set(o.requestId, [...(byRequest.get(o.requestId) ?? []), o]);
+    const byRequest = groupBy(offers, o => o.requestId);
+    const requestsByItem = groupBy(requests, r => r.purchaseListItemId);
     const fetchedAt = new Map<string, Date | null>();
     if (requests.some(r => r.cacheOfId)) {
       const sourceIds = [...new Set(requests.flatMap(r => (r.cacheOfId ? [r.cacheOfId] : [])))];
@@ -615,9 +662,9 @@ export class SupplierOffersService {
     const now = Date.now();
     const out: SupplierOfferItemDto[] = [];
     for (const item of items) {
-      const itemOpen = item.status === 'OPEN' && item.purchaseOrderId === null;
+      const itemOpen = isItemOpen(item);
       const reqDtos: SupplierOfferRequestDto[] = [];
-      for (const r of requests.filter(x => x.purchaseListItemId === item.id)) {
+      for (const r of requestsByItem.get(item.id) ?? []) {
         const sourceId = r.cacheOfId ?? r.id;
         const got = r.cacheOfId ? (fetchedAt.get(r.cacheOfId) ?? null) : r.completedAt;
         const stale = !!got && now - got.getTime() > s.ttlMs;
@@ -706,23 +753,22 @@ export class SupplierOffersService {
   }
 }
 
-/** Знімок пропозиції для позиції (BR-SOFR-006): ціна й валюта — як у постачальника. */
-export function snapshotOf(offer: SupplierOffer, chosenBy: 'MANUAL' | 'AUTO') {
+const isFinalStatus = (status: string): boolean => status === 'DONE' || status === 'FAILED';
+
+function toBatchDto(
+  batch: Pick<SupplierOfferBatch, 'id' | 'purpose' | 'strategy' | 'completedAt' | 'createdAt'>,
+  itemIds: string[],
+  itemDtos: SupplierOfferItemDto[],
+  requests: Array<{ status: string }>,
+): SupplierOfferBatchDto {
+  const byItem = new Map(itemDtos.map(i => [i.itemId, i]));
   return {
-    offerConnectionId: offer.connectionId,
-    offerKey: offer.offerKey,
-    offerSupplierItemId: offer.supplierItemId,
-    offerArticle: offer.article,
-    offerBrand: offer.brand,
-    offerWarehouseCode: offer.warehouseCode,
-    offerWarehouseName: offer.warehouseName,
-    offerDeliveryDays: offer.deliveryDays,
-    offerDeliveryDate: offer.deliveryDate,
-    offerPrice: offer.price,
-    offerCurrencyCode: offer.currencyCode,
-    offerMultiplicity: offer.multiplicity,
-    offerIsAnalog: offer.isAnalog,
-    offeredAt: new Date(),
-    offerChosenBy: chosenBy,
+    id: batch.id,
+    purpose: batch.purpose,
+    strategy: batch.strategy,
+    done: requests.every(r => isFinalStatus(r.status)),
+    completedAt: batch.completedAt?.toISOString() ?? null,
+    createdAt: batch.createdAt.toISOString(),
+    items: itemIds.map(id => byItem.get(id)).filter((i): i is SupplierOfferItemDto => !!i),
   };
 }

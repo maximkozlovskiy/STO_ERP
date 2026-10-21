@@ -166,6 +166,36 @@ describe('Пошук пропозицій — batch і черга (BR-SOFR-002)'
     ).toBe(true);
   });
 
+  // sto-simplify 2026-10-21: відповідь пошуку будується з уже прочитаних позицій і підключень та
+  // щойно створених запитів — без getBatch (той перечитував усе те саме).
+  // guards: BR-SOFR-002
+  it('відповідь пошуку дорівнює стану batch-у з БД; без задач — batch завершено одразу', async () => {
+    const h = offersHarness();
+    const res = await h.service.search(ORG, { itemIds: [ITEM_MANUAL, ITEM_WO] }, { role: 'OWNER' });
+    const { queueUnavailable: _q, noConnections: _n, skippedItemIds: _s, ...batch } = res;
+    expect(batch).toEqual(await h.service.getBatch(ORG, res.id, 'OWNER'));
+    expect(batch.completedAt).toBeNull();
+    for (const r of h.t.supplierOfferRequest.rows)
+      Object.assign(r, { status: 'DONE', completedAt: new Date() });
+    const cached = await h.service.search(ORG, { itemIds: [ITEM_MANUAL] });
+    expect(cached.done).toBe(true);
+    expect(cached.completedAt).not.toBeNull();
+  });
+
+  // guards: BR-SOFR-002
+  it('легкий стан batch-у для опитування — статуси запитів без позицій і пропозицій; чужий — 404', async () => {
+    const h = offersHarness();
+    const res = await h.service.search(ORG, { itemIds: [ITEM_MANUAL] });
+    const st = await h.service.getBatchStatus(ORG, res.id);
+    expect(st).toMatchObject({ id: res.id, done: false, completedAt: null });
+    expect(st).not.toHaveProperty('items');
+    expect(st.requests.map(r => r.id).sort()).toEqual(
+      res.items.flatMap(i => i.requests.map(r => r.id)).sort(),
+    );
+    expect(st.requests.every(r => r.status === 'QUEUED' && r.nextRetryAt === null)).toBe(true);
+    await expect(h.service.getBatchStatus(OTHER_ORG, res.id)).rejects.toThrow();
+  });
+
   it('позиція чужої організації — 404; без підключень — порожньо з noConnections', async () => {
     const h = offersHarness({ connections: [] });
     await expect(h.service.search(OTHER_ORG, { itemIds: [ITEM_MANUAL] })).rejects.toThrow(

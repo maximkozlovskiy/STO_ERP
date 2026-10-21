@@ -232,7 +232,10 @@ async function readBody(response: Response, maxBytes: number): Promise<string> {
   }
   if (!response.body) return '';
   const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
+  // Потокове декодування: шматки не накопичуються й не склеюються ще однією копією (прайс AVD —
+  // сотні МБ); `stream: true` тримає розірваний між шматками символ UTF-8 до наступного.
+  const decoder = new TextDecoder('utf-8');
+  let text = '';
   let size = 0;
   for (;;) {
     const { done, value } = await reader.read();
@@ -242,9 +245,9 @@ async function readBody(response: Response, maxBytes: number): Promise<string> {
       await reader.cancel().catch(() => undefined);
       throw new BodyTooLargeError();
     }
-    chunks.push(value);
+    text += decoder.decode(value, { stream: true });
   }
-  return new TextDecoder('utf-8').decode(Buffer.concat(chunks));
+  return text + decoder.decode();
 }
 
 const clampPause = (ms: number) => Math.min(MAX_RATE_LIMIT_PAUSE_MS, Math.max(1000, ms));

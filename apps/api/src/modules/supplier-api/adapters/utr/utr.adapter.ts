@@ -11,13 +11,13 @@ import {
   asRecord,
   baseUrlOf,
   keepValidOffers,
-  kyivYmdString,
   requireCredential,
   sameArticle,
   sameBrand,
   str,
   warehouseOptions,
 } from '../adapter-utils';
+import { kyivYmd } from '../../../../common/utils/kyiv-date';
 import type {
   FoundOrder,
   NormalizedOffer,
@@ -136,7 +136,7 @@ export class UtrAdapter implements SupplierAdapter {
     });
     let accepted: Record<string, unknown> | null = null;
     if (run.state.step !== 'ACCEPT') {
-      const date = kyivYmdString(new Date());
+      const date = kyivYmd(new Date());
       // Варіант доставки — читання до неповторюваного кроку: його збій безпечно повторити.
       const variants = await this.authed<unknown[]>(conn, {
         method: 'POST',
@@ -195,9 +195,7 @@ export class UtrAdapter implements SupplierAdapter {
     conn: SupplierConnectionContext,
     order: SupplierOrderInput,
   ): Promise<FoundOrder | null> {
-    const from = kyivYmdString(
-      new Date((order.sentAt ?? new Date()).getTime() - RECONCILE_LOOKBACK_MS),
-    );
+    const from = kyivYmd(new Date((order.sentAt ?? new Date()).getTime() - RECONCILE_LOOKBACK_MS));
     const list = await this.authed<unknown[]>(conn, {
       method: 'GET',
       path: `/api/order-list/${from}`,
@@ -285,29 +283,28 @@ export class UtrAdapter implements SupplierAdapter {
     };
   }
 
-  private authed<T>(
-    conn: SupplierConnectionContext,
-    req: Omit<SupplierHttpRequest, 'provider' | 'baseUrl' | 'headers' | 'secrets' | 'rateScope'>,
-  ): Promise<T> {
-    return this.session.withToken(conn, this.issuer(conn), token =>
-      this.withBearer<T>(conn, token, req),
-    );
+  private authed<T>(conn: SupplierConnectionContext, req: UtrRequest): Promise<T> {
+    return this.session.authedRequest<T>(this.http, conn, this.issuer(conn), utrReq(conn, req));
   }
 
   /** Запит із готовим токеном, без повторної авторизації (для неповторюваного кроку). */
-  private async withBearer<T>(
+  private withBearer<T>(
     conn: SupplierConnectionContext,
     token: string,
-    req: Omit<SupplierHttpRequest, 'provider' | 'baseUrl' | 'headers' | 'secrets' | 'rateScope'>,
+    req: UtrRequest,
   ): Promise<T> {
-    const r = await this.http.request<T>({
-      ...req,
-      provider: NAME,
-      baseUrl: baseUrlOf(conn, UTR_PROD_URL),
-      headers: { Authorization: `Bearer ${token}` },
-      secrets: [token],
-      rateScope: `utr:${conn.id}`,
-    });
-    return r.data;
+    return this.session.bearerRequest<T>(this.http, token, utrReq(conn, req));
   }
 }
+
+type UtrRequest = Omit<
+  SupplierHttpRequest,
+  'provider' | 'baseUrl' | 'headers' | 'secrets' | 'rateScope'
+>;
+
+const utrReq = (conn: SupplierConnectionContext, req: UtrRequest): SupplierHttpRequest => ({
+  ...req,
+  provider: NAME,
+  baseUrl: baseUrlOf(conn, UTR_PROD_URL),
+  rateScope: `utr:${conn.id}`,
+});

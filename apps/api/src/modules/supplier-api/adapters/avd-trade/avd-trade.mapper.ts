@@ -1,5 +1,13 @@
 import type { SupplierOrderStatus } from '@prisma/client';
-import { asArray, asRecord, parsePrice, str } from '../adapter-utils';
+import {
+  asArray,
+  asRecord,
+  joinOfferKey,
+  parsePrice,
+  parseQty,
+  splitOfferKey,
+  str,
+} from '../adapter-utils';
 import type {
   CatalogMirrorRow,
   ConfirmedLine,
@@ -21,11 +29,10 @@ import type {
  */
 
 /** Ключ пропозиції AVD: товар + склад (рядок кошика — `item_uuid` + `warehouse_uuid`). */
-export const avdOfferKey = (itemUuid: string, warehouseUuid: string) =>
-  `${itemUuid}|${warehouseUuid}`;
+export const avdOfferKey = joinOfferKey;
 
 export function parseAvdOfferKey(key: string): { itemUuid: string; warehouseUuid: string } {
-  const [itemUuid = '', warehouseUuid = ''] = key.split('|');
+  const [itemUuid, warehouseUuid] = splitOfferKey(key);
   return { itemUuid, warehouseUuid };
 }
 
@@ -197,11 +204,9 @@ export function parseAvdPriceCsv(text: string): CatalogMirrorRow[] {
       currencyCode: col.currency >= 0 ? cells[col.currency]?.trim() || 'UAH' : 'UAH',
       priceType: null,
       stock: stockCols.flatMap(c => {
-        const raw = (cells[c.i] ?? '').trim();
-        const capped = /^(>|≥)/.test(raw);
-        const qty = Number(raw.replace(/^(>=|>|≥)\s*/, '').replace(',', '.'));
+        const { qty, lowerBound } = parseQty(cells[c.i] ?? '');
         if (!Number.isFinite(qty) || qty <= 0) return [];
-        return [{ warehouseCode: c.h, warehouseName: c.h, qty, isCapped: capped }];
+        return [{ warehouseCode: c.h, warehouseName: c.h, qty, isCapped: lowerBound }];
       }),
     });
   }

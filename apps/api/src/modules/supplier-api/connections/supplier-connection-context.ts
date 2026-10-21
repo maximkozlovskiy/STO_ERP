@@ -23,12 +23,17 @@ export function parseCredentials(raw: string | null | undefined): Record<string,
 }
 
 export function parseOptions(raw: Prisma.JsonValue | null | undefined): SupplierConnectionOptions {
-  return raw && typeof raw === 'object' && !Array.isArray(raw)
-    ? (raw)
-    : {};
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 }
 
-export function toConnectionContext(row: SupplierConnection): SupplierConnectionContext {
+/**
+ * Підключення без кешу токена: `authState` шифрований і потрібен лише адаптерам із JWT (UTR, AD),
+ * які читають його самі через `SupplierAuthSession` — інакше він розшифровувався б двічі, а для
+ * решти адаптерів — даремно.
+ */
+export type ConnectionRow = Omit<SupplierConnection, 'authState'>;
+
+export function toConnectionContext(row: ConnectionRow): SupplierConnectionContext {
   return {
     id: row.id,
     orgId: row.orgId,
@@ -46,6 +51,25 @@ export async function loadConnection(
   db: Db,
   orgId: string,
   id: string,
-): Promise<SupplierConnection | null> {
-  return db.supplierConnection.findFirst({ where: { id, orgId, deletedAt: null } });
+): Promise<ConnectionRow | null> {
+  return db.supplierConnection.findFirst({
+    where: { id, orgId, deletedAt: null },
+    omit: { authState: true },
+  });
+}
+
+/** Кілька підключень організації (не видалених) одним запитом — мапа за id. */
+export async function loadConnections(
+  db: Db,
+  orgId: string,
+  ids: string[],
+): Promise<Map<string, ConnectionRow>> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Map();
+  const rows = await db.supplierConnection.findMany({
+    where: { id: { in: unique }, orgId, deletedAt: null },
+    omit: { authState: true },
+    take: unique.length,
+  });
+  return new Map(rows.map(r => [r.id, r]));
 }

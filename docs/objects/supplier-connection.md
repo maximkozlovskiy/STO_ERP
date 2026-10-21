@@ -102,26 +102,26 @@ cd apps/api && npx vitest run src/modules/supplier-api/<тека>/<файл>.spe
 
 **Модуль:** `apps/api/src/modules/supplier-api/`
 
-| Аспект                                                                                                                                                | Тест                                               | Кейсів |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ------ |
-| HTTP-контракт: ролі (BR-SCON-001, 009; BR-SOFR-002), zod-тіла, 202 для черги                                                                          | `supplier-api.contract.spec.ts`                    | 17     |
-| HTTP до постачальника: адреси, redirect, тайм-аут, типізовані помилки, секрети, квота (BR-SCON-005, 007, 011)                                         | `http/supplier-http.client.spec.ts`                | 19     |
-| allowlist локальних фейків лише поза production (BR-SCON-005)                                                                                         | `http/supplier-url-policy.spec.ts`                 | 6      |
-| JWT постачальника: кеш, оновлення під м’ютексом, одна повторна авторизація (BR-SCON-008)                                                              | `auth/supplier-auth.session.spec.ts`               | 8      |
-| реєстр адаптерів і опції з опису провайдера (BR-SCON-003)                                                                                             | `adapters/supplier-adapter-registry.spec.ts`       | 4      |
-| AVD проти фейку: ключ, дзеркало (items/query, export 202), кошик replace, звірка за кошиком, статуси, спільна квота (BR-SCON-007, 008, 011, 012, 015) | `adapters/avd-trade/avd-trade.contract.spec.ts`    | 12     |
-| UTR проти фейку: логін і refresh, пошук, order/accept, звірка за коментарем, невідомий статус (BR-SCON-008, 010…012)                                  | `adapters/utr/utr.contract.spec.ts`                | 8      |
-| BM Parts проти фейку: заголовки, strict-пошук з аналогами, кошик → резерв → відвантаження, статуси (BR-SCON-008, 010…012)                             | `adapters/bm-parts/bm-parts.contract.spec.ts`      | 8      |
-| Tehnomir проти фейку: токен у тілі, позиції кошика з reference, order/create лише своїх, стани позицій, 503 = ліміт (BR-SCON-007, 008, 011, 012)      | `adapters/tehnomir/tehnomir.contract.spec.ts`      | 9      |
-| AD проти фейку: JWT з exp, повторний логін, order/create по складу, звірка, статус (BR-SCON-008, 010…012)                                             | `adapters/ad-ukraine/ad-ukraine.contract.spec.ts`  | 7      |
-| підключення: роль постачальника, дубль, креди лише на запис, опції, перевірка через чергу (BR-SCON-001…006)                                           | `connections/supplier-connections.service.spec.ts` | 12     |
-| обробник `verify`: OK / FAILED, UnrecoverableError, ліміт без витрати спроби (BR-SCON-004, 006, 007)                                                  | `processors/supplier-search.verify.spec.ts`        | 5      |
-| `sweep`: перепостановка загублених рядків, очищення пропозицій (BR-SCON-006, BR-SOFR-003)                                                             | `processors/supplier-maintenance.sweep.spec.ts`    | 2      |
-| дзеркало AVD: upsert сирим SQL, зняття не побачених, збій без видалення (BR-SCON-015)                                                                 | `catalog/supplier-catalog.sync.spec.ts`            | 6      |
-| планування відправки й підсумок `supplierApiStatus` — чисті функції (BR-SCON-010, 013)                                                                | `orders/supplier-order-planner.spec.ts`            | 17     |
-| відправка: кнопка, outbox, кроки, звірка, UNKNOWN, статуси, «Повернути непідтверджене», скасування (BR-SCON-009…014, BR-PO-011, 012)                  | `orders/supplier-orders.send.spec.ts`              | 32     |
+| Аспект                                                                                                                                                                                | Тест                                               | Кейсів |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ------ |
+| HTTP-контракт: ролі (BR-SCON-001, 009; BR-SOFR-002), zod-тіла, 202 для черги, легкий стан batch-у для опитування                                                                      | `supplier-api.contract.spec.ts`                    | 18     |
+| HTTP до постачальника: адреси, redirect, тайм-аут, типізовані помилки, секрети, квота (BR-SCON-005, 007, 011)                                                                         | `http/supplier-http.client.spec.ts`                | 19     |
+| allowlist локальних фейків лише поза production (BR-SCON-005)                                                                                                                         | `http/supplier-url-policy.spec.ts`                 | 6      |
+| JWT постачальника: кеш, оновлення під м’ютексом, одна повторна авторизація (BR-SCON-008)                                                                                              | `auth/supplier-auth.session.spec.ts`               | 8      |
+| реєстр адаптерів і опції з опису провайдера (BR-SCON-003)                                                                                                                             | `adapters/supplier-adapter-registry.spec.ts`       | 4      |
+| AVD проти фейку: ключ, дзеркало (items/query, export 202), кошик replace, звірка за кошиком, статуси, спільна квота (BR-SCON-007, 008, 011, 012, 015)                                 | `adapters/avd-trade/avd-trade.contract.spec.ts`    | 12     |
+| UTR проти фейку: логін і refresh, пошук, order/accept, звірка за коментарем, невідомий статус (BR-SCON-008, 010…012)                                                                  | `adapters/utr/utr.contract.spec.ts`                | 8      |
+| BM Parts проти фейку: заголовки, strict-пошук з аналогами, кошик → резерв → відвантаження, статуси (BR-SCON-008, 010…012)                                                             | `adapters/bm-parts/bm-parts.contract.spec.ts`      | 8      |
+| Tehnomir проти фейку: токен у тілі, позиції кошика з reference, order/create лише своїх, стани позицій, 503 = ліміт (BR-SCON-007, 008, 011, 012)                                      | `adapters/tehnomir/tehnomir.contract.spec.ts`      | 9      |
+| AD проти фейку: JWT з exp, повторний логін, order/create по складу, звірка, статус (BR-SCON-008, 010…012)                                                                             | `adapters/ad-ukraine/ad-ukraine.contract.spec.ts`  | 7      |
+| підключення: роль постачальника, дубль, креди лише на запис, опції, перевірка через чергу (BR-SCON-001…006)                                                                           | `connections/supplier-connections.service.spec.ts` | 12     |
+| обробник `verify`: OK / FAILED, UnrecoverableError, ліміт без витрати спроби (BR-SCON-004, 006, 007)                                                                                  | `processors/supplier-search.verify.spec.ts`        | 5      |
+| `sweep`: перепостановка загублених рядків (пошуки й відправки — `addBulk`), очищення пропозицій (BR-SCON-006, BR-SOFR-003)                                                            | `processors/supplier-maintenance.sweep.spec.ts`    | 2      |
+| дзеркало AVD: upsert сирим SQL (незмінний рядок — лише `seenAt`), зняття не побачених, збій без видалення, `sync-due` одним `addBulk` (BR-SCON-006, 015)                              | `catalog/supplier-catalog.sync.spec.ts`            | 7      |
+| планування відправки й підсумок `supplierApiStatus` — чисті функції (BR-SCON-010, 013)                                                                                                | `orders/supplier-order-planner.spec.ts`            | 17     |
+| відправка: кнопка, outbox, кроки, звірка, UNKNOWN, статуси (опитування без N+1), «Повернути непідтверджене», скасування, sweep одним `addBulk` (BR-SCON-006, 009…014, BR-PO-011, 012) | `orders/supplier-orders.send.spec.ts`              | 34     |
 
-Разом тут: **171** кейс; разом із реєстром [supplier-offer.md](supplier-offer.md) — **251** у модулі
+Разом тут: **175** кейсів; разом із реєстром [supplier-offer.md](supplier-offer.md) — **257** у модулі
 (цифри з `vitest --reporter=json`).
 
 Поза модулем: `config/env.schema.spec.ts` — відмова старту з allowlist у production (BR-SCON-005);

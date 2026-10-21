@@ -1,5 +1,13 @@
 import type { SupplierOrderStatus } from '@prisma/client';
-import { asArray, asRecord, parsePrice, parseQty, str } from '../adapter-utils';
+import {
+  asArray,
+  asRecord,
+  joinOfferKey,
+  parsePrice,
+  parseQty,
+  splitOfferKey,
+  str,
+} from '../adapter-utils';
 import type { ConfirmedLine, NormalizedOffer } from '../supplier-adapter.interface';
 
 /**
@@ -16,10 +24,10 @@ import type { ConfirmedLine, NormalizedOffer } from '../supplier-adapter.interfa
  *    reserve, unitPrice}. Словник status у специфікації не наведено — звірити наживо.
  */
 
-export const adOfferKey = (itemNo: string, location: string) => `${itemNo}|${location}`;
+export const adOfferKey = joinOfferKey;
 
 export function parseAdOfferKey(key: string): { itemNo: string; location: string } {
-  const [itemNo = '', location = ''] = key.split('|');
+  const [itemNo, location] = splitOfferKey(key);
   return { itemNo, location };
 }
 

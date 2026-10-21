@@ -1,5 +1,4 @@
 import { normalizeArticle } from '../../../common/utils/normalize-article';
-import { kyivYmd } from '../../../common/utils/kyiv-date';
 import { SupplierAuthError, SupplierProtocolError } from '../http/supplier-errors';
 import type { NormalizedOffer, SupplierConnectionContext } from './supplier-adapter.interface';
 
@@ -42,6 +41,18 @@ export function parseSupplierDate(raw: unknown): Date | null {
   const s = raw.trim().replace(' ', 'T');
   const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00Z` : s);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Ключ пропозиції всіх адаптерів — «товар постачальника|склад (прайс)» (BR-SOFR-001): за ним
+ * рядок замовлення знаходить пропозицію, тож формат один на всіх.
+ */
+export const joinOfferKey = (itemId: string, place: string): string => `${itemId}|${place}`;
+
+/** Частини ключа пропозиції `[товар, склад]`; відсутня частина — порожній рядок. */
+export function splitOfferKey(key: string): [string, string] {
+  const [itemId = '', place = ''] = key.split('|');
+  return [itemId, place];
 }
 
 /** BR-SOFR-001: пропозиція без кількості чи ціни не зберігається. */
@@ -109,6 +120,3 @@ export function str(v: unknown): string | null {
   if (typeof v === 'number' && Number.isFinite(v)) return String(v);
   return null;
 }
-
-/** Дата «YYYY-MM-DD» за Києвом (параметри дат у запитах постачальників). */
-export const kyivYmdString = (d: Date): string => kyivYmd(d);

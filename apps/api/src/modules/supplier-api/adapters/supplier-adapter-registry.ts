@@ -1,7 +1,6 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import type { SupplierProvider } from '@prisma/client';
-import { translateError } from '@sto/shared';
-import { getLocale } from '../../../common/tenant/tenant-context';
+import { err } from '../../../common/utils/err';
 import {
   SUPPLIER_ADAPTERS,
   type SupplierAdapter,
@@ -40,9 +39,7 @@ export class SupplierAdapterRegistry {
   get(provider: SupplierProvider | string): SupplierAdapter {
     const a = this.adapters.get(provider as SupplierProvider);
     if (!a) {
-      throw new BadRequestException(
-        translateError('err.supplierConnection.unknownProvider', getLocale(), { provider }),
-      );
+      throw new BadRequestException(err('err.supplierConnection.unknownProvider', { provider }));
     }
     return a;
   }
@@ -82,8 +79,8 @@ export function validateSupplierOptions(
       errors.push(`невідоме поле «${key}»`);
       continue;
     }
-    const err = checkField(spec, v);
-    if (err) errors.push(err);
+    const problem = checkField(spec, v);
+    if (problem) errors.push(problem);
     else if (v !== undefined && v !== null && v !== '') value[key] = v;
   }
   const whRaw = (raw as Record<string, unknown>).warehouses;
@@ -109,8 +106,8 @@ export function validateSupplierOptions(
             errors.push(`warehouses.${warehouseId}: невідоме поле «${k}»`);
             continue;
           }
-          const err = checkField(spec, v);
-          if (err) errors.push(`warehouses.${warehouseId}: ${err}`);
+          const problem = checkField(spec, v);
+          if (problem) errors.push(`warehouses.${warehouseId}: ${problem}`);
           else if (typeof v === 'string' && v.trim() !== '') out[k] = v.trim();
         }
         for (const spec of adapter.warehouseFields) {

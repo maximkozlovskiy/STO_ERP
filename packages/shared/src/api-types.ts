@@ -3704,6 +3704,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/supplier-offers/batches/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Легкий стан пошуку для опитування: лише статуси запитів (BR-SOFR-002) */
+        get: operations["SupplierOffersController_batchStatus_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/supplier-offers/batches/{id}": {
         parameters: {
             query?: never;
@@ -8725,6 +8742,22 @@ export interface components {
             allowAnalogsInAuto: boolean;
             /** @enum {string} */
             analogPolicy: "CREATE_AND_REPLACE" | "SHOW_ONLY" | "CATALOG_ONLY";
+        };
+        SupplierOfferRequestStatusDto: {
+            id: string;
+            /** @enum {string} */
+            status: "QUEUED" | "RUNNING" | "RETRYING" | "DONE" | "FAILED";
+            /** @description Повтор о (немає зв’язку / ліміт) */
+            nextRetryAt: string | null;
+            fromCache: boolean;
+            error: string | null;
+        };
+        SupplierOfferBatchStatusDto: {
+            id: string;
+            /** @description Усі запити завершено (готово / помилка) */
+            done: boolean;
+            completedAt: string | null;
+            requests: components["schemas"]["SupplierOfferRequestStatusDto"][];
         };
         SupplierOfferBatchDto: {
             id: string;
@@ -17002,6 +17035,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupplierProcurementSettingsDto"];
+                };
+            };
+        };
+    };
+    SupplierOffersController_batchStatus_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierOfferBatchStatusDto"];
                 };
             };
         };

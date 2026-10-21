@@ -3,17 +3,22 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { InjectQueue } from '@nestjs/bullmq';
 import { OnEvent } from '@nestjs/event-emitter';
 import type { Queue } from 'bullmq';
-import type { Prisma } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
+import type { Prisma, PurchaseListItem } from '@prisma/client';
+import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { getLocale, runWithTenant } from '../../../common/tenant/tenant-context';
+import { runWithTenant } from '../../../common/tenant/tenant-context';
+import { err } from '../../../common/utils/err';
+import { groupBy } from '../../../common/utils/array';
 import { SettingsService } from '../../settings/settings.service';
 import { PurchaseOrdersService } from '../../purchase-orders/purchase-orders.service';
 import {
   PurchaseListLinkService,
   undelivered,
 } from '../../purchase-lists/purchase-list-link.service';
-import { lockWorkOrdersForUpdate } from '../../work-orders/work-order-stock-requirements';
+import {
+  lockWorkOrdersForUpdate,
+  QTY_EPSILON,
+} from '../../work-orders/work-order-stock-requirements';
 import { SupplierAdapterRegistry } from '../adapters/supplier-adapter-registry';
 import { parseOptions } from '../connections/supplier-connection-context';
 import {
@@ -35,12 +40,34 @@ import type {
 type Tx = Prisma.TransactionClient;
 type Db = Tx | PrismaService;
 
-const err = (key: string, params?: Record<string, string | number>) =>
-  translateError(key, getLocale(), params);
-
-const EPS = 1e-6;
 /** Статуси замовлення, з яких його ще можна відправити в API. */
 const SENDABLE_PO = new Set(['DRAFT', 'ORDERED']);
+
+/** Задача відправки: сталий jobId дедуплікує живу (кнопка ‖ sweep), див. `enqueuePlace`. */
+const placeJob = (orgId: string, purchaseOrderId: string) => ({
+  name: 'place',
+  data: { orgId, purchaseOrderId },
+  opts: {
+    attempts: 10,
+    backoff: { type: 'exponential', delay: 30_000 },
+    jobId: `supplier-place-${purchaseOrderId}`,
+    removeOnComplete: true,
+    removeOnFail: true,
+  },
+});
+
+const PO_SELECT = {
+  id: true,
+  number: true,
+  status: true,
+  supplierId: true,
+  warehouseId: true,
+  supplierApiStatus: true,
+  supplierApiSentAt: true,
+  supplierApiError: true,
+  warehouse: { select: { name: true } },
+} as const satisfies Prisma.PurchaseOrderSelect;
+type LoadedPo = Prisma.PurchaseOrderGetPayload<{ select: typeof PO_SELECT }>;
 
 const ORDER_INCLUDE = {
   connection: { select: { name: true, provider: true } },
@@ -89,14 +116,15 @@ export class SupplierOrdersService {
     const hasActive = await this.prisma.supplierOrder.count({
       where: { orgId, purchaseOrderId, deletedAt: null, status: { not: 'CANCELLED' } },
     });
-    const plan = hasActive > 0 ? null : await this.buildPlan(this.prisma, orgId, purchaseOrderId);
+    const plan =
+      hasActive > 0 ? null : await this.buildPlan(this.prisma, orgId, purchaseOrderId, po);
     if (po.status === 'DRAFT') {
       await this.purchaseOrders.transition(orgId, purchaseOrderId, 'ORDERED');
     }
     await this.prisma.$transaction(
       async tx => {
         await this.lockPo(tx, orgId, purchaseOrderId);
-        await this.ensurePlannedInTx(tx, orgId, purchaseOrderId, plan);
+        await this.ensurePlannedInTx(tx, orgId, purchaseOrderId, plan, po);
         await tx.purchaseOrder.updateMany({
           where: {
             id: purchaseOrderId,
@@ -129,21 +157,26 @@ export class SupplierOrdersService {
    */
   async enqueuePlace(orgId: string, purchaseOrderId: string): Promise<boolean> {
     try {
-      await this.orderQueue.add(
-        'place',
-        { orgId, purchaseOrderId },
-        {
-          attempts: 10,
-          backoff: { type: 'exponential', delay: 30_000 },
-          jobId: `supplier-place-${purchaseOrderId}`,
-          removeOnComplete: true,
-          removeOnFail: true,
-        },
-      );
+      const { name, data, opts } = placeJob(orgId, purchaseOrderId);
+      await this.orderQueue.add(name, data, opts);
       return true;
     } catch (e) {
       this.logger.warn(
         `Відправку ${purchaseOrderId} не поставлено в чергу: ${e instanceof Error ? e.message : e}`,
+      );
+      return false;
+    }
+  }
+
+  /** Відправки кількох замовлень одним `addBulk` (sweep); false — Redis недоступний. */
+  async enqueuePlaceMany(orgId: string, purchaseOrderIds: string[]): Promise<boolean> {
+    if (purchaseOrderIds.length === 0) return true;
+    try {
+      await this.orderQueue.addBulk(purchaseOrderIds.map(id => placeJob(orgId, id)));
+      return true;
+    } catch (e) {
+      this.logger.warn(
+        `Відправки (${purchaseOrderIds.length}) не поставлено в чергу: ${e instanceof Error ? e.message : e}`,
       );
       return false;
     }
@@ -184,8 +217,13 @@ export class SupplierOrdersService {
    * (`lineWithoutOffer`, `ambiguousOffer`, `offerFromOtherConnection`, `connectionDisabled`,
    * `noWarehouseMapping`, `noApiLines`).
    */
-  async buildPlan(db: Db, orgId: string, purchaseOrderId: string): Promise<PlannedOrder[]> {
-    const po = await this.loadPo(db, orgId, purchaseOrderId);
+  async buildPlan(
+    db: Db,
+    orgId: string,
+    purchaseOrderId: string,
+    loaded?: LoadedPo,
+  ): Promise<PlannedOrder[]> {
+    const po = loaded ?? (await this.loadPo(db, orgId, purchaseOrderId));
     const [lines, items, connections] = await Promise.all([
       db.purchaseOrderLine.findMany({
         where: { orgId, purchaseOrderId, deletedAt: null },
@@ -248,6 +286,7 @@ export class SupplierOrdersService {
     orgId: string,
     purchaseOrderId: string,
     plan: PlannedOrder[] | null,
+    loaded?: Pick<LoadedPo, 'number'>,
   ): Promise<void> {
     const existing = await tx.supplierOrder.findMany({
       where: { orgId, purchaseOrderId, deletedAt: null },
@@ -262,7 +301,7 @@ export class SupplierOrdersService {
       return;
     }
     const orders = plan ?? (await this.buildPlan(tx, orgId, purchaseOrderId));
-    const po = await this.loadPo(tx, orgId, purchaseOrderId);
+    const po = loaded ?? (await this.loadPo(tx, orgId, purchaseOrderId));
     for (const [i, o] of orders.entries()) {
       // Номер замовлення не глобально унікальний (нумерацію можна скинути) — reference, ключ звірки
       // в кабінеті постачальника, доповнено початком id зовнішнього замовлення.
@@ -376,19 +415,20 @@ export class SupplierOrdersService {
         for (const { items, qty } of excess.values()) {
           let rest = qty;
           for (const item of items) {
-            if (rest <= EPS) break;
+            if (rest <= QTY_EPSILON) break;
             const cut = Math.min(rest, undelivered(item));
-            if (cut <= EPS) continue;
+            if (cut <= QTY_EPSILON) continue;
             await this.links.releaseFromOrder(tx, orgId, item, cut, activeWo);
             if (item.workOrderId && activeWo.has(item.workOrderId)) touchedWo.add(item.workOrderId);
             rest -= cut;
             total += cut;
           }
         }
-        if (total <= EPS) throw new BadRequestException(err('err.supplierApi.nothingToRelease'));
+        if (total <= QTY_EPSILON)
+          throw new BadRequestException(err('err.supplierApi.nothingToRelease'));
         // Повернене в OPEN не покриває більше, ніж наряду ще треба: потребу могли зменшити, поки
         // замовлення було в постачальника (ORDERED тоді не урізаються, BR-PL-013). Лише живі
-        // наряди, як `returnUndelivered`: у закритого повернене вже «Скасовано», а резерв
+        // наряди, як `PurchaseListLinkService.onOrderClosed`: у закритого повернене вже «Скасовано», а резерв
         // завершеного списано, не знято — `reservedQty` його позицій лишається (BR-PL-013).
         for (const woId of touchedWo) await this.links.onWorkOrderPartsChanged(tx, orgId, woId);
         return total;
@@ -425,22 +465,7 @@ export class SupplierOrdersService {
         take: 1000,
       }),
     ]);
-    const confirmed = new Map<string, number>();
-    for (const o of orders) {
-      const refused = o.status === 'REJECTED' || o.status === 'CANCELLED';
-      for (const l of o.lines) {
-        if (l.qtyConfirmed === null && !refused) continue; // постачальник ще не відповів
-        const key = `${l.goodId}|${l.offerKey}`;
-        confirmed.set(key, (confirmed.get(key) ?? 0) + (l.qtyConfirmed ?? 0));
-      }
-    }
-    const out = new Map<string, { items: typeof items; qty: number }>();
-    for (const [key, conf] of confirmed) {
-      const group = items.filter(i => `${i.goodId}|${i.offerKey}` === key);
-      const qty = group.reduce((s, i) => s + undelivered(i), 0) - conf;
-      if (qty > EPS) out.set(key, { items: group, qty });
-    }
-    return out;
+    return unconfirmedFrom(orders, items);
   }
 
   /** Стан передачі для картки замовлення (BR-PO-011). */
@@ -449,8 +474,10 @@ export class SupplierOrdersService {
     purchaseOrderId: string,
     _role?: string,
   ): Promise<PurchaseOrderSupplierApiDto> {
-    const po = await this.loadPo(this.prisma, orgId, purchaseOrderId);
-    const [orders, s, connections, staleItems, excess] = await Promise.all([
+    // Одним паралельним кроком: підключення постачальника — з увімкнених підключень організації
+    // (їх одиниці), непідтверджене — з уже прочитаних зовнішніх замовлень і позицій.
+    const [po, orders, s, enabledConnections, offerItems] = await Promise.all([
+      this.loadPo(this.prisma, orgId, purchaseOrderId),
       this.prisma.supplierOrder.findMany({
         where: { orgId, purchaseOrderId, deletedAt: null },
         include: ORDER_INCLUDE,
@@ -458,26 +485,35 @@ export class SupplierOrdersService {
         take: 100,
       }),
       this.settings.getOrganisationSettings(orgId),
-      this.prisma.supplierConnection.count({
-        where: { orgId, counterpartyId: po.supplierId, enabled: true, deletedAt: null },
+      this.prisma.supplierConnection.findMany({
+        where: { orgId, enabled: true, deletedAt: null },
+        select: { counterpartyId: true },
+        take: 200,
       }),
+      // ORDERED-позиції з пропозицією: знімок (offeredAt) — для попередження про застарілі,
+      // offerKey — для непідтвердженого.
       this.prisma.purchaseListItem.findMany({
         where: {
           orgId,
           purchaseOrderId,
           status: 'ORDERED',
           deletedAt: null,
-          NOT: { offeredAt: null },
+          OR: [{ NOT: { offeredAt: null } }, { NOT: { offerKey: null } }],
         },
-        select: { offeredAt: true, good: { select: { name: true } } },
+        include: { good: { select: { name: true } } },
+        orderBy: { createdAt: 'desc' },
         take: 1000,
       }),
-      this.unconfirmed(this.prisma, orgId, purchaseOrderId),
     ]);
+    const connections = enabledConnections.filter(c => c.counterpartyId === po.supplierId).length;
+    const excess = unconfirmedFrom(
+      orders,
+      offerItems.filter(i => i.offerKey !== null),
+    );
     const ttlMs = s.supplierOfferTtlMinutes * 60_000;
     const stale = [
       ...new Set(
-        staleItems
+        offerItems
           .filter(i => i.offeredAt && Date.now() - i.offeredAt.getTime() > ttlMs)
           .map(i => i.good.name),
       ),
@@ -542,22 +578,42 @@ export class SupplierOrdersService {
     await tx.$queryRaw`SELECT id FROM purchase_orders WHERE id = ${purchaseOrderId}::uuid AND "orgId" = ${orgId}::uuid FOR UPDATE`;
   }
 
-  private async loadPo(db: Db, orgId: string, id: string) {
+  private async loadPo(db: Db, orgId: string, id: string): Promise<LoadedPo> {
     const po = await db.purchaseOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: {
-        id: true,
-        number: true,
-        status: true,
-        supplierId: true,
-        warehouseId: true,
-        supplierApiStatus: true,
-        supplierApiSentAt: true,
-        supplierApiError: true,
-        warehouse: { select: { name: true } },
-      },
+      select: PO_SELECT,
     });
     if (!po) throw new NotFoundException(err('err.purchaseOrder.notFound'));
     return po;
   }
+}
+
+/**
+ * Непідтверджене за (товар, пропозиція) з уже прочитаних зовнішніх замовлень і ORDERED-позицій із
+ * пропозицією (новіші — першими): позиції понад підтверджене постачальником.
+ */
+function unconfirmedFrom<T extends PurchaseListItem>(
+  orders: Array<{
+    status: string;
+    lines: Array<{ goodId: string; offerKey: string; qtyConfirmed: number | null }>;
+  }>,
+  items: T[],
+): Map<string, { items: T[]; qty: number }> {
+  const confirmed = new Map<string, number>();
+  for (const o of orders) {
+    const refused = o.status === 'REJECTED' || o.status === 'CANCELLED';
+    for (const l of o.lines) {
+      if (l.qtyConfirmed === null && !refused) continue; // постачальник ще не відповів
+      const key = `${l.goodId}|${l.offerKey}`;
+      confirmed.set(key, (confirmed.get(key) ?? 0) + (l.qtyConfirmed ?? 0));
+    }
+  }
+  const byKey = groupBy(items, i => `${i.goodId}|${i.offerKey}`);
+  const out = new Map<string, { items: T[]; qty: number }>();
+  for (const [key, conf] of confirmed) {
+    const group = byKey.get(key) ?? [];
+    const qty = group.reduce((s, i) => s + undelivered(i), 0) - conf;
+    if (qty > QTY_EPSILON) out.set(key, { items: group, qty });
+  }
+  return out;
 }

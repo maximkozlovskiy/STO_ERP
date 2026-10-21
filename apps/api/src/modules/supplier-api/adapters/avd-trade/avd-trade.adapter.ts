@@ -173,15 +173,20 @@ export class AvdTradeAdapter implements SupplierAdapter {
         if (this.exportPollMs > 0) await new Promise(res => setTimeout(res, this.exportPollMs));
         continue;
       }
-      const rows = parseAvdPriceCsv(file.data).map(row => ({
-        ...row,
-        stock: row.stock.map(s => ({
-          ...s,
-          warehouseCode: warehouses.get(s.warehouseCode.toUpperCase()) ?? s.warehouseCode,
-        })),
-      }));
-      for (let i = 0; i < rows.length; i += PAGE_SIZE)
-        await sink.upsert(rows.slice(i, i + PAGE_SIZE));
+      // Склади (назва колонки → uuid) перекодовуються пачками перед записом: ще одна повна
+      // копія прайсу (сотні МБ) поруч із розібраним файлом не тримається.
+      const rows = parseAvdPriceCsv(file.data);
+      for (let i = 0; i < rows.length; i += PAGE_SIZE) {
+        await sink.upsert(
+          rows.slice(i, i + PAGE_SIZE).map(row => ({
+            ...row,
+            stock: row.stock.map(s => ({
+              ...s,
+              warehouseCode: warehouses.get(s.warehouseCode.toUpperCase()) ?? s.warehouseCode,
+            })),
+          })),
+        );
+      }
       return { count: rows.length };
     }
     throw new SupplierNetworkError(

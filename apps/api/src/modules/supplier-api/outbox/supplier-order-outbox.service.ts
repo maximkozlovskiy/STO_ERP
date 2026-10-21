@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { Prisma, SupplierOrderStatus } from '@prisma/client';
-import { translateError } from '@sto/shared';
-import { getLocale } from '../../../common/tenant/tenant-context';
+import { err } from '../../../common/utils/err';
 
 type Tx = Prisma.TransactionClient;
 
@@ -106,7 +105,7 @@ export class SupplierOrderOutboxService {
       },
     });
     if (sent > 0 && !force) {
-      throw new BadRequestException(translateError('err.supplierApi.cancelSentOrder', getLocale()));
+      throw new BadRequestException(err('err.supplierApi.cancelSentOrder'));
     }
     await tx.supplierOrder.updateMany({
       where: { orgId, purchaseOrderId, deletedAt: null, status: 'QUEUED' },

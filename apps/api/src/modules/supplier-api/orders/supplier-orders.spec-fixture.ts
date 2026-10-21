@@ -219,14 +219,18 @@ export function ordersHarness(
       Promise.resolve({ ...SETTINGS, ...(opts.settings ?? {}) }),
     ),
   } as unknown as SettingsService;
-  const queueAdd = vi.fn(() => Promise.resolve({}));
+  const queueAdd = vi.fn((_name: string, _data: unknown, _opts: unknown) => Promise.resolve({}));
+  // addBulk як у BullMQ: пачка задач одним викликом; кожна — через `queueAdd` (спільні перевірки).
+  const queueAddBulk = vi.fn((jobs: Array<{ name: string; data: unknown; opts: unknown }>) =>
+    Promise.all(jobs.map(j => queueAdd(j.name, j.data, j.opts))),
+  );
   const service = new SupplierOrdersService(
     h.prisma,
     settings,
     registry,
     h.purchaseOrders,
     h.links,
-    { add: queueAdd } as unknown as Queue,
+    { add: queueAdd, addBulk: queueAddBulk } as unknown as Queue,
   );
   const integrationLog = new IntegrationLogService(h.prisma);
   const sender = new SupplierOrderSender(h.prisma, registry, integrationLog, settings, service);
@@ -258,6 +262,7 @@ export function ordersHarness(
     registry,
     settings,
     queueAdd,
+    queueAddBulk,
     job,
     draftFromItems,
     po,

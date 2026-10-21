@@ -1,3 +1,6 @@
+import { QTY_EPSILON } from '../../work-orders/work-order-stock-requirements';
+import { groupBy } from '../../../common/utils/array';
+import { splitOfferKey } from '../adapters/adapter-utils';
 import type {
   SupplierCapabilities,
   SupplierConnectionOptions,
@@ -70,8 +73,6 @@ export type PlanError =
 
 export type PlanResult = { ok: true; orders: PlannedOrder[] } | ({ ok: false } & PlanError);
 
-const EPS = 1e-6;
-
 export function planSupplierOrders(input: {
   po: PlanPurchaseOrder;
   lines: PlanLine[];
@@ -108,18 +109,17 @@ export function planSupplierOrders(input: {
   // змінити в чернетці); кілька — кількості позицій, і вони мусять збігатися з рядком.
   const ambiguous = new Set<string>();
   const qtyByOffer = new Map<string, { item: PlanItem; qty: number }>();
-  const byGood = new Map<string, PlanItem[]>();
-  for (const i of items) byGood.set(i.goodId, [...(byGood.get(i.goodId) ?? []), i]);
+  const byGood = groupBy(items, i => i.goodId);
   for (const [goodId, group] of byGood) {
     const ordered = lineQty.get(goodId) ?? 0;
-    if (ordered <= EPS) continue; // товар прибрано з рядків — нічого відправляти
+    if (ordered <= QTY_EPSILON) continue; // товар прибрано з рядків — нічого відправляти
     const keys = new Set(group.map(i => `${i.offerConnectionId}|${i.offerKey}`));
     if (keys.size === 1) {
       qtyByOffer.set(`${goodId}|${[...keys][0]}`, { item: group[0], qty: ordered });
       continue;
     }
     const itemsQty = group.reduce((s, i) => s + i.quantity, 0);
-    if (Math.abs(itemsQty - ordered) > EPS) {
+    if (Math.abs(itemsQty - ordered) > QTY_EPSILON) {
       ambiguous.add(group[0].goodName);
       continue;
     }
@@ -158,7 +158,7 @@ export function planSupplierOrders(input: {
     order.lines.push({
       goodId: item.goodId,
       offerKey: item.offerKey as string,
-      supplierItemId: item.offerSupplierItemId ?? (item.offerKey as string).split('|')[0],
+      supplierItemId: item.offerSupplierItemId ?? splitOfferKey(item.offerKey as string)[0],
       warehouseCode: item.offerWarehouseCode,
       qtyRequested: qty,
       priceRequested: item.offerPrice ?? 0,
@@ -188,13 +188,13 @@ export function summarizeSupplierApiStatus(
       o.status === 'PARTIALLY_CONFIRMED' ||
       o.status === 'REJECTED' ||
       o.status === 'CANCELLED' ||
-      o.lines.some(l => l.qtyConfirmed !== null && l.qtyConfirmed < l.qtyRequested - EPS),
+      o.lines.some(l => l.qtyConfirmed !== null && l.qtyConfirmed < l.qtyRequested - QTY_EPSILON),
   );
   if (underConfirmed) return 'PARTIAL';
   const allConfirmed = live.every(
     o =>
       ['CONFIRMED', 'READY', 'SHIPPED'].includes(o.status) &&
-      o.lines.every(l => l.qtyConfirmed !== null && l.qtyConfirmed >= l.qtyRequested - EPS),
+      o.lines.every(l => l.qtyConfirmed !== null && l.qtyConfirmed >= l.qtyRequested - QTY_EPSILON),
   );
   return allConfirmed ? 'CONFIRMED' : 'SENT';
 }

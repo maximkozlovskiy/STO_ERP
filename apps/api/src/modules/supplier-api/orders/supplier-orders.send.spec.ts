@@ -54,6 +54,25 @@ describe('BR-SCON-009 «Відправити в API»', () => {
     expect(state).toMatchObject({ supplierApiStatus: 'QUEUED', canSend: false });
   });
 
+  // guards: BR-SCON-006
+  it('sweep: відправки кількох замовлень — одним addBulk з тими самими опціями задачі', async () => {
+    const x = ordersHarness();
+    await expect(x.service.enqueuePlaceMany(ORG, ['po-a', 'po-b'])).resolves.toBe(true);
+    expect(x.queueAddBulk).toHaveBeenCalledTimes(1);
+    expect(x.queueAdd).toHaveBeenCalledWith(
+      'place',
+      { orgId: ORG, purchaseOrderId: 'po-b' },
+      expect.objectContaining({
+        attempts: 10,
+        backoff: { type: 'exponential', delay: 30_000 },
+        jobId: 'supplier-place-po-b',
+        removeOnFail: true,
+      }),
+    );
+    await expect(x.service.enqueuePlaceMany(ORG, [])).resolves.toBe(true);
+    expect(x.queueAddBulk).toHaveBeenCalledTimes(1);
+  });
+
   // guards: BR-SCON-010
   it('план неможливий (позиція без пропозиції) → 400, статус замовлення не змінено', async () => {
     const x = ordersHarness({
@@ -422,6 +441,27 @@ describe('BR-SCON-012 статуси й BR-PO-011: склад і FSM не змі
     await x.poller.pollDue();
     expect(refresh).not.toHaveBeenCalled();
     expect(fa.calls.status).toBe(0);
+  });
+
+  // sto-simplify 2026-10-21: підключення й замовлення опитуваних читались по одному на кожне
+  // зовнішнє замовлення (N+1) — тепер двома запитами до циклу.
+  it('опитування: підключення й замовлення читаються наперед, а не на кожне зовнішнє замовлення', async () => {
+    const fa = fakeAdapter();
+    const x = ordersHarness({ adapter: fa.adapter });
+    const poId = await x.draftFromItems();
+    await x.service.send(ORG, poId);
+    await x.sender.run(x.job(poId), undefined);
+    const so = x.supplierOrders()[0];
+    so.nextPollAt = new Date(Date.now() - 1000);
+    // Таблиці в пам'яті — уже vi.fn: попередні виклики (відправка) скидаються.
+    const connFirst = vi.spyOn(x.t.supplierConnection, 'findFirst');
+    const poFirst = vi.spyOn(x.t.purchaseOrder, 'findFirst');
+    connFirst.mockClear();
+    poFirst.mockClear();
+    await x.poller.pollDue();
+    expect(so).toMatchObject({ status: 'READY' });
+    expect(connFirst).not.toHaveBeenCalled();
+    expect(poFirst).not.toHaveBeenCalled();
   });
 
   // guards: BR-PO-011

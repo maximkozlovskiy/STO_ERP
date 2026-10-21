@@ -9,13 +9,12 @@ import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { Prisma, type SupplierConnection } from '@prisma/client';
 import {
-  translateError,
+  formatPersonName,
   type SupplierConnectionCreateValues,
   type SupplierConnectionUpdateValues,
 } from '@sto/shared';
-import { formatPersonName } from '@sto/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { getLocale } from '../../../common/tenant/tenant-context';
+import { err } from '../../../common/utils/err';
 import {
   SupplierAdapterRegistry,
   validateSupplierOptions,
@@ -29,13 +28,15 @@ import type {
   SupplierQueuedResponseDto,
 } from './supplier-connections.dto';
 
-const err = (key: string, params?: Record<string, string>) =>
-  translateError(key, getLocale(), params);
-
 const CONNECTION_INCLUDE = {
   counterparty: { select: { firstName: true, lastName: true, companyName: true } },
 } as const satisfies Prisma.SupplierConnectionInclude;
-type ConnectionRow = Prisma.SupplierConnectionGetPayload<{ include: typeof CONNECTION_INCLUDE }>;
+/** Кеш токена (`authState`) картці не потрібен — не читається й не розшифровується. */
+const NO_AUTH_STATE = { authState: true } as const satisfies Prisma.SupplierConnectionOmit;
+type ConnectionRow = Prisma.SupplierConnectionGetPayload<{
+  include: typeof CONNECTION_INCLUDE;
+  omit: typeof NO_AUTH_STATE;
+}>;
 
 /** Partial-unique міграції 20261018120000 (orgId, counterpartyId, provider) WHERE deletedAt IS NULL. */
 const UNIQUE_INDEX = 'supplier_connections_org_cp_provider_active_uq';
@@ -60,6 +61,7 @@ export class SupplierConnectionsService {
     const rows = await this.prisma.supplierConnection.findMany({
       where: { orgId, deletedAt: null },
       include: CONNECTION_INCLUDE,
+      omit: NO_AUTH_STATE,
       orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
       take: 200,
     });
@@ -96,6 +98,7 @@ export class SupplierConnectionsService {
           options: options as Prisma.InputJsonValue,
         },
         include: CONNECTION_INCLUDE,
+        omit: NO_AUTH_STATE,
       });
       return this.toDto(row);
     } catch (e) {
@@ -219,6 +222,7 @@ export class SupplierConnectionsService {
     const row = await this.prisma.supplierConnection.findFirst({
       where: { id, orgId, deletedAt: null },
       include: CONNECTION_INCLUDE,
+      omit: NO_AUTH_STATE,
     });
     if (!row) throw new NotFoundException(err('err.supplierConnection.notFound'));
     return row;

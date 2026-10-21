@@ -4,28 +4,32 @@ import type { Prisma, PurchaseListItem, SupplierOffer } from '@prisma/client';
 import {
   formatPersonName,
   TRANSACTION_TIMEOUT_MS,
-  translateError,
   type SupplierOfferAllocateValues,
 } from '@sto/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { getLocale } from '../../../common/tenant/tenant-context';
+import { err } from '../../../common/utils/err';
+import { groupBy } from '../../../common/utils/array';
 import { money, sumMoney } from '../../../common/utils/money';
 import { SettingsService } from '../../settings/settings.service';
 import { canSeeItemCost } from '../../purchase-lists/purchase-lists.mapper';
-import { goodSwap, itemPartData } from '../../purchase-lists/purchase-list-offer-snapshot';
+import { conflict, isItemOpen, OPEN_ITEM_WHERE } from '../../purchase-lists/purchase-lists.helpers';
+import {
+  goodSwap,
+  itemPartData,
+  offerSnapshot,
+} from '../../purchase-lists/purchase-list-offer-snapshot';
 import { SupplierPriceConverter } from '../offers/supplier-price-converter';
 import { offerSelectability } from '../offers/offer-selectability';
-import { snapshotOf } from '../offers/supplier-offers.service';
 import type {
   SupplierAllocationItemDto,
   SupplierAllocationResultDto,
 } from '../offers/supplier-offers.dto';
-import { allocateOffers, type AllocationOffer, type AllocationResult } from './offer-allocation';
-
-const err = (key: string, params?: Record<string, string | number>) =>
-  translateError(key, getLocale(), params);
-
-const OPEN_ITEM = { status: 'OPEN' as const, purchaseOrderId: null, deletedAt: null };
+import {
+  ALLOCATION_EPSILON,
+  allocateOffers,
+  type AllocationOffer,
+  type AllocationResult,
+} from './offer-allocation';
 
 interface ConnectionInfo {
   counterpartyId: string;
@@ -99,21 +103,32 @@ export class SupplierAllocationService {
         take: 5000,
       }),
     ]);
-    const sourceToItem = new Map<string, string[]>();
+    // Джерельний запит (свій чи той, з якого взято кеш) → запити позицій batch-у.
+    const own = requests.filter(r => r.purchaseListItemId);
+    const sourceOf = (r: { id: string; cacheOfId: string | null }) => r.cacheOfId ?? r.id;
+    const sourceToItem = groupBy(own, sourceOf);
     // (позиція, джерельний запит) → товар, на який шукали (власний запит позиції).
     const searchedGood = new Map<string, string>();
-    for (const r of requests) {
-      if (!r.purchaseListItemId) continue;
-      const src = r.cacheOfId ?? r.id;
-      sourceToItem.set(src, [...(sourceToItem.get(src) ?? []), r.purchaseListItemId]);
-      if (r.goodId) searchedGood.set(`${r.purchaseListItemId}|${src}`, r.goodId);
-    }
+    for (const r of own)
+      if (r.goodId) searchedGood.set(`${r.purchaseListItemId}|${sourceOf(r)}`, r.goodId);
     const offers = sourceToItem.size
       ? await this.prisma.supplierOffer.findMany({
           where: { orgId, requestId: { in: [...sourceToItem.keys()] }, deletedAt: null },
           take: 20_000,
         })
       : [];
+    // Пропозиції позиції — за її запитами (одна пропозиція кешованого запиту — кільком позиціям).
+    const offersByItem = new Map<string, SupplierOffer[]>();
+    for (const o of offers) {
+      for (const r of sourceToItem.get(o.requestId) ?? []) {
+        const itemId = r.purchaseListItemId as string;
+        const list = offersByItem.get(itemId);
+        if (list) {
+          if (list[list.length - 1] !== o) list.push(o);
+        } else offersByItem.set(itemId, [o]);
+      }
+    }
+    const itemById = new Map(items.map(i => [i.id, i]));
     const connections = await this.connections(orgId, [
       ...new Set(offers.map(o => o.connectionId)),
     ]);
@@ -125,22 +140,23 @@ export class SupplierAllocationService {
     const left = new Map<string, number>();
     const plans: ItemPlan[] = [];
     for (const id of itemIds) {
-      const item = items.find(i => i.id === id);
+      const item = itemById.get(id);
       if (!item) continue;
-      const own = offers.filter(o => (sourceToItem.get(o.requestId) ?? []).includes(item.id));
-      const open = item.status === 'OPEN' && item.purchaseOrderId === null;
+      const itemOffers = offersByItem.get(item.id) ?? [];
+      const offerById = new Map(itemOffers.map(o => [o.id, o]));
+      const open = isItemOpen(item);
       // Ручний вибір користувача автопідбір не перезаписує, доки цього не попросили (BR-SOFR-009).
       const keepManual = open && item.offerChosenBy === 'MANUAL' && !dto.overrideManual;
       const priceById = new Map<string, number | null>();
       const goodByOffer = new Map<string, string>();
       const input: AllocationOffer[] = [];
-      for (const o of own) {
+      for (const o of itemOffers) {
         const c = connections.get(o.connectionId);
         if (!c) continue; // підключення вимкнене чи видалене
         const searched = searchedGood.get(`${item.id}|${o.requestId}`);
         if (searched) goodByOffer.set(o.id, searched);
         const available = left.get(o.id) ?? o.qty;
-        if (available <= 1e-9) continue; // уже розподілено іншим позиціям
+        if (available <= ALLOCATION_EPSILON) continue; // уже розподілено іншим позиціям
         const priceUah = await toUah(o.currencyCode, Number(o.price));
         priceById.set(o.id, priceUah);
         const sel = offerSelectability({
@@ -181,12 +197,12 @@ export class SupplierAllocationService {
             })
           : { parts: [], uncovered: 0 };
       for (const part of result.parts) {
-        const base = left.get(part.offerId) ?? own.find(o => o.id === part.offerId)?.qty ?? 0;
+        const base = left.get(part.offerId) ?? offerById.get(part.offerId)?.qty ?? 0;
         left.set(part.offerId, Math.max(0, base - part.qty));
       }
       plans.push({
         item,
-        offers: new Map(own.map(o => [o.id, o])),
+        offers: offerById,
         connections,
         result,
         priceById,
@@ -225,7 +241,7 @@ export class SupplierAllocationService {
       const target = o.isAnalog ? o.matchedGoodId : (p.goodByOffer.get(offerId) ?? null);
       return {
         expectedPrice: p.priceById.get(offerId) ?? null,
-        ...snapshotOf(o, 'AUTO'),
+        ...offerSnapshot(o, 'AUTO'),
         ...(target && target !== item.goodId ? goodSwap(item, target) : {}),
       };
     };
@@ -238,7 +254,7 @@ export class SupplierAllocationService {
       where: {
         id: item.id,
         orgId,
-        ...OPEN_ITEM,
+        ...OPEN_ITEM_WHERE,
         quantity: item.quantity,
         goodId: item.goodId,
         offerKey: item.offerKey,
@@ -249,7 +265,7 @@ export class SupplierAllocationService {
         quantity: first.qty,
       },
     });
-    if (res.count !== 1) throw new ConflictException(err('err.purchaseList.concurrentChange'));
+    if (res.count !== 1) throw conflict();
     for (const part of rest) {
       await tx.purchaseListItem.create({
         data: {
@@ -259,7 +275,7 @@ export class SupplierAllocationService {
         },
       });
     }
-    if (result.uncovered > 1e-9) {
+    if (result.uncovered > ALLOCATION_EPSILON) {
       // Непокрита решта — без пропозиції й без постачальника пропозиції (BR-SOFR-008).
       await tx.purchaseListItem.create({
         data: itemPartData(item, result.uncovered, { status: 'OPEN', snapshot: 'none' }),

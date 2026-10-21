@@ -8,7 +8,11 @@ import { IntegrationLogService } from '../../integration-logs/integration-log.se
 import { SettingsService } from '../../settings/settings.service';
 import { SupplierAdapterRegistry } from '../adapters/supplier-adapter-registry';
 import type { SupplierOrderState } from '../adapters/supplier-adapter.interface';
-import { loadConnection, toConnectionContext } from '../connections/supplier-connection-context';
+import {
+  loadConnections,
+  toConnectionContext,
+  type ConnectionRow,
+} from '../connections/supplier-connection-context';
 import { SupplierRateLimitError } from '../http/supplier-errors';
 import { errorText, handleSupplierJobError } from '../processors/supplier-job-errors';
 import {
@@ -24,6 +28,12 @@ import { SupplierOrdersService } from './supplier-orders.service';
 const MAX_POLL_AGE_MS = 30 * 86_400_000;
 /** Скільки замовлень опитувати за прохід `poll-due` на організацію. */
 const DUE_BATCH = 100;
+
+/** Підключення й замовлення (номер, склад) опитуваних зовнішніх замовлень — прочитані наперед. */
+interface PollContext {
+  connections: Map<string, ConnectionRow>;
+  purchaseOrders: Map<string, { number: string; warehouseId: string }>;
+}
 
 /**
  * Статуси замовлень у постачальника (BR-SCON-012): повторювана `poll-due` для нетермінальних
@@ -64,12 +74,15 @@ export class SupplierOrderPoller {
             take: DUE_BATCH,
           });
           if (due.length === 0) return;
-          const minutes = (await this.settings.getOrganisationSettings(orgId))
-            .supplierOrderPollIntervalMinutes;
+          const [s, ctx] = await Promise.all([
+            this.settings.getOrganisationSettings(orgId),
+            this.pollContext(orgId, due),
+          ]);
+          const minutes = s.supplierOrderPollIntervalMinutes;
           const touched = new Set<string>();
           for (const o of due) {
             try {
-              await this.pollOne(orgId, o, minutes);
+              await this.pollOne(orgId, o, minutes, ctx);
             } catch (e) {
               const wait = e instanceof SupplierRateLimitError ? e.retryAfterMs : minutes * 60_000;
               await this.prisma.supplierOrder.updateMany({
@@ -102,10 +115,13 @@ export class SupplierOrderPoller {
       include: ORDER_WITH_LINES,
       take: 100,
     });
-    const minutes = (await this.settings.getOrganisationSettings(orgId))
-      .supplierOrderPollIntervalMinutes;
+    const [s, ctx] = await Promise.all([
+      this.settings.getOrganisationSettings(orgId),
+      this.pollContext(orgId, list),
+    ]);
+    const minutes = s.supplierOrderPollIntervalMinutes;
     try {
-      for (const o of list) await this.pollOne(orgId, o, minutes);
+      for (const o of list) await this.pollOne(orgId, o, minutes, ctx);
     } catch (e) {
       // Ліміт — відкласти без витрати спроби; авторизація / протокол — без 10 марних повторів.
       return handleSupplierJobError(job, token, e, {
@@ -119,13 +135,30 @@ export class SupplierOrderPoller {
     }
   }
 
-  async pollOne(orgId: string, o: OrderRow, pollMinutes: number): Promise<void> {
-    const row = await loadConnection(this.prisma, orgId, o.connectionId);
+  /** Підключення й замовлення всіх опитуваних — двома запитами до циклу, а не по два на кожне. */
+  private async pollContext(orgId: string, orders: OrderRow[]): Promise<PollContext> {
+    const poIds = [...new Set(orders.map(o => o.purchaseOrderId))];
+    const [connections, pos] = await Promise.all([
+      loadConnections(
+        this.prisma,
+        orgId,
+        orders.map(o => o.connectionId),
+      ),
+      poIds.length
+        ? this.prisma.purchaseOrder.findMany({
+            where: { id: { in: poIds }, orgId },
+            select: { id: true, number: true, warehouseId: true },
+            take: poIds.length,
+          })
+        : [],
+    ]);
+    return { connections, purchaseOrders: new Map(pos.map(p => [p.id, p])) };
+  }
+
+  async pollOne(orgId: string, o: OrderRow, pollMinutes: number, ctx: PollContext): Promise<void> {
+    const row = ctx.connections.get(o.connectionId);
     if (!row) return;
-    const po = await this.prisma.purchaseOrder.findFirst({
-      where: { id: o.purchaseOrderId, orgId },
-      select: { number: true, warehouseId: true },
-    });
+    const po = ctx.purchaseOrders.get(o.purchaseOrderId);
     if (!po) return;
     const conn = toConnectionContext(row);
     const adapter = this.registry.get(conn.provider);

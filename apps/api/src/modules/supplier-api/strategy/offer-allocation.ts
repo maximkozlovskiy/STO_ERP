@@ -58,7 +58,12 @@ export interface AllocationResult {
   uncovered: number;
 }
 
-const EPS = 1e-9;
+/**
+ * Епсилон розподілу — окремий від QTY_EPSILON (1e-6): він гасить лише шум float-арифметики
+ * кратності й частин (`qty / step`, залишок після віднімання частин) і входить в округлення
+ * `roundUpToStep`; заміна на 1e-6 змінила б округлення на межі кратності, тобто сам розподіл.
+ */
+export const ALLOCATION_EPSILON = 1e-9;
 const DAY_MS = 86_400_000;
 
 interface Scored {
@@ -84,7 +89,7 @@ export function effectiveDays(
 
 /** Кількість, округлена до кратності вгору. */
 export function roundUpToStep(qty: number, step: number): number {
-  return Math.ceil(qty / step - EPS) * step;
+  return Math.ceil(qty / step - ALLOCATION_EPSILON) * step;
 }
 
 export function allocateOffers(
@@ -92,7 +97,7 @@ export function allocateOffers(
   offers: AllocationOffer[],
   opts: AllocationOptions,
 ): AllocationResult {
-  if (need <= EPS) return { parts: [], uncovered: 0 };
+  if (need <= ALLOCATION_EPSILON) return { parts: [], uncovered: 0 };
   const eligible: Scored[] = offers
     .filter(o => o.selectable && o.priceUah !== null && o.priceUah > 0 && o.qty > 0)
     .map(o => {
@@ -102,17 +107,17 @@ export function allocateOffers(
         price: o.priceUah as number,
         days: effectiveDays(o, opts),
         step,
-        orderable: Math.floor(o.qty / step + EPS) * step,
+        orderable: Math.floor(o.qty / step + ALLOCATION_EPSILON) * step,
       };
     })
-    .filter(s => s.orderable > EPS);
+    .filter(s => s.orderable > ALLOCATION_EPSILON);
   if (eligible.length === 0) return { parts: [], uncovered: need };
 
   const compare = comparator(eligible, need, opts);
 
   // 1. Найкраща пропозиція, що покриває всю потребу.
   const covering = eligible
-    .filter(s => roundUpToStep(need, s.step) <= s.orderable + EPS)
+    .filter(s => roundUpToStep(need, s.step) <= s.orderable + ALLOCATION_EPSILON)
     .sort(compare);
   if (covering.length > 0) {
     const best = covering[0];
@@ -135,15 +140,15 @@ export function allocateOffers(
   const parts: AllocationPart[] = [];
   let remaining = need;
   for (const s of ranked) {
-    if (remaining <= EPS) break;
+    if (remaining <= ALLOCATION_EPSILON) break;
     if (!opts.allowSplit && s.o.supplierId !== supplier) continue;
     const take = Math.min(roundUpToStep(remaining, s.step), s.orderable);
-    if (take <= EPS) continue;
+    if (take <= ALLOCATION_EPSILON) continue;
     parts.push({ offerId: s.o.id, qty: take, priceUah: s.price, days: s.days });
     remaining -= take;
   }
   // Залишок плаваючої коми (кратність 0.1, 0.2…) — не «непокрита потреба».
-  return { parts, uncovered: remaining <= EPS ? 0 : remaining };
+  return { parts, uncovered: remaining <= ALLOCATION_EPSILON ? 0 : remaining };
 }
 
 function comparator(all: Scored[], need: number, opts: AllocationOptions) {
@@ -153,7 +158,7 @@ function comparator(all: Scored[], need: number, opts: AllocationOptions) {
   const prices = range(all.map(s => s.price));
   const days = range(all.map(s => s.days));
   const norm = (v: number, r: { min: number; max: number }) =>
-    r.max - r.min < EPS ? 0 : (v - r.min) / (r.max - r.min);
+    r.max - r.min < ALLOCATION_EPSILON ? 0 : (v - r.min) / (r.max - r.min);
   const w = Math.min(1, Math.max(0, opts.priceWeight));
   const keys = (s: Scored): number[] => {
     switch (opts.strategy) {
@@ -173,7 +178,7 @@ function comparator(all: Scored[], need: number, opts: AllocationOptions) {
     const ka = keys(a);
     const kb = keys(b);
     for (let i = 0; i < ka.length; i++) {
-      if (Math.abs(ka[i] - kb[i]) > EPS) return ka[i] - kb[i];
+      if (Math.abs(ka[i] - kb[i]) > ALLOCATION_EPSILON) return ka[i] - kb[i];
     }
     if (a.o.connectionPriority !== b.o.connectionPriority) {
       return a.o.connectionPriority - b.o.connectionPriority;

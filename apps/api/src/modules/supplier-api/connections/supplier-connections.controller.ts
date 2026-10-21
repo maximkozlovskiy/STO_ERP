@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  SUPPLIER_CONNECTION_ADMIN_ROLES,
   supplierConnectionCreateSchema,
   supplierConnectionUpdateSchema,
   type SupplierConnectionCreateValues,
@@ -33,9 +34,6 @@ import {
   SupplierQueuedResponseDto,
 } from './supplier-connections.dto';
 
-/** Підключення до API постачальників — лише власник і адміністратор (BR-SCON-001). */
-export const SCON_ADMIN_ROLES = ['OWNER', 'ADMIN'] as const;
-
 @ApiTags('Supplier API')
 @Controller('supplier-providers')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -44,7 +42,7 @@ export class SupplierProvidersController {
   constructor(private readonly registry: SupplierAdapterRegistry) {}
 
   @Get()
-  @Roles(...SCON_ADMIN_ROLES)
+  @Roles(...SUPPLIER_CONNECTION_ADMIN_ROLES)
   @ApiOperation({
     summary: 'Постачальники API: можливості, поля кредів і параметрів (BR-SCON-003)',
   })
@@ -65,7 +63,7 @@ export class SupplierConnectionsController {
   ) {}
 
   @Get()
-  @Roles(...SCON_ADMIN_ROLES)
+  @Roles(...SUPPLIER_CONNECTION_ADMIN_ROLES)
   @ApiOperation({ summary: 'Підключення до API постачальників' })
   @ApiOkResponse({ type: PaginatedSupplierConnectionsDto })
   findAll(@OrgContext() orgId: string) {
@@ -73,7 +71,7 @@ export class SupplierConnectionsController {
   }
 
   @Post()
-  @Roles(...SCON_ADMIN_ROLES)
+  @Roles(...SUPPLIER_CONNECTION_ADMIN_ROLES)
   @ApiOperation({ summary: 'Нове підключення (BR-SCON-001…003)' })
   @ApiOkResponse({ type: SupplierConnectionResponseDto })
   create(
@@ -85,7 +83,7 @@ export class SupplierConnectionsController {
   }
 
   @Post(':id/verify')
-  @Roles(...SCON_ADMIN_ROLES)
+  @Roles(...SUPPLIER_CONNECTION_ADMIN_ROLES)
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Перевірити підключення — через чергу (BR-SCON-004)' })
   @ApiOkResponse({ type: SupplierQueuedResponseDto })
@@ -94,7 +92,7 @@ export class SupplierConnectionsController {
   }
 
   @Post(':id/catalog-sync')
-  @Roles(...SCON_ADMIN_ROLES)
+  @Roles(...SUPPLIER_CONNECTION_ADMIN_ROLES)
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Синхронізувати дзеркало каталогу (AVD) — через чергу (BR-SCON-015)' })
   @ApiOkResponse({ type: SupplierQueuedResponseDto })
@@ -104,14 +102,14 @@ export class SupplierConnectionsController {
   }
 
   @Get(':id')
-  @Roles(...SCON_ADMIN_ROLES)
+  @Roles(...SUPPLIER_CONNECTION_ADMIN_ROLES)
   @ApiOkResponse({ type: SupplierConnectionResponseDto })
   findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
 
   @Patch(':id')
-  @Roles(...SCON_ADMIN_ROLES)
+  @Roles(...SUPPLIER_CONNECTION_ADMIN_ROLES)
   @ApiOperation({
     summary: 'Змінити підключення; креди зливаються, порожнє не стирає (BR-SCON-002)',
   })
@@ -126,7 +124,7 @@ export class SupplierConnectionsController {
   }
 
   @Delete(':id')
-  @Roles(...SCON_ADMIN_ROLES)
+  @Roles(...SUPPLIER_CONNECTION_ADMIN_ROLES)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);

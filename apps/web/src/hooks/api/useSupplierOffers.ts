@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
-import type {
-  ApiSchema,
-  SupplierOfferAllocateValues,
-  SupplierOfferSearchValues,
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import {
+  PROCUREMENT_WRITE_ROLES,
+  type ApiSchema,
+  type SupplierOfferAllocateValues,
+  type SupplierOfferSearchValues,
 } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
@@ -10,32 +11,38 @@ import type { PurchaseListItem } from './usePurchaseLists';
 
 /**
  * Пропозиції постачальників і автопідбір (docs/objects/supplier-offer.md, BR-SOFR-002…010) — ті,
- * хто веде закупівлю (OWNER, ADMIN, STOREKEEPER). Пошук іде через чергу: UI опитує batch, доки
- * в ньому є незавершені запити (`refetchInterval`); офлайн показуються останні відомі пропозиції
- * позиції (`GET /purchase-list-items/:id/offers`, BR-SOFR-003).
+ * хто веде закупівлю (OWNER, ADMIN, STOREKEEPER). Пошук іде через чергу: UI опитує легкий стан
+ * batch-у (лише статуси запитів), доки в ньому є незавершені запити, а повний batch перечитує, коли
+ * запит завершився; офлайн показуються останні відомі пропозиції позиції
+ * (`GET /purchase-list-items/:id/offers`, BR-SOFR-003).
  */
 export type SupplierOffer = ApiSchema<'SupplierOfferDto'>;
 export type SupplierOfferRequest = ApiSchema<'SupplierOfferRequestDto'>;
 export type SupplierOfferItem = ApiSchema<'SupplierOfferItemDto'>;
 export type SupplierOfferBatch = ApiSchema<'SupplierOfferBatchDto'>;
+export type SupplierOfferBatchStatus = ApiSchema<'SupplierOfferBatchStatusDto'>;
 export type SupplierOfferSearchResult = ApiSchema<'SupplierOfferSearchResultDto'>;
 export type SupplierAllocationResult = ApiSchema<'SupplierAllocationResultDto'>;
 export type SupplierAllocationItem = ApiSchema<'SupplierAllocationItemDto'>;
 export type SupplierProcurementSettings = ApiSchema<'SupplierProcurementSettingsDto'>;
 export type SupplierStrategy = SupplierAllocationResult['strategy'];
 
-/** Ролі пропозицій і автопідбору — дзеркало `SOFR_ROLES` бекенду. */
-export const SUPPLIER_OFFER_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER'];
+/** Ролі пропозицій і автопідбору — ті самі, що в `@Roles` бекенду. */
+export const SUPPLIER_OFFER_ROLES = PROCUREMENT_WRITE_ROLES;
 
 export const supplierOffersKeys = {
   all: ['supplier-offers'] as const,
   item: (itemId: string) => [...supplierOffersKeys.all, 'item', itemId] as const,
   batch: (batchId: string) => [...supplierOffersKeys.all, 'batch', batchId] as const,
+  /** Окремий префікс: скидання `batch(id)` не зачіпає опитування стану. */
+  batchStatus: (batchId: string) => [...supplierOffersKeys.all, 'batch-status', batchId] as const,
   settings: () => [...supplierOffersKeys.all, 'settings'] as const,
 };
 
 /** Запит ще виконується (черга / виконання) — опитуємо часто. */
 const ACTIVE_STATUSES: ReadonlySet<string> = new Set(['QUEUED', 'RUNNING']);
+/** Запит завершено — його пропозиції вже в БД. */
+const FINAL_STATUSES: ReadonlySet<string> = new Set(['DONE', 'FAILED']);
 export const OFFERS_POLL_MS = 2_000;
 /** Лише «немає зв'язку — повтор о …»: опитуємо рідше, повтор однаково не раніше за nextRetryAt. */
 export const OFFERS_RETRY_POLL_MS = 10_000;
@@ -63,18 +70,80 @@ export function batchProgress(batch: { items: SupplierOfferItem[] } | undefined)
   };
 }
 
-/** Стан пошуку пропозицій (BR-SOFR-002). */
+/**
+ * Легкий стан опитування — у повний batch: змінені статуси (повтор о …, помилка) підставляються
+ * на місці; запит, що завершився (DONE / FAILED), — повний batch перечитується (його пропозиції).
+ */
+export function applyBatchStatus(
+  qc: QueryClient,
+  batchId: string,
+  status: SupplierOfferBatchStatus,
+): void {
+  const key = supplierOffersKeys.batch(batchId);
+  const batch = qc.getQueryData<SupplierOfferBatch>(key);
+  if (!batch) return;
+  const byId = new Map(status.requests.map(r => [r.id, r]));
+  let changed = false;
+  let finished = false;
+  const items = batch.items.map(item => ({
+    ...item,
+    requests: item.requests.map(r => {
+      const s = byId.get(r.id);
+      if (
+        !s ||
+        (s.status === r.status &&
+          s.nextRetryAt === r.nextRetryAt &&
+          s.error === r.error &&
+          s.fromCache === r.fromCache)
+      ) {
+        return r;
+      }
+      changed = true;
+      if (FINAL_STATUSES.has(s.status) && !FINAL_STATUSES.has(r.status)) finished = true;
+      return {
+        ...r,
+        status: s.status,
+        nextRetryAt: s.nextRetryAt,
+        error: s.error,
+        fromCache: s.fromCache,
+      };
+    }),
+  }));
+  // Повне перечитування не переривається наступним опитуванням (cancelRefetch: false).
+  if (finished) void qc.invalidateQueries({ queryKey: key, exact: true }, { cancelRefetch: false });
+  else if (changed) qc.setQueryData<SupplierOfferBatch>(key, { ...batch, items });
+}
+
+/**
+ * Стан пошуку пропозицій (BR-SOFR-002). Опитується легкий `…/status` (статуси запитів), а не
+ * весь batch (~9 SQL + усі пропозиції кожні 2 с): повний перечитується, лише коли запит завершився.
+ */
 export function useSupplierOfferBatch(batchId: string | null) {
-  return useQuery<SupplierOfferBatch>({
+  const qc = useQueryClient();
+  const batch = useQuery<SupplierOfferBatch>({
     queryKey: supplierOffersKeys.batch(batchId ?? ''),
     queryFn: ({ signal }) => apiFetch(`/supplier-offers/batches/${batchId}`, { signal }),
     enabled: !!batchId,
     // Діалоги кладуть відповідь `search` (повний batch) у кеш і лише тоді дають batchId: зі
     // staleTime 0 хук одразу перечитував той самий batch (зайвий GET на кожне відкриття).
-    // Опитування це не гальмує — refetchInterval від staleTime не залежить.
     staleTime: OFFERS_POLL_MS,
-    refetchInterval: query => batchPollInterval(query.state.data),
   });
+  const interval = batchPollInterval(batch.data);
+  useQuery<SupplierOfferBatchStatus>({
+    queryKey: supplierOffersKeys.batchStatus(batchId ?? ''),
+    queryFn: async ({ signal }) => {
+      const status = await apiFetch<SupplierOfferBatchStatus>(
+        `/supplier-offers/batches/${batchId}/status`,
+        { signal },
+      );
+      applyBatchStatus(qc, batchId as string, status);
+      return status;
+    },
+    enabled: !!batchId && interval !== false,
+    staleTime: 0,
+    refetchInterval: interval,
+  });
+  return batch;
 }
 
 /** Останні відомі пропозиції позиції — без мережі постачальника (BR-SOFR-003). */

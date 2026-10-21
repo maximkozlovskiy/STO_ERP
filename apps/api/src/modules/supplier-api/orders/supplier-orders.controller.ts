@@ -10,6 +10,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { PROCUREMENT_WRITE_ROLES, SUPPLIER_API_READ_ROLES } from '@sto/shared';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../auth/guards/roles.guard';
 import { Roles } from '../../../auth/decorators/roles.decorator';
@@ -20,10 +21,6 @@ import { IdempotencyInterceptor } from '../../../common/interceptors/idempotency
 import { SupplierOrdersService } from './supplier-orders.service';
 import { PurchaseOrderSupplierApiDto, SupplierApiReleaseResultDto } from './supplier-orders.dto';
 
-/** Дії з передачею в API — ті, хто веде закупівлю; перегляд — ще й бухгалтер (план). */
-const SEND_ROLES = ['OWNER', 'ADMIN', 'STOREKEEPER'] as const;
-const READ_ROLES = ['OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT'] as const;
-
 @ApiTags('Supplier API')
 @Controller('purchase-orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -32,7 +29,7 @@ export class SupplierOrdersController {
   constructor(private readonly service: SupplierOrdersService) {}
 
   @Get(':id/supplier-api')
-  @Roles(...READ_ROLES)
+  @Roles(...SUPPLIER_API_READ_ROLES)
   @ApiOperation({ summary: 'Передача замовлення постачальнику через API: стан (BR-PO-011)' })
   @ApiOkResponse({ type: PurchaseOrderSupplierApiDto })
   state(
@@ -44,7 +41,7 @@ export class SupplierOrdersController {
   }
 
   @Post(':id/supplier-api/send')
-  @Roles(...SEND_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.ACCEPTED)
   // Повтор із тим самим ключем (обрив зв'язку з браузером) не ставить другу відправку.
   @UseInterceptors(IdempotencyInterceptor)
@@ -61,7 +58,7 @@ export class SupplierOrdersController {
   }
 
   @Post(':id/supplier-api/poll')
-  @Roles(...SEND_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Оновити статус у постачальника — через чергу (BR-SCON-012)' })
   @ApiOkResponse({ type: PurchaseOrderSupplierApiDto })
@@ -74,7 +71,7 @@ export class SupplierOrdersController {
   }
 
   @Post(':id/supplier-api/release-unconfirmed')
-  @Roles(...SEND_ROLES)
+  @Roles(...PROCUREMENT_WRITE_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Повернути непідтверджене постачальником у список купівлі (BR-SCON-013)',

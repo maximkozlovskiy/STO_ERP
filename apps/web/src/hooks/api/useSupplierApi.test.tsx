@@ -8,7 +8,11 @@ import type { ReactNode } from 'react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 const apiFetch = vi.fn();
-vi.mock('@/lib/api-client', () => ({ apiFetch: (...a: unknown[]) => apiFetch(...a) }));
+const apiPost = vi.fn();
+vi.mock('@/lib/api-client', () => ({
+  apiFetch: (...a: unknown[]) => apiFetch(...a),
+  apiPost: (...a: unknown[]) => apiPost(...a),
+}));
 let role = 'RECEPTIONIST';
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ employee: { id: 'e1', role } }) }));
 
@@ -21,15 +25,23 @@ import {
   supplierOffersKeys,
   useSupplierOfferBatch,
   useSupplierProcurementSettings,
+  type SupplierOfferBatch,
   type SupplierOfferItem,
 } from './useSupplierOffers';
 import {
   isSentToSupplier,
+  supplierApiOrderApi,
   supplierOrderMoving,
   usePurchaseOrderSupplierApi,
   type PurchaseOrderSupplierApi,
 } from './useSupplierApiOrder';
-import { connectionBusy, type SupplierConnection } from './useSupplierConnections';
+import {
+  CATALOG_SYNC_POLL_MS,
+  CONNECTIONS_POLL_MS,
+  connectionBusy,
+  connectionsPollInterval,
+  type SupplierConnection,
+} from './useSupplierConnections';
 
 const item = (statuses: string[]) =>
   ({ requests: statuses.map(status => ({ status })) }) as unknown as SupplierOfferItem;
@@ -42,6 +54,7 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 
 beforeEach(() => {
   apiFetch.mockReset();
+  apiPost.mockReset();
   role = 'RECEPTIONIST';
 });
 
@@ -76,6 +89,65 @@ describe('useSupplierOfferBatch', () => {
     expect(result.current.data).toBe(done);
     await new Promise(r => setTimeout(r, 50));
     expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  // sto-simplify 2026-10-21: опитування — легкий `…/status`, а не весь batch (~9 SQL + пропозиції
+  // кожні 2 с). Статуси підставляються на місці; повний batch — лише коли запит завершився.
+  const req = (id: string, status: string) => ({
+    id,
+    status,
+    nextRetryAt: null,
+    error: null,
+    fromCache: false,
+    offers: [],
+  });
+  const batchOf = (...requests: ReturnType<typeof req>[]) =>
+    ({ id: 'b1', items: [{ itemId: 'i1', requests }] }) as unknown as SupplierOfferBatch;
+  const render = (initial: SupplierOfferBatch) => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(supplierOffersKeys.batch('b1'), initial);
+    const own = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    return renderHook(() => useSupplierOfferBatch('b1'), { wrapper: own });
+  };
+  const status = (...requests: Array<{ id: string; status: string; nextRetryAt?: string }>) => ({
+    id: 'b1',
+    done: false,
+    completedAt: null,
+    requests: requests.map(r => ({ nextRetryAt: null, error: null, fromCache: false, ...r })),
+  });
+
+  // guards: BR-SOFR-002
+  it('опитується легкий стан; новий статус без завершення — на місці, без повного batch', async () => {
+    apiFetch.mockImplementation((url: string) =>
+      Promise.resolve(
+        url.endsWith('/status')
+          ? status({ id: 'r1', status: 'RETRYING', nextRetryAt: '2026-10-21T10:00:00.000Z' })
+          : batchOf(req('r1', 'DONE')),
+      ),
+    );
+    const { result } = render(batchOf(req('r1', 'QUEUED')));
+    await waitFor(() =>
+      expect(result.current.data?.items[0].requests[0]).toMatchObject({
+        status: 'RETRYING',
+        nextRetryAt: '2026-10-21T10:00:00.000Z',
+      }),
+    );
+    const urls = apiFetch.mock.calls.map(c => c[0] as string);
+    expect(urls).toContain('/supplier-offers/batches/b1/status');
+    expect(urls).not.toContain('/supplier-offers/batches/b1');
+  });
+
+  // guards: BR-SOFR-002
+  it('запит завершився (DONE) — повний batch перечитується з пропозиціями', async () => {
+    const full = batchOf({ ...req('r1', 'DONE'), offers: [{ id: 'o1' }] as never[] });
+    apiFetch.mockImplementation((url: string) =>
+      Promise.resolve(url.endsWith('/status') ? status({ id: 'r1', status: 'DONE' }) : full),
+    );
+    const { result } = render(batchOf(req('r1', 'RUNNING')));
+    await waitFor(() => expect(result.current.data).toEqual(full));
+    expect(apiFetch).toHaveBeenCalledWith('/supplier-offers/batches/b1', expect.anything());
   });
 });
 
@@ -135,6 +207,16 @@ describe('стан передачі замовлення (BR-SCON-012, 014)', ()
       ),
     );
   });
+
+  // guards: BR-SCON-009
+  it('відправка — POST без тіла з Idempotency-Key', async () => {
+    apiFetch.mockResolvedValue({});
+    await supplierApiOrderApi.send('po-1', 'key-1');
+    expect(apiFetch).toHaveBeenCalledWith('/purchase-orders/po-1/supplier-api/send', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'key-1' },
+    });
+  });
 });
 
 describe('інше', () => {
@@ -146,6 +228,18 @@ describe('інше', () => {
     expect(connectionBusy(c('OK', 'RUNNING'))).toBe(true);
     expect(connectionBusy(c('OK', 'OK'))).toBe(false);
     expect(connectionBusy(c('FAILED', 'FAILED'))).toBe(false);
+  });
+
+  // guards: BR-SCON-004
+  it('опитування підключень: часто — перевірка, рідше — лише синхронізація каталогу', () => {
+    const c = (verifyStatus: string, catalogSyncStatus: string | null) =>
+      ({ verifyStatus, catalogSyncStatus }) as unknown as SupplierConnection;
+    expect(connectionsPollInterval([c('PENDING', null), c('OK', 'RUNNING')])).toBe(
+      CONNECTIONS_POLL_MS,
+    );
+    expect(connectionsPollInterval([c('OK', 'RUNNING')])).toBe(CATALOG_SYNC_POLL_MS);
+    expect(connectionsPollInterval([c('OK', 'OK')])).toBe(false);
+    expect(connectionsPollInterval(undefined)).toBe(false);
   });
 
   it('налаштування закупівлі не читаються приймальнею навіть із enabled', async () => {

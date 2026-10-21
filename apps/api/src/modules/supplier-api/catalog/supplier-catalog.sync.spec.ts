@@ -73,7 +73,14 @@ describe('SupplierCatalogService.sync — дзеркало каталогу (BR-
     expect(statements).toHaveLength(1);
     const sql = statements[0].sql.replace(/\s+/g, ' ');
     expect(sql).toContain('ON CONFLICT ("connectionId", "supplierItemId") DO UPDATE SET');
-    expect(sql).toContain('"syncVersion" = "supplier_catalog_items"."syncVersion" + 1');
+    // Незмінний рядок лише «бачили» (seenAt): syncVersion і updatedAt — лише коли дані інші.
+    expect(sql).toContain('"seenAt" = EXCLUDED."seenAt"');
+    expect(sql).toMatch(
+      /"syncVersion" = CASE WHEN \(.*\) IS DISTINCT FROM \(.*\) THEN "supplier_catalog_items"\."syncVersion" \+ 1 ELSE "supplier_catalog_items"\."syncVersion" END/,
+    );
+    expect(sql).toMatch(
+      /"updatedAt" = CASE WHEN .* THEN now\(\) ELSE "supplier_catalog_items"\."updatedAt" END/,
+    );
     expect(sql).toContain('"deletedAt" = NULL');
     expect(sql).toContain('WHERE "supplier_catalog_items"."orgId" = EXCLUDED."orgId"');
     const values = statements[0].values;
@@ -197,5 +204,32 @@ describe('SupplierCatalogService.sync — дзеркало каталогу (BR-
         removeOnFail: true,
       }),
     );
+  });
+
+  // guards: BR-SCON-006
+  it('sync-due: синхронізації кількох підключень — одним addBulk з тими самими опціями задачі', async () => {
+    const addBulk = vi.fn(() => Promise.resolve([]));
+    const service = new SupplierCatalogService(
+      {} as PrismaService,
+      new SupplierAdapterRegistry([]),
+      { addBulk } as unknown as Queue,
+    );
+    await expect(service.enqueueSyncMany(ORG, [CONN, 'c-2'])).resolves.toBe(true);
+    expect(addBulk).toHaveBeenCalledTimes(1);
+    expect(addBulk).toHaveBeenCalledWith([
+      expect.objectContaining({ name: 'sync', data: { orgId: ORG, connectionId: CONN } }),
+      {
+        name: 'sync',
+        data: { orgId: ORG, connectionId: 'c-2' },
+        opts: expect.objectContaining({
+          attempts: 10,
+          backoff: { type: 'exponential', delay: 60_000 },
+          jobId: 'supplier-catalog-c-2',
+          removeOnFail: true,
+        }),
+      },
+    ]);
+    addBulk.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    await expect(service.enqueueSyncMany(ORG, [CONN])).resolves.toBe(false);
   });
 });

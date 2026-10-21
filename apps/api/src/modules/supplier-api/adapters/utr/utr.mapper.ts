@@ -1,6 +1,15 @@
 import type { SupplierOrderStatus } from '@prisma/client';
 import { kyivOffsetMs } from '../../../../common/utils/kyiv-date';
-import { asArray, asRecord, parsePrice, parseQty, positiveIntOrNull, str } from '../adapter-utils';
+import {
+  asArray,
+  asRecord,
+  joinOfferKey,
+  parsePrice,
+  parseQty,
+  positiveIntOrNull,
+  splitOfferKey,
+  str,
+} from '../adapter-utils';
 import type { ConfirmedLine, NormalizedOffer } from '../supplier-adapter.interface';
 
 /**
@@ -17,10 +26,10 @@ import type { ConfirmedLine, NormalizedOffer } from '../supplier-adapter.interfa
  * аналогів UTR не дає. Терміну постачання пошук не віддає.
  */
 
-export const utrOfferKey = (detailId: string, storageId: string) => `${detailId}|${storageId}`;
+export const utrOfferKey = joinOfferKey;
 
 export function parseUtrOfferKey(key: string): { detailId: number; storageId: number } {
-  const [d = '', s = ''] = key.split('|');
+  const [d, s] = splitOfferKey(key);
   return { detailId: Number(d), storageId: Number(s) };
 }
 

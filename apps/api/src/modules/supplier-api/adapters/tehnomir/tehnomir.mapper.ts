@@ -2,9 +2,11 @@ import type { SupplierOrderStatus } from '@prisma/client';
 import {
   asArray,
   asRecord,
+  joinOfferKey,
   parsePrice,
   parseSupplierDate,
   positiveIntOrNull,
+  splitOfferKey,
   str,
 } from '../adapter-utils';
 import type { ConfirmedLine, NormalizedOffer } from '../supplier-adapter.interface';
@@ -22,11 +24,10 @@ import type { ConfirmedLine, NormalizedOffer } from '../supplier-adapter.interfa
  *    наживо (docs/INTEGRATIONS.md).
  */
 
-export const tehnomirOfferKey = (productId: string, priceLogo: string) =>
-  `${productId}|${priceLogo}`;
+export const tehnomirOfferKey = joinOfferKey;
 
 export function parseTehnomirOfferKey(key: string): { productId: number; priceLogo: string } {
-  const [p = '', logo = ''] = key.split('|');
+  const [p, logo] = splitOfferKey(key);
   return { productId: Number(p), priceLogo: logo };
 }
 

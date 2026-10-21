@@ -4,6 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../../redis/redis.constants';
 import type { SupplierConnectionContext } from '../adapters/supplier-adapter.interface';
 import { SupplierAuthError } from '../http/supplier-errors';
+import type { SupplierHttpClient, SupplierHttpRequest } from '../http/supplier-http.client';
 
 /** Кеш токена в `SupplierConnection.authState` (шифрується at-rest, ENCRYPTED_FIELDS). */
 export interface AuthTokenState {
@@ -59,6 +60,33 @@ export class SupplierAuthSession {
       const renewed = await this.getToken(conn, issuer, true, token);
       return call(renewed);
     }
+  }
+
+  /** Запит постачальника з чинним токеном сесії (UTR, AD); 401/403 → одна повторна авторизація. */
+  authedRequest<T>(
+    http: SupplierHttpClient,
+    conn: SupplierConnectionContext,
+    issuer: TokenIssuer,
+    req: SupplierHttpRequest,
+  ): Promise<T> {
+    return this.withToken(conn, issuer, token => this.bearerRequest<T>(http, token, req));
+  }
+
+  /**
+   * Запит із готовим токеном, без повторної авторизації (неповторюваний крок оформлення): токен —
+   * у заголовку `Authorization` і серед секретів, що вирізаються з тексту помилки.
+   */
+  async bearerRequest<T>(
+    http: SupplierHttpClient,
+    token: string,
+    req: SupplierHttpRequest,
+  ): Promise<T> {
+    const r = await http.request<T>({
+      ...req,
+      headers: { ...req.headers, Authorization: `Bearer ${token}` },
+      secrets: [...(req.secrets ?? []), token],
+    });
+    return r.data;
   }
 
   /**

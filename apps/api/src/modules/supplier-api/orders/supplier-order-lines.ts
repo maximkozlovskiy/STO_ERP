@@ -1,7 +1,6 @@
 import type { SupplierOrderStatus } from '@prisma/client';
+import { QTY_EPSILON } from '../../work-orders/work-order-stock-requirements';
 import type { ConfirmedLine } from '../adapters/supplier-adapter.interface';
-
-const EPS = 1e-6;
 
 export interface OrderLineRow {
   id: string;
@@ -64,7 +63,7 @@ export function adjustForPartial(
     updates.find(u => u.id === r.id)?.qtyConfirmed ?? r.qtyConfirmed;
   const under = rows.some(r => {
     const q = confirmedOf(r);
-    return q !== null && q < r.qtyRequested - EPS;
+    return q !== null && q < r.qtyRequested - QTY_EPSILON;
   });
   return under ? 'PARTIALLY_CONFIRMED' : status;
 }
