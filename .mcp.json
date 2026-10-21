@@ -35,6 +35,18 @@
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp@4.4.4"]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@1.11.0",
+        "--headless",
+        "--isolated",
+        "--no-usage-statistics",
+        "--viewport",
+        "1440x900"
+      ]
     }
   }
 }

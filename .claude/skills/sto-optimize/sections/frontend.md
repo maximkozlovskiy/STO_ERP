@@ -4,6 +4,11 @@
 
 ## Крок 2 — Frontend аудит
 
+> **Chrome DevTools MCP (`.mcp.json`) — вимір до і після кожної правки:** `performance_start_trace` /
+> `performance_stop_trace` / `performance_analyze_insight` (LCP, INP, довгі задачі),
+> `list_network_requests` (водоспад, дублікати), `take_heapsnapshot` (витік). Лише `127.0.0.1`;
+> абсолютні цифри — зі збірки, `next dev` — для порівняння на одній сторінці (CLAUDE.md, «MCP-сервери»).
+
 ### 2.1 Пошук без debounce
 
 ```bash

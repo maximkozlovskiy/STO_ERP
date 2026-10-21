@@ -515,6 +515,16 @@ dev-сервер `:3001` заради Playwright не зупиняти.
 | `postgres` | перевірка даних у dev-базі замість саморобних SQL-скриптів (залишки тестів, стан документа); `/sto-optimize` — `explain_query`, `analyze_query_indexes`, `get_top_queries` замість здогадок про індекси                                       | роль `sto_readonly` (лише SELECT — тримають права) + `--access-mode=restricted`. Прибирати й міняти дані — як і раніше лише через API                                     |
 | `context7` | перед кодом із API бібліотеки, у якому не певен (NestJS 10, Next.js 15, Prisma 5, Expo SDK 53, TanStack Query, Playwright), і після помилки типів / deprecated-попередження з бібліотеки — документація саме тієї версії, що в `package.json` | не замінює `/sto-dev`: стандарти проєкту мають пріоритет над прикладами з документації                                                                                    |
 
+**`chrome-devtools`** — ВИМІР у браузері (Playwright — дії й перевірки поведінки; цей — швидкодія).
+Вмикати самому, без окремого прохання, коли: `/sto-optimize` фронтенду; CI `bundle-budget` упав чи
+сторінка близько до ліміту (`check-page-budget.mjs`); скарга «сторінка повільна / зависає / друкує
+довго»; підозра на витік пам'яті (довга сесія, картки відкриваються дедалі повільніше). Інструменти:
+`performance_start_trace` → `performance_stop_trace` → `performance_analyze_insight` (LCP, INP, довгі
+задачі), `list_network_requests` (водоспад, дублікати запитів), `take_heapsnapshot`, `lighthouse_audit`.
+Межа: лише `http://127.0.0.1:…`, не `localhost` (правило 4 вище); `next dev` повільніший за прод —
+абсолютні цифри брати зі збірки (`next build` + статичний сервер), а `dev` годиться для порівняння
+«до / після» на одній сторінці. Цифра у звіті — з трейсу, з назвою сторінки й умов.
+
 Нова машина: `powershell -File scripts/mcp/setup-readonly-db.ps1` (роль + змінна `STO_DB_READONLY_URI`),
 перезапуск VS Code; GitHub бере токен, який git уже має. Стан серверів — `claude mcp list`.
 
