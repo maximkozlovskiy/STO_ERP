@@ -36,6 +36,7 @@
     "colName": "Name",
     "colBranch": "Branch",
     "colType": "Type",
+    "colCurrency": "Currency",
     "colBalance": "Balance",
     "empty": "No cash registers",
     "emptyDescription": "Add your first cash register",

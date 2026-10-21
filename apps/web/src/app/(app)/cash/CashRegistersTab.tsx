@@ -212,6 +212,7 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
               <TableHead>{t('registers.colName')}</TableHead>
               <TableHead>{t('registers.colBranch')}</TableHead>
               <TableHead>{t('registers.colType')}</TableHead>
+              <TableHead>{t('registers.colCurrency')}</TableHead>
               <TableHead className="text-right">{t('registers.colBalance')}</TableHead>
               {canManage && <TableHead />}
             </TableRow>
@@ -219,7 +220,7 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={canManage ? 5 : 4} className="py-10 text-center">
+                <TableCell colSpan={canManage ? 6 : 5} className="py-10 text-center">
                   <div className="flex justify-center">
                     <Spinner size="md" />
                   </div>
@@ -228,7 +229,7 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
             )}
             {!isLoading && (registers?.length ?? 0) === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage ? 5 : 4} className="p-0">
+                <TableCell colSpan={canManage ? 6 : 5} className="p-0">
                   <EmptyState
                     icon={Landmark}
                     title={t('registers.empty')}
@@ -256,6 +257,12 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
                       </Badge>
                     )}
                   </div>
+                </TableCell>
+                <TableCell className="text-[13px]">
+                  <span className="font-medium">{r.currencyCode}</span>
+                  {r.currencySymbol && r.currencySymbol !== r.currencyCode && (
+                    <span className="text-muted-foreground"> · {r.currencySymbol}</span>
+                  )}
                 </TableCell>
                 <TableCell className="text-right tabular-nums font-semibold">
                   {fmtMoney(r.balance)} {r.currencySymbol ?? r.currencyCode}

@@ -36,6 +36,7 @@
     "colName": "Назва",
     "colBranch": "Філія",
     "colType": "Тип",
+    "colCurrency": "Валюта",
     "colBalance": "Залишок",
     "empty": "Кас немає",
     "emptyDescription": "Додайте першу касу",
