@@ -255,6 +255,25 @@ describe('CreateWorkOrderModal — склад рядка товару (BR-WO-029
   });
 
   // guards: BR-WO-029
+  it('той самий товар, обраний повторно вікном вибору, — не зміна товару: склад лишається (Bug #936)', async () => {
+    const { user, row } = await openInputRow();
+    await pickGood(user, row, 'Фільтр лише на бічному');
+    await waitFor(() => expect(warehouseSelect(row).value).toBe(W_SIDE));
+    await user.selectOptions(warehouseSelect(row), W_THIRD);
+
+    await user.click(within(row).getByRole('button', { name: 'Обрати' }));
+    const picker = await screen.findByRole('dialog', { name: /Оберіть товар/ });
+    await user.click(await within(picker).findByRole('button', { name: /Фільтр лише на бічному/ }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: /Оберіть товар/ })).not.toBeInTheDocument(),
+    );
+    // Набір товарів не змінився — нового запиту залишків і автовибору не буде; без фіксу поле
+    // очищувалось і лишалось порожнім назавжди.
+    await new Promise(r => setTimeout(r, 50));
+    expect(warehouseSelect(row).value).toBe(W_THIRD);
+  });
+
+  // guards: BR-WO-029
   it('залишки не отримано (запит упав) → склад основний, підписи без кількості', async () => {
     stockFail = true;
     vi.spyOn(console, 'error').mockImplementation(() => {});

@@ -950,11 +950,23 @@ export function CreateWorkOrderModal({
   );
 
   // BR-WO-029: товар обрано → склад очищується й підбирається, щойно прийдуть залишки товару.
-  const pickPartGood = useCallback((row: PartRow, g: GoodPickerItem) => {
-    partAutoPickRef.current[row] = g.id;
-    const set = row === 'new' ? setNewPart : setEditingPart;
-    set(p => ({ ...p, ...partGoodFields(g), warehouseId: '' }));
-  }, []);
+  // Той самий товар, обраний повторно (вікно вибору), — не зміна товару: склад (ручний чи
+  // підставлений) лишається. Інакше поле очищувалось, а набір товарів не змінювався — нового
+  // запиту залишків і автовибору не було, склад лишався порожнім (Bug #936).
+  const newPartGoodId = newPart.goodId;
+  const editingPartGoodId = editingPart.goodId;
+  const pickPartGood = useCallback(
+    (row: PartRow, g: GoodPickerItem) => {
+      const set = row === 'new' ? setNewPart : setEditingPart;
+      if ((row === 'new' ? newPartGoodId : editingPartGoodId) === g.id) {
+        set(p => ({ ...p, ...partGoodFields(g) }));
+        return;
+      }
+      partAutoPickRef.current[row] = g.id;
+      set(p => ({ ...p, ...partGoodFields(g), warehouseId: '' }));
+    },
+    [newPartGoodId, editingPartGoodId],
+  );
 
   const pickPartWarehouseManually = useCallback((row: PartRow, warehouseId: string) => {
     partAutoPickRef.current[row] = null;
