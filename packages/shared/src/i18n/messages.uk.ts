@@ -275,6 +275,8 @@ export const uk: Record<string, string> = {
   'err.warranty.alreadyClaimed': 'Гарантія вже використана',
   'err.warranty.expired': 'Термін гарантії минув',
   'err.warranty.claimWorkOrderNotFound': 'Гарантійний наряд не знайдено',
+  'err.warranty.claimSameWorkOrder':
+    'Звернення оформлюється окремим нарядом — не тим, за яким видано гарантію',
 
   // ── Exception-повідомлення: completion-acts-модуль ──
   'err.completionAct.notFound': 'Акт не знайдено',

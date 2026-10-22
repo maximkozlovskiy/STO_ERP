@@ -26,8 +26,8 @@ interface Props {
 
 /**
  * BR-WAR-004/005: «Звернення» за гарантією — вибір наряду-звернення серед нарядів того самого
- * клієнта, крім скасованих. Сервер сам відмовить, якщо гарантію вже використано чи вона
- * закінчилась (атомарний запис) — текст відмови показуємо у вікні.
+ * клієнта, крім скасованих і наряду, що видав гарантію. Сервер сам відмовить, якщо гарантію вже
+ * використано чи вона закінчилась (атомарний запис) — текст відмови показуємо у вікні.
  */
 export function WarrantyClaimModal({ warranty, onClose }: Props) {
   const { t } = useTranslation('workOrders');
@@ -59,9 +59,13 @@ export function WarrantyClaimModal({ warranty, onClose }: Props) {
   // `keepPreviousData` у спільному хуку: відкрили вікно для гарантії ІНШОГО клієнта — до відповіді
   // в кеші лежать наряди попереднього, і в перелік потрапив би чужий наряд.
   const loadingCandidates = isLoading || isPlaceholderData;
+  // Без наряду, що видав гарантію: звернення — окремий наряд (сервер відмовить, BR-WAR-004).
   const candidates = useMemo(
-    () => (data?.items ?? []).filter(wo => wo.status !== 'CANCELLED' && !wo.deletedAt),
-    [data],
+    () =>
+      (data?.items ?? []).filter(
+        wo => wo.status !== 'CANCELLED' && !wo.deletedAt && wo.id !== warranty?.workOrderId,
+      ),
+    [data, warranty?.workOrderId],
   );
 
   useEffect(() => {

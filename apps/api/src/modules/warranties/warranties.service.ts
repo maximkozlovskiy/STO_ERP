@@ -363,7 +363,7 @@ export class WarrantiesService {
       // всі скалярні колонки — все ігнорується далі (updateMany читає id+orgId з where).
       this.prisma.warranty.findFirst({
         where: { id, orgId, deletedAt: null },
-        select: { claimedAt: true, expiresAt: true },
+        select: { claimedAt: true, expiresAt: true, workOrderId: true },
       }),
       this.prisma.workOrder.findFirst({
         where: { id: dto.claimWoId, orgId, deletedAt: null },
@@ -386,6 +386,10 @@ export class WarrantiesService {
       throw new NotFoundException(
         translateError('err.warranty.claimWorkOrderNotFound', getLocale()),
       );
+    // BR-WAR-004: наряд-звернення — новий візит клієнта, не наряд, що видав гарантію. Звернення
+    // тим самим нарядом «використало» б гарантію без жодного повторного ремонту (одне на гарантію).
+    if (dto.claimWoId === w.workOrderId)
+      throw new BadRequestException(translateError('err.warranty.claimSameWorkOrder', getLocale()));
 
     // BR-WAR-004: перевірки вище — лише швидка відмова. Рішення приймає сам запис: умова
     // `claimedAt: null` і `expiresAt > зараз` у where. Два одночасні звернення обидва проходять

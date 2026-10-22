@@ -366,7 +366,7 @@
     "claimTitle": "Warranty claim",
     "claimFor": "Warranty for work order {{number}}, valid until {{date}}",
     "claimWorkOrder": "Claim work order",
-    "claimWorkOrderHint": "Work orders of the same client, except cancelled",
+    "claimWorkOrderHint": "Work orders of the same client, except cancelled and the one the warranty was issued for",
     "claimChoose": "Choose a work order",
     "claimNoWorkOrders": "The client has no work orders for a claim - create one first",
     "claimLoadError": "Failed to load the client's work orders",

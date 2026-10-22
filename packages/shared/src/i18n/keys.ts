@@ -434,6 +434,7 @@ export const VALIDATION_KEYS = [
   'err.warranty.alreadyClaimed',
   'err.warranty.expired',
   'err.warranty.claimWorkOrderNotFound',
+  'err.warranty.claimSameWorkOrder',
   // Exception-повідомлення: completion-acts-модуль
   'err.completionAct.notFound',
   'err.completionAct.workOrderNotFound',

@@ -138,6 +138,18 @@ describe('WarrantiesService.claim', () => {
     expect(prisma.warranty.updateMany).not.toHaveBeenCalled();
   });
 
+  // guards: BR-WAR-004 — наряд-звернення не той, що видав гарантію (Bug #940)
+  it('звернення тим самим нарядом, що видав гарантію → 400, звернення не записано', async () => {
+    prisma.warranty.findFirst.mockResolvedValueOnce(validWarranty);
+    prisma.workOrder.findFirst.mockResolvedValueOnce({ id: validWarranty.workOrderId, orgId });
+
+    const claim = service.claim(orgId, warrantyId, { claimWoId: validWarranty.workOrderId });
+    await expect(claim).rejects.toBeInstanceOf(BadRequestException);
+    await expect(claim).rejects.toThrow('не тим, за яким видано гарантію');
+
+    expect(prisma.warranty.updateMany).not.toHaveBeenCalled();
+  });
+
   it('гарантія з минулим терміном → BadRequestException', async () => {
     prisma.warranty.findFirst.mockResolvedValueOnce({
       ...validWarranty,

@@ -77,6 +77,8 @@ const ROWS = [
 const CLIENT_WOS = [
   { id: 'wo-new', number: 'НРД-2026-000200', status: 'DRAFT', vehicleSummary: 'Toyota Corolla' },
   { id: 'wo-cancel', number: 'НРД-2026-000201', status: 'CANCELLED', vehicleSummary: null },
+  // Наряд, що видав гарантію `ROW` (Bug #940): у переліку звернення його бути не має.
+  { id: 'wo-1', number: 'НРД-2026-000101', status: 'COMPLETED', vehicleSummary: 'Toyota Corolla' },
 ];
 
 const warrantyCalls = () =>
@@ -217,6 +219,8 @@ describe('Вкладка «Гарантії»', () => {
       .map(o => o.textContent);
     expect(options.some(o => o?.includes('НРД-2026-000200'))).toBe(true);
     expect(options.some(o => o?.includes('НРД-2026-000201'))).toBe(false);
+    // guards: BR-WAR-004 — наряд, що видав гарантію, звернення не оформлює (Bug #940)
+    expect(options.some(o => o?.includes('НРД-2026-000101'))).toBe(false);
 
     fireEvent.change(select, { target: { value: 'wo-new' } });
     await act(async () => {

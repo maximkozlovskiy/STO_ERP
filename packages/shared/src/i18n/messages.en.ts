@@ -271,6 +271,8 @@ export const en: Record<string, string> = {
   'err.warranty.alreadyClaimed': 'The warranty has already been claimed',
   'err.warranty.expired': 'The warranty has expired',
   'err.warranty.claimWorkOrderNotFound': 'Warranty work order not found',
+  'err.warranty.claimSameWorkOrder':
+    'A claim needs a separate work order, not the one the warranty was issued for',
 
   // ── Exception messages: completion-acts module ──
   'err.completionAct.notFound': 'Act not found',
