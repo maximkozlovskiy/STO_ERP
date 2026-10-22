@@ -296,6 +296,49 @@ describe('Вкладка «Гарантії»', () => {
     expect(replace).toHaveBeenCalledWith('/work-orders?tab=warranties', { scroll: false });
   });
 
+  // guards: BR-WAR-005
+  it('гарантія, відкрита посиланням поза сторінкою списку, після звернення бере новий стан', async () => {
+    let claimed = false;
+    apiFetchMock.mockImplementation((path: string, init?: { method?: string }) => {
+      if (init?.method === 'POST' && path.endsWith('/claim')) {
+        claimed = true;
+        return Promise.resolve({ ...ROW, claimWoId: 'wo-new' });
+      }
+      if (path.startsWith('/warranties?')) {
+        const id = new URLSearchParams(path.split('?')[1]).get('id');
+        if (id) {
+          const row = claimed
+            ? { ...ROW, state: 'CLAIMED' as const, claimedAt: '2026-10-22T08:00:00.000Z' }
+            : ROW;
+          return Promise.resolve({ items: [row], total: 1, page: 1, limit: 1 });
+        }
+        // Гарантії з посилання на поточній сторінці списку немає.
+        return Promise.resolve({ items: ROWS.slice(1), total: 2, page: 1, limit: 20 });
+      }
+      if (path.startsWith('/work-orders?')) return Promise.resolve({ items: CLIENT_WOS, total: 2 });
+      return Promise.resolve({});
+    });
+    search = `tab=warranties&open=${W_ID}`;
+    // Як справжній роутер: після `replace` параметра `open` в адресі вже немає.
+    replace.mockImplementation(() => {
+      search = 'tab=warranties';
+    });
+    renderTab();
+    await screen.findByRole('heading', { level: 2, name: 'НРД-2026-000101' });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Звернення' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Звернення за гарантією' });
+    fireEvent.change(await within(dialog).findByRole('combobox', { name: 'Наряд-звернення' }), {
+      target: { value: 'wo-new' },
+    });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Записати звернення' }));
+    });
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Звернення' })).toBeNull());
+    expect(screen.getByRole('heading', { level: 2, name: 'НРД-2026-000101' })).toBeInTheDocument();
+  });
+
   it('клік по рядку з вимкненою панеллю веде на наряд', async () => {
     localStorage.setItem('sto_detail_panel_work-orders-warranties', 'false');
     renderTab();

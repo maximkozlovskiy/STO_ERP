@@ -26,6 +26,7 @@ import { LinesSummarySection } from '@/components/ui/LinesSummarySection';
 import { workOrderLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { canClaimWarranties, canViewWarranties } from '@/lib/warranty-roles';
+import { PAGE_TAB_ACTIVE, PAGE_TAB_CLASS, PAGE_TAB_IDLE } from '@/lib/page-tabs';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
@@ -248,12 +249,7 @@ function WorkOrdersPageShell() {
               role="tab"
               aria-selected={tab === key}
               onClick={() => setTab(key)}
-              className={cn(
-                'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
-                tab === key
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
+              className={cn(PAGE_TAB_CLASS, tab === key ? PAGE_TAB_ACTIVE : PAGE_TAB_IDLE)}
             >
               {t(`pageTabs.${key}`)}
             </button>

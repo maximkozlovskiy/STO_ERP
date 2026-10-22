@@ -148,9 +148,13 @@ export default function WarrantiesTab({ canClaim }: Props) {
   // з «Пов'язаних документів» наряду на цій же сторінці маршрут той самий (Bug #889).
   const openParam = searchParams.get('open');
   const linkId = openParam && UUID_RE.test(openParam) ? openParam : null;
+  // Запит за `id` живе, доки гарантія, відкрита посиланням, лишається в панелі: параметр `open`
+  // з адреси прибрано одразу, а після звернення `warrantiesKeys.all` перечитує лише активні
+  // запити — вимкнений лишив би в панелі старий стан і кнопку «Звернення».
+  const linkedQueryId = linkId ?? (openedByLink ? selected?.id : undefined);
   const { data: linked, isFetched: linkedFetched } = useWarrantyList(
-    { page: 1, limit: 1, id: linkId ?? undefined },
-    !!linkId,
+    { page: 1, limit: 1, id: linkedQueryId },
+    !!linkedQueryId,
   );
   useEffect(() => {
     if (!linkId || !linkedFetched) return;
