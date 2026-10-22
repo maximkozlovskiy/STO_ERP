@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { API_ORIGIN as API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
@@ -50,6 +50,17 @@ async function cleanupTestPeriods(page: Page): Promise<void> {
   );
 }
 
+/** `YYYY-MM-DD` → поля «Період з» / «по» вікна розрахунку (DatePickerInput, ДД.ММ.РРРР). */
+async function fillPeriod(dialog: Locator, from: string, to: string): Promise<void> {
+  const ddmmyyyy = (iso: string) => iso.split('-').reverse().join('.');
+  // «по» спершу ширше за «з»: межі обмежують одна одну (max/min), і поле відкидає дату за межею.
+  await dialog.getByLabel('по', { exact: true }).fill(ddmmyyyy('2099-12-31'));
+  await dialog.getByLabel('Період з', { exact: true }).fill(ddmmyyyy(from));
+  await dialog.getByLabel('по', { exact: true }).fill(ddmmyyyy(to));
+  await expect(dialog.getByLabel('Період з', { exact: true })).toHaveValue(ddmmyyyy(from));
+  await expect(dialog.getByLabel('по', { exact: true })).toHaveValue(ddmmyyyy(to));
+}
+
 test.describe('Зарплата — сторінка', () => {
   test('сторінка завантажується із заголовком «Зарплата»', async ({ page }) => {
     await page.goto('/payroll');
@@ -58,11 +69,31 @@ test.describe('Зарплата — сторінка', () => {
     await expect(page.locator('nextjs-portal, [data-nextjs-dialog]')).not.toBeVisible();
   });
 
-  test('обидві панелі присутні: «Розрахунок за період» + «Зарплатні періоди»', async ({ page }) => {
+  // Стандарт списку (рішення власника 2026-10-22): на весь екран, статуси кнопками над фільтрами,
+  // розрахунок за період — у вікні з основної кнопки.
+  test('статуси — кнопки над рядком фільтрів; «Розрахувати період» відкриває вікно розрахунку', async ({
+    page,
+  }) => {
     await page.goto('/payroll');
     await expect(page.locator('h1:has-text("Зарплата")')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText('Розрахунок за період')).toBeVisible();
-    await expect(page.getByText('Зарплатні періоди')).toBeVisible();
+    const statuses = page.getByRole('group', { name: 'Статус періоду' });
+    await expect(statuses.getByRole('button')).toHaveText([
+      'Всі статуси',
+      'Чернетка',
+      'Розраховано',
+      'Виплачено',
+      'Скасовано',
+    ]);
+    const open = page.getByRole('button', { name: 'Розрахувати період' });
+    const [statusBox, openBox] = [await statuses.boundingBox(), await open.boundingBox()];
+    expect(openBox!.y, 'рядок фільтрів — під статусами').toBeGreaterThan(statusBox!.y);
+    await page.screenshot({ path: test.info().outputPath('payroll_list.png') });
+
+    await open.click();
+    const dialog = page.getByRole('dialog', { name: 'Розрахунок за період' });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByLabel('Період з', { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel('по', { exact: true })).toBeVisible();
   });
 
   test('пункт меню «Зарплата» веде на /payroll', async ({ page }) => {
@@ -82,16 +113,15 @@ test.describe('Зарплата — розрахунок за період (prev
     await page.goto('/payroll');
     await expect(page.locator('h1:has-text("Зарплата")')).toBeVisible({ timeout: 20_000 });
 
-    // Виставляємо широкий діапазон дат (2 date-input у панелі розрахунку).
-    const dateInputs = page.locator('input[type="date"]');
-    await dateInputs.nth(0).fill(FROM);
-    await dateInputs.nth(1).fill(TO);
-
-    await page.getByRole('button', { name: 'Розрахувати' }).first().click();
+    // Вікно розрахунку; широкий діапазон дат — у спільних полях «Період з … по» (ДД.ММ.РРРР).
+    await page.getByRole('button', { name: 'Розрахувати період' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Розрахунок за період' });
+    await fillPeriod(dialog, FROM, TO);
+    await dialog.getByRole('button', { name: 'Розрахувати', exact: true }).click();
 
     // Після розрахунку: або таблиця з колонкою «Нараховано», або empty-state «Немає нарахувань».
     await expect(
-      page.locator('th:has-text("Нараховано")').or(page.getByText('Немає нарахувань')).first(),
+      dialog.locator('th:has-text("Нараховано")').or(dialog.getByText('Немає нарахувань')).first(),
     ).toBeVisible({ timeout: 20_000 });
   });
 });
@@ -328,5 +358,106 @@ test.describe('Зарплата — життєвий цикл періоду (FS
     expect([200, 201]).toContain(res.first); // перший compute успішний (POST → 201 default)
     expect(res.second).toBe(400); // повторний compute заборонено (не-DRAFT)
     expect(res.deleted).toBe(204);
+  });
+});
+
+// Створення періоду через вікно розрахунку (стандарт списку 2026-10-22; документи — через UI).
+// «Створити період» з'являється лише за нарахуваннями, а наряди дев-бази вже розібрані іншими
+// відомостями (BR-PAYR-015), тож передумова — окладник (API), прийнятий і звільнений у межах
+// CREATE_FROM…CREATE_TO: у відомість він потрапляє без робіт (BR-PAYR-001), в інші вікна — ні.
+test.describe('Зарплата — період із вікна розрахунку', () => {
+  const CREATE_FROM = '2099-03-01';
+  const CREATE_TO = '2099-03-31';
+  let employeeId: string | null = null;
+
+  test.afterAll(async ({ browser }) => {
+    const page = await browser.newPage({ storageState: 'e2e/.auth/admin.json' });
+    await page.goto('/payroll');
+    const t = await token(page);
+    const res = await page.evaluate(
+      async ({ API, t, from, employeeId }) => {
+        const headers = { Authorization: `Bearer ${t}` };
+        const list = (await (
+          await fetch(`${API}/api/v1/payroll/periods?page=1&limit=200`, { headers })
+        ).json()) as { items: { id: string; status: string; periodStart: string }[] };
+        const statuses: number[] = [];
+        // Спершу відомість (тримає працівника), потім сам працівник.
+        for (const p of list.items ?? []) {
+          if (p.periodStart.startsWith(from) && p.status === 'DRAFT') {
+            const r = await fetch(`${API}/api/v1/payroll/periods/${p.id}`, {
+              method: 'DELETE',
+              headers,
+            });
+            statuses.push(r.status);
+          }
+        }
+        if (employeeId) {
+          const r = await fetch(`${API}/api/v1/employees/${employeeId}`, {
+            method: 'DELETE',
+            headers,
+          });
+          statuses.push(r.status);
+        }
+        return statuses;
+      },
+      { API, t, from: CREATE_FROM, employeeId },
+    );
+    for (const status of res) expect.soft(status, 'прибирання').toBeLessThan(300);
+    await page.close();
+  });
+
+  test('«Розрахувати період» → дати → «Розрахувати» → «Створити період»: чернетка у списку', async ({
+    page,
+  }) => {
+    await page.goto('/payroll');
+    await expect(page.locator('h1:has-text("Зарплата")')).toBeVisible({ timeout: 20_000 });
+    const t = await token(page);
+    const emp = await page.evaluate(
+      async ({ API, t, from, to }) => {
+        const r = await fetch(`${API}/api/v1/employees`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+          body: JSON.stringify({
+            firstName: 'Окладник',
+            lastName: `000 E2E ${Date.now()}`,
+            role: 'MECHANIC',
+            rateScheme: {
+              type: 'fixed_plus_bonus',
+              params: { fixedMonthly: 3100, bonusPercent: 0 },
+            },
+            dateOfHire: from,
+            dateOfFire: to,
+          }),
+        });
+        return { status: r.status, body: (await r.json()) as { id: string } };
+      },
+      { API, t, from: CREATE_FROM, to: CREATE_TO },
+    );
+    expect(emp.status, 'окладника створено').toBeLessThan(300);
+    employeeId = emp.body.id;
+
+    await page.getByRole('button', { name: 'Розрахувати період' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Розрахунок за період' });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    // До розрахунку створювати нічого.
+    await expect(dialog.getByRole('button', { name: 'Створити період' })).toHaveCount(0);
+    await fillPeriod(dialog, CREATE_FROM, CREATE_TO);
+    await dialog.getByRole('button', { name: 'Розрахувати', exact: true }).click();
+    await expect(dialog.getByText('Окладник').first()).toBeVisible({ timeout: 20_000 });
+    await page.screenshot({ path: test.info().outputPath('payroll_preview_modal.png') });
+
+    await dialog.getByRole('button', { name: 'Створити період' }).click();
+    await expect(dialog).toBeHidden({ timeout: 15_000 });
+
+    // Нова чернетка — у списку, під фільтром «Чернетка».
+    await page
+      .getByRole('group', { name: 'Статус періоду' })
+      .getByRole('button', { name: 'Чернетка', exact: true })
+      .click();
+    const row = page
+      .locator('[data-testid^="payroll-period-"]')
+      .filter({ hasText: `${CREATE_FROM} — ${CREATE_TO}` });
+    await expect(row).toHaveCount(1, { timeout: 20_000 });
+    await expect(row.getByText('Чернетка')).toBeVisible();
   });
 });

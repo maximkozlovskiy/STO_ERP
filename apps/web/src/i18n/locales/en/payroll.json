@@ -2,6 +2,7 @@
   "title": "Payroll",
   "preview": {
     "heading": "Period calculation",
+    "open": "Calculate period",
     "from": "Period from",
     "to": "to",
     "calculate": "Calculate",
@@ -20,7 +21,7 @@
     "previewTitle": "No accruals",
     "previewDescription": "No completed works with assignees for this period",
     "periodsTitle": "No periods",
-    "periodsDescription": "Calculate a period above and click «Create period»",
+    "periodsHint": "Click «Calculate period» and create the period in the calculation window",
     "noMatchDescription": "No periods match the selected filter"
   },
   "filters": {
@@ -29,7 +30,6 @@
     "filterSaved": "Filter «{{name}}» saved"
   },
   "periods": {
-    "heading": "Payroll periods",
     "expand": "Expand",
     "collapse": "Collapse",
     "compute": "Calculate",

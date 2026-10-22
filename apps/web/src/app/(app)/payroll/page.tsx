@@ -1,18 +1,20 @@
 'use client';
 
 import { Fragment, useCallback, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import { Calculator, Wallet, Trash2, ChevronRight, ChevronDown } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pagination } from '@/components/ui/pagination';
+import { StatusPill } from '@/components/ui/status-pill';
+import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { TableContainer } from '@/components/ui/table-container';
@@ -28,12 +30,10 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { useListPage } from '@/hooks/useListPage';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from '@/lib/toast';
-import { CALENDAR_DATE_RE, fmtMoney, kyivToday } from '@/lib/format';
+import { fmtMoney } from '@/lib/format';
 import {
-  usePayrollPreview,
   usePayrollPeriods,
   usePayrollPeriod,
-  useCreatePayrollPeriod,
   useComputePayrollPeriod,
   usePayPayrollPeriod,
   useDeletePayrollPeriod,
@@ -42,6 +42,13 @@ import {
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { ListLoadError } from '@/components/ui/list-load-error';
 import { useCashRegisters } from '@/hooks/api/useCash';
+
+// Вікно розрахунку відкривається лише кнопкою — його код (поля дат із календарем) не входить у
+// first-load сторінки (бюджет сторінок, check-page-budget.mjs).
+const PayrollPreviewModal = dynamic(
+  () => import('./PayrollPreviewModal').then(m => m.PayrollPreviewModal),
+  { ssr: false },
+);
 
 const STATUS_BADGE: Record<PayrollPeriod['status'], BadgeVariant> = {
   DRAFT: 'secondary',
@@ -128,9 +135,7 @@ export default function PayrollPage() {
 
   const [statusFilter, setStatusFilter] = useState('');
 
-  const [from, setFrom] = useState(() => `${kyivToday().slice(0, 7)}-01`);
-  const [to, setTo] = useState(() => kyivToday());
-  const [previewEnabled, setPreviewEnabled] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   // Вкладене розкриття рядка співробітника → розшифровка по нарядах (`${periodId}:${employeeId}`).
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
@@ -139,14 +144,9 @@ export default function PayrollPage() {
   const [payCashRegisterId, setPayCashRegisterId] = useState('');
   const { data: cashRegisters } = useCashRegisters();
 
-  // API приймає лише `YYYY-MM-DD`; рідний <input type="date"> дозволяє рік із 5–6 цифр або порожнє
-  // значення — таку межу не шлемо (інакше мовчазний 400 при кожному натисканні клавіші).
-  const datesValid = CALENDAR_DATE_RE.test(from) && CALENDAR_DATE_RE.test(to);
-  const preview = usePayrollPreview(from, to, '', previewEnabled && datesValid);
   const periodsQuery = usePayrollPeriods({ page, limit, status: statusFilter });
   // Розкритий період вантажиться детально (список не несе розшифровки по нарядах — важко).
   const expandedDetail = usePayrollPeriod(expanded);
-  const createMut = useCreatePayrollPeriod();
   const computeMut = useComputePayrollPeriod();
   const payMut = usePayPayrollPeriod();
   const deleteMut = useDeletePayrollPeriod();
@@ -199,18 +199,6 @@ export default function PayrollPage() {
     [setPage],
   );
 
-  const runPreview = () => setPreviewEnabled(true);
-
-  const createPeriod = async () => {
-    if (!datesValid) return;
-    try {
-      await createMut.mutateAsync({ periodStart: from, periodEnd: to });
-      toast.success(t('toast.periodCreated'));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('toast.createError'));
-    }
-  };
-
   const compute = async (id: string) => {
     try {
       await computeMut.mutateAsync(id);
@@ -257,152 +245,39 @@ export default function PayrollPage() {
   };
 
   return (
-    <div className="page-container max-w-5xl space-y-6">
+    <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <div>
           <h1 className="page-title">{t('title')}</h1>
         </div>
       </div>
 
-      {/* Розрахунок за період */}
-      <div className="bg-surface rounded-xl border border-border p-5 space-y-4">
-        <h2 className="text-[15px] font-semibold text-foreground">{t('preview.heading')}</h2>
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label className="block text-[12px] text-muted-foreground mb-1">
-              {t('preview.from')}
-            </label>
-            <Input
-              type="date"
-              value={from}
-              onChange={e => setFrom(e.target.value)}
-              className="h-9 w-40"
-            />
-          </div>
-          <div>
-            <label className="block text-[12px] text-muted-foreground mb-1">
-              {t('preview.to')}
-            </label>
-            <Input
-              type="date"
-              value={to}
-              onChange={e => setTo(e.target.value)}
-              className="h-9 w-40"
-            />
-          </div>
-          <Button
-            leftIcon={<Calculator className="h-4 w-4" />}
-            onClick={runPreview}
-            disabled={!datesValid}
-          >
-            {t('preview.calculate')}
-          </Button>
-          {previewEnabled && preview.data && preview.data.lines.length > 0 && (
-            <Button
-              variant="outline"
-              onClick={() => void createPeriod()}
-              loading={createMut.isPending}
-              className="ml-auto"
-            >
-              {t('preview.createPeriod')}
-            </Button>
-          )}
-        </div>
+      {features.savedFiltersEnabled && savedFilters.length > 0 && (
+        <SavedFiltersBar<PayrollFilters>
+          saved={savedFilters}
+          activeId={activeSavedFilterId}
+          onApply={applyFilter}
+          onSave={handleSaveFilter}
+          onRemove={removeFilter}
+          hideSaveButton
+        />
+      )}
 
-        {/* Bug #824: without retry the only way out of a failed calculation was to change a date -
-            the "calculate" button does nothing once the preview is already enabled. */}
-        {previewEnabled && datesValid && (
-          <ListLoadError error={preview.error} onRetry={() => void preview.refetch()} />
-        )}
-
-        {previewEnabled && datesValid && preview.isLoading && (
-          <div className="flex justify-center py-6">
-            <Spinner size="md" />
-          </div>
-        )}
-        {previewEnabled && datesValid && preview.data && (
-          <div className="border border-border rounded-lg overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('columns.employee')}</TableHead>
-                  <TableHead>{t('columns.scheme')}</TableHead>
-                  <TableHead className="text-right">{t('columns.normoHours')}</TableHead>
-                  <TableHead className="text-right">{t('columns.baseAmount')}</TableHead>
-                  <TableHead className="text-right">{t('columns.accrued')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {preview.data.lines.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="p-0">
-                      <EmptyState
-                        icon={Calculator}
-                        title={t('empty.previewTitle')}
-                        description={t('empty.previewDescription')}
-                      />
-                    </TableCell>
-                  </TableRow>
-                )}
-                {preview.data.lines.map(l => (
-                  <TableRow key={l.employeeId}>
-                    <TableCell className="font-medium">{l.employeeName}</TableCell>
-                    <TableCell className="text-[13px] text-muted-foreground">
-                      {RATE_LABELS[l.rateSchemeType] ?? l.rateSchemeType}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{l.normoHours}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {fmtMoney(l.baseAmount)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold">
-                      {fmtMoney(l.accruedAmount)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            {preview.data.lines.length > 0 && (
-              <div className="flex justify-between items-center px-4 py-2.5 border-t border-border bg-secondary/30 text-[13px]">
-                <span className="text-muted-foreground">{t('preview.totalToAccrue')}</span>
-                <span className="font-bold tabular-nums">
-                  {fmtMoney(preview.data.totalAccrued)} ₴
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Періоди — повний List Page pattern: фільтр + колонки + пагінація */}
-      <div className="bg-surface rounded-xl border border-border p-5 space-y-3">
-        <h2 className="text-[15px] font-semibold text-foreground">{t('periods.heading')}</h2>
-
-        {features.savedFiltersEnabled && savedFilters.length > 0 && (
-          <SavedFiltersBar<PayrollFilters>
-            saved={savedFilters}
-            activeId={activeSavedFilterId}
-            onApply={applyFilter}
-            onSave={handleSaveFilter}
-            onRemove={removeFilter}
-            hideSaveButton
+      <ListStatusRow label={t('filters.statusLabel')}>
+        {(['', ...PERIOD_STATUSES] as const).map(s => (
+          <StatusPill
+            key={s}
+            value={s}
+            label={s ? STATUS_LABELS[s] : t('filters.allStatuses')}
+            active={statusFilter === s}
+            onSelect={changeStatus}
           />
-        )}
+        ))}
+      </ListStatusRow>
 
-        <div className="flex gap-3 flex-wrap items-center">
-          <Select
-            value={statusFilter}
-            onChange={e => changeStatus(e.target.value)}
-            aria-label={t('filters.statusLabel')}
-            className="w-48 h-8 text-[13px] py-0.5 px-2 pr-7"
-          >
-            <option value="">{t('filters.allStatuses')}</option>
-            {PERIOD_STATUSES.map(s => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </option>
-            ))}
-          </Select>
-          <div className="flex items-center gap-2 ml-auto">
+      <ListFiltersRow
+        actions={
+          <>
             {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
             <ColumnsDropdown
               columns={orderedColumns}
@@ -416,10 +291,18 @@ export default function PayrollPage() {
                 Object.keys(customLabels).length > 0
               }
             />
-          </div>
-        </div>
+            <Button
+              leftIcon={<Calculator className="h-4 w-4" />}
+              onClick={() => setPreviewOpen(true)}
+            >
+              {t('preview.open')}
+            </Button>
+          </>
+        }
+      />
 
-        <TableContainer constrainWidth={false}>
+      <div className="flex flex-1 min-h-0">
+        <TableContainer>
           <Table>
             <TableHeader>
               <TableRow>
@@ -461,7 +344,7 @@ export default function PayrollPage() {
                       size="sm"
                       title={t('empty.periodsTitle')}
                       description={
-                        statusFilter ? t('empty.noMatchDescription') : t('empty.periodsDescription')
+                        statusFilter ? t('empty.noMatchDescription') : t('empty.periodsHint')
                       }
                     />
                   </TableCell>
@@ -772,9 +655,11 @@ export default function PayrollPage() {
             })}
           </Table>
         </TableContainer>
-
-        <Pagination page={page} totalPages={totalPages} onChange={changePage} />
       </div>
+
+      <Pagination page={page} totalPages={totalPages} onChange={changePage} />
+
+      <PayrollPreviewModal open={previewOpen} onClose={() => setPreviewOpen(false)} />
 
       {/* Модалка виплати */}
       <Modal

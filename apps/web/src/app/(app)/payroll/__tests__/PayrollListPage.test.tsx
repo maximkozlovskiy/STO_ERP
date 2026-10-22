@@ -1,4 +1,6 @@
 // Regression-guard для List Page pattern на /payroll (пагінація + фільтр статусу + колонки).
+// Стандарт списку (рішення власника 2026-10-22): сторінка на весь екран (`page-fill`), статуси —
+// кнопками окремим рядком над рядком фільтрів, розрахунок за період — у вікні з основної кнопки.
 // Load-bearing поведінка:
 //   - usePayrollPeriods отримує { page, limit, status } — фільтр реально їде на бекенд,
 //     а не фільтрує локально (інакше пагінація бреше: total з сервера ≠ видимі рядки).
@@ -7,9 +9,9 @@
 //   - ColumnsDropdown присутній; приховування колонки прибирає її th і не ламає colSpan.
 //   - Порожній список під фільтром → empty.noMatchDescription, без фільтра → periodsDescription.
 
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
-import type { PayrollPeriod, PayrollPeriodsFilter } from '@/hooks/api/usePayroll';
+import type { PayrollPeriod, PayrollPeriodsFilter, PayrollPreview } from '@/hooks/api/usePayroll';
 
 vi.mock('@/lib/auth', () => ({
   useRequireAuth: () => undefined,
@@ -22,7 +24,9 @@ const listItems: PayrollPeriod[] = [];
 let listTotal = 0;
 let lastPreviewArgs: unknown[] = [];
 let previewError: Error | null = null;
+let previewData: PayrollPreview | undefined;
 const previewRefetch = vi.fn();
+const createMutate = vi.fn();
 
 vi.mock('@/hooks/api/usePayroll', async orig => {
   const actual = await orig<typeof import('@/hooks/api/usePayroll')>();
@@ -31,7 +35,7 @@ vi.mock('@/hooks/api/usePayroll', async orig => {
     ...actual,
     usePayrollPreview: (...args: unknown[]) => {
       lastPreviewArgs = args;
-      return { data: undefined, isLoading: false, error: previewError, refetch: previewRefetch };
+      return { data: previewData, isLoading: false, error: previewError, refetch: previewRefetch };
     },
     usePayrollPeriods: (filters: PayrollPeriodsFilter = {}) => {
       lastFilters = filters;
@@ -41,7 +45,7 @@ vi.mock('@/hooks/api/usePayroll', async orig => {
       };
     },
     usePayrollPeriod: () => ({ data: undefined, isLoading: false }),
-    useCreatePayrollPeriod: noopMut,
+    useCreatePayrollPeriod: () => ({ mutateAsync: createMutate, isPending: false }),
     useComputePayrollPeriod: noopMut,
     usePayPayrollPeriod: noopMut,
     useDeletePayrollPeriod: noopMut,
@@ -53,6 +57,9 @@ vi.mock('@/hooks/api/useCash', () => ({
 }));
 
 import PayrollPage from '../page';
+// Сторінка вантажить вікно розрахунку через next/dynamic; модуль у кеші заздалегідь — інакше перший
+// імпорт під навантаженням повного прогону довший за таймаут тесту.
+import '../PayrollPreviewModal';
 
 function makePeriod(over: Partial<PayrollPeriod> = {}): PayrollPeriod {
   return {
@@ -74,7 +81,15 @@ function makePeriod(over: Partial<PayrollPeriod> = {}): PayrollPeriod {
   };
 }
 
-const STATUS_SELECT = 'Статус періоду';
+const statusGroup = () => screen.getByRole('group', { name: 'Статус періоду' });
+const pickStatus = (label: string) =>
+  fireEvent.click(within(statusGroup()).getByRole('button', { name: label }));
+
+/** Вікно «Розрахунок за період» — з основної кнопки рядка фільтрів (вантажиться ліниво). */
+async function openPreview() {
+  fireEvent.click(screen.getByRole('button', { name: 'Розрахувати період' }));
+  return screen.findByRole('dialog', { name: 'Розрахунок за період' }, { timeout: 3000 });
+}
 
 describe('Payroll — List Page pattern (пагінація + фільтри + колонки)', () => {
   beforeEach(() => {
@@ -97,7 +112,7 @@ describe('Payroll — List Page pattern (пагінація + фільтри + �
     listItems.push(makePeriod());
     listTotal = 1;
     render(<PayrollPage />);
-    fireEvent.change(screen.getByLabelText(STATUS_SELECT), { target: { value: 'PAID' } });
+    pickStatus('Виплачено');
     expect(lastFilters?.status).toBe('PAID');
   });
 
@@ -110,7 +125,7 @@ describe('Payroll — List Page pattern (пагінація + фільтри + �
     fireEvent.click(screen.getByRole('button', { name: '2' }));
     expect(lastFilters?.page).toBe(2);
 
-    fireEvent.change(screen.getByLabelText(STATUS_SELECT), { target: { value: 'DRAFT' } });
+    pickStatus('Чернетка');
     expect(lastFilters?.page).toBe(1);
     expect(lastFilters?.status).toBe('DRAFT');
   });
@@ -131,10 +146,10 @@ describe('Payroll — List Page pattern (пагінація + фільтри + �
     listTotal = 0;
     const { unmount } = render(<PayrollPage />);
     expect(
-      screen.getByText('Розрахуйте період вище і натисніть «Створити період»'),
+      screen.getByText('Натисніть «Розрахувати період» і створіть період у вікні розрахунку'),
     ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText(STATUS_SELECT), { target: { value: 'CANCELLED' } });
+    pickStatus('Скасовано');
     expect(screen.getByText('За вибраним фільтром періодів немає')).toBeInTheDocument();
     unmount();
   });
@@ -182,46 +197,144 @@ describe('Payroll — List Page pattern (пагінація + фільтри + �
   });
 });
 
-describe('Payroll — розрахунок за період шле лише календарні дати', () => {
-  // Mutation-verify (2026-10-09): прибрати `&& datesValid` з виклику usePayrollPreview → падає
-  // останнє твердження; `disabled={!datesValid}` → падає твердження про кнопку. Запит спершу
-  // ВМИКАЄМО («Розрахувати» з коректними датами): без цього четвертий аргумент хука — false ще до
-  // зміни дати, і твердження про нього нічого не стерегло б.
-  it('рік із 5 цифр: кнопка «Розрахувати» вимкнена, увімкнений запит preview вимикається', () => {
+describe('Payroll — сторінка на весь екран: статуси над фільтрами, розрахунок у вікні', () => {
+  beforeEach(() => {
+    listItems.length = 0;
+    listTotal = 0;
+    previewData = undefined;
+    createMutate.mockReset();
+    window.localStorage.clear();
+  });
+
+  it('page-fill замість вузької картки; статуси — кнопки окремим рядком над рядком фільтрів', () => {
+    const { container } = render(<PayrollPage />);
+    expect(container.firstElementChild).toHaveClass('page-fill');
+    expect(container.querySelector('.page-container')).toBeNull();
+
+    const group = statusGroup();
+    expect(
+      within(group)
+        .getAllByRole('button')
+        .map(b => b.textContent),
+    ).toEqual(['Всі статуси', 'Чернетка', 'Розраховано', 'Виплачено', 'Скасовано']);
+    expect(within(group).getByRole('button', { name: 'Всі статуси' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.queryByRole('combobox', { name: 'Статус періоду' })).toBeNull();
+
+    // Рядок фільтрів — під статусами; дії (колонки, «Розрахувати період») притиснуті праворуч.
+    const open = screen.getByRole('button', { name: 'Розрахувати період' });
+    const actions = open.parentElement!;
+    expect(actions).toHaveClass('ml-auto');
+    expect(actions).toContainElement(screen.getByLabelText('Налаштувати колонки'));
+    expect(group.contains(open)).toBe(false);
+    expect(group.compareDocumentPosition(open) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Розрахунку на сторінці немає — він у вікні.
+    expect(screen.queryByRole('button', { name: 'Розрахувати' })).toBeNull();
+  });
+
+  it('«Розрахувати період» відкриває вікно: дати — спільний фільтр «Період з … по», запит лише після «Розрахувати»', async () => {
     render(<PayrollPage />);
-    const btn = screen.getByRole('button', { name: /Розрахувати/ });
+    const dialog = await openPreview();
+    const from = within(dialog).getByLabelText('Період з');
+    const to = within(dialog).getByLabelText('по');
+    // DatePickerInput: текстове поле ДД.ММ.РРРР, а не рідне type=date.
+    expect(from).toHaveAttribute('type', 'text');
+    expect(to).toHaveAttribute('type', 'text');
+    expect(lastPreviewArgs[3]).toBe(false);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Розрахувати' }));
+    expect(lastPreviewArgs[3]).toBe(true);
+    expect(String(lastPreviewArgs[0])).toMatch(/^\d{4}-\d{2}-01$/);
+  });
+
+  it('«Створити період» — лише коли є нарахування; створює період за датами вікна й закриває вікно', async () => {
+    previewData = {
+      lines: [
+        {
+          employeeId: 'e-1',
+          employeeName: 'Іваненко Петро',
+          rateSchemeType: 'percent_normo',
+          normoHours: 2,
+          baseAmount: 1000,
+          accruedAmount: 400,
+        } as PayrollPreview['lines'][number],
+      ],
+      totalAccrued: 400,
+      from: '2026-10-01',
+      to: '2026-10-22',
+    };
+    createMutate.mockResolvedValue({ id: 'p-new' });
+    render(<PayrollPage />);
+    const dialog = await openPreview();
+    expect(within(dialog).queryByRole('button', { name: 'Створити період' })).toBeNull();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Розрахувати' }));
+    expect(within(dialog).getByText('Іваненко Петро')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Створити період' }));
+
+    await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
+    const [{ periodStart, periodEnd }] = createMutate.mock.calls[0] as [
+      { periodStart: string; periodEnd: string },
+    ];
+    expect(periodStart).toBe(lastPreviewArgs[0]);
+    expect(periodEnd).toBe(lastPreviewArgs[1]);
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Розрахунок за період' })).toBeNull(),
+    );
+  });
+});
+
+describe('Payroll — розрахунок за період шле лише календарні дати', () => {
+  beforeEach(() => {
+    previewData = undefined;
+  });
+
+  // Mutation-verify: прибрати `&& datesValid` з виклику usePayrollPreview → падає твердження про
+  // четвертий аргумент хука; `disabled={!datesValid}` → падає твердження про кнопку. Запит спершу
+  // ВМИКАЄМО («Розрахувати» з коректними датами): без цього четвертий аргумент — false ще до
+  // зміни дати, і твердження про нього нічого не стерегло б.
+  it('порожня дата «по» («×» у полі): кнопка «Розрахувати» вимкнена, увімкнений запит вимикається', async () => {
+    render(<PayrollPage />);
+    const dialog = await openPreview();
+    const btn = within(dialog).getByRole('button', { name: 'Розрахувати' });
     fireEvent.click(btn);
     expect(lastPreviewArgs[3]).toBe(true);
 
-    const from = document.querySelectorAll('input[type="date"]')[0] as HTMLInputElement;
-    fireEvent.change(from, { target: { value: '20261-10-01' } });
+    fireEvent.change(within(dialog).getByLabelText('по'), { target: { value: '' } });
     expect(btn).toBeDisabled();
     expect(lastPreviewArgs[3]).toBe(false);
+  });
+
+  it('рік із 5 цифр у полі не стає межею: запит іде з попередньою датою', async () => {
+    render(<PayrollPage />);
+    const dialog = await openPreview();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Розрахувати' }));
+    const before = lastPreviewArgs[0];
+
+    fireEvent.change(within(dialog).getByLabelText('Період з'), {
+      target: { value: '01.10.20261' },
+    });
+    expect(lastPreviewArgs[0]).toBe(before);
+    expect(lastPreviewArgs[3]).toBe(true);
   });
 
   // Bug #824: смуга помилки розрахунку була без «Повторити». Кнопка «Розрахувати» після першого
   // натискання нічого не робить (запит уже ввімкнено), тож повторити розрахунок із тими самими
   // датами можна було лише змінивши дату туди й назад.
-  it('збій розрахунку: смуга з текстом і «Повторити», що перезапитує', () => {
+  it('збій розрахунку: смуга з текстом і «Повторити», що перезапитує', async () => {
     previewError = new Error('Внутрішня помилка сервера');
     previewRefetch.mockClear();
     try {
       render(<PayrollPage />);
-      fireEvent.click(screen.getByRole('button', { name: /Розрахувати/ }));
-      expect(screen.getByRole('alert')).toHaveTextContent('Внутрішня помилка сервера');
-      fireEvent.click(screen.getByRole('button', { name: 'Повторити' }));
+      const dialog = await openPreview();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Розрахувати' }));
+      expect(within(dialog).getByRole('alert')).toHaveTextContent('Внутрішня помилка сервера');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Повторити' }));
       expect(previewRefetch).toHaveBeenCalledTimes(1);
     } finally {
       previewError = null;
     }
-  });
-
-  it('порожня дата «по»: запит preview теж вимикається', () => {
-    render(<PayrollPage />);
-    fireEvent.click(screen.getByRole('button', { name: /Розрахувати/ }));
-    const to = document.querySelectorAll('input[type="date"]')[1] as HTMLInputElement;
-    fireEvent.change(to, { target: { value: '' } });
-    expect(screen.getByRole('button', { name: /Розрахувати/ })).toBeDisabled();
-    expect(lastPreviewArgs[3]).toBe(false);
   });
 });
