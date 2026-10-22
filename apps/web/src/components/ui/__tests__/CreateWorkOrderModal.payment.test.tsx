@@ -99,8 +99,17 @@ function mockApi() {
       return Promise.resolve(woDoc());
     if (path === '/payment-methods')
       return Promise.resolve([
-        { code: 'card_terminal', name: 'Термінал', isActive: true, defaultSourceType: null },
+        // Безготівковий спосіб — з банківським рахунком за замовчуванням (BR-PAY-023).
+        {
+          code: 'card_terminal',
+          name: 'Термінал',
+          isActive: true,
+          defaultSourceType: 'BANK_ACCOUNT',
+          defaultBankAccountId: 'ba-1',
+        },
       ]);
+    if (path === '/bank-accounts')
+      return Promise.resolve({ items: [{ id: 'ba-1', name: 'Рахунок', currencyCode: 'UAH' }] });
     if (path === '/payments' && init?.method === 'POST') {
       // Повна оплата наряду «Виставлено» → сервер переводить його в «Оплачено» (BR-PAY-005).
       paid = 1000;
@@ -195,6 +204,8 @@ describe('CreateWorkOrderModal — «Оплатити» з наряду', () => 
     await userEvent.click(payButton()!);
     const dialog = await screen.findByRole('dialog', { name: 'Оплата наряду НЗ-2026-000001' });
     await within(dialog).findByRole('option', { name: 'Термінал' });
+    // Рахунок способу підставлено — оплата не заблокована.
+    await within(dialog).findByRole('option', { name: 'Рахунок' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Підтвердити оплату' }));
 
     await waitFor(() =>
@@ -206,7 +217,13 @@ describe('CreateWorkOrderModal — «Оплатити» з наряду', () => 
     const body = JSON.parse(
       (apiFetchMock.mock.calls.find(([p]) => p === '/payments')![1] as { body: string }).body,
     ) as Record<string, unknown>;
-    expect(body).toMatchObject({ workOrderId: 'wo-1', counterpartyId: 'cp1', amount: 1000 });
+    expect(body).toMatchObject({
+      workOrderId: 'wo-1',
+      counterpartyId: 'cp1',
+      amount: 1000,
+      sourceType: 'BANK_ACCOUNT',
+      bankAccountId: 'ba-1',
+    });
     // Статус — з повторного читання наряду, а не «натиснутої кнопки».
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/work-orders/wo-1'));
     expect(await screen.findByRole('button', { name: 'Оплачено' })).toBeInTheDocument();

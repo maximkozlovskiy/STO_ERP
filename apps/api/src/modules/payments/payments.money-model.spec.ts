@@ -86,8 +86,19 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
         }),
       },
       // За замовч. метод БЕЗ фіскалізації → checkbox не заважає перевіркам джерела/оплати.
-      paymentMethodConfig: { findFirst: vi.fn().mockResolvedValue({ requiresFiscal: false }) },
-      bankAccount: { findFirst: vi.fn() },
+      // Безготівковий спосіб має банківський рахунок за замовчуванням (BR-PAY-023): без нього
+      // оплата не пишеться. Кейси джерела перевизначають обидва моки.
+      paymentMethodConfig: {
+        findFirst: vi.fn().mockResolvedValue({
+          requiresFiscal: false,
+          defaultSourceType: 'BANK_ACCOUNT',
+          defaultBankAccountId: 'bank-default',
+          defaultCashRegisterId: null,
+        }),
+      },
+      bankAccount: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'bank-default', currencyId: null }),
+      },
       cashRegister: { findFirst: vi.fn() },
       $transaction: vi.fn().mockImplementation(async (arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
@@ -444,8 +455,8 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     expect(prisma.cashRegister.findFirst).not.toHaveBeenCalled();
   });
 
-  // guards: BR-INV-013
-  it('Bug #674: methodConfig=null (невідомий метод) → джерело null, платіж успішний', async () => {
+  // guards: BR-INV-013, BR-PAY-023
+  it('Bug #674: невідомий метод (methodConfig=null) без призначення → 400; з явним рахунком — проходить', async () => {
     prisma.paymentMethodConfig.findFirst.mockResolvedValue(null);
     prisma.invoice.findFirst.mockResolvedValue({
       counterpartyId: CP_ID,
@@ -456,12 +467,17 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     });
     prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
 
-    await service.create(ORG, baseDto, 'user-1');
+    // Без способу оплати в довіднику й без рахунку гроші не лягли б нікуди — відмова.
+    await expect(service.create(ORG, baseDto, 'user-1')).rejects.toThrow(
+      'Безготівкова оплата: оберіть банківський рахунок',
+    );
+    expect(prisma.payment.create).not.toHaveBeenCalled();
 
-    expect(lastCreateData?.sourceType).toBeNull();
-    expect(lastCreateData?.bankAccountId).toBeNull();
-    expect(lastCreateData?.cashRegisterId).toBeNull();
-    // Невідомий метод не блокує рух грошей.
+    // Невідомий метод сам по собі рух грошей не блокує: рахунок указано — платіж є.
+    prisma.bankAccount.findFirst.mockResolvedValue({ id: BANK_ID, currencyId: null });
+    await service.create(ORG, { ...baseDto, bankAccountId: BANK_ID }, 'user-1');
+    expect(lastCreateData?.sourceType).toBe('BANK_ACCOUNT');
+    expect(lastCreateData?.bankAccountId).toBe(BANK_ID);
     expect(prisma.payment.create).toHaveBeenCalledTimes(1);
   });
 
@@ -527,7 +543,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
   // ── Борг не залежить від source-link ──────────────────────────────────────
 
   // guards: BR-INV-015
-  it('settlement і paidAmount однакові без джерела, з BANK_ACCOUNT і з CASH_REGISTER (борг не залежить від source-link)', async () => {
+  it('settlement і paidAmount однакові з рахунком способу, з явним BANK_ACCOUNT і з CASH_REGISTER (борг не залежить від source-link)', async () => {
     prisma.invoice.findFirst.mockResolvedValue({
       counterpartyId: CP_ID,
       status: 'SENT',
@@ -539,7 +555,8 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     prisma.bankAccount.findFirst.mockResolvedValue({ id: BANK_ID });
     prisma.cashRegister.findFirst.mockResolvedValue({ id: CASH_ID });
 
-    // Той самий платіж 200 тричі — відрізняється ЛИШЕ рахунок-призначення.
+    // Той самий платіж 200 тричі — відрізняється ЛИШЕ рахунок-призначення. Платежу без
+    // призначення більше немає (BR-PAY-023): перший варіант бере рахунок способу оплати.
     const variants = [
       {},
       { sourceType: 'BANK_ACCOUNT', bankAccountId: BANK_ID },
@@ -552,7 +569,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     }
 
     // Контроль, що варіанти справді різні: source-link записано різний.
-    expect(storedSources).toEqual([null, 'BANK_ACCOUNT', 'CASH_REGISTER']);
+    expect(storedSources).toEqual(['BANK_ACCOUNT', 'BANK_ACCOUNT', 'CASH_REGISTER']);
 
     // Рівно одна проводка на платіж, і всі три — ідентичні: джерело на борг не впливає.
     expect(settlements.createTransaction).toHaveBeenCalledTimes(3);

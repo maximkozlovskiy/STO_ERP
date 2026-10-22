@@ -4,7 +4,7 @@
  * Оплата способом «Готівка» (`cash`) мусить мати касу: з запиту або касу за замовчуванням способу
  * оплати. Без каси борг гасився, а каса й її історія про оплату не знали (TECH-DEBT §10 п. 17).
  * Правило діє ПІСЛЯ розв'язання рахунку-призначення, тож застаріле замовчування (касу видалено,
- * BR-PAY-002 мовчки знімає його) теж дає 400. Решта способів — як раніше: призначення необов'язкове.
+ * BR-PAY-002 мовчки знімає його) теж дає 400. Решта способів — BR-PAY-023 (рахунок обов'язковий), нижче.
  */
 
 import { Test } from '@nestjs/testing';
@@ -267,15 +267,71 @@ describe('PaymentsService — готівка лише через касу (BR-PA
     },
   );
 
-  // guards: BR-PAY-019
-  it.each(['card_terminal', 'bank', 'monobank_qr'])(
-    'спосіб %s без каси й без рахунку — як раніше: платіж є, рядка каси немає',
-    async method => {
-      await service.create(ORG, { ...cashDto, method }, 'user-1');
+  /**
+   * BR-PAY-023 (рішення власника 2026-10-22): безготівкова оплата мусить мати призначення —
+   * банківський рахунок. Виняток: спосіб із касою за замовчуванням (картка через термінал із ПРРО)
+   * іде в касу. Без жодного призначення — 400. Онлайн-оплата (QR від шлюзу, `onlinePaymentIntentId`)
+   * під правило не підпадає. Раніше такі оплати гасили борг, а на жодному рахунку грошей не було.
+   */
+  describe('безготівкова оплата лише з призначенням (BR-PAY-023)', () => {
+    const dto = { counterpartyId: CP_ID, amount: 100 };
 
+    // guards: BR-PAY-023
+    it.each(['card_terminal', 'bank', 'monobank_qr'])(
+      'спосіб %s без рахунку в запиті й без замовчування → 400, платежу немає',
+      async method => {
+        await expect(service.create(ORG, { ...dto, method }, 'user-1')).rejects.toThrow(
+          'Безготівкова оплата: оберіть банківський рахунок',
+        );
+        expect(prisma.payment.create).not.toHaveBeenCalled();
+      },
+    );
+
+    // guards: BR-PAY-023
+    it('переказ з рахунком у запиті → оплата на цей рахунок', async () => {
+      await service.create(ORG, { ...dto, method: 'bank', bankAccountId: BANK_ID }, 'user-1');
+      expect(lastCreateData).toMatchObject({ sourceType: 'BANK_ACCOUNT', bankAccountId: BANK_ID });
+    });
+
+    // guards: BR-PAY-023
+    it('картка через термінал з касою за замовчуванням → у касу, без рахунку', async () => {
+      prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+        requiresFiscal: false,
+        defaultSourceType: 'CASH_REGISTER',
+        defaultCashRegisterId: DEFAULT_CASH_ID,
+        defaultBankAccountId: null,
+      });
+      await service.create(ORG, { ...dto, method: 'card_terminal' }, 'user-1');
+      expect(lastCreateData).toMatchObject({
+        sourceType: 'CASH_REGISTER',
+        cashRegisterId: DEFAULT_CASH_ID,
+      });
+    });
+
+    // guards: BR-PAY-023
+    it('рахунок за замовчуванням видалено → 400, а не оплата без рахунку', async () => {
+      prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+        requiresFiscal: false,
+        defaultSourceType: 'BANK_ACCOUNT',
+        defaultCashRegisterId: null,
+        defaultBankAccountId: BANK_ID,
+      });
+      prisma.bankAccount.findFirst.mockResolvedValue(null);
+      await expect(service.create(ORG, { ...dto, method: 'bank' }, 'user-1')).rejects.toThrow(
+        'Безготівкова оплата: оберіть банківський рахунок',
+      );
+      expect(prisma.payment.create).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-PAY-023
+    it('онлайн-оплата від шлюзу (onlinePaymentIntentId) — без призначення, як раніше', async () => {
+      await service.create(
+        ORG,
+        { ...dto, method: 'monobank_qr', onlinePaymentIntentId: 'intent-1' },
+        'user-1',
+      );
       expect(prisma.payment.create).toHaveBeenCalledTimes(1);
-      expect(lastCreateData).toMatchObject({ method, sourceType: null, cashRegisterId: null });
-      expect(cash.createOperation).not.toHaveBeenCalled();
-    },
-  );
+      expect(lastCreateData).toMatchObject({ sourceType: null, bankAccountId: null });
+    });
+  });
 });

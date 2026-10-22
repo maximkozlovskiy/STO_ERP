@@ -9,6 +9,7 @@ import { fmtMoney } from '@/lib/format';
 import { invoiceRemaining } from '@/lib/invoice-payment';
 import { useBaseCurrency, useCashRegisters, type CashRegister } from '@/hooks/api/useCash';
 import { useCreatePayment } from '@/hooks/api/useInvoices';
+import { useBankAccountOptions, type BankAccountOption } from '@/hooks/api/useBankStatements';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,12 +24,14 @@ type PayMethodOption = Pick<PaymentMethodDto, 'code' | 'name'> &
       PaymentMethodDto,
       | 'defaultSourceType'
       | 'defaultCashRegisterId'
+      | 'defaultBankAccountId'
       | 'defaultDestinationName'
       | 'defaultDestinationCurrencyCode'
     >
   >;
 
 const EMPTY_CASH_REGISTERS: CashRegister[] = [];
+const EMPTY_BANK_ACCOUNTS: BankAccountOption[] = [];
 const QR_METHOD_CODE = 'monobank_qr';
 // Коди QR-способів оплати — `<шлюз>_qr` (monobank_qr, privat24_qr, liqpay_qr; setup.service).
 const QR_CODE_SUFFIX = '_qr';
@@ -69,6 +72,8 @@ export interface ClientPaymentModalProps {
  *  - каса для готівки обов'язкова (BR-PAY-019, `CASH_METHOD_CODE`); поле «Каса» є й для способу,
  *    у якого кошти за замовчуванням надходять у касу, і заповнюється касою способу, доки касир
  *    не обрав іншу сам;
+ *  - безготівковий спосіб без каси за замовчуванням вимагає банківський рахунок (BR-PAY-023): поле
+ *    «Рахунок» заповнене рахунком способу оплати, доки касир не обрав інший; QR — без поля;
  *  - каси — лише у валюті документа (Bug #857); порожній перелік пояснено (Bug #858);
  *  - сума за замовчуванням — залишок (порожнє поле);
  *  - один ключ ідемпотентності на відкриття вікна;
@@ -92,6 +97,8 @@ export function ClientPaymentModal({
   const [form, setForm] = useState({ method: CASH_METHOD_CODE, amount: '', notes: '' });
   // Каса, яку касир обрав сам; null — поле йде за касою за замовчуванням способу оплати.
   const [cashChoice, setCashChoice] = useState<string | null>(null);
+  // Банківський рахунок, який касир обрав сам; null — поле йде за рахунком способу оплати.
+  const [bankChoice, setBankChoice] = useState<string | null>(null);
   const [error, setError] = useState('');
   const idempotencyKeyRef = useRef('');
 
@@ -100,6 +107,7 @@ export function ClientPaymentModal({
     if (!open) return;
     setForm({ method: CASH_METHOD_CODE, amount: '', notes: '' });
     setCashChoice(null);
+    setBankChoice(null);
     setError('');
     idempotencyKeyRef.current = newIdempotencyKey();
   }, [open, target?.id]);
@@ -132,6 +140,7 @@ export function ClientPaymentModal({
             name: m.name,
             defaultSourceType: m.defaultSourceType,
             defaultCashRegisterId: m.defaultCashRegisterId,
+            defaultBankAccountId: m.defaultBankAccountId,
             defaultDestinationName: m.defaultDestinationName,
             defaultDestinationCurrencyCode: m.defaultDestinationCurrencyCode,
           }));
@@ -191,6 +200,36 @@ export function ClientPaymentModal({
   ]);
   const cashId = cashChoice ?? (cashOptions.some(o => o.id === defaultCashId) ? defaultCashId : '');
   const blockedNoCash = needsCash && !cashId;
+
+  // BR-PAY-023: безготівкова оплата без каси — на банківський рахунок у валюті документа.
+  const showsBank = !isQr && !showsCash;
+  const {
+    data: bankAccounts = EMPTY_BANK_ACCOUNTS,
+    isPending: bankAccountsPending,
+    isError: bankAccountsError,
+  } = useBankAccountOptions(open && showsBank);
+  const bankOptions = useMemo(
+    () =>
+      bankAccounts
+        .filter(a => (a.currencyCode || baseCode) === currencyCode)
+        .map(a => ({ id: a.id, name: a.name })),
+    [bankAccounts, baseCode, currencyCode],
+  );
+  const defaultBankId =
+    method?.defaultSourceType === 'BANK_ACCOUNT' ? (method.defaultBankAccountId ?? '') : '';
+  const bankId = bankChoice ?? (bankOptions.some(o => o.id === defaultBankId) ? defaultBankId : '');
+  const blockedNoBank = showsBank && !bankId;
+  const bankHint =
+    !showsBank || bankAccountsPending || payMethods.length === 0
+      ? undefined
+      : bankAccountsError
+        ? t('payment.bankAccountsLoadError')
+        : bankOptions.length === 0
+          ? t('payment.noBankAccountInCurrency', { code: currencyCode })
+          : blockedNoBank
+            ? t('payment.bankAccountRequired')
+            : undefined;
+  const blocked = blockedNoCash || blockedNoBank;
   // Підказку показуємо, лише коли каси й способи вже прийшли. Порожній перелік пояснюємо
   // (Bug #858): збій завантаження чи жодної каси у валюті документа — а не «оберіть касу».
   const cashHint =
@@ -221,7 +260,7 @@ export function ClientPaymentModal({
   const savingRef = useRef(false);
 
   const handlePay = async () => {
-    if (!target || blockedNoCash || savingRef.current) return;
+    if (!target || blocked || savingRef.current) return;
     const amount = parsedAmount();
     // BR-PAY-017: сума — від копійки до залишку. `min`/`max` поля кнопку не блокують (форми немає),
     // тож без цієї перевірки «0» чи сума понад залишок ішли на сервер.
@@ -241,6 +280,7 @@ export function ClientPaymentModal({
         notes: form.notes || undefined,
         // Каса з поля перемагає замовчування способу; без поля сервер бере призначення способу.
         ...(showsCash && cashId ? { sourceType: 'CASH_REGISTER', cashRegisterId: cashId } : {}),
+        ...(showsBank && bankId ? { sourceType: 'BANK_ACCOUNT', bankAccountId: bankId } : {}),
       });
       onPaid(amount, fmt(amount));
     } catch (e: unknown) {
@@ -276,7 +316,7 @@ export function ClientPaymentModal({
           <Button
             onClick={() => void handlePay()}
             loading={createPayment.isPending}
-            disabled={blockedNoCash || remaining <= 0}
+            disabled={blocked || remaining <= 0}
             className="w-full"
           >
             {t('payment.confirmPayment')}
@@ -344,6 +384,23 @@ export function ClientPaymentModal({
               {cashOptions.map(r => (
                 <option key={r.id} value={r.id}>
                   {r.name}
+                </option>
+              ))}
+            </Select>
+          )}
+          {showsBank && (
+            <Select
+              label={t('payment.bankAccount')}
+              required
+              value={bankId}
+              onChange={e => setBankChoice(e.target.value)}
+              placeholder={t('payment.bankAccountPlaceholder')}
+              errorMessage={bankHint}
+              className="h-8 text-[13px] py-0.5 px-2 pr-7"
+            >
+              {bankOptions.map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
                 </option>
               ))}
             </Select>

@@ -384,6 +384,8 @@ export const en: Record<string, string> = {
   'err.payment.bankAccountNotFound': 'Bank account not found',
   'err.payment.cashRegisterNotSpecified': 'No cash register specified',
   'err.payment.cashRegisterNotFound': 'Cash register not found',
+  'err.payment.nonCashRequiresDestination':
+    'Non-cash payment: choose the bank account the money arrived at',
   'err.payment.cashRequiresRegister': 'Specify a cash register for a cash payment',
   // cash-shift
   'err.cashShift.fiscalNotConfigured':

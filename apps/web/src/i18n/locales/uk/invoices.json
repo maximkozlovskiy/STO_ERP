@@ -71,7 +71,12 @@
     "cashRegistersLoadError": "Не вдалося завантажити каси — закрийте вікно й відкрийте знову",
     "noCashRegisterInCurrency": "Немає жодної каси у валюті {{code}}",
     "workOrderAmount": "Сума наряду:",
-    "amountOutOfRange": "Сума має бути більшою за 0 і не більшою за залишок до сплати ({{remaining}})"
+    "amountOutOfRange": "Сума має бути більшою за 0 і не більшою за залишок до сплати ({{remaining}})",
+    "bankAccount": "Рахунок",
+    "bankAccountPlaceholder": "— оберіть рахунок —",
+    "bankAccountRequired": "Для безготівкової оплати оберіть банківський рахунок",
+    "bankAccountsLoadError": "Не вдалося завантажити рахунки — закрийте вікно й відкрийте знову",
+    "noBankAccountInCurrency": "Немає жодного банківського рахунку у валюті {{code}}"
   },
   "toast": {
     "cancelledOne": "Скасовано {{count}} рахунок",

@@ -377,6 +377,8 @@ export const uk: Record<string, string> = {
   'err.payment.bankAccountNotFound': 'Банківський рахунок не знайдено',
   'err.payment.cashRegisterNotSpecified': 'Не вказано касу',
   'err.payment.cashRegisterNotFound': 'Касу не знайдено',
+  'err.payment.nonCashRequiresDestination':
+    'Безготівкова оплата: оберіть банківський рахунок, на який надійшли гроші',
   'err.payment.cashRequiresRegister': 'Для оплати готівкою вкажіть касу',
   // cash-shift
   'err.cashShift.fiscalNotConfigured': 'Фіскалізацію не налаштовано (провайдер/креди/увімкнення)',

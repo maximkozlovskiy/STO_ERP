@@ -71,7 +71,12 @@
     "cashRegistersLoadError": "Could not load cash registers — close the window and open it again",
     "noCashRegisterInCurrency": "There is no cash register in {{code}}",
     "workOrderAmount": "Work order total:",
-    "amountOutOfRange": "The amount must be greater than 0 and not exceed the remaining balance ({{remaining}})"
+    "amountOutOfRange": "The amount must be greater than 0 and not exceed the remaining balance ({{remaining}})",
+    "bankAccount": "Account",
+    "bankAccountPlaceholder": "— choose an account —",
+    "bankAccountRequired": "Choose the bank account for a non-cash payment",
+    "bankAccountsLoadError": "Could not load bank accounts — close the window and open it again",
+    "noBankAccountInCurrency": "No bank account in {{code}}"
   },
   "toast": {
     "cancelledOne": "Cancelled {{count}} invoice",

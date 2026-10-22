@@ -227,12 +227,13 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     expect(checkboxQueue.add).toHaveBeenCalledTimes(1);
   });
 
-  it('оплата без рахунку (source=null) → base (rate=1, amountBase=amount), resolveBaseConversion не викликається', async () => {
-    // Метод без дефолтного рахунку → resolvedSource.currencyId undefined → base. Не готівка:
-    // готівка без каси — 400 (BR-PAY-019), а рахунок-призначення необов'язковий лише для решти.
+  it('оплата на рахунок без валюти (базова) → base (rate=1, amountBase=amount), resolveBaseConversion не викликається', async () => {
+    // Рахунок-призначення без currencyId → базова валюта. Оплати без призначення більше немає:
+    // готівка без каси — 400 (BR-PAY-019), безготівкова без рахунку — 400 (BR-PAY-023).
+    prisma.bankAccount.findFirst.mockResolvedValue({ id: 'bank-base', currencyId: null });
     await service.create(
       ORG,
-      { counterpartyId: CP_ID, amount: 100, method: 'card_terminal' },
+      { counterpartyId: CP_ID, amount: 100, method: 'card_terminal', bankAccountId: 'bank-base' },
       'user-1',
     );
 

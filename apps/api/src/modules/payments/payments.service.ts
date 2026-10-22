@@ -338,6 +338,19 @@ export class PaymentsService {
       throw new BadRequestException(
         translateError('err.payment.cashRequiresRegister', getLocale()),
       );
+    // BR-PAY-023: безготівкова оплата без призначення — гроші, яких не видно на жодному рахунку
+    // (борг погашено, а банківський рахунок про них не знає). Призначення — з запиту або за
+    // замовчуванням способу оплати (картка через термінал може мати касу за замовчуванням);
+    // застаріле замовчування (рахунок видалено) теж 400. Онлайн-оплата (QR) приходить від шлюзу
+    // зі своїм наміром оплати й під правило не підпадає.
+    if (
+      dto.method !== CASH_METHOD_CODE &&
+      !dto.onlinePaymentIntentId &&
+      resolvedSource.sourceType === null
+    )
+      throw new BadRequestException(
+        translateError('err.payment.nonCashRequiresDestination', getLocale()),
+      );
 
     // Наряд вказано, але його немає (чужа org або видалений) → 404 ДО транзакції. Без цього всі
     // перевірки наряду нижче мовчали: статус, замовник, валюта й залишок (BR-PAY-001/016/017) не

@@ -520,6 +520,7 @@ export const VALIDATION_KEYS = [
   'err.payment.cashRegisterNotSpecified',
   'err.payment.cashRegisterNotFound',
   'err.payment.cashRequiresRegister',
+  'err.payment.nonCashRequiresDestination',
   'err.cashShift.fiscalNotConfigured',
   'err.cashShift.unknownProvider',
   'err.cashShift.noCashRegisterForBranch',

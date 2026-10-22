@@ -95,9 +95,19 @@ function makeHarness(seed: Seed = {}) {
       createdAt: new Date('2026-10-15T09:00:00.000Z'),
       counterparty: { firstName: null, lastName: null, companyName: 'ТОВ' },
     })),
-    // Метод без фіскалізації й без рахунку-призначення — перевіряються лише правила наряду.
-    paymentMethodConfig: memoryTable([{ orgId: ORG, code: 'card', requiresFiscal: false }]),
-    bankAccount: memoryTable([]),
+    // Метод без фіскалізації; гроші — на банківський рахунок за замовчуванням способу (BR-PAY-023),
+    // у базовій валюті. Перевіряються правила наряду.
+    paymentMethodConfig: memoryTable([
+      {
+        orgId: ORG,
+        code: 'card',
+        requiresFiscal: false,
+        defaultSourceType: 'BANK_ACCOUNT',
+        defaultBankAccountId: 'bank-1',
+        deletedAt: null,
+      },
+    ]),
+    bankAccount: memoryTable([{ id: 'bank-1', orgId: ORG, deletedAt: null, currencyId: null }]),
     cashRegister: memoryTable([]),
     garageBranch: memoryTable([{ id: 'br-1', orgId: ORG, deletedAt: null }]),
     settlementTransaction: memoryTable([]),

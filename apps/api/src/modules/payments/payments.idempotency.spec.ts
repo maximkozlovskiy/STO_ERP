@@ -72,7 +72,8 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
       payment: { create: vi.fn() },
       // За замовч. метод потребує фіскалізації → checkbox-enqueue фірес як раніше.
       paymentMethodConfig: { findFirst: vi.fn().mockResolvedValue({ requiresFiscal: true }) },
-      bankAccount: { findFirst: vi.fn() },
+      // Безготівкова оплата йде на банківський рахунок (BR-PAY-023): за замовчуванням він існує.
+      bankAccount: { findFirst: vi.fn().mockResolvedValue({ id: 'bank-base', currencyId: null }) },
       cashRegister: { findFirst: vi.fn() },
       // Виконує callback з prisma як tx — CAS updateMany/payment.create реально викликаються.
       $transaction: vi.fn().mockImplementation(async (arg: unknown) => {
@@ -115,6 +116,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     invoiceId: INV_ID,
     amount: 500,
     method: 'CASH',
+    bankAccountId: 'bank-base',
   };
 
   // guards: BR-PAY-003, BR-INV-010
@@ -282,7 +284,8 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
   });
 
   // guards: BR-PAY-002, BR-INV-014
-  it('config-дефолт BANK_ACCOUNT з видаленим рахунком (stale) → degrade to null, платіж УСПІШНИЙ (offline-first)', async () => {
+  // guards: BR-PAY-023
+  it('config-дефолт BANK_ACCOUNT з видаленим рахунком (stale) → 400: безготівкова оплата без рахунку не пишеться', async () => {
     prisma.counterparty.findFirst.mockResolvedValue({
       id: CP_ID,
       phone: null,
@@ -308,24 +311,14 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
     prisma.payment.create.mockResolvedValue(createdPayment);
 
-    // НЕ кидає: застарілий конфіг не має валити легітимний рух грошей.
-    await service.create(ORG, baseDto, 'user-1');
-
-    // Source-link знято (null), але платіж + settlement створені.
-    expect(prisma.payment.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          sourceType: null,
-          bankAccountId: null,
-          cashRegisterId: null,
-        }),
-      }),
+    // Раніше застарілий рахунок мовчки знімався, і гроші не лягали на жоден рахунок. Тепер —
+    // відмова (BR-PAY-023): касир обирає чинний рахунок. Рядок без явного призначення.
+    const { bankAccountId: _omit, ...withoutDestination } = baseDto;
+    await expect(service.create(ORG, withoutDestination, 'user-1')).rejects.toThrow(
+      'Безготівкова оплата: оберіть банківський рахунок',
     );
-    expect(settlements.createTransaction).toHaveBeenCalledWith(
-      ORG,
-      expect.objectContaining({ type: 'PAYMENT', amount: 500 }),
-      expect.anything(),
-    );
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(settlements.createTransaction).not.toHaveBeenCalled();
   });
 });
 

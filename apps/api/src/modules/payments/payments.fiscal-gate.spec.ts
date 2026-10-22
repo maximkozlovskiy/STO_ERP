@@ -31,6 +31,7 @@ describe('PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .c
     garageBranch: { findFirst: ReturnType<typeof vi.fn> };
     payment: { create: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
     paymentMethodConfig: { findFirst: ReturnType<typeof vi.fn> };
+    bankAccount: { findFirst: ReturnType<typeof vi.fn> };
     cashRegister: { findFirst: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
@@ -84,6 +85,8 @@ describe('PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .c
         update: vi.fn().mockResolvedValue({}),
       },
       paymentMethodConfig: { findFirst: vi.fn() },
+      // Безготівкова оплата йде на банківський рахунок (BR-PAY-023), у базовій валюті.
+      bankAccount: { findFirst: vi.fn().mockResolvedValue({ id: 'bank-1', currencyId: null }) },
       cashRegister: { findFirst: vi.fn() },
       $transaction: vi.fn().mockImplementation(async (arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
@@ -117,7 +120,7 @@ describe('PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .c
     service = module.get(PaymentsService);
   });
 
-  const dto = { counterpartyId: CP_ID, amount: 500, method: 'card' };
+  const dto = { counterpartyId: CP_ID, amount: 500, method: 'card', bankAccountId: 'bank-1' };
 
   it('requiresFiscal=true → checkboxQueue.add викликано + fiscalStatus="QUEUED"', async () => {
     prisma.paymentMethodConfig.findFirst.mockResolvedValue({ requiresFiscal: true });

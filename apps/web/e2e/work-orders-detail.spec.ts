@@ -305,11 +305,33 @@ test.describe('Наряд — повний FSM цикл DRAFT→PAID', () => {
     if (!woId) return; // type-narrow для TS
     await page.goto(`/work-orders/${woId}`);
     await expect(page.locator('text=Виставлено').first()).toBeVisible({ timeout: 20_000 });
+    // BR-PAY-023: безготівкова оплата — на банківський рахунок. Свій рахунок тесту (за назвою),
+    // а не «перший-ліпший» з dev-бази: створюється раз і перевикористовується між прогонами.
+    const OWN_ACCOUNT = '000 E2E Рахунок оплати нарядів';
+    const accounts = (await apiCall(page, 'GET', '/bank-accounts')) as {
+      items?: { id: string; name: string }[];
+    };
+    if (!accounts.items?.some(a => a.name === OWN_ACCOUNT)) {
+      const currencies = (await apiCall(page, 'GET', '/currencies')) as
+        { id: string; code: string }[] | { items: { id: string; code: string }[] };
+      const list = Array.isArray(currencies) ? currencies : currencies.items;
+      const created = (await apiCall(page, 'POST', '/bank-accounts', {
+        name: OWN_ACCOUNT,
+        ibanUA: `UA${String(Date.now()).slice(-9).padStart(27, '0')}`,
+        currencyId: list.find(c => c.code === 'UAH')?.id,
+      })) as { id?: string };
+      expect(created.id, 'тестовий банківський рахунок створено').toBeTruthy();
+    }
     await page.getByRole('button', { name: 'Оплатити', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: /^Оплата наряду / });
     await expect(dialog).toBeVisible({ timeout: 10_000 });
-    // Безготівковий спосіб без каси; порожня сума = залишок.
+    // Безготівковий спосіб без каси — на свій банківський рахунок; порожня сума = залишок.
     await dialog.getByLabel('Метод оплати').selectOption('bank_transfer');
+    const account = dialog.getByRole('combobox', { name: /^Рахунок/ });
+    await expect(account.locator('option', { hasText: OWN_ACCOUNT })).toHaveCount(1, {
+      timeout: 10_000,
+    });
+    await account.selectOption({ label: OWN_ACCOUNT });
     await dialog.getByRole('button', { name: 'Підтвердити оплату' }).click();
     await expect(dialog).toBeHidden({ timeout: 10_000 });
     await expect(page.locator('text=Оплачено').first()).toBeVisible({ timeout: 10_000 });

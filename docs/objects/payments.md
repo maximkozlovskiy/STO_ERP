@@ -308,8 +308,8 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
   стоїть у `PaymentsService.create` ПІСЛЯ розв'язання рахунку-призначення (BR-PAY-002): якщо після нього
   призначення не каса — каси не вказано, касу за замовчуванням видалено (застаріле замовчування мовчки
   знімається) або призначення — банківський рахунок — 400 «Для оплати готівкою вкажіть касу», до транзакції,
-  без оплати й без руху балансу. Явна каса з запиту перемагає замовчування. Інші способи — як раніше:
-  рахунок-призначення необов'язковий. Викликачі: каса (`CashDeskService`) передає касу явно; рознесення
+  без оплати й без руху балансу. Явна каса з запиту перемагає замовчування. Інші способи — BR-PAY-023
+  (безготівкова оплата мусить мати банківський рахунок чи касу способу). Викликачі: каса (`CashDeskService`) передає касу явно; рознесення
   банківської виписки — спосіб `bank`; онлайн-оплата — `<шлюз>_qr`. Вікно «Оплатити» рахунку має поле «Каса»
   (див. [cash.md](cash.md#ui-web)). Так само способу «Готівка» не можна задати банківський рахунок за
   замовчуванням: `POST`/`PATCH /payment-methods` з `BANK_ACCOUNT` для `code = 'cash'` → 400 «Для готівки кошти
@@ -335,6 +335,16 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
   все сплачено авансом — при переході в «Виконано»): нараховано — проводка `CHARGE` наряду,
   сплачено — Σ `amountBase` оплат наряду без сторно; документ — `WorkOrder`; повторно не проводиться
   (враховуються й попередні курсові проводки рахунків цього наряду).
+- **BR-PAY-023**: **Безготівкова оплата — лише з призначенням** (рішення власника 2026-10-22). Оплата
+  будь-яким способом, крім «Готівки», мусить мати призначення після розв'язання (BR-PAY-002): банківський
+  рахунок із запиту чи за замовчуванням способу, або касу, коли вона — призначення способу за замовчуванням
+  (картка через термінал із ПРРО). Без призначення — зокрема коли рахунок за замовчуванням видалено — 400
+  «Безготівкова оплата: оберіть банківський рахунок…» до транзакції, без оплати й руху балансу (раніше такі
+  оплати гасили борг, а на жодному рахунку грошей не було). Онлайн-оплата від шлюзу (`onlinePaymentIntentId`)
+  під правило не підпадає. Наявні оплати без призначення не змінюються. Вікно «Оплатити» для безготівкового
+  способу без каси показує обов'язкове поле «Рахунок» (рахунки у валюті документа), заповнене рахунком
+  способу, доки касир не обрав інший; без рахунку кнопка оплати неактивна. Рознесення виписки й каса
+  передають призначення самі. `PaymentsService.create`, `ClientPaymentModal`
 
 ### Конкретні провайдери
 
@@ -368,34 +378,34 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 
 **Маршрути UI:** `/cash`, `/invoices` (`/payments` — лише редирект)
 
-| Аспект                    | Тест                                                     | Кейсів |
-| ------------------------- | -------------------------------------------------------- | ------ |
-| сервісна логіка           | `cash-shift.service.spec.ts`                             | 31     |
-| HTTP-клієнт               | `checkbox.client.spec.ts`                                | 31     |
-| BullMQ-processor          | `checkbox.processor.spec.ts`                             | 19     |
-| fiscal provider registry  | `fiscal/fiscal-provider-registry.spec.ts`                | 16     |
-| провайдер                 | `fiscal/vchasno.provider.spec.ts`                        | 29     |
-| payment gateway registry  | `gateways/payment-gateway-registry.spec.ts`              | 12     |
-| HTTP-клієнт               | `monobank.client.spec.ts`                                | 26     |
-| сервісна логіка           | `online-payment.service.spec.ts`                         | 15     |
-| BullMQ-processor          | `payment-polling.processor.spec.ts`                      | 26     |
-| ланцюг опитування (Redis) | `payment-polling.queue.integration.spec.ts`              | 1      |
-| fiscal gate               | `payments.fiscal-gate.spec.ts`                           | 8      |
-| idempotency               | `payments.idempotency.spec.ts`                           | 7      |
-| money model               | `payments.money-model.spec.ts`                           | 22     |
-| multicurrency             | `payments.multicurrency.spec.ts`                         | 23     |
-| query dto                 | `payments.query-dto.spec.ts`                             | 43     |
-| передумови + наряд        | `payments.work-order.spec.ts`                            | 52     |
-| політика повторів черг    | `payments.queue-retry-policy.spec.ts`                    | 6      |
-| сервісна логіка           | `provider-config.service.spec.ts`                        | 27     |
-| шифрування at-rest        | `../../prisma/field-encryption.extension.spec.ts`        | 21     |
-| шифрування (сервіс)       | `../../common/crypto/encryption.service.spec.ts`         | 11     |
-| готівка лише через касу   | `payments.cash-register-required.spec.ts`                | 10     |
-| куди надходять кошти      | `../payment-methods/payment-methods.destination.spec.ts` | 24     |
-| HTTP-контракт способів    | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
-| системні способи оплати   | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
+| Аспект                                          | Тест                                                     | Кейсів |
+| ----------------------------------------------- | -------------------------------------------------------- | ------ |
+| сервісна логіка                                 | `cash-shift.service.spec.ts`                             | 31     |
+| HTTP-клієнт                                     | `checkbox.client.spec.ts`                                | 31     |
+| BullMQ-processor                                | `checkbox.processor.spec.ts`                             | 19     |
+| fiscal provider registry                        | `fiscal/fiscal-provider-registry.spec.ts`                | 16     |
+| провайдер                                       | `fiscal/vchasno.provider.spec.ts`                        | 29     |
+| payment gateway registry                        | `gateways/payment-gateway-registry.spec.ts`              | 12     |
+| HTTP-клієнт                                     | `monobank.client.spec.ts`                                | 26     |
+| сервісна логіка                                 | `online-payment.service.spec.ts`                         | 15     |
+| BullMQ-processor                                | `payment-polling.processor.spec.ts`                      | 26     |
+| ланцюг опитування (Redis)                       | `payment-polling.queue.integration.spec.ts`              | 1      |
+| fiscal gate                                     | `payments.fiscal-gate.spec.ts`                           | 8      |
+| idempotency                                     | `payments.idempotency.spec.ts`                           | 7      |
+| money model                                     | `payments.money-model.spec.ts`                           | 22     |
+| multicurrency                                   | `payments.multicurrency.spec.ts`                         | 23     |
+| query dto                                       | `payments.query-dto.spec.ts`                             | 43     |
+| передумови + наряд                              | `payments.work-order.spec.ts`                            | 52     |
+| політика повторів черг                          | `payments.queue-retry-policy.spec.ts`                    | 6      |
+| сервісна логіка                                 | `provider-config.service.spec.ts`                        | 27     |
+| шифрування at-rest                              | `../../prisma/field-encryption.extension.spec.ts`        | 21     |
+| шифрування (сервіс)                             | `../../common/crypto/encryption.service.spec.ts`         | 11     |
+| готівка — через касу, безготівкова — з рахунком | `payments.cash-register-required.spec.ts`                | 14     |
+| куди надходять кошти                            | `../payment-methods/payment-methods.destination.spec.ts` | 24     |
+| HTTP-контракт способів                          | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
+| системні способи оплати                         | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
 
-Разом: **469** кейсів — 401 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
+Разом: **473** кейси — 405 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
 (`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
 `vitest --reporter=json` (2026-10-15), не з grep.
 

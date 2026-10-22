@@ -61,6 +61,11 @@ const method = (code: string, name: string, over: Partial<Method> = {}): Method 
   ...over,
 });
 let methods: Method[] = [];
+const BANKS = [
+  { id: 'ba-main', name: 'Рахунок ПриватБанк', currencyCode: 'UAH' },
+  { id: 'ba-second', name: 'Рахунок Моно', currencyCode: 'UAH' },
+  { id: 'ba-usd', name: 'Рахунок доларовий', currencyCode: 'USD' },
+];
 let payResponse: () => Promise<unknown> = () => Promise.resolve({ id: 'pay-1' });
 
 const INVOICE: ClientPaymentTarget = {
@@ -123,6 +128,8 @@ async function openDialog(
 
 const cashSelect = (dialog: HTMLElement) =>
   within(dialog).queryByRole('combobox', { name: /^Каса/ }) as HTMLSelectElement | null;
+const bankSelect = (dialog: HTMLElement) =>
+  within(dialog).queryByRole('combobox', { name: /^Рахунок/ }) as HTMLSelectElement | null;
 const methodSelect = (dialog: HTMLElement) =>
   within(dialog).getByRole('combobox', { name: /^Метод оплати/ }) as HTMLSelectElement;
 const payButton = (dialog: HTMLElement) =>
@@ -141,7 +148,11 @@ beforeEach(() => {
   localStorage.clear();
   methods = [
     method('cash', 'Готівка'),
-    method('card_terminal', 'Термінал'),
+    // Безготівковий спосіб із рахунком за замовчуванням (BR-PAY-023).
+    method('card_terminal', 'Термінал', {
+      defaultSourceType: 'BANK_ACCOUNT',
+      defaultBankAccountId: 'ba-main',
+    }),
     method('cash_safe', 'Готівка (сейф)', {
       defaultSourceType: 'CASH_REGISTER',
       defaultCashRegisterId: 'cr-second',
@@ -153,6 +164,7 @@ beforeEach(() => {
   apiFetchMock.mockReset();
   apiFetchMock.mockImplementation((path: string) => {
     if (path === '/payment-methods') return Promise.resolve(methods);
+    if (path === '/bank-accounts') return Promise.resolve({ items: BANKS });
     if (path === '/payments') return payResponse();
     return Promise.resolve({});
   });
@@ -218,17 +230,19 @@ describe('ClientPaymentModal — каса для готівки (BR-PAY-019)', (
     expect(cashSelect(dialog)?.value).toBe('cr-main');
   });
 
-  it('картка без каси за замовчуванням: поля «Каса» немає, запит без каси', async () => {
+  // guards: BR-PAY-023
+  it('картка без каси за замовчуванням: поля «Каса» немає, запит несе рахунок способу', async () => {
     const { dialog } = await openDialog();
 
     fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
     expect(cashSelect(dialog)).toBeNull();
+    await waitFor(() => expect(bankSelect(dialog)?.value).toBe('ba-main'));
     fireEvent.click(payButton(dialog));
 
     await waitFor(() => expect(paymentBody()).not.toBeNull());
     const body = paymentBody()!;
     expect(body.method).toBe('card_terminal');
-    expect(body).not.toHaveProperty('sourceType');
+    expect(body).toMatchObject({ sourceType: 'BANK_ACCOUNT', bankAccountId: 'ba-main' });
     expect(body).not.toHaveProperty('cashRegisterId');
   });
 
@@ -360,11 +374,66 @@ describe('ClientPaymentModal — QR лише для рахунку (Bug #859)', 
   });
 });
 
+describe('ClientPaymentModal — безготівкова оплата на банківський рахунок (BR-PAY-023)', () => {
+  // guards: BR-PAY-023
+  it("спосіб без рахунку за замовчуванням: поле порожнє й обов'язкове, оплата заблокована", async () => {
+    methods[1] = method('card_terminal', 'Термінал');
+    const { dialog } = await openDialog();
+
+    fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    await waitFor(() => expect(bankSelect(dialog)).not.toBeNull());
+    expect(bankSelect(dialog)!.value).toBe('');
+    expect(bankSelect(dialog)).toBeRequired();
+    expect(
+      await within(dialog).findByText('Для безготівкової оплати оберіть банківський рахунок'),
+    ).toBeInTheDocument();
+    expect(payButton(dialog)).toBeDisabled();
+    fireEvent.click(payButton(dialog));
+    expect(paymentCalls()).toHaveLength(0);
+  });
+
+  // guards: BR-PAY-023
+  it('обраний касиром рахунок перемагає рахунок способу й іде в запит', async () => {
+    const { dialog } = await openDialog();
+    fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    await waitFor(() => expect(bankSelect(dialog)?.value).toBe('ba-main'));
+    fireEvent.change(bankSelect(dialog)!, { target: { value: 'ba-second' } });
+    fireEvent.click(payButton(dialog));
+    await waitFor(() =>
+      expect(paymentBody()).toMatchObject({
+        sourceType: 'BANK_ACCOUNT',
+        bankAccountId: 'ba-second',
+      }),
+    );
+  });
+
+  // guards: BR-PAY-023
+  it('рахунки іншої валюти, ніж документ, не пропонуються', async () => {
+    const { dialog } = await openDialog();
+    fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    await within(bankSelect(dialog)!).findByRole('option', { name: 'Рахунок ПриватБанк' });
+    const options = within(bankSelect(dialog)!)
+      .getAllByRole('option')
+      .map(o => o.textContent);
+    expect(options).toContain('Рахунок ПриватБанк');
+    expect(options).not.toContain('Рахунок доларовий');
+  });
+
+  // guards: BR-PAY-023
+  it('готівка й спосіб із касою за замовчуванням — поля «Рахунок» немає', async () => {
+    const { dialog } = await openDialog();
+    expect(bankSelect(dialog)).toBeNull();
+    fireEvent.change(methodSelect(dialog), { target: { value: 'cash_safe' } });
+    expect(bankSelect(dialog)).toBeNull();
+  });
+});
+
 describe('ClientPaymentModal — оплата наряду (BR-PAY-020, BR-PAY-017)', () => {
   // guards: BR-PAY-021
   it('наряд: запит несе workOrderId, а не invoiceId', async () => {
     const { dialog, onPaid } = await openDialog(WORK_ORDER);
     fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    await waitFor(() => expect(bankSelect(dialog)?.value).toBe('ba-main'));
     fireEvent.click(payButton(dialog));
 
     await waitFor(() => expect(paymentBody()).not.toBeNull());
@@ -385,6 +454,7 @@ describe('ClientPaymentModal — оплата наряду (BR-PAY-020, BR-PAY-0
     expect(amount.placeholder).toBe('1140');
     expect(amount.max).toBe('1140');
     fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    await waitFor(() => expect(bankSelect(dialog)?.value).toBe('ba-main'));
     fireEvent.click(payButton(dialog));
     await waitFor(() => expect(paymentBody()?.amount).toBe(1140));
   });
@@ -392,6 +462,7 @@ describe('ClientPaymentModal — оплата наряду (BR-PAY-020, BR-PAY-0
   it('введена сума йде як є (часткова оплата / аванс)', async () => {
     const { dialog } = await openDialog(WORK_ORDER);
     fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    await waitFor(() => expect(bankSelect(dialog)?.value).toBe('ba-main'));
     fireEvent.change(within(dialog).getByLabelText(/^Сума,/), { target: { value: '500' } });
     fireEvent.click(payButton(dialog));
     await waitFor(() => expect(paymentBody()?.amount).toBe(500));
@@ -403,6 +474,7 @@ describe('ClientPaymentModal — оплата наряду (BR-PAY-020, BR-PAY-0
     async value => {
       const { dialog, onPaid } = await openDialog(WORK_ORDER);
       fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+      await waitFor(() => expect(bankSelect(dialog)?.value).toBe('ba-main'));
       fireEvent.change(within(dialog).getByLabelText(/^Сума,/), { target: { value } });
       fireEvent.click(payButton(dialog));
 
@@ -418,6 +490,7 @@ describe('ClientPaymentModal — оплата наряду (BR-PAY-020, BR-PAY-0
   it('сплачено повністю — оплатити нічого: кнопка неактивна', async () => {
     const { dialog } = await openDialog({ ...WORK_ORDER, paidAmount: 1440 });
     fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    await waitFor(() => expect(bankSelect(dialog)?.value).toBe('ba-main'));
     expect(payButton(dialog)).toBeDisabled();
   });
 });
@@ -427,6 +500,7 @@ describe('ClientPaymentModal — ключ ідемпотентності на в
     payResponse = () => Promise.reject(new Error('Мережа недоступна'));
     const { dialog, rerender } = await openDialog(WORK_ORDER);
     fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    await waitFor(() => expect(bankSelect(dialog)?.value).toBe('ba-main'));
     fireEvent.click(payButton(dialog));
     await within(dialog).findByRole('alert');
     fireEvent.click(payButton(dialog));
