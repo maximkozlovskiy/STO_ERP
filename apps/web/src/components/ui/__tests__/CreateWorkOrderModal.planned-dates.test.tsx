@@ -337,8 +337,8 @@ describe('CreateWorkOrderModal — планові дати (BR-WO-019, BR-WO-020
   it('підйомник — у тій самій сітці, що «План», і притиснутий до низу рядка: поле в лінію з датами (Bug #937)', async () => {
     mockApi({ workStartHour: 8, workEndHour: 18 });
     await openCard();
-    // «План» / «Факт» мають рядок-легенду над підписами полів; без притискання до низу поле
-    // підйомника стояло на висоту легенди вище за поля дат.
+    // Без притискання до низу поле підйомника стояло вище за поля дат (тоді над підписами був
+    // рядок-легенда «План» / «Факт»; тепер це мітки в рядку підписів, притискання лишається).
     const lift = screen.getByLabelText('Підйомник').closest('[data-testid="wo-lift"]')!;
     expect(lift).not.toBeNull();
     expect(lift.className).toContain('md:self-end');
@@ -349,5 +349,21 @@ describe('CreateWorkOrderModal — планові дати (BR-WO-019, BR-WO-020
     expect(screen.getByTestId('wo-planned').querySelector('.grid')!.className).toContain(
       'items-end',
     );
+  });
+
+  it('«План» / «Факт» — мітки в рядку підписів, без окремого рядка-легенди над полями', async () => {
+    mockApi({ workStartHour: 8, workEndHour: 18 });
+    await openCard();
+    for (const [id, tag] of [
+      ['wo-planned', 'План'],
+      ['wo-actual', 'Факт'],
+    ] as const) {
+      const group = screen.getByTestId(id);
+      // Легенда fieldset-а лишається для читачів екрана, але висоти не займає.
+      expect(group.querySelector('legend')!.className).toContain('sr-only');
+      // Видима мітка — на початку першого підпису, тобто в одному рядку з ним.
+      const firstLabel = group.querySelector('label')!;
+      expect(firstLabel.textContent).toBe(`${tag}Дата та час початку`);
+    }
   });
 });

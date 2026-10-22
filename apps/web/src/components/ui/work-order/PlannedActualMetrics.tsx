@@ -21,6 +21,11 @@ const NOOP_DT_CHANGE: (v: string) => void = () => {};
  */
 const METRICS_GRID = 'grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5.5rem] items-end gap-2.5';
 const HOURS_LABEL = 'block text-[13px] font-medium text-foreground';
+/**
+ * «План» / «Факт» — мітка в рядку підписів, а не окремий рядок над ними: секція «Планування» не
+ * тратить висоту на легенду. Легенда fieldset-а лишається для читачів екрана (`sr-only`).
+ */
+const GROUP_TAG = 'mr-1.5 inline-block rounded px-1.5 py-px text-[11px] font-semibold uppercase';
 const HOURS_INPUT =
   'h-9 w-full rounded border border-input bg-surface px-3 text-[14px] text-right tabular-nums ' +
   'hover:border-input-hover focus:outline-none focus:border-primary focus:ring-3 focus:ring-brand-100 ' +
@@ -78,12 +83,15 @@ function PlannedActualMetricsBase({
     // План стоїть першим у DOM: на порядок полів спираються тести (Нормогодин [0] — план).
     <>
       <fieldset className="m-0 min-w-0 border-0 p-0" data-testid="wo-planned">
-        <legend className="mb-1.5 p-0 text-[13px] font-semibold text-primary">
-          {t('card.plan')}
-        </legend>
+        <legend className="sr-only">{t('card.plan')}</legend>
         <div className={METRICS_GRID}>
           <DateTimePickerInput
             label="Дата та час початку"
+            labelAddon={
+              <span aria-hidden="true" className={cn(GROUP_TAG, 'bg-primary/10 text-primary')}>
+                {t('card.plan')}
+              </span>
+            }
             value={plannedStartAt}
             onChange={onPlannedStartChange}
             disabled={!canEdit}
@@ -125,13 +133,21 @@ function PlannedActualMetricsBase({
         className="m-0 min-w-0 border-0 p-0 md:col-start-2 2xl:col-start-3"
         data-testid="wo-actual"
       >
-        <legend className="mb-1.5 p-0 text-[13px] font-semibold text-foreground-muted">
-          {t('card.actual')}{' '}
-          <span className="font-normal text-muted-foreground">— {t('card.actualHint')}</span>
+        <legend className="sr-only">
+          {t('card.actual')} — {t('card.actualHint')}
         </legend>
         <div className={METRICS_GRID}>
           <DateTimePickerInput
             label="Дата та час початку"
+            labelAddon={
+              <span
+                aria-hidden="true"
+                title={t('card.actualHint')}
+                className={cn(GROUP_TAG, 'bg-secondary text-foreground-muted')}
+              >
+                {t('card.actual')}
+              </span>
+            }
             value=""
             onChange={NOOP_DT_CHANGE}
             disabled

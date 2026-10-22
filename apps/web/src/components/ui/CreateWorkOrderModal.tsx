@@ -2263,7 +2263,8 @@ export function CreateWorkOrderModal({
       >
         {/* Tab switcher — тільки в режимі редагування */}
         {isEditMode && (
-          <div className="flex border-b border-border mb-4 -mx-0">
+          // -mt-4: вкладки під самою шапкою — без порожньої смуги між шапкою і вкладками.
+          <div className="flex border-b border-border -mt-4 mb-3">
             <button
               className={cn(
                 'px-4 py-2 text-sm font-medium border-b-2 transition-colors',

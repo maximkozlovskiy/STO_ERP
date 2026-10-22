@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { DayPicker } from 'react-day-picker';
 import { uk } from 'date-fns/locale';
@@ -46,6 +46,8 @@ interface DateTimePickerInputProps {
   value: string; // "YYYY-MM-DDTHH:mm" або "" (у timeOnly режимі: "HH:mm" або "")
   onChange: (value: string) => void;
   label?: string;
+  /** Мітка перед підписом у тому самому рядку (напр. «План» / «Факт» у картці наряду). */
+  labelAddon?: ReactNode;
   required?: boolean;
   disabled?: boolean;
   placeholder?: string;
@@ -88,6 +90,7 @@ export function DateTimePickerInput({
   value,
   onChange,
   label,
+  labelAddon,
   required,
   disabled,
   placeholder,
@@ -267,6 +270,7 @@ export function DateTimePickerInput({
     <div ref={triggerRef} className={cn('relative', className)}>
       {label && (
         <label className="block text-[13px] font-medium text-foreground mb-1">
+          {labelAddon}
           {label}
           {required && <span className="text-destructive ml-0.5">*</span>}
         </label>
