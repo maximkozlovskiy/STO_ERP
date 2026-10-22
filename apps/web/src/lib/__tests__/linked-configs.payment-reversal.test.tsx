@@ -8,6 +8,7 @@
 //
 // Mutation-verify:
 //   - прибрати `row.sourceType === 'CASH_REGISTER'` гілку → «касова: підказка» падає;
+//   - прибрати `row.inCashDesk ||` → «стара готівкова без призначення» падає;
 //   - прибрати `|| row.isOnline` → «QR без дії» падає;
 //   - `allowed` у RowDialogAction → завжди true → «приймальня не бачить» падає;
 //   - прибрати `onDone: () => setRetryKey(...)` у панелі → «панель перечитується» падає.
@@ -93,6 +94,9 @@ describe('рядок оплати: дія чи підказка (BR-PAY-024)', (
     ['банківська', payment(), 'action'],
     ['стара без призначення', payment({ sourceType: null }), 'action'],
     ['касова', payment({ sourceType: 'CASH_REGISTER' }), 'hint'],
+    // Стара готівкова оплата (до BR-PAY-023): `sourceType` немає, а рядок каси є — сервер
+    // відхиляє сторно `err.payment.reversalCashRow`, тож і тут підказка, не кнопка.
+    ['стара готівкова без призначення', payment({ sourceType: null, inCashDesk: true }), 'hint'],
     ['онлайн QR', payment({ sourceType: null, isOnline: true }), 'none'],
     ['сторнована', payment({ reversedAt: '2026-10-21T09:00:00.000Z' }), 'none'],
   ])('%s → %s', (_n, row, expected) => {

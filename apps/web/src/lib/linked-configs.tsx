@@ -226,14 +226,16 @@ export const PAYMENT_REVERSAL_ROLES = ['OWNER', 'ADMIN', 'ACCOUNTANT'] as const;
 
 /**
  * BR-PAY-024: дія «Сторнувати» для рядка оплати — лише не сторнованої, не касової й не онлайн-оплати
- * QR; касова — підказка «Сторнується в касі» (сторно каси — ще й рядок протилежного напряму). Тексти —
- * `i18n.t` у момент побудови рядка: конфіг не хук, а мова на той момент уже поточна.
+ * QR; касова — підказка «Сторнується в касі» (сторно каси — ще й рядок протилежного напряму). Касову
+ * визначає сервер (`inCashDesk`): стара готівкова оплата без `sourceType` теж лежить у касі, і
+ * `POST /payments/:id/reverse` її відхиляє. Тексти — `i18n.t` у момент побудови рядка: конфіг не хук,
+ * а мова на той момент уже поточна.
  */
 function paymentReversalFields(
   row: LinkedPaymentRow,
 ): Pick<LinkedSectionItem, 'dialogAction' | 'actionHint'> {
   if (row.reversedAt || row.isOnline) return {};
-  if (row.sourceType === 'CASH_REGISTER') {
+  if (row.inCashDesk || row.sourceType === 'CASH_REGISTER') {
     return {
       actionHint: {
         text: i18n.t('cash:paymentReversal.cashHint'),

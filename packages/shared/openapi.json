@@ -4060,6 +4060,16 @@
             }
           },
           {
+            "name": "ids",
+            "required": false,
+            "in": "query",
+            "description": "id робіт через кому",
+            "schema": {
+              "maxItems": 200,
+              "type": "string"
+            }
+          },
+          {
             "name": "q",
             "required": false,
             "in": "query",
@@ -25433,6 +25443,9 @@
           },
           "isOnline": {
             "type": "boolean"
+          },
+          "inCashDesk": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -30343,6 +30356,9 @@
           },
           "isOnline": {
             "type": "boolean"
+          },
+          "inCashDesk": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -30351,7 +30367,8 @@
           "method",
           "createdAt",
           "notes",
-          "isOnline"
+          "isOnline",
+          "inCashDesk"
         ]
       },
       "InvoiceLinkedCounterpartyRowDto": {

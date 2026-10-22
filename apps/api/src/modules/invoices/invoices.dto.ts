@@ -336,6 +336,9 @@ export class InvoiceLinkedPaymentRowDto {
   sourceType?: PaymentSourceType | null;
   // Онлайн-оплата QR (є `onlinePaymentIntentId`): сторно тут недоступне (BR-PAY-024).
   @ApiProperty() isOnline!: boolean;
+  // Гроші лежать у касі (і стара оплата без `sourceType`, але з рядком каси): сторно — лише в касі
+  // (BR-PAY-024, `paymentsInCashDesk` — та сама перевірка, що відмовляє `POST /payments/:id/reverse`).
+  @ApiProperty() inCashDesk!: boolean;
 }
 
 export class InvoiceLinkedCounterpartyRowDto {

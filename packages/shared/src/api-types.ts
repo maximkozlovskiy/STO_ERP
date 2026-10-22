@@ -7896,6 +7896,7 @@ export interface components {
             /** @enum {string|null} */
             sourceType?: "BANK_ACCOUNT" | "CASH_REGISTER" | null;
             isOnline: boolean;
+            inCashDesk?: boolean;
         };
         LinkedSlotLiftDto: {
             name: string;
@@ -9188,6 +9189,7 @@ export interface components {
             /** @enum {string|null} */
             sourceType?: "BANK_ACCOUNT" | "CASH_REGISTER" | null;
             isOnline: boolean;
+            inCashDesk: boolean;
         };
         InvoiceLinkedCounterpartyRowDto: {
             id: string;
@@ -12839,6 +12841,8 @@ export interface operations {
             query?: {
                 categoryId?: string;
                 categoryIds?: string[];
+                /** @description id робіт через кому */
+                ids?: string;
                 q?: string;
                 page?: number;
                 limit?: number;

@@ -138,7 +138,7 @@ cd apps/api && npx vitest run src/modules/work-categories/<файл>.spec.ts
 
 | Аспект                                               | Тест                               | Кейсів |
 | ---------------------------------------------------- | ---------------------------------- | ------ |
-| сервісна логіка робіт (каталог, `isWarranty`, `ids`) | `works.service.spec.ts`            | 23     |
+| сервісна логіка робіт (каталог, `isWarranty`, `ids`) | `works.service.spec.ts`            | 24     |
 | сервісна логіка категорій (системні, ієрархія)       | `work-categories.service.spec.ts`  | 14     |
 | HTTP-контракт категорій                              | `work-categories.contract.spec.ts` | 10     |
 

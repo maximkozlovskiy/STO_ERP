@@ -21,7 +21,6 @@ import {
   Prisma,
   FiscalReceiptStatus,
   InvoiceStatus,
-  PaymentSourceType,
   SettlementTransactionType,
   WorkOrderStatus,
 } from '@prisma/client';
@@ -46,6 +45,7 @@ import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { money, moneyFromDecimal } from '../../common/utils/money';
 import { searchContains } from '../../common/utils/like-pattern';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
+import { paymentsInCashDesk } from './payment-cash-desk';
 
 // Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
 // Intl.NumberFormat under the hood per call. Used on every payment.create when SMS sent.
@@ -1146,14 +1146,8 @@ export class PaymentsService {
         }
         // Касова оплата сторнується лише в касі: там сторно — ще й рядок протилежного напряму.
         // Стара готівкова оплата могла не мати `sourceType`, але мати рядок каси — його теж видно.
-        const cashRow =
-          payment.sourceType === PaymentSourceType.CASH_REGISTER || payment.cashRegisterId
-            ? true
-            : !!(await tx.cashOperation.findFirst({
-                where: { orgId, documentType: 'Payment', documentId: payment.id },
-                select: { id: true },
-              }));
-        if (cashRow) {
+        // Та сама функція дає ознаку `inCashDesk` у «Пов'язаних документах» (кнопки там немає).
+        if ((await paymentsInCashDesk(tx, orgId, [payment])).has(payment.id)) {
           throw new BadRequestException(translateError('err.payment.reversalCashRow', locale));
         }
         if (payment.onlinePaymentIntentId) {

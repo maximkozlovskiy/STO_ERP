@@ -357,8 +357,10 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
 { reason }` сторнує оплату клієнта без касового рядка: на банківський рахунок (з вікна «Оплатити» чи з
   рознесення виписки) і стару оплату без призначення. Ролі — OWNER, ADMIN, ACCOUNTANT (як сторно в касі);
   причина обов'язкова, до 500 символів (`paymentReversalSchema` = `cashReversalSchema`); Idempotency-Key.
-  Відмови — 400 до першого запису: оплата з касовим рядком (`sourceType = CASH_REGISTER` — «сторнуйте
-  касову операцію», `err.payment.reversalCashRow`); онлайн-оплата QR (`onlinePaymentIntentId`,
+  Відмови — 400 до першого запису: оплата в касі (`sourceType = CASH_REGISTER`, `cashRegisterId` або рядок
+  каси `documentType = 'Payment'` у старої оплати без призначення — «сторнуйте касову операцію»,
+  `err.payment.reversalCashRow`; одна функція `paymentsInCashDesk` дає й ознаку `inCashDesk` рядка оплати
+  в «Пов'язаних документах», де замість кнопки тоді підказка «Сторнується в касі»); онлайн-оплата QR (`onlinePaymentIntentId`,
   `err.payment.reversalOnlineQr`); уже сторнована (`err.payment.alreadyReversed`); решта — як у BR-CASH-024
   (пробитий чек, іновалютна оплата, наряд в архіві, скасований рахунок без наряду). Наслідки — ті самі, що в
   касовому сторно (той самий `reverse`): проводка `PAYMENT_CANCEL` / `PREPAYMENT_CANCEL` з курсом оригіналу,

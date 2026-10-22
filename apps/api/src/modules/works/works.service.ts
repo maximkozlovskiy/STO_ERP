@@ -4,6 +4,7 @@ import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { calculatePagination } from '../../common/utils/pagination';
+import { searchContains } from '../../common/utils/like-pattern';
 import {
   CreateWorkDto,
   UpdateWorkDto,
@@ -25,7 +26,9 @@ export class WorksService {
     };
     if (query.categoryIds?.length) where.categoryId = { in: query.categoryIds };
     else if (query.categoryId) where.categoryId = query.categoryId;
-    if (query.q) where.name = { contains: query.q, mode: 'insensitive' };
+    // Буквальний пошук: `%` / `_` у назві — символи, не шаблон (картка наряду шукає роботу тут).
+    const nameSearch = searchContains(query.q);
+    if (nameSearch) where.name = nameSearch;
     if (query.ids?.length) where.id = { in: query.ids };
 
     const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });

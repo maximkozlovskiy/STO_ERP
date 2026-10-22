@@ -21,6 +21,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuditService } from '../audit/audit.service';
 import { exchangeRatesMock } from './invoices.spec-fixture';
+import { memoryTable } from '../cash/cash.spec-fixture';
 
 // ─── Session 2026-09-06: toDto paidAmount column authority (Bug #676) ─────────
 //
@@ -132,6 +133,7 @@ describe('InvoicesService — linked-documents edge cases', () => {
     workOrder: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
     counterparty: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
     payment: { findMany: ReturnType<typeof vi.fn>; groupBy: ReturnType<typeof vi.fn> };
+    cashOperation: { findMany: ReturnType<typeof vi.fn> };
   };
 
   const ORG = 'org-1';
@@ -147,6 +149,7 @@ describe('InvoicesService — linked-documents edge cases', () => {
       workOrder: { findFirst: vi.fn(), findMany: vi.fn() },
       counterparty: { findFirst: vi.fn(), findMany: vi.fn() },
       payment: { findMany: vi.fn(), groupBy: vi.fn() },
+      cashOperation: { findMany: vi.fn().mockResolvedValue([]) },
     };
     const module = await Test.createTestingModule({
       providers: [
@@ -275,5 +278,59 @@ describe('InvoicesService — linked-documents edge cases', () => {
     expect(res.payments[0]).toMatchObject({ sourceType: 'CASH_REGISTER', isOnline: false });
     expect(res.payments[1]).toMatchObject({ sourceType: null, isOnline: true });
     for (const p of res.payments) expect(p).not.toHaveProperty('onlinePaymentIntentId');
+  });
+
+  // Стара готівкова оплата (до BR-PAY-023) призначення не має, але гроші — у касі: її рядок каси
+  // (`documentType = 'Payment'`) чи `cashRegisterId`. Сервер таку сторнує лише в касі
+  // (`err.payment.reversalCashRow`), тож рядок оплати каже `inCashDesk` — і web не показує
+  // «Сторнувати». Рядки каси читаються таблицею, що виконує `where` (орг, тип, id оплати).
+  // guards: BR-PAY-024
+  it('getLinkedDocuments: inCashDesk — за sourceType, cashRegisterId або рядком каси своєї org', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ workOrderId: null, counterpartyId: CP });
+    const row = {
+      amount: '10.00',
+      method: 'cash',
+      createdAt: new Date('2026-10-01T10:00:00Z'),
+      notes: null,
+      fiscalStatus: null,
+      reversedAt: null,
+      onlinePaymentIntentId: null,
+    };
+    prisma.payment.findMany.mockResolvedValue([
+      { ...row, id: 'p-cash', sourceType: 'CASH_REGISTER', cashRegisterId: 'reg-1' },
+      { ...row, id: 'p-old-reg', sourceType: null, cashRegisterId: 'reg-1' },
+      { ...row, id: 'p-old-row', sourceType: null, cashRegisterId: null },
+      { ...row, id: 'p-old-bank', sourceType: null, cashRegisterId: null },
+      { ...row, id: 'p-bank', sourceType: 'BANK_ACCOUNT', cashRegisterId: null },
+      { ...row, id: 'p-foreign-row', sourceType: null, cashRegisterId: null },
+    ]);
+    const cashOps = memoryTable([
+      { id: 'op-1', orgId: ORG, documentType: 'Payment', documentId: 'p-old-row' },
+      { id: 'op-2', orgId: ORG, documentType: 'SupplierPayment', documentId: 'p-old-bank' },
+      { id: 'op-3', orgId: OTHER_ORG, documentType: 'Payment', documentId: 'p-foreign-row' },
+    ]);
+    prisma.cashOperation.findMany = cashOps.findMany;
+    prisma.counterparty.findFirst.mockResolvedValue(null);
+
+    const res = await service.getLinkedDocuments(ORG, A);
+
+    expect(prisma.payment.findMany.mock.calls[0][0].select).toMatchObject({
+      cashRegisterId: true,
+    });
+    const inCash = Object.fromEntries(res.payments.map(p => [p.id, p.inCashDesk]));
+    expect(inCash).toEqual({
+      'p-cash': true,
+      'p-old-reg': true,
+      'p-old-row': true,
+      'p-old-bank': false,
+      'p-bank': false,
+      'p-foreign-row': false,
+    });
+    // Рядки каси — один запит на всі оплати, без тих, що касові за самим рядком оплати.
+    expect(cashOps.findMany).toHaveBeenCalledTimes(1);
+    expect(cashOps.findMany.mock.calls[0]![0]).toMatchObject({
+      where: { documentId: { in: ['p-old-row', 'p-old-bank', 'p-bank', 'p-foreign-row'] } },
+    });
+    for (const p of res.payments) expect(p).not.toHaveProperty('cashRegisterId');
   });
 });

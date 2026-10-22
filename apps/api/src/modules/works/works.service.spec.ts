@@ -99,6 +99,14 @@ describe('WorksService', () => {
       expect(where.name).toEqual({ contains: 'масл', mode: 'insensitive' });
     });
 
+    // Картка наряду шукає роботу на сервері (`/works?q=`): `%` і `_` — символи назви, не шаблон
+    // ILIKE (інакше «100%» знаходить усе з «100», а «_» — усі роботи).
+    it('q з % і _ → буквальний пошук (екранування LIKE)', async () => {
+      await svc.findAll(ORG, query({ q: 'ТО_100%' }));
+      const where = prisma.work.findMany.mock.calls[0][0].where;
+      expect(where.name).toEqual({ contains: 'ТО\\_100\\%', mode: 'insensitive' });
+    });
+
     // guards: BR-WO-030 — категорії робіт послуги за id, а не з перших 200 довідника
     it('ids → лише ці роботи (у своїй org, живі)', async () => {
       await svc.findAll(ORG, query({ ids: ['w-1', 'w-2'] }));

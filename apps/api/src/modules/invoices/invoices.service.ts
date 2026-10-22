@@ -9,6 +9,7 @@ import {
 } from '@sto/shared';
 
 import { getLocale } from '../../common/tenant/tenant-context';
+import { toLinkedPaymentRows } from '../payments/payment-cash-desk';
 import { kyivToday, addDaysKyiv, dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
 import { safeCoeff } from '../../common/utils/math';
 import { money, moneyFromDecimal } from '../../common/utils/money';
@@ -1552,6 +1553,7 @@ export class InvoicesService {
           fiscalStatus: true,
           reversedAt: true,
           sourceType: true,
+          cashRegisterId: true,
           onlinePaymentIntentId: true,
         },
         orderBy: { createdAt: 'desc' },
@@ -1572,12 +1574,8 @@ export class InvoicesService {
     // §13 API Contract: Prisma Decimal → number у DTO.
     return {
       workOrder: workOrder ? [workOrder] : [],
-      // BR-PAY-024: id онлайн-наміру клієнту не потрібен — лише ознака «онлайн-оплата QR».
-      payments: payments.map(({ onlinePaymentIntentId, ...p }) => ({
-        ...p,
-        amount: Number(p.amount),
-        isOnline: onlinePaymentIntentId != null,
-      })),
+      // BR-PAY-024: ознаки «онлайн-оплата QR» і «лежить у касі» замість id наміру й каси.
+      payments: await toLinkedPaymentRows(this.prisma, orgId, payments),
       counterparty: counterparty ? [counterparty] : [],
     };
   }
