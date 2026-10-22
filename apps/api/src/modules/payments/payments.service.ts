@@ -842,6 +842,11 @@ export class PaymentsService {
     tx: Prisma.TransactionClient,
   ): Promise<PaymentReversalResult> {
     const locale = getLocale();
+    // «Вже сторновано» — словами входу: каса сторнує операцію, `reverseNonCash` — оплату (гонка двох
+    // безготівкових сторно інакше відповідала програвшому «Операцію вже сторновано»).
+    const alreadyReversedKey = ctx.cashOperationId
+      ? 'err.cash.alreadyReversed'
+      : 'err.payment.alreadyReversed';
     const payment = await tx.payment.findFirst({
       where: { id: paymentId, orgId },
       select: {
@@ -858,7 +863,7 @@ export class PaymentsService {
     });
     if (!payment) throw new NotFoundException(translateError('err.payment.notFound', locale));
     if (payment.reversedAt) {
-      throw new BadRequestException(translateError('err.cash.alreadyReversed', locale));
+      throw new BadRequestException(translateError(alreadyReversedKey, locale));
     }
     // Чека повернення в системі немає: пробитий чек лишився б за оплатою, якої вже немає.
     if (payment.fiscalStatus === FiscalReceiptStatus.DONE || payment.fiscalReceiptId) {
@@ -950,7 +955,7 @@ export class PaymentsService {
       }
       throw new BadRequestException(
         translateError(
-          now?.reversedAt ? 'err.cash.alreadyReversed' : 'err.cash.reversalStateChanged',
+          now?.reversedAt ? alreadyReversedKey : 'err.cash.reversalStateChanged',
           locale,
         ),
       );

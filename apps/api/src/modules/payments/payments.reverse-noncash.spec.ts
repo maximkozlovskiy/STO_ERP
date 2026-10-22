@@ -495,6 +495,23 @@ describe('PaymentsService.reverseNonCash — відмови до першого 
     expect(h.bankTx).toMatchObject({ status: 'MATCHED', paymentId: PAY });
   });
 
+  // Bug #944: програвший гонку двох безготівкових сторно чув касове «Операцію вже сторновано».
+  // guards: BR-PAY-024
+  it('гонка: програвший CAS бачить «Оплату вже сторновано», а не касовий текст', async () => {
+    const h = makeHarness({ bankTx: {} });
+    const stale = { ...h.payment };
+    let reads = 0;
+    // Обидва читання до CAS (`reverseNonCash` і `reverse`) — «не сторновано»; перечитування після
+    // програного CAS — уже сторнована оплата.
+    h.tables.payment.findFirst.mockImplementation(() =>
+      Promise.resolve(++reads <= 2 ? { ...stale } : { ...h.payment }),
+    );
+    h.payment.reversedAt = new Date('2026-10-21T10:00:00.000Z');
+    const call = h.reverseNonCash();
+    await expect(call).rejects.toThrow(uk('err.payment.alreadyReversed'));
+    expect(h.settlementRows).toEqual([]);
+  });
+
   // guards: BR-PAY-024
   it.each(['', '   '])('причина «%s» → 400 до транзакції', async reason => {
     const h = makeHarness();

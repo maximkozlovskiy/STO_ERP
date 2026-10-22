@@ -429,7 +429,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | куди надходять кошти                            | `../payment-methods/payment-methods.destination.spec.ts` | 24     |
 | HTTP-контракт способів                          | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
 | системні способи оплати                         | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
-| сторно безготівкової оплати (BR-PAY-024)        | `payments.reverse-noncash.spec.ts`                       | 23     |
+| сторно безготівкової оплати (BR-PAY-024)        | `payments.reverse-noncash.spec.ts`                       | 24     |
 | HTTP-контракт сторно (BR-PAY-024)               | `payments.reverse-route.contract.spec.ts`                | 15     |
 
 Разом: **475** кейсів — 407 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
