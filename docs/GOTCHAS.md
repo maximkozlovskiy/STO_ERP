@@ -4,6 +4,16 @@
 
 ---
 
+## [2026-10-22] Web-тест: не підміняй `fetch` через `new Response(new Blob(...))`
+
+У jsdom `Blob` — свій, а `Response` — з undici. Локально (Windows, своя версія Node) такий
+`Response` віддавав `blob()`, а в CI (ubuntu) — відхиляв: хук ловив помилку, тест бачив «0 викликів
+`downloadBlob`», і CI `quality` упав, хоча повний web локально був зелений (run 125,
+`useWorkOrderActions.save-as`). Заглушка `fetch` — простий об'єкт:
+`{ ok: true, status: 200, headers: { get: n => ... }, blob: () => Promise.resolve(new Blob(['x'])) }`.
+
+---
+
 ## [2026-10-21] Escape — лише через `useEscapeLayer`; прапорці «вкладене відкрито» більше не потрібні
 
 Замінює правило [2026-10-12] нижче. Escape тримає стек шарів `lib/escape-layers`: один capture-слухач
