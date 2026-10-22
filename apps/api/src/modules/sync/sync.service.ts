@@ -311,10 +311,17 @@ export class SyncService {
     }
 
     // Handle DELETE from client (soft delete)
-    // counterparties and vehicles must be deleted via dedicated API endpoints that enforce business rules
+    // counterparties, garages and vehicles must be deleted via dedicated API endpoints that enforce
+    // business rules (garage with a live vehicle — BR-CP-015)
     if (rec.operation === 'DELETE') {
-      if (rec.table === 'counterparties' || rec.table === 'vehicles') {
-        throw new Error('Видалення контрагентів та автомобілів через синхронізацію заборонено');
+      if (
+        rec.table === 'counterparties' ||
+        rec.table === 'vehicles' ||
+        rec.table === 'customer_garages'
+      ) {
+        throw new Error(
+          'Видалення контрагентів, гаражів та автомобілів через синхронізацію заборонено',
+        );
       }
       if (existing) {
         // LWW for tombstones too: a DELETE that arrives out of order (older

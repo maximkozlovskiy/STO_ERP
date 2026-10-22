@@ -18,7 +18,7 @@ import { statusesProvider } from './counterparties.spec-fixture';
 
 describe('CounterpartiesService — гаражі (isDefault)', () => {
   let service: CounterpartiesService;
-  let tx: { customerGarage: PrismaModelMock };
+  let tx: { customerGarage: PrismaModelMock; vehicle: PrismaModelMock };
   let prisma: {
     counterparty: PrismaModelMock;
     customerGarage: PrismaModelMock;
@@ -43,6 +43,7 @@ describe('CounterpartiesService — гаражі (isDefault)', () => {
         findFirst: vi.fn().mockResolvedValue({ id: 'g-next' }),
         create: vi.fn().mockResolvedValue(garageRow),
       },
+      vehicle: { count: vi.fn().mockResolvedValue(0) },
     };
     prisma = {
       counterparty: { findFirst: vi.fn().mockResolvedValue({ id: 'cp-1' }) },
@@ -140,5 +141,18 @@ describe('CounterpartiesService — гаражі (isDefault)', () => {
     await service.createGarage('org-1', 'cp-1', { name: 'Другий' } as never);
 
     expect(tx.customerGarage.updateMany).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-CP-015
+  it('removeGarage: у гаражі живе авто → 400, гараж не видаляється (рішення власника 2026-10-22)', async () => {
+    prisma.customerGarage.findFirst.mockResolvedValue({ id: 'g-2', isDefault: false });
+    tx.vehicle.count.mockResolvedValue(1);
+    await expect(service.removeGarage('org-1', 'cp-1', 'g-2')).rejects.toThrow(
+      'У гаражі є авто — спершу видаліть їх або перенесіть в інший гараж',
+    );
+    expect(tx.vehicle.count).toHaveBeenCalledWith({
+      where: { orgId: 'org-1', customerGarageId: 'g-2', deletedAt: null },
+    });
+    expect(tx.customerGarage.update).not.toHaveBeenCalled();
   });
 });

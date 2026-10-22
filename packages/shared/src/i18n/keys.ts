@@ -870,6 +870,7 @@ export const VALIDATION_KEYS = [
   'err.counterparty.hasOpenInvoices',
   'err.counterparty.hasNonZeroBalance',
   'err.counterparty.garageNotFound',
+  'err.counterparty.garageHasVehicles',
   'err.counterparty.supplierOnlyPurchaseContract',
   'err.counterparty.clientOnlySaleContract',
   'err.counterparty.deletedContractNotFound',

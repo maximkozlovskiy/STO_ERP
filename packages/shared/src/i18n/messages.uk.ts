@@ -820,6 +820,8 @@ export const uk: Record<string, string> = {
   'err.counterparty.hasNonZeroBalance':
     'Неможливо видалити контрагента з ненульовим балансом (є заборгованість)',
   'err.counterparty.garageNotFound': 'Гараж не знайдено',
+  'err.counterparty.garageHasVehicles':
+    'У гаражі є авто — спершу видаліть їх або перенесіть в інший гараж',
   'err.counterparty.supplierOnlyPurchaseContract': 'Постачальник може мати лише договір Купівлі',
   'err.counterparty.clientOnlySaleContract': 'Клієнт може мати лише договір Продажу',
   'err.counterparty.deletedContractNotFound': 'Видалений договір не знайдено',

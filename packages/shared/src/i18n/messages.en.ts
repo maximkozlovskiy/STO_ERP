@@ -838,6 +838,8 @@ export const en: Record<string, string> = {
   'err.counterparty.hasNonZeroBalance':
     'Cannot delete a counterparty with a non-zero balance (there is outstanding debt)',
   'err.counterparty.garageNotFound': 'Garage not found',
+  'err.counterparty.garageHasVehicles':
+    'The garage has vehicles - delete them or move them to another garage first',
   'err.counterparty.supplierOnlyPurchaseContract': 'A supplier can only have a Purchase contract',
   'err.counterparty.clientOnlySaleContract': 'A client can only have a Sale contract',
   'err.counterparty.deletedContractNotFound': 'Deleted contract not found',

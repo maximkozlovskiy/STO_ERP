@@ -618,6 +618,15 @@ export class CounterpartiesService {
     // «counterparty always has a default garage» is silently broken.
     await this.prisma.$transaction(
       async tx => {
+        // BR-CP-015: гараж із живим авто не видаляється — авто лишилось би без гаража
+        // (рішення власника 2026-10-22). Перевірка в транзакції, до запису.
+        const liveVehicles = await tx.vehicle.count({
+          where: { orgId, customerGarageId: garageId, deletedAt: null },
+        });
+        if (liveVehicles > 0)
+          throw new BadRequestException(
+            translateError('err.counterparty.garageHasVehicles', getLocale()),
+          );
         await tx.customerGarage.update({
           where: { id: garageId, orgId },
           data: { deletedAt: new Date() },

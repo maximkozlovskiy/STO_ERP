@@ -185,6 +185,7 @@ model CounterpartyStatusLink {
 - **BR-CP-011**: **isDefault в CustomerGarage:** аналогічна поведінка при видаленні
 - **BR-CP-012**: `SettlementAccount` — один на контрагента, створюється **одразу разом із контрагентом**: `CounterpartiesService.create` робить `settlementAccount.create` (баланс 0) у тому самому `$transaction`, що й самого контрагента, для будь-якого типу. Лінивого створення немає: `SettlementsService.createTransaction` для контрагента без рахунку кидає `NotFound`, а не дотворює рахунок
 - **BR-CP-013**: `syncVersion` — поле для cloud sync (pull blacklist: `phone`, `edrpou`, `email` не синхронізуються на мобільний)
+- **BR-CP-015**: **Гараж із живим авто не видаляється** (рішення власника 2026-10-22). `DELETE /counterparties/:id/garages/:garageId` — 400 «У гаражі є авто — спершу видаліть їх або перенесіть в інший гараж», поки в гаражі є невидалене авто; перевірка в транзакції видалення, до запису. Видалення гаража через sync push заборонено (як контрагента й авто) — інакше правило обходилось би. Раніше авто лишалось живим на видаленому гаражі. Web кнопки видалення гаража не має.
 - **BR-CP-014**: **Комірник читає постачальників** (рішення власника 2026-10-18). STOREKEEPER отримує читання лише контрагентів із роллю постачальника — для вибору постачальника в позиції списку купівлі, у картці замовлення й у підключенні до API: id, назва (ім'я / назва компанії), тип, ЄДРПОУ, ролі й договори закупівлі (номер, умови оплати). Клієнтів, телефонів, e-mail, балансів і розрахунків комірник не бачить; створення, зміна й видалення контрагентів — 403, як і раніше.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
@@ -204,20 +205,20 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 
 **Маршрути UI:** `/counterparties`, `/vehicles`
 
-| Аспект                                    | Тест                                            | Кейсів |
-| ----------------------------------------- | ----------------------------------------------- | ------ |
-| audit snapshot                            | `counterparties.audit-snapshot.spec.ts`         | 4      |
-| HTTP-контракт (DTO, статуси, валідація)   | `counterparties.contract.spec.ts`               | 21     |
-| counterparty contracts                    | `counterparties.counterparty-contracts.spec.ts` | 32     |
-| crud search                               | `counterparties.crud-search.spec.ts`            | 17     |
-| гаражі (isDefault)                        | `counterparties.garages.spec.ts`                | 6      |
-| пов'язані документи                       | `counterparties.linked-docs.spec.ts`            | 4      |
-| рахунок розрахунків (SettlementAccount)   | `counterparties.settlement-account.spec.ts`     | 3      |
-| статуси-мітки (assign / unassign)         | `counterparties.status-labels.spec.ts`          | 9      |
-| комірник читає постачальників (BR-CP-014) | `counterparties.storekeeper-suppliers.spec.ts`  | 22     |
-| supplier naming (+ назва обов'язкова)     | `counterparties.supplier-naming.spec.ts`        | 6      |
+| Аспект                                       | Тест                                            | Кейсів |
+| -------------------------------------------- | ----------------------------------------------- | ------ |
+| audit snapshot                               | `counterparties.audit-snapshot.spec.ts`         | 4      |
+| HTTP-контракт (DTO, статуси, валідація)      | `counterparties.contract.spec.ts`               | 21     |
+| counterparty contracts                       | `counterparties.counterparty-contracts.spec.ts` | 32     |
+| crud search                                  | `counterparties.crud-search.spec.ts`            | 17     |
+| гаражі (isDefault, гараж з авто — BR-CP-015) | `counterparties.garages.spec.ts`                | 7      |
+| пов'язані документи                          | `counterparties.linked-docs.spec.ts`            | 4      |
+| рахунок розрахунків (SettlementAccount)      | `counterparties.settlement-account.spec.ts`     | 3      |
+| статуси-мітки (assign / unassign)            | `counterparties.status-labels.spec.ts`          | 9      |
+| комірник читає постачальників (BR-CP-014)    | `counterparties.storekeeper-suppliers.spec.ts`  | 22     |
+| supplier naming (+ назва обов'язкова)        | `counterparties.supplier-naming.spec.ts`        | 6      |
 
-Разом: **124** кейси (цифри з `vitest --reporter=json`, не з grep).
+Разом: **125** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Поза модулем правила цього агрегату стережуть ще два файли:
 
@@ -226,7 +227,8 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
   CRUD авто з авто-створенням гаража) і група «Статуси» в рядку з «Типом». Запуск:
   `cd apps/web && npx vitest run src/components/ui/__tests__/CounterpartyEditModal.test.tsx`.
 - `apps/api/src/modules/sync/sync.contract.spec.ts` — кейс «pull counterparties: phone / email /
-  edrpou НЕ потрапляють у payload» (pull-blacklist живе в `sync/sync.service.ts`, не в цьому модулі).
+  edrpou НЕ потрапляють у payload» (pull-blacklist живе в `sync/sync.service.ts`, не в цьому модулі)
+  і BR-CP-015 «DELETE customer_garages через sync відхиляється».
 
 **Чого тут НЕМА.** Правил без жодного тесту не лишилось; розходжень дос'є з кодом теж.
 

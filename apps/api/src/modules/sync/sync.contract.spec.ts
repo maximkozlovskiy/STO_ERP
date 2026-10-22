@@ -281,6 +281,35 @@ describe('Sync — HTTP Contract', () => {
       expect(body.conflicts).toBe(1);
     });
 
+    // guards: BR-CP-015
+    it('DELETE customer_garages через sync відхиляється — гараж видаляє лише маршрут зі сторожем авто', async () => {
+      prismaMock.customerGarage.findFirst.mockResolvedValueOnce({
+        id: '660e8400-e29b-41d4-a716-446655440999',
+        syncVersion: 1n,
+        deletedAt: null,
+      });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/sync/push',
+        payload: {
+          records: [
+            {
+              table: 'customer_garages',
+              id: '660e8400-e29b-41d4-a716-446655440999',
+              operation: 'DELETE',
+              syncVersion: 5,
+              payload: {},
+            },
+          ],
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      const body = res.json() as { accepted: number; conflicts: number };
+      expect(body.accepted).toBe(0);
+      expect(body.conflicts).toBe(1);
+      expect(prismaMock.customerGarage.update).not.toHaveBeenCalled();
+    });
+
     it('DELETE calendar_slot зі СТАРІШИМ syncVersion не клобберить новіший серверний запис (LWW tombstone)', async () => {
       // Server already has version 10; a stale client DELETE at version 5 must be
       // ignored — otherwise a late mobile delete silently erases a newer web edit.
