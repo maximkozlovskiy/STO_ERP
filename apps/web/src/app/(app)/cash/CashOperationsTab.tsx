@@ -40,6 +40,7 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
+import { ListFiltersRow } from '@/components/ui/list-toolbar';
 import { useCurrentShift, useOpenShift, useCloseShift } from '@/hooks/api/useCashShift';
 import {
   useCashRegisters,
@@ -276,27 +277,6 @@ export default function CashOperationsTab({
             </span>
           </div>
         )}
-        {canDeposit && (
-          <div className="ml-auto flex items-center gap-2">
-            <Button
-              leftIcon={<ArrowDownCircle className="h-4 w-4" />}
-              onClick={() => openOpModal('IN')}
-              disabled={fiscalBlocked}
-            >
-              {t('operations.deposit')}
-            </Button>
-            {canOperate && (
-              <Button
-                variant="outline"
-                leftIcon={<ArrowUpCircle className="h-4 w-4" />}
-                onClick={() => openOpModal('OUT')}
-                disabled={fiscalBlocked}
-              >
-                {t('operations.withdraw')}
-              </Button>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Зміна (для фіскальної каси) */}
@@ -345,8 +325,32 @@ export default function CashOperationsTab({
         </div>
       )}
 
-      {/* Пошук · З · По */}
-      <div className="flex flex-wrap items-center gap-3 shrink-0">
+      {/* Пошук · З · По; дії каси «Внести / Видати» — праворуч, як основна кнопка списку */}
+      <ListFiltersRow
+        actions={
+          canDeposit && (
+            <>
+              <Button
+                leftIcon={<ArrowDownCircle className="h-4 w-4" />}
+                onClick={() => openOpModal('IN')}
+                disabled={fiscalBlocked}
+              >
+                {t('operations.deposit')}
+              </Button>
+              {canOperate && (
+                <Button
+                  variant="outline"
+                  leftIcon={<ArrowUpCircle className="h-4 w-4" />}
+                  onClick={() => openOpModal('OUT')}
+                  disabled={fiscalBlocked}
+                >
+                  {t('operations.withdraw')}
+                </Button>
+              )}
+            </>
+          )
+        }
+      >
         <ListSearchInput
           value={search}
           onChange={setSearch}
@@ -360,7 +364,7 @@ export default function CashOperationsTab({
           fromLabel={t('operations.dateFrom')}
           toLabel={t('operations.dateTo')}
         />
-      </div>
+      </ListFiltersRow>
 
       <ListLoadError error={opsError} onRetry={() => void refetchOps()} className="shrink-0" />
 

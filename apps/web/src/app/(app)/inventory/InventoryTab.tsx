@@ -40,6 +40,7 @@ import {
 import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
+import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import {
@@ -285,13 +286,15 @@ export function InventoryTab() {
         />
       )}
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 shrink-0 items-center">
+      {/* Розріз (товари / документи / партії) — рядком над фільтрами, як статуси списку */}
+      <ListStatusRow>
         {/* View mode switcher */}
         <div className="flex rounded-lg border border-border overflow-hidden shrink-0">
           {(Object.keys(VIEW_LABEL_KEYS) as ViewMode[]).map(m => (
             <button
               key={m}
+              type="button"
+              aria-pressed={viewMode === m}
               onClick={() => handleSwitchView(m)}
               className={cn(
                 'px-3 py-1 text-[13px] transition-colors',
@@ -304,13 +307,34 @@ export function InventoryTab() {
             </button>
           ))}
         </div>
+      </ListStatusRow>
 
+      {/* Filters */}
+      <ListFiltersRow
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void openLowStockModal()}
+              className="text-warning-text border-warning-border bg-warning-subtle hover:bg-warning-subtle/80"
+            >
+              <AlertTriangle className="h-4 w-4" />
+              {t('filters.belowMin')}
+            </Button>
+            {/* Тогл бокової панелі — лише у режимі «Товари» (DetailPanel goods-only). */}
+            {viewMode === 'goods' && (
+              <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+            )}
+          </>
+        }
+      >
         <Input
           value={q}
           onChange={e => setQ(e.target.value)}
           placeholder={t('filters.searchPlaceholder')}
           leftElement={<Search />}
-          className="w-64 h-8 text-[13px]"
+          className="w-72 h-8 text-[13px]"
         />
         <Select
           value={warehouseId}
@@ -355,23 +379,7 @@ export function InventoryTab() {
             {t('filters.lowOnly')}
           </label>
         )}
-
-        <div className="ml-auto flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void openLowStockModal()}
-            className="text-warning-text border-warning-border bg-warning-subtle hover:bg-warning-subtle/80"
-          >
-            <AlertTriangle className="h-4 w-4" />
-            {t('filters.belowMin')}
-          </Button>
-          {/* Тогл бокової панелі — лише у режимі «Товари» (DetailPanel goods-only). */}
-          {viewMode === 'goods' && (
-            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          )}
-        </div>
-      </div>
+      </ListFiltersRow>
 
       {/* Content area */}
       <div className="flex flex-1 min-h-0 gap-3">

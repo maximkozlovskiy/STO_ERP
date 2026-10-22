@@ -85,6 +85,7 @@ interface ServicesFilters extends Record<string, unknown> {
 }
 
 import { Pagination } from '@/components/ui/pagination';
+import { ListFiltersRow } from '@/components/ui/list-toolbar';
 
 // Module-level — статичні колонки (label = i18n labelKey, резолвиться у компоненті) +
 // прекомпьютений JSON для hasCustomization.
@@ -471,7 +472,41 @@ export default function ServicesTab() {
         />
       )}
 
-      <div className="flex items-center gap-3 shrink-0">
+      <ListFiltersRow
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              title={showDeleted ? t('common.hideDeleted') : t('common.showDeleted')}
+              onClick={() => {
+                setShowDeleted(d => !d);
+                setPage(1);
+              }}
+              className={cn(showDeleted && 'border-primary text-primary')}
+            >
+              {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </Button>
+            {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
+            <ColumnsDropdown
+              columns={servicesOrderedColumns}
+              visibleKeys={servicesColVisible}
+              onToggle={toggleServicesCol}
+              onReorder={reorderServices}
+              onRename={renameServicesCol}
+              onReset={resetServicesConfig}
+              hasCustomization={
+                JSON.stringify(servicesOrder) !== SERVICES_COLUMNS_DEFAULT_KEYS_JSON ||
+                Object.keys(servicesCustomLabels).length > 0
+              }
+            />
+            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+            <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
+              {t('services.addButton')}
+            </Button>
+          </>
+        }
+      >
         <Input
           value={q}
           onChange={e => {
@@ -481,40 +516,9 @@ export default function ServicesTab() {
           }}
           placeholder={t('services.search')}
           leftElement={<Search />}
-          className="flex-1 h-8 text-[13px]"
+          className="w-72 h-8 text-[13px]"
         />
-        <div className="flex items-center gap-2 ml-auto">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            title={showDeleted ? t('common.hideDeleted') : t('common.showDeleted')}
-            onClick={() => {
-              setShowDeleted(d => !d);
-              setPage(1);
-            }}
-            className={cn(showDeleted && 'border-primary text-primary')}
-          >
-            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          </Button>
-          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-          <ColumnsDropdown
-            columns={servicesOrderedColumns}
-            visibleKeys={servicesColVisible}
-            onToggle={toggleServicesCol}
-            onReorder={reorderServices}
-            onRename={renameServicesCol}
-            onReset={resetServicesConfig}
-            hasCustomization={
-              JSON.stringify(servicesOrder) !== SERVICES_COLUMNS_DEFAULT_KEYS_JSON ||
-              Object.keys(servicesCustomLabels).length > 0
-            }
-          />
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-            {t('services.addButton')}
-          </Button>
-        </div>
-      </div>
+      </ListFiltersRow>
 
       {features.bulkActionsEnabled && (
         <BulkActionsBar

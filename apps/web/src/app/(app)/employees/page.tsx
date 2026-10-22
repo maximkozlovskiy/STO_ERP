@@ -58,6 +58,7 @@ import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtDate } from '@/lib/format';
 import { EmployeeEditModal, type EmployeeForModal } from '@/components/ui/EmployeeEditModal';
+import { ListFiltersRow } from '@/components/ui/list-toolbar';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -556,7 +557,42 @@ export default function EmployeesPage() {
       )}
 
       {/* Filters */}
-      <div className="flex gap-3 shrink-0 flex-wrap">
+      <ListFiltersRow
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
+              onClick={() => {
+                setShowDeleted(d => !d);
+                resetPage();
+                setActiveSavedFilterId(null);
+              }}
+              className={showDeleted ? 'border-primary text-primary' : ''}
+            >
+              {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </Button>
+            {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
+            <ColumnsDropdown
+              columns={orderedColumns}
+              visibleKeys={colVisible}
+              onToggle={toggleCol}
+              onReorder={reorder}
+              onRename={renameColumn}
+              onReset={resetConfig}
+              hasCustomization={
+                JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
+                Object.keys(customLabels).length > 0
+              }
+            />
+            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+            <Button onClick={() => setModalEmp('create')} leftIcon={<Plus className="h-4 w-4" />}>
+              {t('addButton')}
+            </Button>
+          </>
+        }
+      >
         <Input
           value={search}
           onChange={e => {
@@ -566,7 +602,7 @@ export default function EmployeesPage() {
           }}
           placeholder={t('filters.searchPlaceholder')}
           leftElement={<Search />}
-          className="flex-1 min-w-48 h-8 text-[13px]"
+          className="w-72 h-8 text-[13px]"
         />
         <Select
           value={roleFilter}
@@ -583,39 +619,7 @@ export default function EmployeesPage() {
             </option>
           ))}
         </Select>
-        <div className="flex items-center gap-2 ml-auto">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
-            onClick={() => {
-              setShowDeleted(d => !d);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            className={showDeleted ? 'border-primary text-primary' : ''}
-          >
-            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          </Button>
-          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-          <ColumnsDropdown
-            columns={orderedColumns}
-            visibleKeys={colVisible}
-            onToggle={toggleCol}
-            onReorder={reorder}
-            onRename={renameColumn}
-            onReset={resetConfig}
-            hasCustomization={
-              JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
-              Object.keys(customLabels).length > 0
-            }
-          />
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <Button onClick={() => setModalEmp('create')} leftIcon={<Plus className="h-4 w-4" />}>
-            {t('addButton')}
-          </Button>
-        </div>
-      </div>
+      </ListFiltersRow>
 
       {/* Bulk actions */}
       {features.bulkActionsEnabled && bulkSelect.count > 0 && (

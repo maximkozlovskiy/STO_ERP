@@ -52,6 +52,7 @@ import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
+import { ListFiltersRow } from '@/components/ui/list-toolbar';
 import { cn, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
 import { fmtMoney } from '@/lib/format';
 
@@ -496,7 +497,48 @@ function CrmPageInner() {
       )}
 
       {/* Filters */}
-      <div className="flex gap-3 flex-wrap shrink-0">
+      <ListFiltersRow
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
+              onClick={() => {
+                setShowDeleted(d => !d);
+                resetPage();
+                setActiveSavedFilterId(null);
+              }}
+              className={showDeleted ? 'border-primary text-primary' : ''}
+            >
+              {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </Button>
+            {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
+            <ColumnsDropdown
+              columns={orderedColumns}
+              visibleKeys={colVisible}
+              onToggle={toggleCol}
+              onReorder={reorder}
+              onRename={renameColumn}
+              onReset={resetConfig}
+              hasCustomization={
+                JSON.stringify(order) !== CRM_COLUMNS_DEFAULT_KEYS_JSON ||
+                Object.keys(customLabels).length > 0
+              }
+            />
+            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+            <Button
+              leftIcon={<Plus className="h-4 w-4" />}
+              onClick={() => {
+                setEditingCp(null);
+                setModal(true);
+              }}
+            >
+              {t('actions.addCounterparty')}
+            </Button>
+          </>
+        }
+      >
         <Input
           value={search}
           onChange={e => {
@@ -506,7 +548,7 @@ function CrmPageInner() {
           }}
           placeholder={t('filters.searchPlaceholder')}
           leftElement={<Search />}
-          className="flex-1 min-w-48 h-8 text-[13px]"
+          className="w-72 h-8 text-[13px]"
         />
         <Select
           value={typeFilter}
@@ -523,45 +565,7 @@ function CrmPageInner() {
             </option>
           ))}
         </Select>
-        <div className="flex items-center gap-2 ml-auto">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
-            onClick={() => {
-              setShowDeleted(d => !d);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            className={showDeleted ? 'border-primary text-primary' : ''}
-          >
-            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          </Button>
-          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-          <ColumnsDropdown
-            columns={orderedColumns}
-            visibleKeys={colVisible}
-            onToggle={toggleCol}
-            onReorder={reorder}
-            onRename={renameColumn}
-            onReset={resetConfig}
-            hasCustomization={
-              JSON.stringify(order) !== CRM_COLUMNS_DEFAULT_KEYS_JSON ||
-              Object.keys(customLabels).length > 0
-            }
-          />
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <Button
-            leftIcon={<Plus className="h-4 w-4" />}
-            onClick={() => {
-              setEditingCp(null);
-              setModal(true);
-            }}
-          >
-            {t('actions.addCounterparty')}
-          </Button>
-        </div>
-      </div>
+      </ListFiltersRow>
 
       {/* Bulk actions */}
       {features.bulkActionsEnabled && bulkSelect.count > 0 && (

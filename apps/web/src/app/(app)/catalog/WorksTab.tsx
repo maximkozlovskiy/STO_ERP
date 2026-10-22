@@ -66,6 +66,7 @@ interface WorksFilters extends Record<string, unknown> {
 }
 
 import { Pagination } from '@/components/ui/pagination';
+import { ListFiltersRow } from '@/components/ui/list-toolbar';
 
 // Module-level — статичні колонки (label = i18n labelKey, резолвиться у компоненті) +
 // прекомпьютений JSON для hasCustomization.
@@ -485,7 +486,61 @@ export default function WorksTab() {
         />
       )}
 
-      <div className="flex items-center gap-3 flex-wrap shrink-0">
+      <ListFiltersRow
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              title={showDeleted ? t('common.hideDeleted') : t('common.showDeleted')}
+              onClick={() => {
+                setShowDeleted(d => !d);
+                setPage(1);
+              }}
+              className={cn(showDeleted && 'border-primary text-primary')}
+            >
+              {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </Button>
+            {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
+            <ColumnsDropdown
+              columns={worksOrderedColumns}
+              visibleKeys={worksColVisible}
+              onToggle={toggleWorksCol}
+              onReorder={reorderWorks}
+              onRename={renameWorksCol}
+              onReset={resetWorksConfig}
+              hasCustomization={
+                JSON.stringify(worksOrder) !== WORKS_COLUMNS_DEFAULT_KEYS_JSON ||
+                Object.keys(worksCustomLabels).length > 0
+              }
+            />
+            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+            <XlsxImportButton
+              templateType="works"
+              importUrl="/xlsx/import/works"
+              onImportComplete={load}
+            />
+            <Button
+              leftIcon={<Plus className="h-4 w-4" />}
+              onClick={() => {
+                setForm({
+                  categoryId: flat[0]?.id ?? '',
+                  name: '',
+                  normoHours: '',
+                  price: '',
+                  description: '',
+                  isWarranty: false,
+                });
+                worksFormDirty.resetDirty();
+                setError('');
+                setModal(true);
+              }}
+            >
+              {t('works.addButton')}
+            </Button>
+          </>
+        }
+      >
         <Input
           value={q}
           onChange={e => {
@@ -495,60 +550,9 @@ export default function WorksTab() {
           }}
           placeholder={t('works.search')}
           leftElement={<Search />}
-          className="flex-1 min-w-48 h-8 text-[13px]"
+          className="w-72 h-8 text-[13px]"
         />
-        <XlsxImportButton
-          templateType="works"
-          importUrl="/xlsx/import/works"
-          onImportComplete={load}
-        />
-        <div className="flex items-center gap-2 ml-auto">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            title={showDeleted ? t('common.hideDeleted') : t('common.showDeleted')}
-            onClick={() => {
-              setShowDeleted(d => !d);
-              setPage(1);
-            }}
-            className={cn(showDeleted && 'border-primary text-primary')}
-          >
-            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          </Button>
-          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-          <ColumnsDropdown
-            columns={worksOrderedColumns}
-            visibleKeys={worksColVisible}
-            onToggle={toggleWorksCol}
-            onReorder={reorderWorks}
-            onRename={renameWorksCol}
-            onReset={resetWorksConfig}
-            hasCustomization={
-              JSON.stringify(worksOrder) !== WORKS_COLUMNS_DEFAULT_KEYS_JSON ||
-              Object.keys(worksCustomLabels).length > 0
-            }
-          />
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <Button
-            leftIcon={<Plus className="h-4 w-4" />}
-            onClick={() => {
-              setForm({
-                categoryId: flat[0]?.id ?? '',
-                name: '',
-                normoHours: '',
-                price: '',
-                description: '',
-                isWarranty: false,
-              });
-              worksFormDirty.resetDirty();
-              setError('');
-              setModal(true);
-            }}
-          >
-            {t('works.addButton')}
-          </Button>
-        </div>
-      </div>
+      </ListFiltersRow>
 
       <CategoryManagerModal
         open={categoryManagerOpen}

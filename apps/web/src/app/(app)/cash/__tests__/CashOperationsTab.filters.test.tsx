@@ -1,6 +1,6 @@
 // Пошук і відбір за датою у вкладці «Операції» каси (рішення власника 2026-10-09).
 //
-//   - рядок «пошук · З · По» стоїть над списком операцій;
+//   - рядок «пошук · З · По» стоїть над списком операцій, дії «Внести / Видати» — у ньому праворуч;
 //   - дати за замовчуванням — СЬОГОДНІ (київський день, kyivToday), а не вся історія каси;
 //   - пошук іде у фільтр хука лише після debounce; порожні значення не надсилаються;
 //   - список каси не має пагінації (GET /cash-registers/:id/operations віддає масив), тож
@@ -134,6 +134,17 @@ describe('CashOperationsTab — пошук і дати', () => {
     expect(
       row.compareDocumentPosition(screen.getByRole('table')) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  // Стандарт списку (рішення власника 2026-10-22): дії «Внести / Видати» — у рядку фільтрів праворуч,
+  // а не в рядку вибору каси.
+  it('«Внести» і «Видати» — останній блок рядка фільтрів, притиснутий праворуч', () => {
+    render(<CashOperationsTab canOperate />);
+    const row = screen.getByPlaceholderText(SEARCH).closest('div.flex-wrap')!;
+    const actions = row.lastElementChild!;
+    expect(actions).toHaveClass('ml-auto');
+    expect(actions).toContainElement(screen.getByRole('button', { name: 'Внести' }));
+    expect(actions).toContainElement(screen.getByRole('button', { name: 'Видати' }));
   });
 
   it('порожній список за фільтром не закликає «внести або видати» — каже, що за періодом порожньо', () => {

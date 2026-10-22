@@ -23,6 +23,7 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
+import { ListFiltersRow } from '@/components/ui/list-toolbar';
 import { useWarehouses } from '@/hooks/api/useInfrastructure';
 import { useStockMovements } from '@/hooks/api/useInventory';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -74,47 +75,39 @@ export function StockMovementsTab() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-3 pt-3">
-      {/* Фільтри */}
-      <div className="flex flex-wrap items-end gap-2 shrink-0">
-        <div>
-          <label className="block text-[12px] text-muted-foreground mb-1">
-            {t('movements.filterWarehouse')}
-          </label>
-          <Select
-            value={warehouseId}
-            onChange={e => resetAnd(() => setWarehouseId(e.target.value))}
-            className="w-44 h-8 text-[13px]"
-          >
-            <option value="">{t('movements.allWarehouses')}</option>
-            {warehouses?.map(w => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <label className="block text-[12px] text-muted-foreground mb-1">
-            {t('movements.filterType')}
-          </label>
-          <Select
-            value={type}
-            onChange={e => resetAnd(() => setType(e.target.value))}
-            className="w-44 h-8 text-[13px]"
-          >
-            <option value="">{t('movements.allTypes')}</option>
-            {Object.keys(STOCK_MOVEMENT_TYPE_LABELS).map(k => (
-              <option key={k} value={k}>
-                {stockMovementTypeLabel(k)}
-              </option>
-            ))}
-          </Select>
-        </div>
+      {/* Фільтри: пошук, склад, тип руху, період; «Скинути» — поруч із ними */}
+      <ListFiltersRow>
         <ListSearchInput
           value={search}
           onChange={v => resetAnd(() => setSearch(v))}
           label={t('movements.searchPlaceholder')}
         />
+        <Select
+          value={warehouseId}
+          onChange={e => resetAnd(() => setWarehouseId(e.target.value))}
+          aria-label={t('movements.filterWarehouse')}
+          className="w-44 h-8 text-[13px] py-0.5 px-2 pr-7"
+        >
+          <option value="">{t('movements.allWarehouses')}</option>
+          {warehouses?.map(w => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </Select>
+        <Select
+          value={type}
+          onChange={e => resetAnd(() => setType(e.target.value))}
+          aria-label={t('movements.filterType')}
+          className="w-44 h-8 text-[13px] py-0.5 px-2 pr-7"
+        >
+          <option value="">{t('movements.allTypes')}</option>
+          {Object.keys(STOCK_MOVEMENT_TYPE_LABELS).map(k => (
+            <option key={k} value={k}>
+              {stockMovementTypeLabel(k)}
+            </option>
+          ))}
+        </Select>
         {/* Спільне поле дати: віддає лише завершену дату — рідне `type="date"` під час набору
             року слало запит на кожну проміжну дату, а рік із 5 цифр давав 400 зі старими даними. */}
         <DateRangeFilter
@@ -142,7 +135,7 @@ export function StockMovementsTab() {
             {t('movements.reset')}
           </Button>
         )}
-      </div>
+      </ListFiltersRow>
 
       <ListLoadError error={error} onRetry={() => void refetch()} className="shrink-0" />
 

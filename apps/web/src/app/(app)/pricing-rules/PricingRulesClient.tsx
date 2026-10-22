@@ -7,7 +7,7 @@ import dynamic from 'next/dynamic';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { keepPreviousData } from '@tanstack/react-query';
 import { pricingRulesKeys } from '@/hooks/api/usePricingRules';
-import { Plus, Pencil, Trash2, Upload, Tag, RefreshCw } from 'lucide-react';
+import { Plus, Pencil, Trash2, Upload, Tag, RefreshCw, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/table';
 import { fmtMoney, fmtDate } from '@/lib/format';
 import { Input } from '@/components/ui/input';
+import { ListFiltersRow } from '@/components/ui/list-toolbar';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -265,36 +266,40 @@ export default function PricingRulesClient() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 flex-wrap shrink-0">
+      <ListFiltersRow
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              leftIcon={<Upload className="h-4 w-4" />}
+              onClick={() => {
+                setShowPricingImport(s => !s);
+                setPricingImportResult(null);
+              }}
+            >
+              {t('actions.priceList')}
+            </Button>
+            <Button
+              leftIcon={<Plus className="h-4 w-4" />}
+              onClick={() => {
+                setError('');
+                setModal(true);
+              }}
+            >
+              {t('actions.rule')}
+            </Button>
+          </>
+        }
+      >
         <Input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder={t('searchPlaceholder')}
+          leftElement={<Search />}
           className="w-72 h-8 text-[13px]"
         />
-        <div className="flex items-center gap-2 ml-auto">
-          <Button
-            type="button"
-            variant="outline"
-            leftIcon={<Upload className="h-4 w-4" />}
-            onClick={() => {
-              setShowPricingImport(s => !s);
-              setPricingImportResult(null);
-            }}
-          >
-            {t('actions.priceList')}
-          </Button>
-          <Button
-            leftIcon={<Plus className="h-4 w-4" />}
-            onClick={() => {
-              setError('');
-              setModal(true);
-            }}
-          >
-            {t('actions.rule')}
-          </Button>
-        </div>
-      </div>
+      </ListFiltersRow>
 
       {showPricingImport && (
         <AnimatedBody className="mb-6 rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
