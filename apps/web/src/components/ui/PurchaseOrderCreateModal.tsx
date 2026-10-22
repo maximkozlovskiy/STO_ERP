@@ -1354,7 +1354,8 @@ export function PurchaseOrderCreateModal({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={onClose}
+                // Як Escape і «×»: незбережені зміни — спершу підтвердження (useDirtyForm).
+                onClick={() => void handleModalClose()}
                 disabled={saving || transitioning}
               >
                 Закрити

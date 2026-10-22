@@ -34,6 +34,12 @@ export interface PickLineExecutorInput {
   workCategoryId: string | null | undefined;
   /** Id активних механіків — тих, кого пропонує поле «Виконавець». */
   activeMechanicIds: readonly string[];
+  /**
+   * Рядки активних механіків (статус, категорії) — для механіка запису, якого немає серед механіків
+   * підйомника (знятий з підйомника після запису): його категорії теж обмежують (Bug #942).
+   * Немає рядка чи категорій — як і раніше, не обмежують.
+   */
+  mechanics?: readonly LiftMechanic[];
 }
 
 const ON_LEAVE = 'ON_LEAVE';
@@ -51,15 +57,20 @@ export function pickLineExecutor({
   liftMechanics,
   workCategoryId,
   activeMechanicIds,
+  mechanics,
 }: PickLineExecutorInput): string {
   const active = new Set(activeMechanicIds);
   const onLift = new Map((liftMechanics ?? []).map(m => [m.id, m]));
+  const known = new Map((mechanics ?? []).map(m => [m.id, m]));
   const eligible = (id: string, row: LiftMechanic | undefined) =>
     active.has(id) &&
     row?.status !== ON_LEAVE &&
     handlesCategory(row?.workCategoryIds, workCategoryId);
 
-  if (calendarMechanicId && eligible(calendarMechanicId, onLift.get(calendarMechanicId))) {
+  if (
+    calendarMechanicId &&
+    eligible(calendarMechanicId, onLift.get(calendarMechanicId) ?? known.get(calendarMechanicId))
+  ) {
     return calendarMechanicId;
   }
   const candidates = (liftMechanics ?? []).filter(m => eligible(m.id, m));

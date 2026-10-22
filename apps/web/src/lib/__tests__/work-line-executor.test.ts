@@ -124,6 +124,30 @@ describe('pickLineExecutor — BR-WO-030', () => {
       }),
     ).toBe('m-ivan');
   });
+
+  // guards: BR-WO-030 — категорії механіка запису, якого немає серед механіків підйомника (Bug #942)
+  it('механік запису поза підйомником з чужою категорією → не він, а решта правила', () => {
+    const calendar: LiftMechanic = { id: 'm-calendar', status: 'ACTIVE', workCategoryIds: [BODY] };
+    expect(
+      pickLineExecutor({
+        calendarMechanicId: 'm-calendar',
+        liftMechanics: [ivan],
+        workCategoryId: ENGINE,
+        activeMechanicIds: ACTIVE,
+        mechanics: [calendar, ivan],
+      }),
+    ).toBe('m-ivan');
+    // Своя категорія — підставляється, хоч і не з цього підйомника.
+    expect(
+      pickLineExecutor({
+        calendarMechanicId: 'm-calendar',
+        liftMechanics: [ivan],
+        workCategoryId: BODY,
+        activeMechanicIds: ACTIVE,
+        mechanics: [calendar, ivan],
+      }),
+    ).toBe('m-calendar');
+  });
 });
 
 describe('slotMechanicId — механік запису наряду в календарі', () => {

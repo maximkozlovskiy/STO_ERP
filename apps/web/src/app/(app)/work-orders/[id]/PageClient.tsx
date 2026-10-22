@@ -185,6 +185,8 @@ interface Employee {
   role?: string;
   status?: string;
   deletedAt?: string | null;
+  /** Категорії робіт механіка (BR-WO-030); у кеші довідника їх немає. */
+  workCategoryIds?: readonly string[] | null;
 }
 interface Good {
   id: string;

@@ -40,6 +40,9 @@ interface Employee {
   id: string;
   firstName: string;
   lastName: string;
+  status?: string;
+  /** Категорії робіт механіка (BR-WO-030); у кеші довідника їх немає. */
+  workCategoryIds?: readonly string[] | null;
 }
 
 interface WorkOrderAddLineModalProps {
@@ -129,13 +132,22 @@ export function WorkOrderAddLineModal({
       liftMechanics,
       workCategoryId,
       activeMechanicIds,
+      mechanics: employees,
     });
     setForm(f =>
       f.workId && !executorManualRef.current && f.employeeId !== employeeId
         ? { ...f, employeeId }
         : f,
     );
-  }, [open, form.workId, workCategoryId, calendarMechanicId, liftMechanics, activeMechanicIds]);
+  }, [
+    open,
+    form.workId,
+    workCategoryId,
+    calendarMechanicId,
+    liftMechanics,
+    activeMechanicIds,
+    employees,
+  ]);
 
   const selectWork = useCallback(
     (workId: string) => {

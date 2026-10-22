@@ -83,6 +83,8 @@ interface LocalLine {
   // значення, НЕ перераховуємо, щоб не подвоїти). Нові ручні рядки — undefined (backend
   // recalcTotals порахує при збереженні), прев'ю тоді qty×unitPrice без ПДВ (чесно).
   lineTotalWithVat?: number;
+  /** Одиниця рядка з сервера (BR-INV-021: як у наряді, напр. «Пак»); ручний рядок — без неї. */
+  unitShortName?: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -328,6 +330,8 @@ export function InvoiceCreateModal({
           quantity: String(l.quantity),
           unitPrice: String(l.unitPrice),
           lineTotalWithVat: l.priceWithVat, // WEB-R3-4: авторитетна сума з ПДВ для прев'ю «Разом»
+          // BR-INV-021: картка показує одиницю рядка — «1» без «Пак» читалось як 1 шт (Bug #941).
+          unitShortName: l.unitShortName ?? undefined,
         }));
         // reset() із завантаженими даними → нова «чиста» база (rhfDirty=false для незмінених даних).
         reset({
@@ -474,6 +478,7 @@ export function InvoiceCreateModal({
     quantity: string;
     unitPrice: string;
     lineTotalWithVat?: number;
+    unitShortName?: string;
   };
 
   // Локальна допоміжна: зібрати рядки для POST з auto-flush pending newLine.
@@ -884,7 +889,8 @@ export function InvoiceCreateModal({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={onClose}
+                // Як Escape і «×»: незбережені зміни — спершу підтвердження (useDirtyForm).
+                onClick={() => void handleModalClose()}
                 disabled={saving || transitioning}
               >
                 Закрити
@@ -1071,7 +1077,12 @@ export function InvoiceCreateModal({
                   return (
                     <tr key={field.id} className="hover:bg-secondary/20 group">
                       <td className="px-3 py-2">{line.description}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {line.quantity}
+                        {line.unitShortName && (
+                          <span className="ml-1 text-muted-foreground">{line.unitShortName}</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums">{line.unitPrice}</td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         <div className="flex items-center justify-end gap-1">

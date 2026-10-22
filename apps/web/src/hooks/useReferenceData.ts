@@ -43,6 +43,8 @@ export interface Employee {
   role?: string;
   status?: string;
   deletedAt?: string | null;
+  /** Категорії робіт механіка (BR-WO-030); у кеші довідника їх немає. */
+  workCategoryIds?: readonly string[] | null;
 }
 export interface Vehicle {
   id: string;

@@ -1124,8 +1124,18 @@ export function CreateWorkOrderModal({
   const liftMechanics = useLiftMechanics(form.liftId);
   const activeMechanicIds = useMemo(() => employees.map(e => e.id), [employees]);
   // Свіжі входи правила для «+ Послуга»: категорії її робіт приходять після await.
-  const executorInputsRef = useRef({ calendarMechanicId, liftMechanics, activeMechanicIds });
-  executorInputsRef.current = { calendarMechanicId, liftMechanics, activeMechanicIds };
+  const executorInputsRef = useRef({
+    calendarMechanicId,
+    liftMechanics,
+    activeMechanicIds,
+    mechanics: employees,
+  });
+  executorInputsRef.current = {
+    calendarMechanicId,
+    liftMechanics,
+    activeMechanicIds,
+    mechanics: employees,
+  };
 
   // Новий рядок: виконавець підставляється, щойно обрано роботу, і стежить за даними правила, що
   // приходять пізніше (механіки підйомника, запис календаря, довідник) — доки його не обрала людина.
@@ -1141,6 +1151,7 @@ export function CreateWorkOrderModal({
       liftMechanics,
       workCategoryId: newLineCategoryId,
       activeMechanicIds,
+      mechanics: employees,
     });
     setNewLine(l =>
       l.workId && !newLineExecutorManualRef.current && l.employeeId !== employeeId
@@ -1154,6 +1165,7 @@ export function CreateWorkOrderModal({
     calendarMechanicId,
     liftMechanics,
     activeMechanicIds,
+    employees,
   ]);
 
   /** Робота нового рядка — пошуком у рядку чи вікном вибору. Той самий вибір вдруге нічого не скидає. */
@@ -1247,6 +1259,7 @@ export function CreateWorkOrderModal({
             liftMechanics: inputs.liftMechanics,
             workCategoryId: categories.get(w.workId) ?? null,
             activeMechanicIds: inputs.activeMechanicIds,
+            mechanics: inputs.mechanics,
           }),
         }))
         .filter(
@@ -2247,7 +2260,12 @@ export function CreateWorkOrderModal({
                     Зберегти зміни
                   </Button>
                 )}
-                <Button variant="outline" onClick={onClose} disabled={saving || transitioning}>
+                <Button
+                  variant="outline"
+                  // Як Escape і «×»: незбережені зміни — спершу підтвердження (useDirtyForm).
+                  onClick={() => void handleModalClose()}
+                  disabled={saving || transitioning}
+                >
                   Закрити
                 </Button>
               </div>
