@@ -144,6 +144,27 @@ describe('WorkOrders — HTTP Contract', () => {
       expect(res.statusCode).toBe(200);
     });
 
+    it('include=lines,parts (синхронізація планшета) → 200, у сервіс приходить масив', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 100 });
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/work-orders?limit=100&include=lines,parts',
+      });
+      expect(res.statusCode).toBe(200);
+      const query = serviceMock.findAll.mock.calls.at(-1)![1] as { include?: string[] };
+      expect(query.include).toEqual(['lines', 'parts']);
+    });
+
+    it('include з невідомим значенням → 400', async () => {
+      jwtAllow = true;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/work-orders?include=lines,payments',
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
     it('відхиляє limit=201 з 400', async () => {
       jwtAllow = true;
       const res = await (app as NestFastifyApplication).inject({

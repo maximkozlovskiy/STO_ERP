@@ -8164,6 +8164,23 @@
               "default": 20,
               "type": "number"
             }
+          },
+          {
+            "name": "include",
+            "required": false,
+            "in": "query",
+            "description": "Вкладені дані: lines, parts (через кому)",
+            "schema": {
+              "example": "lines,parts",
+              "type": "string",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "lines",
+                  "parts"
+                ]
+              }
+            }
           }
         ],
         "responses": {
@@ -24713,7 +24730,132 @@
           "warranties"
         ]
       },
-      "WorkOrderResponseDto": {
+      "WorkOrderLineResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workOrderId": {
+            "type": "string"
+          },
+          "workId": {
+            "type": "string"
+          },
+          "workName": {
+            "type": "string"
+          },
+          "employeeId": {
+            "type": "string"
+          },
+          "employeeName": {
+            "type": "string"
+          },
+          "liftId": {
+            "type": "string",
+            "nullable": true
+          },
+          "normoHours": {
+            "type": "number"
+          },
+          "actualHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "price": {
+            "type": "number"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workOrderId",
+          "workId",
+          "employeeId",
+          "normoHours",
+          "price",
+          "amount",
+          "createdAt"
+        ]
+      },
+      "WorkOrderPartResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workOrderId": {
+            "type": "string"
+          },
+          "goodId": {
+            "type": "string"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "goodInternalCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "goodSku": {
+            "type": "string",
+            "nullable": true
+          },
+          "goodBrandName": {
+            "type": "string",
+            "nullable": true
+          },
+          "unitOfMeasureId": {
+            "type": "string",
+            "nullable": true
+          },
+          "unitShortName": {
+            "type": "string"
+          },
+          "coefficient": {
+            "type": "number"
+          },
+          "warehouseId": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "costPrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "price": {
+            "type": "number"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workOrderId",
+          "goodId",
+          "warehouseId",
+          "quantity",
+          "price",
+          "amount",
+          "createdAt"
+        ]
+      },
+      "WorkOrderListItemDto": {
         "type": "object",
         "properties": {
           "id": {
@@ -24905,6 +25047,18 @@
             "type": "string",
             "nullable": true,
             "description": "Set when the work order is soft-deleted"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkOrderLineResponseDto"
+            }
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkOrderPartResponseDto"
+            }
           }
         },
         "required": [
@@ -24934,7 +25088,7 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/WorkOrderResponseDto"
+              "$ref": "#/components/schemas/WorkOrderListItemDto"
             }
           },
           "total": {
@@ -25265,131 +25419,6 @@
           "ids"
         ]
       },
-      "WorkOrderLineResponseDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "workOrderId": {
-            "type": "string"
-          },
-          "workId": {
-            "type": "string"
-          },
-          "workName": {
-            "type": "string"
-          },
-          "employeeId": {
-            "type": "string"
-          },
-          "employeeName": {
-            "type": "string"
-          },
-          "liftId": {
-            "type": "string",
-            "nullable": true
-          },
-          "normoHours": {
-            "type": "number"
-          },
-          "actualHours": {
-            "type": "number",
-            "nullable": true
-          },
-          "price": {
-            "type": "number"
-          },
-          "amount": {
-            "type": "number"
-          },
-          "notes": {
-            "type": "string",
-            "nullable": true
-          },
-          "createdAt": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "workOrderId",
-          "workId",
-          "employeeId",
-          "normoHours",
-          "price",
-          "amount",
-          "createdAt"
-        ]
-      },
-      "WorkOrderPartResponseDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "workOrderId": {
-            "type": "string"
-          },
-          "goodId": {
-            "type": "string"
-          },
-          "goodName": {
-            "type": "string"
-          },
-          "goodInternalCode": {
-            "type": "string",
-            "nullable": true
-          },
-          "goodSku": {
-            "type": "string",
-            "nullable": true
-          },
-          "goodBrandName": {
-            "type": "string",
-            "nullable": true
-          },
-          "unitOfMeasureId": {
-            "type": "string",
-            "nullable": true
-          },
-          "unitShortName": {
-            "type": "string"
-          },
-          "coefficient": {
-            "type": "number"
-          },
-          "warehouseId": {
-            "type": "string"
-          },
-          "quantity": {
-            "type": "number"
-          },
-          "costPrice": {
-            "type": "number",
-            "nullable": true
-          },
-          "price": {
-            "type": "number"
-          },
-          "amount": {
-            "type": "number"
-          },
-          "createdAt": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "workOrderId",
-          "goodId",
-          "warehouseId",
-          "quantity",
-          "price",
-          "amount",
-          "createdAt"
-        ]
-      },
       "WorkOrderDetailDto": {
         "type": "object",
         "properties": {
@@ -25617,6 +25646,221 @@
           "updatedAt",
           "lines",
           "parts"
+        ]
+      },
+      "WorkOrderResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "orgId": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "ESTIMATE",
+              "APPROVED",
+              "IN_PROGRESS",
+              "ON_HOLD",
+              "COMPLETED",
+              "INVOICED",
+              "PAID",
+              "ARCHIVED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "priority": {
+            "enum": [
+              "LOW",
+              "NORMAL",
+              "HIGH",
+              "URGENT"
+            ],
+            "type": "string"
+          },
+          "repairCategory": {
+            "nullable": true,
+            "enum": [
+              "MAINTENANCE",
+              "CURRENT_REPAIR",
+              "MAJOR_REPAIR",
+              "BODY_REPAIR",
+              "DIAGNOSTICS",
+              "WARRANTY",
+              "SEASONAL"
+            ],
+            "type": "string"
+          },
+          "branchId": {
+            "type": "string"
+          },
+          "branchName": {
+            "type": "string"
+          },
+          "vehicleId": {
+            "type": "string"
+          },
+          "vehicleSummary": {
+            "type": "string"
+          },
+          "counterpartyId": {
+            "type": "string"
+          },
+          "counterpartyName": {
+            "type": "string"
+          },
+          "contractId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Договір контрагента"
+          },
+          "contractNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "liftId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Підйомник"
+          },
+          "liftName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Назва підйомника"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "inMileage": {
+            "type": "number",
+            "nullable": true
+          },
+          "outMileage": {
+            "type": "number",
+            "nullable": true
+          },
+          "plannedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "dueDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "plannedHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "actualHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "clientApproval": {
+            "type": "boolean"
+          },
+          "totalLabor": {
+            "type": "number"
+          },
+          "totalActualLabor": {
+            "type": "number"
+          },
+          "totalParts": {
+            "type": "number"
+          },
+          "totalNet": {
+            "type": "number"
+          },
+          "totalAmount": {
+            "type": "number"
+          },
+          "totalVat": {
+            "type": "number"
+          },
+          "paidAmount": {
+            "type": "number"
+          },
+          "currencyId": {
+            "type": "string",
+            "nullable": true
+          },
+          "currencyCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "totalAmountBase": {
+            "type": "number",
+            "nullable": true
+          },
+          "rateUsed": {
+            "type": "number",
+            "nullable": true
+          },
+          "documentDate": {
+            "type": "string",
+            "nullable": true,
+            "description": "Дата документа"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "hasActiveWarranty": {
+            "type": "boolean",
+            "description": "Є активна гарантія"
+          },
+          "slotStartAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Найближчий слот у календарі: початок"
+          },
+          "slotEndAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Найближчий слот у календарі: кінець"
+          },
+          "slotLiftName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Підйомник слота у календарі"
+          },
+          "deletedAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Set when the work order is soft-deleted"
+          }
+        },
+        "required": [
+          "id",
+          "orgId",
+          "number",
+          "status",
+          "priority",
+          "branchId",
+          "vehicleId",
+          "counterpartyId",
+          "clientApproval",
+          "totalLabor",
+          "totalActualLabor",
+          "totalParts",
+          "totalNet",
+          "totalAmount",
+          "totalVat",
+          "paidAmount",
+          "createdAt",
+          "updatedAt"
         ]
       },
       "RescheduleWorkOrderDto": {

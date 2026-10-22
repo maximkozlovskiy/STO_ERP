@@ -122,6 +122,27 @@ const PART_GOOD_INCLUDE = {
   },
 } as const satisfies Prisma.GoodDefaultArgs;
 
+/**
+ * Рядки й запчастини наряду — картка (`findOne`) і список з `?include=` (планшет).
+ * Bug review (sto-optimize 2026-06-05): defensive take cap — addLine/addPart endpoints не мають
+ * ArrayMaxSize, тож теоретично наряд може мати unbounded lines/parts; 500 — реалістична межа.
+ */
+const WO_LINES_INCLUDE = {
+  where: { deletedAt: null },
+  orderBy: { createdAt: 'asc' },
+  take: 500,
+  include: {
+    work: { select: { name: true } },
+    employee: { select: { firstName: true, lastName: true } },
+  },
+} as const satisfies Prisma.WorkOrder$linesArgs;
+const WO_PARTS_INCLUDE = {
+  where: { deletedAt: null },
+  orderBy: { createdAt: 'asc' },
+  take: 500,
+  include: { good: PART_GOOD_INCLUDE },
+} as const satisfies Prisma.WorkOrder$partsArgs;
+
 /** Include відповіді створення/зміни наряду (`toDto`): той самий для create і update. */
 const WO_WRITE_INCLUDE = {
   vehicle: { select: { make: true, model: true, licensePlate: true } },
@@ -344,6 +365,10 @@ export class WorkOrdersService {
 
     const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
     const orderBy = buildSortOrderBy(WO_SORT_FIELDS, query.sortBy, query.sortDir);
+    // `?include=lines,parts` — синхронізація планшета: рядки й запчастини тим самим запитом, у
+    // формі картки (той самий include і мапери, що `findOne`). Без параметра — нічого зайвого.
+    const withLines = query.include?.includes('lines') ?? false;
+    const withParts = query.include?.includes('parts') ?? false;
     const [items, total] = await Promise.all([
       this.prisma.workOrder.findMany({
         where,
@@ -374,13 +399,20 @@ export class WorkOrdersService {
               },
             },
           },
+          ...(withLines ? { lines: WO_LINES_INCLUDE } : {}),
+          ...(withParts ? { parts: WO_PARTS_INCLUDE } : {}),
         },
       }),
       this.prisma.workOrder.count({ where }),
     ]);
 
     return {
-      items: items.map(item => this.toDto(item)),
+      items: items.map(item => ({
+        ...this.toDto(item),
+        ...(withLines && 'lines' in item ? { lines: item.lines.map(l => this.toLineDto(l)) } : {}),
+        // Без ролі мапер не віддає собівартість (fail-closed) — у списку її не бачить ніхто.
+        ...(withParts && 'parts' in item ? { parts: item.parts.map(p => this.toPartDto(p)) } : {}),
+      })),
       total,
       page: query.page,
       limit: take,
@@ -411,21 +443,8 @@ export class WorkOrdersService {
         // endpoints не мають ArrayMaxSize, тож теоретично WO може мати unbounded lines/parts.
         // 500 — реалістична верхня межа (PO/SD каплять на 500 у DTO), захист від OOM при
         // зловмисному infinite loop через single-add endpoints.
-        lines: {
-          where: { deletedAt: null },
-          orderBy: { createdAt: 'asc' },
-          take: 500,
-          include: {
-            work: { select: { name: true } },
-            employee: { select: { firstName: true, lastName: true } },
-          },
-        },
-        parts: {
-          where: { deletedAt: null },
-          orderBy: { createdAt: 'asc' },
-          take: 500,
-          include: { good: PART_GOOD_INCLUDE },
-        },
+        lines: WO_LINES_INCLUDE,
+        parts: WO_PARTS_INCLUDE,
       },
     });
     if (!wo) throw new NotFoundException(err('err.workOrder.notFound'));

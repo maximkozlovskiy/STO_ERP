@@ -189,6 +189,10 @@ export class TransitionWorkOrderDto {
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
 
+/** Що можна вкласти у список нарядів (`?include=`). */
+export const WO_LIST_INCLUDES = ['lines', 'parts'] as const;
+export type WorkOrderListInclude = (typeof WO_LIST_INCLUDES)[number];
+
 export class WorkOrderQueryDto {
   @ApiPropertyOptional({ enum: WorkOrderStatus })
   @IsOptional()
@@ -303,6 +307,29 @@ export class WorkOrderQueryDto {
   @Min(1)
   @Max(200)
   limit: number = 20;
+
+  /**
+   * Вкладені рядки списку: `lines`, `parts` через кому (`?include=lines,parts`) — для
+   * синхронізації планшета механіка, якому потрібні роботи й запчастини без запиту на кожен
+   * наряд. Без параметра список такий, як був. Собівартість запчастин у списку не віддається.
+   */
+  @ApiPropertyOptional({
+    description: 'Вкладені дані: lines, parts (через кому)',
+    type: String,
+    example: 'lines,parts',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string'
+      ? value
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
+      : value,
+  )
+  @IsArray()
+  @IsIn(WO_LIST_INCLUDES, { each: true })
+  include?: WorkOrderListInclude[];
 }
 
 /**
@@ -406,7 +433,7 @@ export class WorkOrderResponseDto {
 }
 
 export class PaginatedWorkOrdersDto {
-  @ApiProperty({ type: [WorkOrderResponseDto] }) items!: WorkOrderResponseDto[];
+  @ApiProperty({ type: () => [WorkOrderListItemDto] }) items!: WorkOrderListItemDto[];
   @ApiProperty() total!: number;
   @ApiProperty() page!: number;
   @ApiProperty() limit!: number;
@@ -516,6 +543,12 @@ export class WorkOrderPartResponseDto {
 export class WorkOrderDetailDto extends WorkOrderResponseDto {
   @ApiProperty({ type: [WorkOrderLineResponseDto] }) lines!: WorkOrderLineResponseDto[];
   @ApiProperty({ type: [WorkOrderPartResponseDto] }) parts!: WorkOrderPartResponseDto[];
+}
+
+/** Рядок списку: `lines` / `parts` лише коли їх попросили через `?include=`. */
+export class WorkOrderListItemDto extends WorkOrderResponseDto {
+  @ApiPropertyOptional({ type: [WorkOrderLineResponseDto] }) lines?: WorkOrderLineResponseDto[];
+  @ApiPropertyOptional({ type: [WorkOrderPartResponseDto] }) parts?: WorkOrderPartResponseDto[];
 }
 
 // ─── Public Estimate (shared via shareToken — no auth) ────

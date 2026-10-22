@@ -7723,7 +7723,40 @@ export interface components {
             calendarSlots: number;
             warranties: number;
         };
-        WorkOrderResponseDto: {
+        WorkOrderLineResponseDto: {
+            id: string;
+            workOrderId: string;
+            workId: string;
+            workName?: string;
+            employeeId: string;
+            employeeName?: string;
+            liftId?: string | null;
+            normoHours: number;
+            actualHours?: number | null;
+            price: number;
+            amount: number;
+            notes?: string | null;
+            createdAt: string;
+        };
+        WorkOrderPartResponseDto: {
+            id: string;
+            workOrderId: string;
+            goodId: string;
+            goodName?: string;
+            goodInternalCode?: string | null;
+            goodSku?: string | null;
+            goodBrandName?: string | null;
+            unitOfMeasureId?: string | null;
+            unitShortName?: string;
+            coefficient?: number;
+            warehouseId: string;
+            quantity: number;
+            costPrice?: number | null;
+            price: number;
+            amount: number;
+            createdAt: string;
+        };
+        WorkOrderListItemDto: {
             id: string;
             orgId: string;
             number: string;
@@ -7780,9 +7813,11 @@ export interface components {
             slotLiftName?: string | null;
             /** @description Set when the work order is soft-deleted */
             deletedAt?: string | null;
+            lines?: components["schemas"]["WorkOrderLineResponseDto"][];
+            parts?: components["schemas"]["WorkOrderPartResponseDto"][];
         };
         PaginatedWorkOrdersDto: {
-            items: components["schemas"]["WorkOrderResponseDto"][];
+            items: components["schemas"]["WorkOrderListItemDto"][];
             total: number;
             page: number;
             limit: number;
@@ -7876,39 +7911,6 @@ export interface components {
             /** @description UUID документів (макс. 500) */
             ids: string[];
         };
-        WorkOrderLineResponseDto: {
-            id: string;
-            workOrderId: string;
-            workId: string;
-            workName?: string;
-            employeeId: string;
-            employeeName?: string;
-            liftId?: string | null;
-            normoHours: number;
-            actualHours?: number | null;
-            price: number;
-            amount: number;
-            notes?: string | null;
-            createdAt: string;
-        };
-        WorkOrderPartResponseDto: {
-            id: string;
-            workOrderId: string;
-            goodId: string;
-            goodName?: string;
-            goodInternalCode?: string | null;
-            goodSku?: string | null;
-            goodBrandName?: string | null;
-            unitOfMeasureId?: string | null;
-            unitShortName?: string;
-            coefficient?: number;
-            warehouseId: string;
-            quantity: number;
-            costPrice?: number | null;
-            price: number;
-            amount: number;
-            createdAt: string;
-        };
         WorkOrderDetailDto: {
             id: string;
             orgId: string;
@@ -7968,6 +7970,64 @@ export interface components {
             deletedAt?: string | null;
             lines: components["schemas"]["WorkOrderLineResponseDto"][];
             parts: components["schemas"]["WorkOrderPartResponseDto"][];
+        };
+        WorkOrderResponseDto: {
+            id: string;
+            orgId: string;
+            number: string;
+            /** @enum {string} */
+            status: "DRAFT" | "ESTIMATE" | "APPROVED" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "INVOICED" | "PAID" | "ARCHIVED" | "CANCELLED";
+            /** @enum {string} */
+            priority: "LOW" | "NORMAL" | "HIGH" | "URGENT";
+            /** @enum {string|null} */
+            repairCategory?: "MAINTENANCE" | "CURRENT_REPAIR" | "MAJOR_REPAIR" | "BODY_REPAIR" | "DIAGNOSTICS" | "WARRANTY" | "SEASONAL" | null;
+            branchId: string;
+            branchName?: string;
+            vehicleId: string;
+            vehicleSummary?: string;
+            counterpartyId: string;
+            counterpartyName?: string;
+            /** @description Договір контрагента */
+            contractId?: string | null;
+            contractNumber?: string | null;
+            /** @description Підйомник */
+            liftId?: string | null;
+            /** @description Назва підйомника */
+            liftName?: string | null;
+            description?: string | null;
+            inMileage?: number | null;
+            outMileage?: number | null;
+            plannedAt?: string | null;
+            dueDate?: string | null;
+            plannedHours?: number | null;
+            actualHours?: number | null;
+            completedAt?: string | null;
+            clientApproval: boolean;
+            totalLabor: number;
+            totalActualLabor: number;
+            totalParts: number;
+            totalNet: number;
+            totalAmount: number;
+            totalVat: number;
+            paidAmount: number;
+            currencyId?: string | null;
+            currencyCode?: string | null;
+            totalAmountBase?: number | null;
+            rateUsed?: number | null;
+            /** @description Дата документа */
+            documentDate?: string | null;
+            createdAt: string;
+            updatedAt: string;
+            /** @description Є активна гарантія */
+            hasActiveWarranty?: boolean;
+            /** @description Найближчий слот у календарі: початок */
+            slotStartAt?: string | null;
+            /** @description Найближчий слот у календарі: кінець */
+            slotEndAt?: string | null;
+            /** @description Підйомник слота у календарі */
+            slotLiftName?: string | null;
+            /** @description Set when the work order is soft-deleted */
+            deletedAt?: string | null;
         };
         RescheduleWorkOrderDto: {
             /**
@@ -14945,6 +15005,8 @@ export interface operations {
                 sortDir?: "asc" | "desc";
                 page?: number;
                 limit?: number;
+                /** @description Вкладені дані: lines, parts (через кому) */
+                include?: string;
             };
             header?: never;
             path?: never;
