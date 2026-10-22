@@ -9,6 +9,7 @@ import {
   type VehicleFormInput,
   type VehicleFormValues,
 } from '@sto/shared';
+import i18n from '@/i18n/config';
 import { VehicleForm } from '../VehicleForm';
 
 const EMPTY: VehicleFormInput = {
@@ -92,5 +93,20 @@ describe('optionLabel', () => {
     expect(optionLabel(BODY_OPTIONS, 'SEDAN')).toBe('Седан');
     expect(optionLabel(BODY_OPTIONS, 'UNKNOWN')).toBe('UNKNOWN');
     expect(optionLabel(BODY_OPTIONS, '')).toBe('');
+  });
+});
+
+describe('VehicleForm — варіанти мовою інтерфейсу', () => {
+  it('en: паливо, КПП, привід і кузов — англійською', async () => {
+    await i18n.changeLanguage('en');
+    try {
+      render(<Harness onValid={vi.fn()} />);
+      for (const label of ['Diesel', 'Automatic', 'All-wheel', 'Sedan']) {
+        expect(screen.getByRole('option', { name: label })).toBeTruthy();
+      }
+      expect(screen.queryByRole('option', { name: 'Седан' })).toBeNull();
+    } finally {
+      await i18n.changeLanguage('uk');
+    }
   });
 });

@@ -4,20 +4,12 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
-import {
-  vehicleFormSchema,
-  optionLabel,
-  TRANSMISSION_OPTIONS,
-  DRIVE_OPTIONS,
-  BODY_OPTIONS,
-  FUEL_TYPE_OPTIONS,
-  type VehicleFormInput,
-  type VehicleFormValues,
-} from '@sto/shared';
+import { vehicleFormSchema, type VehicleFormInput, type VehicleFormValues } from '@sto/shared';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { vehicleOptionLabel } from '@/lib/vehicle-options';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -400,7 +392,7 @@ export default function VehicleCardPage() {
         {vehicle.fuelType && (
           <Info
             label={t('card.info.fuelType')}
-            value={optionLabel(FUEL_TYPE_OPTIONS, vehicle.fuelType)}
+            value={vehicleOptionLabel('fuel', vehicle.fuelType, t)}
           />
         )}
         {vehicle.currentMileage != null && (
@@ -410,19 +402,19 @@ export default function VehicleCardPage() {
         {vehicle.transmissionType && (
           <Info
             label={t('card.info.transmissionType')}
-            value={optionLabel(TRANSMISSION_OPTIONS, vehicle.transmissionType)}
+            value={vehicleOptionLabel('transmission', vehicle.transmissionType, t)}
           />
         )}
         {vehicle.driveType && (
           <Info
             label={t('card.info.driveType')}
-            value={optionLabel(DRIVE_OPTIONS, vehicle.driveType)}
+            value={vehicleOptionLabel('drive', vehicle.driveType, t)}
           />
         )}
         {vehicle.bodyType && (
           <Info
             label={t('card.info.bodyType')}
-            value={optionLabel(BODY_OPTIONS, vehicle.bodyType)}
+            value={vehicleOptionLabel('body', vehicle.bodyType, t)}
           />
         )}
         {vehicle.engineCode && (

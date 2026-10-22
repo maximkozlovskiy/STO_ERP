@@ -112,5 +112,37 @@
     "transmission": "КПП",
     "engineVolume": "Об'єм двигуна, л",
     "colorPlaceholder": "Чорний"
+  },
+  "options": {
+    "fuel": {
+      "PETROL": "Бензин",
+      "DIESEL": "Дизель",
+      "GAS": "Газ",
+      "HYBRID": "Гібрид",
+      "ELECTRIC": "Електро"
+    },
+    "transmission": {
+      "MANUAL": "Механічна",
+      "AUTOMATIC": "Автоматична",
+      "ROBOT": "Робот",
+      "CVT": "Варіатор"
+    },
+    "drive": {
+      "FWD": "Передній",
+      "RWD": "Задній",
+      "AWD": "Повний"
+    },
+    "body": {
+      "SEDAN": "Седан",
+      "HATCHBACK": "Хетчбек",
+      "WAGON": "Універсал",
+      "SUV": "Позашляховик",
+      "CROSSOVER": "Кросовер",
+      "COUPE": "Купе",
+      "MINIVAN": "Мінівен",
+      "PICKUP": "Пікап",
+      "VAN": "Фургон",
+      "OTHER": "Інше"
+    }
   }
 }

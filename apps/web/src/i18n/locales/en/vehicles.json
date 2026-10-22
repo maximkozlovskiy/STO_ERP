@@ -112,5 +112,37 @@
     "transmission": "Gearbox",
     "engineVolume": "Engine volume, l",
     "colorPlaceholder": "Black"
+  },
+  "options": {
+    "fuel": {
+      "PETROL": "Petrol",
+      "DIESEL": "Diesel",
+      "GAS": "LPG",
+      "HYBRID": "Hybrid",
+      "ELECTRIC": "Electric"
+    },
+    "transmission": {
+      "MANUAL": "Manual",
+      "AUTOMATIC": "Automatic",
+      "ROBOT": "Automated manual",
+      "CVT": "CVT"
+    },
+    "drive": {
+      "FWD": "Front-wheel",
+      "RWD": "Rear-wheel",
+      "AWD": "All-wheel"
+    },
+    "body": {
+      "SEDAN": "Sedan",
+      "HATCHBACK": "Hatchback",
+      "WAGON": "Estate",
+      "SUV": "SUV",
+      "CROSSOVER": "Crossover",
+      "COUPE": "Coupe",
+      "MINIVAN": "Minivan",
+      "PICKUP": "Pickup",
+      "VAN": "Van",
+      "OTHER": "Other"
+    }
   }
 }
