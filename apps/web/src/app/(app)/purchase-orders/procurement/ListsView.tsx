@@ -27,6 +27,8 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
 import { Spinner } from '@/components/ui/spinner';
+import { StatusPill } from '@/components/ui/status-pill';
+import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ListLoadError } from '@/components/ui/list-load-error';
 import { Pagination } from '@/components/ui/pagination';
@@ -82,58 +84,58 @@ export function ListsView({
 
   return (
     <div className="flex flex-col gap-3 flex-1 min-h-0">
-      <div className="flex gap-3 flex-wrap items-end">
-        <div className="w-64">
-          <Input
-            placeholder={t('filters.searchLists')}
-            value={q}
-            onChange={e => {
-              setQ(e.target.value);
+      <ListStatusRow label={t('filters.status')}>
+        {(['', 'OPEN', 'CLOSED', 'CANCELLED'] as const).map(s => (
+          <StatusPill
+            key={s}
+            value={s}
+            label={s ? purchaseListStatusLabel(s) : t('filters.allStatuses')}
+            active={status === s}
+            onSelect={v => {
+              setStatus(v);
               setPage(1);
             }}
-            leftElement={<Search className="h-4 w-4" />}
-            aria-label={t('filters.searchLists')}
-            // Сервер приймає q до 100 символів (@MaxLength) — довший дав би 400.
-            maxLength={100}
           />
-        </div>
-        <div className="w-44">
-          <Select
-            value={status}
-            onChange={e => {
-              setStatus(e.target.value);
-              setPage(1);
-            }}
-            aria-label={t('filters.status')}
-          >
-            <option value="">{t('filters.allStatuses')}</option>
-            {(['OPEN', 'CLOSED', 'CANCELLED'] as const).map(s => (
-              <option key={s} value={s}>
-                {purchaseListStatusLabel(s)}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="ml-auto flex gap-2">
-          {canWrite && (
+        ))}
+      </ListStatusRow>
+
+      <ListFiltersRow
+        actions={
+          <>
+            {canWrite && (
+              <Button
+                variant="outline"
+                leftIcon={<Merge className="h-4 w-4" />}
+                disabled={selectedOpen.length < 2}
+                onClick={() => setMergeIds(selectedOpen.map(l => l.id))}
+              >
+                {t('lists.merge')}
+              </Button>
+            )}
             <Button
-              variant="outline"
-              leftIcon={<Merge className="h-4 w-4" />}
-              disabled={selectedOpen.length < 2}
-              onClick={() => setMergeIds(selectedOpen.map(l => l.id))}
+              variant="primary"
+              leftIcon={<Plus className="h-4 w-4" />}
+              onClick={() => setCreateOpen(true)}
             >
-              {t('lists.merge')}
+              {t('lists.create')}
             </Button>
-          )}
-          <Button
-            variant="primary"
-            leftIcon={<Plus className="h-4 w-4" />}
-            onClick={() => setCreateOpen(true)}
-          >
-            {t('lists.create')}
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+      >
+        <Input
+          placeholder={t('filters.searchLists')}
+          value={q}
+          onChange={e => {
+            setQ(e.target.value);
+            setPage(1);
+          }}
+          leftElement={<Search />}
+          aria-label={t('filters.searchLists')}
+          // Сервер приймає q до 100 символів (@MaxLength) — довший дав би 400.
+          maxLength={100}
+          className="w-72 h-8 text-[13px]"
+        />
+      </ListFiltersRow>
 
       {error ? (
         <ListLoadError error={error} onRetry={() => void refetch()} />

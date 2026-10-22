@@ -1,6 +1,6 @@
 // Пошук у списку складських документів (рішення власника 2026-10-09): номер або примітка.
 //
-//   - поле пошуку стоїть у наявному рядку фільтрів ПЕРЕД датами;
+//   - статуси — окремим рядком над рядком фільтрів; пошук у рядку фільтрів стоїть ПЕРЕД датами;
 //   - пошук іде у фільтр хука лише після debounce; порожній не надсилається;
 //   - зміна пошуку повертає на першу сторінку і знімає активне збережене подання;
 //   - збережене подання зберігає і відновлює пошук; подання, збережене ДО появи пошуку
@@ -10,7 +10,7 @@
 // Mutation-verify: прибрати `q` з виклику useStockDocuments, `search` із saveFilter(...) або
 // `setSearch(...)` з applyFilter → відповідний кейс падає.
 
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { kyivToday } from '@/lib/format';
@@ -103,18 +103,28 @@ describe('Складські документи — пошук', () => {
     expect(lastFilter().page).toBe(1);
   });
 
-  it('поле пошуку стоїть у рядку фільтрів після статусів і перед датами', async () => {
+  // Стандарт списку (рішення власника 2026-10-22): статуси — окремим рядком НАД рядком фільтрів.
+  it('статуси — окремим рядком над фільтрами; у рядку фільтрів пошук стоїть перед датами', async () => {
     renderPage();
     const search = await screen.findByPlaceholderText(SEARCH);
     const statuses = screen.getByRole('group', { name: 'Статус' });
     const [from, to] = screen.getAllByTestId('date');
-    expect(statuses.parentElement!.contains(search)).toBe(true);
+    const filtersRow = search.closest('div.flex-wrap.gap-3')!;
+    expect(statuses.contains(search)).toBe(false);
+    expect(filtersRow.contains(statuses)).toBe(false);
+    expect(filtersRow.contains(from!)).toBe(true);
     const order = [statuses, search, from!, to!];
     for (let i = 0; i < order.length - 1; i++) {
       expect(
         order[i]!.compareDocumentPosition(order[i + 1]!) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
     }
+    // Дії списку — останній блок рядка фільтрів, притиснутий праворуч.
+    expect(filtersRow.lastElementChild).toHaveClass('ml-auto');
+    expect(within(statuses).getByRole('button', { name: 'Всі' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
   it('збережене подання зберігає пошук і відновлює його; ручна зміна пошуку знімає подання', async () => {

@@ -39,6 +39,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
+import { StatusPill } from '@/components/ui/status-pill';
+import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ListLoadError } from '@/components/ui/list-load-error';
 import { Pagination } from '@/components/ui/pagination';
@@ -134,6 +136,11 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
   const now = useNow(60_000);
 
   const resetPage = () => setPage(1);
+  const selectStatus = (v: string) => {
+    setStatus(v);
+    resetPage();
+    bulk.clear();
+  };
   const createOrders = (ids: string[]) => run(() => createOrdersFromItems(ids, confirm, t));
   const cancelItems = (ids: string[]) =>
     run(async () => {
@@ -204,94 +211,83 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
 
   return (
     <div className="flex flex-col gap-3 flex-1 min-h-0">
-      <div className="flex gap-3 flex-wrap items-end">
-        <div className="w-64">
-          <Input
-            placeholder={t('filters.search')}
-            value={q}
-            onChange={e => {
-              setQ(e.target.value);
-              resetPage();
-            }}
-            leftElement={<Search className="h-4 w-4" />}
-            aria-label={t('filters.search')}
-            // Сервер приймає q до 100 символів (@MaxLength) — довший дав би 400.
-            maxLength={100}
+      <ListStatusRow label={t('filters.status')}>
+        {(['', 'OPEN', 'ORDERED', 'RECEIVED', 'CANCELLED'] as const).map(s => (
+          <StatusPill
+            key={s}
+            value={s}
+            label={s ? purchaseListItemStatusLabel(s) : t('filters.allStatuses')}
+            active={status === s}
+            onSelect={selectStatus}
           />
-        </div>
-        <div className="w-44">
-          <Select
-            value={status}
-            onChange={e => {
-              setStatus(e.target.value);
-              resetPage();
-              bulk.clear();
-            }}
-            aria-label={t('filters.status')}
-          >
-            <option value="">{t('filters.allStatuses')}</option>
-            {(['OPEN', 'ORDERED', 'RECEIVED', 'CANCELLED'] as const).map(s => (
-              <option key={s} value={s}>
-                {purchaseListItemStatusLabel(s)}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <SupplierOptionsSelect
-            layout="row"
-            value={supplierId}
-            selected={supplierOption}
-            onChange={(id, option) => {
-              setSupplierId(id);
-              setSupplierOption(option);
-              resetPage();
-            }}
-            ariaLabel={t('filters.supplier')}
-            enabled={!!employee}
-            leading={
-              <>
-                <option value="">{t('filters.allSuppliers')}</option>
-                <option value={NONE}>{t('filters.noSupplier')}</option>
-              </>
-            }
-          />
-        </div>
-        <div className="w-44">
-          <Select
-            value={warehouseId}
-            onChange={e => {
-              setWarehouseId(e.target.value);
-              resetPage();
-            }}
-            aria-label={t('filters.warehouse')}
-          >
-            <option value="">{t('filters.allWarehouses')}</option>
-            {(warehouses ?? []).map(w => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="w-44">
-          <Select
-            value={listId}
-            onChange={e => {
-              setListId(e.target.value);
-              resetPage();
-            }}
-            aria-label={t('filters.list')}
-          >
-            <option value="">{t('filters.allLists')}</option>
-            {(openLists?.items ?? []).map(l => (
-              <option key={l.id} value={l.id}>
-                {l.number}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
+        ))}
+      </ListStatusRow>
+
+      <ListFiltersRow>
+        <Input
+          placeholder={t('filters.search')}
+          value={q}
+          onChange={e => {
+            setQ(e.target.value);
+            resetPage();
+          }}
+          leftElement={<Search />}
+          aria-label={t('filters.search')}
+          // Сервер приймає q до 100 символів (@MaxLength) — довший дав би 400.
+          maxLength={100}
+          className="w-72 h-8 text-[13px]"
+        />
+        <SupplierOptionsSelect
+          layout="row"
+          value={supplierId}
+          selected={supplierOption}
+          onChange={(id, option) => {
+            setSupplierId(id);
+            setSupplierOption(option);
+            resetPage();
+          }}
+          ariaLabel={t('filters.supplier')}
+          enabled={!!employee}
+          leading={
+            <>
+              <option value="">{t('filters.allSuppliers')}</option>
+              <option value={NONE}>{t('filters.noSupplier')}</option>
+            </>
+          }
+        />
+        <Select
+          value={warehouseId}
+          onChange={e => {
+            setWarehouseId(e.target.value);
+            resetPage();
+          }}
+          aria-label={t('filters.warehouse')}
+          className="w-44 h-8 text-[13px] py-0.5 px-2 pr-7"
+        >
+          <option value="">{t('filters.allWarehouses')}</option>
+          {(warehouses ?? []).map(w => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </Select>
+        <Select
+          value={listId}
+          onChange={e => {
+            setListId(e.target.value);
+            resetPage();
+          }}
+          aria-label={t('filters.list')}
+          className="w-44 h-8 text-[13px] py-0.5 px-2 pr-7"
+        >
+          <option value="">{t('filters.allLists')}</option>
+          {(openLists?.items ?? []).map(l => (
+            <option key={l.id} value={l.id}>
+              {l.number}
+            </option>
+          ))}
+        </Select>
+      </ListFiltersRow>
 
       {selectable && (
         <BulkActionsBar

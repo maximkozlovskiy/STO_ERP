@@ -290,10 +290,11 @@ test.describe('Наряди → вкладка «Гарантії» (BR-WAR-001�
     await openWarrantiesTab(page);
     await expect(warrantyRow(page)).toBeVisible({ timeout: 15_000 });
 
-    const filter = page.getByRole('combobox', { name: 'Стан' });
-    await filter.selectOption(w.state);
+    // Стан — кнопками окремим рядком над пошуком (стандарт списку, 2026-10-22).
+    const states = page.getByRole('group', { name: 'Стан' });
+    await states.getByRole('button', { name: STATE_LABEL[w.state], exact: true }).click();
     await expect(warrantyRow(page)).toBeVisible({ timeout: 15_000 });
-    await filter.selectOption('EXPIRED');
+    await states.getByRole('button', { name: STATE_LABEL.EXPIRED, exact: true }).click();
     await expect(page.getByText('Гарантій не знайдено')).toBeVisible({ timeout: 15_000 });
     await expect(warrantyRow(page)).toHaveCount(0);
   });

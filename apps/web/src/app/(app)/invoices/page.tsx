@@ -87,6 +87,7 @@ import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { optimisticInvoiceStatus } from '@/lib/invoice-payment';
 import { invalidatePaymentSideEffects, invalidateBalanceAffected } from '@/lib/cache-invalidation';
 import { StatusPill } from '@/components/ui/status-pill';
+import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 // new Date().toISOString() returns UTC, which diverges from Kyiv date between midnight and UTC+2/+3.
@@ -773,7 +774,7 @@ function InvoicesPageInner() {
       )}
 
       {/* Status filters */}
-      <div className="flex flex-wrap gap-1.5 shrink-0">
+      <ListStatusRow label={t('columns.status')}>
         {statuses.map(([v, l]) => (
           <StatusPill
             key={v}
@@ -784,10 +785,44 @@ function InvoicesPageInner() {
             onSelect={handleSelectStatus}
           />
         ))}
-      </div>
+      </ListStatusRow>
 
       {/* Search + Columns */}
-      <div className="shrink-0 flex flex-wrap items-center gap-3">
+      <ListFiltersRow
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
+              onClick={() => {
+                setShowDeleted(d => !d);
+                resetPage();
+              }}
+              className={showDeleted ? 'border-primary text-primary' : ''}
+            >
+              {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </Button>
+            {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
+            <ColumnsDropdown
+              columns={orderedColumns}
+              visibleKeys={colVisible}
+              onToggle={toggleCol}
+              onReorder={reorder}
+              onRename={renameColumn}
+              onReset={resetConfig}
+              hasCustomization={
+                JSON.stringify(order) !== INVOICE_COLUMNS_DEFAULT_KEYS_JSON ||
+                Object.keys(customLabels).length > 0
+              }
+            />
+            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+            <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
+              {t('addButton')}
+            </Button>
+          </>
+        }
+      >
         <Input
           value={search}
           onChange={e => {
@@ -815,38 +850,7 @@ function InvoicesPageInner() {
           fromLabel={t('filters.dateFrom')}
           toLabel={t('filters.dateTo')}
         />
-        <div className="flex items-center gap-2 ml-auto">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
-            onClick={() => {
-              setShowDeleted(d => !d);
-              resetPage();
-            }}
-            className={showDeleted ? 'border-primary text-primary' : ''}
-          >
-            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          </Button>
-          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-          <ColumnsDropdown
-            columns={orderedColumns}
-            visibleKeys={colVisible}
-            onToggle={toggleCol}
-            onReorder={reorder}
-            onRename={renameColumn}
-            onReset={resetConfig}
-            hasCustomization={
-              JSON.stringify(order) !== INVOICE_COLUMNS_DEFAULT_KEYS_JSON ||
-              Object.keys(customLabels).length > 0
-            }
-          />
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            {t('addButton')}
-          </Button>
-        </div>
-      </div>
+      </ListFiltersRow>
 
       {/* Bulk actions */}
       {features.bulkActionsEnabled && bulkSelect.count > 0 && (

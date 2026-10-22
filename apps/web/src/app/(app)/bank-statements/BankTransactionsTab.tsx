@@ -14,6 +14,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ListLoadError } from '@/components/ui/list-load-error';
 import { StatusPill } from '@/components/ui/status-pill';
+import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
 import {
   Table,
   TableHeader,
@@ -214,7 +215,7 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
       <ListLoadError error={error} onRetry={() => void refetch()} />
 
       {/* Status filter pills */}
-      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+      <ListStatusRow label={t('page.columns.status')}>
         <StatusPill
           value=""
           label={t('page.pills.all')}
@@ -230,11 +231,26 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
             onSelect={v => resetPageAnd(() => setStatus(v))}
           />
         ))}
-      </div>
+      </ListStatusRow>
 
       {/* Пошук · З · По + дія сторінки праворуч. Дати за замовчуванням порожні: виписку
           імпортують за минулі дні, і нерознесені рядки мають бути на виду без вибору періоду. */}
-      <div className="flex flex-wrap items-center gap-3 shrink-0">
+      <ListFiltersRow
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setCreateOpen(true)}
+              leftIcon={<Plus className="h-4 w-4" />}
+            >
+              {t('page.newPayment')}
+            </Button>
+            <Button onClick={() => setImportOpen(true)} leftIcon={<Plus className="h-4 w-4" />}>
+              {t('page.import')}
+            </Button>
+          </>
+        }
+      >
         <ListSearchInput
           value={search}
           onChange={v => resetPageAnd(() => setSearch(v))}
@@ -248,19 +264,7 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
           fromLabel={t('page.filters.dateFrom')}
           toLabel={t('page.filters.dateTo')}
         />
-        <div className="flex items-center gap-2 ml-auto">
-          <Button
-            variant="outline"
-            onClick={() => setCreateOpen(true)}
-            leftIcon={<Plus className="h-4 w-4" />}
-          >
-            {t('page.newPayment')}
-          </Button>
-          <Button onClick={() => setImportOpen(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            {t('page.import')}
-          </Button>
-        </div>
-      </div>
+      </ListFiltersRow>
 
       {/* Table */}
       <div className="flex flex-1 min-h-0">

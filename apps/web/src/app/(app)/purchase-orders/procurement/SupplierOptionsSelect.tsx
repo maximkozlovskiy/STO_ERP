@@ -88,6 +88,8 @@ export function SupplierOptionsSelect({
               layout === 'row' ? 'filters.supplierSearch' : 'filters.supplierSearchPlaceholder',
               { count: SUPPLIER_OPTIONS_PAGE },
             )}
+            // Рядок фільтрів списку — висота й шрифт його полів (`h-8 text-[13px]`).
+            className={layout === 'row' ? 'h-8 text-[13px]' : undefined}
           />
         </div>
       )}
@@ -101,6 +103,7 @@ export function SupplierOptionsSelect({
             onChange(id, options.find(s => s.id === id) ?? null);
           }}
           hint={hint}
+          className={layout === 'row' ? 'h-8 text-[13px] py-0.5 px-2 pr-7' : undefined}
         >
           {leading}
           {options.map(s => (

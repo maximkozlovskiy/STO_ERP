@@ -75,6 +75,7 @@ import { cn, UUID_RE } from '@/lib/utils';
 import { PAGE_TAB_ACTIVE, PAGE_TAB_CLASS, PAGE_TAB_IDLE } from '@/lib/page-tabs';
 import { fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
+import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 
@@ -410,6 +411,16 @@ function StockDocumentsPageClient() {
         </div>
       )}
 
+      {/* Type tabs (+ «Рухи» праворуч) */}
+      <StockTypeTabs
+        activeType={typeFilter}
+        movementsActive={false}
+        onSelectType={t2 => changeFilter(() => setTypeFilter(t2))}
+        onSelectMovements={() =>
+          router.replace('/stock-documents?tab=movements', { scroll: false })
+        }
+      />
+
       {/* Saved filters */}
       {features.savedFiltersEnabled && (
         <SavedFiltersBar<StockDocFilters>
@@ -422,31 +433,53 @@ function StockDocumentsPageClient() {
         />
       )}
 
-      {/* Type tabs (+ «Рухи» праворуч) */}
-      <StockTypeTabs
-        activeType={typeFilter}
-        movementsActive={false}
-        onSelectType={t2 => changeFilter(() => setTypeFilter(t2))}
-        onSelectMovements={() =>
-          router.replace('/stock-documents?tab=movements', { scroll: false })
-        }
-      />
+      {/* Status filters */}
+      <ListStatusRow label={t('filters.status')}>
+        {STATUS_FILTERS.map(s => (
+          <StatusPill
+            key={s}
+            value={s}
+            label={s ? stockDocStatusLabel(s) : t('filters.all')}
+            active={statusFilter === s}
+            description={s ? STOCK_DOC_STATUS_DESCRIPTIONS[s] : undefined}
+            onSelect={v => changeFilter(() => setStatusFilter(v))}
+          />
+        ))}
+      </ListStatusRow>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 shrink-0">
-        {/* Status filters */}
-        <div className="flex items-center gap-1.5" role="group" aria-label={t('filters.status')}>
-          {STATUS_FILTERS.map(s => (
-            <StatusPill
-              key={s}
-              value={s}
-              label={s ? stockDocStatusLabel(s) : t('filters.all')}
-              active={statusFilter === s}
-              description={s ? STOCK_DOC_STATUS_DESCRIPTIONS[s] : undefined}
-              onSelect={v => changeFilter(() => setStatusFilter(v))}
+      <ListFiltersRow
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
+              onClick={() => changeFilter(() => setShowDeleted(v => !v))}
+              className={cn(showDeleted && 'border-primary text-primary')}
+            >
+              {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </Button>
+            {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
+            <ColumnsDropdown
+              columns={orderedColumns}
+              visibleKeys={colVisible}
+              onToggle={toggleCol}
+              onReorder={reorder}
+              onRename={renameColumn}
+              onReset={resetConfig}
+              hasCustomization={
+                JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
+                Object.keys(customLabels).length > 0
+              }
             />
-          ))}
-        </div>
+            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+            <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
+              {typeFilter ? stockDocTypeLabel(typeFilter) : t('actions.addDocument')}
+            </Button>
+          </>
+        }
+      >
         <ListSearchInput
           value={search}
           onChange={v => changeFilter(() => setSearch(v))}
@@ -460,35 +493,7 @@ function StockDocumentsPageClient() {
           fromLabel={t('filters.dateFrom')}
           toLabel={t('filters.dateTo')}
         />
-        <div className="flex items-center gap-2 ml-auto">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
-            onClick={() => changeFilter(() => setShowDeleted(v => !v))}
-            className={cn(showDeleted && 'border-primary text-primary')}
-          >
-            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          </Button>
-          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-          <ColumnsDropdown
-            columns={orderedColumns}
-            visibleKeys={colVisible}
-            onToggle={toggleCol}
-            onReorder={reorder}
-            onRename={renameColumn}
-            onReset={resetConfig}
-            hasCustomization={
-              JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
-              Object.keys(customLabels).length > 0
-            }
-          />
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            {typeFilter ? stockDocTypeLabel(typeFilter) : t('actions.addDocument')}
-          </Button>
-        </div>
-      </div>
+      </ListFiltersRow>
 
       {/* Bulk actions */}
       {features.bulkActionsEnabled && bulkSelect.count > 0 && (

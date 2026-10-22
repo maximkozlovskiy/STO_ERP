@@ -28,7 +28,8 @@ import {
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { StatusPill } from '@/components/ui/status-pill';
+import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pagination } from '@/components/ui/pagination';
@@ -190,6 +191,10 @@ export default function WarrantiesTab({ canClaim }: Props) {
     resetPage();
     setActiveSavedFilterId(null);
   };
+  const selectState = (v: string) => {
+    setStateFilter(WARRANTY_STATES.includes(v as WarrantyState) ? (v as WarrantyState) : '');
+    resetFilters();
+  };
 
   const applyFilter = useCallback(
     (preset: SavedFilter<WarrantyFilters>) => {
@@ -305,7 +310,42 @@ export default function WarrantiesTab({ canClaim }: Props) {
         />
       )}
 
-      <div className="flex flex-wrap gap-3 shrink-0">
+      <ListStatusRow label={t('warrantiesTab.columns.state')}>
+        {(['', ...WARRANTY_STATES] as const).map(s => (
+          <StatusPill
+            key={s}
+            value={s}
+            label={s ? t(`warrantiesTab.state.${s}`) : t('warrantiesTab.allStates')}
+            active={stateFilter === s}
+            description={
+              s === 'EXPIRING'
+                ? t('warrantiesTab.stateHint.EXPIRING', { days: WARRANTY_EXPIRING_DAYS })
+                : undefined
+            }
+            onSelect={selectState}
+          />
+        ))}
+      </ListStatusRow>
+
+      <ListFiltersRow
+        actions={
+          <>
+            {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
+            <ColumnsDropdown
+              columns={orderedColumns}
+              visibleKeys={visibleKeys}
+              onToggle={toggle}
+              onReorder={reorder}
+              onRename={renameColumn}
+              onReset={resetConfig}
+              hasCustomization={
+                JSON.stringify(order) !== DEFAULT_KEYS_JSON || Object.keys(customLabels).length > 0
+              }
+            />
+            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+          </>
+        }
+      >
         <Input
           value={search}
           onChange={e => {
@@ -318,38 +358,7 @@ export default function WarrantiesTab({ canClaim }: Props) {
           leftElement={<Search />}
           className="w-72 h-8 text-[13px]"
         />
-        <Select
-          value={stateFilter}
-          aria-label={t('warrantiesTab.columns.state')}
-          onChange={e => {
-            setStateFilter(e.target.value as WarrantyState | '');
-            resetFilters();
-          }}
-          className="w-48 h-8 text-[13px] py-0.5 px-2 pr-7"
-        >
-          <option value="">{t('warrantiesTab.allStates')}</option>
-          {WARRANTY_STATES.map(s => (
-            <option key={s} value={s}>
-              {t(`warrantiesTab.state.${s}`)}
-            </option>
-          ))}
-        </Select>
-        <div className="flex items-center gap-2 ml-auto">
-          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-          <ColumnsDropdown
-            columns={orderedColumns}
-            visibleKeys={visibleKeys}
-            onToggle={toggle}
-            onReorder={reorder}
-            onRename={renameColumn}
-            onReset={resetConfig}
-            hasCustomization={
-              JSON.stringify(order) !== DEFAULT_KEYS_JSON || Object.keys(customLabels).length > 0
-            }
-          />
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-        </div>
-      </div>
+      </ListFiltersRow>
 
       <ListLoadError error={data ? null : error} onRetry={() => void refetch()} />
 

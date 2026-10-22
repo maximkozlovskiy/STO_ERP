@@ -490,7 +490,10 @@ test.describe('Управління купівлями — від нестачі
 
     await rp.getByRole('tab', { name: 'Позиції' }).click();
     await rp.getByLabel('Товар, артикул, код').fill(GOOD);
-    await rp.getByLabel('Статус').selectOption({ value: '' });
+    await rp
+      .getByRole('group', { name: 'Статус' })
+      .getByRole('button', { name: 'Усі статуси' })
+      .click();
     const rows = rp.getByTestId('purchase-list-item-row').filter({ hasText: GOOD });
     await expect(rows.first()).toBeVisible({ timeout: 30_000 });
     await expect(rows.first().getByRole('checkbox')).toHaveCount(0);

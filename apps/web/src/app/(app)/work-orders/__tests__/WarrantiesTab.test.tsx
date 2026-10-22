@@ -94,6 +94,11 @@ function renderTab(canClaim = true) {
 }
 
 const rowOf = (number: string) => screen.getByText(number).closest('tr') as HTMLElement;
+// Стан — кнопками в рядку над пошуком; кнопка стану «Звернення» має ту саму назву, що й дія
+// «Звернення» в рядку й панелі, тож дію шукаємо поза групою станів.
+const stateGroup = () => screen.getByRole('group', { name: 'Стан' });
+const claimButtons = () =>
+  screen.queryAllByRole('button', { name: 'Звернення' }).filter(b => !stateGroup().contains(b));
 
 describe('Вкладка «Гарантії»', () => {
   beforeEach(() => {
@@ -154,9 +159,9 @@ describe('Вкладка «Гарантії»', () => {
     renderTab();
     await screen.findByText('НРД-2026-000101');
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Стан' }), {
-      target: { value: 'EXPIRING' },
-    });
+    const expiring = within(stateGroup()).getByRole('button', { name: 'Закінчується' });
+    fireEvent.click(expiring);
+    expect(expiring).toHaveAttribute('aria-pressed', 'true');
     await waitFor(() => expect(warrantyCalls().some(p => p.includes('state=EXPIRING'))).toBe(true));
 
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'AA1234' } });
@@ -169,6 +174,40 @@ describe('Вкладка «Гарантії»', () => {
     );
     // Поле пошуку обмежене, як `@MaxLength(100)` запиту (Bug #816).
     expect(screen.getByRole('textbox')).toHaveAttribute('maxLength', '100');
+  });
+
+  // Стандарт списку (рішення власника 2026-10-22): стани — кнопками окремим рядком над пошуком.
+  it('стан — кнопки окремим рядком над пошуком; «Усі стани» активна, «Усі стани» знімає state', async () => {
+    renderTab();
+    await screen.findByText('НРД-2026-000101');
+
+    const group = stateGroup();
+    expect(
+      within(group)
+        .getAllByRole('button')
+        .map(b => b.textContent),
+    ).toEqual(['Усі стани', 'Діє', 'Закінчується', 'Закінчилась', 'Звернення']);
+    expect(within(group).getByRole('button', { name: 'Усі стани' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    const search = screen.getByRole('textbox');
+    expect(group.contains(search)).toBe(false);
+    expect(group.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(within(group).getByRole('button', { name: 'Закінчилась' }));
+    await waitFor(() => expect(warrantyCalls().at(-1)).toContain('state=EXPIRED'));
+    // Запит без стану вже в кеші — нового виклику немає; стан повертається до «Усі стани».
+    fireEvent.click(within(group).getByRole('button', { name: 'Усі стани' }));
+    expect(within(group).getByRole('button', { name: 'Усі стани' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(group).getByRole('button', { name: 'Закінчилась' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(await screen.findByText('НРД-2026-000101')).toBeInTheDocument();
   });
 
   // guards: BR-WAR-005
@@ -192,10 +231,10 @@ describe('Вкладка «Гарантії»', () => {
     renderTab(false);
     await screen.findByText('НРД-2026-000101');
 
-    expect(screen.queryAllByRole('button', { name: 'Звернення' })).toHaveLength(0);
+    expect(claimButtons()).toHaveLength(0);
     fireEvent.click(rowOf('НРД-2026-000101'));
     await screen.findByRole('heading', { level: 2, name: 'НРД-2026-000101' });
-    expect(screen.queryAllByRole('button', { name: 'Звернення' })).toHaveLength(0);
+    expect(claimButtons()).toHaveLength(0);
   });
 
   // guards: BR-WAR-005
@@ -330,7 +369,8 @@ describe('Вкладка «Гарантії»', () => {
     renderTab();
     await screen.findByRole('heading', { level: 2, name: 'НРД-2026-000101' });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Звернення' }));
+    await waitFor(() => expect(claimButtons()).toHaveLength(1));
+    fireEvent.click(claimButtons()[0]!);
     const dialog = await screen.findByRole('dialog', { name: 'Звернення за гарантією' });
     fireEvent.change(await within(dialog).findByRole('combobox', { name: 'Наряд-звернення' }), {
       target: { value: 'wo-new' },
@@ -339,7 +379,7 @@ describe('Вкладка «Гарантії»', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Записати звернення' }));
     });
 
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Звернення' })).toBeNull());
+    await waitFor(() => expect(claimButtons()).toHaveLength(0));
     expect(screen.getByRole('heading', { level: 2, name: 'НРД-2026-000101' })).toBeInTheDocument();
   });
 

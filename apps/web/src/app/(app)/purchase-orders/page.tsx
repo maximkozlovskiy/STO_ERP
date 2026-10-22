@@ -109,6 +109,7 @@ import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-s
 import { cn, daysUntil } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
+import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
 import { ExpiryBadge } from '@/components/ui/expiry-badge';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
@@ -929,7 +930,7 @@ function PurchaseOrdersPageClient() {
       {activeTab === 'procurement' && <ProcurementTab />}
 
       {activeTab === 'returns' && (
-        <div className="flex flex-col gap-3 flex-1">
+        <>
           {/* Saved filters */}
           {srFeatures.savedFiltersEnabled && (
             <SavedFiltersBar<SrFilters>
@@ -951,7 +952,7 @@ function PurchaseOrdersPageClient() {
           )}
 
           {/* Status filter chips */}
-          <div className="flex flex-wrap gap-1.5 shrink-0">
+          <ListStatusRow label={t('columns.status')}>
             {(['', 'DRAFT', 'CONFIRMED', 'CANCELLED'] as const).map(s => (
               <StatusPill
                 key={s}
@@ -966,10 +967,54 @@ function PurchaseOrdersPageClient() {
                 }}
               />
             ))}
-          </div>
+          </ListStatusRow>
 
           {/* Returns toolbar */}
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <ListFiltersRow
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  title={srShowDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
+                  onClick={() => {
+                    setSrShowDeleted(v => !v);
+                    resetSrPage();
+                    setSrActiveSavedFilterId(null);
+                  }}
+                  className={cn(srShowDeleted && 'border-primary text-primary')}
+                >
+                  {srShowDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                </Button>
+                {srFeatures.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveSrFilter} />}
+                <ColumnsDropdown
+                  columns={srOrderedColumns}
+                  visibleKeys={srColVisible}
+                  onToggle={toggleSrCol}
+                  onReorder={reorderSr}
+                  onRename={renameSrColumn}
+                  onReset={resetSrConfig}
+                  hasCustomization={
+                    JSON.stringify(srOrder) !== COLUMNS_SR_DEFAULT_KEYS_JSON ||
+                    Object.keys(srCustomLabels).length > 0
+                  }
+                />
+                <DetailPanelToggle
+                  enabled={srDetailPanel.enabled}
+                  onToggle={srDetailPanel.toggle}
+                />
+                <Button
+                  onClick={() => {
+                    setSrEditId(null);
+                    setSrCreateOpen(true);
+                  }}
+                  leftIcon={<Plus className="h-4 w-4" />}
+                >
+                  {t('actions.addReturn')}
+                </Button>
+              </>
+            }
+          >
             <Input
               value={srSearch}
               onChange={e => {
@@ -979,7 +1024,7 @@ function PurchaseOrdersPageClient() {
               }}
               placeholder={t('filters.searchPlaceholder')}
               leftElement={<Search />}
-              className="w-64 h-8 text-[13px]"
+              className="w-72 h-8 text-[13px]"
             />
             <DateRangeFilter
               from={srDateFrom}
@@ -997,45 +1042,7 @@ function PurchaseOrdersPageClient() {
               fromLabel={t('filters.dateFrom')}
               toLabel={t('filters.dateTo')}
             />
-            <div className="flex items-center gap-2 ml-auto">
-              <Button
-                variant="outline"
-                size="icon-sm"
-                title={srShowDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
-                onClick={() => {
-                  setSrShowDeleted(v => !v);
-                  resetSrPage();
-                  setSrActiveSavedFilterId(null);
-                }}
-                className={cn(srShowDeleted && 'border-primary text-primary')}
-              >
-                {srShowDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-              </Button>
-              {srFeatures.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveSrFilter} />}
-              <ColumnsDropdown
-                columns={srOrderedColumns}
-                visibleKeys={srColVisible}
-                onToggle={toggleSrCol}
-                onReorder={reorderSr}
-                onRename={renameSrColumn}
-                onReset={resetSrConfig}
-                hasCustomization={
-                  JSON.stringify(srOrder) !== COLUMNS_SR_DEFAULT_KEYS_JSON ||
-                  Object.keys(srCustomLabels).length > 0
-                }
-              />
-              <DetailPanelToggle enabled={srDetailPanel.enabled} onToggle={srDetailPanel.toggle} />
-              <Button
-                onClick={() => {
-                  setSrEditId(null);
-                  setSrCreateOpen(true);
-                }}
-                leftIcon={<Plus className="h-4 w-4" />}
-              >
-                {t('actions.addReturn')}
-              </Button>
-            </div>
-          </div>
+          </ListFiltersRow>
 
           {/* Returns table */}
           <div className="flex flex-1 min-h-0">
@@ -1289,11 +1296,11 @@ function PurchaseOrdersPageClient() {
               )}
             </DetailPanel>
           </div>
-        </div>
+        </>
       )}
 
       {activeTab === 'orders' && (
-        <div className="flex flex-col gap-3 flex-1">
+        <>
           {/* Saved filters */}
           {features.savedFiltersEnabled && (
             <SavedFiltersBar<PoFilters>
@@ -1307,7 +1314,7 @@ function PurchaseOrdersPageClient() {
           )}
 
           {/* Status filters */}
-          <div className="flex flex-wrap gap-1.5 shrink-0">
+          <ListStatusRow label={t('columns.status')}>
             {statuses.map(([v, l]) => (
               <StatusPill
                 key={v}
@@ -1322,10 +1329,45 @@ function PurchaseOrdersPageClient() {
                 }}
               />
             ))}
-          </div>
+          </ListStatusRow>
 
           {/* Filters row */}
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <ListFiltersRow
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
+                  onClick={() => {
+                    setShowDeleted(v => !v);
+                    resetPage();
+                    setActiveSavedFilterId(null);
+                  }}
+                  className={cn(showDeleted && 'border-primary text-primary')}
+                >
+                  {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                </Button>
+                {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
+                <ColumnsDropdown
+                  columns={orderedColumns}
+                  visibleKeys={colVisible}
+                  onToggle={toggleCol}
+                  onReorder={reorder}
+                  onRename={renameColumn}
+                  onReset={resetConfig}
+                  hasCustomization={
+                    JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
+                    Object.keys(customLabels).length > 0
+                  }
+                />
+                <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+                <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
+                  {t('actions.addOrder')}
+                </Button>
+              </>
+            }
+          >
             <Input
               value={q}
               onChange={e => {
@@ -1335,7 +1377,7 @@ function PurchaseOrdersPageClient() {
               }}
               placeholder={t('filters.searchPlaceholder')}
               leftElement={<Search />}
-              className="w-64 h-8 text-[13px]"
+              className="w-72 h-8 text-[13px]"
             />
             <DateRangeFilter
               from={dateFrom}
@@ -1353,40 +1395,7 @@ function PurchaseOrdersPageClient() {
               fromLabel={t('filters.dateFrom')}
               toLabel={t('filters.dateTo')}
             />
-
-            <div className="flex items-center gap-2 ml-auto">
-              <Button
-                variant="outline"
-                size="icon-sm"
-                title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
-                onClick={() => {
-                  setShowDeleted(v => !v);
-                  resetPage();
-                  setActiveSavedFilterId(null);
-                }}
-                className={cn(showDeleted && 'border-primary text-primary')}
-              >
-                {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-              </Button>
-              {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-              <ColumnsDropdown
-                columns={orderedColumns}
-                visibleKeys={colVisible}
-                onToggle={toggleCol}
-                onReorder={reorder}
-                onRename={renameColumn}
-                onReset={resetConfig}
-                hasCustomization={
-                  JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
-                  Object.keys(customLabels).length > 0
-                }
-              />
-              <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-              <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-                {t('actions.addOrder')}
-              </Button>
-            </div>
-          </div>
+          </ListFiltersRow>
 
           {/* Bulk actions */}
           {features.bulkActionsEnabled && bulkSelect.count > 0 && (
@@ -1694,7 +1703,7 @@ function PurchaseOrdersPageClient() {
 
           {/* Pagination */}
           <Pagination page={page} totalPages={totalPages} onChange={setPage} />
-        </div>
+        </>
       )}
 
       {/* Create modal */}
