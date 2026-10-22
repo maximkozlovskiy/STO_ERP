@@ -44,6 +44,7 @@ const nav = {
   toStockDocument: vi.fn(),
   toSupplierReturn: vi.fn(),
   toCalendarDay: vi.fn(),
+  toWarranty: vi.fn(),
 } as unknown as LinkedNav;
 
 const ID = '11111111-1111-4111-8111-111111111111';

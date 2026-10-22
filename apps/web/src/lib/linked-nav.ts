@@ -24,6 +24,8 @@ export interface LinkedNav {
   toPurchaseList: (id: string) => void;
   /** Запис календаря не має власної сторінки — відкриваємо календар на дні запису. */
   toCalendarDay: (startAtIso: string) => void;
+  /** Гарантія — у вкладці «Гарантії» нарядів, відкрита в бічній панелі (BR-WAR-005). */
+  toWarranty: (id: string) => void;
 }
 
 /**
@@ -77,6 +79,8 @@ export function useLinkedNav(): LinkedNav {
       toSupplierReturn: id => router.push(`/purchase-orders?openReturn=${id}`),
       // Списки купівлі — у вкладці «Управління купівлями»; `list=` відкриває картку списку.
       toPurchaseList: id => router.push(`/purchase-orders?tab=procurement&view=lists&list=${id}`),
+      // Вкладка «Гарантії» сторінки нарядів; `open=` відкриває гарантію в бічній панелі.
+      toWarranty: id => router.push(`/work-orders?tab=warranties&open=${id}`),
       // Календар читає день із ?date=YYYY-MM-DD (київський день запису, не UTC).
       toCalendarDay: startAtIso => {
         const day = isoToKyivLocalDateTime(startAtIso).slice(0, 10);

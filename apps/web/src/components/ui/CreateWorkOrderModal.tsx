@@ -114,6 +114,7 @@ import {
   type LinkedDocumentsCounts,
 } from '@/components/ui/LinkedDocumentsPanel';
 import { workOrderLinkedConfig } from '@/lib/linked-configs';
+import { canViewWarranties } from '@/lib/warranty-roles';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { CurrencySelect } from '@/components/ui/CurrencySelect';
 import {
@@ -613,7 +614,12 @@ export function CreateWorkOrderModal({
   const [linkedDocsCounts, setLinkedDocsCounts] = useState<LinkedDocumentsCounts | null>(null);
   const [activeTab, setActiveTab] = useState<'main' | 'documents'>('main');
   const linkedNav = useLinkedNav();
-  const linkedConfig = useMemo(() => workOrderLinkedConfig(linkedNav), [linkedNav]);
+  const { employee: currentEmployee } = useAuth();
+  const canOpenWarranties = canViewWarranties(currentEmployee?.role);
+  const linkedConfig = useMemo(
+    () => workOrderLinkedConfig(linkedNav, { canOpenWarranties }),
+    [linkedNav, canOpenWarranties],
+  );
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 

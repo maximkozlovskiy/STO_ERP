@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
+import { WARRANTY_EXPIRING_DAYS } from '@sto/shared';
 import { kyivToday } from '@/lib/format';
 
 // kyivWeekStart needs its own formatter; kyivToday is from lib/format
@@ -107,7 +108,8 @@ export function useDashboardMaintenance(enabled: boolean) {
 export function useDashboardExpiringWarranties(enabled: boolean) {
   return useQuery({
     queryKey: dashboardKeys.expiringWarranties(),
-    queryFn: ({ signal }) => apiFetch('/warranties/expiring?days=30', { signal }),
+    queryFn: ({ signal }) =>
+      apiFetch(`/warranties/expiring?days=${WARRANTY_EXPIRING_DAYS}`, { signal }),
     enabled,
     ...OPTS,
   });

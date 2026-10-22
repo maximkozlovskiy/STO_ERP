@@ -53,6 +53,13 @@ describe('useLinkedNav — URL-контракт deep-link навігації', (
     expect(push).not.toHaveBeenCalledWith(`/purchase-orders?open=${ID}`);
   });
 
+  // guards: BR-WAR-005
+  it('гарантія → вкладка «Гарантії» нарядів, `open=` відкриває її в панелі', () => {
+    const { result } = renderHook(() => useLinkedNav());
+    result.current.toWarranty(ID);
+    expect(push).toHaveBeenCalledWith(`/work-orders?tab=warranties&open=${ID}`);
+  });
+
   it('список купівлі → вкладка «Управління купівлями», вид «Списки», картка списку', () => {
     const { result } = renderHook(() => useLinkedNav());
     result.current.toPurchaseList(ID);

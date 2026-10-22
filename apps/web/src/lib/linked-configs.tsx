@@ -217,7 +217,14 @@ function reversedPreviewRows(row: LinkedPaymentRow) {
 
 // ─── WorkOrder config (behavior-preserving дзеркало старої панелі) ──
 
-export function workOrderLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
+export function workOrderLinkedConfig(
+  nav: LinkedNav,
+  /**
+   * `canOpenWarranties` — роль бачить вкладку «Гарантії» (`GET /warranties`): лише тоді клік по
+   * гарантії веде туди. Механік відкриває наряд, але вкладки не має — переходу для нього немає.
+   */
+  { canOpenWarranties = false }: { canOpenWarranties?: boolean } = {},
+): LinkedEntityConfig {
   return {
     fetchPath: id => `/work-orders/${id}/linked-documents`,
     sections: [
@@ -298,6 +305,7 @@ export function workOrderLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
                 ...(row.description ? [{ label: 'Опис', value: row.description }] : []),
               ],
             },
+            navigate: canOpenWarranties ? () => nav.toWarranty(row.id) : undefined,
           };
         },
       },

@@ -21,6 +21,7 @@ import type { SupplierReturn } from '@/hooks/api/useSupplierReturns';
 import type { StockDoc } from '@/hooks/api/useStockDocuments';
 import type { StockItem } from '@/hooks/api/useInventory';
 import type { Counterparty } from '@/hooks/api/useCounterparties';
+import type { WarrantyListItem } from '@/hooks/api/useWarranties';
 import { fmtMoney, fmtDate, fmtDateTime } from '@/lib/format';
 import { workOrderVatSplit } from '@/lib/utils';
 
@@ -185,6 +186,18 @@ export const WORK_ORDER_PANEL_SCHEMA = [
   { key: 'createdAt', label: 'Створено', type: 'datetime' },
   { key: 'description', label: 'Опис' },
 ] as const satisfies readonly PanelFieldDef<WorkOrder>[];
+
+/** Бічна панель вкладки «Гарантії» нарядів (BR-WAR-005); підписи перекладає сама вкладка. */
+export const WARRANTY_PANEL_SCHEMA = [
+  { key: 'state', label: 'Стан', always: true },
+  { key: 'workOrderNumber', label: 'Наряд' },
+  { key: 'counterpartyName', label: 'Клієнт' },
+  { key: 'vehicleSummary', label: 'Авто' },
+  { key: 'description', label: 'Опис' },
+  { key: 'createdAt', label: 'Виписано', type: 'date' },
+  { key: 'expiresAt', label: 'Дійсна до', type: 'date' },
+  { key: 'claimedAt', label: 'Звернення', type: 'date' },
+] as const satisfies readonly PanelFieldDef<WarrantyListItem>[];
 
 export const WORK_PANEL_SCHEMA = [
   { key: 'categoryName', label: 'Категорія' },

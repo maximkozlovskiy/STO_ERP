@@ -330,5 +330,63 @@
     "worksEmpty": "Натисніть «Додати» щоб додати роботу",
     "partsEmpty": "Натисніть «Додати» щоб додати товар",
     "noLines": "Рядки відсутні"
+  },
+  "pageTabs": {
+    "workOrders": "Наряди",
+    "warranties": "Гарантії",
+    "aria": "Розділи нарядів"
+  },
+  "warrantiesTab": {
+    "searchPlaceholder": "Пошук: № наряду, клієнт, номер авто…",
+    "allStates": "Усі стани",
+    "columns": {
+      "number": "№ наряду",
+      "client": "Клієнт / авто",
+      "description": "Опис",
+      "createdAt": "Виписано",
+      "expiresAt": "Дійсна до",
+      "state": "Стан"
+    },
+    "state": {
+      "ACTIVE": "Діє",
+      "EXPIRING": "Закінчується",
+      "EXPIRED": "Закінчилась",
+      "CLAIMED": "Звернення"
+    },
+    "stateHint": {
+      "EXPIRING": "До кінця гарантії — не більше {{days}} днів"
+    },
+    "empty": {
+      "title": "Гарантій не знайдено",
+      "descFilter": "Змініть пошук або фільтр стану",
+      "desc": "Гарантія з'являється, коли наряд стає «Виконано»"
+    },
+    "openWorkOrder": "Відкрити наряд {{number}}",
+    "claim": "Звернення",
+    "claimTitle": "Звернення за гарантією",
+    "claimFor": "Гарантія за нарядом {{number}}, дійсна до {{date}}",
+    "claimWorkOrder": "Наряд-звернення",
+    "claimWorkOrderHint": "Наряди того самого клієнта, крім скасованих",
+    "claimChoose": "Оберіть наряд",
+    "claimNoWorkOrders": "У клієнта немає нарядів для звернення — спершу створіть наряд",
+    "claimLoadError": "Не вдалося завантажити наряди клієнта",
+    "claimSubmit": "Записати звернення",
+    "claimCancel": "Скасувати",
+    "claimedToast": "Звернення за гарантією записано",
+    "claimError": "Не вдалося записати звернення",
+    "panel": {
+      "info": "Гарантія",
+      "state": "Стан",
+      "workOrderNumber": "Наряд",
+      "counterpartyName": "Клієнт",
+      "vehicleSummary": "Авто",
+      "description": "Опис",
+      "createdAt": "Виписано",
+      "expiresAt": "Дійсна до",
+      "claimedAt": "Звернення",
+      "openWorkOrderButton": "Відкрити наряд"
+    },
+    "savePresetSuccess": "Фільтр «{{name}}» збережено",
+    "notFound": "Гарантію не знайдено"
   }
 }

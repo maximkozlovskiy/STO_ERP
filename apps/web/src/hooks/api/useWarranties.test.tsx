@@ -2,7 +2,8 @@
 // Bug #718 regression: create/claim мутації МУСЯТЬ інвалідувати НЕ лише `warrantiesKeys.all`,
 // а й `dashboardKeys.expiringWarranties()` — окремий ключ дашборд-віджета. Без цього
 // нова/claimed гарантія висіла у віджеті «Гарантії, що закінчуються» до staleTime.
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import { WARRANTY_EXPIRING_DAYS } from '@sto/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 import type { ReactNode } from 'react';
@@ -12,8 +13,14 @@ vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
-import { warrantiesKeys, useCreateWarranty, useClaimWarranty } from './useWarranties';
-import { dashboardKeys } from './useDashboardData';
+import {
+  warrantiesKeys,
+  useCreateWarranty,
+  useClaimWarranty,
+  useExpiringWarranties,
+  warrantyListPath,
+} from './useWarranties';
+import { dashboardKeys, useDashboardExpiringWarranties } from './useDashboardData';
 
 function createWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -78,5 +85,44 @@ describe('useWarranties mutations — cache invalidation (Bug #718)', () => {
     expect(calls).toContain(JSON.stringify(warrantiesKeys.all));
     // Claim знімає гарантію з expiring-вибірки (claimedAt=null фільтр) → віджет мусить оновитись.
     expect(calls).toContain(JSON.stringify(dashboardKeys.expiringWarranties()));
+  });
+});
+
+describe('Список вкладки «Гарантії» і поріг «закінчується»', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({ items: [], total: 0 });
+  });
+
+  // guards: BR-WAR-005
+  it('warrantyListPath: стани через кому, порожні параметри не шлються', () => {
+    expect(warrantyListPath({ page: 2, limit: 20 })).toBe('/warranties?page=2&limit=20');
+    expect(
+      warrantyListPath({
+        page: 1,
+        limit: 20,
+        q: 'AA12',
+        states: ['ACTIVE', 'EXPIRING'],
+        sortBy: 'expiresAt',
+        sortDir: 'asc',
+        id: 'w1',
+      }),
+    ).toBe(
+      '/warranties?page=1&limit=20&q=AA12&state=ACTIVE%2CEXPIRING&sortBy=expiresAt&sortDir=asc&id=w1',
+    );
+  });
+
+  // guards: BR-WAR-002
+  it('віджет дашборду і useExpiringWarranties беруть поріг WARRANTY_EXPIRING_DAYS', async () => {
+    const { wrapper } = createWrapper();
+    renderHook(() => useDashboardExpiringWarranties(true), { wrapper });
+    renderHook(() => useExpiringWarranties(), { wrapper });
+
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
+    const paths = apiFetchMock.mock.calls.map(c => String(c[0]));
+    expect(paths).toEqual([
+      `/warranties/expiring?days=${WARRANTY_EXPIRING_DAYS}`,
+      `/warranties/expiring?days=${WARRANTY_EXPIRING_DAYS}`,
+    ]);
   });
 });

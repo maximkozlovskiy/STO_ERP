@@ -330,5 +330,63 @@
     "worksEmpty": "Click “Add” to add labor",
     "partsEmpty": "Click “Add” to add a good",
     "noLines": "No lines"
+  },
+  "pageTabs": {
+    "workOrders": "Work orders",
+    "warranties": "Warranties",
+    "aria": "Work order sections"
+  },
+  "warrantiesTab": {
+    "searchPlaceholder": "Search: work order no., client, plate…",
+    "allStates": "All states",
+    "columns": {
+      "number": "Work order",
+      "client": "Client / vehicle",
+      "description": "Description",
+      "createdAt": "Issued",
+      "expiresAt": "Valid until",
+      "state": "State"
+    },
+    "state": {
+      "ACTIVE": "Active",
+      "EXPIRING": "Expiring",
+      "EXPIRED": "Expired",
+      "CLAIMED": "Claimed"
+    },
+    "stateHint": {
+      "EXPIRING": "No more than {{days}} days left"
+    },
+    "empty": {
+      "title": "No warranties found",
+      "descFilter": "Change the search or the state filter",
+      "desc": "A warranty appears when a work order becomes Completed"
+    },
+    "openWorkOrder": "Open work order {{number}}",
+    "claim": "Claim",
+    "claimTitle": "Warranty claim",
+    "claimFor": "Warranty for work order {{number}}, valid until {{date}}",
+    "claimWorkOrder": "Claim work order",
+    "claimWorkOrderHint": "Work orders of the same client, except cancelled",
+    "claimChoose": "Choose a work order",
+    "claimNoWorkOrders": "The client has no work orders for a claim - create one first",
+    "claimLoadError": "Failed to load the client's work orders",
+    "claimSubmit": "Record claim",
+    "claimCancel": "Cancel",
+    "claimedToast": "Warranty claim recorded",
+    "claimError": "Failed to record the claim",
+    "panel": {
+      "info": "Warranty",
+      "state": "State",
+      "workOrderNumber": "Work order",
+      "counterpartyName": "Client",
+      "vehicleSummary": "Vehicle",
+      "description": "Description",
+      "createdAt": "Issued",
+      "expiresAt": "Valid until",
+      "claimedAt": "Claimed",
+      "openWorkOrderButton": "Open work order"
+    },
+    "savePresetSuccess": "Filter \"{{name}}\" saved",
+    "notFound": "Warranty not found"
   }
 }

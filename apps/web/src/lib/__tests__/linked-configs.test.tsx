@@ -21,6 +21,7 @@ function makeNav(): LinkedNav & Record<string, ReturnType<typeof vi.fn>> {
     toSupplierReturn: vi.fn(),
     toPurchaseList: vi.fn(),
     toCalendarDay: vi.fn(),
+    toWarranty: vi.fn(),
   } as LinkedNav & Record<string, ReturnType<typeof vi.fn>>;
 }
 
@@ -59,22 +60,41 @@ describe('linked-configs — behaviour parity of parametrized builders', () => {
     expect(nav.toCalendarDay).toHaveBeenCalledWith('2026-06-10T16:00:00.000Z');
   });
 
-  it('work-order → оплата й гарантія лишаються без переходу (власної сторінки немає)', () => {
-    const config = workOrderLinkedConfig(makeNav());
-    const payment = section(config, 'payments').mapRow({
+  const WARRANTY_ROW = {
+    id: 'w1',
+    description: 'Гарантія',
+    expiresAt: '2026-11-08T00:00:00.000Z',
+    createdAt: '2026-10-09T00:00:00.000Z',
+    claimedAt: null,
+  };
+
+  it('work-order → оплата лишається без переходу (власної сторінки немає)', () => {
+    const payment = section(workOrderLinkedConfig(makeNav()), 'payments').mapRow({
       id: 'p1',
       amount: 100,
       method: 'CASH',
       createdAt: '2026-06-10T10:00:00.000Z',
     } as never);
-    const warranty = section(config, 'warranties').mapRow({
-      id: 'w1',
-      description: 'Гарантія',
-      expiresAt: '2026-11-08T00:00:00.000Z',
-      createdAt: '2026-10-09T00:00:00.000Z',
-      claimedAt: null,
-    } as never);
     expect(payment.navigate).toBeUndefined();
+  });
+
+  // guards: BR-WAR-005
+  it('work-order → гарантія веде на вкладку «Гарантії» з відкритою гарантією', () => {
+    const nav = makeNav();
+    const warranty = section(
+      workOrderLinkedConfig(nav, { canOpenWarranties: true }),
+      'warranties',
+    ).mapRow(WARRANTY_ROW as never);
+    expect(warranty.navigate).toBeTypeOf('function');
+    warranty.navigate?.();
+    expect(nav.toWarranty).toHaveBeenCalledWith('w1');
+  });
+
+  // guards: BR-WAR-005
+  it('work-order → гарантія без переходу для ролі без вкладки «Гарантії» (механік)', () => {
+    const warranty = section(workOrderLinkedConfig(makeNav()), 'warranties').mapRow(
+      WARRANTY_ROW as never,
+    );
     expect(warranty.navigate).toBeUndefined();
   });
 

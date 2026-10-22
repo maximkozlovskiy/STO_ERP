@@ -25,6 +25,7 @@ import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
 import { LinesSummarySection } from '@/components/ui/LinesSummarySection';
 import { workOrderLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
+import { canClaimWarranties, canViewWarranties } from '@/lib/warranty-roles';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
@@ -98,6 +99,8 @@ const CreateWorkOrderModal = dynamic(
   () => import('@/components/ui/CreateWorkOrderModal').then(m => m.CreateWorkOrderModal),
   { ssr: false },
 );
+// Вкладка «Гарантії» — окремий шматок бандла: список нарядів відкривають частіше.
+const WarrantiesTab = dynamic(() => import('./WarrantiesTab'), { ssr: false });
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 
@@ -183,18 +186,91 @@ const WO_COLUMN_DEFS: Array<{ key: string; labelKey: string }> = [
 ];
 const WO_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(WO_COLUMN_DEFS.map(c => c.key));
 
+type PageTab = 'workOrders' | 'warranties';
+
 // Suspense обгортка для useSearchParams (Next.js static-export вимога).
 // Inner-функція тримає всю логіку, default-export лише wrapper.
 export default function WorkOrdersPage() {
   return (
     <Suspense fallback={null}>
-      <WorkOrdersPageInner />
+      <WorkOrdersPageShell />
     </Suspense>
   );
 }
 
-function WorkOrdersPageInner() {
+/**
+ * Сторінка «Наряди»: вкладки «Наряди» / «Гарантії» (BR-WAR-005, як вкладки «Каси»), вкладка — у
+ * URL (`?tab=warranties`). Список нарядів — `WorkOrdersListTab`, без змін.
+ */
+function WorkOrdersPageShell() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT']);
+  const { t } = useTranslation('workOrders');
+  const { employee } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const role = employee?.role ?? '';
+  // BR-WAR-005: вкладка «Гарантії» — лише ролям `GET /warranties`; механік бачить самі наряди.
+  const canWarranties = canViewWarranties(role);
+  const requested: PageTab = searchParams.get('tab') === 'warranties' ? 'warranties' : 'workOrders';
+  const tab: PageTab = requested === 'warranties' && canWarranties ? 'warranties' : 'workOrders';
+
+  // Роль без вкладки «Гарантії» (механік) прийшла за посиланням `?tab=warranties` — прибираємо
+  // параметр, коли роль уже відома (до входу роль порожня, і це ще не відмова).
+  useEffect(() => {
+    if (employee && requested === 'warranties' && !canWarranties) {
+      router.replace('/work-orders', { scroll: false });
+    }
+  }, [employee, requested, canWarranties, router]);
+
+  const setTab = (next: PageTab) =>
+    router.replace(next === 'warranties' ? '/work-orders?tab=warranties' : '/work-orders', {
+      scroll: false,
+    });
+
+  return (
+    <div className="page-fill p-4 md:p-6">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">{t('list.title')}</h1>
+        </div>
+      </div>
+
+      {canWarranties && (
+        <div
+          role="tablist"
+          aria-label={t('pageTabs.aria')}
+          className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto"
+        >
+          {(['workOrders', 'warranties'] as const).map(key => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              onClick={() => setTab(key)}
+              className={cn(
+                'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
+                tab === key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t(`pageTabs.${key}`)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tab === 'warranties' ? (
+        <WarrantiesTab canClaim={canClaimWarranties(role)} />
+      ) : (
+        <WorkOrdersListTab />
+      )}
+    </div>
+  );
+}
+
+function WorkOrdersListTab() {
   const { t } = useTranslation('workOrders');
   const queryClient = useQueryClient();
   const { employee } = useAuth();
@@ -207,7 +283,11 @@ function WorkOrdersPageInner() {
   }, []);
 
   const linkedNav = useLinkedNav();
-  const linkedConfig = useMemo(() => workOrderLinkedConfig(linkedNav), [linkedNav]);
+  const canOpenWarranties = canViewWarranties(employee?.role);
+  const linkedConfig = useMemo(
+    () => workOrderLinkedConfig(linkedNav, { canOpenWarranties }),
+    [linkedNav, canOpenWarranties],
+  );
 
   // Translated column defs — label resolved via t() (labelKey idiom); persistence keyed by `key`.
   const WO_COLUMNS = useMemo(() => WO_COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })), [t]);
@@ -662,13 +742,7 @@ function WorkOrdersPageInner() {
   );
 
   return (
-    <div className="page-fill p-4 md:p-6">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">{t('list.title')}</h1>
-        </div>
-      </div>
-
+    <>
       {!modal && (error || queryError) && (
         <div className="mb-4 text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-4 py-2.5">
           {error || (queryError instanceof Error ? queryError.message : '')}
@@ -1209,6 +1283,6 @@ function WorkOrdersPageInner() {
           ariaLabel={t('list.linkedPopupAria')}
         />
       )}
-    </div>
+    </>
   );
 }

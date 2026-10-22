@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { WARRANTY_EXPIRING_DAYS, type ApiSchema, type WarrantyState } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { invalidateWarrantyAffected } from '@/lib/cache-invalidation';
 
@@ -30,8 +31,25 @@ interface WarrantyList {
   total: number;
 }
 
+/** Рядок списку вкладки «Гарантії» (BR-WAR-001): поля гарантії + авто наряду і стан. */
+export type WarrantyListItem = ApiSchema<'WarrantyListItemDto'>;
+export type PaginatedWarranties = ApiSchema<'PaginatedWarrantiesDto'>;
+
+export interface WarrantyListFilters {
+  page: number;
+  limit: number;
+  q?: string;
+  states?: WarrantyState[];
+  sortBy?: 'expiresAt' | 'createdAt';
+  sortDir?: 'asc' | 'desc';
+  /** Лише ця гарантія — для посилання з «Пов'язаних документів». */
+  id?: string;
+}
+
 export const warrantiesKeys = {
   all: ['warranties'] as const,
+  lists: () => [...warrantiesKeys.all, 'list'] as const,
+  list: (f: WarrantyListFilters) => [...warrantiesKeys.lists(), f] as const,
   byWorkOrder: (id: string) => [...warrantiesKeys.all, 'by-work-order', id] as const,
   byCounterparty: (id: string) => [...warrantiesKeys.all, 'by-counterparty', id] as const,
   expiring: (days: number) => [...warrantiesKeys.all, 'expiring', days] as const,
@@ -59,7 +77,28 @@ export function useWarrantiesByCounterparty(counterpartyId: string | null, enabl
   });
 }
 
-export function useExpiringWarranties(days = 30, enabled = true) {
+export function warrantyListPath(f: WarrantyListFilters): string {
+  const params = new URLSearchParams({ page: String(f.page), limit: String(f.limit) });
+  if (f.q) params.set('q', f.q);
+  if (f.states?.length) params.set('state', f.states.join(','));
+  if (f.sortBy) params.set('sortBy', f.sortBy);
+  if (f.sortDir) params.set('sortDir', f.sortDir);
+  if (f.id) params.set('id', f.id);
+  return `/warranties?${params}`;
+}
+
+/** BR-WAR-001: список вкладки «Гарантії». `enabled` — гейт за роллю (GET лише для 4 ролей). */
+export function useWarrantyList(filters: WarrantyListFilters, enabled = true) {
+  return useQuery({
+    queryKey: warrantiesKeys.list(filters),
+    queryFn: ({ signal }) => apiFetch<PaginatedWarranties>(warrantyListPath(filters), { signal }),
+    enabled,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useExpiringWarranties(days = WARRANTY_EXPIRING_DAYS, enabled = true) {
   return useQuery({
     queryKey: warrantiesKeys.expiring(days),
     queryFn: ({ signal }) =>
