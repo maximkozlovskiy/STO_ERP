@@ -29,7 +29,7 @@ const RECON_BATCH_SIZE = 1000;
  *
  * 4 звірки:
  *   1. StockItem.quantity  vs  Σ StockBatch.remainingQty (той самий (good,warehouse)).
- *   2. SettlementAccount.balance  vs  Σ SettlementTransaction.amount × BALANCE_SIGN[type].
+ *   2. SettlementAccount.balance  vs  Σ SettlementTransaction.(amountBase ?? amount) × BALANCE_SIGN[type].
  *   3. Invoice.paidAmount: рахунок без наряду — Σ Payment.amount(invoiceId) + Σ дзеркальний
  *      settlement-PAYMENT; активний рахунок наряду — min(Σ оплат наряду, amount) (BR-INV-018).
  *   4. WorkOrder.paidAmount  vs  Σ Payment.amount(workOrderId) (BR-INV-018).
@@ -107,23 +107,34 @@ export class ReconciliationProcessor extends DeadLetterWorkerHost {
     return drift;
   }
 
-  /** SettlementAccount.balance vs Σ SettlementTransaction × BALANCE_SIGN. */
+  /**
+   * SettlementAccount.balance vs Σ SettlementTransaction × BALANCE_SIGN у БАЗОВІЙ валюті.
+   * Баланс зводиться від `amountBase` (мультивалюта, Фаза 2), а історичні рядки без нього — від
+   * `amount` (до мультивалюти amount = base). Сума `amount` валютних транзакцій давала хибний
+   * DRIFT на кожен прогін — так само рахує `SettlementsAccountService.signedDeltaAfter`.
+   */
   private async checkBalances(orgId: string): Promise<number> {
     // groupBy — SQL-side агрегат (обмежений к-стю (account,type) пар), не raw-scan → без пагінації.
-    const txns = await this.prisma.settlementTransaction.groupBy({
-      by: ['settlementAccountId', 'type'],
-      where: { orgId },
-      _sum: { amount: true },
-    });
+    const [withBase, legacy] = await Promise.all([
+      this.prisma.settlementTransaction.groupBy({
+        by: ['settlementAccountId', 'type'],
+        where: { orgId, amountBase: { not: null } },
+        _sum: { amountBase: true },
+      }),
+      this.prisma.settlementTransaction.groupBy({
+        by: ['settlementAccountId', 'type'],
+        where: { orgId, amountBase: null },
+        _sum: { amount: true },
+      }),
+    ]);
     // Σ по акаунту з урахуванням знака типу.
     const expectedByAccount = new Map<string, number>();
-    for (const t of txns) {
-      const signed = BALANCE_SIGN[t.type] * Number(t._sum.amount ?? 0);
-      expectedByAccount.set(
-        t.settlementAccountId,
-        (expectedByAccount.get(t.settlementAccountId) ?? 0) + signed,
-      );
-    }
+    const add = (accountId: string, signed: number) =>
+      expectedByAccount.set(accountId, (expectedByAccount.get(accountId) ?? 0) + signed);
+    for (const t of withBase)
+      add(t.settlementAccountId, BALANCE_SIGN[t.type] * Number(t._sum.amountBase ?? 0));
+    for (const t of legacy)
+      add(t.settlementAccountId, BALANCE_SIGN[t.type] * Number(t._sum.amount ?? 0));
     let drift = 0;
     // Keyset-пагінований скан SettlementAccount (append-only, без soft-delete) — повне покриття.
     let cursor: string | undefined;

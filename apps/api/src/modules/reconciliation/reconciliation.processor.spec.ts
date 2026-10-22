@@ -72,6 +72,29 @@ describe('ReconciliationProcessor', () => {
     expect(errSpy).not.toHaveBeenCalledWith(expect.stringContaining('DRIFT balance'));
   });
 
+  it('валютна транзакція: баланс у базовій валюті звіряється з amountBase, не з amount', async () => {
+    // Нарахування 100 USD по курсу 41,5 → amountBase 4150; історичне нарахування без amountBase 50.
+    // Баланс 4200 у базовій валюті. Сума `amount` (150) давала хибний DRIFT на кожен прогін.
+    prisma.settlementAccount.findMany.mockResolvedValue([{ id: 'acc1', balance: 4200 }]);
+    prisma.settlementTransaction.groupBy.mockImplementation(
+      async (args: { by: string[]; where: { amountBase?: unknown } }) => {
+        if (!args.by.includes('settlementAccountId')) return [];
+        return args.where.amountBase === null
+          ? [{ settlementAccountId: 'acc1', type: 'CHARGE', _sum: { amount: 50 } }]
+          : [{ settlementAccountId: 'acc1', type: 'CHARGE', _sum: { amountBase: 4150 } }];
+      },
+    );
+    const errSpy = vi.spyOn(processor['logger'], 'error');
+    await processor.process(job);
+    expect(errSpy).not.toHaveBeenCalledWith(expect.stringContaining('DRIFT balance'));
+
+    // Справжній дрейф (баланс 4000) ловиться і в базовій валюті.
+    errSpy.mockClear();
+    prisma.settlementAccount.findMany.mockResolvedValue([{ id: 'acc1', balance: 4000 }]);
+    await processor.process(job);
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('DRIFT balance'));
+  });
+
   it('paidAmount drift (paidAmount≠Σpayment) → logger.error', async () => {
     prisma.invoice.findMany.mockResolvedValue([{ id: 'inv1', paidAmount: 50 }]);
     prisma.payment.groupBy.mockResolvedValue([{ invoiceId: 'inv1', _sum: { amount: 30 } }]);
