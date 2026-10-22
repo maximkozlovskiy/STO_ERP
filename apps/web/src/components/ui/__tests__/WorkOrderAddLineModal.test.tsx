@@ -8,7 +8,8 @@
 // ⚠️ ТЕСТ-ІНТЕГРІТІ: native HTMLElement.click() ×2 синхронно (НЕ userEvent/fireEvent×2 —
 // ті дають React re-renderнути disabled={loading} між кліками → хибно-зелений).
 
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { renderWithQueryClient } from '@/__tests__/query-utils';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 import { WorkOrderAddLineModal } from '../WorkOrderAddLineModal';
@@ -50,7 +51,7 @@ describe('WorkOrderAddLineModal — double-submit guard (Bug #635 / WEB-H3)', ()
       return Promise.resolve({ items: [] });
     });
 
-    render(
+    renderWithQueryClient(
       <WorkOrderAddLineModal
         open
         workOrderId="wo1"

@@ -2,7 +2,8 @@
 // (`employeeName`) навіть коли його немає серед активних механіків (адмін, звільнений); «+ Робота»
 // пропонує лише тих механіків, яких передала сторінка (`activeMechanics`).
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
+import { renderWithQueryClient } from '@/__tests__/query-utils';
 import { vi, it, expect, describe } from 'vitest';
 
 import { WorkOrderLinesSection } from '../WorkOrderLinesSection';
@@ -11,7 +12,10 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn(), refresh: vi.fn() }),
 }));
 
-vi.mock('@/lib/api-client', () => ({ apiFetch: vi.fn() }));
+// «+ Робота» на відкритті читає запис календаря наряду (BR-WO-030).
+vi.mock('@/lib/api-client', () => ({
+  apiFetch: vi.fn(() => Promise.resolve({ items: [], calendarSlots: [] })),
+}));
 
 vi.mock('@/hooks/useUiFeatures', () => ({
   useUiFeatures: () => ({ toastEnabled: false, unsavedGuardEnabled: false }),
@@ -32,7 +36,7 @@ const line = (id: string, employeeId: string, employeeName: string) => ({
 const ACTIVE = [{ id: 'm-active', firstName: 'Іван', lastName: 'Петров' }];
 
 function renderSection() {
-  render(
+  renderWithQueryClient(
     <WorkOrderLinesSection
       woId="wo-1"
       lines={[line('1', 'admin-1', 'Адмін Олег'), line('2', 'm-fired', 'Звільнений Петро')]}
