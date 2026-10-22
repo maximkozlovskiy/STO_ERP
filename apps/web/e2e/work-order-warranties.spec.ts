@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { apiCall, apiRequest, getToken } from './api-helpers';
+import { WARRANTY_EXPIRING_DAYS } from '@sto/shared';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -223,10 +224,14 @@ test.describe('Наряди → вкладка «Гарантії» (BR-WAR-001�
     await page.getByRole('button', { name: '+ Робота' }).click();
     const addLine = page.getByRole('dialog', { name: 'Додати роботу' });
     await expect(addLine).toBeVisible({ timeout: 10_000 });
-    await addLine.locator('select').first().selectOption({ index: 1 });
+    // Робота — пошуком на сервері (довідник може бути більшим за 200), виконавець — список.
+    const works = await api<{ items: { name: string }[] }>(page, 'GET', '/works?limit=1');
+    const workName = works.body.items[0]!.name;
+    await addLine.getByPlaceholder('Пошук роботи...').fill(workName);
+    await page.getByRole('option', { name: workName }).first().click();
     await addLine
       .locator('select')
-      .nth(1)
+      .first()
       .selectOption({ label: `${mech.lastName} ${mech.firstName}` });
     await addLine.locator('label', { hasText: 'Ціна' }).locator('..').locator('input').fill('100');
     await addLine.getByRole('button', { name: 'Додати', exact: true }).click();
@@ -259,7 +264,8 @@ test.describe('Наряди → вкладка «Гарантії» (BR-WAR-001�
       .toBe(1);
     const [w] = await clientWarranties(page);
     expect(w.workOrderId).toBe(wo.id);
-    const expected = state.warrantyDays! <= 30 ? 'EXPIRING' : 'ACTIVE';
+    // Поріг «закінчується» — WARRANTY_EXPIRING_DAYS (14, BR-WAR-002), не 30.
+    const expected = state.warrantyDays! <= WARRANTY_EXPIRING_DAYS ? 'EXPIRING' : 'ACTIVE';
     expect(w.state).toBe(expected);
 
     await openWarrantiesTab(page);
