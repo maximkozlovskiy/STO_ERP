@@ -216,7 +216,7 @@ export function ItemsView({ canWrite }: { canWrite: boolean }) {
           <StatusPill
             key={s}
             value={s}
-            label={s ? purchaseListItemStatusLabel(s) : t('filters.allStatuses')}
+            label={s ? purchaseListItemStatusLabel(s) : t('filters.all')}
             active={status === s}
             onSelect={selectStatus}
           />

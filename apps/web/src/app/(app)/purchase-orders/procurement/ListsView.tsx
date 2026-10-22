@@ -89,7 +89,7 @@ export function ListsView({
           <StatusPill
             key={s}
             value={s}
-            label={s ? purchaseListStatusLabel(s) : t('filters.allStatuses')}
+            label={s ? purchaseListStatusLabel(s) : t('filters.all')}
             active={status === s}
             onSelect={v => {
               setStatus(v);

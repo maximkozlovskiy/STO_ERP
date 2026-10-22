@@ -25,7 +25,7 @@
     "noMatchDescription": "No periods match the selected filter"
   },
   "filters": {
-    "allStatuses": "All statuses",
+    "all": "All",
     "statusLabel": "Period status",
     "filterSaved": "Filter «{{name}}» saved"
   },

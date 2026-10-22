@@ -383,3 +383,41 @@ test.describe('Сторінка наряду, позначеного на вид
     }
   });
 });
+
+// ─── 4. Панель списку: статуси над фільтрами (рішення власника 2026-10-22) ───────────────────────
+
+test.describe('Панель списку — статуси кнопками над рядком фільтрів, дії праворуч', () => {
+  // [адреса, заголовок, назва групи статусів]
+  const LISTS: Array<[string, string, string]> = [
+    ['/work-orders', 'Наряди', 'Статус'],
+    ['/work-orders?tab=warranties', 'Наряди', 'Стан'],
+    ['/invoices', 'Рахунки', 'Статус'],
+    ['/purchase-orders?tab=orders', 'Купівля', 'Статус'],
+    ['/purchase-orders?tab=procurement&view=lists', 'Купівля', 'Статус'],
+    ['/stock-documents', 'Склад', 'Статус'],
+    ['/bank-statements', 'Банківські платежі', 'Статус'],
+    ['/payroll', 'Зарплата', 'Статус періоду'],
+  ];
+
+  for (const [url, heading, groupName] of LISTS) {
+    test(`${url}: група «${groupName}» — над рядком фільтрів, дії в межах вікна`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.goto(url);
+      await expect(page.locator(`h1:has-text("${heading}")`)).toBeVisible({ timeout: 30_000 });
+      const group = page.getByRole('group', { name: groupName, exact: true });
+      await expect(group.getByRole('button').first()).toHaveAttribute('aria-pressed', /true|false/);
+      // Рядок фільтрів — найближчий після групи блок із діями `ml-auto`.
+      const actions = page.locator('main .flex-wrap.gap-3 > .ml-auto').first();
+      await expect(actions).toBeVisible();
+      const [g, a] = [await group.boundingBox(), await actions.boundingBox()];
+      expect(a!.y, 'дії рядка фільтрів — нижче за статуси').toBeGreaterThan(g!.y + g!.height - 1);
+      expect(a!.x + a!.width, 'дії не виходять за вікно').toBeLessThanOrEqual(1280);
+      // Сторінка не прокручується вбік.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        1280,
+      );
+    });
+  }
+});

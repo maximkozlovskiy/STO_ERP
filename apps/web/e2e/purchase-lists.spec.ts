@@ -492,7 +492,7 @@ test.describe('Управління купівлями — від нестачі
     await rp.getByLabel('Товар, артикул, код').fill(GOOD);
     await rp
       .getByRole('group', { name: 'Статус' })
-      .getByRole('button', { name: 'Усі статуси' })
+      .getByRole('button', { name: 'Всі', exact: true })
       .click();
     const rows = rp.getByTestId('purchase-list-item-row').filter({ hasText: GOOD });
     await expect(rows.first()).toBeVisible({ timeout: 30_000 });

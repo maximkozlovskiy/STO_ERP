@@ -78,7 +78,7 @@ test.describe('Зарплата — сторінка', () => {
     await expect(page.locator('h1:has-text("Зарплата")')).toBeVisible({ timeout: 20_000 });
     const statuses = page.getByRole('group', { name: 'Статус періоду' });
     await expect(statuses.getByRole('button')).toHaveText([
-      'Всі статуси',
+      'Всі',
       'Чернетка',
       'Розраховано',
       'Виплачено',

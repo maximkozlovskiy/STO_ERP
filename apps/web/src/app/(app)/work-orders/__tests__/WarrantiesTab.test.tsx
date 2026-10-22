@@ -177,7 +177,7 @@ describe('Вкладка «Гарантії»', () => {
   });
 
   // Стандарт списку (рішення власника 2026-10-22): стани — кнопками окремим рядком над пошуком.
-  it('стан — кнопки окремим рядком над пошуком; «Усі стани» активна, «Усі стани» знімає state', async () => {
+  it('стан — кнопки окремим рядком над пошуком; «Всі» активна й знімає state', async () => {
     renderTab();
     await screen.findByText('НРД-2026-000101');
 
@@ -186,8 +186,8 @@ describe('Вкладка «Гарантії»', () => {
       within(group)
         .getAllByRole('button')
         .map(b => b.textContent),
-    ).toEqual(['Усі стани', 'Діє', 'Закінчується', 'Закінчилась', 'Звернення']);
-    expect(within(group).getByRole('button', { name: 'Усі стани' })).toHaveAttribute(
+    ).toEqual(['Всі', 'Діє', 'Закінчується', 'Закінчилась', 'Звернення']);
+    expect(within(group).getByRole('button', { name: 'Всі' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
@@ -197,9 +197,9 @@ describe('Вкладка «Гарантії»', () => {
 
     fireEvent.click(within(group).getByRole('button', { name: 'Закінчилась' }));
     await waitFor(() => expect(warrantyCalls().at(-1)).toContain('state=EXPIRED'));
-    // Запит без стану вже в кеші — нового виклику немає; стан повертається до «Усі стани».
-    fireEvent.click(within(group).getByRole('button', { name: 'Усі стани' }));
-    expect(within(group).getByRole('button', { name: 'Усі стани' })).toHaveAttribute(
+    // Запит без стану вже в кеші — нового виклику немає; стан повертається до «Всі».
+    fireEvent.click(within(group).getByRole('button', { name: 'Всі' }));
+    expect(within(group).getByRole('button', { name: 'Всі' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );

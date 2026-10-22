@@ -268,7 +268,7 @@ export default function PayrollPage() {
           <StatusPill
             key={s}
             value={s}
-            label={s ? STATUS_LABELS[s] : t('filters.allStatuses')}
+            label={s ? STATUS_LABELS[s] : t('filters.all')}
             active={statusFilter === s}
             onSelect={changeStatus}
           />

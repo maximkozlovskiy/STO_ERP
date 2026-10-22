@@ -419,7 +419,7 @@
   },
   "warrantiesTab": {
     "searchPlaceholder": "Search: work order no., client, plate…",
-    "allStates": "All states",
+    "all": "All",
     "columns": {
       "number": "Work order",
       "client": "Client / vehicle",

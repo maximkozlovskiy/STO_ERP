@@ -216,8 +216,8 @@ describe('Payroll — сторінка на весь екран: статуси 
       within(group)
         .getAllByRole('button')
         .map(b => b.textContent),
-    ).toEqual(['Всі статуси', 'Чернетка', 'Розраховано', 'Виплачено', 'Скасовано']);
-    expect(within(group).getByRole('button', { name: 'Всі статуси' })).toHaveAttribute(
+    ).toEqual(['Всі', 'Чернетка', 'Розраховано', 'Виплачено', 'Скасовано']);
+    expect(within(group).getByRole('button', { name: 'Всі' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );

@@ -25,7 +25,7 @@
     "noMatchDescription": "За вибраним фільтром періодів немає"
   },
   "filters": {
-    "allStatuses": "Всі статуси",
+    "all": "Всі",
     "statusLabel": "Статус періоду",
     "filterSaved": "Фільтр «{{name}}» збережено"
   },

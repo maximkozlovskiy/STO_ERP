@@ -315,7 +315,7 @@ export default function WarrantiesTab({ canClaim }: Props) {
           <StatusPill
             key={s}
             value={s}
-            label={s ? t(`warrantiesTab.state.${s}`) : t('warrantiesTab.allStates')}
+            label={s ? t(`warrantiesTab.state.${s}`) : t('warrantiesTab.all')}
             active={stateFilter === s}
             description={
               s === 'EXPIRING'

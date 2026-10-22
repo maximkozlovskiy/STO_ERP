@@ -419,7 +419,7 @@
   },
   "warrantiesTab": {
     "searchPlaceholder": "Пошук: № наряду, клієнт, номер авто…",
-    "allStates": "Усі стани",
+    "all": "Всі",
     "columns": {
       "number": "№ наряду",
       "client": "Клієнт / авто",
