@@ -76,7 +76,7 @@ describe('PayrollService.compute — DRAFT → COMPUTED і знімок', () => 
     await f.service.compute(ORG, PID, 'user-1');
 
     expect(f.tx.payrollPeriod.updateMany).toHaveBeenCalledWith({
-      where: { id: PID, orgId: ORG, status: 'DRAFT' },
+      where: { id: PID, orgId: ORG, deletedAt: null, status: 'DRAFT' },
       data: { status: 'COMPUTED', computedAt: expect.any(Date), computedBy: 'user-1' },
     });
   });
@@ -242,7 +242,7 @@ describe('PayrollService.pay — COMPUTED → PAID', () => {
     await f.service.pay(ORG, PID, 'user-1');
 
     expect(f.tx.payrollPeriod.updateMany).toHaveBeenCalledWith({
-      where: { id: PID, orgId: ORG, status: 'COMPUTED' },
+      where: { id: PID, orgId: ORG, deletedAt: null, status: 'COMPUTED' },
       data: { status: 'PAID', paidAt: expect.any(Date), paidBy: 'user-1' },
     });
   });
@@ -356,7 +356,7 @@ describe('PayrollService.remove — що можна відкинути', () => {
     f.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ status: 'CANCELLED' });
     await f.service.remove(ORG, PID, 'user-1');
     expect(f.prisma.payrollPeriod.updateMany).toHaveBeenCalledWith({
-      where: { id: PID, orgId: ORG, deletedAt: null },
+      where: { id: PID, orgId: ORG, deletedAt: null, status: { not: 'PAID' } },
       data: { deletedAt: expect.any(Date) },
     });
   });
@@ -377,6 +377,28 @@ describe('PayrollService.remove — що можна відкинути', () => {
     expect(f.prisma.$transaction).not.toHaveBeenCalled();
     expect(f.tx.payrollLine.deleteMany).not.toHaveBeenCalled();
     expect(f.tx.payrollLineWorkOrder.deleteMany).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PAYR-012
+  it('гонка: виплата пройшла між читанням і видаленням → 400, виплачений період не видалено', async () => {
+    f.prisma.payrollPeriod.findFirst
+      .mockResolvedValueOnce({ status: 'COMPUTED' }) // прочитано до виплати
+      .mockResolvedValueOnce({ status: 'PAID' }); // після відмови запису
+    f.prisma.payrollPeriod.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(f.service.remove(ORG, PID, 'user-1')).rejects.toThrow(
+      'Не можна видалити виплачений період',
+    );
+    expect(f.prisma.payrollPeriod.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ status: { not: 'PAID' } }) }),
+    );
+  });
+
+  it('гонка: період видалили паралельно → 404', async () => {
+    f.prisma.payrollPeriod.findFirst
+      .mockResolvedValueOnce({ status: 'DRAFT' })
+      .mockResolvedValueOnce(null);
+    f.prisma.payrollPeriod.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(f.service.remove(ORG, PID, 'user-1')).rejects.toThrow(NotFoundException);
   });
 
   it('відомості немає → 404, нічого не позначається', async () => {

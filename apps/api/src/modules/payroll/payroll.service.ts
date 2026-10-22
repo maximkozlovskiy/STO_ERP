@@ -422,7 +422,8 @@ export class PayrollService {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`payroll:${orgId}`}))`;
         // Атомарний claim: лише DRAFT → COMPUTED (переможець гонки — count===1).
         const claim = await tx.payrollPeriod.updateMany({
-          where: { id, orgId, status: 'DRAFT' },
+          // deletedAt: null — період, видалений між читанням і claim-ом, не розраховується.
+          where: { id, orgId, deletedAt: null, status: 'DRAFT' },
           data: { status: 'COMPUTED', computedAt: new Date(), computedBy: userId ?? null },
         });
         if (claim.count === 0)
@@ -527,7 +528,8 @@ export class PayrollService {
     await this.prisma.$transaction(
       async tx => {
         const claim = await tx.payrollPeriod.updateMany({
-          where: { id, orgId, status: 'COMPUTED' },
+          // deletedAt: null — видалений між читанням і claim-ом період не виплачується (BR-PAYR-012).
+          where: { id, orgId, deletedAt: null, status: 'COMPUTED' },
           data: { status: 'PAID', paidAt: new Date(), paidBy: userId ?? null },
         });
         if (claim.count === 0)
@@ -584,10 +586,21 @@ export class PayrollService {
     // (COMPUTED — це ще не проведена виплата, користувач може перерахувати після виправлення даних).
     if (period.status === 'PAID')
       throw new BadRequestException(translateError('err.payroll.paidNotDeletable', getLocale()));
-    await this.prisma.payrollPeriod.updateMany({
-      where: { id, orgId, deletedAt: null },
+    // Умова «не PAID» — у самому записі: виплата, що пройшла між читанням і видаленням, інакше
+    // лишилась би на видаленому періоді разом із касовими операціями (гонка «виплата ‖ видалення»).
+    const deleted = await this.prisma.payrollPeriod.updateMany({
+      where: { id, orgId, deletedAt: null, status: { not: 'PAID' } },
       data: { deletedAt: new Date() },
     });
+    if (deleted.count === 0) {
+      const now = await this.prisma.payrollPeriod.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { status: true },
+      });
+      if (!now)
+        throw new NotFoundException(translateError('err.payroll.periodNotFound', getLocale()));
+      throw new BadRequestException(translateError('err.payroll.paidNotDeletable', getLocale()));
+    }
     if (userId) {
       this.audit
         .record(orgId, 'PayrollPeriod', id, 'DELETE', userId, undefined, undefined)

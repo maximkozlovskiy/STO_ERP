@@ -184,7 +184,7 @@ describe('PayrollService.compute — FSM', () => {
     await service.compute(ORG, PID, 'user-1');
 
     expect(m.tx.payrollPeriod.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: PID, orgId: ORG, status: 'DRAFT' } }),
+      expect.objectContaining({ where: { id: PID, orgId: ORG, deletedAt: null, status: 'DRAFT' } }),
     );
     expect(m.tx.payrollLine.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -525,7 +525,9 @@ describe('PayrollService.pay — FSM', () => {
       });
     await service.pay(ORG, PID, 'user-1');
     expect(m.tx.payrollPeriod.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: PID, orgId: ORG, status: 'COMPUTED' } }),
+      expect.objectContaining({
+        where: { id: PID, orgId: ORG, deletedAt: null, status: 'COMPUTED' },
+      }),
     );
     expect(m.tx.$executeRaw).toHaveBeenCalled();
   });
@@ -611,7 +613,7 @@ describe('PayrollService.remove — guard', () => {
     m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ status: 'COMPUTED' });
     await service.remove(ORG, PID, 'user-1');
     expect(m.prisma.payrollPeriod.updateMany).toHaveBeenCalledWith({
-      where: { id: PID, orgId: ORG, deletedAt: null },
+      where: { id: PID, orgId: ORG, deletedAt: null, status: { not: 'PAID' } },
       data: { deletedAt: expect.any(Date) },
     });
   });
@@ -621,7 +623,7 @@ describe('PayrollService.remove — guard', () => {
     m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ status: 'DRAFT' });
     await service.remove(ORG, PID, 'user-1');
     expect(m.prisma.payrollPeriod.updateMany).toHaveBeenCalledWith({
-      where: { id: PID, orgId: ORG, deletedAt: null },
+      where: { id: PID, orgId: ORG, deletedAt: null, status: { not: 'PAID' } },
       data: { deletedAt: expect.any(Date) },
     });
   });
