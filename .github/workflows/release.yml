@@ -4,79 +4,71 @@ on:
   push:
     tags:
       - 'v*'
+  # Пробний прогін без релізу: образи + інсталятор як артефакт, GitHub Release не створюється.
+  workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
-  ORG: ${{ github.repository_owner }}
+  # Тег — версія релізу; ручний прогін — 0.0.0-<sha>, щоб не плутати з релізами.
+  VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('0.0.0-{0}', github.sha) }}
 
 jobs:
+  # Образи — Linux (node:22-alpine, postgres:16-alpine…), тож збираються на Linux-раннері.
+  # На windows-latest Docker працює з Windows-контейнерами: Linux-образ там не збирається і не
+  # тягнеться. До того ж у PowerShell `docker save | gzip >` пропускав бінарний потік через
+  # текстовий конвеєр і псував архів. Тут — bash, побайтово.
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and save Docker images
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${VERSION#v}"
+          mkdir -p images
+
+          # Образи застосунків збираються самі (multi-stage: pnpm install + build усередині).
+          docker build -t "sto-api:$version" -f apps/api/Dockerfile .
+          docker build -t "sto-web:$version" -f apps/web/Dockerfile .
+          docker save "sto-api:$version" | gzip > images/sto-api.tar.gz
+          docker save "sto-web:$version" | gzip > images/sto-web.tar.gz
+
+          # Базові образи — ті самі теги, що в docker-compose.yml (compose шукає саме їх).
+          save_base() {
+            docker pull "$1"
+            docker save "$1" | gzip > "images/$2.tar.gz"
+          }
+          save_base postgres:16-alpine postgres-16
+          save_base redis:7-alpine redis-7
+          save_base minio/minio:RELEASE.2024-01-16T16-07-38Z minio
+          save_base caddy:2-alpine caddy
+
+          # Архів цілий: gzip читається до кінця, tar усередині — валідний.
+          for f in images/*.tar.gz; do gzip -t "$f" && gzip -dc "$f" | tar -t > /dev/null; done
+          ls -lh images
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-images
+          path: images/*.tar.gz
+          # Уже стиснуто — повторне стиснення лише витрачає час.
+          compression-level: 0
+          retention-days: 1
+
   build-installer:
+    needs: images
     runs-on: windows-latest
     permissions:
       contents: write
-      packages: read
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set version
-        id: version
-        run: |
-          $ver = "${{ github.ref_name }}" -replace '^v',''
-          echo "VERSION=$ver" >> $env:GITHUB_OUTPUT
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - uses: actions/download-artifact@v4
         with:
-          version: 11
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build all apps
-        run: pnpm build
-        env:
-          NEXT_PUBLIC_API_URL: http://localhost:3000
-
-      # ghcr-login прибрано: offline-модель бандлить образи через docker save→tar→docker load
-      # (compose тягне ЛОКАЛЬНІ теги sto-api:$version). App-образи у ghcr не пушаться, тож login
-      # був безцільним (базові образи йдуть з Docker Hub). Якщо колись знадобиться online-оновлення
-      # через ghcr — повернути login + push + ghcr-префікс у compose (окрема опція).
-
-      - name: Build and save Docker images
-        shell: pwsh
-        run: |
-          $version = "${{ steps.version.outputs.VERSION }}"
-          New-Item -ItemType Directory -Force installer/bundle/images | Out-Null
-
-          # Build app images
-          docker build -t sto-api:$version -f apps/api/Dockerfile .
-          docker build -t sto-web:$version -f apps/web/Dockerfile .
-
-          # Save app images
-          docker save sto-api:$version | gzip > installer/bundle/images/sto-api.tar.gz
-          docker save sto-web:$version | gzip > installer/bundle/images/sto-web.tar.gz
-
-          # Pull and save base images
-          docker pull postgres:16-alpine
-          docker save postgres:16-alpine | gzip > installer/bundle/images/postgres-16.tar.gz
-
-          docker pull redis:7-alpine
-          docker save redis:7-alpine | gzip > installer/bundle/images/redis-7.tar.gz
-
-          # Пінований тег — має збігатися з docker-compose.yml (minio/minio:RELEASE.2024-01-16...),
-          # інакше compose шукав би тег, якого немає у завантаженому tar.
-          docker pull minio/minio:RELEASE.2024-01-16T16-07-38Z
-          docker save minio/minio:RELEASE.2024-01-16T16-07-38Z | gzip > installer/bundle/images/minio.tar.gz
-
-          docker pull caddy:2-alpine
-          docker save caddy:2-alpine | gzip > installer/bundle/images/caddy.tar.gz
+          name: docker-images
+          path: installer/bundle/images
 
       - name: Download NSSM
         shell: pwsh
@@ -92,19 +84,21 @@ jobs:
       - name: Build Installer
         shell: pwsh
         run: |
-          $version = "${{ steps.version.outputs.VERSION }}"
+          $version = "$env:VERSION" -replace '^v',''
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
             "installer\inno\setup.iss" `
             "/DAppVersion=$version"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: STO-ERP-Setup-${{ github.ref_name }}
+          name: STO-ERP-Setup-${{ env.VERSION }}
           path: installer/output/*.exe
           retention-days: 90
 
       - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: installer/output/*.exe

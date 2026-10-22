@@ -1,5 +1,9 @@
 #define AppName "STO ERP"
-#define AppVersion "1.0.0"
+; Версію передає CI: ISCC /DAppVersion=<тег>. Безумовний #define тут її перекривав би,
+; і інсталятор писав би VERSION=1.0.0, а compose шукав би образи sto-api:1.0.0, яких немає в архіві.
+#ifndef AppVersion
+  #define AppVersion "1.0.0"
+#endif
 #define AppPublisher "STO ERP"
 #define AppURL "https://sto-erp.ua"
 #define AppInstallDir "{commonpf64}\STO-ERP"
