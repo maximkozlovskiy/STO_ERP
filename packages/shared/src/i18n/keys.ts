@@ -1142,6 +1142,7 @@ export const VALIDATION_KEYS = [
   'err.dto.workOrderTemplate.workLines.max',
   'err.dto.workOrderTemplate.parts.max',
   'err.dto.work.categories.max',
+  'err.dto.work.ids.max',
   'err.dto.xlsx.rows.max',
   'err.dto.employee.loginEmail.invalid',
   'err.dto.employee.password.min',

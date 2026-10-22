@@ -40,7 +40,6 @@ function renderSection() {
     <WorkOrderLinesSection
       woId="wo-1"
       lines={[line('1', 'admin-1', 'Адмін Олег'), line('2', 'm-fired', 'Звільнений Петро')]}
-      works={[{ id: 'work-x', name: 'Діагностика', normoHours: 1, price: 400 }]}
       employees={ACTIVE}
       onChanged={vi.fn()}
     />,
@@ -62,7 +61,10 @@ describe('WorkOrderLinesSection — виконавець поза списком
 
     fireEvent.click(screen.getByRole('button', { name: '+ Робота' }));
     const dialog = await screen.findByRole('dialog');
-    const selects = within(dialog).getAllByRole('combobox') as HTMLSelectElement[];
+    // Поле роботи — пошук (input з роллю combobox), виконавець — список.
+    const selects = within(dialog)
+      .getAllByRole('combobox')
+      .filter((s): s is HTMLSelectElement => s instanceof HTMLSelectElement);
     const executor = selects.find(s => Array.from(s.options).some(o => o.value === 'm-active'));
 
     expect(executor).toBeTruthy();

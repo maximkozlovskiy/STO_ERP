@@ -99,6 +99,15 @@ describe('WorksService', () => {
       expect(where.name).toEqual({ contains: 'масл', mode: 'insensitive' });
     });
 
+    // guards: BR-WO-030 — категорії робіт послуги за id, а не з перших 200 довідника
+    it('ids → лише ці роботи (у своїй org, живі)', async () => {
+      await svc.findAll(ORG, query({ ids: ['w-1', 'w-2'] }));
+      const where = prisma.work.findMany.mock.calls[0][0].where;
+      expect(where.id).toEqual({ in: ['w-1', 'w-2'] });
+      expect(where.orgId).toBe(ORG);
+      expect(where.deletedAt).toBeNull();
+    });
+
     it('count і findMany бачать той самий where (однакова tenant-ізоляція)', async () => {
       await svc.findAll(ORG, query());
       expect(prisma.work.count.mock.calls[0][0].where.orgId).toBe(ORG);

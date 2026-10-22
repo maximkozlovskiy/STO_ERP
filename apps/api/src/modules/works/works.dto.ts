@@ -60,6 +60,22 @@ export class WorkQueryDto {
   @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
   categoryIds?: string[];
 
+  /**
+   * Роботи за id (`?ids=a,b` або повторений параметр) — категорії робіт послуги для правила
+   * виконавця (BR-WO-030) без завантаження всього довідника. До 200, як `limit`.
+   */
+  @ApiPropertyOptional({ type: String, description: 'id робіт через кому' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200, { message: 'err.dto.work.ids.max' })
+  @Matches(UUID_REGEX, { each: true })
+  @Transform(({ value }: { value: unknown }) => {
+    const list = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
+    const ids = list.map(v => String(v).trim()).filter(Boolean);
+    return ids.length ? ids : undefined;
+  })
+  ids?: string[];
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

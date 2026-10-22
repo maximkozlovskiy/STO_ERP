@@ -8,6 +8,7 @@ import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { SearchCombobox } from '@/components/ui/search-combobox';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -50,7 +51,6 @@ interface WorkOrderAddLineModalProps {
   workOrderId: string;
   /** Підйомник наряду: його єдиний механік — виконавець нової роботи (BR-WO-030). */
   liftId?: string | null;
-  works: Work[];
   employees: Employee[];
   onClose: () => void;
   onAdded: () => void;
@@ -69,7 +69,6 @@ export function WorkOrderAddLineModal({
   open,
   workOrderId,
   liftId,
-  works,
   employees,
   onClose,
   onAdded,
@@ -78,6 +77,9 @@ export function WorkOrderAddLineModal({
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const [form, setForm] = useState(EMPTY_FORM);
+  // Обрана робота — з пошуку на сервері (`/works?q=`), а не зі списку перших 200 довідника:
+  // роботи далі за алфавітом були недосяжні (рішення власника 2026-10-22).
+  const [work, setWork] = useState<Work | null>(null);
   const [saving, setSaving] = useState(false);
   // WEB-H3 (Bug #635, клас Bug #630): синхронний guard проти concurrent double-submit.
   // Кнопка «Додати» disabled лише за !workId/!employeeId (не saving) → два same-tick кліки
@@ -97,6 +99,7 @@ export function WorkOrderAddLineModal({
   useEffect(() => {
     if (open) {
       setForm(EMPTY_FORM);
+      setWork(null);
       setError('');
       executorManualRef.current = false;
       dirty.resetDirty();
@@ -124,7 +127,7 @@ export function WorkOrderAddLineModal({
 
   // Виконавець підставляється, щойно обрано роботу, і стежить за даними правила, що приходять
   // пізніше (механіки підйомника, запис календаря), — доки його не обрала людина.
-  const workCategoryId = works.find(w => w.id === form.workId)?.categoryId ?? null;
+  const workCategoryId = work?.categoryId ?? null;
   useEffect(() => {
     if (!open || !form.workId || executorManualRef.current) return;
     const employeeId = pickLineExecutor({
@@ -150,17 +153,17 @@ export function WorkOrderAddLineModal({
   ]);
 
   const selectWork = useCallback(
-    (workId: string) => {
-      const w = works.find(x => x.id === workId);
+    (w: Work | null) => {
+      setWork(w);
       setForm(f => ({
         ...f,
-        workId,
+        workId: w?.id ?? '',
         normoHours: w ? String(w.normoHours) : f.normoHours,
         price: w ? String(w.price) : f.price,
       }));
       dirty.markDirty();
     },
-    [works, dirty],
+    [dirty],
   );
 
   const handleClose = useCallback(async () => {
@@ -203,17 +206,20 @@ export function WorkOrderAddLineModal({
         <div className="space-y-3">
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">
-              {t('addLine.work')} <span className="text-destructive">*</span>
-            </label>
-            <Select value={form.workId} onChange={e => selectWork(e.target.value)}>
-              <option value="">{t('addLine.choose')}</option>
-              {works.map(w => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </Select>
+            <SearchCombobox<Work>
+              label={t('addLine.work')}
+              required
+              placeholder={t('worksTable.searchPlaceholder')}
+              value={form.workId}
+              displayValue={work?.name ?? ''}
+              onSelect={selectWork}
+              onClear={() => selectWork(null)}
+              fetchItems={q =>
+                apiFetch<{ items: Work[] }>(`/works?q=${encodeURIComponent(q)}&limit=20`).then(r =>
+                  r.items.map(w => ({ ...w, primary: w.name })),
+                )
+              }
+            />
           </div>
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">

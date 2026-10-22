@@ -26,6 +26,7 @@ export class WorksService {
     if (query.categoryIds?.length) where.categoryId = { in: query.categoryIds };
     else if (query.categoryId) where.categoryId = query.categoryId;
     if (query.q) where.name = { contains: query.q, mode: 'insensitive' };
+    if (query.ids?.length) where.id = { in: query.ids };
 
     const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
     const [items, total] = await Promise.all([

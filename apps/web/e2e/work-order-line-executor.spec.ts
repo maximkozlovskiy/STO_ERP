@@ -233,12 +233,15 @@ test.describe('Виконавець нової роботи — механік �
     await page.getByRole('button', { name: '+ Робота' }).click();
     const addModal = page.getByRole('dialog').filter({ hasText: 'Додати роботу' });
     await expect(addModal).toBeVisible({ timeout: 15_000 });
-    const [workSelect, executorSelect] = await addModal.getByRole('combobox').all();
-    await expect(workSelect!.locator('option', { hasText: WORK })).toHaveCount(1, {
-      timeout: 15_000,
-    });
-    await workSelect!.selectOption(state.workId);
-    await expect(executorSelect!).toHaveValue(state.employeeId!, { timeout: 15_000 });
+    // Робота — пошуком на сервері (довідник більший за 200 робіт), виконавець — список.
+    await addModal.getByPlaceholder('Пошук роботи...').fill(WORK);
+    await page
+      .getByRole('option', { name: new RegExp(WORK) })
+      .first()
+      .click();
+    await expect(addModal.getByText(WORK, { exact: true })).toBeVisible();
+    const executorSelect = addModal.locator('select').first();
+    await expect(executorSelect).toHaveValue(state.employeeId!, { timeout: 15_000 });
     await addModal.screenshot({ path: test.info().outputPath('wo030_add_line.png') });
     await page.keyboard.press('Escape');
   });

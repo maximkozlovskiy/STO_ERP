@@ -46,6 +46,11 @@ function mockApi(opts: {
   calendarSlots?: { startAt: string; employeeId: string | null }[];
 }) {
   apiFetchMock.mockImplementation((path: string) => {
+    // Робота — пошуком на сервері (`/works?q=`), а не зі списку перших 200 довідника.
+    if (path.startsWith('/works?q=')) {
+      const q = decodeURIComponent(path.split('q=')[1]!.split('&')[0]!).toLowerCase();
+      return Promise.resolve({ items: works.filter(w => w.name.toLowerCase().includes(q)) });
+    }
     if (path.startsWith('/employees?liftId='))
       return Promise.resolve({ items: opts.liftMechanics ?? [] });
     if (path === '/work-orders/wo1/linked-documents')
@@ -65,7 +70,6 @@ function renderModal(liftId: string | null = 'lift-1') {
       open
       workOrderId="wo1"
       liftId={liftId}
-      works={works}
       employees={employees}
       onClose={() => {}}
       onAdded={() => {}}
@@ -73,6 +77,16 @@ function renderModal(liftId: string | null = 'lift-1') {
   );
   const [work, executor] = screen.getAllByRole('combobox') as HTMLSelectElement[];
   return { work: work!, executor: executor! };
+}
+
+/** Обирає роботу так, як людина: текст у пошуку → клік по варіанту. */
+async function pickWork(name: string) {
+  // Обрану роботу комбобокс показує текстом — змінити її можна після «Очистити».
+  const clear = screen.queryByRole('button', { name: 'Очистити' });
+  if (clear) fireEvent.click(clear);
+  const input = screen.getAllByRole('combobox').find(e => e instanceof HTMLInputElement);
+  fireEvent.change(input!, { target: { value: name.slice(0, 5) } });
+  fireEvent.mouseDown(await screen.findByRole('option', { name: new RegExp(name) }));
 }
 
 describe('WorkOrderAddLineModal — виконавець нової роботи (BR-WO-030)', () => {
@@ -83,7 +97,7 @@ describe('WorkOrderAddLineModal — виконавець нової роботи
   // guards: BR-WO-030
   it('підйомник з одним механіком → після вибору роботи виконавець — він', async () => {
     mockApi({ liftMechanics: [{ id: 'm-ivan', status: 'ACTIVE', workCategoryIds: [] }] });
-    const { work, executor } = renderModal();
+    const { executor } = renderModal();
     await waitFor(() =>
       expect(apiFetchMock).toHaveBeenCalledWith(
         '/employees?liftId=lift-1&role=MECHANIC&limit=200',
@@ -92,7 +106,7 @@ describe('WorkOrderAddLineModal — виконавець нової роботи
     );
     expect(executor.value).toBe('');
 
-    fireEvent.change(work, { target: { value: 'w-oil' } });
+    await pickWork('Заміна оливи');
 
     await waitFor(() => expect(executor.value).toBe('m-ivan'));
   });
@@ -104,8 +118,8 @@ describe('WorkOrderAddLineModal — виконавець нової роботи
       { id: 'm-oleh', status: 'ACTIVE', workCategoryIds: [] },
     ];
     mockApi({ liftMechanics: two });
-    const { work, executor } = renderModal();
-    fireEvent.change(work, { target: { value: 'w-oil' } });
+    const { executor } = renderModal();
+    await pickWork('Заміна оливи');
     await waitFor(() =>
       expect(apiFetchMock).toHaveBeenCalledWith(
         '/employees?liftId=lift-1&role=MECHANIC&limit=200',
@@ -125,9 +139,9 @@ describe('WorkOrderAddLineModal — виконавець нової роботи
       ],
       calendarSlots: [{ startAt: '2026-10-23T08:00:00.000Z', employeeId: 'm-anna' }],
     });
-    const { work, executor } = renderModal();
+    const { executor } = renderModal();
 
-    fireEvent.change(work, { target: { value: 'w-oil' } });
+    await pickWork('Заміна оливи');
 
     await waitFor(() => expect(executor.value).toBe('m-anna'));
   });
@@ -135,13 +149,13 @@ describe('WorkOrderAddLineModal — виконавець нової роботи
   // guards: BR-WO-030
   it('єдиний механік без категорії роботи → порожньо; робота його категорії → він', async () => {
     mockApi({ liftMechanics: [{ id: 'm-ivan', status: 'ACTIVE', workCategoryIds: [BODY] }] });
-    const { work, executor } = renderModal();
+    const { executor } = renderModal();
 
-    fireEvent.change(work, { target: { value: 'w-oil' } });
+    await pickWork('Заміна оливи');
     await new Promise(r => setTimeout(r, 20));
     expect(executor.value).toBe('');
 
-    fireEvent.change(work, { target: { value: 'w-paint' } });
+    await pickWork('Фарбування');
     await waitFor(() => expect(executor.value).toBe('m-ivan'));
   });
 
@@ -155,9 +169,9 @@ describe('WorkOrderAddLineModal — виконавець нової роботи
       ],
       calendarSlots: [{ startAt: '2026-10-23T08:00:00.000Z', employeeId: 'm-oleh' }],
     });
-    const { work, executor } = renderModal();
+    const { executor } = renderModal();
 
-    fireEvent.change(work, { target: { value: 'w-oil' } });
+    await pickWork('Заміна оливи');
     await new Promise(r => setTimeout(r, 20));
 
     expect(executor.value).toBe('');
@@ -166,12 +180,12 @@ describe('WorkOrderAddLineModal — виконавець нової роботи
   // guards: BR-WO-030
   it('ручний вибір виконавця не перезаписується зміною роботи', async () => {
     mockApi({ liftMechanics: [{ id: 'm-ivan', status: 'ACTIVE', workCategoryIds: [] }] });
-    const { work, executor } = renderModal();
-    fireEvent.change(work, { target: { value: 'w-oil' } });
+    const { executor } = renderModal();
+    await pickWork('Заміна оливи');
     await waitFor(() => expect(executor.value).toBe('m-ivan'));
 
     fireEvent.change(executor, { target: { value: 'm-anna' } });
-    fireEvent.change(work, { target: { value: 'w-paint' } });
+    await pickWork('Фарбування');
     await new Promise(r => setTimeout(r, 20));
 
     expect(executor.value).toBe('m-anna');
@@ -180,9 +194,9 @@ describe('WorkOrderAddLineModal — виконавець нової роботи
   // guards: BR-WO-030
   it('наряд без підйомника → без запиту механіків, поле порожнє', async () => {
     mockApi({});
-    const { work, executor } = renderModal(null);
+    const { executor } = renderModal(null);
 
-    fireEvent.change(work, { target: { value: 'w-oil' } });
+    await pickWork('Заміна оливи');
     await new Promise(r => setTimeout(r, 20));
 
     expect(executor.value).toBe('');

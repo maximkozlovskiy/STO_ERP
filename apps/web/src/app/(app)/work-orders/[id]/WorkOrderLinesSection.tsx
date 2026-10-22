@@ -27,15 +27,6 @@ interface WorkOrderLine {
   createdAt?: string;
 }
 
-interface Work {
-  id: string;
-  name: string;
-  normoHours: number;
-  price: number;
-  /** Категорія роботи — для виконавця нової роботи (BR-WO-030). */
-  categoryId?: string | null;
-}
-
 interface Employee {
   id: string;
   firstName: string;
@@ -49,8 +40,7 @@ interface WorkOrderLinesSectionProps {
   liftId?: string | null;
   /** Reserved for future tenant-scoped endpoints. */
   orgId?: string;
-  /** Reference data — passed down to AddLineModal. */
-  works: Work[];
+  /** Reference data — passed down to AddLineModal (роботу вікно шукає саме, `/works?q=`). */
   employees: Employee[];
   /** Reload parent state after add/delete. */
   onChanged: () => void;
@@ -64,7 +54,6 @@ export function WorkOrderLinesSection({
   woId,
   lines,
   liftId,
-  works,
   employees,
   onChanged,
   disabled,
@@ -166,7 +155,6 @@ export function WorkOrderLinesSection({
         open={lineModal}
         workOrderId={woId}
         liftId={liftId ?? null}
-        works={works}
         employees={employees}
         onClose={() => setLineModal(false)}
         onAdded={onChanged}

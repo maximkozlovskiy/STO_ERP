@@ -1169,6 +1169,7 @@ export const en: Record<string, string> = {
   'err.dto.workOrderTemplate.workLines.max': 'No more than 200 work lines in the template',
   'err.dto.workOrderTemplate.parts.max': 'No more than 200 parts in the template',
   'err.dto.work.categories.max': 'No more than 100 categories in the filter',
+  'err.dto.work.ids.max': 'No more than 200 works per request',
   'err.dto.xlsx.rows.max': 'No more than 1000 rows per import',
   'err.dto.employee.loginEmail.invalid': 'Invalid login email format',
   'err.dto.employee.password.min': 'Password must be at least 6 characters',

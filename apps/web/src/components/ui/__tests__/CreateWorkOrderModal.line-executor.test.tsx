@@ -105,7 +105,10 @@ function mockApi(opts: {
     if (path === '/settings/tax-rates') return Promise.resolve([]);
     if (path.startsWith('/services')) return Promise.resolve({ items: [SERVICE] });
     if (path.startsWith('/works')) {
-      const q = new URL(path, 'http://x').searchParams.get('q') ?? '';
+      const params = new URL(path, 'http://x').searchParams;
+      const ids = params.get('ids')?.split(',');
+      if (ids) return Promise.resolve({ items: WORKS.filter(w => ids.includes(w.id)) });
+      const q = params.get('q') ?? '';
       return Promise.resolve({ items: WORKS.filter(w => w.name.includes(q)) });
     }
     if (path === `/work-orders/${WO}/linked-documents`) {
@@ -331,7 +334,8 @@ describe('CreateWorkOrderModal — виконавець нової роботи 
     await waitFor(() => expect(lineRow('Заміна оливи').textContent).toContain('Петров Іван'));
     // Фарбування — категорія BODY, якої механік підйомника не має: виконавця немає.
     expect(lineRow('Фарбування дверей').textContent).not.toContain('Петров');
-    expect(apiFetchMock).toHaveBeenCalledWith('/works?limit=200');
+    // Категорії — лише робіт послуги, запитом за id (не перші 200 робіт довідника).
+    expect(apiFetchMock).toHaveBeenCalledWith('/works?ids=w-oil,w-paint&limit=200');
   });
 
   // guards: BR-WO-030

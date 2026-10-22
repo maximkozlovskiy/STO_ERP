@@ -48,6 +48,8 @@ describe('WorkOrderAddLineModal — double-submit guard (Bug #635 / WEB-H3)', ()
           resolveAdd = resolve;
         });
       }
+      // Робота — пошуком на сервері (`/works?q=`).
+      if (path.startsWith('/works?q=')) return Promise.resolve({ items: works });
       return Promise.resolve({ items: [] });
     });
 
@@ -55,7 +57,6 @@ describe('WorkOrderAddLineModal — double-submit guard (Bug #635 / WEB-H3)', ()
       <WorkOrderAddLineModal
         open
         workOrderId="wo1"
-        works={works as never}
         employees={employees as never}
         onClose={() => {}}
         onAdded={() => {}}
@@ -64,8 +65,12 @@ describe('WorkOrderAddLineModal — double-submit guard (Bug #635 / WEB-H3)', ()
 
     // Обрати роботу + виконавця — кнопка disabled={!workId || !employeeId}.
     const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[0], { target: { value: 'wk1' } });
-    fireEvent.change(selects[1], { target: { value: 'em1' } });
+    fireEvent.change(selects[0], { target: { value: works[0].name.slice(0, 4) } });
+    fireEvent.mouseDown(await screen.findByRole('option', { name: new RegExp(works[0].name) }));
+    const executor = screen
+      .getAllByRole('combobox')
+      .find((e): e is HTMLSelectElement => e instanceof HTMLSelectElement);
+    fireEvent.change(executor!, { target: { value: 'em1' } });
 
     const addBtn = screen.getByRole('button', { name: 'Додати' }) as HTMLButtonElement;
 

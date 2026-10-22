@@ -170,14 +170,6 @@ interface CompletionActSummary {
   clientPhone?: string | null;
   notes?: string | null;
 }
-interface Work {
-  id: string;
-  name: string;
-  normoHours: number;
-  price: number;
-  /** Категорія роботи — для виконавця нової роботи (BR-WO-030). */
-  categoryId?: string | null;
-}
 interface Employee {
   id: string;
   firstName: string;
@@ -280,7 +272,6 @@ export default function WorkOrderCardPage() {
   const [wo, setWo] = useState<WorkOrderDetail | null>(null);
   const { data: baseCurrency } = useBaseCurrency();
   const [woLoading, setWoLoading] = useState(true);
-  const [works, setWorks] = useState<Work[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
 
@@ -467,10 +458,8 @@ export default function WorkOrderCardPage() {
     // Reference data — paint instantly from sessionStorage, refresh in background.
     // Без кешу кожне відкриття картки наряду тягне ~600 рядків (works+employees+warehouses)
     // навіть якщо користувач відкриває третю поспіль картку за хвилину.
-    const cachedWorks = getCached<Work[]>('cache:works');
     const cachedEmployees = getCached<Employee[]>('cache:employees');
     const cachedWarehouses = getCached<Warehouse[]>('cache:warehouses');
-    if (cachedWorks) setWorks(cachedWorks);
     if (cachedEmployees) setEmployees(activeMechanics(cachedEmployees));
     if (cachedWarehouses) {
       setWarehouses(cachedWarehouses);
@@ -480,15 +469,6 @@ export default function WorkOrderCardPage() {
       if (mainW) setInitialPartWarehouseId(curr => curr || mainW.id);
     }
 
-    apiFetch<{ items: Work[] }>('/works?limit=200')
-      .then(r => {
-        setCache('cache:works', r.items);
-        if (mountedRef.current) setWorks(r.items);
-      })
-      .catch((e: unknown) => {
-        if (mountedRef.current && !cachedWorks)
-          setRefsError(e instanceof Error ? e.message : t('detail.refsLoadError'));
-      });
     // BR-WO-018: «Виконавець» нового рядка роботи — лише активні механіки (як у картці наряду);
     // збережений виконавець рядка показується ім'ям з відповіді наряду (`employeeName`).
     apiFetch<{ items: Employee[] }>(ACTIVE_MECHANICS_URL)
@@ -1123,7 +1103,6 @@ export default function WorkOrderCardPage() {
         orgId={wo.orgId}
         lines={wo.lines}
         liftId={wo.liftId ?? null}
-        works={works}
         employees={employees}
         onChanged={load}
         disabled={!canEdit}

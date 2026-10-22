@@ -1147,6 +1147,7 @@ export const uk: Record<string, string> = {
   'err.dto.workOrderTemplate.workLines.max': 'Не більше 200 рядків робіт у шаблоні',
   'err.dto.workOrderTemplate.parts.max': 'Не більше 200 запчастин у шаблоні',
   'err.dto.work.categories.max': 'Не більше 100 категорій у фільтрі',
+  'err.dto.work.ids.max': 'Не більше 200 робіт у запиті',
   'err.dto.xlsx.rows.max': 'Не більше 1000 рядків за один імпорт',
   'err.dto.employee.loginEmail.invalid': 'Невірний формат email для логіну',
   'err.dto.employee.password.min': 'Пароль має бути не менше 6 символів',

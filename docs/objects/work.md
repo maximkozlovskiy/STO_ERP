@@ -60,14 +60,14 @@ model Work {
 
 ### `/api/works`
 
-| Метод  | URL                      | Дія                                                       |
-| ------ | ------------------------ | --------------------------------------------------------- |
-| GET    | `/api/works`             | Список (фільтри: q, categoryId, categoryIds, showDeleted) |
-| GET    | `/api/works/:id`         | Деталь                                                    |
-| POST   | `/api/works`             | Створити                                                  |
-| PATCH  | `/api/works/:id`         | Оновити                                                   |
-| DELETE | `/api/works/:id`         | Soft-delete                                               |
-| POST   | `/api/works/:id/restore` | Відновити                                                 |
+| Метод  | URL                      | Дія                                                                                |
+| ------ | ------------------------ | ---------------------------------------------------------------------------------- |
+| GET    | `/api/works`             | Список (фільтри: q, categoryId, categoryIds, ids — до 200 через кому, showDeleted) |
+| GET    | `/api/works/:id`         | Деталь                                                                             |
+| POST   | `/api/works`             | Створити                                                                           |
+| PATCH  | `/api/works/:id`         | Оновити                                                                            |
+| DELETE | `/api/works/:id`         | Soft-delete                                                                        |
+| POST   | `/api/works/:id/restore` | Відновити                                                                          |
 
 ### `/api/work-categories`
 
@@ -136,13 +136,13 @@ cd apps/api && npx vitest run src/modules/work-categories/<файл>.spec.ts
 
 Окремого дос'є категорій робіт немає — спеки модуля `work-categories` ведуться тут.
 
-| Аспект                                         | Тест                               | Кейсів |
-| ---------------------------------------------- | ---------------------------------- | ------ |
-| сервісна логіка робіт (каталог, `isWarranty`)  | `works.service.spec.ts`            | 22     |
-| сервісна логіка категорій (системні, ієрархія) | `work-categories.service.spec.ts`  | 14     |
-| HTTP-контракт категорій                        | `work-categories.contract.spec.ts` | 10     |
+| Аспект                                               | Тест                               | Кейсів |
+| ---------------------------------------------------- | ---------------------------------- | ------ |
+| сервісна логіка робіт (каталог, `isWarranty`, `ids`) | `works.service.spec.ts`            | 23     |
+| сервісна логіка категорій (системні, ієрархія)       | `work-categories.service.spec.ts`  | 14     |
+| HTTP-контракт категорій                              | `work-categories.contract.spec.ts` | 10     |
 
-Разом: **46** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **47** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Web-тест поза модулем api (у суму вище не входить):
 `apps/web/src/components/ui/__tests__/CreateWorkOrderModal.planned-hours.test.tsx` — 3 кейси,

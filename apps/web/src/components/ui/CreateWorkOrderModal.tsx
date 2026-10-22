@@ -280,7 +280,7 @@ export interface CreateWOPrefill {
   employeeId?: string;
 }
 
-/** Рядок `cache:works` (сторінка наряду кладе повні рядки `/works`): категорія роботи — для BR-WO-030. */
+/** Рядок `cache:works`: категорія роботи — для BR-WO-030 (кеш поповнюється запитами за id). */
 interface WorkCategoryRow {
   id: string;
   name?: string;
@@ -289,29 +289,34 @@ interface WorkCategoryRow {
   categoryId?: string | null;
 }
 
+/** Скільки id в одному `GET /works?ids=` (межа сервера — 200, як `limit`). */
+const WORK_IDS_PER_REQUEST = 200;
+
 /**
  * Категорії робіт за id — для робіт «+ Послуга» (у відповіді послуги категорії немає). Спершу кеш
- * вкладки, бракує — `GET /works?limit=200` (і кеш оновлюється лише полями, які читає сторінка
- * наряду). Збій — невідома категорія: механіка з категоріями правило тоді не підставить.
+ * вкладки, бракує — `GET /works?ids=` лише для відсутніх (раніше `?limit=200`: роботи далі за
+ * алфавітом лишались без категорії, рішення власника 2026-10-22). Збій — невідома категорія:
+ * механіка з категоріями правило тоді не підставить.
  */
 async function workCategoriesFor(workIds: readonly string[]): Promise<Map<string, string | null>> {
-  const toMap = (rows: readonly WorkCategoryRow[] | null) =>
-    new Map((rows ?? []).map(w => [w.id, w.categoryId ?? null] as const));
-  const cached = toMap(getCached<WorkCategoryRow[]>('cache:works'));
-  if (workIds.every(id => cached.has(id))) return cached;
+  const cachedRows = getCached<WorkCategoryRow[]>('cache:works') ?? [];
+  const map = new Map(cachedRows.map(w => [w.id, w.categoryId ?? null] as const));
+  const missing = [...new Set(workIds)].filter(id => !map.has(id));
+  if (missing.length === 0) return map;
   try {
-    const r = await apiFetch<{ items: WorkCategoryRow[] }>('/works?limit=200');
-    const rows = (r.items ?? []).map(({ id, name, normoHours, price, categoryId }) => ({
-      id,
-      name,
-      normoHours,
-      price,
-      categoryId,
-    }));
-    setCache('cache:works', rows);
-    return toMap(rows);
+    const fetched: WorkCategoryRow[] = [];
+    for (let i = 0; i < missing.length; i += WORK_IDS_PER_REQUEST) {
+      const ids = missing.slice(i, i + WORK_IDS_PER_REQUEST);
+      const r = await apiFetch<{ items: WorkCategoryRow[] }>(
+        `/works?ids=${ids.map(encodeURIComponent).join(',')}&limit=${WORK_IDS_PER_REQUEST}`,
+      );
+      fetched.push(...(r.items ?? []).map(({ id, categoryId }) => ({ id, categoryId })));
+    }
+    for (const w of fetched) map.set(w.id, w.categoryId ?? null);
+    setCache('cache:works', [...cachedRows, ...fetched]);
+    return map;
   } catch {
-    return cached;
+    return map;
   }
 }
 
