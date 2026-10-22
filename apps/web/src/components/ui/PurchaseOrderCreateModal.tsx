@@ -251,14 +251,8 @@ export function PurchaseOrderCreateModal({
       isSystem: boolean;
       coefficient: number;
     }[];
-    suppliers: {
-      id: string;
-      firstName: string | null;
-      lastName: string | null;
-      companyName: string | null;
-    }[];
     goodCatTree: CategoryNode[];
-  }>({ brands: [], units: [], suppliers: [], goodCatTree: [] });
+  }>({ brands: [], units: [], goodCatTree: [] });
   const [units, setUnits] = useState<{ id: string; name: string; shortName: string }[]>([]);
 
   const savingRef = useRef(false);
@@ -544,12 +538,6 @@ export function PurchaseOrderCreateModal({
         isSystem: boolean;
         coefficient: number;
       };
-      type SupplierRef = {
-        id: string;
-        firstName: string | null;
-        lastName: string | null;
-        companyName: string | null;
-      };
       const loadGood = () =>
         Promise.all([
           apiFetch<GoodForModal>(`/goods/${goodId}`),
@@ -563,25 +551,17 @@ export function PurchaseOrderCreateModal({
           Promise.resolve(getCached<UnitRef[]>('cache:units')).then(
             c => c ?? apiFetch<UnitRef[]>('/units').catch(() => [] as UnitRef[]),
           ),
-          Promise.resolve(getCached<SupplierRef[]>('cache:suppliers')).then(
-            c =>
-              c ??
-              apiFetch<{ items: SupplierRef[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200')
-                .then(r => r.items)
-                .catch(() => [] as SupplierRef[]),
-          ),
           Promise.resolve(getCached<CategoryNode[]>('cache:good-categories')).then(
             c =>
               c ?? apiFetch<CategoryNode[]>('/good-categories').catch(() => [] as CategoryNode[]),
           ),
         ]);
       try {
-        await openAfterLoad(loadGood, ([good, brandsRes, unitsRes, suppliersRes, goodCatsRes]) => {
+        await openAfterLoad(loadGood, ([good, brandsRes, unitsRes, goodCatsRes]) => {
           setGoodDetailData(good);
           setGoodRefData({
             brands: brandsRes,
             units: unitsRes,
-            suppliers: suppliersRes,
             goodCatTree: goodCatsRes,
           });
           setGoodDetailOpen(true);
@@ -2165,7 +2145,6 @@ export function PurchaseOrderCreateModal({
         onSaved={updated => setGoodDetailData(updated)}
         brands={goodRefData.brands}
         units={goodRefData.units}
-        suppliers={goodRefData.suppliers}
         goodCatTree={goodRefData.goodCatTree}
       />
 

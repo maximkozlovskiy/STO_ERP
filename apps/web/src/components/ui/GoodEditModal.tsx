@@ -93,7 +93,6 @@ interface GoodEditModalProps {
   /** Reference data — passed in to avoid re-fetching */
   brands: Brand[];
   units: Unit[];
-  suppliers: Supplier[];
   goodCatTree: CategoryNode[];
 }
 
@@ -132,7 +131,6 @@ export function GoodEditModal({
   onSaved,
   brands,
   units,
-  suppliers,
   goodCatTree,
 }: GoodEditModalProps) {
   const { t } = useTranslation('catalog');

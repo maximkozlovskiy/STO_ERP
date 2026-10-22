@@ -79,7 +79,6 @@ describe('GoodEditModal — double-submit guard (Bug #634 / WEB-H3)', () => {
         onSaved={() => {}}
         brands={[]}
         units={[]}
-        suppliers={[]}
         goodCatTree={[]}
       />,
     );
@@ -129,7 +128,6 @@ describe('GoodEditModal — валідація zod + react-hook-form', () => {
         onSaved={() => {}}
         brands={[]}
         units={[]}
-        suppliers={[]}
         goodCatTree={[]}
       />,
     );

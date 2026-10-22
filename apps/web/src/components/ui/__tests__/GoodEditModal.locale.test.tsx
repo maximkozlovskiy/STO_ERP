@@ -43,7 +43,6 @@ const baseProps = {
   onSaved: vi.fn(),
   brands: [],
   units: [],
-  suppliers: [],
   goodCatTree: [],
 };
 

@@ -63,7 +63,6 @@ describe('GoodEditModal — Escape у картці постачальника (B
         onSaved={vi.fn()}
         brands={[]}
         units={[]}
-        suppliers={[]}
         goodCatTree={[]}
       />,
     );

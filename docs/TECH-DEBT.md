@@ -1329,7 +1329,11 @@ BR-INV-018…020, BR-CASH-026). Поведінку нижче не змінен�
    та сама функція, що стоїть у перевірці; контрактний тест звіряє прапорець із рішенням.
 6. **Кратність пропозиції (BR-SOFR-006) тримається лише при виборі** (Bug #890). Глибше:
    `applyOfferData(item, offer, qty)` і `setItemQuantity`, що або тримає кратність, або знімає знімок.
-7. **«Перші 200 контрагентів» у виборах** (`ItemsView`, `PurchaseOrderCreateModal`, `GoodsTab`;
+7. ~~**«Перші 200 контрагентів» у виборах**~~ — ✅ ЗАКРИТО 2026-10-22: `GoodsTab`,
+   `PurchaseOrderCreateModal` і `WorkOrderAddPartModal` тягнули перших 200 постачальників лише для
+   пропа `suppliers` картки товару, якого вона не читала (постачальник — пошуком на сервері); проп,
+   завантаження й кеш `cache:suppliers` прибрано, `ItemsView` уже на `SupplierOptionsSelect`. Було:
+   (`ItemsView`, `PurchaseOrderCreateModal`, `GoodsTab`;
    `SupplierConnectionModal` виправлено в Bug #894). Глибше: серверний пошук у спільному хуку чи
    `EntityPickerField` з `onSearch` і grep-гейт на `limit=200` у завантаженнях варіантів.
 8. **Завершення batch-у пропозицій рахує відкриті запити `count`-ом після кожної задачі** — O(N²) на

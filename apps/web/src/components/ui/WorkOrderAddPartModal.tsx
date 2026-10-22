@@ -84,13 +84,6 @@ interface Unit {
   coefficient: number;
 }
 
-interface Supplier {
-  id: string;
-  firstName: string | null;
-  lastName: string | null;
-  companyName: string | null;
-}
-
 interface GoodUoM {
   id: string;
   // backend `/goods/:id/uoms` returns both GoodUoM.id (PK) і unitOfMeasureId (FK у UnitOfMeasure).
@@ -113,7 +106,6 @@ interface WorkOrderAddPartModalProps {
   /** Optional reference data for the GoodEditModal opened from the picker */
   brands?: Brand[];
   units?: Unit[];
-  suppliers?: Supplier[];
   goodCatTree?: CategoryNode[];
 }
 
@@ -134,7 +126,6 @@ export function WorkOrderAddPartModal({
   onAdded,
   brands = [],
   units = [],
-  suppliers = [],
   goodCatTree = [],
 }: WorkOrderAddPartModalProps) {
   const { t } = useTranslation('workOrders');
@@ -484,7 +475,6 @@ export function WorkOrderAddPartModal({
         good={goodDetailData}
         brands={brands}
         units={units}
-        suppliers={suppliers}
         goodCatTree={goodCatTree}
         onClose={closeGoodDetail}
         onSaved={updated => {

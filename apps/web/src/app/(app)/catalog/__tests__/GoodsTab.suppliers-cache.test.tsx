@@ -1,7 +1,8 @@
-// Кеш постачальників вкладки «Товари» (`cache:suppliers`, sessionStorage) — лише поля вибору.
-// `GET /counterparties` звужується за роллю (BR-CP-014: комірник — без телефону, e-mail і
-// балансу), а кеш вкладки виходом не очищується: рядки власника з телефоном прочитав би комірник,
-// що увійшов у тій самій вкладці.
+// Вкладка «Товари» не тягне перелік постачальників (TECH-DEBT §15.7, 2026-10-22). Раніше вона
+// просила перших 200 (`/counterparties?types=SUPPLIER,BOTH&limit=200`) і клала їх у кеш
+// `cache:suppliers` для картки товару, а картка шукає постачальника на сервері й перелік не читала:
+// зайвий запит, обрізаний на 200, і кеш, який мусив звужуватись за роллю (BR-CP-014: рядки
+// власника з телефоном прочитав би комірник, що увійшов у тій самій вкладці).
 
 import { render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -28,23 +29,10 @@ vi.mock('@/components/ui/GoodEditModal', () => ({ GoodEditModal: () => null }));
 
 import GoodsTab from '../GoodsTab';
 
-const OWNER_ROW = {
-  id: 's-1',
-  type: 'SUPPLIER',
-  firstName: null,
-  lastName: null,
-  companyName: 'ТОВ Запчастини',
-  phone: '+380671112233',
-  email: 'sup@sto.local',
-  balance: -1500,
-  notes: 'нотатка',
-};
-
-describe('GoodsTab — кеш постачальників (BR-CP-014)', () => {
+describe('GoodsTab — без переліку постачальників (BR-CP-014)', () => {
   // guards: BR-CP-014
-  it('у cache:suppliers — лише id і назва, без телефону, e-mail і балансу', async () => {
+  it('немає запиту /counterparties і кешу cache:suppliers', async () => {
     apiFetchMock.mockImplementation((url: string) => {
-      if (url.startsWith('/counterparties')) return Promise.resolve({ items: [OWNER_ROW] });
       if (url.startsWith('/units') || url.startsWith('/good-categories'))
         return Promise.resolve([]);
       return Promise.resolve({ items: [], total: 0 });
@@ -54,12 +42,13 @@ describe('GoodsTab — кеш постачальників (BR-CP-014)', () => {
         <GoodsTab />
       </QueryClientProvider>,
     );
+    // Довідники вкладки завантажились — запит постачальників уже був би серед них.
     await waitFor(() =>
-      expect(cache.setCache).toHaveBeenCalledWith('cache:suppliers', expect.anything()),
+      expect(cache.setCache).toHaveBeenCalledWith('cache:good-categories', expect.anything()),
     );
-    const [, rows] = cache.setCache.mock.calls.find(c => c[0] === 'cache:suppliers')!;
-    expect(rows).toEqual([
-      { id: 's-1', firstName: null, lastName: null, companyName: 'ТОВ Запчастини' },
-    ]);
+    expect(apiFetchMock.mock.calls.map(c => String(c[0]))).not.toContainEqual(
+      expect.stringMatching(/^\/counterparties/),
+    );
+    expect(cache.setCache.mock.calls.map(c => c[0])).not.toContain('cache:suppliers');
   });
 });

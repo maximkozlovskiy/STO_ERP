@@ -19,7 +19,6 @@ import {
 import { apiFetch } from '@/lib/api-client';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { getCached, setCache } from '@/lib/ref-cache';
-import { supplierCacheRows } from '@/lib/supplier-cache-rows';
 import {
   CategoryTree,
   collectDescendantIds,
@@ -104,12 +103,6 @@ interface Good {
   preferredSupplierName?: string | null;
   statuses?: { id: string; name: string; color: string }[];
   deletedAt?: string | null;
-}
-interface Supplier {
-  id: string;
-  firstName: string | null;
-  lastName: string | null;
-  companyName: string | null;
 }
 interface PaginatedGoods {
   items: Good[];
@@ -208,7 +201,6 @@ export default function GoodsTab() {
   // editGood: Good | null = редагування; goodModalOpen = відкрита створювальна модалка
   const [editGood, setEditGood] = useState<Good | null>(null);
   const [goodModalOpen, setGoodModalOpen] = useState(false);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [batchViewerGoodId, setBatchViewerGoodId] = useState<string | null>(null);
   // in-flight set для restore — блокує дублюючі POST.
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
@@ -348,15 +340,13 @@ export default function GoodsTab() {
   }, []);
 
   useEffect(() => {
-    // Reference data (brands, units, suppliers) — paint instantly from
+    // Reference data (brands, units, categories) — paint instantly from
     // sessionStorage, then refresh all in parallel.
     const cBrands = getCached<Brand[]>('cache:brands');
     const cUnits = getCached<Unit[]>('cache:units');
-    const cSuppliers = getCached<Supplier[]>('cache:suppliers');
     const cGoodCats = getCached<CategoryNode[]>('cache:good-categories');
     if (cBrands) setBrands(cBrands);
     if (cUnits) setUnits(cUnits);
-    if (cSuppliers) setSuppliers(cSuppliers);
     if (cGoodCats) setGoodCatTree(cGoodCats);
 
     // AbortController so setState doesn't run after unmount — React DEV warning + memory churn.
@@ -371,21 +361,15 @@ export default function GoodsTab() {
         }),
       ),
       apiFetch<Unit[]>('/units', { signal: ac.signal }).catch(() => [] as Unit[]),
-      apiFetch<{ items: Supplier[] }>('/counterparties?types=SUPPLIER,BOTH&limit=200', {
-        signal: ac.signal,
-      }).catch(() => ({ items: [] as Supplier[] })),
       apiFetch<CategoryNode[]>('/good-categories', { signal: ac.signal }).catch(
         () => [] as CategoryNode[],
       ),
-    ]).then(([brandsRes, unitsRes, suppliersRes, goodCatsRes]) => {
+    ]).then(([brandsRes, unitsRes, goodCatsRes]) => {
       if (ac.signal.aborted) return;
       setBrands(brandsRes.items);
       setCache('cache:brands', brandsRes.items);
       setUnits(unitsRes);
       setCache('cache:units', unitsRes);
-      setSuppliers(suppliersRes.items);
-      // Лише поля вибору: відповідь звужується за роллю, а кеш вкладки переживає вихід (BR-CP-014).
-      setCache('cache:suppliers', supplierCacheRows(suppliersRes.items));
       setGoodCatTree(goodCatsRes);
       setCache('cache:good-categories', goodCatsRes);
     });
@@ -1128,7 +1112,6 @@ export default function GoodsTab() {
         good={editGood}
         brands={brands}
         units={units}
-        suppliers={suppliers}
         goodCatTree={goodCatTree}
         onClose={() => {
           setGoodModalOpen(false);

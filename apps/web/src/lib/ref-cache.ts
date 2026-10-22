@@ -23,7 +23,6 @@ export type RefCacheKey =
   | 'cache:payment-methods'
   | 'cache:brands'
   | 'cache:units'
-  | 'cache:suppliers'
   | 'cache:lifts'
   | 'cache:zones'
   | 'cache:wo-templates'

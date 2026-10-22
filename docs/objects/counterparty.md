@@ -135,8 +135,9 @@ model CounterpartyStatusLink {
 > (Bug #899, `lib/__tests__/nav-page-roles.test.ts`); «Постачальників немає» — порада звернутися до
 > власника чи адміністратора, а не «додайте контрагента» (Bug #898).
 > Тести: api `counterparties.storekeeper-suppliers.spec.ts`; web `ItemsView.suppliers.test.tsx`,
-> `PurchaseOrderCreateModal.storekeeper-supplier.test.tsx`, `GoodsTab.suppliers-cache.test.tsx` (кеш
-> `cache:suppliers` вкладки — лише id і назва, `lib/supplier-cache-rows.ts`); E2E
+> `PurchaseOrderCreateModal.storekeeper-supplier.test.tsx`, `GoodsTab.suppliers-cache.test.tsx` (вкладка
+> «Товари» переліку постачальників не тягне й кешу `cache:suppliers` не має — картка товару шукає
+> постачальника на сервері, 2026-10-22); E2E
 > `apps/web/e2e/purchase-storekeeper-suppliers.spec.ts` (комірник через інтерфейс: список, позиція,
 > «Постачальник і ціна», пошук у картці замовлення — без 403, лише поля постачальника).
 
