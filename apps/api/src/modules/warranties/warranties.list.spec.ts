@@ -92,8 +92,8 @@ const DAY = 86_400_000;
 // 00:30 23.10.2026 за Києвом (EEST, +03:00) — у UTC ще 22.10: межа «закінчується» мусить
 // рахуватися від київського дня, інакше поріг зсунеться на добу.
 const NOW = new Date('2026-10-22T21:30:00.000Z');
-// addDaysKyiv(NOW, 30): київська дата 23.10 + 30 днів = 22.11, UTC-опівніч.
-const UNTIL = new Date('2026-11-22T00:00:00.000Z');
+// addDaysKyiv(NOW, 14): київська дата 23.10 + 14 днів = 06.11, UTC-опівніч.
+const UNTIL = new Date('2026-11-06T00:00:00.000Z');
 
 interface WOpts {
   id: string;
@@ -310,9 +310,9 @@ describe('WarrantiesService.findAll — список вкладки «Гаран
 
   describe('BR-WAR-002: стан гарантії і фільтр ?state=', () => {
     // guards: BR-WAR-002
-    it('стан на межах: зараз = закінчилась, поріг Київ-сьогодні + 30 днів = закінчується', async () => {
+    it('стан на межах: зараз = закінчилась, поріг Київ-сьогодні + 14 днів = закінчується', async () => {
       await setup(STATE_ROWS.map(([o]) => wRow(o)));
-      expect(WARRANTY_EXPIRING_DAYS).toBe(30);
+      expect(WARRANTY_EXPIRING_DAYS).toBe(14);
 
       const res = await service.findAll(ORG, q());
 
@@ -352,7 +352,7 @@ describe('WarrantiesService.findAll — список вкладки «Гаран
     it('взимку (EET, +02:00) поріг теж від київського дня: 22:30 UTC = вже наступна доба', async () => {
       const winterNow = new Date('2026-12-31T22:30:00.000Z'); // 00:30 01.01.2027 за Києвом
       vi.setSystemTime(winterNow);
-      const until = new Date('2027-01-31T00:00:00.000Z'); // 01.01 + 30 днів
+      const until = new Date('2027-01-15T00:00:00.000Z'); // 01.01 + 14 днів
       await setup([
         wRow({ id: 'w-edge', expiresAt: until }),
         wRow({ id: 'w-after', expiresAt: new Date(until.getTime() + 1) }),

@@ -253,7 +253,7 @@ export default function DashboardPage() {
   const upcomingTO: MaintenanceSchedule[] = Array.isArray(maintenanceData)
     ? (maintenanceData as MaintenanceSchedule[])
     : (EMPTY_MAINTENANCE as MaintenanceSchedule[]);
-  // Гарантії, що закінчуються (30 днів) — endpoint повертає {items,total}.
+  // Гарантії, що закінчуються (поріг WARRANTY_EXPIRING_DAYS) — endpoint повертає {items,total}.
   const expiringWarranties: ExpiringWarranty[] =
     (expiringWarrantiesData as { items?: ExpiringWarranty[] } | undefined)?.items ?? [];
   // sto-optimize: kyivToday() обчислюється раз для всього компонента (mount-stable).
@@ -490,7 +490,7 @@ export default function DashboardPage() {
             </Card>
           )}
 
-          {/* Гарантії, що закінчуються (30 днів) — клон «Наближається ТО» */}
+          {/* Гарантії, що закінчуються (поріг WARRANTY_EXPIRING_DAYS) — клон «Наближається ТО» */}
           {expiringWarranties.length > 0 && (
             <Card className="mb-6">
               <CardHeader>
