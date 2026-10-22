@@ -136,6 +136,7 @@ create (метод без requiresFiscal) → null
 | GET   | `/api/payments/:id`              | Деталь                                                                          | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
 | POST  | `/api/payments`                  | Реєстрація платежу (`CreatePaymentDto`, `IdempotencyInterceptor`)               | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
 | POST  | `/api/payments/:id/retry-fiscal` | Повторна фіскалізація (лише `FAILED` + `fiscalReceiptId=null`); throttle 10/60с | OWNER, ADMIN, ACCOUNTANT               |
+| POST  | `/api/payments/:id/reverse`      | Сторно безготівкової оплати `{ reason }` (BR-PAY-024, `IdempotencyInterceptor`) | OWNER, ADMIN, ACCOUNTANT               |
 
 `CreatePaymentDto`: `counterpartyId`, `amount` (Min 0.01), `method` (required); `workOrderId?`,
 `invoiceId?`, `notes?`, `sourceType?`, `bankAccountId?`, `cashRegisterId?`.
@@ -171,18 +172,19 @@ create (метод без requiresFiscal) → null
 
 ## UI (Web)
 
-| Компонент / сторінка           | Файл                                                                                                                                                                                                                                                       |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Платежі (сторінки немає)       | `/payments` → редирект у `/cash`; `/payments/<id>` без редиректу                                                                                                                                                                                           |
-| Чек і «Повторити» (FAILED)     | історія каси `cash/CashOperationsTab.tsx`; рядок оплати в «Пов'язаних документах» рахунку (`LinkedDocumentsPanel`, `fiscalStatus` з `GET /invoices/:id/linked-documents`)                                                                                  |
-| Оплата клієнта готівкою        | форма каси `cash/CashOperationModal.tsx` (привід `SALE_PAYMENT` → `POST /payments`)                                                                                                                                                                        |
-| Оплата з рахунку               | «Оплатити» у боковій панелі `invoices/page.tsx` → `POST /payments`; поле «Каса» для готівки (BR-PAY-019)                                                                                                                                                   |
-| Оплата з наряду                | «Оплатити» у картці (`CreateWorkOrderModal.tsx`) і на сторінці наряду (`work-orders/[id]/PageClient.tsx`) → `POST /payments { workOrderId }` (BR-PAY-020)                                                                                                  |
-| Вікно «Оплатити» (спільне)     | `components/ui/ClientPaymentModal.tsx`: спосіб, каса для готівки, каси за валютою, сума = залишок (від 0,01 до залишку, інакше помилка у вікні без запиту), ключ ідемпотентності на відкриття, QR лише для рахунку (для наряду — жодного `*_qr`, Bug #870) |
-| Каса (cash-shift open/close)   | `app/(app)/cash/page.tsx`, `hooks/api/useCashShift.ts`                                                                                                                                                                                                     |
-| QR-оплата (online-payment)     | `components/ui/QrPaymentModal.tsx`, `hooks/api/useOnlinePayment.ts`                                                                                                                                                                                        |
-| ПРРО-провайдери (налаштування) | `app/(app)/settings/FiscalTab.tsx`, `ProviderRegistryPanel.tsx`                                                                                                                                                                                            |
-| Довідник способів оплати       | `/api/payment-methods` (окремий модуль `payment-methods`); НДІ → «Оплата» `ndi/PaymentsTab.tsx` — «Куди надходять кошти»                                                                                                                                   |
+| Компонент / сторінка           | Файл                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Платежі (сторінки немає)       | `/payments` → редирект у `/cash`; `/payments/<id>` без редиректу                                                                                                                                                                                                                                                                                                                                                                  |
+| Чек і «Повторити» (FAILED)     | історія каси `cash/CashOperationsTab.tsx`; рядок оплати в «Пов'язаних документах» рахунку (`LinkedDocumentsPanel`, `fiscalStatus` з `GET /invoices/:id/linked-documents`)                                                                                                                                                                                                                                                         |
+| Оплата клієнта готівкою        | форма каси `cash/CashOperationModal.tsx` (привід `SALE_PAYMENT` → `POST /payments`)                                                                                                                                                                                                                                                                                                                                               |
+| Оплата з рахунку               | «Оплатити» у боковій панелі `invoices/page.tsx` → `POST /payments`; поле «Каса» для готівки (BR-PAY-019)                                                                                                                                                                                                                                                                                                                          |
+| Оплата з наряду                | «Оплатити» у картці (`CreateWorkOrderModal.tsx`) і на сторінці наряду (`work-orders/[id]/PageClient.tsx`) → `POST /payments { workOrderId }` (BR-PAY-020)                                                                                                                                                                                                                                                                         |
+| Вікно «Оплатити» (спільне)     | `components/ui/ClientPaymentModal.tsx`: спосіб, каса для готівки, каси за валютою, сума = залишок (від 0,01 до залишку, інакше помилка у вікні без запиту), ключ ідемпотентності на відкриття, QR лише для рахунку (для наряду — жодного `*_qr`, Bug #870)                                                                                                                                                                        |
+| Сторно безготівкової оплати    | `components/ui/PaymentReversalModal.tsx` (два кроки, причина, ключ ідемпотентності на відкриття) і `useReversePayment` (`hooks/api/useBankStatements.ts`); дія «Сторнувати» в «Оплатах» «Пов'язаних документів» наряду й рахунку (`lib/linked-configs.tsx`, `dialogAction` у `LinkedDocumentsPanel`; касова — підказка «Сторнується в касі»), «Сторнувати оплату» на рядку `bank-statements/BankTransactionsTab.tsx` (BR-PAY-024) |
+| Каса (cash-shift open/close)   | `app/(app)/cash/page.tsx`, `hooks/api/useCashShift.ts`                                                                                                                                                                                                                                                                                                                                                                            |
+| QR-оплата (online-payment)     | `components/ui/QrPaymentModal.tsx`, `hooks/api/useOnlinePayment.ts`                                                                                                                                                                                                                                                                                                                                                               |
+| ПРРО-провайдери (налаштування) | `app/(app)/settings/FiscalTab.tsx`, `ProviderRegistryPanel.tsx`                                                                                                                                                                                                                                                                                                                                                                   |
+| Довідник способів оплати       | `/api/payment-methods` (окремий модуль `payment-methods`); НДІ → «Оплата» `ndi/PaymentsTab.tsx` — «Куди надходять кошти»                                                                                                                                                                                                                                                                                                          |
 
 ---
 
@@ -230,7 +232,9 @@ BR-INV-018), рахунок без наряду — PAID/PARTIALLY_PAID → PART
 фіскальної черги (`checkbox.processor` пропускає). У відповідях `GET /payments` і пов'язаних документів
 вона віддається з `reversedAt` / `reversalCashOperationId`; у конструкторі звітів — поле «Сторновано».
 
-Тести сторно оплати — у реєстрі `cash.md` (`payments.reverse.spec.ts`, `payments.reversal-excluded.spec.ts`).
+Тести касового сторно оплати — у реєстрі `cash.md` (`payments.reverse.spec.ts`,
+`payments.reversal-excluded.spec.ts`); безготівкового (BR-PAY-024) — у реєстрі нижче
+(`payments.reverse-noncash.spec.ts`, `payments.reverse-route.contract.spec.ts`).
 
 ### Side-effects після `create` (усі поза транзакцією, best-effort)
 
@@ -423,6 +427,8 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | куди надходять кошти                            | `../payment-methods/payment-methods.destination.spec.ts` | 24     |
 | HTTP-контракт способів                          | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
 | системні способи оплати                         | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
+| сторно безготівкової оплати (BR-PAY-024)        | `payments.reverse-noncash.spec.ts`                       | 23     |
+| HTTP-контракт сторно (BR-PAY-024)               | `payments.reverse-route.contract.spec.ts`                | 13     |
 
 Разом: **473** кейси — 405 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
 (`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
@@ -430,8 +436,8 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 
-HTTP-контракту маршрутів `/payments` (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише
-E2E. У довідника способів оплати контракт є — `../payment-methods/payment-methods.contract.spec.ts`.
+HTTP-контракт є лише в маршруту сторно `POST /payments/:id/reverse` (`payments.reverse-route.contract.spec.ts`);
+решту маршрутів `/payments` (DTO, статуси, валідацію) покриває лише E2E. У довідника способів оплати контракт є — `../payment-methods/payment-methods.contract.spec.ts`.
 
 Виключення `branch_provider_configs` з `PULL_TABLES` (друга половина правила про креденшели
 провайдерів) unit-тестом не стережеться: список живе в `sync/`, там тестів на цю модель немає.

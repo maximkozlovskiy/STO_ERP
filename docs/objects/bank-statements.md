@@ -127,7 +127,11 @@ Orphan-Payment (create ok, link fail) benign: retry натрапляє на CAS-
 - Форми — спільні zod-схеми `packages/shared/src/schemas/forms/bank-transaction.schema.ts`;
   E2E — `apps/web/e2e/bank-outgoing.spec.ts` (внесення → витрата → скасування → видалення) і
   `apps/web/e2e/bank-allocation.spec.ts` (внесення з рознесенням: вхідне «Оплата рахунку»,
-  вихідне «Витрата», відмова оплати — платежу немає).
+  вихідне «Витрата», відмова оплати — платежу немає), `apps/web/e2e/payment-reversal.spec.ts`
+  (рознесений вхідний → «Сторнувати оплату» → «Не рознесено» з причиною).
+- **«Сторнувати оплату»** — на вхідному `MATCHED`-рядку з `paymentId` замість «Зняти рознесення»
+  (BR-BANK-040, BR-PAY-024): картка `PaymentReversalModal` з позначкою «з виписки» (рядок стане
+  «Не рознесено»); маршрут `POST /payments/:id/reverse`, кеші — оплати й банківські платежі.
 - **[Банк. рахунки]** (`?tab=accounts`, остання вкладка рядка) `BankAccountsTab` (перенесено з НДІ)
   — CRUD банк-рахунків; форма += provider-dropdown
   «Банк для auto-pull» + autoPullEnabled toggle; у списку **Badge «Авто-pull: <банк>»** для відмічених рахунків.
