@@ -103,5 +103,170 @@
     "more": "...та ще {{count}}",
     "templateError": "Помилка завантаження шаблону",
     "importError": "Помилка імпорту"
+  },
+  "nothingFound": "Нічого не знайдено",
+  "loadError": "Помилка завантаження",
+  "tryAgain": "Спробувати ще раз",
+  "done": "Готово",
+  "reset": "Скинути",
+  "open": "Відкрити",
+  "searchPlaceholder": "Пошук...",
+  "searchError": "Помилка пошуку",
+  "searchFailed": "Не вдалося виконати пошук. Перевірте зв'язок і спробуйте ще раз.",
+  "rename": "Перейменувати",
+  "show": "Показати",
+  "hide": "Сховати",
+  "error": "Помилка",
+  "clear": "Очистити",
+  "loadingDots": "Завантаження...",
+  "tabBar": {
+    "closeTab": "Закрити вкладку",
+    "allOpen": "Всі відкриті"
+  },
+  "statusManager": {
+    "assignError": "Помилка призначення",
+    "removeError": "Помилка зняття",
+    "removeStatus": "Зняти статус {{name}}",
+    "directoryEmpty": "Довідник статусів порожній",
+    "allAssigned": "Усі статуси вже призначено"
+  },
+  "currencySelect": {
+    "label": "Валюта",
+    "placeholder": "Оберіть валюту…"
+  },
+  "linkedDocuments": {
+    "title": "Пов'язані документи",
+    "goTo": "Перейти до документа: {{name}}",
+    "loadError": "Не вдалось завантажити пов’язані документи",
+    "actionError": "Не вдалось виконати дію",
+    "empty": "Пов'язаних документів немає"
+  },
+  "navEditor": {
+    "defaultSectionName": "Розділ",
+    "title": "Налаштування меню",
+    "untitled": "Без назви",
+    "showSection": "Показати розділ",
+    "hideSection": "Сховати розділ",
+    "deleteSection": "Видалити розділ (пункти повернуться у типові розділи)",
+    "dropHere": "Перетягніть пункти сюди",
+    "newSection": "Новий розділ",
+    "addSection": "Додати розділ",
+    "resetToDefault": "Скинути до типового"
+  },
+  "sectionError": {
+    "named": "Не вдалося відобразити розділ «{{label}}».",
+    "generic": "Не вдалося відобразити цей розділ.",
+    "rest": "Решта сторінки працює."
+  },
+  "pagination": {
+    "first": "Перша сторінка",
+    "prev": "Попередня сторінка",
+    "next": "Наступна сторінка",
+    "last": "Остання сторінка"
+  },
+  "bulkActions": {
+    "selected": "Обрано: {{n}}",
+    "clearSelection": "Скасувати вибір"
+  },
+  "columns": {
+    "configure": "Налаштувати колонки",
+    "button": "Колонки",
+    "settingsTitle": "Налаштування колонок",
+    "visibilityTitle": "Видимість колонок",
+    "resetSettings": "Скинути налаштування",
+    "change": "Змінити",
+    "renameHint": "Клік для зміни назви"
+  },
+  "commandPalette": {
+    "groups": {
+      "navigation": "Навігація",
+      "action": "Дії",
+      "settings": "Налаштування",
+      "data": "Дані"
+    },
+    "title": "Командна палітра",
+    "placeholder": "Пошук команд і сторінок...",
+    "searchAria": "Пошук команд",
+    "resultsAria": "Результати пошуку",
+    "dataLoading": "Пошук у даних…",
+    "dataFailed": "Пошук у даних недоступний. Перевірте зв'язок — показано лише розділи системи.",
+    "hintNavigate": "навігація",
+    "hintOpen": "відкрити",
+    "hintClose": "закрити"
+  },
+  "datePicker": {
+    "placeholder": "ДД.ММ.РРРР",
+    "openCalendar": "Відкрити календар",
+    "today": "Сьогодні",
+    "timePlaceholder": "ГГ:ХХ",
+    "dateTimePlaceholder": "ДД.ММ.РРРР ГГ:ХХ",
+    "time": "Час",
+    "hourShort": "Год.",
+    "hour": "Година",
+    "minuteShort": "Хв.",
+    "minutes": "Хвилини"
+  },
+  "detailPanel": {
+    "hide": "Сховати бокову панель",
+    "show": "Показати бокову панель",
+    "enabled": "Бокова панель увімкнена",
+    "disabled": "Бокова панель вимкнена",
+    "settings": "Налаштування панелі",
+    "fields": "Поля панелі"
+  },
+  "dirtyConfirm": {
+    "title": "Є незбережені зміни",
+    "message": "Покинути без збереження?",
+    "confirm": "Покинути"
+  },
+  "docLines": {
+    "emptyEditable": "Натисніть «Додати» для початку",
+    "empty": "Рядки відсутні"
+  },
+  "entityPicker": {
+    "placeholder": "Обрати…",
+    "selectFirst": "Спочатку оберіть запис",
+    "pick": "Обрати",
+    "pickFromList": "Обрати зі списку"
+  },
+  "inlineEdit": {
+    "saving": "Збереження",
+    "editValue": "Редагувати: {{value}}",
+    "clickToEdit": "Натисніть для редагування"
+  },
+  "notifications": {
+    "title": "Сповіщення",
+    "titleUnread": "Сповіщення ({{n}} непрочитаних)",
+    "markAllRead": "Всі прочитано",
+    "empty": "Немає сповіщень",
+    "remove": "Видалити сповіщення"
+  },
+  "savedFilters": {
+    "empty": "Немає збережених подань",
+    "remove": "Видалити подання \"{{name}}\"",
+    "namePlaceholder": "Назва подання...",
+    "saveView": "Зберегти подання"
+  },
+  "spinner": {
+    "ariaLabel": "Завантаження"
+  },
+  "syncIndicator": {
+    "offlineTitle": "Немає зв’язку з сервером СТО — збереження недоступне до відновлення мережі",
+    "syncedAt": "Синхронізовано: {{time}}",
+    "syncing": "Синхронізація...",
+    "offline": "Офлайн — збереження недоступне",
+    "synced": "Синхронізовано"
+  },
+  "templatePicker": {
+    "loadError": "Не вдалось завантажити шаблони",
+    "importError": "Помилка імпорту",
+    "selected": "Вибрано: {{n}}",
+    "noneSelected": "Нічого не вибрано",
+    "addCount": "Додати ({{n}})",
+    "templatesCount": "{{n}} шаблонів",
+    "alreadyAdded": ", {{n}} вже додано",
+    "clearAll": "Зняти всі",
+    "selectAll": "Вибрати всі ({{n}})",
+    "exists": "є"
   }
 }

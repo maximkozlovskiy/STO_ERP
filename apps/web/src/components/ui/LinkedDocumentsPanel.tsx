@@ -8,6 +8,7 @@ import type {
   ReactNode,
   RefObject,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { X, ExternalLink, AlertCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -83,6 +84,7 @@ function PreviewPopup({
   anchorRef: RefObject<HTMLButtonElement | null>;
   onClose: () => void;
 }) {
+  const { t } = useTranslation('common');
   const popupRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<CSSProperties>({ opacity: 0 });
 
@@ -123,7 +125,7 @@ function PreviewPopup({
         <button
           onClick={onClose}
           className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
-          aria-label="Закрити"
+          aria-label={t('close')}
         >
           <X size={14} />
         </button>
@@ -143,7 +145,7 @@ function PreviewPopup({
             className="mt-4 flex items-center gap-1.5 text-primary hover:underline text-[12px] font-medium"
           >
             <ExternalLink size={13} />
-            Відкрити
+            {t('open')}
           </button>
         )}
       </div>
@@ -210,6 +212,7 @@ function SectionRow({
   actionBusy?: boolean;
   onAction?: () => void;
 }) {
+  const { t } = useTranslation('common');
   return (
     <div className="flex items-stretch hover:bg-secondary/60 transition-colors">
       <button
@@ -250,8 +253,8 @@ function SectionRow({
         <button
           type="button"
           onClick={onOpen}
-          title={`Перейти до документа: ${primary}`}
-          aria-label={`Перейти до документа: ${primary}`}
+          title={t('linkedDocuments.goTo', { name: primary })}
+          aria-label={t('linkedDocuments.goTo', { name: primary })}
           className="shrink-0 flex items-center px-3 text-muted-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
         >
           <ExternalLink size={14} aria-hidden="true" />
@@ -276,6 +279,7 @@ export function LinkedDocumentsPanel({
   refreshKey?: number;
   onLoad?: (counts: LinkedDocumentsCounts) => void;
 }) {
+  const { t } = useTranslation('common');
   // Мапимо сирі рядки у section→items[] один раз після завантаження.
   const [sections, setSections] = useState<Array<{
     key: string;
@@ -327,7 +331,7 @@ export function LinkedDocumentsPanel({
           // не «приховувати» error під empty-state. Залишаємо sections null —
           // render-логіка покаже банер з повідомленням і Retry-кнопкою.
           setSections(null);
-          setError(e instanceof Error ? e.message : 'Не вдалось завантажити пов’язані документи');
+          setError(e instanceof Error ? e.message : t('linkedDocuments.loadError'));
         }
       })
       .finally(() => {
@@ -336,7 +340,7 @@ export function LinkedDocumentsPanel({
     return () => {
       cancelled = true;
     };
-  }, [entityId, refreshKey, retryKey]);
+  }, [entityId, refreshKey, retryKey, t]);
 
   const openPreview = (e: ReactMouseEvent<HTMLButtonElement>, item: LinkedSectionItem) => {
     anchorRef.current = e.currentTarget;
@@ -350,7 +354,7 @@ export function LinkedDocumentsPanel({
       await item.action.run();
       setRetryKey(k => k + 1);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Не вдалось виконати дію');
+      toast.error(e instanceof Error ? e.message : t('linkedDocuments.actionError'));
     } finally {
       setBusyActionId(null);
     }
@@ -359,7 +363,7 @@ export function LinkedDocumentsPanel({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-        Завантаження…
+        {t('loading')}
       </div>
     );
   }
@@ -373,7 +377,7 @@ export function LinkedDocumentsPanel({
       >
         <div className="flex items-center gap-2 text-destructive">
           <AlertCircle size={16} aria-hidden="true" />
-          <span className="font-medium">Не вдалось завантажити пов’язані документи</span>
+          <span className="font-medium">{t('linkedDocuments.loadError')}</span>
         </div>
         <p className="text-xs text-center max-w-xs">{error}</p>
         <button
@@ -381,7 +385,7 @@ export function LinkedDocumentsPanel({
           onClick={() => setRetryKey(k => k + 1)}
           className="text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
         >
-          Спробувати ще раз
+          {t('tryAgain')}
         </button>
       </div>
     );
@@ -394,7 +398,7 @@ export function LinkedDocumentsPanel({
   if (total === 0) {
     return (
       <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-        Пов'язаних документів немає
+        {t('linkedDocuments.empty')}
       </div>
     );
   }

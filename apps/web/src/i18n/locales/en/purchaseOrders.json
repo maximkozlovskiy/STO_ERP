@@ -105,5 +105,12 @@
     "receiveNoQty": "Enter a quantity for at least one line item",
     "receiveFailed": "Goods receipt error",
     "returnLoadFailed": "Failed to load the return"
+  },
+  "rulePricer": {
+    "title": "Select a pricing rule",
+    "supplier": "Supplier",
+    "allRules": "All rules",
+    "noSupplierRules": "No rules for this supplier",
+    "noActiveRules": "No active pricing rules"
   }
 }

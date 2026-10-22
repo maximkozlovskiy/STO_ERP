@@ -86,7 +86,7 @@ function PlannedActualMetricsBase({
         <legend className="sr-only">{t('card.plan')}</legend>
         <div className={METRICS_GRID}>
           <DateTimePickerInput
-            label="Дата та час початку"
+            label={t('card.startAt')}
             labelAddon={
               <span aria-hidden="true" className={cn(GROUP_TAG, 'bg-primary/10 text-primary')}>
                 {t('card.plan')}
@@ -101,7 +101,7 @@ function PlannedActualMetricsBase({
             clearable
           />
           <DateTimePickerInput
-            label="Дата та час завершення"
+            label={t('card.endAt')}
             value={plannedEndAt}
             onChange={onPlannedEndChange}
             disabled={!canEdit}
@@ -112,7 +112,7 @@ function PlannedActualMetricsBase({
           />
           <div className="flex flex-col gap-1">
             <label htmlFor={plannedHoursId} className={HOURS_LABEL}>
-              Нормогодин
+              {t('card.normoHours')}
             </label>
             <input
               id={plannedHoursId}
@@ -138,7 +138,7 @@ function PlannedActualMetricsBase({
         </legend>
         <div className={METRICS_GRID}>
           <DateTimePickerInput
-            label="Дата та час початку"
+            label={t('card.startAt')}
             labelAddon={
               <span
                 aria-hidden="true"
@@ -154,7 +154,7 @@ function PlannedActualMetricsBase({
             inputClassName={actualFieldClass}
           />
           <DateTimePickerInput
-            label="Дата та час завершення"
+            label={t('card.endAt')}
             value=""
             onChange={NOOP_DT_CHANGE}
             disabled
@@ -162,7 +162,7 @@ function PlannedActualMetricsBase({
           />
           <div className="flex flex-col gap-1">
             <label htmlFor={actualHoursId} className={HOURS_LABEL}>
-              Нормогодин
+              {t('card.normoHours')}
             </label>
             <input
               id={actualHoursId}

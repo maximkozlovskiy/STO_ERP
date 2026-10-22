@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { useBaseCurrency } from '@/hooks/api/useCash';
 import { Select } from '@/components/ui/select';
@@ -39,13 +40,15 @@ interface CurrencySelectProps {
 export function CurrencySelect({
   value,
   onChange,
-  label = 'Валюта',
+  label: labelProp,
   errorMessage,
   required,
   disabled,
   defaultToBase = true,
   onAutoDefault,
 }: CurrencySelectProps) {
+  const { t } = useTranslation('common');
+  const label = labelProp ?? t('currencySelect.label');
   const [currencies, setCurrencies] = useState<CurrencyItem[]>([]);
   const { data: base } = useBaseCurrency();
 
@@ -76,7 +79,7 @@ export function CurrencySelect({
       required={required}
       disabled={disabled}
       errorMessage={errorMessage}
-      placeholder="Оберіть валюту…"
+      placeholder={t('currencySelect.placeholder')}
       onChange={e => onChange(e.target.value)}
     >
       {currencies.map(c => (

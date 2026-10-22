@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { type LucideIcon, Inbox } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -39,12 +40,14 @@ const sizes = {
 
 function EmptyState({
   icon: Icon = Inbox,
-  title = 'Нічого не знайдено',
+  title: titleProp,
   description,
   action,
   size = 'md',
   className,
 }: EmptyStateProps) {
+  const { t } = useTranslation('common');
+  const title = titleProp ?? t('nothingFound');
   const s = sizes[size];
   return (
     <div

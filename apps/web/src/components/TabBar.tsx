@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, ChevronDown, FileText } from 'lucide-react';
 import { useTabBar } from '@/hooks/useTabBar';
 import type { Tab } from '@/contexts/TabBarContext';
@@ -22,6 +23,7 @@ interface TabChipProps {
 }
 
 const TabChip = memo(function TabChip({ tab, onActivate, onClose }: TabChipProps) {
+  const { t } = useTranslation('common');
   // Inline arrows тут безпечні — TabChip уже memo'd, кожен chip має ВЛАСНИЙ
   // identity через `tab` prop. Нові arrow refs створюються лише коли tab
   // міняється — тобто щоразу при rerender ЦІЄЇ chip-instance (через зміну tab).
@@ -43,8 +45,8 @@ const TabChip = memo(function TabChip({ tab, onActivate, onClose }: TabChipProps
           e.stopPropagation();
           onClose(tab.id);
         }}
-        title="Закрити"
-        aria-label="Закрити вкладку"
+        title={t('close')}
+        aria-label={t('tabBar.closeTab')}
       >
         <X className="h-3 w-3" />
       </button>
@@ -61,6 +63,7 @@ interface OverflowMenuProps {
 }
 
 function TabOverflowMenu({ tabs, onActivate, onClose }: OverflowMenuProps) {
+  const { t } = useTranslation('common');
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -78,7 +81,7 @@ function TabOverflowMenu({ tabs, onActivate, onClose }: OverflowMenuProps) {
       <button
         className="flex items-center gap-0.5 px-2 h-full text-[11px] text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-colors"
         onClick={() => setOpen(o => !o)}
-        title="Всі відкриті"
+        title={t('tabBar.allOpen')}
       >
         <ChevronDown className="h-3.5 w-3.5" />
         <span>{tabs.length}</span>

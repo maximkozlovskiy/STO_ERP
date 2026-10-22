@@ -142,8 +142,8 @@ function ManagerNode({
   const handleDelete = useCallback(async () => {
     if (
       !(await confirm({
-        title: `Видалити "${node.name}"?`,
-        message: 'Товари/роботи стануть без категорії.',
+        title: t('categoryManager.deleteTitle', { name: node.name }),
+        message: t('categoryManager.deleteMessage'),
         variant: 'destructive',
       }))
     )
@@ -192,7 +192,7 @@ function ManagerNode({
         <input
           type="checkbox"
           checked={localActive}
-          title={localActive ? 'Вимкнути категорію' : 'Увімкнути категорію'}
+          title={localActive ? t('categoryManager.disable') : t('categoryManager.enable')}
           disabled={isSavingThis}
           onChange={e => {
             const next = e.target.checked;
@@ -222,7 +222,7 @@ function ManagerNode({
         {/* System badge */}
         {node.isSystem && (
           <span className="shrink-0 text-[10px] text-muted-foreground bg-muted px-1 rounded">
-            системна
+            {t('categoryManager.system')}
           </span>
         )}
 
@@ -232,7 +232,7 @@ function ManagerNode({
             <Button
               variant="ghost"
               size="icon-sm"
-              title="Перейменувати"
+              title={t('common:rename')}
               disabled={isSavingThis}
               onClick={() => setEditMode(true)}
               className="h-5 w-5"
@@ -243,7 +243,7 @@ function ManagerNode({
           <Button
             variant="ghost"
             size="icon-sm"
-            title="Додати підкатегорію"
+            title={t('categoryManager.addChild')}
             disabled={isSavingThis || depth >= 2}
             onClick={() => {
               setAddMode(p => !p);
@@ -257,7 +257,7 @@ function ManagerNode({
             <Button
               variant="ghost"
               size="icon-sm"
-              title="Видалити"
+              title={t('common:delete')}
               disabled={isSavingThis}
               onClick={() => void handleDelete()}
               className="h-5 w-5 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
@@ -277,7 +277,7 @@ function ManagerNode({
           <input
             ref={addInputRef}
             autoFocus
-            placeholder="Назва нової категорії..."
+            placeholder={t('categoryManager.newChildPlaceholder')}
             value={newName}
             onChange={e => setNewName(e.target.value)}
             onKeyDown={e => {
@@ -335,7 +335,8 @@ export function CategoryManagerModal({
   const [newRootName, setNewRootName] = useState('');
   const [saving, setSaving] = useState<string | null>(null);
   const endpoint = type === 'work' ? '/work-categories' : '/good-categories';
-  const label = type === 'work' ? 'Категорії робіт' : 'Категорії товарів';
+  const label =
+    type === 'work' ? t('categoryManager.workCategories') : t('categoryManager.goodCategories');
 
   const handleToggleActive = useCallback(
     async (id: string, isActive: boolean) => {
@@ -378,12 +379,12 @@ export function CategoryManagerModal({
   }, [newRootName, endpoint, features.toastEnabled, onChanged, t]);
 
   return (
-    <Modal open={open} onClose={onClose} title={`Управління — ${label}`} size="lg">
+    <Modal open={open} onClose={onClose} title={t('categoryManager.title', { label })} size="lg">
       <div className="flex flex-col gap-4">
         {/* Add root category */}
         <div className="flex items-center gap-2">
           <Input
-            placeholder="Нова коренева категорія..."
+            placeholder={t('categoryManager.newRootPlaceholder')}
             value={newRootName}
             onChange={e => setNewRootName(e.target.value)}
             onKeyDown={e => {
@@ -398,19 +399,19 @@ export function CategoryManagerModal({
             size="sm"
           >
             <Plus className="h-4 w-4 mr-1" />
-            Додати
+            {t('common:add')}
           </Button>
         </div>
 
         {/* Legend */}
-        <p className="text-[12px] text-muted-foreground">
-          Чекбокс — увімк./вимкн. категорію. Системні категорії не можна видалити або перейменувати.
-        </p>
+        <p className="text-[12px] text-muted-foreground">{t('categoryManager.legend')}</p>
 
         {/* Tree */}
         <div className="max-h-[60vh] overflow-y-auto rounded-lg border border-border">
           {tree.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">Категорій не знайдено</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              {t('common:categoryTree.notFound')}
+            </p>
           ) : (
             <ul className="py-1">
               {tree.map(node => (

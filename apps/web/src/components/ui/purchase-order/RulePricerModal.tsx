@@ -3,6 +3,7 @@
 // Пікер правила ціноутворення для замовлення постачальнику (TD3-декомпозиція).
 // Винесено з PurchaseOrderCreateModal.tsx без зміни поведінки — самодостатній суб-діалог.
 import { Modal } from '@/components/ui/modal';
+import { useTranslation } from 'react-i18next';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import type { PricingRule } from './types';
@@ -30,8 +31,9 @@ export function RulePricerModal({
   pricingRulesLoading,
   onSelectRule,
 }: RulePricerModalProps) {
+  const { t } = useTranslation('purchaseOrders');
   return (
-    <Modal open={open} onClose={onClose} title="Оберіть правило розцінки" size="md">
+    <Modal open={open} onClose={onClose} title={t('rulePricer.title')} size="md">
       <div className="flex flex-col gap-3" style={{ minHeight: '200px' }}>
         {/* Фільтр по постачальнику */}
         {supplierId && (
@@ -46,7 +48,7 @@ export function RulePricerModal({
                   : 'border-border text-muted-foreground hover:border-primary/50',
               )}
             >
-              {supplierDisplay || 'Постачальник'}
+              {supplierDisplay || t('rulePricer.supplier')}
             </button>
             <button
               type="button"
@@ -58,7 +60,7 @@ export function RulePricerModal({
                   : 'border-border text-muted-foreground hover:border-primary/50',
               )}
             >
-              Всі правила
+              {t('rulePricer.allRules')}
             </button>
           </div>
         )}
@@ -69,8 +71,8 @@ export function RulePricerModal({
         ) : pricingRules.length === 0 ? (
           <p className="text-sm text-muted-foreground py-10 text-center">
             {ruleFilterBySupplier && supplierId
-              ? 'Немає правил для цього постачальника'
-              : 'Немає активних правил ціноутворення'}
+              ? t('rulePricer.noSupplierRules')
+              : t('rulePricer.noActiveRules')}
           </p>
         ) : (
           <div className="space-y-1 overflow-y-auto" style={{ maxHeight: '380px' }}>

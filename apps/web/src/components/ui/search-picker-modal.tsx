@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal } from './modal';
 import { Input } from './input';
 import { Spinner } from './spinner';
@@ -36,11 +37,14 @@ export function SearchPickerModal<T extends SearchPickerItem>({
   selectedId,
   onSelect,
   fetchItems,
-  searchPlaceholder = 'Пошук...',
-  emptyText = 'Нічого не знайдено',
+  searchPlaceholder: searchPlaceholderProp,
+  emptyText: emptyTextProp,
   renderItem,
   scanSubmit,
 }: SearchPickerModalProps<T>) {
+  const { t } = useTranslation('common');
+  const searchPlaceholder = searchPlaceholderProp ?? t('searchPlaceholder');
+  const emptyText = emptyTextProp ?? t('nothingFound');
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(false);
@@ -70,12 +74,12 @@ export function SearchPickerModal<T extends SearchPickerItem>({
         if (mountedRef.current) setItems(data);
       })
       .catch((e: unknown) => {
-        if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+        if (mountedRef.current) setError(e instanceof Error ? e.message : t('loadError'));
       })
       .finally(() => {
         if (mountedRef.current) setLoading(false);
       });
-  }, [open, fetchItems]);
+  }, [open, fetchItems, t]);
 
   const search = useCallback(
     (q: string) => {
@@ -93,13 +97,13 @@ export function SearchPickerModal<T extends SearchPickerItem>({
           })
           .catch((e: unknown) => {
             if (mountedRef.current) {
-              setError(e instanceof Error ? e.message : 'Помилка пошуку');
+              setError(e instanceof Error ? e.message : t('searchError'));
               setLoading(false);
             }
           });
       }, 300);
     },
-    [fetchItems],
+    [fetchItems, t],
   );
 
   useEffect(() => {
@@ -153,7 +157,7 @@ export function SearchPickerModal<T extends SearchPickerItem>({
                 })
                 .catch((err: unknown) => {
                   if (!mountedRef.current) return;
-                  setError(err instanceof Error ? err.message : 'Помилка пошуку');
+                  setError(err instanceof Error ? err.message : t('searchError'));
                   setLoading(false);
                 });
               return;

@@ -1,4 +1,7 @@
+'use client';
+
 import type { SVGAttributes } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 interface SpinnerProps extends SVGAttributes<SVGSVGElement> {
@@ -13,13 +16,14 @@ const sizes = {
 };
 
 function Spinner({ size = 'md', className, ...props }: SpinnerProps) {
+  const { t } = useTranslation('common');
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
       className={cn('animate-spin text-primary', sizes[size], className)}
-      aria-label="Завантаження"
+      aria-label={t('spinner.ariaLabel')}
       role="status"
       {...props}
     >
@@ -41,7 +45,9 @@ function PageSpinner() {
   );
 }
 
-function InlineSpinner({ text = 'Завантаження...' }: { text?: string }) {
+function InlineSpinner({ text: textProp }: { text?: string }) {
+  const { t } = useTranslation('common');
+  const text = textProp ?? t('loadingDots');
   return (
     <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
       <Spinner size="sm" />

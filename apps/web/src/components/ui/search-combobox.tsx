@@ -9,6 +9,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Spinner } from './spinner';
@@ -43,7 +44,7 @@ interface SearchComboboxProps<T extends { id: string }> {
 
 export function SearchCombobox<T extends { id: string }>({
   label,
-  placeholder = 'Пошук...',
+  placeholder: placeholderProp,
   value,
   displayValue,
   onSelect,
@@ -56,6 +57,8 @@ export function SearchCombobox<T extends { id: string }>({
   className,
   scanSubmit,
 }: SearchComboboxProps<T>) {
+  const { t } = useTranslation('common');
+  const placeholder = placeholderProp ?? t('searchPlaceholder');
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<(T & ComboboxItem)[]>([]);
   const [loading, setLoading] = useState(false);
@@ -262,7 +265,7 @@ export function SearchCombobox<T extends { id: string }>({
                 type="button"
                 onClick={handleClear}
                 className="absolute right-2 text-muted-foreground hover:text-foreground"
-                aria-label="Очистити"
+                aria-label={t('clear')}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -281,7 +284,7 @@ export function SearchCombobox<T extends { id: string }>({
             role="status"
           >
             <Spinner size="sm" />
-            <span className="ml-2 truncate">Завантаження…</span>
+            <span className="ml-2 truncate">{t('loading')}</span>
           </div>
         ) : (
           <>
@@ -365,11 +368,9 @@ export function SearchCombobox<T extends { id: string }>({
             className="absolute z-50 mt-1 w-full bg-surface border border-border rounded-lg shadow-lg px-3 py-2"
           >
             {searchFailed ? (
-              <span className="text-[13px] text-destructive">
-                Не вдалося виконати пошук. Перевірте зв&apos;язок і спробуйте ще раз.
-              </span>
+              <span className="text-[13px] text-destructive">{t('searchFailed')}</span>
             ) : (
-              <span className="text-[13px] text-muted-foreground">Нічого не знайдено</span>
+              <span className="text-[13px] text-muted-foreground">{t('nothingFound')}</span>
             )}
           </div>
         )}

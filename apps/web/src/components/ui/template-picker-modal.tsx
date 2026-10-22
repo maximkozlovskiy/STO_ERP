@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search, Check } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -41,6 +42,7 @@ export function TemplatePickerModal({
   existingKeys,
   onImport,
 }: Props) {
+  const { t: tr } = useTranslation('common');
   const [templates, setTemplates] = useState<SystemTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -57,9 +59,9 @@ export function TemplatePickerModal({
     setLoading(true);
     apiFetch<SystemTemplate[]>(`/system-templates?entityType=${entityType}`)
       .then(setTemplates)
-      .catch(() => setError('Не вдалось завантажити шаблони'))
+      .catch(() => setError(tr('templatePicker.loadError')))
       .finally(() => setLoading(false));
-  }, [open, entityType]);
+  }, [open, entityType, tr]);
 
   const filtered = useMemo(() => {
     if (!q.trim()) return templates;
@@ -101,7 +103,7 @@ export function TemplatePickerModal({
       await onImport(toImport);
       onClose();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка імпорту');
+      setError(e instanceof Error ? e.message : tr('templatePicker.importError'));
     } finally {
       setImporting(false);
     }
@@ -119,18 +121,20 @@ export function TemplatePickerModal({
       footer={
         <div className="flex items-center justify-between w-full gap-3">
           <span className="text-[13px] text-muted-foreground">
-            {selectedCount > 0 ? `Вибрано: ${selectedCount}` : 'Нічого не вибрано'}
+            {selectedCount > 0
+              ? tr('templatePicker.selected', { n: selectedCount })
+              : tr('templatePicker.noneSelected')}
           </span>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose} disabled={importing}>
-              Скасувати
+              {tr('cancel')}
             </Button>
             <Button
               onClick={() => void handleImport()}
               loading={importing}
               disabled={selectedCount === 0}
             >
-              Додати ({selectedCount})
+              {tr('templatePicker.addCount', { n: selectedCount })}
             </Button>
           </div>
         </div>
@@ -143,7 +147,7 @@ export function TemplatePickerModal({
       )}
 
       <Input
-        placeholder="Пошук..."
+        placeholder={tr('searchPlaceholder')}
         leftElement={<Search />}
         value={q}
         onChange={e => setQ(e.target.value)}
@@ -160,8 +164,9 @@ export function TemplatePickerModal({
           {newCount > 0 && (
             <div className="flex items-center justify-between mb-2">
               <span className="text-[12px] text-muted-foreground">
-                {filtered.length} шаблонів
-                {existingKeys.length > 0 && `, ${existingKeys.length} вже додано`}
+                {tr('templatePicker.templatesCount', { n: filtered.length })}
+                {existingKeys.length > 0 &&
+                  tr('templatePicker.alreadyAdded', { n: existingKeys.length })}
               </span>
               <div className="flex gap-2">
                 {selectedCount > 0 && (
@@ -170,7 +175,7 @@ export function TemplatePickerModal({
                     onClick={clearAll}
                     className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    Зняти всі
+                    {tr('templatePicker.clearAll')}
                   </button>
                 )}
                 {selectedCount < newCount && (
@@ -179,7 +184,7 @@ export function TemplatePickerModal({
                     onClick={selectAll}
                     className="text-[12px] text-primary hover:text-primary/80 transition-colors"
                   >
-                    Вибрати всі ({newCount})
+                    {tr('templatePicker.selectAll', { n: newCount })}
                   </button>
                 )}
               </div>
@@ -189,7 +194,7 @@ export function TemplatePickerModal({
           <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
             {filtered.length === 0 && (
               <p className="text-center text-[13px] text-muted-foreground py-6">
-                Нічого не знайдено
+                {tr('nothingFound')}
               </p>
             )}
             {filtered.map(t => {
@@ -244,7 +249,7 @@ export function TemplatePickerModal({
 
                   {isExisting && (
                     <span className="text-[11px] text-success shrink-0 bg-success/10 px-1.5 py-0.5 rounded">
-                      є
+                      {tr('templatePicker.exists')}
                     </span>
                   )}
                 </button>

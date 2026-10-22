@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Columns3, GripVertical, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ColumnDef } from '@/hooks/useTableColumns';
@@ -26,6 +27,7 @@ export function ColumnsDropdown({
   hasCustomization,
   className,
 }: ColumnsDropdownProps) {
+  const { t } = useTranslation('common');
   const [open, setOpen] = useState(false);
   const [configMode, setConfigMode] = useState(false);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -80,14 +82,14 @@ export function ColumnsDropdown({
           setConfigMode(false);
           setEditingKey(null);
         }}
-        aria-label="Налаштувати колонки"
+        aria-label={t('columns.configure')}
         className={cn(
           'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface text-[13px] text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors',
           open && 'bg-secondary text-foreground',
         )}
       >
         <Columns3 className="h-4 w-4 shrink-0" aria-hidden="true" />
-        Колонки
+        {t('columns.button')}
       </button>
 
       {open && (
@@ -95,13 +97,13 @@ export function ColumnsDropdown({
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-border">
             <span className="text-[12px] font-medium text-muted-foreground">
-              {configMode ? 'Налаштування колонок' : 'Видимість колонок'}
+              {configMode ? t('columns.settingsTitle') : t('columns.visibilityTitle')}
             </span>
             <div className="flex items-center gap-1">
               {hasCustomization && onReset && (
                 <button
                   onClick={onReset}
-                  title="Скинути налаштування"
+                  title={t('columns.resetSettings')}
                   className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
@@ -120,7 +122,7 @@ export function ColumnsDropdown({
                       : 'border-border text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  {configMode ? 'Готово' : 'Змінити'}
+                  {configMode ? t('done') : t('columns.change')}
                 </button>
               )}
             </div>
@@ -175,7 +177,7 @@ export function ColumnsDropdown({
                       setEditingKey(col.key);
                       setLabelValue(col.label);
                     }}
-                    title={configMode && onRename ? 'Клік для зміни назви' : undefined}
+                    title={configMode && onRename ? t('columns.renameHint') : undefined}
                   >
                     {col.label}
                   </span>

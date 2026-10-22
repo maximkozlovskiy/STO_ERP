@@ -272,5 +272,71 @@
     "uomDeleteError": "Помилка видалення",
     "barcodeAdded": "Штрихкод додано",
     "barcodeDeleted": "Штрихкод видалено"
+  },
+  "goodBatches": {
+    "loadError": "Помилка завантаження партій",
+    "empty": "Партій немає",
+    "colBatch": "Партія / Накладна",
+    "colReceived": "Отримано",
+    "colRemaining": "Залишок",
+    "colUnit": "Одиниця",
+    "colCost": "Собів., ₴",
+    "colSale": "Продаж, ₴",
+    "colDate": "Дата"
+  },
+  "goodPriceHistory": {
+    "empty": "Змін цін не знайдено",
+    "colDate": "Дата",
+    "colOldPrice": "Стара ціна",
+    "colNewPrice": "Нова ціна",
+    "colCost": "Собівартість",
+    "colReason": "Причина"
+  },
+  "batchViewer": {
+    "title": "Партії та ціни",
+    "currentPrice": "Поточна ціна:",
+    "avgCost": "Сер. собівартість:",
+    "marginLabel": "Маржа:",
+    "tabBatches": "Партії",
+    "tabHistory": "Історія цін",
+    "noBatches": "Партії відсутні",
+    "depleted": "Вичерпані партії",
+    "noPriceChanges": "Змін ціни не було",
+    "costShort": "(собів. {{value}} ₴)",
+    "invoice": "Накладна {{number}}",
+    "manualBatch": "Ручна партія",
+    "remainingPct": "{{pct}}% залишок",
+    "sale": "продаж",
+    "cost": "Собівартість",
+    "salePrice": "Ціна продажу",
+    "margin": "Маржа",
+    "expiry": "Термін придатності"
+  },
+  "categoryManager": {
+    "deleteTitle": "Видалити \"{{name}}\"?",
+    "deleteMessage": "Товари/роботи стануть без категорії.",
+    "disable": "Вимкнути категорію",
+    "enable": "Увімкнути категорію",
+    "system": "системна",
+    "addChild": "Додати підкатегорію",
+    "newChildPlaceholder": "Назва нової категорії...",
+    "workCategories": "Категорії робіт",
+    "goodCategories": "Категорії товарів",
+    "title": "Управління — {{label}}",
+    "newRootPlaceholder": "Нова коренева категорія...",
+    "legend": "Чекбокс — увімк./вимкн. категорію. Системні категорії не можна видалити або перейменувати."
+  },
+  "workPicker": {
+    "title": "Оберіть роботу",
+    "searchPlaceholder": "Пошук роботи...",
+    "secondary": "{{hours}} год · {{price}} ₴",
+    "hours": "{{hours}} год",
+    "pricePerHour": "{{price}} ₴/год"
+  },
+  "servicePicker": {
+    "title": "Оберіть комплексну послугу",
+    "searchPlaceholder": "Пошук послуги...",
+    "worksCount": "{{n}} роб.",
+    "goodsCount": "{{n}} тов."
   }
 }

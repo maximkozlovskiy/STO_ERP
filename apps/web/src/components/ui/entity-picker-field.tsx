@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useRef, useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MoreHorizontal, Search, X } from 'lucide-react';
 import { Spinner } from './spinner';
 import { cn } from '@/lib/utils';
@@ -62,7 +63,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
   display,
   label,
   required = false,
-  placeholder = 'Обрати…',
+  placeholder: placeholderProp,
   disabled = false,
   hidePick = false,
   ariaLabel,
@@ -73,6 +74,8 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
   onSearchSelect,
   className,
 }: EntityPickerFieldProps<T>) {
+  const { t } = useTranslation('common');
+  const placeholder = placeholderProp ?? t('entityPicker.placeholder');
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(false);
@@ -279,8 +282,8 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
           type="button"
           onClick={handleClear}
           className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
-          aria-label="Очистити"
-          title="Очистити"
+          aria-label={t('clear')}
+          title={t('clear')}
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -292,8 +295,8 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
         disabled={!onOpenDetail}
         onClick={onOpenDetail}
         className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
-        aria-label="Відкрити картку"
-        title={onOpenDetail ? 'Відкрити картку' : 'Спочатку оберіть запис'}
+        aria-label={t('openCard')}
+        title={onOpenDetail ? t('openCard') : t('entityPicker.selectFirst')}
       >
         <Search className="h-3.5 w-3.5" />
       </button>
@@ -309,8 +312,8 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
           }}
           disabled={disabled}
           className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
-          aria-label="Обрати"
-          title="Обрати зі списку"
+          aria-label={t('entityPicker.pick')}
+          title={t('entityPicker.pickFromList')}
         >
           <MoreHorizontal className="h-3.5 w-3.5" />
         </button>
@@ -353,11 +356,9 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
           className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg px-3 py-2"
         >
           {searchFailed ? (
-            <span className="text-[13px] text-destructive">
-              Не вдалося виконати пошук. Перевірте зв&apos;язок і спробуйте ще раз.
-            </span>
+            <span className="text-[13px] text-destructive">{t('searchFailed')}</span>
           ) : (
-            <span className="text-[13px] text-muted-foreground">Нічого не знайдено</span>
+            <span className="text-[13px] text-muted-foreground">{t('nothingFound')}</span>
           )}
         </div>
       )}

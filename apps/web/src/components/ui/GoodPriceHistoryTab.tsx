@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { fmtMoney, fmtDateTime } from '@/lib/format';
 import { Spinner } from '@/components/ui/spinner';
@@ -20,6 +21,7 @@ interface GoodPriceHistoryTabProps {
 }
 
 export function GoodPriceHistoryTab({ goodId, onCountChange }: GoodPriceHistoryTabProps) {
+  const { t } = useTranslation('catalog');
   const [items, setItems] = useState<PriceHistoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -55,7 +57,9 @@ export function GoodPriceHistoryTab({ goodId, onCountChange }: GoodPriceHistoryT
 
   if (items.length === 0) {
     return (
-      <p className="text-[13px] text-muted-foreground text-center py-6">Змін цін не знайдено</p>
+      <p className="text-[13px] text-muted-foreground text-center py-6">
+        {t('goodPriceHistory.empty')}
+      </p>
     );
   }
 
@@ -72,19 +76,19 @@ export function GoodPriceHistoryTab({ goodId, onCountChange }: GoodPriceHistoryT
         <thead>
           <tr className="border-b border-border">
             <th className="text-left py-2 px-2 text-[11px] font-medium text-muted-foreground">
-              Дата
+              {t('goodPriceHistory.colDate')}
             </th>
             <th className="text-right py-2 px-2 text-[11px] font-medium text-muted-foreground">
-              Стара ціна
+              {t('goodPriceHistory.colOldPrice')}
             </th>
             <th className="text-right py-2 px-2 text-[11px] font-medium text-muted-foreground">
-              Нова ціна
+              {t('goodPriceHistory.colNewPrice')}
             </th>
             <th className="text-right py-2 px-2 text-[11px] font-medium text-muted-foreground">
-              Собівартість
+              {t('goodPriceHistory.colCost')}
             </th>
             <th className="text-left py-2 px-2 text-[11px] font-medium text-muted-foreground">
-              Причина
+              {t('goodPriceHistory.colReason')}
             </th>
           </tr>
         </thead>

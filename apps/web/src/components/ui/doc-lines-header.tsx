@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface DocLinesHeaderProps {
   /** Назва табличної частини: «Товари», «Позиції». */
@@ -15,10 +16,11 @@ interface DocLinesHeaderProps {
  * `canEdit: false` (проведений, видалений) → «Рядки відсутні»: кнопки «Додати» там немає.
  */
 export function DocLinesEmptyRow({ colSpan, canEdit }: { colSpan: number; canEdit: boolean }) {
+  const { t } = useTranslation('common');
   return (
     <tr>
       <td colSpan={colSpan} className="px-3 py-8 text-center text-[12px] text-muted-foreground">
-        {canEdit ? 'Натисніть «Додати» для початку' : 'Рядки відсутні'}
+        {canEdit ? t('docLines.emptyEditable') : t('docLines.empty')}
       </td>
     </tr>
   );
@@ -29,6 +31,7 @@ export function DocLinesEmptyRow({ colSpan, canEdit }: { colSpan: number; canEdi
  * назва ліворуч, «+ Додати» праворуч НАД таблицею. Кнопка під таблицею — відхилення від стандарту.
  */
 export function DocLinesHeader({ title, onAdd, children }: DocLinesHeaderProps) {
+  const { t } = useTranslation('common');
   return (
     // flex-wrap: на вузькому екрані дії (імпорт, Excel) переносяться під назву, а не виїжджають
     // за край картки разом із «Додати» (перевірено на 390 px).
@@ -43,7 +46,7 @@ export function DocLinesHeader({ title, onAdd, children }: DocLinesHeaderProps) 
             className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
-            Додати
+            {t('add')}
           </button>
         )}
       </div>

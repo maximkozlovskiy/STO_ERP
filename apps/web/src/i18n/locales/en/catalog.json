@@ -272,5 +272,71 @@
     "uomDeleteError": "Failed to delete",
     "barcodeAdded": "Barcode added",
     "barcodeDeleted": "Barcode deleted"
+  },
+  "goodBatches": {
+    "loadError": "Failed to load batches",
+    "empty": "No batches",
+    "colBatch": "Batch / Invoice",
+    "colReceived": "Received",
+    "colRemaining": "Remaining",
+    "colUnit": "Unit",
+    "colCost": "Cost, ₴",
+    "colSale": "Sale, ₴",
+    "colDate": "Date"
+  },
+  "goodPriceHistory": {
+    "empty": "No price changes found",
+    "colDate": "Date",
+    "colOldPrice": "Old price",
+    "colNewPrice": "New price",
+    "colCost": "Cost price",
+    "colReason": "Reason"
+  },
+  "batchViewer": {
+    "title": "Batches and prices",
+    "currentPrice": "Current price:",
+    "avgCost": "Avg. cost price:",
+    "marginLabel": "Margin:",
+    "tabBatches": "Batches",
+    "tabHistory": "Price history",
+    "noBatches": "No batches",
+    "depleted": "Depleted batches",
+    "noPriceChanges": "No price changes",
+    "costShort": "(cost {{value}} ₴)",
+    "invoice": "Invoice {{number}}",
+    "manualBatch": "Manual batch",
+    "remainingPct": "{{pct}}% remaining",
+    "sale": "sale",
+    "cost": "Cost price",
+    "salePrice": "Sale price",
+    "margin": "Margin",
+    "expiry": "Expiry date"
+  },
+  "categoryManager": {
+    "deleteTitle": "Delete \"{{name}}\"?",
+    "deleteMessage": "Goods/works will be left without a category.",
+    "disable": "Disable category",
+    "enable": "Enable category",
+    "system": "system",
+    "addChild": "Add subcategory",
+    "newChildPlaceholder": "New category name...",
+    "workCategories": "Work categories",
+    "goodCategories": "Goods categories",
+    "title": "Manage — {{label}}",
+    "newRootPlaceholder": "New root category...",
+    "legend": "Checkbox — enable/disable a category. System categories cannot be deleted or renamed."
+  },
+  "workPicker": {
+    "title": "Select a work",
+    "searchPlaceholder": "Search works...",
+    "secondary": "{{hours}} h · {{price}} ₴",
+    "hours": "{{hours}} h",
+    "pricePerHour": "{{price}} ₴/h"
+  },
+  "servicePicker": {
+    "title": "Select a service package",
+    "searchPlaceholder": "Search services...",
+    "worksCount": "{{n}} works",
+    "goodsCount": "{{n}} goods"
   }
 }

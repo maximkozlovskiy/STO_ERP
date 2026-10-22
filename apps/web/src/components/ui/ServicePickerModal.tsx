@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { Modal } from './modal';
 import { Input } from './input';
@@ -36,6 +37,7 @@ interface Props {
 }
 
 export function ServicePickerModal({ open, onClose, onSelect }: Props) {
+  const { t } = useTranslation('catalog');
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<ServicePickerItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -80,7 +82,7 @@ export function ServicePickerModal({ open, onClose, onSelect }: Props) {
           })
           .catch((e: unknown) => {
             if (reqId !== reqRef.current) return;
-            setError(e instanceof Error ? e.message : 'Помилка завантаження');
+            setError(e instanceof Error ? e.message : t('common:loadError'));
             setLoading(false);
           });
       },
@@ -95,10 +97,10 @@ export function ServicePickerModal({ open, onClose, onSelect }: Props) {
   }, []);
 
   return (
-    <Modal open={open} onClose={onClose} title="Оберіть комплексну послугу" size="lg">
+    <Modal open={open} onClose={onClose} title={t('servicePicker.title')} size="lg">
       <div className="flex flex-col gap-3">
         <Input
-          placeholder="Пошук послуги..."
+          placeholder={t('servicePicker.searchPlaceholder')}
           value={query}
           autoFocus
           onChange={e => setQuery(e.target.value)}
@@ -114,7 +116,9 @@ export function ServicePickerModal({ open, onClose, onSelect }: Props) {
               <Spinner size="sm" />
             </div>
           ) : items.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-10 text-center">Нічого не знайдено</p>
+            <p className="text-sm text-muted-foreground py-10 text-center">
+              {t('common:nothingFound')}
+            </p>
           ) : (
             <div className="space-y-1">
               {items.map(item => (
@@ -131,8 +135,12 @@ export function ServicePickerModal({ open, onClose, onSelect }: Props) {
                 >
                   <div className="text-sm font-medium text-foreground">{item.name}</div>
                   <div className="text-xs text-muted-foreground mt-0.5 flex gap-3 flex-wrap">
-                    {item.works.length > 0 && <span>{item.works.length} роб.</span>}
-                    {item.goods.length > 0 && <span>{item.goods.length} тов.</span>}
+                    {item.works.length > 0 && (
+                      <span>{t('servicePicker.worksCount', { n: item.works.length })}</span>
+                    )}
+                    {item.goods.length > 0 && (
+                      <span>{t('servicePicker.goodsCount', { n: item.goods.length })}</span>
+                    )}
                     {item.price != null && <span>{fmtMoney(item.price)} ₴</span>}
                     {item.description && (
                       <span className="truncate max-w-[200px]">{item.description}</span>

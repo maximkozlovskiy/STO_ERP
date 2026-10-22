@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bell, X, CheckCheck, Info, AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtTime } from '@/lib/format';
@@ -107,6 +108,7 @@ interface NotificationCenterProps {
 }
 
 export function NotificationCenter({ enabled }: NotificationCenterProps) {
+  const { t } = useTranslation('common');
   const [open, setOpen] = useState(false);
   const { items, markRead, markAllRead, remove, unreadCount } = useNotifications();
 
@@ -128,7 +130,11 @@ export function NotificationCenter({ enabled }: NotificationCenterProps) {
       <button
         onClick={() => setOpen(v => !v)}
         className="relative flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-muted hover:text-white hover:bg-sidebar-hover transition-colors"
-        aria-label={`Сповіщення${unreadCount > 0 ? ` (${unreadCount} непрочитаних)` : ''}`}
+        aria-label={
+          unreadCount > 0
+            ? t('notifications.titleUnread', { n: unreadCount })
+            : t('notifications.title')
+        }
       >
         <Bell className="h-4 w-4" />
         {unreadCount > 0 && (
@@ -141,21 +147,25 @@ export function NotificationCenter({ enabled }: NotificationCenterProps) {
       {open && (
         <div className="absolute left-full bottom-0 ml-2 w-80 bg-surface border border-border rounded-xl shadow-2xl z-250 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <span className="text-[13px] font-semibold text-foreground">Сповіщення</span>
+            <span className="text-[13px] font-semibold text-foreground">
+              {t('notifications.title')}
+            </span>
             {unreadCount > 0 && (
               <button
                 onClick={markAllRead}
                 className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
               >
                 <CheckCheck className="h-3.5 w-3.5" />
-                Всі прочитано
+                {t('notifications.markAllRead')}
               </button>
             )}
           </div>
 
           <div className="max-h-80 overflow-y-auto divide-y divide-border">
             {items.length === 0 ? (
-              <p className="py-8 text-center text-[13px] text-muted-foreground">Немає сповіщень</p>
+              <p className="py-8 text-center text-[13px] text-muted-foreground">
+                {t('notifications.empty')}
+              </p>
             ) : (
               items.map(n => {
                 const Icon = ICONS[n.type];
@@ -209,7 +219,7 @@ export function NotificationCenter({ enabled }: NotificationCenterProps) {
                         remove(n.id);
                       }}
                       className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                      aria-label="Видалити сповіщення"
+                      aria-label={t('notifications.remove')}
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>

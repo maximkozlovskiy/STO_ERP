@@ -1,6 +1,7 @@
 'use client';
 
 import { Component, type ReactNode } from 'react';
+import i18n from '@/i18n/config';
 
 interface Props {
   children: ReactNode;
@@ -45,15 +46,15 @@ export class SectionErrorBoundary extends Component<Props, State> {
       >
         <span>
           {this.props.label
-            ? `Не вдалося відобразити розділ «${this.props.label}».`
-            : 'Не вдалося відобразити цей розділ.'}{' '}
-          Решта сторінки працює.
+            ? i18n.t('common:sectionError.named', { label: this.props.label })
+            : i18n.t('common:sectionError.generic')}{' '}
+          {i18n.t('common:sectionError.rest')}
         </span>
         <button
           onClick={this.reset}
           className="shrink-0 rounded px-2 py-1 text-[12px] font-medium border border-destructive-border hover:bg-destructive/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
         >
-          Спробувати ще раз
+          {i18n.t('common:tryAgain')}
         </button>
       </div>
     );

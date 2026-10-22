@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { Modal } from './modal';
 import { Input } from './input';
@@ -28,6 +29,7 @@ interface Props {
 }
 
 export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) {
+  const { t } = useTranslation('catalog');
   const [query, setQuery] = useState('');
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryNode[]>([]);
@@ -84,14 +86,14 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
             })
             .catch((e: unknown) => {
               if (reqId !== reqRef.current) return;
-              setError(e instanceof Error ? e.message : 'Помилка завантаження');
+              setError(e instanceof Error ? e.message : t('common:loadError'));
               setLoading(false);
             });
         },
         q ? 300 : 0,
       );
     },
-    [categories],
+    [categories, t],
   );
 
   useEffect(() => {
@@ -127,11 +129,11 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
   }, []);
 
   return (
-    <Modal open={open} onClose={onClose} title="Оберіть роботу" size="lg">
+    <Modal open={open} onClose={onClose} title={t('workPicker.title')} size="lg">
       <div className="flex flex-col gap-3">
         {/* Search */}
         <Input
-          placeholder="Пошук роботи..."
+          placeholder={t('workPicker.searchPlaceholder')}
           value={query}
           autoFocus
           onChange={e => setQuery(e.target.value)}
@@ -151,7 +153,9 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
                 <Spinner size="sm" />
               </div>
             ) : items.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-10 text-center">Нічого не знайдено</p>
+              <p className="text-sm text-muted-foreground py-10 text-center">
+                {t('common:nothingFound')}
+              </p>
             ) : (
               <div className="space-y-1">
                 {items.map(item => {
@@ -164,7 +168,10 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
                         onSelect({
                           ...item,
                           primary: item.name,
-                          secondary: `${item.normoHours} год · ${item.price} ₴`,
+                          secondary: t('workPicker.secondary', {
+                            hours: item.normoHours,
+                            price: item.price,
+                          }),
                         });
                         onClose();
                       }}
@@ -177,8 +184,8 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
                     >
                       <div className="text-sm font-medium text-foreground">{item.name}</div>
                       <div className="text-xs text-muted-foreground mt-0.5 flex gap-3">
-                        <span>{item.normoHours} год</span>
-                        <span>{item.price} ₴/год</span>
+                        <span>{t('workPicker.hours', { hours: item.normoHours })}</span>
+                        <span>{t('workPicker.pricePerHour', { price: item.price })}</span>
                       </div>
                     </button>
                   );
@@ -192,7 +199,7 @@ export function WorkPickerModal({ open, onClose, selectedId, onSelect }: Props) 
             tree={categories}
             selectedId={selectedCatId}
             onSelect={setSelectedCatId}
-            label="Категорії робіт"
+            label={t('categoryManager.workCategories')}
             storageKey="sto:cat-tree:work-picker"
             hideInactive
             className="ml-0 border-l rounded-none rounded-r-xl"

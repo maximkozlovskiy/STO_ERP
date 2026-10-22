@@ -1,18 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useCallback, useId } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
 import { Search, ArrowRight, Navigation, Zap, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getCommands, searchCommands, type Command } from '@/lib/commands';
 import { apiFetch } from '@/lib/api-client';
 
-const GROUP_LABELS: Record<string, string> = {
-  navigation: 'Навігація',
-  action: 'Дії',
-  settings: 'Налаштування',
-  data: 'Дані',
-};
 const GROUP_ICONS: Record<string, typeof Navigation> = {
   navigation: Navigation,
   action: Zap,
@@ -44,6 +39,7 @@ const DATA_ROUTE: Record<string, { list: string; detail?: (id: string) => string
 };
 
 export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
+  const { t } = useTranslation('common');
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -235,7 +231,7 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
       className="fixed inset-0 z-300 flex items-start justify-center pt-[10vh] px-4"
     >
       <h2 id={titleId} className="sr-only">
-        Командна палітра
+        {t('commandPalette.title')}
       </h2>
 
       {/* Backdrop — clicking it closes the palette. Must be on the backdrop itself
@@ -260,8 +256,8 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Пошук команд і сторінок..."
-            aria-label="Пошук команд"
+            placeholder={t('commandPalette.placeholder')}
+            aria-label={t('commandPalette.searchAria')}
             role="combobox"
             aria-expanded={flatList.length > 0}
             aria-controls={listboxId}
@@ -279,28 +275,30 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
           ref={listRef}
           id={listboxId}
           role="listbox"
-          aria-label="Результати пошуку"
+          aria-label={t('commandPalette.resultsAria')}
           className="max-h-90 overflow-y-auto py-1"
         >
           {dataLoading && query.length >= 2 && (
             <p className="px-4 py-2 text-[12px] text-muted-foreground animate-pulse">
-              Пошук у даних…
+              {t('commandPalette.dataLoading')}
             </p>
           )}
           {dataFailed && !dataLoading && query.length >= 2 && (
             <p role="status" aria-live="polite" className="px-4 py-2 text-[12px] text-destructive">
-              Пошук у даних недоступний. Перевірте зв&apos;язок — показано лише розділи системи.
+              {t('commandPalette.dataFailed')}
             </p>
           )}
           {flatList.length === 0 && !dataLoading ? (
-            <p className="py-8 text-center text-[13px] text-muted-foreground">Нічого не знайдено</p>
+            <p className="py-8 text-center text-[13px] text-muted-foreground">
+              {t('nothingFound')}
+            </p>
           ) : (
             Object.entries(allGroups).map(([group, cmds]) => {
               const GroupIcon = GROUP_ICONS[group] ?? Navigation;
               return (
                 <div key={group}>
                   <p className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                    {GROUP_LABELS[group] ?? group}
+                    {t(`commandPalette.groups.${group}`, { defaultValue: group })}
                   </p>
                   {cmds.map(cmd => {
                     // O(1) lookup via Map — was O(n) with flatList.indexOf
@@ -362,14 +360,15 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
         <div className="border-t border-border px-4 py-2 flex items-center gap-3 text-[11px] text-muted-foreground">
           <span>
             <kbd className="bg-secondary border border-border rounded px-1 py-0.5">↑↓</kbd>{' '}
-            навігація
+            {t('commandPalette.hintNavigate')}
           </span>
           <span>
             <kbd className="bg-secondary border border-border rounded px-1 py-0.5">Enter</kbd>{' '}
-            відкрити
+            {t('commandPalette.hintOpen')}
           </span>
           <span>
-            <kbd className="bg-secondary border border-border rounded px-1 py-0.5">Esc</kbd> закрити
+            <kbd className="bg-secondary border border-border rounded px-1 py-0.5">Esc</kbd>{' '}
+            {t('commandPalette.hintClose')}
           </span>
         </div>
       </div>

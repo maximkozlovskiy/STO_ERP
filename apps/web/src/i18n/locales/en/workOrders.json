@@ -329,7 +329,10 @@
     "actualHint": "filled in during the work",
     "worksEmpty": "Click “Add” to add labor",
     "partsEmpty": "Click “Add” to add a good",
-    "noLines": "No lines"
+    "noLines": "No lines",
+    "startAt": "Start date and time",
+    "endAt": "End date and time",
+    "normoHours": "Standard hours"
   },
   "pageTabs": {
     "workOrders": "Work orders",
@@ -388,5 +391,16 @@
     },
     "savePresetSuccess": "Filter \"{{name}}\" saved",
     "notFound": "Warranty not found"
+  },
+  "addLine": {
+    "title": "Add work",
+    "work": "Work",
+    "choose": "— Select —",
+    "executor": "Executor",
+    "normoHoursPlan": "Standard hours (plan)",
+    "actualHours": "Actual hours",
+    "optional": "optional",
+    "price": "Price, ₴",
+    "notes": "Notes"
   }
 }

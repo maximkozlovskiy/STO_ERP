@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { subscribe, remove, type ToastItem, type ToastType } from '@/lib/toast';
 import { cn } from '@/lib/utils';
@@ -27,6 +28,7 @@ const ICON_STYLES: Record<ToastType, string> = {
 };
 
 function Toast({ item }: { item: ToastItem }) {
+  const { t: tr } = useTranslation('common');
   const [visible, setVisible] = useState(false);
   const Icon = ICONS[item.type];
 
@@ -67,7 +69,7 @@ function Toast({ item }: { item: ToastItem }) {
       <button
         onClick={handleClose}
         className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-        aria-label="Закрити"
+        aria-label={tr('close')}
       >
         <X className="h-3.5 w-3.5" />
       </button>

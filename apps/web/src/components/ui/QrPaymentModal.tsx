@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
 import { Check, X, Loader2 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
@@ -26,6 +27,7 @@ interface Props {
  * (offline-first: клієнт платить на стороні шлюзу, ми лише опитуємо статус — без публічного endpoint).
  */
 export function QrPaymentModal({ open, invoiceId, amount, onClose, onPaid }: Props) {
+  const { t } = useTranslation('invoices');
   const createIntent = useCreateOnlinePayment();
   const [intent, setIntent] = useState<OnlineIntent | null>(null);
   const [error, setError] = useState('');
@@ -48,7 +50,7 @@ export function QrPaymentModal({ open, invoiceId, amount, onClose, onPaid }: Pro
         if (!cancelled) setIntent(i);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Не вдалося створити QR');
+        if (!cancelled) setError(e instanceof Error ? e.message : t('qrPayment.createError'));
       });
     return () => {
       cancelled = true;
@@ -77,7 +79,7 @@ export function QrPaymentModal({ open, invoiceId, amount, onClose, onPaid }: Pro
   }, [status]);
 
   return (
-    <Modal open={open} onClose={onClose} title="QR-оплата" size="sm">
+    <Modal open={open} onClose={onClose} title={t('qrPayment.title')} size="sm">
       <div className="flex flex-col items-center gap-4 py-2">
         {error ? (
           <p className="text-sm text-destructive-text text-center">{error}</p>
@@ -86,19 +88,19 @@ export function QrPaymentModal({ open, invoiceId, amount, onClose, onPaid }: Pro
         ) : status === 'PAID' ? (
           <div className="flex flex-col items-center gap-2 text-success">
             <Check className="h-10 w-10" />
-            <p className="text-sm font-medium">Оплачено</p>
+            <p className="text-sm font-medium">{t('qrPayment.paid')}</p>
             <Button variant="outline" size="sm" onClick={onClose}>
-              Закрити
+              {t('common:close')}
             </Button>
           </div>
         ) : status === 'FAILED' || status === 'EXPIRED' ? (
           <div className="flex flex-col items-center gap-2 text-destructive-text">
             <X className="h-10 w-10" />
             <p className="text-sm font-medium">
-              {status === 'EXPIRED' ? 'Час на оплату вичерпано' : 'Оплату відхилено'}
+              {status === 'EXPIRED' ? t('qrPayment.expired') : t('qrPayment.rejected')}
             </p>
             <Button variant="outline" size="sm" onClick={onClose}>
-              Закрити
+              {t('common:close')}
             </Button>
           </div>
         ) : intent.pageUrl ? (
@@ -106,12 +108,10 @@ export function QrPaymentModal({ open, invoiceId, amount, onClose, onPaid }: Pro
             <div className="bg-white p-3 rounded-lg">
               <QRCodeSVG value={intent.pageUrl} size={200} />
             </div>
-            <p className="text-sm text-muted-foreground text-center">
-              Клієнт сканує QR телефоном і оплачує
-            </p>
+            <p className="text-sm text-muted-foreground text-center">{t('qrPayment.scanHint')}</p>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Очікуємо підтвердження…
+              {t('qrPayment.waiting')}
             </div>
           </>
         ) : (

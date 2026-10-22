@@ -103,5 +103,170 @@
     "more": "...and {{count}} more",
     "templateError": "Template download failed",
     "importError": "Import failed"
+  },
+  "nothingFound": "Nothing found",
+  "loadError": "Loading error",
+  "tryAgain": "Try again",
+  "done": "Done",
+  "reset": "Reset",
+  "open": "Open",
+  "searchPlaceholder": "Search...",
+  "searchError": "Search error",
+  "searchFailed": "Search failed. Check the connection and try again.",
+  "rename": "Rename",
+  "show": "Show",
+  "hide": "Hide",
+  "error": "Error",
+  "clear": "Clear",
+  "loadingDots": "Loading...",
+  "tabBar": {
+    "closeTab": "Close tab",
+    "allOpen": "All open tabs"
+  },
+  "statusManager": {
+    "assignError": "Failed to assign the status",
+    "removeError": "Failed to remove the status",
+    "removeStatus": "Remove status {{name}}",
+    "directoryEmpty": "The status list is empty",
+    "allAssigned": "All statuses are already assigned"
+  },
+  "currencySelect": {
+    "label": "Currency",
+    "placeholder": "Select a currency…"
+  },
+  "linkedDocuments": {
+    "title": "Linked documents",
+    "goTo": "Go to document: {{name}}",
+    "loadError": "Failed to load linked documents",
+    "actionError": "Failed to perform the action",
+    "empty": "No linked documents"
+  },
+  "navEditor": {
+    "defaultSectionName": "Section",
+    "title": "Menu settings",
+    "untitled": "Untitled",
+    "showSection": "Show section",
+    "hideSection": "Hide section",
+    "deleteSection": "Delete section (items return to their default sections)",
+    "dropHere": "Drag items here",
+    "newSection": "New section",
+    "addSection": "Add section",
+    "resetToDefault": "Reset to default"
+  },
+  "sectionError": {
+    "named": "Failed to display the “{{label}}” section.",
+    "generic": "Failed to display this section.",
+    "rest": "The rest of the page still works."
+  },
+  "pagination": {
+    "first": "First page",
+    "prev": "Previous page",
+    "next": "Next page",
+    "last": "Last page"
+  },
+  "bulkActions": {
+    "selected": "Selected: {{n}}",
+    "clearSelection": "Clear selection"
+  },
+  "columns": {
+    "configure": "Configure columns",
+    "button": "Columns",
+    "settingsTitle": "Column settings",
+    "visibilityTitle": "Column visibility",
+    "resetSettings": "Reset settings",
+    "change": "Edit",
+    "renameHint": "Click to rename"
+  },
+  "commandPalette": {
+    "groups": {
+      "navigation": "Navigation",
+      "action": "Actions",
+      "settings": "Settings",
+      "data": "Data"
+    },
+    "title": "Command palette",
+    "placeholder": "Search commands and pages...",
+    "searchAria": "Search commands",
+    "resultsAria": "Search results",
+    "dataLoading": "Searching data…",
+    "dataFailed": "Data search is unavailable. Check the connection — only system sections are shown.",
+    "hintNavigate": "navigate",
+    "hintOpen": "open",
+    "hintClose": "close"
+  },
+  "datePicker": {
+    "placeholder": "DD.MM.YYYY",
+    "openCalendar": "Open calendar",
+    "today": "Today",
+    "timePlaceholder": "HH:MM",
+    "dateTimePlaceholder": "DD.MM.YYYY HH:MM",
+    "time": "Time",
+    "hourShort": "Hr.",
+    "hour": "Hour",
+    "minuteShort": "Min.",
+    "minutes": "Minutes"
+  },
+  "detailPanel": {
+    "hide": "Hide side panel",
+    "show": "Show side panel",
+    "enabled": "Side panel is on",
+    "disabled": "Side panel is off",
+    "settings": "Panel settings",
+    "fields": "Panel fields"
+  },
+  "dirtyConfirm": {
+    "title": "There are unsaved changes",
+    "message": "Leave without saving?",
+    "confirm": "Leave"
+  },
+  "docLines": {
+    "emptyEditable": "Click “Add” to start",
+    "empty": "No lines"
+  },
+  "entityPicker": {
+    "placeholder": "Select…",
+    "selectFirst": "Select a record first",
+    "pick": "Select",
+    "pickFromList": "Select from the list"
+  },
+  "inlineEdit": {
+    "saving": "Saving",
+    "editValue": "Edit: {{value}}",
+    "clickToEdit": "Click to edit"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "titleUnread": "Notifications ({{n}} unread)",
+    "markAllRead": "Mark all as read",
+    "empty": "No notifications",
+    "remove": "Delete notification"
+  },
+  "savedFilters": {
+    "empty": "No saved views",
+    "remove": "Delete view \"{{name}}\"",
+    "namePlaceholder": "View name...",
+    "saveView": "Save view"
+  },
+  "spinner": {
+    "ariaLabel": "Loading"
+  },
+  "syncIndicator": {
+    "offlineTitle": "No connection to the service station server — saving is unavailable until the network is back",
+    "syncedAt": "Synced: {{time}}",
+    "syncing": "Syncing...",
+    "offline": "Offline — saving unavailable",
+    "synced": "Synced"
+  },
+  "templatePicker": {
+    "loadError": "Failed to load templates",
+    "importError": "Import error",
+    "selected": "Selected: {{n}}",
+    "noneSelected": "Nothing selected",
+    "addCount": "Add ({{n}})",
+    "templatesCount": "{{n}} templates",
+    "alreadyAdded": ", {{n}} already added",
+    "clearAll": "Clear all",
+    "selectAll": "Select all ({{n}})",
+    "exists": "added"
   }
 }

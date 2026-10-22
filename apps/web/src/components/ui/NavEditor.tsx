@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { GripVertical, Eye, EyeOff, Plus, Pencil, Trash2, RotateCcw, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resolveNav, type NavLayout } from '@/lib/nav-layout';
@@ -36,6 +37,7 @@ interface DragState {
  * reorder розділів, «Скинути». Всі зміни — per-user через useNavConfig (миттєвий прев'ю).
  */
 export function NavEditor({ role, nav, onClose }: NavEditorProps) {
+  const { t } = useTranslation('common');
   const sections = resolveNav(MASTER_NAV_ITEMS, nav.layout, role, true);
   const dragRef = useRef<DragState | null>(null);
   const sectionDragRef = useRef<string | null>(null);
@@ -85,7 +87,8 @@ export function NavEditor({ role, nav, onClose }: NavEditorProps) {
     setRenameValue(label);
   };
   const commitRename = () => {
-    if (renamingId) nav.renameSection(renamingId, renameValue.trim() || 'Розділ');
+    if (renamingId)
+      nav.renameSection(renamingId, renameValue.trim() || t('navEditor.defaultSectionName'));
     setRenamingId(null);
   };
 
@@ -99,11 +102,11 @@ export function NavEditor({ role, nav, onClose }: NavEditorProps) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b border-sidebar-border shrink-0">
-        <span className="text-[13px] font-semibold text-white">Налаштування меню</span>
+        <span className="text-[13px] font-semibold text-white">{t('navEditor.title')}</span>
         <button
           onClick={onClose}
           className="h-7 w-7 flex items-center justify-center rounded-md text-sidebar-muted hover:text-white hover:bg-sidebar-hover"
-          title="Готово"
+          title={t('done')}
         >
           <Check className="h-4 w-4" />
         </button>
@@ -149,13 +152,13 @@ export function NavEditor({ role, nav, onClose }: NavEditorProps) {
                   />
                 ) : (
                   <span className="flex-1 min-w-0 truncate text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
-                    {section.label || 'Без назви'}
+                    {section.label || t('navEditor.untitled')}
                   </span>
                 )}
                 <button
                   onClick={() => nav.toggleSection(section.id)}
                   className="h-6 w-6 flex items-center justify-center rounded text-sidebar-muted hover:text-white"
-                  title={section.hidden ? 'Показати розділ' : 'Сховати розділ'}
+                  title={section.hidden ? t('navEditor.showSection') : t('navEditor.hideSection')}
                 >
                   {section.hidden ? (
                     <EyeOff className="h-3.5 w-3.5" />
@@ -167,7 +170,7 @@ export function NavEditor({ role, nav, onClose }: NavEditorProps) {
                   <button
                     onClick={() => startRename(section.id, section.label)}
                     className="h-6 w-6 flex items-center justify-center rounded text-sidebar-muted hover:text-white"
-                    title="Перейменувати"
+                    title={t('rename')}
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
@@ -176,7 +179,7 @@ export function NavEditor({ role, nav, onClose }: NavEditorProps) {
                   <button
                     onClick={() => nav.removeSection(section.id)}
                     className="h-6 w-6 flex items-center justify-center rounded text-sidebar-muted hover:text-red-400"
-                    title="Видалити розділ (пункти повернуться у типові розділи)"
+                    title={t('navEditor.deleteSection')}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -194,7 +197,7 @@ export function NavEditor({ role, nav, onClose }: NavEditorProps) {
               >
                 {rows.length === 0 && (
                   <p className="px-2 py-1 text-[11px] text-sidebar-muted italic">
-                    Перетягніть пункти сюди
+                    {t('navEditor.dropHere')}
                   </p>
                 )}
                 {rows.map(({ item, hidden }) => {
@@ -225,7 +228,7 @@ export function NavEditor({ role, nav, onClose }: NavEditorProps) {
                       <button
                         onClick={() => nav.toggleItem(item.href)}
                         className="h-6 w-6 flex items-center justify-center rounded text-sidebar-muted hover:text-white shrink-0"
-                        title={hidden ? 'Показати' : 'Сховати'}
+                        title={hidden ? t('show') : t('hide')}
                       >
                         {hidden ? (
                           <EyeOff className="h-3.5 w-3.5" />
@@ -251,14 +254,14 @@ export function NavEditor({ role, nav, onClose }: NavEditorProps) {
             onKeyDown={e => {
               if (e.key === 'Enter') addSection();
             }}
-            placeholder="Новий розділ"
+            placeholder={t('navEditor.newSection')}
             className="flex-1 min-w-0 bg-sidebar-hover text-white text-[12px] rounded px-2 py-1.5 outline-none placeholder:text-sidebar-muted"
           />
           <button
             onClick={addSection}
             disabled={!newSectionName.trim()}
-            title="Додати розділ"
-            aria-label="Додати розділ"
+            title={t('navEditor.addSection')}
+            aria-label={t('navEditor.addSection')}
             className="h-7 px-2 flex items-center gap-1 rounded-md bg-primary hover:bg-primary-hover text-white text-[12px] disabled:opacity-40"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -269,7 +272,7 @@ export function NavEditor({ role, nav, onClose }: NavEditorProps) {
           className="w-full flex items-center justify-center gap-1.5 rounded-md py-1.5 text-[12px] text-sidebar-muted hover:text-white hover:bg-sidebar-hover"
         >
           <RotateCcw className="h-3.5 w-3.5" />
-          Скинути до типового
+          {t('navEditor.resetToDefault')}
         </button>
       </div>
     </div>

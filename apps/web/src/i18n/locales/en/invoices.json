@@ -108,5 +108,14 @@
   },
   "print": {
     "title": "Invoice {{number}}"
+  },
+  "qrPayment": {
+    "createError": "Failed to create the QR code",
+    "title": "QR payment",
+    "paid": "Paid",
+    "expired": "Payment time has expired",
+    "rejected": "Payment declined",
+    "scanHint": "The customer scans the QR code with a phone and pays",
+    "waiting": "Waiting for confirmation…"
   }
 }

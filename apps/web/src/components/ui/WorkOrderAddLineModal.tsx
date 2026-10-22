@@ -189,7 +189,7 @@ export function WorkOrderAddLineModal({
       onAdded();
       onClose();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка';
+      const msg = e instanceof Error ? e.message : t('common:error');
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
     } finally {
@@ -199,15 +199,15 @@ export function WorkOrderAddLineModal({
 
   return (
     <>
-      <Modal open={open} onClose={() => void handleClose()} title="Додати роботу">
+      <Modal open={open} onClose={() => void handleClose()} title={t('addLine.title')}>
         <div className="space-y-3">
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">
-              Робота <span className="text-destructive">*</span>
+              {t('addLine.work')} <span className="text-destructive">*</span>
             </label>
             <Select value={form.workId} onChange={e => selectWork(e.target.value)}>
-              <option value="">— Оберіть —</option>
+              <option value="">{t('addLine.choose')}</option>
               {works.map(w => (
                 <option key={w.id} value={w.id}>
                   {w.name}
@@ -217,7 +217,7 @@ export function WorkOrderAddLineModal({
           </div>
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">
-              Виконавець <span className="text-destructive">*</span>
+              {t('addLine.executor')} <span className="text-destructive">*</span>
             </label>
             <Select
               value={form.employeeId}
@@ -227,7 +227,7 @@ export function WorkOrderAddLineModal({
                 dirty.markDirty();
               }}
             >
-              <option value="">— Оберіть —</option>
+              <option value="">{t('addLine.choose')}</option>
               {employees.map(e => (
                 <option key={e.id} value={e.id}>
                   {e.lastName} {e.firstName}
@@ -238,7 +238,7 @@ export function WorkOrderAddLineModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">
-                Нормо-год (план)
+                {t('addLine.normoHoursPlan')}
               </label>
               <Input
                 type="number"
@@ -253,7 +253,7 @@ export function WorkOrderAddLineModal({
             </div>
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">
-                Факт. год
+                {t('addLine.actualHours')}
               </label>
               <Input
                 type="number"
@@ -264,12 +264,14 @@ export function WorkOrderAddLineModal({
                 }}
                 min="0"
                 step="0.1"
-                placeholder="необов'язково"
+                placeholder={t('addLine.optional')}
               />
             </div>
           </div>
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Ціна, ₴</label>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">
+              {t('addLine.price')}
+            </label>
             <Input
               type="number"
               value={form.price}
@@ -280,7 +282,9 @@ export function WorkOrderAddLineModal({
             />
           </div>
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Нотатки</label>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">
+              {t('addLine.notes')}
+            </label>
             <Input
               value={form.notes}
               onChange={e => {
@@ -295,7 +299,7 @@ export function WorkOrderAddLineModal({
             disabled={!form.workId || !form.employeeId}
             className="w-full"
           >
-            Додати
+            {t('common:add')}
           </Button>
         </div>
       </Modal>

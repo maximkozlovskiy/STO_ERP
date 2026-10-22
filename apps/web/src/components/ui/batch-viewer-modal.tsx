@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Package, TrendingUp, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
@@ -61,6 +62,7 @@ function margin(sale: number, cost: number) {
 }
 
 export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchViewerModalProps) {
+  const { t: tr } = useTranslation('catalog');
   const [tab, setTab] = useState<'batches' | 'history'>('batches');
   const [data, setData] = useState<BatchLookupResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -79,7 +81,7 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
         if (!cancelled) setData(result);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+        if (!cancelled) setError(e instanceof Error ? e.message : tr('common:loadError'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -87,7 +89,7 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
     return () => {
       cancelled = true;
     };
-  }, [open, goodId, warehouseId]);
+  }, [open, goodId, warehouseId, tr]);
 
   // Escape key closes the modal (a11y: §8 Web Frontend).
   useEscapeLayer(open, onClose);
@@ -129,7 +131,7 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
         <div className="flex items-start justify-between p-4 border-b border-border">
           <div>
             <h2 id="batch-viewer-title" className="text-[15px] font-semibold text-foreground">
-              Партії та ціни
+              {tr('batchViewer.title')}
             </h2>
             {data && (
               <p className="text-[13px] text-muted-foreground mt-0.5">
@@ -142,7 +144,7 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
           </div>
           <button
             onClick={onClose}
-            aria-label="Закрити"
+            aria-label={tr('common:close')}
             className="p-1 rounded-lg hover:bg-secondary text-muted-foreground transition-colors"
           >
             <X className="h-4 w-4" aria-hidden="true" />
@@ -153,16 +155,16 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
         {data && (
           <div className="flex gap-4 px-4 py-2.5 bg-secondary/40 border-b border-border text-[12px]">
             <div>
-              <span className="text-muted-foreground">Поточна ціна:&nbsp;</span>
+              <span className="text-muted-foreground">{tr('batchViewer.currentPrice')}&nbsp;</span>
               <span className="font-semibold text-foreground">{fmt(data.good.salePrice)} ₴</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Сер. собівартість:&nbsp;</span>
+              <span className="text-muted-foreground">{tr('batchViewer.avgCost')}&nbsp;</span>
               <span className="font-semibold text-foreground">{fmt(data.avgCostPrice)} ₴</span>
             </div>
             {data.avgCostPrice > 0 && (
               <div>
-                <span className="text-muted-foreground">Маржа:&nbsp;</span>
+                <span className="text-muted-foreground">{tr('batchViewer.marginLabel')}&nbsp;</span>
                 <span className="font-semibold text-success">
                   {margin(data.good.salePrice, data.avgCostPrice)}%
                 </span>
@@ -186,11 +188,11 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
             >
               {t === 'batches' ? (
                 <span className="flex items-center gap-1.5">
-                  <Package className="h-3.5 w-3.5" /> Партії
+                  <Package className="h-3.5 w-3.5" /> {tr('batchViewer.tabBatches')}
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5">
-                  <TrendingUp className="h-3.5 w-3.5" /> Історія цін
+                  <TrendingUp className="h-3.5 w-3.5" /> {tr('batchViewer.tabHistory')}
                 </span>
               )}
             </button>
@@ -211,7 +213,7 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
               {/* Active batches */}
               {activeBatches.length === 0 && depletedBatches.length === 0 && (
                 <p className="text-[13px] text-muted-foreground text-center py-6">
-                  Партії відсутні
+                  {tr('batchViewer.noBatches')}
                 </p>
               )}
               {activeBatches.map(b => (
@@ -226,7 +228,7 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
               {depletedBatches.length > 0 && (
                 <div className="mt-4">
                   <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                    Вичерпані партії
+                    {tr('batchViewer.depleted')}
                   </p>
                   {depletedBatches.map(b => (
                     <BatchRow
@@ -246,7 +248,7 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
             <div className="space-y-1">
               {data.priceHistory.length === 0 && (
                 <p className="text-[13px] text-muted-foreground text-center py-6">
-                  Змін ціни не було
+                  {tr('batchViewer.noPriceChanges')}
                 </p>
               )}
               {data.priceHistory.map(h => (
@@ -264,7 +266,7 @@ export function BatchViewerModal({ goodId, warehouseId, open, onClose }: BatchVi
                       <span className="font-medium text-foreground">{fmt(h.newPrice)} ₴</span>
                       {h.costPrice != null && (
                         <span className="text-[11px] text-muted-foreground">
-                          (собів. {fmt(h.costPrice)} ₴)
+                          {tr('batchViewer.costShort', { value: fmt(h.costPrice) })}
                         </span>
                       )}
                     </div>
@@ -296,6 +298,7 @@ const BatchRow = memo(function BatchRow({
   onToggle: (id: string) => void;
   depleted?: boolean;
 }) {
+  const { t: tr } = useTranslation('catalog');
   const pct =
     batch.receivedQty > 0 ? Math.round((batch.remainingQty / batch.receivedQty) * 100) : 0;
 
@@ -316,7 +319,9 @@ const BatchRow = memo(function BatchRow({
           />
           <div className="min-w-0">
             <p className="text-[13px] font-medium text-foreground truncate">
-              {batch.purchaseOrderNumber ? `Накладна ${batch.purchaseOrderNumber}` : 'Ручна партія'}
+              {batch.purchaseOrderNumber
+                ? tr('batchViewer.invoice', { number: batch.purchaseOrderNumber })
+                : tr('batchViewer.manualBatch')}
               {batch.batchNumber && (
                 <span className="ml-1 text-muted-foreground">№{batch.batchNumber}</span>
               )}
@@ -331,11 +336,13 @@ const BatchRow = memo(function BatchRow({
               {batch.unitShortName ? ` ${batch.unitShortName}` : ''} / {batch.receivedQty}
               {batch.unitShortName ? ` ${batch.unitShortName}` : ''}
             </p>
-            <p className="text-[11px] text-muted-foreground">{pct}% залишок</p>
+            <p className="text-[11px] text-muted-foreground">
+              {tr('batchViewer.remainingPct', { pct })}
+            </p>
           </div>
           <div className="text-right">
             <p className="text-[13px] font-medium text-foreground">{fmt(batch.salePrice)} ₴</p>
-            <p className="text-[11px] text-muted-foreground">продаж</p>
+            <p className="text-[11px] text-muted-foreground">{tr('batchViewer.sale')}</p>
           </div>
           {expanded ? (
             <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -347,22 +354,22 @@ const BatchRow = memo(function BatchRow({
       {expanded && (
         <div className="px-3 pb-3 pt-1 bg-secondary/20 border-t border-border grid grid-cols-3 gap-3 text-[12px]">
           <div>
-            <p className="text-muted-foreground">Собівартість</p>
+            <p className="text-muted-foreground">{tr('batchViewer.cost')}</p>
             <p className="font-medium text-foreground">{fmt(batch.costPrice)} ₴</p>
           </div>
           <div>
-            <p className="text-muted-foreground">Ціна продажу</p>
+            <p className="text-muted-foreground">{tr('batchViewer.salePrice')}</p>
             <p className="font-medium text-foreground">{fmt(batch.salePrice)} ₴</p>
           </div>
           <div>
-            <p className="text-muted-foreground">Маржа</p>
+            <p className="text-muted-foreground">{tr('batchViewer.margin')}</p>
             <p className="font-medium text-success">
               {margin(batch.salePrice, batch.costPrice) ?? '—'}%
             </p>
           </div>
           {batch.expiryDate && (
             <div>
-              <p className="text-muted-foreground">Термін придатності</p>
+              <p className="text-muted-foreground">{tr('batchViewer.expiry')}</p>
               <p className="font-medium text-foreground">{fmtDateString(batch.expiryDate)}</p>
             </div>
           )}

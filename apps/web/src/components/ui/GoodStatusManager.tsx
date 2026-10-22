@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, X, Check } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
@@ -41,6 +42,7 @@ export function GoodStatusManager({
   canManage,
   onChange,
 }: GoodStatusManagerProps) {
+  const { t } = useTranslation('common');
   const controlled = assigned !== undefined;
   const [directory, setDirectory] = useState<StatusBadge[]>([]);
   const [selfAssigned, setSelfAssigned] = useState<StatusBadge[]>([]);
@@ -101,7 +103,7 @@ export function GoodStatusManager({
       });
       afterMutation();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка призначення');
+      setError(e instanceof Error ? e.message : t('statusManager.assignError'));
     } finally {
       setBusyId(null);
     }
@@ -114,7 +116,7 @@ export function GoodStatusManager({
       await apiFetch(`/goods/${goodId}/statuses/${statusId}`, { method: 'DELETE' });
       afterMutation();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка зняття');
+      setError(e instanceof Error ? e.message : t('statusManager.removeError'));
     } finally {
       setBusyId(null);
     }
@@ -135,7 +137,7 @@ export function GoodStatusManager({
               onClick={() => void unassign(s.id)}
               disabled={busyId === s.id}
               className="text-white/70 hover:text-white transition-colors disabled:opacity-50"
-              aria-label={`Зняти статус ${s.name}`}
+              aria-label={t('statusManager.removeStatus', { name: s.name })}
             >
               <X className="h-3 w-3" />
             </button>
@@ -154,7 +156,7 @@ export function GoodStatusManager({
             className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[12px] font-medium border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground transition-colors"
           >
             <Plus className="h-3 w-3" />
-            Статус
+            {t('status')}
           </button>
 
           {open && (
@@ -162,8 +164,8 @@ export function GoodStatusManager({
               {available.length === 0 ? (
                 <div className="px-3 py-2 text-[12px] text-muted-foreground">
                   {directory.length === 0
-                    ? 'Довідник статусів порожній'
-                    : 'Усі статуси вже призначено'}
+                    ? t('statusManager.directoryEmpty')
+                    : t('statusManager.allAssigned')}
                 </div>
               ) : (
                 available.map(s => (

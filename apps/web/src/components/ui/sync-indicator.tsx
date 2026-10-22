@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Cloud, CloudOff, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtTime } from '@/lib/format';
@@ -11,6 +12,7 @@ type SyncStatus = 'idle' | 'syncing' | 'offline' | 'error';
 // зв'язку з локальним API запис недоступний (не «накопичується для синхронізації»). Індикатор чесно
 // показує «Офлайн — збереження недоступне», а не фейковий лічильник «N змін очікують».
 export function SyncIndicator() {
+  const { t } = useTranslation('common');
   const [status, setStatus] = useState<SyncStatus>('idle');
   const [lastSync, setLastSync] = useState<Date | null>(null);
 
@@ -51,9 +53,9 @@ export function SyncIndicator() {
       )}
       title={
         isOffline
-          ? 'Немає зв’язку з сервером СТО — збереження недоступне до відновлення мережі'
+          ? t('syncIndicator.offlineTitle')
           : lastSync
-            ? `Синхронізовано: ${fmtTime(lastSync)}`
+            ? t('syncIndicator.syncedAt', { time: fmtTime(lastSync) })
             : undefined
       }
     >
@@ -66,12 +68,12 @@ export function SyncIndicator() {
       )}
       <span className="hidden sm:inline">
         {status === 'syncing'
-          ? 'Синхронізація...'
+          ? t('syncIndicator.syncing')
           : isOffline
-            ? 'Офлайн — збереження недоступне'
+            ? t('syncIndicator.offline')
             : status === 'error'
-              ? 'Помилка'
-              : 'Синхронізовано'}
+              ? t('error')
+              : t('syncIndicator.synced')}
       </span>
     </div>
   );

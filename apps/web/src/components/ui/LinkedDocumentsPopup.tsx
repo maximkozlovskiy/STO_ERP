@@ -1,6 +1,7 @@
 'use client';
 
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   LinkedDocumentsPanel,
   type LinkedEntityConfig,
@@ -17,13 +18,15 @@ export function LinkedDocumentsPopup({
   entityId,
   config,
   onClose,
-  ariaLabel = "Пов'язані документи",
+  ariaLabel: ariaLabelProp,
 }: {
   entityId: string;
   config: LinkedEntityConfig;
   onClose: () => void;
   ariaLabel?: string;
 }) {
+  const { t } = useTranslation('common');
+  const ariaLabel = ariaLabelProp ?? t('linkedDocuments.title');
   // Escape закриває попап. Компонент монтується лише коли попап відкритий, тож шар живе рівно
   // стільки, скільки треба.
   useEscapeLayer(true, onClose);
@@ -38,11 +41,11 @@ export function LinkedDocumentsPopup({
         aria-label={ariaLabel}
       >
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-sm">Пов&apos;язані документи</h2>
+          <h2 className="font-semibold text-sm">{t('linkedDocuments.title')}</h2>
           <button
             onClick={onClose}
             className="text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Закрити"
+            aria-label={t('close')}
           >
             <X className="h-3.5 w-3.5" />
           </button>

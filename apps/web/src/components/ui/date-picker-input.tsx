@@ -73,13 +73,14 @@ export function DatePickerInput({
   errorMessage,
   required,
   disabled,
-  placeholder = 'ДД.ММ.РРРР',
+  placeholder: placeholderProp,
   className,
   min,
   max,
   clearable,
 }: DatePickerInputProps) {
   const { t } = useTranslation('common');
+  const placeholder = placeholderProp ?? t('datePicker.placeholder');
   const [open, setOpen] = useState(false);
   const [inputText, setInputText] = useState(displayDate(value));
   const containerRef = useRef<HTMLDivElement>(null);
@@ -228,7 +229,7 @@ export function DatePickerInput({
         )}
         <button
           type="button"
-          aria-label="Відкрити календар"
+          aria-label={t('datePicker.openCalendar')}
           onClick={() => !disabled && setOpen(v => !v)}
           className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
         >
@@ -263,7 +264,7 @@ export function DatePickerInput({
               }}
               className="w-full text-center text-[13px] font-medium text-primary hover:bg-primary/10 rounded-lg py-1.5 transition-colors"
             >
-              Сьогодні
+              {t('datePicker.today')}
             </button>
           </div>
         </div>

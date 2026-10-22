@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
@@ -26,6 +27,7 @@ export function InlineEditCell({
   type = 'text',
   className,
 }: InlineEditCellProps) {
+  const { t } = useTranslation('common');
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -63,7 +65,7 @@ export function InlineEditCell({
       {saving ? (
         <Loader2
           className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0"
-          aria-label="Збереження"
+          aria-label={t('inlineEdit.saving')}
         />
       ) : (
         <>
@@ -78,7 +80,7 @@ export function InlineEditCell({
             }}
             onClick={() => onCommit(value)}
             className="p-0.5 rounded text-success hover:bg-success-subtle transition-colors shrink-0"
-            aria-label="Зберегти"
+            aria-label={t('save')}
           >
             <Check className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
@@ -90,7 +92,7 @@ export function InlineEditCell({
             }}
             onClick={() => onCancel()}
             className="p-0.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive-subtle transition-colors shrink-0"
-            aria-label="Скасувати"
+            aria-label={t('cancel')}
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
@@ -122,9 +124,10 @@ export function InlineViewCell({
   children,
   ariaLabel,
 }: InlineViewCellProps) {
+  const { t } = useTranslation('common');
   if (!enabled) return <>{children ?? <span>{value}</span>}</>;
 
-  const label = ariaLabel ?? (value ? `Редагувати: ${value}` : 'Редагувати');
+  const label = ariaLabel ?? (value ? t('inlineEdit.editValue', { value }) : t('edit'));
 
   return (
     <span
@@ -138,7 +141,7 @@ export function InlineViewCell({
           onClick();
         }
       }}
-      title="Натисніть для редагування"
+      title={t('inlineEdit.clickToEdit')}
       aria-label={label}
       className={cn(
         'group cursor-text rounded px-1 -mx-1 hover:bg-primary-subtle hover:outline-1 hover:outline-primary/30 transition-colors',

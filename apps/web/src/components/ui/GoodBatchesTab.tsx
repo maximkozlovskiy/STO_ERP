@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
@@ -29,6 +30,7 @@ interface GoodBatchesTabProps {
 }
 
 export function GoodBatchesTab({ goodId, onCountChange }: GoodBatchesTabProps) {
+  const { t } = useTranslation('catalog');
   const [modalBatches, setModalBatches] = useState<StockBatchDto[]>([]);
   const [modalBatchesLoading, setModalBatchesLoading] = useState(false);
   const [batchError, setBatchError] = useState('');
@@ -55,17 +57,19 @@ export function GoodBatchesTab({ goodId, onCountChange }: GoodBatchesTabProps) {
       })
       .catch(err => {
         if (modalBatchReqRef.current === reqId)
-          setBatchError(err instanceof Error ? err.message : 'Помилка завантаження партій');
+          setBatchError(err instanceof Error ? err.message : t('goodBatches.loadError'));
       })
       .finally(() => {
         if (modalBatchReqRef.current === reqId) setModalBatchesLoading(false);
       });
-  }, [goodId]);
+  }, [goodId, t]);
 
   return (
     <div className="space-y-3">
       {modalBatchesLoading && (
-        <div className="py-6 text-center text-sm text-muted-foreground">Завантаження...</div>
+        <div className="py-6 text-center text-sm text-muted-foreground">
+          {t('common:loadingDots')}
+        </div>
       )}
       {!modalBatchesLoading && batchError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
@@ -73,7 +77,9 @@ export function GoodBatchesTab({ goodId, onCountChange }: GoodBatchesTabProps) {
         </div>
       )}
       {!modalBatchesLoading && !batchError && modalBatches.length === 0 && (
-        <p className="text-[13px] text-muted-foreground text-center py-4">Партій немає</p>
+        <p className="text-[13px] text-muted-foreground text-center py-4">
+          {t('goodBatches.empty')}
+        </p>
       )}
       {!modalBatchesLoading && !batchError && modalBatches.length > 0 && (
         <div className="rounded-xl border border-border overflow-hidden">
@@ -81,18 +87,26 @@ export function GoodBatchesTab({ goodId, onCountChange }: GoodBatchesTabProps) {
             <thead className="bg-secondary border-b border-border">
               <tr>
                 <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                  Партія / Накладна
-                </th>
-                <th className="text-right px-3 py-2 text-muted-foreground font-medium">Отримано</th>
-                <th className="text-right px-3 py-2 text-muted-foreground font-medium">Залишок</th>
-                <th className="text-left px-3 py-2 text-muted-foreground font-medium">Одиниця</th>
-                <th className="text-right px-3 py-2 text-muted-foreground font-medium">
-                  Собів., ₴
+                  {t('goodBatches.colBatch')}
                 </th>
                 <th className="text-right px-3 py-2 text-muted-foreground font-medium">
-                  Продаж, ₴
+                  {t('goodBatches.colReceived')}
                 </th>
-                <th className="text-left px-3 py-2 text-muted-foreground font-medium">Дата</th>
+                <th className="text-right px-3 py-2 text-muted-foreground font-medium">
+                  {t('goodBatches.colRemaining')}
+                </th>
+                <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                  {t('goodBatches.colUnit')}
+                </th>
+                <th className="text-right px-3 py-2 text-muted-foreground font-medium">
+                  {t('goodBatches.colCost')}
+                </th>
+                <th className="text-right px-3 py-2 text-muted-foreground font-medium">
+                  {t('goodBatches.colSale')}
+                </th>
+                <th className="text-left px-3 py-2 text-muted-foreground font-medium">
+                  {t('goodBatches.colDate')}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

@@ -9,6 +9,7 @@ import {
   type CSSProperties,
   type RefObject,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -223,6 +224,7 @@ export function Modal({
   headerContent,
   onSubmit,
 }: ModalProps) {
+  const { t } = useTranslation('common');
   const [mounted, setMounted] = useState(false);
   const { visible, state } = useAnimatedPresence(open);
   // Bug fix (sto-tester): unique title id per Modal instance — without useId() multiple
@@ -316,7 +318,7 @@ export function Modal({
                         'hover:bg-secondary hover:text-foreground',
                         'transition-colors duration-150',
                       )}
-                      aria-label="Закрити"
+                      aria-label={t('close')}
                     >
                       <X className="h-4 w-4" />
                     </button>

@@ -1,6 +1,7 @@
 'use client';
 
 import { type ReactNode, useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Settings, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAnimatedPresence } from '@/hooks/useAnimatedPresence';
@@ -46,6 +47,7 @@ export function DetailPanel({
   onReorderFields,
   onReset,
 }: DetailPanelProps) {
+  const { t } = useTranslation('common');
   const [activeTab, setActiveTab] = useState(defaultTab ?? tabs?.[0]?.key ?? '');
   const [showConfig, setShowConfig] = useState(false);
   const { state: contentState } = useAnimatedPresence(open, 150);
@@ -94,7 +96,7 @@ export function DetailPanel({
                   ? 'text-primary bg-secondary'
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary',
               )}
-              title="Налаштування панелі"
+              title={t('detailPanel.settings')}
             >
               <Settings className="h-4 w-4" />
             </button>
@@ -103,7 +105,7 @@ export function DetailPanel({
             type="button"
             onClick={onClose}
             className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-            title="Закрити"
+            title={t('close')}
           >
             <X className="h-4 w-4" />
           </button>
@@ -115,14 +117,14 @@ export function DetailPanel({
         <div className="flex-1 overflow-y-auto px-3 py-3">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Поля панелі
+              {t('detailPanel.fields')}
             </span>
             <button
               type="button"
               onClick={onReset}
               className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
             >
-              Скинути
+              {t('reset')}
             </button>
           </div>
           <div className="space-y-0.5">

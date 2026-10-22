@@ -105,7 +105,9 @@ export function DateTimePickerInput({
 }: DateTimePickerInputProps) {
   const { t } = useTranslation('common');
   const showClear = Boolean(clearable && value && !disabled);
-  placeholder = placeholder ?? (timeOnly ? 'ГГ:ХХ' : 'ДД.ММ.РРРР ГГ:ХХ');
+  placeholder =
+    placeholder ??
+    (timeOnly ? t('datePicker.timePlaceholder') : t('datePicker.dateTimePlaceholder'));
   const minParts = useMemo(() => (minDateTime ? kyivParts(minDateTime) : null), [minDateTime]);
 
   /** Чи можна обрати час `h:m` у день `ymd` (`null` — день не важливий: timeOnly). */
@@ -354,13 +356,15 @@ export function DateTimePickerInput({
             {/* Time selects */}
             <div className="flex flex-col justify-center gap-3 px-4 border-l border-border min-w-35">
               <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                Час
+                {t('datePicker.time')}
               </p>
               <div className="flex items-center gap-2">
                 <div className="flex flex-col gap-1 flex-1">
-                  <span className="text-[11px] text-muted-foreground">Год.</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {t('datePicker.hourShort')}
+                  </span>
                   <select
-                    aria-label="Година"
+                    aria-label={t('datePicker.hour')}
                     value={selectedHour}
                     onChange={e => applyTime(e.target.value, selectedMinute)}
                     className="h-9 rounded border border-input bg-surface text-[14px] text-foreground px-2 focus:outline-none focus:border-primary focus:ring-3 focus:ring-brand-100"
@@ -374,9 +378,11 @@ export function DateTimePickerInput({
                 </div>
                 <span className="mt-5 text-muted-foreground font-medium">:</span>
                 <div className="flex flex-col gap-1 flex-1">
-                  <span className="text-[11px] text-muted-foreground">Хв.</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {t('datePicker.minuteShort')}
+                  </span>
                   <select
-                    aria-label="Хвилини"
+                    aria-label={t('datePicker.minutes')}
                     value={selectedMinute}
                     onChange={e => applyTime(selectedHour, e.target.value)}
                     className="h-9 rounded border border-input bg-surface text-[14px] text-foreground px-2 focus:outline-none focus:border-primary focus:ring-3 focus:ring-brand-100"
@@ -394,7 +400,7 @@ export function DateTimePickerInput({
                 onClick={() => setOpen(false)}
                 className="mt-1 text-[13px] font-medium text-primary hover:bg-primary/10 rounded-lg py-1.5 transition-colors"
               >
-                Готово
+                {t('done')}
               </button>
             </div>
           </div>,

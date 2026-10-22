@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bookmark, BookmarkPlus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { type SavedFilter } from '@/hooks/useSavedFilters';
@@ -25,6 +26,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
   className,
   hideSaveButton,
 }: SavedFiltersBarProps<T>) {
+  const { t } = useTranslation('common');
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -50,7 +52,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
       ) : (
         !saveOpen &&
         !hideSaveButton && (
-          <span className="text-[12px] text-muted-foreground">Немає збережених подань</span>
+          <span className="text-[12px] text-muted-foreground">{t('savedFilters.empty')}</span>
         )
       )}
 
@@ -73,7 +75,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
             type="button"
             onClick={() => onRemove(preset.id)}
             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity p-0.5 rounded text-muted-foreground hover:text-destructive"
-            aria-label={`Видалити подання "${preset.name}"`}
+            aria-label={t('savedFilters.remove', { name: preset.name })}
           >
             <X className="h-3 w-3" />
           </button>
@@ -91,7 +93,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
                 if (e.key === 'Enter') handleSave();
                 if (e.key === 'Escape') setSaveOpen(false);
               }}
-              placeholder="Назва подання..."
+              placeholder={t('savedFilters.namePlaceholder')}
               className="h-7 px-2 rounded-md border border-primary text-[12px] bg-surface text-foreground outline-none w-36"
             />
             <button
@@ -100,7 +102,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
               disabled={!saveName.trim()}
               className="h-7 px-2.5 rounded-md bg-primary text-white text-[12px] font-medium hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              Зберегти
+              {t('save')}
             </button>
             <button
               type="button"
@@ -120,7 +122,7 @@ export function SavedFiltersBar<T extends Record<string, unknown>>({
             className="flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-border text-[12px] text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
           >
             <BookmarkPlus className="h-3.5 w-3.5" />
-            Зберегти
+            {t('save')}
           </button>
         ))}
     </div>
@@ -135,6 +137,7 @@ interface SaveFilterButtonProps {
 }
 
 export function SaveFilterButton({ onSave, className }: SaveFilterButtonProps) {
+  const { t } = useTranslation('common');
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -167,7 +170,7 @@ export function SaveFilterButton({ onSave, className }: SaveFilterButtonProps) {
               setName('');
             }
           }}
-          placeholder="Назва подання..."
+          placeholder={t('savedFilters.namePlaceholder')}
           className="h-8 px-2.5 rounded-lg border border-primary text-[12px] bg-surface text-foreground outline-none w-36 transition-all"
         />
         <button
@@ -176,7 +179,7 @@ export function SaveFilterButton({ onSave, className }: SaveFilterButtonProps) {
           disabled={!name.trim()}
           className="h-8 px-3 rounded-lg bg-primary text-white text-[12px] font-medium hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          Зберегти
+          {t('save')}
         </button>
         <button
           type="button"
@@ -196,7 +199,7 @@ export function SaveFilterButton({ onSave, className }: SaveFilterButtonProps) {
     <button
       type="button"
       onClick={() => setOpen(true)}
-      title="Зберегти подання"
+      title={t('savedFilters.saveView')}
       className={cn(
         'h-8 w-8 flex items-center justify-center rounded-lg border border-border',
         'text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors',

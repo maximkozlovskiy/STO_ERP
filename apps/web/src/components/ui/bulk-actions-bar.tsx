@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from './button';
@@ -29,6 +30,7 @@ export function BulkActionsBar({
   onClear,
   className,
 }: BulkActionsBarProps) {
+  const { t } = useTranslation('common');
   if (count === 0) return null;
 
   return (
@@ -38,7 +40,9 @@ export function BulkActionsBar({
         className,
       )}
     >
-      <span className="text-[13px] font-medium text-primary shrink-0">Обрано: {count}</span>
+      <span className="text-[13px] font-medium text-primary shrink-0">
+        {t('bulkActions.selected', { n: count })}
+      </span>
       <div className="flex items-center gap-2 flex-wrap flex-1">
         {actions.map(action => (
           <Button
@@ -56,7 +60,7 @@ export function BulkActionsBar({
       <button
         onClick={onClear}
         className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-        aria-label="Скасувати вибір"
+        aria-label={t('bulkActions.clearSelection')}
       >
         <X className="h-4 w-4" />
       </button>

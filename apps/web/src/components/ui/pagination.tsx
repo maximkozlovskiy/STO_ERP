@@ -1,6 +1,7 @@
 'use client';
 
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 interface PaginationProps {
@@ -16,6 +17,7 @@ interface PaginationProps {
  * Returns null when totalPages <= 1.
  */
 export function Pagination({ page, totalPages, onChange, className }: PaginationProps) {
+  const { t } = useTranslation('common');
   if (totalPages <= 1) return null;
 
   // Build the window: always show first, last, current ±2, fill with ellipsis
@@ -50,8 +52,8 @@ export function Pagination({ page, totalPages, onChange, className }: Pagination
         onClick={() => onChange(1)}
         disabled={page === 1}
         className={btnNav}
-        title="Перша сторінка"
-        aria-label="Перша сторінка"
+        title={t('pagination.first')}
+        aria-label={t('pagination.first')}
       >
         <ChevronsLeft className="h-4 w-4" />
       </button>
@@ -62,8 +64,8 @@ export function Pagination({ page, totalPages, onChange, className }: Pagination
         onClick={() => onChange(page - 1)}
         disabled={page === 1}
         className={btnNav}
-        title="Попередня сторінка"
-        aria-label="Попередня сторінка"
+        title={t('pagination.prev')}
+        aria-label={t('pagination.prev')}
       >
         <ChevronLeft className="h-4 w-4" />
       </button>
@@ -96,8 +98,8 @@ export function Pagination({ page, totalPages, onChange, className }: Pagination
         onClick={() => onChange(page + 1)}
         disabled={page === totalPages}
         className={btnNav}
-        title="Наступна сторінка"
-        aria-label="Наступна сторінка"
+        title={t('pagination.next')}
+        aria-label={t('pagination.next')}
       >
         <ChevronRight className="h-4 w-4" />
       </button>
@@ -108,8 +110,8 @@ export function Pagination({ page, totalPages, onChange, className }: Pagination
         onClick={() => onChange(totalPages)}
         disabled={page === totalPages}
         className={btnNav}
-        title="Остання сторінка"
-        aria-label="Остання сторінка"
+        title={t('pagination.last')}
+        aria-label={t('pagination.last')}
       >
         <ChevronsRight className="h-4 w-4" />
       </button>
