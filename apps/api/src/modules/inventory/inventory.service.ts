@@ -36,6 +36,24 @@ const BATCH_CREATING_INFLOW: ReadonlySet<StockMovementType> = new Set([
   StockMovementType.OPENING_BALANCE,
 ]);
 
+/**
+ * Знак кількості за типом руху. Викликач передає знак сам, а сервіс за ним рахує залишок, тож
+ * хибний знак мовчки ламав облік: WRITEOFF чи TRANSFER з плюсом збільшував залишок без партії
+ * (`Σ remainingQty ≠ quantity`, далі «Недостатньо партій»), RECEIPT з мінусом списував під видом
+ * приходу, RESERVATION з мінусом зменшував резерв без перевірки. TRANSFER — лише вибуття:
+ * надходження на склад-ціль іде як RECEIPT (BR-SDOC), щоб завести партію. RETURN і
+ * RESERVATION_RELEASE мають власні тексти відмов вище.
+ */
+const INFLOW_ONLY: ReadonlySet<StockMovementType> = new Set([
+  StockMovementType.RECEIPT,
+  StockMovementType.OPENING_BALANCE,
+  StockMovementType.RESERVATION,
+]);
+const OUTFLOW_ONLY: ReadonlySet<StockMovementType> = new Set([
+  StockMovementType.WRITEOFF,
+  StockMovementType.TRANSFER,
+]);
+
 export interface CreateMovementDto {
   goodId: string;
   warehouseId: string;
@@ -96,6 +114,16 @@ export class InventoryService {
     if (dto.type === 'RESERVATION_RELEASE' && dto.quantity > 0) {
       throw new BadRequestException(
         translateError('err.inventory.reservationReleaseNegative', getLocale()),
+      );
+    }
+    if (INFLOW_ONLY.has(dto.type) && dto.quantity < 0) {
+      throw new BadRequestException(
+        translateError('err.inventory.inflowMustBePositive', getLocale(), { type: dto.type }),
+      );
+    }
+    if (OUTFLOW_ONLY.has(dto.type) && dto.quantity > 0) {
+      throw new BadRequestException(
+        translateError('err.inventory.outflowMustBeNegative', getLocale(), { type: dto.type }),
       );
     }
     // RETURN (реверс WRITEOFF) — позитивна к-сть; мусить посилатись на документ-джерело,

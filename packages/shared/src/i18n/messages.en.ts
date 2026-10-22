@@ -594,6 +594,8 @@ export const en: Record<string, string> = {
   'err.inventory.invalidPrice': 'Invalid price value',
   'err.inventory.reservationReleaseNegative': 'Reservation release: the quantity must be negative',
   'err.inventory.returnMustBePositive': 'Return to stock: the quantity must be positive',
+  'err.inventory.inflowMustBePositive': 'Movement {{type}}: the quantity must be positive',
+  'err.inventory.outflowMustBeNegative': 'Movement {{type}}: the quantity must be negative',
   'err.inventory.returnRequiresSourceDoc': 'Return to stock requires a source document',
   'err.inventory.unitNotFoundInOrg': 'Unit of measure not found within the organization',
   'err.inventory.insufficientStock': 'Insufficient goods in stock',

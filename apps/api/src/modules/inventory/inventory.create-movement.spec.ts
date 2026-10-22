@@ -457,6 +457,32 @@ describe('InventoryService.createMovement guards', () => {
     expect(prisma.stockMovement.create).not.toHaveBeenCalled();
   });
 
+  // Хибний знак мовчки ламав облік: WRITEOFF/TRANSFER з плюсом збільшував залишок без партії,
+  // RECEIPT з мінусом списував під видом приходу, RESERVATION з мінусом зменшував резерв.
+  // guards: BR-INVT-019
+  it.each([
+    ['RECEIPT', -5],
+    ['OPENING_BALANCE', -5],
+    ['RESERVATION', -5],
+    ['WRITEOFF', 5],
+    ['TRANSFER', 5],
+  ] as const)('%s з кількістю %d → 400, нічого не записано', async (type, quantity) => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 50 });
+    await expect(service.createMovement('org-1', dto({ type, quantity }))).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+    expect(prisma.stockItem.upsert).not.toHaveBeenCalled();
+    expect(batchService.createFromReceipt).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-INVT-019
+  it('TRANSFER з мінусом (вибуття) приймається', async () => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
+    await service.createMovement('org-1', dto({ type: 'TRANSFER', quantity: -5 }));
+    expect(prisma.stockMovement.create).toHaveBeenCalledTimes(1);
+  });
+
   // Bug #238: defense-in-depth tenant guard for caller-supplied unitOfMeasureId
   describe('Bug #238: unitOfMeasureId tenant guard', () => {
     const OWN_UOM = '11111111-1111-4111-8111-111111111111';

@@ -685,6 +685,8 @@ export const VALIDATION_KEYS = [
   'err.inventory.invalidPrice',
   'err.inventory.reservationReleaseNegative',
   'err.inventory.returnMustBePositive',
+  'err.inventory.inflowMustBePositive',
+  'err.inventory.outflowMustBeNegative',
   'err.inventory.returnRequiresSourceDoc',
   'err.inventory.unitNotFoundInOrg',
   'err.inventory.insufficientStock',

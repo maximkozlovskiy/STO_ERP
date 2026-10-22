@@ -582,6 +582,8 @@ export const uk: Record<string, string> = {
   'err.inventory.invalidPrice': 'Невірне значення ціни',
   'err.inventory.reservationReleaseNegative': "Зняття резерву: кількість повинна бути від'ємною",
   'err.inventory.returnMustBePositive': 'Повернення на склад: кількість повинна бути додатною',
+  'err.inventory.inflowMustBePositive': 'Рух {{type}}: кількість повинна бути додатною',
+  'err.inventory.outflowMustBeNegative': "Рух {{type}}: кількість повинна бути від'ємною",
   'err.inventory.returnRequiresSourceDoc': 'Повернення на склад потребує документа-джерела',
   'err.inventory.unitNotFoundInOrg': 'Одиницю виміру не знайдено в межах організації',
   'err.inventory.insufficientStock': 'Недостатньо товару на складі',

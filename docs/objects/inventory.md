@@ -91,6 +91,7 @@
 - **BR-INVT-016**: `StockMovement` — append-only: код ніколи не видаляє рух, а єдина зміна наявного руху — проставлення `batchId`, коли розхід списано рівно з однієї партії.
 - **BR-INVT-017**: Одиниця виміру, передана в рух, мусить належати організації; чужа або видалена → 400 до будь-якого запису.
 - **BR-INVT-018**: Резерв, який тримає наряд, — завжди рухи `RESERVATION`/`RESERVATION_RELEASE` з `documentType 'WorkOrder'` і `documentId` наряду, хоч би хто його створив (перехід наряду, приймання замовлення постачальнику за позицією списку купівлі — BR-PL-011, «Зняти резерв» — BR-PL-016). Net-резерв наряду за товаром і складом = сума цих рухів; на ньому стоять дорезервування, зняття й списання наряду (BR-WO-021). Наряд може тримати резерв і до статусу «В роботі».
+- **BR-INVT-019**: **Знак кількості відповідає типу руху** (техборг 2026-10-22). `RECEIPT`, `OPENING_BALANCE`, `RESERVATION` і `RETURN` — лише додатна кількість; `WRITEOFF`, `RESERVATION_RELEASE` і `TRANSFER` — лише від'ємна. Хибний знак → 400 до будь-якого запису. `TRANSFER` — тільки вибуття: надходження на склад-ціль іде як `RECEIPT`, щоб завести партію (BR-INVT-008); `TRANSFER` чи `WRITEOFF` з плюсом інакше збільшували б залишок без партії. Модуль `inventory` (`InventoryService.createMovement`)
 
 ---
 
@@ -104,24 +105,24 @@ cd apps/api && npx vitest run src/modules/inventory/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/inventory/`
 
-| Аспект                                                | Тест                                  | Кейсів | Правила                         |
-| ----------------------------------------------------- | ------------------------------------- | ------ | ------------------------------- |
-| інваріанти партій на моделі у спеку (property-based)  | `batch.invariants.spec.ts`            | 29     | —                               |
-| партії: створення, списання, середня, повернення      | `batch.service.spec.ts`               | 21     | BR-INVT-010, 011, 012, 013, 015 |
-| HTTP-контракт (DTO, статуси, валідація)               | `batches.contract.spec.ts`            | 4      | —                               |
-| by batch                                              | `inventory.by-batch.spec.ts`          | 7      | —                               |
-| by document                                           | `inventory.by-document.spec.ts`       | 9      | —                               |
-| create movement                                       | `inventory.create-movement.spec.ts`   | 44     | BR-INVT-002…010, 014, 016, 017  |
-| find movements                                        | `inventory.find-movements.spec.ts`    | 10     | —                               |
-| інваріанти балансу на моделі у спеку (property-based) | `inventory.invariants.spec.ts`        | 8      | —                               |
-| єдина точка запису залишків (статичний сторож коду)   | `inventory.single-writer.spec.ts`     | 4      | BR-INVT-001, 016                |
-| HTTP-контракт (DTO, статуси, валідація)               | `pricing-rules.contract.spec.ts`      | 46     | BR-GOOD-009, 010                |
-| вибір правила для товару і формула ціни               | `pricing.service.spec.ts`             | 40     | BR-GOOD-009, 010                |
-| WRITEOFF→RETURN на справжніх сервісах, Σ-інваріант    | `return-roundtrip.invariants.spec.ts` | 5      | BR-INVT-013, 014                |
-| ролі доступу до залишків (метадані @Roles)            | `stock-items.access.spec.ts`          | 7      | —                               |
-| HTTP-контракт (DTO, статуси, валідація)               | `stock-items.contract.spec.ts`        | 30     | —                               |
+| Аспект                                                | Тест                                  | Кейсів | Правила                             |
+| ----------------------------------------------------- | ------------------------------------- | ------ | ----------------------------------- |
+| інваріанти партій на моделі у спеку (property-based)  | `batch.invariants.spec.ts`            | 29     | —                                   |
+| партії: створення, списання, середня, повернення      | `batch.service.spec.ts`               | 21     | BR-INVT-010, 011, 012, 013, 015     |
+| HTTP-контракт (DTO, статуси, валідація)               | `batches.contract.spec.ts`            | 4      | —                                   |
+| by batch                                              | `inventory.by-batch.spec.ts`          | 7      | —                                   |
+| by document                                           | `inventory.by-document.spec.ts`       | 9      | —                                   |
+| create movement                                       | `inventory.create-movement.spec.ts`   | 50     | BR-INVT-002…010, 014, 016, 017, 019 |
+| find movements                                        | `inventory.find-movements.spec.ts`    | 10     | —                                   |
+| інваріанти балансу на моделі у спеку (property-based) | `inventory.invariants.spec.ts`        | 8      | —                                   |
+| єдина точка запису залишків (статичний сторож коду)   | `inventory.single-writer.spec.ts`     | 4      | BR-INVT-001, 016                    |
+| HTTP-контракт (DTO, статуси, валідація)               | `pricing-rules.contract.spec.ts`      | 46     | BR-GOOD-009, 010                    |
+| вибір правила для товару і формула ціни               | `pricing.service.spec.ts`             | 40     | BR-GOOD-009, 010                    |
+| WRITEOFF→RETURN на справжніх сервісах, Σ-інваріант    | `return-roundtrip.invariants.spec.ts` | 5      | BR-INVT-013, 014                    |
+| ролі доступу до залишків (метадані @Roles)            | `stock-items.access.spec.ts`          | 7      | —                                   |
+| HTTP-контракт (DTO, статуси, валідація)               | `stock-items.contract.spec.ts`        | 30     | —                                   |
 
-Разом: **235** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **241** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Мітки `// guards: BR-INVT-…` стоять над конкретними `it(`; колонка «Правила» — лише покажчик файла.
 
