@@ -11,7 +11,6 @@ import {
   Post,
   Query,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -28,7 +27,7 @@ import {
   type CashOperationFormValues,
   type CashReversalFormValues,
 } from '@sto/shared';
-import { RequiredIdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
+import { RequireIdempotencyKey } from '../../common/interceptors/idempotency.interceptor';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -155,7 +154,7 @@ export class CashRegistersController {
   // BR-CASH-023…025: сторно — новий рядок протилежного напряму + відкат наслідків оригіналу.
   @Post(':id/operations/:operationId/reverse')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @UseInterceptors(RequiredIdempotencyInterceptor) // повтор після обриву не дає другої спроби сторно (ключ обов'язковий)
+  @RequireIdempotencyKey() // повтор після обриву не дає другої спроби сторно (ключ обов'язковий, 400 без нього)
   @ApiOperation({
     summary:
       'Сторно касової операції: рядок протилежного напряму з причиною; оплата, оплата постачальнику й повернення відкочують борг',
@@ -176,7 +175,7 @@ export class CashRegistersController {
   // (`RECEPTIONIST_CASH_REASONS`) — решту відсікає CashDeskService (403).
   @Post(':id/operations')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @UseInterceptors(RequiredIdempotencyInterceptor) // подвійний клік / повтор після обриву не дає двох оплат (ключ обов'язковий)
+  @RequireIdempotencyKey() // подвійний клік / повтор після обриву не дає двох оплат (ключ обов'язковий, 400 без нього)
   @ApiOperation({
     summary:
       'Касова операція: внести (IN) / видати (OUT) готівку; оплати й повернення змінюють борг контрагента',

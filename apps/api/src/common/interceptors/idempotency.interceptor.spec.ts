@@ -6,7 +6,12 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { IdempotencyInterceptor, RequiredIdempotencyInterceptor } from './idempotency.interceptor';
+import { INTERCEPTORS_METADATA } from '@nestjs/common/constants';
+import {
+  IdempotencyInterceptor,
+  RequireIdempotencyKey,
+  RequiredIdempotencyInterceptor,
+} from './idempotency.interceptor';
 
 /**
  * A1 — reserve-first idempotency. Money-critical: доводимо, що:
@@ -171,5 +176,26 @@ describe('IdempotencyInterceptor (reserve-first)', () => {
     );
     expect(res).toBe('created');
     expect(prisma.idempotencyKey.create).toHaveBeenCalledTimes(1);
+  });
+
+  // Вимога видна стороннім клієнтам у Swagger/openapi.json, а не лише з відповіді 400.
+  it('RequireIdempotencyKey: інтерсептор із ключем і заголовок «обов’язковий» у Swagger', () => {
+    class Ctrl {
+      @RequireIdempotencyKey()
+      create(): void {}
+    }
+    const handler = Ctrl.prototype.create;
+    expect(Reflect.getMetadata(INTERCEPTORS_METADATA, handler)).toEqual([
+      RequiredIdempotencyInterceptor,
+    ]);
+    // ApiHeader на методі пишеться в параметри операції (`in: 'header'`), не в swagger/apiHeaders.
+    const headers = Reflect.getMetadata('swagger/apiParameters', handler) as Array<{
+      name: string;
+      in: string;
+      required?: boolean;
+    }>;
+    expect(headers).toEqual([
+      expect.objectContaining({ name: 'Idempotency-Key', in: 'header', required: true }),
+    ]);
   });
 });

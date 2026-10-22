@@ -78,6 +78,9 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: '#dc2626',
 };
 
+// Свідома ПІДМНОЖИНА `WO_STATUS_TRANSITIONS` (@sto/shared): скасування «Виконано» й «Виставлено»
+// (C2, BR-WO-031) повертає товари на склад, сторнує борг і скасовує рахунок — планшет механіка його
+// не пропонує (у web — з попередженням, BR-WO-025). Дозволене тут ребро має бути і в shared-карті.
 const TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['ESTIMATE', 'CANCELLED'],
   ESTIMATE: ['APPROVED', 'DRAFT', 'CANCELLED'],

@@ -7,7 +7,6 @@ import {
   ParseUUIDPipe,
   Query,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -19,7 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { paymentReversalSchema, type PaymentReversalFormValues } from '@sto/shared';
 import { Throttle } from '@nestjs/throttler';
-import { RequiredIdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
+import { RequireIdempotencyKey } from '../../common/interceptors/idempotency.interceptor';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -85,7 +84,7 @@ export class PaymentsController {
 
   @Post()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @UseInterceptors(RequiredIdempotencyInterceptor) // A1: дедуплікація create під offline-retry (money-critical) (ключ обов'язковий)
+  @RequireIdempotencyKey() // A1: дедуплікація create під offline-retry (money-critical) (ключ обов'язковий, 400 без нього)
   @ApiOperation({ summary: 'Зареєструвати оплату' })
   create(
     @OrgContext() orgId: string,
@@ -99,7 +98,7 @@ export class PaymentsController {
   // BR-PAY-024: сторно безготівкової оплати (і старої без призначення). Касову сторнують у касі.
   @Post(':id/reverse')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @UseInterceptors(RequiredIdempotencyInterceptor) // повтор після обриву не дає другої спроби сторно (ключ обов'язковий)
+  @RequireIdempotencyKey() // повтор після обриву не дає другої спроби сторно (ключ обов'язковий, 400 без нього)
   @ApiOperation({
     summary:
       'Сторно безготівкової оплати клієнта: борг, «сплачено» й статуси наряду та рахунку назад; рядок виписки — «Нерознесений»',

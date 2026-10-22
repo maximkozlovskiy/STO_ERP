@@ -1,4 +1,5 @@
 import {
+  applyDecorators,
   BadRequestException,
   CallHandler,
   ConflictException,
@@ -7,7 +8,9 @@ import {
   Logger,
   NestInterceptor,
   UnprocessableEntityException,
+  UseInterceptors,
 } from '@nestjs/common';
+import { ApiHeader } from '@nestjs/swagger';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import type { FastifyRequest } from 'fastify';
@@ -169,4 +172,20 @@ export class IdempotencyInterceptor implements NestInterceptor {
 @Injectable()
 export class RequiredIdempotencyInterceptor extends IdempotencyInterceptor {
   protected override readonly keyRequired = true;
+}
+
+/**
+ * Обов'язковий ключ на маршруті: інтерсептор + обов'язковий заголовок у Swagger/`openapi.json` —
+ * сторонній клієнт бачить вимогу в документації, а не лише з 400.
+ */
+export function RequireIdempotencyKey(): MethodDecorator & ClassDecorator {
+  return applyDecorators(
+    UseInterceptors(RequiredIdempotencyInterceptor),
+    ApiHeader({
+      name: 'Idempotency-Key',
+      required: true,
+      description:
+        'Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400.',
+    }),
+  );
 }

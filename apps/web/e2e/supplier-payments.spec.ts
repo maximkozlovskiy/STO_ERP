@@ -61,9 +61,11 @@ async function seedSupplierAndCash(page: Page, token: string) {
       // ("Недостатньо готівки в касі"), so a fresh 0-balance register must be
       // topped up before any SUPPLIER_PAYMENT confirm that draws from CASH_REGISTER.
       if (cr?.id) {
-        await fetch(`${API}/cash-registers/${cr.id}/operations`, {
+        // Касова операція без Idempotency-Key — 400 (рішення власника 2026-10-22): без ключа
+        // поповнення мовчки не проходило, і confirm() падав на «Недостатньо готівки».
+        const fund = await fetch(`${API}/cash-registers/${cr.id}/operations`, {
           method: 'POST',
-          headers: auth,
+          headers: { ...auth, 'Idempotency-Key': crypto.randomUUID() },
           body: JSON.stringify({
             direction: 'IN',
             amount: 100000,
@@ -71,6 +73,7 @@ async function seedSupplierAndCash(page: Page, token: string) {
             notes: 'E2E seed funding',
           }),
         });
+        if (!fund.ok) throw new Error(`Поповнення E2E-каси: ${fund.status}`);
       }
       return { supplierId, cashRegisterId: cr?.id, cashRegisterOk: crRes.ok };
     },

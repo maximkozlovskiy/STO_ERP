@@ -18478,7 +18478,10 @@ export interface operations {
     PaymentsController_create_v1: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -18522,7 +18525,10 @@ export interface operations {
     PaymentsController_reverse_v1: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400. */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -20837,7 +20843,10 @@ export interface operations {
     CashRegistersController_createOperation_v1: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400. */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -20862,7 +20871,10 @@ export interface operations {
     CashRegistersController_reverseOperation_v1: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400. */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
                 operationId: string;
