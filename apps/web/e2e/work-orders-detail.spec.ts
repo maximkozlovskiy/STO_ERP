@@ -105,15 +105,15 @@ test.describe('Наряд — додавання роботи', () => {
     await expect(modal).toBeVisible({ timeout: 8_000 });
     await expect(modal.getByText(/Додати роботу/i)).toBeVisible();
 
-    // Вибрати роботу (перший у select після "— Оберіть —")
-    const workSelect = modal.locator('select').first();
-    await expect(workSelect).toBeVisible({ timeout: 5_000 });
-    const worksCount = await workSelect.locator('option').count();
-    expect(worksCount, 'Seed містить роботи у каталозі').toBeGreaterThanOrEqual(2);
-    await workSelect.selectOption({ index: 1 });
+    // Вибрати роботу — пошуком на сервері (перша робота каталогу)
+    const works = await apiCall(page, 'GET', '/works?limit=1');
+    const workName: string | undefined = works?.items?.[0]?.name;
+    expect(workName, 'Seed містить роботи у каталозі').toBeTruthy();
+    await modal.getByPlaceholder('Пошук роботи...').fill(workName!);
+    await page.getByRole('option', { name: workName! }).first().click();
 
     // Виконавець
-    const empSelect = modal.locator('select').nth(1);
+    const empSelect = modal.locator('select').first();
     const empCount = await empSelect.locator('option').count();
     if (empCount >= 2) await empSelect.selectOption({ index: 1 });
 

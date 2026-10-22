@@ -407,10 +407,14 @@ test.describe('Запис наряду в календарі — BR-WO-024; ск
     await page.getByRole('button', { name: '+ Робота' }).click();
     const addLine = page.getByRole('dialog', { name: 'Додати роботу' });
     await expect(addLine).toBeVisible({ timeout: 10_000 });
-    await addLine.locator('select').first().selectOption({ index: 1 });
+    // Робота — пошуком на сервері, виконавець — список.
+    const works = await api<{ items: { name: string }[] }>(page, 'GET', '/works?limit=1');
+    const workName = works.body.items[0]!.name;
+    await addLine.getByPlaceholder('Пошук роботи...').fill(workName);
+    await page.getByRole('option', { name: workName }).first().click();
     await addLine
       .locator('select')
-      .nth(1)
+      .first()
       .selectOption({ label: `${mech.lastName} ${mech.firstName}` });
     await addLine.locator('label', { hasText: 'Ціна' }).locator('..').locator('input').fill('100');
     await addLine.getByRole('button', { name: 'Додати', exact: true }).click();
