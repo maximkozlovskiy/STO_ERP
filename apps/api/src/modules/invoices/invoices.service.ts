@@ -60,6 +60,23 @@ export const INV_TRANSITIONS: Record<InvStatus, InvStatus[]> = {
 
 // sto-optimize (cycle 3/3): sort-field whitelist hoisted from findAll body — static string-map,
 // re-allocated on every list request under polling. Sibling to SP_SORT_FIELDS/WO_SORT/PO_SORT/SD_SORT.
+/**
+ * Рядок рахунку з товаром і його одиницею (Bug #868). `InvoiceLine.unitOfMeasureId` — це
+ * `UnitOfMeasure.id`, як у рядку наряду: назву одиниці дає зв'язок рядка, коефіцієнт — пара
+ * (товар, одиниця) у `GoodUoM` (`lineUoMs`). Без одиниці рядка — базова одиниця товару.
+ */
+const INVOICE_LINE_INCLUDE = {
+  good: {
+    select: {
+      unit: true,
+      unitOfMeasure: { select: { shortName: true, coefficient: true } },
+    },
+  },
+  unitOfMeasure: { select: { shortName: true } },
+} as const satisfies Prisma.InvoiceLineInclude;
+
+type LineUoM = { coefficient: number; unitOfMeasure: { shortName: string } };
+
 const INV_SORT_FIELDS: Record<string, string> = {
   documentDate: 'documentDate',
   createdAt: 'createdAt',
@@ -188,21 +205,14 @@ export class InvoicesService {
         lines: {
           orderBy: { sortOrder: 'asc' },
           take: 500,
-          include: {
-            good: {
-              select: {
-                unit: true,
-                unitOfMeasure: { select: { shortName: true, coefficient: true } },
-              },
-            },
-          },
+          include: INVOICE_LINE_INCLUDE,
         },
         // Сторнована оплата (BR-CASH-024) у «сплачено» не входить.
         payments: { where: { reversedAt: null }, select: { amount: true } },
       },
     });
     if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
-    return this.toDto(inv, true);
+    return this.toDto(inv, true, await this.lineUoMs(orgId, inv.lines));
   }
 
   async createFromWorkOrder(orgId: string, workOrderId: string): Promise<InvoiceResponseDto> {
@@ -694,14 +704,7 @@ export class InvoicesService {
         lines: {
           orderBy: { sortOrder: 'asc' },
           take: 500,
-          include: {
-            good: {
-              select: {
-                unit: true,
-                unitOfMeasure: { select: { shortName: true, coefficient: true } },
-              },
-            },
-          },
+          include: INVOICE_LINE_INCLUDE,
         },
       },
     });
@@ -772,6 +775,7 @@ export class InvoicesService {
             vatAmount: l.vatAmount,
             priceWithVat: l.priceWithVat,
             sortOrder: l.sortOrder,
+            unitOfMeasureId: l.unitOfMeasureId,
           })),
         },
       },
@@ -809,10 +813,13 @@ export class InvoicesService {
             select: { id: true },
           })
         : Promise.resolve(null),
+      // unitOfMeasureId — UnitOfMeasure.id (FK рядка), як у наряді; пара (товар, одиниця) — у
+      // GoodUoM. Раніше шукали GoodUoM за власним id: GoodUoM.id давав 400 FK, а
+      // UnitOfMeasure.id — 404, тож рядок з альтернативною одиницею не додавався взагалі (Bug #868).
       dto.unitOfMeasureId && dto.goodId
         ? this.prisma.goodUoM.findFirst({
-            where: { id: dto.unitOfMeasureId, goodId: dto.goodId, orgId },
-            select: { id: true, coefficient: true, unitOfMeasure: { select: { shortName: true } } },
+            where: { unitOfMeasureId: dto.unitOfMeasureId, goodId: dto.goodId, orgId },
+            select: { coefficient: true, unitOfMeasure: { select: { shortName: true } } },
           })
         : Promise.resolve(null),
     ]);
@@ -853,15 +860,8 @@ export class InvoicesService {
         sortOrder: dto.sortOrder ?? 0,
         unitOfMeasureId: dto.unitOfMeasureId ?? null,
       },
-      // good include required for unitShortName/coefficient in response.
-      include: {
-        good: {
-          select: {
-            unit: true,
-            unitOfMeasure: { select: { shortName: true, coefficient: true } },
-          },
-        },
-      },
+      // good + одиниця рядка — для unitShortName/coefficient у відповіді.
+      include: INVOICE_LINE_INCLUDE,
     });
 
     await this.recalcTotals(orgId, invoiceId);
@@ -914,19 +914,12 @@ export class InvoicesService {
         priceWithVat,
         sortOrder: dto.sortOrder ?? undefined,
       },
-      // good include required for unitShortName/coefficient in response.
-      include: {
-        good: {
-          select: {
-            unit: true,
-            unitOfMeasure: { select: { shortName: true, coefficient: true } },
-          },
-        },
-      },
+      // good + одиниця рядка — для unitShortName/coefficient у відповіді.
+      include: INVOICE_LINE_INCLUDE,
     });
 
     await this.recalcTotals(orgId, invoiceId);
-    return this.toLineDto(updated);
+    return this.toLineDto(updated, await this.lineUoMs(orgId, [updated]));
   }
 
   async removeLine(orgId: string, invoiceId: string, lineId: string): Promise<void> {
@@ -1004,6 +997,7 @@ export class InvoicesService {
             goodId: true,
             price: true,
             quantity: true,
+            unitOfMeasureId: true,
             good: { select: { name: true } },
           },
         },
@@ -1030,6 +1024,7 @@ export class InvoicesService {
             name: p.good?.name ?? null,
             quantity: Number(p.quantity),
             unitPrice: Number(p.price),
+            unitOfMeasureId: p.unitOfMeasureId,
           })),
         },
         ctx.settingsVat,
@@ -1299,10 +1294,13 @@ export class InvoicesService {
         vatAmount: Prisma.Decimal;
         priceWithVat: Prisma.Decimal;
         sortOrder: number;
+        unitOfMeasureId?: string | null;
         createdAt: Date;
+        unitOfMeasure?: { shortName: string } | null;
       }>;
     },
     includeLines = false,
+    uoms?: Map<string, LineUoM>,
   ): InvoiceResponseDto {
     const cp = inv.counterparty;
     const counterpartyName =
@@ -1337,7 +1335,7 @@ export class InvoicesService {
       dueDate: inv.dueDate instanceof Date ? inv.dueDate.toISOString() : (inv.dueDate ?? null),
       documentDate: inv.documentDate ? inv.documentDate.toISOString().slice(0, 10) : null,
       ...(paidAmount !== undefined ? { paidAmount } : {}),
-      ...(includeLines && inv.lines ? { lines: inv.lines.map(l => this.toLineDto(l)) } : {}),
+      ...(includeLines && inv.lines ? { lines: inv.lines.map(l => this.toLineDto(l, uoms)) } : {}),
       createdAt: inv.createdAt instanceof Date ? inv.createdAt.toISOString() : inv.createdAt,
       updatedAt: inv.updatedAt instanceof Date ? inv.updatedAt.toISOString() : inv.updatedAt,
       deletedAt:
@@ -1382,6 +1380,8 @@ export class InvoicesService {
               unitPrice: true,
               vatRate: true,
               priceWithVat: true,
+              // Одиниця рядка (як у наряді), інакше базова одиниця товару (Bug #868).
+              unitOfMeasure: { select: { shortName: true } },
               good: {
                 select: {
                   unit: true,
@@ -1411,7 +1411,8 @@ export class InvoicesService {
       lines: (inv.lines ?? []).map(l => ({
         description: l.description,
         quantity: l.quantity,
-        unit: l.good?.unitOfMeasure?.shortName ?? l.good?.unit ?? 'шт',
+        unit:
+          l.unitOfMeasure?.shortName ?? l.good?.unitOfMeasure?.shortName ?? l.good?.unit ?? 'шт',
         unitPrice: Number(l.unitPrice),
         vatRate: Number(l.vatRate),
         total: Number(l.priceWithVat),
@@ -1423,28 +1424,61 @@ export class InvoicesService {
     });
   }
 
-  private toLineDto(l: {
-    id: string;
-    invoiceId: string;
-    goodId: string | null;
-    workId: string | null;
-    description: string;
-    quantity: number;
-    unitPrice: Prisma.Decimal;
-    vatRate: Prisma.Decimal;
-    priceWithoutVat: Prisma.Decimal;
-    vatAmount: Prisma.Decimal;
-    priceWithVat: Prisma.Decimal;
-    sortOrder: number;
-    unitOfMeasureId?: string | null;
-    createdAt: Date;
-    good?: {
-      unit: string;
-      unitOfMeasure: { shortName: string; coefficient: number } | null;
-    } | null;
-    goodUoM?: { id: string; coefficient: number; unitOfMeasure: { shortName: string } } | null;
-  }): InvoiceLineResponseDto {
-    const selectedUoM = l.goodUoM;
+  /** Коефіцієнти одиниць рядків: пара (товар, одиниця рядка) → GoodUoM, одним запитом. */
+  private async lineUoMs(
+    orgId: string,
+    lines: { goodId: string | null; unitOfMeasureId?: string | null }[] | undefined,
+  ): Promise<Map<string, LineUoM>> {
+    const pairs = (lines ?? []).filter(
+      (l): l is { goodId: string; unitOfMeasureId: string } => !!l.goodId && !!l.unitOfMeasureId,
+    );
+    const map = new Map<string, LineUoM>();
+    if (pairs.length === 0) return map;
+    const rows = await this.prisma.goodUoM.findMany({
+      where: {
+        orgId,
+        goodId: { in: [...new Set(pairs.map(p => p.goodId))] },
+        unitOfMeasureId: { in: [...new Set(pairs.map(p => p.unitOfMeasureId))] },
+      },
+      select: {
+        goodId: true,
+        unitOfMeasureId: true,
+        coefficient: true,
+        unitOfMeasure: { select: { shortName: true } },
+      },
+    });
+    for (const r of rows) map.set(`${r.goodId}|${r.unitOfMeasureId}`, r);
+    return map;
+  }
+
+  private toLineDto(
+    l: {
+      id: string;
+      invoiceId: string;
+      goodId: string | null;
+      workId: string | null;
+      description: string;
+      quantity: number;
+      unitPrice: Prisma.Decimal;
+      vatRate: Prisma.Decimal;
+      priceWithoutVat: Prisma.Decimal;
+      vatAmount: Prisma.Decimal;
+      priceWithVat: Prisma.Decimal;
+      sortOrder: number;
+      unitOfMeasureId?: string | null;
+      createdAt: Date;
+      good?: {
+        unit: string;
+        unitOfMeasure: { shortName: string; coefficient: number } | null;
+      } | null;
+      unitOfMeasure?: { shortName: string } | null;
+      goodUoM?: LineUoM | null;
+    },
+    uoms?: Map<string, LineUoM>,
+  ): InvoiceLineResponseDto {
+    const selectedUoM =
+      l.goodUoM ??
+      (l.goodId && l.unitOfMeasureId ? uoms?.get(`${l.goodId}|${l.unitOfMeasureId}`) : undefined);
     const baseUoM = l.good?.unitOfMeasure;
     return {
       id: l.id,
@@ -1453,7 +1487,11 @@ export class InvoicesService {
       workId: l.workId,
       description: l.description,
       unitOfMeasureId: l.unitOfMeasureId ?? null,
-      unitShortName: selectedUoM?.unitOfMeasure.shortName ?? baseUoM?.shortName ?? l.good?.unit,
+      unitShortName:
+        selectedUoM?.unitOfMeasure.shortName ??
+        l.unitOfMeasure?.shortName ??
+        baseUoM?.shortName ??
+        l.good?.unit,
       // safeCoeff() catches legacy/seed coefficient=0 — множник display↔base (qty_base = qty * coefficient).
       coefficient: safeCoeff(selectedUoM?.coefficient ?? baseUoM?.coefficient),
       quantity: l.quantity,

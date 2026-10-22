@@ -31,6 +31,8 @@ export interface WorkOrderForInvoice {
     name: string | null;
     quantity: number;
     unitPrice: number;
+    /** Одиниця рядка наряду (UnitOfMeasure.id): кількість і ціна наряду — саме в ній (Bug #868). */
+    unitOfMeasureId?: string | null;
   }[];
 }
 
@@ -45,6 +47,7 @@ export interface InvoiceLineDraft {
   vatAmount: number;
   priceWithVat: number;
   sortOrder: number;
+  unitOfMeasureId?: string | null;
 }
 
 export class WorkOrderTotalsMismatchError extends Error {
@@ -119,6 +122,7 @@ function draft(wo: WorkOrderForInvoice, vatRate: number, vatMode: VatMode): Invo
       vatRate: rate,
       ...one(lineAmount(p.quantity, p.unitPrice)),
       sortOrder: wo.lines.length + i,
+      unitOfMeasureId: p.unitOfMeasureId ?? null,
     })),
   ];
 }
