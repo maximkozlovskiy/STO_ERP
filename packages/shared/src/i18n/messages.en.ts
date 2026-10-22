@@ -388,6 +388,11 @@ export const en: Record<string, string> = {
   'err.payment.cashRegisterNotFound': 'Cash register not found',
   'err.payment.nonCashRequiresDestination':
     'Non-cash payment: choose the bank account the money arrived at',
+  'err.payment.reversalCashRow':
+    'The payment was taken at a cash register — reverse the cash operation on the Cash page',
+  'err.payment.reversalOnlineQr':
+    'An online QR payment cannot be reversed here — refund it in the payment service account',
+  'err.payment.alreadyReversed': 'The payment has already been reversed',
   'err.payment.cashRequiresRegister': 'Specify a cash register for a cash payment',
   // cash-shift
   'err.cashShift.fiscalNotConfigured':

@@ -208,10 +208,12 @@ create (метод без requiresFiscal) → null
   (борг клієнта ↓). Ніколи не змінює баланс напряму. Знак/семантика — [settlements.md](settlements.md).
 - **BR-PAY-005**: Якщо є наряд: `workOrder.paidAmount += amount` у транзакції платежу (рядок наряду блокується ПЕРШИМ — раніше за рахунок); у тій самій транзакції при повній оплаті (BR-PAY-017) наряд у «Виставлено» стає «Оплачено», у «Виконано» — «Виставлено» → «Оплачено» без створення рахунку (BR-WO-016); події переходів — після коміту.
 
-### Сторно оплати (BR-CASH-024)
+### Сторно оплати (BR-CASH-024, BR-PAY-024)
 
-Публічного HTTP-маршруту сторно в `/payments` немає: сторно запускає каса
-(`POST /cash-registers/:id/operations/:operationId/reverse` → `CashDeskService.reverse`), яка в тій самій
+Сторно запускають два входи — обидва викликають той самий внутрішній
+`PaymentsService.reverse(orgId, paymentId, ctx, tx)`: каса для оплат із касовим рядком (нижче) і
+`POST /payments/:id/reverse` для безготівкових і старих оплат без призначення (BR-PAY-024). Каса
+(`POST /cash-registers/:id/operations/:operationId/reverse` → `CashDeskService.reverse`) у тій самій
 транзакції викликає внутрішній `PaymentsService.reverse(orgId, paymentId, ctx, tx)` (`ctx` — id рядка сторно,
 причина, користувач). Що він робить, у порядку записів: CAS `reversedAt: null → now()` (друге сторно →
 400; чек у черзі / `FAILED` одразу `SKIPPED`) → проводка `PAYMENT_CANCEL` / `PREPAYMENT_CANCEL` (за типом
@@ -347,6 +349,21 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
   (RECEPTIONIST) переліку рахунків не запитує: поле пропонує рахунок способу (назва й валюта — з
   `GET /payment-methods`), а без нього пояснює, що способу не задано рахунку у валюті документа.
   Рознесення виписки й каса передають призначення самі. `PaymentsService.create`, `ClientPaymentModal`
+- **BR-PAY-024**: **Сторно безготівкової оплати** (рішення власника 2026-10-22). `POST /payments/:id/reverse
+{ reason }` сторнує оплату клієнта без касового рядка: на банківський рахунок (з вікна «Оплатити» чи з
+  рознесення виписки) і стару оплату без призначення. Ролі — OWNER, ADMIN, ACCOUNTANT (як сторно в касі);
+  причина обов'язкова, до 500 символів (`paymentReversalSchema` = `cashReversalSchema`); Idempotency-Key.
+  Відмови — 400 до першого запису: оплата з касовим рядком (`sourceType = CASH_REGISTER` — «сторнуйте
+  касову операцію», `err.payment.reversalCashRow`); онлайн-оплата QR (`onlinePaymentIntentId`,
+  `err.payment.reversalOnlineQr`); уже сторнована (`err.payment.alreadyReversed`); решта — як у BR-CASH-024
+  (пробитий чек, іновалютна оплата, наряд в архіві, скасований рахунок без наряду). Наслідки — ті самі, що в
+  касовому сторно (той самий `reverse`): проводка `PAYMENT_CANCEL` / `PREPAYMENT_CANCEL` з курсом оригіналу,
+  «сплачено» й статуси наряду та рахунку, чек у черзі, бонуси; документ проводки сторно — сама оплата
+  (`documentType = 'Payment'`), не касовий рядок. Оплата з рознесення виписки: у тій самій транзакції рядок
+  виписки CAS MATCHED → UNMATCHED, `paymentId = null`, `unmatchReason/At/By` — рядок можна рознести заново
+  (BR-BANK-040). Причину й автора сторно оплата зберігає (`reversalReason`, `reversedBy`) — для будь-якого
+  сторно, касового теж. Дія «Сторнувати» — у «Пов'язаних документах» рахунку й наряду (рядок оплати) і на
+  рознесеному вхідному рядку «Банківських платежів». `PaymentsService.reverseNonCash`, `PaymentReversalModal`
 
 ### Конкретні провайдери
 

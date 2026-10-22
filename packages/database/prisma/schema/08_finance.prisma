@@ -82,6 +82,10 @@ model Payment {
   // Сторнована оплата не входить у суми «сплачено», нічну звірку, бонуси й фіскальну чергу.
   reversedAt              DateTime?
   reversalCashOperationId String?  @db.Uuid
+  // Причина й автор сторно (BR-PAY-024) — для будь-якого сторно: з каси і безготівкового
+  // (`POST /payments/:id/reverse`). Безготівкове сторно касового рядка не має.
+  reversalReason          String?
+  reversedBy              String?  @db.Uuid
   syncVersion     BigInt   @default(0)
   createdAt       DateTime @default(now())
 

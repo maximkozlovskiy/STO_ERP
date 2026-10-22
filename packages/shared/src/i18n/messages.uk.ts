@@ -381,6 +381,11 @@ export const uk: Record<string, string> = {
   'err.payment.cashRegisterNotFound': 'Касу не знайдено',
   'err.payment.nonCashRequiresDestination':
     'Безготівкова оплата: оберіть банківський рахунок, на який надійшли гроші',
+  'err.payment.reversalCashRow':
+    'Оплата прийнята через касу — сторнуйте касову операцію на сторінці «Каса»',
+  'err.payment.reversalOnlineQr':
+    'Онлайн-оплату за QR тут не сторнувати — повернення робиться в кабінеті платіжного сервісу',
+  'err.payment.alreadyReversed': 'Оплату вже сторновано',
   'err.payment.cashRequiresRegister': 'Для оплати готівкою вкажіть касу',
   // cash-shift
   'err.cashShift.fiscalNotConfigured': 'Фіскалізацію не налаштовано (провайдер/креди/увімкнення)',

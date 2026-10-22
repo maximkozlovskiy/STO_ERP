@@ -214,3 +214,11 @@ export const cashReversalSchema = z.object({
 
 export type CashReversalFormInput = z.input<typeof cashReversalSchema>;
 export type CashReversalFormValues = z.output<typeof cashReversalSchema>;
+
+/**
+ * Сторно безготівкової оплати клієнта (BR-PAY-024, `POST /payments/:id/reverse`): те саме правило
+ * причини, що й у касі (обов'язкова, до 500 символів) — одна схема, не копія.
+ */
+export const paymentReversalSchema = cashReversalSchema;
+export type PaymentReversalFormInput = CashReversalFormInput;
+export type PaymentReversalFormValues = CashReversalFormValues;
