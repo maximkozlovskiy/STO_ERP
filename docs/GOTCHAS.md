@@ -4,6 +4,22 @@
 
 ---
 
+## [2026-10-22] Після `pnpm install` dev API: «`@prisma/client` has no exported member `PrismaClient`»
+
+Згенерований Prisma-клієнт живе всередині пакета `@prisma/client` у `node_modules/.pnpm`. Будь-який
+`pnpm install` / `pnpm add` / `pnpm update`, що перелінковує пакети (зокрема з ІНШОЇ сесії в тому ж
+дереві), може лишити «голий» пакет без згенерованих типів. Вотчер `nest start --watch` тоді друкує
+тисячі `TS2339 Property 'lift' does not exist on type 'PrismaService'` (2162 помилки 2026-10-22), а
+API не стартує. Лікується не кодом:
+
+```bash
+pnpm --filter @sto/database exec prisma generate   # потім перезапустити dev API
+```
+
+Тисячі помилок на `this.prisma.<модель>` водночас — спершу `prisma generate`, а не правка сервісів.
+
+---
+
 ## [2026-10-22] Web-тест: не підміняй `fetch` через `new Response(new Blob(...))`
 
 У jsdom `Blob` — свій, а `Response` — з undici. Локально (Windows, своя версія Node) такий
