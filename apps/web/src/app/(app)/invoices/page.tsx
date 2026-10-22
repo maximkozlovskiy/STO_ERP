@@ -51,7 +51,6 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { activateRow } from '@/lib/row-activation';
-import { InvoiceCreateModal } from '@/components/ui/InvoiceCreateModal';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -109,8 +108,12 @@ interface InvoiceFilters extends Record<string, unknown> {
 type InvoiceWithOptionals = Invoice;
 
 // Status labels via i18n wrappers; badge/transition constants imported from @sto/shared
-// Вікна оплати й QR відкриваються лише за кліком — їхній код не входить у first-load сторінки
-// (бюджет сторінки рахунків, check-page-budget.mjs).
+// Картка рахунку, вікна оплати й QR відкриваються лише за кліком — їхній код не входить у first-load
+// сторінки (бюджет сторінки рахунків, check-page-budget.mjs; TECH-DEBT §15.11).
+const InvoiceCreateModal = dynamic(
+  () => import('@/components/ui/InvoiceCreateModal').then(m => m.InvoiceCreateModal),
+  { ssr: false },
+);
 const ClientPaymentModal = dynamic(
   () => import('@/components/ui/ClientPaymentModal').then(m => m.ClientPaymentModal),
   { ssr: false },

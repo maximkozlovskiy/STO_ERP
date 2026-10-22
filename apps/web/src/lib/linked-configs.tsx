@@ -1,5 +1,7 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+
 import {
   Receipt,
   CreditCard,
@@ -29,10 +31,16 @@ import type {
   LinkedItemBadge,
   LinkedSectionItem,
 } from '@/components/ui/LinkedDocumentsPanel';
-import { PaymentReversalModal } from '@/components/ui/PaymentReversalModal';
 import i18n from '@/i18n/config';
 import type { LinkedNav } from '@/lib/linked-nav';
 import { SUPPLIER_PAYMENT_STATUS_BADGE, type ApiSchema } from '@sto/shared';
+
+// Вікно сторно відкривається лише дією в «Пов'язаних документах» — окремим чанком, а не в first load
+// сторінок «Рахунки» й «Наряди» (бюджет сторінки 560 КБ, `check-page-budget.mjs`).
+const PaymentReversalModal = dynamic(
+  () => import('@/components/ui/PaymentReversalModal').then(m => m.PaymentReversalModal),
+  { ssr: false },
+);
 
 // Реєстр конфігів пов'язаних документів. Кожен конфіг — фабрика (nav) => config,
 // бо навігація приходить з хука useLinkedNav() у компоненті, а самі секції статичні.
