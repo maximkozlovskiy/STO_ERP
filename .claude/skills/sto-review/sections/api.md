@@ -37,6 +37,15 @@ grep -rn "async findAll\|async getAll" apps/api/src/modules/ --include="*.servic
       «неоднозначно» мовчки стає «знайдено». Без регістру — `{ in, mode: 'insensitive' }`
       (Prisma дає `LOWER(col) IN (LOWER($1)…)`, не `LIKE`), а не варіанти регістру з JS
       (`journal/api.md`, 2026-10-12)
+- [ ] **Пошук за ПАРОЮ ключів двома незалежними `IN` (`goodId: { in }` + `unitOfMeasureId: { in }`)
+      тягне перехресні пари, і `take` під нього не порахувати** → унікальні пари через
+      `OR: [...pairs]` з `take: pairs.size` (`sto-dev` sections/api.md, «Запобігання N+1»). Grep:
+      `git diff <base> -- apps/api/src | grep -nE "^\+.*Id: \{ in: " ` → два `IN` в одному `where`
+      (`journal/api.md`, 2026-10-22)
+- [ ] **Новий тест, вставлений між міткою `// guards: BR-…` і чужим `it(`, краде мітку:** правило
+      сусіда лишається без сторожа, а новий тест стереже не своє. Grep:
+      `git diff <base> -U3 -- '*.spec.ts' | grep -A1 "^ .*// guards:" | grep "^+.*it("` → кожен збіг
+      звірити з текстом правила в дос'є (`journal/api.md`, 2026-10-22)
 - [ ] **`csv-parse` з `delimiter: [',', ';']` ділить по обох знаках одразу** — роздільник
       визначати один на файл (деталі — `docs/GOTCHAS.md`, 2026-10-12)
 - [ ] **Грошовий документ, зібраний із КІЛЬКОХ читань (баланс + журнал + агрегат) → одне `$transaction` з `isolationLevel: 'RepeatableRead'`.** Окремі читання дають документ, що не сходиться сам із собою: проводка між ними потрапляє в одне читання й не потрапляє в інше (`journal/api.md`, 2026-10-08, акт звірки)

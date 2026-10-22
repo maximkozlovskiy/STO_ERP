@@ -213,6 +213,20 @@ const orders = await this.prisma.workOrder.findMany({
 });
 ```
 
+**Пакетний пошук за ПАРОЮ ключів (товар + одиниця, документ + рядок) — точні пари через `OR`,
+не два незалежні `IN`** (review 2026-10-22, `invoices.lineUoMs`):
+
+```typescript
+// ❌ goodId IN (A, B) AND unitOfMeasureId IN (X, Y) — тягне й перехресні пари (A,Y), (B,X);
+//    `take` тоді не порахувати: обрізання може відкинути саме потрібну пару
+prisma.goodUoM.findMany({
+  where: { orgId, goodId: { in: goods }, unitOfMeasureId: { in: units } },
+});
+
+// ✅ унікальні пари → рівно стільки рядків, скільки пар (@@unique на трійці)
+prisma.goodUoM.findMany({ where: { orgId, OR: [...pairs.values()] }, take: pairs.size });
+```
+
 ---
 
 ## Prisma 5
