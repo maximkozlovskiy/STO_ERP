@@ -32,9 +32,11 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
 }));
 
+// Кеш вкладки: порожній, доки тест сам його не наповнить (Bug #946).
+const refCache = vi.hoisted(() => new Map<string, unknown>());
 vi.mock('@/lib/ref-cache', () => ({
-  getCached: () => null,
-  setCache: vi.fn(),
+  getCached: (key: string) => refCache.get(key) ?? null,
+  setCache: vi.fn((key: string, data: unknown) => refCache.set(key, data)),
 }));
 
 vi.mock('@/hooks/api/useCash', () => ({
@@ -193,6 +195,7 @@ const lineRow = (name: string) =>
 describe('CreateWorkOrderModal — виконавець нової роботи (BR-WO-030)', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();
+    refCache.clear();
   });
 
   // guards: BR-WO-030
@@ -336,6 +339,32 @@ describe('CreateWorkOrderModal — виконавець нової роботи 
     expect(lineRow('Фарбування дверей').textContent).not.toContain('Петров');
     // Категорії — лише робіт послуги, запитом за id (не перші 200 робіт довідника).
     expect(apiFetchMock).toHaveBeenCalledWith('/works?ids=w-oil,w-paint&limit=200');
+  });
+
+  // Bug #946: категорію роботи з кешу вкладки ніхто не оновлює — роботу перенесли в «Двигун», а
+  // правило підставляло механіка за старою категорією з кешу.
+  // guards: BR-WO-030
+  it('«+ Послуга»: категорія роботи — з сервера, а не зі старого кешу вкладки', async () => {
+    refCache.set('cache:works', [
+      { id: 'w-oil', categoryId: BODY },
+      { id: 'w-paint', categoryId: BODY },
+    ]);
+    mockApi({
+      liftMechanics: {
+        [LIFT_ONE]: [{ id: 'm-ivan', status: 'ACTIVE', workCategoryIds: [ENGINE] }],
+      },
+    });
+    const user = await openCard();
+
+    await user.click(within(worksSection()).getByRole('button', { name: 'Послуга' }));
+    const picker = await screen.findByRole('dialog', { name: 'Оберіть комплексну послугу' });
+    await user.click(await within(picker).findByRole('button', { name: /ТО-1/ }));
+
+    await waitFor(() => expect(lineRow('Заміна оливи').textContent).toContain('Петров Іван'));
+    expect(apiFetchMock).toHaveBeenCalledWith('/works?ids=w-oil,w-paint&limit=200');
+    // Кеш оновлено свіжою категорією.
+    const cached = refCache.get('cache:works') as { id: string; categoryId: string }[];
+    expect(cached.find(w => w.id === 'w-oil')?.categoryId).toBe(ENGINE);
   });
 
   // guards: BR-WO-030
