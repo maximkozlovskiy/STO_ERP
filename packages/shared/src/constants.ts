@@ -45,6 +45,13 @@ export const PRICING_RULE_MAX_GOODS = 5000;
 export const WARRANTY_EXPIRING_DAYS = 30;
 
 /**
+ * Стан гарантії у списку вкладки «Гарантії» (BR-WAR-002): обчислює сервер, фільтр `?state=` бере
+ * ці самі значення. Порядок — порядок пунктів фільтра у web.
+ */
+export const WARRANTY_STATES = ['ACTIVE', 'EXPIRING', 'EXPIRED', 'CLAIMED'] as const;
+export type WarrantyState = (typeof WARRANTY_STATES)[number];
+
+/**
  * Код системного способу оплати «Готівка» (`PaymentMethodConfig.code`, засів організації).
  * Готівка лягає лише в касу (BR-PAY-019): API перевіряє оплату й замовчування способу,
  * web — вікно оплати рахунку й картку способу в НДІ. Одне джерело для обох.

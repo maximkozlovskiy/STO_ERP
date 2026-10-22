@@ -1,14 +1,65 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { translateError } from '@sto/shared';
+import type { Prisma } from '@prisma/client';
+import { translateError, WARRANTY_EXPIRING_DAYS, type WarrantyState } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { addDaysKyiv } from '../../common/utils/kyiv-date';
+import { searchContains } from '../../common/utils/like-pattern';
+import { calculatePagination } from '../../common/utils/pagination';
 import { getLocale } from '../../common/tenant/tenant-context';
 import {
   CreateWarrantyDto,
   ClaimWarrantyDto,
   WarrantyResponseDto,
   WarrantyListDto,
+  WarrantyListQueryDto,
+  WarrantyListItemDto,
+  PaginatedWarrantiesDto,
 } from './warranties.dto';
+
+/**
+ * Межі стану гарантії (BR-WAR-002) на момент запиту: `now` і поріг «закінчується» — `now` +
+ * `WARRANTY_EXPIRING_DAYS` календарних днів за Києвом. Одні межі для обчислення `state` у рядку і
+ * для фільтра `?state=` у базі — інакше рядок із міткою «закінчується» не потрапляв би у фільтр.
+ */
+export interface WarrantyStateBounds {
+  now: Date;
+  expiringUntil: Date;
+}
+
+export function warrantyStateBounds(now = new Date()): WarrantyStateBounds {
+  return { now, expiringUntil: addDaysKyiv(now, WARRANTY_EXPIRING_DAYS) };
+}
+
+export function warrantyState(
+  w: { claimedAt: Date | null; expiresAt: Date },
+  { now, expiringUntil }: WarrantyStateBounds,
+): WarrantyState {
+  if (w.claimedAt) return 'CLAIMED';
+  if (w.expiresAt.getTime() <= now.getTime()) return 'EXPIRED';
+  if (w.expiresAt.getTime() <= expiringUntil.getTime()) return 'EXPIRING';
+  return 'ACTIVE';
+}
+
+/** Умова Prisma для одного стану — дзеркало `warrantyState`. */
+export function warrantyStateWhere(
+  state: WarrantyState,
+  { now, expiringUntil }: WarrantyStateBounds,
+): Prisma.WarrantyWhereInput {
+  switch (state) {
+    case 'CLAIMED':
+      return { claimedAt: { not: null } };
+    case 'EXPIRED':
+      return { claimedAt: null, expiresAt: { lte: now } };
+    case 'EXPIRING':
+      return { claimedAt: null, expiresAt: { gt: now, lte: expiringUntil } };
+    case 'ACTIVE':
+      return { claimedAt: null, expiresAt: { gt: expiringUntil } };
+    default: {
+      const _: never = state;
+      return _;
+    }
+  }
+}
 
 type WarrantyWithIncludes = {
   id: string;
@@ -55,6 +106,71 @@ export class WarrantiesService {
           [w.counterparty.lastName, w.counterparty.firstName].filter(Boolean).join(' '))
         : undefined,
     };
+  }
+
+  /**
+   * BR-WAR-001…003: список вкладки «Гарантії». Без видалених гарантій і без гарантій видалених
+   * нарядів; стан і фільтр — з одних меж (`warrantyStateBounds`); пошук — номер наряду, клієнт,
+   * номер авто наряду.
+   */
+  async findAll(orgId: string, query: WarrantyListQueryDto): Promise<PaginatedWarrantiesDto> {
+    const bounds = warrantyStateBounds();
+    const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
+    const and: Prisma.WarrantyWhereInput[] = [];
+    if (query.state?.length) {
+      and.push({ OR: [...new Set(query.state)].map(s => warrantyStateWhere(s, bounds)) });
+    }
+    const contains = searchContains(query.q);
+    if (contains) {
+      and.push({
+        OR: [
+          { workOrder: { is: { number: contains } } },
+          { workOrder: { is: { vehicle: { is: { licensePlate: contains } } } } },
+          { counterparty: { is: { companyName: contains } } },
+          { counterparty: { is: { lastName: contains } } },
+          { counterparty: { is: { firstName: contains } } },
+        ],
+      });
+    }
+    const where: Prisma.WarrantyWhereInput = {
+      orgId,
+      deletedAt: null,
+      workOrder: { is: { deletedAt: null } },
+      ...(query.id ? { id: query.id } : {}),
+      ...(and.length ? { AND: and } : {}),
+    };
+    const dir = query.sortDir ?? 'asc';
+    const primary: Prisma.WarrantyOrderByWithRelationInput =
+      query.sortBy === 'createdAt' ? { createdAt: dir } : { expiresAt: dir };
+    const [rows, total] = await Promise.all([
+      this.prisma.warranty.findMany({
+        where,
+        include: {
+          workOrder: {
+            select: {
+              number: true,
+              vehicle: { select: { make: true, model: true, licensePlate: true } },
+            },
+          },
+          counterparty: { select: { companyName: true, firstName: true, lastName: true } },
+        },
+        orderBy: [primary, { id: dir }],
+        skip,
+        take,
+      }),
+      this.prisma.warranty.count({ where }),
+    ]);
+    const items: WarrantyListItemDto[] = rows.map(w => {
+      const v = w.workOrder?.vehicle;
+      return {
+        ...this.toDto(w),
+        vehicleSummary: v
+          ? `${v.make} ${v.model}${v.licensePlate ? ` (${v.licensePlate})` : ''}`
+          : null,
+        state: warrantyState(w, bounds),
+      };
+    });
+    return { items, total, page: query.page, limit: take };
   }
 
   async create(orgId: string, dto: CreateWarrantyDto): Promise<WarrantyResponseDto> {
@@ -271,14 +387,28 @@ export class WarrantiesService {
         translateError('err.warranty.claimWorkOrderNotFound', getLocale()),
       );
 
-    // Defense-in-depth: scope update by orgId (compound where) so a race-window
-    // between the findFirst guard and update cannot let a cross-org record be mutated.
-    // Prisma requires a compound @@id or @@unique to use multiple keys here — warranty
-    // has @@unique([id, orgId]) hint? Use updateMany + findFirstOrThrow для безпеки.
-    await this.prisma.warranty.updateMany({
-      where: { id, orgId, deletedAt: null },
-      data: { claimedAt: new Date(), claimWoId: dto.claimWoId },
+    // BR-WAR-004: перевірки вище — лише швидка відмова. Рішення приймає сам запис: умова
+    // `claimedAt: null` і `expiresAt > зараз` у where. Два одночасні звернення обидва проходять
+    // перевірки вище (кожне читало гарантію до запису іншого), але `updateMany` друге вже не
+    // збігається — `count = 0`, і друге отримує відмову замість мовчки переписати перше.
+    const now = new Date();
+    const res = await this.prisma.warranty.updateMany({
+      where: { id, orgId, deletedAt: null, claimedAt: null, expiresAt: { gt: now } },
+      data: { claimedAt: now, claimWoId: dto.claimWoId },
     });
+    if (res.count === 0) {
+      const cur = await this.prisma.warranty.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { claimedAt: true },
+      });
+      if (!cur) throw new NotFoundException(translateError('err.warranty.notFound', getLocale()));
+      throw new BadRequestException(
+        translateError(
+          cur.claimedAt ? 'err.warranty.alreadyClaimed' : 'err.warranty.expired',
+          getLocale(),
+        ),
+      );
+    }
     const updated = await this.prisma.warranty.findFirstOrThrow({
       where: { id, orgId },
       include: {

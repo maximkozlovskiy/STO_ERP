@@ -2876,7 +2876,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Список гарантій (вкладка «Гарантії» нарядів) */
+        get: operations["WarrantiesController_findAll_v1"];
         put?: never;
         /** Створити гарантію */
         post: operations["WarrantiesController_create_v1"];
@@ -8193,6 +8194,32 @@ export interface components {
         WarrantyListDto: {
             items: components["schemas"]["WarrantyResponseDto"][];
             total: number;
+        };
+        WarrantyListItemDto: {
+            id: string;
+            orgId: string;
+            workOrderId: string;
+            workOrderLineId?: string | null;
+            workOrderPartId?: string | null;
+            counterpartyId: string;
+            expiresAt: string;
+            description: string;
+            claimedAt?: string | null;
+            claimWoId?: string | null;
+            isActive: boolean;
+            createdAt: string;
+            workOrderNumber?: string;
+            counterpartyName?: string;
+            /** @description Марка, модель, номер авто наряду */
+            vehicleSummary: string | null;
+            /** @enum {string} */
+            state: "ACTIVE" | "EXPIRING" | "EXPIRED" | "CLAIMED";
+        };
+        PaginatedWarrantiesDto: {
+            items: components["schemas"]["WarrantyListItemDto"][];
+            total: number;
+            page: number;
+            limit: number;
         };
         ClaimWarrantyDto: {
             /** Format: uuid */
@@ -15797,6 +15824,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MaintenanceScheduleResponseDto"];
+                };
+            };
+        };
+    };
+    WarrantiesController_findAll_v1: {
+        parameters: {
+            query?: {
+                /** @description Пошук: № наряду, клієнт, номер авто */
+                q?: string;
+                /** @description Стани через кому (ACTIVE,EXPIRING,EXPIRED,CLAIMED) */
+                state?: string;
+                /** @description Лише ця гарантія (посилання «Пов'язані документи») */
+                id?: string;
+                /** @description Типово — expiresAt */
+                sortBy?: "expiresAt" | "createdAt";
+                /** @description Типово — asc */
+                sortDir?: "asc" | "desc";
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedWarrantiesDto"];
                 };
             };
         };

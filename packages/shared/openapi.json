@@ -9518,6 +9518,118 @@
         "tags": [
           "warranties"
         ]
+      },
+      "get": {
+        "operationId": "WarrantiesController_findAll_v1",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Пошук: № наряду, клієнт, номер авто",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "required": false,
+            "in": "query",
+            "description": "Стани через кому (ACTIVE,EXPIRING,EXPIRED,CLAIMED)",
+            "schema": {
+              "example": "ACTIVE,EXPIRING",
+              "type": "string",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "ACTIVE",
+                  "EXPIRING",
+                  "EXPIRED",
+                  "CLAIMED"
+                ]
+              }
+            }
+          },
+          {
+            "name": "id",
+            "required": false,
+            "in": "query",
+            "description": "Лише ця гарантія (посилання «Пов'язані документи»)",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Типово — expiresAt",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "expiresAt",
+                "createdAt"
+              ]
+            }
+          },
+          {
+            "name": "sortDir",
+            "required": false,
+            "in": "query",
+            "description": "Типово — asc",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedWarrantiesDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Список гарантій (вкладка «Гарантії» нарядів)",
+        "tags": [
+          "warranties"
+        ]
       }
     },
     "/api/v1/warranties/expiring": {
@@ -26435,6 +26547,109 @@
         "required": [
           "items",
           "total"
+        ]
+      },
+      "WarrantyListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "orgId": {
+            "type": "string"
+          },
+          "workOrderId": {
+            "type": "string"
+          },
+          "workOrderLineId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workOrderPartId": {
+            "type": "string",
+            "nullable": true
+          },
+          "counterpartyId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "claimedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "claimWoId": {
+            "type": "string",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "workOrderNumber": {
+            "type": "string"
+          },
+          "counterpartyName": {
+            "type": "string"
+          },
+          "vehicleSummary": {
+            "type": "string",
+            "nullable": true,
+            "description": "Марка, модель, номер авто наряду"
+          },
+          "state": {
+            "enum": [
+              "ACTIVE",
+              "EXPIRING",
+              "EXPIRED",
+              "CLAIMED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "orgId",
+          "workOrderId",
+          "counterpartyId",
+          "expiresAt",
+          "description",
+          "isActive",
+          "createdAt",
+          "vehicleSummary",
+          "state"
+        ]
+      },
+      "PaginatedWarrantiesDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WarrantyListItemDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
         ]
       },
       "ClaimWarrantyDto": {
