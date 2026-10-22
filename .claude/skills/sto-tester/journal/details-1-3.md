@@ -320,3 +320,11 @@
 <!-- T1.3-079 -->
 
 - [ ] **Кнопка закриття в обхід сторожа незбережених змін (Bug #938):** картка має `useDirtyForm` і `handleModalClose` (Escape, «×» питають «Є незбережені зміни»), але футерна «Закрити» (режим редагування) — `onClick={onClose}`: зміни, зокрема додані рядки, зникають мовчки. Тест на Escape зелений, бо кнопки не торкається. Детектор: у файлах із `confirmClose` — `for f in $(grep -rl "confirmClose" apps/web/src --include=*.tsx | grep -v __tests__); do grep -Hn "onClick={onClose}\|onClick={() => onClose()}" "$f"; done` → кожен хіт: кнопка мусить кликати той самий обробник, що й `Modal.onClose`. Наживо: змінити поле → «Закрити» в футері. Фікс: `onClick={() => void handleModalClose()}`; тест — зміни → кнопка → підтвердження, і контроль без змін.
+
+<!-- T1.3-080 -->
+
+- [ ] ISO-мітка часу з API порівнюється з київським «сьогодні» через `.slice(0, 10)` — це UTC-дата, перші 2–3 години доби випадають (Bug #812). Перевіряти наживо між 00:00 і 03:00 або тестом на `…T21:30Z`. Grep: `grep -rnE "At\??\.slice\(0, 10\) ===" apps/web/src`
+
+<!-- T1.3-081 -->
+
+- [ ] Поле пошуку без `maxLength`, а бекенд відхиляє довгий `q` (`@MaxLength` у query-DTO) → 400 і рядки попереднього пошуку під новим текстом (Bug #816). Наживо: вставити 150 символів. Grep: `grep -rn "MaxLength" apps/api/src/modules --include=*.dto.ts | grep -B3 " q?:"` проти `grep -rn "searchPlaceholder" apps/web/src/app -A3 | grep -c maxLength`
