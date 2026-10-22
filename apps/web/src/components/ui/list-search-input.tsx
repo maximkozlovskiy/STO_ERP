@@ -26,7 +26,7 @@ export function ListSearchInput({ value, onChange, label }: ListSearchInputProps
       aria-label={label}
       maxLength={LIST_SEARCH_MAX_LENGTH}
       leftElement={<Search />}
-      className="w-64 h-8 text-[13px]"
+      className="w-72 h-8 text-[13px]"
     />
   );
 }

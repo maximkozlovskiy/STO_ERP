@@ -74,6 +74,7 @@ import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { TableContainer } from '@/components/ui/table-container';
 import { Tooltip } from '@/components/ui/tooltip';
 import { StatusPill } from '@/components/ui/status-pill';
+import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
 import {
   WORK_ORDER_PANEL_SCHEMA,
   buildPanelFields,
@@ -758,41 +759,86 @@ function WorkOrdersListTab() {
       )}
 
       {/* Status filter pills + Мої наряди */}
-      <div className="flex gap-1.5 flex-wrap items-center justify-between shrink-0">
-        <div className="flex gap-1.5 flex-wrap items-center">
-          {STATUS_TABS.map(([v, labelKey]) => (
-            <StatusPill
-              key={v}
-              value={v}
-              label={t(labelKey)}
-              active={statusFilter === v}
-              description={STATUS_DESCRIPTIONS[v]}
-              onSelect={handleSelectStatus}
-            />
-          ))}
-        </div>
-        {employee && (
-          <button
-            onClick={() => {
-              setMyOrders(v => !v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border transition-colors',
-              myOrders
-                ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
-            )}
-          >
-            <User className="h-3 w-3 shrink-0" />
-            {t('list.myOrders')}
-          </button>
-        )}
-      </div>
+      <ListStatusRow
+        label={t('list.columns.status')}
+        right={
+          employee && (
+            <button
+              type="button"
+              aria-pressed={myOrders}
+              onClick={() => {
+                setMyOrders(v => !v);
+                resetPage();
+                setActiveSavedFilterId(null);
+              }}
+              className={cn(
+                'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border transition-colors',
+                myOrders
+                  ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                  : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
+              )}
+            >
+              <User className="h-3 w-3 shrink-0" />
+              {t('list.myOrders')}
+            </button>
+          )
+        }
+      >
+        {STATUS_TABS.map(([v, labelKey]) => (
+          <StatusPill
+            key={v}
+            value={v}
+            label={t(labelKey)}
+            active={statusFilter === v}
+            description={STATUS_DESCRIPTIONS[v]}
+            onSelect={handleSelectStatus}
+          />
+        ))}
+      </ListStatusRow>
 
       {/* Search + category filter + showDeleted controls */}
-      <div className="flex flex-wrap gap-3 shrink-0">
+      <ListFiltersRow
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              title={showDeleted ? t('list.hideDeleted') : t('list.showDeleted')}
+              onClick={() => {
+                setShowDeleted(v => !v);
+                resetPage();
+                setActiveSavedFilterId(null);
+              }}
+              className={cn(showDeleted && 'border-primary text-primary')}
+            >
+              {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </Button>
+            {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
+            <ColumnsDropdown
+              columns={orderedColumns}
+              visibleKeys={colVisible}
+              onToggle={toggleCol}
+              onReorder={reorder}
+              onRename={renameColumn}
+              onReset={resetConfig}
+              hasCustomization={
+                JSON.stringify(order) !== WO_COLUMNS_DEFAULT_KEYS_JSON ||
+                Object.keys(customLabels).length > 0
+              }
+            />
+            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
+            <Button
+              onClick={() => {
+                setError('');
+                setModal(true);
+              }}
+              leftIcon={<Plus className="h-4 w-4" />}
+            >
+              {t('list.createButton')}
+            </Button>
+          </>
+        }
+      >
         <Input
           value={search}
           onChange={e => {
@@ -837,46 +883,7 @@ function WorkOrdersListTab() {
             </option>
           ))}
         </Select>
-
-        <div className="flex items-center gap-2 ml-auto">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            title={showDeleted ? t('list.hideDeleted') : t('list.showDeleted')}
-            onClick={() => {
-              setShowDeleted(v => !v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            className={cn(showDeleted && 'border-primary text-primary')}
-          >
-            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          </Button>
-          {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-          <ColumnsDropdown
-            columns={orderedColumns}
-            visibleKeys={colVisible}
-            onToggle={toggleCol}
-            onReorder={reorder}
-            onRename={renameColumn}
-            onReset={resetConfig}
-            hasCustomization={
-              JSON.stringify(order) !== WO_COLUMNS_DEFAULT_KEYS_JSON ||
-              Object.keys(customLabels).length > 0
-            }
-          />
-          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-          <Button
-            onClick={() => {
-              setError('');
-              setModal(true);
-            }}
-            leftIcon={<Plus className="h-4 w-4" />}
-          >
-            {t('list.createButton')}
-          </Button>
-        </div>
-      </div>
+      </ListFiltersRow>
 
       {/* Bulk actions */}
       {features.bulkActionsEnabled && bulkSelect.count > 0 && (

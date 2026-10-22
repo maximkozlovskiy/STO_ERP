@@ -21,6 +21,8 @@ const StatusPill = memo(function StatusPill({
 }: StatusPillProps) {
   const btn = (
     <button
+      type="button"
+      aria-pressed={active}
       onClick={() => onSelect(value)}
       className={cn(
         'px-3 py-1 rounded-full text-sm font-medium border transition-colors',
