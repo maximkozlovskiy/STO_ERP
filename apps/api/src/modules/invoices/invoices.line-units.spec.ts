@@ -151,9 +151,11 @@ describe('Рахунок — одиниця рядка як у наряді (Bug
       unitShortName: 'Пак',
       coefficient: 10,
     });
+    // Точна пара (товар, одиниця рядка), не перехресні goodId IN × unitOfMeasureId IN.
     expect(goodUoM.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ orgId: ORG, unitOfMeasureId: { in: [PAK] } }),
+        where: { orgId: ORG, OR: [{ goodId: GOOD, unitOfMeasureId: PAK }] },
+        take: 1,
       }),
     );
   });

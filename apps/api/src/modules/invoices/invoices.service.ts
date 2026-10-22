@@ -1429,17 +1429,22 @@ export class InvoicesService {
     orgId: string,
     lines: { goodId: string | null; unitOfMeasureId?: string | null }[] | undefined,
   ): Promise<Map<string, LineUoM>> {
-    const pairs = (lines ?? []).filter(
-      (l): l is { goodId: string; unitOfMeasureId: string } => !!l.goodId && !!l.unitOfMeasureId,
-    );
+    // Точні пари (товар, одиниця), без повторів: `goodId IN … AND unitOfMeasureId IN …` тягнув би
+    // перехресні пари, і `take` за кількістю пар тоді міг би відрізати потрібну.
+    const pairs = new Map<string, { goodId: string; unitOfMeasureId: string }>();
+    for (const l of lines ?? []) {
+      if (l.goodId && l.unitOfMeasureId)
+        pairs.set(`${l.goodId}|${l.unitOfMeasureId}`, {
+          goodId: l.goodId,
+          unitOfMeasureId: l.unitOfMeasureId,
+        });
+    }
     const map = new Map<string, LineUoM>();
-    if (pairs.length === 0) return map;
+    if (pairs.size === 0) return map;
     const rows = await this.prisma.goodUoM.findMany({
-      where: {
-        orgId,
-        goodId: { in: [...new Set(pairs.map(p => p.goodId))] },
-        unitOfMeasureId: { in: [...new Set(pairs.map(p => p.unitOfMeasureId))] },
-      },
+      // @@unique([orgId, goodId, unitOfMeasureId]) — на пару не більше одного рядка.
+      where: { orgId, OR: [...pairs.values()] },
+      take: pairs.size,
       select: {
         goodId: true,
         unitOfMeasureId: true,

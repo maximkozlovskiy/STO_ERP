@@ -3,6 +3,7 @@ import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { findAllInPages } from '../../common/utils/pagination';
 import {
   CreateWorkCategoryDto,
   UpdateWorkCategoryDto,
@@ -194,12 +195,17 @@ export class WorkCategoriesService {
   }
 
   private async getDescendantIds(orgId: string, parentId: string): Promise<string[]> {
-    // Load all org categories once, then walk in memory — avoids N+1 recursion
-    const all = await this.prisma.workCategory.findMany({
-      where: { orgId, deletedAt: null },
-      select: { id: true, parentId: true },
-      take: 1000,
-    });
+    // Load all org categories once, then walk in memory — avoids N+1 recursion.
+    // Сторінками до кінця, не `take: 1000`: на обході тримаються захист від циклу й каскадне
+    // видалення — нащадок за межею вибірки пропустив би цикл і лишився б живим.
+    const all = await findAllInPages(page =>
+      this.prisma.workCategory.findMany({
+        ...page,
+        where: { orgId, deletedAt: null },
+        select: { id: true, parentId: true },
+        orderBy: { id: 'asc' },
+      }),
+    );
     const childrenByParent = new Map<string, string[]>();
     for (const c of all) {
       if (!c.parentId) continue;

@@ -161,7 +161,7 @@ describe('Schema integrity — manual-SQL конструкти живі у БД 
     ).toEqual([]);
   });
 
-  // guards: BR-WORK-006
+  // guards: BR-SETL-015
   it('одне CHARGE на документ: індекс частковий — лише CHARGE з документом (SUPPLIER_CHARGE вільний)', async () => {
     if (!dbAvailable) return;
     const rows = await raw.$queryRawUnsafe<{ pred: string | null; def: string }[]>(
@@ -176,6 +176,7 @@ describe('Schema integrity — manual-SQL конструкти живі у БД 
     expect(rows[0]!.pred).toContain('"documentId" IS NOT NULL');
   });
 
+  // guards: BR-WORK-006
   it('GIN pg_trgm пошукові індекси існують на всіх критичних (таблиця, колонка)', async () => {
     if (!dbAvailable) return;
     // Семантична перевірка через indexdef (повний текст CREATE INDEX): GIN-індекс на потрібній
