@@ -338,3 +338,14 @@ DTO без `pnpm gen:api-types` — `openapi.json` і `api-types.ts` лишил�
 sourceType === 'CASH_REGISTER'` → підказка «Сторнується в касі». Тест на таблиці каси, що виконує
 `where` (своя org, тип `Payment`), мутації «без orgId» і «без запиту рядків каси» падають.
 **Severity:** IMPORTANT
+
+### 2026-10-22 — Обов'язковий `Idempotency-Key`: сирий `fetch` у сід-функції E2E лишився без ключа — §13
+
+**Сигнал:** `d7b07a65` зробив ключ обов'язковим на касі й оплатах і додав його в `apiCall`/`apiRequest`
+(`e2e/api-helpers.ts`), але `seedSupplierAndCash` у `e2e/supplier-payments.spec.ts` поповнював касу
+сирим `fetch` у `page.evaluate` без ключа й без перевірки відповіді: поповнення мовчки дістало б 400,
+а `confirm()` оплати постачальнику з каси падав би далі з «Недостатньо готівки». Вимоги не було і в
+Swagger/`openapi.json` — сторонній клієнт дізнавався про неї лише з 400.
+**Grep:** `grep -rnE "fetch\(\`\\$\{API\}/(payments|cash-registers/[^\`]_/operations)" apps/web/e2e`→ у кожного`'Idempotency-Key'`; `grep -rn "RequiredIdempotencyInterceptor\|RequireIdempotencyKey" apps/api/src --include=_.controller.ts`.
+**Фікс:** ключ `crypto.randomUUID()`+`if (!fund.ok) throw`у сіді; декоратор`RequireIdempotencyKey()`(інтерсептор +`ApiHeader required`) на чотирьох маршрутах, `gen:api-types`, тест метаданих.
+**Severity:** IMPORTANT (E2E), SUGGESTION (Swagger)

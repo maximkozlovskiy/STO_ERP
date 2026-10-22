@@ -206,6 +206,11 @@ grep -rn "toCamel\|snakeToCamel\|snake_to_camel" apps/api/src/ --include="*.ts" 
 - [ ] **Змінив DTO / `@Query` / `@ApiProperty` → `pnpm gen:api-types` у тому ж коміті** (CI дрейфу
       `openapi.json` не ловить, а web, що шле параметр рядком URL, компілюється й без нього). Перевірка:
       `pnpm gen:api-types && git diff --stat -- packages/shared/openapi.json` → порожньо
+- [ ] **Маршрут став ВИМАГАТИ заголовок чи поле (`Idempotency-Key` → 400) → пройти КОЖНОГО клієнта,
+      не лише хуки й спільні хелпери E2E:** сирі `fetch` у `page.evaluate` сід-функцій, mobile,
+      `scripts/`; і вимога — у Swagger (`@ApiHeader({ required: true })` + `gen:api-types`). Сід без
+      перевірки відповіді мовчить, а тест падає далі з чужою причиною. Grep:
+      `grep -rnE "fetch\(\`\\\$\{API\}/<маршрут>" apps/web/e2e` (`journal/api.md`, 2026-10-22)
 
 ---
 
