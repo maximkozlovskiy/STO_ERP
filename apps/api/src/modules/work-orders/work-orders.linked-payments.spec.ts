@@ -25,6 +25,7 @@ function makeService() {
       fiscalStatus: null,
       reversedAt: null,
       sourceType: 'BANK_ACCOUNT',
+      cashRegisterId: null,
       onlinePaymentIntentId: null,
     },
     {
@@ -38,11 +39,33 @@ function makeService() {
       fiscalStatus: null,
       reversedAt: null,
       sourceType: null,
+      cashRegisterId: null,
       onlinePaymentIntentId: 'f1000001-0000-4000-8000-000000000001',
     },
+    {
+      // Стара готівкова оплата (до BR-PAY-023): без призначення, але з рядком каси.
+      id: 'p-old-cash',
+      orgId: ORG,
+      workOrderId: WO,
+      amount: '30.00',
+      method: 'cash',
+      createdAt: new Date('2026-10-01T10:00:00Z'),
+      notes: null,
+      fiscalStatus: null,
+      reversedAt: null,
+      sourceType: null,
+      cashRegisterId: null,
+      onlinePaymentIntentId: null,
+    },
+  ]);
+  const cashOperation = memoryTable([
+    { id: 'op-1', orgId: ORG, documentType: 'Payment', documentId: 'p-old-cash' },
+    // Рядок каси іншої організації на банківську оплату — не робить її касовою.
+    { id: 'op-2', orgId: 'other-org', documentType: 'Payment', documentId: 'p-bank' },
   ]);
   const prisma = {
     payment,
+    cashOperation,
     invoice: empty(),
     calendarSlot: empty(),
     warranty: empty(),
@@ -76,5 +99,16 @@ describe('WorkOrdersService.getLinkedDocuments — рядок оплати дл�
     expect(byId['p-bank']).toMatchObject({ sourceType: 'BANK_ACCOUNT', isOnline: false });
     expect(byId['p-qr']).toMatchObject({ isOnline: true });
     for (const p of res.payments) expect(p).not.toHaveProperty('onlinePaymentIntentId');
+  });
+
+  // guards: BR-PAY-024
+  it('стара готівкова оплата без призначення (є рядок каси) — inCashDesk, решта — ні', async () => {
+    const { service } = makeService();
+    const res = await service.getLinkedDocuments(ORG, WO);
+    const byId = Object.fromEntries(res.payments.map(p => [p.id, p]));
+    expect(byId['p-old-cash']).toMatchObject({ inCashDesk: true, isOnline: false });
+    expect(byId['p-bank']).toMatchObject({ inCashDesk: false });
+    expect(byId['p-qr']).toMatchObject({ inCashDesk: false });
+    for (const p of res.payments) expect(p).not.toHaveProperty('cashRegisterId');
   });
 });

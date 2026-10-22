@@ -95,6 +95,7 @@ import {
   mapWorkOrderLineToDto,
   mapWorkOrderPartToDto,
 } from './work-order-dto.mapper';
+import { toLinkedPaymentRows } from '../payments/payment-cash-desk';
 
 // Shared select for GoodUoM lookups in addPart / updatePart.
 // Centralised so the type (derived via Prisma.GoodUoMGetPayload) and the select
@@ -2589,6 +2590,7 @@ export class WorkOrdersService {
           fiscalStatus: true,
           reversedAt: true,
           sourceType: true,
+          cashRegisterId: true,
           onlinePaymentIntentId: true,
         },
         orderBy: { createdAt: 'desc' },
@@ -2635,12 +2637,9 @@ export class WorkOrdersService {
     // `string | number`, тож приймається обидва, але нормалізація на бекенді консистентніше.
     return {
       invoices: invoices.map(i => ({ ...i, amount: Number(i.amount) })),
-      // BR-PAY-024: id онлайн-наміру клієнту не потрібен — лише ознака «онлайн-оплата QR».
-      payments: payments.map(({ onlinePaymentIntentId, ...p }) => ({
-        ...p,
-        amount: Number(p.amount),
-        isOnline: onlinePaymentIntentId != null,
-      })),
+      // BR-PAY-024: ознаки «онлайн-оплата QR» і «лежить у касі» — та сама функція, що й відмова
+      // `reverseNonCash`; id онлайн-наміру й каси клієнту не йдуть.
+      payments: await toLinkedPaymentRows(this.prisma, orgId, payments),
       calendarSlots,
       warranties,
       purchaseLists: Array.from(new Map(listItems.map(i => [i.list.id, i.list])).values()),

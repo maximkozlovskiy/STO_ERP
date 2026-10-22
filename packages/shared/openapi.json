@@ -25454,7 +25454,8 @@
           "method",
           "createdAt",
           "notes",
-          "isOnline"
+          "isOnline",
+          "inCashDesk"
         ]
       },
       "LinkedSlotLiftDto": {

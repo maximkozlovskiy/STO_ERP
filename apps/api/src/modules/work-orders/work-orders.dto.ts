@@ -666,7 +666,7 @@ export class LinkedPaymentRowDto {
   @ApiProperty() isOnline!: boolean;
   // Гроші лежать у касі (і стара оплата без `sourceType`, але з рядком каси): сторно — лише в касі
   // (BR-PAY-024, `toLinkedPaymentRows` / `paymentsInCashDesk`).
-  @ApiPropertyOptional() inCashDesk?: boolean;
+  @ApiProperty() inCashDesk!: boolean;
 }
 
 export class LinkedSlotLiftDto {

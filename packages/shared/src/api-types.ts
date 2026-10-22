@@ -7896,7 +7896,7 @@ export interface components {
             /** @enum {string|null} */
             sourceType?: "BANK_ACCOUNT" | "CASH_REGISTER" | null;
             isOnline: boolean;
-            inCashDesk?: boolean;
+            inCashDesk: boolean;
         };
         LinkedSlotLiftDto: {
             name: string;
