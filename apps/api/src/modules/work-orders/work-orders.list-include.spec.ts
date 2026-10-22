@@ -62,7 +62,7 @@ const woRow = () => ({
       price: dec(200),
       amount: dec(200),
       batchCostPrice: dec(120),
-      unitOfMeasureId: null,
+      unitOfMeasureId: null as string | null,
       createdAt: new Date('2026-10-22T08:00:00Z'),
       good: { name: 'Фільтр', unit: 'шт', unitOfMeasure: null },
     },
