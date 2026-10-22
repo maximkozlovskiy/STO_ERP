@@ -37,5 +37,24 @@
   },
   "errors": {
     "paymentStateUnknown": "Could not find out whether the payment was posted. Check the connection and press “Pay” again — a second payment will not be created."
+  },
+  "create": {
+    "title": "Supplier payment",
+    "saveError": "Save failed",
+    "pay": "Pay",
+    "supplierSearch": "Search supplier…",
+    "source": "Source of funds",
+    "sourceCash": "Cash register",
+    "sourceBank": "Bank account",
+    "choose": "— Select —",
+    "amount": "Amount, ₴",
+    "method": "Payment method",
+    "order": "Order (optional)",
+    "orderPlaceholder": "Link an order…",
+    "documentDate": "Document date",
+    "notes": "Description",
+    "notesPlaceholder": "Additional information…",
+    "pickSupplier": "Select supplier",
+    "pickOrder": "Select purchase order"
   }
 }

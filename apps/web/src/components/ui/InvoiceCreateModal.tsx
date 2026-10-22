@@ -41,6 +41,7 @@ import {
   INVOICE_TYPE_LABELS,
 } from '@sto/shared';
 import { invoiceStatusLabel, invoiceTypeLabel } from '@/i18n/enumLabel';
+import i18n from '@/i18n/config';
 import { Modal } from '@/components/ui/modal';
 import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
@@ -97,12 +98,6 @@ const STATUS_COLORS: Record<string, string> = {
   PAID: 'bg-success-subtle text-success',
   OVERDUE: 'bg-warning-subtle text-warning-text',
   CANCELLED: 'bg-destructive-subtle text-destructive',
-};
-
-const TRANSITION_LABELS: Record<string, string> = {
-  SENT: 'Надіслати',
-  PAID: 'Позначити оплаченим',
-  CANCELLED: 'Скасувати',
 };
 
 const INVOICE_STATUS_ORDER = Object.keys(INVOICE_STATUS_LABELS);
@@ -348,7 +343,7 @@ export function InvoiceCreateModal({
       })
       .catch(e => {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : 'Помилка завантаження рахунку');
+        setError(e instanceof Error ? e.message : i18n.t('invoices:card.loadError'));
       })
       .finally(() => {
         if (cancelled) return;
@@ -434,7 +429,7 @@ export function InvoiceCreateModal({
       setCurrentStatus(newStatus);
       onSaved?.();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
+      setError(e instanceof Error ? e.message : t('card.transitionError'));
     } finally {
       setTransitioningBoth(false);
     }
@@ -550,7 +545,7 @@ export function InvoiceCreateModal({
       onSaved?.();
       onClose();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка створення рахунку');
+      setError(e instanceof Error ? e.message : t('card.createError'));
     } finally {
       setSavingBoth(false);
     }
@@ -605,7 +600,7 @@ export function InvoiceCreateModal({
       onSaved?.();
       onClose();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : t('card.saveError'));
     } finally {
       setSavingBoth(false);
     }
@@ -645,7 +640,7 @@ export function InvoiceCreateModal({
       ? [
           watchedInvoiceType ? invoiceTypeLabel(watchedInvoiceType) : null,
           counterpartyDisplay || null,
-          watchedDueDate ? `до ${watchedDueDate}` : null,
+          watchedDueDate ? t('card.dueChip', { date: watchedDueDate }) : null,
         ].filter(Boolean)
       : [];
 
@@ -658,19 +653,21 @@ export function InvoiceCreateModal({
         open={open}
         onClose={() => void handleModalClose()}
         onSubmit={() => void handleSave()}
-        title={isEditMode ? 'Рахунок-фактура' : 'Новий рахунок'}
+        title={isEditMode ? t('card.title') : t('card.titleNew')}
         size="content"
         hideClose
         headerContent={
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2 text-[13px] text-muted-foreground shrink-0">
-              <span className="font-medium">Номер:</span>
+              <span className="font-medium">{t('card.number')}</span>
               <span className="text-foreground">
-                {isEditMode && invoiceNumber ? invoiceNumber : '— присвоюється автоматично —'}
+                {isEditMode && invoiceNumber ? invoiceNumber : t('card.autoNumber')}
               </span>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">Дата документа:</span>
+              <span className="text-[13px] font-medium text-muted-foreground">
+                {t('card.documentDate')}
+              </span>
               <div className="w-36">
                 <Controller
                   control={control}
@@ -686,7 +683,9 @@ export function InvoiceCreateModal({
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">Статус:</span>
+              <span className="text-[13px] font-medium text-muted-foreground">
+                {t('card.status')}
+              </span>
               <div ref={statusMenuRef} className="relative flex items-center gap-1">
                 <button
                   type="button"
@@ -704,7 +703,9 @@ export function InvoiceCreateModal({
                   type="button"
                   disabled={transitioning || !isEditMode || viewOnly}
                   onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
-                  title={INVOICE_STATUS_DESCRIPTIONS[currentStatus]}
+                  title={t(`card.statusDescription.${currentStatus}`, {
+                    defaultValue: INVOICE_STATUS_DESCRIPTIONS[currentStatus],
+                  })}
                   className={cn(
                     'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
                     STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
@@ -739,7 +740,7 @@ export function InvoiceCreateModal({
                         }}
                         className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
                       >
-                        {TRANSITION_LABELS[s] ?? s}
+                        {t(`card.transition.${s}`, { defaultValue: s })}
                       </button>
                     ))}
                   </div>
@@ -755,7 +756,7 @@ export function InvoiceCreateModal({
                 onClick={() => {
                   minimizeModal({
                     kind: 'modal',
-                    label: invoiceNumber || 'Рахунок',
+                    label: invoiceNumber || t('card.minimizedLabel'),
                     modalKey: 'invoice',
                     restoreProps: { invoiceId },
                   });
@@ -763,8 +764,8 @@ export function InvoiceCreateModal({
                   onClose();
                 }}
                 className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-                title="Згорнути у вкладку"
-                aria-label="Згорнути у вкладку"
+                title={t('card.minimize')}
+                aria-label={t('card.minimize')}
                 disabled={saving || transitioning}
               >
                 <Minus className="h-4 w-4" />
@@ -773,7 +774,7 @@ export function InvoiceCreateModal({
             <button
               onClick={() => void handleModalClose()}
               className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-              title="Закрити"
+              title={t('common:close')}
               disabled={saving || transitioning}
             >
               <X className="h-4 w-4" />
@@ -791,7 +792,7 @@ export function InvoiceCreateModal({
                   loading={transitioning}
                   disabled={transitioning || saving}
                 >
-                  Скасувати
+                  {t('actions.cancel')}
                 </Button>
               )}
             </div>
@@ -803,10 +804,10 @@ export function InvoiceCreateModal({
                     size="sm"
                     onClick={() => window.print()}
                     disabled={saving || transitioning}
-                    title="Друк"
+                    title={t('actions.print')}
                   >
                     <Printer size={15} className="mr-1" />
-                    Друк
+                    {t('actions.print')}
                   </Button>
                   <div className="relative">
                     <Button
@@ -816,7 +817,7 @@ export function InvoiceCreateModal({
                       disabled={saving || transitioning}
                     >
                       <Download size={15} className="mr-1" />
-                      Зберегти як
+                      {t('card.saveAs')}
                       <ChevronDown size={13} className="ml-1" />
                     </Button>
                     {saveAsOpen && (
@@ -847,16 +848,16 @@ export function InvoiceCreateModal({
                         variant="outline"
                         size="sm"
                         disabled={saving || transitioning}
-                        title="Скопіювати посилання"
+                        title={t('card.shareTitle')}
                       >
                         <Share2 size={15} className="mr-1" />
-                        Поділитись
+                        {t('card.share')}
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         disabled={saving || transitioning}
-                        title="Відправити SMS"
+                        title={t('card.smsTitle')}
                       >
                         <MessageSquare size={15} className="mr-1" />
                         SMS
@@ -873,7 +874,7 @@ export function InvoiceCreateModal({
                     disabled={saving || transitioning}
                     size="sm"
                   >
-                    Зберегти зміни
+                    {t('card.saveChanges')}
                   </Button>
                 )
               ) : (
@@ -883,7 +884,7 @@ export function InvoiceCreateModal({
                   disabled={saving || !watchedCounterpartyId}
                   size="sm"
                 >
-                  Створити рахунок
+                  {t('card.create')}
                 </Button>
               )}
               <Button
@@ -893,7 +894,7 @@ export function InvoiceCreateModal({
                 onClick={() => void handleModalClose()}
                 disabled={saving || transitioning}
               >
-                Закрити
+                {t('common:close')}
               </Button>
             </div>
           </div>
@@ -910,7 +911,7 @@ export function InvoiceCreateModal({
               <div className="space-y-4 pb-1">
                 {loading && (
                   <div className="flex justify-center py-4 text-sm text-muted-foreground">
-                    Завантаження…
+                    {t('common:loading')}
                   </div>
                 )}
                 {error && (
@@ -922,10 +923,10 @@ export function InvoiceCreateModal({
                 {/* Рядок 2: Контрагент | Тип */}
                 <div className="grid grid-cols-2 gap-4">
                   <EntityPickerField<CpItem>
-                    label="Контрагент"
+                    label={t('columns.counterparty')}
                     required={!isEditMode}
                     display={counterpartyDisplay}
-                    placeholder="Пошук контрагента…"
+                    placeholder={t('card.counterpartyPlaceholder')}
                     className="h-8 text-[13px]"
                     disabled={!canEdit}
                     onPick={() => setCpPickerOpen(true)}
@@ -943,7 +944,7 @@ export function InvoiceCreateModal({
                     }}
                   />
                   <Select
-                    label="Тип рахунку"
+                    label={t('card.invoiceType')}
                     {...register('invoiceType')}
                     disabled={!canEdit}
                     className="h-8 text-[13px] py-0.5 px-2 pr-7"
@@ -982,7 +983,7 @@ export function InvoiceCreateModal({
                     name="dueDate"
                     render={({ field }) => (
                       <DatePickerInput
-                        label="Термін оплати"
+                        label={t('columns.dueDate')}
                         value={typeof field.value === 'string' ? field.value : ''}
                         onChange={field.onChange}
                         disabled={!canEdit}
@@ -990,10 +991,10 @@ export function InvoiceCreateModal({
                     )}
                   />
                   <Input
-                    label="Примітки"
+                    label={t('card.notes')}
                     {...register('notes')}
                     disabled={!canEdit}
-                    placeholder="Додаткова інформація…"
+                    placeholder={t('card.notesPlaceholder')}
                     className="h-8 text-[13px]"
                   />
                 </div>
@@ -1002,7 +1003,7 @@ export function InvoiceCreateModal({
                 {isEditMode && workOrderNumber && (
                   <div className="grid grid-cols-2 gap-4">
                     <Input
-                      label="Наряд"
+                      label={t('columns.workOrder')}
                       value={workOrderNumber}
                       disabled
                       readOnly
@@ -1030,7 +1031,7 @@ export function InvoiceCreateModal({
               <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             )}
             <span className="text-muted-foreground">
-              {headerCollapsed ? 'Шапка документа' : 'Шапка документа'}
+              {headerCollapsed ? t('common:documentHeader') : t('common:documentHeader')}
             </span>
             {headerChips.map((chip, i) => (
               <span
@@ -1045,7 +1046,7 @@ export function InvoiceCreateModal({
           {/* ── Lines table ──────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto">
             <DocLinesHeader
-              title="Позиції"
+              title={t('panel.tabLines')}
               onAdd={canEdit && !showLineInput ? () => setShowLineInput(true) : undefined}
             />
             <table className="w-full table-fixed text-[12px]">
@@ -1057,13 +1058,17 @@ export function InvoiceCreateModal({
               </colgroup>
               <thead>
                 <tr className="border-b border-border bg-secondary/40">
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">ОПИС</th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">К-СТЬ</th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    ЦІНА, {currencySymbol}
+                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                    {t('card.colDescription')}
                   </th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    СУМА, {currencySymbol}
+                    {t('card.colQty')}
+                  </th>
+                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
+                    {t('card.colPrice', { sym: currencySymbol })}
+                  </th>
+                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
+                    {t('card.colSum', { sym: currencySymbol })}
                   </th>
                 </tr>
               </thead>
@@ -1123,7 +1128,7 @@ export function InvoiceCreateModal({
                         onKeyDown={e => {
                           if (e.key === 'Enter') addLine();
                         }}
-                        placeholder="Опис позиції…"
+                        placeholder={t('card.linePlaceholder')}
                         className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] focus:outline-none focus:ring-1 focus:ring-ring"
                       />
                     </td>
@@ -1175,7 +1180,7 @@ export function InvoiceCreateModal({
                     colSpan={3}
                     className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground"
                   >
-                    Разом:
+                    {t('card.total')}
                   </td>
                   <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums">
                     {total.toFixed(2)} {currencySymbol}
@@ -1187,7 +1192,7 @@ export function InvoiceCreateModal({
                       colSpan={3}
                       className="px-3 py-1.5 text-right text-[12px] font-medium text-success"
                     >
-                      Оплачено:
+                      {t('card.paid')}
                     </td>
                     <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-success">
                       {paidAmount.toFixed(2)} {currencySymbol}
@@ -1200,7 +1205,7 @@ export function InvoiceCreateModal({
                       colSpan={3}
                       className="px-3 py-1.5 text-right text-[12px] font-medium text-muted-foreground"
                     >
-                      Залишок:
+                      {t('card.remaining')}
                     </td>
                     <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-destructive">
                       {(total - paidAmount).toFixed(2)} {currencySymbol}
@@ -1217,11 +1222,11 @@ export function InvoiceCreateModal({
       <SearchPickerModal<CpItem>
         open={cpPickerOpen}
         onClose={() => setCpPickerOpen(false)}
-        title="Оберіть контрагента"
+        title={t('card.pickCounterparty')}
         selectedId={watchedCounterpartyId || ''}
         fetchItems={fetchCpItems}
-        searchPlaceholder="Ім'я, телефон, компанія..."
-        emptyText="Контрагентів не знайдено"
+        searchPlaceholder={t('card.pickCounterpartySearch')}
+        emptyText={t('card.pickCounterpartyEmpty')}
         onSelect={item => {
           setCounterpartyDisplay(item.primary);
           setValue('counterpartyId', item.id, { shouldDirty: true, shouldValidate: true });

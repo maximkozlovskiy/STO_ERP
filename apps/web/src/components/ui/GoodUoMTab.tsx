@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n/config';
 import { Plus, Star, X, Check } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -116,7 +117,9 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
       })
       .catch(err => {
         if (modalUoMReqRef.current === reqId)
-          setUomError(err instanceof Error ? err.message : 'Помилка завантаження одиниць виміру');
+          setUomError(
+            err instanceof Error ? err.message : i18n.t('catalog:goodEdit.uomsLoadError'),
+          );
       })
       .finally(() => {
         if (modalUoMReqRef.current === reqId) setModalUoMsLoading(false);
@@ -138,7 +141,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
     if (!addUoMForm.unitOfMeasureId) return;
     const coeff = addUoMForm.coefficient ? Number(addUoMForm.coefficient) : 1;
     if (!Number.isFinite(coeff) || coeff <= 0) {
-      setUomError('Коефіцієнт має бути більший 0');
+      setUomError(t('units.coefficientValidation'));
       return;
     }
     setUomError('');
@@ -187,7 +190,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
   };
 
   const deleteUoM = async (uomId: string) => {
-    if (!(await confirm({ title: 'Видалити одиницю виміру?', variant: 'destructive' }))) return;
+    if (!(await confirm({ title: t('goodEdit.uomDeleteConfirm'), variant: 'destructive' }))) return;
     setDeletingUoMId(uomId);
     try {
       await apiFetch<void>(`/goods/${goodId}/uoms/${uomId}`, { method: 'DELETE' });
@@ -226,12 +229,12 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
 
   const saveUoMEdit = async (uomId: string) => {
     if (!editUoMForm.coefficient.trim()) {
-      setUomError('Коефіцієнт є обовʼязковим');
+      setUomError(t('goodEdit.coefficientRequired'));
       return;
     }
     const coeff = Number(editUoMForm.coefficient);
     if (!Number.isFinite(coeff) || coeff <= 0) {
-      setUomError('Коефіцієнт має бути більший 0');
+      setUomError(t('units.coefficientValidation'));
       return;
     }
     setSavingUoMId(uomId);
@@ -253,7 +256,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
       onChanged?.();
       if (features.toastEnabled) toast.success(t('toast.uomUpdated'));
     } catch (e: unknown) {
-      setUomError(e instanceof Error ? e.message : 'Помилка збереження');
+      setUomError(e instanceof Error ? e.message : t('common.saveError'));
     } finally {
       setSavingUoMId(null);
     }
@@ -262,7 +265,9 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
   return (
     <div className="space-y-3">
       {modalUoMsLoading && (
-        <div className="py-6 text-center text-sm text-muted-foreground">Завантаження...</div>
+        <div className="py-6 text-center text-sm text-muted-foreground">
+          {t('common:loadingDots')}
+        </div>
       )}
       {!modalUoMsLoading && uomError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
@@ -272,7 +277,9 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
       {!modalUoMsLoading && !uomError && (
         <>
           <div className="flex items-center justify-between">
-            <span className="text-[13px] text-muted-foreground">{modalUoMs.length} одиниці</span>
+            <span className="text-[13px] text-muted-foreground">
+              {t('goodEdit.uomsCount', { n: modalUoMs.length })}
+            </span>
             {!showAddUoM && (
               <Button
                 size="sm"
@@ -280,19 +287,19 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                 leftIcon={<Plus className="h-3.5 w-3.5" />}
                 onClick={() => setShowAddUoM(true)}
               >
-                Додати
+                {t('common:add')}
               </Button>
             )}
           </div>
           {showAddUoM && (
             <AnimatedBody className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
               <Select
-                label="Одиниця виміру"
+                label={t('goodEdit.unitOfMeasure')}
                 required
                 value={addUoMForm.unitOfMeasureId}
                 onChange={e => setAddUoMForm(f => ({ ...f, unitOfMeasureId: e.target.value }))}
               >
-                <option value="">— Виберіть одиницю —</option>
+                <option value="">{t('goodEdit.selectUnit')}</option>
                 {units.map(u => (
                   <option key={u.id} value={u.id}>
                     {u.shortName} ({u.name})
@@ -300,17 +307,17 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                 ))}
               </Select>
               <Input
-                label="Коефіцієнт"
+                label={t('units.fieldCoefficient')}
                 type="number"
                 min="0"
                 step="any"
                 value={addUoMForm.coefficient}
                 onChange={e => setAddUoMForm(f => ({ ...f, coefficient: e.target.value }))}
-                hint="Скільки базових одиниць в одній цій"
+                hint={t('goodEdit.coefficientHint')}
               />
               <div className="grid grid-cols-3 gap-2">
                 <Input
-                  label="Ширина, м"
+                  label={t('units.fieldWidth')}
                   type="number"
                   min="0"
                   step="any"
@@ -319,7 +326,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                   placeholder="—"
                 />
                 <Input
-                  label="Висота, м"
+                  label={t('units.fieldHeight')}
                   type="number"
                   min="0"
                   step="any"
@@ -328,7 +335,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                   placeholder="—"
                 />
                 <Input
-                  label="Глибина, м"
+                  label={t('units.fieldDepth')}
                   type="number"
                   min="0"
                   step="any"
@@ -339,7 +346,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <Input
-                  label="Об'єм, м³"
+                  label={t('units.fieldVolume')}
                   type="number"
                   min="0"
                   step="any"
@@ -348,7 +355,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                   placeholder="—"
                 />
                 <Input
-                  label="Вага, кг"
+                  label={t('units.fieldWeight')}
                   type="number"
                   min="0"
                   step="any"
@@ -366,7 +373,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                     setAddUoMForm(EMPTY_ADD_UOM_FORM);
                   }}
                 >
-                  Скасувати
+                  {t('common:cancel')}
                 </Button>
                 <Button
                   size="sm"
@@ -374,7 +381,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                   disabled={!addUoMForm.unitOfMeasureId}
                   onClick={() => void addUoM()}
                 >
-                  Додати
+                  {t('common:add')}
                 </Button>
               </div>
             </AnimatedBody>
@@ -385,12 +392,15 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                 <thead className="bg-secondary border-b border-border">
                   <tr>
                     <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                      Одиниця
+                      {t('goods.columns.unit')}
                     </th>
                     <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                      Коефіцієнт
+                      {t('units.colCoefficient')}
                     </th>
-                    <th className="w-10 px-3 py-2 text-muted-foreground" title="Основна">
+                    <th
+                      className="w-10 px-3 py-2 text-muted-foreground"
+                      title={t('goodEdit.primaryUnit')}
+                    >
                       <Star className="h-3.5 w-3.5" />
                     </th>
                     <th className="w-12" />
@@ -437,7 +447,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                               disabled={savingUoMId === u.id}
                               onClick={() => void saveUoMEdit(u.id)}
                               className="text-success/80 hover:text-success hover:bg-success/10 p-1 rounded transition-colors"
-                              title="Зберегти (Enter)"
+                              title={t('units.saveHint')}
                             >
                               {savingUoMId === u.id ? (
                                 <span className="text-[11px]">...</span>
@@ -449,7 +459,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                               type="button"
                               onClick={cancelEditUoM}
                               className="text-muted-foreground hover:text-foreground p-1 rounded transition-colors"
-                              title="Скасувати (Esc)"
+                              title={t('units.cancelHint')}
                             >
                               <X className="h-3.5 w-3.5" />
                             </button>
@@ -482,7 +492,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                                 void setDefaultUoM(u.id);
                               }}
                               className="text-muted-foreground hover:text-warning-text transition-colors mx-auto block"
-                              title="Встановити основною"
+                              title={t('goodEdit.setPrimaryUnit')}
                             >
                               <Star className="h-3.5 w-3.5" />
                             </button>
@@ -497,7 +507,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
                               void deleteUoM(u.id);
                             }}
                             className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                            title="Видалити"
+                            title={t('common:delete')}
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -511,7 +521,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
           )}
           {modalUoMs.length === 0 && !showAddUoM && (
             <p className="text-[13px] text-muted-foreground text-center py-4">
-              Додаткових одиниць не додано
+              {t('goodEdit.uomsEmpty')}
             </p>
           )}
         </>

@@ -121,15 +121,15 @@ function colLetter(n: number): string {
   return s;
 }
 
-// Підписи ролей колонок для підсвітки передперегляду (1-based номер → назва ролі).
-const COL_ROLE_LABELS: [keyof ImportMapping, string][] = [
-  ['codeCol', 'Код'],
-  ['articleCol', 'Артикул'],
-  ['brandCol', 'Бренд'],
-  ['barcodeCol', 'Штрихкод'],
-  ['nameCol', 'Назва'],
-  ['quantityCol', 'К-сть'],
-  ['priceCol', 'Ціна'],
+// Ролі колонок для підсвітки передперегляду (1-based номер → назва ролі, common:import.role.*).
+const COL_ROLE_KEYS: (keyof ImportMapping)[] = [
+  'codeCol',
+  'articleCol',
+  'brandCol',
+  'barcodeCol',
+  'nameCol',
+  'quantityCol',
+  'priceCol',
 ];
 
 // Module-level: клас фону рядка за статусом (чиста функція) — поза компонентом, щоб не
@@ -154,6 +154,7 @@ interface ImportRowProps {
  * onToggle/onSelectGood (useCallback-стабільні у батька) → memo відсікає зайві рядки.
  */
 const ImportRow = memo(function ImportRow({ row, res, onToggle, onSelectGood }: ImportRowProps) {
+  const { t } = useTranslation('common');
   return (
     <tr
       className={cn(
@@ -167,14 +168,16 @@ const ImportRow = memo(function ImportRow({ row, res, onToggle, onSelectGood }: 
           type="checkbox"
           checked={res?.included ?? false}
           onChange={e => onToggle(row.rowIndex, e.target.checked)}
-          aria-label={`Включити рядок ${row.rowIndex} в імпорт`}
+          aria-label={t('import.includeRow', { row: row.rowIndex })}
           className="h-3.5 w-3.5 rounded border-border align-middle"
         />
       </td>
       <td className="px-3 py-2 align-top text-foreground">
         {row.rawArticle || row.rawCode || row.rawBarcode || '—'}
         {row.rawBarcode && (row.rawArticle || row.rawCode) && (
-          <div className="text-[11px] text-foreground-muted">Штрихкод: {row.rawBarcode}</div>
+          <div className="text-[11px] text-foreground-muted">
+            {t('import.barcodeLine', { barcode: row.rawBarcode })}
+          </div>
         )}
       </td>
       <td className="px-3 py-2 align-top text-foreground">{row.rawBrand || '—'}</td>
@@ -185,7 +188,7 @@ const ImportRow = memo(function ImportRow({ row, res, onToggle, onSelectGood }: 
         {row.status === 'matched' ? (
           <span className="inline-flex items-center gap-1 text-[12px] font-medium text-success-text">
             <Check className="h-3.5 w-3.5" />
-            {row.candidates.find(c => c.id === row.matchedGoodId)?.name ?? 'Знайдено'}
+            {row.candidates.find(c => c.id === row.matchedGoodId)?.name ?? t('import.found')}
           </span>
         ) : row.status === 'ambiguous' ? (
           <Select
@@ -193,7 +196,7 @@ const ImportRow = memo(function ImportRow({ row, res, onToggle, onSelectGood }: 
             onChange={e => onSelectGood(row.rowIndex, e.target.value)}
             className="h-8 text-[12px]"
           >
-            <option value="">— оберіть товар —</option>
+            <option value="">{t('import.chooseGood')}</option>
             {row.candidates.map(c => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -204,7 +207,7 @@ const ImportRow = memo(function ImportRow({ row, res, onToggle, onSelectGood }: 
           </Select>
         ) : (
           <span className="text-[12px] text-muted-foreground">
-            {res?.included ? 'Буде створено нову позицію' : 'Не знайдено — оберіть, щоб створити'}
+            {res?.included ? t('import.willCreate') : t('import.notFoundChoose')}
           </span>
         )}
       </td>
@@ -325,9 +328,7 @@ export function ExcelImportWizard({
     if (f.size > MAX_UPLOAD_BYTES) {
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
-      setPreviewError(
-        `Файл завеликий (${(f.size / 1024 / 1024).toFixed(1)} МБ, максимум 25 МБ). Зменшіть роздільність фото або зніміть накладну частинами.`,
-      );
+      setPreviewError(t('import.fileTooLarge', { size: (f.size / 1024 / 1024).toFixed(1) }));
       return;
     }
     // Сирий передперегляд одразу після вибору файлу — щоб користувач бачив вміст і колонки.
@@ -357,7 +358,7 @@ export function ExcelImportWizard({
         // БІЛЬШЕ НЕ тиха деградація: PDF-скан або битий файл інакше дають порожню модалку,
         // і користувач не розуміє, чому нічого не сталося.
         setRawPreview(null);
-        setPreviewError(err.message || 'Не вдалося прочитати файл');
+        setPreviewError(err.message || t('import.fileReadError'));
       },
     });
   };
@@ -401,7 +402,7 @@ export function ExcelImportWizard({
         toast.warning(t('import.noRowsInFile'));
       }
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка розпізнавання файлу');
+      toast.error(e instanceof Error ? e.message : t('import.recognizeError'));
     }
   }, [file, mapping, docType, docId, counterpartyId, previewMut, upsertMapping, t]);
 
@@ -481,7 +482,7 @@ export function ExcelImportWizard({
       onImportComplete();
       onClose();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка додавання товарів');
+      toast.error(e instanceof Error ? e.message : t('import.applyError'));
     }
     // applyMode у залежностях ОБОВ'ЯЗКОВИЙ: без нього перемикання «Замінити»→«Додати» не
     // перестворює цей колбек (жодна інша залежність не змінюється), тож apply тихо надсилає
@@ -494,12 +495,12 @@ export function ExcelImportWizard({
   // зокрема на кожен символ у полях мапінгу — а змінюється вона лише коли змінився mapping.
   const roleByCol = useMemo(() => {
     const m = new Map<number, string>();
-    for (const [key, label] of COL_ROLE_LABELS) {
+    for (const key of COL_ROLE_KEYS) {
       const col = mapping[key];
-      if (typeof col === 'number' && col > 0) m.set(col, label);
+      if (typeof col === 'number' && col > 0) m.set(col, t(`import.role.${key}`));
     }
     return m;
-  }, [mapping]);
+  }, [mapping, t]);
 
   // Лічильники статусів і вибору — один прохід по rows замість шести незалежних .filter() на
   // КОЖЕН рендер (до 500 рядків × 6 сканів на кожен клік чекбокса / символ вводу). Залежить лише
@@ -532,7 +533,7 @@ export function ExcelImportWizard({
     <Modal
       open={open}
       onClose={onClose}
-      title={`${step === 2 ? 'Ідентифікація товарів' : 'Завантаження товарів з файлу'}${
+      title={`${step === 2 ? t('import.titleIdentify') : t('import.titleUpload')}${
         docNumber ? ` · ${docNumber}` : ''
       }`}
       size={step === 2 || rawPreview ? 'xl' : 'md'}
@@ -542,7 +543,7 @@ export function ExcelImportWizard({
           {/* Контрагент (readonly) */}
           <div>
             <label className="text-[13px] font-medium text-foreground leading-none">
-              Контрагент
+              {t('import.counterparty')}
             </label>
             <div className="mt-1 h-9 flex items-center px-3 rounded border border-border bg-secondary text-[14px] text-muted-foreground">
               {counterpartyName || '—'}
@@ -552,7 +553,7 @@ export function ExcelImportWizard({
           {/* Файл */}
           <div>
             <label className="text-[13px] font-medium text-foreground leading-none">
-              Файл (Excel, CSV, PDF або фото) <span className="text-destructive">*</span>
+              {t('import.fileLabel')} <span className="text-destructive">*</span>
             </label>
             <input
               ref={fileInputRef}
@@ -561,15 +562,13 @@ export function ExcelImportWizard({
               onChange={handleFileChange}
               className="mt-1 block w-full text-[13px] text-foreground file:mr-3 file:rounded file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-[13px] file:font-medium file:text-foreground hover:file:bg-secondary"
             />
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Excel, CSV, PDF або фото/скан (.jpg, .png). Фото з iPhone — у форматі JPG, не HEIC.
-            </p>
+            <p className="mt-1 text-[11px] text-muted-foreground">{t('import.fileHint')}</p>
           </div>
 
           {/* Мапінг колонок */}
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Перший рядок даних"
+              label={t('import.startRow')}
               type="number"
               min={1}
               value={numToStr(mapping.startRow)}
@@ -578,49 +577,49 @@ export function ExcelImportWizard({
               onChange={e => setCol('startRow', e.target.value)}
             />
             <Input
-              label="Колонка коду"
+              label={t('import.codeCol')}
               type="number"
               min={1}
               value={numToStr(mapping.codeCol)}
               onChange={e => setCol('codeCol', e.target.value)}
             />
             <Input
-              label="Колонка артикулу"
+              label={t('import.articleCol')}
               type="number"
               min={1}
               value={numToStr(mapping.articleCol)}
               onChange={e => setCol('articleCol', e.target.value)}
             />
             <Input
-              label="Колонка бренду"
+              label={t('import.brandCol')}
               type="number"
               min={1}
               value={numToStr(mapping.brandCol)}
               onChange={e => setCol('brandCol', e.target.value)}
             />
             <Input
-              label="Колонка штрихкоду"
+              label={t('import.barcodeCol')}
               type="number"
               min={1}
               value={numToStr(mapping.barcodeCol)}
               onChange={e => setCol('barcodeCol', e.target.value)}
             />
             <Input
-              label="Колонка найменування"
+              label={t('import.nameCol')}
               type="number"
               min={1}
               value={numToStr(mapping.nameCol)}
               onChange={e => setCol('nameCol', e.target.value)}
             />
             <Input
-              label="Колонка кількості"
+              label={t('import.quantityCol')}
               type="number"
               min={1}
               value={numToStr(mapping.quantityCol)}
               onChange={e => setCol('quantityCol', e.target.value)}
             />
             <Input
-              label="Колонка ціни"
+              label={t('import.priceCol')}
               type="number"
               min={1}
               value={numToStr(mapping.priceCol)}
@@ -632,9 +631,7 @@ export function ExcelImportWizard({
           {rawPreviewMut.isPending ? (
             <div className="flex flex-col gap-1.5 py-2">
               <div className="text-[12px] text-muted-foreground">
-                {longRunning
-                  ? 'Розпізнаємо текст на зображенні… це може зайняти до хвилини'
-                  : 'Читаємо файл…'}
+                {longRunning ? t('import.ocrRunning') : t('import.reading')}
               </div>
               {longRunning && (
                 <div className="h-1 w-full overflow-hidden rounded bg-secondary">
@@ -650,11 +647,14 @@ export function ExcelImportWizard({
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
                 <label className="text-[13px] font-medium text-foreground leading-none">
-                  Передперегляд файлу
+                  {t('import.previewTitle')}
                 </label>
                 <span className="text-[11px] text-muted-foreground tabular-nums">
-                  показано {rawPreview.rows.length} з {rawPreview.totalRows}{' '}
-                  {rawPreview.totalRows === 1 ? 'рядка' : 'рядків'}
+                  {t('import.previewShown', {
+                    shown: rawPreview.rows.length,
+                    total: rawPreview.totalRows,
+                  })}{' '}
+                  {rawPreview.totalRows === 1 ? t('import.rowWordOne') : t('import.rowWordMany')}
                 </span>
               </div>
               <div
@@ -677,7 +677,11 @@ export function ExcelImportWizard({
                               'px-2 py-1.5 text-[10px] font-semibold border-b border-border whitespace-nowrap text-left',
                               role ? 'bg-info-subtle text-info-text' : 'text-foreground-muted',
                             )}
-                            title={role ? `Колонка ${colLetter(col)} → ${role}` : undefined}
+                            title={
+                              role
+                                ? t('import.columnRoleTitle', { col: colLetter(col), role })
+                                : undefined
+                            }
                           >
                             {colLetter(col)}
                             {role ? ` · ${role}` : ''}
@@ -719,16 +723,16 @@ export function ExcelImportWizard({
           {rawPreview && rawPreview.rows.length > 0 && (
             <p className="text-[12px] text-muted-foreground">
               {mappingSource === 'detected'
-                ? 'Колонки визначено автоматично — перевірте й за потреби змініть.'
+                ? t('import.mappingDetected')
                 : mappingSource === 'saved'
-                  ? 'Застосовано збережені колонки цього постачальника.'
-                  : 'Не вдалося автоматично визначити колонки — вкажіть номери вручну (A=1, B=2, …).'}
+                  ? t('import.mappingSaved')
+                  : t('import.mappingManual')}
             </p>
           )}
 
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="outline" onClick={onClose} disabled={previewMut.isPending}>
-              Скасувати
+              {t('cancel')}
             </Button>
             <Button
               leftIcon={<Upload className="h-4 w-4" />}
@@ -736,7 +740,7 @@ export function ExcelImportWizard({
               loading={previewMut.isPending}
               disabled={previewMut.isPending || !file || !!previewError}
             >
-              Ідентифікувати товари
+              {t('import.identify')}
             </Button>
           </div>
         </div>
@@ -746,15 +750,15 @@ export function ExcelImportWizard({
           <div className="flex flex-wrap gap-3 text-[12px] text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <span className="inline-block h-3 w-3 rounded-sm bg-success-subtle border border-success-border" />
-              Знайдено: {matchedCount}
+              {t('import.legendFound', { n: matchedCount })}
             </span>
             <span className="inline-flex items-center gap-1">
               <span className="inline-block h-3 w-3 rounded-sm bg-warning-subtle border border-warning-border" />
-              Уточнити: {ambiguousCount}
+              {t('import.legendAmbiguous', { n: ambiguousCount })}
             </span>
             <span className="inline-flex items-center gap-1">
               <span className="inline-block h-3 w-3 rounded-sm bg-destructive-subtle border border-destructive-border" />
-              Не знайдено: {notFoundCount}
+              {t('import.legendNotFound', { n: notFoundCount })}
             </span>
           </div>
 
@@ -765,8 +769,8 @@ export function ExcelImportWizard({
               size="icon-sm"
               onClick={() => setAllIncluded(true)}
               disabled={rows.length === 0}
-              title="Вибрати всі"
-              aria-label="Вибрати всі"
+              title={t('import.selectAll')}
+              aria-label={t('import.selectAll')}
             >
               <CheckSquare className="h-4 w-4" />
             </Button>
@@ -775,8 +779,8 @@ export function ExcelImportWizard({
               size="icon-sm"
               onClick={() => setAllIncluded(false)}
               disabled={rows.length === 0}
-              title="Забрати всі"
-              aria-label="Забрати всі"
+              title={t('import.deselectAll')}
+              aria-label={t('import.deselectAll')}
             >
               <Square className="h-4 w-4" />
             </Button>
@@ -785,21 +789,20 @@ export function ExcelImportWizard({
               size="icon-sm"
               onClick={invertIncluded}
               disabled={rows.length === 0}
-              title="Інвертувати вибір"
-              aria-label="Інвертувати вибір"
+              title={t('import.invertSelection')}
+              aria-label={t('import.invertSelection')}
             >
               <Repeat className="h-4 w-4" />
             </Button>
             <span className="text-[12px] text-muted-foreground tabular-nums ml-auto">
-              Обрано: {includedCount} / {rows.length}
-              {readyCount !== includedCount ? ` · до імпорту: ${readyCount}` : ''}
+              {t('import.selectedCount', { selected: includedCount, total: rows.length })}
+              {readyCount !== includedCount ? t('import.readyCount', { n: readyCount }) : ''}
             </span>
           </div>
 
           {rawPreview?.ocr && (
             <div className="rounded-lg border border-warning-border bg-warning-subtle px-3 py-2 text-[12px] text-warning-text">
-              Текст розпізнано автоматично з зображення. Артикули й кількості можуть містити помилки
-              — звірте позиції з паперовою накладною, перш ніж заповнювати документ.
+              {t('import.ocrWarning')}
             </div>
           )}
 
@@ -815,7 +818,7 @@ export function ExcelImportWizard({
                   onChange={() => setApplyMode('replace')}
                   className="h-4 w-4"
                 />
-                Замінити наявні позиції ({existingLineCount})
+                {t('import.modeReplace', { n: existingLineCount })}
               </label>
               <label className="flex items-center gap-2 text-[13px] text-foreground cursor-pointer">
                 <input
@@ -826,11 +829,11 @@ export function ExcelImportWizard({
                   onChange={() => setApplyMode('append')}
                   className="h-4 w-4"
                 />
-                Додати до наявних ({existingLineCount})
+                {t('import.modeAppend', { n: existingLineCount })}
               </label>
               {applyMode === 'replace' && (
                 <span className="text-[12px] text-warning-text">
-                  Наявні позиції ({existingLineCount}) буде видалено
+                  {t('import.replaceWarning', { n: existingLineCount })}
                 </span>
               )}
             </div>
@@ -858,27 +861,27 @@ export function ExcelImportWizard({
                       checked={allIncluded}
                       onChange={e => setAllIncluded(e.target.checked)}
                       disabled={rows.length === 0}
-                      aria-label="Вибрати всі рядки"
+                      aria-label={t('import.selectAllRows')}
                       className="h-3.5 w-3.5 rounded border-border align-middle"
                     />
                   </th>
                   <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
-                    Код / артикул
+                    {t('import.colCodeArticle')}
                   </th>
                   <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
-                    Бренд
+                    {t('import.role.brandCol')}
                   </th>
                   <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
-                    Найменування
+                    {t('import.colName')}
                   </th>
                   <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
-                    К-сть
+                    {t('import.role.quantityCol')}
                   </th>
                   <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
-                    Ціна
+                    {t('import.role.priceCol')}
                   </th>
                   <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
-                    Статус / дія
+                    {t('import.colStatusAction')}
                   </th>
                 </tr>
               </thead>
@@ -886,7 +889,7 @@ export function ExcelImportWizard({
                 {rows.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
-                      Немає рядків для імпорту
+                      {t('import.noRows')}
                     </td>
                   </tr>
                 ) : (
@@ -906,18 +909,18 @@ export function ExcelImportWizard({
 
           <div className="flex gap-2 justify-between pt-2">
             <Button variant="outline" onClick={() => setStep(1)} disabled={applyMut.isPending}>
-              Назад
+              {t('back')}
             </Button>
             <div className="flex gap-2">
               <Button variant="outline" onClick={onClose} disabled={applyMut.isPending}>
-                Скасувати
+                {t('cancel')}
               </Button>
               <Button
                 onClick={() => void handleApply()}
                 loading={applyMut.isPending}
                 disabled={applyMut.isPending || readyCount === 0}
               >
-                Заповнити товарами
+                {t('import.fill')}
               </Button>
             </div>
           </div>

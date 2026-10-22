@@ -3,6 +3,7 @@
 import { COUNTERPARTY_TYPE_LABELS, hasCounterpartyName } from '@sto/shared';
 import { counterpartyTypeLabel } from '@/i18n/enumLabel';
 import { useId, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight } from 'lucide-react';
 import type { UseFormRegister, FieldErrors, Control, UseFormWatch } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
@@ -15,15 +16,9 @@ import type { Counterparty, CpType } from '@/hooks/api/useCounterparties';
 
 export { hasCounterpartyName };
 
-// Форми власності (@IsEnum LegalForm на беку). Єдине джерело для форми контрагента.
-export const LEGAL_FORM_LABELS: Record<string, string> = {
-  INDIVIDUAL: 'Фіз. особа',
-  FOP: 'ФОП',
-  TOV: 'ТОВ',
-  AT: 'АТ',
-  PP: 'ПП',
-  OTHER: 'Інше',
-};
+// Форми власності (@IsEnum LegalForm на беку). Єдине джерело для форми контрагента;
+// мітки — counterparties:card.legalForm.<CODE> (ті самі, що на сторінці контрагента).
+export const LEGAL_FORM_CODES = ['INDIVIDUAL', 'FOP', 'TOV', 'AT', 'PP', 'OTHER'] as const;
 
 /**
  * Єдине джерело правди набору полів контрагента (15 полів + type). Раніше редагування було
@@ -124,6 +119,7 @@ interface SectionProps {
  * react-hook-form, тож значення й валідація працюють і для згорнутої секції.
  */
 function FormSection({ title, hasError, filled, children }: SectionProps) {
+  const { t } = useTranslation('counterparties');
   const [opened, setOpened] = useState(false);
   // Помилка розкриває секцію НАЗАВЖДИ (до ручного згортання), а не лише поки вона є: інакше
   // секція згорталась би під курсором у ту мить, коли користувач виправив поле (після невдалого
@@ -146,7 +142,9 @@ function FormSection({ title, hasError, filled, children }: SectionProps) {
         />
         <span>{title}</span>
         {!open && filled && (
-          <span className="ml-2 text-[12px] font-normal text-muted-foreground">заповнено</span>
+          <span className="ml-2 text-[12px] font-normal text-muted-foreground">
+            {t('form.filled')}
+          </span>
         )}
       </button>
       <div id={contentId} hidden={!open} className="space-y-3 pt-3">
@@ -164,6 +162,7 @@ const hasValue = (v: unknown): boolean => typeof v === 'string' && v.trim() !== 
  * Секції: Основне / Юридичні / Банк. Ім'я/Прізвище приховані для SUPPLIER.
  */
 export function CounterpartyForm({ register, errors, control, watch, typeAside }: Props) {
+  const { t } = useTranslation('counterparties');
   const type = watch('type');
   const legalFilled = watch([
     'legalForm',
@@ -174,7 +173,12 @@ export function CounterpartyForm({ register, errors, control, watch, typeAside }
   ]).some(hasValue);
   const bankFilled = watch(['bankAccount', 'bankName']).some(hasValue);
   const typeSelect = (
-    <Select label="Тип" required {...register('type')} errorMessage={errors.type?.message}>
+    <Select
+      label={t('columns.type')}
+      required
+      {...register('type')}
+      errorMessage={errors.type?.message}
+    >
       {Object.keys(COUNTERPARTY_TYPE_LABELS).map(k => (
         <option key={k} value={k}>
           {counterpartyTypeLabel(k)}
@@ -198,33 +202,33 @@ export function CounterpartyForm({ register, errors, control, watch, typeAside }
         {type !== 'SUPPLIER' && (
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Ім'я"
+              label={t('form.firstName')}
               {...register('firstName')}
               errorMessage={errors.firstName?.message}
-              placeholder="Іван"
+              placeholder={t('form.firstNamePlaceholder')}
             />
             <Input
-              label="Прізвище"
+              label={t('form.lastName')}
               {...register('lastName')}
               errorMessage={errors.lastName?.message}
-              placeholder="Коваль"
+              placeholder={t('form.lastNamePlaceholder')}
             />
           </div>
         )}
 
         <Input
-          label="Назва компанії"
+          label={t('form.companyName')}
           required={type === 'SUPPLIER'}
           {...register('companyName')}
           errorMessage={errors.companyName?.message}
-          placeholder="ТОВ «Авто»"
+          placeholder={t('form.companyNamePlaceholder')}
         />
         <Controller
           control={control}
           name="phone"
           render={({ field }) => (
             <PhoneInput
-              label="Телефон"
+              label={t('columns.phone')}
               value={typeof field.value === 'string' ? field.value : ''}
               onChange={field.onChange}
             />
@@ -238,24 +242,24 @@ export function CounterpartyForm({ register, errors, control, watch, typeAside }
           placeholder="email@example.com"
         />
         <Input
-          label="Контактна особа"
+          label={t('card.info.contactPerson')}
           {...register('contactPerson')}
-          placeholder="Петро Іваненко"
+          placeholder={t('form.contactPersonPlaceholder')}
         />
-        <Input label="Нотатки" {...register('notes')} />
+        <Input label={t('card.info.notes')} {...register('notes')} />
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input
             type="checkbox"
             {...register('vatPayer')}
             className="h-4 w-4 rounded border-border accent-primary"
           />
-          <span className="text-sm text-foreground">Платник ПДВ</span>
+          <span className="text-sm text-foreground">{t('card.vatPayer')}</span>
         </label>
       </div>
 
       {/* ── Юридичні реквізити ──────────────────────────────── */}
       <FormSection
-        title="Юридичні реквізити"
+        title={t('form.legalSection')}
         hasError={
           !!(
             errors.legalForm ||
@@ -268,42 +272,46 @@ export function CounterpartyForm({ register, errors, control, watch, typeAside }
         filled={legalFilled}
       >
         <Select
-          label="Форма власності"
+          label={t('card.info.legalForm')}
           {...register('legalForm')}
           errorMessage={errors.legalForm?.message}
         >
-          <option value="">— Не вказано —</option>
-          {Object.entries(LEGAL_FORM_LABELS).map(([k, v]) => (
+          <option value="">{t('form.notSpecified')}</option>
+          {LEGAL_FORM_CODES.map(k => (
             <option key={k} value={k}>
-              {v}
+              {t(`card.legalForm.${k}`)}
             </option>
           ))}
         </Select>
         <div className="grid grid-cols-2 gap-3">
-          <Input label="ЄДРПОУ" {...register('edrpou')} placeholder="12345678" />
-          <Input label="ІПН / податковий №" {...register('taxNumber')} placeholder="3456789012" />
+          <Input label={t('columns.edrpou')} {...register('edrpou')} placeholder="12345678" />
+          <Input label={t('form.taxNumber')} {...register('taxNumber')} placeholder="3456789012" />
         </div>
         <Input
-          label="Юридична адреса"
+          label={t('form.legalAddress')}
           {...register('legalAddress')}
-          placeholder="вул. Хрещатик 1, Київ"
+          placeholder={t('form.addressPlaceholder')}
         />
         <Input
-          label="Фактична адреса"
+          label={t('form.actualAddress')}
           {...register('actualAddress')}
-          placeholder="вул. Хрещатик 1, Київ"
+          placeholder={t('form.addressPlaceholder')}
         />
       </FormSection>
 
       {/* ── Банк ────────────────────────────────────────────── */}
       <FormSection
-        title="Банківські реквізити"
+        title={t('form.bankSection')}
         hasError={!!(errors.bankAccount || errors.bankName)}
         filled={bankFilled}
       >
         <div className="grid grid-cols-2 gap-3">
           <Input label="IBAN" {...register('bankAccount')} placeholder="UA12 3456 …" />
-          <Input label="Банк" {...register('bankName')} placeholder="АТ КБ «ПриватБанк»" />
+          <Input
+            label={t('card.info.bank')}
+            {...register('bankName')}
+            placeholder={t('form.bankNamePlaceholder')}
+          />
         </div>
       </FormSection>
     </div>

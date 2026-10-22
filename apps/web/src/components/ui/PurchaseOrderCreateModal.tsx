@@ -44,6 +44,7 @@ import { kyivToday } from '@/lib/format';
 import { pickScannedGood } from '@/lib/barcode';
 import { PO_STATUS_TRANSITIONS, PO_STATUS_ACTION_LABELS } from '@sto/shared';
 import { poStatusLabel } from '@/i18n/enumLabel';
+import i18n from '@/i18n/config';
 import { Modal } from '@/components/ui/modal';
 import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
@@ -104,12 +105,12 @@ type SchemaError = Extract<
 // кнопка вже гарантувала обраний supplier+warehouse (§8.2).
 function firstSchemaError(err: SchemaError): string {
   const issue = err.issues[0];
-  if (!issue) return 'Перевірте заповнення форми';
+  if (!issue) return i18n.t('purchaseOrders:card.checkForm');
   const path = issue.path;
   // issue.message — ключ перекладу спільної схеми, не текст (Bug #934).
   const message = validationText(issue.message);
   if (path[0] === 'lines' && typeof path[1] === 'number') {
-    return `Рядок ${path[1] + 1}: ${message}`;
+    return i18n.t('purchaseOrders:card.lineError', { n: path[1] + 1, message });
   }
   return message;
 }
@@ -303,7 +304,11 @@ export function PurchaseOrderCreateModal({
         setWarehouses(list);
         setCache('cache:warehouses', list);
       })
-      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження складів'));
+      .catch(e =>
+        setError(
+          e instanceof Error ? e.message : i18n.t('purchaseOrders:card.warehousesLoadError'),
+        ),
+      );
     const cachedUnits = getCached<{ id: string; name: string; shortName: string }[]>('cache:units');
     if (cachedUnits) setUnits(cachedUnits);
     void apiFetch<
@@ -467,7 +472,8 @@ export function PurchaseOrderCreateModal({
         })
         .catch(e => {
           if (isStale()) return;
-          if (!silent) setError(e instanceof Error ? e.message : 'Помилка завантаження замовлення');
+          if (!silent)
+            setError(e instanceof Error ? e.message : i18n.t('purchaseOrders:card.loadError'));
         })
         .finally(() => {
           if (isStale()) return;
@@ -523,9 +529,9 @@ export function PurchaseOrderCreateModal({
     } catch (e: unknown) {
       // Раніше тут був порожній `catch { /* ignore */ }`: при збої картка постачальника
       // просто не відкривалась і користувач не бачив ЖОДНОГО сигналу — клік «у нікуди».
-      toast.error(e instanceof Error ? e.message : 'Помилка завантаження постачальника');
+      toast.error(e instanceof Error ? e.message : t('card.supplierLoadError'));
     }
-  }, [getValues, openAfterLoad]);
+  }, [getValues, openAfterLoad, t]);
 
   const openGoodDetail = useCallback(
     async (goodId: string) => {
@@ -583,10 +589,10 @@ export function PurchaseOrderCreateModal({
       } catch (e: unknown) {
         // Раніше порожній `catch { /* ignore */ }`: при збої картка товару не відкривалась
         // мовчки — користувач клікав і нічого не відбувалось.
-        toast.error(e instanceof Error ? e.message : 'Помилка завантаження товару');
+        toast.error(e instanceof Error ? e.message : t('card.goodLoadError'));
       }
     },
-    [openAfterLoad],
+    [openAfterLoad, t],
   );
 
   // ── Good picker ───────────────────────────────────────────────────────────
@@ -681,12 +687,12 @@ export function PurchaseOrderCreateModal({
         setCurrentStatus(newStatus);
         onSaved?.();
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
+        setError(e instanceof Error ? e.message : t('card.transitionError'));
       } finally {
         setTransitioningBoth(false);
       }
     },
-    [purchaseOrderId, viewOnly, onSaved, runSentOrder],
+    [purchaseOrderId, viewOnly, onSaved, runSentOrder, t],
   );
 
   // ── Lines ─────────────────────────────────────────────────────────────────
@@ -862,7 +868,7 @@ export function PurchaseOrderCreateModal({
       await loadPo(po.id);
       return po.id;
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка створення замовлення');
+      setError(e instanceof Error ? e.message : t('card.createError'));
       return null;
     } finally {
       setSavingBoth(false);
@@ -925,7 +931,7 @@ export function PurchaseOrderCreateModal({
       onSaved?.();
       onClose();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : t('card.saveError'));
     } finally {
       setSavingBoth(false);
     }
@@ -969,7 +975,7 @@ export function PurchaseOrderCreateModal({
       }))
       .filter(l => l.lineId && !isNaN(l.receivedQty) && l.receivedQty > 0);
     if (!receivedLines.length) {
-      setError('Вкажіть кількість для хоча б однієї позиції');
+      setError(t('errors.receiveNoQty'));
       return;
     }
     setReceiving(true);
@@ -987,7 +993,7 @@ export function PurchaseOrderCreateModal({
       await loadPo(purchaseOrderId, true);
       onSaved?.();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка оприбуткування');
+      setError(e instanceof Error ? e.message : t('card.receiveError'));
     } finally {
       setReceiving(false);
     }
@@ -1018,7 +1024,7 @@ export function PurchaseOrderCreateModal({
       // Reload lines to show pricedSalePrice + pricingRuleName
       if (purchaseOrderId) await loadPo(purchaseOrderId, true);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка розцінки';
+      const msg = e instanceof Error ? e.message : t('card.pricingError');
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
     } finally {
@@ -1067,7 +1073,7 @@ export function PurchaseOrderCreateModal({
       if (features.toastEnabled) toast.success(t('toast.pricedGoods', { count: result.updated }));
       if (purchaseOrderId) await loadPo(purchaseOrderId, true);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка розцінки';
+      const msg = e instanceof Error ? e.message : t('card.pricingError');
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
     } finally {
@@ -1081,7 +1087,7 @@ export function PurchaseOrderCreateModal({
         open={open}
         onClose={() => void handleModalClose()}
         onSubmit={() => void (isEditMode ? handleSave() : handleCreate())}
-        title={isEditMode ? poNumber || 'Замовлення' : 'Нове замовлення постачальнику'}
+        title={isEditMode ? poNumber || t('counters.purchaseOrder') : t('card.newTitle')}
         size="content"
         hideClose
         headerContent={
@@ -1089,13 +1095,15 @@ export function PurchaseOrderCreateModal({
           // виходив за край картки й був недосяжний; тепер він переноситься на другий рядок.
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <div className="flex items-center gap-2 text-[13px] text-muted-foreground shrink-0">
-              <span className="font-medium">Номер:</span>
+              <span className="font-medium">{t('card.number')}</span>
               <span className="text-foreground">
-                {isEditMode && poNumber ? poNumber : '— присвоюється автоматично —'}
+                {isEditMode && poNumber ? poNumber : t('card.autoNumber')}
               </span>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">Дата документа:</span>
+              <span className="text-[13px] font-medium text-muted-foreground">
+                {t('card.documentDate')}
+              </span>
               <div className="w-36">
                 <Controller
                   control={control}
@@ -1111,7 +1119,9 @@ export function PurchaseOrderCreateModal({
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">Дата оплати:</span>
+              <span className="text-[13px] font-medium text-muted-foreground">
+                {t('card.paymentDate')}
+              </span>
               <div className="w-36">
                 {/* Задається на DRAFT; після ORDERED — авто-заповнюється при повному отриманні
                     (RECEIVED) = сьогодні + CounterpartyContract.paymentDeferDays.
@@ -1130,18 +1140,22 @@ export function PurchaseOrderCreateModal({
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">Накладна (ЕН):</span>
+              <span className="text-[13px] font-medium text-muted-foreground">
+                {t('card.trackingNumber')}
+              </span>
               <div className="w-44">
                 <Input
                   {...register('trackingNumber')}
-                  placeholder="напр. 204..."
+                  placeholder={t('card.trackingPlaceholder')}
                   disabled={!canEdit}
                   autoComplete="off"
                 />
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">Статус:</span>
+              <span className="text-[13px] font-medium text-muted-foreground">
+                {t('card.status')}
+              </span>
               <div ref={statusMenuRef} className="relative flex items-center gap-1">
                 <button
                   type="button"
@@ -1158,7 +1172,9 @@ export function PurchaseOrderCreateModal({
                   type="button"
                   disabled={transitioning || !isEditMode || viewOnly}
                   onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
-                  title={STATUS_DESCRIPTIONS[currentStatus]}
+                  title={t(`card.statusDescription.${currentStatus}`, {
+                    defaultValue: STATUS_DESCRIPTIONS[currentStatus],
+                  })}
                   className={cn(
                     'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
                     STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
@@ -1192,7 +1208,9 @@ export function PurchaseOrderCreateModal({
                         }}
                         className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
                       >
-                        {PO_STATUS_ACTION_LABELS[s] ?? poStatusLabel(s)}
+                        {t(`card.transition.${s}`, {
+                          defaultValue: PO_STATUS_ACTION_LABELS[s] ?? poStatusLabel(s),
+                        })}
                       </button>
                     ))}
                   </div>
@@ -1208,7 +1226,7 @@ export function PurchaseOrderCreateModal({
                 onClick={() => {
                   minimizeModal({
                     kind: 'modal',
-                    label: poNumber || 'Замовлення',
+                    label: poNumber || t('counters.purchaseOrder'),
                     modalKey: 'purchase-order',
                     restoreProps: { purchaseOrderId },
                   });
@@ -1216,8 +1234,8 @@ export function PurchaseOrderCreateModal({
                   onClose();
                 }}
                 className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-                title="Згорнути у вкладку"
-                aria-label="Згорнути у вкладку"
+                title={t('card.minimize')}
+                aria-label={t('card.minimize')}
                 disabled={saving || transitioning}
               >
                 <Minus className="h-4 w-4" />
@@ -1226,7 +1244,7 @@ export function PurchaseOrderCreateModal({
             <button
               onClick={() => void handleModalClose()}
               className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-              title="Закрити"
+              title={t('common:close')}
               disabled={saving || transitioning}
             >
               <X className="h-4 w-4" />
@@ -1244,7 +1262,7 @@ export function PurchaseOrderCreateModal({
                   loading={transitioning}
                   disabled={transitioning || saving}
                 >
-                  Скасувати
+                  {t('common:cancel')}
                 </Button>
               )}
             </div>
@@ -1255,10 +1273,10 @@ export function PurchaseOrderCreateModal({
                   size="sm"
                   onClick={() => void openPayment()}
                   disabled={saving || transitioning}
-                  title="Створити оплату постачальнику по цьому замовленню"
+                  title={t('card.payTitle')}
                 >
                   <Wallet size={15} className="mr-1" />
-                  Оплатити
+                  {t('card.pay')}
                 </Button>
               )}
               {isEditMode && (
@@ -1268,10 +1286,10 @@ export function PurchaseOrderCreateModal({
                     size="sm"
                     onClick={() => window.print()}
                     disabled={saving || transitioning}
-                    title="Друк"
+                    title={t('card.print')}
                   >
                     <Printer size={15} className="mr-1" />
-                    Друк
+                    {t('card.print')}
                   </Button>
                   <div className="relative">
                     <Button
@@ -1281,7 +1299,7 @@ export function PurchaseOrderCreateModal({
                       disabled={saving || transitioning}
                     >
                       <Download size={15} className="mr-1" />
-                      Зберегти як
+                      {t('card.saveAs')}
                       <ChevronDown size={13} className="ml-1" />
                     </Button>
                     {saveAsOpen && (
@@ -1312,16 +1330,16 @@ export function PurchaseOrderCreateModal({
                         variant="outline"
                         size="sm"
                         disabled={saving || transitioning}
-                        title="Поділитись"
+                        title={t('card.share')}
                       >
                         <Share2 size={15} className="mr-1" />
-                        Поділитись
+                        {t('card.share')}
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         disabled={saving || transitioning}
-                        title="Відправити SMS"
+                        title={t('card.sendSms')}
                       >
                         <MessageSquare size={15} className="mr-1" />
                         SMS
@@ -1338,7 +1356,7 @@ export function PurchaseOrderCreateModal({
                     disabled={saving || transitioning}
                     size="sm"
                   >
-                    Зберегти зміни
+                    {t('card.saveChanges')}
                   </Button>
                 )
               ) : (
@@ -1348,7 +1366,7 @@ export function PurchaseOrderCreateModal({
                   disabled={saving || !supplierIdValue || !warehouseIdValue}
                   size="sm"
                 >
-                  Створити замовлення
+                  {t('card.create')}
                 </Button>
               )}
               <Button
@@ -1358,7 +1376,7 @@ export function PurchaseOrderCreateModal({
                 onClick={() => void handleModalClose()}
                 disabled={saving || transitioning}
               >
-                Закрити
+                {t('common:close')}
               </Button>
             </div>
           </div>
@@ -1375,7 +1393,7 @@ export function PurchaseOrderCreateModal({
               <div className="space-y-4 pb-1">
                 {loading && (
                   <div className="flex justify-center py-4 text-sm text-muted-foreground">
-                    Завантаження…
+                    {t('common:loading')}
                   </div>
                 )}
                 {error && (
@@ -1388,10 +1406,10 @@ export function PurchaseOrderCreateModal({
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <EntityPickerField<SupplierItem>
-                      label="Постачальник"
+                      label={t('columns.supplier')}
                       required
                       display={supplierDisplay}
-                      placeholder="Пошук постачальника…"
+                      placeholder={t('card.supplierSearch')}
                       className="h-8 text-[13px]"
                       disabled={!canEdit}
                       onPick={() => setSupplierPickerOpen(true)}
@@ -1426,7 +1444,7 @@ export function PurchaseOrderCreateModal({
                     name="warehouseId"
                     render={({ field }) => (
                       <Select
-                        label="Склад"
+                        label={t('columns.warehouse')}
                         required
                         value={field.value ?? ''}
                         onChange={field.onChange}
@@ -1434,7 +1452,7 @@ export function PurchaseOrderCreateModal({
                         disabled={!canEdit}
                         className="h-8 text-[13px] py-0.5 px-2 pr-7"
                       >
-                        <option value="">— Оберіть —</option>
+                        <option value="">{t('card.choose')}</option>
                         {warehouses.map(w => (
                           <option key={w.id} value={w.id}>
                             {w.name}
@@ -1448,11 +1466,11 @@ export function PurchaseOrderCreateModal({
                 {/* Рядок 3: Договір | Валюта */}
                 <div className="grid grid-cols-2 gap-4">
                   <Input
-                    label="Договір"
+                    label={t('card.contract')}
                     value={contractNumber ?? ''}
                     disabled
                     readOnly
-                    placeholder="— автоматично —"
+                    placeholder={t('card.contractAuto')}
                     className="h-8 text-[13px]"
                   />
                   <Controller
@@ -1473,10 +1491,10 @@ export function PurchaseOrderCreateModal({
 
                 {/* Рядок 4: Опис */}
                 <Input
-                  label="Опис"
+                  label={t('card.notes')}
                   {...register('notes')}
                   disabled={!canEdit}
-                  placeholder="Додаткова інформація…"
+                  placeholder={t('card.notesPlaceholder')}
                   className="h-8 text-[13px]"
                 />
 
@@ -1501,15 +1519,24 @@ export function PurchaseOrderCreateModal({
             collapsed={headerCollapsed}
             onToggle={() => setHeaderCollapsed(c => !c)}
             chips={[
-              { label: supplierDisplay || '— постачальник —', primary: true, maxWidth: 'max-w-50' },
+              {
+                label: supplierDisplay || t('card.chipSupplier'),
+                primary: true,
+                maxWidth: 'max-w-50',
+              },
               {
                 label: warehouseIdValue
-                  ? (warehouseById.get(warehouseIdValue)?.name ?? '— склад —')
-                  : '— склад —',
+                  ? (warehouseById.get(warehouseIdValue)?.name ?? t('card.chipWarehouse'))
+                  : t('card.chipWarehouse'),
                 maxWidth: 'max-w-40',
               },
               ...(contractNumber
-                ? [{ label: `Дог. ${contractNumber}`, maxWidth: 'max-w-35' }]
+                ? [
+                    {
+                      label: t('card.chipContract', { number: contractNumber }),
+                      maxWidth: 'max-w-35',
+                    },
+                  ]
                 : []),
             ]}
           />
@@ -1517,7 +1544,7 @@ export function PurchaseOrderCreateModal({
           {/* ── Lines table ──────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto">
             <DocLinesHeader
-              title="Товари"
+              title={t('card.goods')}
               onAdd={
                 canEdit && !showLineInput && !receiveMode ? () => setShowLineInput(true) : undefined
               }
@@ -1532,10 +1559,10 @@ export function PurchaseOrderCreateModal({
                       onClick={() => void openRulePricer()}
                       loading={applyingPricing}
                       disabled={applyingPricing || saving || transitioning}
-                      title="Розцінити за обраним правилом"
+                      title={t('card.priceByRuleTitle')}
                     >
                       <Zap size={13} className="mr-1" />
-                      За правилом
+                      {t('card.priceByRule')}
                     </Button>
                     <Button
                       variant="outline"
@@ -1543,10 +1570,10 @@ export function PurchaseOrderCreateModal({
                       onClick={() => void handleApplyPricing()}
                       loading={applyingPricing}
                       disabled={applyingPricing || saving || transitioning}
-                      title="Розцінити товари за правилами автоматично"
+                      title={t('card.priceAutoTitle')}
                     >
                       <Zap size={13} className="mr-1" />
-                      Розцінити
+                      {t('card.priceAuto')}
                     </Button>
                   </>
                 )}
@@ -1565,7 +1592,7 @@ export function PurchaseOrderCreateModal({
                       disabled={receiving}
                       className="flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      Скасувати
+                      {t('common:cancel')}
                     </button>
                     <Button
                       variant="outline"
@@ -1586,7 +1613,7 @@ export function PurchaseOrderCreateModal({
                         setReceiveQtys(all);
                       }}
                     >
-                      Оприбуткувати все
+                      {t('card.receiveAll')}
                     </Button>
                     <Button
                       size="sm"
@@ -1595,7 +1622,7 @@ export function PurchaseOrderCreateModal({
                       disabled={receiving}
                     >
                       <PackageCheck size={13} className="mr-1" />
-                      Підтвердити прийом
+                      {t('receive.confirmButton')}
                     </Button>
                   </>
                 ) : (
@@ -1606,7 +1633,7 @@ export function PurchaseOrderCreateModal({
                     disabled={saving || transitioning}
                   >
                     <PackageCheck size={13} className="mr-1" />
-                    Оприбуткувати
+                    {t('card.receive')}
                   </Button>
                 ))}
               {canEdit && isEditMode && activePOId && !receiveMode && (
@@ -1626,7 +1653,7 @@ export function PurchaseOrderCreateModal({
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-border bg-surface text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
                 >
                   <Upload className="h-3.5 w-3.5" />
-                  Завантажити з Excel
+                  {t('card.excelUpload')}
                 </button>
               )}
             </DocLinesHeader>
@@ -1647,43 +1674,43 @@ export function PurchaseOrderCreateModal({
                 <thead>
                   <tr className="border-b border-border bg-secondary/40">
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      Товар
+                      {t('card.colGood')}
                     </th>
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      К-сть
+                      {t('card.colQty')}
                     </th>
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      ОВ
+                      {t('card.colUnit')}
                     </th>
                     {isEditMode && (
                       <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                        Отримано
+                        {t('card.colReceived')}
                       </th>
                     )}
                     {receiveMode && (
                       <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-primary whitespace-nowrap">
-                        До отримання
+                        {t('card.colToReceive')}
                       </th>
                     )}
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      Ціна, {currencySymbol}
+                      {t('card.colPrice', { currency: currencySymbol })}
                     </th>
                     {vatMode !== 'NONE' && (
                       <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                        ПДВ, {currencySymbol}
+                        {t('card.colVat', { currency: currencySymbol })}
                       </th>
                     )}
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      Сума, {currencySymbol}
+                      {t('card.colSum', { currency: currencySymbol })}
                     </th>
                     {canPrice && (
                       <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-primary whitespace-nowrap">
-                        Ціна розцінки, {currencySymbol}
+                        {t('card.colPricedPrice', { currency: currencySymbol })}
                       </th>
                     )}
                     {canPrice && (
                       <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                        Правило розцінки
+                        {t('card.colPricingRule')}
                       </th>
                     )}
                     <th />
@@ -1709,8 +1736,8 @@ export function PurchaseOrderCreateModal({
                         <td className="px-2 py-1.5">
                           <EntityPickerField<GoodItem>
                             display={editingLine.goodName}
-                            placeholder="Пошук товару…"
-                            ariaLabel="Товар"
+                            placeholder={t('card.goodSearch')}
+                            ariaLabel={t('card.colGood')}
                             onSearch={fetchGoodItems}
                             onOpenDetail={
                               editingLine.goodId
@@ -1807,7 +1834,7 @@ export function PurchaseOrderCreateModal({
                               type="button"
                               onClick={commitEdit}
                               disabled={!editingLine.goodId}
-                              title="Зберегти"
+                              title={t('common:save')}
                               className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                             >
                               <Check className="h-3.5 w-3.5" />
@@ -1815,7 +1842,7 @@ export function PurchaseOrderCreateModal({
                             <button
                               type="button"
                               onClick={cancelEdit}
-                              title="Скасувати"
+                              title={t('common:cancel')}
                               className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                             >
                               <X className="h-3.5 w-3.5" />
@@ -1866,11 +1893,13 @@ export function PurchaseOrderCreateModal({
                                   onChange={e =>
                                     setReceiveQtys(q => ({ ...q, [field.id]: e.target.value }))
                                   }
-                                  placeholder={`макс. ${maxQty}`}
+                                  placeholder={t('receive.maxPlaceholder', { max: maxQty })}
                                   className="w-24 rounded border border-primary/50 bg-primary/5 px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
                                 />
                               ) : (
-                                <span className="text-[11px] text-success px-2">✓ повністю</span>
+                                <span className="text-[11px] text-success px-2">
+                                  {t('card.fullyReceived')}
+                                </span>
                               );
                             })()}
                           </td>
@@ -1891,7 +1920,7 @@ export function PurchaseOrderCreateModal({
                         {canPrice && (
                           <td
                             className="px-3 py-2 text-[12px] tabular-nums cursor-text hover:bg-primary/5 transition-colors"
-                            title="Клікніть щоб редагувати"
+                            title={t('card.clickToEdit')}
                             onClick={e => {
                               const input = e.currentTarget.querySelector('input');
                               input?.focus();
@@ -1934,8 +1963,8 @@ export function PurchaseOrderCreateModal({
                               <button
                                 type="button"
                                 onClick={() => startEdit(line, index, field.id)}
-                                aria-label="Редагувати позицію"
-                                title="Редагувати"
+                                aria-label={t('card.editLineAria')}
+                                title={t('common:edit')}
                                 className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
                               >
                                 <Pencil className="h-3 w-3" />
@@ -1943,8 +1972,8 @@ export function PurchaseOrderCreateModal({
                               <button
                                 type="button"
                                 onClick={() => removeLine(index)}
-                                aria-label="Видалити позицію"
-                                title="Видалити"
+                                aria-label={t('card.deleteLineAria')}
+                                title={t('common:delete')}
                                 className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                               >
                                 <Trash2 className="h-3 w-3" />
@@ -1962,8 +1991,8 @@ export function PurchaseOrderCreateModal({
                       <td className="px-2 py-1.5">
                         <EntityPickerField<GoodItem>
                           display={newLine.goodName}
-                          placeholder="Пошук товару…"
-                          ariaLabel="Товар"
+                          placeholder={t('card.goodSearch')}
+                          ariaLabel={t('card.colGood')}
                           onPick={() => setGoodSearchOpen(true)}
                           onSearch={fetchGoodItems}
                           onOpenDetail={
@@ -2042,7 +2071,7 @@ export function PurchaseOrderCreateModal({
                             type="button"
                             onClick={addLine}
                             disabled={!newLine.goodId}
-                            title="Зберегти рядок"
+                            title={t('card.saveRow')}
                             className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                           >
                             <Plus className="h-3.5 w-3.5" />
@@ -2053,7 +2082,7 @@ export function PurchaseOrderCreateModal({
                               setShowLineInput(false);
                               setNewLine(EMPTY_LINE);
                             }}
-                            title="Скасувати"
+                            title={t('common:cancel')}
                             className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -2069,7 +2098,7 @@ export function PurchaseOrderCreateModal({
                       colSpan={3 + (isEditMode ? 1 : 0) + (receiveMode ? 1 : 0)}
                       className="px-3 py-1.5 text-left text-xs font-medium text-muted-foreground"
                     >
-                      Разом:
+                      {t('card.total')}
                     </td>
                     {/* Ціна — порожня */}
                     <td />
@@ -2096,11 +2125,11 @@ export function PurchaseOrderCreateModal({
       <SearchPickerModal<SupplierItem>
         open={supplierPickerOpen}
         onClose={() => setSupplierPickerOpen(false)}
-        title="Оберіть постачальника"
+        title={t('card.pickSupplier')}
         selectedId={supplierIdValue}
         fetchItems={fetchSupplierItems}
-        searchPlaceholder="Назва, телефон, компанія..."
-        emptyText="Постачальників не знайдено"
+        searchPlaceholder={t('card.supplierPickerSearch')}
+        emptyText={t('card.suppliersNotFound')}
         onSelect={item => {
           setSupplierDisplay(item.primary);
           setValue('supplierId', item.id, { shouldDirty: true });
@@ -2144,10 +2173,10 @@ export function PurchaseOrderCreateModal({
       <SearchPickerModal<GoodItem>
         open={goodSearchOpen}
         onClose={() => setGoodSearchOpen(false)}
-        title="Оберіть товар"
+        title={t('common:goodPicker.title')}
         fetchItems={fetchGoodItems}
-        searchPlaceholder="Назва, артикул / штрих-код…"
-        emptyText="Товарів не знайдено"
+        searchPlaceholder={t('card.goodPickerSearch')}
+        emptyText={t('card.goodsNotFound')}
         scanSubmit={(items, typed) => pickScannedGood(items, typed)}
         onSelect={item => {
           setNewLine(l => ({

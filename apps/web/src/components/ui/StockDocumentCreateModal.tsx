@@ -44,6 +44,7 @@ import {
   STOCK_DOC_TYPE_LABELS,
 } from '@sto/shared';
 import { stockDocStatusLabel, stockDocTypeLabel } from '@/i18n/enumLabel';
+import i18n from '@/i18n/config';
 import { Modal } from '@/components/ui/modal';
 import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
@@ -135,16 +136,8 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-destructive-subtle text-destructive',
 };
 
-const STATUS_DESCRIPTIONS: Record<string, string> = {
-  DRAFT: 'Чернетка — документ підготовлено, ще не підтверджено',
-  CONFIRMED: 'Підтверджено — документ проведено, залишки змінено',
-  CANCELLED: 'Скасовано — документ скасовано',
-};
-
-const TRANSITION_LABELS: Record<string, string> = {
-  CONFIRMED: 'Підтвердити',
-  CANCELLED: 'Скасувати',
-};
+// Статуси з підказкою (тексти — stockDocuments:card.statusDescription.<STATUS>).
+const DESCRIBED_STATUSES: readonly string[] = ['DRAFT', 'CONFIRMED', 'CANCELLED'];
 
 const STOCK_DOC_STATUS_ORDER = Object.keys(STOCK_DOC_STATUS_LABELS);
 const EMPTY_TRANSITIONS: readonly string[] = Object.freeze([]);
@@ -296,7 +289,9 @@ export function StockDocumentCreateModal({
         setBranches(bs);
         setCache('cache:branches', bs);
       })
-      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження філій'));
+      .catch(e =>
+        setError(e instanceof Error ? e.message : i18n.t('stockDocuments:card.branchesLoadError')),
+      );
 
     const cachedWarehouses = getCached<Warehouse[]>('cache:warehouses');
     if (cachedWarehouses) {
@@ -309,7 +304,11 @@ export function StockDocumentCreateModal({
         setWarehouses(list);
         setCache('cache:warehouses', list);
       })
-      .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження складів'));
+      .catch(e =>
+        setError(
+          e instanceof Error ? e.message : i18n.t('stockDocuments:card.warehousesLoadError'),
+        ),
+      );
   }, [open]);
 
   // Reset on open — чиста база (rhfDirty=false) + скидання refs/локального стану.
@@ -397,7 +396,7 @@ export function StockDocumentCreateModal({
         })
         .catch(e => {
           if (isStale()) return;
-          setError(e instanceof Error ? e.message : 'Помилка завантаження документа');
+          setError(e instanceof Error ? e.message : i18n.t('stockDocuments:card.loadError'));
         })
         .finally(() => {
           if (isStale()) return;
@@ -525,7 +524,7 @@ export function StockDocumentCreateModal({
       setCurrentStatus(newStatus);
       onSaved?.();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
+      setError(e instanceof Error ? e.message : t('card.transitionError'));
     } finally {
       setTransitioningBoth(false);
     }
@@ -619,7 +618,7 @@ export function StockDocumentCreateModal({
         onClose();
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : t('card.saveError'));
     } finally {
       setSavingBoth(false);
     }
@@ -640,7 +639,7 @@ export function StockDocumentCreateModal({
   // ── Render ────────────────────────────────────────────────────────────────
 
   const isTransfer = formType === 'TRANSFER';
-  const warehouseLabel = isTransfer ? 'Склад-джерело' : 'Склад';
+  const warehouseLabel = isTransfer ? t('card.sourceWarehouse') : t('columns.warehouse');
 
   const headerChips =
     isEditMode && headerCollapsed
@@ -656,19 +655,21 @@ export function StockDocumentCreateModal({
         open={open}
         onClose={() => void handleModalClose()}
         onSubmit={() => void onValid()}
-        title={isEditMode ? 'Складський документ' : 'Новий складський документ'}
+        title={isEditMode ? t('card.title') : t('card.titleNew')}
         size="content"
         hideClose
         headerContent={
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2 text-[13px] text-muted-foreground shrink-0">
-              <span className="font-medium">Номер:</span>
+              <span className="font-medium">{t('card.number')}</span>
               <span className="text-foreground">
-                {isEditMode && docNumber ? docNumber : '— присвоюється автоматично —'}
+                {isEditMode && docNumber ? docNumber : t('card.autoNumber')}
               </span>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">Дата документа:</span>
+              <span className="text-[13px] font-medium text-muted-foreground">
+                {t('card.documentDate')}
+              </span>
               <div className="w-36">
                 <Controller
                   control={control}
@@ -684,7 +685,9 @@ export function StockDocumentCreateModal({
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">Статус:</span>
+              <span className="text-[13px] font-medium text-muted-foreground">
+                {t('card.status')}
+              </span>
               <div ref={statusMenuRef} className="relative flex items-center gap-1">
                 <button
                   type="button"
@@ -701,7 +704,11 @@ export function StockDocumentCreateModal({
                   type="button"
                   disabled={transitioning || !isEditMode || viewOnly}
                   onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
-                  title={STATUS_DESCRIPTIONS[currentStatus]}
+                  title={
+                    DESCRIBED_STATUSES.includes(currentStatus)
+                      ? t(`card.statusDescription.${currentStatus}`)
+                      : undefined
+                  }
                   className={cn(
                     'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
                     STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
@@ -735,7 +742,7 @@ export function StockDocumentCreateModal({
                         }}
                         className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
                       >
-                        {TRANSITION_LABELS[s] ?? stockDocStatusLabel(s)}
+                        {t(`card.transition.${s}`, { defaultValue: stockDocStatusLabel(s) })}
                       </button>
                     ))}
                   </div>
@@ -751,7 +758,7 @@ export function StockDocumentCreateModal({
                 onClick={() => {
                   minimizeModal({
                     kind: 'modal',
-                    label: docNumber || 'Документ',
+                    label: docNumber || t('card.minimizedLabel'),
                     modalKey: 'stock-document',
                     restoreProps: { stockDocumentId },
                   });
@@ -759,8 +766,8 @@ export function StockDocumentCreateModal({
                   onClose();
                 }}
                 className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-                title="Згорнути у вкладку"
-                aria-label="Згорнути у вкладку"
+                title={t('card.minimize')}
+                aria-label={t('card.minimize')}
                 disabled={saving || transitioning}
               >
                 <Minus className="h-4 w-4" />
@@ -769,7 +776,7 @@ export function StockDocumentCreateModal({
             <button
               onClick={() => void handleModalClose()}
               className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-              title="Закрити"
+              title={t('common:close')}
               disabled={saving || transitioning}
             >
               <X className="h-4 w-4" />
@@ -787,7 +794,7 @@ export function StockDocumentCreateModal({
                   loading={transitioning}
                   disabled={transitioning || saving}
                 >
-                  Скасувати
+                  {t('card.transition.CANCELLED')}
                 </Button>
               )}
             </div>
@@ -799,10 +806,10 @@ export function StockDocumentCreateModal({
                     size="sm"
                     onClick={() => window.print()}
                     disabled={saving || transitioning}
-                    title="Друк"
+                    title={t('card.print')}
                   >
                     <Printer size={15} className="mr-1" />
-                    Друк
+                    {t('card.print')}
                   </Button>
                   <div className="relative">
                     <Button
@@ -812,7 +819,7 @@ export function StockDocumentCreateModal({
                       disabled={saving || transitioning}
                     >
                       <Download size={15} className="mr-1" />
-                      Зберегти як
+                      {t('card.saveAs')}
                       <ChevronDown size={13} className="ml-1" />
                     </Button>
                     {saveAsOpen && (
@@ -843,16 +850,16 @@ export function StockDocumentCreateModal({
                         variant="outline"
                         size="sm"
                         disabled={saving || transitioning}
-                        title="Поділитись"
+                        title={t('card.share')}
                       >
                         <Share2 size={15} className="mr-1" />
-                        Поділитись
+                        {t('card.share')}
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         disabled={saving || transitioning}
-                        title="Відправити SMS"
+                        title={t('card.smsTitle')}
                       >
                         <MessageSquare size={15} className="mr-1" />
                         SMS
@@ -868,7 +875,7 @@ export function StockDocumentCreateModal({
                       loading={transitioning}
                       disabled={transitioning || saving}
                     >
-                      Підтвердити
+                      {t('card.transition.CONFIRMED')}
                     </Button>
                   )}
                 </>
@@ -881,7 +888,7 @@ export function StockDocumentCreateModal({
                     disabled={saving || transitioning}
                     size="sm"
                   >
-                    Зберегти зміни
+                    {t('card.saveChanges')}
                   </Button>
                 )
               ) : (
@@ -897,7 +904,7 @@ export function StockDocumentCreateModal({
                   }
                   size="sm"
                 >
-                  Створити документ
+                  {t('card.create')}
                 </Button>
               )}
               <Button
@@ -906,7 +913,7 @@ export function StockDocumentCreateModal({
                 onClick={() => void handleModalClose()}
                 disabled={saving || transitioning}
               >
-                Закрити
+                {t('common:close')}
               </Button>
             </div>
           </div>
@@ -923,7 +930,7 @@ export function StockDocumentCreateModal({
               <div className="space-y-4 pb-1">
                 {loading && (
                   <div className="flex justify-center py-4 text-sm text-muted-foreground">
-                    Завантаження…
+                    {t('common:loading')}
                   </div>
                 )}
                 {error && (
@@ -939,7 +946,7 @@ export function StockDocumentCreateModal({
                     name="type"
                     render={({ field }) => (
                       <Select
-                        label="Тип документа"
+                        label={t('card.docType')}
                         required
                         value={field.value}
                         onChange={e => {
@@ -966,7 +973,7 @@ export function StockDocumentCreateModal({
                     name="branchId"
                     render={({ field }) => (
                       <Select
-                        label="Філія"
+                        label={t('card.branch')}
                         required
                         value={field.value ?? ''}
                         onChange={field.onChange}
@@ -974,7 +981,7 @@ export function StockDocumentCreateModal({
                         disabled={!canEdit || isEditMode}
                         className="h-8 text-[13px] py-0.5 px-2 pr-7"
                       >
-                        <option value="">— Оберіть —</option>
+                        <option value="">{t('card.choose')}</option>
                         {branches.map(b => (
                           <option key={b.id} value={b.id}>
                             {b.name}
@@ -1000,7 +1007,7 @@ export function StockDocumentCreateModal({
                         disabled={!canEdit || isEditMode}
                         className="h-8 text-[13px] py-0.5 px-2 pr-7"
                       >
-                        <option value="">— Оберіть —</option>
+                        <option value="">{t('card.choose')}</option>
                         {warehouses.map(w => (
                           <option key={w.id} value={w.id}>
                             {w.name}
@@ -1015,7 +1022,7 @@ export function StockDocumentCreateModal({
                       name="targetWarehouseId"
                       render={({ field }) => (
                         <Select
-                          label="Склад призначення"
+                          label={t('card.targetWarehouse')}
                           required
                           value={typeof field.value === 'string' ? field.value : ''}
                           onChange={field.onChange}
@@ -1023,7 +1030,7 @@ export function StockDocumentCreateModal({
                           disabled={!canEdit || isEditMode}
                           className="h-8 text-[13px] py-0.5 px-2 pr-7"
                         >
-                          <option value="">— Оберіть —</option>
+                          <option value="">{t('card.choose')}</option>
                           {warehouses
                             .filter(w => w.id !== warehouseId)
                             .map(w => (
@@ -1041,9 +1048,9 @@ export function StockDocumentCreateModal({
 
                 {/* Рядок 4: Замовлення (джерело) — опціонально (Phase D2) */}
                 <EntityPickerField
-                  label="Замовлення (джерело)"
+                  label={t('card.sourceOrder')}
                   display={purchaseOrderNumber}
-                  placeholder="Замовлення постачальнику (необовʼязково)…"
+                  placeholder={t('card.sourceOrderPlaceholder')}
                   className="h-8 text-[13px]"
                   disabled={!canEdit || isEditMode}
                   onPick={() => setPoPickerOpen(true)}
@@ -1055,10 +1062,10 @@ export function StockDocumentCreateModal({
 
                 {/* Рядок 5: Примітки */}
                 <Input
-                  label="Примітки"
+                  label={t('card.notes')}
                   {...register('notes')}
                   disabled={!canEdit}
-                  placeholder="Додаткова інформація…"
+                  placeholder={t('card.notesPlaceholder')}
                   className="h-8 text-[13px]"
                 />
               </div>
@@ -1080,7 +1087,7 @@ export function StockDocumentCreateModal({
             ) : (
               <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             )}
-            <span className="text-muted-foreground">Шапка документа</span>
+            <span className="text-muted-foreground">{t('common:documentHeader')}</span>
             {headerChips.map((chip, i) => (
               <span
                 key={i}
@@ -1094,7 +1101,7 @@ export function StockDocumentCreateModal({
           {/* ── Lines table ──────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto">
             <DocLinesHeader
-              title="Товари"
+              title={t('card.goods')}
               onAdd={canEdit && !showLineInput ? () => setShowLineInput(true) : undefined}
             >
               {canEdit && isEditMode && stockDocumentId && (
@@ -1110,7 +1117,7 @@ export function StockDocumentCreateModal({
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-border bg-surface text-foreground hover:bg-secondary transition-colors"
                   >
                     <Upload className="h-3.5 w-3.5" />
-                    Завантажити з Excel
+                    {t('card.importExcel')}
                   </button>
                 </>
               )}
@@ -1126,14 +1133,20 @@ export function StockDocumentCreateModal({
               </colgroup>
               <thead>
                 <tr className="border-b border-border bg-secondary/40">
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">ТОВАР</th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">ОВ</th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">К-СТЬ</th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    ЦІНА, ₴
+                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                    {t('card.colGood')}
                   </th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    СУМА, ₴
+                    {t('card.colUnit')}
+                  </th>
+                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
+                    {t('card.colQty')}
+                  </th>
+                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
+                    {t('card.colPrice')}
+                  </th>
+                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
+                    {t('card.colSum')}
                   </th>
                   <th />
                 </tr>
@@ -1187,7 +1200,9 @@ export function StockDocumentCreateModal({
                         className="w-full text-left rounded border border-input bg-background px-2 py-1 text-[12px] hover:border-primary transition-colors"
                       >
                         {newLine.goodName || (
-                          <span className="text-muted-foreground">Оберіть товар…</span>
+                          <span className="text-muted-foreground">
+                            {t('card.pickGoodPlaceholder')}
+                          </span>
                         )}
                       </button>
                     </td>
@@ -1251,7 +1266,7 @@ export function StockDocumentCreateModal({
                     colSpan={4}
                     className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground"
                   >
-                    Разом:
+                    {t('card.total')}
                   </td>
                   <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums">
                     {total > 0 ? `${fmtMoney(total)} ₴` : '—'}
@@ -1268,10 +1283,10 @@ export function StockDocumentCreateModal({
       <SearchPickerModal<GoodItem>
         open={goodSearchOpen}
         onClose={() => setGoodSearchOpen(false)}
-        title="Оберіть товар"
+        title={t('common:goodPicker.title')}
         fetchItems={fetchGoodItems}
-        searchPlaceholder="Назва, артикул / штрих-код…"
-        emptyText="Товарів не знайдено"
+        searchPlaceholder={t('card.goodSearchPlaceholder')}
+        emptyText={t('card.goodsEmpty')}
         scanSubmit={(items, typed) => pickScannedGood(items, typed)}
         onSelect={item => {
           setNewLine(l => ({
@@ -1289,9 +1304,9 @@ export function StockDocumentCreateModal({
       <SearchPickerModal
         open={poPickerOpen}
         onClose={() => setPoPickerOpen(false)}
-        title="Оберіть замовлення (джерело)"
-        searchPlaceholder="Номер замовлення…"
-        emptyText="Замовлень не знайдено"
+        title={t('card.pickSourceOrder')}
+        searchPlaceholder={t('card.orderSearchPlaceholder')}
+        emptyText={t('card.ordersEmpty')}
         fetchItems={q =>
           apiFetch<{ items: PurchaseOrderRef[] }>(
             `/purchase-orders?q=${encodeURIComponent(q)}&limit=30`,

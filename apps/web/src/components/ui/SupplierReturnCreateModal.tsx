@@ -359,17 +359,19 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         onSaved();
         if (features.toastEnabled)
           toast.success(
-            targetStatus === 'CONFIRMED' ? 'Повернення підтверджено' : 'Повернення скасовано',
+            targetStatus === 'CONFIRMED'
+              ? t('supplierReturn.confirmed')
+              : t('supplierReturn.cancelled'),
           );
       } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Помилка переходу статусу';
+        const msg = e instanceof Error ? e.message : t('card.transitionError');
         setError(msg);
         if (features.toastEnabled) toast.error(msg);
       } finally {
         setTransitioningBoth(false);
       }
     },
-    [editId, isDeleted, notLoaded, features.toastEnabled, onSaved],
+    [editId, isDeleted, notLoaded, features.toastEnabled, onSaved, t],
   );
 
   // ── Lines ──────────────────────────────────────────────────────────────────
@@ -418,7 +420,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     // Ctrl+Enter у модалці кличе цей самий обробник — видалений документ не зберігаємо.
     if (isDeleted || notLoaded) return;
     if (values.lines.length === 0) {
-      setError('Додайте хоча б один товар');
+      setError(t('supplierReturn.addOneGood'));
       return;
     }
     setError('');
@@ -455,7 +457,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       onSaved();
       onClose();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Помилка збереження';
+      const msg = e instanceof Error ? e.message : t('card.saveError');
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
     } finally {
@@ -477,9 +479,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
 
   const title = isEdit
     ? isReadOnly
-      ? 'Повернення постачальнику'
-      : 'Редагування повернення'
-    : 'Нове повернення постачальнику';
+      ? t('tabs.returns')
+      : t('supplierReturn.editTitle')
+    : t('supplierReturn.newTitle');
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -495,7 +497,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           <div className="flex items-center gap-6">
             {/* Date */}
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">Дата документа:</span>
+              <span className="text-[13px] font-medium text-muted-foreground">
+                {t('card.documentDate')}
+              </span>
               <div className="w-36">
                 <Controller
                   control={control}
@@ -514,7 +518,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
             {/* Status navigation — mirrors PO modal */}
             {isEdit && (
               <div className="flex items-center gap-1 shrink-0">
-                <span className="text-[13px] font-medium text-muted-foreground">Статус:</span>
+                <span className="text-[13px] font-medium text-muted-foreground">
+                  {t('card.status')}
+                </span>
                 <button
                   type="button"
                   disabled={transitioning || !statusPrevStep}
@@ -553,7 +559,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           <button
             onClick={() => void handleModalClose()}
             className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-            title="Закрити"
+            title={t('common:close')}
             disabled={saving || transitioning}
           >
             <X className="h-4 w-4" />
@@ -570,7 +576,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                   loading={transitioning}
                   disabled={transitioning || saving}
                 >
-                  Скасувати
+                  {t('common:cancel')}
                 </Button>
               )}
             </div>
@@ -583,7 +589,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                   loading={transitioning}
                   disabled={transitioning || saving || fields.length === 0}
                 >
-                  Підтвердити
+                  {t('common:confirm')}
                 </Button>
               )}
               {canEdit && (
@@ -593,7 +599,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                   disabled={saving || transitioning || !supplierId || !warehouseId}
                   size="sm"
                 >
-                  {isEdit ? 'Зберегти зміни' : 'Створити повернення'}
+                  {isEdit ? t('card.saveChanges') : t('supplierReturn.create')}
                 </Button>
               )}
               <Button
@@ -602,7 +608,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                 onClick={() => void handleModalClose()}
                 disabled={saving || transitioning}
               >
-                Закрити
+                {t('common:close')}
               </Button>
             </div>
           </div>
@@ -627,10 +633,10 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <EntityPickerField
-                      label="Постачальник"
+                      label={t('columns.supplier')}
                       required
                       display={supplierName}
-                      placeholder="Пошук постачальника…"
+                      placeholder={t('card.supplierSearch')}
                       className="h-8 text-[13px]"
                       disabled={!canEdit}
                       onPick={() => setSupplierPickerOpen(true)}
@@ -650,7 +656,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                     name="warehouseId"
                     render={({ field }) => (
                       <Select
-                        label="Склад"
+                        label={t('columns.warehouse')}
                         required
                         value={field.value ?? ''}
                         onChange={field.onChange}
@@ -658,7 +664,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                         disabled={!canEdit}
                         className="h-8 text-[13px] py-0.5 px-2 pr-7"
                       >
-                        <option value="">— Оберіть —</option>
+                        <option value="">{t('card.choose')}</option>
                         {warehouses.map(w => (
                           <option key={w.id} value={w.id}>
                             {w.name}
@@ -671,9 +677,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
 
                 {/* Замовлення (джерело) — опціонально (Phase D2) */}
                 <EntityPickerField
-                  label="Замовлення (джерело)"
+                  label={t('supplierReturn.sourceOrder')}
                   display={purchaseOrderNumber}
-                  placeholder="Замовлення постачальнику (необовʼязково)…"
+                  placeholder={t('supplierReturn.sourceOrderPlaceholder')}
                   className="h-8 text-[13px]"
                   disabled={!canEdit || isEdit}
                   onPick={() => setPoPickerOpen(true)}
@@ -685,10 +691,10 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
 
                 {/* Опис */}
                 <Input
-                  label="Опис"
+                  label={t('card.notes')}
                   {...register('notes')}
                   disabled={!canEdit}
-                  placeholder="Додаткова інформація…"
+                  placeholder={t('card.notesPlaceholder')}
                   className="h-8 text-[13px]"
                 />
               </div>
@@ -700,11 +706,15 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
             collapsed={headerCollapsed}
             onToggle={() => setHeaderCollapsed(c => !c)}
             chips={[
-              { label: supplierName || '— постачальник —', primary: true, maxWidth: 'max-w-50' },
+              {
+                label: supplierName || t('card.chipSupplier'),
+                primary: true,
+                maxWidth: 'max-w-50',
+              },
               {
                 label: warehouseId
-                  ? (warehouseById.get(warehouseId)?.name ?? '— склад —')
-                  : '— склад —',
+                  ? (warehouseById.get(warehouseId)?.name ?? t('card.chipWarehouse'))
+                  : t('card.chipWarehouse'),
                 maxWidth: 'max-w-40',
               },
             ]}
@@ -713,7 +723,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           {/* ── Lines table ─────────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto">
             <DocLinesHeader
-              title="Товари"
+              title={t('card.goods')}
               onAdd={canEdit && !showLineInput ? () => setShowLineInput(true) : undefined}
             />
 
@@ -730,19 +740,19 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                 <thead>
                   <tr className="border-b border-border bg-secondary/40">
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      Товар
+                      {t('card.colGood')}
                     </th>
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      К-сть
+                      {t('card.colQty')}
                     </th>
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      ОВ
+                      {t('card.colUnit')}
                     </th>
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      Ціна, ₴
+                      {t('card.colPrice', { currency: '₴' })}
                     </th>
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      Сума, ₴
+                      {t('card.colSum', { currency: '₴' })}
                     </th>
                     <th />
                   </tr>
@@ -813,8 +823,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                               type="button"
                               // Назва з номером рядка: той самий товар може стояти кількома
                               // рядками (BR-PO-008), і за назвою товару їх не розрізнити.
-                              aria-label={`Видалити рядок ${index + 1}`}
-                              title="Видалити рядок"
+                              aria-label={t('supplierReturn.deleteRowAria', { n: index + 1 })}
+                              title={t('supplierReturn.deleteRow')}
                               onClick={() => remove(index)}
                               className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                             >
@@ -832,8 +842,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                       <td className="px-2 py-1.5">
                         <EntityPickerField
                           display={newLine.goodName}
-                          placeholder="Пошук товару…"
-                          ariaLabel="Товар"
+                          placeholder={t('card.goodSearch')}
+                          ariaLabel={t('card.colGood')}
                           onPick={() => setGoodPickerOpen(true)}
                           onClear={() => setNewLine(EMPTY_LINE)}
                         />
@@ -874,7 +884,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                             // блокуємо «+» при порожній К-сть, щоб не плодити рядки,
                             // які схема потім reject'не з помилкою «Кількість має бути > 0».
                             disabled={!newLine.goodId || (parseFloat(newLine.quantity) || 0) <= 0}
-                            title="Додати рядок"
+                            title={t('supplierReturn.addRow')}
                             className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                           >
                             <Plus className="h-3.5 w-3.5" />
@@ -885,7 +895,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                               setShowLineInput(false);
                               setNewLine(EMPTY_LINE);
                             }}
-                            title="Скасувати"
+                            title={t('common:cancel')}
                             className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -903,7 +913,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                       colSpan={3}
                       className="px-3 py-1.5 text-left text-xs font-medium text-muted-foreground"
                     >
-                      Разом:
+                      {t('card.total')}
                     </td>
                     <td />
                     <td className="px-3 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
@@ -927,7 +937,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           setSupplierName(item.primary);
           setSupplierPickerOpen(false);
         }}
-        title="Оберіть постачальника"
+        title={t('card.pickSupplier')}
         fetchItems={q =>
           apiFetch<{ items: Supplier[] }>(
             `/counterparties?q=${encodeURIComponent(q)}&types=SUPPLIER&types=BOTH&limit=30`,
@@ -959,8 +969,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           }));
           setGoodPickerOpen(false);
         }}
-        title="Оберіть товар"
-        searchPlaceholder="Назва, артикул / штрих-код…"
+        title={t('common:goodPicker.title')}
+        searchPlaceholder={t('card.goodPickerSearch')}
         scanSubmit={(items, typed) => pickScannedGood(items, typed)}
         fetchItems={q =>
           apiFetch<{ items: Good[] }>(`/goods?q=${encodeURIComponent(q)}&limit=30`).then(d =>
@@ -988,9 +998,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           setPurchaseOrderNumber(item.primary);
           setPoPickerOpen(false);
         }}
-        title="Оберіть замовлення (джерело)"
-        searchPlaceholder="Номер замовлення…"
-        emptyText="Замовлень не знайдено"
+        title={t('supplierReturn.pickSourceOrder')}
+        searchPlaceholder={t('supplierReturn.orderNumberSearch')}
+        emptyText={t('empty.ordersNotFound')}
         fetchItems={q =>
           apiFetch<{ items: PurchaseOrderRef[] }>(
             `/purchase-orders?q=${encodeURIComponent(q)}&limit=30`,

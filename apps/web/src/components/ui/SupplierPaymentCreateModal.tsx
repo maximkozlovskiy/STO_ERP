@@ -352,7 +352,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
         onSaved();
         onClose();
       } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Помилка збереження';
+        const msg = e instanceof Error ? e.message : t('create.saveError');
         setError(msg);
         if (features.toastEnabled) toast.error(msg);
       } finally {
@@ -388,7 +388,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
         open={open}
         onClose={() => void handleModalClose()}
         onSubmit={() => void handleSave()}
-        title="Оплата постачальнику"
+        title={t('create.title')}
         size="lg"
         footer={
           <div className="flex gap-2 items-center justify-end w-full">
@@ -398,7 +398,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
               onClick={() => void handleModalClose()}
               disabled={saving}
             >
-              Закрити
+              {t('common:close')}
             </Button>
             <Button
               onClick={() => void handleSave()}
@@ -406,7 +406,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
               disabled={saving || !supplierId}
               size="sm"
             >
-              Оплатити
+              {t('create.pay')}
             </Button>
           </div>
         }
@@ -424,10 +424,10 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
           {/* Постачальник */}
           <div>
             <EntityPickerField
-              label="Постачальник"
+              label={t('schedule.table.supplier')}
               required
               display={supplierName}
-              placeholder="Пошук постачальника…"
+              placeholder={t('create.supplierSearch')}
               className="h-8 text-[13px]"
               onPick={() => setSupplierPickerOpen(true)}
               onClear={() => {
@@ -455,7 +455,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
               name="sourceType"
               render={({ field }) => (
                 <Select
-                  label="Джерело коштів"
+                  label={t('create.source')}
                   required
                   value={field.value}
                   onChange={e => {
@@ -467,8 +467,8 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
                   }}
                   className="h-8 text-[13px]"
                 >
-                  <option value="CASH_REGISTER">Каса</option>
-                  <option value="BANK_ACCOUNT">Банківський рахунок</option>
+                  <option value="CASH_REGISTER">{t('create.sourceCash')}</option>
+                  <option value="BANK_ACCOUNT">{t('create.sourceBank')}</option>
                 </Select>
               )}
             />
@@ -479,14 +479,14 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
                 name="cashRegisterId"
                 render={({ field }) => (
                   <Select
-                    label="Каса"
+                    label={t('create.sourceCash')}
                     required
                     value={typeof field.value === 'string' ? field.value : ''}
                     onChange={field.onChange}
                     errorMessage={errors.cashRegisterId?.message}
                     className="h-8 text-[13px]"
                   >
-                    <option value="">— Оберіть —</option>
+                    <option value="">{t('create.choose')}</option>
                     {cashRegisters.map(c => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -501,14 +501,14 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
                 name="bankAccountId"
                 render={({ field }) => (
                   <Select
-                    label="Банківський рахунок"
+                    label={t('create.sourceBank')}
                     required
                     value={typeof field.value === 'string' ? field.value : ''}
                     onChange={field.onChange}
                     errorMessage={errors.bankAccountId?.message}
                     className="h-8 text-[13px]"
                   >
-                    <option value="">— Оберіть —</option>
+                    <option value="">{t('create.choose')}</option>
                     {banks.map(b => (
                       <option key={b.id} value={b.id}>
                         {b.name}
@@ -523,7 +523,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
           {/* Сума | Метод оплати */}
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label="Сума, ₴"
+              label={t('create.amount')}
               type="text"
               inputMode="decimal"
               {...register('amount')}
@@ -536,7 +536,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
               name="method"
               render={({ field }) => (
                 <Select
-                  label="Метод оплати"
+                  label={t('create.method')}
                   required
                   value={field.value ?? ''}
                   onChange={field.onChange}
@@ -557,9 +557,9 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
           {/* Замовлення постачальнику (опціонально) | Дата */}
           <div className="grid grid-cols-2 gap-4">
             <EntityPickerField
-              label="Замовлення (опціонально)"
+              label={t('create.order')}
               display={purchaseOrderNumber}
-              placeholder="Прив’язати замовлення…"
+              placeholder={t('create.orderPlaceholder')}
               className="h-8 text-[13px]"
               disabled={!supplierId}
               onPick={() => setPoPickerOpen(true)}
@@ -570,7 +570,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
             />
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1">
-                Дата документа
+                {t('create.documentDate')}
               </label>
               <Controller
                 control={control}
@@ -587,9 +587,9 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
 
           {/* Опис */}
           <Input
-            label="Опис"
+            label={t('create.notes')}
             {...register('notes')}
-            placeholder="Додаткова інформація…"
+            placeholder={t('create.notesPlaceholder')}
             className="h-8 text-[13px]"
           />
         </div>
@@ -607,7 +607,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
           setPurchaseOrderNumber('');
           setSupplierPickerOpen(false);
         }}
-        title="Оберіть постачальника"
+        title={t('create.pickSupplier')}
         fetchItems={q =>
           apiFetch<{ items: Supplier[] }>(
             `/counterparties?q=${encodeURIComponent(q)}&types=SUPPLIER&types=BOTH&limit=30`,
@@ -624,7 +624,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, prefill }: 
           setPurchaseOrderNumber(item.primary);
           setPoPickerOpen(false);
         }}
-        title="Оберіть замовлення постачальнику"
+        title={t('create.pickOrder')}
         fetchItems={q =>
           apiFetch<{ items: PurchaseOrderRef[] }>(
             `/purchase-orders?q=${encodeURIComponent(q)}&supplierId=${supplierId}&limit=30`,

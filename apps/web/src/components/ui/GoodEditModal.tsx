@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import { goodFormSchema, type GoodFormInput } from '@sto/shared';
 import { Barcode, Package, TrendingUp } from 'lucide-react';
@@ -28,6 +29,7 @@ import { GoodUoMTab } from '@/components/ui/GoodUoMTab';
 import { GoodPriceHistoryTab } from '@/components/ui/GoodPriceHistoryTab';
 import { GoodStatusManager } from '@/components/ui/GoodStatusManager';
 import { useAuth } from '@/lib/auth';
+import { goodTypeLabel } from '@/i18n/enumLabel';
 
 /**
  * Картка товару / запчастини (створення + редагування).
@@ -133,6 +135,7 @@ export function GoodEditModal({
   suppliers,
   goodCatTree,
 }: GoodEditModalProps) {
+  const { t } = useTranslation('catalog');
   const isEdit = !!good;
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
@@ -242,9 +245,9 @@ export function GoodEditModal({
         },
       );
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка завантаження постачальника');
+      toast.error(e instanceof Error ? e.message : t('goodEdit.supplierLoadError'));
     }
-  }, [watchPreferredSupplierId, openAfterLoad]);
+  }, [watchPreferredSupplierId, openAfterLoad, t]);
 
   // Stable onSearch reference — prevents EntityPickerField from re-attaching
   // its outside-click listener on every parent render.
@@ -288,10 +291,10 @@ export function GoodEditModal({
       dirty.resetDirty();
       onSaved(saved);
       if (features.toastEnabled) {
-        toast.success(isEdit ? 'Товар оновлено' : 'Товар створено');
+        toast.success(isEdit ? t('goodEdit.updated') : t('goodEdit.created'));
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common:error'));
     } finally {
       setSavingBoth(false);
     }
@@ -302,13 +305,13 @@ export function GoodEditModal({
       <Modal
         open={open}
         onClose={() => void handleClose()}
-        title={isEdit ? 'Редагування товару' : 'Новий товар / запчастина'}
+        title={isEdit ? t('goodEdit.titleEdit') : t('goodEdit.titleCreate')}
         size={isEdit ? 'wide' : 'xl'}
         // Картка з вкладками тримає сталий розмір: вкладки різної довжини не «смикають» вікно.
         fixedHeight={isEdit}
         footer={
           <Button onClick={() => void onValid()} loading={saving}>
-            {isEdit ? 'Зберегти' : 'Зберегти та продовжити'}
+            {isEdit ? t('common:save') : t('goodEdit.saveAndContinue')}
           </Button>
         }
       >
@@ -320,30 +323,30 @@ export function GoodEditModal({
 
         <div className="space-y-4">
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/50 text-[13px]">
-            <span className="text-muted-foreground">Код:</span>
+            <span className="text-muted-foreground">{t('goodEdit.codeLabel')}</span>
             {good?.internalCode ? (
               <span className="font-mono font-medium text-foreground">{good.internalCode}</span>
             ) : (
-              <span className="text-muted-foreground italic">присвоюється автоматично</span>
+              <span className="text-muted-foreground italic">{t('goodEdit.codeAuto')}</span>
             )}
           </div>
           <Input
-            label="Назва"
+            label={t('goods.columns.name')}
             required
             {...register('name')}
             errorMessage={errors.name?.message}
-            placeholder="Масло моторне 5W-40"
+            placeholder={t('goodEdit.namePlaceholder')}
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Артикул (SKU)"
+              label={t('goodEdit.sku')}
               {...register('sku')}
               errorMessage={errors.sku?.message}
               placeholder="OIL-5W40"
             />
             {units.length > 0 ? (
               <Select
-                label="Одиниця виміру"
+                label={t('goodEdit.unitOfMeasure')}
                 value={typeof watchUnitId === 'string' ? watchUnitId : ''}
                 onChange={e => {
                   const unit = units.find(u => u.id === e.target.value);
@@ -352,7 +355,7 @@ export function GoodEditModal({
                   if (unit) setValue('unit', unit.shortName, { shouldDirty: true });
                 }}
               >
-                <option value="">— вписати вручну</option>
+                <option value="">{t('goodEdit.unitManualOption')}</option>
                 {units.map(u => (
                   <option key={u.id} value={u.id}>
                     {u.shortName} ({u.name})
@@ -360,15 +363,23 @@ export function GoodEditModal({
                 ))}
               </Select>
             ) : (
-              <Input label="Одиниця" {...register('unit')} placeholder="шт" />
+              <Input
+                label={t('goods.columns.unit')}
+                {...register('unit')}
+                placeholder={t('units.placeholderShort')}
+              />
             )}
           </div>
           {units.length > 0 && !watchUnitId && (
-            <Input label="Одиниця (вручну)" {...register('unit')} placeholder="шт" />
+            <Input
+              label={t('goodEdit.unitManual')}
+              {...register('unit')}
+              placeholder={t('units.placeholderShort')}
+            />
           )}
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Ціна закупки, ₴"
+              label={t('goodEdit.purchasePrice')}
               type="number"
               min="0"
               {...register('purchasePrice')}
@@ -376,7 +387,7 @@ export function GoodEditModal({
               placeholder="350"
             />
             <Input
-              label="Ціна продажу, ₴"
+              label={t('goodEdit.salePrice')}
               type="number"
               min="0"
               {...register('salePrice')}
@@ -385,7 +396,11 @@ export function GoodEditModal({
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Select label="Бренд" {...register('brandId')} errorMessage={errors.brandId?.message}>
+            <Select
+              label={t('goods.columns.brand')}
+              {...register('brandId')}
+              errorMessage={errors.brandId?.message}
+            >
               <option value="">—</option>
               {brands.map(b => (
                 <option key={b.id} value={b.id}>
@@ -395,11 +410,11 @@ export function GoodEditModal({
             </Select>
             {goodCatTree.length > 0 ? (
               <Select
-                label="Категорія товарів"
+                label={t('goodEdit.goodCategory')}
                 {...register('goodCategoryId')}
                 errorMessage={errors.goodCategoryId?.message}
               >
-                <option value="">— Не вказано —</option>
+                <option value="">{t('goodEdit.notSpecifiedDashed')}</option>
                 {flatCategories(goodCatTree).map(c => (
                   <option key={c.id} value={c.id}>
                     {' '.repeat(c.depth * 2)}
@@ -408,30 +423,34 @@ export function GoodEditModal({
                 ))}
               </Select>
             ) : (
-              <Input label="Категорія" {...register('category')} placeholder="Мастила" />
+              <Input
+                label={t('goods.columns.category')}
+                {...register('category')}
+                placeholder={t('goodEdit.categoryPlaceholder')}
+              />
             )}
           </div>
           <Select
-            label="Тип товару"
+            label={t('goodEdit.goodType')}
             {...register('goodType')}
             errorMessage={errors.goodType?.message}
           >
-            <option value="">Не вказано</option>
-            <option value="SPARE_PART">Запчастина</option>
-            <option value="CONSUMABLE">Витратний матеріал</option>
-            <option value="MATERIAL">Матеріал</option>
-            <option value="TOOL">Інструмент</option>
+            <option value="">{t('goodEdit.notSpecified')}</option>
+            <option value="SPARE_PART">{goodTypeLabel('SPARE_PART')}</option>
+            <option value="CONSUMABLE">{goodTypeLabel('CONSUMABLE')}</option>
+            <option value="MATERIAL">{goodTypeLabel('MATERIAL')}</option>
+            <option value="TOOL">{goodTypeLabel('TOOL')}</option>
           </Select>
 
           {/* Supplier — EntityPickerField */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Основний постачальник
+              {t('goodEdit.preferredSupplier')}
             </label>
             <EntityPickerField
               display={supplierDisplay}
-              placeholder="Пошук постачальника…"
-              ariaLabel="Основний постачальник"
+              placeholder={t('goodEdit.supplierSearch')}
+              ariaLabel={t('goodEdit.preferredSupplier')}
               onOpenDetail={watchPreferredSupplierId ? () => void openSupplierDetail() : undefined}
               onPick={() => {}}
               onSearch={searchSuppliers}
@@ -448,14 +467,20 @@ export function GoodEditModal({
           </div>
 
           {!isEdit && (
-            <Input label="Штрихкод" {...register('barcode')} placeholder="4820000000000" />
+            <Input
+              label={t('goods.panel.barcode')}
+              {...register('barcode')}
+              placeholder="4820000000000"
+            />
           )}
-          <Input label="Нотатки" {...register('notes')} />
+          <Input label={t('goods.panel.notes')} {...register('notes')} />
 
           {/* Статуси-мітки (лише при редагуванні наявного товару) */}
           {isEdit && good && (
             <div className="pt-1">
-              <label className="block text-[13px] font-medium text-foreground mb-2">Статуси</label>
+              <label className="block text-[13px] font-medium text-foreground mb-2">
+                {t('goods.columns.statuses')}
+              </label>
               <GoodStatusManager goodId={good.id} canManage={canManageStatuses} />
             </div>
           )}
@@ -467,28 +492,28 @@ export function GoodEditModal({
             tabs={[
               {
                 key: 'barcodes',
-                label: 'Штрихкоди',
+                label: t('goods.detailTabBarcodes'),
                 icon: <Barcode className="h-3.5 w-3.5" />,
                 count: barcodeCount,
                 content: <GoodBarcodeTab goodId={good.id} onCountChange={setBarcodeCount} />,
               },
               {
                 key: 'batches',
-                label: 'Партії',
+                label: t('batchViewer.tabBatches'),
                 icon: <Package className="h-3.5 w-3.5" />,
                 count: batchesActiveCount,
                 content: <GoodBatchesTab goodId={good.id} onCountChange={setBatchesActiveCount} />,
               },
               {
                 key: 'uoms',
-                label: 'Одиниці виміру',
+                label: t('goodEdit.tabUoms'),
                 icon: <Package className="h-3.5 w-3.5" />,
                 count: uomCount,
                 content: <GoodUoMTab goodId={good.id} units={units} onCountChange={setUomCount} />,
               },
               {
                 key: 'price-history',
-                label: 'Ціни',
+                label: t('goodEdit.tabPrices'),
                 icon: <TrendingUp className="h-3.5 w-3.5" />,
                 count: priceHistoryCount,
                 content: (

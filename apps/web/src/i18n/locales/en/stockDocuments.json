@@ -89,5 +89,58 @@
   },
   "panel": {
     "openDocument": "Open document"
+  },
+  "card": {
+    "title": "Stock document",
+    "titleNew": "New stock document",
+    "number": "Number:",
+    "autoNumber": "— assigned automatically —",
+    "documentDate": "Document date:",
+    "status": "Status:",
+    "statusDescription": {
+      "DRAFT": "Draft — document prepared, not confirmed yet",
+      "CONFIRMED": "Confirmed — document posted, stock updated",
+      "CANCELLED": "Cancelled — document cancelled"
+    },
+    "transition": {
+      "CONFIRMED": "Confirm",
+      "CANCELLED": "Cancel"
+    },
+    "minimizedLabel": "Document",
+    "minimize": "Minimize to tab",
+    "print": "Print",
+    "saveAs": "Save as",
+    "share": "Share",
+    "smsTitle": "Send SMS",
+    "saveChanges": "Save changes",
+    "create": "Create document",
+    "docType": "Document type",
+    "branch": "Branch",
+    "choose": "— Select —",
+    "sourceWarehouse": "Source warehouse",
+    "targetWarehouse": "Destination warehouse",
+    "sourceOrder": "Order (source)",
+    "sourceOrderPlaceholder": "Supplier order (optional)…",
+    "notes": "Notes",
+    "notesPlaceholder": "Additional information…",
+    "goods": "Goods",
+    "importExcel": "Import from Excel",
+    "colGood": "GOOD",
+    "colUnit": "UOM",
+    "colQty": "QTY",
+    "colPrice": "PRICE, ₴",
+    "colSum": "AMOUNT, ₴",
+    "pickGoodPlaceholder": "Select a good…",
+    "total": "Total:",
+    "goodSearchPlaceholder": "Name, SKU / barcode…",
+    "goodsEmpty": "No goods found",
+    "pickSourceOrder": "Select order (source)",
+    "orderSearchPlaceholder": "Order number…",
+    "ordersEmpty": "No orders found",
+    "branchesLoadError": "Failed to load branches",
+    "warehousesLoadError": "Failed to load warehouses",
+    "loadError": "Failed to load document",
+    "transitionError": "Failed to change status",
+    "saveError": "Failed to save"
   }
 }

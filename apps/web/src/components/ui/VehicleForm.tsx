@@ -2,6 +2,7 @@
 
 import type { UseFormRegister, FieldErrors, Control } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   FUEL_TYPE_OPTIONS,
   TRANSMISSION_OPTIONS,
@@ -28,18 +29,19 @@ interface Props {
 }
 
 export function VehicleForm({ register, errors, control, compact = false }: Props) {
+  const { t } = useTranslation('vehicles');
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <Input
-          label="Марка"
+          label={t('form.make')}
           required
           {...register('make')}
           errorMessage={errors.make?.message}
           placeholder="BMW"
         />
         <Input
-          label="Модель"
+          label={t('form.model')}
           required
           {...register('model')}
           errorMessage={errors.model?.message}
@@ -48,20 +50,24 @@ export function VehicleForm({ register, errors, control, compact = false }: Prop
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Input
-          label="Рік"
+          label={t('card.info.year')}
           type="number"
           {...register('year')}
           errorMessage={errors.year?.message}
           placeholder="2015"
         />
-        <Input label="Держномер" {...register('licensePlate')} placeholder="AA 1234 BB" />
+        <Input
+          label={t('form.licensePlate')}
+          {...register('licensePlate')}
+          placeholder="AA 1234 BB"
+        />
       </div>
       <Input label="VIN" {...register('vin')} placeholder="WVWZZZ1JZXW000001" />
 
       {!compact && (
         <>
           <div className="grid grid-cols-2 gap-3">
-            <Select label="Пальне" {...register('fuelType')}>
+            <Select label={t('form.fuelType')} {...register('fuelType')}>
               <option value="">—</option>
               {FUEL_TYPE_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>
@@ -69,7 +75,7 @@ export function VehicleForm({ register, errors, control, compact = false }: Prop
                 </option>
               ))}
             </Select>
-            <Select label="КПП" {...register('transmissionType')}>
+            <Select label={t('form.transmission')} {...register('transmissionType')}>
               <option value="">—</option>
               {TRANSMISSION_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>
@@ -79,7 +85,7 @@ export function VehicleForm({ register, errors, control, compact = false }: Prop
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Select label="Привід" {...register('driveType')}>
+            <Select label={t('card.info.driveType')} {...register('driveType')}>
               <option value="">—</option>
               {DRIVE_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>
@@ -87,7 +93,7 @@ export function VehicleForm({ register, errors, control, compact = false }: Prop
                 </option>
               ))}
             </Select>
-            <Select label="Кузов" {...register('bodyType')}>
+            <Select label={t('card.info.bodyType')} {...register('bodyType')}>
               <option value="">—</option>
               {BODY_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>
@@ -98,24 +104,32 @@ export function VehicleForm({ register, errors, control, compact = false }: Prop
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Об'єм двигуна, л"
+              label={t('form.engineVolume')}
               type="number"
               step="0.1"
               {...register('engineVolume')}
               errorMessage={errors.engineVolume?.message}
               placeholder="2.0"
             />
-            <Input label="Код двигуна" {...register('engineCode')} placeholder="N57D30" />
+            <Input
+              label={t('card.info.engineCode')}
+              {...register('engineCode')}
+              placeholder="N57D30"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Пробіг, км"
+              label={t('card.info.currentMileage')}
               type="number"
               {...register('currentMileage')}
               errorMessage={errors.currentMileage?.message}
               placeholder="120000"
             />
-            <Input label="Колір" {...register('color')} placeholder="Чорний" />
+            <Input
+              label={t('card.info.color')}
+              {...register('color')}
+              placeholder={t('form.colorPlaceholder')}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Controller
@@ -123,7 +137,7 @@ export function VehicleForm({ register, errors, control, compact = false }: Prop
               name="insuranceExpiry"
               render={({ field }) => (
                 <DatePickerInput
-                  label="Страховка до"
+                  label={t('card.info.insuranceExpiry')}
                   value={typeof field.value === 'string' ? field.value : ''}
                   onChange={field.onChange}
                 />
@@ -134,14 +148,14 @@ export function VehicleForm({ register, errors, control, compact = false }: Prop
               name="inspectionExpiry"
               render={({ field }) => (
                 <DatePickerInput
-                  label="Техогляд до"
+                  label={t('card.info.inspectionExpiry')}
                   value={typeof field.value === 'string' ? field.value : ''}
                   onChange={field.onChange}
                 />
               )}
             />
           </div>
-          <Input label="Нотатки" {...register('notes')} />
+          <Input label={t('card.info.notes')} {...register('notes')} />
         </>
       )}
     </div>

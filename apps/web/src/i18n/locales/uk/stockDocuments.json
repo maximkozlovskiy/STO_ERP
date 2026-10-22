@@ -89,5 +89,58 @@
   },
   "panel": {
     "openDocument": "Відкрити документ"
+  },
+  "card": {
+    "title": "Складський документ",
+    "titleNew": "Новий складський документ",
+    "number": "Номер:",
+    "autoNumber": "— присвоюється автоматично —",
+    "documentDate": "Дата документа:",
+    "status": "Статус:",
+    "statusDescription": {
+      "DRAFT": "Чернетка — документ підготовлено, ще не підтверджено",
+      "CONFIRMED": "Підтверджено — документ проведено, залишки змінено",
+      "CANCELLED": "Скасовано — документ скасовано"
+    },
+    "transition": {
+      "CONFIRMED": "Підтвердити",
+      "CANCELLED": "Скасувати"
+    },
+    "minimizedLabel": "Документ",
+    "minimize": "Згорнути у вкладку",
+    "print": "Друк",
+    "saveAs": "Зберегти як",
+    "share": "Поділитись",
+    "smsTitle": "Відправити SMS",
+    "saveChanges": "Зберегти зміни",
+    "create": "Створити документ",
+    "docType": "Тип документа",
+    "branch": "Філія",
+    "choose": "— Оберіть —",
+    "sourceWarehouse": "Склад-джерело",
+    "targetWarehouse": "Склад призначення",
+    "sourceOrder": "Замовлення (джерело)",
+    "sourceOrderPlaceholder": "Замовлення постачальнику (необовʼязково)…",
+    "notes": "Примітки",
+    "notesPlaceholder": "Додаткова інформація…",
+    "goods": "Товари",
+    "importExcel": "Завантажити з Excel",
+    "colGood": "ТОВАР",
+    "colUnit": "ОВ",
+    "colQty": "К-СТЬ",
+    "colPrice": "ЦІНА, ₴",
+    "colSum": "СУМА, ₴",
+    "pickGoodPlaceholder": "Оберіть товар…",
+    "total": "Разом:",
+    "goodSearchPlaceholder": "Назва, артикул / штрих-код…",
+    "goodsEmpty": "Товарів не знайдено",
+    "pickSourceOrder": "Оберіть замовлення (джерело)",
+    "orderSearchPlaceholder": "Номер замовлення…",
+    "ordersEmpty": "Замовлень не знайдено",
+    "branchesLoadError": "Помилка завантаження філій",
+    "warehousesLoadError": "Помилка завантаження складів",
+    "loadError": "Помилка завантаження документа",
+    "transitionError": "Помилка переходу статусу",
+    "saveError": "Помилка збереження"
   }
 }

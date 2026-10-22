@@ -103,5 +103,14 @@
     "save": "Save vehicle",
     "cancel": "Cancel",
     "saveError": "Failed to save"
+  },
+  "form": {
+    "make": "Make",
+    "model": "Model",
+    "licensePlate": "Plate number",
+    "fuelType": "Fuel",
+    "transmission": "Gearbox",
+    "engineVolume": "Engine volume, l",
+    "colorPlaceholder": "Black"
   }
 }

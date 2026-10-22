@@ -313,7 +313,7 @@ export function CounterpartyEditModal({
       })
       .catch(err => {
         if (modalVehiclesReqRef.current === vReqId)
-          setVehiclesError(err instanceof Error ? err.message : 'Помилка завантаження авто');
+          setVehiclesError(err instanceof Error ? err.message : t('editModal.loadVehiclesFailed'));
       })
       .finally(() => {
         if (modalVehiclesReqRef.current === vReqId) setModalVehiclesLoading(false);
@@ -326,7 +326,7 @@ export function CounterpartyEditModal({
       })
       .catch(err => {
         if (modalWoReqRef.current === woReqId)
-          setWoError(err instanceof Error ? err.message : 'Помилка завантаження нарядів');
+          setWoError(err instanceof Error ? err.message : t('editModal.loadWorkOrdersFailed'));
       })
       .finally(() => {
         if (modalWoReqRef.current === woReqId) setModalWorkOrdersLoading(false);
@@ -339,7 +339,9 @@ export function CounterpartyEditModal({
       })
       .catch(err => {
         if (modalContractsReqRef.current === cReqId)
-          setContractsError(err instanceof Error ? err.message : 'Помилка завантаження договорів');
+          setContractsError(
+            err instanceof Error ? err.message : t('editModal.loadContractsFailed'),
+          );
       })
       .finally(() => {
         if (modalContractsReqRef.current === cReqId) setModalContractsLoading(false);
@@ -374,7 +376,7 @@ export function CounterpartyEditModal({
       })
       .catch(err => {
         if (modalVehiclesReqRef.current === vReqId)
-          setVehiclesError(err instanceof Error ? err.message : 'Помилка завантаження авто');
+          setVehiclesError(err instanceof Error ? err.message : t('editModal.loadVehiclesFailed'));
       })
       .finally(() => {
         if (modalVehiclesReqRef.current === vReqId) setModalVehiclesLoading(false);
@@ -402,7 +404,9 @@ export function CounterpartyEditModal({
       })
       .catch(err => {
         if (modalContractsReqRef.current === cReqId)
-          setContractsError(err instanceof Error ? err.message : 'Помилка завантаження договорів');
+          setContractsError(
+            err instanceof Error ? err.message : t('editModal.loadContractsFailed'),
+          );
       })
       .finally(() => {
         if (modalContractsReqRef.current === cReqId) setModalContractsLoading(false);
@@ -444,7 +448,7 @@ export function CounterpartyEditModal({
       onSaved(created, true);
       toast.success(t('toast.created'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setSavingBoth(false);
     }
@@ -464,7 +468,7 @@ export function CounterpartyEditModal({
       onSaved(updated, false);
       toast.success(t('toast.saved'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setSavingBoth(false);
     }
@@ -546,7 +550,8 @@ export function CounterpartyEditModal({
   });
 
   const deleteVehicle = async (id: string) => {
-    if (!(await confirm({ title: 'Видалити авто?', variant: 'destructive' }))) return;
+    if (!(await confirm({ title: t('editModal.confirmDeleteVehicle'), variant: 'destructive' })))
+      return;
     const cpIdAtStart = counterparty?.id ?? null;
     setDeletingVehicleId(id);
     try {
@@ -670,7 +675,7 @@ export function CounterpartyEditModal({
       toast.success(t(editId ? 'toast.contractUpdated' : 'toast.contractAdded'));
     } catch (e: unknown) {
       if (currentCpIdRef.current === cpIdAtStart)
-        setContractsError(e instanceof Error ? e.message : 'Помилка');
+        setContractsError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setAddingContract(false);
     }
@@ -680,8 +685,8 @@ export function CounterpartyEditModal({
     if (!counterparty) return;
     if (
       !(await confirm({
-        title: 'Видалити договір?',
-        message: `Договір ${c.number} буде видалено.`,
+        title: t('editModal.confirmDeleteContractTitle'),
+        message: t('editModal.confirmDeleteContractMessage', { number: c.number }),
         variant: 'destructive',
       }))
     )
@@ -716,7 +721,7 @@ export function CounterpartyEditModal({
       toast.success(t('toast.contractDeleted'));
     } catch (e: unknown) {
       if (currentCpIdRef.current === cpIdAtStart)
-        setContractsError(e instanceof Error ? e.message : 'Помилка');
+        setContractsError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setDeletingContractId(null);
     }
@@ -738,7 +743,7 @@ export function CounterpartyEditModal({
       toast.success(t('toast.contractRestored'));
     } catch (e: unknown) {
       if (currentCpIdRef.current === cpIdAtStart)
-        setContractsError(e instanceof Error ? e.message : 'Помилка');
+        setContractsError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setDeletingContractId(null);
     }
@@ -755,14 +760,14 @@ export function CounterpartyEditModal({
       <Modal
         open={open}
         onClose={() => void handleClose()}
-        title={isEdit ? 'Редагування контрагента' : 'Новий контрагент'}
+        title={isEdit ? t('editModal.titleEdit') : t('editModal.titleCreate')}
         size={isEdit ? 'wide' : 'md'}
         // Картка з вкладками тримає сталий розмір: вкладки різної довжини не «смикають» вікно.
         fixedHeight={isEdit}
         footer={
           editTab === 'main' ? (
             <Button onClick={() => void (isEdit ? update() : create())} loading={saving}>
-              {isEdit ? 'Оновити' : 'Зберегти'}
+              {isEdit ? t('editModal.update') : t('common:save')}
             </Button>
           ) : null
         }
@@ -777,10 +782,14 @@ export function CounterpartyEditModal({
           >
             {(
               [
-                { key: 'main', label: 'Основне' },
-                { key: 'vehicles', label: 'Авто', count: modalVehicles.length },
-                { key: 'contracts', label: 'Договори', count: modalContracts.length },
-                { key: 'work-orders', label: 'Історія', count: modalWorkOrders.length },
+                { key: 'main', label: t('detail.info') },
+                { key: 'vehicles', label: t('detail.vehicles'), count: modalVehicles.length },
+                { key: 'contracts', label: t('card.tabs.contracts'), count: modalContracts.length },
+                {
+                  key: 'work-orders',
+                  label: t('editModal.tabHistory'),
+                  count: modalWorkOrders.length,
+                },
               ] as { key: typeof editTab; label: string; count?: number }[]
             ).map(tab => (
               <button
@@ -833,7 +842,7 @@ export function CounterpartyEditModal({
                       id={statusesLabelId}
                       className="text-[13px] font-medium leading-none text-foreground"
                     >
-                      Статуси
+                      {t('columns.statuses')}
                     </span>
                     <div className="flex min-h-9 items-center">
                       <StatusManager
@@ -858,7 +867,9 @@ export function CounterpartyEditModal({
             className="space-y-3 min-h-64"
           >
             {modalVehiclesLoading && (
-              <div className="py-8 text-center text-sm text-muted-foreground">Завантаження...</div>
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                {t('common:loadingDots')}
+              </div>
             )}
             {!modalVehiclesLoading && vehiclesError && (
               <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
@@ -870,7 +881,7 @@ export function CounterpartyEditModal({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className="text-[13px] text-muted-foreground">
-                      {modalVehicles.length} авто
+                      {t('editModal.vehiclesCount', { count: modalVehicles.length })}
                     </span>
                     <label className="flex items-center gap-1.5 text-[12px] text-muted-foreground cursor-pointer select-none">
                       <input
@@ -879,7 +890,7 @@ export function CounterpartyEditModal({
                         onChange={e => setShowDeletedVehicles(e.target.checked)}
                         className="h-3.5 w-3.5 rounded border-border accent-primary"
                       />
-                      Показувати видалені
+                      {t('editModal.showDeleted')}
                     </label>
                   </div>
                   {!showAddVehicle && (
@@ -894,7 +905,7 @@ export function CounterpartyEditModal({
                         setShowAddVehicle(true);
                       }}
                     >
-                      Додати авто
+                      {t('editModal.addVehicle')}
                     </Button>
                   )}
                 </div>
@@ -908,10 +919,10 @@ export function CounterpartyEditModal({
                     />
                     <div className="flex gap-2 justify-end">
                       <Button size="sm" variant="outline" onClick={resetVehicleForm}>
-                        Скасувати
+                        {t('common:cancel')}
                       </Button>
                       <Button size="sm" onClick={() => void saveVehicle()} loading={addingVehicle}>
-                        {editingVehicleId ? 'Оновити' : 'Зберегти'}
+                        {editingVehicleId ? t('editModal.update') : t('common:save')}
                       </Button>
                     </div>
                   </AnimatedBody>
@@ -922,16 +933,16 @@ export function CounterpartyEditModal({
                       <thead className="bg-secondary border-b border-border">
                         <tr>
                           <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                            Марка / Модель
+                            {t('editModal.colMakeModel')}
                           </th>
                           <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                            Держномер
+                            {t('editModal.colLicensePlate')}
                           </th>
                           <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                            Рік
+                            {t('editModal.colYear')}
                           </th>
                           <th className="w-20">
-                            <span className="sr-only">Дії</span>
+                            <span className="sr-only">{t('common:actions')}</span>
                           </th>
                         </tr>
                       </thead>
@@ -949,7 +960,7 @@ export function CounterpartyEditModal({
                                 {v.make} {v.model}
                                 {v.deletedAt && (
                                   <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive-subtle text-destructive">
-                                    Видалено
+                                    {t('editModal.deleted')}
                                   </span>
                                 )}
                               </span>
@@ -963,7 +974,7 @@ export function CounterpartyEditModal({
                                 {v.deletedAt ? (
                                   <button
                                     type="button"
-                                    title="Відновити"
+                                    title={t('statusesTab.restore')}
                                     onClick={() => void restoreVehicle(v)}
                                     disabled={deletingVehicleId === v.id}
                                     className="p-1.5 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition disabled:opacity-50"
@@ -974,7 +985,7 @@ export function CounterpartyEditModal({
                                   <>
                                     <button
                                       type="button"
-                                      title="Редагувати"
+                                      title={t('common:edit')}
                                       onClick={() => startEditVehicle(v)}
                                       className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-secondary hover:text-foreground transition"
                                     >
@@ -982,7 +993,7 @@ export function CounterpartyEditModal({
                                     </button>
                                     <button
                                       type="button"
-                                      title="Видалити"
+                                      title={t('common:delete')}
                                       onClick={() => void deleteVehicle(v.id)}
                                       disabled={deletingVehicleId === v.id}
                                       className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive-subtle hover:text-destructive transition disabled:opacity-50"
@@ -1001,7 +1012,7 @@ export function CounterpartyEditModal({
                 )}
                 {modalVehicles.length === 0 && !showAddVehicle && (
                   <p className="text-[13px] text-muted-foreground text-center py-8">
-                    Авто не додано
+                    {t('detail.noVehicles')}
                   </p>
                 )}
               </>
@@ -1024,14 +1035,18 @@ export function CounterpartyEditModal({
               </div>
             )}
             {modalContractsLoading && (
-              <div className="py-8 text-center text-sm text-muted-foreground">Завантаження...</div>
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                {t('common:loadingDots')}
+              </div>
             )}
             {!modalContractsLoading && !contractsError && (
               <>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className="text-[13px] text-muted-foreground">
-                      {modalContracts.length} договор{modalContracts.length === 1 ? '' : 'ів'}
+                      {modalContracts.length === 1
+                        ? t('editModal.contractsCountOne', { count: modalContracts.length })
+                        : t('editModal.contractsCountMany', { count: modalContracts.length })}
                     </span>
                     <label className="flex items-center gap-1.5 text-[12px] text-muted-foreground cursor-pointer select-none">
                       <input
@@ -1040,7 +1055,7 @@ export function CounterpartyEditModal({
                         onChange={e => setShowDeletedContracts(e.target.checked)}
                         className="h-3.5 w-3.5 rounded border-border accent-primary"
                       />
-                      Показувати видалені
+                      {t('editModal.showDeleted')}
                     </label>
                   </div>
                   {!showAddContract && (
@@ -1064,7 +1079,7 @@ export function CounterpartyEditModal({
                         setShowAddContract(true);
                       }}
                     >
-                      Додати договір
+                      {t('card.contracts.add')}
                     </Button>
                   )}
                 </div>
@@ -1073,7 +1088,7 @@ export function CounterpartyEditModal({
                     <div className="flex items-end gap-3">
                       <div className="flex-1">
                         <label className="text-xs text-muted-foreground mb-1 block">
-                          Вид договору
+                          {t('card.contracts.contractType')}
                           {counterparty.type === 'BOTH' && (
                             <span className="text-destructive"> *</span>
                           )}
@@ -1086,7 +1101,9 @@ export function CounterpartyEditModal({
                             setAddContractForm(f => ({ ...f, contractType: e.target.value }))
                           }
                         >
-                          {counterparty.type === 'BOTH' && <option value="">Оберіть вид</option>}
+                          {counterparty.type === 'BOTH' && (
+                            <option value="">{t('card.contracts.chooseType')}</option>
+                          )}
                           {contractTypesForCounterparty(counterparty.type).map(t => (
                             <option key={t} value={t}>
                               {contractTypeLabel(t)}
@@ -1104,14 +1121,15 @@ export function CounterpartyEditModal({
                           className="h-4 w-4 rounded border-border accent-primary"
                         />
                         <span className="text-[13px] text-foreground whitespace-nowrap">
-                          Головний
+                          {t('card.contracts.primary')}
                         </span>
                       </label>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
-                          Дата початку <span className="text-destructive">*</span>
+                          {t('card.contracts.startDate')}{' '}
+                          <span className="text-destructive">*</span>
                         </label>
                         <Input
                           type="date"
@@ -1123,7 +1141,7 @@ export function CounterpartyEditModal({
                       </div>
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
-                          Дата завершення
+                          {t('card.contracts.endDate')}
                         </label>
                         <Input
                           type="date"
@@ -1135,7 +1153,9 @@ export function CounterpartyEditModal({
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">Валюта</label>
+                      <label className="text-xs text-muted-foreground mb-1 block">
+                        {t('card.contracts.currency')}
+                      </label>
                       {currencies.length > 0 ? (
                         <Select
                           value={addContractForm.currencyCode || orgCurrency}
@@ -1169,7 +1189,7 @@ export function CounterpartyEditModal({
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
-                          Кредитний ліміт
+                          {t('card.contracts.creditLimit')}
                         </label>
                         <Input
                           type="number"
@@ -1184,7 +1204,7 @@ export function CounterpartyEditModal({
                       </div>
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
-                          Відтермінування (днів)
+                          {t('card.contracts.deferDays')}
                         </label>
                         <Input
                           type="number"
@@ -1203,7 +1223,7 @@ export function CounterpartyEditModal({
                     </div>
                     <div className="flex gap-2 justify-end">
                       <Button size="sm" variant="outline" onClick={resetContractForm}>
-                        Скасувати
+                        {t('common:cancel')}
                       </Button>
                       <Button
                         size="sm"
@@ -1214,7 +1234,7 @@ export function CounterpartyEditModal({
                         }
                         onClick={() => void saveContract()}
                       >
-                        {editingContractId ? 'Оновити' : 'Зберегти'}
+                        {editingContractId ? t('editModal.update') : t('common:save')}
                       </Button>
                     </div>
                   </AnimatedBody>
@@ -1225,19 +1245,19 @@ export function CounterpartyEditModal({
                       <thead className="bg-secondary border-b border-border">
                         <tr>
                           <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                            Номер
+                            {t('card.contracts.colNumber')}
                           </th>
                           <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                            Тип
+                            {t('card.contracts.colType')}
                           </th>
                           <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                            Початок
+                            {t('card.contracts.colStart')}
                           </th>
                           <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                            Завершення
+                            {t('card.contracts.colEnd')}
                           </th>
                           <th className="px-3 py-2 w-20">
-                            <span className="sr-only">Дії</span>
+                            <span className="sr-only">{t('common:actions')}</span>
                           </th>
                         </tr>
                       </thead>
@@ -1255,12 +1275,12 @@ export function CounterpartyEditModal({
                                 {c.number}
                                 {c.isPrimary && !c.deletedAt && (
                                   <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary">
-                                    Головний
+                                    {t('card.contracts.primary')}
                                   </span>
                                 )}
                                 {c.deletedAt && (
                                   <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive-subtle text-destructive">
-                                    Видалено
+                                    {t('editModal.deleted')}
                                   </span>
                                 )}
                               </span>
@@ -1279,7 +1299,7 @@ export function CounterpartyEditModal({
                                 {c.deletedAt ? (
                                   <button
                                     type="button"
-                                    title="Відновити"
+                                    title={t('statusesTab.restore')}
                                     disabled={deletingContractId === c.id}
                                     onClick={() => void restoreContract(c)}
                                     className="p-1.5 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition disabled:opacity-50"
@@ -1290,7 +1310,7 @@ export function CounterpartyEditModal({
                                   <>
                                     <button
                                       type="button"
-                                      title="Редагувати"
+                                      title={t('common:edit')}
                                       onClick={() => startEditContract(c)}
                                       className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-secondary hover:text-foreground transition"
                                     >
@@ -1298,7 +1318,7 @@ export function CounterpartyEditModal({
                                     </button>
                                     <button
                                       type="button"
-                                      title="Видалити"
+                                      title={t('common:delete')}
                                       disabled={deletingContractId === c.id}
                                       onClick={() => void deleteContract(c)}
                                       className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive-subtle hover:text-destructive transition disabled:opacity-50"
@@ -1317,7 +1337,7 @@ export function CounterpartyEditModal({
                 )}
                 {modalContracts.length === 0 && !showAddContract && (
                   <p className="text-[13px] text-muted-foreground text-center py-8">
-                    Договорів немає
+                    {t('editModal.noContracts')}
                   </p>
                 )}
               </>
@@ -1335,7 +1355,9 @@ export function CounterpartyEditModal({
             className="space-y-3 min-h-64"
           >
             {modalWorkOrdersLoading && (
-              <div className="py-8 text-center text-sm text-muted-foreground">Завантаження...</div>
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                {t('common:loadingDots')}
+              </div>
             )}
             {!modalWorkOrdersLoading && woError && (
               <div className="rounded-lg border border-destructive/30 bg-destructive-subtle px-3 py-2 text-sm text-destructive-text">
@@ -1343,7 +1365,9 @@ export function CounterpartyEditModal({
               </div>
             )}
             {!modalWorkOrdersLoading && !woError && modalWorkOrders.length === 0 && (
-              <p className="text-[13px] text-muted-foreground text-center py-8">Нарядів немає</p>
+              <p className="text-[13px] text-muted-foreground text-center py-8">
+                {t('editModal.noWorkOrders')}
+              </p>
             )}
             {!modalWorkOrdersLoading && !woError && modalWorkOrders.length > 0 && (
               <div className="rounded-xl border border-border overflow-hidden">
@@ -1351,19 +1375,19 @@ export function CounterpartyEditModal({
                   <thead className="bg-secondary border-b border-border">
                     <tr>
                       <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                        Номер
+                        {t('editModal.colWoNumber')}
                       </th>
                       <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                        Авто
+                        {t('editModal.colWoVehicle')}
                       </th>
                       <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                        Статус
+                        {t('common:status')}
                       </th>
                       <th className="text-right px-3 py-2 text-muted-foreground font-medium">
-                        Сума
+                        {t('editModal.colWoSum')}
                       </th>
                       <th className="text-left px-3 py-2 text-muted-foreground font-medium">
-                        Дата
+                        {t('editModal.colWoDate')}
                       </th>
                     </tr>
                   </thead>

@@ -103,5 +103,14 @@
     "save": "Зберегти автомобіль",
     "cancel": "Скасувати",
     "saveError": "Помилка збереження"
+  },
+  "form": {
+    "make": "Марка",
+    "model": "Модель",
+    "licensePlate": "Держномер",
+    "fuelType": "Пальне",
+    "transmission": "КПП",
+    "engineVolume": "Об'єм двигуна, л",
+    "colorPlaceholder": "Чорний"
   }
 }
