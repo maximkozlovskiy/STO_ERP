@@ -17,7 +17,7 @@ import {
 import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { InvoiceStatus, WorkOrderStatus } from '@prisma/client';
+import { InvoiceStatus, PaymentSourceType, WorkOrderStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateInvoiceDto {
@@ -331,6 +331,11 @@ export class InvoiceLinkedPaymentRowDto {
   // Сторно з каси (BR-CASH-024): оплата лишається в переліку з позначкою, у «сплачено» не входить.
   @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true })
   reversedAt?: string | null;
+  // BR-PAY-024: куди лягли гроші — касову оплату сторнують у касі, решту — з «Пов'язаних документів».
+  @ApiPropertyOptional({ enum: PaymentSourceType, nullable: true })
+  sourceType?: PaymentSourceType | null;
+  // Онлайн-оплата QR (є `onlinePaymentIntentId`): сторно тут недоступне (BR-PAY-024).
+  @ApiProperty() isOnline!: boolean;
 }
 
 export class InvoiceLinkedCounterpartyRowDto {

@@ -9,7 +9,15 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+  ApiBody,
+  ApiCreatedResponse,
+} from '@nestjs/swagger';
+import { paymentReversalSchema, type PaymentReversalFormValues } from '@sto/shared';
 import { Throttle } from '@nestjs/throttler';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -18,8 +26,9 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { assertCalendarDateQuery } from '../../common/utils/date-query';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { PaymentsService } from './payments.service';
-import { CreatePaymentDto } from './payments.dto';
+import { CreatePaymentDto, PaymentResponseDto, PaymentReversalDto } from './payments.dto';
 
 @ApiTags('Payments')
 @Controller('payments')
@@ -85,6 +94,25 @@ export class PaymentsController {
   ) {
     // jwt.strategy.ts повертає { id, orgId, role }. Поле `sub` живе тільки у JWT payload, не в request.user.
     return this.service.create(orgId, dto, user?.id);
+  }
+
+  // BR-PAY-024: сторно безготівкової оплати (і старої без призначення). Касову сторнують у касі.
+  @Post(':id/reverse')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @UseInterceptors(IdempotencyInterceptor) // повтор після обриву не дає другої спроби сторно
+  @ApiOperation({
+    summary:
+      'Сторно безготівкової оплати клієнта: борг, «сплачено» й статуси наряду та рахунку назад; рядок виписки — «Нерознесений»',
+  })
+  @ApiBody({ type: PaymentReversalDto })
+  @ApiCreatedResponse({ type: PaymentResponseDto })
+  reverse(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(paymentReversalSchema)) dto: PaymentReversalFormValues,
+    @CurrentUser() user: { id: string },
+  ): Promise<PaymentResponseDto> {
+    return this.service.reverseNonCash(orgId, id, dto, user.id);
   }
 
   // Повторна фіскалізація невдалого чеку (FAILED). Зовн. HTTP через чергу — тротлимо.

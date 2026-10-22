@@ -7,6 +7,7 @@ import {
   IsString,
   IsNotEmpty,
   IsIn,
+  MaxLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -92,12 +93,27 @@ export class PaymentResponseDto {
   @ApiPropertyOptional({
     type: String,
     nullable: true,
-    description: 'Коли оплату сторновано з каси (ISO); null — не сторновано (BR-CASH-024)',
+    description:
+      'Коли оплату сторновано — з каси чи безготівково (ISO); null — не сторновано (BR-CASH-024, BR-PAY-024)',
   })
   reversedAt?: string | null;
-  @ApiPropertyOptional({ type: String, nullable: true, description: 'Рядок каси-сторно' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: 'Рядок каси-сторно; null — безготівкове сторно (BR-PAY-024) або не сторновано',
+  })
   reversalCashOperationId?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Причина сторно (BR-PAY-024)' })
+  reversalReason?: string | null;
   @ApiProperty() createdAt!: string;
+}
+
+/** Тіло `POST /payments/:id/reverse` (BR-PAY-024) — для Swagger; валідує `paymentReversalSchema`. */
+export class PaymentReversalDto {
+  @ApiProperty({ description: 'Причина сторно — обов’язкова, до 500 символів', maxLength: 500 })
+  @IsString()
+  @MaxLength(500)
+  reason!: string;
 }
 
 export class PaginatedPaymentsDto {

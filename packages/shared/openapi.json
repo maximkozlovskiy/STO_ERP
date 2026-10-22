@@ -14548,6 +14548,52 @@
         ]
       }
     },
+    "/api/v1/payments/{id}/reverse": {
+      "post": {
+        "operationId": "PaymentsController_reverse_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentReversalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Сторно безготівкової оплати клієнта: борг, «сплачено» й статуси наряду та рахунку назад; рядок виписки — «Нерознесений»",
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
     "/api/v1/payments/{id}/retry-fiscal": {
       "post": {
         "operationId": "PaymentsController_retryFiscal_v1",
@@ -25376,6 +25422,17 @@
             "type": "string",
             "nullable": true,
             "format": "date-time"
+          },
+          "sourceType": {
+            "nullable": true,
+            "enum": [
+              "BANK_ACCOUNT",
+              "CASH_REGISTER"
+            ],
+            "type": "string"
+          },
+          "isOnline": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -25383,7 +25440,8 @@
           "amount",
           "method",
           "createdAt",
-          "notes"
+          "notes",
+          "isOnline"
         ]
       },
       "LinkedSlotLiftDto": {
@@ -30274,6 +30332,17 @@
             "type": "string",
             "nullable": true,
             "format": "date-time"
+          },
+          "sourceType": {
+            "nullable": true,
+            "enum": [
+              "BANK_ACCOUNT",
+              "CASH_REGISTER"
+            ],
+            "type": "string"
+          },
+          "isOnline": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -30281,7 +30350,8 @@
           "amount",
           "method",
           "createdAt",
-          "notes"
+          "notes",
+          "isOnline"
         ]
       },
       "InvoiceLinkedCounterpartyRowDto": {
@@ -30487,12 +30557,17 @@
           "reversedAt": {
             "type": "string",
             "nullable": true,
-            "description": "Коли оплату сторновано з каси (ISO); null — не сторновано (BR-CASH-024)"
+            "description": "Коли оплату сторновано — з каси чи безготівково (ISO); null — не сторновано (BR-CASH-024, BR-PAY-024)"
           },
           "reversalCashOperationId": {
             "type": "string",
             "nullable": true,
-            "description": "Рядок каси-сторно"
+            "description": "Рядок каси-сторно; null — безготівкове сторно (BR-PAY-024) або не сторновано"
+          },
+          "reversalReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Причина сторно (BR-PAY-024)"
           },
           "createdAt": {
             "type": "string"
@@ -30591,6 +30666,19 @@
           "counterpartyId",
           "amount",
           "method"
+        ]
+      },
+      "PaymentReversalDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Причина сторно — обов’язкова, до 500 символів"
+          }
+        },
+        "required": [
+          "reason"
         ]
       },
       "CreateIntentDto": {

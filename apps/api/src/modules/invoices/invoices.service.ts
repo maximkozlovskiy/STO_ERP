@@ -1545,6 +1545,8 @@ export class InvoicesService {
           notes: true,
           fiscalStatus: true,
           reversedAt: true,
+          sourceType: true,
+          onlinePaymentIntentId: true,
         },
         orderBy: { createdAt: 'desc' },
         take: TAKE,
@@ -1564,7 +1566,12 @@ export class InvoicesService {
     // §13 API Contract: Prisma Decimal → number у DTO.
     return {
       workOrder: workOrder ? [workOrder] : [],
-      payments: payments.map(p => ({ ...p, amount: Number(p.amount) })),
+      // BR-PAY-024: id онлайн-наміру клієнту не потрібен — лише ознака «онлайн-оплата QR».
+      payments: payments.map(({ onlinePaymentIntentId, ...p }) => ({
+        ...p,
+        amount: Number(p.amount),
+        isOnline: onlinePaymentIntentId != null,
+      })),
       counterparty: counterparty ? [counterparty] : [],
     };
   }

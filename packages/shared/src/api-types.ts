@@ -4484,6 +4484,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payments/{id}/reverse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Сторно безготівкової оплати клієнта: борг, «сплачено» й статуси наряду та рахунку назад; рядок виписки — «Нерознесений» */
+        post: operations["PaymentsController_reverse_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments/{id}/retry-fiscal": {
         parameters: {
             query?: never;
@@ -7876,6 +7893,9 @@ export interface components {
             fiscalStatus?: string | null;
             /** Format: date-time */
             reversedAt?: string | null;
+            /** @enum {string|null} */
+            sourceType?: "BANK_ACCOUNT" | "CASH_REGISTER" | null;
+            isOnline: boolean;
         };
         LinkedSlotLiftDto: {
             name: string;
@@ -9165,6 +9185,9 @@ export interface components {
             fiscalStatus?: string | null;
             /** Format: date-time */
             reversedAt?: string | null;
+            /** @enum {string|null} */
+            sourceType?: "BANK_ACCOUNT" | "CASH_REGISTER" | null;
+            isOnline: boolean;
         };
         InvoiceLinkedCounterpartyRowDto: {
             id: string;
@@ -9215,10 +9238,12 @@ export interface components {
             bankAccountId?: string | null;
             cashRegisterId?: string | null;
             sourceName?: string | null;
-            /** @description Коли оплату сторновано з каси (ISO); null — не сторновано (BR-CASH-024) */
+            /** @description Коли оплату сторновано — з каси чи безготівково (ISO); null — не сторновано (BR-CASH-024, BR-PAY-024) */
             reversedAt?: string | null;
-            /** @description Рядок каси-сторно */
+            /** @description Рядок каси-сторно; null — безготівкове сторно (BR-PAY-024) або не сторновано */
             reversalCashOperationId?: string | null;
+            /** @description Причина сторно (BR-PAY-024) */
+            reversalReason?: string | null;
             createdAt: string;
         };
         PaginatedPaymentsDto: {
@@ -9247,6 +9272,10 @@ export interface components {
             onlinePaymentIntentId?: string;
             /** @enum {string} */
             settlementType?: "PAYMENT" | "PREPAYMENT" | "REFUND";
+        };
+        PaymentReversalDto: {
+            /** @description Причина сторно — обов’язкова, до 500 символів */
+            reason: string;
         };
         CreateIntentDto: {
             invoiceId: string;
@@ -18477,6 +18506,31 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentResponseDto"];
+                };
+            };
+        };
+    };
+    PaymentsController_reverse_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentReversalDto"];
+            };
+        };
+        responses: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

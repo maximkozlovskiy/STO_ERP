@@ -246,4 +246,34 @@ describe('InvoicesService — linked-documents edge cases', () => {
     expect(prisma.payment.findMany.mock.calls[0][0].select).toMatchObject({ fiscalStatus: true });
     expect(res.payments[0]).toMatchObject({ id: 'p1', amount: 250.5, fiscalStatus: 'FAILED' });
   });
+
+  // Дія «Сторнувати» в «Пов'язаних документах» рахунку: касову оплату сторнують у касі, QR — у
+  // кабінеті платіжного сервісу. Web вирішує за sourceType і isOnline; id наміру не віддаємо.
+  // guards: BR-PAY-024
+  it('getLinkedDocuments: рядок оплати віддає sourceType і isOnline, без onlinePaymentIntentId', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ workOrderId: null, counterpartyId: CP });
+    const row = {
+      amount: '10.00',
+      method: 'bank',
+      createdAt: new Date('2026-10-01T10:00:00Z'),
+      notes: null,
+      fiscalStatus: null,
+      reversedAt: null,
+    };
+    prisma.payment.findMany.mockResolvedValue([
+      { ...row, id: 'p-cash', sourceType: 'CASH_REGISTER', onlinePaymentIntentId: null },
+      { ...row, id: 'p-qr', sourceType: null, onlinePaymentIntentId: 'intent-1' },
+    ]);
+    prisma.counterparty.findFirst.mockResolvedValue(null);
+
+    const res = await service.getLinkedDocuments(ORG, A);
+
+    expect(prisma.payment.findMany.mock.calls[0][0].select).toMatchObject({
+      sourceType: true,
+      onlinePaymentIntentId: true,
+    });
+    expect(res.payments[0]).toMatchObject({ sourceType: 'CASH_REGISTER', isOnline: false });
+    expect(res.payments[1]).toMatchObject({ sourceType: null, isOnline: true });
+    for (const p of res.payments) expect(p).not.toHaveProperty('onlinePaymentIntentId');
+  });
 });

@@ -2588,6 +2588,8 @@ export class WorkOrdersService {
           notes: true,
           fiscalStatus: true,
           reversedAt: true,
+          sourceType: true,
+          onlinePaymentIntentId: true,
         },
         orderBy: { createdAt: 'desc' },
         take: TAKE,
@@ -2633,7 +2635,12 @@ export class WorkOrdersService {
     // `string | number`, тож приймається обидва, але нормалізація на бекенді консистентніше.
     return {
       invoices: invoices.map(i => ({ ...i, amount: Number(i.amount) })),
-      payments: payments.map(p => ({ ...p, amount: Number(p.amount) })),
+      // BR-PAY-024: id онлайн-наміру клієнту не потрібен — лише ознака «онлайн-оплата QR».
+      payments: payments.map(({ onlinePaymentIntentId, ...p }) => ({
+        ...p,
+        amount: Number(p.amount),
+        isOnline: onlinePaymentIntentId != null,
+      })),
       calendarSlots,
       warranties,
       purchaseLists: Array.from(new Map(listItems.map(i => [i.list.id, i.list])).values()),
