@@ -18,6 +18,27 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 
+/**
+ * Блокування прокрутки сторінки під відкритими вікнами — лічильником: закриття вкладеного вікна
+ * (вибір, підтвердження над карткою) не знімає блокування, доки відкрите хоч одне вікно; останнє
+ * повертає стиль, що був до першого.
+ */
+let scrollLocks = 0;
+let overflowBeforeLock = '';
+
+function lockBodyScroll(): () => void {
+  if (scrollLocks++ === 0) {
+    overflowBeforeLock = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--scrollLocks === 0) document.body.style.overflow = overflowBeforeLock;
+  };
+}
+
 type ModalSize = 'sm' | 'md' | 'lg' | 'wide' | 'xl' | 'full' | 'content';
 
 interface ModalProps {
@@ -243,13 +264,7 @@ export function Modal({
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [open]);
+  useEffect(() => (open ? lockBodyScroll() : undefined), [open]);
 
   // E2: focus-trap — фокус тримається у панелі поки модалка видима; повертається на закритті.
   // `visible` (не `open`) — щоб трап жив під час exit-анімації теж; panelRef прикріплений на рендері.

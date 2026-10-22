@@ -727,3 +727,41 @@ describe('AnimatedBody (standalone)', () => {
     });
   });
 });
+
+// Закриття вкладеного вікна знімало блокування прокрутки сторінки, хоча картка під ним лишалась
+// відкритою (TECH-DEBT §15.14): cleanup кожного Modal ставив `overflow = ''`.
+describe('Modal — блокування прокрутки сторінки', () => {
+  function Nested({ outer, inner }: { outer: boolean; inner: boolean }) {
+    return (
+      <>
+        <Modal open={outer} onClose={vi.fn()} title="Картка">
+          Картка
+        </Modal>
+        <Modal open={inner} onClose={vi.fn()} title="Вибір">
+          Вибір
+        </Modal>
+      </>
+    );
+  }
+
+  it('закрите вкладене вікно лишає блокування, закрита картка — повертає попередній стиль', () => {
+    document.body.style.overflow = 'auto';
+    const { rerender } = render(<Nested outer inner />);
+    expect(document.body.style.overflow).toBe('hidden');
+
+    rerender(<Nested outer inner={false} />);
+    expect(document.body.style.overflow).toBe('hidden');
+
+    rerender(<Nested outer={false} inner={false} />);
+    expect(document.body.style.overflow).toBe('auto');
+    document.body.style.overflow = '';
+  });
+
+  it('вкладене вікно, що лишилось відкритим, тримає блокування після закриття картки', () => {
+    const { rerender, unmount } = render(<Nested outer inner />);
+    rerender(<Nested outer={false} inner />);
+    expect(document.body.style.overflow).toBe('hidden');
+    unmount();
+    expect(document.body.style.overflow).toBe('');
+  });
+});
