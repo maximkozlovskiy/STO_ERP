@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { newIdempotencyKey } from '@/lib/idempotency-key';
+import { useAuth } from '@/lib/auth';
 
 /** Спосіб оплати у вікні: код, назва і куди за замовчуванням надходять кошти. */
 type PaymentMethodDto = ApiSchema<'PaymentMethodResponseDto'>;
@@ -32,6 +33,10 @@ type PayMethodOption = Pick<PaymentMethodDto, 'code' | 'name'> &
 
 const EMPTY_CASH_REGISTERS: CashRegister[] = [];
 const EMPTY_BANK_ACCOUNTS: BankAccountOption[] = [];
+// Ролі `GET /bank-accounts` (bank-accounts.controller). Адміністратор (RECEPTIONIST) оплату приймає,
+// а переліку рахунків не має (403): йому вікно пропонує рахунок способу оплати, назву якого дає
+// `GET /payment-methods` (BR-PAY-023).
+const BANK_LIST_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
 const QR_METHOD_CODE = 'monobank_qr';
 // Коди QR-способів оплати — `<шлюз>_qr` (monobank_qr, privat24_qr, liqpay_qr; setup.service).
 const QR_CODE_SUFFIX = '_qr';
@@ -92,6 +97,7 @@ export function ClientPaymentModal({
   const baseCode = baseCurrency?.code ?? 'UAH';
   const baseSymbol = baseCurrency?.symbol ?? '₴';
   const createPayment = useCreatePayment();
+  const { employee } = useAuth();
 
   const [payMethods, setPayMethods] = useState<PayMethodOption[]>([]);
   const [form, setForm] = useState({ method: CASH_METHOD_CODE, amount: '', notes: '' });
@@ -203,29 +209,48 @@ export function ClientPaymentModal({
 
   // BR-PAY-023: безготівкова оплата без каси — на банківський рахунок у валюті документа.
   const showsBank = !isQr && !showsCash;
+  const canListBanks = BANK_LIST_ROLES.includes(employee?.role ?? '');
   const {
     data: bankAccounts = EMPTY_BANK_ACCOUNTS,
     isPending: bankAccountsPending,
     isError: bankAccountsError,
-  } = useBankAccountOptions(open && showsBank);
-  const bankOptions = useMemo(
-    () =>
-      bankAccounts
-        .filter(a => (a.currencyCode || baseCode) === currencyCode)
-        .map(a => ({ id: a.id, name: a.name })),
-    [bankAccounts, baseCode, currencyCode],
-  );
+  } = useBankAccountOptions(open && showsBank && canListBanks);
   const defaultBankId =
     method?.defaultSourceType === 'BANK_ACCOUNT' ? (method.defaultBankAccountId ?? '') : '';
+  const bankOptions = useMemo(() => {
+    const options = bankAccounts
+      .filter(a => (a.currencyCode || baseCode) === currencyCode)
+      .map(a => ({ id: a.id, name: a.name }));
+    // Рахунок способу оплати, якого немає в переліку (роль без `GET /bank-accounts`): назву й
+    // валюту дає сервер способів оплати; рахунок іншої валюти не пропонуємо.
+    if (
+      defaultBankId &&
+      method?.defaultDestinationName &&
+      method.defaultDestinationCurrencyCode === currencyCode &&
+      !bankAccounts.some(a => a.id === defaultBankId)
+    )
+      options.unshift({ id: defaultBankId, name: method.defaultDestinationName });
+    return options;
+  }, [
+    bankAccounts,
+    baseCode,
+    currencyCode,
+    defaultBankId,
+    method?.defaultDestinationName,
+    method?.defaultDestinationCurrencyCode,
+  ]);
   const bankId = bankChoice ?? (bankOptions.some(o => o.id === defaultBankId) ? defaultBankId : '');
   const blockedNoBank = showsBank && !bankId;
+  // Вимкнений запит теж «pending» — для ролі без переліку рахунків не чекаємо його.
   const bankHint =
-    !showsBank || bankAccountsPending || payMethods.length === 0
+    !showsBank || (canListBanks && bankAccountsPending) || payMethods.length === 0
       ? undefined
-      : bankAccountsError
+      : canListBanks && bankAccountsError
         ? t('payment.bankAccountsLoadError')
         : bankOptions.length === 0
-          ? t('payment.noBankAccountInCurrency', { code: currencyCode })
+          ? canListBanks
+            ? t('payment.noBankAccountInCurrency', { code: currencyCode })
+            : t('payment.methodHasNoBankAccount', { code: currencyCode })
           : blockedNoBank
             ? t('payment.bankAccountRequired')
             : undefined;

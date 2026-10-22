@@ -76,7 +76,8 @@
     "bankAccountPlaceholder": "— choose an account —",
     "bankAccountRequired": "Choose the bank account for a non-cash payment",
     "bankAccountsLoadError": "Could not load bank accounts — close the window and open it again",
-    "noBankAccountInCurrency": "No bank account in {{code}}"
+    "noBankAccountInCurrency": "No bank account in {{code}}",
+    "methodHasNoBankAccount": "This payment method has no bank account in {{code}} — choose another method or ask the owner"
   },
   "toast": {
     "cancelledOne": "Cancelled {{count}} invoice",

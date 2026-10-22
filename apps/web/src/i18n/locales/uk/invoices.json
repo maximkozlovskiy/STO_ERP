@@ -76,7 +76,8 @@
     "bankAccountPlaceholder": "— оберіть рахунок —",
     "bankAccountRequired": "Для безготівкової оплати оберіть банківський рахунок",
     "bankAccountsLoadError": "Не вдалося завантажити рахунки — закрийте вікно й відкрийте знову",
-    "noBankAccountInCurrency": "Немає жодного банківського рахунку у валюті {{code}}"
+    "noBankAccountInCurrency": "Немає жодного банківського рахунку у валюті {{code}}",
+    "methodHasNoBankAccount": "Способу оплати не задано банківського рахунку у валюті {{code}} — оберіть інший спосіб або зверніться до власника"
   },
   "toast": {
     "cancelledOne": "Скасовано {{count}} рахунок",

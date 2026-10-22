@@ -16,6 +16,9 @@ vi.mock('@/lib/api-client', () => ({
   apiBlobFetch: vi.fn(),
 }));
 vi.mock('@/lib/ref-cache', () => ({ getCached: () => null, setCache: vi.fn() }));
+// Роль касира: перелік рахунків (`GET /bank-accounts`) — лише OWNER / ADMIN / ACCOUNTANT.
+let role = 'OWNER';
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ employee: { id: 'e1', role } }) }));
 
 const REGISTERS = [
   { id: 'cr-main', name: 'Каса головна' },
@@ -146,6 +149,7 @@ const paymentHeaders = (i = 0) =>
 
 beforeEach(() => {
   localStorage.clear();
+  role = 'OWNER';
   methods = [
     method('cash', 'Готівка'),
     // Безготівковий спосіб із рахунком за замовчуванням (BR-PAY-023).
@@ -425,6 +429,52 @@ describe('ClientPaymentModal — безготівкова оплата на ба
     expect(bankSelect(dialog)).toBeNull();
     fireEvent.change(methodSelect(dialog), { target: { value: 'cash_safe' } });
     expect(bankSelect(dialog)).toBeNull();
+  });
+
+  // guards: BR-PAY-023
+  it('роль без переліку рахунків (RECEPTIONIST): рахунок способу оплати з його назвою, без запиту /bank-accounts', async () => {
+    role = 'RECEPTIONIST';
+    methods[1] = method('card_terminal', 'Термінал', {
+      defaultSourceType: 'BANK_ACCOUNT',
+      defaultBankAccountId: 'ba-main',
+      defaultDestinationName: 'Рахунок ПриватБанк',
+      defaultDestinationCurrencyCode: 'UAH',
+    });
+    const { dialog } = await openDialog();
+
+    fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    await waitFor(() => expect(bankSelect(dialog)?.value).toBe('ba-main'));
+    expect(
+      within(bankSelect(dialog)!).getByRole('option', { name: 'Рахунок ПриватБанк' }),
+    ).toBeInTheDocument();
+    expect(apiFetchMock.mock.calls.some(([path]) => path === '/bank-accounts')).toBe(false);
+    expect(within(dialog).queryByText(/Не вдалося завантажити рахунки/)).toBeNull();
+    fireEvent.click(payButton(dialog));
+
+    await waitFor(() =>
+      expect(paymentBody()).toMatchObject({ sourceType: 'BANK_ACCOUNT', bankAccountId: 'ba-main' }),
+    );
+  });
+
+  // guards: BR-PAY-023
+  it('роль без переліку рахунків і спосіб без рахунку у валюті документа: пояснення, оплата неактивна', async () => {
+    role = 'RECEPTIONIST';
+    methods[1] = method('card_terminal', 'Термінал', {
+      defaultSourceType: 'BANK_ACCOUNT',
+      defaultBankAccountId: 'ba-usd',
+      defaultDestinationName: 'Рахунок доларовий',
+      defaultDestinationCurrencyCode: 'USD',
+    });
+    const { dialog } = await openDialog();
+
+    fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    expect(
+      await within(dialog).findByText(/Способу оплати не задано банківського рахунку у валюті UAH/),
+    ).toBeInTheDocument();
+    expect(
+      within(bankSelect(dialog)!).queryByRole('option', { name: 'Рахунок доларовий' }),
+    ).toBeNull();
+    expect(payButton(dialog)).toBeDisabled();
   });
 });
 
