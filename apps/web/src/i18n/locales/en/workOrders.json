@@ -227,7 +227,13 @@
     "pdfError": "PDF download error",
     "updatedToast": "Invoice No. {{number}} updated",
     "notFound": "Invoice not found. It may have been cancelled.",
-    "openAction": "Open"
+    "openAction": "Open",
+    "conflict": {
+      "title": "Invoice already exists",
+      "message": "This work order already has an active invoice. What would you like to do?",
+      "refresh": "Refresh (overwrite lines)",
+      "openExisting": "Open existing"
+    }
   },
   "warranty": {
     "active": "Active",

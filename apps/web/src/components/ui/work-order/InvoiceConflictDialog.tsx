@@ -3,6 +3,7 @@
 // Діалог конфлікту «рахунок уже існує» для наряду (TD3-декомпозиція CreateWorkOrderModal).
 // Винесено без зміни поведінки: самодостатній суб-діалог з вузькою surface (стан із
 // useWorkOrderActions). ESC — шар Escape у `useWorkOrderActions` (useEscapeLayer).
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 
 export interface InvoiceConflictDialogProps {
@@ -20,6 +21,7 @@ export function InvoiceConflictDialog({
   onRefresh,
   onOpenExisting,
 }: InvoiceConflictDialogProps) {
+  const { t } = useTranslation('workOrders');
   if (!open) return null;
   return (
     // ESC — шар Escape у useWorkOrderActions (onKeyDown на <div role="presentation"> без
@@ -38,11 +40,9 @@ export function InvoiceConflictDialog({
         onClick={e => e.stopPropagation()}
       >
         <h3 id="invoice-conflict-title" className="font-semibold text-base mb-2">
-          Рахунок вже існує
+          {t('invoice.conflict.title')}
         </h3>
-        <p className="text-sm text-muted-foreground mb-5">
-          Для цього наряду вже є активний рахунок. Що зробити?
-        </p>
+        <p className="text-sm text-muted-foreground mb-5">{t('invoice.conflict.message')}</p>
         <div className="flex flex-col gap-2">
           <Button
             autoFocus
@@ -51,16 +51,16 @@ export function InvoiceConflictDialog({
             disabled={loading}
             className="w-full"
           >
-            Оновити (перезаписати рядки)
+            {t('invoice.conflict.refresh')}
           </Button>
           {/* захист від race — поки triggers in-flight, інші дії dialog
               заборонені (інакше "Відкрити існуючий" відкриває рахунок паралельно з
               refresh → дві вкладки + застаріле UI). */}
           <Button variant="outline" onClick={onOpenExisting} disabled={loading} className="w-full">
-            Відкрити існуючий
+            {t('invoice.conflict.openExisting')}
           </Button>
           <Button variant="ghost" onClick={onClose} disabled={loading} className="w-full">
-            Скасувати
+            {t('common:cancel')}
           </Button>
         </div>
       </div>
