@@ -63,8 +63,18 @@ describe('pickLineExecutor — BR-WO-030', () => {
     ],
     [
       'механік запису у відпустці → діє решта правила: єдиний механік підйомника',
-      { calendarMechanicId: 'm-leave', liftMechanics: [onLeave, ivan], workCategoryId: ENGINE },
+      {
+        calendarMechanicId: 'm-leave',
+        liftMechanics: [ivan],
+        workCategoryId: ENGINE,
+        mechanics: [onLeave, ivan],
+      },
       'm-ivan',
+    ],
+    [
+      'механік запису у відпустці, на підйомнику двоє → порожньо',
+      { calendarMechanicId: 'm-leave', liftMechanics: [onLeave, ivan], workCategoryId: ENGINE },
+      '',
     ],
     [
       'єдиний механік без категорії роботи → порожньо',
@@ -73,13 +83,19 @@ describe('pickLineExecutor — BR-WO-030', () => {
     ],
     [
       'механік запису без категорії роботи → діє решта правила: єдиний механік підйомника',
-      { calendarMechanicId: 'm-oleh', liftMechanics: [oleh, petro], workCategoryId: ENGINE },
+      {
+        calendarMechanicId: 'm-oleh',
+        liftMechanics: [petro],
+        workCategoryId: ENGINE,
+        mechanics: [oleh, petro],
+      },
       'm-petro',
     ],
     [
-      'двоє на підйомнику, категорію роботи має лише один → він',
+      // Рішення власника 2026-10-22: «єдиний» — серед усіх механіків підйомника.
+      'двоє на підйомнику, категорію роботи має лише один → порожньо',
       { calendarMechanicId: null, liftMechanics: [petro, oleh], workCategoryId: BODY },
-      'm-oleh',
+      '',
     ],
     [
       'категорії в механіка не задано → підставляється для будь-якої роботи',
@@ -118,7 +134,7 @@ describe('pickLineExecutor — BR-WO-030', () => {
     expect(
       pickLineExecutor({
         calendarMechanicId: 'm-petro',
-        liftMechanics: [petro, ivan],
+        liftMechanics: [ivan],
         workCategoryId: ENGINE,
         activeMechanicIds: ['m-ivan'],
       }),

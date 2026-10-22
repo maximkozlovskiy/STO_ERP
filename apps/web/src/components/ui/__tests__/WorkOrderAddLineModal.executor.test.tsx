@@ -146,7 +146,8 @@ describe('WorkOrderAddLineModal — виконавець нової роботи
   });
 
   // guards: BR-WO-030
-  it('механік запису у відпустці → діє решта правила (єдиний механік підйомника)', async () => {
+  // Рішення власника 2026-10-22: на підйомнику двоє → поле порожнє (запасний «єдиний» не діє).
+  it('механік запису у відпустці, на підйомнику двоє → поле порожнє', async () => {
     mockApi({
       liftMechanics: [
         { id: 'm-oleh', status: 'ON_LEAVE', workCategoryIds: [] },
@@ -157,8 +158,9 @@ describe('WorkOrderAddLineModal — виконавець нової роботи
     const { work, executor } = renderModal();
 
     fireEvent.change(work, { target: { value: 'w-oil' } });
+    await new Promise(r => setTimeout(r, 20));
 
-    await waitFor(() => expect(executor.value).toBe('m-ivan'));
+    expect(executor.value).toBe('');
   });
 
   // guards: BR-WO-030
