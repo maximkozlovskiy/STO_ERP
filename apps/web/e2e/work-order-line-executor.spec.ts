@@ -16,7 +16,9 @@ test.describe.configure({ mode: 'serial' });
  * авто → гараж → клієнт.
  */
 
-const uid = Date.now().toString().slice(-6);
+// pid воркера: паралельні повтори (--repeat-each) в одну секунду інакше давали однакові назви
+// підйомника й механіка — і два чекбокси з тим самим підписом у формі співробітника.
+const uid = `${Date.now().toString().slice(-6)}${process.pid % 1000}`;
 const PREFIX = `000 E2E TST-EXE ${uid}`;
 const CLIENT = `${PREFIX} клієнт`;
 const LIFT = `${PREFIX} підйомник`;
