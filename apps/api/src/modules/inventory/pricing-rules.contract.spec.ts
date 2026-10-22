@@ -160,7 +160,7 @@ describe('PricingRules — HTTP Contract', () => {
 
   describe('GET /pricing-rules', () => {
     it('Bug #18: повертає paginated shape { items, total, page, limit }', async () => {
-      prismaMock.$transaction.mockResolvedValueOnce([[], 0]);
+      prismaMock.pricingRule.findMany.mockResolvedValueOnce([]);
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
         url: '/pricing-rules',
@@ -199,7 +199,7 @@ describe('PricingRules — HTTP Contract', () => {
     });
 
     it('Bug #565: GET ?supplierId=<UUID> → 200 (фільтрація працює)', async () => {
-      prismaMock.$transaction.mockResolvedValueOnce([[], 0]);
+      prismaMock.pricingRule.findMany.mockResolvedValueOnce([]);
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
         url: '/pricing-rules?supplierId=11111111-1111-4111-8111-111111111199',
@@ -208,12 +208,33 @@ describe('PricingRules — HTTP Contract', () => {
     });
 
     it('Bug #565: GET без supplierId → 200 (optional pipe)', async () => {
-      prismaMock.$transaction.mockResolvedValueOnce([[], 0]);
+      prismaMock.pricingRule.findMany.mockResolvedValueOnce([]);
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
         url: '/pricing-rules',
       });
       expect(res.statusCode).toBe(200);
+    });
+
+    it('показує всі правила, не перші 200: хвіст дочитується наступною сторінкою', async () => {
+      const page = Array.from({ length: 500 }, (_, i) =>
+        existingRule({
+          id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+          tiers: [],
+          goods: [],
+        }),
+      );
+      prismaMock.pricingRule.findMany
+        .mockResolvedValueOnce(page)
+        .mockResolvedValueOnce([existingRule({ id: RULE_ID, tiers: [], goods: [] })]);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/pricing-rules',
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.items).toHaveLength(501);
+      expect(body.total).toBe(501);
     });
   });
 

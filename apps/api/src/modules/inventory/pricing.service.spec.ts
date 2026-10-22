@@ -306,8 +306,23 @@ describe('PricingService.getPricingContext', () => {
       },
       // Рівний пріоритет розсуджує старше правило, далі id — порядок не залежить від плану запиту.
       orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-      take: 200,
+      take: 500,
     });
+  });
+
+  it('правила за межею першої сторінки теж діють — читаються наступні сторінки за курсором', async () => {
+    // 500 правил першої сторінки + ще одне: раніше `take: 200` мовчки відкидав хвіст, і товар,
+    // який накривало лише 201-ше правило, розцінювався без націнки.
+    const first = Array.from({ length: 500 }, (_, i) => dbRule({ id: `r-${i}` }));
+    prisma.pricingRule.findMany
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce([dbRule({ id: 'r-last' })]);
+    const ctx = await service.getPricingContext('org-X', ['g1']);
+    expect(ctx.rules).toHaveLength(501);
+    expect(ctx.rules.at(-1)!.id).toBe('r-last');
+    expect(prisma.pricingRule.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ take: 500, skip: 1, cursor: { id: 'r-499' } }),
+    );
   });
 
   it('жодне правило не має списку й категорії → зайвих запитів немає', async () => {

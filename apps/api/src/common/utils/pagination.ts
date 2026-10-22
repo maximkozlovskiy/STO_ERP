@@ -29,6 +29,32 @@ export function calculatePagination(params: {
   return { skip: (page - 1) * take, take };
 }
 
+/** Розмір сторінки для `findAllInPages`. */
+export const READ_ALL_PAGE_SIZE = 500;
+
+/**
+ * Читає ВСІ рядки сторінками за курсором `id` — замість `take: N`, що мовчки відрізає хвіст.
+ * `page` — той самий `findMany` (зі своїм `where` / `orderBy`), якому передається `take` і курсор;
+ * курсор Prisma тримає позицію рядка в будь-якому `orderBy`, бо `id` унікальний.
+ * Для наборів, яких не може бути багато (правила ціноутворення), але межі яким ніхто не ставить.
+ */
+export async function findAllInPages<T extends { id: string }>(
+  page: (args: { take: number; skip?: number; cursor?: { id: string } }) => Promise<T[]>,
+  pageSize = READ_ALL_PAGE_SIZE,
+): Promise<T[]> {
+  const all: T[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const rows = await page({
+      take: pageSize,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    });
+    all.push(...rows);
+    if (rows.length < pageSize) return all;
+    cursor = rows[rows.length - 1].id;
+  }
+}
+
 /**
  * Будує Prisma `orderBy` з whitelist дозволених полів сортування.
  *

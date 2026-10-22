@@ -29,6 +29,7 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { PricingService } from './pricing.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { findAllInPages } from '../../common/utils/pagination';
 import { AuditService } from '../audit/audit.service';
 import {
   ApplyPricingRuleResultDto,
@@ -139,20 +140,21 @@ export class PricingRulesController {
       deletedAt: null,
       ...(supplierId ? { supplierId } : {}),
     };
-    const [rules, total] = await this.prisma.$transaction([
+    // Сторінка правил показує всі правила одним списком: `take: 200` мовчки ховав решту, хоча
+    // вони діяли в розцінці. id — другий ключ, щоб курсор сторінок мав стабільний порядок.
+    const rules = await findAllInPages(page =>
       this.prisma.pricingRule.findMany({
+        ...page,
         where,
         include: PRICING_RULE_INCLUDE,
-        orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
-        take: 200,
+        orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
       }),
-      this.prisma.pricingRule.count({ where }),
-    ]);
+    );
     return {
       items: rules.map(r => this.toDto(r)),
-      total,
+      total: rules.length,
       page: 1,
-      limit: 200,
+      limit: rules.length,
     };
   }
 

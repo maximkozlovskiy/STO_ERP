@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { GoodType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { findAllInPages } from '../../common/utils/pagination';
 
 export type RuleEntry = {
   id: string;
@@ -71,21 +72,23 @@ export class PricingService {
     goodIds: string[],
     opts: { onlyRuleId?: string } = {},
   ): Promise<PricingContext> {
-    const rules = await this.prisma.pricingRule.findMany({
-      // Одне правило шукаємо за id, а не серед перших 200: інакше правило за межею `take`
-      // мовчки «не знайшлося б» і закупівля розцінилась би без націнки.
-      where: {
-        orgId,
-        isActive: true,
-        deletedAt: null,
-        ...(opts.onlyRuleId ? { id: opts.onlyRuleId } : {}),
-      },
-      include: RULE_INCLUDE,
-      // Рівний `priority` розсуджує старше правило, далі id: без другого ключа порядок рядків
-      // з однаковим пріоритетом визначав би план запиту, і та сама розцінка давала б різні ціни.
-      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-      take: 200,
-    });
+    // Усі активні правила, без `take: 200`: правило за межею вибірки мовчки не діяло б — товари,
+    // яких не накрили перші 200 правил, розцінювались би без націнки (і одне правило за id теж).
+    const rules = await findAllInPages(page =>
+      this.prisma.pricingRule.findMany({
+        ...page,
+        where: {
+          orgId,
+          isActive: true,
+          deletedAt: null,
+          ...(opts.onlyRuleId ? { id: opts.onlyRuleId } : {}),
+        },
+        include: RULE_INCLUDE,
+        // Рівний `priority` розсуджує старше правило, далі id: без другого ключа порядок рядків
+        // з однаковим пріоритетом визначав би план запиту, і та сама розцінка давала б різні ціни.
+        orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      }),
+    );
     const [ruleIdsByGood, categoryParent] = await Promise.all([
       this.loadGoodLinks(orgId, rules, goodIds),
       this.loadCategoryParents(
