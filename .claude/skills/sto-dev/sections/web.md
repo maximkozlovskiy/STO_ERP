@@ -373,3 +373,18 @@ const handleTransition = async (id: string, newStatus: string) => {
 - НЕ застосовувати до: фінансових операцій, FSM-переходів з критичними side-effects (WRITEOFF, CHARGE)
 
 ---
+
+## Перелік для поля вікна — ролі не вужчі за дію вікна (2026-10-22)
+
+```tsx
+// ❌ RECEPTIONIST створює оплату, а GET /bank-accounts йому — 403: поле порожнє, оплата заблокована
+const { data: accounts } = useBankAccountOptions(open && showsBank);
+
+// ✅ запит лише для ролей переліку; значення за замовчуванням — з ендпоінта, який роль читає
+const canListBanks = BANK_LIST_ROLES.includes(employee?.role ?? '');
+const { data: accounts } = useBankAccountOptions(open && showsBank && canListBanks);
+// + рахунок способу (`defaultDestinationName` з GET /payment-methods), якщо його нема в переліку
+```
+
+Запит, увімкнений параметром адреси (`?open=`), не вимикати разом із параметром, доки рядок у
+панелі: вимкнений запит інвалідація не перечитує.

@@ -488,3 +488,30 @@ en-тест на відмову PATCH без `Error`. **Severity:** SUGGESTION
 стан → `focus({ preventScroll: true })` на кнопку протилежної дії: без `preventScroll` фокус
 прокручує анімований overflow-hidden контейнер, і верх шапки лишається зрізаним.
 **Severity:** IMPORTANT
+
+### 2026-10-22 — Перелік вужчий за дію: вікно оплати й `GET /bank-accounts` — §8.4
+
+**Сигнал:** BR-PAY-023 додав у `ClientPaymentModal` обов'язкове поле «Рахунок» із переліком
+`useBankAccountOptions` (`GET /bank-accounts` — OWNER/ADMIN/ACCOUNTANT). Оплату ж створює й
+RECEPTIONIST (`POST /payments`). Для нього перелік — 403: «Не вдалося завантажити рахунки», поле
+порожнє, кнопка неактивна — безготівкову оплату приймальня не могла внести взагалі, навіть зі
+способом, у якого є рахунок за замовчуванням. Тести вікна auth не мокали (роль не існувала), моки
+`apiFetch` віддавали рахунки будь-кому.
+**Grep:** `git diff <base> -- apps/web/src | grep -nE "^\+.*use[A-Z][A-Za-z]*Options\("` → для
+кожного хука: `@Roles` його GET проти `@Roles` дії вікна.
+**Фікс:** `BANK_LIST_ROLES` — запит лише для ролей із переліком; рахунок способу додано в перелік із
+назвою й валютою від `GET /payment-methods` (дзеркало каси за замовчуванням); без нього — пояснення
+«способу не задано рахунку у валюті …». Тести з роллю RECEPTIONIST, мутації (без підстановки, без
+гейту ролі) валять їх.
+**Severity:** IMPORTANT
+
+### 2026-10-22 — Запит за `?open=` вимикається разом із параметром — §8.5
+
+**Сигнал:** вкладка «Гарантії»: `useWarrantyList({ id: linkId }, !!linkId)`, а `linkId` — з адреси,
+яку вкладка відразу чистить (`router.replace`). Після звернення `warrantiesKeys.all` перечитує лише
+активні запити; гарантія з посилання поза поточною сторінкою списку лишалась у панелі зі старим
+станом і кнопкою «Звернення» (повтор — 400).
+**Grep:** `grep -rlE "searchParams\.get\('open'\)" apps/web/src/app --include=*.tsx | xargs -d '\n' grep -nE "!!(link|open)[A-Za-z]*"`
+**Фікс:** `linkedQueryId = linkId ?? (openedByLink ? selected?.id : undefined)` — запит живе, доки
+рядок у панелі. Тест: `replace` у моку прибирає `open` з адреси, після звернення кнопки немає.
+**Severity:** SUGGESTION
