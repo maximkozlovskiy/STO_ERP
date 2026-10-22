@@ -263,7 +263,7 @@
     "selected": "Selected: {{n}}",
     "noneSelected": "Nothing selected",
     "addCount": "Add ({{n}})",
-    "templatesCount": "{{n}} templates",
+    "templatesCount": "Templates: {{n}}",
     "alreadyAdded": ", {{n}} already added",
     "clearAll": "Clear all",
     "selectAll": "Select all ({{n}})",

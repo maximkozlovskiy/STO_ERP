@@ -336,7 +336,7 @@
   "servicePicker": {
     "title": "Select a service package",
     "searchPlaceholder": "Search services...",
-    "worksCount": "{{n}} works",
-    "goodsCount": "{{n}} goods"
+    "worksCount": "Works: {{n}}",
+    "goodsCount": "Goods: {{n}}"
   }
 }
