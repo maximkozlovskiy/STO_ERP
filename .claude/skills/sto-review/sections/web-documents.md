@@ -94,3 +94,23 @@ grep -rlE "searchParams\.get\('open'\)" apps/web/src/app --include=*.tsx | xargs
       і три E2E (`work-order-warranties`, `work-order-calendar-edit`, `work-orders-detail`) далі
       обирали роботу `locator('select').first()` — зламані до наступного прогону, а «другий select»
       (виконавець) став першим.
+
+## Стандарт списку: статуси над фільтрами (2026-10-22)
+
+```bash
+# Статус списку випадаючим списком замість кнопок StatusPill (журнали в settings/ — поза стандартом)
+grep -rn "<option value=\"\">{t('[a-zA-Z.]*all\(Statuses\|States\)')}" apps/web/src/app --include=*.tsx
+# Пошук списку, що розтягується на весь рядок, замість w-72
+grep -rn "flex-1 min-w-48 h-8\|className=\"flex-1 h-8 text-\[13px\]\"" apps/web/src/app --include=*.tsx
+# Список у вузькому контейнері замість page-fill (profile, settings/sync — не списки: очікувано)
+grep -rln "page-container max-w" apps/web/src/app --include=page.tsx
+```
+
+- [ ] Список документів — `ListStatusRow` (кнопки `StatusPill`, `label` групи) над
+      `ListFiltersRow` (пошук `w-72`, фільтри ліворуч, дії `actions` праворуч у порядку
+      `docs/PATTERNS.md` «Панель списку»); сторінка — `page-fill`, таблиця — `TableContainer`
+- [ ] Статус перейшов із `<select>` на кнопки → E2E і unit-тести, що робили `selectOption` /
+      `fireEvent.change` за назвою фільтра, переписані на кнопку в групі
+      (`getByRole('group', { name }).getByRole('button', …)`)
+- [ ] Кнопка статусу з тією ж назвою, що дія рядка («Звернення» — стан гарантії і дія): тести
+      шукають дію поза групою статусів, інакше `getByRole('button', { name })` бачить дві

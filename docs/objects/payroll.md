@@ -135,11 +135,12 @@ tenant-isolation: orgId у WHERE на wol/wo.
 
 ## UI (Web)
 
-| Компонент                        | Файл                                                                      |
-| -------------------------------- | ------------------------------------------------------------------------- |
-| Сторінка «Зарплата»              | `app/(app)/payroll/page.tsx` (розрахунок + періоди + виплата + breakdown) |
-| Hook                             | `hooks/api/usePayroll.ts`                                                 |
-| rateScheme у формі співробітника | `components/ui/EmployeeEditModal.tsx` (3 режими)                          |
+| Компонент                        | Файл                                                                           |
+| -------------------------------- | ------------------------------------------------------------------------------ |
+| Сторінка «Зарплата»              | `app/(app)/payroll/page.tsx` (періоди + виплата + breakdown)                   |
+| Вікно «Розрахунок за період»     | `app/(app)/payroll/PayrollPreviewModal.tsx` (дати, preview, «Створити період») |
+| Hook                             | `hooks/api/usePayroll.ts`                                                      |
+| rateScheme у формі співробітника | `components/ui/EmployeeEditModal.tsx` (3 режими)                               |
 
 Пункт меню «Зарплата» → `/payroll` (розділ «Звіти», OWNER/ADMIN/ACCOUNTANT).
 
@@ -147,6 +148,12 @@ tenant-isolation: orgId у WHERE на wol/wo.
 рядка співробітника (стан `expandedEmployee = \`${periodId}:${employeeId}\``) → вкладена таблиця
 нарядів: № (Link на картку) · авто · робіт · нормо-год · сума робіт, `tfoot`«Разом база».
 i18n-ключі`breakdown.*` (uk/en parity).
+
+**Панель списку** (2026-10-22, `docs/PATTERNS.md` «Панель списку»): сторінка на весь екран
+(`page-fill`), статуси періодів — кнопками `ListStatusRow` над рядком фільтрів; праворуч у рядку —
+подання, колонки й основна кнопка «Розрахувати період», що відкриває вікно розрахунку (лінива
+`next/dynamic`). «Створити період» у вікні — лише за нарахуваннями; після створення вікно
+закривається, повторне відкриття починає без розрахунку.
 
 **List Page pattern** (еталон work-orders): `useListPage<PayrollFilters>('payroll-periods', …)` →
 пагінація (`Pagination`, limit 20), фільтр статусу (`filters.*` i18n), `ColumnsDropdown` над
@@ -160,11 +167,13 @@ i18n-ключі`breakdown.*` (uk/en parity).
 рядок-шапку + розкриту розшифровку під спільним вузлом — E2E скоупить статус-badge, FSM-кнопки й
 drill-down на один `getByTestId`. Декілька `<tbody>` в одній `<table>` — валідний HTML.
 
-**E2E:** `apps/web/e2e/payroll.spec.ts` (7 тестів) — сторінка/панелі/nav, preview-розрахунок, повний
+**E2E:** `apps/web/e2e/payroll.spec.ts` (8 тестів) — сторінка (статуси над фільтрами, вікно розрахунку)/nav,
+preview у вікні, створення періоду через вікно (окладник-передумова в межах 2099-03), повний
 FSM через UI (create→compute→pay через модалку виплати), drill-down, FSM-guard. Cleanup-хелпер
 читає `?page=1&limit=200` (список paginated).
 **Component-тести:** `__tests__/PayrollBreakdown.test.tsx` (6 — drill-down, окладник без робіт) +
-`__tests__/PayrollListPage.test.tsx` (8 — пагінація/фільтр/колонки/testid).
+`__tests__/PayrollListPage.test.tsx` (14 — пагінація/статуси кнопками/колонки/testid, сторінка на весь
+екран, вікно розрахунку: дати, «Створити період», межі дат, «Повторити»).
 
 ---
 
