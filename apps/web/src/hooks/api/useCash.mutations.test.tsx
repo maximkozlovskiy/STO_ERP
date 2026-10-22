@@ -84,6 +84,7 @@ describe('useCreateCashOperation', () => {
     await act(() =>
       result.current.mutateAsync({
         cashRegisterId: 'reg-1',
+        idempotencyKey: 'key-1',
         direction: 'OUT',
         reason: 'SUPPLIER_PAYMENT',
         amount: 100,
@@ -110,7 +111,13 @@ describe('useCreateCashOperation', () => {
     const { result } = renderHook(() => useCreateCashOperation(), { wrapper });
     await act(async () => {
       await result.current
-        .mutateAsync({ cashRegisterId: 'reg-1', direction: 'OUT', reason: 'MANUAL_OUT', amount: 1 })
+        .mutateAsync({
+          cashRegisterId: 'reg-1',
+          idempotencyKey: 'key-2',
+          direction: 'OUT',
+          reason: 'MANUAL_OUT',
+          amount: 1,
+        })
         .catch(() => undefined);
     });
     expect([...roots()]).toEqual(['cash']);

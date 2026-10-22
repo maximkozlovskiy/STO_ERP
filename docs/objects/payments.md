@@ -130,13 +130,13 @@ create (метод без requiresFiscal) → null
 
 ### `/api/payments` (`PaymentsController`)
 
-| Метод | URL                              | Дія                                                                             | Ролі                                   |
-| ----- | -------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------- |
-| GET   | `/api/payments`                  | Список (page, limit, counterpartyId, dateFrom, dateTo, method, fiscalStatus, q) | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
-| GET   | `/api/payments/:id`              | Деталь                                                                          | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
-| POST  | `/api/payments`                  | Реєстрація платежу (`CreatePaymentDto`, `IdempotencyInterceptor`)               | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
-| POST  | `/api/payments/:id/retry-fiscal` | Повторна фіскалізація (лише `FAILED` + `fiscalReceiptId=null`); throttle 10/60с | OWNER, ADMIN, ACCOUNTANT               |
-| POST  | `/api/payments/:id/reverse`      | Сторно безготівкової оплати `{ reason }` (BR-PAY-024, `IdempotencyInterceptor`) | OWNER, ADMIN, ACCOUNTANT               |
+| Метод | URL                              | Дія                                                                                   | Ролі                                   |
+| ----- | -------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------- |
+| GET   | `/api/payments`                  | Список (page, limit, counterpartyId, dateFrom, dateTo, method, fiscalStatus, q)       | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
+| GET   | `/api/payments/:id`              | Деталь                                                                                | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
+| POST  | `/api/payments`                  | Реєстрація платежу (`CreatePaymentDto`, `Idempotency-Key` обов'язковий — 400)         | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
+| POST  | `/api/payments/:id/retry-fiscal` | Повторна фіскалізація (лише `FAILED` + `fiscalReceiptId=null`); throttle 10/60с       | OWNER, ADMIN, ACCOUNTANT               |
+| POST  | `/api/payments/:id/reverse`      | Сторно безготівкової оплати `{ reason }` (BR-PAY-024, `Idempotency-Key` обов'язковий) | OWNER, ADMIN, ACCOUNTANT               |
 
 `CreatePaymentDto`: `counterpartyId`, `amount` (Min 0.01), `method` (required); `workOrderId?`,
 `invoiceId?`, `notes?`, `sourceType?`, `bankAccountId?`, `cashRegisterId?`.
@@ -356,7 +356,7 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
 - **BR-PAY-024**: **Сторно безготівкової оплати** (рішення власника 2026-10-22). `POST /payments/:id/reverse
 { reason }` сторнує оплату клієнта без касового рядка: на банківський рахунок (з вікна «Оплатити» чи з
   рознесення виписки) і стару оплату без призначення. Ролі — OWNER, ADMIN, ACCOUNTANT (як сторно в касі);
-  причина обов'язкова, до 500 символів (`paymentReversalSchema` = `cashReversalSchema`); Idempotency-Key.
+  причина обов'язкова, до 500 символів (`paymentReversalSchema` = `cashReversalSchema`); `Idempotency-Key` обов'язковий (без нього — 400, `RequiredIdempotencyInterceptor`).
   Відмови — 400 до першого запису: оплата в касі (`sourceType = CASH_REGISTER`, `cashRegisterId` або рядок
   каси `documentType = 'Payment'` у старої оплати без призначення — «сторнуйте касову операцію»,
   `err.payment.reversalCashRow`; одна функція `paymentsInCashDesk` дає й ознаку `inCashDesk` рядка оплати
@@ -430,9 +430,9 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | HTTP-контракт способів                          | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
 | системні способи оплати                         | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
 | сторно безготівкової оплати (BR-PAY-024)        | `payments.reverse-noncash.spec.ts`                       | 23     |
-| HTTP-контракт сторно (BR-PAY-024)               | `payments.reverse-route.contract.spec.ts`                | 13     |
+| HTTP-контракт сторно (BR-PAY-024)               | `payments.reverse-route.contract.spec.ts`                | 15     |
 
-Разом: **473** кейси — 405 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
+Разом: **475** кейсів — 407 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
 (`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
 `vitest --reporter=json` (2026-10-15), не з grep.
 

@@ -2,7 +2,7 @@
  * HTTP-контракт `POST /payments/:id/reverse` — сторно безготівкової оплати (BR-PAY-024):
  * ролі OWNER / ADMIN / ACCOUNTANT (справжній RolesGuard за метаданими @Roles), причина за спільною
  * `paymentReversalSchema` (обов'язкова, до 500 символів, обрізається), id — UUID, маршрут несе
- * IdempotencyInterceptor. Бізнес-відмови — у `payments.reverse-noncash.spec.ts`.
+ * RequiredIdempotencyInterceptor (ключ обов'язковий). Бізнес-відмови — у `payments.reverse-noncash.spec.ts`.
  */
 import type { ExecutionContext, INestApplication } from '@nestjs/common';
 import { RequestMethod, ValidationPipe } from '@nestjs/common';
@@ -15,7 +15,8 @@ import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vites
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
+import { randomUUID } from 'crypto';
+import { RequiredIdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
@@ -37,6 +38,13 @@ const mockJwtGuard = {
   }),
 };
 
+const idempotencyKeyMock = {
+  create: vi.fn().mockResolvedValue({}),
+  update: vi.fn().mockResolvedValue({}),
+  delete: vi.fn().mockResolvedValue({}),
+  findUnique: vi.fn().mockResolvedValue(null),
+};
+
 describe('POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024)', () => {
   let app: INestApplication;
 
@@ -45,8 +53,9 @@ describe('POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024)', ()
       controllers: [PaymentsController],
       providers: [
         { provide: PaymentsService, useValue: serviceMock },
-        { provide: PrismaService, useValue: {} },
-        IdempotencyInterceptor,
+        // Ключ обов'язковий (RequiredIdempotencyInterceptor): резервація ключа — у пам'яті нічого не тримає.
+        { provide: PrismaService, useValue: { idempotencyKey: idempotencyKeyMock } },
+        RequiredIdempotencyInterceptor,
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -74,12 +83,21 @@ describe('POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024)', ()
     serviceMock.reverseNonCash.mockClear();
   });
 
-  const reverse = (payload: unknown, id = PAY) =>
+  const reverse = (payload: unknown, id = PAY, key: string | null = randomUUID()) =>
     (app as NestFastifyApplication).inject({
       method: 'POST',
       url: `/payments/${id}/reverse`,
       payload: payload as Record<string, unknown>,
+      ...(key && { headers: { 'idempotency-key': key } }),
     });
+
+  // Рішення власника 2026-10-22: без ключа повтор запиту провів би сторно двічі.
+  // guards: BR-PAY-024
+  it('без Idempotency-Key → 400, до сервісу не доходить', async () => {
+    const res = await reverse({ reason: 'помилка' }, PAY, null);
+    expect(res.statusCode).toBe(400);
+    expect(serviceMock.reverseNonCash).not.toHaveBeenCalled();
+  });
 
   // guards: BR-PAY-024
   it.each(['OWNER', 'ADMIN', 'ACCOUNTANT'])(
@@ -135,7 +153,7 @@ describe('POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024)', ()
 
   // Повтор після обриву з тим самим Idempotency-Key не має дати другої спроби сторно.
   // guards: BR-PAY-024
-  it('маршрут несе IdempotencyInterceptor і пускає лише OWNER, ADMIN, ACCOUNTANT', () => {
+  it('маршрут несе RequiredIdempotencyInterceptor і пускає лише OWNER, ADMIN, ACCOUNTANT', () => {
     const proto = PaymentsController.prototype as unknown as Record<string, unknown>;
     const handler = Object.getOwnPropertyNames(proto)
       .map(name => proto[name])
@@ -149,10 +167,19 @@ describe('POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024)', ()
     expect(handler, 'немає POST :id/reverse').toBeDefined();
     const interceptors = (Reflect.getMetadata(INTERCEPTORS_METADATA, handler as object) ??
       []) as unknown[];
-    expect(interceptors).toContain(IdempotencyInterceptor);
+    expect(interceptors).toContain(RequiredIdempotencyInterceptor);
     const roles = [
       ...((Reflect.getMetadata(ROLES_KEY, handler as object) as string[] | undefined) ?? []),
     ].sort();
     expect(roles).toEqual(['ACCOUNTANT', 'ADMIN', 'OWNER']);
+  });
+
+  // Рішення власника 2026-10-22: і реєстрація оплати клієнта — лише з ключем (400 без нього).
+  it('POST /payments (реєстрація оплати) теж несе RequiredIdempotencyInterceptor', () => {
+    const create = (PaymentsController.prototype as unknown as Record<string, unknown>).create;
+    expect(Reflect.getMetadata(METHOD_METADATA, create as object)).toBe(RequestMethod.POST);
+    const interceptors = (Reflect.getMetadata(INTERCEPTORS_METADATA, create as object) ??
+      []) as unknown[];
+    expect(interceptors).toContain(RequiredIdempotencyInterceptor);
   });
 });

@@ -13,7 +13,8 @@ import { CashRegistersService } from './cash-registers.service';
 import { CashService } from '../cash/cash.service';
 import { CashDeskService } from './cash-desk.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
+import { randomUUID } from 'crypto';
+import { RequiredIdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
@@ -68,9 +69,20 @@ describe('CashRegisters — HTTP Contract', () => {
         { provide: CashRegistersService, useValue: serviceMock },
         { provide: CashService, useValue: cashMock },
         { provide: CashDeskService, useValue: deskMock },
-        // POST :id/operations несе @UseInterceptors(IdempotencyInterceptor) — DI має резолвити.
-        { provide: PrismaService, useValue: {} },
-        IdempotencyInterceptor,
+        // POST :id/operations і сторно несуть RequiredIdempotencyInterceptor (ключ обов'язковий) —
+        // DI має резолвити; резервація ключа у пам'яті нічого не тримає.
+        {
+          provide: PrismaService,
+          useValue: {
+            idempotencyKey: {
+              create: vi.fn().mockResolvedValue({}),
+              update: vi.fn().mockResolvedValue({}),
+              delete: vi.fn().mockResolvedValue({}),
+              findUnique: vi.fn().mockResolvedValue(null),
+            },
+          },
+        },
+        RequiredIdempotencyInterceptor,
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -210,12 +222,21 @@ describe('CashRegisters — HTTP Contract', () => {
   });
 
   describe('POST /cash-registers/:id/operations — ручна касова операція', () => {
-    const post = (payload: Record<string, unknown>) =>
+    const post = (payload: Record<string, unknown>, key: string | null = randomUUID()) =>
       (app as NestFastifyApplication).inject({
         method: 'POST',
         url: `/cash-registers/${REGISTER_ID}/operations`,
         payload,
+        ...(key && { headers: { 'idempotency-key': key } }),
       });
+
+    // Рішення власника 2026-10-22: без ключа повтор запиту дав би дві операції й дві проводки.
+    // guards: BR-CASH-016
+    it('без Idempotency-Key → 400, до сервісу не доходить', async () => {
+      const res = await post({ direction: 'IN', reason: 'OWNER_IN', amount: 100 }, null);
+      expect(res.statusCode).toBe(400);
+      expect(deskMock.create).not.toHaveBeenCalled();
+    });
 
     // guards: BR-CASH-016
     it('валідне тіло → 201; операція йде в CashDeskService.create(orgId, id каси, тіло, користувач), а не в CashService', async () => {
@@ -317,6 +338,7 @@ describe('CashRegisters — HTTP Contract', () => {
         method: 'POST',
         url: '/cash-registers/not-a-uuid/operations',
         payload: { direction: 'IN', reason: 'MANUAL_IN', amount: 100 },
+        headers: { 'idempotency-key': randomUUID() },
       });
       expect(res.statusCode).toBe(400);
       expect(deskMock.create).not.toHaveBeenCalled();
@@ -325,12 +347,24 @@ describe('CashRegisters — HTTP Contract', () => {
 
   describe('POST /cash-registers/:id/operations/:operationId/reverse — сторно', () => {
     const OPERATION_ID = '88888888-8888-4888-8888-888888888888';
-    const reverse = (payload: unknown, operationId = OPERATION_ID) =>
+    const reverse = (
+      payload: unknown,
+      operationId = OPERATION_ID,
+      key: string | null = randomUUID(),
+    ) =>
       (app as NestFastifyApplication).inject({
         method: 'POST',
         url: `/cash-registers/${REGISTER_ID}/operations/${operationId}/reverse`,
         payload: payload as Record<string, unknown>,
+        ...(key && { headers: { 'idempotency-key': key } }),
       });
+
+    // guards: BR-CASH-023
+    it('без Idempotency-Key → 400, до сервісу не доходить', async () => {
+      const res = await reverse({ reason: 'помилка' }, OPERATION_ID, null);
+      expect(res.statusCode).toBe(400);
+      expect(deskMock.reverse).not.toHaveBeenCalled();
+    });
 
     // Ролі тут перевіряє СПРАВЖНІЙ RolesGuard за метаданими @Roles маршруту (решта контракту
     // його підміняє «пропускаю всіх»): так 403 приймальні видно на рівні HTTP.
@@ -399,7 +433,7 @@ describe('CashRegisters — HTTP Contract', () => {
 
     // Подвійний клік «Сторнувати» з тим самим Idempotency-Key не має дати двох спроб.
     // guards: BR-CASH-023
-    it('маршрут сторно несе IdempotencyInterceptor і пускає лише OWNER, ADMIN, ACCOUNTANT', () => {
+    it('маршрут сторно несе RequiredIdempotencyInterceptor і пускає лише OWNER, ADMIN, ACCOUNTANT', () => {
       const proto = CashRegistersController.prototype as unknown as Record<string, unknown>;
       const handler = Object.getOwnPropertyNames(proto)
         .map(name => proto[name])
@@ -414,7 +448,7 @@ describe('CashRegisters — HTTP Contract', () => {
       expect(handler, 'немає POST :id/operations/:operationId/reverse').toBeDefined();
       const interceptors = (Reflect.getMetadata(INTERCEPTORS_METADATA, handler as object) ??
         []) as unknown[];
-      expect(interceptors).toContain(IdempotencyInterceptor);
+      expect(interceptors).toContain(RequiredIdempotencyInterceptor);
       const roles = [
         ...((Reflect.getMetadata(ROLES_KEY, handler as object) as string[] | undefined) ?? []),
       ].sort();

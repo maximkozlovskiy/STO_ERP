@@ -128,7 +128,7 @@ const CALL_SITES: Record<string, CallSite> = {
       'повторної проводки для того самого Payment не буває. Від повторного створення самого Payment: ' +
       'CAS рядка наряду (updateMany where status/paidAmount/totalAmount = прочитані) + залишок наряду ' +
       '(BR-PAY-017); для рахунку без наряду — CAS paidAmount рахунку + перевірка залишку; ' +
-      '@unique onlinePaymentIntentId (P2002) для онлайн-оплат; IdempotencyInterceptor на POST /payments. ' +
+      '@unique onlinePaymentIntentId (P2002) для онлайн-оплат; RequiredIdempotencyInterceptor на POST /payments (без ключа — 400). ' +
       'PREPAYMENT — аванс за нарядом до «Виконано» (BR-PAY-020).',
     anchors: [
       /tx\.workOrder\.updateMany\(\{\s*where:\s*\{[^}]*paidAmount:\s*wo\.paidAmount\b/,
@@ -198,7 +198,7 @@ const CALL_SITES: Record<string, CallSite> = {
       guard:
         'Проводка 1:1 із щойно створеним рядком каси в тій самій tx (documentType = CashOperation, ' +
         'documentId = id рядка) — повторної проводки для того самого рядка не буває. Від повторного ' +
-        'створення самої операції: IdempotencyInterceptor на POST /cash-registers/:id/operations.',
+        'створення самої операції: RequiredIdempotencyInterceptor на POST /cash-registers/:id/operations (без ключа — 400).',
       anchors: [/\.createOperation\(/],
       argAnchors: [/documentType:\s*'CashOperation'/, /documentId:\s*\w+\.id\b/],
       raceTests: [

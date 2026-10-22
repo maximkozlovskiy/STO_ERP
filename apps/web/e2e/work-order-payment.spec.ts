@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { API } from './api-url';
+import { apiCall } from './api-helpers';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -29,35 +29,14 @@ async function getToken(page: Page): Promise<string> {
   return token as string;
 }
 
-async function api<T = unknown>(
+// Спільний хелпер: повтор на 429 і ключ ідемпотентності POST (каса й оплати без нього — 400).
+const api = <T = unknown>(
   page: Page,
   token: string,
   method: string,
   path: string,
   body?: unknown,
-): Promise<{ status: number; body: T }> {
-  return page.evaluate(
-    async ({ token, API, method, path, body }) => {
-      const r = await fetch(`${API}${path}`, {
-        method,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-        },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-      });
-      const text = await r.text();
-      let parsed: unknown = null;
-      try {
-        parsed = text ? JSON.parse(text) : null;
-      } catch {
-        parsed = text;
-      }
-      return { status: r.status, body: parsed as never };
-    },
-    { token, API, method, path, body },
-  );
-}
+) => apiCall<T>(page, token, method, path, body);
 
 /** Список із відповіді: `{ items }` або масив. */
 const listOf = <T>(b: unknown): T[] =>

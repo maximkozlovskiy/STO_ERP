@@ -903,6 +903,7 @@ export const VALIDATION_KEYS = [
   'err.auth.sessionInvalid',
   // Exception-повідомлення: idempotency-interceptor
   'err.idempotency.inProgress',
+  'err.idempotency.keyRequired',
   'err.idempotency.keyReusedDifferentBody',
   // Exception-повідомлення: fsm
   'err.fsm.transitionNotAllowed',

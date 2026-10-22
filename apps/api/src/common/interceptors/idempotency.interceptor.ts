@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   CallHandler,
   ConflictException,
   ExecutionContext,
@@ -39,6 +40,8 @@ const TTL_MS = 24 * 60 * 60 * 1000; // 24 год — вікно, у якому r
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
   private readonly logger = new Logger(IdempotencyInterceptor.name);
+  /** Без заголовка — 400, а не pass-through (`RequiredIdempotencyInterceptor`). */
+  protected readonly keyRequired: boolean = false;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -48,6 +51,9 @@ export class IdempotencyInterceptor implements NestInterceptor {
     const key = Array.isArray(rawKey) ? rawKey[0] : rawKey;
     const orgId = req.user?.orgId;
 
+    if (!key && this.keyRequired) {
+      throw new BadRequestException(translateError('err.idempotency.keyRequired', getLocale()));
+    }
     // Без ключа або без orgId (публічний роут) — звичайний потік, без дедуплікації.
     if (!key || !orgId) {
       return next.handle();
@@ -153,4 +159,14 @@ export class IdempotencyInterceptor implements NestInterceptor {
       .delete({ where: { orgId_key: { orgId, key } } })
       .catch(() => undefined); // резервації могло вже не бути — не критично
   }
+}
+
+/**
+ * Грошові маршрути (рішення власника 2026-10-22): каса — операція й сторно, оплата клієнта, сторно
+ * безготівкової оплати. Ключ обов'язковий — запит без `Idempotency-Key`, надісланий двічі (скрипт,
+ * сторонній клієнт), дав би дві операції й дві проводки; без заголовка — 400 до виконання.
+ */
+@Injectable()
+export class RequiredIdempotencyInterceptor extends IdempotencyInterceptor {
+  protected override readonly keyRequired = true;
 }

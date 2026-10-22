@@ -876,6 +876,8 @@ export const en: Record<string, string> = {
 
   // ── Exception messages: idempotency interceptor ──
   'err.idempotency.inProgress': 'The same request is still being processed — please wait',
+  'err.idempotency.keyRequired':
+    'The Idempotency-Key header is required - without it a repeated request would post the operation twice',
   'err.idempotency.keyReusedDifferentBody':
     'An earlier attempt from this form may have gone through, and the data has changed since. Close the form, check whether the record already exists, and start again if needed',
 

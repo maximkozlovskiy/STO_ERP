@@ -93,10 +93,11 @@ export function useCreatePayment() {
     mutationFn: ({
       idempotencyKey,
       ...body
-    }: { idempotencyKey?: string } & Record<string, unknown>) =>
+    }: { idempotencyKey: string } & Record<string, unknown>) =>
+      // Ключ обов'язковий: без нього сервер відповідає 400 (рішення власника 2026-10-22).
       apiFetch<{ id: string }>('/payments', {
         method: 'POST',
-        ...(idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
+        headers: { 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify(body),
       }),
     // WEB-R3-2: спільний хелпер — інвалідує invoices+work-orders+payments+баланс(counterparties/

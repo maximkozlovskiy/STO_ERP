@@ -84,15 +84,15 @@ model ExpenseCategory {        // дерево статей руху кошті�
 
 **Каси** (`/api/cash-registers`) — OWNER/ADMIN CRUD; список/баланс/історія — +ACCOUNTANT/RECEPTIONIST:
 
-| Метод             | URL                                                   | Дія                                                                                                                                       |
-| ----------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| GET               | `/cash-registers`                                     | Список кас (+ isFiscal/initialBalance/balance)                                                                                            |
-| GET               | `/cash-registers/:id`                                 | Картка каси (OWNER/ADMIN/ACCOUNTANT)                                                                                                      |
-| POST/PATCH/DELETE | `/cash-registers[/:id]`                               | CRUD (OWNER/ADMIN)                                                                                                                        |
-| GET               | `/cash-registers/:id/balance`                         | Поточний залишок                                                                                                                          |
-| GET               | `/cash-registers/:id/operations`                      | Історія (limit, q, dateFrom, dateTo): контрагент / працівник, підстава, номер документа, чек                                              |
-| POST              | `/cash-registers/:id/operations`                      | Ручна операція за приводом → `CashDeskService.create` (BR-CASH-016…021); `Idempotency-Key` дозволено                                      |
-| POST              | `/cash-registers/:id/operations/:operationId/reverse` | Сторно операції `{ reason }` → `CashDeskService.reverse` (BR-CASH-023…025); OWNER/ADMIN/ACCOUNTANT; `Idempotency-Key`; 201 — рядок сторно |
+| Метод             | URL                                                   | Дія                                                                                                                                                    |
+| ----------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET               | `/cash-registers`                                     | Список кас (+ isFiscal/initialBalance/balance)                                                                                                         |
+| GET               | `/cash-registers/:id`                                 | Картка каси (OWNER/ADMIN/ACCOUNTANT)                                                                                                                   |
+| POST/PATCH/DELETE | `/cash-registers[/:id]`                               | CRUD (OWNER/ADMIN)                                                                                                                                     |
+| GET               | `/cash-registers/:id/balance`                         | Поточний залишок                                                                                                                                       |
+| GET               | `/cash-registers/:id/operations`                      | Історія (limit, q, dateFrom, dateTo): контрагент / працівник, підстава, номер документа, чек                                                           |
+| POST              | `/cash-registers/:id/operations`                      | Ручна операція за приводом → `CashDeskService.create` (BR-CASH-016…021); `Idempotency-Key` обов'язковий (без нього — 400)                              |
+| POST              | `/cash-registers/:id/operations/:operationId/reverse` | Сторно операції `{ reason }` → `CashDeskService.reverse` (BR-CASH-023…025); OWNER/ADMIN/ACCOUNTANT; `Idempotency-Key` обов'язковий; 201 — рядок сторно |
 
 Рядок історії (`CashOperationResponseDto`) несе поля сторно: `reversalOfId` (рядок-сторно → id оригіналу) і
 `reversedBy { id, createdAt, reason }` (оригінал → хто, коли й чому його сторнував; `reason` = примітка
@@ -257,7 +257,7 @@ model ExpenseCategory {        // дерево статей руху кошті�
   тут не сторнуються — 400 з назвою документа, де їх скасовують. Сторно підкоряється наявним
   правилам каси: видача не більша за залишок (BR-CASH-006), фіскальна каса — лише з відкритою
   зміною (BR-CASH-005). Відкат наслідків (BR-CASH-024, 025) — у тій самій транзакції; якщо будь-що
-  відмовило, не змінюється нічого. Маршрут з `IdempotencyInterceptor`.
+  відмовило, не змінюється нічого. Маршрут з `RequiredIdempotencyInterceptor` (ключ обов'язковий, без нього — 400; рішення власника 2026-10-22).
 - **BR-CASH-024**: **Сторно оплати.** (Безготівкова оплата й стара оплата без призначення касового рядка не мають — їх сторнує `POST /payments/:id/reverse`, BR-PAY-024 у `payments.md`.)
   - _Оплата контрагента_ (рядок оплати клієнта `Payment`): проводка `PAYMENT_CANCEL` або
     `PREPAYMENT_CANCEL` (+1, за типом проводки оригіналу) на ту саму суму з курсом оригіналу,
@@ -308,7 +308,7 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 | каса-диригент: оплата контрагента і повернення клієнту (BR-CASH-017, 018)                                       | `../cash-registers/cash-desk.client.spec.ts`                                     | 35     |
 | каса-диригент: оплата постачальнику і повернення від постачальника (BR-CASH-019)                                | `../cash-registers/cash-desk.supplier.spec.ts`                                   | 19     |
 | каса-диригент: ролі за приводом (BR-CASH-021)                                                                   | `../cash-registers/cash-desk.roles.spec.ts`                                      | 58     |
-| HTTP-контракт `/cash-registers`, зокрема тіло ручної операції і маршрут сторно (ролі, причина, ідемпотентність) | `../cash-registers/cash-registers.contract.spec.ts`                              | 42     |
+| HTTP-контракт `/cash-registers`, зокрема тіло ручної операції і маршрут сторно (ролі, причина, ідемпотентність) | `../cash-registers/cash-registers.contract.spec.ts`                              | 44     |
 | привід за замовчуванням у статті: закріплення, конфлікт, напрям, відновлення (BR-CASH-022)                      | `../expense-categories/expense-categories.default-reason.spec.ts`                | 53     |
 | таблиця приводів `CASH_REASON_RULES` і zod-схема ручної операції                                                | `../../../../../packages/shared/src/schemas/forms/cash-operation.schema.spec.ts` | 102    |
 | сторно: рядок у журналі — курс оригіналу, `reversalOfId`, P2002 → 400 (BR-CASH-023)                             | `cash.reversal-record.spec.ts`                                                   | 10     |
@@ -320,7 +320,7 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 | бонуси за сторновану оплату: списання не нижче нуля, повтор, `earn` (BR-CASH-024)                               | `../loyalty/loyalty.reverse-earn.spec.ts`                                        | 12     |
 | причина сторно в zod-схемі (BR-CASH-023)                                                                        | `../../../../../packages/shared/src/schemas/forms/cash-reversal.schema.spec.ts`  | 11     |
 
-Разом: **651** кейсів (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
+Разом: **653** кейси (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
 
 **Межі сторожів.** Мітка `// guards:` означає «порушення правила в коді валить цей тест» (кожну перевірено мутацією 2026-10-08), але не «правило стережеться повністю»:
 
@@ -330,7 +330,7 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 - BR-CASH-014 — ролі перевірено за метаданими `@Roles` контролера. Гейт вкладок і кнопок за роллю на сторінці `/cash` (`page.tsx`, `canOperate`/`canManage`) web-тестом не стережеться.
 - BR-CASH-016…022 — тести написано зі специфікації до появи коду (2026-10-14) і мутацією ще НЕ перевірено: яка поломка мусить завалити який кейс — у звіті агента тестів, перевірка — за QA після злиття.
 - BR-CASH-017 — стережеться лише те, ЩО каса передає в `PaymentsService.create` (контрагент, сума, джерело «каса», наряд або аванс, «додатки» рядка). Борг, фіскальний чек, бонуси й перехід наряду в «Оплачено» — спеки модуля `payments`. Оплата без підстави: чи це аванс (`PREPAYMENT`), чи звичайна оплата — правило не каже, кейс цього не закріплює.
-- BR-CASH-018, BR-CASH-019 (повернення) — «одна транзакція» перевірено фейковим tx-клієнтом: рядок каси й проводка отримали той самий клієнт, а помилка проводки не лишає рядка каси. Справжній відкат у PostgreSQL unit-тест не відтворює. Повтор запиту без `Idempotency-Key` дає другу операцію — тестом не стережеться (запис у `settlements.callers.spec.ts`).
+- BR-CASH-018, BR-CASH-019 (повернення) — «одна транзакція» перевірено фейковим tx-клієнтом: рядок каси й проводка отримали той самий клієнт, а помилка проводки не лишає рядка каси. Справжній відкат у PostgreSQL unit-тест не відтворює. Запит без `Idempotency-Key` — 400 (рішення власника 2026-10-22, `RequiredIdempotencyInterceptor`; `cash-registers.contract.spec.ts`), тож повтор без ключа другої операції не дає.
 - BR-CASH-019 (оплата) — «каса й борг не змінюються», коли проведення не вдалося, тримає транзакція самого `SupplierPaymentsService.confirm`; тут стережеться лише скасування чернетки й підняття помилки. Випадок «проведення закомітилось, а відповідь упала» (скасування тоді відмовить) не покрито.
 - BR-CASH-021 — стережеться сервіс і метадані `@Roles` маршруту. Те, що приймальня бачить на сторінці `/cash` лише «оплату контрагента», — web-тести.
 - BR-CASH-022 — частковий унікальний індекс у базі й гонку двох одночасних закріплень unit-тест не відтворює: стережеться перевірка в сервісі й те, що `P2002` індексу стає 409 (update, create) або відновленням без приводу (restore); наявність індексу в базі — `prisma/schema-integrity.integration.spec.ts`. Наживо (review 2026-10-14): два одночасні PATCH з одним приводом — завжди 200 і 409. Виняток із правила: рух власних грошей між банком і касою (`withoutCategory`, BR-BANK-034) статті за приводом не отримує. Привід `PAYROLL` як привід статті правило прямо не дозволяє й не забороняє — кейсу немає. «Стаття за замовчуванням не того типу, що напрям» стережеться м'яко: рядок із такою статтею не пишеться, а чим саме — відмовою чи пропуском статті — правило не каже.

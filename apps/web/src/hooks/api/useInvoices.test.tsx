@@ -152,7 +152,15 @@ describe('useInvoices', () => {
 
       const { result } = renderHook(() => useCreatePayment(), { wrapper });
       await act(async () => {
-        await result.current.mutateAsync({ amount: 100, counterpartyId: 'cp-1' });
+        await result.current.mutateAsync({
+          amount: 100,
+          counterpartyId: 'cp-1',
+          idempotencyKey: 'key-1',
+        });
+      });
+      // Ключ обов'язковий (рішення власника 2026-10-22) — завжди в заголовку.
+      expect(apiFetchMock.mock.calls[0]![1]).toMatchObject({
+        headers: { 'Idempotency-Key': 'key-1' },
       });
 
       // Bug #245: ОБОВ'ЯЗКОВО три invalidate-виклики — без counterpartiesKeys.all

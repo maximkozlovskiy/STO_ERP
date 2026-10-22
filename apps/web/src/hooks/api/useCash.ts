@@ -176,10 +176,11 @@ export function useCreateCashOperation() {
       cashRegisterId,
       idempotencyKey,
       ...body
-    }: { cashRegisterId: string; idempotencyKey?: string } & CreateCashOperationBody) =>
+    }: { cashRegisterId: string; idempotencyKey: string } & CreateCashOperationBody) =>
+      // Ключ обов'язковий: без нього сервер відповідає 400 (рішення власника 2026-10-22).
       apiFetch<CashOperation>(`/cash-registers/${cashRegisterId}/operations`, {
         method: 'POST',
-        ...(idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
+        headers: { 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify(body),
       }),
     onSuccess: () => {

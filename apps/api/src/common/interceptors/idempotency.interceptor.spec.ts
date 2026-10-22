@@ -1,8 +1,12 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { firstValueFrom, of, throwError } from 'rxjs';
-import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { IdempotencyInterceptor } from './idempotency.interceptor';
+import { IdempotencyInterceptor, RequiredIdempotencyInterceptor } from './idempotency.interceptor';
 
 /**
  * A1 — reserve-first idempotency. Money-critical: доводимо, що:
@@ -149,5 +153,23 @@ describe('IdempotencyInterceptor (reserve-first)', () => {
       where: { orgId_key: { orgId: 'org-1', key: 'k1' } },
     });
     // MUTATION-VERIFY: прибрати release() у catch → delete не викликається → клієнт не зможе повторити.
+  });
+
+  // Рішення власника 2026-10-22: каса, оплати, сторно — без ключа 400, handler не виконується.
+  it('RequiredIdempotencyInterceptor: без Idempotency-Key → 400, handler і резервація не виконуються', () => {
+    const required = new RequiredIdempotencyInterceptor(prisma as never);
+    const handle = vi.fn(() => of('created'));
+    expect(() => required.intercept(makeCtx({}), { handle })).toThrow(BadRequestException);
+    expect(handle).not.toHaveBeenCalled();
+    expect(prisma.idempotencyKey.create).not.toHaveBeenCalled();
+  });
+
+  it('RequiredIdempotencyInterceptor: з ключем — той самий reserve-first потік', async () => {
+    const required = new RequiredIdempotencyInterceptor(prisma as never);
+    const res = await firstValueFrom(
+      required.intercept(makeCtx({ 'idempotency-key': 'k-1' }), handler('created')),
+    );
+    expect(res).toBe('created');
+    expect(prisma.idempotencyKey.create).toHaveBeenCalledTimes(1);
   });
 });
