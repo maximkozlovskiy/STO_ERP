@@ -159,7 +159,7 @@
       "cancel": "Cancel",
       "empty": "No garages",
       "default": "Main",
-      "vehicleCount": "{{count}} vehicles",
+      "vehicleCount": "Vehicles: {{count}}",
       "vehicles": "Vehicles",
       "addVehicle": "Vehicle",
       "noVehicles": "No vehicles",
@@ -203,7 +203,7 @@
     },
     "warranties": {
       "heading": "Warranties",
-      "recordsCount": "{{count}} records",
+      "recordsCount": "Records: {{count}}",
       "empty": "No warranties",
       "workOrderNumber": "Work order #{{number}}",
       "until": "until {{date}}",
@@ -213,7 +213,7 @@
     },
     "loyalty": {
       "points": "Loyalty points",
-      "pointsValue": "{{value}} points",
+      "pointsValue": "{{value}} pts",
       "redeemPlaceholder": "Number of points",
       "redeem": "Redeem",
       "empty": "No transactions",

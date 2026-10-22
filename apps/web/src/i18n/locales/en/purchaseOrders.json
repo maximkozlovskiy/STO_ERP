@@ -60,7 +60,7 @@
   },
   "payDue": {
     "overdue": "Overdue by {{days}} days",
-    "soon": "{{days}} days"
+    "soon": "{{days}} d"
   },
   "badges": {
     "deleted": "deleted"
@@ -90,7 +90,7 @@
     "returnUpdated": "Return updated",
     "orderSaved": "Order saved",
     "orderCreatedNo": "Order {{number}} created",
-    "pricedGoods": "{{count}} goods priced"
+    "pricedGoods": "Goods priced: {{count}}"
   },
   "aria": {
     "selectAll": "Select all",

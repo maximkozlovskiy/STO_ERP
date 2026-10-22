@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n/config';
 import { useForm } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
@@ -313,7 +314,11 @@ export function CounterpartyEditModal({
       })
       .catch(err => {
         if (modalVehiclesReqRef.current === vReqId)
-          setVehiclesError(err instanceof Error ? err.message : t('editModal.loadVehiclesFailed'));
+          setVehiclesError(
+            err instanceof Error
+              ? err.message
+              : i18n.t('counterparties:editModal.loadVehiclesFailed'),
+          );
       })
       .finally(() => {
         if (modalVehiclesReqRef.current === vReqId) setModalVehiclesLoading(false);
@@ -326,7 +331,11 @@ export function CounterpartyEditModal({
       })
       .catch(err => {
         if (modalWoReqRef.current === woReqId)
-          setWoError(err instanceof Error ? err.message : t('editModal.loadWorkOrdersFailed'));
+          setWoError(
+            err instanceof Error
+              ? err.message
+              : i18n.t('counterparties:editModal.loadWorkOrdersFailed'),
+          );
       })
       .finally(() => {
         if (modalWoReqRef.current === woReqId) setModalWorkOrdersLoading(false);
@@ -340,7 +349,9 @@ export function CounterpartyEditModal({
       .catch(err => {
         if (modalContractsReqRef.current === cReqId)
           setContractsError(
-            err instanceof Error ? err.message : t('editModal.loadContractsFailed'),
+            err instanceof Error
+              ? err.message
+              : i18n.t('counterparties:editModal.loadContractsFailed'),
           );
       })
       .finally(() => {
@@ -376,7 +387,11 @@ export function CounterpartyEditModal({
       })
       .catch(err => {
         if (modalVehiclesReqRef.current === vReqId)
-          setVehiclesError(err instanceof Error ? err.message : t('editModal.loadVehiclesFailed'));
+          setVehiclesError(
+            err instanceof Error
+              ? err.message
+              : i18n.t('counterparties:editModal.loadVehiclesFailed'),
+          );
       })
       .finally(() => {
         if (modalVehiclesReqRef.current === vReqId) setModalVehiclesLoading(false);
@@ -405,7 +420,9 @@ export function CounterpartyEditModal({
       .catch(err => {
         if (modalContractsReqRef.current === cReqId)
           setContractsError(
-            err instanceof Error ? err.message : t('editModal.loadContractsFailed'),
+            err instanceof Error
+              ? err.message
+              : i18n.t('counterparties:editModal.loadContractsFailed'),
           );
       })
       .finally(() => {
