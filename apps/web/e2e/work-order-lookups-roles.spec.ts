@@ -107,6 +107,7 @@ const state: {
   contractId?: string;
   woId?: string;
   woNumber?: string;
+  workId?: string;
   workName?: string;
   mechId?: string;
   adminId?: string;
@@ -142,7 +143,8 @@ async function openWoCard(page: Page, mechanic = false): Promise<Locator> {
   await row.getByTitle('Відкрити наряд').click();
   const card = page.getByRole('dialog').filter({ hasText: state.woNumber! });
   await expect(card).toBeVisible({ timeout: 30_000 });
-  await expect(card).toContainText('Робота');
+  // Картка завантажилась — у ній рядок з роботою тесту (а не слово з чужих даних).
+  await expect(card).toContainText(state.workName!);
   return card;
 }
 
@@ -253,9 +255,13 @@ test.describe('Картка наряду — довідники за ролям�
     expect(contract.status, JSON.stringify(contract.body)).toBe(201);
     state.contractId = contract.body.id;
 
+    // Підйомники довідника, а не тимчасові інших спеків («000 E2E …»): паралельний
+    // work-order-line-executor ставив свій першим, цей спек закріплював за ним свого механіка —
+    // і обидва падали (там «єдиний механік» ставав другим, тут підйомник зникав посеред тесту).
     const lifts = await api<{ id: string; name: string }[]>(page, 'GET', '/lifts');
-    expect(lifts.body.length, 'потрібні два підйомники').toBeGreaterThanOrEqual(2);
-    [state.liftA, state.liftB] = lifts.body;
+    const own = lifts.body.filter(l => !l.name.startsWith('000 E2E'));
+    expect(own.length, 'потрібні два підйомники довідника').toBeGreaterThanOrEqual(2);
+    [state.liftA, state.liftB] = own;
     // ── Працівники — сторінкою «Співробітники» ───────────────────────────
     await createEmployeeViaUi(page, {
       onCreated: id => {
@@ -285,13 +291,17 @@ test.describe('Картка наряду — довідники за ролям�
       role: 'RECEPTIONIST',
       login: RECEPTION_LOGIN,
     });
+    // Робота — з довідника, але не тимчасова робота іншого спеку («000 E2E …»): паралельний
+    // прогін ставив її першою за назвою, а потім видаляв (тест падав на чужих даних).
     const works = await api<{ items: { id: string; name: string }[] }>(
       page,
       'GET',
-      '/works?limit=1',
+      '/works?limit=100',
     );
-    expect(works.body.items.length, 'потрібна хоч одна робота в довіднику').toBeGreaterThan(0);
-    state.workName = works.body.items[0].name;
+    const work = works.body.items.find(w => !w.name.startsWith('000 E2E'));
+    expect(work, 'потрібна хоч одна робота довідника (не з тестових даних)').toBeTruthy();
+    state.workId = work!.id;
+    state.workName = work!.name;
 
     // ── Наряд — через інтерфейс ───────────────────────────────────────────
     // Картка наряду читає довідники при монтуванні сторінки — сторінка нарядів після створення
@@ -361,8 +371,7 @@ test.describe('Картка наряду — довідники за ролям�
 
     // Рядок із виконавцем-адміністратором — дані зі старих нарядів (UI такого вже не створює).
     const legacy = await api(page, 'POST', `/work-orders/${state.woId}/lines`, {
-      workId: (await api<{ items: { id: string }[] }>(page, 'GET', '/works?limit=1')).body.items[0]
-        .id,
+      workId: state.workId,
       employeeId: state.adminId,
       normoHours: 1,
       price: 100,
