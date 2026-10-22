@@ -31,10 +31,16 @@ const inv = (id: string, status: string, over: Record<string, unknown> = {}) => 
   ...over,
 });
 
-function harness(status: string, paidAmount = 0, invoices = [inv('inv-1', 'SENT')]) {
+function harness(
+  status: string,
+  paidAmount = 0,
+  invoices = [inv('inv-1', 'SENT')],
+  warranties: Record<string, unknown>[] = [],
+) {
   const h = planningHarness({
     workOrders: [woRow({ status, paidAmount }), woRow({ id: OTHER_WO, number: 'НРД-9' })],
     invoices,
+    warranties,
   });
   // Як Prisma: прочитаний рядок — копія, а не живий рядок таблиці.
   const read = h.workOrder.findFirst.getMockImplementation()!;
@@ -97,6 +103,55 @@ describe('WorkOrdersService.transition: «Виставлено» → «Скас�
     expect(statusOf(h, 'inv-deleted')).toBe('DRAFT');
     expect(statusOf(h, 'inv-paid')).toBe('PAID');
     expect(h.stockEffects.returnPartsAndCredit).toHaveBeenCalledTimes(1);
+  });
+
+  // Bug #945: гарантія скасованого наряду лишалась «Активною» — у журналі, у віджеті й для звернення.
+  // guards: BR-WO-031
+  it.each(['INVOICED', 'COMPLETED'])(
+    '%s → «Скасовано»: гарантія наряду без звернення гасне; звернена, чужа й іншого наряду — ні',
+    async from => {
+      const w = (id: string, over: Record<string, unknown> = {}) => ({
+        id,
+        orgId: ORG,
+        workOrderId: WO_ID,
+        claimedAt: null,
+        deletedAt: null,
+        ...over,
+      });
+      const h = harness(
+        from,
+        0,
+        [],
+        [
+          w('w-own'),
+          w('w-claimed', { claimedAt: new Date('2026-05-01T00:00:00Z') }),
+          w('w-other-wo', { workOrderId: OTHER_WO }),
+          w('w-foreign', { orgId: OTHER_ORG }),
+        ],
+      );
+
+      await h.service.transition(ORG, WO_ID, 'CANCELLED' as never, 'u');
+
+      const deleted = (id: string) => h.warranty.rows.find(r => r.id === id)!.deletedAt !== null;
+      expect(deleted('w-own')).toBe(true);
+      expect(deleted('w-claimed')).toBe(false);
+      expect(deleted('w-other-wo')).toBe(false);
+      expect(deleted('w-foreign')).toBe(false);
+    },
+  );
+
+  // guards: BR-WO-031, BR-WO-014
+  it('сплачено більше 0 → 400, гарантія жива', async () => {
+    const h = harness(
+      'INVOICED',
+      50,
+      [],
+      [{ id: 'w-own', orgId: ORG, workOrderId: WO_ID, claimedAt: null, deletedAt: null }],
+    );
+
+    await expect(h.service.transition(ORG, WO_ID, 'CANCELLED' as never, 'u')).rejects.toThrow();
+
+    expect(h.warranty.rows[0]!.deletedAt).toBeNull();
   });
 
   // guards: BR-WO-031, BR-WO-014

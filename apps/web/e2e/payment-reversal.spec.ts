@@ -7,13 +7,11 @@ test.describe.configure({ mode: 'serial' });
 /**
  * Сторно безготівкової оплати клієнта (BR-PAY-024, BR-BANK-040, рішення власника 2026-10-22),
  * через браузер:
- *  1. наряд створено в списку нарядів, робота й статуси до «Виконано» — на сторінці наряду; часткова
- *     оплата на власний банківський рахунок спеку вікном «Оплатити»; «Сторнувати» з «Пов'язаних
- *     документів» наряду в списку → сплачено 0, оплата позначена «Сторновано», дії більше немає.
- *     Оплата часткова свідомо: повністю оплачений наряд після сторно стає «Виставлено», а з
- *     «Виставлено» карта переходів не веде ні в «Скасовано», ні до видалення — тестовий наряд
- *     лишився б у базі назавжди (питання власнику в TECH-DEBT). Перехід «Оплачено» → «Виставлено»
- *     стереже unit-спек `payments.reverse-noncash.spec.ts`;
+ *  1. наряд створено в списку нарядів, робота й статуси до «Виконано» — на сторінці наряду; повна
+ *     оплата на власний банківський рахунок спеку вікном «Оплатити» → «Оплачено»; «Сторнувати» з
+ *     «Пов'язаних документів» наряду в списку → сплачено 0, «Виставлено», оплата позначена
+ *     «Сторновано», дії більше немає; далі «Скасувати» на сторінці наряду (BR-WO-031) — попередження
+ *     про склад, борг і рахунок, наряд «Скасовано», живої гарантії наряду немає (Bug #945);
  *  2. вхідний платіж, внесений і рознесений на клієнта вікном «Новий платіж» → «Сторнувати
  *     оплату» на рядку → рядок «Не рознесено» з причиною, оплата сторнована.
  *
@@ -335,8 +333,8 @@ test.describe('Сторно безготівкової оплати (BR-PAY-024)
     }
   });
 
-  // guards: BR-PAY-024
-  test('наряд оплачено на банківський рахунок → «Сторнувати» з «Пов’язаних документів» → сплачено 0', async ({
+  // guards: BR-PAY-024, BR-WO-031
+  test('наряд оплачено на банківський рахунок → «Сторнувати» з «Пов’язаних документів» → «Виставлено» → «Скасовано»', async ({
     page,
   }) => {
     test.setTimeout(300_000);
@@ -349,12 +347,14 @@ test.describe('Сторно безготівкової оплати (BR-PAY-024)
     await expect(pay).toBeVisible({ timeout: 10_000 });
     await pay.getByLabel('Метод оплати').selectOption(METHOD_CODE);
     await expect(pay.getByLabel(/^Рахунок/)).toHaveValue(state.accountId!);
-    await pay.getByLabel('Сума, ₴').fill('50');
+    // Порожня сума — увесь залишок: наряд «Оплачено».
     await pay.getByRole('button', { name: 'Підтвердити оплату' }).click();
     await expect(pay).toBeHidden({ timeout: 10_000 });
     await expect
-      .poll(async () => Number((await getWo(page, wo.id)).paidAmount), { timeout: 15_000 })
-      .toBe(50);
+      .poll(async () => (await getWo(page, wo.id)).status, { timeout: 15_000 })
+      .toBe('PAID');
+    const total = Number((await getWo(page, wo.id)).totalAmount);
+    const totalText = total.toLocaleString('uk-UA', { minimumFractionDigits: 2 });
 
     // «Пов'язані документи» наряду в списку нарядів.
     await page.goto('/work-orders');
@@ -364,9 +364,11 @@ test.describe('Сторно безготівкової оплати (BR-PAY-024)
     await woRow.getByTitle(/^Оплати: /).click();
     const popup = page.getByRole('dialog', { name: "Пов'язані документи наряду" });
     await expect(popup).toBeVisible({ timeout: 10_000 });
-    await popup.getByRole('button', { name: /^Сторнувати оплату 50,00 ₴/ }).click();
+    await popup
+      .getByRole('button', { name: new RegExp(`^Сторнувати оплату ${totalText} ₴`) })
+      .click();
 
-    const body = await reverseInCard(page, '50,00 ₴');
+    const body = await reverseInCard(page, `${totalText} ₴`);
     expect(body.reversedAt).toBeTruthy();
     expect(body.reversalReason).toBe(REASON);
 
@@ -376,14 +378,30 @@ test.describe('Сторно безготівкової оплати (BR-PAY-024)
     await page.screenshot({ path: test.info().outputPath('rev_wo_linked.png') });
 
     const after = await getWo(page, wo.id);
-    expect(after.status).toBe('COMPLETED');
+    expect(after.status).toBe('INVOICED');
     expect(Number(after.paidAmount)).toBe(0);
     // Стан на сторінці наряду: «Сплачено» 0.
     await page.goto(`/work-orders/${wo.id}`);
-    await expect(page.getByTestId('wo-totals-remaining')).toContainText(
-      Number(after.totalAmount).toLocaleString('uk-UA', { minimumFractionDigits: 2 }),
-      { timeout: 20_000 },
+    await expect(page.getByTestId('wo-totals-remaining')).toContainText(totalText, {
+      timeout: 20_000,
+    });
+
+    // BR-WO-031: «Виставлено» без оплати скасовується зі сторінки наряду.
+    await page.getByRole('button', { name: 'Скасувати', exact: true }).first().click();
+    const ask = page.getByRole('dialog').filter({ hasText: 'Перевести наряд у статус' });
+    await expect(ask).toContainText('рахунок наряду — скасовано');
+    await ask.getByRole('button', { name: 'Так, скасувати' }).click();
+    await expect(ask).toBeHidden({ timeout: 10_000 });
+    await expect
+      .poll(async () => (await getWo(page, wo.id)).status, { timeout: 15_000 })
+      .toBe('CANCELLED');
+    // Bug #945: гарантія скасованого наряду не лишається «Активною».
+    const warranties = await api<{ items: { workOrderId: string }[] }>(
+      page,
+      'GET',
+      `/warranties?q=${encodeURIComponent(wo.number)}`,
     );
+    expect(warranties.body.items.filter(w => w.workOrderId === wo.id)).toHaveLength(0);
   });
 
   // guards: BR-PAY-024, BR-BANK-040

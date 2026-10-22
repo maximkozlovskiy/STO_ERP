@@ -190,6 +190,7 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
     Object.assign(prisma, {
       completionAct: { updateMany: actsUpdateMany },
       invoice: { updateMany },
+      warranty: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // Bug #945
     });
 
     await makeService(prisma).transition(ORG, WO_ID, 'CANCELLED' as never);

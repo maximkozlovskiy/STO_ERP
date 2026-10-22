@@ -1846,6 +1846,13 @@ export class WorkOrdersService {
             },
             data: { status: 'CANCELLED' },
           });
+          // BR-WO-031 (Bug #945): гарантія наряду без звернення гасне разом із ним — запчастини
+          // повернулись на склад, борг сторновано; лишалась «Активною» в журналі й віджеті, і на неї
+          // можна було подати звернення. Звернену не чіпаємо: звернення — уже історія.
+          await tx.warranty.updateMany({
+            where: { orgId, workOrderId: id, deletedAt: null, claimedAt: null },
+            data: { deletedAt: new Date() },
+          });
         }
 
         // BR-WO-021: кожен вхід у «В роботі» дорезервовує лише бракуюче (потрібно − net-резерв,

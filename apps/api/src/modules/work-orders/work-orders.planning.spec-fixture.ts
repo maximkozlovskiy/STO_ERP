@@ -121,7 +121,12 @@ export function slotRow(id: string, over: MemRow = {}): MemRow {
 }
 
 export function planningHarness(
-  opts: { workOrders?: MemRow[]; slots?: MemRow[]; invoices?: MemRow[] } = {},
+  opts: {
+    workOrders?: MemRow[];
+    slots?: MemRow[];
+    invoices?: MemRow[];
+    warranties?: MemRow[];
+  } = {},
 ) {
   const workOrder = memoryTable(opts.workOrders ?? [woRow()], () => {
     const { id: _id, ...defaults } = woRow();
@@ -166,8 +171,10 @@ export function planningHarness(
   const completionAct = exists([]);
   // BR-WO-031: рахунок наряду скасовується разом із нарядом.
   const invoice = memoryTable(opts.invoices ?? []);
+  // BR-WO-031 (Bug #945): гарантія наряду без звернення гасне разом із нарядом.
+  const warranty = memoryTable(opts.warranties ?? []);
 
-  const tables: MemRow[][] = [workOrder.rows, calendarSlot.rows, invoice.rows];
+  const tables: MemRow[][] = [workOrder.rows, calendarSlot.rows, invoice.rows, warranty.rows];
   const $transaction = vi.fn(async (cb: (tx: unknown) => unknown) => {
     const snapshot = tables.map(rows => rows.map(r => structuredClone(r)));
     try {
@@ -189,6 +196,7 @@ export function planningHarness(
     counterpartyContract,
     completionAct,
     invoice,
+    warranty,
     $transaction,
     // `lockWorkOrdersForUpdate` (`SELECT … FOR UPDATE`): блокувань у пам'яті немає — лише виклик,
     // за яким спек бачить, які наряди й у якому порядку заблоковано.
@@ -233,6 +241,7 @@ export function planningHarness(
     workOrder,
     calendarSlot,
     invoice,
+    warranty,
     createMany,
     docNumbers,
     stockEffects,

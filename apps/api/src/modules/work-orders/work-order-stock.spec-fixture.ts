@@ -161,6 +161,8 @@ export function memoryDb(opts: StockHarnessOptions = {}) {
   add('completionAct');
   // BR-WO-031: рахунок наряду скасовується разом із нарядом.
   add('invoice');
+  // BR-WO-031 (Bug #945): гарантія наряду без звернення гасне разом із нарядом.
+  add('warranty');
   add('purchaseList');
   add('purchaseListItem', [], () => ({
     createdAt: tick(),
