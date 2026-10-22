@@ -32,6 +32,7 @@
    "JwtStrategy.validate чинний працівник проходить; у запит іде id, orgId і роль з БАЗИ"
   ],
   "apps/api/src/common/cors.options.spec.ts": [
+   "CORS — живий preflight через Fastify-адаптер Content-Disposition відкритий браузеру (access-control-expose-headers)",
    "CORS — живий preflight через Fastify-адаптер allow-methods не звужується до дефолту GET,HEAD,POST",
    "CORS — живий preflight через Fastify-адаптер dev-fallback дозволяє і dev-сервер (:3001), і E2E-сервер (:3002); чужий origin — ні",
    "CORS — живий preflight через Fastify-адаптер origin відбивається у відповіді разом із credentials",
@@ -1575,6 +1576,12 @@
    "Calendar — HTTP Contract POST /calendar/slots — валідація приймає status=AVAILABLE і передає його в сервіс як є (201)",
    "Calendar — HTTP Contract POST /calendar/slots — валідація приймає status=BLOCKED і передає його в сервіс як є (201)",
    "Calendar — HTTP Contract POST /calendar/slots — валідація приймає status=BOOKED і передає його в сервіс як є (201)",
+   "Calendar — HTTP Contract POST /calendar/slots — тип запису (BR-CAL-003) PATCH з type → 400: тип після створення не змінюється, сервіс не викликано",
+   "Calendar — HTTP Contract POST /calendar/slots — тип запису (BR-CAL-003) type=BREAK → 201, тип доходить до сервісу",
+   "Calendar — HTTP Contract POST /calendar/slots — тип запису (BR-CAL-003) type=MAINTENANCE → 201, тип доходить до сервісу",
+   "Calendar — HTTP Contract POST /calendar/slots — тип запису (BR-CAL-003) type=MEETING → 201, тип доходить до сервісу",
+   "Calendar — HTTP Contract POST /calendar/slots — тип запису (BR-CAL-003) type=WORK → 201, тип доходить до сервісу",
+   "Calendar — HTTP Contract POST /calendar/slots — тип запису (BR-CAL-003) невідомий тип → 400, сервіс не викликано",
    "Calendar — HTTP Contract POST /calendar/slots/check-conflicts emptyToUndefined: excludeWorkOrderId=\"\" → проходить валідацію",
    "Calendar — HTTP Contract POST /calendar/slots/check-conflicts повертає 200 + порожній результат коли немає liftId+employeeId (read-only, short-circuit)",
    "Calendar — HTTP Contract POST /calendar/slots/check-conflicts повертає 400 коли excludeWorkOrderId не UUID",
@@ -1671,9 +1678,21 @@
    "CalendarService — види слотів (BR-CAL) counterpartyId без workOrderId → слот зберігає прямого клієнта, наряд лишається null",
    "CalendarService — види слотів (BR-CAL) status не передано → слот створюється як BOOKED, а не AVAILABLE",
    "CalendarService — види слотів (BR-CAL) type=BREAK без наряду і без клієнта → слот створюється саме з цим типом",
+   "CalendarService — види слотів (BR-CAL) type=BREAK з автомобілем → 400 «службовий запис без клієнта», слот не створено",
    "CalendarService — види слотів (BR-CAL) type=MAINTENANCE без наряду і без клієнта → слот створюється саме з цим типом",
+   "CalendarService — види слотів (BR-CAL) type=MAINTENANCE з клієнтом → 400 «службовий запис без клієнта», слот не створено",
    "CalendarService — види слотів (BR-CAL) type=MEETING без наряду і без клієнта → слот створюється саме з цим типом",
+   "CalendarService — види слотів (BR-CAL) type=MEETING з клієнтом і автомобілем → 400 «службовий запис без клієнта», слот не створено",
+   "CalendarService — види слотів (BR-CAL) type=WORK з клієнтом і автомобілем → створюється, як і раніше",
    "CalendarService — види слотів (BR-CAL) updateSlot з employeeId=null → знімає механіка зі слота, проба лишається тільки по підйомнику",
+   "CalendarService — види слотів (BR-CAL) updateSlot перерви: автомобіль → 400, запис не змінено",
+   "CalendarService — види слотів (BR-CAL) updateSlot перерви: клієнт → 400, запис не змінено",
+   "CalendarService — види слотів (BR-CAL) updateSlot перерви: наряд → 400, запис не змінено",
+   "CalendarService — види слотів (BR-CAL) updateSlot перерви: примітка, наряд і клієнт null → змінено, тип той самий",
+   "CalendarService — види слотів (BR-CAL) «Робота» поверх перерви на тому самому підйомнику → 400 «підйомник зайнятий»",
+   "CalendarService — види слотів (BR-CAL) нарада поверх обслуговування на тому самому підйомнику → 400 «підйомник зайнятий»",
+   "CalendarService — види слотів (BR-CAL) перерва механіка → його ж «Робота» в цей час на іншому підйомнику — 400 «механік зайнятий»",
+   "CalendarService — види слотів (BR-CAL) перерва поверх запису «Робота» на тому самому підйомнику → 400 «підйомник зайнятий»",
    "CalendarService — види слотів (BR-CAL) слот на підйомник без employeeId → створюється з employeeId=null, зайнятість механіка не перевіряється"
   ],
   "apps/api/src/modules/cash-registers/cash-desk.base-document.spec.ts": [
@@ -2751,7 +2770,8 @@
    "GET /goods/stock-totals — HTTP Contract Bug #453: змішаний регістр у UUID (нижній/верхній) — UUID_RE case-insensitive → 200",
    "GET /goods/stock-totals — HTTP Contract Bug #453: невалідний UUID → 400 BadRequestException + сервіс НЕ викликаний",
    "GET /goods/stock-totals — HTTP Contract Bug #453: порожній ids=\"\" → 200 + [], сервіс отримує []",
-   "GET /goods/stock-totals — HTTP Contract Bug #453: рівно 100 UUIDs → 200 (boundary, не off-by-one)"
+   "GET /goods/stock-totals — HTTP Contract Bug #453: рівно 100 UUIDs → 200 (boundary, не off-by-one)",
+   "GET /goods/stock-totals — HTTP Contract по складу віддає quantity, reserved і available — поля доходять до клієнта без втрат"
   ],
   "apps/api/src/modules/goods/goods.role-gate.spec.ts": [
    "GoodsService.findOne — purchasePrice role-gating ACCOUNTANT бачить purchasePrice=100 коли БД=100",
@@ -2841,6 +2861,12 @@
    "GoodsService — статуси-мітки (assign / unassign) toDto: soft-deleted статус прихований у statuses, активний лишається",
    "GoodsService — статуси-мітки (assign / unassign) unassign неіснуючого призначення → NotFoundException, кеш не чіпається",
    "GoodsService — статуси-мітки (assign / unassign) unassign: видаляє link лише в межах org (orgId + goodId + statusId) і скидає кеш"
+  ],
+  "apps/api/src/modules/goods/goods.stock-free.spec.ts": [
+   "GoodsService.stockTotals — вільна кількість по складах (BR-WO-029) float-дрейф залишку (сума рухів) не дає «вільно» 4e-16: available округлено до 3 знаків",
+   "GoodsService.stockTotals — вільна кількість по складах (BR-WO-029) totalQuantity лишається сумою фізичної наявності (колонка «На складі»), без резерву",
+   "GoodsService.stockTotals — вільна кількість по складах (BR-WO-029) по кожному складу — quantity, reserved і available = quantity − reserved",
+   "GoodsService.stockTotals — вільна кількість по складах (BR-WO-029) резерв понад наявність → available 0, не від’ємне; quantity і reserved — як у базі"
   ],
   "apps/api/src/modules/inspection/inspection.service.spec.ts": [
    "InspectionService.create CRITICAL points + editable WO: створює line з amount = normoHours * price",
@@ -2968,9 +2994,12 @@
    "InventoryService.createMovement guards Bug #613 — concurrent WRITEOFF race-condition guard WRITEOFF з concurrent race (upsert повернув quantity<0) → BadRequestException",
    "InventoryService.createMovement guards Bug #613 — concurrent WRITEOFF race-condition guard happy-path (upsert повернув quantity>=0, reserved>=0) → без throw",
    "InventoryService.createMovement guards OPENING_BALANCE без price → fallback до good.purchasePrice (партія створюється)",
+   "InventoryService.createMovement guards OPENING_BALANCE з кількістю -5 → 400, нічого не записано",
    "InventoryService.createMovement guards OPENING_BALANCE створює партію (як RECEIPT), інакше залишок несписуваний",
    "InventoryService.createMovement guards RECEIPT НЕ викликає consumeBatch (лише розхід списує партії)",
+   "InventoryService.createMovement guards RECEIPT з кількістю -5 → 400, нічого не записано",
    "InventoryService.createMovement guards RECEIPT збільшує quantity і не торкається reserved",
+   "InventoryService.createMovement guards RESERVATION з кількістю -5 → 400, нічого не записано",
    "InventoryService.createMovement guards RESERVATION тільки інкрементує reserved, не quantity",
    "InventoryService.createMovement guards RESERVATION_RELEASE з додатною кількістю → 400 навіть коли резерву достатньо",
    "InventoryService.createMovement guards RESERVATION_RELEASE зменшує лише reserved: quantity не змінюється, партії не списуються",
@@ -2981,9 +3010,12 @@
    "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) shared-batch: дві частини з ОДНІЄЇ партії → ОДИН агрегований returnToBatch (per-line hazard)",
    "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) позитивна к-сть інкрементує StockItem.quantity і НЕ створює нову партію",
    "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) шукає негативні BatchConsumption документа й повертає у КОЖНУ партію",
+   "InventoryService.createMovement guards TRANSFER з кількістю 5 → 400, нічого не записано",
+   "InventoryService.createMovement guards TRANSFER з мінусом (вибуття) приймається",
    "InventoryService.createMovement guards WRITEOFF single-batch → проставляє batchId у stockMovement",
    "InventoryService.createMovement guards WRITEOFF викликає consumeBatch з costMethod із налаштувань + повертає weightedCostPrice",
    "InventoryService.createMovement guards WRITEOFF з достатніми залишками декрементує quantity",
+   "InventoryService.createMovement guards WRITEOFF з кількістю 5 → 400, нічого не записано",
    "InventoryService.createMovement guards WRITEOFF опускає quantity нижче reserved → throw (available не від'ємний)",
    "InventoryService.createMovement guards WRITEOFF у межах quantity, але понад available (частину зарезервовано) → 400, рух не записано",
    "InventoryService.createMovement guards WRITEOFF: costMethod не задано або налаштування недоступні → FIFO",
@@ -3037,6 +3069,7 @@
    "PricingRules — HTTP Contract GET /pricing-rules Bug #565: GET ?supplierId=not-uuid → 400 (ParseUUIDPipe guard)",
    "PricingRules — HTTP Contract GET /pricing-rules Bug #565: GET без supplierId → 200 (optional pipe)",
    "PricingRules — HTTP Contract GET /pricing-rules повертає 403 коли guard не пропустив",
+   "PricingRules — HTTP Contract GET /pricing-rules показує всі правила, не перші 200: хвіст дочитується наступною сторінкою",
    "PricingRules — HTTP Contract PATCH /pricing-rules/:id — Bug #27 validation Bug #186: PATCH з brandId з ЧУЖОЇ org → 404 «Бренд не знайдено»",
    "PricingRules — HTTP Contract PATCH /pricing-rules/:id — Bug #27 validation повертає 400 при percentValue > 10000",
    "PricingRules — HTTP Contract PATCH /pricing-rules/:id — Bug #27 validation повертає 400 при від'ємному fixedPrice",
@@ -3101,6 +3134,7 @@
    "PricingService.getPricingContext дерево категорій читається, коли хоч одне правило має категорію з довідника",
    "PricingService.getPricingContext жодне правило не має списку й категорії → зайвих запитів немає",
    "PricingService.getPricingContext зв’язки списків читаються лише для запитаних товарів і лише правил зі списком",
+   "PricingService.getPricingContext правила за межею першої сторінки теж діють — читаються наступні сторінки за курсором",
    "PricingService.getPricingContext читає активні невидалені правила організації за пріоритетом, з тірами й лічильником списку",
    "PricingService.resolveRule — яке правило діє на товар ближча категорія перемагає дальшу, навіть якщо в дальшої вищий пріоритет",
    "PricingService.resolveRule — яке правило діє на товар бренд сильніший за тип; правило бренду не діє на товар іншого бренду",
@@ -3277,6 +3311,14 @@
    "InvoicesService — line-totals (recalcTotals на бекенді) ПДВ ручного рядка за режимом організації (BR-INV-017) updateLine, «ПДВ зверху» 20%: рядок 1 × 100 → 100 / 20 / 120",
    "InvoicesService — line-totals (recalcTotals на бекенді) ПДВ ручного рядка за режимом організації (BR-INV-017) updateLine, «ПДВ у ціні» 20%: рядок 1 × 100 → 83.33 / 16.67 / 100",
    "InvoicesService — line-totals (recalcTotals на бекенді) ПДВ ручного рядка за режимом організації (BR-INV-017) тотожність рядка в обох режимах на «незручній» сумі 33.33: без ПДВ + ПДВ = з ПДВ"
+  ],
+  "apps/api/src/modules/invoices/invoices.line-units.spec.ts": [
+   "Рахунок — одиниця рядка як у наряді (Bug #868) addLine приймає UnitOfMeasure.id (як наряд): пара шукається за unitOfMeasureId товару",
+   "Рахунок — одиниця рядка як у наряді (Bug #868) друкований рахунок: одиниця рядка «Пак»",
+   "Рахунок — одиниця рядка як у наряді (Bug #868) картка рахунку: «Пак» з коефіцієнтом товару, а не базова «шт»",
+   "Рахунок — одиниця рядка як у наряді (Bug #868) оновлення рахунку з наряду: рядок запчастини записується з одиницею наряду",
+   "Рахунок — одиниця рядка як у наряді (Bug #868) рядок без одиниці — базова одиниця товару, без запиту одиниць",
+   "Рахунок — одиниця рядка як у наряді (Bug #868) рядок наряду переносить у рахунок свою одиницю (чиста функція)"
   ],
   "apps/api/src/modules/invoices/invoices.list-date-filter.spec.ts": [
    "InvoicesService.findAll — відбір за датою документа dateFrom + dateTo → documentDate від 09.10 до 10.10 календарними датами, без зсуву на пояс",
@@ -3964,15 +4006,19 @@
    "PaymentPollingProcessor — ланцюг опитування на живій черзі (Bug #804) після збою шлюзу й після «pending» наступне опитування СПРАВДІ виконується"
   ],
   "apps/api/src/modules/payments/payments.cash-register-required.spec.ts": [
+   "PaymentsService — готівка лише через касу (BR-PAY-019) безготівкова оплата лише з призначенням (BR-PAY-023) картка через термінал з касою за замовчуванням → у касу, без рахунку",
+   "PaymentsService — готівка лише через касу (BR-PAY-019) безготівкова оплата лише з призначенням (BR-PAY-023) онлайн-оплата від шлюзу (onlinePaymentIntentId) — без призначення, як раніше",
+   "PaymentsService — готівка лише через касу (BR-PAY-019) безготівкова оплата лише з призначенням (BR-PAY-023) переказ з рахунком у запиті → оплата на цей рахунок",
+   "PaymentsService — готівка лише через касу (BR-PAY-019) безготівкова оплата лише з призначенням (BR-PAY-023) рахунок за замовчуванням видалено → 400, а не оплата без рахунку",
+   "PaymentsService — готівка лише через касу (BR-PAY-019) безготівкова оплата лише з призначенням (BR-PAY-023) спосіб bank без рахунку в запиті й без замовчування → 400, платежу немає",
+   "PaymentsService — готівка лише через касу (BR-PAY-019) безготівкова оплата лише з призначенням (BR-PAY-023) спосіб card_terminal без рахунку в запиті й без замовчування → 400, платежу немає",
+   "PaymentsService — готівка лише через касу (BR-PAY-019) безготівкова оплата лише з призначенням (BR-PAY-023) спосіб monobank_qr без рахунку в запиті й без замовчування → 400, платежу немає",
    "PaymentsService — готівка лише через касу (BR-PAY-019) готівка без каси в запиті й без каси за замовчуванням → 400, платежу немає",
    "PaymentsService — готівка лише через касу (BR-PAY-019) готівка з касою за замовчуванням способу → рядок у цій касі, платіж несе касу",
    "PaymentsService — готівка лише через касу (BR-PAY-019) готівка, але призначення — банківський рахунок (явно чи за замовчуванням) → 400",
    "PaymentsService — готівка лише через касу (BR-PAY-019) застаріле замовчування (касу видалено) → 400, а не оплата повз касу",
    "PaymentsService — готівка лише через касу (BR-PAY-019) каса в запиті без sourceType (готівка, замовчування немає) → тип із id, оплата лягає в цю касу",
    "PaymentsService — готівка лише через касу (BR-PAY-019) каса в запиті без sourceType (термінал, замовчування — банківський рахунок) → тип із id, оплата лягає в цю касу",
-   "PaymentsService — готівка лише через касу (BR-PAY-019) спосіб bank без каси й без рахунку — як раніше: платіж є, рядка каси немає",
-   "PaymentsService — готівка лише через касу (BR-PAY-019) спосіб card_terminal без каси й без рахунку — як раніше: платіж є, рядка каси немає",
-   "PaymentsService — готівка лише через касу (BR-PAY-019) спосіб monobank_qr без каси й без рахунку — як раніше: платіж є, рядка каси немає",
    "PaymentsService — готівка лише через касу (BR-PAY-019) явна каса в запиті перемагає касу за замовчуванням"
   ],
   "apps/api/src/modules/payments/payments.fiscal-gate.spec.ts": [
@@ -3987,7 +4033,7 @@
   ],
   "apps/api/src/modules/payments/payments.idempotency.spec.ts": [
    "PaymentsService — FIN-C1 ідемпотентність оплати CAS count=0 (paidAmount змінено паралельно) → throw, БЕЗ payment.create та settlement",
-   "PaymentsService — FIN-C1 ідемпотентність оплати config-дефолт BANK_ACCOUNT з видаленим рахунком (stale) → degrade to null, платіж УСПІШНИЙ (offline-first)",
+   "PaymentsService — FIN-C1 ідемпотентність оплати config-дефолт BANK_ACCOUNT з видаленим рахунком (stale) → 400: безготівкова оплата без рахунку не пишеться",
    "PaymentsService — FIN-C1 ідемпотентність оплати happy-path: CAS(paidAmount) count=1 → paidAmount+=amount, status→PAID ПЕРЕД create + settlement",
    "PaymentsService — FIN-C1 ідемпотентність оплати переплата: сума > залишку → throw ПЕРЕД CAS (без updateMany/create)",
    "PaymentsService — FIN-C1 ідемпотентність оплати рахунок у DRAFT → throw ПЕРЕД CAS (лише SENT/PARTIALLY_PAID приймають оплату)",
@@ -4009,9 +4055,9 @@
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #673: explicit CASH_REGISTER + чужа/видалена каса → NotFound (строга валідація), без Payment",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #674: explicit sourceType=BANK_ACCOUNT БЕЗ bankAccountId → 400, без Payment",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #674: explicit sourceType=CASH_REGISTER БЕЗ cashRegisterId → 400, без Payment",
-   "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #674: methodConfig=null (невідомий метод) → джерело null, платіж успішний",
+   "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #674: невідомий метод (methodConfig=null) без призначення → 400; з явним рахунком — проходить",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) DTO без джерела + config-дефолт BANK_ACCOUNT (живий рахунок) → джерело платежу з config",
-   "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) settlement і paidAmount однакові без джерела, з BANK_ACCOUNT і з CASH_REGISTER (борг не залежить від source-link)",
+   "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) settlement і paidAmount однакові з рахунком способу, з явним BANK_ACCOUNT і з CASH_REGISTER (борг не залежить від source-link)",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) додатки касового рядка (внутрішній аргумент) лягають у рядок каси оплати; без них рядок як раніше",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) рахунок виписано на іншого контрагента → 400, рахунок не чіпається, платіж і проводка не створюються",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) рахунок у OVERDUE → оплата приймається: часткова → PARTIALLY_PAID, повна → PAID",
@@ -4028,7 +4074,7 @@
    "PaymentsService — мультивалюта Фаза 2 (Payment currencyId/amountBase + fiscal-UAH guard) оплата USD-наряду з USD-каси: WorkOrder.paidAmount інкрементиться dto.amount (валюта наряду)",
    "PaymentsService — мультивалюта Фаза 2 (Payment currencyId/amountBase + fiscal-UAH guard) оплата USD-інвойсу з USD-каси: overpay-guard у ВАЛЮТІ (dto.amount > залишку → 400)",
    "PaymentsService — мультивалюта Фаза 2 (Payment currencyId/amountBase + fiscal-UAH guard) оплата USD-інвойсу з USD-каси: paidAmount інкрементиться dto.amount (валюта), не amountBase",
-   "PaymentsService — мультивалюта Фаза 2 (Payment currencyId/amountBase + fiscal-UAH guard) оплата без рахунку (source=null) → base (rate=1, amountBase=amount), resolveBaseConversion не викликається",
+   "PaymentsService — мультивалюта Фаза 2 (Payment currencyId/amountBase + fiscal-UAH guard) оплата на рахунок без валюти (базова) → base (rate=1, amountBase=amount), resolveBaseConversion не викликається",
    "PaymentsService — мультивалюта Фаза 2 (Payment currencyId/amountBase + fiscal-UAH guard) оплата у USD-касу → payment пише currencyId/amountBase/rateUsed по курсу; settlement отримує currencyId",
    "PaymentsService — мультивалюта Фаза 2 (Payment currencyId/amountBase + fiscal-UAH guard) повна оплата USD-інвойсу, chargeBase>paidBase → FX_LOSS на різницю (base), documentId=інвойс",
    "PaymentsService — мультивалюта Фаза 2 (Payment currencyId/amountBase + fiscal-UAH guard) повна оплата USD-інвойсу, paidBase>chargeBase → FX_GAIN на різницю",
@@ -4361,7 +4407,9 @@
    "PayrollService.remove — що можна відкинути CANCELLED видаляється так само, як DRAFT і COMPUTED (м’яко)",
    "PayrollService.remove — що можна відкинути видалення не чіпає рядків і розшифровки — лише позначка на самій відомості",
    "PayrollService.remove — що можна відкинути виплачена відомість → 400 з текстом «Не можна видалити виплачений період»",
-   "PayrollService.remove — що можна відкинути відомості немає → 404, нічого не позначається"
+   "PayrollService.remove — що можна відкинути відомості немає → 404, нічого не позначається",
+   "PayrollService.remove — що можна відкинути гонка: виплата пройшла між читанням і видаленням → 400, виплачений період не видалено",
+   "PayrollService.remove — що можна відкинути гонка: період видалили паралельно → 404"
   ],
   "apps/api/src/modules/payroll/payroll.period-bounds.spec.ts": [
    "PayrollService — межі періоду за Києвом compute бере межі зі збереженого періоду і дає ТІ САМІ межі обом запитам (рядки + розшифровка)",
@@ -4903,6 +4951,7 @@
    "ReconciliationProcessor keyset-пагінація: повний батч (=RECON_BATCH_SIZE) → другий findMany-виклик з cursor (немає silent truncation)",
    "ReconciliationProcessor paidAmount drift (paidAmount≠Σpayment) → logger.error",
    "ReconciliationProcessor stock drift (quantity≠Σbatch) → logger.error",
+   "ReconciliationProcessor валютна транзакція: баланс у базовій валюті звіряється з amountBase, не з amount",
    "ReconciliationProcessor консистентні дані (Σbatch=quantity, Σtx×sign=balance, Σpayment=paidAmount) → 0 drift",
    "ReconciliationProcessor наряд: paidAmount ≠ Σ оплат наряду → DRIFT workOrder.paidAmount; збіг → тиша",
    "ReconciliationProcessor рахунок наряду розійшовся з нарядом → DRIFT paidAmount (лог, не виняток)",
@@ -6145,6 +6194,7 @@
    "SyncService.push calendar_slots — запис наряду через наряд (BR-WO-024) новий час на зайнятому підйомнику → конфлікт із причиною, наряд і записи не змінено",
    "SyncService.push calendar_slots — запис наряду через наряд (BR-WO-024) перев'язка з наряду «В роботі» → конфлікт із причиною, без змін",
    "SyncService.push calendar_slots — запис наряду через наряд (BR-WO-024) перев'язка на наряд з іншим підйомником → прийнято, механіка запису знято",
+   "SyncService.push calendar_slots — запис наряду через наряд (BR-WO-024) перерва з планшета отримала наряд → конфлікт «службовий запис», без змін",
    "SyncService.push calendar_slots — запис наряду через наряд (BR-WO-024) у минуле → конфлікт «в минулому» (BR-WO-019), без змін",
    "SyncService.push calendar_slots — запис наряду через наряд (BR-WO-024) інший наряд з датами → запис на його дати й підйомник, попередній наряд без дат",
    "SyncService.push calendar_slots — новий запис із нарядом (BR-WO-028, Bug #905) механік нового запису не закріплений за підйомником наряду з датами → конфлікт, запис видалено",
@@ -6277,6 +6327,53 @@
    "WarehousesService — isMain invariant update — isMain UX guard коли isMain=true, скидає isMain у інших складах (id != target)",
    "WarehousesService — isMain invariant update — isMain UX guard конвертує Prisma P2002 у ConflictException у update теж"
   ],
+  "apps/api/src/modules/warranties/warranties.claim-race.spec.ts": [
+   "BR-WAR-004: звернення за гарантією — атомарний запис гарантія закінчилась між перевіркою і записом → 400 «термін минув», нічого не записано",
+   "BR-WAR-004: звернення за гарантією — атомарний запис два одночасні звернення → одне звернення й одна відмова «вже використана»",
+   "BR-WAR-004: звернення за гарантією — атомарний запис звичайне звернення записує claimedAt і наряд-звернення"
+  ],
+  "apps/api/src/modules/warranties/warranties.contract.spec.ts": [
+   "Warranties — HTTP контракт списку 200 { items, total, page, limit }; організація — з токена, page/limit — числа",
+   "Warranties — HTTP контракт списку ?state= з пробілами й порожнім → масив станів у сервіс",
+   "Warranties — HTTP контракт списку ?state= повторений параметр → масив станів у сервіс",
+   "Warranties — HTTP контракт списку ?state= через кому → масив станів у сервіс",
+   "Warranties — HTTP контракт списку `GET /warranties/expiring` лишився своїм маршрутом (не перекритий списком)",
+   "Warranties — HTTP контракт списку id не UUID → 400, сервіс не викликано",
+   "Warranties — HTTP контракт списку limit понад 200 → 400, сервіс не викликано",
+   "Warranties — HTTP контракт списку q довший за 100 → 400, сервіс не викликано",
+   "Warranties — HTTP контракт списку sortBy поза whitelist → 400, сервіс не викликано",
+   "Warranties — HTTP контракт списку sortDir не asc/desc → 400, сервіс не викликано",
+   "Warranties — HTTP контракт списку невідоме значення стану → 400, сервіс не викликано",
+   "Warranties — HTTP контракт списку роль ACCOUNTANT бачить список",
+   "Warranties — HTTP контракт списку роль ADMIN бачить список",
+   "Warranties — HTTP контракт списку роль MECHANIC → 403",
+   "Warranties — HTTP контракт списку роль OWNER бачить список",
+   "Warranties — HTTP контракт списку роль RECEPTIONIST бачить список",
+   "Warranties — HTTP контракт списку роль STOREKEEPER → 403"
+  ],
+  "apps/api/src/modules/warranties/warranties.list.spec.ts": [
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-001: що потрапляє у список і форма відповіді ?id= — лише ця гарантія (посилання з «Пов’язаних документів»)",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-001: що потрапляє у список і форма відповіді sortBy=createdAt&sortDir=desc — новіші першими; другий ключ id",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-001: що потрапляє у список і форма відповіді відповідь { items, total, page, limit }; рядок — поля гарантії + vehicleSummary і state",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-001: що потрапляє у список і форма відповіді лише своя організація, без видалених гарантій і без гарантій видалених нарядів",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-001: що потрапляє у список і форма відповіді пагінація: page/limit → зріз, total — усі відібрані",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-001: що потрапляє у список і форма відповіді порядок за замовчуванням — expiresAt за зростанням, при рівних — за id",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= взимку (EET, +02:00) поріг теж від київського дня: 22:30 UTC = вже наступна доба",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= кілька станів (ACTIVE,EXPIRING) — обʼєднання",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= стан на межах: зараз = закінчилась, поріг Київ-сьогодні + 30 днів = закінчується",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= фільтр state=ACTIVE відбирає в базі рівно рядки з цим обчисленим станом",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= фільтр state=CLAIMED відбирає в базі рівно рядки з цим обчисленим станом",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= фільтр state=EXPIRED відбирає в базі рівно рядки з цим обчисленим станом",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= фільтр state=EXPIRING відбирає в базі рівно рядки з цим обчисленим станом",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-003: пошук ?q= `_` і `%` — звичайні символи, не шаблон",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-003: пошук ?q= за назва клієнта без урахування регістру",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-003: пошук ?q= за номер авто без урахування регістру",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-003: пошук ?q= за номер наряду без урахування регістру",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-003: пошук ?q= за прізвище клієнта без урахування регістру",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-003: пошук ?q= за ім'я клієнта без урахування регістру",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-003: пошук ?q= пошук разом із фільтром стану — перетин",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-003: пошук ?q= пробіли — це «пошуку немає»"
+  ],
   "apps/api/src/modules/warranties/warranties.service.spec.ts": [
    "WarrantiesService.autoCreate — Kyiv-дата expiresAt expiresAt = Kyiv-сьогодні + warrantyDays (UTC-опівніч), warrantyDays з БД",
    "WarrantiesService.autoCreate — Kyiv-дата expiresAt ідемпотентність: гарантія по наряду вже існує → create НЕ викликаний",
@@ -6284,6 +6381,7 @@
    "WarrantiesService.claim cross-tenant warranty (findFirst → null) → NotFoundException; updateMany НЕ викликаний",
    "WarrantiesService.claim happy path: викликає updateMany із commit-where { id, orgId, deletedAt: null } і повертає DTO",
    "WarrantiesService.claim гарантія з минулим терміном → BadRequestException",
+   "WarrantiesService.claim звернення тим самим нарядом, що видав гарантію → 400, звернення не записано",
    "WarrantiesService.claim повторне використання вже claimed гарантії → BadRequestException"
   ],
   "apps/api/src/modules/webhooks/webhooks.processor.spec.ts": [
@@ -6324,6 +6422,10 @@
    "WorkCategoriesService remove — системна категорія не видаляється гард читає категорію у СВОЇЙ org і не видалену",
    "WorkCategoriesService remove — системна категорія не видаляється звичайна категорія → soft-delete її та всіх нащадків у своїй org",
    "WorkCategoriesService remove — системна категорія не видаляється чужа/видалена категорія → 404, запису немає",
+   "WorkCategoriesService update — перенесення без циклів категорія батьком самої себе → 400, нічого не записано",
+   "WorkCategoriesService update — перенесення без циклів перенесення під сусідню гілку дозволено",
+   "WorkCategoriesService update — перенесення без циклів перенесення у власного онука → 400, нічого не записано",
+   "WorkCategoriesService update — перенесення без циклів цикл, що вже є в даних, не зациклює видалення: нащадки обходяться один раз",
    "WorkCategoriesService update — системну категорію не перейменувати й не перенести isSystem=true + name → 400, updateMany не викликається",
    "WorkCategoriesService update — системну категорію не перейменувати й не перенести isSystem=true + лише sortOrder/icon → дозволено (косметика per-org)",
    "WorkCategoriesService ієрархія — бекенд не обмежує глибину create з чужим/видаленим батьком → 404, категорія не створюється",
@@ -6576,7 +6678,14 @@
    "Перев'язка запису на інший наряд (BR-WO-028) новий наряд без дат, у формі інший підйомник, свій механік на ньому не закріплений → 400",
    "Перев'язка запису на інший наряд (BR-WO-028) новий наряд із датами → той самий запис на його дати й підйомник, його запис замінено, старий наряд без дат",
    "Перев'язка запису на інший наряд (BR-WO-028) попередній наряд «В роботі» → 400 з причиною, нічого не змінено",
-   "Перев'язка запису на інший наряд (BR-WO-028) попередній наряд «Виконано» → 400 з причиною, нічого не змінено"
+   "Перев'язка запису на інший наряд (BR-WO-028) попередній наряд «Виконано» → 400 з причиною, нічого не змінено",
+   "Службовий запис — без наряду, клієнта й авто (BR-CAL-003) зміна перерви з формою (наряд null, без клієнта) → час і примітка змінено, тип той самий",
+   "Службовий запис — без наряду, клієнта й авто (BR-CAL-003) зміна перерви: автомобіль → 400, запис і наряди не змінено",
+   "Службовий запис — без наряду, клієнта й авто (BR-CAL-003) зміна перерви: клієнт → 400, запис і наряди не змінено",
+   "Службовий запис — без наряду, клієнта й авто (BR-CAL-003) зміна перерви: перев'язка на наряд → 400, запис і наряди не змінено",
+   "Службовий запис — без наряду, клієнта й авто (BR-CAL-003) новий запис type=BREAK з нарядом → 400, жодного запису, наряд не змінено",
+   "Службовий запис — без наряду, клієнта й авто (BR-CAL-003) новий запис type=MAINTENANCE з нарядом → 400, жодного запису, наряд не змінено",
+   "Службовий запис — без наряду, клієнта й авто (BR-CAL-003) новий запис type=MEETING з нарядом → 400, жодного запису, наряд не змінено"
   ],
   "apps/api/src/modules/work-orders/work-orders.calendar-slot.spec.ts": [
    "WorkOrdersService — запис календаря наряду (BR-WO-020) гонка за підйомник (EXCLUDE у БД) зміна дат: EXCLUDE на перенесенні якоря → 409, наряд із попередніми датами",
@@ -6635,6 +6744,8 @@
    "WorkOrders — HTTP Contract Bug #521: PATCH /work-orders/:id/lines/:lineId — actualHours nullable приймає PATCH з actualHours=2.5 → 200",
    "WorkOrders — HTTP Contract Bug #521: PATCH /work-orders/:id/lines/:lineId — actualHours nullable приймає PATCH з actualHours=null (clear semantics) → 200",
    "WorkOrders — HTTP Contract GET /work-orders Bug #338: dateFrom + dateTo => query.dateFrom i query.dateTo v obiekt peredanomu do service.findAll",
+   "WorkOrders — HTTP Contract GET /work-orders include з невідомим значенням → 400",
+   "WorkOrders — HTTP Contract GET /work-orders include=lines,parts (синхронізація планшета) → 200, у сервіс приходить масив",
    "WorkOrders — HTTP Contract GET /work-orders відхиляє limit=201 з 400",
    "WorkOrders — HTTP Contract GET /work-orders повертає 200 з pagination shape",
    "WorkOrders — HTTP Contract GET /work-orders повертає 403 коли guard не пропустив (mock canActivate=false)",
@@ -6703,6 +6814,12 @@
    "WorkOrdersService.findAll — відбір за датою документа без дат — умови на documentDate немає",
    "WorkOrdersService.findAll — відбір за датою документа відбір за датою не чіпає tenant-фільтр: orgId і deletedAt на місці, лічильник отримує той самий where",
    "WorkOrdersService.findAll — відбір за датою документа лише одна межа → у documentDate тільки вона (зимова дата теж без зсуву)"
+  ],
+  "apps/api/src/modules/work-orders/work-orders.list-include.spec.ts": [
+   "WorkOrdersService.findAll — рядки й запчастини для планшета (?include=) include=lines,parts → невидалені рядки й запчастини наряду у формі картки",
+   "WorkOrdersService.findAll — рядки й запчастини для планшета (?include=) без include список такий, як був: рядків і запчастин немає ні в запиті, ні у відповіді",
+   "WorkOrdersService.findAll — рядки й запчастини для планшета (?include=) запчастина в альтернативній одиниці: одиниця й коефіцієнт рядка, а не базові товару",
+   "WorkOrdersService.findAll — рядки й запчастини для планшета (?include=) собівартість запчастини у списку не віддається нікому"
   ],
   "apps/api/src/modules/work-orders/work-orders.numbering.spec.ts": [
    "WorkOrdersService — номер наряду з DocumentNumberService clone(): клон отримує НОВИЙ номер із DocumentNumberService, а не номер оригіналу",
@@ -7072,6 +7189,14 @@
    "XlsxService — generic import (preview/apply) previewImport notFound: ані exact, ані substring",
    "XlsxService — generic import (preview/apply) previewImport substring fallback: немає exact, але name ILIKE → ambiguous з кандидатами"
   ],
+  "apps/api/src/modules/xlsx/xlsx.catalog-import.spec.ts": [
+   "POST /xlsx/import/brands — наявний бренд «назва вже є» — пропущено, а не «оновлено»",
+   "POST /xlsx/import/goods — лічильники відмова створення — у помилках рядка з текстом відмови",
+   "POST /xlsx/import/goods — лічильники наявний — пропущено; новий з ціною — створено; без ціни — помилка рядка, не «створено»",
+   "POST /xlsx/import/goods — лічильники повтор артикула в межах файла — пропущено, без другого створення",
+   "POST /xlsx/import/units — наявна одиниця одиниця в архіві — помилка з поясненням, а не «пропущено»; слово «уже» в тексті не вирішує",
+   "POST /xlsx/import/units — наявна одиниця скорочення вже є (активна чи будь-яка) — пропущено"
+  ],
   "apps/api/src/modules/xlsx/xlsx.contract.spec.ts": [
    "Xlsx — HTTP Contract GET /xlsx/templates/pricing-list Bug #190: 200 + { file, filename: .csv } для pricing-list типу",
    "Xlsx — HTTP Contract GET /xlsx/templates/pricing-list Bug #190: 400 для невідомого типу",
@@ -7211,6 +7336,7 @@
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) append-only immutability тригери живі (ledger — фізична незмінність)",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) partial-unique / інваріантні індекси існують (fiscal doc-number + business invariants)",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) джерело платежу: FK payments.bankAccountId / cashRegisterId — ON DELETE SET NULL",
+   "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) одне CHARGE на документ: індекс частковий — лише CHARGE з документом (SUPPLIER_CHARGE вільний)",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) передумова: dev-БД доступна",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) розширення pg_trgm і btree_gist встановлені",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) усі partial-unique doc-number індекси справді ЧАСТКОВІ (мають predicate WHERE deletedAt IS NULL)"
