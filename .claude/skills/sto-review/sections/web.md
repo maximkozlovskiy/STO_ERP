@@ -161,7 +161,8 @@ grep -rn "zodResolver(" apps/web/src --include="*.tsx" | grep -v "i18nZodResolve
       знайдено» в en. Grep: для кожного `import { X } from './…'` у зміненому компоненті —
       `grep -n '[А-Яа-яІіЇїЄєҐґ]' <файл X> | grep -v '//'`; en-тест компонента асертить і текст дитини
 - [ ] Dead-translation: новий ключ-мапа має споживача (`t()` у рендері), інакше mute-гілка (Bug #762)
-- [ ] en `"{{n}} <іменник мн.>"` при uk в одній формі → «1 templates»; без зміни uk — «Templates: {{n}}». Хук у файлі без `'use client'` → директива явно (`journal/web.md`, 2026-10-22). Grep: `grep -nE '"\{\{n\}\} [a-z]+s"' apps/web/src/i18n/locales/en/*.json`
+- [ ] en `"{{n}} <іменник мн.>"` при uk в одній формі → «1 templates»; без зміни uk — «Templates: {{n}}». Хук у файлі без `'use client'` → директива явно (`journal/web.md`, 2026-10-22). Grep (будь-яка змінна, не лише `{{n}}`, і хвіст «goods priced»): `grep -nE '"[a-zA-Z]+": "\{\{[a-z]+\}\} [a-z]+s( [a-z]+)?"' apps/web/src/i18n/locales/en/*.json | grep -vE '_(few|many|other)"|(Few|Many)"|\} (pcs|pts)"'`
+- [ ] Ефект завантаження з вимкненим `exhaustive-deps` → запасний текст помилки через `i18n.t('<ns>:…')`, не `t` компонента без залежності (`journal/web.md`, 2026-10-22, батч C)
 - [ ] `@sto/shared` змінено → `pnpm --filter @sto/shared build` перед api tsc (api на dist/cjs)
 
 #### §8.3 Hydration Safety

@@ -541,3 +541,16 @@ RECEPTIONIST (`POST /payments`). Для нього перелік — 403: «Н�
 ### Перенесено з чекліста — Дві форми — одна сутність (field-desync) — §8.2
 
 **Дві форми що редагують ОДНУ сутність → спільний контрольований компонент + ОДИН `formToPatch` (field-desync).** Коли сутність (Counterparty) редагується у ДВОХ місцях (EditModal + DetailPage inline-edit), кожне з власним state-shape/PATCH — набори полів дрейфують: одне поле «не чіпається» з одного місця й затирається з іншого. Fix (dedup 0c68a1cc): один controlled-компонент (`CounterpartyForm`) + хелпери (`emptyX`/`xToForm`/`formToPatch`/`validateX`) — обидва callsites шлють ІДЕНТИЧНЕ `formToPatch`-тіло. Перевірити: (1) немає залишків старих patch-об'єктів; (2) `formToPatch` порожні рядки → `undefined` (безпечно ЛИШЕ якщо бек `dto.X !== undefined ? dto.X : existing.X`; навмисне очищення → `''→null`); (3) після дедупу grep осиротілі імпорти/const у ОБОХ файлах (`PhoneInput`, локальні `TYPE_LABELS`-мапи) — tsc не ловить (немає `noUnusedLocals`), eslint лише `warn`. Sample cf6058cd
+
+### 2026-10-22 — en-лічильник без plural із `{{count}}`/`{{value}}`; `t` в ефекті без залежності — §8.2.2
+
+**Сигнал:** review батчу C (7656be4f): детектор `"\{\{n\}\} [a-z]+s"` ловив лише змінну `n`, тож старі
+`counterparties:card.garages.vehicleCount` «{{count}} vehicles», `card.warranties.recordsCount`, `pointsValue`
+«{{value}} points», `purchaseOrders:payDue.soon` «{{days}} days» і `toast.pricedGoods` «{{count}} goods priced»
+давали «1 vehicles». Окремо: `CounterpartyEditModal` у трьох ефектах завантаження (з
+`eslint-disable react-hooks/exhaustive-deps`) брав `t` компонента без залежності, а решта карток батчу —
+`i18n.t`.
+**Grep:** `grep -nE '"[a-zA-Z]+": "\{\{[a-z]+\}\} [a-z]+s( [a-z]+)?"' apps/web/src/i18n/locales/en/*.json | grep -vE '_(few|many|other)"|(Few|Many)"|\} (pcs|pts)"'`
+(на 7656be4f — 5 влучань, після фіксу — порожньо); ефекти — `grep -n -B30 "exhaustive-deps" <файл> | grep ": t('"`.
+**Фікс:** en «Vehicles: {{count}}», «Goods priced: {{count}}», «{{value}} pts», «{{days}} d» (uk не змінюється);
+`i18n.t('counterparties:editModal.load*')` (6cfbb150). **Severity:** SUGGESTION
