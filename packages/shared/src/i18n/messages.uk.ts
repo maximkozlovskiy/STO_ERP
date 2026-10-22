@@ -718,6 +718,7 @@ export const uk: Record<string, string> = {
   'err.xlsx.fileNotUploadedMultipart': 'очікується multipart/form-data',
   'err.xlsx.rowError': 'Помилка в рядку {{row}}: {{detail}}',
   'err.xlsx.rowErrorUnknown': 'невідома помилка',
+  'err.xlsx.goodNoSalePrice': 'немає ціни продажу — рядок не імпортовано',
   'err.xlsx.rowGoodNameRequired': 'Рядок {{row}}: назва товару обовʼязкова для створення',
   'err.xlsx.fileReadFailed':
     'Не вдалося прочитати файл — очікується Excel (.xlsx), CSV (.csv), PDF (.pdf) або фото/скан (.jpg, .png)',

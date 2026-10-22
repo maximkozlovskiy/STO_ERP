@@ -28,6 +28,7 @@ import { Request } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { normalizeArticle } from '../../common/utils/normalize-article';
+import { err } from '../../common/utils/err';
 import { XlsxService, ImportResult, type ImportMapping } from './xlsx.service';
 import type { ImportDocType } from './document-line-import.adapter';
 import { ApplyImportDto, ResolveGoodsFileResponseDto } from './import.dto';
@@ -38,6 +39,11 @@ import { WorksService } from '../works/works.service';
 
 const IMPORT_DOC_TYPES: readonly ImportDocType[] = ['PURCHASE_ORDER', 'STOCK_DOCUMENT'];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Текст помилки рядка імпорту: повідомлення відмови або «невідома помилка» мовою запиту. */
+function rowErrorText(e: unknown): string {
+  return e instanceof Error ? e.message : err('err.xlsx.rowErrorUnknown');
+}
 
 @ApiTags('XLSX Import')
 @Controller('xlsx')
@@ -122,7 +128,7 @@ export class XlsxController {
     const buffer = await file.toBuffer();
     const rows = await this.xlsxService.parseGoods(buffer);
 
-    const result: ImportResult = { created: 0, updated: 0, errors: [] };
+    const result: ImportResult = { created: 0, updated: 0, skipped: 0, errors: [] };
 
     // Один пакетний пошук на файл замість запиту на рядок; артикул порівнюється нормалізовано.
     const exists = await this.xlsxService.findExistingGoodRows(orgId, rows);
@@ -131,24 +137,29 @@ export class XlsxController {
       try {
         const article = normalizeArticle(row.sku);
         // Наявний у каталозі або вже створений із цього ж файла — пропускаємо, дубль не робимо.
+        // Це «пропущено», а не «оновлено»: наявний товар файл не змінює.
         if (article && (exists[i] || seenArticles.has(article))) {
-          result.updated++;
+          result.skipped = (result.skipped ?? 0) + 1;
+          continue;
+        }
+        // Без ціни продажу товар не створюється — і це помилка рядка, а не «створено»
+        // (раніше рядок рахувався створеним, хоча в каталог не потрапляв).
+        if (!row.salePrice) {
+          result.errors.push(`${row.name}: ${err('err.xlsx.goodNoSalePrice')}`);
           continue;
         }
         if (article) seenArticles.add(article);
-        if (row.salePrice) {
-          await this.goodsService.create(orgId, {
-            sku: row.sku,
-            name: row.name,
-            unit: row.unit ?? 'шт',
-            purchasePrice: row.purchasePrice,
-            salePrice: row.salePrice,
-            category: row.category,
-          });
-        }
+        await this.goodsService.create(orgId, {
+          sku: row.sku,
+          name: row.name,
+          unit: row.unit ?? 'шт',
+          purchasePrice: row.purchasePrice,
+          salePrice: row.salePrice,
+          category: row.category,
+        });
         result.created++;
       } catch (e: unknown) {
-        result.errors.push(`${row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
+        result.errors.push(`${row.name}: ${rowErrorText(e)}`);
       }
     }
 
@@ -166,7 +177,7 @@ export class XlsxController {
     const buffer = await file.toBuffer();
     const rows = await this.xlsxService.parseBrands(buffer);
 
-    const result: ImportResult = { created: 0, updated: 0, errors: [] };
+    const result: ImportResult = { created: 0, updated: 0, skipped: 0, errors: [] };
 
     for (const row of rows) {
       try {
@@ -177,11 +188,10 @@ export class XlsxController {
         // словом «уже» в тексті: «…вже існує» його не містить, тож наявні бренди йшли в помилки,
         // а відмова BR-GOOD-007 («Назва … уже є синонімом бренду …») рахувалась як «оновлено».
         // Тепер відмова правила — рядок у `errors` із назвою й поясненням; решта файла імпортується.
-        const message = e instanceof Error ? e.message : 'помилка';
+        const message = rowErrorText(e);
         const alreadyExists =
-          e instanceof ConflictException &&
-          message === translateError('err.brand.nameExists', getLocale());
-        if (alreadyExists) result.updated++;
+          e instanceof ConflictException && message === err('err.brand.nameExists');
+        if (alreadyExists) result.skipped = (result.skipped ?? 0) + 1;
         else result.errors.push(`${row.name}: ${message}`);
       }
     }
@@ -200,17 +210,24 @@ export class XlsxController {
     const buffer = await file.toBuffer();
     const rows = await this.xlsxService.parseUnits(buffer);
 
-    const result: ImportResult = { created: 0, updated: 0, errors: [] };
+    const result: ImportResult = { created: 0, updated: 0, skipped: 0, errors: [] };
 
+    // Одиниця з таким скороченням уже є — рядок пропущено. Впізнаємо за типом і ключем відмови, а
+    // не за словом «уже» в тексті (англійською й інші відмови з «уже» давали хибний результат).
+    const exists = new Set([
+      err('err.unit.shortNameExists'),
+      err('err.unit.activeShortNameExists'),
+    ]);
     for (const row of rows) {
       try {
         await this.unitsService.create(orgId, { name: row.name, shortName: row.shortName });
         result.created++;
       } catch (e: unknown) {
-        if (e instanceof Error && e.message.includes('уже')) {
-          result.updated++;
+        const message = rowErrorText(e);
+        if (e instanceof ConflictException && exists.has(message)) {
+          result.skipped = (result.skipped ?? 0) + 1;
         } else {
-          result.errors.push(`${row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
+          result.errors.push(`${row.name}: ${message}`);
         }
       }
     }
@@ -248,7 +265,7 @@ export class XlsxController {
         });
         result.created++;
       } catch (e: unknown) {
-        result.errors.push(`${row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
+        result.errors.push(`${row.name}: ${rowErrorText(e)}`);
       }
     }
 

@@ -801,6 +801,7 @@ export const VALIDATION_KEYS = [
   'err.xlsx.fileNotUploadedMultipart',
   'err.xlsx.rowError',
   'err.xlsx.rowErrorUnknown',
+  'err.xlsx.goodNoSalePrice',
   'err.xlsx.rowGoodNameRequired',
   'err.xlsx.fileReadFailed',
   // Exception-повідомлення: bank-statements-модуль (вхідні банк-платежі)

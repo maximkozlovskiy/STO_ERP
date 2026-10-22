@@ -735,6 +735,7 @@ export const en: Record<string, string> = {
   'err.xlsx.fileNotUploadedMultipart': 'multipart/form-data expected',
   'err.xlsx.rowError': 'Error in row {{row}}: {{detail}}',
   'err.xlsx.rowErrorUnknown': 'unknown error',
+  'err.xlsx.goodNoSalePrice': 'no sale price — row not imported',
   'err.xlsx.rowGoodNameRequired': 'Row {{row}}: good name is required for creation',
   'err.xlsx.unsupportedFormat':
     'Unsupported file format — expected Excel (.xlsx), CSV (.csv), PDF (.pdf) or a photo/scan (.jpg, .png). HEIC photos from iPhone are not supported: in Settings → Camera → Formats choose «Most Compatible».',

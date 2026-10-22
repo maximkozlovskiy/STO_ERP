@@ -175,7 +175,8 @@ describe('Xlsx — HTTP Contract', () => {
       expect(res.statusCode).toBe(201);
       expect(res.json()).toEqual({
         created: 1,
-        updated: 1,
+        updated: 0,
+        skipped: 1,
         errors: ['БОШ: Назва «БОШ» уже є синонімом бренду «Bosch»'],
       });
       expect(brandsServiceMock.create).toHaveBeenCalledTimes(3);
@@ -213,7 +214,7 @@ describe('Xlsx — HTTP Contract', () => {
       const res = await upload();
 
       expect(res.statusCode).toBe(201);
-      expect(res.json()).toEqual({ created: 2, updated: 2, errors: [] });
+      expect(res.json()).toEqual({ created: 2, updated: 0, skipped: 2, errors: [] });
       expect(xlsxServiceMock.findExistingGoodRows).toHaveBeenCalledTimes(1);
       expect(goodsServiceMock.create.mock.calls.map(c => (c[1] as { name: string }).name)).toEqual([
         'Новий',

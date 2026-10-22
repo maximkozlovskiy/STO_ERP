@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, type ChangeEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Download, Upload } from 'lucide-react';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
@@ -9,6 +10,8 @@ import { downloadBlob } from '@/lib/download';
 interface ImportResult {
   created: number;
   updated: number;
+  /** Довідникові імпорти: рядки, що вже є в каталозі, — пропущено без змін. */
+  skipped?: number;
   errors: string[];
 }
 
@@ -30,6 +33,7 @@ export function XlsxImportButton({
   onImportComplete,
   className,
 }: XlsxImportButtonProps) {
+  const { t } = useTranslation('common');
   const [downloading, setDownloading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -47,7 +51,7 @@ export function XlsxImportButton({
       });
       downloadBlob(blob, data.filename);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка завантаження шаблону');
+      setError(e instanceof Error ? e.message : t('xlsxImport.templateError'));
     } finally {
       setDownloading(false);
     }
@@ -69,7 +73,7 @@ export function XlsxImportButton({
       setResult(data);
       onImportComplete?.(data);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Помилка імпорту');
+      setError(err instanceof Error ? err.message : t('xlsxImport.importError'));
     } finally {
       setImporting(false);
     }
@@ -84,7 +88,7 @@ export function XlsxImportButton({
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-border bg-surface text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
         >
           <Download className="h-3.5 w-3.5" />
-          {downloading ? 'Завантаження...' : 'Шаблон XLSX'}
+          {downloading ? t('xlsxImport.templateLoading') : t('xlsxImport.template')}
         </button>
         <button
           onClick={() => fileRef.current?.click()}
@@ -92,7 +96,7 @@ export function XlsxImportButton({
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-border bg-surface text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
         >
           <Upload className="h-3.5 w-3.5" />
-          {importing ? 'Імпорт...' : 'Імпорт XLSX'}
+          {importing ? t('xlsxImport.importing') : t('xlsxImport.import')}
         </button>
         <input
           ref={fileRef}
@@ -111,19 +115,27 @@ export function XlsxImportButton({
 
       {result && (
         <div className="text-[12px] bg-secondary border border-border rounded px-2 py-1.5">
-          <div className="font-medium text-foreground">
-            Імпорт: створено {result.created}, оновлено {result.updated}
+          <div className="font-medium text-foreground" data-testid="xlsx-import-summary">
+            {[
+              t('xlsxImport.created', { count: result.created }),
+              (result.skipped ?? 0) > 0 && t('xlsxImport.skipped', { count: result.skipped }),
+              result.updated > 0 && t('xlsxImport.updated', { count: result.updated }),
+            ]
+              .filter(Boolean)
+              .join(', ')}
           </div>
           {result.errors.length > 0 && (
             <details className="mt-1">
               <summary className="cursor-pointer text-destructive-text">
-                Помилки: {result.errors.length}
+                {t('xlsxImport.errors', { count: result.errors.length })}
               </summary>
               <ul className="mt-1 list-disc list-inside text-muted-foreground space-y-0.5">
                 {result.errors.slice(0, 10).map((err, i) => (
                   <li key={i}>{err}</li>
                 ))}
-                {result.errors.length > 10 && <li>...та ще {result.errors.length - 10}</li>}
+                {result.errors.length > 10 && (
+                  <li>{t('xlsxImport.more', { count: result.errors.length - 10 })}</li>
+                )}
               </ul>
             </details>
           )}

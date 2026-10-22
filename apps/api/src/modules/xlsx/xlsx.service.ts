@@ -88,6 +88,11 @@ export interface POLineRow {
 export interface ImportResult {
   created: number;
   updated: number;
+  /**
+   * Довідникові імпорти (товари, бренди, одиниці): рядок, що вже є в каталозі, — пропущено,
+   * нічого не змінено. Раніше такі рядки рахувались як «оновлено», хоча оновлення не було.
+   */
+  skipped?: number;
   errors: string[];
 }
 

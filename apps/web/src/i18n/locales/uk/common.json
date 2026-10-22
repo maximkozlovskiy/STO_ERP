@@ -90,5 +90,18 @@
     "loadError": "Не вдалося завантажити зведення",
     "executorNotFound": "Працівника не знайдено"
   },
-  "openCard": "Відкрити картку"
+  "openCard": "Відкрити картку",
+  "xlsxImport": {
+    "template": "Шаблон XLSX",
+    "templateLoading": "Завантаження...",
+    "import": "Імпорт XLSX",
+    "importing": "Імпорт...",
+    "created": "Імпорт: створено {{count}}",
+    "skipped": "пропущено (вже є) {{count}}",
+    "updated": "оновлено {{count}}",
+    "errors": "Помилки: {{count}}",
+    "more": "...та ще {{count}}",
+    "templateError": "Помилка завантаження шаблону",
+    "importError": "Помилка імпорту"
+  }
 }

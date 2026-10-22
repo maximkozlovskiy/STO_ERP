@@ -90,5 +90,18 @@
     "loadError": "Failed to load the summary",
     "executorNotFound": "Employee not found"
   },
-  "openCard": "Open card"
+  "openCard": "Open card",
+  "xlsxImport": {
+    "template": "XLSX template",
+    "templateLoading": "Loading...",
+    "import": "Import XLSX",
+    "importing": "Importing...",
+    "created": "Import: created {{count}}",
+    "skipped": "skipped (already exist) {{count}}",
+    "updated": "updated {{count}}",
+    "errors": "Errors: {{count}}",
+    "more": "...and {{count}} more",
+    "templateError": "Template download failed",
+    "importError": "Import failed"
+  }
 }
