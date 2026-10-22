@@ -525,6 +525,19 @@ RECEPTIONIST (`POST /payments`). Для нього перелік — 403: «Н�
 **Фікс:** en «Works: {{n}}» / «Templates: {{n}}» (uk і паритет ключів не змінюються); `'use client'` у файл (e3b792e4).
 **Severity:** SUGGESTION
 
+### 2026-10-22 — Вбудована дитина картки лишилась українською (вдруге) — §8.2.2
+
+**Сигнал:** батч B (d63c80d7) переклав `CreateWorkOrderModal`, `WorksTable`, `PartsTable`, а вбудований
+`work-order/InvoiceConflictDialog` («Рахунок вже існує», три кнопки) лишився без `t()` — у en-картці
+український діалог. Той самий клас, що `CategoryTree` у `GoodPickerModal` (2026-10-19): пункт чекліста
+є, але виконавець батчу ганяв grep лише по файлах із diff-у.
+**Grep (діти зміненого файла, де лишилась кирилиця поза коментарями):**
+`F=<файл>; for f in $(grep -oE "from '(\./|@/components/)[^']+'" $F | sed -E "s/from '(@\/)?//;s/'//;s#^components#apps/web/src/components#;s#^\./#$(dirname $F)/#"); do for x in $f.tsx $f.ts; do [ -f "$x" ] && perl -0777 -CSD -ne 's{/\*.*?\*/}{}gs; s{(?<!:)//[^\n]*}{}g; print "$ARGV\n" if /\p{Cyrillic}/' "$x"; done; done`
+(коментарі, і багаторядкові `{/* … */}`, вирізаються до пошуку; на `CreateWorkOrderModal` після фіксу — порожньо, на
+`InvoiceConflictDialog` до фіксу — влучання)
+**Фікс:** ключі `workOrders:invoice.conflict.*` (uk байт-у-байт) + `common:cancel`; локаль-тест uk/en із
+мутацією (5d2e293e). **Severity:** IMPORTANT
+
 ### Перенесено з чекліста — Дві форми — одна сутність (field-desync) — §8.2
 
 **Дві форми що редагують ОДНУ сутність → спільний контрольований компонент + ОДИН `formToPatch` (field-desync).** Коли сутність (Counterparty) редагується у ДВОХ місцях (EditModal + DetailPage inline-edit), кожне з власним state-shape/PATCH — набори полів дрейфують: одне поле «не чіпається» з одного місця й затирається з іншого. Fix (dedup 0c68a1cc): один controlled-компонент (`CounterpartyForm`) + хелпери (`emptyX`/`xToForm`/`formToPatch`/`validateX`) — обидва callsites шлють ІДЕНТИЧНЕ `formToPatch`-тіло. Перевірити: (1) немає залишків старих patch-об'єктів; (2) `formToPatch` порожні рядки → `undefined` (безпечно ЛИШЕ якщо бек `dto.X !== undefined ? dto.X : existing.X`; навмисне очищення → `''→null`); (3) після дедупу grep осиротілі імпорти/const у ОБОХ файлах (`PhoneInput`, локальні `TYPE_LABELS`-мапи) — tsc не ловить (немає `noUnusedLocals`), eslint лише `warn`. Sample cf6058cd
