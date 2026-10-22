@@ -23,5 +23,18 @@
   "infrastructure": "Інфраструктура",
   "settings": "Система",
   "settingsSync": "Cloud Sync",
-  "errLogoutAll": "Не вдалося завершити сесії на інших пристроях — немає зв'язку з сервером. Повторіть спробу пізніше."
+  "errLogoutAll": "Не вдалося завершити сесії на інших пристроях — немає зв'язку з сервером. Повторіть спробу пізніше.",
+  "shell.logoutConfirm": "Вийти з системи?",
+  "shell.logoutAllConfirmTitle": "Вийти на всіх пристроях?",
+  "shell.logoutAllConfirmMessage": "Усі активні сесії цього користувача (на всіх пристроях) буде завершено.",
+  "shell.bookmarkRemove": "Видалити закладку",
+  "shell.bookmarkAdd": "Додати закладку",
+  "shell.bookmarks": "Закладки",
+  "shell.appSubtitle": "Автосервіс",
+  "shell.customizeMenu": "Налаштувати меню",
+  "shell.customizeMenuHint": "Переставити, приховати або згрупувати пункти меню",
+  "shell.logout": "Вийти",
+  "shell.logoutAll": "Вийти на всіх пристроях",
+  "shell.openMenu": "Відкрити меню",
+  "shell.openSearch": "Відкрити пошук"
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import { useForm, Controller } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -80,11 +81,7 @@ interface EmployeeEditModalProps {
   onSaved: (emp: EmployeeForModal) => void;
 }
 
-const RATE_LABELS: Record<string, string> = {
-  percent_normo: '% від норма-год',
-  per_normo_hour: 'Ставка × нормо-год',
-  fixed_plus_bonus: 'Ставка + бонус',
-};
+const RATE_TYPES = ['percent_normo', 'per_normo_hour', 'fixed_plus_bonus'] as const;
 
 const EMPTY_FORM: EmployeeFormInput = {
   firstName: '',
@@ -124,6 +121,7 @@ const CheckboxList = memo(function CheckboxList({
   selected: string[];
   onChange: (ids: string[]) => void;
 }) {
+  const { t } = useTranslation('employees');
   const toggle = (id: string) =>
     onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
   return (
@@ -133,7 +131,7 @@ const CheckboxList = memo(function CheckboxList({
       )}
       <div className="border border-border rounded-lg max-h-36 overflow-y-auto divide-y divide-border">
         {items.length === 0 && (
-          <p className="px-3 py-2 text-[12px] text-muted-foreground">Немає записів</p>
+          <p className="px-3 py-2 text-[12px] text-muted-foreground">{t('empty.noRecords')}</p>
         )}
         {items.map(item => (
           <label
@@ -157,6 +155,7 @@ const CheckboxList = memo(function CheckboxList({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function EmployeeEditModal({ open, employee, onClose, onSaved }: EmployeeEditModalProps) {
+  const { t } = useTranslation('employees');
   const isEdit = !!employee;
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
@@ -391,7 +390,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
       dirty.resetDirty();
       onSaved(saved);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : t('editModal.saveError'));
     } finally {
       setSavingBoth(false);
     }
@@ -405,7 +404,9 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
         open={open}
         onClose={() => void handleClose()}
         title={
-          isEdit && employee ? `${employee.lastName} ${employee.firstName}` : 'Новий співробітник'
+          isEdit && employee
+            ? `${employee.lastName} ${employee.firstName}`
+            : t('editModal.titleCreate')
         }
         size={isEdit ? 'wide' : 'lg'}
         // A card with tabs keeps a stable size: tabs of different length must not resize the window.
@@ -415,10 +416,10 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
             {/* (А) save — це handleSubmit() з try/catch + setError, handleClose лише
                 очікує confirmClose() (ніколи не реджектиться): проміси не потрібні. */}
             <Button onClick={() => void save()} loading={saving}>
-              Зберегти
+              {t('common:save')}
             </Button>
             <Button variant="outline" onClick={() => void handleClose()}>
-              Скасувати
+              {t('common:cancel')}
             </Button>
           </>
         }
@@ -431,23 +432,23 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Ім'я"
+              label={t('editModal.firstName')}
               required
               {...register('firstName')}
               errorMessage={errors.firstName?.message}
-              placeholder="Іван"
+              placeholder={t('editModal.firstNamePlaceholder')}
             />
             <Input
-              label="Прізвище"
+              label={t('editModal.lastName')}
               required
               {...register('lastName')}
               errorMessage={errors.lastName?.message}
-              placeholder="Коваль"
+              placeholder={t('editModal.lastNamePlaceholder')}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Select
-              label="Посада"
+              label={t('columns.role')}
               required
               {...register('role')}
               errorMessage={errors.role?.message}
@@ -458,7 +459,11 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                 </option>
               ))}
             </Select>
-            <Select label="Статус" {...register('status')} errorMessage={errors.status?.message}>
+            <Select
+              label={t('columns.status')}
+              {...register('status')}
+              errorMessage={errors.status?.message}
+            >
               {Object.keys(EMPLOYEE_STATUS_LABELS).map(k => (
                 <option key={k} value={k}>
                   {employeeStatusLabel(k)}
@@ -472,7 +477,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
               name="phone"
               render={({ field }) => (
                 <PhoneInput
-                  label="Телефон"
+                  label={t('editModal.phone')}
                   value={typeof field.value === 'string' ? field.value : ''}
                   onChange={field.onChange}
                 />
@@ -491,7 +496,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
               name="dateOfHire"
               render={({ field }) => (
                 <DatePickerInput
-                  label="Дата прийому"
+                  label={t('editModal.dateOfHire')}
                   value={typeof field.value === 'string' ? field.value : ''}
                   onChange={field.onChange}
                 />
@@ -503,7 +508,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                 name="dateOfFire"
                 render={({ field }) => (
                   <DatePickerInput
-                    label="Дата звільнення"
+                    label={t('editModal.dateOfFire')}
                     value={typeof field.value === 'string' ? field.value : ''}
                     onChange={field.onChange}
                   />
@@ -512,20 +517,20 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
             )}
           </div>
           <Select
-            label="Схема нарахування"
+            label={t('columns.rate')}
             required
             {...register('rateType')}
             errorMessage={errors.rateType?.message}
           >
-            {Object.entries(RATE_LABELS).map(([k, v]) => (
+            {RATE_TYPES.map(k => (
               <option key={k} value={k}>
-                {v}
+                {t(`editModal.rate.${k}`)}
               </option>
             ))}
           </Select>
           {rateType === 'percent_normo' && (
             <Input
-              label="Відсоток, %"
+              label={t('editModal.percent')}
               type="number"
               min="0"
               {...register('percent')}
@@ -534,7 +539,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
           )}
           {rateType === 'per_normo_hour' && (
             <Input
-              label="Ставка, ₴/нормо-год"
+              label={t('editModal.ratePerHour')}
               type="number"
               min="0"
               {...register('ratePerHour')}
@@ -544,14 +549,14 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
           {rateType === 'fixed_plus_bonus' && (
             <div className="grid grid-cols-2 gap-3">
               <Input
-                label="Ставка, ₴/міс"
+                label={t('editModal.fixedMonthly')}
                 type="number"
                 min="0"
                 {...register('fixedMonthly')}
                 errorMessage={errors.fixedMonthly?.message}
               />
               <Input
-                label="Бонус, %"
+                label={t('editModal.bonusPercent')}
                 type="number"
                 min="0"
                 {...register('bonusPercent')}
@@ -571,13 +576,13 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                 className="rounded border-border w-4 h-4"
               />
               <span className="text-[13px] font-medium text-foreground">
-                Надати доступ до системи
+                {t('editModal.grantAccess')}
               </span>
             </label>
             {grantAccess && (
               <div className="grid grid-cols-2 gap-3 px-4 pb-4 border-t border-border pt-3">
                 <Input
-                  label="Email для входу (логін)"
+                  label={t('editModal.loginEmail')}
                   required
                   type="email"
                   {...register('loginEmail')}
@@ -585,12 +590,12 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                   placeholder="ivan@sto.local"
                 />
                 <Input
-                  label="Пароль"
+                  label={t('editModal.password')}
                   required
                   type="password"
                   {...register('password')}
                   errorMessage={errors.password?.message}
-                  placeholder="Мін. 6 символів"
+                  placeholder={t('editModal.passwordPlaceholder')}
                 />
               </div>
             )}
@@ -603,18 +608,18 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
             tabs={[
               {
                 key: 'zones',
-                label: 'Зони та підйомники',
+                label: t('editModal.tabZones'),
                 count: zoneIds.length + liftIds.length,
                 content: (
                   <div className="grid grid-cols-2 gap-4">
                     <CheckboxList
-                      label="Зони"
+                      label={t('columns.zones')}
                       items={zones}
                       selected={zoneIds}
                       onChange={handleZoneChange}
                     />
                     <CheckboxList
-                      label="Підйомники"
+                      label={t('columns.lifts')}
                       items={lifts}
                       selected={liftIds}
                       onChange={handleLiftChange}
@@ -624,7 +629,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
               },
               {
                 key: 'categories',
-                label: 'Категорії робіт',
+                label: t('editModal.tabCategories'),
                 count: workCatIds.length,
                 content: (
                   <CheckboxList
@@ -639,7 +644,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                 ? [
                     {
                       key: 'branches',
-                      label: 'Філії',
+                      label: t('editModal.tabBranches'),
                       content: (
                         <div className="space-y-2">
                           <label className="flex items-center gap-2 cursor-pointer">
@@ -653,7 +658,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                               className="rounded border-border"
                             />
                             <span className="text-[13px] text-foreground">
-                              Доступ до всіх філій
+                              {t('editModal.allBranches')}
                             </span>
                           </label>
                           {!allBranches && (
@@ -665,7 +670,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                             />
                           )}
                           <p className="text-[12px] text-muted-foreground">
-                            OWNER та ADMIN мають доступ до всіх філій автоматично.
+                            {t('editModal.allBranchesHint')}
                           </p>
                         </div>
                       ),

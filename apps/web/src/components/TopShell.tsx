@@ -55,6 +55,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut';
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts';
+import { employeeRoleLabel } from '@/i18n/enumLabel';
 
 // Lazy-loaded shell widgets — рендеряться умовно через uiFeatures flags + потребують
 // auth (employee) для будь-якого корисного контенту. Виносимо у окремий chunk щоб
@@ -379,17 +380,6 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
     }),
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  OWNER: 'Власник',
-  ADMIN: 'Адміністратор',
-  RECEPTIONIST: 'Приймальник',
-  MECHANIC: 'Механік',
-  STOREKEEPER: 'Комірник',
-  ACCOUNTANT: 'Бухгалтер',
-  CLIENT: 'Клієнт',
-  XLSX_MANAGER: 'Менеджер імпорту',
-};
-
 const SIDEBAR_COLLAPSED_KEY = 'sto_sidebar_collapsed';
 const BOOKMARKS_KEY = 'sto_bookmarks';
 
@@ -539,7 +529,7 @@ export function TopShell({ children }: { children: ReactNode }) {
   // confirm() завжди резолвиться, logout() глушить network-помилку всередині (сесію на цьому
   // пристрої погашено локально), а handleLogoutAll показує toast.error сам.
   const handleLogout = async () => {
-    if (await confirm({ title: 'Вийти з системи?' })) {
+    if (await confirm({ title: t('shell.logoutConfirm') })) {
       // `await` обов'язковий: logout() гасить сесію (sessionStorage + dispatch LOGOUT) у своєму
       // `finally`. Без await router.push('/login') виконувався б ДО очищення, і /login встигав
       // відрендеритись із ще живим employee у контексті.
@@ -553,8 +543,8 @@ export function TopShell({ children }: { children: ReactNode }) {
   const handleLogoutAll = async () => {
     if (
       await confirm({
-        title: 'Вийти на всіх пристроях?',
-        message: 'Усі активні сесії цього користувача (на всіх пристроях) буде завершено.',
+        title: t('shell.logoutAllConfirmTitle'),
+        message: t('shell.logoutAllConfirmMessage'),
       })
     ) {
       try {
@@ -609,7 +599,7 @@ export function TopShell({ children }: { children: ReactNode }) {
                 ? 'opacity-100 text-amber-400'
                 : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-sidebar-muted hover:text-amber-400',
             )}
-            title={isBookmarked ? 'Видалити закладку' : 'Додати закладку'}
+            title={isBookmarked ? t('shell.bookmarkRemove') : t('shell.bookmarkAdd')}
           >
             <Star className={cn('h-3.5 w-3.5', isBookmarked && 'fill-current')} />
           </button>
@@ -649,7 +639,7 @@ export function TopShell({ children }: { children: ReactNode }) {
         <div className="pb-1">
           {!collapsed && (
             <p className="px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-sidebar-muted">
-              Закладки
+              {t('shell.bookmarks')}
             </p>
           )}
           {bookmarkedItems.map(item => renderNavLink(item, false))}
@@ -687,7 +677,7 @@ export function TopShell({ children }: { children: ReactNode }) {
           <button
             onClick={toggleCollapsed}
             className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary hover:bg-primary-hover transition-colors"
-            title="Розгорнути"
+            title={t('common:expand')}
           >
             <Wrench className="h-5 w-5 text-white" />
           </button>
@@ -702,14 +692,14 @@ export function TopShell({ children }: { children: ReactNode }) {
                   STO ERP
                 </span>
                 <span className="text-[10px] text-sidebar-muted leading-none mt-0.5 truncate">
-                  Автосервіс
+                  {t('shell.appSubtitle')}
                 </span>
               </div>
             </Link>
             <button
               onClick={toggleCollapsed}
               className="hidden lg:flex h-7 w-7 items-center justify-center rounded-md transition-colors text-sidebar-muted hover:text-white hover:bg-sidebar-hover"
-              title="Згорнути"
+              title={t('common:collapse')}
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -725,7 +715,7 @@ export function TopShell({ children }: { children: ReactNode }) {
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-sidebar-hover/40 text-sidebar-muted hover:bg-sidebar-hover hover:text-white transition-colors text-[12px]"
           >
             <Search className="h-3.5 w-3.5 shrink-0" />
-            <span className="flex-1 text-left">Пошук...</span>
+            <span className="flex-1 text-left">{t('common:searchPlaceholder')}</span>
             <kbd className="text-[10px] bg-sidebar-hover border border-sidebar-border rounded px-1">
               Ctrl K
             </kbd>
@@ -739,10 +729,10 @@ export function TopShell({ children }: { children: ReactNode }) {
           <button
             onClick={() => setNavEditMode(true)}
             className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sidebar-muted hover:bg-sidebar-hover hover:text-white transition-colors text-[12px]"
-            title="Переставити, приховати або згрупувати пункти меню"
+            title={t('shell.customizeMenuHint')}
           >
             <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
-            <span className="flex-1 text-left">Налаштувати меню</span>
+            <span className="flex-1 text-left">{t('shell.customizeMenu')}</span>
           </button>
         </div>
       )}
@@ -773,7 +763,7 @@ export function TopShell({ children }: { children: ReactNode }) {
             <button
               onClick={() => void handleLogout()}
               className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
-              title="Вийти"
+              title={t('shell.logout')}
             >
               <LogOut className="h-3.5 w-3.5" />
             </button>
@@ -788,7 +778,7 @@ export function TopShell({ children }: { children: ReactNode }) {
                 {employee.firstName} {employee.lastName}
               </div>
               <div className="text-[11px] text-sidebar-muted leading-tight truncate">
-                {ROLE_LABELS[role] ?? role}
+                {employeeRoleLabel(role)}
               </div>
             </div>
             {uiFeatures.notificationCenterEnabled && (
@@ -797,14 +787,14 @@ export function TopShell({ children }: { children: ReactNode }) {
             <button
               onClick={() => void handleLogoutAll()}
               className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-muted hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
-              title="Вийти на всіх пристроях"
+              title={t('shell.logoutAll')}
             >
               <MonitorSmartphone className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={() => void handleLogout()}
               className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-muted hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
-              title="Вийти"
+              title={t('shell.logout')}
             >
               <LogOut className="h-3.5 w-3.5" />
             </button>
@@ -852,7 +842,7 @@ export function TopShell({ children }: { children: ReactNode }) {
           <button
             onClick={() => setMobileOpen(true)}
             className="p-1.5 rounded-lg hover:bg-secondary text-foreground-muted transition-colors"
-            aria-label="Відкрити меню"
+            aria-label={t('shell.openMenu')}
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -866,10 +856,10 @@ export function TopShell({ children }: { children: ReactNode }) {
             <button
               onClick={() => setPaletteOpen(true)}
               className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary text-muted-foreground text-[12px] hover:bg-secondary/80 transition-colors"
-              aria-label="Відкрити пошук"
+              aria-label={t('shell.openSearch')}
             >
               <Search className="h-3.5 w-3.5" />
-              <span>Пошук</span>
+              <span>{t('common:search')}</span>
             </button>
           )}
         </header>

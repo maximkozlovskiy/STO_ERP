@@ -64,5 +64,34 @@
       "firePartial": "Dismissed {{succeeded}} of {{total}}. {{failed}} failed",
       "fireNone": "Failed to dismiss any employee"
     }
+  },
+  "editModal": {
+    "titleCreate": "New employee",
+    "saveError": "Save error",
+    "rate": {
+      "percent_normo": "% of standard hours",
+      "per_normo_hour": "Rate × standard hours",
+      "fixed_plus_bonus": "Rate + bonus"
+    },
+    "firstName": "First name",
+    "firstNamePlaceholder": "John",
+    "lastName": "Last name",
+    "lastNamePlaceholder": "Smith",
+    "phone": "Phone",
+    "dateOfHire": "Hire date",
+    "dateOfFire": "Dismissal date",
+    "percent": "Percentage, %",
+    "ratePerHour": "Rate, ₴/standard hour",
+    "fixedMonthly": "Rate, ₴/month",
+    "bonusPercent": "Bonus, %",
+    "grantAccess": "Grant system access",
+    "loginEmail": "Login email",
+    "password": "Password",
+    "passwordPlaceholder": "Min. 6 characters",
+    "tabZones": "Zones and lifts",
+    "tabCategories": "Work categories",
+    "tabBranches": "Branches",
+    "allBranches": "Access to all branches",
+    "allBranchesHint": "OWNER and ADMIN have access to all branches automatically."
   }
 }

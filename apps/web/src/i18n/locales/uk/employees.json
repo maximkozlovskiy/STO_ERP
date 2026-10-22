@@ -64,5 +64,34 @@
       "firePartial": "Звільнено {{succeeded}} з {{total}}. {{failed}} не вдалося",
       "fireNone": "Не вдалося звільнити жодного співробітника"
     }
+  },
+  "editModal": {
+    "titleCreate": "Новий співробітник",
+    "saveError": "Помилка збереження",
+    "rate": {
+      "percent_normo": "% від норма-год",
+      "per_normo_hour": "Ставка × нормо-год",
+      "fixed_plus_bonus": "Ставка + бонус"
+    },
+    "firstName": "Ім'я",
+    "firstNamePlaceholder": "Іван",
+    "lastName": "Прізвище",
+    "lastNamePlaceholder": "Коваль",
+    "phone": "Телефон",
+    "dateOfHire": "Дата прийому",
+    "dateOfFire": "Дата звільнення",
+    "percent": "Відсоток, %",
+    "ratePerHour": "Ставка, ₴/нормо-год",
+    "fixedMonthly": "Ставка, ₴/міс",
+    "bonusPercent": "Бонус, %",
+    "grantAccess": "Надати доступ до системи",
+    "loginEmail": "Email для входу (логін)",
+    "password": "Пароль",
+    "passwordPlaceholder": "Мін. 6 символів",
+    "tabZones": "Зони та підйомники",
+    "tabCategories": "Категорії робіт",
+    "tabBranches": "Філії",
+    "allBranches": "Доступ до всіх філій",
+    "allBranchesHint": "OWNER та ADMIN мають доступ до всіх філій автоматично."
   }
 }

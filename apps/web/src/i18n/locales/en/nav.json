@@ -23,5 +23,18 @@
   "infrastructure": "Infrastructure",
   "settings": "System",
   "settingsSync": "Cloud Sync",
-  "errLogoutAll": "Could not end sessions on other devices — no connection to the server. Please try again later."
+  "errLogoutAll": "Could not end sessions on other devices — no connection to the server. Please try again later.",
+  "shell.logoutConfirm": "Sign out?",
+  "shell.logoutAllConfirmTitle": "Sign out on all devices?",
+  "shell.logoutAllConfirmMessage": "All active sessions of this user (on every device) will be ended.",
+  "shell.bookmarkRemove": "Remove bookmark",
+  "shell.bookmarkAdd": "Add bookmark",
+  "shell.bookmarks": "Bookmarks",
+  "shell.appSubtitle": "Car service",
+  "shell.customizeMenu": "Customize menu",
+  "shell.customizeMenuHint": "Reorder, hide or group menu items",
+  "shell.logout": "Sign out",
+  "shell.logoutAll": "Sign out on all devices",
+  "shell.openMenu": "Open menu",
+  "shell.openSearch": "Open search"
 }
