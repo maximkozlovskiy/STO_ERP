@@ -5,6 +5,7 @@ import {
   TRANSACTION_TIMEOUT_MS,
   translateError,
   WO_INVOICE_CREATABLE_STATUSES,
+  WORK_UNIT_SHORT_NAME,
 } from '@sto/shared';
 
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -1380,7 +1381,8 @@ export class InvoicesService {
               unitPrice: true,
               vatRate: true,
               priceWithVat: true,
-              // Одиниця рядка (як у наряді), інакше базова одиниця товару (Bug #868).
+              workId: true,
+              // Одиниця рядка (як у наряді), інакше базова одиниця товару (Bug #868), робота — «год».
               unitOfMeasure: { select: { shortName: true } },
               good: {
                 select: {
@@ -1412,7 +1414,10 @@ export class InvoicesService {
         description: l.description,
         quantity: l.quantity,
         unit:
-          l.unitOfMeasure?.shortName ?? l.good?.unitOfMeasure?.shortName ?? l.good?.unit ?? 'шт',
+          l.unitOfMeasure?.shortName ??
+          l.good?.unitOfMeasure?.shortName ??
+          l.good?.unit ??
+          (l.workId ? WORK_UNIT_SHORT_NAME : 'шт'),
         unitPrice: Number(l.unitPrice),
         vatRate: Number(l.vatRate),
         total: Number(l.priceWithVat),
@@ -1496,7 +1501,8 @@ export class InvoicesService {
         selectedUoM?.unitOfMeasure.shortName ??
         l.unitOfMeasure?.shortName ??
         baseUoM?.shortName ??
-        l.good?.unit,
+        l.good?.unit ??
+        (l.workId ? WORK_UNIT_SHORT_NAME : undefined),
       // safeCoeff() catches legacy/seed coefficient=0 — множник display↔base (qty_base = qty * coefficient).
       coefficient: safeCoeff(selectedUoM?.coefficient ?? baseUoM?.coefficient),
       quantity: l.quantity,

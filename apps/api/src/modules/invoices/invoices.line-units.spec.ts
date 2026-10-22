@@ -208,4 +208,46 @@ describe('Рахунок — одиниця рядка як у наряді (Bug
     const arg = h.pdf.generateInvoicePdf.mock.calls[0]![0] as { lines: { unit: string }[] };
     expect(arg.lines[0]!.unit).toBe('Пак');
   });
+
+  /** Рядок роботи: без товару й одиниці, кількість — години. */
+  const workLine = pakLine({
+    goodId: null,
+    workId: 'work-1',
+    description: 'Заміна оливи',
+    quantity: 1.5,
+    unitOfMeasureId: null,
+    unitOfMeasure: null,
+    good: null,
+  });
+
+  // guards: BR-INV-021
+  it('робота — «год» у картці рахунку (рішення власника 2026-10-22)', async () => {
+    h.prisma.invoice.findFirst.mockResolvedValue(invoiceRow([workLine]));
+    const dto = await h.service.findOne(ORG, INV_ID);
+    expect(dto.lines![0]).toMatchObject({ workId: 'work-1', unitShortName: 'год', quantity: 1.5 });
+  });
+
+  // guards: BR-INV-021
+  it('робота — «год» у друкованому рахунку, ручний рядок без товару й роботи — «шт»', async () => {
+    h.pdf.generateInvoicePdf.mockResolvedValue(Buffer.from('%PDF'));
+    const manual = { ...workLine, workId: null, description: 'Доставка' };
+    h.prisma.invoice.findFirst.mockResolvedValue({
+      ...invoiceRow([workLine, manual]),
+      counterparty: {
+        firstName: null,
+        lastName: null,
+        companyName: 'ТОВ Бета',
+        phone: null,
+        edrpou: null,
+      },
+    });
+    await h.service.generatePdf(ORG, INV_ID);
+    const arg = h.pdf.generateInvoicePdf.mock.calls[0]![0] as { lines: { unit: string }[] };
+    expect(arg.lines.map(l => l.unit)).toEqual(['год', 'шт']);
+    // Друк читає workId рядка — без нього робота знову надрукувалась би «шт».
+    const select = h.prisma.invoice.findFirst.mock.calls
+      .map(c => c[0] as { select?: { lines?: { select?: Record<string, unknown> } } })
+      .find(a => a.select?.lines?.select);
+    expect(select!.select!.lines!.select).toHaveProperty('workId', true);
+  });
 });
