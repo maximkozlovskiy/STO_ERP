@@ -95,6 +95,7 @@ describe('Рахунок — одиниця рядка як у наряді (Bug
     h.prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
   });
 
+  // guards: BR-INV-021
   it('рядок наряду переносить у рахунок свою одиницю (чиста функція)', () => {
     const [part] = buildInvoiceLinesFromWorkOrder(
       {
@@ -110,6 +111,7 @@ describe('Рахунок — одиниця рядка як у наряді (Bug
     expect(part).toMatchObject({ goodId: GOOD, quantity: 1, unitPrice: 450, unitOfMeasureId: PAK });
   });
 
+  // guards: BR-INV-021
   it('оновлення рахунку з наряду: рядок запчастини записується з одиницею наряду', async () => {
     h.prisma.workOrder.findFirst.mockResolvedValue({
       id: WO_ID,
@@ -143,6 +145,7 @@ describe('Рахунок — одиниця рядка як у наряді (Bug
     expect(data[0]).toMatchObject({ goodId: GOOD, quantity: 1, unitOfMeasureId: PAK });
   });
 
+  // guards: BR-INV-021
   it('картка рахунку: «Пак» з коефіцієнтом товару, а не базова «шт»', async () => {
     h.prisma.invoice.findFirst.mockResolvedValue(invoiceRow([pakLine()]));
     const dto = await h.service.findOne(ORG, INV_ID);
@@ -160,6 +163,7 @@ describe('Рахунок — одиниця рядка як у наряді (Bug
     );
   });
 
+  // guards: BR-INV-021
   it('рядок без одиниці — базова одиниця товару, без запиту одиниць', async () => {
     h.prisma.invoice.findFirst.mockResolvedValue(
       invoiceRow([pakLine({ unitOfMeasureId: null, unitOfMeasure: null })]),
@@ -169,6 +173,7 @@ describe('Рахунок — одиниця рядка як у наряді (Bug
     expect(goodUoM.findMany).not.toHaveBeenCalled();
   });
 
+  // guards: BR-INV-021
   it('addLine приймає UnitOfMeasure.id (як наряд): пара шукається за unitOfMeasureId товару', async () => {
     h.prisma.invoice.findFirst.mockResolvedValue({ id: INV_ID, orgId: ORG, status: 'DRAFT' });
     const res = await h.service.addLine(ORG, INV_ID, {
@@ -186,6 +191,7 @@ describe('Рахунок — одиниця рядка як у наряді (Bug
     expect(res).toMatchObject({ unitShortName: 'Пак', coefficient: 10 });
   });
 
+  // guards: BR-INV-021
   it('друкований рахунок: одиниця рядка «Пак»', async () => {
     h.pdf.generateInvoicePdf.mockResolvedValue(Buffer.from('%PDF'));
     h.prisma.invoice.findFirst.mockResolvedValue({
