@@ -225,6 +225,9 @@ export const uk: Record<string, string> = {
   'err.workCategory.parentNotFound': 'Батьківську категорію не знайдено',
   'err.workCategory.systemImmutable': 'Системну категорію не можна перейменовувати або переносити',
   'err.workCategory.systemUndeletable': 'Системну категорію не можна видалити',
+  'err.workCategory.ownParent': 'Категорія не може бути власним батьком',
+  'err.workCategory.moveIntoDescendant':
+    'Неможливо перенести категорію у власну підкатегорію (утворився б цикл)',
 
   // ── Exception-повідомлення: units-модуль ──
   'err.unit.deletedNotFound': 'Видалену одиницю виміру не знайдено',

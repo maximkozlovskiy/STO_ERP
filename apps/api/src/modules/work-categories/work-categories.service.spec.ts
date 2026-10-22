@@ -119,6 +119,50 @@ describe('WorkCategoriesService', () => {
     });
   });
 
+  describe('update — перенесення без циклів', () => {
+    it('категорія батьком самої себе → 400, нічого не записано', async () => {
+      await expect(svc.update(ORG, ID, { parentId: ID } as never)).rejects.toThrow(
+        'Категорія не може бути власним батьком',
+      );
+      expect(prisma.workCategory.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('перенесення у власного онука → 400, нічого не записано', async () => {
+      // cat-1 → cat-2 → cat-3; переносимо cat-1 під cat-3.
+      prisma.workCategory.findMany.mockResolvedValue([
+        { id: ID, parentId: null },
+        { id: 'cat-2', parentId: ID },
+        { id: 'cat-3', parentId: 'cat-2' },
+      ]);
+      await expect(svc.update(ORG, ID, { parentId: 'cat-3' } as never)).rejects.toThrow(
+        'Неможливо перенести категорію у власну підкатегорію',
+      );
+      expect(prisma.workCategory.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('перенесення під сусідню гілку дозволено', async () => {
+      prisma.workCategory.findMany.mockResolvedValue([
+        { id: ID, parentId: null },
+        { id: 'cat-2', parentId: ID },
+        { id: 'other', parentId: null },
+      ]);
+      await svc.update(ORG, ID, { parentId: 'other' } as never);
+      expect(prisma.workCategory.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('цикл, що вже є в даних, не зациклює видалення: нащадки обходяться один раз', async () => {
+      // Дані з часу до захисту: cat-1 → cat-2 → cat-3 → cat-1 (cat-1 перенесли під онука).
+      prisma.workCategory.findMany.mockResolvedValue([
+        { id: ID, parentId: 'cat-3' },
+        { id: 'cat-2', parentId: ID },
+        { id: 'cat-3', parentId: 'cat-2' },
+      ]);
+      await svc.remove(ORG, ID);
+      const ids = (prisma.workCategory.updateMany.mock.calls[0][0].where.id as { in: string[] }).in;
+      expect([...ids].sort()).toEqual([ID, 'cat-2', 'cat-3'].sort());
+    });
+  });
+
   describe('ієрархія — бекенд не обмежує глибину', () => {
     // guards: BR-WORK-005
     it('findAll будує дерево з чотирьох рівнів без обрізання', async () => {

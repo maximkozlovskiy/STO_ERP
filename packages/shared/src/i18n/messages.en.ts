@@ -222,6 +222,9 @@ export const en: Record<string, string> = {
   'err.workCategory.parentNotFound': 'Parent category not found',
   'err.workCategory.systemImmutable': 'A system category cannot be renamed or moved',
   'err.workCategory.systemUndeletable': 'A system category cannot be deleted',
+  'err.workCategory.ownParent': 'A category cannot be its own parent',
+  'err.workCategory.moveIntoDescendant':
+    'A category cannot be moved into its own subcategory (this would create a cycle)',
 
   // ── Exception messages: units module ──
   'err.unit.deletedNotFound': 'Deleted unit of measure not found',

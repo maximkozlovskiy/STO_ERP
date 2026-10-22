@@ -101,6 +101,21 @@ export class WorkCategoriesService {
       );
     }
 
+    // Захист від циклу, як у категорій товарів: категорія, перенесена в себе чи у власного
+    // нащадка, відривалась від кореня — гілка зникала з дерева (buildTree її не бачив), а
+    // getDescendantIds при видаленні обходив би цикл.
+    if (dto.parentId) {
+      if (dto.parentId === id) {
+        throw new BadRequestException(translateError('err.workCategory.ownParent', getLocale()));
+      }
+      const descendants = await this.getDescendantIds(orgId, id);
+      if (descendants.includes(dto.parentId)) {
+        throw new BadRequestException(
+          translateError('err.workCategory.moveIntoDescendant', getLocale()),
+        );
+      }
+    }
+
     // Atomic updateMany with deletedAt: null in where — prevents a race between
     // findFirst and update from touching a concurrently soft-deleted row.
     const result = await this.prisma.workCategory.updateMany({
@@ -192,15 +207,19 @@ export class WorkCategoriesService {
       arr.push(c.id);
       childrenByParent.set(c.parentId, arr);
     }
-    const result: string[] = [];
+    // seen: цикл, що лишився в даних з часу до захисту від циклів, не зациклює обхід.
+    const seen = new Set<string>([parentId]);
     const stack = [parentId];
     while (stack.length) {
       const id = stack.pop()!;
-      const children = childrenByParent.get(id) ?? [];
-      result.push(...children);
-      stack.push(...children);
+      for (const child of childrenByParent.get(id) ?? []) {
+        if (seen.has(child)) continue;
+        seen.add(child);
+        stack.push(child);
+      }
     }
-    return result;
+    seen.delete(parentId);
+    return [...seen];
   }
 
   private buildTree(all: WorkCategoryRow[], parentId: string | null): WorkCategoryResponseDto[] {

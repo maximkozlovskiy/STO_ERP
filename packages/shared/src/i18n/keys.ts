@@ -396,6 +396,8 @@ export const VALIDATION_KEYS = [
   'err.workCategory.parentNotFound',
   'err.workCategory.systemImmutable',
   'err.workCategory.systemUndeletable',
+  'err.workCategory.ownParent',
+  'err.workCategory.moveIntoDescendant',
   // Exception-повідомлення: units-модуль
   'err.unit.deletedNotFound',
   'err.unit.systemUnrestorable',
