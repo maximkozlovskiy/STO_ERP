@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import type { ApiSchema, operations } from '@sto/shared';
+import type { ApiSchema, operations, PaymentReversalFormValues } from '@sto/shared';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { invalidateBalanceAffected, invalidatePaymentSideEffects } from '@/lib/cache-invalidation';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
@@ -282,6 +282,35 @@ export function useUnreconcileBankTransaction() {
       invalidateSupplierPaymentEffects(qc);
     },
     onSettled: () => {
+      void qc.invalidateQueries({ queryKey: bankTransactionsKeys.all });
+    },
+  });
+}
+
+/**
+ * Сторно безготівкової оплати клієнта (POST /payments/:id/reverse, BR-PAY-024). Тут, а не в
+ * `usePayments`: той файл імпортує `cache-invalidation` (ключ оплат), і хук там дав би цикл.
+ * `idempotencyKey` — один на відкриття картки сторно: повтор після обриву не дасть другої спроби.
+ *
+ * Сторно відкочує те саме, що касове: борг, «сплачено» й статуси наряду та рахунку, бонуси; рядок
+ * виписки оплати стає «Нерознесений». Відмова не доводить, що сторно не пройшло (відповідь могла
+ * не дійти), тож кеші скидаються після будь-якого результату.
+ */
+export function useReversePayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      paymentId,
+      idempotencyKey,
+      reason,
+    }: { paymentId: string; idempotencyKey: string } & PaymentReversalFormValues) =>
+      apiFetch<unknown>(`/payments/${paymentId}/reverse`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify({ reason }),
+      }),
+    onSettled: () => {
+      invalidatePaymentSideEffects(qc);
       void qc.invalidateQueries({ queryKey: bankTransactionsKeys.all });
     },
   });

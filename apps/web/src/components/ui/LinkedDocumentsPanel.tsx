@@ -15,6 +15,7 @@ import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
+import { useAuth } from '@/lib/auth';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 
 // ─── Generic config-driven API ────────────────────────────
@@ -48,6 +49,61 @@ export interface LinkedSectionItem {
    * відмову показує toast. Немає дії → кнопки немає (права вирішує той, хто будує конфіг).
    */
   action?: { label: string; run: () => Promise<unknown> };
+  /**
+   * Дія з власним вікном (напр. «Сторнувати» оплату, BR-PAY-024): панель відкриває вікно, а після
+   * `onDone` перезавантажується сама. `roles` — кому показувати кнопку (немає — усім).
+   */
+  dialogAction?: LinkedDialogAction;
+  /** Підказка на місці дії, напр. «Сторнується в касі»; `roles` — як у `dialogAction`. */
+  actionHint?: { text: string; roles?: readonly string[] };
+}
+
+/** Дія рядка з власним вікном — див. `LinkedSectionItem.dialogAction`. */
+export interface LinkedDialogAction {
+  label: string;
+  ariaLabel?: string;
+  roles?: readonly string[];
+  render: (props: { open: boolean; onClose: () => void; onDone: () => void }) => ReactNode;
+}
+
+/** Кнопка дії з вікном і підказка — лише для своїх ролей. */
+function RowDialogAction({
+  dialogAction,
+  hint,
+  disabled,
+  onOpen,
+}: {
+  dialogAction?: LinkedDialogAction;
+  hint?: { text: string; roles?: readonly string[] };
+  disabled: boolean;
+  onOpen: () => void;
+}) {
+  // Рендериться лише в рядку з дією чи підказкою — панелі без них AuthProvider не потрібен.
+  const role = useAuth().employee?.role;
+  const allowed = (roles?: readonly string[]) => !roles || (!!role && roles.includes(role));
+  const canAct = allowed(dialogAction?.roles);
+  const canSeeHint = allowed(hint?.roles);
+  if (dialogAction && canAct) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={disabled}
+        aria-label={dialogAction.ariaLabel}
+        className="shrink-0 self-center mr-3 px-2 py-0.5 rounded-md border border-border text-[11px] font-medium text-foreground hover:bg-secondary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        {dialogAction.label}
+      </button>
+    );
+  }
+  if (hint && canSeeHint) {
+    return (
+      <span className="shrink-0 self-center mr-3 text-[11px] text-muted-foreground">
+        {hint.text}
+      </span>
+    );
+  }
+  return null;
 }
 
 /** Опис однієї секції: як її назвати, якою іконкою і як мапити рядки відповіді. */
@@ -200,6 +256,9 @@ function SectionRow({
   action,
   actionBusy,
   onAction,
+  dialogAction,
+  actionHint,
+  onDialogAction,
 }: {
   icon: ElementType;
   primary: string;
@@ -211,6 +270,9 @@ function SectionRow({
   action?: { label: string };
   actionBusy?: boolean;
   onAction?: () => void;
+  dialogAction?: LinkedDialogAction;
+  actionHint?: { text: string; roles?: readonly string[] };
+  onDialogAction?: () => void;
 }) {
   const { t } = useTranslation('common');
   return (
@@ -248,6 +310,14 @@ function SectionRow({
         >
           {action.label}
         </button>
+      )}
+      {(dialogAction || actionHint) && (
+        <RowDialogAction
+          dialogAction={dialogAction}
+          hint={actionHint}
+          disabled={!!actionBusy}
+          onOpen={() => onDialogAction?.()}
+        />
       )}
       {onOpen && (
         <button
@@ -296,6 +366,8 @@ export function LinkedDocumentsPanel({
   const [preview, setPreview] = useState<LinkedSectionItem | null>(null);
   // Рядок, над яким виконується дія — одна дія за раз, щоб не слати подвійний запит.
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
+  // Вікно дії рядка: рядок тримається й після закриття (`open: false`) — для анімації виходу.
+  const [dialog, setDialog] = useState<{ item: LinkedSectionItem; open: boolean } | null>(null);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
 
   // config зазвичай module-level constant (стабільний), але тримаємо у ref, щоб
@@ -360,46 +432,63 @@ export function LinkedDocumentsPanel({
     }
   };
 
+  // Вікно дії рендериться в КОЖНІЙ гілці: після `onDone` панель перечитується (гілка «завантаження»),
+  // і вікно, що закривається, не має зникнути посеред анімації.
+  const dialogNode = dialog?.item.dialogAction?.render({
+    open: dialog.open,
+    onClose: () => setDialog(d => (d ? { ...d, open: false } : d)),
+    onDone: () => setRetryKey(k => k + 1),
+  });
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-        {t('loading')}
-      </div>
+      <>
+        <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+          {t('loading')}
+        </div>
+        {dialogNode}
+      </>
     );
   }
 
   // error має пріоритет над null/empty data — інакше панель «приховала» помилку.
   if (error) {
     return (
-      <div
-        role="alert"
-        className="flex flex-col items-center justify-center py-8 px-4 gap-3 text-sm text-muted-foreground"
-      >
-        <div className="flex items-center gap-2 text-destructive">
-          <AlertCircle size={16} aria-hidden="true" />
-          <span className="font-medium">{t('linkedDocuments.loadError')}</span>
-        </div>
-        <p className="text-xs text-center max-w-xs">{error}</p>
-        <button
-          type="button"
-          onClick={() => setRetryKey(k => k + 1)}
-          className="text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+      <>
+        <div
+          role="alert"
+          className="flex flex-col items-center justify-center py-8 px-4 gap-3 text-sm text-muted-foreground"
         >
-          {t('tryAgain')}
-        </button>
-      </div>
+          <div className="flex items-center gap-2 text-destructive">
+            <AlertCircle size={16} aria-hidden="true" />
+            <span className="font-medium">{t('linkedDocuments.loadError')}</span>
+          </div>
+          <p className="text-xs text-center max-w-xs">{error}</p>
+          <button
+            type="button"
+            onClick={() => setRetryKey(k => k + 1)}
+            className="text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+          >
+            {t('tryAgain')}
+          </button>
+        </div>
+        {dialogNode}
+      </>
     );
   }
 
-  if (!sections) return null;
+  if (!sections) return dialogNode ?? null;
 
   const total = sections.reduce((sum, s) => sum + s.items.length, 0);
 
   if (total === 0) {
     return (
-      <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-        {t('linkedDocuments.empty')}
-      </div>
+      <>
+        <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+          {t('linkedDocuments.empty')}
+        </div>
+        {dialogNode}
+      </>
     );
   }
 
@@ -425,6 +514,9 @@ export function LinkedDocumentsPanel({
                 action={item.action}
                 actionBusy={busyActionId !== null}
                 onAction={() => void runAction(item)}
+                dialogAction={item.dialogAction}
+                actionHint={item.actionHint}
+                onDialogAction={() => setDialog({ item, open: true })}
               />
             ))}
           </DocSection>
@@ -434,6 +526,7 @@ export function LinkedDocumentsPanel({
       {preview && (
         <PreviewPopup item={preview} anchorRef={anchorRef} onClose={() => setPreview(null)} />
       )}
+      {dialogNode}
     </>
   );
 }

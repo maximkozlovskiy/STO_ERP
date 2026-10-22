@@ -37,6 +37,10 @@ import { BankStatementImportModal } from '@/components/ui/BankStatementImportMod
 import { MatchOutgoingBankTransactionModal } from '@/components/ui/MatchOutgoingBankTransactionModal';
 import { UnreconcileBankTransactionModal } from '@/components/ui/UnreconcileBankTransactionModal';
 import { BankTransactionCreateModal } from '@/components/ui/BankTransactionCreateModal';
+import {
+  PaymentReversalModal,
+  type PaymentReversalTarget,
+} from '@/components/ui/PaymentReversalModal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
@@ -62,8 +66,8 @@ const COLUMN_COUNT = 8;
 
 /**
  * Зняти рознесення можна лише з рядка, рознесеного через `reconcile` (BR-BANK-039): вид — із
- * «вихідних» і немає `paymentId`. Вхідний, рознесений через `match`, має платіж клієнта, а його
- * сторно в системі немає (BR-BANK-040) — кнопка там обіцяла б відмову.
+ * «вихідних» і немає `paymentId`. Вхідний, рознесений через `match`, має оплату клієнта — його
+ * знімає лише сторно оплати (BR-BANK-040, `canReversePayment`).
  */
 function canUnreconcile(tx: BankTransaction): boolean {
   return (
@@ -72,6 +76,11 @@ function canUnreconcile(tx: BankTransaction): boolean {
     !!tx.matchedType &&
     (BANK_TX_OUT_MATCH_TYPE_VALUES as readonly string[]).includes(tx.matchedType)
   );
+}
+
+/** BR-PAY-024 / BR-BANK-040: вхідний рядок, рознесений на оплату клієнта, — «Сторнувати оплату». */
+function canReversePayment(tx: BankTransaction): boolean {
+  return tx.direction === 'IN' && tx.status === 'MATCHED' && !!tx.paymentId;
 }
 
 /** Сума зі знаком і валютою рахунку: «+» надходження, «−» списання (у базі сума завжди > 0). */
@@ -97,6 +106,10 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
     allowedTypes?: readonly BankTxOutMatchTypeValue[];
   } | null>(null);
   const [unreconcileTx, setUnreconcileTx] = useState<BankTransaction | null>(null);
+  // Сторно оплати рядка: ціль тримається й після закриття (`open` окремо) — для анімації виходу.
+  const [reversal, setReversal] = useState<{ target: PaymentReversalTarget; open: boolean } | null>(
+    null,
+  );
   const [deleteTx, setDeleteTx] = useState<BankTransaction | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -159,6 +172,21 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
     } catch (e) {
       toast.error(e instanceof Error && e.message ? e.message : t('page.delete.error'));
     }
+  };
+
+  const openReversal = (tx: BankTransaction) => {
+    if (!tx.paymentId) return;
+    setReversal({
+      open: true,
+      target: {
+        id: tx.paymentId,
+        amountText:
+          `${fmtMoney(tx.amount)} ${fmtBankCurrencySuffix(tx.bankAccountCurrencyCode)}`.trim(),
+        dateText: fmtDate(tx.operationDate),
+        partyName: tx.counterpartyName ?? tx.payerName,
+        fromBankStatement: true,
+      },
+    });
   };
 
   /** Деталь рознесення: з чим саме пов'язано рядок (поля приходять лише для свого виду). */
@@ -353,6 +381,16 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
                           {t('page.row.unreconcile')}
                         </Button>
                       )}
+                      {canReversePayment(tx) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openReversal(tx)}
+                        >
+                          {t('page.row.reversePayment')}
+                        </Button>
+                      )}
                       {tx.status === 'UNMATCHED' && (
                         <div className="flex items-center justify-end gap-1">
                           <Button
@@ -474,6 +512,15 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
         onClose={() => setUnreconcileTx(null)}
         transaction={unreconcileTx}
       />
+
+      {/* Монтується з першим відкриттям і лишається (open: false) — для анімації виходу. */}
+      {reversal && (
+        <PaymentReversalModal
+          open={reversal.open}
+          onClose={() => setReversal(r => (r ? { ...r, open: false } : r))}
+          payment={reversal.target}
+        />
+      )}
 
       {/* Напрям за замовчуванням — напрям вкладки; на «Всі» — вхідний. */}
       <BankTransactionCreateModal

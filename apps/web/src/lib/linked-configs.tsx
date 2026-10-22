@@ -24,7 +24,13 @@ import {
 } from '@/i18n/enumLabel';
 import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
-import type { LinkedEntityConfig, LinkedItemBadge } from '@/components/ui/LinkedDocumentsPanel';
+import type {
+  LinkedEntityConfig,
+  LinkedItemBadge,
+  LinkedSectionItem,
+} from '@/components/ui/LinkedDocumentsPanel';
+import { PaymentReversalModal } from '@/components/ui/PaymentReversalModal';
+import i18n from '@/i18n/config';
 import type { LinkedNav } from '@/lib/linked-nav';
 import { SUPPLIER_PAYMENT_STATUS_BADGE, type ApiSchema } from '@sto/shared';
 
@@ -215,6 +221,50 @@ function reversedPreviewRows(row: LinkedPaymentRow) {
   return row.reversedAt ? [{ label: 'Сторновано', value: fmtDateTime(row.reversedAt) }] : [];
 }
 
+/** Хто сторнує оплату — ті самі ролі, що в маршруту `POST /payments/:id/reverse` і в касі. */
+export const PAYMENT_REVERSAL_ROLES = ['OWNER', 'ADMIN', 'ACCOUNTANT'] as const;
+
+/**
+ * BR-PAY-024: дія «Сторнувати» для рядка оплати — лише не сторнованої, не касової й не онлайн-оплати
+ * QR; касова — підказка «Сторнується в касі» (сторно каси — ще й рядок протилежного напряму). Тексти —
+ * `i18n.t` у момент побудови рядка: конфіг не хук, а мова на той момент уже поточна.
+ */
+function paymentReversalFields(
+  row: LinkedPaymentRow,
+): Pick<LinkedSectionItem, 'dialogAction' | 'actionHint'> {
+  if (row.reversedAt || row.isOnline) return {};
+  if (row.sourceType === 'CASH_REGISTER') {
+    return {
+      actionHint: {
+        text: i18n.t('cash:paymentReversal.cashHint'),
+        roles: PAYMENT_REVERSAL_ROLES,
+      },
+    };
+  }
+  const amountText = `${fmt(row.amount)} ₴`;
+  const dateText = fmtDateTime(row.createdAt);
+  return {
+    dialogAction: {
+      label: i18n.t('cash:paymentReversal.action'),
+      ariaLabel: i18n.t('cash:paymentReversal.actionAria', { amount: amountText, date: dateText }),
+      roles: PAYMENT_REVERSAL_ROLES,
+      render: ({ open, onClose, onDone }) => (
+        <PaymentReversalModal
+          open={open}
+          onClose={onClose}
+          onReversed={onDone}
+          payment={{
+            id: row.id,
+            amountText,
+            dateText,
+            methodLabel: METHOD_LABELS[row.method] ?? row.method,
+          }}
+        />
+      ),
+    },
+  };
+}
+
 // ─── WorkOrder config (behavior-preserving дзеркало старої панелі) ──
 
 export function workOrderLinkedConfig(
@@ -238,6 +288,7 @@ export function workOrderLinkedConfig(
           primary: `${fmt(row.amount)} ₴`,
           secondary: fmtDateTime(row.createdAt),
           badge: row.reversedAt ? REVERSED_PAYMENT_BADGE : undefined,
+          ...paymentReversalFields(row),
           preview: {
             title: 'Оплата',
             rows: [
@@ -359,6 +410,7 @@ export function invoiceLinkedConfig(
             opts.retryFiscal && row.fiscalStatus === 'FAILED' && !row.reversedAt
               ? { label: 'Повторити', run: () => opts.retryFiscal!(row.id) }
               : undefined,
+          ...paymentReversalFields(row),
           preview: {
             title: 'Оплата',
             rows: [

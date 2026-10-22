@@ -21,6 +21,8 @@ const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
+// Рядок оплати несе дію «Сторнувати» за роллю (BR-PAY-024) — панелі потрібна роль користувача.
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ employee: { role: 'ACCOUNTANT' } }) }));
 vi.mock('@/lib/format', () => ({
   fmtMoney: (v: number) => String(v),
   fmtDate: (v: string) => `дата ${v.slice(0, 10)}`,

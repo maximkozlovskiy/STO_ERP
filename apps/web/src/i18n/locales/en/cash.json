@@ -213,5 +213,33 @@
       "originalAria": "Show the reversed operation of {{date}}",
       "originalOutside": "original outside the filter"
     }
+  },
+  "paymentReversal": {
+    "action": "Reverse",
+    "actionAria": "Reverse the payment of {{amount}} from {{date}}",
+    "cashHint": "Reversed at the cash desk",
+    "title": "Reverse payment",
+    "summaryTitle": "What is reversed",
+    "fieldDate": "Payment date",
+    "fieldAmount": "Amount",
+    "fieldParty": "Payer",
+    "fieldMethod": "Method",
+    "consequenceTitle": "What will happen",
+    "consequence": {
+      "common": "The payment of {{amount}} stays in the list marked “Reversed” and no longer counts: the client's debt grows by this amount, the “paid” amount of the work order and invoice decreases, a paid work order returns to “Invoiced”, bonuses earned for the payment are written off.",
+      "bankLine": "The bank statement row becomes “Unmatched” — it can be matched again.",
+      "bankLineMaybe": "If the payment was matched from a bank statement, its row becomes “Unmatched” — it can be matched again.",
+      "money": "No money moves on the account: if the client needs a refund, record it separately."
+    },
+    "reasonLabel": "Reversal reason",
+    "reasonPlaceholder": "E.g. the payment was matched to the wrong client",
+    "counter": "{{count}} / {{max}}",
+    "submit": "Reverse",
+    "cancel": "Cancel",
+    "confirmText": "A reversal cannot be undone. Reverse the payment?",
+    "confirmSubmit": "Yes, reverse",
+    "back": "Back",
+    "success": "Payment reversed",
+    "error": "Could not reverse the payment"
   }
 }
