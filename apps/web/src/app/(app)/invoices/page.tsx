@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState, useCallback, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import type { ElementType } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -44,8 +45,6 @@ import {
   INVOICE_STATUS_TRANSITIONS,
 } from '@sto/shared';
 import { invoiceStatusLabel, invoiceTypeLabel } from '@/i18n/enumLabel';
-import { QrPaymentModal } from '@/components/ui/QrPaymentModal';
-import { ClientPaymentModal } from '@/components/ui/ClientPaymentModal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -110,6 +109,17 @@ interface InvoiceFilters extends Record<string, unknown> {
 type InvoiceWithOptionals = Invoice;
 
 // Status labels via i18n wrappers; badge/transition constants imported from @sto/shared
+// Вікна оплати й QR відкриваються лише за кліком — їхній код не входить у first-load сторінки
+// (бюджет сторінки рахунків, check-page-budget.mjs).
+const ClientPaymentModal = dynamic(
+  () => import('@/components/ui/ClientPaymentModal').then(m => m.ClientPaymentModal),
+  { ssr: false },
+);
+const QrPaymentModal = dynamic(
+  () => import('@/components/ui/QrPaymentModal').then(m => m.QrPaymentModal),
+  { ssr: false },
+);
+
 const STATUS_BADGE = INVOICE_STATUS_BADGE;
 const STATUS_TRANSITIONS = INVOICE_STATUS_TRANSITIONS;
 

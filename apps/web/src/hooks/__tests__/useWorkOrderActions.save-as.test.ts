@@ -33,16 +33,21 @@ function setup(woNumber?: string) {
   );
 }
 
+// Відповідь — простий об'єкт, а не `new Response(jsdomBlob)`: Response з undici на різних версіях
+// Node по-різному приймає Blob з jsdom (у CI `blob()` відхилявся, хук ловив помилку й мовчав).
 function stubExport(disposition: string | null) {
   vi.stubGlobal(
     'fetch',
     vi.fn(() =>
-      Promise.resolve(
-        new Response(new Blob(['x']), {
-          status: 200,
-          headers: disposition ? { 'content-disposition': disposition } : {},
-        }),
-      ),
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === 'content-disposition' ? disposition : null,
+        },
+        blob: () => Promise.resolve(new Blob(['x'])),
+      }),
     ),
   );
 }
