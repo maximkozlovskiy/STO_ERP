@@ -43,6 +43,10 @@ export interface WorksTableProps {
   toNumberOrUndefined: (raw: string) => number | undefined;
   saving: boolean;
   fetchWorks: (q: string) => Promise<(WorkPickerItem & { primary: string; secondary: string })[]>;
+  /** Робота нового рядка обрана пошуком — картка підставляє й виконавця (BR-WO-030). */
+  onNewLineWorkPicked: (w: WorkPickerItem) => void;
+  /** Виконавця нового рядка обрала людина — автопідстановка його вже не перезапише. */
+  onNewLineExecutorChange: (employeeId: string) => void;
   // Recalc planned-hours side-effect (delete handler)
   recalcPlannedHoursEnabled: boolean;
   setForm: React.Dispatch<React.SetStateAction<WorkOrderFormState>>;
@@ -87,6 +91,8 @@ export function WorksTable(props: WorksTableProps) {
     toNumberOrUndefined,
     saving,
     fetchWorks,
+    onNewLineWorkPicked,
+    onNewLineExecutorChange,
     recalcPlannedHoursEnabled,
     setForm,
     calcPlannedHoursFromLines,
@@ -426,22 +432,14 @@ export function WorksTable(props: WorksTableProps) {
                       ariaLabel="Робота"
                       onPick={() => setWorkPickerOpen(true)}
                       onSearch={fetchWorks}
-                      onSearchSelect={w =>
-                        setNewLine(l => ({
-                          ...l,
-                          workId: w.id,
-                          workName: w.name,
-                          normoHours: String(w.normoHours),
-                          price: String(w.price),
-                        }))
-                      }
+                      onSearchSelect={onNewLineWorkPicked}
                       onClear={() => setNewLine(EMPTY_LINE)}
                     />
                   </td>
                   <td className="px-2 py-1.5">
                     <ExecutorSelect
                       value={newLine.employeeId}
-                      onChange={employeeId => setNewLine(l => ({ ...l, employeeId }))}
+                      onChange={onNewLineExecutorChange}
                       employees={employees}
                       placeholder="— Механік —"
                       ariaLabel="Виконавець"

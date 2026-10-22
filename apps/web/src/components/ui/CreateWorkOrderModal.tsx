@@ -45,7 +45,7 @@ import { useReferenceData } from '@/hooks/useReferenceData';
 import type { Branch } from '@/hooks/useReferenceData';
 import { useStockTotals } from '@/hooks/useStockTotals';
 import { useWorkOrderActions } from '@/hooks/useWorkOrderActions';
-import { getCached } from '@/lib/ref-cache';
+import { getCached, setCache } from '@/lib/ref-cache';
 import { kyivToday, isoToKyivLocalDateTime, localDateTimeToISO } from '@/lib/format';
 import { notifyCalendarChanged } from '@/lib/calendar-events';
 import { useBranchWorkHours } from '@/hooks/useBranchWorkHours';
@@ -96,6 +96,12 @@ import {
   type GoodPickerItem,
 } from '@/components/ui/GoodPickerModal';
 import { pickPartWarehouse } from '@/lib/part-warehouse';
+import {
+  pickLineExecutor,
+  slotMechanicId,
+  type LinkedSlotMechanic,
+} from '@/lib/work-line-executor';
+import { useLiftMechanics } from '@/hooks/api/useLiftMechanics';
 import { newIdempotencyKey } from '@/lib/idempotency-key';
 import { PartsTable, type PartRow } from './work-order/PartsTable';
 import { WorksTable } from './work-order/WorksTable';
@@ -281,6 +287,43 @@ export interface CreateWOPrefill {
   plannedStartAt?: string;
   plannedEndAt?: string;
   plannedHours?: string;
+  /** Механік запису календаря, з якого відкрито новий наряд, — виконавець нових робіт (BR-WO-030). */
+  employeeId?: string;
+}
+
+/** Рядок `cache:works` (сторінка наряду кладе повні рядки `/works`): категорія роботи — для BR-WO-030. */
+interface WorkCategoryRow {
+  id: string;
+  name?: string;
+  normoHours?: number;
+  price?: number;
+  categoryId?: string | null;
+}
+
+/**
+ * Категорії робіт за id — для робіт «+ Послуга» (у відповіді послуги категорії немає). Спершу кеш
+ * вкладки, бракує — `GET /works?limit=200` (і кеш оновлюється лише полями, які читає сторінка
+ * наряду). Збій — невідома категорія: механіка з категоріями правило тоді не підставить.
+ */
+async function workCategoriesFor(workIds: readonly string[]): Promise<Map<string, string | null>> {
+  const toMap = (rows: readonly WorkCategoryRow[] | null) =>
+    new Map((rows ?? []).map(w => [w.id, w.categoryId ?? null] as const));
+  const cached = toMap(getCached<WorkCategoryRow[]>('cache:works'));
+  if (workIds.every(id => cached.has(id))) return cached;
+  try {
+    const r = await apiFetch<{ items: WorkCategoryRow[] }>('/works?limit=200');
+    const rows = (r.items ?? []).map(({ id, name, normoHours, price, categoryId }) => ({
+      id,
+      name,
+      normoHours,
+      price,
+      categoryId,
+    }));
+    setCache('cache:works', rows);
+    return toMap(rows);
+  } catch {
+    return cached;
+  }
 }
 
 export interface CreatedWorkOrder {
@@ -654,6 +697,13 @@ export function CreateWorkOrderModal({
   const [newPart, setNewPart] = useState<Omit<LocalPart, '_key'>>(EMPTY_PART);
   const [showLineInput, setShowLineInput] = useState(false);
   const [showPartInput, setShowPartInput] = useState(false);
+  // BR-WO-030: виконавець нової роботи — механік запису календаря наряду, інакше єдиний механік
+  // підйомника. Категорія обраної роботи нового рядка і прапорець «виконавця обрала людина» —
+  // ручний вибір автопідстановка не перезаписує.
+  const [newLineCategoryId, setNewLineCategoryId] = useState<string | null>(null);
+  const newLineExecutorManualRef = useRef(false);
+  // Механік найранішого запису наряду в календарі (наявний наряд — з linked-documents).
+  const [linkedSlotMechanicId, setLinkedSlotMechanicId] = useState<string | null>(null);
 
   // Inline edit state (null = no row being edited)
   const [editingLineKey, setEditingLineKey] = useState<string | null>(null);
@@ -710,6 +760,9 @@ export function CreateWorkOrderModal({
     setVehicles([]);
     setContracts([]);
     setNewLine(EMPTY_LINE);
+    setNewLineCategoryId(null);
+    newLineExecutorManualRef.current = false;
+    setLinkedSlotMechanicId(null);
     setNewPart(EMPTY_PART);
     partAutoPickRef.current = { new: null, edit: null };
     setShowLineInput(false);
@@ -861,17 +914,18 @@ export function CreateWorkOrderModal({
     apiFetch<{
       invoices: unknown[];
       payments: unknown[];
-      calendarSlots: unknown[];
+      calendarSlots: LinkedSlotMechanic[];
       warranties: unknown[];
     }>(`/work-orders/${workOrderId}/linked-documents`)
       .then(d => {
-        if (!cancelled)
-          setLinkedDocsCounts({
-            invoices: d.invoices.length,
-            payments: d.payments.length,
-            calendarSlots: d.calendarSlots.length,
-            warranties: d.warranties.length,
-          });
+        if (cancelled) return;
+        setLinkedDocsCounts({
+          invoices: d.invoices.length,
+          payments: d.payments.length,
+          calendarSlots: d.calendarSlots.length,
+          warranties: d.warranties.length,
+        });
+        setLinkedSlotMechanicId(slotMechanicId(d.calendarSlots));
       })
       .catch(() => {});
     return () => {
@@ -1059,6 +1113,60 @@ export function CreateWorkOrderModal({
     setForm(f => ({ ...f, actualHours: value }));
   }, []);
 
+  // ── BR-WO-030: виконавець нової роботи ─────────────────────────────────────────
+  const calendarMechanicId = isEditMode ? linkedSlotMechanicId : (prefill?.employeeId ?? null);
+  const liftMechanics = useLiftMechanics(form.liftId);
+  const activeMechanicIds = useMemo(() => employees.map(e => e.id), [employees]);
+  // Свіжі входи правила для «+ Послуга»: категорії її робіт приходять після await.
+  const executorInputsRef = useRef({ calendarMechanicId, liftMechanics, activeMechanicIds });
+  executorInputsRef.current = { calendarMechanicId, liftMechanics, activeMechanicIds };
+
+  // Новий рядок: виконавець підставляється, щойно обрано роботу, і стежить за даними правила, що
+  // приходять пізніше (механіки підйомника, запис календаря, довідник) — доки його не обрала людина.
+  // Порожній рядок («Додати», «×», скасування, після додавання) знімає прапорець ручного вибору.
+  useEffect(() => {
+    if (!newLine.workId) {
+      if (!newLine.employeeId) newLineExecutorManualRef.current = false;
+      return;
+    }
+    if (newLineExecutorManualRef.current) return;
+    const employeeId = pickLineExecutor({
+      calendarMechanicId,
+      liftMechanics,
+      workCategoryId: newLineCategoryId,
+      activeMechanicIds,
+    });
+    setNewLine(l =>
+      l.workId && !newLineExecutorManualRef.current && l.employeeId !== employeeId
+        ? { ...l, employeeId }
+        : l,
+    );
+  }, [
+    newLine.workId,
+    newLine.employeeId,
+    newLineCategoryId,
+    calendarMechanicId,
+    liftMechanics,
+    activeMechanicIds,
+  ]);
+
+  /** Робота нового рядка — пошуком у рядку чи вікном вибору. Той самий вибір вдруге нічого не скидає. */
+  const pickNewLineWork = useCallback((w: WorkPickerItem) => {
+    setNewLineCategoryId(w.categoryId ?? null);
+    setNewLine(l => ({
+      ...l,
+      workId: w.id,
+      workName: w.name,
+      normoHours: String(w.normoHours),
+      price: String(w.price),
+    }));
+  }, []);
+
+  const changeNewLineExecutor = useCallback((employeeId: string) => {
+    newLineExecutorManualRef.current = true;
+    setNewLine(l => ({ ...l, employeeId }));
+  }, []);
+
   const addLine = () => {
     if (!newLine.workId || !newLine.employeeId) return;
     // блокуємо повний дублікат (work + виконавець) — типовий user-error.
@@ -1097,25 +1205,8 @@ export function CreateWorkOrderModal({
     setShowLineInput(false);
   };
 
-  const applyService = (service: ServicePickerItem) => {
+  const applyService = async (service: ServicePickerItem) => {
     setError('');
-    // Додаємо роботи з послуги (пропускаємо дублікати workId без employeeId)
-    if (service.works.length > 0) {
-      setLines(prev => {
-        const toAdd = service.works
-          .filter(w => !prev.some(l => l.workId === w.workId && !l.employeeId))
-          .map(w => ({
-            _key: nextKey(),
-            workId: w.workId,
-            workName: w.workName,
-            employeeId: '',
-            normoHours: String(w.normoHours * w.quantity),
-            actualHours: '',
-            price: String(w.price),
-          }));
-        return [...prev, ...toAdd];
-      });
-    }
     // Додаємо товари з послуги (пропускаємо дублікати goodId)
     if (service.goods.length > 0) {
       setParts(prev => {
@@ -1134,6 +1225,41 @@ export function CreateWorkOrderModal({
         return [...prev, ...toAdd];
       });
     }
+    // Роботи з послуги — кожна з виконавцем за BR-WO-030 (категорія — зі списку робіт). Пропускаємо
+    // дублікат: та сама робота без виконавця чи з тим самим виконавцем уже в наряді.
+    if (service.works.length === 0) return;
+    const forWorkOrder = workOrderIdRef.current;
+    const categories = await workCategoriesFor(service.works.map(w => w.workId));
+    if (workOrderIdRef.current !== forWorkOrder) return;
+    const inputs = executorInputsRef.current;
+    setLines(prev => {
+      const toAdd = service.works
+        .map(w => ({
+          w,
+          employeeId: pickLineExecutor({
+            calendarMechanicId: inputs.calendarMechanicId,
+            liftMechanics: inputs.liftMechanics,
+            workCategoryId: categories.get(w.workId) ?? null,
+            activeMechanicIds: inputs.activeMechanicIds,
+          }),
+        }))
+        .filter(
+          ({ w, employeeId }) =>
+            !prev.some(
+              l => l.workId === w.workId && (!l.employeeId || l.employeeId === employeeId),
+            ),
+        )
+        .map(({ w, employeeId }) => ({
+          _key: nextKey(),
+          workId: w.workId,
+          workName: w.workName,
+          employeeId,
+          normoHours: String(w.normoHours * w.quantity),
+          actualHours: '',
+          price: String(w.price),
+        }));
+      return [...prev, ...toAdd];
+    });
   };
 
   const addPart = () => {
@@ -2499,6 +2625,8 @@ export function CreateWorkOrderModal({
                   toNumberOrUndefined={toNumberOrUndefined}
                   saving={saving}
                   fetchWorks={fetchWorks}
+                  onNewLineWorkPicked={pickNewLineWork}
+                  onNewLineExecutorChange={changeNewLineExecutor}
                   recalcPlannedHoursEnabled={recalcPlannedHoursEnabled}
                   setForm={setForm}
                   calcPlannedHoursFromLines={calcPlannedHoursFromLines}
@@ -2586,21 +2714,13 @@ export function CreateWorkOrderModal({
         open={workPickerOpen}
         onClose={() => setWorkPickerOpen(false)}
         selectedId={newLine.workId}
-        onSelect={w =>
-          setNewLine(l => ({
-            ...l,
-            workId: w.id,
-            workName: w.name,
-            normoHours: String(w.normoHours),
-            price: String(w.price),
-          }))
-        }
+        onSelect={pickNewLineWork}
       />
 
       <ServicePickerModal
         open={servicePickerOpen}
         onClose={() => setServicePickerOpen(false)}
-        onSelect={applyService}
+        onSelect={service => void applyService(service)}
       />
 
       {/* Work picker for inline edit row */}

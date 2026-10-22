@@ -175,6 +175,8 @@ interface Work {
   name: string;
   normoHours: number;
   price: number;
+  /** Категорія роботи — для виконавця нової роботи (BR-WO-030). */
+  categoryId?: string | null;
 }
 interface Employee {
   id: string;
@@ -1118,6 +1120,7 @@ export default function WorkOrderCardPage() {
         woId={id}
         orgId={wo.orgId}
         lines={wo.lines}
+        liftId={wo.liftId ?? null}
         works={works}
         employees={employees}
         onChanged={load}

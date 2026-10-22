@@ -1759,6 +1759,8 @@ export function CalendarSlotModal({
             plannedEndAt:
               !editingSlotId && form.endAt && endDate ? `${endDate}T${form.endAt}` : undefined,
             plannedHours: nh > 0 ? String(nh) : undefined,
+            // BR-WO-030: механік запису — виконавець нових робіт наряду.
+            employeeId: form.employeeId || undefined,
           };
         })()}
         onUpdated={onWorkOrderChanged}

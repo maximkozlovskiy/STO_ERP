@@ -32,6 +32,8 @@ interface Work {
   name: string;
   normoHours: number;
   price: number;
+  /** Категорія роботи — для виконавця нової роботи (BR-WO-030). */
+  categoryId?: string | null;
 }
 
 interface Employee {
@@ -43,6 +45,8 @@ interface Employee {
 interface WorkOrderLinesSectionProps {
   woId: string;
   lines: WorkOrderLine[];
+  /** Підйомник наряду — його механік стає виконавцем нової роботи (BR-WO-030). */
+  liftId?: string | null;
   /** Reserved for future tenant-scoped endpoints. */
   orgId?: string;
   /** Reference data — passed down to AddLineModal. */
@@ -59,6 +63,7 @@ interface WorkOrderLinesSectionProps {
 export function WorkOrderLinesSection({
   woId,
   lines,
+  liftId,
   works,
   employees,
   onChanged,
@@ -160,6 +165,7 @@ export function WorkOrderLinesSection({
       <WorkOrderAddLineModal
         open={lineModal}
         workOrderId={woId}
+        liftId={liftId ?? null}
         works={works}
         employees={employees}
         onClose={() => setLineModal(false)}

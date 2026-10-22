@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -11,6 +11,12 @@ import { Select } from '@/components/ui/select';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useLiftMechanics } from '@/hooks/api/useLiftMechanics';
+import {
+  pickLineExecutor,
+  slotMechanicId,
+  type LinkedSlotMechanic,
+} from '@/lib/work-line-executor';
 
 /**
  * Додавання роботи в наряд.
@@ -27,6 +33,7 @@ interface Work {
   name: string;
   normoHours: number;
   price: number;
+  categoryId?: string | null;
 }
 
 interface Employee {
@@ -38,6 +45,8 @@ interface Employee {
 interface WorkOrderAddLineModalProps {
   open: boolean;
   workOrderId: string;
+  /** Підйомник наряду: його єдиний механік — виконавець нової роботи (BR-WO-030). */
+  liftId?: string | null;
   works: Work[];
   employees: Employee[];
   onClose: () => void;
@@ -56,6 +65,7 @@ const EMPTY_FORM = {
 export function WorkOrderAddLineModal({
   open,
   workOrderId,
+  liftId,
   works,
   employees,
   onClose,
@@ -75,15 +85,57 @@ export function WorkOrderAddLineModal({
     setSaving(v);
   };
   const [error, setError] = useState('');
+  // BR-WO-030: виконавця обрала людина — автопідстановка його не перезаписує.
+  const executorManualRef = useRef(false);
+  const [calendarMechanicId, setCalendarMechanicId] = useState<string | null>(null);
+  const liftMechanics = useLiftMechanics(open ? liftId : null);
+  const activeMechanicIds = useMemo(() => employees.map(e => e.id), [employees]);
 
   useEffect(() => {
     if (open) {
       setForm(EMPTY_FORM);
       setError('');
+      executorManualRef.current = false;
       dirty.resetDirty();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // Механік запису наряду в календарі — на кожне відкриття: запис міг змінитись у календарі.
+  // Збій — запису «немає», діє решта правила.
+  useEffect(() => {
+    setCalendarMechanicId(null);
+    if (!open) return;
+    const ac = new AbortController();
+    apiFetch<{ calendarSlots: LinkedSlotMechanic[] }>(
+      `/work-orders/${workOrderId}/linked-documents`,
+      { signal: ac.signal },
+    ).then(
+      d => {
+        if (!ac.signal.aborted) setCalendarMechanicId(slotMechanicId(d.calendarSlots));
+      },
+      () => {},
+    );
+    return () => ac.abort();
+  }, [open, workOrderId]);
+
+  // Виконавець підставляється, щойно обрано роботу, і стежить за даними правила, що приходять
+  // пізніше (механіки підйомника, запис календаря), — доки його не обрала людина.
+  const workCategoryId = works.find(w => w.id === form.workId)?.categoryId ?? null;
+  useEffect(() => {
+    if (!open || !form.workId || executorManualRef.current) return;
+    const employeeId = pickLineExecutor({
+      calendarMechanicId,
+      liftMechanics,
+      workCategoryId,
+      activeMechanicIds,
+    });
+    setForm(f =>
+      f.workId && !executorManualRef.current && f.employeeId !== employeeId
+        ? { ...f, employeeId }
+        : f,
+    );
+  }, [open, form.workId, workCategoryId, calendarMechanicId, liftMechanics, activeMechanicIds]);
 
   const selectWork = useCallback(
     (workId: string) => {
@@ -158,6 +210,7 @@ export function WorkOrderAddLineModal({
             <Select
               value={form.employeeId}
               onChange={e => {
+                executorManualRef.current = true;
                 setForm(f => ({ ...f, employeeId: e.target.value }));
                 dirty.markDirty();
               }}
