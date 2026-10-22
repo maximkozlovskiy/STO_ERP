@@ -41,7 +41,7 @@ import { KpiCard, Card, CardContent, CardHeader, CardTitle } from '@/components/
 import { PageSpinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
-import { fmtInt, fmtMoney, fmtDate, kyivToday, kyivDateOf } from '@/lib/format';
+import { fmtInt, fmtMoney, fmtDate, kyivToday, kyivDateOf, memoByLocale } from '@/lib/format';
 
 interface MaintenanceSchedule {
   id: string;
@@ -125,13 +125,17 @@ const KYIV_YEAR_MONTH_DAY_FMT = new Intl.DateTimeFormat('en-CA', {
   month: '2-digit',
   day: '2-digit',
 });
-const KYIV_FULL_DATE_FMT = new Intl.DateTimeFormat('uk-UA', {
-  timeZone: 'Europe/Kyiv',
-  weekday: 'long',
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-});
+// Дата в привітанні — мовою інтерфейсу (назви дня й місяця).
+const getFullDateFmt = memoByLocale(
+  loc =>
+    new Intl.DateTimeFormat(loc, {
+      timeZone: 'Europe/Kyiv',
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }),
+);
 const KYIV_HOUR_FMT = new Intl.DateTimeFormat('uk-UA', {
   timeZone: 'Europe/Kyiv',
   hour: 'numeric',
@@ -264,7 +268,7 @@ export default function DashboardPage() {
   const todayKyiv = useMemo(() => kyivToday(), []);
 
   useEffect(() => {
-    setTodayStr(KYIV_FULL_DATE_FMT.format(new Date()));
+    setTodayStr(getFullDateFmt().format(new Date()));
     const h = parseInt(KYIV_HOUR_FMT.format(new Date()), 10);
     setGreeting(
       h < 12 ? t('greeting.morning') : h < 18 ? t('greeting.afternoon') : t('greeting.evening'),

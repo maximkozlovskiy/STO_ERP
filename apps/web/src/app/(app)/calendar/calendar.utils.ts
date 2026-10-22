@@ -29,25 +29,17 @@ export const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-US', {
   hour: 'numeric',
   hour12: false,
 });
-const TIME_FMT = new Intl.DateTimeFormat('uk-UA', {
-  timeZone: KYIV_TZ,
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-});
-
-// `DD.MM.YYYY` у часовому поясі Києва — для рендеру дат у списках/пікерах календаря.
-const KYIV_DMY_FMT = new Intl.DateTimeFormat('uk-UA', {
-  timeZone: KYIV_TZ,
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
 
 // Форматер за мовою інтерфейсу (uk-UA / en-US), один на мову: заголовки дня й місяця йдуть за
 // локаллю, як решта календаря (Bug #915 — в en було «Середа, 21 Жовтня 2026 р.»). Зона — Київ.
 const perLocale = (opts: Intl.DateTimeFormatOptions): (() => Intl.DateTimeFormat) =>
   memoByLocale(loc => new Intl.DateTimeFormat(loc, { timeZone: KYIV_TZ, ...opts }));
+
+// Час `HH:mm` і дата (uk — `DD.MM.YYYY`) у часовому поясі Києва — для рендеру в списках і
+// пікерах календаря; формат дати за мовою інтерфейсу, як `fmtDate` з `lib/format`.
+// `hourCycle: 'h23'` — явний цикл 00–23 для будь-якої мови (північ — «00:05»).
+const getTimeFmt = perLocale({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const getDmyFmt = perLocale({ day: '2-digit', month: '2-digit', year: 'numeric' });
 
 // Місяць+рік (наприклад "травень 2026") у часовому поясі Києва — для header'ів місячного календаря
 // та CalendarStatsTab. Раніше викликався inline `.toLocaleDateString` що конструював форматер на кожен render.
@@ -94,7 +86,7 @@ export function kyivHours(iso: string): number {
 }
 
 export function fmtTime(iso: string) {
-  return TIME_FMT.format(new Date(iso));
+  return getTimeFmt().format(new Date(iso));
 }
 
 /**
@@ -102,7 +94,7 @@ export function fmtTime(iso: string) {
  * списків пошуку слотів/нарядів, тому переконайся що формат тільки .format(), не конструктор.
  */
 export function fmtKyivDate(iso: string) {
-  return KYIV_DMY_FMT.format(new Date(iso));
+  return getDmyFmt().format(new Date(iso));
 }
 
 export function decimalHoursToHHMM(h: number): string {

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { useIntegrationLogs, type IntegrationLogsFilter } from '@/hooks/api/useIntegrationLogs';
 import { type OrgSettings } from './shared';
+import { memoByLocale } from '@/lib/format';
 
 // Провайдери фільтра. Порожній код = «Усі провайдери» (підпис із каталогу); решта — бренди.
 const PROVIDER_CODES = ['', 'liqpay', 'monobank', 'checkbox', 'vchasno', 'novaposhta'];
@@ -22,16 +23,23 @@ const PROVIDER_BRAND_NAMES: Record<string, string> = {
 
 const PAGE_SIZE = 50;
 
+// Дата й час до секунди (журнал) у Kyiv TZ — мовою інтерфейсу, один форматер на мову.
+const getLogDateTimeFmt = memoByLocale(
+  loc =>
+    new Intl.DateTimeFormat(loc, {
+      timeZone: 'Europe/Kyiv',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }),
+);
+
 function fmtDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('uk-UA', {
-    timeZone: 'Europe/Kyiv',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  return getLogDateTimeFmt().format(new Date(iso));
 }
 
 const inputCls =

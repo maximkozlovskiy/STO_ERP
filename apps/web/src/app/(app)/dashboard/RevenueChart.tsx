@@ -2,21 +2,18 @@
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { fmtMoney, fmtDate } from '@/lib/format';
+import { fmtMoney, fmtDate, memoByLocale } from '@/lib/format';
 
 interface RevenuePoint {
   date: string;
   revenue: number;
 }
 
-// Module-level Intl singleton for chart axis ticks (day + short-month label).
-// Replaces per-tick Intl.DateTimeFormat construction inside recharts tickFormatter callback.
+// Один форматер на мову для підписів осі (день + короткий місяць) — не конструктор на кожен tick.
 // T19: Kyiv-TZ, щоб tick-дата не зсувалась на UTC-негативних машинах.
-const TICK_DATE_FMT = new Intl.DateTimeFormat('uk-UA', {
-  timeZone: 'Europe/Kyiv',
-  day: 'numeric',
-  month: 'short',
-});
+const getTickDateFmt = memoByLocale(
+  loc => new Intl.DateTimeFormat(loc, { timeZone: 'Europe/Kyiv', day: 'numeric', month: 'short' }),
+);
 
 // Thin proxy to lib/format singleton — replaces per-tooltip Intl.NumberFormat.
 // T19: суфікс валюти уніфіковано на ₴ (домінантна конвенція у застосунку, 46 файлів проти прозового «грн»).
@@ -48,7 +45,7 @@ function RevenueChart({ data }: { data: RevenuePoint[] }) {
           // T12:00:00 безпечно дає правильний день у Kyiv TZ незалежно
           // від local TZ браузера (полудень UTC = 14:00/15:00 Kyiv — не може
           // відкотитись на попередній день).
-          tickFormatter={d => TICK_DATE_FMT.format(new Date(d + 'T12:00:00'))}
+          tickFormatter={d => getTickDateFmt().format(new Date(d + 'T12:00:00'))}
         />
         <YAxis
           tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}

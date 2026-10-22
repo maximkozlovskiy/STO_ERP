@@ -26,6 +26,7 @@ import {
   type ImportApplyMode,
 } from '@/hooks/api/useExcelImport';
 import { detectMappingFromGrid } from '@sto/shared';
+import { memoByLocale } from '@/lib/format';
 
 export interface ExcelImportWizardProps {
   open: boolean;
@@ -104,10 +105,10 @@ function strToNum(v: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-const numFmt = new Intl.NumberFormat('uk-UA', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+// Кількість і ціна в попередньому перегляді — два знаки, мовою інтерфейсу.
+const getNumFmt = memoByLocale(
+  loc => new Intl.NumberFormat(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+);
 
 // 1-based номер колонки → літера Excel (1→A, 2→B, 27→AA).
 function colLetter(n: number): string {
@@ -182,8 +183,12 @@ const ImportRow = memo(function ImportRow({ row, res, onToggle, onSelectGood }: 
       </td>
       <td className="px-3 py-2 align-top text-foreground">{row.rawBrand || '—'}</td>
       <td className="px-3 py-2 align-top text-foreground">{row.rawName || '—'}</td>
-      <td className="px-3 py-2 align-top text-right tabular-nums">{numFmt.format(row.quantity)}</td>
-      <td className="px-3 py-2 align-top text-right tabular-nums">{numFmt.format(row.price)}</td>
+      <td className="px-3 py-2 align-top text-right tabular-nums">
+        {getNumFmt().format(row.quantity)}
+      </td>
+      <td className="px-3 py-2 align-top text-right tabular-nums">
+        {getNumFmt().format(row.price)}
+      </td>
       <td className="px-3 py-2 align-top">
         {row.status === 'matched' ? (
           <span className="inline-flex items-center gap-1 text-[12px] font-medium text-success-text">

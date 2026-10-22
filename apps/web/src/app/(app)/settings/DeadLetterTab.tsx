@@ -6,19 +6,27 @@ import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { Button } from '@/components/ui/button';
 import { useDeadLetter, useResolveDeadLetter } from '@/hooks/api/useDeadLetter';
+import { memoByLocale } from '@/lib/format';
 
 const PAGE_SIZE = 50;
 
+// Дата й час до секунди (журнал) у Kyiv TZ — мовою інтерфейсу, один форматер на мову.
+const getLogDateTimeFmt = memoByLocale(
+  loc =>
+    new Intl.DateTimeFormat(loc, {
+      timeZone: 'Europe/Kyiv',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }),
+);
+
 function fmtDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('uk-UA', {
-    timeZone: 'Europe/Kyiv',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  return getLogDateTimeFmt().format(new Date(iso));
 }
 
 const inputCls =

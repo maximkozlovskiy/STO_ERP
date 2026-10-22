@@ -21,7 +21,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { cn, escapeCsvCell } from '@/lib/utils';
-import { fmtMoney, kyivToday } from '@/lib/format';
+import { fmtMoney, kyivToday, memoByLocale } from '@/lib/format';
 import { InventoryTab } from '../inventory/InventoryTab';
 import { downloadBlob } from '@/lib/download';
 import dynamic from 'next/dynamic';
@@ -77,10 +77,10 @@ function fmt(n: number) {
   return fmtMoney(n) + ' ₴';
 }
 
-// Local Intl singleton — non-default fraction digit count not in lib/format.
-const NUM_FMT_1 = new Intl.NumberFormat('uk-UA', { maximumFractionDigits: 1 });
+// Один десятковий знак — такого форматера в lib/format немає; мовою інтерфейсу, один на мову.
+const getNumFmt1 = memoByLocale(loc => new Intl.NumberFormat(loc, { maximumFractionDigits: 1 }));
 function fmtNum(n: number) {
-  return NUM_FMT_1.format(n);
+  return getNumFmt1().format(n);
 }
 
 // Sv-SE формат сьогоднішньої дати в Kyiv (YYYY-MM-DD) — централізовано у lib/format.kyivToday().
