@@ -1428,6 +1428,32 @@ fallbackToLatest: true` — курс береться заново, а не ко
 4. **Ручне внесення банківського платежу** (`POST /bank-statements/transactions`) ключ ідемпотентності
    лише дозволяє — рішення 2026-10-22 стосувалось каси, оплат і сторно.
 
+## 18. Вразливості залежностей, що лишились після патчів 2026-10-22
+
+Патчі (рішення власника: вразливості + patch/minor у межах діапазонів, без major; Node 22 LTS): `pnpm
+update -r` без mobile, overrides у `pnpm-workspace.yaml`, `csv-parse` ^7, `react-native` 0.79.6 (Expo SDK
+53). `pnpm audit` було 1 critical / 10 high / 14 moderate / 1 low, стало 0 / 4 / 6 / 0. Залишок:
+
+1. **Виправленої версії не опубліковано** — advisory вимагає версію, якої в реєстрі немає (як колись
+   `http-cache-semantics`): `braces` ≥3.0.4 (є 3.0.3), `node-forge` ≥1.4.1 (є 1.4.0), `sprintf-js` ≥1.1.4
+   (є 1.1.3). Усі три — у dev-інструментах mobile (Metro, @expo/cli), у застосунок не потрапляють.
+   Перевіряти `npm view <пакет> version` при наступних патчах.
+2. **Фікс лише в новій major чужого пакета:** `image-size` 2.x (Metro кличе API 1.x), `uuid` 11 для
+   `xcode` (інструмент збірки Expo: глибокі імпорти `uuid/v4`, яких у 8+ немає), `decode-uri-component`
+   0.4 (лише ESM, а `query-string` 7 у minio і react-navigation робить `require`), `stream-json` 3.x
+   (minio). Знімуться оновленням minio-клієнта / Expo SDK, не override-ом.
+3. **Образ MinIO запінено на `RELEASE.2024-01-16`** (`docker-compose*.yml`, `release.yml`). Новіших
+   community-образів MinIO не публікує так, як раніше, — оновлення сховища файлів потребує окремого
+   рішення (інший образ/форк чи збірка), не тегу.
+4. **Expo очікує нижчих `@types/react` (~19.0) і `typescript` (~5.8)**, ніж стоять у mobile (19.2, 5.9) —
+   це відкат, не патч; `expo install --check` про це попереджає, mobile type-check зелений.
+5. **Нестабільний інтеграційний тест тригерів** (не від патчів): `append-only-triggers.integration.spec.ts`
+   («batchId разом із price заборонено») у повному прогоні api 2026-10-22 раз упав (`resolved "1"
+instead of rejecting`), окремо — 5 із 5 зелені. `purchase-lists.receive-vs-cancel.integration.spec.ts`
+   на час прибирання робить `ALTER TABLE … DISABLE TRIGGER` на тій самій dev-базі, паралельно з ним.
+   Виправлення: інтеграційні спеки з `DISABLE TRIGGER` — послідовно (окремий проєкт vitest чи
+   `describe.sequential` + спільний лок), або прибирання без вимкнення тригера.
+
 ## Що НЕ є боргом, хоч виглядає так
 
 **2730 eslint-попереджень в `apps/api`.** З них **2529 — у spec-файлах**: `any`-мокі, що

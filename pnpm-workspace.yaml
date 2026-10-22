@@ -45,6 +45,24 @@ overrides:
   # Шлях dev-only: @nestjs/cli > @swc/cli > @xhmikosr/bin-wrapper > got > cacheable-request.
   # У прод-образ не потрапляє, але тримати вразливу версію без потреби немає сенсу.
   http-cache-semantics: '^4.3.0'
+  # Патчі 2026-10-22 (рішення власника: вразливості + patch/minor, без major у власних залежностях).
+  # Транзитивні, без прямого оновлення: mobile/Expo (Metro, @expo/cli — dev-інструменти збірки,
+  # у застосунок не потрапляють), api (exceljs). Кожен пін — мінімальна версія з фіксом у ТІЙ САМІЙ
+  # major, крім uuid (див. нижче).
+  #   @babel/runtime MODERATE: ReDoS у named capturing groups (watermelondb) — фікс 7.26.10
+  #   compression HIGH (@expo/cli) — фікс 1.8.2
+  #   postcss HIGH/MODERATE (@expo/metro-config) — фікс 8.5.23; беремо останню 8.5.x, як у web
+  #   shell-quote CRITICAL: ін'єкція команд (react-devtools-core) — фікс 1.11.0
+  # braces 3.0.4, node-forge 1.4.1, sprintf-js 1.1.4, яких вимагають advisory, у реєстрі НЕ
+  # опубліковані (останні — 3.0.3, 1.4.0, 1.1.3) — закрити нічим, записано в TECH-DEBT §18.
+  '@babel/runtime': '^7.26.10'
+  compression: '^1.8.2'
+  postcss: '^8.5.31'
+  shell-quote: '^1.11.0'
+  # uuid MODERATE: exceljs тягне uuid 8 (фікс лише в 11.1.1 — major). exceljs кличе лише
+  # `require('uuid').v4`, що в 11.x є і в CJS-збірці; експорт/імпорт XLSX стережуть спеки модуля
+  # xlsx і E2E імпорту.
+  'exceljs>uuid': '^11.1.1'
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true

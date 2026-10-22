@@ -10,7 +10,6 @@ import {
 import { Prisma } from '@prisma/client';
 
 type Decimal = Prisma.Decimal;
-const Decimal = Prisma.Decimal;
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { convertToBase } from '../../common/utils/currency';
