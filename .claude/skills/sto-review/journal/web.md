@@ -515,3 +515,16 @@ RECEPTIONIST (`POST /payments`). Для нього перелік — 403: «Н�
 **Фікс:** `linkedQueryId = linkId ?? (openedByLink ? selected?.id : undefined)` — запит живе, доки
 рядок у панелі. Тест: `replace` у моку прибирає `open` з адреси, після звернення кнопки немає.
 **Severity:** SUGGESTION
+
+### 2026-10-22 — en-лічильник без plural і хук без 'use client' після i18n-міграції — §8.2.2
+
+**Сигнал:** батч A компонентів (0c168423): en `"{{n}} works"`, `"{{n}} templates"` при uk в одній формі («{{n}} шаблонів») →
+«1 templates»; `doc-lines-header.tsx` отримав `useTranslation` без `'use client'` (імпортери поки клієнтські, але
+серверний `page.tsx` уже рендерить `Spinner` у `Suspense fallback`).
+**Grep:** `grep -nE '"\{\{n\}\} [a-z]+s"' apps/web/src/i18n/locales/en/*.json`; хук без директиви — цикл у `sections/web.md` §8.2.2.
+**Фікс:** en «Works: {{n}}» / «Templates: {{n}}» (uk і паритет ключів не змінюються); `'use client'` у файл (e3b792e4).
+**Severity:** SUGGESTION
+
+### Перенесено з чекліста — Дві форми — одна сутність (field-desync) — §8.2
+
+**Дві форми що редагують ОДНУ сутність → спільний контрольований компонент + ОДИН `formToPatch` (field-desync).** Коли сутність (Counterparty) редагується у ДВОХ місцях (EditModal + DetailPage inline-edit), кожне з власним state-shape/PATCH — набори полів дрейфують: одне поле «не чіпається» з одного місця й затирається з іншого. Fix (dedup 0c68a1cc): один controlled-компонент (`CounterpartyForm`) + хелпери (`emptyX`/`xToForm`/`formToPatch`/`validateX`) — обидва callsites шлють ІДЕНТИЧНЕ `formToPatch`-тіло. Перевірити: (1) немає залишків старих patch-об'єктів; (2) `formToPatch` порожні рядки → `undefined` (безпечно ЛИШЕ якщо бек `dto.X !== undefined ? dto.X : existing.X`; навмисне очищення → `''→null`); (3) після дедупу grep осиротілі імпорти/const у ОБОХ файлах (`PhoneInput`, локальні `TYPE_LABELS`-мапи) — tsc не ловить (немає `noUnusedLocals`), eslint лише `warn`. Sample cf6058cd
