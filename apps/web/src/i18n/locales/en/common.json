@@ -329,5 +329,10 @@
     "clearAll": "Clear all",
     "selectAll": "Select all ({{n}})",
     "exists": "added"
+  },
+  "rowStatus": {
+    "overdue": "Overdue",
+    "today": "Due today",
+    "debt": "Has an outstanding balance"
   }
 }

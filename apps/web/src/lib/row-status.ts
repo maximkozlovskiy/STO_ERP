@@ -14,6 +14,8 @@
  * `active` = документ ще «живий» (не термінальний: не скасований/архівний/оплачений).
  * Для термінальних документів дедлайн уже не «горить» — рамку не малюємо.
  */
+import i18n from '@/i18n/config';
+
 export type RowStatusTone = 'overdue' | 'today' | 'debt' | 'none';
 
 export interface RowStatusInput {
@@ -77,16 +79,7 @@ export function rowStatusBorderClass(tone: RowStatusTone): string {
   }
 }
 
-/** Людська підказка для тону (title/aria). */
+/** Людська підказка для тону (title/aria) — мовою інтерфейсу. */
 export function rowStatusLabel(tone: RowStatusTone): string | undefined {
-  switch (tone) {
-    case 'overdue':
-      return 'Прострочено';
-    case 'today':
-      return 'Дедлайн сьогодні';
-    case 'debt':
-      return 'Є непогашений залишок';
-    case 'none':
-      return undefined;
-  }
+  return tone === 'none' ? undefined : i18n.t(`common:rowStatus.${tone}`);
 }

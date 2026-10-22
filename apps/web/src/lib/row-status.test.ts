@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from './row-status';
+import i18n from '@/i18n/config';
 
 // Фіксований «зараз»: 2026-09-05 12:00 локального часу.
 const NOW = new Date(2026, 8, 5, 12, 0, 0).getTime();
@@ -59,5 +60,17 @@ describe('rowStatusLabel', () => {
     expect(rowStatusLabel('overdue')).toBe('Прострочено');
     expect(rowStatusLabel('today')).toBe('Дедлайн сьогодні');
     expect(rowStatusLabel('debt')).toBe('Є непогашений залишок');
+  });
+
+  it('en — мовою інтерфейсу', async () => {
+    await i18n.changeLanguage('en');
+    try {
+      expect(rowStatusLabel('overdue')).toBe('Overdue');
+      expect(rowStatusLabel('today')).toBe('Due today');
+      expect(rowStatusLabel('debt')).toBe('Has an outstanding balance');
+      expect(rowStatusLabel('none')).toBeUndefined();
+    } finally {
+      await i18n.changeLanguage('uk');
+    }
   });
 });
