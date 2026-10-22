@@ -91,6 +91,9 @@
    "IdempotencyPurgeProcessor видаляє ЛИШЕ протерміновані (expiresAt < now)"
   ],
   "apps/api/src/common/interceptors/idempotency.interceptor.spec.ts": [
+   "IdempotencyInterceptor (reserve-first) RequireIdempotencyKey: інтерсептор із ключем і заголовок «обов’язковий» у Swagger",
+   "IdempotencyInterceptor (reserve-first) RequiredIdempotencyInterceptor: без Idempotency-Key → 400, handler і резервація не виконуються",
+   "IdempotencyInterceptor (reserve-first) RequiredIdempotencyInterceptor: з ключем — той самий reserve-first потік",
    "IdempotencyInterceptor (reserve-first) handler кинув → резервацію видалено (retry можливий), помилка проброшена",
    "IdempotencyInterceptor (reserve-first) key ще в обробці (responseStatus null) → 409",
    "IdempotencyInterceptor (reserve-first) без Idempotency-Key → pass-through (handler виконується, create НЕ викликається)",
@@ -1985,6 +1988,7 @@
    "CashRegisters — HTTP Contract POST /cash-registers — валідація обовʼязкових полів повертає 400 коли currencyId/branchId відсутні",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations — ручна касова операція PAYROLL вручну → 400, до сервісу не доходить",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations — ручна касова операція id каси не UUID → 400, до сервісу не доходить",
+   "CashRegisters — HTTP Contract POST /cash-registers/:id/operations — ручна касова операція без Idempotency-Key → 400, до сервісу не доходить",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations — ручна касова операція валідне тіло → 201; операція йде в CashDeskService.create(orgId, id каси, тіло, користувач), а не в CashService",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations — ручна касова операція витрата без статті → 400, до сервісу не доходить",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations — ручна касова операція контрагент не UUID → 400, до сервісу не доходить",
@@ -2010,8 +2014,9 @@
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations/:operationId/reverse — сторно OWNER → 2xx; сторно йде в CashDeskService.reverse(orgId, id каси, id операції, { reason }, актор)",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations/:operationId/reverse — сторно RECEPTIONIST → 403, до сервісу не доходить",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations/:operationId/reverse — сторно id операції не UUID → 400, до сервісу не доходить",
+   "CashRegisters — HTTP Contract POST /cash-registers/:id/operations/:operationId/reverse — сторно без Idempotency-Key → 400, до сервісу не доходить",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations/:operationId/reverse — сторно без причини → 400, до сервісу не доходить",
-   "CashRegisters — HTTP Contract POST /cash-registers/:id/operations/:operationId/reverse — сторно маршрут сторно несе IdempotencyInterceptor і пускає лише OWNER, ADMIN, ACCOUNTANT",
+   "CashRegisters — HTTP Contract POST /cash-registers/:id/operations/:operationId/reverse — сторно маршрут сторно несе RequiredIdempotencyInterceptor і пускає лише OWNER, ADMIN, ACCOUNTANT",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations/:operationId/reverse — сторно порожня причина → 400, до сервісу не доходить",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations/:operationId/reverse — сторно причина з самих пробілів → 400, до сервісу не доходить",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations/:operationId/reverse — сторно причина не рядок → 400, до сервісу не доходить",
@@ -2290,7 +2295,8 @@
    "CounterpartiesService — гаражі (isDefault) removeGarage: default був єдиним гаражем → soft-delete без promote (нема кого)",
    "CounterpartiesService — гаражі (isDefault) removeGarage: видалення default-гаража → найстаріший активний сусід стає default (у тій самій tx)",
    "CounterpartiesService — гаражі (isDefault) removeGarage: видалення НЕ default-гаража → нікого не промотує",
-   "CounterpartiesService — гаражі (isDefault) removeGarage: гараж не цього контрагента/org → NotFound, транзакція не починається"
+   "CounterpartiesService — гаражі (isDefault) removeGarage: гараж не цього контрагента/org → NotFound, транзакція не починається",
+   "CounterpartiesService — гаражі (isDefault) removeGarage: у гаражі живе авто → 400, гараж не видаляється (рішення власника 2026-10-22)"
   ],
   "apps/api/src/modules/counterparties/counterparties.linked-docs.spec.ts": [
    "CounterpartiesService — linked documents (Phase C) getLinkedCounts: groupBy фільтрує deletedAt:null (count == detail, урок Bug #641)",
@@ -3277,7 +3283,9 @@
    "InvoicesService — linked-documents edge cases getLinkedCounts: duplicate ids у запиті не ламають мапу (keyed by id)",
    "InvoicesService — linked-documents edge cases getLinkedCounts: zero-count id присутній у мапі з усіма нулями (не absent)",
    "InvoicesService — linked-documents edge cases getLinkedDocuments: cross-org id → порожні секції, не чужі дані",
+   "InvoicesService — linked-documents edge cases getLinkedDocuments: inCashDesk — за sourceType, cashRegisterId або рядком каси своєї org",
    "InvoicesService — linked-documents edge cases getLinkedDocuments: рядок оплати віддає fiscalStatus (select + мапінг), Decimal → number",
+   "InvoicesService — linked-documents edge cases getLinkedDocuments: рядок оплати віддає sourceType і isOnline, без onlinePaymentIntentId",
    "InvoicesService — toDto paidAmount authority (Bug #676) paidAmount=0 (колонка є, ще нічого не оплачено) → 0, не undefined/фолбек",
    "InvoicesService — toDto paidAmount authority (Bug #676) віддає paidAmount з колонки (200), навіть якщо Σpayments розходиться (999)",
    "InvoicesService — toDto paidAmount authority (Bug #676) фолбек на Σpayments лише коли колонки paidAmount немає у вибірці"
@@ -3317,6 +3325,8 @@
    "Рахунок — одиниця рядка як у наряді (Bug #868) друкований рахунок: одиниця рядка «Пак»",
    "Рахунок — одиниця рядка як у наряді (Bug #868) картка рахунку: «Пак» з коефіцієнтом товару, а не базова «шт»",
    "Рахунок — одиниця рядка як у наряді (Bug #868) оновлення рахунку з наряду: рядок запчастини записується з одиницею наряду",
+   "Рахунок — одиниця рядка як у наряді (Bug #868) робота — «год» у друкованому рахунку, ручний рядок без товару й роботи — «шт»",
+   "Рахунок — одиниця рядка як у наряді (Bug #868) робота — «год» у картці рахунку (рішення власника 2026-10-22)",
    "Рахунок — одиниця рядка як у наряді (Bug #868) рядок без одиниці — базова одиниця товару, без запиту одиниць",
    "Рахунок — одиниця рядка як у наряді (Bug #868) рядок наряду переносить у рахунок свою одиницю (чиста функція)"
   ],
@@ -4150,6 +4160,49 @@
    "ReconciliationProcessor — сторнована оплата не входить у «сплачено» рахунку баланс: аванс і його сторно (PREPAYMENT 300, PREPAYMENT_CANCEL 300) → 0, дрейфу немає",
    "ReconciliationProcessor — сторнована оплата не входить у «сплачено» рахунку справжній дрейф поруч зі сторнованою оплатою усе ще ловиться",
    "ReconciliationProcessor — сторнована оплата не входить у «сплачено» рахунку єдину оплату сторновано, «сплачено» 0 → дрейфу немає"
+  ],
+  "apps/api/src/modules/payments/payments.reverse-noncash.spec.ts": [
+   "PaymentsService.reverse — причина й автор і для касового сторно (BR-PAY-024 п. 5) сторно з каси пише reversalReason / reversedBy; документ проводки — рядок сторно каси",
+   "PaymentsService.reverseNonCash — відмови до першого запису гонка: програвший CAS бачить «Оплату вже сторновано», а не касовий текст",
+   "PaymentsService.reverseNonCash — відмови до першого запису гонка: прочитано «не сторновано», а оплату вже сторновано → 400, виписка й проводки не чіпаються",
+   "PaymentsService.reverseNonCash — відмови до першого запису наряд оплати в архіві → 400 (відмова `reverse`), рядок виписки не чіпається",
+   "PaymentsService.reverseNonCash — відмови до першого запису онлайн-оплата QR → 400 «…повернення в кабінеті платіжного сервісу»",
+   "PaymentsService.reverseNonCash — відмови до першого запису оплата через касу (sourceType = CASH_REGISTER) → 400 «…сторнуйте касову операцію»",
+   "PaymentsService.reverseNonCash — відмови до першого запису оплата іншої організації → 404, нічого не змінено",
+   "PaymentsService.reverseNonCash — відмови до першого запису причина «   » → 400 до транзакції",
+   "PaymentsService.reverseNonCash — відмови до першого запису причина «» → 400 до транзакції",
+   "PaymentsService.reverseNonCash — відмови до першого запису рядок каси іншої організації з тим самим documentId не робить оплату касовою",
+   "PaymentsService.reverseNonCash — відмови до першого запису стара оплата без sourceType, але з рядком каси → 400 «…сторнуйте касову операцію»",
+   "PaymentsService.reverseNonCash — відмови до першого запису уже сторнована → 400 «Оплату вже сторновано», другої проводки немає",
+   "PaymentsService.reverseNonCash — оплата з рознесення виписки (BR-BANK-040) CAS рядка виписки програно → 409, сторно відкочено: оплата, наряд, рахунок і проводки як були",
+   "PaymentsService.reverseNonCash — оплата з рознесення виписки (BR-BANK-040) аудит рядка виписки: MATCHED з оплатою → UNMATCHED з причиною",
+   "PaymentsService.reverseNonCash — оплата з рознесення виписки (BR-BANK-040) оплата-повернення з виписки (проводка REFUND) → PAYMENT_CANCEL",
+   "PaymentsService.reverseNonCash — оплата з рознесення виписки (BR-BANK-040) рядок виписки → «Нерознесений» без оплати, виду й контрагента; причина, час і автор збережені",
+   "PaymentsService.reverseNonCash — оплата з рознесення виписки (BR-BANK-040) чек уже пробито → 400, рядок виписки лишається MATCHED з оплатою",
+   "PaymentsService.reverseNonCash — оплата на банківський рахунок аудит після коміту: оплата з причиною й наряд PAID → INVOICED",
+   "PaymentsService.reverseNonCash — оплата на банківський рахунок документ проводки сторно — сама оплата (Payment / id оплати), курс і сума оригіналу, у транзакції",
+   "PaymentsService.reverseNonCash — оплата на банківський рахунок оплата рахунку без наряду: «Оплачено» 1000, сторно 1000 → 0, «Виставлено»",
+   "PaymentsService.reverseNonCash — оплата на банківський рахунок причина (обрізана) й автор пишуться в оплату; касового рядка сторно немає",
+   "PaymentsService.reverseNonCash — оплата на банківський рахунок сторно: оплата позначена, наряд «Оплачено» → «Виставлено», сплачено 0, рахунок наряду — дзеркало",
+   "PaymentsService.reverseNonCash — оплата на банківський рахунок транзакція власна, рівень ReadCommitted",
+   "PaymentsService.reverseNonCash — стара оплата без призначення без sourceType і без рядка каси → сторнується так само"
+  ],
+  "apps/api/src/modules/payments/payments.reverse-route.contract.spec.ts": [
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) ACCOUNTANT → 2xx; сервіс отримує orgId, id оплати, обрізану причину й id користувача",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) ADMIN → 2xx; сервіс отримує orgId, id оплати, обрізану причину й id користувача",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) MECHANIC → 403, до сервісу не доходить",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) OWNER → 2xx; сервіс отримує orgId, id оплати, обрізану причину й id користувача",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) POST /payments (реєстрація оплати) теж несе RequiredIdempotencyInterceptor",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) RECEPTIONIST → 403, до сервісу не доходить",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) id оплати не UUID → 400, до сервісу не доходить",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) без Idempotency-Key → 400, до сервісу не доходить",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) без причини → 400, до сервісу не доходить",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) маршрут несе RequiredIdempotencyInterceptor і пускає лише OWNER, ADMIN, ACCOUNTANT",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) порожня причина → 400, до сервісу не доходить",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) причина з самих пробілів → 400, до сервісу не доходить",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) причина не рядок → 400, до сервісу не доходить",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) причина понад 500 символів → 400, до сервісу не доходить",
+   "POST /payments/:id/reverse — HTTP-контракт (BR-PAY-024) причина рівно 500 символів → проходить"
   ],
   "apps/api/src/modules/payments/payments.reverse.spec.ts": [
    "PaymentsService.afterReversal — аудит після коміту наряд повернувся у «Виставлено» → аудит наряду PAID → INVOICED поруч з аудитом оплати",
@@ -6181,6 +6234,7 @@
    "Sync — HTTP Contract POST /sync/push A4: LWW-winner з МЕНШИМ пробігом → пише max (не відкочує пробіг назад)",
    "Sync — HTTP Contract POST /sync/push DELETE calendar_slot з НОВІШИМ syncVersion застосовує soft-delete",
    "Sync — HTTP Contract POST /sync/push DELETE calendar_slot зі СТАРІШИМ syncVersion не клобберить новіший серверний запис (LWW tombstone)",
+   "Sync — HTTP Contract POST /sync/push DELETE customer_garages через sync відхиляється — гараж видаляє лише маршрут зі сторожем авто",
    "Sync — HTTP Contract POST /sync/push відхиляє запис у захищену таблицю (work_orders не в PUSH_SAFE_TABLES)"
   ],
   "apps/api/src/modules/sync/sync.work-order-slot.spec.ts": [
@@ -6330,7 +6384,8 @@
   "apps/api/src/modules/warranties/warranties.claim-race.spec.ts": [
    "BR-WAR-004: звернення за гарантією — атомарний запис гарантія закінчилась між перевіркою і записом → 400 «термін минув», нічого не записано",
    "BR-WAR-004: звернення за гарантією — атомарний запис два одночасні звернення → одне звернення й одна відмова «вже використана»",
-   "BR-WAR-004: звернення за гарантією — атомарний запис звичайне звернення записує claimedAt і наряд-звернення"
+   "BR-WAR-004: звернення за гарантією — атомарний запис звичайне звернення записує claimedAt і наряд-звернення",
+   "BR-WAR-004: звернення за гарантією — атомарний запис наряд-звернення іншого клієнта → 400, гарантія не використана"
   ],
   "apps/api/src/modules/warranties/warranties.contract.spec.ts": [
    "Warranties — HTTP контракт списку 200 { items, total, page, limit }; організація — з токена, page/limit — числа",
@@ -6360,7 +6415,7 @@
    "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-001: що потрапляє у список і форма відповіді порядок за замовчуванням — expiresAt за зростанням, при рівних — за id",
    "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= взимку (EET, +02:00) поріг теж від київського дня: 22:30 UTC = вже наступна доба",
    "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= кілька станів (ACTIVE,EXPIRING) — обʼєднання",
-   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= стан на межах: зараз = закінчилась, поріг Київ-сьогодні + 30 днів = закінчується",
+   "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= стан на межах: зараз = закінчилась, поріг Київ-сьогодні + 14 днів = закінчується",
    "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= фільтр state=ACTIVE відбирає в базі рівно рядки з цим обчисленим станом",
    "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= фільтр state=CLAIMED відбирає в базі рівно рядки з цим обчисленим станом",
    "WarrantiesService.findAll — список вкладки «Гарантії» BR-WAR-002: стан гарантії і фільтр ?state= фільтр state=EXPIRED відбирає в базі рівно рядки з цим обчисленим станом",
@@ -6720,6 +6775,7 @@
    "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) COMPLETED → CANCELLED: якір і продовження позначено видаленими в транзакції переходу",
    "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) DRAFT → CANCELLED: якір і продовження позначено видаленими в транзакції переходу",
    "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) ESTIMATE → CANCELLED: якір і продовження позначено видаленими в транзакції переходу",
+   "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) INVOICED → CANCELLED: якір і продовження позначено видаленими в транзакції переходу",
    "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) ON_HOLD → CANCELLED: якір і продовження позначено видаленими в транзакції переходу",
    "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) «Виконано» → «Скасовано»: записи звільнено разом із поверненням складу й боргу",
    "WorkOrdersService.transition → CANCELLED — записи календаря наряду (BR-WO-022) запис наряду, скасованого раніше (дані до 2026-10-18), не показується й не займає підйомник",
@@ -6732,6 +6788,19 @@
    "Зміна запису наряду ‖ скасування наряду (Bug #910) картка: нові дати наряду → 400 «закритий наряд», запису немає",
    "Зміна запису наряду ‖ скасування наряду (Bug #910) наряд став «В роботі» → зміна меж запису 400, запис і дати наряду на місці",
    "Зміна запису наряду ‖ скасування наряду (Bug #910) новий запис із нарядом без дат («+ Слот») → 400, запису немає, дат у наряду немає"
+  ],
+  "apps/api/src/modules/work-orders/work-orders.cancel-invoiced.spec.ts": [
+   "WorkOrdersService.transition: «Виставлено» → «Скасовано» (BR-WO-031) COMPLETED → «Скасовано»: гарантія наряду без звернення гасне; звернена, чужа й іншого наряду — ні",
+   "WorkOrdersService.transition: «Виставлено» → «Скасовано» (BR-WO-031) INVOICED → «Скасовано»: гарантія наряду без звернення гасне; звернена, чужа й іншого наряду — ні",
+   "WorkOrdersService.transition: «Виставлено» → «Скасовано» (BR-WO-031) «Виконано» → «Скасовано» теж скасовує рахунок наряду; чужі й видалені рахунки не чіпає",
+   "WorkOrdersService.transition: «Виставлено» → «Скасовано» (BR-WO-031) оплата між читанням і записом (CAS програв) → відмова, рахунок живий, сторно боргу немає",
+   "WorkOrdersService.transition: «Виставлено» → «Скасовано» (BR-WO-031) рахунок наряду в стані DRAFT скасовується разом із нарядом",
+   "WorkOrdersService.transition: «Виставлено» → «Скасовано» (BR-WO-031) рахунок наряду в стані OVERDUE скасовується разом із нарядом",
+   "WorkOrdersService.transition: «Виставлено» → «Скасовано» (BR-WO-031) рахунок наряду в стані PARTIALLY_PAID скасовується разом із нарядом",
+   "WorkOrdersService.transition: «Виставлено» → «Скасовано» (BR-WO-031) рахунок наряду в стані SENT скасовується разом із нарядом",
+   "WorkOrdersService.transition: «Виставлено» → «Скасовано» (BR-WO-031) сплачено 0 → скасовано: склад і борг повертаються один раз, резерв не знімається",
+   "WorkOrdersService.transition: «Виставлено» → «Скасовано» (BR-WO-031) сплачено більше 0 → 400, гарантія жива",
+   "WorkOrdersService.transition: «Виставлено» → «Скасовано» (BR-WO-031) сплачено більше 0 → 400, наряд і рахунок не змінено, борг не сторновано"
   ],
   "apps/api/src/modules/work-orders/work-orders.complete-recalc.spec.ts": [
    "WorkOrdersService.transition → COMPLETED: перерахунок тоталів (BR-WO-008) перераховує тотали ДО нарахування боргу",
@@ -6789,7 +6858,7 @@
    "FE↔BE status sets symmetry — Bug #432/#439 regression-guard LINE_ACTUAL_EDITABLE_STATUSES — superset EDITABLE_STATUSES + {IN_PROGRESS, ON_HOLD}",
    "FE↔BE status sets symmetry — Bug #432/#439 regression-guard SHAREABLE_STATUSES (BE) == WO_SHAREABLE_STATUSES (FE)",
    "WORK_ORDER_TRANSITIONS — property-based invariants ARCHIVED — фінальний стан (порожній список переходів)",
-   "WORK_ORDER_TRANSITIONS — property-based invariants CANCELLED доступний з COMPLETED (C2: реверс складу+боргу), але НЕ з INVOICED/PAID/ARCHIVED",
+   "WORK_ORDER_TRANSITIONS — property-based invariants CANCELLED доступний з COMPLETED і INVOICED (реверс складу+боргу), але НЕ з PAID/ARCHIVED",
    "WORK_ORDER_TRANSITIONS — property-based invariants CANCELLED — фінальний стан (порожній список переходів)",
    "WORK_ORDER_TRANSITIONS — property-based invariants COMPLETED досягається тільки з IN_PROGRESS",
    "WORK_ORDER_TRANSITIONS — property-based invariants IN_PROGRESS досягається тільки через APPROVED або з ON_HOLD",
@@ -6808,6 +6877,10 @@
    "WorkOrdersService.updateLine — робота й виконавець рядка правка без роботи й виконавця (лише фактичні години) їх не чіпає",
    "WorkOrdersService.updateLine — робота й виконавець рядка робота чужої організації або видалена → 404, рядок не змінено",
    "WorkOrdersService.updateLine — робота й виконавець рядка ті самі робота й виконавець (картка шле їх щоразу) → без перевірки існування, поля не чіпаються"
+  ],
+  "apps/api/src/modules/work-orders/work-orders.linked-payments.spec.ts": [
+   "WorkOrdersService.getLinkedDocuments — рядок оплати для сторно (BR-PAY-024) select бере sourceType і onlinePaymentIntentId; відповідь — sourceType і isOnline, без id наміру",
+   "WorkOrdersService.getLinkedDocuments — рядок оплати для сторно (BR-PAY-024) стара готівкова оплата без призначення (є рядок каси) — inCashDesk, решта — ні"
   ],
   "apps/api/src/modules/work-orders/work-orders.list-date-filter.spec.ts": [
    "WorkOrdersService.findAll — відбір за датою документа dateFrom + dateTo → documentDate від 09.10 до 10.10 календарними датами, без зсуву на пояс",
@@ -7029,6 +7102,8 @@
    "WorksService create — FK-guard категорії чужа/видалена категорія → 404, робота НЕ створюється",
    "WorksService findAll — фільтри каталогу categoryIds має пріоритет над categoryId (in над одиничним)",
    "WorksService findAll — фільтри каталогу count і findMany бачать той самий where (однакова tenant-ізоляція)",
+   "WorksService findAll — фільтри каталогу ids → лише ці роботи (у своїй org, живі)",
+   "WorksService findAll — фільтри каталогу q з % і _ → буквальний пошук (екранування LIKE)",
    "WorksService findAll — фільтри каталогу q → пошук по name з insensitive-режимом",
    "WorksService findAll — фільтри каталогу showDeleted=true: не фільтрує ні по deletedAt, ні по isActive категорії",
    "WorksService findAll — фільтри каталогу без showDeleted: ховає видалені роботи І роботи вимкнених категорій",
