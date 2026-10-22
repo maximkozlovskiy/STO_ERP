@@ -275,6 +275,8 @@ export const uk: Record<string, string> = {
   'err.warranty.alreadyClaimed': 'Гарантія вже використана',
   'err.warranty.expired': 'Термін гарантії минув',
   'err.warranty.claimWorkOrderNotFound': 'Гарантійний наряд не знайдено',
+  'err.warranty.claimOtherCounterparty':
+    'Наряд-звернення належить іншому клієнту — оберіть наряд клієнта, якому видано гарантію',
   'err.warranty.claimSameWorkOrder':
     'Звернення оформлюється окремим нарядом — не тим, за яким видано гарантію',
 
@@ -788,7 +790,7 @@ export const uk: Record<string, string> = {
   'err.bankStatement.notManual': 'Видалити можна лише платіж, внесений вручну',
   'err.bankStatement.notMatched': 'Платіж не рознесено — скасовувати нічого',
   'err.bankStatement.unmatchIncomingUnsupported':
-    'Скасування рознесення вхідного платежу не підтримується',
+    'Рознесення вхідного платежу знімається сторном оплати — дія «Сторнувати оплату»',
   'err.bankStatement.fieldRequiredForType': 'Для цього виду рознесення не вказано обов’язкове поле',
   'err.bankStatement.supplierPaymentNotFound': 'Оплату постачальнику не знайдено',
   'err.bankStatement.supplierPaymentMismatch':

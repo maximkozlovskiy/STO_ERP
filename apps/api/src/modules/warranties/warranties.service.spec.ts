@@ -43,7 +43,7 @@ describe('WarrantiesService.claim', () => {
     createdAt: new Date(),
   };
 
-  const validClaimWo = { id: claimWoId, orgId };
+  const validClaimWo = { id: claimWoId, orgId, counterpartyId: 'cp-1' };
 
   beforeEach(async () => {
     prisma = {

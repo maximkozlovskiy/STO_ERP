@@ -37,8 +37,9 @@ function matches(row: Row, where: Row): boolean {
 function buildStore(warranty: Row) {
   const warranties = [warranty];
   const workOrders = [
-    { id: 'wo-a', orgId: ORG, deletedAt: null },
-    { id: 'wo-b', orgId: ORG, deletedAt: null },
+    { id: 'wo-a', orgId: ORG, deletedAt: null, counterpartyId: 'cp-1' },
+    { id: 'wo-b', orgId: ORG, deletedAt: null, counterpartyId: 'cp-1' },
+    { id: 'wo-other', orgId: ORG, deletedAt: null, counterpartyId: 'cp-2' },
   ];
   // Копія, не сам рядок: інакше «прочитане» першим зверненням мінялося б під ним записом другого
   // (GOTCHAS 2026-10-18), і гонка зникала б у тесті, лишаючись у базі.
@@ -122,7 +123,12 @@ describe('BR-WAR-004: звернення за гарантією — атома�
     const store = buildStore(warrantyRow());
     // Перевірка на початку бачить чинну гарантію, а запис — уже ні (час минув між ними).
     store.prisma.warranty.findFirst.mockImplementationOnce(() =>
-      Promise.resolve({ claimedAt: null, expiresAt: new Date(Date.now() + DAY) }),
+      Promise.resolve({
+        claimedAt: null,
+        expiresAt: new Date(Date.now() + DAY),
+        workOrderId: 'wo-origin',
+        counterpartyId: 'cp-1',
+      }),
     );
     store.warranties[0].expiresAt = new Date(Date.now() - 1);
     const service = await serviceOver(store.prisma);
@@ -143,5 +149,17 @@ describe('BR-WAR-004: звернення за гарантією — атома�
 
     expect(res.claimWoId).toBe('wo-a');
     expect(store.warranties[0].claimedAt).toBeInstanceOf(Date);
+  });
+
+  // guards: BR-WAR-004 — рішення власника 2026-10-22: наряд-звернення того самого клієнта
+  it('наряд-звернення іншого клієнта → 400, гарантія не використана', async () => {
+    const store = buildStore(warrantyRow());
+    const service = await serviceOver(store.prisma);
+
+    await expect(service.claim(ORG, W_ID, { claimWoId: 'wo-other' })).rejects.toThrow(
+      'Наряд-звернення належить іншому клієнту',
+    );
+    expect(store.warranties[0].claimedAt ?? null).toBeNull();
+    expect(store.prisma.warranty.updateMany).not.toHaveBeenCalled();
   });
 });

@@ -271,6 +271,8 @@ export const en: Record<string, string> = {
   'err.warranty.alreadyClaimed': 'The warranty has already been claimed',
   'err.warranty.expired': 'The warranty has expired',
   'err.warranty.claimWorkOrderNotFound': 'Warranty work order not found',
+  'err.warranty.claimOtherCounterparty':
+    'The claim work order belongs to another client — choose a work order of the warranty holder',
   'err.warranty.claimSameWorkOrder':
     'A claim needs a separate work order, not the one the warranty was issued for',
 
@@ -805,7 +807,7 @@ export const en: Record<string, string> = {
   'err.bankStatement.notManual': 'Only a manually entered payment can be deleted',
   'err.bankStatement.notMatched': 'The payment is not reconciled — nothing to cancel',
   'err.bankStatement.unmatchIncomingUnsupported':
-    'Cancelling the reconciliation of an incoming payment is not supported',
+    'An incoming payment is released by reversing its payment — use "Reverse payment"',
   'err.bankStatement.fieldRequiredForType': 'A required field for this match type is missing',
   'err.bankStatement.supplierPaymentNotFound': 'Supplier payment not found',
   'err.bankStatement.supplierPaymentMismatch':
