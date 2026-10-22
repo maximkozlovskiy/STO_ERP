@@ -323,3 +323,18 @@ unit-спеки реєстру, другий — посилання, а не т�
 **Фікс:** точні пари `OR: [...pairs.values()]` + `take: pairs.size` (`@@unique` трійки дає ≤ 1
 рядок на пару); мітку повернуто на GIN-тест, новий тест — `// guards: BR-SETL-015` (0403885a).
 **Severity:** IMPORTANT (мітка), SUGGESTION (запит)
+
+### 2026-10-22 — Кнопка «Сторнувати» за підмножиною ознак сервера; openapi без нового параметра — §13
+
+**Сигнал:** `reverseNonCash` відхиляв сторно оплати, що лежить у касі, за `sourceType = CASH_REGISTER`,
+`cashRegisterId` або рядком каси `documentType = 'Payment'` (стара оплата до BR-PAY-023), а
+`paymentReversalFields` у `lib/linked-configs.tsx` дивився лише на `sourceType` — стара готівкова оплата
+показувала «Сторнувати» і після причини й підтвердження діставала 400. Окремо: `GET /works?ids=` додано в
+DTO без `pnpm gen:api-types` — `openapi.json` і `api-types.ts` лишились без параметра (CI не ловить).
+**Grep:** `git diff <base> -- apps/web/src | grep -nE "^\+.*row\.[a-zA-Z]+ === '[A-Z_]+'"` → умова дії
+проти відмови сервера; `pnpm gen:api-types && git diff --stat -- packages/shared/openapi.json`.
+**Фікс:** `payments/payment-cash-desk.ts` — `paymentsInCashDesk` (одна функція для відмови й ознаки) і
+`toLinkedPaymentRows` → `inCashDesk` у рядку оплати «Пов'язаних документів»; web: `inCashDesk ||
+sourceType === 'CASH_REGISTER'` → підказка «Сторнується в касі». Тест на таблиці каси, що виконує
+`where` (своя org, тип `Payment`), мутації «без orgId» і «без запиту рядків каси» падають.
+**Severity:** IMPORTANT

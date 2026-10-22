@@ -197,6 +197,15 @@ grep -rn "toCamel\|snakeToCamel\|snake_to_camel" apps/api/src/ --include="*.ts" 
 - [ ] `payload = { ...row }` → normalize loop: `if (typeof v === 'bigint') Number(v)`
 - [ ] Dynamic `(prisma as any)[modelName]` → explicit `TABLE_TO_MODEL: Record<string,string>` + `if (!model) throw`
 - [ ] Polymorphic `entityType` → `IsIn([...ENTITY_TYPES])` + фронт використовує ті самі константи
+- [ ] **Кнопка дії, яку сервер може відхилити, показується за ОЗНАКОЮ від сервера, обчисленою тією ж
+      функцією, що й відмова** — не за підмножиною полів у web. Сервер відхиляв сторно «касової»
+      оплати за `sourceType` АБО `cashRegisterId` АБО рядком каси, а web дивився лише на `sourceType`:
+      стара готівкова оплата показувала «Сторнувати» й діставала 400 (`paymentsInCashDesk` →
+      `inCashDesk`). Grep: `git diff <base> -- apps/web/src | grep -nE "^\+.*row\.[a-zA-Z]+ === '[A-Z_]+'"`
+      → для кожної умови дії знайти відмову сервера і звірити набір ознак (`journal/api.md`, 2026-10-22)
+- [ ] **Змінив DTO / `@Query` / `@ApiProperty` → `pnpm gen:api-types` у тому ж коміті** (CI дрейфу
+      `openapi.json` не ловить, а web, що шле параметр рядком URL, компілюється й без нього). Перевірка:
+      `pnpm gen:api-types && git diff --stat -- packages/shared/openapi.json` → порожньо
 
 ---
 
