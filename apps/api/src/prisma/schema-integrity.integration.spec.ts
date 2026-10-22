@@ -100,6 +100,10 @@ const REQUIRED_NAMED_INDEXES: { name: string; why: string }[] = [
   },
   { name: 'loyalty_earn_one_per_document_uq', why: 'idempotency нарахування балів по документу' },
   {
+    name: 'settlement_charge_one_per_document_uq',
+    why: 'одне нарахування боргу (CHARGE) на документ — наряд чи рахунок',
+  },
+  {
     name: 'expense_categories_default_reason_uq',
     why: 'один привід за замовчуванням — одна стаття руху коштів в організації (BR-CASH-022)',
   },
@@ -158,6 +162,20 @@ describe('Schema integrity — manual-SQL конструкти живі у БД 
   });
 
   // guards: BR-WORK-006
+  it('одне CHARGE на документ: індекс частковий — лише CHARGE з документом (SUPPLIER_CHARGE вільний)', async () => {
+    if (!dbAvailable) return;
+    const rows = await raw.$queryRawUnsafe<{ pred: string | null; def: string }[]>(
+      `SELECT pg_get_expr(i.indpred, i.indrelid) AS pred, pg_get_indexdef(i.indexrelid) AS def
+         FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+        WHERE c.relname = 'settlement_charge_one_per_document_uq'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.def).toContain('UNIQUE');
+    expect(rows[0]!.def).toContain('"orgId", "documentType", "documentId"');
+    expect(rows[0]!.pred).toContain("'CHARGE'");
+    expect(rows[0]!.pred).toContain('"documentId" IS NOT NULL');
+  });
+
   it('GIN pg_trgm пошукові індекси існують на всіх критичних (таблиця, колонка)', async () => {
     if (!dbAvailable) return;
     // Семантична перевірка через indexdef (повний текст CREATE INDEX): GIN-індекс на потрібній
