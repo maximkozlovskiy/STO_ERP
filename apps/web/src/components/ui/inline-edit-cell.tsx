@@ -127,7 +127,12 @@ export function InlineViewCell({
   const { t } = useTranslation('common');
   if (!enabled) return <>{children ?? <span>{value}</span>}</>;
 
-  const label = ariaLabel ?? (value ? t('inlineEdit.editValue', { value }) : t('edit'));
+  // Доступна назва мусить містити видимий текст (WCAG 2.5.3, axe `label-content-name-mismatch`).
+  // Свій вміст (`children`, напр. бейдж «Звичайний» для значення NORMAL) — назва з нього самого, без
+  // aria-label із сирим значенням; «Натисніть для редагування» лишається описом через `title`.
+  const label =
+    ariaLabel ??
+    (children != null ? undefined : value ? t('inlineEdit.editValue', { value }) : t('edit'));
 
   return (
     <span

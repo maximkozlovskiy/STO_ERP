@@ -92,6 +92,18 @@ describe('InlineViewCell', () => {
     expect(screen.getByRole('button')).toHaveAttribute('aria-label', 'Редагувати: Hello');
   });
 
+  // axe 4.14 (label-content-name-mismatch): видимий бейдж «Звичайний» при aria-label «Редагувати: NORMAL».
+  it('свій вміст (children) — назва з видимого тексту, без aria-label із сирим значенням', () => {
+    render(
+      <InlineViewCell value="NORMAL" onClick={vi.fn()}>
+        <span>Звичайний</span>
+      </InlineViewCell>,
+    );
+    const btn = screen.getByRole('button', { name: 'Звичайний' });
+    expect(btn).not.toHaveAttribute('aria-label');
+    expect(btn).toHaveAttribute('title', 'Натисніть для редагування');
+  });
+
   it('aria-label = "Редагувати" коли value порожнє', () => {
     render(<InlineViewCell value="" onClick={vi.fn()} />);
     expect(screen.getByRole('button')).toHaveAttribute('aria-label', 'Редагувати');
