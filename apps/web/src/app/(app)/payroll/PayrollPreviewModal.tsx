@@ -18,7 +18,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { toast } from '@/lib/toast';
-import { CALENDAR_DATE_RE, fmtMoney, kyivToday } from '@/lib/format';
+import { CALENDAR_DATE_RE, fmtMoney, fmtQty, kyivToday } from '@/lib/format';
 import { usePayrollPreview, useCreatePayrollPeriod } from '@/hooks/api/usePayroll';
 
 interface PayrollPreviewModalProps {
@@ -78,6 +78,9 @@ export function PayrollPreviewModal({ open, onClose }: PayrollPreviewModalProps)
       onClose={close}
       title={t('preview.heading')}
       size="lg"
+      // Тіло вікна прокручується (overflow) і обрізало б календар поля дати, поки розрахунку ще
+      // немає: висоти вистачає на поле з відкритим календарем.
+      bodyMinHeight={400}
       footer={
         canCreate ? (
           <Button onClick={() => void createPeriod()} loading={createMut.isPending}>
@@ -144,7 +147,9 @@ export function PayrollPreviewModal({ open, onClose }: PayrollPreviewModalProps)
                     <TableCell className="text-[13px] text-muted-foreground">
                       {RATE_LABELS[l.rateSchemeType] ?? l.rateSchemeType}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{l.normoHours}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {fmtQty(l.normoHours)}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {fmtMoney(l.baseAmount)}
                     </TableCell>

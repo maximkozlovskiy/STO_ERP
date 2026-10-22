@@ -30,7 +30,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { useListPage } from '@/hooks/useListPage';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from '@/lib/toast';
-import { fmtMoney } from '@/lib/format';
+import { fmtMoney, fmtQty } from '@/lib/format';
 import {
   usePayrollPeriods,
   usePayrollPeriod,
@@ -302,7 +302,7 @@ export default function PayrollPage() {
       />
 
       <div className="flex flex-1 min-h-0">
-        <TableContainer>
+        <TableContainer className="bg-surface">
           <Table>
             <TableHeader>
               <TableRow>
@@ -534,7 +534,7 @@ export default function PayrollPage() {
                                       {RATE_LABELS[l.rateSchemeType] ?? l.rateSchemeType}
                                     </td>
                                     <td className="py-1.5 text-right tabular-nums">
-                                      {l.normoHours}
+                                      {fmtQty(l.normoHours)}
                                     </td>
                                     <td className="py-1.5 text-right tabular-nums font-semibold">
                                       {fmtMoney(l.accruedAmount)}
@@ -612,7 +612,7 @@ export default function PayrollPage() {
                                                       {w.worksCount}
                                                     </td>
                                                     <td className="py-1.5 text-right tabular-nums">
-                                                      {w.normoHours}
+                                                      {fmtQty(w.normoHours)}
                                                     </td>
                                                     <td className="py-1.5 text-right tabular-nums">
                                                       {fmtMoney(w.baseAmount)}
@@ -626,7 +626,7 @@ export default function PayrollPage() {
                                                     {t('breakdown.total')}
                                                   </td>
                                                   <td className="py-1.5 text-right tabular-nums">
-                                                    {l.normoHours}
+                                                    {fmtQty(l.normoHours)}
                                                   </td>
                                                   <td className="py-1.5 text-right tabular-nums">
                                                     {fmtMoney(l.baseAmount)}
