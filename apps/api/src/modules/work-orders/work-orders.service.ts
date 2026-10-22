@@ -108,6 +108,9 @@ const GOOD_UOM_SELECT = {
 
 type UomJunction = Prisma.GoodUoMGetPayload<{ select: typeof GOOD_UOM_SELECT }>;
 
+/** Одиниця рядка запчастини з GoodUoM: коефіцієнт і скорочення (картка й список `?include=`). */
+type PartUoM = { coefficient: number; unitOfMeasure: { shortName: string } };
+
 // Shared shape для всіх parts read paths (findOne/addPart/updatePart) — попереджає drift
 // (sto-review 2026-06-19): кожен новий scalar тут автоматично потрапляє у всі три
 // response-и + у toPartDto без ручного дублювання у трьох include shape-ах.
@@ -406,12 +409,22 @@ export class WorkOrdersService {
       this.prisma.workOrder.count({ where }),
     ]);
 
+    // Одиниця рядка запчастини — як у картці: пара (товар, одиниця) → GoodUoM одним запитом на
+    // всю сторінку. Без цього планшет бачив «1 шт» там, де в наряді «1 Пак» (клас Bug #868).
+    const goodUoMMap = withParts
+      ? await this.loadPartUoMs(
+          orgId,
+          items.flatMap(item => ('parts' in item ? item.parts : [])),
+        )
+      : new Map<string, PartUoM>();
     return {
       items: items.map(item => ({
         ...this.toDto(item),
         ...(withLines && 'lines' in item ? { lines: item.lines.map(l => this.toLineDto(l)) } : {}),
         // Без ролі мапер не віддає собівартість (fail-closed) — у списку її не бачить ніхто.
-        ...(withParts && 'parts' in item ? { parts: item.parts.map(p => this.toPartDto(p)) } : {}),
+        ...(withParts && 'parts' in item
+          ? { parts: item.parts.map(p => this.toPartDtoWithUoM(p, goodUoMMap)) }
+          : {}),
       })),
       total,
       page: query.page,
@@ -449,52 +462,12 @@ export class WorkOrdersService {
     });
     if (!wo) throw new NotFoundException(err('err.workOrder.notFound'));
 
-    // Batch-fetch GoodUoM coefficients for parts that have unitOfMeasureId set.
-    // WO-C3: part.unitOfMeasureId — FK на UnitOfMeasure.id, тож lookup за парою
-    // (unitOfMeasureId, goodId), не за GoodUoM.id. Раніше збіг був неможливий → обрана
-    // одиниця виміру не показувалась (тихо падала на базову).
-    const partUomPairs = wo.parts
-      .map(p => ({
-        uomId: (p as { unitOfMeasureId?: string | null }).unitOfMeasureId,
-        goodId: (p as { goodId: string }).goodId,
-      }))
-      .filter((x): x is { uomId: string; goodId: string } => !!x.uomId);
-    const goodUoMMap = new Map<
-      string,
-      { coefficient: number; unitOfMeasure: { shortName: string } }
-    >();
-    if (partUomPairs.length > 0) {
-      const goodUoMs = await this.prisma.goodUoM.findMany({
-        where: {
-          orgId,
-          unitOfMeasureId: { in: partUomPairs.map(x => x.uomId) },
-          goodId: { in: partUomPairs.map(x => x.goodId) },
-        },
-        select: {
-          unitOfMeasureId: true,
-          goodId: true,
-          coefficient: true,
-          unitOfMeasure: { select: { shortName: true } },
-        },
-      });
-      for (const u of goodUoMs) goodUoMMap.set(`${u.goodId}|${u.unitOfMeasureId}`, u);
-    }
+    const goodUoMMap = await this.loadPartUoMs(orgId, wo.parts);
 
     return {
       ...this.toDto(wo),
       lines: wo.lines.map(l => this.toLineDto(l)),
-      parts: wo.parts.map(p => {
-        const uomId = (p as { unitOfMeasureId?: string | null }).unitOfMeasureId;
-        const goodId = (p as { goodId: string }).goodId;
-        return this.toPartDto(
-          {
-            ...p,
-            unitOfMeasureId: uomId,
-            goodUoM: uomId ? (goodUoMMap.get(`${goodId}|${uomId}`) ?? null) : null,
-          },
-          userRole,
-        );
-      }),
+      parts: wo.parts.map(p => this.toPartDtoWithUoM(p, goodUoMMap, userRole)),
     };
   }
 
@@ -2534,6 +2507,54 @@ export class WorkOrdersService {
     userRole?: string,
   ): WorkOrderPartResponseDto {
     return mapWorkOrderPartToDto(part, userRole);
+  }
+
+  /**
+   * Одиниці рядків запчастин: пара (товар, одиниця) → коефіцієнт і скорочення з GoodUoM.
+   * WO-C3: `part.unitOfMeasureId` — FK на UnitOfMeasure.id, тож lookup за парою, не за GoodUoM.id
+   * (інакше обрана одиниця тихо падала на базову). Один запит на картку чи сторінку списку.
+   */
+  private async loadPartUoMs(
+    orgId: string,
+    parts: ReadonlyArray<{ goodId: string; unitOfMeasureId?: string | null }>,
+  ): Promise<Map<string, PartUoM>> {
+    const pairs = parts
+      .map(p => ({ uomId: p.unitOfMeasureId, goodId: p.goodId }))
+      .filter((x): x is { uomId: string; goodId: string } => !!x.uomId);
+    const map = new Map<string, PartUoM>();
+    if (pairs.length === 0) return map;
+    const goodUoMs = await this.prisma.goodUoM.findMany({
+      where: {
+        orgId,
+        unitOfMeasureId: { in: [...new Set(pairs.map(x => x.uomId))] },
+        goodId: { in: [...new Set(pairs.map(x => x.goodId))] },
+      },
+      select: {
+        unitOfMeasureId: true,
+        goodId: true,
+        coefficient: true,
+        unitOfMeasure: { select: { shortName: true } },
+      },
+    });
+    // IN по двох колонках дає декартів добуток пар — ключ мапи саме пара, тож зайві рядки
+    // добутку нікому не дістаються.
+    for (const u of goodUoMs) map.set(`${u.goodId}|${u.unitOfMeasureId}`, u);
+    return map;
+  }
+
+  private toPartDtoWithUoM(
+    part: Parameters<typeof mapWorkOrderPartToDto>[0],
+    goodUoMs: ReadonlyMap<string, PartUoM>,
+    userRole?: string,
+  ): WorkOrderPartResponseDto {
+    const uomId = part.unitOfMeasureId;
+    return this.toPartDto(
+      {
+        ...part,
+        goodUoM: uomId ? (goodUoMs.get(`${part.goodId}|${uomId}`) ?? null) : null,
+      },
+      userRole,
+    );
   }
 
   // ─── Linked Documents ──────────────────────────────────

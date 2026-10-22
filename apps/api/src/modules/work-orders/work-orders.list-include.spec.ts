@@ -71,12 +71,15 @@ const woRow = () => ({
 
 describe('WorkOrdersService.findAll — рядки й запчастини для планшета (?include=)', () => {
   let findMany: ReturnType<typeof vi.fn>;
+  let goodUoMFindMany: ReturnType<typeof vi.fn>;
   let service: WorkOrdersService;
 
   beforeEach(() => {
     findMany = vi.fn().mockResolvedValue([woRow()]);
+    goodUoMFindMany = vi.fn().mockResolvedValue([]);
     const prisma = {
       workOrder: { findMany, count: vi.fn().mockResolvedValue(1) },
+      goodUoM: { findMany: goodUoMFindMany },
     } as unknown as PrismaService;
     service = new WorkOrdersService(
       prisma,
@@ -128,11 +131,53 @@ describe('WorkOrdersService.findAll — рядки й запчастини дл�
     expect(res.items[0]!.lines).toBeUndefined();
   });
 
+  // guards: BR-INV-021 — одиниця рядка запчастини і в списку для планшета, як у картці
+  it('запчастина в альтернативній одиниці: одиниця й коефіцієнт рядка, а не базові товару', async () => {
+    const row = woRow();
+    row.parts = [
+      {
+        ...row.parts[0]!,
+        id: 'part-pak',
+        goodId: 'good-oil',
+        unitOfMeasureId: 'uom-pak',
+        good: { name: 'Олива', unit: 'шт', unitOfMeasure: null },
+      },
+      { ...row.parts[0]!, id: 'part-base' },
+    ];
+    findMany.mockResolvedValue([row]);
+    goodUoMFindMany.mockResolvedValue([
+      {
+        goodId: 'good-oil',
+        unitOfMeasureId: 'uom-pak',
+        coefficient: 10,
+        unitOfMeasure: { shortName: 'Пак' },
+      },
+    ]);
+    const res = await service.findAll(ORG, {
+      ...baseQuery,
+      include: ['parts'],
+    } as WorkOrderQueryDto);
+    const parts = res.items[0]!.parts!;
+    expect(parts.find(p => p.id === 'part-pak')).toEqual(
+      expect.objectContaining({
+        unitOfMeasureId: 'uom-pak',
+        unitShortName: 'Пак',
+        coefficient: 10,
+      }),
+    );
+    expect(parts.find(p => p.id === 'part-base')).toEqual(
+      expect.objectContaining({ unitShortName: 'шт', coefficient: 1 }),
+    );
+    expect(goodUoMFindMany).toHaveBeenCalledTimes(1);
+    expect(goodUoMFindMany.mock.calls[0]![0]).toMatchObject({ where: { orgId: ORG } });
+  });
+
   it('без include список такий, як був: рядків і запчастин немає ні в запиті, ні у відповіді', async () => {
     const res = await service.findAll(ORG, baseQuery);
     expect(include()).not.toHaveProperty('lines');
     expect(include()).not.toHaveProperty('parts');
     expect(res.items[0]).not.toHaveProperty('lines');
     expect(res.items[0]).not.toHaveProperty('parts');
+    expect(goodUoMFindMany).not.toHaveBeenCalled();
   });
 });
