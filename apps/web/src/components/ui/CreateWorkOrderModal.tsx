@@ -208,18 +208,6 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-destructive-subtle text-destructive',
 };
 
-const TRANSITION_LABELS: Record<string, string> = {
-  ESTIMATE: 'Кошторис',
-  APPROVED: 'Затвердити',
-  IN_PROGRESS: 'В роботу',
-  ON_HOLD: 'Призупинити',
-  COMPLETED: 'Виконано',
-  INVOICED: 'Виставити рахунок',
-  ARCHIVED: 'В архів',
-  CANCELLED: 'Скасувати',
-  DRAFT: 'Повернути в чернетку',
-};
-
 const TRANSITION_VARIANTS: Record<string, 'default' | 'destructive' | 'outline'> = {
   CANCELLED: 'destructive',
   COMPLETED: 'default',
@@ -900,7 +888,7 @@ export function CreateWorkOrderModal({
       })
       .catch(e => {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : 'Помилка завантаження наряду');
+        setError(e instanceof Error ? e.message : t('detail.loadError'));
       })
       .finally(() => {
         if (cancelled) return;
@@ -978,10 +966,10 @@ export function CreateWorkOrderModal({
         (r.items ?? []).map(w => ({
           ...w,
           primary: w.name,
-          secondary: `${w.normoHours} год · ${w.price} ₴`,
+          secondary: t('card.workPickerSecondary', { hours: w.normoHours, price: w.price }),
         })),
       ),
-    [],
+    [t],
   );
 
   const fetchGoods = useCallback(
@@ -1189,18 +1177,18 @@ export function CreateWorkOrderModal({
     if (!newLine.workId || !newLine.employeeId) return;
     // блокуємо повний дублікат (work + виконавець) — типовий user-error.
     if (lines.some(l => l.workId === newLine.workId && l.employeeId === newLine.employeeId)) {
-      setError('Цю роботу для цього виконавця вже додано');
+      setError(t('card.duplicateLine'));
       return;
     }
     // захист від негативних/нульових normoHours (DTO @Min(0.01) інакше rejects after WO created).
     const normo = toNumberOrUndefined(newLine.normoHours);
     if (newLine.normoHours && (normo === undefined || normo <= 0)) {
-      setError('Нормо-години мають бути більше нуля');
+      setError(t('card.normoHoursPositive'));
       return;
     }
     const linePrice = toNumberOrUndefined(newLine.price);
     if (newLine.price && (linePrice === undefined || linePrice < 0)) {
-      setError('Ціна не може бути відʼємною');
+      setError(t('card.priceNegative'));
       return;
     }
     setError('');
@@ -1285,18 +1273,18 @@ export function CreateWorkOrderModal({
     if (!newPart.goodId || !newPart.warehouseId) return;
     // блокуємо повний дублікат (товар + склад).
     if (parts.some(p => p.goodId === newPart.goodId && p.warehouseId === newPart.warehouseId)) {
-      setError('Цей товар із цього складу вже додано');
+      setError(t('card.duplicatePart'));
       return;
     }
     // backend DTO @Min(0.001) для quantity → reject цілого create() після WO POST.
     const qty = toNumberOrUndefined(newPart.quantity);
     if (qty === undefined || qty <= 0) {
-      setError('Кількість має бути більше нуля');
+      setError(t('card.qtyPositive'));
       return;
     }
     const partPrice = toNumberOrUndefined(newPart.price);
     if (newPart.price && (partPrice === undefined || partPrice < 0)) {
-      setError('Ціна не може бути відʼємною');
+      setError(t('card.priceNegative'));
       return;
     }
     setError('');
@@ -1334,11 +1322,7 @@ export function CreateWorkOrderModal({
         parts: [...(getValues('parts') ?? []), ...flushPart],
       });
       if (!parsed.success) {
-        setError(
-          validationText(
-            parsed.error.issues[0]?.message ?? 'Перевірте правильність заповнення полів',
-          ),
-        );
+        setError(validationText(parsed.error.issues[0]?.message ?? t('card.checkFields')));
         return;
       }
     }
@@ -1347,11 +1331,7 @@ export function CreateWorkOrderModal({
     const hasHalfLine = !!newLine.workId && !newLine.employeeId;
     const hasHalfPart = !!newPart.goodId && !newPart.warehouseId;
     if (hasHalfLine || hasHalfPart) {
-      setError(
-        hasHalfLine
-          ? 'У рядку «Роботи» не обрано виконавця. Натисніть «+» щоб додати або очистіть рядок.'
-          : 'У рядку «Товари» не обрано склад. Натисніть «+» щоб додати або очистіть рядок.',
-      );
+      setError(hasHalfLine ? t('card.halfLine') : t('card.halfPart'));
       return;
     }
 
@@ -1451,7 +1431,7 @@ export function CreateWorkOrderModal({
       onCreated?.(wo);
       onClose();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка створення наряду');
+      setError(e instanceof Error ? e.message : t('card.createError'));
     } finally {
       setSavingBoth(false);
     }
@@ -1486,11 +1466,7 @@ export function CreateWorkOrderModal({
         parts: getValues('parts') ?? [],
       });
       if (!parsed.success) {
-        setError(
-          validationText(
-            parsed.error.issues[0]?.message ?? 'Перевірте правильність заповнення полів',
-          ),
-        );
+        setError(validationText(parsed.error.issues[0]?.message ?? t('card.checkFields')));
         return;
       }
     }
@@ -1680,7 +1656,7 @@ export function CreateWorkOrderModal({
       onUpdated?.();
       onClose();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : t('detail.saveError'));
     } finally {
       setSavingBoth(false);
     }
@@ -1700,10 +1676,10 @@ export function CreateWorkOrderModal({
       // Обидві кнопки — дії; Escape / хрестик — відмова від обох (Bug #926: Escape переводив наряд
       // у «Виставлено», а назад FSM не веде).
       const choice = await chooseOverCard({
-        title: 'Створити рахунок?',
-        message: 'Рахунок для цього наряду відсутній. Створити рахунок зараз?',
-        confirmLabel: 'Створити рахунок',
-        cancelLabel: 'Тільки перевести статус',
+        title: t('card.invoicePrompt.title'),
+        message: t('card.invoicePrompt.message'),
+        confirmLabel: t('card.invoicePrompt.confirm'),
+        cancelLabel: t('card.invoicePrompt.cancel'),
       });
       if (choice === null) return;
       if (choice) {
@@ -1714,11 +1690,12 @@ export function CreateWorkOrderModal({
     }
     if (newStatus === 'IN_PROGRESS' && calConflict?.anyConflict) {
       const ok = await confirmOverCard({
-        title: 'Перевести наряд в "В роботі"?',
-        message: `У календарі є перетин слотів (${calConflict.conflictSlots.length} шт.)${
-          conflictWoNumbers ? ': ' + conflictWoNumbers : ''
-        }. Продовжити?`,
-        confirmLabel: 'Перевести',
+        title: t('card.inProgressConfirm.title'),
+        message: t('card.inProgressConfirm.message', {
+          n: calConflict.conflictSlots.length,
+          numbers: conflictWoNumbers ? ': ' + conflictWoNumbers : '',
+        }),
+        confirmLabel: t('card.inProgressConfirm.confirm'),
         variant: 'destructive',
       });
       if (!ok) return;
@@ -1749,7 +1726,7 @@ export function CreateWorkOrderModal({
       invalidateProcurement();
       onUpdated?.();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка переходу статусу');
+      setError(e instanceof Error ? e.message : t('card.transitionError'));
     } finally {
       setTransitioningBoth(false);
     }
@@ -1964,7 +1941,7 @@ export function CreateWorkOrderModal({
         open={open}
         onClose={() => void handleModalClose()}
         onSubmit={() => void (isEditMode ? save() : create())}
-        title={isEditMode ? 'Наряд на роботу' : 'Новий наряд'}
+        title={isEditMode ? t('card.titleEdit') : t('card.titleNew')}
         size="content"
         // A card with tabs keeps a stable size: the short "documents" tab must not shrink the window.
         fixedHeight={isEditMode ? 'full' : false}
@@ -1975,13 +1952,15 @@ export function CreateWorkOrderModal({
         headerContent={
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2 text-[13px] text-muted-foreground shrink-0">
-              <span className="font-medium">Номер:</span>
+              <span className="font-medium">{t('card.number')}</span>
               <span className="text-foreground">
-                {isEditMode && woNumber ? woNumber : '— присвоюється автоматично —'}
+                {isEditMode && woNumber ? woNumber : t('card.autoNumber')}
               </span>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">Дата документа:</span>
+              <span className="text-[13px] font-medium text-muted-foreground">
+                {t('card.documentDate')}
+              </span>
               <div className="w-36">
                 <DatePickerInput
                   value={form.documentDate}
@@ -1991,7 +1970,9 @@ export function CreateWorkOrderModal({
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">Статус:</span>
+              <span className="text-[13px] font-medium text-muted-foreground">
+                {t('card.status')}
+              </span>
               <div ref={statusMenuRef} className="relative flex items-center gap-1">
                 <button
                   type="button"
@@ -2044,7 +2025,7 @@ export function CreateWorkOrderModal({
                         }}
                         className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
                       >
-                        {TRANSITION_LABELS[s] ?? s}
+                        {t(`card.transition.${s}`, { defaultValue: s })}
                       </button>
                     ))}
                   </div>
@@ -2060,7 +2041,7 @@ export function CreateWorkOrderModal({
                 onClick={() => {
                   minimizeModal({
                     kind: 'modal',
-                    label: woNumber || 'Наряд',
+                    label: woNumber || t('card.minimizedLabel'),
                     modalKey: 'work-order',
                     restoreProps: { workOrderId },
                   });
@@ -2069,8 +2050,8 @@ export function CreateWorkOrderModal({
                   onClose();
                 }}
                 className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-                title="Згорнути у вкладку"
-                aria-label="Згорнути у вкладку"
+                title={t('card.minimize')}
+                aria-label={t('card.minimize')}
                 disabled={saving || transitioning}
               >
                 <Minus className="h-4 w-4" />
@@ -2079,8 +2060,8 @@ export function CreateWorkOrderModal({
             <button
               onClick={() => void handleModalClose()}
               className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-              title="Закрити"
-              aria-label="Закрити"
+              title={t('common:close')}
+              aria-label={t('common:close')}
               disabled={saving || transitioning}
             >
               <X className="h-4 w-4" />
@@ -2100,7 +2081,7 @@ export function CreateWorkOrderModal({
                     disabled={transitioning || saving}
                     size="sm"
                   >
-                    Скасувати
+                    {t('common:cancel')}
                   </Button>
                 )}
                 {/* BR-WO-012: «Друк», «Зберегти як», «Поділитись» і SMS ідуть через токен поширення
@@ -2114,10 +2095,10 @@ export function CreateWorkOrderModal({
                       onClick={() => void handlePrint()}
                       loading={shareLoading}
                       disabled={shareLoading || smsLoading || saving || transitioning}
-                      title="Відкрити для друку"
+                      title={t('card.printTitle')}
                     >
                       <Printer size={15} className="mr-1" />
-                      Друк
+                      {t('detail.print')}
                     </Button>
                     <div className="relative">
                       <Button
@@ -2125,10 +2106,10 @@ export function CreateWorkOrderModal({
                         size="sm"
                         onClick={() => setSaveAsOpen(v => !v)}
                         disabled={shareLoading || smsLoading || saving || transitioning}
-                        title="Зберегти як..."
+                        title={t('card.saveAsTitle')}
                       >
                         <Download size={15} className="mr-1" />
-                        Зберегти як
+                        {t('card.saveAs')}
                         <ChevronDown size={13} className="ml-1" />
                       </Button>
                       {saveAsOpen && (
@@ -2166,10 +2147,10 @@ export function CreateWorkOrderModal({
                           onClick={() => void handleShare()}
                           loading={shareLoading}
                           disabled={shareLoading || smsLoading || saving || transitioning}
-                          title="Скопіювати посилання"
+                          title={t('card.shareTitle')}
                         >
                           <Share2 size={15} className="mr-1" />
-                          Поділитись
+                          {t('card.share')}
                         </Button>
                         <Button
                           variant="outline"
@@ -2177,7 +2158,7 @@ export function CreateWorkOrderModal({
                           onClick={() => void handleSendSms()}
                           loading={smsLoading}
                           disabled={shareLoading || smsLoading || saving || transitioning}
-                          title="Відправити SMS клієнту"
+                          title={t('card.smsTitle')}
                         >
                           <MessageSquare size={15} className="mr-1" />
                           SMS
@@ -2243,10 +2224,10 @@ export function CreateWorkOrderModal({
                     disabled={
                       invoiceLoading || saving || transitioning || shareLoading || smsLoading
                     }
-                    title="Виставити рахунок"
+                    title={t('invoice.create')}
                   >
                     <Receipt size={15} className="mr-1" />
-                    Виставити рахунок
+                    {t('invoice.create')}
                   </Button>
                 )}
                 {(canEdit || canEditActual) && (
@@ -2257,7 +2238,7 @@ export function CreateWorkOrderModal({
                       saving || transitioning || shareLoading || smsLoading || invoiceLoading
                     }
                   >
-                    Зберегти зміни
+                    {t('card.saveChanges')}
                   </Button>
                 )}
                 <Button
@@ -2266,7 +2247,7 @@ export function CreateWorkOrderModal({
                   onClick={() => void handleModalClose()}
                   disabled={saving || transitioning}
                 >
-                  Закрити
+                  {t('common:close')}
                 </Button>
               </div>
             </div>
@@ -2279,7 +2260,7 @@ export function CreateWorkOrderModal({
                 disabled={!form.branchId || !form.counterpartyId || !form.vehicleId}
                 className="w-full sm:w-auto sm:ml-auto"
               >
-                Створити наряд
+                {t('card.createOrder')}
               </Button>
             </div>
           )
@@ -2298,7 +2279,7 @@ export function CreateWorkOrderModal({
               )}
               onClick={() => setActiveTab('main')}
             >
-              Основне
+              {t('card.tabMain')}
             </button>
             <button
               className={cn(
@@ -2309,7 +2290,7 @@ export function CreateWorkOrderModal({
               )}
               onClick={() => setActiveTab('documents')}
             >
-              Документи
+              {t('card.tabDocuments')}
               {linkedDocsCounts && (
                 <span className="flex items-center gap-1.5">
                   {linkedDocsCounts.invoices > 0 && (
@@ -2357,7 +2338,7 @@ export function CreateWorkOrderModal({
           <>
             {editModeLoading && (
               <div className="flex justify-center py-8 text-sm text-muted-foreground">
-                Завантаження…
+                {t('common:loading')}
               </div>
             )}
             {error && (
@@ -2368,7 +2349,7 @@ export function CreateWorkOrderModal({
             {isDeleted && <DeletedDocumentBanner className="mb-4" />}
             {!editModeLoading && isEditMode && !canEdit && !viewOnly && (
               <div className="mb-4 text-[13px] text-warning bg-warning-subtle border border-warning/20 rounded-lg px-3 py-2">
-                Наряд у статусі «{woStatusLabel(currentStatus)}» — редагування недоступне
+                {t('card.readOnlyStatus', { status: woStatusLabel(currentStatus) })}
               </div>
             )}
 
@@ -2399,11 +2380,11 @@ export function CreateWorkOrderModal({
                       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                         <div className="col-span-2">
                           <EntityPickerField<HeaderCpItem>
-                            label="Клієнт"
+                            label={t('card.client')}
                             required
                             display={counterpartyDisplayName}
-                            placeholder="Пошук клієнта…"
-                            ariaLabel="Клієнт"
+                            placeholder={t('card.clientSearch')}
+                            ariaLabel={t('card.client')}
                             onPick={() => setCpPickerOpen(true)}
                             onSearch={fetchCpHeaderItems}
                             onSearchSelect={item => {
@@ -2439,13 +2420,13 @@ export function CreateWorkOrderModal({
                           />
                         </div>
                         <Select
-                          label="Автомобіль"
+                          label={t('card.vehicle')}
                           required
                           value={form.vehicleId}
                           onChange={e => setForm(f => ({ ...f, vehicleId: e.target.value }))}
                           disabled={!canEdit || !form.counterpartyId}
                         >
-                          <option value="">— Оберіть —</option>
+                          <option value="">{t('addLine.choose')}</option>
                           {vehicles.map(v => (
                             <option key={v.id} value={v.id}>
                               {v.make} {v.model}
@@ -2454,12 +2435,12 @@ export function CreateWorkOrderModal({
                           ))}
                         </Select>
                         <Select
-                          label="Договір"
+                          label={t('detail.contract')}
                           value={form.contractId}
                           onChange={e => setForm(f => ({ ...f, contractId: e.target.value }))}
                           disabled={!canEdit || !form.counterpartyId || contracts.length === 0}
                         >
-                          <option value="">— Без договору —</option>
+                          <option value="">{t('card.noContract')}</option>
                           {contracts.map(c => (
                             <option key={c.id} value={c.id}>
                               {/* Номер і тип: решту полів договору механік не отримує */}
@@ -2470,13 +2451,13 @@ export function CreateWorkOrderModal({
                           ))}
                         </Select>
                         <Select
-                          label="Філія"
+                          label={t('detail.branch')}
                           required
                           value={form.branchId}
                           onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
                           disabled={!canEdit || isEditMode || branches.length === 1}
                         >
-                          {branches.length !== 1 && <option value="">— Оберіть —</option>}
+                          {branches.length !== 1 && <option value="">{t('addLine.choose')}</option>}
                           {branches.map(b => (
                             <option key={b.id} value={b.id}>
                               {b.name}
@@ -2484,12 +2465,12 @@ export function CreateWorkOrderModal({
                           ))}
                         </Select>
                         <Select
-                          label="Категорія ремонту"
+                          label={t('detail.repairCategory')}
                           value={form.repairCategory}
                           onChange={e => setForm(f => ({ ...f, repairCategory: e.target.value }))}
                           disabled={!canEdit}
                         >
-                          <option value="">— Не вказано —</option>
+                          <option value="">{t('card.notSpecified')}</option>
                           {Object.keys(WO_CATEGORY_LABELS).map(k => (
                             <option key={k} value={k}>
                               {woCategoryLabel(k)}
@@ -2516,7 +2497,7 @@ export function CreateWorkOrderModal({
                           />
                         </div>
                         <Select
-                          label="Пріоритет"
+                          label={t('detail.priority')}
                           value={form.priority}
                           onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
                           disabled={!canEdit}
@@ -2529,11 +2510,11 @@ export function CreateWorkOrderModal({
                         </Select>
                         <div className="col-span-2 lg:col-span-4">
                           <Input
-                            label="Опис"
+                            label={t('detail.description')}
                             value={form.description}
                             onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                             disabled={!canEdit}
-                            placeholder="Заміна масла, колодок..."
+                            placeholder={t('card.descriptionPlaceholder')}
                           />
                         </div>
                       </div>
@@ -2552,12 +2533,12 @@ export function CreateWorkOrderModal({
                             (Bug #937). Вузько — окремим рядком, вирівнювати нема з чим. */}
                         <div className="md:self-end" data-testid="wo-lift">
                           <Select
-                            label="Підйомник"
+                            label={t('card.lift')}
                             value={form.liftId}
                             onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
                             disabled={!canEdit}
                           >
-                            <option value="">— Без підйомника —</option>
+                            <option value="">{t('card.noLift')}</option>
                             {lifts.map(l => (
                               <option key={l.id} value={l.id}>
                                 {l.name}
@@ -2581,11 +2562,11 @@ export function CreateWorkOrderModal({
                       </div>
                       {calConflict?.anyConflict && (
                         <div className="mt-4 rounded-md bg-warning-subtle border border-warning/20 px-3 py-2 text-[12px] text-warning">
-                          ⚠{calConflict.liftConflict && ' Підйомник зайнятий.'}
-                          {calConflict.employeeConflict && ' Механік зайнятий.'} Є перетин з{' '}
-                          {calConflict.conflictSlots.length} слотом(и) у календарі
-                          {conflictWoNumbers && <> ({conflictWoNumbers})</>}. Збереження з цим часом
-                          і підйомником буде відхилено — оберіть інший час або підйомник.
+                          ⚠{calConflict.liftConflict && ` ${t('card.conflict.lift')}`}
+                          {calConflict.employeeConflict && ` ${t('card.conflict.employee')}`}{' '}
+                          {t('card.conflict.overlap', { n: calConflict.conflictSlots.length })}
+                          {conflictWoNumbers && <> ({conflictWoNumbers})</>}.{' '}
+                          {t('card.conflict.rejected')}
                         </div>
                       )}
                     </DocumentSection>
@@ -2717,9 +2698,9 @@ export function CreateWorkOrderModal({
       <SearchPickerModal<SearchPickerItem & Counterparty>
         open={cpPickerOpen}
         onClose={() => setCpPickerOpen(false)}
-        title="Оберіть клієнта"
+        title={t('card.pickClient')}
         selectedId={form.counterpartyId}
-        searchPlaceholder="Ім'я, телефон, держ. номер авто..."
+        searchPlaceholder={t('card.pickClientSearch')}
         fetchItems={q =>
           apiFetch<{ items: Counterparty[] }>(
             `/counterparties?q=${encodeURIComponent(q)}&types=CLIENT&types=BOTH&limit=20`,

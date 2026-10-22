@@ -107,7 +107,7 @@ export function WorksTable(props: WorksTableProps) {
       <>
         <SectionActionButton onClick={() => setServicePickerOpen(true)}>
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-          Послуга
+          {t('worksTable.service')}
         </SectionActionButton>
         <SectionActionButton
           variant="accent"
@@ -117,7 +117,7 @@ export function WorksTable(props: WorksTableProps) {
           }}
         >
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-          Додати
+          {t('common:add')}
         </SectionActionButton>
       </>
     ) : undefined;
@@ -153,14 +153,14 @@ export function WorksTable(props: WorksTableProps) {
             </colgroup>
             <thead>
               <tr className="border-y border-border bg-secondary">
-                <th className={TH_FIRST}>Назва роботи</th>
-                <th className={TH}>Виконавець</th>
-                <th className={TH}>Год (план)</th>
-                <th className={TH}>Год (факт.)</th>
-                <th className={TH}>Ціна, ₴</th>
-                {vatMode !== 'NONE' && <th className={TH}>ПДВ, ₴</th>}
-                <th className={TH}>Сума, ₴</th>
-                <th className={TH}>Сума (факт.), ₴</th>
+                <th className={TH_FIRST}>{t('worksTable.colName')}</th>
+                <th className={TH}>{t('worksTable.colExecutor')}</th>
+                <th className={TH}>{t('worksTable.colHoursPlan')}</th>
+                <th className={TH}>{t('worksTable.colHoursActual')}</th>
+                <th className={TH}>{t('card.colPrice')}</th>
+                {vatMode !== 'NONE' && <th className={TH}>{t('card.colVat')}</th>}
+                <th className={TH}>{t('card.colSum')}</th>
+                <th className={TH}>{t('worksTable.colSumActual')}</th>
                 <th />
               </tr>
             </thead>
@@ -184,8 +184,8 @@ export function WorksTable(props: WorksTableProps) {
                         <td className="pl-4 pr-2 py-1.5">
                           <EntityPickerField<WorkPickerItem>
                             display={editingLine.workName}
-                            placeholder="Пошук роботи..."
-                            ariaLabel="Робота"
+                            placeholder={t('worksTable.searchPlaceholder')}
+                            ariaLabel={t('worksTable.workAria')}
                             onPick={() => canEdit && setEditWorkPickerOpen(true)}
                             onSearch={fetchWorks}
                             onSearchSelect={w =>
@@ -211,8 +211,8 @@ export function WorksTable(props: WorksTableProps) {
                             employees={employees}
                             employeesLoaded={employeesLoaded}
                             saved={line}
-                            placeholder="— Механік —"
-                            ariaLabel="Виконавець"
+                            placeholder={t('worksTable.executorPlaceholder')}
+                            ariaLabel={t('worksTable.colExecutor')}
                             disabled={!canEdit}
                           />
                         </td>
@@ -304,7 +304,7 @@ export function WorksTable(props: WorksTableProps) {
                                 setEditingLineKey(null);
                               }}
                               disabled={!editingLine.workId || !editingLine.employeeId}
-                              title="Зберегти"
+                              title={t('common:save')}
                               className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                             >
                               <Check className="h-3.5 w-3.5" />
@@ -312,7 +312,7 @@ export function WorksTable(props: WorksTableProps) {
                             <button
                               type="button"
                               onClick={() => setEditingLineKey(null)}
-                              title="Скасувати"
+                              title={t('common:cancel')}
                               className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                             >
                               <X className="h-3 w-3" />
@@ -370,9 +370,11 @@ export function WorksTable(props: WorksTableProps) {
                                 });
                               }}
                               disabled={saving || (!canEdit && !canEditActual)}
-                              aria-label="Редагувати роботу"
+                              aria-label={t('worksTable.editAria')}
                               title={
-                                canEditActual && !canEdit ? 'Ввести год (факт.)' : 'Редагувати'
+                                canEditActual && !canEdit
+                                  ? t('worksTable.enterActualHours')
+                                  : t('common:edit')
                               }
                               className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
                             >
@@ -408,8 +410,8 @@ export function WorksTable(props: WorksTableProps) {
                                 });
                               }}
                               disabled={saving || !canEdit}
-                              aria-label="Видалити роботу"
-                              title="Видалити"
+                              aria-label={t('worksTable.deleteAria')}
+                              title={t('common:delete')}
                               className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
                             >
                               <Trash2 className="h-3 w-3" />
@@ -428,8 +430,8 @@ export function WorksTable(props: WorksTableProps) {
                   <td className="pl-4 pr-2 py-1.5">
                     <EntityPickerField<WorkPickerItem>
                       display={newLine.workName}
-                      placeholder="Пошук роботи..."
-                      ariaLabel="Робота"
+                      placeholder={t('worksTable.searchPlaceholder')}
+                      ariaLabel={t('worksTable.workAria')}
                       onPick={() => setWorkPickerOpen(true)}
                       onSearch={fetchWorks}
                       onSearchSelect={onNewLineWorkPicked}
@@ -441,8 +443,8 @@ export function WorksTable(props: WorksTableProps) {
                       value={newLine.employeeId}
                       onChange={onNewLineExecutorChange}
                       employees={employees}
-                      placeholder="— Механік —"
-                      ariaLabel="Виконавець"
+                      placeholder={t('worksTable.executorPlaceholder')}
+                      ariaLabel={t('worksTable.colExecutor')}
                     />
                   </td>
                   <td className="px-2 py-1.5">
@@ -494,7 +496,7 @@ export function WorksTable(props: WorksTableProps) {
                         type="button"
                         onClick={addLine}
                         disabled={!newLine.workId || !newLine.employeeId || saving}
-                        title="Зберегти рядок"
+                        title={t('card.saveRow')}
                         className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
                         <Plus className="h-3.5 w-3.5" />
@@ -505,7 +507,7 @@ export function WorksTable(props: WorksTableProps) {
                           setNewLine(EMPTY_LINE);
                           setShowLineInput(false);
                         }}
-                        title="Скасувати"
+                        title={t('common:cancel')}
                         className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                       >
                         <Trash2 className="h-3 w-3" />
@@ -522,7 +524,7 @@ export function WorksTable(props: WorksTableProps) {
                     colSpan={5}
                     className="pl-5 pr-3 py-2 text-left text-xs font-medium text-muted-foreground"
                   >
-                    Разом робіт:
+                    {t('worksTable.total')}
                   </td>
                   {vatMode !== 'NONE' && (
                     <td className="px-2 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
@@ -541,7 +543,7 @@ export function WorksTable(props: WorksTableProps) {
                       colSpan={vatMode !== 'NONE' ? 7 : 6}
                       className="pl-5 pr-3 py-2 text-left text-xs font-medium text-muted-foreground"
                     >
-                      Факт. роботи:
+                      {t('worksTable.actualTotal')}
                     </td>
                     <td className="px-2 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
                       {actualTotals.total.toFixed(2)}

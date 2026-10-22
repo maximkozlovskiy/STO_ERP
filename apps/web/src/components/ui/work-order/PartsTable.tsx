@@ -138,7 +138,7 @@ export function PartsTable(props: PartsTableProps) {
           }}
         >
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-          Додати
+          {t('common:add')}
         </SectionActionButton>
       )}
     </>
@@ -177,15 +177,15 @@ export function PartsTable(props: PartsTableProps) {
             </colgroup>
             <thead>
               <tr className="border-y border-border bg-secondary">
-                <th className={TH_FIRST}>Назва товару</th>
-                <th className={TH}>Склад</th>
-                <th className={TH}>На складі</th>
-                <th className={TH}>К-сть</th>
-                <th className={TH}>ОВ</th>
-                <th className={TH}>Собів., ₴</th>
-                <th className={TH}>Ціна, ₴</th>
-                {vatMode !== 'NONE' && <th className={TH}>ПДВ, ₴</th>}
-                <th className={TH}>Сума, ₴</th>
+                <th className={TH_FIRST}>{t('partsTable.colName')}</th>
+                <th className={TH}>{t('partsTable.warehouse')}</th>
+                <th className={TH}>{t('partsTable.colInStock')}</th>
+                <th className={TH}>{t('partsTable.colQty')}</th>
+                <th className={TH}>{t('partsTable.colUnit')}</th>
+                <th className={TH}>{t('partsTable.colCost')}</th>
+                <th className={TH}>{t('card.colPrice')}</th>
+                {vatMode !== 'NONE' && <th className={TH}>{t('card.colVat')}</th>}
+                <th className={TH}>{t('card.colSum')}</th>
                 <th />
               </tr>
             </thead>
@@ -219,8 +219,8 @@ export function PartsTable(props: PartsTableProps) {
                           <td className="pl-4 pr-2 py-1.5">
                             <EntityPickerField<GoodPickerItem>
                               display={editingPart.goodName}
-                              placeholder="Пошук товару..."
-                              ariaLabel="Товар"
+                              placeholder={t('partsTable.searchPlaceholder')}
+                              ariaLabel={t('partsTable.goodAria')}
                               onPick={() => setEditGoodPickerOpen(true)}
                               onSearch={fetchGoods}
                               onSearchSelect={g => onGoodPicked('edit', g)}
@@ -249,11 +249,11 @@ export function PartsTable(props: PartsTableProps) {
                         ) : (
                           <td className="px-2 py-1.5">
                             <Select
-                              aria-label="Склад"
+                              aria-label={t('partsTable.warehouse')}
                               value={editingPart.warehouseId}
                               onChange={e => onWarehousePicked('edit', e.target.value)}
                             >
-                              <option value="">Склад</option>
+                              <option value="">{t('partsTable.warehouse')}</option>
                               {warehouses.map(w => (
                                 <option key={w.id} value={w.id}>
                                   {warehouseLabel(w, editingPart.goodId)}
@@ -301,7 +301,7 @@ export function PartsTable(props: PartsTableProps) {
                               }));
                             }}
                           >
-                            <option value="">шт</option>
+                            <option value="">{t('parts.unitDefault')}</option>
                             {units.map(u => (
                               <option key={u.id} value={u.id}>
                                 {u.shortName}
@@ -368,7 +368,7 @@ export function PartsTable(props: PartsTableProps) {
                                 setEditingPartKey(null);
                               }}
                               disabled={!editingPart.goodId || !editingPart.warehouseId}
-                              title="Зберегти"
+                              title={t('common:save')}
                               className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                             >
                               <Check className="h-3.5 w-3.5" />
@@ -376,7 +376,7 @@ export function PartsTable(props: PartsTableProps) {
                             <button
                               type="button"
                               onClick={() => setEditingPartKey(null)}
-                              title="Скасувати"
+                              title={t('common:cancel')}
                               className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                             >
                               <X className="h-3 w-3" />
@@ -421,7 +421,7 @@ export function PartsTable(props: PartsTableProps) {
                           {part.quantity}
                         </td>
                         <td className="px-2 py-1.5 text-left text-muted-foreground text-[12px]">
-                          {part.unitShortName || 'шт'}
+                          {part.unitShortName || t('parts.unitDefault')}
                         </td>
                         <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                           {part.costPrice != null ? part.costPrice.toFixed(2) : '—'}
@@ -456,8 +456,8 @@ export function PartsTable(props: PartsTableProps) {
                                 });
                               }}
                               disabled={saving || !canEdit}
-                              aria-label="Редагувати товар"
-                              title="Редагувати"
+                              aria-label={t('partsTable.editAria')}
+                              title={t('common:edit')}
                               className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
                             >
                               <Pencil className="h-3 w-3" />
@@ -469,8 +469,8 @@ export function PartsTable(props: PartsTableProps) {
                                 setParts(prev => prev.filter(pt => pt._key !== part._key));
                               }}
                               disabled={saving || !canEdit}
-                              aria-label="Видалити товар"
-                              title="Видалити"
+                              aria-label={t('partsTable.deleteAria')}
+                              title={t('common:delete')}
                               className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
                             >
                               <Trash2 className="h-3 w-3" />
@@ -489,8 +489,8 @@ export function PartsTable(props: PartsTableProps) {
                   <td className="pl-4 pr-2 py-1.5">
                     <EntityPickerField<GoodPickerItem>
                       display={newPart.goodName}
-                      placeholder="Пошук товару..."
-                      ariaLabel="Товар"
+                      placeholder={t('partsTable.searchPlaceholder')}
+                      ariaLabel={t('partsTable.goodAria')}
                       onPick={() => setGoodPickerOpen(true)}
                       onSearch={fetchGoods}
                       onSearchSelect={g => onGoodPicked('new', g)}
@@ -501,11 +501,11 @@ export function PartsTable(props: PartsTableProps) {
                   </td>
                   <td className="px-2 py-1.5">
                     <Select
-                      aria-label="Склад"
+                      aria-label={t('partsTable.warehouse')}
                       value={newPart.warehouseId}
                       onChange={e => onWarehousePicked('new', e.target.value)}
                     >
-                      <option value="">Склад</option>
+                      <option value="">{t('partsTable.warehouse')}</option>
                       {warehouses.map(w => (
                         <option key={w.id} value={w.id}>
                           {warehouseLabel(w, newPart.goodId)}
@@ -550,7 +550,7 @@ export function PartsTable(props: PartsTableProps) {
                         }));
                       }}
                     >
-                      <option value="">шт</option>
+                      <option value="">{t('parts.unitDefault')}</option>
                       {units.map(u => (
                         <option key={u.id} value={u.id}>
                           {u.shortName}
@@ -595,7 +595,7 @@ export function PartsTable(props: PartsTableProps) {
                         type="button"
                         onClick={addPart}
                         disabled={!newPart.goodId || !newPart.warehouseId || saving}
-                        title="Зберегти рядок"
+                        title={t('card.saveRow')}
                         className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
                         <Plus className="h-3.5 w-3.5" />
@@ -606,7 +606,7 @@ export function PartsTable(props: PartsTableProps) {
                           setNewPart(EMPTY_PART);
                           setShowPartInput(false);
                         }}
-                        title="Скасувати"
+                        title={t('common:cancel')}
                         className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                       >
                         <Trash2 className="h-3 w-3" />
@@ -623,7 +623,7 @@ export function PartsTable(props: PartsTableProps) {
                     colSpan={vatMode !== 'NONE' ? 6 : 7}
                     className="pl-5 pr-3 py-2 text-left text-xs font-medium text-muted-foreground"
                   >
-                    Разом товарів:
+                    {t('partsTable.total')}
                   </td>
                   {vatMode !== 'NONE' && (
                     <td className="px-2 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground" />

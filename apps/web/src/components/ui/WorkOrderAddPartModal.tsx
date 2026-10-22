@@ -286,9 +286,9 @@ export function WorkOrderAddPartModal({
         },
       );
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка завантаження товару');
+      toast.error(e instanceof Error ? e.message : t('addPart.loadGoodError'));
     }
-  }, [form.goodId, openAfterLoad]);
+  }, [form.goodId, openAfterLoad, t]);
 
   const handleClose = useCallback(async () => {
     if (!(await dirty.confirmClose())) return;
@@ -315,7 +315,7 @@ export function WorkOrderAddPartModal({
       onAdded();
       onClose();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка';
+      const msg = e instanceof Error ? e.message : t('common:error');
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
     } finally {
@@ -327,15 +327,15 @@ export function WorkOrderAddPartModal({
   // When chosen — show EntityPickerField (with detail/clear buttons).
   return (
     <>
-      <Modal open={open} onClose={() => void handleClose()} title="Додати запчастину">
+      <Modal open={open} onClose={() => void handleClose()} title={t('addPart.title')}>
         <div className="space-y-3">
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
 
           {!form.goodId ? (
             <SearchCombobox<Good>
-              label="Товар"
+              label={t('addPart.good')}
               required
-              placeholder="Назва, артикул, штрих-код..."
+              placeholder={t('addPart.searchPlaceholder')}
               value={form.goodId}
               displayValue={goodDisplay}
               onSelect={selectGood}
@@ -350,11 +350,11 @@ export function WorkOrderAddPartModal({
           ) : (
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">
-                Товар <span className="text-destructive">*</span>
+                {t('addPart.good')} <span className="text-destructive">*</span>
               </label>
               <EntityPickerField
                 display={goodDisplay}
-                placeholder="Обрати товар…"
+                placeholder={t('addPart.pickGood')}
                 onOpenDetail={() => void openGoodDetail()}
                 onPick={clearGood}
                 onClear={clearGood}
@@ -364,10 +364,10 @@ export function WorkOrderAddPartModal({
 
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">
-              Склад <span className="text-destructive">*</span>
+              {t('addPart.warehouse')} <span className="text-destructive">*</span>
             </label>
             <Select
-              aria-label="Склад"
+              aria-label={t('addPart.warehouse')}
               value={form.warehouseId}
               onChange={e => {
                 autoPickGoodRef.current = null;
@@ -375,7 +375,7 @@ export function WorkOrderAddPartModal({
                 dirty.markDirty();
               }}
             >
-              <option value="">— Оберіть —</option>
+              <option value="">{t('addLine.choose')}</option>
               {warehouseOptions.map(w => (
                 <option key={w.id} value={w.id}>
                   {stockOfGood ? `${w.name} — ${fmtQty(freeOn(w.id))}` : w.name}
@@ -395,12 +395,12 @@ export function WorkOrderAddPartModal({
                 )}
               >
                 {stockLoading
-                  ? 'Перевірка залишку...'
+                  ? t('addPart.checkingStock')
                   : !stockOfGood
                     ? ''
                     : freeOn(form.warehouseId) > 0
-                      ? `Вільно: ${fmtQty(freeOn(form.warehouseId))}${goodUnit ? ` ${goodUnit}` : ''}`
-                      : 'Вільного залишку немає'}
+                      ? `${t('addPart.free', { qty: fmtQty(freeOn(form.warehouseId)) })}${goodUnit ? ` ${goodUnit}` : ''}`
+                      : t('addPart.noFree')}
               </p>
             )}
           </div>
@@ -408,7 +408,7 @@ export function WorkOrderAddPartModal({
           {goodUoMs.length > 0 && (
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">
-                Одиниця виміру
+                {t('addPart.unit')}
               </label>
               <Select
                 value={form.unitOfMeasureId}
@@ -417,28 +417,28 @@ export function WorkOrderAddPartModal({
                   dirty.markDirty();
                 }}
               >
-                <option value="">— Базова —</option>
+                <option value="">{t('addPart.baseUnit')}</option>
                 {goodUoMs.map(u => (
                   // value=unitOfMeasureId (UnitOfMeasure.id), не u.id (GoodUoM.id).
                   // Backend addPart робить findFirst({ unitOfMeasureId: dto.unitOfMeasureId, goodId, orgId }) —
                   // GoodUoM.id у це поле ніколи не матчиться → silent-stored null без помилки.
                   <option key={u.id} value={u.unitOfMeasureId}>
                     {u.unitShortName}
-                    {u.coefficient !== 1 ? ` (коеф. ${u.coefficient})` : ''}
+                    {u.coefficient !== 1
+                      ? ` (${t('addPart.coefficient', { value: u.coefficient })})`
+                      : ''}
                     {u.isDefault ? ' ★' : ''}
                   </option>
                 ))}
               </Select>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Кількість вводиться в обраній одиниці. Для складу перераховується автоматично.
-              </p>
+              <p className="mt-1 text-[11px] text-muted-foreground">{t('addPart.unitHint')}</p>
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">
-                Кількість <span className="text-destructive">*</span>
+                {t('addPart.quantity')} <span className="text-destructive">*</span>
               </label>
               <Input
                 type="number"
@@ -453,7 +453,7 @@ export function WorkOrderAddPartModal({
             </div>
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1.5">
-                Ціна, ₴
+                {t('card.colPrice')}
               </label>
               <Input
                 type="number"
@@ -472,7 +472,7 @@ export function WorkOrderAddPartModal({
             disabled={!form.goodId || !form.warehouseId || !form.quantity}
             className="w-full"
           >
-            Додати
+            {t('common:add')}
           </Button>
         </div>
       </Modal>
