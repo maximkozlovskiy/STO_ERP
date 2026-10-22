@@ -12,7 +12,7 @@ const TRANSITIONS: Record<string, string[]> = {
   IN_PROGRESS: ['ON_HOLD', 'COMPLETED'],
   ON_HOLD: ['IN_PROGRESS', 'CANCELLED'],
   COMPLETED: ['INVOICED', 'CANCELLED'],
-  INVOICED: ['PAID'],
+  INVOICED: ['PAID', 'CANCELLED'],
   PAID: ['ARCHIVED'],
   ARCHIVED: [],
   CANCELLED: [],
@@ -188,8 +188,9 @@ describe('FSMButtons × реальна WO_STATUS_TRANSITIONS (C2 sync-gap guard)
     expect(onTransition).toHaveBeenCalledWith('CANCELLED');
   });
 
-  it('INVOICED/PAID/ARCHIVED → CANCELLED недосяжний (незворотні у shared-мапі)', () => {
-    expect(WO_STATUS_TRANSITIONS.INVOICED).not.toContain('CANCELLED');
+  // BR-WO-031: «Виставлено» скасовується (лише без оплати — тримає сервер), PAID/ARCHIVED — ні.
+  it('INVOICED → CANCELLED досяжний, PAID/ARCHIVED → CANCELLED — ні (shared-мапа)', () => {
+    expect(WO_STATUS_TRANSITIONS.INVOICED).toContain('CANCELLED');
     expect(WO_STATUS_TRANSITIONS.PAID).not.toContain('CANCELLED');
     expect(WO_STATUS_TRANSITIONS.ARCHIVED).toEqual([]);
   });

@@ -81,11 +81,13 @@ describe('WORK_ORDER_TRANSITIONS — property-based invariants', () => {
     expect(WORK_ORDER_TRANSITIONS['INVOICED']).toContain('PAID');
   });
 
-  it('CANCELLED доступний з COMPLETED (C2: реверс складу+боргу), але НЕ з INVOICED/PAID/ARCHIVED', () => {
-    // C2: COMPLETED→CANCELLED дозволено — повертає списані запчастини й сторнує борг
-    // (returnPartsAndCredit). INVOICED/PAID/ARCHIVED лишаються незворотними (там уже рахунок/гроші).
+  it('CANCELLED доступний з COMPLETED і INVOICED (реверс складу+боргу), але НЕ з PAID/ARCHIVED', () => {
+    // C2: COMPLETED→CANCELLED повертає списані запчастини й сторнує борг (returnPartsAndCredit).
+    // BR-WO-031: INVOICED→CANCELLED — те саме, лише без оплати (CAS `paidAmount: 0`, BR-WO-014),
+    // напр. після сторно оплати. PAID/ARCHIVED лишаються незворотними.
     expect(WORK_ORDER_TRANSITIONS['COMPLETED']).toContain('CANCELLED');
-    const irreversible: WorkOrderStatus[] = ['INVOICED', 'PAID', 'ARCHIVED'];
+    expect(WORK_ORDER_TRANSITIONS['INVOICED']).toContain('CANCELLED');
+    const irreversible: WorkOrderStatus[] = ['PAID', 'ARCHIVED'];
     for (const closed of irreversible) {
       expect(WORK_ORDER_TRANSITIONS[closed]).not.toContain('CANCELLED');
     }

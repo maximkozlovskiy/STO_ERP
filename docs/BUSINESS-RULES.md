@@ -14,8 +14,9 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → ON_HOLD → COMPLETED → IN
                  ↘ CANCELLED    ↘ CANCELLED    ↘ CANCELLED    ↘ CANCELLED (C2: реверс складу+боргу)
 ```
 
-**COMPLETED→CANCELLED (C2):** дозволено; повертає списані запчастини й сторнує борг (див.
-side-effects). INVOICED/PAID/ARCHIVED **незворотні** — там уже рахунок/гроші.
+**COMPLETED→CANCELLED (C2), INVOICED→CANCELLED (BR-WO-031, сплачено 0):** дозволено; повертає
+списані запчастини, сторнує борг і скасовує рахунок наряду (див. side-effects). PAID/ARCHIVED
+**незворотні** — там уже гроші.
 
 | Константа                 | Значення                  |
 | ------------------------- | ------------------------- |

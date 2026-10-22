@@ -429,8 +429,12 @@ const CALL_SITES: Record<string, CallSite> = {
   'modules/work-orders/work-order-stock-effects.service.ts#returnPartsAndCredit:CREDIT_NOTE': {
     guard:
       'У самому методі захисту НЕМАЄ — він у єдиному викликачі WorkOrdersService.transition: той самий CAS ' +
-      'статусу наряду; гілка лише для COMPLETED→CANCELLED, CANCELLED — термінальний.',
-    anchors: [...WORK_ORDER_STATUS_CAS, /newStatus === 'CANCELLED' && wo\.status === 'COMPLETED'/],
+      'статусу наряду; гілка лише для COMPLETED/INVOICED→CANCELLED (BR-WO-031), CANCELLED — термінальний.',
+    anchors: [
+      ...WORK_ORDER_STATUS_CAS,
+      /const wasCharged = wo\.status === 'COMPLETED' \|\| wo\.status === 'INVOICED'/,
+      /newStatus === 'CANCELLED' && wasCharged/,
+    ],
     guardedBy: {
       file: 'modules/work-orders/work-orders.service.ts',
       method: 'transition',
@@ -438,8 +442,8 @@ const CALL_SITES: Record<string, CallSite> = {
     },
     raceTests: [],
     note:
-      'Окремого кейсу «CAS програв на COMPLETED→CANCELLED → CREDIT_NOTE не пишеться» немає: спільний CAS ' +
-      'перевірено лише кейсом →COMPLETED.',
+      'Кейс «CAS програв на INVOICED→CANCELLED → returnPartsAndCredit не викликається» — ' +
+      '`work-orders.cancel-invoiced.spec.ts` (BR-WO-031); для COMPLETED→CANCELLED окремого немає.',
   },
 };
 

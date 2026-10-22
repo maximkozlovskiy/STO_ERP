@@ -19,11 +19,12 @@ export const WORK_ORDER_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> 
   APPROVED: ['IN_PROGRESS', 'ON_HOLD', 'CANCELLED'],
   IN_PROGRESS: ['ON_HOLD', 'COMPLETED'],
   ON_HOLD: ['IN_PROGRESS', 'CANCELLED'],
-  // COMPLETED→CANCELLED (C2): скасування завершеного наряду повертає списані запчастини
-  // на склад (RETURN-рух + returnToBatch) і сторнує борг (CREDIT_NOTE) —
-  // WorkOrdersService.returnPartsAndCredit. INVOICED/PAID лишаються незворотними.
+  // COMPLETED/INVOICED→CANCELLED (C2, BR-WO-031): скасування повертає списані запчастини
+  // на склад (RETURN-рух + returnToBatch), сторнує борг (CREDIT_NOTE) —
+  // WorkOrdersService.returnPartsAndCredit — і скасовує рахунок наряду. Лише без оплати
+  // (BR-WO-014, `paidAmount: 0` у CAS): «Виставлено» після сторно оплати (BR-PAY-024). PAID — незворотний.
   COMPLETED: ['INVOICED', 'CANCELLED'],
-  INVOICED: ['PAID'],
+  INVOICED: ['PAID', 'CANCELLED'],
   PAID: ['ARCHIVED'],
   ARCHIVED: [],
   CANCELLED: [],

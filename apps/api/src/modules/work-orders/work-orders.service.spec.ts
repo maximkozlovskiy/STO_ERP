@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { WorkOrdersService } from './work-orders.service';
-import { WorkOrderTotalsService } from './work-order-totals.service';
+import type { WorkOrdersService } from './work-orders.service';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { InventoryService } from '../inventory/inventory.service';
@@ -8,6 +7,7 @@ import type { SettlementsService } from '../settlements/settlements.service';
 import type { WorkOrderQueryDto } from './work-orders.dto';
 import { CLOSED_STATUSES, WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
 import type { WorkOrderStatus } from '@prisma/client';
+import { makeService } from './work-orders.service.spec-fixture';
 
 // ─── Query-shape regression spec (Bug #163 / #171 pattern) ────────────────────
 //
@@ -32,50 +32,6 @@ function makePrismaSpy() {
     $transaction: vi.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
   } as unknown as PrismaService;
   return { prisma, findMany, count };
-}
-
-function makeService(prisma: PrismaService): WorkOrdersService {
-  // findAll only touches `this.prisma`; інші deps null. events — мок з emit (transition-тести
-  // double-CHARGE через цей же helper емітять доменні події після коміту).
-  // A3: transition() делегує stock-ефекти у WorkOrderStockEffectsService — будуємо РЕАЛЬНИЙ на тому ж
-  // prisma-моку з no-op inventory/settlements, щоб reserveParts/writeOff справді читали workOrderPart
-  // (transition-тести перевіряють делегацію за фактом workOrderPart.findMany).
-  const stockEffects = new WorkOrderStockEffectsService(
-    prisma,
-    {
-      createMovement: vi.fn().mockResolvedValue({ consumed: [], weightedCostPrice: null }),
-    } as never,
-    { createTransaction: vi.fn().mockResolvedValue({}) } as never,
-    null as never, // exchangeRates — курсова різниця (BR-PAY-022) тут не задіяна,
-    {
-      onWorkOrderClosed: () => Promise.resolve(),
-      onWorkOrderPartsChanged: () => Promise.resolve(),
-    } as never /* purchaseLists (BR-PL-013) */,
-  );
-  const exchangeRates = {
-    resolveBaseConversion: vi
-      .fn()
-      .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
-        rateUsed: 1,
-        amountBase: amount,
-      })),
-    getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
-    requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
-  } as never;
-  return new WorkOrdersService(
-    prisma,
-    stockEffects,
-    null as never, // docNumbers
-    null as never, // pdf
-    null as never, // audit
-    null as never, // settingsService
-    // exchangeRates (Фаза 3): default base-конвертація (rate=1, amountBase=amount)
-    exchangeRates,
-    { emit: vi.fn() } as never, // events (EventEmitter2)
-    new WorkOrderTotalsService(null as never, exchangeRates),
-    null as never, // orgPrintInfo
-    { removeWorkOrderSlots: vi.fn().mockResolvedValue(undefined) } as never, // calendar, BR-WO-022
-  );
 }
 
 const baseQuery: WorkOrderQueryDto = { page: 1, limit: 20 } as WorkOrderQueryDto;
@@ -230,7 +186,11 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
   it('Bug #795: →CANCELLED скасовує чернетки актів цього наряду в тій самій транзакції', async () => {
     const { prisma } = makeTransitionPrisma('DRAFT');
     const actsUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
-    (prisma as unknown as Record<string, unknown>).completionAct = { updateMany: actsUpdateMany };
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 }); // рахунок наряду — BR-WO-031
+    Object.assign(prisma, {
+      completionAct: { updateMany: actsUpdateMany },
+      invoice: { updateMany },
+    });
 
     await makeService(prisma).transition(ORG, WO_ID, 'CANCELLED' as never);
 

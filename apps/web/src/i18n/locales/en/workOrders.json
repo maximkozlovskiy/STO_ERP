@@ -110,7 +110,7 @@
     "parts": "Parts",
     "paid": "Paid",
     "confirmTransition": "Move work order to status \"{{label}}\"?",
-    "cancelCompletedWarning": "The work order is already completed: the parts will return to stock and the client's debt will be reversed.",
+    "cancelCompletedWarning": "The work order is already completed: the parts will return to stock, the client's debt will be reversed and the work order's invoice cancelled.",
     "cancelConfirmYes": "Yes, cancel",
     "cancelConfirmNo": "No",
     "transitionError": "Transition error",

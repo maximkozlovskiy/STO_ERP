@@ -1833,6 +1833,19 @@ export class WorkOrdersService {
         // Після CAS наряду — той самий порядок блокувань «наряд → записи», що в update/remove.
         if (newStatus === 'CANCELLED') {
           await this.calendar.removeWorkOrderSlots(tx, orgId, id);
+          // BR-WO-031: рахунок скасованого наряду скасовується разом із ним (рішення власника
+          // 2026-10-22) — інакше він лишався живим і міг стати «Простроченим». Проводки немає:
+          // рахунок наряду власного CHARGE не має (борг — на наряді, сторнує returnPartsAndCredit).
+          // Після CAS наряду — порядок блокувань «наряд → рахунок», як у createFromWorkOrder.
+          await tx.invoice.updateMany({
+            where: {
+              orgId,
+              workOrderId: id,
+              deletedAt: null,
+              status: { in: ['DRAFT', 'SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
+            },
+            data: { status: 'CANCELLED' },
+          });
         }
 
         // BR-WO-021: кожен вхід у «В роботі» дорезервовує лише бракуюче (потрібно − net-резерв,
@@ -1851,9 +1864,10 @@ export class WorkOrdersService {
           await this.stockEffects.writeOffPartsAndCharge(orgId, wo, userId, tx);
         }
 
-        // BR-WO-021: скасування з будь-якого статусу, крім COMPLETED (там резерв знято списанням),
+        // BR-WO-021: скасування з будь-якого статусу, крім COMPLETED/INVOICED (там резерв знято списанням),
         // знімає весь net-резерв наряду — він міг з'явитись і до «В роботі» (приймання, BR-PL-011).
-        if (newStatus === 'CANCELLED' && wo.status !== 'COMPLETED') {
+        const wasCharged = wo.status === 'COMPLETED' || wo.status === 'INVOICED';
+        if (newStatus === 'CANCELLED' && !wasCharged) {
           await this.stockEffects.releaseAllNetReservations(orgId, id, userId, tx);
         }
 
@@ -1863,7 +1877,9 @@ export class WorkOrdersService {
         // wo.status==='COMPLETED' → DRAFT/ESTIMATE/APPROVED/ON_HOLD→CANCELLED поведінка незмінна
         // (ті не списували запчастин). Single-shot: CAS-flip (вище) + термінальний CANCELLED →
         // емітується рівно 1× (та сама гарантія, що не дає подвійного CHARGE).
-        if (newStatus === 'CANCELLED' && wo.status === 'COMPLETED') {
+        // BR-WO-031: «Виставлено» (після сторно оплати, сплачено 0) — те саме, що «Виконано»: у
+        // обох списано запчастини й нараховано один CHARGE (у «Виставлено» — лише через «Виконано»).
+        if (newStatus === 'CANCELLED' && wasCharged) {
           await this.stockEffects.returnPartsAndCredit(orgId, wo, userId, tx);
         }
 

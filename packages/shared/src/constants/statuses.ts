@@ -167,11 +167,11 @@ export const WO_STATUS_TRANSITIONS: Record<string, string[]> = {
   APPROVED: ['IN_PROGRESS', 'ON_HOLD', 'CANCELLED'],
   IN_PROGRESS: ['ON_HOLD', 'COMPLETED'],
   ON_HOLD: ['IN_PROGRESS', 'CANCELLED'],
-  // COMPLETED→CANCELLED (C2): скасування завершеного наряду повертає списані запчастини
-  // на склад і сторнує борг (backend WorkOrdersService.returnPartsAndCredit). INVOICED/PAID
-  // лишаються незворотними. Мусить збігатися з backend WORK_ORDER_TRANSITIONS.COMPLETED.
+  // COMPLETED/INVOICED→CANCELLED (C2, BR-WO-031): скасування повертає списані запчастини на склад,
+  // сторнує борг (backend WorkOrdersService.returnPartsAndCredit) і скасовує рахунок наряду; лише
+  // без оплати (BR-WO-014). PAID — незворотний. Мусить збігатися з backend WORK_ORDER_TRANSITIONS.
   COMPLETED: ['INVOICED', 'CANCELLED'],
-  INVOICED: ['PAID'],
+  INVOICED: ['PAID', 'CANCELLED'],
   PAID: ['ARCHIVED'],
   ARCHIVED: [],
   CANCELLED: [],

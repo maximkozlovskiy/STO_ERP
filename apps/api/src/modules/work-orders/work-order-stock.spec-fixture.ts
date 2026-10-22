@@ -159,6 +159,8 @@ export function memoryDb(opts: StockHarnessOptions = {}) {
   ]);
   add('unitOfMeasure', []);
   add('completionAct');
+  // BR-WO-031: рахунок наряду скасовується разом із нарядом.
+  add('invoice');
   add('purchaseList');
   add('purchaseListItem', [], () => ({
     createdAt: tick(),
