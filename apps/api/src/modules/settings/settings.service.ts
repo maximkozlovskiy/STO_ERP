@@ -11,7 +11,7 @@ import {
   type SupplierOrderSendMode,
   type SupplierStrategy,
 } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
+import { ENCRYPTED_FIELDS, PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
 import { BankStatementPullScheduler } from '../bank-statements/bank-statement-pull.scheduler';
@@ -73,6 +73,28 @@ function workHoursCacheKey(orgId: string, branchId?: string): string {
   return branchId ? `settings:work-hours:${orgId}:${branchId}` : `settings:work-hours:${orgId}`;
 }
 
+/** Значення, що заміняє секрет у сліді аудиту: видно, що ключ змінили, але не який він. */
+export const AUDIT_SECRET_MASK = '***';
+
+/**
+ * Секретні поля моделі (ліцензійний ключ і PIN ПРРО, токен monobank, ключ SMS) у дифі аудиту —
+ * маскою (Bug #951). Їх шифрує Prisma-розширення at-rest, а `GET /settings/branch` не віддає
+ * зовсім, тоді як аудит (`GET /audit`, ролі OWNER/ADMIN/ACCOUNTANT) віддавав відкритий текст.
+ * `null` і порожній рядок лишаються як є — «ключ прибрали» теж частина сліду.
+ */
+function maskSecrets(
+  entityType: string,
+  data: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  const secrets = ENCRYPTED_FIELDS[entityType];
+  if (!data || !secrets) return data;
+  const out: Record<string, unknown> = { ...data };
+  for (const k of secrets) {
+    if (out[k] !== undefined && out[k] !== null && out[k] !== '') out[k] = AUDIT_SECRET_MASK;
+  }
+  return out;
+}
+
 @Injectable()
 export class SettingsService {
   private readonly logger = new Logger(SettingsService.name);
@@ -97,7 +119,15 @@ export class SettingsService {
   ): void {
     if (!userId) return;
     this.audit
-      .record(orgId, entityType, entityId, action, userId, oldData, newData)
+      .record(
+        orgId,
+        entityType,
+        entityId,
+        action,
+        userId,
+        maskSecrets(entityType, oldData),
+        maskSecrets(entityType, newData),
+      )
       .catch((e: unknown) =>
         this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`),
       );

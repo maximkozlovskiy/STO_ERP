@@ -6,8 +6,9 @@ import { withTenantGuard } from './tenant-guard.extension';
 import { createPgAdapter } from './pg-adapter';
 
 // Секретні поля що шифруються at-rest (Phase 4, H-2). Ключ — модель Prisma, значення —
-// список полів-секретів. Prisma-розширення шифрує їх на write і дешифрує на read.
-const ENCRYPTED_FIELDS: Record<string, string[]> = {
+// список полів-секретів. Prisma-розширення шифрує їх на write і дешифрує на read. Той самий
+// перелік маскує секрети в аудиті налаштувань (Bug #951): у `audit_events.diff` вони лягали б відкрито.
+export const ENCRYPTED_FIELDS: Readonly<Record<string, readonly string[]>> = {
   NotificationChannelConfig: ['apiKey'],
   BranchSettings: ['smsApiKey', 'checkboxLicenseKey', 'checkboxPinCode', 'monobankToken'],
   CashShift: ['checkboxAccessToken'],
@@ -133,7 +134,7 @@ function withSyncVersion(client: PrismaClient): PrismaClient {
 // пропускаємо; EncryptionService.encrypt ідемпотентний (вже-зашифроване → без змін).
 function encryptWriteData(
   enc: EncryptionService,
-  fields: string[],
+  fields: readonly string[],
   data: Record<string, unknown> | undefined,
 ): void {
   if (!data) return;
@@ -145,7 +146,11 @@ function encryptWriteData(
 
 // Дешифрує секретні поля у прочитаному результаті (один рядок або масив). Толерантно:
 // legacy-plaintext повертається як є; null/undefined пропускаються.
-function decryptReadResult(enc: EncryptionService, fields: string[], result: unknown): void {
+function decryptReadResult(
+  enc: EncryptionService,
+  fields: readonly string[],
+  result: unknown,
+): void {
   if (result == null) return;
   const rows = Array.isArray(result) ? result : [result];
   for (const row of rows) {

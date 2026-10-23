@@ -361,6 +361,75 @@ describe('SettingsService — C1b audit TaxRate', () => {
 });
 
 /**
+ * Bug #951: PATCH /settings/branch/:id писав у `audit_events.diff` ліцензійний ключ і PIN ПРРО,
+ * токен monobank і ключ SMS відкритим текстом, а `GET /audit` (OWNER/ADMIN/ACCOUNTANT) віддавав їх
+ * назад — хоча самі налаштування ці поля не повертають (write-only, шифрування at-rest).
+ */
+describe('SettingsService — аудит налаштувань філії маскує секрети (Bug #951)', () => {
+  let service: SettingsService;
+  let auditRecord: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    auditRecord = vi.fn().mockResolvedValue(undefined);
+    const prisma = {
+      garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: 'b-1' }) },
+      branchSettings: {
+        upsert: vi.fn().mockResolvedValue({ branchId: 'b-1', orgId: 'org-1', workDays: [] }),
+      },
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        SettingsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { record: auditRecord } },
+        { provide: REDIS_CLIENT, useValue: { get: vi.fn(), set: vi.fn(), del: vi.fn() } },
+        { provide: NbuFetchScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+        { provide: BankStatementPullScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+      ],
+    }).compile();
+    service = module.get(SettingsService);
+  });
+
+  it('секрети в дифі — маскою, решта полів — як є', async () => {
+    await service.updateBranchSettings(
+      'org-1',
+      'b-1',
+      {
+        checkboxApiUrl: 'https://api.checkbox.ua',
+        checkboxLicenseKey: 'LIC-SECRET-1',
+        checkboxPinCode: '4321',
+        monobankToken: 'mono-secret',
+        smsApiKey: 'sms-secret',
+        fiscalEnabled: true,
+      },
+      'user-7',
+    );
+    expect(auditRecord).toHaveBeenCalledTimes(1);
+    const newData = auditRecord.mock.calls[0]![6] as Record<string, unknown>;
+    expect(newData).toEqual({
+      checkboxApiUrl: 'https://api.checkbox.ua',
+      checkboxLicenseKey: '***',
+      checkboxPinCode: '***',
+      monobankToken: '***',
+      smsApiKey: '***',
+      fiscalEnabled: true,
+    });
+    expect(JSON.stringify(auditRecord.mock.calls[0])).not.toMatch(/SECRET|secret|4321/);
+  });
+
+  it('ключ прибрали (null) — у сліді лишається null', async () => {
+    await service.updateBranchSettings(
+      'org-1',
+      'b-1',
+      { checkboxLicenseKey: null as unknown as string },
+      'user-7',
+    );
+    const newData = auditRecord.mock.calls[0]![6] as Record<string, unknown>;
+    expect(newData).toEqual({ checkboxLicenseKey: null });
+  });
+});
+
+/**
  * Кеш налаштувань організації переживає оновлення схеми (2026-10-18, review блоку «Постачальники
  * API»): у Redis лежав DTO без полів `supplier*` → `supplierOfferTtlMinutes` undefined →
  * `POST /supplier-offers/search` 400 перші ≤5 хв після оновлення. Ключ кешу несе відбиток переліку
