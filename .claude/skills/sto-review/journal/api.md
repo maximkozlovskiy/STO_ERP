@@ -353,3 +353,17 @@ Swagger/`openapi.json` — сторонній клієнт дізнавався 
 ### 2026-10-23 — Сторно `CREDIT_NOTE` поза детектором `*_CANCEL`; `conversion` з null-полів — §5
 
 **Сигнал:** `returnPartsAndCredit` (скасування наряду з «Виконано» / «Виставлено») писав `CREDIT_NOTE` з `date: documentDate, fallbackToLatest: true` — курс шукався заново (TECH-DEBT §17.1). Детектор пункту «сторно копіює конвертацію» шукав лише `type: '…_CANCEL'` і цей випадок не бачив. Після фіксу (`b75c934f`) рядок CHARGE з `amountBase`/`rateUsed = null` давав би `conversion { 0, 0 }` → 400 «сума має бути додатною» на скасуванні; інші сторно (`supplier-payments`, `bank-reconciliation`) мають перевірку `!= null`. **Grep:** `grep -rnE "type: '([A-Z_]+_CANCEL|CREDIT_NOTE)'" -A12 apps/api/src/modules --include="*.ts" | grep -v spec | grep "fallbackToLatest"`. **Фікс:** дзеркалити лише рядок із повною конвертацією, інакше старий шлях; `workOrder.findFirst` — лише для цього шляху; кейс «CHARGE без конвертації» з мутацією. Перше нарахування (`createdAt asc`), а не сума всіх: дублікати до індексу BR-SETL-015 (Bug #943) компенсує оператор. **Severity:** IMPORTANT
+
+### 2026-10-23 — Довідник марок: відновлення авто й sync push повз нове правило «живий FK» — §4
+
+**Сигнал:** BR-VEH-008 вимагає живих марку й модель на create/update авто, але `VehiclesService.restore`
+робив видалене авто живим без перевірки й без блокування довідника: марку видаляють, коли живих авто
+немає (видалені авто лишаються на ній), тож відновлене авто посилалось на видалену марку, а одночасне
+відновлення прослизало повз перевірку «живі авто» видалення. `SyncService.writeVehicle` писав пару без
+скидання кешу `ref:vehicle-makes:<org>`, яке робить web-писач (лічильники авто у вкладці до 5 хв).
+**Grep:** `grep -n "async restore" apps/api/src/modules/<модуль>/*.service.ts` → перевірка нових FK-правил;
+`grep -rn "cache.del" <модуль>` проти писачів у `sync.service.ts`.
+**Фікс:** `assertVehiclePairLive` у транзакції відновлення після `lockVehicleDirectoryShared` (до гаража, як
+create) → 400 `err.vehicle.makeModelDeletedRestoreFirst` (BR-VEH-014); `cache.del` після запису пари в sync.
+Мутації «без перевірки», «лише марка», «блокування після гаража», «без скидання», «скидання завжди» падають.
+**Severity:** IMPORTANT

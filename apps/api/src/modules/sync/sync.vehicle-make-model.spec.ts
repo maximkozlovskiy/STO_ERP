@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SyncService } from './sync.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { WorkOrdersService } from '../work-orders/work-orders.service';
+import type { CacheService } from '../../redis/cache.service';
 import { memoryTable, type MemRow } from '../cash/cash.spec-fixture';
 import {
   ORG,
@@ -39,7 +40,11 @@ describe('SyncService.push vehicles — марка й модель з довід
       },
     };
     prisma.$transaction = vi.fn((work: (tx: unknown) => Promise<unknown>) => work(prisma));
-    sync = new SyncService(prisma as unknown as PrismaService, {} as WorkOrdersService);
+    sync = new SyncService(
+      prisma as unknown as PrismaService,
+      {} as WorkOrdersService,
+      w.cache as unknown as CacheService,
+    );
     toyota = w.addMake('Toyota');
     camry = w.addModel(toyota.id as string, 'Camry');
     const bmw = w.addMake('BMW');
@@ -66,6 +71,25 @@ describe('SyncService.push vehicles — марка й модель з довід
       model: 'Camry',
     });
     expect(w.locks[0]).toMatch(/pg_advisory_xact_lock_shared\(/);
+  });
+
+  // guards: BR-VEH-009
+  it('запис пари з планшета скидає кеш списку марок (лічильник авто); перенесення в гараж — ні', async () => {
+    await push('INSERT', NEW_ID, {
+      customerGarageId: GARAGE,
+      makeId: toyota.id,
+      modelId: camry.id,
+    });
+    expect(w.cache.del).toHaveBeenCalledTimes(1);
+    expect(w.cache.del).toHaveBeenCalledWith(`ref:vehicle-makes:${ORG}`);
+
+    // Гараж без пари теж іде транзакцією (BR-CP-015), але лічильників марок не змінює.
+    w.cache.del.mockClear();
+    const car = w.addVehicle(toyota, camry, { syncVersion: 1 });
+    expect(await push('UPDATE', car.id as string, { customerGarageId: GARAGE })).toMatchObject({
+      accepted: 1,
+    });
+    expect(w.cache.del).not.toHaveBeenCalled();
   });
 
   // guards: BR-VEH-008

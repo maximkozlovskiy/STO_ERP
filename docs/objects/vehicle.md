@@ -145,6 +145,10 @@ delete, `syncVersion`.
 - **BR-VEH-013**: Ролі довідника: читання — OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT, MECHANIC
   (механік обирає марку у формі авто); створення й перейменування — OWNER, ADMIN, RECEPTIONIST;
   видалення, відновлення, злиття — OWNER, ADMIN.
+- **BR-VEH-014**: Відновлення видаленого авто, чию марку чи модель видалено з довідника, — 400
+  `err.vehicle.makeModelDeletedRestoreFirst` (спершу відновити марку чи модель). Пара читається в
+  транзакції відновлення під спільним блокуванням довідника (як створення авто): злиття марки
+  переносить і видалені авто, а видалення марки перевіряє «живі авто» під ексклюзивним.
 
 Перенесення старих даних (міграція): ключ назви як у BR-VEH-006; аліаси стартового списку (VW,
 Мерседес, ВАЗ, кирилиця) зводяться до марки зі списку; назва нової марки чи моделі — найчастіше
@@ -163,29 +167,29 @@ cd apps/api && npx vitest run src/modules/vehicles/<файл>.spec.ts
 
 **Маршрути UI:** `/vehicles`, `/counterparties`
 
-| Аспект                                                                                                   | Тест                                 | Кейсів |
-| -------------------------------------------------------------------------------------------------------- | ------------------------------------ | ------ |
-| сервіс: список, VIN, soft delete, відновлення, блокування гаража при створенні й відновленні (BR-CP-015) | `vehicles.service.spec.ts`           | 21     |
-| історія пробігу (BR-VEH-001…005)                                                                         | `vehicles.mileage-history.spec.ts`   | 25     |
-| HTTP-контракт `GET /:id/mileage`: ролі, UUID                                                             | `vehicles.contract.spec.ts`          | 15     |
-| марка й модель авто з довідника (BR-VEH-008)                                                             | `vehicles.make-model.spec.ts`        | 10     |
-| довідник: ключ назви, перейменування й знімок назви в авто (BR-VEH-006, 007, 011)                        | `vehicle-makes.names.spec.ts`        | 15     |
-| довідник: видалення, відновлення, злиття (BR-VEH-009…011)                                                | `vehicle-makes.delete-merge.spec.ts` | 11     |
-| HTTP-контракт довідника: ролі всіх маршрутів, UUID, zod (BR-VEH-013)                                     | `vehicle-makes.contract.spec.ts`     | 88     |
-| стартовий список марок: код ↔ SQL міграції (BR-VEH-012)                                                  | `vehicle-make-defaults.spec.ts`      | 3      |
+| Аспект                                                                                                                                                     | Тест                                 | Кейсів |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ------ |
+| сервіс: список, VIN, soft delete, відновлення, блокування гаража при створенні й відновленні (BR-CP-015), живі марка й модель при відновленні (BR-VEH-014) | `vehicles.service.spec.ts`           | 24     |
+| історія пробігу (BR-VEH-001…005)                                                                                                                           | `vehicles.mileage-history.spec.ts`   | 25     |
+| HTTP-контракт `GET /:id/mileage`: ролі, UUID                                                                                                               | `vehicles.contract.spec.ts`          | 15     |
+| марка й модель авто з довідника (BR-VEH-008)                                                                                                               | `vehicles.make-model.spec.ts`        | 10     |
+| довідник: ключ назви, перейменування й знімок назви в авто (BR-VEH-006, 007, 011)                                                                          | `vehicle-makes.names.spec.ts`        | 15     |
+| довідник: видалення, відновлення, злиття (BR-VEH-009…011)                                                                                                  | `vehicle-makes.delete-merge.spec.ts` | 11     |
+| HTTP-контракт довідника: ролі всіх маршрутів, UUID, zod (BR-VEH-013)                                                                                       | `vehicle-makes.contract.spec.ts`     | 88     |
+| стартовий список марок: код ↔ SQL міграції (BR-VEH-012)                                                                                                    | `vehicle-make-defaults.spec.ts`      | 3      |
 
 Разом: **188** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Поза модулями правила довідника стережуть ще:
 
-- `apps/api/src/modules/sync/sync.vehicle-make-model.spec.ts` — 7 кейсів: `POST /sync/push` авто
-  з `makeId` / `modelId`, назви пише сервер (BR-VEH-008);
+- `apps/api/src/modules/sync/sync.vehicle-make-model.spec.ts` — 8 кейсів: `POST /sync/push` авто
+  з `makeId` / `modelId`, назви пише сервер (BR-VEH-008), запис пари скидає кеш списку марок;
 - `apps/api/src/modules/setup/setup.service.spec.ts` — стартовий список марок нової організації
   (BR-VEH-012, 2 кейси з 15);
 - web: `components/ui/__tests__/VehicleMakeModelFields.test.tsx` (7), `vehicle.schema.test.ts`
   (14), `VehicleForm.test.tsx` (5), `CounterpartyEditModal.test.tsx` (18),
   `app/(app)/calendar/__tests__/CalendarSlotModal.new-client-vehicle.test.tsx` (2),
-  `app/(app)/counterparties/__tests__/VehicleMakesTab.test.tsx` (7);
+  `app/(app)/counterparties/__tests__/VehicleMakesTab.test.tsx` (8);
 - E2E: `apps/web/e2e/vehicle-makes.spec.ts` (марка й модель у вкладці → авто з вибору →
   видалення заблоковане → злиття переносить авто), `vehicles.spec.ts` (вибір у формі). Авто-передумови
   інших E2E беруть пару з `e2e/vehicle-directory.ts` (`ensureVehicleModel`).

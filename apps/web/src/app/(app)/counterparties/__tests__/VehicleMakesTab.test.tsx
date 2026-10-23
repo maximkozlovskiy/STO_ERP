@@ -172,4 +172,28 @@ describe('VehicleMakesTab', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Зберегти' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('вже є');
   });
+
+  // guards: BR-VEH-006
+  it('Enter двічі, поки збереження йде, — один POST (друга марка дала б 409)', async () => {
+    renderTab();
+    await screen.findByRole('button', { name: 'Toyota' });
+    let finish: (v: unknown) => void = () => undefined;
+    apiFetchMock.mockImplementationOnce((path: string, init?: RequestInit) => {
+      calls.push({ method: init?.method ?? 'GET', path });
+      return new Promise(resolve => {
+        finish = resolve;
+      });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Марка' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Нова марка' });
+    const input = within(dialog).getByLabelText(/^Назва марки/);
+    fireEvent.change(input, { target: { value: 'Skoda' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(mutations()).toHaveLength(1));
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Зберегти' }));
+    finish({ ...TOYOTA, id: 'mk-9', name: 'Skoda' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Нова марка' })).toBeNull());
+    expect(mutations()).toHaveLength(1);
+  });
 });

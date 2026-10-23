@@ -1057,6 +1057,8 @@ export const uk: Record<string, string> = {
   'err.vehicle.modelNotFound': 'Модель авто не знайдено',
   'err.vehicle.modelNotOfMake': 'Модель не належить обраній марці',
   'err.vehicle.makeRequiresModel': 'Зі зміною марки оберіть і модель',
+  'err.vehicle.makeModelDeletedRestoreFirst':
+    'Марку чи модель цього авто видалено з довідника — спершу відновіть її',
   'err.vehicleMake.nameExists': 'Марка з такою назвою вже є',
   'err.vehicleMake.nameExistsDeleted': 'Марка з такою назвою є серед видалених — відновіть її',
   'err.vehicleMake.deletedNotFound': 'Видалену марку не знайдено',

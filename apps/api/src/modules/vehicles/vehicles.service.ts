@@ -5,6 +5,8 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { kyivYmd } from '../../common/utils/kyiv-date';
 import { CacheService } from '../../redis/cache.service';
 import {
+  VEHICLE_WRITE_TX_TIMEOUT_MS,
+  assertVehiclePairLive,
   lockVehicleDirectoryShared,
   resolveVehicleNames,
   vehicleMakesCacheKey,
@@ -74,18 +76,21 @@ export class VehiclesService {
     // BR-VEH-008: марка й модель — з довідника, назви пише сервіс. Спільне блокування довідника:
     // одночасне видалення чи злиття марки (ексклюзивне) або чекає й бачить це авто, або вже
     // відбулось — і тоді марка тут не жива (400).
-    const item = await this.prisma.$transaction(async tx => {
-      await lockVehicleDirectoryShared(tx, orgId);
-      const garage = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT id FROM customer_garages
-        WHERE id = ${dto.customerGarageId}::uuid AND "orgId" = ${orgId}::uuid AND "deletedAt" IS NULL
-        FOR SHARE
-      `;
-      if (garage.length === 0)
-        throw new NotFoundException(translateError('err.vehicle.garageNotFound', getLocale()));
-      const names = await resolveVehicleNames(tx, orgId, dto.makeId, dto.modelId);
-      return tx.vehicle.create({ data: { ...dto, ...names, orgId } });
-    });
+    const item = await this.prisma.$transaction(
+      async tx => {
+        await lockVehicleDirectoryShared(tx, orgId);
+        const garage = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM customer_garages
+          WHERE id = ${dto.customerGarageId}::uuid AND "orgId" = ${orgId}::uuid AND "deletedAt" IS NULL
+          FOR SHARE
+        `;
+        if (garage.length === 0)
+          throw new NotFoundException(translateError('err.vehicle.garageNotFound', getLocale()));
+        const names = await resolveVehicleNames(tx, orgId, dto.makeId, dto.modelId);
+        return tx.vehicle.create({ data: { ...dto, ...names, orgId } });
+      },
+      { timeout: VEHICLE_WRITE_TX_TIMEOUT_MS },
+    );
     await this.invalidateMakes(orgId);
     return this.toDto(item);
   }
@@ -106,11 +111,14 @@ export class VehiclesService {
       const item = await this.prisma.vehicle.update({ where: { id, orgId }, data: dto });
       return this.toDto(item);
     }
-    const item = await this.prisma.$transaction(async tx => {
-      await lockVehicleDirectoryShared(tx, orgId);
-      const names = await resolveVehicleNames(tx, orgId, pair.makeId, pair.modelId);
-      return tx.vehicle.update({ where: { id, orgId }, data: { ...dto, ...pair, ...names } });
-    });
+    const item = await this.prisma.$transaction(
+      async tx => {
+        await lockVehicleDirectoryShared(tx, orgId);
+        const names = await resolveVehicleNames(tx, orgId, pair.makeId, pair.modelId);
+        return tx.vehicle.update({ where: { id, orgId }, data: { ...dto, ...pair, ...names } });
+      },
+      { timeout: VEHICLE_WRITE_TX_TIMEOUT_MS },
+    );
     await this.invalidateMakes(orgId);
     return this.toDto(item);
   }
@@ -208,22 +216,30 @@ export class VehiclesService {
     // (FOR SHARE, як у `create`) у транзакції з відновленням: одночасне `removeGarage` (FOR UPDATE)
     // або чекає й лічильником бачить відновлене авто (400), або встигає першим — тоді тут 400.
     // Без блокування перевірка вище читала живий гараж, а він видалявся до запису (25/25 наживо).
-    const result = await this.prisma.$transaction(async tx => {
-      const garage = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT id FROM customer_garages
-        WHERE id = ${existing.customerGarageId}::uuid AND "orgId" = ${orgId}::uuid
-          AND "deletedAt" IS NULL
-        FOR SHARE
-      `;
-      if (garage.length === 0)
-        throw new BadRequestException(
-          translateError('err.vehicle.garageDeletedRestoreFirst', getLocale()),
-        );
-      return tx.vehicle.updateMany({
-        where: { id, orgId, NOT: { deletedAt: null } },
-        data: { deletedAt: null },
-      });
-    });
+    // BR-VEH-014: відновлене авто стає живим — його марка й модель мусять бути живими (BR-VEH-008).
+    // Спільне блокування довідника (до гаража, у тому ж порядку, що й `create`): видалення марки
+    // перевіряє «живі авто» під ексклюзивним, і відновлення не прослизає між перевіркою і записом.
+    const result = await this.prisma.$transaction(
+      async tx => {
+        await lockVehicleDirectoryShared(tx, orgId);
+        const garage = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM customer_garages
+          WHERE id = ${existing.customerGarageId}::uuid AND "orgId" = ${orgId}::uuid
+            AND "deletedAt" IS NULL
+          FOR SHARE
+        `;
+        if (garage.length === 0)
+          throw new BadRequestException(
+            translateError('err.vehicle.garageDeletedRestoreFirst', getLocale()),
+          );
+        await assertVehiclePairLive(tx, orgId, id);
+        return tx.vehicle.updateMany({
+          where: { id, orgId, NOT: { deletedAt: null } },
+          data: { deletedAt: null },
+        });
+      },
+      { timeout: VEHICLE_WRITE_TX_TIMEOUT_MS },
+    );
     if (result.count === 0)
       throw new NotFoundException(translateError('err.vehicle.deletedNotFound', getLocale()));
     await this.invalidateMakes(orgId);

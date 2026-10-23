@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { translateError, type SyncRecord } from '@sto/shared';
 import { SyncService } from './sync.service';
 import type { PrismaService } from '../../prisma/prisma.service';
+import type { CacheService } from '../../redis/cache.service';
 import {
   LIFT_1,
   LIFT_2,
@@ -47,7 +48,9 @@ function harness(
     slots: [slotRow('anchor', { syncVersion: 1n }), ...(extraSlots as never[])],
   });
   const syncJob = { create: vi.fn().mockResolvedValue({}) };
-  const sync = new SyncService({ ...h.prisma, syncJob } as unknown as PrismaService, h.service);
+  const sync = new SyncService({ ...h.prisma, syncJob } as unknown as PrismaService, h.service, {
+    del: vi.fn(),
+  } as unknown as CacheService);
   const lastErrors = () =>
     syncJob.create.mock.calls.map(c => (c[0] as { data: { lastError: string } }).data.lastError);
   const wo = () => h.workOrder.rows.find(w => w.id === WO_ID)!;

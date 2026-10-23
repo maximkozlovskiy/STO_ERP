@@ -1078,6 +1078,8 @@ export const en: Record<string, string> = {
   'err.vehicle.modelNotFound': 'Vehicle model not found',
   'err.vehicle.modelNotOfMake': 'The model does not belong to the selected make',
   'err.vehicle.makeRequiresModel': 'Choose a model together with the new make',
+  'err.vehicle.makeModelDeletedRestoreFirst':
+    'The make or model of this vehicle is deleted from the directory — restore it first',
   'err.vehicleMake.nameExists': 'A make with this name already exists',
   'err.vehicleMake.nameExistsDeleted': 'A deleted make has this name — restore it',
   'err.vehicleMake.deletedNotFound': 'Deleted make not found',

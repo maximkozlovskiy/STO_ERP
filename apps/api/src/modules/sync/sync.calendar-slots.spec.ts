@@ -103,7 +103,7 @@ function harness(existing: Record<string, unknown> | null = null) {
   // Записи без наряду і нові записи — без наряду (BR-WO-024: `sync.work-order-slot.spec.ts`).
   const workOrders = { updateCalendarSlot: vi.fn() };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const service = new SyncService(prisma as any, workOrders as never);
+  const service = new SyncService(prisma as any, workOrders as never, { del: vi.fn() } as never);
   const lastErrors = () =>
     prisma.syncJob.create.mock.calls.map(
       c => (c[0] as { data: { lastError: string; status: string } }).data,

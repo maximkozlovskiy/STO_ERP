@@ -7,6 +7,7 @@ import { SyncController } from './sync.controller';
 import { SyncService } from './sync.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../redis/cache.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 
@@ -85,6 +86,7 @@ describe('Sync — HTTP Contract', () => {
         SyncService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: WorkOrdersService, useValue: { updateCalendarSlot: vi.fn() } },
+        { provide: CacheService, useValue: { del: vi.fn() } },
       ],
     })
       .overrideGuard(JwtAuthGuard)

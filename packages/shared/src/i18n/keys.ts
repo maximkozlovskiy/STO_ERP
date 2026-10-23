@@ -1060,6 +1060,7 @@ export const VALIDATION_KEYS = [
   'err.vehicle.modelNotFound',
   'err.vehicle.modelNotOfMake',
   'err.vehicle.makeRequiresModel',
+  'err.vehicle.makeModelDeletedRestoreFirst',
   'err.vehicleMake.nameExists',
   'err.vehicleMake.nameExistsDeleted',
   'err.vehicleMake.deletedNotFound',

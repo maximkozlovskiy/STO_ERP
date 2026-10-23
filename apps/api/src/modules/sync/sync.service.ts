@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../redis/cache.service';
 import { SyncRecord } from '@sto/shared';
 import { err } from '../../common/utils/err';
 import {
@@ -12,8 +13,10 @@ import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { movesWorkOrderSlot, relinksSlot } from '../work-orders/work-order-slot-move';
 import type { CalendarSlotEdit } from '../calendar/calendar.dto';
 import {
+  VEHICLE_WRITE_TX_TIMEOUT_MS,
   lockVehicleDirectoryShared,
   resolveVehicleNames,
+  vehicleMakesCacheKey,
   vehiclePairToWrite,
 } from '../vehicle-makes/vehicle-directory';
 
@@ -77,6 +80,9 @@ const PULL_TABLES = [
 //    клієнтові механіка не потрібна. Мають syncVersion, але свідомо поза PULL_TABLES/PUSH_SAFE_TABLES.
 //  - supplier_* (підключення до API постачальників, пропозиції, дзеркало каталогу, замовлення через API):
 //    креди постачальників і серверні дані черг — mobile не має бачити (BR-SCON).
+//  - vehicle_makes / vehicle_models (довідник марок, BR-VEH-006…): мобільний клієнт авто не створює,
+//    а показує знімок назви `vehicles.make` / `model`. Клієнт, що створюватиме авто через push
+//    (`makeId` / `modelId`, BR-VEH-008), потребуватиме довідника — тоді додати обидві в PULL_TABLES.
 
 // Tables safe for push — excludes append-only logs and FSM-controlled models
 const PUSH_SAFE_TABLES = new Set([
@@ -153,6 +159,7 @@ export class SyncService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly workOrders: WorkOrdersService,
+    private readonly cache: CacheService,
   ) {}
 
   private model(tableName: string): DynamicPrismaModel {
@@ -511,20 +518,25 @@ export class SyncService {
       await write(this.prisma, payload);
       return;
     }
-    await this.prisma.$transaction(async tx => {
-      if (pair) await lockVehicleDirectoryShared(tx, orgId);
-      if (garageId) {
-        const garage = await tx.$queryRaw<Array<{ id: string }>>`
-          SELECT id FROM customer_garages
-          WHERE id = ${garageId}::uuid AND "orgId" = ${orgId}::uuid AND "deletedAt" IS NULL
-          FOR SHARE
-        `;
-        if (garage.length === 0)
-          throw new Error(`Поле customerGarageId=${garageId} не знайдено в межах організації`);
-      }
-      const names = pair ? await resolveVehicleNames(tx, orgId, pair.makeId, pair.modelId) : {};
-      await write(tx, { ...payload, ...pair, ...names });
-    });
+    await this.prisma.$transaction(
+      async tx => {
+        if (pair) await lockVehicleDirectoryShared(tx, orgId);
+        if (garageId) {
+          const garage = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM customer_garages
+            WHERE id = ${garageId}::uuid AND "orgId" = ${orgId}::uuid AND "deletedAt" IS NULL
+            FOR SHARE
+          `;
+          if (garage.length === 0)
+            throw new Error(`Поле customerGarageId=${garageId} не знайдено в межах організації`);
+        }
+        const names = pair ? await resolveVehicleNames(tx, orgId, pair.makeId, pair.modelId) : {};
+        await write(tx, { ...payload, ...pair, ...names });
+      },
+      { timeout: VEHICLE_WRITE_TX_TIMEOUT_MS },
+    );
+    // Лічильники авто в кеші довідника марок (BR-VEH-009) — як після запису авто з web.
+    if (pair) await this.cache.del(vehicleMakesCacheKey(orgId));
   }
 
   // FK fields that must belong to the same org, keyed by table name

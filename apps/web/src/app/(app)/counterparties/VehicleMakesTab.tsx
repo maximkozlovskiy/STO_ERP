@@ -115,8 +115,12 @@ export default function VehicleMakesTab() {
   const visibleMakes = needle ? makes.filter(m => m.name.toLowerCase().includes(needle)) : makes;
   const label = (kind: Kind, key: string) => t(`vehicleMakesTab.${kind}.${key}`);
 
+  const nameSaving =
+    createMake.isPending || renameMake.isPending || createModel.isPending || renameModel.isPending;
+
   const saveName = async () => {
-    if (!nameDialog) return;
+    // Enter у полі назви повторює збереження, поки перший запит ще йде (друга марка → 409).
+    if (!nameDialog || nameSaving) return;
     const name = nameDialog.name.trim();
     if (!name) {
       setNameError(label(nameDialog.kind, 'nameRequired'));
@@ -290,9 +294,6 @@ export default function VehicleMakesTab() {
       </TableCell>
     </TableRow>
   );
-
-  const nameSaving =
-    createMake.isPending || renameMake.isPending || createModel.isPending || renameModel.isPending;
 
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-2" data-testid="vehicle-makes-tab">

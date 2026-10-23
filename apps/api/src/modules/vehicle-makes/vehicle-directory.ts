@@ -12,6 +12,11 @@ export const vehicleMakesCacheKey = (orgId: string): string => `ref:vehicle-make
 
 const lockKey = (orgId: string): string => `vehicle-directory:${orgId}`;
 
+/** Запис довідника (злиття великої марки) — довше за запис одного авто. */
+export const VEHICLE_DIRECTORY_TX_TIMEOUT_MS = 15_000;
+/** Запис одного авто під спільним блокуванням довідника. */
+export const VEHICLE_WRITE_TX_TIMEOUT_MS = 10_000;
+
 /**
  * Записи довідника (створення, перейменування, видалення, злиття) ідуть під ексклюзивним
  * транзакційним блокуванням організації. Запис авто бере те саме блокування СПІЛЬНО
@@ -34,10 +39,15 @@ export async function writeVehicleDirectory<T>(
   orgId: string,
   work: (tx: Db) => Promise<T>,
 ): Promise<T> {
-  const result = await prisma.$transaction(async tx => {
-    await lockVehicleDirectory(tx, orgId);
-    return work(tx);
-  });
+  // Злиття переписує всі авто марки (разом із видаленими) і чекає на спільні блокування записів
+  // авто — типових 5 с інтерактивної транзакції Prisma на великій марці може не вистачити.
+  const result = await prisma.$transaction(
+    async tx => {
+      await lockVehicleDirectory(tx, orgId);
+      return work(tx);
+    },
+    { timeout: VEHICLE_DIRECTORY_TX_TIMEOUT_MS },
+  );
   await cache.del(vehicleMakesCacheKey(orgId));
   return result;
 }
@@ -68,6 +78,32 @@ export async function resolveVehicleNames(
   if (model.makeId !== makeId)
     throw new BadRequestException(translateError('err.vehicle.modelNotOfMake', getLocale()));
   return { make: make.name, model: model.name };
+}
+
+/**
+ * BR-VEH-014: відновлення авто, чию марку чи модель видалено з довідника, — 400 (спершу відновити
+ * їх). Читається в транзакції відновлення під спільним блокуванням довідника: злиття марки
+ * переносить і видалені авто, тож пара, прочитана до блокування, могла вже змінитись.
+ * Авто не знайдено — мовчить: 404 дає запис відновлення (`count === 0`).
+ */
+export async function assertVehiclePairLive(
+  db: Db,
+  orgId: string,
+  vehicleId: string,
+): Promise<void> {
+  const pair = await db.vehicle.findFirst({
+    where: { id: vehicleId, orgId },
+    select: {
+      vehicleMake: { select: { deletedAt: true } },
+      vehicleModel: { select: { deletedAt: true } },
+    },
+  });
+  if (!pair) return;
+  if (pair.vehicleMake.deletedAt !== null || pair.vehicleModel.deletedAt !== null) {
+    throw new BadRequestException(
+      translateError('err.vehicle.makeModelDeletedRestoreFirst', getLocale()),
+    );
+  }
 }
 
 /**

@@ -347,4 +347,55 @@ describe('VehiclesService', () => {
       expect(prisma.vehicle.updateMany).not.toHaveBeenCalled();
     });
   });
+
+  // BR-VEH-014: відновлене авто — живе, тож його марка й модель мусять бути живими (BR-VEH-008).
+  describe('restore — марка й модель авто живі (BR-VEH-014)', () => {
+    const deletedVehicle = {
+      deletedAt: new Date('2026-01-01T00:00:00Z'),
+      customerGarageId: 'g-1',
+      customerGarage: { deletedAt: null, counterparty: { deletedAt: null } },
+    };
+    const pairState = (makeDeleted: Date | null, modelDeleted: Date | null) => ({
+      vehicleMake: { deletedAt: makeDeleted },
+      vehicleModel: { deletedAt: modelDeleted },
+    });
+    const restoreWithPair = (pair: ReturnType<typeof pairState>) => {
+      prisma.vehicle.findFirst.mockResolvedValueOnce(deletedVehicle).mockResolvedValueOnce(pair);
+      prisma.vehicle.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.vehicle.findFirstOrThrow.mockResolvedValueOnce(rawVehicle({ deletedAt: null }));
+      return service.restore('org-1', 'veh-1');
+    };
+
+    // guards: BR-VEH-014
+    it('марку авто видалено → 400 «спершу відновіть», авто не відновлюється', async () => {
+      await expect(restoreWithPair(pairState(new Date('2026-02-01'), null))).rejects.toThrow(
+        /Марку чи модель цього авто видалено/,
+      );
+      expect(prisma.vehicle.updateMany).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-VEH-014
+    it('модель авто видалено (марка жива) → 400, авто не відновлюється', async () => {
+      await expect(restoreWithPair(pairState(null, new Date('2026-02-01')))).rejects.toThrow(
+        /Марку чи модель цього авто видалено/,
+      );
+      expect(prisma.vehicle.updateMany).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-VEH-014
+    it('пара читається в транзакції під спільним блокуванням довідника, до гаража; обидві живі → відновлено', async () => {
+      const res = await restoreWithPair(pairState(null, null));
+      expect(res.deletedAt).toBeNull();
+      const pairRead = prisma.vehicle.findFirst.mock.calls[1]![0];
+      expect(pairRead.where).toEqual({ id: 'veh-1', orgId: 'org-1' });
+      expect(pairRead.select.vehicleMake.select.deletedAt).toBe(true);
+      expect(pairRead.select.vehicleModel.select.deletedAt).toBe(true);
+      const lockSql = (prisma.$executeRaw.mock.calls[0]![0] as TemplateStringsArray).join('?');
+      expect(lockSql).toMatch(/pg_advisory_xact_lock_shared\(/);
+      const lockAt = prisma.$executeRaw.mock.invocationCallOrder[0]!;
+      expect(lockAt).toBeLessThan(prisma.$queryRaw.mock.invocationCallOrder[0]!);
+      expect(lockAt).toBeLessThan(prisma.vehicle.findFirst.mock.invocationCallOrder[1]!);
+      expect(prisma.vehicle.updateMany).toHaveBeenCalledTimes(1);
+    });
+  });
 });
