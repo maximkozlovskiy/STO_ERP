@@ -328,3 +328,7 @@
 <!-- T1.3-081 -->
 
 - [ ] Поле пошуку без `maxLength`, а бекенд відхиляє довгий `q` (`@MaxLength` у query-DTO) → 400 і рядки попереднього пошуку під новим текстом (Bug #816). Наживо: вставити 150 символів. Grep: `grep -rn "MaxLength" apps/api/src/modules --include=*.dto.ts | grep -B3 " q?:"` проти `grep -rn "searchPlaceholder" apps/web/src/app -A3 | grep -c maxLength`
+
+<!-- T1.3-082 -->
+
+- [ ] **`onError` картинки правит DOM-стилі напряму (`e.currentTarget.style.display = 'none'`, `querySelector(...).style.display = 'flex'`), а показ керується пропом (Bug #952):** React не скидає стилів, яких не контролює, тож після зміни `src` (заміна логотипа/фото, інший запис у тій самій картці) нова картинка лишається прихованою, а заглушка — поверх неї, до перемонтування. Grep: `grep -rn "currentTarget.style.display" apps/web/src --include=*.tsx`. Перевірка наживо: зламаний URL → `onError` → заміна файла → `naturalWidth > 0`, але `display:none`. Fix: невдалу адресу — у стан (`failedSrc`), показ — `src && src !== failedSrc`. Тест: `fireEvent.error(img)` → заміна → нова картинка видима, заглушка схована. Severity LOW. Де ще: `EstimateClient` (логотип кошторису), фото в актах/дефектовці, аватари.
