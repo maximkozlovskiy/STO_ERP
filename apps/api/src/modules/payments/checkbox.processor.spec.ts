@@ -141,7 +141,8 @@ describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
     findOpenShift.mockResolvedValueOnce(null);
     open.mockResolvedValueOnce({ id: 'shift-new', checkboxShiftId: 'cbx-new' });
     await processor.process(makeJob());
-    expect(open).toHaveBeenCalledWith('org-1', 'br-1');
+    // Оплата без каси — найстаріша каса філії, як раніше (BR-CASH-027).
+    expect(open).toHaveBeenCalledWith('org-1', 'br-1', undefined, undefined);
     expect(sellReceipt).toHaveBeenCalledTimes(1);
     expect(paymentUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -295,6 +296,86 @@ describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
       await processor.onFailed(makeJob({}, 288), new Error('x'.repeat(1000)));
       const data = paymentUpdate.mock.calls[0][0].data;
       expect(data.fiscalError.length).toBe(500);
+    });
+  });
+
+  // Зміна — своя в кожної фіскальної каси: чек готівкової оплати йде в зміну її каси, а не в
+  // будь-яку OPEN-зміну філії; авто-відкриття — саме цієї каси (TECH-DEBT §10.19).
+  describe('зміна за касою оплати (BR-CASH-027)', () => {
+    const autoOpen = () =>
+      resolveActive.mockResolvedValueOnce({
+        provider: 'checkbox',
+        apiUrl: cfg.apiUrl,
+        credentials: cfg.credentials,
+        shiftMode: 'AUTO_OPEN',
+      });
+    const viaRegister = (over: Record<string, unknown> = {}) =>
+      paymentFindFirst.mockResolvedValueOnce({
+        fiscalReceiptId: null,
+        reversedAt: null,
+        cashRegister: { id: 'reg-b', branchId: 'br-1', isFiscal: true, deletedAt: null, ...over },
+      });
+
+    // guards: BR-CASH-027
+    it('оплата через фіскальну касу → findOpenShift із касою оплати, чек у її зміну', async () => {
+      viaRegister();
+      findOpenShift.mockResolvedValueOnce({ id: 'shift-b', checkboxShiftId: 'cbx-b' });
+      await processor.process(makeJob());
+      expect(findOpenShift).toHaveBeenCalledWith('org-1', 'br-1', 'reg-b');
+      expect(ensureToken).toHaveBeenCalledWith('org-1', 'shift-b');
+      expect(sellReceipt).toHaveBeenCalledTimes(1);
+    });
+
+    // guards: BR-CASH-027
+    it('AUTO_OPEN без зміни каси → відкривається саме каса оплати', async () => {
+      autoOpen();
+      viaRegister();
+      findOpenShift.mockResolvedValueOnce(null);
+      open.mockResolvedValueOnce({ id: 'shift-b', checkboxShiftId: 'cbx-b' });
+      await processor.process(makeJob());
+      expect(open).toHaveBeenCalledWith('org-1', 'br-1', undefined, 'reg-b');
+      expect(ensureToken).toHaveBeenCalledWith('org-1', 'shift-b');
+    });
+
+    // guards: BR-CASH-027
+    it('MANUAL: зміна каси оплати закрита → чек чекає, навіть коли інша каса філії відкрита', async () => {
+      viaRegister();
+      // findOpenShift з касою повертає null — зміна іншої каси сюди не потрапляє.
+      findOpenShift.mockImplementationOnce((_o: string, _b: string, reg?: string) =>
+        Promise.resolve(reg ? null : { id: 'shift-a', checkboxShiftId: 'cbx-a' }),
+      );
+      await expect(processor.process(makeJob())).rejects.toThrow(/зміни/);
+      expect(sellReceipt).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-CASH-027
+    it('філія — та, де стоїть каса: наряд іншої філії чи оплата без наряду не змінюють зміну', async () => {
+      viaRegister({ branchId: 'br-cash' });
+      await processor.process(makeJob({ branchId: null }));
+      expect(resolveActive).toHaveBeenCalledWith('org-1', 'br-cash', 'FISCAL');
+      expect(findOpenShift).toHaveBeenCalledWith('org-1', 'br-cash', 'reg-b');
+    });
+
+    // guards: BR-CASH-027
+    it('оплата без каси (картка, QR) → зміна й авто-відкриття за філією, як раніше', async () => {
+      autoOpen();
+      paymentFindFirst.mockResolvedValueOnce({
+        fiscalReceiptId: null,
+        reversedAt: null,
+        cashRegister: null,
+      });
+      findOpenShift.mockResolvedValueOnce(null);
+      open.mockResolvedValueOnce({ id: 'shift-x', checkboxShiftId: 'cbx-x' });
+      await processor.process(makeJob());
+      expect(findOpenShift).toHaveBeenCalledWith('org-1', 'br-1', undefined);
+      expect(open).toHaveBeenCalledWith('org-1', 'br-1', undefined, undefined);
+    });
+
+    // guards: BR-CASH-027
+    it('оплата через НЕфіскальну касу → за філією (у нефіскальної каси змін немає)', async () => {
+      viaRegister({ isFiscal: false, branchId: 'br-cash' });
+      await processor.process(makeJob());
+      expect(findOpenShift).toHaveBeenCalledWith('org-1', 'br-1', undefined);
     });
   });
 });

@@ -150,11 +150,11 @@ create (метод без requiresFiscal) → null
 
 ### `/api/cash-shifts` (`CashShiftController`)
 
-| Метод | URL                          | Дія                                                           | Ролі                                   |
-| ----- | ---------------------------- | ------------------------------------------------------------- | -------------------------------------- |
-| GET   | `/api/cash-shifts/current`   | Поточна OPEN-зміна філії (`?branchId`) або null               | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
-| POST  | `/api/cash-shifts/open`      | Відкрити зміну (`?branchId`; PIN→token→ПРРО); throttle 10/60с | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
-| POST  | `/api/cash-shifts/:id/close` | Закрити зміну (Z-звіт); throttle 10/60с                       | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
+| Метод | URL                          | Дія                                                                                                            | Ролі                                   |
+| ----- | ---------------------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| GET   | `/api/cash-shifts/current`   | OPEN-зміна каси (`?branchId&cashRegisterId`, BR-CASH-027) чи філії (без каси) або null                         | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
+| POST  | `/api/cash-shifts/open`      | Відкрити зміну (`?branchId&cashRegisterId`; без каси — найстаріша каса філії; PIN→token→ПРРО); throttle 10/60с | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
+| POST  | `/api/cash-shifts/:id/close` | Закрити зміну (Z-звіт); throttle 10/60с                                                                        | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
 
 ### `/api/payment-gateways` (`PaymentGatewaysController`, `kind=PAYMENT`) · `/api/fiscal-providers` (`FiscalProvidersController`, `kind=FISCAL`)
 
@@ -278,7 +278,8 @@ BR-INV-018), рахунок без наряду — PAID/PARTIALLY_PAID → PART
   переможця). `provider.signIn` (PIN→token) + `provider.openShift` → `checkboxShiftId`. Токен шифрується.
 - **BR-PAY-011**: `close()`: **CAS-claim** `OPEN→CLOSED` **до** зовнішнього виклику (Bug #711 — проти подвійного Z-звіту);
   `count=0` → «Зміна вже закрита». Потім `provider.closeShift` → `zReportId`; при провалі — revert CLOSED→OPEN.
-- **BR-PAY-012**: `getCurrent`: рахує `pendingReceipts` = платежі з `fiscalStatus=QUEUED` у межах філії (через `workOrder.branchId`).
+- **BR-PAY-012**: `getCurrent`: рахує `pendingReceipts` = платежі з `fiscalStatus=QUEUED` у межах філії (через `workOrder.branchId`);
+  із `cashRegisterId` — зміна й лічильник саме цієї каси (BR-CASH-027 у `cash.md`).
 
 ### Провайдери (`BranchProviderConfig`)
 
@@ -409,8 +410,10 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | Аспект                                          | Тест                                                     | Кейсів |
 | ----------------------------------------------- | -------------------------------------------------------- | ------ |
 | сервісна логіка                                 | `cash-shift.service.spec.ts`                             | 31     |
+| зміна своя в кожної каси (BR-CASH-027)          | `cash-shift.per-register.spec.ts`                        | 8      |
+| HTTP-контракт стану зміни (BR-CASH-027)         | `cash-shift.current-route.contract.spec.ts`              | 3      |
 | HTTP-клієнт                                     | `checkbox.client.spec.ts`                                | 31     |
-| BullMQ-processor                                | `checkbox.processor.spec.ts`                             | 19     |
+| BullMQ-processor                                | `checkbox.processor.spec.ts`                             | 25     |
 | fiscal provider registry                        | `fiscal/fiscal-provider-registry.spec.ts`                | 16     |
 | провайдер                                       | `fiscal/vchasno.provider.spec.ts`                        | 29     |
 | payment gateway registry                        | `gateways/payment-gateway-registry.spec.ts`              | 12     |
@@ -436,7 +439,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | сторно безготівкової оплати (BR-PAY-024)        | `payments.reverse-noncash.spec.ts`                       | 24     |
 | HTTP-контракт сторно (BR-PAY-024)               | `payments.reverse-route.contract.spec.ts`                | 15     |
 
-Разом: **495** кейсів — 427 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
+Разом: **512** кейсів — 444 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
 (`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
 `vitest --reporter=json` (2026-10-15), не з grep.
 

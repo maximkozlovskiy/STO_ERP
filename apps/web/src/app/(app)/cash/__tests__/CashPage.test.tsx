@@ -4,7 +4,10 @@
 //   - Фіскальна каса + OPEN-зміна → «Зміна відкрита» + кнопка «Закрити зміну (Z-звіт)».
 //   - Фіскальна каса + CLOSED (null) → «Зміну закрито» + кнопка «Відкрити зміну».
 //   - pendingReceipts>0 → «Чеків очікує: N»; 0 → без бейджа.
-//   - клік «Відкрити» → useOpenShift.mutateAsync(branchId); помилка → toast.error, не crash.
+//   - клік «Відкрити» → useOpenShift.mutateAsync({ branchId, cashRegisterId }); помилка → toast.error.
+//   - стан зміни питається з id ВИБРАНОЇ каси; перемикання каси перепитує (BR-CASH-027).
+//     Mutation-verify 2026-10-23: `useCurrentShift(branchId, null)` або відкриття без id каси →
+//     кейси BR-CASH-027 червоні.
 //   - клік «Закрити» → useCloseShift.mutateAsync(shift.id).
 
 import { render, screen, waitFor } from '@testing-library/react';
@@ -23,23 +26,20 @@ vi.mock('@/lib/format', () => ({
 vi.mock('@/lib/linked-nav', () => ({
   useLinkedNav: () => ({ toWorkOrder: vi.fn(), toPurchaseOrder: vi.fn() }),
 }));
-// Одна фіскальна каса — щоб рендерився блок зміни.
+// Дві фіскальні каси ОДНІЄЇ філії — зміна в кожної своя (BR-CASH-027); автовибір бере першу.
+const fiscalRegister = (id: string, name: string) => ({
+  id,
+  name,
+  branchId: 'br-1',
+  currencyCode: 'UAH',
+  currencySymbol: '₴',
+  isFiscal: true,
+  initialBalance: 0,
+  balance: 0,
+});
+const REGISTERS = [fiscalRegister('reg-1', 'Каса №1'), fiscalRegister('reg-2', 'Каса №2')];
 vi.mock('@/hooks/api/useCash', () => ({
-  useCashRegisters: () => ({
-    data: [
-      {
-        id: 'reg-1',
-        name: 'Каса №1',
-        branchId: 'br-1',
-        currencyCode: 'UAH',
-        currencySymbol: '₴',
-        isFiscal: true,
-        initialBalance: 0,
-        balance: 0,
-      },
-    ],
-    isLoading: false,
-  }),
+  useCashRegisters: () => ({ data: REGISTERS, isLoading: false }),
   useCashOperations: () => ({ data: [], isLoading: false }),
   useCreateCashOperation: () => ({ mutateAsync: vi.fn(), isPending: false }),
   // Базова валюта org (UAH) — вкладка порівнює код каси з базовим замість хардкоду 'UAH'.
@@ -143,13 +143,41 @@ describe('CashOperationsTab — ПРРО зміна (фіскальна каса
     expect(screen.queryByText(/Чеків очікує/)).not.toBeInTheDocument();
   });
 
-  it('клік «Відкрити зміну» → useOpenShift.mutateAsync(branchId)', async () => {
+  // guards: BR-CASH-027
+  it('клік «Відкрити зміну» → useOpenShift.mutateAsync з філією і вибраною касою', async () => {
     useCurrentShiftMock.mockReturnValue({ data: null, isLoading: false });
     const user = userEvent.setup();
     render(<CashOperationsTab />);
     const btn = await screen.findByRole('button', { name: /Відкрити зміну/ });
     await user.click(btn);
-    await waitFor(() => expect(openMutateAsync).toHaveBeenCalledWith('br-1'));
+    await waitFor(() =>
+      expect(openMutateAsync).toHaveBeenCalledWith({ branchId: 'br-1', cashRegisterId: 'reg-1' }),
+    );
+  });
+
+  // guards: BR-CASH-027
+  it('стан зміни питається з id вибраної каси; перемикання каси перепитує й відкриває саме її', async () => {
+    // Зміна відкрита лише на reg-1: друга каса тієї ж філії має бачити «Зміну закрито».
+    useCurrentShiftMock.mockImplementation((_branchId: string | null, regId: string | null) => ({
+      data: regId === 'reg-1' ? openShiftData() : null,
+      isLoading: false,
+    }));
+    const user = userEvent.setup();
+    render(<CashOperationsTab />);
+    expect(await screen.findByText('Зміна відкрита')).toBeInTheDocument();
+    expect(useCurrentShiftMock).toHaveBeenLastCalledWith('br-1', 'reg-1');
+
+    const registerSelect = screen
+      .getAllByRole('combobox')
+      .find(el => el.querySelector('option[value="reg-2"]'))!;
+    await user.selectOptions(registerSelect, 'reg-2');
+    expect(useCurrentShiftMock).toHaveBeenLastCalledWith('br-1', 'reg-2');
+    expect(await screen.findByText(/Зміну закрито/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Відкрити зміну/ }));
+    await waitFor(() =>
+      expect(openMutateAsync).toHaveBeenCalledWith({ branchId: 'br-1', cashRegisterId: 'reg-2' }),
+    );
   });
 
   it('клік «Закрити зміну» → useCloseShift.mutateAsync(shift.id)', async () => {
