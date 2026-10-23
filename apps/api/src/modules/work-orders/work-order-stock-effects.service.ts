@@ -369,24 +369,38 @@ export class WorkOrderStockEffectsService {
       );
     }
 
-    // Сторно боргу: сума з IN-TX re-read totalAmount (дзеркалить charge-логіку). COMPLETED поза
-    // EDITABLE_STATUSES → totalAmount не змінюється, але re-read гарантує точну симетрію з CHARGE.
-    const freshWo = await db.workOrder.findFirst({
-      where: { id: wo.id, orgId },
-      // Мультивалюта (Фаза 3): валюта + дата документа для симетрії CREDIT_NOTE з CHARGE.
-      select: { totalAmount: true, currencyId: true, documentDate: true },
-    });
     // Сторно — дзеркало CHARGE цього наряду (один на документ, BR-SETL-015): та сама сума, валюта й
     // конвертація. Курс заново не шукається: курс, внесений чи виправлений після нарахування (CHARGE
     // брав «останній», бо на дату документа курсу ще не було), лишав би залишок у базовій валюті
-    // (TECH-DEBT §17.1). Без CHARGE (старі дані) — сума наряду за курсом на дату документа, як раніше.
+    // (TECH-DEBT §17.1). Дублікати CHARGE, записані до індексу (Bug #943), розбирає оператор
+    // компенсуючими записами — тому сторнується перше (справжнє) нарахування, а не сума всіх.
     const charge = await db.settlementTransaction.findFirst({
       where: { orgId, type: 'CHARGE', documentType: 'WorkOrder', documentId: wo.id },
       orderBy: { createdAt: 'asc' },
       select: { amount: true, currencyId: true, rateUsed: true, amountBase: true },
     });
-    const creditAmount = charge
-      ? moneyFromDecimal(charge.amount)
+    // Нарахування без конвертації (createTransaction пише обидва поля, старі рядки заповнила міграція
+    // 20260914140000) — старим шляхом, а не 400 «сума має бути додатною» на скасуванні.
+    const mirror =
+      charge && charge.amountBase != null && charge.rateUsed != null
+        ? {
+            amount: moneyFromDecimal(charge.amount),
+            currencyId: charge.currencyId,
+            conversion: {
+              rateUsed: Number(charge.rateUsed),
+              amountBase: Number(charge.amountBase),
+            },
+          }
+        : null;
+    // Без CHARGE (старі дані): сума з IN-TX re-read totalAmount за курсом на дату документа, як CHARGE.
+    const freshWo = mirror
+      ? null
+      : await db.workOrder.findFirst({
+          where: { id: wo.id, orgId },
+          select: { totalAmount: true, currencyId: true, documentDate: true },
+        });
+    const creditAmount = mirror
+      ? mirror.amount
       : moneyFromDecimal(freshWo?.totalAmount ?? wo.totalAmount);
     if (creditAmount > 0) {
       await this.settlements.createTransaction(
@@ -395,14 +409,8 @@ export class WorkOrderStockEffectsService {
           counterpartyId: wo.counterpartyId,
           type: 'CREDIT_NOTE',
           amount: creditAmount,
-          ...(charge
-            ? {
-                currencyId: charge.currencyId ?? undefined,
-                conversion: {
-                  rateUsed: Number(charge.rateUsed),
-                  amountBase: Number(charge.amountBase),
-                },
-              }
+          ...(mirror
+            ? { currencyId: mirror.currencyId ?? undefined, conversion: mirror.conversion }
             : {
                 currencyId: freshWo?.currencyId ?? undefined,
                 date: freshWo?.documentDate ?? undefined,

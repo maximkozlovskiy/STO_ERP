@@ -90,4 +90,20 @@ describe('returnPartsAndCredit — CREDIT_NOTE дзеркалить CHARGE на�
     });
     expect(dto).not.toHaveProperty('conversion');
   });
+
+  // guards: BR-WO-031
+  it('CHARGE без конвертації: старим шляхом, а не conversion з нулями (400 на скасуванні)', async () => {
+    const { svc, createTransaction } = makeSvc({
+      amount: 100,
+      currencyId: EUR,
+      rateUsed: null,
+      amountBase: null,
+    });
+
+    await svc.returnPartsAndCredit(ORG, WO, 'user-1');
+
+    const dto = createTransaction.mock.calls[0]![1] as Record<string, unknown>;
+    expect(dto).toMatchObject({ type: 'CREDIT_NOTE', amount: 100, fallbackToLatest: true });
+    expect(dto).not.toHaveProperty('conversion');
+  });
 });
