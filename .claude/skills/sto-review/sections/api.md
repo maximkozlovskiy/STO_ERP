@@ -215,6 +215,9 @@ grep -rn "toCamel\|snakeToCamel\|snake_to_camel" apps/api/src/ --include="*.ts" 
       `scripts/`; і вимога — у Swagger (`@ApiHeader({ required: true })` + `gen:api-types`). Сід без
       перевірки відповіді мовчить, а тест падає далі з чужою причиною. Grep:
       `grep -rnE "fetch\(\`\\\$\{API\}/<маршрут>" apps/web/e2e` (`journal/api.md`, 2026-10-22)
+- [ ] **Запис, що належить ОБ'ЄКТУ (зміна → каса), шукають за id об'єкта, без його змінюваного
+      батька (`branchId`)**, якщо PATCH батька дозволяє міняти: інакше після переводу запис зникає з
+      пошуку, а guard за id його бачить (`journal/api.md`, 2026-10-23)
 
 ---
 
