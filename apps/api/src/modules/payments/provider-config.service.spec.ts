@@ -200,6 +200,27 @@ describe('ProviderConfigService', () => {
       expect(r!.credentials).toEqual({ token: 'LEGACY-MONO' });
     });
 
+    // Bug #955: `apiUrl: ""` (PATCH конфіга напряму) — та сама «типова адреса», що й null; legacy-ключ
+    // іде на СВОЮ адресу, а не на типову адресу провайдера (наживо: signIn на api.checkbox.ua).
+    it('enabled-конфіг без кредів з порожньою адресою → legacy-креди на legacy-адресу', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        provider: 'checkbox',
+        apiUrl: '',
+        credentials: null,
+        shiftMode: 'MANUAL',
+      });
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        fiscalEnabled: true,
+        checkboxApiUrl: 'https://dev-api.checkbox.in.ua',
+        checkboxLicenseKey: 'LEGACY-LIC',
+        checkboxPinCode: 'LEGACY-PIN',
+        shiftMode: 'MANUAL',
+      });
+      const r = await svc.resolveActive(ORG, BRANCH, 'FISCAL');
+      expect(r!.credentials.licenseKey).toBe('LEGACY-LIC');
+      expect(r!.apiUrl).toBe('https://dev-api.checkbox.in.ua');
+    });
+
     it('Bug #692: enabled-конфіг з credentials=NULL, PAYMENT monobank → legacy token', async () => {
       prisma.branchProviderConfig.findFirst.mockResolvedValue({
         provider: 'monobank',

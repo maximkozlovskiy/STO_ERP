@@ -88,8 +88,11 @@ export class ProviderConfigService {
     if (!legacy) return null;
     if (!cfg) return legacy;
     if (legacy.provider !== cfg.provider) return null;
-    if (cfg.apiUrl && !sameApiUrl(cfg.apiUrl, legacy.apiUrl)) return null;
-    return { ...legacy, apiUrl: cfg.apiUrl ?? legacy.apiUrl, shiftMode: cfg.shiftMode };
+    // Порожня/пробільна адреса конфіга ≡ «не задано» (як у sameApiUrl): тоді legacy-адреса. Інакше
+    // `"" ?? legacy` дав би "", а провайдер — свою типову адресу замість legacy (Bug #955).
+    const cfgUrl = cfg.apiUrl?.trim() ? cfg.apiUrl : null;
+    if (cfgUrl && !sameApiUrl(cfgUrl, legacy.apiUrl)) return null;
+    return { ...legacy, apiUrl: cfgUrl ?? legacy.apiUrl, shiftMode: cfg.shiftMode };
   }
 
   /**
