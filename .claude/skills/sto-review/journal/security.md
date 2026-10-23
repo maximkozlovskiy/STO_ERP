@@ -180,3 +180,10 @@ failed-задачу, нова не ставилась, замовлення ви
 **Grep:** `grep -rn -A8 "jobId:" apps/api/src/modules --include="*.ts" | grep -B6 "removeOnFail: [0-9]"`
 **Фікс:** `removeOnFail: true` для перепостановлюваних задач або `getJob(id)?.remove()` перед `add`.
 **Severity:** CRITICAL
+
+### 2026-10-23 — Скидання ключа при зміні адреси обходиться через legacy-fallback — §2
+
+**Сигнал:** 801d8ab1 скинув креди в `upsertConfig` при зміні `apiUrl`, але `resolveActive` для enabled-конфіга БЕЗ кредів брав legacy-ключ з `BranchSettings` і віддавав його з `apiUrl: cfg.apiUrl ?? legacy.apiUrl`. `PATCH /fiscal-providers/branch/:id {provider:'checkbox', apiUrl:'https://чужий', enabled:true}` (DTO приймає `enabled`, guard кредів є лише в `activate()`) — і наступне відкриття зміни несло legacy-ключ ліцензії на чужий сервер.
+**Grep:** `grep -n "apiUrl: cfg.apiUrl ??" apps/api/src/modules/payments/provider-config.service.ts`
+**Фікс:** legacy-ключ лише для своєї адреси: `if (cfg.apiUrl && !sameApiUrl(cfg.apiUrl, legacy.apiUrl)) return null`.
+**Severity:** CRITICAL — обхід security-фіксу, write-only секрет виноситься без знання ключа.
