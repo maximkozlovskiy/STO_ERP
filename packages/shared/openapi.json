@@ -15142,6 +15142,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "cashRegisterId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -15161,7 +15169,7 @@
             "bearer": []
           }
         ],
-        "summary": "Поточна відкрита зміна філії (або null)",
+        "summary": "Поточна відкрита зміна каси (з cashRegisterId) або філії (без неї); null — немає",
         "tags": [
           "Cash Shifts"
         ]

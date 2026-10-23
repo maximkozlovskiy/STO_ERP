@@ -43,7 +43,11 @@ export class CheckboxProcessor extends DeadLetterWorkerHost {
       // пропускаємо зовнішній виклик — інакше retry створить ДРУГИЙ чек у Checkbox.
       const existingPayment = await this.prisma.payment.findFirst({
         where: { id: paymentId, orgId },
-        select: { fiscalReceiptId: true, reversedAt: true },
+        select: {
+          fiscalReceiptId: true,
+          reversedAt: true,
+          cashRegister: { select: { id: true, branchId: true, isFiscal: true, deletedAt: true } },
+        },
       });
       if (!existingPayment) return; // видалено / cross-tenant — дропаємо
       if (existingPayment.fiscalReceiptId) {
@@ -57,8 +61,21 @@ export class CheckboxProcessor extends DeadLetterWorkerHost {
         return;
       }
 
+      // Зміна — своя в кожної фіскальної каси (BR-CASH-027): готівкова оплата знає свою касу, тож
+      // чек іде в зміну САМЕ цієї каси, а філія — та, де каса стоїть (наряд може бути іншої філії,
+      // оплата без наряду філії в job не має). Оплата без каси (картка, QR) чи через нефіскальну
+      // касу своєї зміни не має — для неї лишається будь-яка OPEN-зміна філії наряду, як раніше.
+      const reg = existingPayment.cashRegister;
+      const fiscalRegister = reg && reg.isFiscal && !reg.deletedAt ? reg : null;
+      const effectiveBranchId = fiscalRegister?.branchId ?? branchId ?? undefined;
+      const cashRegisterId = fiscalRegister?.id;
+
       // Активний ПРРО-провайдер філії (config + legacy-fallback). null → ПРРО не налаштовано.
-      const active = await this.providerConfig.resolveActive(orgId, branchId, 'FISCAL');
+      const active = await this.providerConfig.resolveActive(
+        orgId,
+        effectiveBranchId ?? null,
+        'FISCAL',
+      );
       if (!active) {
         // ПРРО вимкнено на філії → SKIPPED (не лишаємо QUEUED навічно). Не throw — це конфіг-стан.
         this.logger.debug(`ПРРО не налаштовано для org=${orgId}, пропускаємо (SKIPPED)`);
@@ -68,22 +85,21 @@ export class CheckboxProcessor extends DeadLetterWorkerHost {
         return;
       }
 
-      // Резолвимо branchId для пошуку зміни (без нього шукаємо будь-яку OPEN зміну org — але
-      // зазвичай branchId є з payment.workOrder.branchId).
-      const effectiveBranchId = branchId ?? undefined;
-
       // Знайти відкриту зміну; якщо немає — за режимом.
       let shift = effectiveBranchId
-        ? await this.shifts.findOpenShift(orgId, effectiveBranchId)
+        ? await this.shifts.findOpenShift(orgId, effectiveBranchId, cashRegisterId)
         : null;
       if (!shift) {
         if (active.shiftMode === 'AUTO_OPEN' && effectiveBranchId) {
-          // Авто-режим: пробуємо відкрити зміну (sign-in+open). Помилка → throw → BullMQ retry.
-          const opened = await this.shifts.open(orgId, effectiveBranchId).catch((e: unknown) => {
-            throw new Error(
-              `Авто-відкриття зміни не вдалось: ${e instanceof Error ? e.message : e}`,
-            );
-          });
+          // Авто-режим: пробуємо відкрити зміну (sign-in+open) — на касі оплати, а без неї
+          // найстарішу касу філії. Помилка → throw → BullMQ retry.
+          const opened = await this.shifts
+            .open(orgId, effectiveBranchId, undefined, cashRegisterId)
+            .catch((e: unknown) => {
+              throw new Error(
+                `Авто-відкриття зміни не вдалось: ${e instanceof Error ? e.message : e}`,
+              );
+            });
           shift = { id: opened.id, checkboxShiftId: opened.checkboxShiftId };
         } else {
           // MANUAL без відкритої зміни: чек ЧЕКАЄ (лишаємо QUEUED). throw → retry дренить коли
@@ -99,7 +115,7 @@ export class CheckboxProcessor extends DeadLetterWorkerHost {
       // (2 рядки логу при 401-retry — навмисно, це 2 реальні мережеві виклики).
       const sellCtx = {
         orgId,
-        branchId,
+        branchId: effectiveBranchId ?? null,
         operation: 'sellReceipt',
         documentType: 'Payment',
         documentId: paymentId,

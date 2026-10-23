@@ -65,19 +65,43 @@ export class CashShiftService {
     return { provider, cfg };
   }
 
-  /** Поточна OPEN-зміна філії (+ лічильник QUEUED-чеків) або null. */
-  async getCurrent(orgId: string, branchId: string): Promise<CurrentShiftDto | null> {
+  /**
+   * Поточна OPEN-зміна (+ лічильник QUEUED-чеків) або null. З `cashRegisterId` — зміна САМЕ цієї
+   * каси (BR-CASH-027): у філії з двома фіскальними касами зміна однієї не робить відкритою іншу.
+   * Без каси — найновіша OPEN-зміна філії, як раніше (зворотна сумісність старих клієнтів).
+   */
+  async getCurrent(
+    orgId: string,
+    branchId: string,
+    cashRegisterId?: string,
+  ): Promise<CurrentShiftDto | null> {
+    if (cashRegisterId) {
+      const register = await this.prisma.cashRegister.findFirst({
+        where: { id: cashRegisterId, orgId, branchId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!register)
+        throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
+    }
     const shift = await this.prisma.cashShift.findFirst({
-      where: { orgId, branchId, status: 'OPEN', deletedAt: null },
+      where: {
+        orgId,
+        branchId,
+        status: 'OPEN',
+        deletedAt: null,
+        ...(cashRegisterId ? { cashRegisterId } : {}),
+      },
       orderBy: { openedAt: 'desc' },
       include: { cashRegister: { select: { name: true } } },
     });
     if (!shift) return null;
-    // Скоупимо лічильник до філії цієї зміни (Payment → workOrder.branchId), інакше у мульти-
-    // філійній орг картка однієї каси показувала б QUEUED-чеки ВСІХ філій. Платежі без наряду
-    // (workOrderId=null) не належать жодній філії → у лічильник конкретної зміни не входять.
+    // Режим каси: лічильник — чеки оплат саме цієї каси. Режим філії: скоупимо до філії зміни
+    // (Payment → workOrder.branchId), інакше у мультифілійній орг картка показувала б QUEUED-чеки
+    // ВСІХ філій; платежі без наряду (workOrderId=null) не належать жодній філії → не входять.
     const pendingReceipts = await this.prisma.payment.count({
-      where: { orgId, fiscalStatus: 'QUEUED', workOrder: { branchId } },
+      where: cashRegisterId
+        ? { orgId, fiscalStatus: 'QUEUED', cashRegisterId }
+        : { orgId, fiscalStatus: 'QUEUED', workOrder: { branchId } },
     });
     return this.toDto(shift, pendingReceipts);
   }
@@ -284,10 +308,19 @@ export class CashShiftService {
     return { provider, cfg, token: token.accessToken };
   }
 
-  /** OPEN-зміна для філії (для processor). null якщо немає. */
-  async findOpenShift(orgId: string, branchId: string) {
+  /**
+   * OPEN-зміна для processor-а. null якщо немає. З `cashRegisterId` — лише зміна цієї каси
+   * (BR-CASH-027); без неї — будь-яка OPEN-зміна філії (оплата без каси: картка, QR).
+   */
+  async findOpenShift(orgId: string, branchId: string, cashRegisterId?: string) {
     return this.prisma.cashShift.findFirst({
-      where: { orgId, branchId, status: 'OPEN', deletedAt: null },
+      where: {
+        orgId,
+        branchId,
+        status: 'OPEN',
+        deletedAt: null,
+        ...(cashRegisterId ? { cashRegisterId } : {}),
+      },
       orderBy: { openedAt: 'desc' },
       select: { id: true, checkboxShiftId: true },
     });

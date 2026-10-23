@@ -4665,7 +4665,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Поточна відкрита зміна філії (або null) */
+        /** Поточна відкрита зміна каси (з cashRegisterId) або філії (без неї); null — немає */
         get: operations["CashShiftController_getCurrent_v1"];
         put?: never;
         post?: never;
@@ -19030,6 +19030,7 @@ export interface operations {
         parameters: {
             query: {
                 branchId: string;
+                cashRegisterId?: string;
             };
             header?: never;
             path?: never;

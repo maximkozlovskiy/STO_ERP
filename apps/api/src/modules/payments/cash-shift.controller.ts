@@ -17,10 +17,17 @@ export class CashShiftController {
 
   @Get('current')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Поточна відкрита зміна філії (або null)' })
+  @ApiOperation({
+    summary: 'Поточна відкрита зміна каси (з cashRegisterId) або філії (без неї); null — немає',
+  })
   @ApiQuery({ name: 'branchId', required: true })
-  getCurrent(@OrgContext() orgId: string, @Query('branchId', ParseUUIDPipe) branchId: string) {
-    return this.service.getCurrent(orgId, branchId);
+  @ApiQuery({ name: 'cashRegisterId', required: false })
+  getCurrent(
+    @OrgContext() orgId: string,
+    @Query('branchId', ParseUUIDPipe) branchId: string,
+    @Query('cashRegisterId', new ParseUUIDPipe({ optional: true })) cashRegisterId?: string,
+  ) {
+    return this.service.getCurrent(orgId, branchId, cashRegisterId || undefined);
   }
 
   // open/close роблять зовнішній Checkbox-виклик — тротлимо.
