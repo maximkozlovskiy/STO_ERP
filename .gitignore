@@ -79,3 +79,6 @@ __pycache__/
 # його diff показує, які саме кейси додались або зникли.
 apps/api/.vitest-report.json
 apps/api/.vitest/
+
+# Playwright MCP: знімки сторінок (page-*.yml) і логи консолі після перевірок у браузері — не код.
+.playwright-mcp/
