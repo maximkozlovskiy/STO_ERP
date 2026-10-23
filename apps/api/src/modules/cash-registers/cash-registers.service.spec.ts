@@ -22,6 +22,7 @@ describe('CashRegistersService — assertFiscalProvider (привʼязка ка
     currency: { findFirst: ReturnType<typeof vi.fn> };
     garageBranch: { findFirst: ReturnType<typeof vi.fn> };
     branchProviderConfig: { findFirst: ReturnType<typeof vi.fn> };
+    cashShift: { findFirst: ReturnType<typeof vi.fn> };
   };
   const cache = { get: vi.fn(), set: vi.fn(), del: vi.fn() };
   const cash = { getBalance: vi.fn().mockResolvedValue(0) };
@@ -57,6 +58,7 @@ describe('CashRegistersService — assertFiscalProvider (привʼязка ка
       currency: { findFirst: vi.fn().mockResolvedValue({ id: CURRENCY }) },
       garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: BRANCH }) },
       branchProviderConfig: { findFirst: vi.fn() },
+      cashShift: { findFirst: vi.fn().mockResolvedValue(null) },
     };
     cache.get.mockResolvedValue(null);
     cache.set.mockResolvedValue(undefined);

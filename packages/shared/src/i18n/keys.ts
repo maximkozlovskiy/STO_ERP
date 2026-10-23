@@ -424,6 +424,7 @@ export const VALIDATION_KEYS = [
   'err.cashRegister.notFound',
   'err.cashRegister.prroOnlyFiscal',
   'err.cashRegister.prroNotConfigured',
+  'err.cashRegister.shiftOpen',
   // Exception-повідомлення: warranties-модуль
   'err.warranty.notFound',
   'err.warranty.workOrderNotFound',

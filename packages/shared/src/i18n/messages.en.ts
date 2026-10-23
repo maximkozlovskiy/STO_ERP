@@ -260,6 +260,8 @@ export const en: Record<string, string> = {
     'A PRRO provider can be linked only to a fiscal cash register (enable "Fiscal cash register")',
   'err.cashRegister.prroNotConfigured':
     'The PRRO provider is not configured for this branch — first enter its credentials in Settings',
+  'err.cashRegister.shiftOpen':
+    'The cash register has an open shift — close it first (Z-report) on the "Operations" tab',
 
   // ── Exception messages: warranties module ──
   'err.warranty.notFound': 'Warranty not found',

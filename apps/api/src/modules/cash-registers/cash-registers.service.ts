@@ -159,6 +159,10 @@ export class CashRegistersService {
     // провайдера) валив assertFiscalProvider («лише до фіскальної каси») — коректний перехід
     // блокувався, а БД лишалась у стані «нефіскальна+провайдер». Тепер реконсилюємо: домішуємо
     // fiscalProvider/providerCashRegisterId = null у write, guard бачить провайдера вже очищеним.
+    // Зняти «фіскальна» при відкритій зміні не можна (BR-CASH-028): віджет зміни є лише у фіскальної
+    // каси й питає зміну саме її (BR-CASH-027) — зміна лишилась би відкритою без Z-звіту.
+    if (existing.isFiscal && !effectiveIsFiscal) await this.assertNoOpenShift(orgId, id);
+
     const data: Record<string, unknown> = { ...dto };
     if (!effectiveIsFiscal && (existing.fiscalProvider || dto.fiscalProvider)) {
       data.fiscalProvider = null;
@@ -204,6 +208,9 @@ export class CashRegistersService {
     });
     if (!existing)
       throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
+    // Видалена каса зникає з вкладки «Операції», а `GET /cash-shifts/current` з нею дає 404 —
+    // відкриту зміну не було б чим закрити (BR-CASH-028).
+    await this.assertNoOpenShift(orgId, id);
     const result = await this.prisma.cashRegister.updateMany({
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
@@ -212,6 +219,19 @@ export class CashRegistersService {
       throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
     await this.cache.del(cacheKey(orgId));
     await this.cache.del(cacheKey(orgId, existing.branchId));
+  }
+
+  /**
+   * Каса з відкритою зміною (ПРРО) — 400 «спершу закрийте зміну» (BR-CASH-028). Інакше зміна лишилась
+   * би OPEN там, де її не видно: віджет показує зміну лише вибраної фіскальної каси (BR-CASH-027).
+   */
+  private async assertNoOpenShift(orgId: string, cashRegisterId: string): Promise<void> {
+    const open = await this.prisma.cashShift.findFirst({
+      where: { orgId, cashRegisterId, status: 'OPEN', deletedAt: null },
+      select: { id: true },
+    });
+    if (open)
+      throw new BadRequestException(translateError('err.cashRegister.shiftOpen', getLocale()));
   }
 
   /**
