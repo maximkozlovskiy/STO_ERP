@@ -201,12 +201,13 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
       where: { orgId: ORG, workOrderId: WO_ID, deletedAt: null, status: 'DRAFT' },
       data: { status: 'CANCELLED' },
     });
-    // Порядок блокувань: акт → наряд, як у CompletionActsService.sign(). Навпаки — deadlock
-    // при одночасних «підписати акт» і «скасувати наряд».
+    // Порядок блокувань: наряд → акт, як у CompletionActsService.sign() і createFromWorkOrder()
+    // (обидва спершу блокують наряд). Навпаки — deadlock при одночасних «підписати акт» і
+    // «скасувати наряд», а чернетка, створена поки скасування чекало, лишалась би живою.
     const woCas = (prisma as unknown as { workOrder: { updateMany: ReturnType<typeof vi.fn> } })
       .workOrder.updateMany;
-    expect(actsUpdateMany.mock.invocationCallOrder[0]).toBeLessThan(
-      woCas.mock.invocationCallOrder[0],
+    expect(woCas.mock.invocationCallOrder[0]).toBeLessThan(
+      actsUpdateMany.mock.invocationCallOrder[0],
     );
   });
 

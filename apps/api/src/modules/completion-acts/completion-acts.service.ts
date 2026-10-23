@@ -15,6 +15,7 @@ import { InvoicesService } from '../invoices/invoices.service';
 import { PdfService } from '../pdf/pdf.service';
 import { OrgPrintInfoService } from '../pdf/org-print-info.service';
 import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
+import { lockWorkOrdersForUpdate } from '../work-orders/work-order-stock-requirements';
 import {
   settleIfFullyPaidInTx,
   transitionWorkOrderStatusInTx,
@@ -169,20 +170,59 @@ export class CompletionActsService {
     if (existing)
       throw new BadRequestException(translateError('err.completionAct.activeExists', getLocale()));
 
+    // docNumbers.next() відкриває власну транзакцію (SELECT FOR UPDATE лічильника) — до нашої.
     const number = await this.docNumbers.next(orgId, 'COMPLETION_ACT');
 
-    const act = await this.prisma.completionAct.create({
-      data: { orgId, workOrderId, number, status: CompletionActStatus.DRAFT },
-      include: {
-        workOrder: {
-          select: {
-            number: true,
-            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-            vehicle: { select: { make: true, model: true, licensePlate: true } },
+    // BR-WO-006: акт створюється під блокуванням рядка наряду, а статус наряду й наявність
+    // активного акта перевіряються ще раз уже під ним. Читання вище — без блокування: наряд,
+    // скасований між ним і вставкою, лишав чернетку акта на скасованому наряді (скасування гасить
+    // лише ті чернетки, що вже існують). Порядок блокувань «наряд → акт» той самий, що в
+    // скасуванні наряду і в sign(); заодно два одночасні «Сформувати акт» не дають двох чернеток.
+    const act = await this.prisma.$transaction(
+      async tx => {
+        await lockWorkOrdersForUpdate(tx, orgId, [workOrderId]);
+        const locked = await tx.workOrder.findFirst({
+          where: { id: workOrderId, orgId, deletedAt: null },
+          select: { status: true },
+        });
+        if (!locked)
+          throw new NotFoundException(
+            translateError('err.completionAct.workOrderNotFound', getLocale()),
+          );
+        if (!INVOICEABLE_STATUSES.includes(locked.status)) {
+          throw new BadRequestException(
+            translateError('err.completionAct.workOrderNotCompleted', getLocale()),
+          );
+        }
+        const active = await tx.completionAct.findFirst({
+          where: {
+            orgId,
+            workOrderId,
+            deletedAt: null,
+            status: { not: CompletionActStatus.CANCELLED },
           },
-        },
+          select: { id: true },
+        });
+        if (active)
+          throw new BadRequestException(
+            translateError('err.completionAct.activeExists', getLocale()),
+          );
+
+        return tx.completionAct.create({
+          data: { orgId, workOrderId, number, status: CompletionActStatus.DRAFT },
+          include: {
+            workOrder: {
+              select: {
+                number: true,
+                counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+                vehicle: { select: { make: true, model: true, licensePlate: true } },
+              },
+            },
+          },
+        });
       },
-    });
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
 
     const lines = this.buildLines(wo);
     return this.toDto(act, lines);
@@ -222,6 +262,13 @@ export class CompletionActsService {
             translateError('err.completionAct.workOrderCancelled', getLocale()),
           );
         }
+
+        // BR-WO-006: блокування наряду ДО запису в акт — порядок «наряд → акт», як у скасуванні
+        // наряду (CAS наряду, потім його чернетки актів) і у створенні акта. Без нього sign()
+        // (акт → наряд) і скасування (наряд → акт) зустрічно чекали б одне одного (deadlock).
+        // Наряд, скасований між читанням вище і цим блокуванням, уже погасив чернетку — CAS нижче
+        // її не знайде і відкотить підписання.
+        if (act.workOrder) await lockWorkOrdersForUpdate(tx, orgId, [act.workOrder.id]);
 
         // Ідемпотентність sign (анти-race/анти-retry): findFirst вище — plain SELECT під
         // READ COMMITTED (без блокування), тож два concurrent sign() обидва бачать DRAFT →

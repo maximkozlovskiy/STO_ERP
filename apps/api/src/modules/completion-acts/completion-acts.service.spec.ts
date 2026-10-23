@@ -20,9 +20,11 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
   let prisma: {
     completionAct: {
       findFirst: ReturnType<typeof vi.fn>;
+      create: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
       updateMany: ReturnType<typeof vi.fn>;
     };
+    $queryRaw: ReturnType<typeof vi.fn>;
     workOrder: {
       findFirst: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
@@ -63,9 +65,12 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
     prisma = {
       completionAct: {
         findFirst: vi.fn(),
+        create: vi.fn(),
         update: vi.fn().mockResolvedValue({}),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
+      // lockWorkOrdersForUpdate — `SELECT … FOR UPDATE` наряду (BR-WO-006).
+      $queryRaw: vi.fn().mockResolvedValue([]),
       workOrder: {
         // settleIfFullyPaidInTx (BR-WO-016) читає наряд після переходу: за замовчуванням не сплачений.
         findFirst: vi
@@ -411,6 +416,110 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
 
     expect(res.status).toBe(CompletionActStatus.SIGNED);
     expect(prisma.workOrder.updateMany).not.toHaveBeenCalled();
+  });
+
+  // ── BR-WO-006: акт і скасування наряду — під блокуванням наряду, порядок «наряд → акт» ──
+  // Гонка «створити акт ‖ скасувати наряд» лишала чернетку акта на скасованому наряді: читання
+  // статусу наряду в createFromWorkOrder() — без блокування, а скасування гасить лише ті чернетки,
+  // що вже існують. Мутації: (1) прибрати повторне читання статусу під блокуванням → кейс
+  // «скасовано між читанням і блокуванням» червоніє; (2) прибрати lockWorkOrdersForUpdate у
+  // sign() → кейс порядку блокувань червоніє.
+
+  /** Блокування наряду: tagged-template `$queryRaw` з `FOR UPDATE` і id наряду серед параметрів. */
+  const lockCalls = () =>
+    prisma.$queryRaw.mock.calls.filter(
+      ([sql, , ids]) =>
+        Array.isArray(sql) &&
+        (sql as string[]).join('?').includes('FOR UPDATE') &&
+        Array.isArray(ids) &&
+        (ids as string[]).includes(WO_ID),
+    );
+
+  const woForAct = (status: string) => ({
+    id: WO_ID,
+    status,
+    counterparty: null,
+    vehicle: null,
+    lines: [],
+    parts: [],
+  });
+
+  // guards: BR-WO-006
+  it('createFromWorkOrder(): наряд скасовано між читанням і блокуванням → 400, акт не створено', async () => {
+    prisma.workOrder.findFirst
+      .mockResolvedValueOnce(woForAct('COMPLETED')) // читання без блокування
+      .mockResolvedValueOnce({ status: 'CANCELLED' }); // повторне — під блокуванням
+    prisma.completionAct.findFirst.mockResolvedValueOnce(null);
+
+    await expect(service.createFromWorkOrder(ORG, WO_ID)).rejects.toThrow(
+      'Акт можна сформувати лише для завершеного наряду',
+    );
+
+    expect(lockCalls()).toHaveLength(1);
+    // Повторне читання статусу — ПІСЛЯ блокування, а не до нього.
+    expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.workOrder.findFirst.mock.invocationCallOrder[1],
+    );
+    expect(prisma.completionAct.create).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-WO-006
+  it('createFromWorkOrder(): активний акт з’явився, поки чекали блокування → 400 activeExists, другої чернетки немає', async () => {
+    prisma.workOrder.findFirst
+      .mockResolvedValueOnce(woForAct('COMPLETED'))
+      .mockResolvedValueOnce({ status: 'COMPLETED' });
+    prisma.completionAct.findFirst
+      .mockResolvedValueOnce(null) // до блокування — актів немає
+      .mockResolvedValueOnce({ id: 'act-concurrent' }); // під блокуванням — уже є
+
+    await expect(service.createFromWorkOrder(ORG, WO_ID)).rejects.toThrow(
+      'Для цього наряду вже існує активний акт',
+    );
+    expect(prisma.completionAct.create).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-WO-006
+  it('createFromWorkOrder(): чернетка створюється в транзакції під блокуванням наряду', async () => {
+    prisma.workOrder.findFirst
+      .mockResolvedValueOnce(woForAct('COMPLETED'))
+      .mockResolvedValueOnce({ status: 'COMPLETED' });
+    prisma.completionAct.findFirst.mockResolvedValue(null);
+    prisma.completionAct.create.mockResolvedValueOnce({
+      ...signedActRow,
+      status: CompletionActStatus.DRAFT,
+      signedAt: null,
+      signedBy: null,
+    });
+
+    const res = await service.createFromWorkOrder(ORG, WO_ID);
+
+    expect(res.status).toBe(CompletionActStatus.DRAFT);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(lockCalls()).toHaveLength(1);
+    expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.completionAct.create.mock.invocationCallOrder[0],
+    );
+    expect(prisma.completionAct.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { orgId: ORG, workOrderId: WO_ID, number: undefined, status: 'DRAFT' },
+      }),
+    );
+  });
+
+  // guards: BR-WO-006
+  it('sign(): блокує наряд ДО запису в акт (порядок «наряд → акт», як у скасуванні наряду)', async () => {
+    prisma.completionAct.findFirst.mockResolvedValueOnce({
+      status: CompletionActStatus.DRAFT,
+      workOrder: { id: WO_ID, status: 'COMPLETED' },
+    });
+    prisma.completionAct.findFirst.mockResolvedValueOnce(signedActRow);
+
+    await service.sign(ORG, ACT_ID, { signedBy: 'Іван' } as never, 'user-1');
+
+    expect(lockCalls()).toHaveLength(1);
+    expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.completionAct.updateMany.mock.invocationCallOrder[0],
+    );
   });
 
   // ── cancel(): підписаний акт не скасовується, зокрема під гонкою з sign() (Bug #793) ──

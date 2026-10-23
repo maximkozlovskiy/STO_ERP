@@ -1787,19 +1787,6 @@ export class WorkOrdersService {
     // 50+ parts can exceed the 5s Prisma default.
     const updated = await this.prisma.$transaction(
       async tx => {
-        // BR-WO-006 (Bug #795): чернетки актів скасованого наряду скасовуються разом із ним, у тій
-        // самій транзакції. Підписані акти не чіпаємо — це вже виданий клієнтові документ.
-        // Стоїть ДО CAS наряду свідомо — через порядок блокувань: CompletionActsService.sign()
-        // блокує рядок акту, потім рядок наряду (COMPLETED→INVOICED). Якби тут було навпаки
-        // (наряд → акт), одночасні «підписати» і «скасувати» давали б deadlock і 500 замість
-        // 400 «статус змінився». Якщо CAS нижче не пройде — транзакція відкотить і цей запис.
-        if (newStatus === 'CANCELLED') {
-          await tx.completionAct.updateMany({
-            where: { orgId, workOrderId: id, deletedAt: null, status: 'DRAFT' },
-            data: { status: 'CANCELLED' },
-          });
-        }
-
         // CAS-перехід наряду — ПЕРШИМ серед записів у сам наряд, склад і борг (не stale-read!):
         // flip wo.status→newStatus атомарно у where. Без
         // цього два concurrent transition(COMPLETED) обидва проходять re-read → ПОДВІЙНИЙ CHARGE
@@ -1826,6 +1813,19 @@ export class WorkOrdersService {
           throw newStatus === 'CANCELLED'
             ? await this.paidOrChangedError(orgId, id, 'err.workOrder.paidCannotCancel', tx)
             : new BadRequestException(err('err.workOrder.statusChanged'));
+        }
+
+        // BR-WO-006 (Bug #795): чернетки актів скасованого наряду скасовуються разом із ним, у тій
+        // самій транзакції. Підписані акти не чіпаємо — це вже виданий клієнтові документ.
+        // Стоїть ПІСЛЯ CAS наряду свідомо — порядок блокувань «наряд → акт», той самий, що в
+        // CompletionActsService.sign() і createFromWorkOrder() (обидва спершу блокують наряд).
+        // Так скасування бачить і акт, створений одночасно з ним: створення тримає блокування
+        // наряду до коміту, тож CAS вище дочекається його, а цей запис — побачить чернетку.
+        if (newStatus === 'CANCELLED') {
+          await tx.completionAct.updateMany({
+            where: { orgId, workOrderId: id, deletedAt: null, status: 'DRAFT' },
+            data: { status: 'CANCELLED' },
+          });
         }
 
         // BR-WO-022: скасування з будь-якого статусу (зокрема з «Виконано») позначає видаленими
