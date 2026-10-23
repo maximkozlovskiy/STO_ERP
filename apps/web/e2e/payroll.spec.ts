@@ -456,7 +456,8 @@ test.describe('Зарплата — період із вікна розраху�
       .click();
     const row = page
       .locator('[data-testid^="payroll-period-"]')
-      .filter({ hasText: `${CREATE_FROM} — ${CREATE_TO}` });
+      // Список показує межі як ДД.ММ.РРРР.
+      .filter({ hasText: '01.03.2099 — 31.03.2099' });
     await expect(row).toHaveCount(1, { timeout: 20_000 });
     await expect(row.getByText('Чернетка')).toBeVisible();
   });

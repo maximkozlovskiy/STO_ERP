@@ -30,7 +30,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { useListPage } from '@/hooks/useListPage';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from '@/lib/toast';
-import { fmtMoney, fmtQty } from '@/lib/format';
+import { fmtDate, fmtMoney, fmtQty } from '@/lib/format';
 import {
   usePayrollPeriods,
   usePayrollPeriod,
@@ -381,7 +381,7 @@ export default function PayrollPage() {
                       if (col.key === 'period')
                         return (
                           <TableCell key="period" className="font-medium whitespace-nowrap">
-                            {p.periodStart} — {p.periodEnd}
+                            {fmtDate(p.periodStart)} — {fmtDate(p.periodEnd)}
                           </TableCell>
                         );
                       if (col.key === 'note')
@@ -419,7 +419,8 @@ export default function PayrollPage() {
                       if (col.key === 'computedAt')
                         return (
                           <TableCell key="computedAt" className="text-muted-foreground">
-                            {p.computedAt ? p.computedAt.slice(0, 10) : '—'}
+                            {/* Мітка часу: дата за Києвом (fmtDate), а не UTC-зріз ISO-рядка. */}
+                            {fmtDate(p.computedAt)}
                           </TableCell>
                         );
                       return null;
@@ -676,8 +677,8 @@ export default function PayrollPage() {
           <div className="space-y-4">
             <p className="text-[13px] text-muted-foreground">
               {t('payModal.periodInfo', {
-                from: payPeriod.periodStart,
-                to: payPeriod.periodEnd,
+                from: fmtDate(payPeriod.periodStart),
+                to: fmtDate(payPeriod.periodEnd),
               })}
               <b>{fmtMoney(payPeriod.totalAccrued)} ₴</b>
               {t('payModal.cannotUndo')}

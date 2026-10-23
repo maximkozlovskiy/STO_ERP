@@ -7,7 +7,8 @@
 //   - Зміна статусу скидає page на 1 (інакше «сторінка 3» порожня після вужчого фільтра).
 //   - Пагінація рендериться лише коли totalPages > 1 (компонент Pagination сам це тримає).
 //   - ColumnsDropdown присутній; приховування колонки прибирає її th і не ламає colSpan.
-//   - Порожній список під фільтром → empty.noMatchDescription, без фільтра → periodsDescription.
+//   - Порожній список під фільтром → empty.noMatchDescription, без фільтра → periodsHint.
+//   - Дати періоду й «Розраховано» — ДД.ММ.РРРР; «Розраховано» — за Києвом, а не UTC-зріз ISO.
 
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
@@ -194,6 +195,18 @@ describe('Payroll — List Page pattern (пагінація + фільтри + �
     const amount = within(row).getByText(/1\s?250/);
     expect(amount.className).toContain('tabular-nums');
     expect(amount.className).toContain('text-right');
+  });
+
+  it('дати періоду й «Розраховано» — ДД.ММ.РРРР, день розрахунку за Києвом (не UTC-зріз)', () => {
+    // 22:30 UTC 30.09 — у Києві вже 01.10 (UTC+3): зріз `slice(0, 10)` показав би 2026-09-30.
+    listItems.push(makePeriod({ id: 'p-d', computedAt: '2026-09-30T22:30:00.000Z' }));
+    listTotal = 1;
+    render(<PayrollPage />);
+
+    const row = screen.getByTestId('payroll-period-p-d');
+    expect(within(row).getByText('01.09.2026 — 30.09.2026')).toBeInTheDocument();
+    expect(within(row).getByText('01.10.2026')).toBeInTheDocument();
+    expect(within(row).queryByText(/2026-09/)).not.toBeInTheDocument();
   });
 });
 
