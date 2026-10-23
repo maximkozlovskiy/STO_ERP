@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { apiCall, apiRequest, getToken } from './api-helpers';
+import { ensureVehicleModel } from './vehicle-directory';
 
 /**
  * Стек шарів Escape (техборг §15.12): кожен Escape закриває рівно ОДИН верхній шар — вікно вибору,
@@ -146,8 +147,11 @@ test.describe('Escape у вкладених вікнах закриває лиш
     state.garageId = garage.body.id;
     const vehicle = await api<{ id: string }>(page, 'POST', '/vehicles', {
       customerGarageId: garage.body.id,
-      make: 'Toyota',
-      model: 'Corolla',
+      ...(await ensureVehicleModel(
+        (method, url, data) => api(page, method, url, data),
+        'Toyota',
+        'Corolla',
+      )),
       licensePlate: PLATE,
     });
     expect(vehicle.status).toBe(201);

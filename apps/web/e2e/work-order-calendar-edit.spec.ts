@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { apiCall, apiRequest, getToken } from './api-helpers';
+import { ensureVehicleModel } from './vehicle-directory';
 
 // Висока сторінка: у dev-базі підйомників багато, обидва рядки тесту мають бути на екрані разом.
 test.use({ storageState: 'e2e/.auth/admin.json', viewport: { width: 1280, height: 1400 } });
@@ -226,8 +227,11 @@ test.describe('Запис наряду в календарі — BR-WO-024; ск
     state.garageId = garage.body.id;
     const vehicle = await api<{ id: string }>(page, 'POST', '/vehicles', {
       customerGarageId: garage.body.id,
-      make: 'Toyota',
-      model: 'Corolla',
+      ...(await ensureVehicleModel(
+        (method, url, data) => api(page, method, url, data),
+        'Toyota',
+        'Corolla',
+      )),
       licensePlate: PLATE,
     });
     expect(vehicle.status).toBe(201);

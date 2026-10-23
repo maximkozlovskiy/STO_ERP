@@ -2,6 +2,7 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 import { apiCall, getToken } from './api-helpers';
 import { createCounterparty } from './cash-desk.helpers';
 import { createEmployeeViaUi } from './employee-ui';
+import { ensureVehicleModel } from './vehicle-directory';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -162,8 +163,11 @@ test.describe('Календар — рішення власника 2026-10-16',
     state.plate = `E2E${uid.slice(-5)}`;
     const vehicle = await apiCall<{ id: string }>(page, token, 'POST', '/vehicles', {
       customerGarageId: garage.body.id,
-      make: 'Toyota',
-      model: 'Corolla',
+      ...(await ensureVehicleModel(
+        (method, url, data) => apiCall(page, token, method, url, data),
+        'Toyota',
+        'Corolla',
+      )),
       licensePlate: state.plate,
     });
     expect(vehicle.status).toBe(201);

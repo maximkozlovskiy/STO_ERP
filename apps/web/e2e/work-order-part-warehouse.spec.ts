@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { apiCall, apiRequest, getToken } from './api-helpers';
+import { ensureVehicleModel } from './vehicle-directory';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -174,8 +175,11 @@ test.describe('Склад рядка товару наряду — вільна 
     state.garageId = garage.body.id;
     const vehicle = await api<{ id: string }>(page, 'POST', '/vehicles', {
       customerGarageId: garage.body.id,
-      make: 'Toyota',
-      model: 'Corolla',
+      ...(await ensureVehicleModel(
+        (method, url, data) => api(page, method, url, data),
+        'Toyota',
+        'Corolla',
+      )),
       licensePlate: PLATE,
     });
     expect(vehicle.status).toBe(201);

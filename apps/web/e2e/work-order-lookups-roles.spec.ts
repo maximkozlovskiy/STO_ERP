@@ -1,6 +1,7 @@
 import { test, expect, type Browser, type Locator, type Page } from '@playwright/test';
 import { API } from './api-url';
 import { createEmployeeViaUi } from './employee-ui';
+import { ensureVehicleModel } from './vehicle-directory';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -235,8 +236,11 @@ test.describe('Картка наряду — довідники за ролям�
     state.plate = `TST${uid.slice(-5)}`;
     const vehicle = await api<{ id: string }>(page, 'POST', '/vehicles', {
       customerGarageId: garage.body.id,
-      make: 'Toyota',
-      model: 'Corolla',
+      ...(await ensureVehicleModel(
+        (method, url, data) => api(page, method, url, data),
+        'Toyota',
+        'Corolla',
+      )),
       licensePlate: state.plate,
     });
     expect(vehicle.status).toBe(201);

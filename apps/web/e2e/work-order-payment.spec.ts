@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { apiCall } from './api-helpers';
+import { ensureVehicleModel } from './vehicle-directory';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -184,8 +185,11 @@ test.describe('Оплата наряду з документа наряду', ()
     expect(garage.status, `гараж: ${JSON.stringify(garage.body)}`).toBe(201);
     const vehicle = await api<{ id: string }>(p, token, 'POST', '/vehicles', {
       customerGarageId: garage.body.id,
-      make: 'Toyota',
-      model: 'Corolla',
+      ...(await ensureVehicleModel(
+        (method, url, data) => api(p, token, method, url, data),
+        'Toyota',
+        'Corolla',
+      )),
       licensePlate: `E2E${String(stamp).slice(-5)}`,
     });
     expect(vehicle.status, `авто: ${JSON.stringify(vehicle.body)}`).toBe(201);

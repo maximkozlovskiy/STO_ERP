@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { API } from './api-url';
+import { apiCall, getToken } from './api-helpers';
+import { ensureVehicleModel, type ApiCaller } from './vehicle-directory';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -10,7 +12,8 @@ test.describe.configure({ mode: 'serial' });
  *
  * Покриття:
  * - Карточка існуючого авто (seed: Toyota Camry AA1234BB) — заголовок, метадані, кнопка "Назад".
- * - Форма "Новий автомобіль" — наявність полів, валідація обов'язкових (Make/Model).
+ * - Форма "Новий автомобіль" — наявність полів, валідація обов'язкових (Make/Model); марка й
+ *   модель — вибір із довідника (BR-VEH-008).
  * - Вкладка вузлів — рендериться без помилок (порожня або з даними).
  * - Регламент ТО — секція присутня.
  */
@@ -162,9 +165,10 @@ test.describe('Автомобілі', () => {
     await expect(page.locator('h1:has-text("Новий автомобіль")')).toBeVisible({ timeout: 20_000 });
     // Форма мігрувала на спільний RHF-native VehicleForm (commit 2bd77ba9): плоский layout полів
     // без h2-секцій. Перевіряємо, що ключові поля форми присутні (марка/модель/VIN/технічні).
-    await expect(page.getByText('Марка', { exact: false }).first()).toBeVisible();
-    await expect(page.getByText('Модель', { exact: false }).first()).toBeVisible();
-    await expect(page.getByText('VIN', { exact: false }).first()).toBeVisible();
+    // За label, не за текстом: у випадних списках марок і моделей є назви з «VIN» (дані довідника).
+    await expect(page.getByLabel('Марка')).toBeVisible();
+    await expect(page.getByLabel('Модель')).toBeVisible();
+    await expect(page.getByLabel('VIN')).toBeVisible();
     await expect(page.getByText('Пальне', { exact: false }).first()).toBeVisible();
   });
 
@@ -192,52 +196,43 @@ test.describe('Автомобілі', () => {
     }
   });
 
-  test('/vehicles/new — створити авто через UI → редірект → видалити через API', async ({
+  // guards: BR-VEH-008
+  test('/vehicles/new — марка й модель з довідника: створити авто через UI → картка з назвами', async ({
     page,
   }) => {
     expect(garageId).toBeTruthy();
     await page.goto(`/vehicles/new?garageId=${garageId}`);
     await expect(page.locator('h1:has-text("Новий автомобіль")')).toBeVisible({ timeout: 20_000 });
+    const token = await getToken(page);
+    const call: ApiCaller = (method, url, data) => apiCall(page, token, method, url, data);
 
-    const uniqueSuffix = Date.now().toString().slice(-6);
-    // Поля адресуємо ЗА LABEL, а не за позицією: `input` + `.nth(0/1)` прив'язувався до
-    // порядку рендеру, тож будь-яке нове поле (або поле, що домалювалось асинхронно)
-    // зсувало індекси й давало flaky. `Input` звʼязує label з контролом через htmlFor/id,
-    // тож getByLabel стабільний.
-    // БЕЗ exact: обовʼязкові поля рендеряться як «Марка*» (Input додає зірочку в label),
-    // тож точний збіг ніколи не спрацював би.
-    await page.getByLabel('Марка').fill('E2E-Make');
-    await page.getByLabel('Модель').fill(`E2E-Model-${uniqueSuffix}`);
+    // Передумова — модель у довіднику (форма авто лише обирає; довідник веде вкладка
+    // «Контрагенти → Марки авто», її стереже vehicle-makes.spec.ts).
+    const modelName = `000 E2E ${Date.now().toString().slice(-6)}`;
+    const { modelId } = await ensureVehicleModel(call, 'Toyota', modelName);
 
-    // Натиснути submit
+    const make = page.getByLabel('Марка');
+    const model = page.getByLabel('Модель');
+    await expect(model).toBeDisabled();
+    await make.selectOption({ label: 'Toyota' });
+    await expect(model).toBeEnabled();
+    await model.selectOption({ label: modelName });
+
     const submit = page
       .locator('button:has-text("Створити"), button:has-text("Зберегти"), button[type="submit"]')
       .first();
-    await expect(submit).toBeEnabled({ timeout: 5_000 });
     await submit.click();
 
-    // Після створення — редірект на counterparty або vehicles
-    await page.waitForURL(/\/counterparties|\/vehicles/, { timeout: 15_000 }).catch(() => {});
+    await page.waitForURL(/\/vehicles\/[0-9a-f-]{36}\/?$/, { timeout: 15_000 });
+    const vehicleIdCreated = /\/vehicles\/([0-9a-f-]{36})/.exec(page.url())?.[1] ?? '';
+    await expect(page.locator('h1').first()).toContainText(`Toyota ${modelName}`, {
+      timeout: 20_000,
+    });
 
-    // Cleanup через API: знайти створене авто за model name + видалити
-    const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
-    await page.evaluate(
-      async ({ token, suffix, api }) => {
-        const r = await fetch(`${api}/vehicles?limit=200`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const list = await r.json();
-        const target = (Array.isArray(list) ? list : []).find((v: { model: string }) =>
-          v.model?.includes(suffix),
-        );
-        if (target) {
-          await fetch(`${api}/vehicles/${target.id}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` },
-          }).catch(() => {});
-        }
-      },
-      { token, suffix: uniqueSuffix, api: API },
-    );
+    // Прибирання: авто, потім модель (модель з живим авто сервер не видаляє — BR-VEH-009).
+    const del = await call('DELETE', `/vehicles/${vehicleIdCreated}`);
+    expect.soft(del.status, 'видалення авто').toBe(204);
+    const delModel = await call('DELETE', `/vehicle-models/${modelId}`);
+    expect.soft(delModel.status, 'видалення моделі').toBe(204);
   });
 });

@@ -39,18 +39,49 @@ delete, `syncVersion`.
 | DELETE | `/:id/nodes/:nodeId` | OWNER, ADMIN                         | soft delete вузла                  |
 | GET    | `/:id/mileage`       | OWNER, ADMIN, RECEPTIONIST, MECHANIC | історія пробігу (BR-VEH-001…005)   |
 
+`POST /` і `PATCH /:id` приймають `makeId` / `modelId` (BR-VEH-008), а не назви; відповідь несе і
+ідентифікатори, і знімок назв `make` / `model`. `POST /sync/push` для `vehicles` — так само.
+
+### Довідник марок і моделей (`/api/vehicle-makes`, `/api/vehicle-models`, BR-VEH-006…013)
+
+Модуль `apps/api/src/modules/vehicle-makes/`. Записи — під транзакційним блокуванням організації
+(`pg_advisory_xact_lock`), записи авто беруть його спільно (`vehicle-directory.ts`): перевірка
+«марку мають живі авто» й перенесення авто при злитті не розминаються з одночасним збереженням авто.
+
+| Метод  | Шлях                          | Ролі                                             | Що робить                                            |
+| ------ | ----------------------------- | ------------------------------------------------ | ---------------------------------------------------- |
+| GET    | `/vehicle-makes`              | OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT, MECHANIC | марки (`?showDeleted`), `vehicleCount`, `modelCount` |
+| POST   | `/vehicle-makes`              | OWNER, ADMIN, RECEPTIONIST                       | додати марку `{name}`                                |
+| PATCH  | `/vehicle-makes/:id`          | OWNER, ADMIN, RECEPTIONIST                       | перейменувати (знімок назви в авто)                  |
+| DELETE | `/vehicle-makes/:id`          | OWNER, ADMIN                                     | видалити (400 з живими авто; моделі — разом)         |
+| POST   | `/vehicle-makes/:id/restore`  | OWNER, ADMIN                                     | відновити разом із моделями, видаленими з нею        |
+| POST   | `/vehicle-makes/:id/merge`    | OWNER, ADMIN                                     | злити в `{targetId}`                                 |
+| GET    | `/vehicle-makes/:id/models`   | OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT, MECHANIC | моделі марки (`?showDeleted`), `vehicleCount`        |
+| POST   | `/vehicle-makes/:id/models`   | OWNER, ADMIN, RECEPTIONIST                       | додати модель `{name}`                               |
+| PATCH  | `/vehicle-models/:id`         | OWNER, ADMIN, RECEPTIONIST                       | перейменувати                                        |
+| DELETE | `/vehicle-models/:id`         | OWNER, ADMIN                                     | видалити (400 з живими авто)                         |
+| POST   | `/vehicle-models/:id/restore` | OWNER, ADMIN                                     | відновити (марка має бути живою)                     |
+| POST   | `/vehicle-models/:id/merge`   | OWNER, ADMIN                                     | злити в модель тієї ж марки `{targetId}`             |
+
+Список марок кешується в Redis (`ref:vehicle-makes:<orgId>`); кеш скидають записи довідника й авто
+(лічильник `vehicleCount`). Записи авто з `POST /sync/push` кеш не скидають — лічильник у вкладці
+може відставати до 5 хв (TTL); перевірка видалення рахує по базі.
+
 `GET /:id/mileage` → `VehicleMileagePoint[]` (тип у `packages/shared/src/types.ts`): масив без
 пагінації, від старішого запису до новішого.
 
 ## UI (Web)
 
-| Компонент / сторінка | Файл                                         |
-| -------------------- | -------------------------------------------- |
-| Картка авто          | `app/(app)/vehicles/[id]/PageClient.tsx`     |
-| Історія пробігу      | `app/(app)/vehicles/[id]/MileageHistory.tsx` |
-| Графік пробігу       | `app/(app)/vehicles/[id]/MileageChart.tsx`   |
-| Hook історії пробігу | `hooks/api/useVehicleMileage.ts`             |
-| Створення авто       | `app/(app)/vehicles/new/PageClient.tsx`      |
+| Компонент / сторінка     | Файл                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Картка авто              | `app/(app)/vehicles/[id]/PageClient.tsx`                                                                           |
+| Історія пробігу          | `app/(app)/vehicles/[id]/MileageHistory.tsx`                                                                       |
+| Графік пробігу           | `app/(app)/vehicles/[id]/MileageChart.tsx`                                                                         |
+| Hook історії пробігу     | `hooks/api/useVehicleMileage.ts`                                                                                   |
+| Створення авто           | `app/(app)/vehicles/new/PageClient.tsx`                                                                            |
+| Марка й модель у формі   | `components/ui/VehicleMakeModelFields.tsx` (у `VehicleForm`, `CounterpartyEditModal`, майстрі `CalendarSlotModal`) |
+| Довідник марок (вкладка) | `app/(app)/counterparties/VehicleMakesTab.tsx` («Контрагенти → Марки авто», `?tab=vehicle-makes`)                  |
+| Hook довідника           | `hooks/api/useVehicleMakes.ts`                                                                                     |
 
 Окремої сторінки-списку авто немає: авто відкривають із картки контрагента.
 
@@ -128,19 +159,40 @@ delete, `syncVersion`.
 cd apps/api && npx vitest run src/modules/vehicles/<файл>.spec.ts
 ```
 
-**Модуль:** `apps/api/src/modules/vehicles/`
+**Модуль:** `apps/api/src/modules/vehicles/`, `apps/api/src/modules/vehicle-makes/`
 
 **Маршрути UI:** `/vehicles`, `/counterparties`
 
-| Аспект                                                                                                   | Тест                               | Кейсів |
-| -------------------------------------------------------------------------------------------------------- | ---------------------------------- | ------ |
-| сервіс: список, VIN, soft delete, відновлення, блокування гаража при створенні й відновленні (BR-CP-015) | `vehicles.service.spec.ts`         | 21     |
-| історія пробігу (BR-VEH-001…005)                                                                         | `vehicles.mileage-history.spec.ts` | 25     |
-| HTTP-контракт `GET /:id/mileage`: ролі, UUID                                                             | `vehicles.contract.spec.ts`        | 15     |
+| Аспект                                                                                                   | Тест                                 | Кейсів |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------ | ------ |
+| сервіс: список, VIN, soft delete, відновлення, блокування гаража при створенні й відновленні (BR-CP-015) | `vehicles.service.spec.ts`           | 21     |
+| історія пробігу (BR-VEH-001…005)                                                                         | `vehicles.mileage-history.spec.ts`   | 25     |
+| HTTP-контракт `GET /:id/mileage`: ролі, UUID                                                             | `vehicles.contract.spec.ts`          | 15     |
+| марка й модель авто з довідника (BR-VEH-008)                                                             | `vehicles.make-model.spec.ts`        | 10     |
+| довідник: ключ назви, перейменування й знімок назви в авто (BR-VEH-006, 007, 011)                        | `vehicle-makes.names.spec.ts`        | 15     |
+| довідник: видалення, відновлення, злиття (BR-VEH-009…011)                                                | `vehicle-makes.delete-merge.spec.ts` | 11     |
+| HTTP-контракт довідника: ролі всіх маршрутів, UUID, zod (BR-VEH-013)                                     | `vehicle-makes.contract.spec.ts`     | 88     |
+| стартовий список марок: код ↔ SQL міграції (BR-VEH-012)                                                  | `vehicle-make-defaults.spec.ts`      | 3      |
 
-Разом: **59** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **188** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
-**Чого тут НЕМА.** Contract-спек покриває лише `GET /:id/mileage` (ролі через справжній
+Поза модулями правила довідника стережуть ще:
+
+- `apps/api/src/modules/sync/sync.vehicle-make-model.spec.ts` — 7 кейсів: `POST /sync/push` авто
+  з `makeId` / `modelId`, назви пише сервер (BR-VEH-008);
+- `apps/api/src/modules/setup/setup.service.spec.ts` — стартовий список марок нової організації
+  (BR-VEH-012, 2 кейси з 15);
+- web: `components/ui/__tests__/VehicleMakeModelFields.test.tsx` (7), `vehicle.schema.test.ts`
+  (14), `VehicleForm.test.tsx` (5), `CounterpartyEditModal.test.tsx` (18),
+  `app/(app)/calendar/__tests__/CalendarSlotModal.new-client-vehicle.test.tsx` (2),
+  `app/(app)/counterparties/__tests__/VehicleMakesTab.test.tsx` (7);
+- E2E: `apps/web/e2e/vehicle-makes.spec.ts` (марка й модель у вкладці → авто з вибору →
+  видалення заблоковане → злиття переносить авто), `vehicles.spec.ts` (вибір у формі). Авто-передумови
+  інших E2E беруть пару з `e2e/vehicle-directory.ts` (`ensureVehicleModel`).
+
+**Чого тут НЕМА.** Інтеграційного тесту міграції `20261023180000_vehicle_makes_and_models` на
+засіяних текстових даних немає: перенесення перевірено на копії dev-бази (головним агентом) і
+застосуванням до dev-бази (876 авто, усі з `makeId` / `modelId`). Contract-спек авто покриває лише `GET /:id/mileage` (ролі через справжній
 `RolesGuard`, `ParseUUIDPipe`, 404). Для решти endpoint-ів `vehicles.controller.ts` ролі й
 `ParseUUIDPipe` перевіряються лише читанням.
 Вузли авто (`createNode` / `removeNode`) unit-тестами не покриті. Правил для самого авто
