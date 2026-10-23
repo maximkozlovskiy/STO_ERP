@@ -181,7 +181,7 @@ cd apps/api && npx vitest run src/modules/vehicles/<файл>.spec.ts
 | HTTP-контракт довідника: ролі всіх маршрутів, UUID, zod (BR-VEH-013)                                                                                       | `vehicle-makes.contract.spec.ts`     | 88     |
 | стартовий список марок: код ↔ SQL міграції ↔ dev/CI seed (BR-VEH-012)                                                                                      | `vehicle-make-defaults.spec.ts`      | 4      |
 
-Разом: **188** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **192** кейси (цифри з `vitest --reporter=json`, не з grep).
 
 Поза модулями правила довідника стережуть ще:
 

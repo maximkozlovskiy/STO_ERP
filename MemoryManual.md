@@ -104,6 +104,10 @@ python scripts/check-doc-links.py; python scripts/check-mojibake.py   # поси
 
 ## Активні особливості поточного коду
 
+- **Марка й модель авто (BR-VEH-006…014):** з довідників `VehicleMake` / `VehicleModel`; клієнт шле
+  `makeId` / `modelId`, а `Vehicle.make` / `model` — знімок назви, який пишуть лише сервіси (авто, sync,
+  перейменування й злиття в довіднику). Читачі рядків (PDF, зарплата, звіти, нагадування) їх не чіпають.
+
 - **Сума наряду (BR-WO-007):** `totalAmount` — до сплати З ПДВ, `totalNet` — без; ПДВ показувати
   як `totalAmount − totalNet`, НЕ `totalVat` (у нарядів, завершених до 2026-10-08, він застарілий).
   Тотали пише лише `WorkOrderTotalsService.recalc`; рахунок із наряду — `work-order-invoice-lines.ts`
