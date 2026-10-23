@@ -287,7 +287,7 @@ export function InventoryTab() {
       )}
 
       {/* Розріз (товари / документи / партії) — рядком над фільтрами, як статуси списку */}
-      <ListStatusRow>
+      <ListStatusRow label={t('views.label')}>
         {/* View mode switcher */}
         <div className="flex rounded-lg border border-border overflow-hidden shrink-0">
           {(Object.keys(VIEW_LABEL_KEYS) as ViewMode[]).map(m => (

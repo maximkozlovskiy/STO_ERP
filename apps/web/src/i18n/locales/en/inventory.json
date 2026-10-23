@@ -1,5 +1,6 @@
 {
   "views": {
+    "label": "Stock view",
     "goods": "By goods",
     "documents": "By documents",
     "batches": "By batches"

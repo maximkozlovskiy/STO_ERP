@@ -5,10 +5,10 @@ interface ListStatusRowProps {
   /** Кнопки статусів (`StatusPill`) — ліворуч, переносяться на вузькому екрані. */
   children: ReactNode;
   /**
-   * Доступна назва групи кнопок («Статус», «Стан»). Без неї група не має ролі: читач екрана
-   * прочитав би кнопки статусів як окремі, без зв'язку з фільтром.
+   * Доступна назва групи кнопок («Статус», «Стан», «Розріз залишків»). Обов'язкова: без неї
+   * читач екрана прочитав би кнопки як окремі, без зв'язку з фільтром.
    */
-  label?: string;
+  label: string;
   /** Перемикачі праворуч від статусів («Мої наряди»). */
   right?: ReactNode;
 }
@@ -21,11 +21,7 @@ interface ListStatusRowProps {
 export function ListStatusRow({ children, label, right }: ListStatusRowProps) {
   return (
     <div className="flex gap-1.5 flex-wrap items-center justify-between shrink-0">
-      <div
-        className="flex gap-1.5 flex-wrap items-center"
-        role={label ? 'group' : undefined}
-        aria-label={label}
-      >
+      <div className="flex gap-1.5 flex-wrap items-center" role="group" aria-label={label}>
         {children}
       </div>
       {right}
@@ -49,13 +45,17 @@ interface ListFiltersRowProps {
 
 /**
  * Рядок фільтрів списку — під рядком статусів, над масовими діями й таблицею. Дії притиснуті
- * праворуч (`ml-auto`) і на вузькому екрані переносяться разом, а не по одній кнопці.
+ * праворуч (`ml-auto`) і на вузькому екрані переносяться разом, а не по одній кнопці. Група
+ * ширша за рядок (каталог: 4 іконки + «Шаблон» + «Імпорт» + «+ Товар» ≈ 470 px при 358 px на
+ * телефоні) переносить кнопки всередині себе (`flex-wrap`), а не виходить за вікно.
  */
 export function ListFiltersRow({ children, actions, className }: ListFiltersRowProps) {
   return (
     <div className={cn('flex flex-wrap items-center gap-3 shrink-0', className)}>
       {children}
-      {actions && <div className="flex items-center gap-2 ml-auto">{actions}</div>}
+      {actions && (
+        <div className="flex flex-wrap items-center justify-end gap-2 ml-auto">{actions}</div>
+      )}
     </div>
   );
 }
