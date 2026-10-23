@@ -1,3 +1,4 @@
+// jscpd:ignore-start — однакові імпорти контролерів конфігу провайдерів не є дублюванням логіки
 import {
   Controller,
   Get,
@@ -28,6 +29,7 @@ import { ProviderConfigService } from '../payments/provider-config.service';
 import { IntegrationLogService } from '../integration-logs/integration-log.service';
 import { BankProviderRegistry } from './providers/bank-provider-registry';
 import { BankStatementPullScheduler } from './bank-statement-pull.scheduler';
+// jscpd:ignore-end
 
 class UpsertBankProviderDto {
   @ApiProperty() @IsString() provider!: string;
