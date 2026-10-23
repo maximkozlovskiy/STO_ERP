@@ -151,7 +151,7 @@ model CounterpartyStatusLink {
 
 | Компонент / сторінка     | Файл                                                                                                                                                                   |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Список + вкладки         | `app/(app)/counterparties/page.tsx` (таб-роутер `?tab`: список / статуси)                                                                                              |
+| Список + вкладки         | `app/(app)/counterparties/page.tsx` (таб-роутер `?tab`: список / статуси / марки авто)                                                                                              |
 | Картка контрагента       | `app/(app)/counterparties/[id]/page.tsx`                                                                                                                               |
 | Довідник статусів (таб)  | `app/(app)/counterparties/CounterpartyStatusesTab.tsx`                                                                                                                 |
 | Керування мітками        | `components/ui/CounterpartyStatusManager.tsx` (badge-и + dropdown; режими: керований / self-fetch) — у `CounterpartyEditModal` (вкладка «Основне») + `[id]/PageClient` |
@@ -166,7 +166,9 @@ model CounterpartyStatusLink {
 «Юридичні реквізити» й «Банківські реквізити» згорнуті за замовчуванням — вміст ховається, а не
 розмонтовується (поля лишаються у формі), секція з помилкою валідації розкривається сама й
 лишається розкритою після виправлення поля (згортає її лише користувач), а згорнута із заповненими полями позначена «заповнено». Та сама форма — у картці контрагента.
-**Вкладки сторінки контрагентів (`?tab`):** список «Контрагенти» / довідник «Статуси» (мітки)
+**Вкладки сторінки контрагентів (`?tab`):** список «Контрагенти» / за роздільником довідники
+«Статуси» (мітки) і «Марки авто» (`?tab=vehicle-makes`, `VehicleMakesTab.tsx`; правила
+BR-VEH-006…013 і тести — у [vehicle.md](vehicle.md))
 
 ---
 
@@ -222,7 +224,7 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 
 Поза модулем правила цього агрегату стережуть ще два файли:
 
-- `apps/web/src/components/ui/__tests__/CounterpartyEditModal.test.tsx` — 16 кейсів: вкладки
+- `apps/web/src/components/ui/__tests__/CounterpartyEditModal.test.tsx` — 18 кейсів: вкладки
   «Договори» й «Авто» форми контрагента (вид договору за типом контрагента, CRUD договору,
   CRUD авто з авто-створенням гаража) і група «Статуси» в рядку з «Типом». Запуск:
   `cd apps/web && npx vitest run src/components/ui/__tests__/CounterpartyEditModal.test.tsx`.

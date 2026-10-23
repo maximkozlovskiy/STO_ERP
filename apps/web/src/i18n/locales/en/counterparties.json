@@ -2,7 +2,8 @@
   "title": "Counterparties",
   "tabs": {
     "list": "Counterparties",
-    "statuses": "Statuses"
+    "statuses": "Statuses",
+    "vehicleMakes": "Car makes"
   },
   "typeFilter": {
     "all": "All",
@@ -106,6 +107,63 @@
     "loadFailed": "Load error",
     "deleteFailed": "Deletion error",
     "restoreFailed": "Restore error"
+  },
+  "vehicleMakesTab": {
+    "description": "Car make and model directory: the vehicle form only picks from it. Merge misspellings into the right make.",
+    "searchPlaceholder": "Search make",
+    "showDeleted": "Show deleted",
+    "hideDeleted": "Hide deleted",
+    "colVehicles": "Vehicles",
+    "colModels": "Models",
+    "rename": "Rename",
+    "delete": "Delete",
+    "restore": "Restore",
+    "mergeInto": "Merge into…",
+    "save": "Save",
+    "saved": "Saved",
+    "deleted": "Deleted",
+    "restored": "Restored",
+    "merged": "Merged",
+    "saveFailed": "Save failed",
+    "deleteFailed": "Delete failed",
+    "restoreFailed": "Restore failed",
+    "mergeFailed": "Merge failed",
+    "loadFailed": "Failed to load",
+    "confirmDeleteMessage": "“{{name}}” will be deleted. You can restore it later.",
+    "mergeAction": "Merge",
+    "mergeHint": "All vehicles of “{{source}}” ({{count}}) move to the selected entry and take its name; “{{source}}” is deleted.",
+    "mergeConfirmMessage": "Merge “{{source}}” into “{{target}}”? Vehicles ({{count}}) move to “{{target}}”. This cannot be undone.",
+    "mergeTargetPlaceholder": "Select the merge target",
+    "make": {
+      "title": "Makes",
+      "colName": "Make",
+      "add": "Make",
+      "empty": "No makes found",
+      "createTitle": "New make",
+      "renameTitle": "Rename make",
+      "nameLabel": "Make name",
+      "nameRequired": "Enter the make name",
+      "confirmDeleteTitle": "Delete the make?",
+      "mergeTitle": "Merge make",
+      "mergeTarget": "Merge into make",
+      "mergeConfirmTitle": "Merge makes?"
+    },
+    "model": {
+      "title": "Models",
+      "titleOf": "{{make}} models",
+      "colName": "Model",
+      "add": "Model",
+      "empty": "This make has no models yet",
+      "pickMake": "Select a make on the left",
+      "createTitle": "New model",
+      "renameTitle": "Rename model",
+      "nameLabel": "Model name",
+      "nameRequired": "Enter the model name",
+      "confirmDeleteTitle": "Delete the model?",
+      "mergeTitle": "Merge model",
+      "mergeTarget": "Merge into model",
+      "mergeConfirmTitle": "Merge models?"
+    }
   },
   "card": {
     "back": "Back",

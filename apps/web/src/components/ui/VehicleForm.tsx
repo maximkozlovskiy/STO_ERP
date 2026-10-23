@@ -1,12 +1,13 @@
 'use client';
 
 import type { UseFormRegister, FieldErrors, Control } from 'react-hook-form';
-import { Controller } from 'react-hook-form';
+import { Controller, useController } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import type { VehicleFormInput } from '@sto/shared';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { VehicleMakeModelFields } from '@/components/ui/VehicleMakeModelFields';
 import { vehicleOptions } from '@/lib/vehicle-options';
 
 /**
@@ -15,34 +16,35 @@ import { vehicleOptions } from '@/lib/vehicle-options';
  * useForm(vehicleFormSchema). Опції fuel/transmission/drive/body — `lib/vehicle-options` (мовою інтерфейсу).
  *
  * `compact` — коротка версія (лише марка/модель/рік/держномер/VIN) для вкладки контрагента.
+ * Марка й модель — вибір із довідника (`VehicleMakeModelFields`, BR-VEH-008); `currentNames` —
+ * знімок назв авто, що редагується (видно, поки довідник вантажиться).
  */
 interface Props {
   register: UseFormRegister<VehicleFormInput>;
   errors: FieldErrors<VehicleFormInput>;
   control: Control<VehicleFormInput>;
   compact?: boolean;
+  currentNames?: { make: string; model: string };
 }
 
-export function VehicleForm({ register, errors, control, compact = false }: Props) {
+export function VehicleForm({ register, errors, control, compact = false, currentNames }: Props) {
   const { t } = useTranslation('vehicles');
+  const { field: makeField } = useController({ control, name: 'makeId' });
+  const { field: modelField } = useController({ control, name: 'modelId' });
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <Input
-          label={t('form.make')}
-          required
-          {...register('make')}
-          errorMessage={errors.make?.message}
-          placeholder="BMW"
-        />
-        <Input
-          label={t('form.model')}
-          required
-          {...register('model')}
-          errorMessage={errors.model?.message}
-          placeholder="X5"
-        />
-      </div>
+      <VehicleMakeModelFields
+        makeId={typeof makeField.value === 'string' ? makeField.value : ''}
+        modelId={typeof modelField.value === 'string' ? modelField.value : ''}
+        onMakeChange={makeField.onChange}
+        onModelChange={modelField.onChange}
+        onMakeBlur={makeField.onBlur}
+        onModelBlur={modelField.onBlur}
+        makeError={errors.makeId?.message}
+        modelError={errors.modelId?.message}
+        currentMake={currentNames?.make}
+        currentModel={currentNames?.model}
+      />
       <div className="grid grid-cols-2 gap-3">
         <Input
           label={t('card.info.year')}

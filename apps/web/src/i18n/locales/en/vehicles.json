@@ -111,7 +111,14 @@
     "fuelType": "Fuel",
     "transmission": "Gearbox",
     "engineVolume": "Engine volume, l",
-    "colorPlaceholder": "Black"
+    "colorPlaceholder": "Black",
+    "makePlaceholder": "Select make",
+    "modelPlaceholder": "Select model",
+    "pickMakeFirst": "Select a make first",
+    "unavailable": "{{name}} (unavailable)",
+    "noModelsHint": "This make has no models yet.",
+    "noModelsLink": "Add them in “Counterparties → Car makes”",
+    "noModelsAskAdmin": "This make has no models yet — ask an administrator to add them to the directory."
   },
   "options": {
     "fuel": {

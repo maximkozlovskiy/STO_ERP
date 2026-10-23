@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Select } from '@/components/ui/select';
+import { VehicleMakeModelFields } from '@/components/ui/VehicleMakeModelFields';
 import { Modal } from '@/components/ui/modal';
 import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -420,9 +421,10 @@ export function CalendarSlotModal({
     companyName: '',
     email: '',
   });
+  // Марка й модель — ідентифікатори довідника (BR-VEH-008), назви пише сервер.
   const [newVehicle, setNewVehicle] = useState({
-    make: '',
-    model: '',
+    makeId: '',
+    modelId: '',
     year: '',
     licensePlate: '',
     vin: '',
@@ -434,7 +436,7 @@ export function CalendarSlotModal({
 
   const openNewCpWizard = () => {
     setNewCp({ firstName: '', lastName: '', phone: '', companyName: '', email: '' });
-    setNewVehicle({ make: '', model: '', year: '', licensePlate: '', vin: '' });
+    setNewVehicle({ makeId: '', modelId: '', year: '', licensePlate: '', vin: '' });
     setCreatedCpId('');
     setCreatedGarageId('');
     setCpWizardError('');
@@ -480,7 +482,7 @@ export function CalendarSlotModal({
 
   const saveWizardStep2 = async (skip = false) => {
     if (!skip) {
-      if (!newVehicle.make.trim() || !newVehicle.model.trim()) {
+      if (!newVehicle.makeId || !newVehicle.modelId) {
         setCpWizardError(t('wizard.makeModelRequired'));
         return;
       }
@@ -491,8 +493,8 @@ export function CalendarSlotModal({
           method: 'POST',
           body: JSON.stringify({
             customerGarageId: createdGarageId,
-            make: newVehicle.make,
-            model: newVehicle.model,
+            makeId: newVehicle.makeId,
+            modelId: newVehicle.modelId,
             year: newVehicle.year ? Number(newVehicle.year) : undefined,
             licensePlate: newVehicle.licensePlate || undefined,
             vin: newVehicle.vin || undefined,
@@ -1436,20 +1438,13 @@ export function CalendarSlotModal({
 
             {newCpStep === 2 && (
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label={t('wizard.make')}
-                    placeholder={t('wizard.makePlaceholder')}
-                    value={newVehicle.make}
-                    onChange={e => setNewVehicle(v => ({ ...v, make: e.target.value }))}
-                  />
-                  <Input
-                    label={t('wizard.model')}
-                    placeholder={t('wizard.modelPlaceholder')}
-                    value={newVehicle.model}
-                    onChange={e => setNewVehicle(v => ({ ...v, model: e.target.value }))}
-                  />
-                </div>
+                <VehicleMakeModelFields
+                  idPrefix="wizard-vehicle"
+                  makeId={newVehicle.makeId}
+                  modelId={newVehicle.modelId}
+                  onMakeChange={makeId => setNewVehicle(v => ({ ...v, makeId }))}
+                  onModelChange={modelId => setNewVehicle(v => ({ ...v, modelId }))}
+                />
                 <div className="grid grid-cols-2 gap-3">
                   <Input
                     label={t('wizard.year')}
@@ -1474,7 +1469,7 @@ export function CalendarSlotModal({
                   <Button
                     onClick={() => void saveWizardStep2(false)}
                     loading={savingCp}
-                    disabled={!newVehicle.make.trim() || !newVehicle.model.trim()}
+                    disabled={!newVehicle.makeId || !newVehicle.modelId}
                   >
                     {t('wizard.save')}
                   </Button>

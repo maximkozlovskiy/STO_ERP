@@ -24,8 +24,8 @@ interface VehicleResponse {
 
 const EMPTY: VehicleFormInput = {
   customerGarageId: '',
-  make: '',
-  model: '',
+  makeId: '',
+  modelId: '',
   vin: '',
   licensePlate: '',
   year: '',

@@ -7,6 +7,7 @@
 //               optimistic «Головний» у межах contractType, tenant-guard при зміні контрагента.
 //   BR-CP-007 — CRUD авто: POST з авто-створенням гаража «Основний», PATCH без
 //               customerGarageId, DELETE через useConfirm.
+//   BR-VEH-008 — марка й модель авто — вибір із довідника: форма шле makeId / modelId.
 //
 // Мережа — один мок `apiFetch` з таблицею маршрутів (`mountApi`). Усе, що модалка читає при
 // відкритті (гаражі, авто, наряди, договори, налаштування, валюти), віддається одразу;
@@ -16,6 +17,7 @@ import { render, screen, waitFor, fireEvent, within, act } from '@testing-librar
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 import { CounterpartyEditModal, type CounterpartyForModal } from '../CounterpartyEditModal';
+import { createQueryWrapper } from '@/__tests__/query-utils';
 
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
@@ -92,12 +94,61 @@ const contract = (
 
 interface VehicleRow {
   id: string;
+  makeId?: string;
+  modelId?: string;
   make: string;
   model: string;
   year: number | null;
   licensePlate: string;
   vin?: string | null;
 }
+
+// Довідник марок і моделей (GET /vehicle-makes, /vehicle-makes/:id/models). Ідентифікатори —
+// UUID: схема форми (`vehicleFormSchema`) інші значення відхиляє.
+const MAKES = [
+  {
+    id: '0a000000-0000-4000-8000-00000000a001',
+    name: 'Skoda',
+    vehicleCount: 0,
+    modelCount: 2,
+    deletedAt: null,
+  },
+  {
+    id: '0a000000-0000-4000-8000-00000000a002',
+    name: 'Toyota',
+    vehicleCount: 1,
+    modelCount: 2,
+    deletedAt: null,
+  },
+];
+const MODELS: Record<string, { id: string; makeId: string; name: string }[]> = {
+  '0a000000-0000-4000-8000-00000000a001': [
+    {
+      id: '0a000000-0000-4000-8000-00000000b001',
+      makeId: '0a000000-0000-4000-8000-00000000a001',
+      name: 'Octavia',
+    },
+    {
+      id: '0a000000-0000-4000-8000-00000000b002',
+      makeId: '0a000000-0000-4000-8000-00000000a001',
+      name: 'Fabia',
+    },
+  ],
+  '0a000000-0000-4000-8000-00000000a002': [
+    {
+      id: '0a000000-0000-4000-8000-00000000b003',
+      makeId: '0a000000-0000-4000-8000-00000000a002',
+      name: 'Camry',
+    },
+    {
+      id: '0a000000-0000-4000-8000-00000000b004',
+      makeId: '0a000000-0000-4000-8000-00000000a002',
+      name: 'Corolla',
+    },
+  ],
+};
+const nameOf = (id: unknown): string =>
+  [...MAKES, ...Object.values(MODELS).flat()].find(e => e.id === id)?.name ?? '?';
 
 // ─── Мок API ──────────────────────────────────────────────────────────────────
 
@@ -142,6 +193,12 @@ function mountApi(seed: {
       if (path === '/currencies') {
         return Promise.resolve({ items: [{ code: 'UAH', name: 'Гривня' }], total: 1 });
       }
+      if (path === '/vehicle-makes') return Promise.resolve({ items: MAKES, total: MAKES.length });
+      const models = /^\/vehicle-makes\/([^/]+)\/models$/.exec(path);
+      if (models) {
+        const items = MODELS[models[1]!] ?? [];
+        return Promise.resolve({ items, total: items.length });
+      }
       return Promise.reject(new Error(`Неочікуваний GET ${path}`));
     }
 
@@ -167,6 +224,7 @@ function renderModal(counterparty: CounterpartyForModal) {
       onClose={() => {}}
       onSaved={() => {}}
     />,
+    { wrapper: createQueryWrapper() },
   );
 }
 
@@ -461,27 +519,38 @@ describe('CounterpartyEditModal — CRUD договору (BR-CP-006)', () => {
 // ─── BR-CP-007 ────────────────────────────────────────────────────────────────
 
 describe('CounterpartyEditModal — CRUD авто (BR-CP-007)', () => {
-  const fillVehicle = (make: string, model: string) => {
-    fireEvent.change(screen.getByPlaceholderText('BMW'), { target: { value: make } });
-    fireEvent.change(screen.getByPlaceholderText('X5'), { target: { value: model } });
+  const makeSelect = () => screen.getByLabelText(/^Марка/) as HTMLSelectElement;
+  const modelSelect = () => screen.getByLabelText(/^Модель/) as HTMLSelectElement;
+  /** Марка й модель — вибір із довідника: модель з'являється після завантаження моделей марки. */
+  const fillVehicle = async (makeId: string, modelId: string) => {
+    await screen.findByRole('option', { name: nameOf(makeId) });
+    fireEvent.change(makeSelect(), { target: { value: makeId } });
+    await screen.findByRole('option', { name: nameOf(modelId) });
+    fireEvent.change(modelSelect(), { target: { value: modelId } });
   };
+  const savedVehicle = (body: Record<string, unknown> | undefined) => ({
+    id: 'v-new',
+    makeId: body!.makeId,
+    modelId: body!.modelId,
+    make: nameOf(body!.makeId),
+    model: nameOf(body!.modelId),
+    year: null,
+    licensePlate: '',
+  });
 
   // guards: BR-CP-007
   it('створення без гаража: спершу POST гаража «Основний» (isDefault), потім POST авто у нього', async () => {
     const api = mountApi({ garages: { 'cp-1': [] } });
     api.on('POST /counterparties/cp-1/garages', () => ({ id: 'g-new' }));
-    api.on('POST /vehicles', ({ body }) => ({
-      id: 'v-new',
-      make: body!.make,
-      model: body!.model,
-      year: null,
-      licensePlate: '',
-    }));
+    api.on('POST /vehicles', ({ body }) => savedVehicle(body));
     renderModal(cp('CLIENT'));
     await openTab('Авто');
 
     fireEvent.click(screen.getByRole('button', { name: 'Додати авто' }));
-    fillVehicle('Skoda', 'Octavia');
+    await fillVehicle(
+      '0a000000-0000-4000-8000-00000000a001',
+      '0a000000-0000-4000-8000-00000000b001',
+    );
     fireEvent.click(formButton('Зберегти'));
 
     await screen.findByText('Skoda Octavia');
@@ -496,8 +565,8 @@ describe('CounterpartyEditModal — CRUD авто (BR-CP-007)', () => {
         path: '/vehicles',
         body: expect.objectContaining({
           customerGarageId: 'g-new',
-          make: 'Skoda',
-          model: 'Octavia',
+          makeId: '0a000000-0000-4000-8000-00000000a001',
+          modelId: '0a000000-0000-4000-8000-00000000b001',
         }),
       }),
     ]);
@@ -506,18 +575,15 @@ describe('CounterpartyEditModal — CRUD авто (BR-CP-007)', () => {
   // guards: BR-CP-007
   it('створення за наявного гаража: гараж НЕ створюється, авто йде у наявний', async () => {
     const api = mountApi({ garages: { 'cp-1': [{ id: 'g-1' }] } });
-    api.on('POST /vehicles', ({ body }) => ({
-      id: 'v-new',
-      make: body!.make,
-      model: body!.model,
-      year: null,
-      licensePlate: '',
-    }));
+    api.on('POST /vehicles', ({ body }) => savedVehicle(body));
     renderModal(cp('CLIENT'));
     await openTab('Авто');
 
     fireEvent.click(screen.getByRole('button', { name: 'Додати авто' }));
-    fillVehicle('Skoda', 'Fabia');
+    await fillVehicle(
+      '0a000000-0000-4000-8000-00000000a001',
+      '0a000000-0000-4000-8000-00000000b002',
+    );
     fireEvent.click(formButton('Зберегти'));
 
     await screen.findByText('Skoda Fabia');
@@ -538,6 +604,8 @@ describe('CounterpartyEditModal — CRUD авто (BR-CP-007)', () => {
         'cp-1': [
           {
             id: 'v-1',
+            makeId: '0a000000-0000-4000-8000-00000000a002',
+            modelId: '0a000000-0000-4000-8000-00000000b003',
             make: 'Toyota',
             model: 'Camry',
             year: 2018,
@@ -549,8 +617,10 @@ describe('CounterpartyEditModal — CRUD авто (BR-CP-007)', () => {
     });
     api.on('PATCH /vehicles/v-1', ({ body }) => ({
       id: 'v-1',
-      make: 'Toyota',
-      model: body!.model,
+      makeId: body!.makeId,
+      modelId: body!.modelId,
+      make: nameOf(body!.makeId),
+      model: nameOf(body!.modelId),
       year: 2018,
       licensePlate: 'AA1234BB',
       vin: 'JTDBE32K123456789',
@@ -560,15 +630,16 @@ describe('CounterpartyEditModal — CRUD авто (BR-CP-007)', () => {
 
     fireEvent.click(within(row('Toyota Camry')).getByTitle('Редагувати'));
 
-    expect((screen.getByPlaceholderText('BMW') as HTMLInputElement).value).toBe('Toyota');
-    expect((screen.getByPlaceholderText('X5') as HTMLInputElement).value).toBe('Camry');
+    await screen.findByRole('option', { name: 'Corolla' });
+    expect(makeSelect().value).toBe('0a000000-0000-4000-8000-00000000a002');
+    expect(modelSelect().value).toBe('0a000000-0000-4000-8000-00000000b003');
     expect((screen.getByPlaceholderText('2015') as HTMLInputElement).value).toBe('2018');
     expect((screen.getByPlaceholderText('AA 1234 BB') as HTMLInputElement).value).toBe('AA1234BB');
     expect((screen.getByPlaceholderText('WVWZZZ1JZXW000001') as HTMLInputElement).value).toBe(
       'JTDBE32K123456789',
     );
 
-    fireEvent.change(screen.getByPlaceholderText('X5'), { target: { value: 'Corolla' } });
+    fireEvent.change(modelSelect(), { target: { value: '0a000000-0000-4000-8000-00000000b004' } });
     fireEvent.click(formButton('Оновити'));
 
     await screen.findByText('Toyota Corolla');
@@ -578,8 +649,8 @@ describe('CounterpartyEditModal — CRUD авто (BR-CP-007)', () => {
       method: 'PATCH',
       path: '/vehicles/v-1',
       body: {
-        make: 'Toyota',
-        model: 'Corolla',
+        makeId: '0a000000-0000-4000-8000-00000000a002',
+        modelId: '0a000000-0000-4000-8000-00000000b004',
         year: 2018,
         licensePlate: 'AA1234BB',
         vin: 'JTDBE32K123456789',

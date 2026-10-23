@@ -93,12 +93,19 @@ export default function CrmPage() {
 }
 
 const CounterpartyStatusesTab = dynamic(() => import('./CounterpartyStatusesTab'), { ssr: false });
+const VehicleMakesTab = dynamic(() => import('./VehicleMakesTab'), { ssr: false });
 
-type CrmTab = 'list' | 'statuses';
+// Довідники (статуси, марки авто) — за роздільником після списку.
+type CrmTab = 'list' | 'statuses' | 'vehicle-makes';
 const CRM_TABS: { key: CrmTab; labelKey: string }[] = [
   { key: 'list', labelKey: 'tabs.list' },
   { key: 'statuses', labelKey: 'tabs.statuses' },
+  { key: 'vehicle-makes', labelKey: 'tabs.vehicleMakes' },
 ];
+const preloadTab = (key: CrmTab): void => {
+  if (key === 'statuses') void import('./CounterpartyStatusesTab');
+  if (key === 'vehicle-makes') void import('./VehicleMakesTab');
+};
 
 function CrmTabsShell() {
   const { t } = useTranslation('counterparties');
@@ -123,9 +130,7 @@ function CrmTabsShell() {
           <Fragment key={tabItem.key}>
             {tabItem.key === 'statuses' && <TabDivider />}
             <button
-              onMouseEnter={() => {
-                if (tabItem.key === 'statuses') void import('./CounterpartyStatusesTab');
-              }}
+              onMouseEnter={() => preloadTab(tabItem.key)}
               onClick={() => setTab(tabItem.key)}
               className={cn(
                 'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
@@ -140,7 +145,13 @@ function CrmTabsShell() {
         ))}
       </div>
 
-      {tab === 'statuses' ? <CounterpartyStatusesTab /> : <CrmPageInner />}
+      {tab === 'statuses' ? (
+        <CounterpartyStatusesTab />
+      ) : tab === 'vehicle-makes' ? (
+        <VehicleMakesTab />
+      ) : (
+        <CrmPageInner />
+      )}
     </div>
   );
 }

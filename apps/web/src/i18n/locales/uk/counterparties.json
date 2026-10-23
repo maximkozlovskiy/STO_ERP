@@ -2,7 +2,8 @@
   "title": "Контрагенти",
   "tabs": {
     "list": "Контрагенти",
-    "statuses": "Статуси"
+    "statuses": "Статуси",
+    "vehicleMakes": "Марки авто"
   },
   "typeFilter": {
     "all": "Всі",
@@ -106,6 +107,63 @@
     "loadFailed": "Помилка завантаження",
     "deleteFailed": "Помилка видалення",
     "restoreFailed": "Помилка відновлення"
+  },
+  "vehicleMakesTab": {
+    "description": "Довідник марок і моделей авто: у формі авто — лише вибір із нього. Помилкові написання зливайте в правильну марку.",
+    "searchPlaceholder": "Пошук марки",
+    "showDeleted": "Показати видалені",
+    "hideDeleted": "Сховати видалені",
+    "colVehicles": "Авто",
+    "colModels": "Моделей",
+    "rename": "Перейменувати",
+    "delete": "Видалити",
+    "restore": "Відновити",
+    "mergeInto": "Злити в…",
+    "save": "Зберегти",
+    "saved": "Збережено",
+    "deleted": "Видалено",
+    "restored": "Відновлено",
+    "merged": "Злито",
+    "saveFailed": "Помилка збереження",
+    "deleteFailed": "Помилка видалення",
+    "restoreFailed": "Помилка відновлення",
+    "mergeFailed": "Помилка злиття",
+    "loadFailed": "Помилка завантаження",
+    "confirmDeleteMessage": "«{{name}}» буде видалено. Його можна буде відновити.",
+    "mergeAction": "Злити",
+    "mergeHint": "Усі авто «{{source}}» ({{count}}) перейдуть до обраного запису, назва в них зміниться, а «{{source}}» буде видалено.",
+    "mergeConfirmMessage": "Злити «{{source}}» у «{{target}}»? Авто ({{count}}) перейдуть до «{{target}}». Скасувати це не можна.",
+    "mergeTargetPlaceholder": "Оберіть, куди злити",
+    "make": {
+      "title": "Марки",
+      "colName": "Марка",
+      "add": "Марка",
+      "empty": "Марок не знайдено",
+      "createTitle": "Нова марка",
+      "renameTitle": "Перейменувати марку",
+      "nameLabel": "Назва марки",
+      "nameRequired": "Вкажіть назву марки",
+      "confirmDeleteTitle": "Видалити марку?",
+      "mergeTitle": "Злити марку",
+      "mergeTarget": "Марка, у яку злити",
+      "mergeConfirmTitle": "Злити марки?"
+    },
+    "model": {
+      "title": "Моделі",
+      "titleOf": "Моделі {{make}}",
+      "colName": "Модель",
+      "add": "Модель",
+      "empty": "У цієї марки ще немає моделей",
+      "pickMake": "Оберіть марку ліворуч",
+      "createTitle": "Нова модель",
+      "renameTitle": "Перейменувати модель",
+      "nameLabel": "Назва моделі",
+      "nameRequired": "Вкажіть назву моделі",
+      "confirmDeleteTitle": "Видалити модель?",
+      "mergeTitle": "Злити модель",
+      "mergeTarget": "Модель, у яку злити",
+      "mergeConfirmTitle": "Злити моделі?"
+    }
   },
   "card": {
     "back": "Назад",

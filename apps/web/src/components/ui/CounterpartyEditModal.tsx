@@ -61,6 +61,8 @@ export interface CounterpartyForModal {
 
 type Vehicle = {
   id: string;
+  makeId: string;
+  modelId: string;
   make: string;
   model: string;
   year: number | null;
@@ -131,8 +133,8 @@ interface CounterpartyEditModalProps {
 function emptyVehicleForm(): VehicleFormInput {
   return {
     customerGarageId: '',
-    make: '',
-    model: '',
+    makeId: '',
+    modelId: '',
     vin: '',
     licensePlate: '',
     year: '',
@@ -502,8 +504,8 @@ export function CounterpartyEditModal({
   const startEditVehicle = (v: Vehicle) => {
     vehicleForm.reset({
       ...emptyVehicleForm(),
-      make: v.make,
-      model: v.model,
+      makeId: v.makeId,
+      modelId: v.modelId,
       year: v.year != null ? String(v.year) : '',
       licensePlate: v.licensePlate || '',
       vin: v.vin || '',
@@ -933,6 +935,7 @@ export function CounterpartyEditModal({
                       errors={vehicleForm.formState.errors}
                       control={vehicleForm.control}
                       compact
+                      currentNames={modalVehicles.find(v => v.id === editingVehicleId)}
                     />
                     <div className="flex gap-2 justify-end">
                       <Button size="sm" variant="outline" onClick={resetVehicleForm}>

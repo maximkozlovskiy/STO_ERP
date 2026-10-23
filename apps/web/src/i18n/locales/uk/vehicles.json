@@ -111,7 +111,14 @@
     "fuelType": "Пальне",
     "transmission": "КПП",
     "engineVolume": "Об'єм двигуна, л",
-    "colorPlaceholder": "Чорний"
+    "colorPlaceholder": "Чорний",
+    "makePlaceholder": "Оберіть марку",
+    "modelPlaceholder": "Оберіть модель",
+    "pickMakeFirst": "Спершу оберіть марку",
+    "unavailable": "{{name}} (недоступна)",
+    "noModelsHint": "У цієї марки ще немає моделей.",
+    "noModelsLink": "Додати в «Контрагенти → Марки авто»",
+    "noModelsAskAdmin": "У цієї марки ще немає моделей — попросіть адміністратора додати їх у довідник."
   },
   "options": {
     "fuel": {

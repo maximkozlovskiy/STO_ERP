@@ -2,6 +2,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import { it, expect, describe, afterEach, beforeEach, vi } from 'vitest';
 import i18n from '@/i18n/config';
 import { CounterpartyEditModal, type CounterpartyForModal } from '../CounterpartyEditModal';
+import { createQueryWrapper } from '@/__tests__/query-utils';
 
 /**
  * Картку контрагента відкривають із карток документів (замовлення постачальнику, товар) — її
@@ -91,6 +92,13 @@ beforeEach(() => {
     if (path === '/currencies') {
       return Promise.resolve({ items: [{ code: 'UAH', name: 'Hryvnia' }], total: 1 });
     }
+    // Довідник марок (форма авто, BR-VEH-008) — латиницею, як і решта даних користувача.
+    if (path === '/vehicle-makes') {
+      return Promise.resolve({
+        items: [{ id: 'mk-1', name: 'BMW', vehicleCount: 1, modelCount: 0, deletedAt: null }],
+        total: 1,
+      });
+    }
     return Promise.reject(new Error(`unexpected ${path}`));
   });
 });
@@ -100,7 +108,9 @@ afterEach(async () => {
 });
 
 const renderModal = (cp: CounterpartyForModal | null) =>
-  render(<CounterpartyEditModal open counterparty={cp} onClose={() => {}} onSaved={() => {}} />);
+  render(<CounterpartyEditModal open counterparty={cp} onClose={() => {}} onSaved={() => {}} />, {
+    wrapper: createQueryWrapper(),
+  });
 
 async function openTab(name: RegExp, marker: string) {
   fireEvent.click(screen.getByRole('button', { name }));

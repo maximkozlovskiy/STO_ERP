@@ -8,6 +8,8 @@ import {
 } from '@sto/shared';
 
 const GARAGE = '11111111-1111-4111-8111-111111111111';
+const MAKE = '22222222-2222-4222-8222-222222222222';
+const MODEL = '33333333-3333-4333-8333-333333333333';
 
 /**
  * Контракт спільних zod-схем Vehicle/Counterparty (web ↔ api) — Фаза 2.
@@ -23,8 +25,8 @@ describe('vehicleFormSchema / vehicleCreate / vehicleUpdate', () => {
   it('невалідна inspectionExpiry на create → помилка', () => {
     const r = vehicleCreateSchema.safeParse({
       customerGarageId: GARAGE,
-      make: 'A',
-      model: 'B',
+      makeId: MAKE,
+      modelId: MODEL,
       inspectionExpiry: 'garbage',
     });
     expect(r.success).toBe(false);
@@ -51,10 +53,44 @@ describe('vehicleFormSchema / vehicleCreate / vehicleUpdate', () => {
 
   // Гараж: форма опційна (резолвиться батьком), create — обовʼязковий UUID.
   it('create без гаража → помилка; форма без гаража → OK', () => {
-    expect(vehicleCreateSchema.safeParse({ make: 'BMW', model: 'X5' }).success).toBe(false);
-    expect(vehicleFormSchema.safeParse({ make: 'BMW', model: 'X5', year: '2020' }).success).toBe(
-      true,
-    );
+    expect(vehicleCreateSchema.safeParse({ makeId: MAKE, modelId: MODEL }).success).toBe(false);
+    expect(
+      vehicleFormSchema.safeParse({ makeId: MAKE, modelId: MODEL, year: '2020' }).success,
+    ).toBe(true);
+  });
+
+  // guards: BR-VEH-008
+  it('марка й модель — лише ідентифікатори довідника: назва-рядок і порожній вибір не проходять', () => {
+    const asText = vehicleCreateSchema.safeParse({
+      customerGarageId: GARAGE,
+      make: 'BMW',
+      model: 'X5',
+    });
+    expect(asText.success).toBe(false);
+    const empty = vehicleFormSchema.safeParse({ makeId: '', modelId: '' });
+    expect(empty.success).toBe(false);
+    const paths = empty.success ? [] : empty.error.issues.map(i => i.path.join('.'));
+    expect(paths).toEqual(expect.arrayContaining(['makeId', 'modelId']));
+  });
+
+  // guards: BR-VEH-008
+  it('назву марки від клієнта схема відкидає — її пише сервер з довідника', () => {
+    const parsed = vehicleCreateSchema.parse({
+      customerGarageId: GARAGE,
+      makeId: MAKE,
+      modelId: MODEL,
+      make: 'Підміна',
+    });
+    expect(parsed).not.toHaveProperty('make');
+  });
+
+  // guards: BR-VEH-008
+  it('зміна авто: нова марка лише разом із моделлю; модель окремо — можна', () => {
+    const r = vehicleUpdateSchema.safeParse({ makeId: MAKE });
+    expect(r.success).toBe(false);
+    expect(r.success ? [] : r.error.issues.map(i => i.path.join('.'))).toEqual(['modelId']);
+    expect(vehicleUpdateSchema.safeParse({ makeId: MAKE, modelId: MODEL }).success).toBe(true);
+    expect(vehicleUpdateSchema.safeParse({ modelId: MODEL }).success).toBe(true);
   });
 
   it('коерсія engineVolume/currentMileage; відʼємне → помилка', () => {

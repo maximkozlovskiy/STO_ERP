@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,12 +10,39 @@ import {
   type VehicleFormValues,
 } from '@sto/shared';
 import i18n from '@/i18n/config';
+import { createQueryWrapper } from '@/__tests__/query-utils';
 import { VehicleForm } from '../VehicleForm';
+
+// Марка й модель — вибір із довідника (BR-VEH-008); ідентифікатори — UUID, як у схемі форми.
+const BMW = '0a000000-0000-4000-8000-00000000a001';
+const X5 = '0a000000-0000-4000-8000-00000000b001';
+const apiFetchMock = vi.fn();
+vi.mock('@/lib/api-client', () => ({
+  apiFetch: (...args: unknown[]) => apiFetchMock(...args),
+}));
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({ employee: { role: 'ADMIN' } }),
+}));
+beforeEach(() => {
+  apiFetchMock.mockReset();
+  apiFetchMock.mockImplementation((path: string) => {
+    if (path === '/vehicle-makes') {
+      return Promise.resolve({
+        items: [{ id: BMW, name: 'BMW', vehicleCount: 0, modelCount: 1, deletedAt: null }],
+        total: 1,
+      });
+    }
+    if (path === `/vehicle-makes/${BMW}/models`) {
+      return Promise.resolve({ items: [{ id: X5, makeId: BMW, name: 'X5' }], total: 1 });
+    }
+    return Promise.reject(new Error(`unexpected ${path}`));
+  });
+});
 
 const EMPTY: VehicleFormInput = {
   customerGarageId: '',
-  make: '',
-  model: '',
+  makeId: '',
+  modelId: '',
   vin: '',
   licensePlate: '',
   year: '',
@@ -55,11 +82,13 @@ function Harness({
     </form>
   );
 }
+const renderHarness = (props: { compact?: boolean; onValid: (v: VehicleFormValues) => void }) =>
+  render(<Harness {...props} />, { wrapper: createQueryWrapper() });
 
 describe('VehicleForm', () => {
   it('порожні марка/модель → submit заблоковано (onValid не викликається)', async () => {
     const onValid = vi.fn();
-    render(<Harness onValid={onValid} />);
+    renderHarness({ onValid });
     fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
     // Дати resolver-у відпрацювати; onValid не має викликатись на невалідній формі.
     await new Promise(r => setTimeout(r, 50));
@@ -68,19 +97,21 @@ describe('VehicleForm', () => {
 
   it('валідна форма → onValid з коерснутим year (number)', async () => {
     const onValid = vi.fn();
-    render(<Harness onValid={onValid} />);
-    fireEvent.change(screen.getByPlaceholderText('BMW'), { target: { value: 'BMW' } });
-    fireEvent.change(screen.getByPlaceholderText('X5'), { target: { value: 'X5' } });
+    renderHarness({ onValid });
+    await screen.findByRole('option', { name: 'BMW' });
+    fireEvent.change(screen.getByLabelText(/^Марка/), { target: { value: BMW } });
+    await screen.findByRole('option', { name: 'X5' });
+    fireEvent.change(screen.getByLabelText(/^Модель/), { target: { value: X5 } });
     fireEvent.change(screen.getByPlaceholderText('2015'), { target: { value: '2015' } });
     fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
     await waitFor(() => {
       expect(onValid).toHaveBeenCalledTimes(1);
     });
-    expect(onValid.mock.calls[0][0]).toMatchObject({ make: 'BMW', model: 'X5', year: 2015 });
+    expect(onValid.mock.calls[0][0]).toMatchObject({ makeId: BMW, modelId: X5, year: 2015 });
   });
 
   it('compact — приховує тех.поля (пальне/кузов)', () => {
-    render(<Harness compact onValid={vi.fn()} />);
+    renderHarness({ compact: true, onValid: vi.fn() });
     expect(screen.queryByText('Пальне')).toBeNull();
     expect(screen.queryByText('Кузов')).toBeNull();
     // марка/модель лишаються
@@ -100,7 +131,7 @@ describe('VehicleForm — варіанти мовою інтерфейсу', () 
   it('en: паливо, КПП, привід і кузов — англійською', async () => {
     await i18n.changeLanguage('en');
     try {
-      render(<Harness onValid={vi.fn()} />);
+      renderHarness({ onValid: vi.fn() });
       for (const label of ['Diesel', 'Automatic', 'All-wheel', 'Sedan']) {
         expect(screen.getByRole('option', { name: label })).toBeTruthy();
       }

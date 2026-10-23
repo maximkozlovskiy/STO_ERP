@@ -26,6 +26,8 @@ import { MileageHistory } from './MileageHistory';
 interface Vehicle {
   id: string;
   customerGarageId: string;
+  makeId: string;
+  modelId: string;
   make: string;
   model: string;
   vin: string | null;
@@ -163,8 +165,8 @@ export default function VehicleCardPage() {
     if (!vehicle) return;
     editReset({
       customerGarageId: vehicle.customerGarageId,
-      make: vehicle.make,
-      model: vehicle.model,
+      makeId: vehicle.makeId,
+      modelId: vehicle.modelId,
       vin: vehicle.vin ?? '',
       licensePlate: vehicle.licensePlate ?? '',
       year: vehicle.year ? String(vehicle.year) : '',
@@ -747,7 +749,12 @@ export default function VehicleCardPage() {
               {editError}
             </div>
           )}
-          <VehicleForm register={editRegister} errors={editErrors} control={editControl} />
+          <VehicleForm
+            register={editRegister}
+            errors={editErrors}
+            control={editControl}
+            currentNames={{ make: vehicle.make, model: vehicle.model }}
+          />
         </div>
       </Modal>
       <ConfirmDialog {...dialogProps} />
