@@ -422,7 +422,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | query dto                                       | `payments.query-dto.spec.ts`                             | 43     |
 | передумови + наряд                              | `payments.work-order.spec.ts`                            | 52     |
 | політика повторів черг                          | `payments.queue-retry-policy.spec.ts`                    | 6      |
-| сервісна логіка                                 | `provider-config.service.spec.ts`                        | 31     |
+| сервісна логіка                                 | `provider-config.service.spec.ts`                        | 33     |
 | шифрування at-rest                              | `../../prisma/field-encryption.extension.spec.ts`        | 21     |
 | шифрування (сервіс)                             | `../../common/crypto/encryption.service.spec.ts`         | 11     |
 | готівка — через касу, безготівкова — з рахунком | `payments.cash-register-required.spec.ts`                | 14     |

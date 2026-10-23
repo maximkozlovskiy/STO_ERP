@@ -1494,8 +1494,10 @@ instead of rejecting`), окремо — 5 із 5 зелені. `purchase-lists.
    з `apiUrl`), потім будь-який виклик провайдера — відправити write-only ключ на свій сервер. Тепер
    змінена адреса (порівняння `sameApiUrl`: без пробілів і кінцевих `/`, порожня ≡ null) не переносить
    збережені креди: `upsertConfig` лишає лише введені в запиті, `updateBranchSettings` скидає ключ і PIN
-   Checkbox / токен monobank. Форма (`ProviderRegistryPanel`) при зміненій адресі просить усі поля
-   заново й пояснює чому.
+   Checkbox / токен monobank, а `resolveActive` не бере legacy-ключ із `BranchSettings`, якщо адреса
+   конфіга відрізняється від legacy-адреси (обхід: конфіг без кредів + `enabled: true` + чужий `apiUrl`,
+   знайшов review 2026-10-23). Форма (`ProviderRegistryPanel`) при зміненій адресі просить усі
+   обовʼязкові поля заново (`optional` — ID каси Checkbox, рахунок mono — ні) й пояснює чому.
 
 ## Що НЕ є боргом, хоч виглядає так
 

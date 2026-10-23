@@ -136,6 +136,23 @@ describe('ProviderRegistryPanel', () => {
     expect(save).toBeEnabled();
   });
 
+  it('змінено API URL → необовʼязкове поле (ID каси) не блокує «Зберегти»', async () => {
+    const withRegister: PanelProviderMeta = {
+      ...CHECKBOX,
+      fields: [...CHECKBOX.fields, { key: 'cashRegisterId', label: 'ID каси', optional: true }],
+    };
+    mock([{ provider: 'checkbox', enabled: true, apiUrl: null, hasCredentials: true }]);
+    const user = userEvent.setup();
+    render(
+      <ProviderRegistryPanel title="ПРРО" endpoint="fiscal-providers" providers={[withRegister]} />,
+    );
+    await user.click(await screen.findByRole('button', { name: /Налаштувати креди Checkbox/ }));
+    await user.type(screen.getByLabelText('API URL (необовʼязково)'), 'https://collector.example');
+    await user.type(screen.getByLabelText('Ліцензійний ключ каси'), 'LIC-NEW');
+    await user.type(screen.getByLabelText('PIN касира'), '0000');
+    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeEnabled();
+  });
+
   it('verify happy → POST /:endpoint/:code/verify → «Дійсні креди»', async () => {
     mock([{ provider: 'checkbox', enabled: false, apiUrl: null, hasCredentials: true }], {
       valid: true,

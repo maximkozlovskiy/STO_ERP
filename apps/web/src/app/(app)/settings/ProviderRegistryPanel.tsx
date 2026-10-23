@@ -31,6 +31,8 @@ export interface CredField {
   label: string;
   secret?: boolean;
   placeholder?: string;
+  /** true → поле необовʼязкове (провайдер має типове значення): при зміні адреси API не вимагається. */
+  optional?: boolean;
 }
 
 /** Метадані провайдера у панелі + схема його полів кредів. */
@@ -152,7 +154,7 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
     !sameApiUrl(apiUrl, configByCode.get(credsProvider.code)?.apiUrl ?? null) &&
     configByCode.has(credsProvider.code);
   const credsFilled = (fields: PanelProviderMeta['fields']) =>
-    fields.every(f => (creds[f.key] ?? '').trim() !== '');
+    fields.every(f => f.optional || (creds[f.key] ?? '').trim() !== '');
   const credsReady =
     !!credsProvider &&
     (urlChanged

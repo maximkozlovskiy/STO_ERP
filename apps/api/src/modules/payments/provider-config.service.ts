@@ -81,12 +81,15 @@ export class ProviderConfigService {
     //    секрети ще у старих колонках; уже-налаштовані філії працюють до першого перезбереження.
     // Якщо enabled-конфіг існує, legacy валідний лише для ТОГО Ж провайдера (інакше активовано
     // провайдера, чиї креди ще не введено → не налаштовано). apiUrl/shiftMode беремо з config.
+    // Адреса конфіга, відмінна від legacy-адреси, — теж «не налаштовано»: legacy-ключ підтверджено
+    // лише для СВОЄЇ адреси, інакше PATCH конфіга без кредів (`apiUrl` чужого сервера) переслав би
+    // його туди (TECH-DEBT §19.6, обхід через legacy-fallback).
     const legacy = await this.legacyFromBranchSettings(orgId, branchId, kind);
     if (!legacy) return null;
     if (!cfg) return legacy;
-    return legacy.provider === cfg.provider
-      ? { ...legacy, apiUrl: cfg.apiUrl ?? legacy.apiUrl, shiftMode: cfg.shiftMode }
-      : null;
+    if (legacy.provider !== cfg.provider) return null;
+    if (cfg.apiUrl && !sameApiUrl(cfg.apiUrl, legacy.apiUrl)) return null;
+    return { ...legacy, apiUrl: cfg.apiUrl ?? legacy.apiUrl, shiftMode: cfg.shiftMode };
   }
 
   /**

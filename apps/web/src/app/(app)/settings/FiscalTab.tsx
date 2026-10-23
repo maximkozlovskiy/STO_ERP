@@ -28,6 +28,7 @@ export default function FiscalTab() {
             key: 'cashRegisterId',
             label: t('fiscal.checkboxCashRegisterId'),
             placeholder: t('fiscal.checkboxCashRegisterIdPlaceholder'),
+            optional: true,
           },
         ],
       },

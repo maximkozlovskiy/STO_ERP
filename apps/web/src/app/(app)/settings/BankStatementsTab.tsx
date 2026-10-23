@@ -41,7 +41,7 @@ export default function BankStatementsTab() {
         name: 'monobank',
         fields: [
           { key: 'token', label: t('bankStatements.monoToken'), secret: true },
-          { key: 'accountId', label: t('bankStatements.monoAccountId') },
+          { key: 'accountId', label: t('bankStatements.monoAccountId'), optional: true },
         ],
       },
     ],

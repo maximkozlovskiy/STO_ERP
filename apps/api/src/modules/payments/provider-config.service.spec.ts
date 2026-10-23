@@ -166,6 +166,40 @@ describe('ProviderConfigService', () => {
       // MUTATION-VERIFY: без hasCreds-guard resolveActive повернув би credentials={} → signIn throw.
     });
 
+    // TECH-DEBT §19.6: PATCH конфіга без кредів із чужим apiUrl не має відвезти туди legacy-ключ.
+    it('enabled-конфіг без кредів з ІНШОЮ адресою, ніж legacy → null (legacy-ключ не йде на нову адресу)', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        provider: 'checkbox',
+        apiUrl: 'https://collector.example',
+        credentials: null,
+        shiftMode: 'MANUAL',
+      });
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        fiscalEnabled: true,
+        checkboxApiUrl: 'https://api.checkbox.ua',
+        checkboxLicenseKey: 'LEGACY-LIC',
+        checkboxPinCode: 'LEGACY-PIN',
+        shiftMode: 'MANUAL',
+      });
+      expect(await svc.resolveActive(ORG, BRANCH, 'FISCAL')).toBeNull();
+    });
+
+    it('enabled-конфіг без кредів з тією ж адресою, що legacy (кінцевий `/`) → legacy-креди', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        provider: 'monobank',
+        apiUrl: 'https://api.monobank.ua/',
+        credentials: null,
+        shiftMode: 'MANUAL',
+      });
+      prisma.branchSettings.findFirst.mockResolvedValue({
+        fiscalEnabled: false,
+        monobankToken: 'LEGACY-MONO',
+        monobankApiUrl: 'https://api.monobank.ua',
+      });
+      const r = await svc.resolveActive(ORG, BRANCH, 'PAYMENT');
+      expect(r!.credentials).toEqual({ token: 'LEGACY-MONO' });
+    });
+
     it('Bug #692: enabled-конфіг з credentials=NULL, PAYMENT monobank → legacy token', async () => {
       prisma.branchProviderConfig.findFirst.mockResolvedValue({
         provider: 'monobank',
