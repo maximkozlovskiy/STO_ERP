@@ -443,7 +443,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | idempotency                                           | `payments.idempotency.spec.ts`                           | 7      |
 | money model                                           | `payments.money-model.spec.ts`                           | 22     |
 | multicurrency                                         | `payments.multicurrency.spec.ts`                         | 23     |
-| query dto                                             | `payments.query-dto.spec.ts`                             | 43     |
+| query dto                                             | `payments.query-dto.spec.ts`                             | 46     |
 | передумови + наряд                                    | `payments.work-order.spec.ts`                            | 52     |
 | політика повторів черг                                | `payments.queue-retry-policy.spec.ts`                    | 6      |
 | сервісна логіка                                       | `provider-config.service.spec.ts`                        | 35     |

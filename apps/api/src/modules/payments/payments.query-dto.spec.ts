@@ -281,6 +281,26 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
     expect(args.skip).toBe(0); // page клампиться до 1 → skip 0
   });
 
+  // Bug #963: контролер робить `+page`/`+limit`, тож `?page=abc` приходить у сервіс як NaN.
+  // `?? 20` замінює лише undefined, а NaN просочувався крізь Math.max/Math.min (обидві
+  // повертають NaN на NaN) у Prisma skip/take → 500. Мутація-guard: прибрати `Number.isFinite`
+  // у findAll → take/skip стають NaN, обидва нижні expect падають (T1.2-003, клас #764).
+  it.each([
+    ['page=NaN (?page=abc)', { page: NaN, limit: 20 }],
+    ['limit=NaN (?limit=xyz)', { page: 1, limit: NaN }],
+    ['обидва ±Infinity (?page=1e999)', { page: Infinity, limit: -Infinity }],
+  ])(
+    'pagination: %s → дефолт (skip 0, take 20), skip/take скінченні — не NaN у Prisma',
+    async (_label, opts) => {
+      await service.findAll(ORG, opts);
+      const args = prisma.payment.findMany.mock.calls[0][0] as { take: number; skip: number };
+      expect(Number.isFinite(args.take)).toBe(true);
+      expect(Number.isFinite(args.skip)).toBe(true);
+      expect(args.take).toBe(20);
+      expect(args.skip).toBe(0);
+    },
+  );
+
   // ── 4. findOne ────────────────────────────────────────────────────────────
 
   it('findOne валідний → toDto з counterpartyName та sourceName', async () => {

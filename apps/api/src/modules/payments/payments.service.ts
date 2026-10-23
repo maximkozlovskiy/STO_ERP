@@ -128,8 +128,13 @@ export class PaymentsService {
     // DoS hardening: cap user-controlled pagination params.
     // payments grows monotonically (1 row per money operation); without cap
     // `?limit=999999` could OOM the API on long-running orgs.
-    const safeLimit = Math.min(Math.max(opts.limit ?? 20, 1), 200);
-    const safePage = Math.max(opts.page ?? 1, 1);
+    // Bug #963: controller passes `+page`/`+limit`, so `?page=abc` arrives as NaN. `?? 20`
+    // only replaces undefined — NaN slips through Math.max/Math.min (both return NaN) into
+    // Prisma skip/take → 500. Non-finite → default, same as a missing param (T1.2-003 / #764).
+    const rawLimit = Number.isFinite(opts.limit) ? (opts.limit as number) : 20;
+    const rawPage = Number.isFinite(opts.page) ? (opts.page as number) : 1;
+    const safeLimit = Math.min(Math.max(rawLimit, 1), 200);
+    const safePage = Math.max(rawPage, 1);
 
     const where: Prisma.PaymentWhereInput = { orgId };
     if (opts.counterpartyId) {

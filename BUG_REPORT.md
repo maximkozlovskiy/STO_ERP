@@ -4211,3 +4211,39 @@ CI, seed двічі → 58 марок, Toyota/Camry seed-авто — на ма�
    їх на кожній фіскальній касі філії?
 5. **Явне відкриття зміни на НЕфіскальній касі** (`POST /cash-shifts/open?cashRegisterId=<нефіскальна>`)
    приймається; UI так не робить. Відмовляти 400?
+
+---
+
+## Session 2026-10-24 — bug hunt batch 1 (191fb4b6..d6a86889)
+
+Перевірено 10 фіксів batch 1 за чеклістом sto-tester для api (§1.1/§1.2/§1.4/§1.5).
+Підтверджено коректними: item 1 (NP polling — порядок id кроків, resumeLiveChain), item 2
+(акт↔скасування наряду — порядок блокувань «наряд→акт» однаковий у create/sign/cancel; CAS;
+SIGNED-акт при cancel лишається), item 3 (unknown lineId → 400; soft-deleted/чужий рядок теж),
+item 4 (allowlist значень фільтра — об'єкт/масив у скаляр → 400), item 6 (followup 09:00 Kyiv
+DST-aware; межа опівночі й день переходу DST — зсув стабільний, бо перехід ~01:00 UTC), item 8
+(шифрування {set}/nested/*AndReturn; {set:null} очищає; read-side top-level-only — у коді немає
+читання секрету через include батька, тож не експлуатується), item 9 (amountBase overflow, зокрема
+-1e30 і amount*rate), item 10 (currencyId перевизначається; джерело завжди має non-null currencyId —
+guard недосяжний на валідних чернетках).
+
+## Bug #963 — [MEDIUM] `GET /payments?page=abc` / `?limit=xyz` → HTTP 500 (NaN у skip/take)
+
+**Файл:** `apps/api/src/modules/payments/payments.service.ts:131-133,179`
+**Severity:** MEDIUM (T1.2-003, клас Bug #764: NaN у Prisma skip/take = 500 замість 4xx/дефолт)
+**Категорія:** business-logic / api-quality
+
+**Опис:** Item 5 (BR-PAY-025) ввів `PaymentsListQueryDto`, де `page`/`limit` — `@IsString()` без
+перевірки «це число». Контролер робить `+page`/`+limit`, тож `?page=abc` → `NaN`. У сервісі клемп
+`Math.min(Math.max(opts.limit ?? 20, 1), 200)` та `Math.max(opts.page ?? 1, 1)` НЕ захищають від
+NaN: `Math.max(NaN,1)=NaN`, `Math.min(NaN,200)=NaN` → `safeLimit=NaN`, `safePage=NaN`,
+`skip=(NaN-1)*NaN=NaN` → `prisma.payment.findMany({ skip: NaN, take: NaN })` → `PrismaClientValidationError`
+→ HTTP 500. `?? 20` спрацьовує лише на `undefined`, а не на `NaN` (NaN — не undefined).
+Дефект пре-існував до batch, але лежить рівно в тій ланці, яку item 5 узявся загартувати
+(«кожен параметр — коректний»), тож закриваємо тут.
+
+**Очікувана поведінка:** нечислові / нескінченні `page`/`limit` → дефолт (page 1, limit 20), 200.
+**Фактична поведінка:** 500 `numeric...`/`PrismaClientValidationError`.
+**Статус:** [x] виправлено — у `findAll` `page`/`limit` проходять `Number.isFinite`-guard перед
+клемпом (NaN/±Infinity → дефолт). Регресійний тест у `payments.list-query.contract.spec.ts`:
+`?page=abc`, `?limit=xyz`, `?page=1e999` → 200 з page 1/limit 20. Мутація (прибрати guard) → 500.
