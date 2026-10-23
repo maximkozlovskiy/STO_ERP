@@ -27,6 +27,32 @@ interface Props {
   currentNames?: { make: string; model: string };
 }
 
+/**
+ * Порожня форма авто (усі поля — рядки web-стану; схема коерсить). customerGarageId заповнює той,
+ * хто відкриває форму (гараж з картки контрагента або auto-create при збереженні).
+ */
+export function emptyVehicleForm(): VehicleFormInput {
+  return {
+    customerGarageId: '',
+    makeId: '',
+    modelId: '',
+    vin: '',
+    licensePlate: '',
+    year: '',
+    engineVolume: '',
+    fuelType: '',
+    currentMileage: '',
+    color: '',
+    transmissionType: '',
+    driveType: '',
+    bodyType: '',
+    engineCode: '',
+    insuranceExpiry: '',
+    inspectionExpiry: '',
+    notes: '',
+  };
+}
+
 export function VehicleForm({ register, errors, control, compact = false, currentNames }: Props) {
   const { t } = useTranslation('vehicles');
   const { field: makeField } = useController({ control, name: 'makeId' });

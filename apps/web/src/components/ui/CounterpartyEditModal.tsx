@@ -13,7 +13,7 @@ import {
   type VehicleFormInput,
   type VehicleFormValues,
 } from '@sto/shared';
-import { VehicleForm } from '@/components/ui/VehicleForm';
+import { VehicleForm, emptyVehicleForm } from '@/components/ui/VehicleForm';
 import { Plus, Trash2, Pencil, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -126,30 +126,6 @@ interface CounterpartyEditModalProps {
    * (модалка перемкнеться в edit-режим із вкладками Авто/Договори), а не закривати.
    */
   onSaved: (cp: CounterpartyForModal, isNew: boolean) => void;
-}
-
-// Дефолти vehicle-форми (усі поля рядки — web-стан; схема коерсить). customerGarageId
-// заповнюється при збереженні (garage auto-create), у формі не редагується.
-function emptyVehicleForm(): VehicleFormInput {
-  return {
-    customerGarageId: '',
-    makeId: '',
-    modelId: '',
-    vin: '',
-    licensePlate: '',
-    year: '',
-    engineVolume: '',
-    fuelType: '',
-    currentMileage: '',
-    color: '',
-    transmissionType: '',
-    driveType: '',
-    bodyType: '',
-    engineCode: '',
-    insuranceExpiry: '',
-    inspectionExpiry: '',
-    notes: '',
-  };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────

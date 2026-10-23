@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
-import { VehicleForm } from '@/components/ui/VehicleForm';
+import { VehicleForm, emptyVehicleForm } from '@/components/ui/VehicleForm';
 
 interface VehicleResponse {
   id: string;
@@ -21,26 +21,6 @@ interface VehicleResponse {
 
 // Гараж не має власного GET-by-id endpoint (лише список /counterparties/:id/garages) —
 // назва передається з картки контрагента через query, без зайвого round-trip до API.
-
-const EMPTY: VehicleFormInput = {
-  customerGarageId: '',
-  makeId: '',
-  modelId: '',
-  vin: '',
-  licensePlate: '',
-  year: '',
-  engineVolume: '',
-  fuelType: '',
-  currentMileage: '',
-  color: '',
-  transmissionType: '',
-  driveType: '',
-  bodyType: '',
-  engineCode: '',
-  insuranceExpiry: '',
-  inspectionExpiry: '',
-  notes: '',
-};
 
 export default function NewVehiclePageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
@@ -57,7 +37,7 @@ export default function NewVehiclePageClient() {
     formState: { errors },
   } = useForm<VehicleFormInput, unknown, VehicleFormValues>({
     resolver: i18nZodResolver(vehicleFormSchema),
-    defaultValues: { ...EMPTY, customerGarageId: garageId },
+    defaultValues: { ...emptyVehicleForm(), customerGarageId: garageId },
     mode: 'onBlur',
   });
   const [saving, setSaving] = useState(false);

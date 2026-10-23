@@ -13,15 +13,8 @@ import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import type { VehicleMileagePoint } from '@sto/shared';
 // ─── Vehicle ─────────────────────────────────────────────
 
-export class CreateVehicleDto {
-  @ApiProperty()
-  @IsUUID()
-  customerGarageId!: string;
-  // BR-VEH-008: марка й модель — ідентифікатори довідника; назви (`make` / `model`) пише сервіс.
-  @ApiProperty({ description: 'Марка з довідника (GET /vehicle-makes)' }) @IsUUID() makeId!: string;
-  @ApiProperty({ description: 'Модель цієї марки (GET /vehicle-makes/:id/models)' })
-  @IsUUID()
-  modelId!: string;
+/** Поля авто, необовʼязкові і при створенні, і при оновленні (спільна основа двох DTO). */
+class VehicleOptionalFieldsDto {
   @ApiPropertyOptional() @IsOptional() @IsString() vin?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() licensePlate?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() year?: number;
@@ -46,34 +39,23 @@ export class CreateVehicleDto {
   inspectionExpiry?: string;
 }
 
-export class UpdateVehicleDto {
+export class CreateVehicleDto extends VehicleOptionalFieldsDto {
+  @ApiProperty()
+  @IsUUID()
+  customerGarageId!: string;
+  // BR-VEH-008: марка й модель — ідентифікатори довідника; назви (`make` / `model`) пише сервіс.
+  @ApiProperty({ description: 'Марка з довідника (GET /vehicle-makes)' }) @IsUUID() makeId!: string;
+  @ApiProperty({ description: 'Модель цієї марки (GET /vehicle-makes/:id/models)' })
+  @IsUUID()
+  modelId!: string;
+}
+
+export class UpdateVehicleDto extends VehicleOptionalFieldsDto {
   @ApiPropertyOptional({ description: 'Нова марка — лише разом із modelId' })
   @IsOptional()
   @IsUUID()
   makeId?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() modelId?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() vin?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() licensePlate?: string;
-  @ApiPropertyOptional() @IsOptional() @IsInt() year?: number;
-  @ApiPropertyOptional() @IsOptional() engineVolume?: number;
-  @ApiPropertyOptional() @IsOptional() @IsString() fuelType?: string;
-  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) currentMileage?: number;
-  @ApiPropertyOptional() @IsOptional() @IsString() color?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() transmissionType?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() driveType?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() bodyType?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() engineCode?: string;
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsDateString()
-  insuranceExpiry?: string;
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsDateString()
-  inspectionExpiry?: string;
 }
 
 export class VehicleResponseDto {
