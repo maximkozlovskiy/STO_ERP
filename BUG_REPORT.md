@@ -3942,3 +3942,61 @@ Dev-база — індекс є.
 **Не баг цих комітів, для власника:** у dev-базі 4 живі авто у видалених гаражах, створені до BR-CP-015 чи до
 цього фіксу (`b36485fe…` 2026-09-01, `5f7f9094…` TST-ESC-1, `44df9c1e…` AA0936TT, `c77b97e2…` TST-REV) — сліди
 старих прогонів; прибрати через `DELETE /vehicles/:id`.
+
+## Session 2026-10-23 — QA `ad0468be` + `6af8f902` + `f617a13b` (CodeQL: ключ ПРРО лише на збережену адресу, DNS-перевірка URL, назви полів кредів, safeImageSrc) (tester, наживо через API :3000 і браузер :3001)
+
+Перевірено наживо: `fiscal/verify` (чужа адреса без ключа → «введіть ключ ще раз»; та сама адреса без
+хвостового слеша приймається; `localhost.` і `127.0.0.1.nip.io` блокуються після DNS), 400
+`err.providerConfig.invalidCredentialKey` українською на всіх чотирьох PATCH провайдерів і в модалці,
+збереження кредів у кожній панелі (ПРРО, еквайринг, доставка, банк-виписки, сповіщення) на тимчасовій
+філії (видалена після перевірки), кеш працівника з 5 полів і оптимістична шапка, реальний XLSX
+`К - ть` / `Ціна, грн` → мапінг 5 колонок. Налаштування Checkbox і логотип повернуто як були.
+
+## Bug #951 — [HIGH] Ліцензійний ключ ПРРО, PIN, токен monobank і ключ SMS відкритим текстом в аудиті
+
+**Файл:** `apps/api/src/modules/settings/settings.service.ts` (`updateBranchSettings` → `auditSettings(..., { ...dto })`)
+**Severity:** HIGH
+**Категорія:** security
+
+**Опис:** `PATCH /settings/branch/:id` писав увесь DTO в `audit_events.diff`, зокрема `checkboxLicenseKey`,
+`checkboxPinCode`, `monobankToken`, `smsApiKey`. Ці поля write-only: шифруються at-rest
+(`ENCRYPTED_FIELDS`), `GET /settings/branch` їх не віддає. Але `GET /audit?entityType=BranchSettings`
+(ролі OWNER/ADMIN/**ACCOUNTANT**) віддавав їх відкритим текстом — бухгалтер, який не може ні прочитати,
+ні змінити ключ, діставав його з аудиту. Той самий секрет, який `ad0468be` перестав пересилати на чужу адресу.
+Відтворено: PATCH з `checkboxLicenseKey: "TESTER-FAKE-KEY-0001"` → `GET /audit` повернув ключ як є.
+**Очікувана поведінка:** у сліді видно, що ключ змінили (або прибрали — `null`), але не його значення.
+**Статус:** [x] виправлено — `maskSecrets` у `settings.service.ts` заміняє поля з `ENCRYPTED_FIELDS[entityType]`
+на `***` (перелік той самий, що шифрує Prisma-розширення; експортовано з `prisma.service.ts`). 2 кейси у
+`settings.service.spec.ts` (мутацію спіймано). Наживо після фіксу: `"checkboxLicenseKey":"***"`.
+Залишок: у dev-базі лишився один рядок аудиту з фейковим ключем `TESTER-FAKE-KEY-0001` (до фіксу; роль
+MCP лише на читання, API видалення аудиту немає) — значення фейкове.
+
+## Bug #952 — [LOW] НДІ → Реквізити: після заміни логотипа, що не завантажився, новий не видно
+
+**Файл:** `apps/web/src/app/(app)/ndi/OrgInfoTab.tsx` (`onError` у `<img>`)
+**Severity:** LOW
+**Категорія:** frontend
+
+**Опис:** `onError` ховав `<img>` і показував заглушку прямою правкою `style.display` у DOM. React цих стилів
+не контролює (у `<img>` немає `style`, у заглушки — та сама `display:'none'`, поки `logoSrc` істинний),
+тож після «Замінити логотип» мінявся лише `src`: нова картинка завантажувалась (`naturalWidth > 0`),
+але лишалась `display:none`, а поверх неї — «Немає логотипу», до перезавантаження сторінки.
+Відтворено в браузері: збережений логотип із 403 сховища → завантаження нового PNG → `img display:none`, заглушка `flex`.
+**Статус:** [x] виправлено — невдала адреса тримається в стані (`failedLogoSrc`), `logoSrc` для неї `null`,
+відображення повністю керує React. Кейс у `OrgInfoTab.test.tsx` (на старому компоненті падає) + кейс
+«`javascript:` → без `<img>` і лайтбокса, Видалити шле null». Наживо після фіксу: нова картинка видима, лайтбокс і Escape працюють.
+
+## Bug #953 — [LOW] Публічний кошторис ставить `orgLogoUrl` у `<img src>` без перевірки схеми
+
+**Файл:** `apps/web/src/app/estimate/[token]/EstimateClient.tsx`
+**Severity:** LOW
+**Категорія:** security (consistency з `ad0468be`)
+
+**Опис:** `ad0468be` пропускає логотип у НДІ лише через `safeImageSrc` (вільний рядок, CodeQL
+js/xss-through-dom), але той самий `logoUrl` приходить на публічну сторінку кошторису (`orgLogoUrl` з
+`work-order-share`) і йде в `src` як є — `PATCH /settings/org-info` приймає будь-який рядок (`javascript:alert(1)` → 200).
+**Статус:** [x] виправлено — `safeImageSrc(data.orgLogoUrl)`; небезпечна схема → логотипа немає. `tsc` web, E2E `estimate-share.spec.ts` зелені.
+
+**Не баги цих комітів, для власника:** (1) `UpsertFiscalDto.apiUrl` та ін. — `@IsString()` без перевірки URL:
+модалка провайдера зберігає `apiUrl: "будь-що"` (200) — суміжне з TECH-DEBT §19.5; (2) мережева помилка
+`fiscal/verify` повертається англійською (`"fetch failed"`) — до цих комітів так само.

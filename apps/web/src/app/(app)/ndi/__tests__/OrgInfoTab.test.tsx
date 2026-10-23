@@ -6,9 +6,10 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 const apiFetchMock = vi.fn();
+const multipartMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
-  apiMultipartFetch: vi.fn(),
+  apiMultipartFetch: (...args: unknown[]) => multipartMock(...args),
 }));
 
 let bankAccounts: Array<{ id: string; name: string; ibanUA: string }> = [];
@@ -164,5 +165,57 @@ describe('OrgInfoTab — реквізити для друку', () => {
     await waitFor(() => expect(patchBody()).toBeDefined());
     expect(patchBody()).toMatchObject({ phone: '+380671112233' });
     expect(patchBody()).not.toHaveProperty('bankAccountId');
+  });
+});
+
+// Bug #952: onError ховав <img> і показував заглушку правкою DOM-стилів. Після «Замінити» React
+// міняв лише src — картинка лишалась display:none, а поверх неї «Немає логотипу». Bug #953 / CodeQL:
+// небезпечна схема logoUrl не потрапляє в src і не відкриває лайтбокс, а «Видалити» лишається.
+describe('OrgInfoTab — логотип', () => {
+  const BROKEN = 'http://minio.local/sto-files/org/1/old.png';
+  const NEW_URL = 'http://minio.local/sto-files/org/1/public/new.png';
+
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    multipartMock.mockReset();
+    bankAccounts = [];
+    URL.createObjectURL = vi.fn(() => 'blob:http://localhost/preview-1');
+    URL.revokeObjectURL = vi.fn();
+  });
+
+  const logoImg = () => screen.queryByAltText('Логотип організації');
+  const fallback = () => screen.getByText('Немає логотипу').parentElement as HTMLElement;
+
+  it('логотип не завантажився → заглушка; після заміни нова картинка видима, заглушка схована', async () => {
+    mockApi(orgInfo({ logoUrl: BROKEN }));
+    multipartMock.mockResolvedValue({ url: NEW_URL });
+    const { container } = render(<OrgInfoTab />);
+    await screen.findByDisplayValue('+380501112233');
+
+    fireEvent.error(logoImg()!);
+    await waitFor(() => expect(logoImg()).toBeNull());
+    expect(fallback().style.display).toBe('flex');
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [new File(['x'], 'logo.png', { type: 'image/png' })] },
+    });
+
+    await waitFor(() => expect(logoImg()?.getAttribute('src')).toBe(NEW_URL));
+    expect(logoImg()!.style.display).not.toBe('none');
+    expect(fallback().style.display).toBe('none');
+  });
+
+  it('logoUrl із javascript: → без <img> і без лайтбокса, «Видалити» шле null', async () => {
+    mockApi(orgInfo({ logoUrl: 'javascript:alert(1)' }));
+    render(<OrgInfoTab />);
+    await screen.findByDisplayValue('+380501112233');
+
+    expect(logoImg()).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Збільшити логотип' })).toBeNull();
+    expect(fallback().style.display).toBe('flex');
+
+    fireEvent.click(screen.getByRole('button', { name: /Видалити/ }));
+    await waitFor(() => expect(patchBody()).toEqual({ logoUrl: null }));
   });
 });

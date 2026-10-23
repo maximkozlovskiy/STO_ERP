@@ -38,6 +38,9 @@ export default function OrgInfoTab() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoLightbox, setLogoLightbox] = useState<string | null>(null);
+  // Адреса, яку браузер не зміг завантажити (403/404 сховища). Тримається в стані, а не правкою
+  // DOM-стилів у onError: інакше після «Замінити» нова картинка лишалась прихованою (Bug #952).
+  const [failedLogoSrc, setFailedLogoSrc] = useState<string | null>(null);
   const [removingLogo, setRemovingLogo] = useState(false);
   const [error, setError] = useState('');
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -143,7 +146,8 @@ export default function OrgInfoTab() {
   };
 
   // Адреса логотипа — вільний рядок із налаштувань: показуємо лише безпечну схему.
-  const logoSrc = safeImageSrc(logoPreview ?? orgInfo?.logoUrl);
+  const safeSrc = safeImageSrc(logoPreview ?? orgInfo?.logoUrl);
+  const logoSrc = safeSrc && safeSrc !== failedLogoSrc ? safeSrc : null;
 
   return (
     <div className="bg-surface rounded-xl border border-border p-6 space-y-5">
@@ -182,15 +186,7 @@ export default function OrgInfoTab() {
                 className="w-full h-full object-contain p-3"
                 loading="lazy"
                 decoding="async"
-                onError={e => {
-                  e.currentTarget.style.display = 'none';
-                  const parent = e.currentTarget.parentElement;
-                  if (parent) {
-                    // generic: querySelector віддає Element, .style є в HTMLElement.
-                    const fallback = parent.querySelector<HTMLElement>('[data-logo-fallback]');
-                    if (fallback) fallback.style.display = 'flex';
-                  }
-                }}
+                onError={() => setFailedLogoSrc(logoSrc)}
               />
             ) : null}
             <div
