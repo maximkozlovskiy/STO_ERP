@@ -4000,3 +4000,49 @@ js/xss-through-dom), але той самий `logoUrl` приходить на 
 **Не баги цих комітів, для власника:** (1) `UpsertFiscalDto.apiUrl` та ін. — `@IsString()` без перевірки URL:
 модалка провайдера зберігає `apiUrl: "будь-що"` (200) — суміжне з TECH-DEBT §19.5; (2) мережева помилка
 `fiscal/verify` повертається англійською (`"fetch failed"`) — до цих комітів так само.
+
+## Session 2026-10-23 — QA `801d8ab1` + `3d55af2d` (змінено адресу API провайдера → збережені ключі скидаються; legacy-ключ лише на свою адресу) (tester, наживо через API :3000 і браузер :3001, тимчасова філія)
+
+Перевірено наживо: `upsertConfig` для FISCAL / PAYMENT / BANK / DELIVERY (типова адреса → креди; чужа без
+кредів → `hasCredentials:false`; чужа з кредами → true; та сама з `/`, `//` і пробілами → креди лишаються);
+`PATCH /settings/branch` (нова `checkboxApiUrl` без ключа → `fiscal/verify` «Не вказано ліцензійний ключ»,
+нова `monobankApiUrl` → `hasMonobankToken:false`, у `audit_events.diff` — `null`, при встановленні — `***`;
+та сама адреса з `/` → ключі лишаються); `resolveActive` через відкриття касової зміни (чужа адреса конфіга
+→ 400 «Фіскалізацію не налаштовано», адреса legacy з `/` → спроба на legacy-хост `.invalid`); модалка кредів
+(підказка, «Зберегти» вимкнено до обовʼязкових полів, ID каси / ID рахунку mono не вимагаються, Escape закриває).
+
+## Bug #954 — [MEDIUM] Ctrl+Enter у модалці кредів провайдера зберігає повз вимкнену кнопку і стирає ключі
+
+**Файл:** `apps/web/src/app/(app)/settings/ProviderRegistryPanel.tsx` (`saveCreds`, `Modal onSubmit`)
+**Severity:** MEDIUM
+**Категорія:** frontend
+
+**Опис:** `801d8ab1` вимикає «Зберегти» й «Перевірити», доки після зміни адреси API не введено ключі заново.
+Але `Modal` має `onSubmit={() => void saveCreds()}`, а Ctrl+Enter модалки кличе його без огляду на
+`disabled` кнопки, і `saveCreds` `credsReady` не перевіряв. Відтворено в браузері: Вчасно.Каса з
+токеном → змінити адресу → Ctrl+Enter з порожнім токеном → «Налаштування збережено», `hasCredentials:false`.
+**Очікувана поведінка:** без обовʼязкових полів зі зміненою адресою збереження не відбувається ні кнопкою, ні Ctrl+Enter.
+**Статус:** [x] виправлено — `saveCreds` повертається, якщо `!credsReady || savingCreds`. Кейс у
+`FiscalTab.test.tsx` (Ctrl+Enter без ключів PATCH не шле; контроль — з ключами шле), на старому коді падає.
+Наживо після фіксу: Ctrl+Enter зі зміненою адресою — креди лишились; з введеним токеном — зберігає.
+
+## Bug #955 — [MEDIUM] `resolveActive`: конфіг з `apiUrl: ""` відправляє legacy-ключ на типову адресу провайдера
+
+**Файл:** `apps/api/src/modules/payments/provider-config.service.ts` (`resolveActive`, legacy-fallback)
+**Severity:** MEDIUM
+**Категорія:** security (правило власника 2026-10-23, TECH-DEBT §19.6)
+
+**Опис:** `3d55af2d` пускає legacy-ключ BranchSettings лише на його адресу: `if (cfg.apiUrl && !sameApiUrl(…)) return null`
+і далі `apiUrl: cfg.apiUrl ?? legacy.apiUrl`. Для `apiUrl: ""` (PATCH конфіга напряму — DTO приймає порожній
+рядок і зберігає його як є) перевірку пропущено, а `"" ?? legacy` дає `""`, і провайдер бере свою ТИПОВУ адресу.
+Відтворено: legacy-ключ із `checkboxApiUrl=https://legacy.invalid`, конфіг checkbox без кредів з `apiUrl:""` →
+`POST /cash-shifts/open` → `integration_logs`: `signIn` «Checkbox: неавторизовано» (запит пішов на api.checkbox.ua,
+фейковий ключ), а не на legacy-адресу.
+**Очікувана поведінка:** порожня адреса ≡ null (як у `sameApiUrl`) → legacy-ключ на legacy-адресу.
+**Статус:** [x] виправлено — `cfgUrl = cfg.apiUrl?.trim() ? cfg.apiUrl : null`. Кейс у
+`provider-config.service.spec.ts` (мутація `cfg.apiUrl ?? legacy` → падає). Наживо після фіксу: `signIn` — «fetch failed» на `legacy.invalid`.
+
+**Не баги цих комітів, для власника:** (1) `POST /cash-shifts/open` при мережевій помилці провайдера віддає
+500 «Внутрішня помилка сервера» замість зрозумілої відповіді; (2) «Перевірити» в модалці з уже збереженими
+кредами й порожніми полями активне, але `verify` (за кодом контролерів) бере лише креди із запиту — результат «не дійсні» без вводу (наживо не перевірено);
+(3) `fiscal/verify` повертає `"fetch failed"` англійською (вже записано в сесії Bug #951–953).

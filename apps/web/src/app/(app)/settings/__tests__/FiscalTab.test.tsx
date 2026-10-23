@@ -19,7 +19,9 @@ vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 vi.mock('@/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock('@/hooks/useUiFeatures', () => ({ useUiFeatures: () => ({ toastEnabled: false }) }));
+vi.mock('@/hooks/useUiFeatures', () => ({
+  useUiFeatures: () => ({ toastEnabled: false, keyboardShortcutsEnabled: true }),
+}));
 vi.mock('@/lib/ref-cache', () => ({ getCached: () => null, setCache: () => undefined }));
 
 const BRANCHES = [{ id: 'br-1', name: 'Філія 1' }];
@@ -151,6 +153,34 @@ describe('ProviderRegistryPanel', () => {
     await user.type(screen.getByLabelText('Ліцензійний ключ каси'), 'LIC-NEW');
     await user.type(screen.getByLabelText('PIN касира'), '0000');
     expect(screen.getByRole('button', { name: 'Зберегти' })).toBeEnabled();
+  });
+
+  // Bug #954: Ctrl+Enter модалки кличе збереження повз disabled-кнопку — зі зміненою адресою без
+  // ключів PATCH стирав збережені креди. Контроль: з усіма полями той самий Ctrl+Enter зберігає.
+  it('змінено API URL без ключів → Ctrl+Enter НЕ зберігає; з ключами — зберігає', async () => {
+    mock([{ provider: 'checkbox', enabled: true, apiUrl: null, hasCredentials: true }]);
+    const user = userEvent.setup();
+    render(
+      <ProviderRegistryPanel title="ПРРО" endpoint="fiscal-providers" providers={[CHECKBOX]} />,
+    );
+    await user.click(await screen.findByRole('button', { name: /Налаштувати креди Checkbox/ }));
+    await user.type(screen.getByLabelText('API URL (необовʼязково)'), 'https://collector.example');
+    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeDisabled();
+
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    await new Promise(r => setTimeout(r, 50));
+    expect(findCall((p, o) => p.includes('/branch/br-1') && o?.method === 'PATCH')).toBeUndefined();
+
+    await user.type(screen.getByLabelText('Ліцензійний ключ каси'), 'LIC-NEW');
+    await user.type(screen.getByLabelText('PIN касира'), '0000');
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    await waitFor(() => {
+      const patch = findCall((p, o) => p.includes('/branch/br-1') && o?.method === 'PATCH');
+      expect(patch).toBeTruthy();
+      const body = JSON.parse((patch![1] as { body: string }).body);
+      expect(body.apiUrl).toBe('https://collector.example');
+      expect(body.credentials).toEqual({ licenseKey: 'LIC-NEW', pinCode: '0000' });
+    });
   });
 
   it('verify happy → POST /:endpoint/:code/verify → «Дійсні креди»', async () => {

@@ -184,7 +184,9 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
   };
 
   const saveCreds = async () => {
-    if (!credsProvider || !selectedBranch) return;
+    // `credsReady` і тут, не лише на кнопці: Ctrl+Enter модалки (onSubmit) кличе saveCreds повз
+    // disabled-кнопку — і зі зміненою адресою без ключів тихо стирав збережені (Bug #954).
+    if (!credsProvider || !selectedBranch || !credsReady || savingCreds) return;
     setSavingCreds(true);
     try {
       // Лише непорожні креди (write-only merge на беку).
