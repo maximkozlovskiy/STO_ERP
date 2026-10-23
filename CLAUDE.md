@@ -525,8 +525,11 @@ dev-сервер `:3001` заради Playwright не зупиняти.
 абсолютні цифри брати зі збірки (`next build` + статичний сервер), а `dev` годиться для порівняння
 «до / після» на одній сторінці. Цифра у звіті — з трейсу, з назвою сторінки й умов.
 
-Нова машина: `powershell -File scripts/mcp/setup-readonly-db.ps1` (роль + змінна `STO_DB_READONLY_URI`),
+Нова машина: `powershell -File scripts/wsl/setup-docker-autostart.ps1` (Docker у WSL сам і не гасне),
+`powershell -File scripts/mcp/setup-readonly-db.ps1` (роль + змінна `STO_DB_READONLY_URI`),
 перезапуск VS Code; GitHub бере токен, який git уже має. Стан серверів — `claude mcp list`.
+postgres-mcp запускається через `scripts/mcp/postgres-mcp.sh` — обгортка прибирає контейнери закритих
+сесій (GOTCHAS 2026-10-23). Диск WSL розрісся → `scripts/wsl/compact-wsl-disk.ps1` (адміністратор).
 GitHub працює лише в ДОВІРЕНІЙ теці: `headersHelper` — код із репозиторію, і без довіри Claude Code його
 не запускає, а GitHub без заголовка пропонує OAuth, якого Claude Code тут не вміє («does not support
 dynamic client registration»). Довіра — діалог при першому `claude` у теці (у VS Code його може не бути:

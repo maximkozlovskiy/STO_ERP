@@ -4,6 +4,22 @@
 
 ---
 
+## [2026-10-23] MCP у Docker через `wsl -e docker run -i --rm` лишає живі контейнери-сирітки
+
+Claude Code, закриваючи сесію, вбиває `wsl.exe`, але клієнт `docker run` усередині WSL не гине —
+переходить під PID 1, його stdin не закривається, і сервер (postgres-mcp не виходить сам) працює далі.
+`--rm` прибирає контейнер лише ПІСЛЯ виходу, тож кожна сесія лишала живий контейнер (видалено 16).
+Відтворено: kill wsl.exe → `ps` дає клієнта з `ppid=1`, `docker ps` — «Up». Тест із `cat` замість
+сервера цього НЕ показує: `cat` виходить на EOF.
+
+**Правило:** MCP-сервер у Docker — через обгортку, що позначає контейнер PID свого клієнта й перед
+стартом прибирає ті, чий клієнт мертвий або з `ppid=1` (`scripts/mcp/postgres-mcp.sh`). Не
+`docker rm -f` усіх за образом: це вбило б MCP паралельних сесій.
+
+Поруч — Docker у WSL без systemd гине з останньою сесією `wsl.exe`; тримає задача «STO WSL Docker»
+(`scripts/wsl/setup-docker-autostart.ps1`). Друге джерело запуску dockerd (`~/.bashrc`,
+`service docker start`) змагається з першим — «address already in use» у `/var/log/dockerd.log`.
+
 ## [2026-10-23] CI: path-фільтр проти `github.event.before` + cancel-in-progress губить код
 
 `dorny/paths-filter` на push типово порівнює з `github.event.before` — попереднім комітом push-у.

@@ -15,6 +15,12 @@
   звірено з кодом, TECH-DEBT §19.
 - Review `11e52c00`: база push — коміт останнього успішного прогону (скасований `cancel-in-progress` прогін
   інакше губив перевірку коду). Tester `94ca6c66`: межі регекса суми й посилання кошторису без `//`.
+- `ad0468be` fix(security): 29 алертів CodeQL — збережений ключ ПРРО йшов на `apiUrl` з тіла запиту
+  (`verifyFiscal`), SSRF-перевірка після DNS (`validatePublicUrlResolved`), назви полів кредів — лише
+  ідентифікатори, ReDoS у `normalizeHeader`, `safeImageSrc` для логотипа, права токена й SHA дій у workflow.
+- Dev-середовище: Docker у WSL — один dockerd (flock) і задача «STO WSL Docker», що тримає дистрибутив
+  (`scripts/wsl/`); postgres-mcp через `scripts/mcp/postgres-mcp.sh` прибирає контейнери закритих сесій
+  (клієнт `docker run` з ppid=1); `compact-wsl-disk.ps1` — стискання vhdx (sparse вимкнено).
 
 ### 08788c8b..HEAD патчі залежностей, списки як наряди (2026-10-22/23)
 
