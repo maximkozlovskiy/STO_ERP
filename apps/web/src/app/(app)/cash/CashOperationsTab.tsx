@@ -128,10 +128,12 @@ export default function CashOperationsTab({
 
   // Зміна є лише у фіскальної каси (BR-CASH-027): для нефіскальної віджета немає — не питаємо.
   const fiscalSelected = selected?.isFiscal ? selected : null;
-  const { data: shift, isLoading: shiftLoading } = useCurrentShift(
-    fiscalSelected?.branchId ?? null,
-    fiscalSelected?.id ?? null,
-  );
+  const {
+    data: shift,
+    isLoading: shiftLoading,
+    isError: shiftError,
+    refetch: refetchShift,
+  } = useCurrentShift(fiscalSelected?.branchId ?? null, fiscalSelected?.id ?? null);
   const openShift = useOpenShift();
   const closeShift = useCloseShift();
   // Період за замовчуванням — сьогодні (київський день): касир дивиться поточну зміну, а не
@@ -289,6 +291,23 @@ export default function CashOperationsTab({
         <div className="bg-surface border border-border rounded-lg px-4 py-2.5 flex items-center gap-3 shrink-0">
           {shiftLoading ? (
             <Spinner size="sm" />
+          ) : shiftError ? (
+            // Збій запиту ≠ «зміну закрито»: інакше касир бачить «Відкрити зміну» при відкритій
+            // зміні (з BR-CASH-027 — ще й 404, коли касу вже перевели в іншу філію). Bug #962.
+            <>
+              <AlertTriangle className="h-3.5 w-3.5 text-warning-text" aria-hidden="true" />
+              <span role="alert" className="text-[13px] text-warning-text">
+                {t('operations.shiftLoadError')}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto"
+                onClick={() => void refetchShift()}
+              >
+                {t('common:retry')}
+              </Button>
+            </>
           ) : shift ? (
             <>
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-success" />

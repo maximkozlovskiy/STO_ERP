@@ -273,7 +273,7 @@ BR-INV-018), рахунок без наряду — PAID/PARTIALLY_PAID → PART
 
 ### Касова зміна (cash-shift)
 
-- **BR-PAY-010**: `open()`: резолвить активний FISCAL-провайдер; бере вказану касу (немає у філії → 404) або найстаріше фіскальну касу філії (BR-CASH-027); **one-open-per-register**
+- **BR-PAY-010**: `open()`: резолвить активний FISCAL-провайдер; бере вказану касу (немає у філії → 404) або найстарішу фіскальну касу філії (BR-CASH-027); **one-open-per-register**
   guard (pre-check + partial-unique `cash_shifts_one_open_per_register_uq` як race-backstop → повертає
   переможця). `provider.signIn` (PIN→token) + `provider.openShift` → `checkboxShiftId`. Токен шифрується.
 - **BR-PAY-011**: `close()`: **CAS-claim** `OPEN→CLOSED` **до** зовнішнього виклику (Bug #711 — проти подвійного Z-звіту);

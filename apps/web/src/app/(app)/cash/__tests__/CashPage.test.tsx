@@ -129,6 +129,24 @@ describe('CashOperationsTab — ПРРО зміна (фіскальна каса
     expect(screen.queryByRole('button', { name: /Закрити зміну/ })).not.toBeInTheDocument();
   });
 
+  // Bug #962: збій запиту стану (404 — касу перевели в іншу філію, 500, мережа) — не «зміну закрито».
+  // Mutation-verify: прибрати гілку `shiftError` → кейс червоний (видно «Зміну закрито»).
+  it('стан зміни не завантажився → «Не вдалося дізнатися стан зміни» + «Повторити», без «Відкрити зміну»', async () => {
+    const refetch = vi.fn();
+    useCurrentShiftMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch,
+    });
+    render(<CashOperationsTab />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не вдалося дізнатися стан зміни');
+    expect(screen.queryByText(/Зміну закрито/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Відкрити зміну/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Повторити' }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
   it('pendingReceipts>0 → «Чеків очікує: N»', async () => {
     useCurrentShiftMock.mockReturnValue({
       data: openShiftData({ pendingReceipts: 4 }),

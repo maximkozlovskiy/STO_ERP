@@ -76,6 +76,7 @@
     "pendingReceipts": "Receipts pending: {{n}}",
     "closeShift": "Close shift (Z-report)",
     "shiftClosed": "Shift closed — cash operations unavailable",
+    "shiftLoadError": "Could not load the shift state",
     "openShift": "Open shift",
     "colDate": "Date",
     "colOperation": "Operation",

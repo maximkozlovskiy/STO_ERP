@@ -76,6 +76,7 @@
     "pendingReceipts": "Чеків очікує: {{n}}",
     "closeShift": "Закрити зміну (Z-звіт)",
     "shiftClosed": "Зміну закрито — операції з готівкою недоступні",
+    "shiftLoadError": "Не вдалося дізнатися стан зміни",
     "openShift": "Відкрити зміну",
     "colDate": "Дата",
     "colOperation": "Операція",
