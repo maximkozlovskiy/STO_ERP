@@ -78,7 +78,7 @@
     "@types/supertest": "^7.2.1",
     "@vitest/coverage-v8": "^5.0.5",
     "fast-check": "^4.10.2",
-    "fastify": "5.12.5",
+    "fastify": "5.12.7",
     "pino-pretty": "^13.2.0",
     "supertest": "^7.3.1",
     "ts-loader": "^9.6.2",
