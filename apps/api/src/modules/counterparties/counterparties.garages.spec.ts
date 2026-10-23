@@ -18,7 +18,11 @@ import { statusesProvider } from './counterparties.spec-fixture';
 
 describe('CounterpartiesService — гаражі (isDefault)', () => {
   let service: CounterpartiesService;
-  let tx: { customerGarage: PrismaModelMock; vehicle: PrismaModelMock };
+  let tx: {
+    customerGarage: PrismaModelMock;
+    vehicle: PrismaModelMock;
+    $queryRaw: ReturnType<typeof vi.fn>;
+  };
   let prisma: {
     counterparty: PrismaModelMock;
     customerGarage: PrismaModelMock;
@@ -44,6 +48,7 @@ describe('CounterpartiesService — гаражі (isDefault)', () => {
         create: vi.fn().mockResolvedValue(garageRow),
       },
       vehicle: { count: vi.fn().mockResolvedValue(0) },
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'g' }]),
     };
     prisma = {
       counterparty: { findFirst: vi.fn().mockResolvedValue({ id: 'cp-1' }) },
@@ -154,5 +159,17 @@ describe('CounterpartiesService — гаражі (isDefault)', () => {
       where: { orgId: 'org-1', customerGarageId: 'g-2', deletedAt: null },
     });
     expect(tx.customerGarage.update).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-CP-015
+  it('removeGarage: рядок гаража блокується FOR UPDATE до лічильника авто (TECH-DEBT §17.2)', async () => {
+    prisma.customerGarage.findFirst.mockResolvedValue({ id: 'g-2', isDefault: false });
+    await service.removeGarage('org-1', 'cp-1', 'g-2');
+    const sql = (tx.$queryRaw.mock.calls[0]![0] as TemplateStringsArray).join('?');
+    expect(sql).toMatch(/FROM customer_garages/);
+    expect(sql).toMatch(/FOR UPDATE/);
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.vehicle.count.mock.invocationCallOrder[0]!,
+    );
   });
 });

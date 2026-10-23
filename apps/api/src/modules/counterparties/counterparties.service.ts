@@ -619,7 +619,13 @@ export class CounterpartiesService {
     await this.prisma.$transaction(
       async tx => {
         // BR-CP-015: гараж із живим авто не видаляється — авто лишилось би без гаража
-        // (рішення власника 2026-10-22). Перевірка в транзакції, до запису.
+        // (рішення власника 2026-10-22). Перевірка в транзакції, до запису. Рядок гаража спершу
+        // блокується (FOR UPDATE): створення авто тримає його FOR SHARE до вставки, тож лічильник
+        // нижче бачить і авто, що створюється одночасно (TECH-DEBT §17.2).
+        await tx.$queryRaw`
+          SELECT id FROM customer_garages WHERE id = ${garageId}::uuid AND "orgId" = ${orgId}::uuid
+          FOR UPDATE
+        `;
         const liveVehicles = await tx.vehicle.count({
           where: { orgId, customerGarageId: garageId, deletedAt: null },
         });

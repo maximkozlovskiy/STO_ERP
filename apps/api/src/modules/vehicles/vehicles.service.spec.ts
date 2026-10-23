@@ -65,6 +65,9 @@ describe('VehiclesService', () => {
       customerGarage: {
         findFirst: vi.fn(),
       },
+      // BR-CP-015: create блокує рядок гаража (FOR SHARE) у транзакції зі вставкою авто.
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'g-1' }]),
+      $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
       vehicleNode: {
         findFirst: vi.fn(),
         findMany: vi.fn(),
@@ -232,7 +235,6 @@ describe('VehiclesService', () => {
   // MD-H2: VIN унікальний у межах org.
   describe('create/update — VIN uniqueness (MD-H2)', () => {
     it('create з дубль-VIN → BadRequestException', async () => {
-      prisma.customerGarage.findFirst.mockResolvedValueOnce({ id: 'g-1' });
       prisma.vehicle.findFirst.mockResolvedValueOnce({ id: 'other' }); // VIN clash
       await expect(
         service.create('org-1', { customerGarageId: 'g-1', vin: 'WVWZZZ' } as never),
@@ -241,7 +243,6 @@ describe('VehiclesService', () => {
     });
 
     it('create з унікальним VIN → створює', async () => {
-      prisma.customerGarage.findFirst.mockResolvedValueOnce({ id: 'g-1' });
       prisma.vehicle.findFirst.mockResolvedValueOnce(null); // no clash
       prisma.vehicle.create.mockResolvedValueOnce({ id: 'v-1', customerGarageId: 'g-1' });
       await service.create('org-1', { customerGarageId: 'g-1', vin: 'UNIQUE1' } as never);
@@ -252,10 +253,30 @@ describe('VehiclesService', () => {
     });
 
     it('create без VIN → перевірка пропускається', async () => {
-      prisma.customerGarage.findFirst.mockResolvedValueOnce({ id: 'g-1' });
       prisma.vehicle.create.mockResolvedValueOnce({ id: 'v-1', customerGarageId: 'g-1' });
       await service.create('org-1', { customerGarageId: 'g-1' } as never);
       expect(prisma.vehicle.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // BR-CP-015 (TECH-DEBT §17.2): гонка «видалення гаража ↔ створення авто».
+  describe('create — гараж блокується до вставки авто', () => {
+    it('рядок гаража читається FOR SHARE у тій самій транзакції, що й вставка', async () => {
+      prisma.vehicle.create.mockResolvedValueOnce({ id: 'v-1', customerGarageId: 'g-1' });
+      await service.create('org-1', { customerGarageId: 'g-1' } as never);
+      const sql = (prisma.$queryRaw.mock.calls[0]![0] as TemplateStringsArray).join('?');
+      expect(sql).toMatch(/FROM customer_garages/);
+      expect(sql).toMatch(/"deletedAt" IS NULL/);
+      expect(sql).toMatch(/FOR SHARE/);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('гараж уже видалено (блокування не повернуло рядка) → 404, авто не створюється', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+      await expect(
+        service.create('org-1', { customerGarageId: 'g-1' } as never),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.vehicle.create).not.toHaveBeenCalled();
     });
   });
 });

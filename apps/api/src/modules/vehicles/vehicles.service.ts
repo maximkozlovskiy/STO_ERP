@@ -54,17 +54,23 @@ export class VehiclesService {
   }
 
   async create(orgId: string, dto: CreateVehicleDto): Promise<VehicleResponseDto> {
-    // sto-optimize: narrow FK guard — full CustomerGarage row read лише для existence.
-    const garage = await this.prisma.customerGarage.findFirst({
-      where: { id: dto.customerGarageId, orgId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!garage)
-      throw new NotFoundException(translateError('err.vehicle.garageNotFound', getLocale()));
     // MD-H2: VIN — природний унікальний ключ авто (немає DB-констрейнта, лише @@index). Без
     // перевірки один авто заводиться двічі → дублі в історії/пошуку по номеру.
     await this.assertVinUnique(orgId, dto.vin, null);
-    const item = await this.prisma.vehicle.create({ data: { ...dto, orgId } });
+    // BR-CP-015: гараж блокується (FOR SHARE) до вставки авто в тій самій транзакції. Одночасне
+    // видалення гаража (FOR UPDATE у `CounterpartiesService.removeGarage`) або чекає й лічильником
+    // бачить це авто (400), або встигає першим — і тоді тут гараж уже видалений (404). Без
+    // блокування авто могло опинитись у щойно видаленому гаражі (TECH-DEBT §17.2).
+    const item = await this.prisma.$transaction(async tx => {
+      const garage = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM customer_garages
+        WHERE id = ${dto.customerGarageId}::uuid AND "orgId" = ${orgId}::uuid AND "deletedAt" IS NULL
+        FOR SHARE
+      `;
+      if (garage.length === 0)
+        throw new NotFoundException(translateError('err.vehicle.garageNotFound', getLocale()));
+      return tx.vehicle.create({ data: { ...dto, orgId } });
+    });
     return this.toDto(item);
   }
 
