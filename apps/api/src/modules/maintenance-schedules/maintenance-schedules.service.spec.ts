@@ -19,7 +19,11 @@ import { modelMock, type PrismaModelMock } from '../../common/testing/prisma-moc
  */
 describe('MaintenanceSchedulesService', () => {
   let svc: MaintenanceSchedulesService;
-  let prisma: { maintenanceSchedule: PrismaModelMock; vehicle: PrismaModelMock };
+  let prisma: {
+    maintenanceSchedule: PrismaModelMock;
+    vehicle: PrismaModelMock;
+    workOrder: PrismaModelMock;
+  };
 
   const ORG = 'org-1';
   const VEHICLE = 'veh-1';
@@ -55,6 +59,7 @@ describe('MaintenanceSchedulesService', () => {
         'count',
       ),
       vehicle: modelMock('findFirst'),
+      workOrder: modelMock('findMany'),
     };
     prisma.maintenanceSchedule.findMany.mockResolvedValue([row()]);
     prisma.maintenanceSchedule.findFirst.mockResolvedValue(row());
@@ -375,6 +380,59 @@ describe('MaintenanceSchedulesService', () => {
     it('findOne чужого графіка → 404 (не 200 з даними іншої org)', async () => {
       prisma.maintenanceSchedule.findFirst.mockResolvedValue(null);
       await expect(svc.findOne(ORG, 'foreign')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // BR-WO-031 (рішення власника 2026-10-23): скасований ТО-наряд — графік від історії.
+  describe('rebuildFromHistory — графік ТО після скасування ТО-наряду', () => {
+    const SCHEDULE = { id: 'ms-1', intervalDays: 180, intervalMileage: 10_000 };
+
+    // guards: BR-WO-031
+    it('дата — від останнього завершеного ТО-наряду, пробіг — від останнього з пробігом', async () => {
+      prisma.maintenanceSchedule.findMany.mockResolvedValue([SCHEDULE]);
+      prisma.workOrder.findMany.mockResolvedValue([
+        { completedAt: new Date('2026-05-01T00:00:00.000Z'), outMileage: null },
+        { completedAt: new Date('2026-02-01T00:00:00.000Z'), outMileage: 48_000 },
+      ]);
+      await svc.rebuildFromHistory(ORG, VEHICLE);
+
+      const where = prisma.workOrder.findMany.mock.calls[0][0].where;
+      expect(where).toMatchObject({
+        orgId: ORG,
+        vehicleId: VEHICLE,
+        deletedAt: null,
+        repairCategory: 'MAINTENANCE',
+        status: { in: ['COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED'] },
+      });
+      expect(prisma.workOrder.findMany.mock.calls[0][0].orderBy).toEqual({ completedAt: 'desc' });
+      const data = prisma.maintenanceSchedule.update.mock.calls[0][0].data;
+      expect(data.lastMaintenanceDate).toEqual(new Date('2026-05-01T00:00:00.000Z'));
+      expect(data.lastMaintenanceMileage).toBe(48_000);
+      expect(data.nextMaintenanceMileage).toBe(58_000);
+      expect(data.nextMaintenanceDate).toBeInstanceOf(Date);
+    });
+
+    // guards: BR-WO-031
+    it('інших завершених ТО-нарядів немає → останнє й наступне ТО очищаються', async () => {
+      prisma.maintenanceSchedule.findMany.mockResolvedValue([SCHEDULE]);
+      prisma.workOrder.findMany.mockResolvedValue([]);
+      await svc.rebuildFromHistory(ORG, VEHICLE);
+      expect(prisma.maintenanceSchedule.update.mock.calls[0][0]).toEqual({
+        where: { id: 'ms-1', orgId: ORG },
+        data: {
+          lastMaintenanceDate: null,
+          lastMaintenanceMileage: null,
+          nextMaintenanceDate: null,
+          nextMaintenanceMileage: null,
+        },
+      });
+    });
+
+    it('немає активних графіків → жодного update', async () => {
+      prisma.maintenanceSchedule.findMany.mockResolvedValue([]);
+      prisma.workOrder.findMany.mockResolvedValue([]);
+      await svc.rebuildFromHistory(ORG, VEHICLE);
+      expect(prisma.maintenanceSchedule.update).not.toHaveBeenCalled();
     });
   });
 });

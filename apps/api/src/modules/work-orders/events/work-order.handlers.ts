@@ -88,6 +88,29 @@ export class WorkOrderEventHandlers {
     }
   }
 
+  /**
+   * BR-WO-031 (рішення власника 2026-10-23): скасування завершеного («Виконано» / «Виставлено»)
+   * ТО-наряду перераховує графіки ТО авто від історії — інакше графік лишався «ТО зроблено», і
+   * нагадування про наступне ТО зсувалось.
+   */
+  @OnEvent(WORK_ORDER_EVENTS.TRANSITIONED)
+  async rollbackMaintenance(e: WorkOrderTransitionedEvent): Promise<void> {
+    if (e.toStatus !== 'CANCELLED') return;
+    if (e.fromStatus !== 'COMPLETED' && e.fromStatus !== 'INVOICED') return;
+    try {
+      const wo = await this.prisma.workOrder.findFirst({
+        where: { id: e.workOrderId, orgId: e.orgId },
+        select: { vehicleId: true, repairCategory: true },
+      });
+      if (!wo?.vehicleId || wo.repairCategory !== 'MAINTENANCE') return;
+      await this.maintenanceSchedules.rebuildFromHistory(e.orgId, wo.vehicleId);
+    } catch (err: unknown) {
+      this.logger.warn(
+        `Помилка перерахунку ТО після скасування: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   /** Авто-створення гарантії після завершення, якщо defaultWarrantyDays > 0. */
   @OnEvent(WORK_ORDER_EVENTS.COMPLETED)
   async createWarranty(e: WorkOrderCompletedEvent): Promise<void> {

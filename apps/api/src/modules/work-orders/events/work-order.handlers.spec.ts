@@ -15,13 +15,21 @@ import type { AuditService } from '../../audit/audit.service';
 describe('WorkOrderEventHandlers', () => {
   const vehicleUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
   const updateAfterWorkOrder = vi.fn().mockResolvedValue(undefined);
+  const rebuildFromHistory = vi.fn().mockResolvedValue(undefined);
+  const workOrderFindFirst = vi.fn();
   const autoCreate = vi.fn().mockResolvedValue(undefined);
   const send = vi.fn().mockResolvedValue(undefined);
   const getOrganisationSettings = vi.fn().mockResolvedValue({ defaultWarrantyDays: 30 });
   const record = vi.fn().mockResolvedValue(undefined);
 
-  const prisma = { vehicle: { updateMany: vehicleUpdateMany } } as unknown as PrismaService;
-  const maintenance = { updateAfterWorkOrder } as unknown as MaintenanceSchedulesService;
+  const prisma = {
+    vehicle: { updateMany: vehicleUpdateMany },
+    workOrder: { findFirst: workOrderFindFirst },
+  } as unknown as PrismaService;
+  const maintenance = {
+    updateAfterWorkOrder,
+    rebuildFromHistory,
+  } as unknown as MaintenanceSchedulesService;
   const warranties = { autoCreate } as unknown as WarrantiesService;
   const notifications = { send } as unknown as NotificationsService;
   const settings = { getOrganisationSettings } as unknown as SettingsService;
@@ -117,6 +125,34 @@ describe('WorkOrderEventHandlers', () => {
   it('updateMaintenance для не-MAINTENANCE (null) → no-op', async () => {
     await handlers.updateMaintenance(completed({ repairCategory: null }));
     expect(updateAfterWorkOrder).not.toHaveBeenCalled();
+  });
+
+  // BR-WO-031: скасування завершеного ТО-наряду перераховує графік від історії.
+  const transitioned = (from: string, to: string) =>
+    new WorkOrderTransitionedEvent('o1', 'wo1', from as never, to as never, 'u1');
+
+  // guards: BR-WO-031
+  it.each(['COMPLETED', 'INVOICED'])(
+    'rollbackMaintenance: %s → CANCELLED, ТО-наряд → графік від історії авто',
+    async from => {
+      workOrderFindFirst.mockResolvedValueOnce({ vehicleId: 'v1', repairCategory: 'MAINTENANCE' });
+      await handlers.rollbackMaintenance(transitioned(from, 'CANCELLED'));
+      expect(workOrderFindFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'wo1', orgId: 'o1' } }),
+      );
+      expect(rebuildFromHistory).toHaveBeenCalledWith('o1', 'v1');
+    },
+  );
+
+  // guards: BR-WO-031
+  it('rollbackMaintenance: не ТО-наряд або скасування не з «Виконано»/«Виставлено» → no-op', async () => {
+    workOrderFindFirst.mockResolvedValueOnce({ vehicleId: 'v1', repairCategory: 'REPAIR' });
+    await handlers.rollbackMaintenance(transitioned('COMPLETED', 'CANCELLED'));
+    await handlers.rollbackMaintenance(transitioned('APPROVED', 'CANCELLED'));
+    await handlers.rollbackMaintenance(transitioned('COMPLETED', 'INVOICED'));
+    expect(rebuildFromHistory).not.toHaveBeenCalled();
+    // Лише перший виклик дійшов до читання наряду.
+    expect(workOrderFindFirst).toHaveBeenCalledTimes(1);
   });
 
   // ── гарантія ──

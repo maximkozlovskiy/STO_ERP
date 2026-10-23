@@ -230,6 +230,52 @@ export class MaintenanceSchedulesService {
     );
   }
 
+  /**
+   * BR-WO-031 (рішення власника 2026-10-23): скасований завершений ТО-наряд не має лишати графік
+   * «ТО зроблено». Попередніх значень графік не зберігає, тож перераховує від історії авто: дата —
+   * від останнього завершеного ТО-наряду (не скасованого, не видаленого), пробіг — від останнього
+   * такого наряду з пробігом (як `updateAfterWorkOrder` тримає попередній пробіг, коли в наряді його
+   * немає). Такого наряду немає — останнє й наступне ТО очищаються.
+   */
+  async rebuildFromHistory(orgId: string, vehicleId: string): Promise<void> {
+    const [schedules, history] = await Promise.all([
+      this.prisma.maintenanceSchedule.findMany({
+        where: { orgId, vehicleId, deletedAt: null, isActive: true },
+        select: { id: true, intervalDays: true, intervalMileage: true },
+        take: 50,
+      }),
+      this.prisma.workOrder.findMany({
+        where: {
+          orgId,
+          vehicleId,
+          deletedAt: null,
+          repairCategory: 'MAINTENANCE',
+          status: { in: ['COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED'] },
+          completedAt: { not: null },
+        },
+        orderBy: { completedAt: 'desc' },
+        select: { completedAt: true, outMileage: true },
+        take: 50,
+      }),
+    ]);
+    if (schedules.length === 0) return;
+    const lastDate = history[0]?.completedAt ?? null;
+    const lastMileage = history.find(w => w.outMileage != null)?.outMileage ?? null;
+    await Promise.all(
+      schedules.map(s =>
+        this.prisma.maintenanceSchedule.update({
+          where: { id: s.id, orgId },
+          data: {
+            lastMaintenanceDate: lastDate,
+            lastMaintenanceMileage: lastMileage,
+            nextMaintenanceDate: this.calcNextDate(lastDate, s.intervalDays),
+            nextMaintenanceMileage: this.calcNextMileage(lastMileage, s.intervalMileage),
+          },
+        }),
+      ),
+    );
+  }
+
   private calcNextDate(
     lastDate: Date | null | undefined,
     intervalDays: number | null | undefined,
