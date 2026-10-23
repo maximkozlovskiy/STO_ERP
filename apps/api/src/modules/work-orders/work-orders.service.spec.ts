@@ -729,6 +729,7 @@ describe('WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2)'
         ),
       },
       workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount }) },
+      settlementTransaction: { findFirst: vi.fn().mockResolvedValue(null) },
       goodUoM: { findMany: vi.fn().mockResolvedValue(goodUoM) },
     } as unknown as PrismaService;
     const inventory = { createMovement } as never;

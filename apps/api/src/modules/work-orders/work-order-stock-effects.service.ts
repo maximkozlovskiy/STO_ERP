@@ -376,7 +376,18 @@ export class WorkOrderStockEffectsService {
       // Мультивалюта (Фаза 3): валюта + дата документа для симетрії CREDIT_NOTE з CHARGE.
       select: { totalAmount: true, currencyId: true, documentDate: true },
     });
-    const creditAmount = moneyFromDecimal(freshWo?.totalAmount ?? wo.totalAmount);
+    // Сторно — дзеркало CHARGE цього наряду (один на документ, BR-SETL-015): та сама сума, валюта й
+    // конвертація. Курс заново не шукається: курс, внесений чи виправлений після нарахування (CHARGE
+    // брав «останній», бо на дату документа курсу ще не було), лишав би залишок у базовій валюті
+    // (TECH-DEBT §17.1). Без CHARGE (старі дані) — сума наряду за курсом на дату документа, як раніше.
+    const charge = await db.settlementTransaction.findFirst({
+      where: { orgId, type: 'CHARGE', documentType: 'WorkOrder', documentId: wo.id },
+      orderBy: { createdAt: 'asc' },
+      select: { amount: true, currencyId: true, rateUsed: true, amountBase: true },
+    });
+    const creditAmount = charge
+      ? moneyFromDecimal(charge.amount)
+      : moneyFromDecimal(freshWo?.totalAmount ?? wo.totalAmount);
     if (creditAmount > 0) {
       await this.settlements.createTransaction(
         orgId,
@@ -384,9 +395,19 @@ export class WorkOrderStockEffectsService {
           counterpartyId: wo.counterpartyId,
           type: 'CREDIT_NOTE',
           amount: creditAmount,
-          currencyId: freshWo?.currencyId ?? undefined,
-          date: freshWo?.documentDate ?? undefined,
-          fallbackToLatest: true,
+          ...(charge
+            ? {
+                currencyId: charge.currencyId ?? undefined,
+                conversion: {
+                  rateUsed: Number(charge.rateUsed),
+                  amountBase: Number(charge.amountBase),
+                },
+              }
+            : {
+                currencyId: freshWo?.currencyId ?? undefined,
+                date: freshWo?.documentDate ?? undefined,
+                fallbackToLatest: true,
+              }),
           documentType: 'WorkOrder',
           documentId: wo.id,
           createdBy: userId,
