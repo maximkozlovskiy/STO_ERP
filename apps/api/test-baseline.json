@@ -2311,6 +2311,7 @@
    "CounterpartiesService — гаражі (isDefault) removeGarage: видалення default-гаража → найстаріший активний сусід стає default (у тій самій tx)",
    "CounterpartiesService — гаражі (isDefault) removeGarage: видалення НЕ default-гаража → нікого не промотує",
    "CounterpartiesService — гаражі (isDefault) removeGarage: гараж не цього контрагента/org → NotFound, транзакція не починається",
+   "CounterpartiesService — гаражі (isDefault) removeGarage: рядок гаража блокується FOR UPDATE до лічильника авто (TECH-DEBT §17.2)",
    "CounterpartiesService — гаражі (isDefault) removeGarage: у гаражі живе авто → 400, гараж не видаляється (рішення власника 2026-10-22)"
   ],
   "apps/api/src/modules/counterparties/counterparties.linked-docs.spec.ts": [
@@ -6251,6 +6252,8 @@
    "Sync — HTTP Contract GET /sync/status (Bug #127 regression) повертає maxSyncVersion з усіх PULL_TABLES (агрегує MAX по таблицях)",
    "Sync — HTTP Contract POST /sync/push A4: LWW-loser з БІЛЬШИМ пробігом → все одно оновлює mileage",
    "Sync — HTTP Contract POST /sync/push A4: LWW-winner з МЕНШИМ пробігом → пише max (не відкочує пробіг назад)",
+   "Sync — HTTP Contract POST /sync/push Bug #950: гараж видалили після FK-перевірки (блокування без рядка) → конфлікт, авто не створюється",
+   "Sync — HTTP Contract POST /sync/push Bug #950: нове авто з гаражем — гараж блокується FOR SHARE у транзакції зі вставкою",
    "Sync — HTTP Contract POST /sync/push DELETE calendar_slot з НОВІШИМ syncVersion застосовує soft-delete",
    "Sync — HTTP Contract POST /sync/push DELETE calendar_slot зі СТАРІШИМ syncVersion не клобберить новіший серверний запис (LWW tombstone)",
    "Sync — HTTP Contract POST /sync/push DELETE customer_garages через sync відхиляється — гараж видаляє лише маршрут зі сторожем авто",
@@ -6354,6 +6357,8 @@
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-005 — не більше 200 останніх записів і навпаки: перший запис вікна без відкату не отримує позначку лише тому, що він перший"
   ],
   "apps/api/src/modules/vehicles/vehicles.service.spec.ts": [
+   "VehiclesService create — гараж блокується до вставки авто гараж уже видалено (блокування не повернуло рядка) → 404, авто не створюється",
+   "VehiclesService create — гараж блокується до вставки авто рядок гаража читається FOR SHARE у тій самій транзакції, що й вставка",
    "VehiclesService create/update — VIN uniqueness (MD-H2) create без VIN → перевірка пропускається",
    "VehiclesService create/update — VIN uniqueness (MD-H2) create з дубль-VIN → BadRequestException",
    "VehiclesService create/update — VIN uniqueness (MD-H2) create з унікальним VIN → створює",
@@ -6370,7 +6375,9 @@
    "VehiclesService restore — Bug #601 (parent garage) + Bug #602 (parent CP) + Bug #605 baseline cross-tenant / non-existent → NotFoundException",
    "VehiclesService restore — Bug #601 (parent garage) + Bug #602 (parent CP) + Bug #605 baseline double-restore (авто вже активне) → NotFoundException, БЕЗ write-op",
    "VehiclesService restore — Bug #601 (parent garage) + Bug #602 (parent CP) + Bug #605 baseline happy-path: авто soft-deleted, гараж активний, CP активний → 200 + deletedAt=null у DTO",
-   "VehiclesService restore — Bug #601 (parent garage) + Bug #602 (parent CP) + Bug #605 baseline пре-check findFirst містить orgId (tenant isolation) + full parent chain у select"
+   "VehiclesService restore — Bug #601 (parent garage) + Bug #602 (parent CP) + Bug #605 baseline пре-check findFirst містить orgId (tenant isolation) + full parent chain у select",
+   "VehiclesService restore — гараж блокується до відновлення авто гараж видалили між перевіркою і записом (блокування без рядка) → 400, авто не відновлюється",
+   "VehiclesService restore — гараж блокується до відновлення авто рядок гаража авто читається FOR SHARE у транзакції, що відновлює авто"
   ],
   "apps/api/src/modules/warehouses/warehouses.contract.spec.ts": [
    "Warehouses — HTTP Contract DELETE /warehouses/:id 204 — soft delete",
@@ -6585,6 +6592,11 @@
    "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції перехід у COMPLETED (має складські/фінансові side-effects) звідси заборонено — лише transition()",
    "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції перехід у IN_PROGRESS (має складські/фінансові side-effects) звідси заборонено — лише transition()",
    "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції уся матриця переходів: ціль із side-effects → відмова; пара з FSM → CAS; решта → 400"
+  ],
+  "apps/api/src/modules/work-orders/work-order-stock-effects.credit-mirror.spec.ts": [
+   "returnPartsAndCredit — CREDIT_NOTE дзеркалить CHARGE наряду CHARGE без конвертації: старим шляхом, а не conversion з нулями (400 на скасуванні)",
+   "returnPartsAndCredit — CREDIT_NOTE дзеркалить CHARGE наряду CHARGE немає (старі дані): сума наряду за курсом на дату документа, як раніше",
+   "returnPartsAndCredit — CREDIT_NOTE дзеркалить CHARGE наряду є CHARGE: та сама сума, валюта й конвертація; курс заново не шукається"
   ],
   "apps/api/src/modules/work-orders/work-order-stock-effects.integration.spec.ts": [
    "WorkOrderStockEffectsService — guarded goodUoM.findMany (integration, live DB, A3) A3-фікс: reserveParts з UoM-частиною через guarded client → 0 TenantIsolationError",
