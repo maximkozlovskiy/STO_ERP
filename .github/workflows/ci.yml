@@ -791,6 +791,15 @@ jobs:
           for f in $changed; do
             hits=$(grep -niE 'DROP[[:space:]]+(COLUMN|TABLE)|ALTER[[:space:]]+COLUMN[[:space:]].*[[:space:]]TYPE[[:space:]]' "$f" 2>/dev/null \
               | grep -vi 'destructive-ok' || true)
+            # DROP тимчасової таблиці, яку створила ця ж міграція (CREATE TEMP TABLE), даних не губить —
+            # це прибирання за собою (20261023180000_vehicle_makes_and_models). Маркер у вже застосованій
+            # міграції змінив би її контрольну суму, і `prisma migrate dev` вимагав би скидання бази.
+            for t in $(grep -oiE 'CREATE[[:space:]]+TEMP(ORARY)?[[:space:]]+TABLE[[:space:]]+"?[A-Za-z0-9_]+' "$f" \
+                | sed -E 's/.*[[:space:]]"?([A-Za-z0-9_]+)$/\1/' || true); do
+              hits=$(printf '%s\n' "$hits" \
+                | grep -viE "DROP[[:space:]]+TABLE[[:space:]]+(IF[[:space:]]+EXISTS[[:space:]]+)?\"?${t}\"?[[:space:]]*;" || true)
+            done
+            hits=$(printf '%s\n' "$hits" | sed '/^[[:space:]]*$/d')
             if [ -n "$hits" ]; then
               bad="${bad}\n${f}:\n${hits}"
             fi
