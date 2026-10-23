@@ -332,3 +332,7 @@
 <!-- T1.3-082 -->
 
 - [ ] **`onError` картинки правит DOM-стилі напряму (`e.currentTarget.style.display = 'none'`, `querySelector(...).style.display = 'flex'`), а показ керується пропом (Bug #952):** React не скидає стилів, яких не контролює, тож після зміни `src` (заміна логотипа/фото, інший запис у тій самій картці) нова картинка лишається прихованою, а заглушка — поверх неї, до перемонтування. Grep: `grep -rn "currentTarget.style.display" apps/web/src --include=*.tsx`. Перевірка наживо: зламаний URL → `onError` → заміна файла → `naturalWidth > 0`, але `display:none`. Fix: невдалу адресу — у стан (`failedSrc`), показ — `src && src !== failedSrc`. Тест: `fireEvent.error(img)` → заміна → нова картинка видима, заглушка схована. Severity LOW. Де ще: `EstimateClient` (логотип кошторису), фото в актах/дефектовці, аватари.
+
+<!-- T1.3-083 -->
+
+- [ ] **`Modal onSubmit` (Ctrl+Enter) кличе обробник повз `disabled` кнопки «Зберегти»: умова блокування лише на кнопці (Bug #954).** `grep -rn "onSubmit={() => void save" apps/web/src` → обробник сам перевіряє ту саму умову Фікс: `if (!ready || saving) return` на початку обробника; тест — Ctrl+Enter у заблокованому стані запиту не шле, контроль — у готовому шле.

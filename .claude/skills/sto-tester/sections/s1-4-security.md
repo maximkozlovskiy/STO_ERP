@@ -59,6 +59,7 @@ done
 - [ ] `@IsIn(['A','B','C'])` для union-string типів (`'OK' | 'WARN' | 'CRITICAL'`)
 - [ ] Public endpoint double-strict audit; там само: виклик external service (SMS, ПРРО) → черга з attempts ≥ 10 + exponential backoff (Bugs #251 + #252) — `T1.4-002`
 - [ ] Secret at-rest via Prisma `$extends` (Bug #652) — `T1.4-003`
+- [ ] «Порожня адреса ≡ типова» у перевірці (`sameApiUrl`, `if (url && …)`), а вибір адреси — через `??`: `"" ?? fallback` дає `""`, і провайдер іде на свою типову адресу повз перевірку (Bug #955). `grep -rn "apiUrl ?? " apps/api/src/modules` поруч із `sameApiUrl`/`apiUrl &&`
 - [ ] Аудит/лог з `{ ...dto }` моделі, що має поля з `ENCRYPTED_FIELDS`: write-only секрет лягає відкрито в `audit_events.diff` і віддається `GET /audit` ролям, що самого секрету не бачать (Bug #951). Grep: `grep -rn "audit.*{ ...dto }" apps/api/src/modules` → поля моделі проти `ENCRYPTED_FIELDS`; fix — маска `***`, `null` лишити
 
 ---
