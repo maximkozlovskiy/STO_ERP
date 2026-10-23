@@ -459,6 +459,7 @@ export const uk: Record<string, string> = {
     'Прийом можливий лише для замовлень зі статусом ORDERED або PARTIAL',
   'err.purchaseOrder.unitNotFoundInOrg': 'Одиницю виміру не знайдено в межах організації',
   'err.purchaseOrder.receiveLineMustBeUnique': 'Кожен рядок прийому має бути унікальним',
+  'err.purchaseOrder.receiveLineNotFound': 'Рядок прийому не належить цьому замовленню',
   'err.purchaseOrder.receiveExceedsLineRemaining':
     'Кількість прийому перевищує залишок за рядком (замовлено {{quantity}}, ' +
     'вже прийнято {{received}}, до прийому {{remaining}})',
@@ -774,6 +775,8 @@ export const uk: Record<string, string> = {
   'err.bankStatement.matchFailed': 'Не вдалося провести платіж за транзакцією',
   'err.bankStatement.invalidOperationDate':
     'Некоректна дата операції «{{value}}» (очікується YYYY-MM-DD або ISO)',
+  'err.bankStatement.amountBaseOverflow':
+    'Сума в базовій валюті за курсом завелика — не більше 9 999 999 999,99',
   // ── DTO-валідація bank-statements ──
   'err.dto.bankStatement.bankAccountId.uuid': 'Невірний ідентифікатор банківського рахунку',
   'err.dto.bankStatement.startRow.int': 'Рядок початку має бути цілим числом',
@@ -1011,6 +1014,8 @@ export const uk: Record<string, string> = {
   'err.reportBuilder.disallowedRelation': "Недозволений зв'язок у полі: {{prefix}}",
   'err.reportBuilder.unknownEnum': 'Невідомий enum: {{enumName}}',
   'err.reportBuilder.disallowedEnumValue': 'Недозволене значення "{{value}}" для {{enumName}}',
+  'err.reportBuilder.filterValueInvalid': 'Неприпустиме значення фільтра "{{label}}"',
+  'err.query.nulCharacter': 'Запит містить недопустимий символ (NUL)',
 
   // ── Exception-повідомлення: reports-модуль ──
   'err.report.startAfterEnd': 'Дата початку має бути не пізніше дати закінчення',

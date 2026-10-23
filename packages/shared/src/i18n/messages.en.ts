@@ -470,6 +470,7 @@ export const en: Record<string, string> = {
     'Receiving is possible only for orders with ORDERED or PARTIAL status',
   'err.purchaseOrder.unitNotFoundInOrg': 'Unit of measure not found within the organization',
   'err.purchaseOrder.receiveLineMustBeUnique': 'Each receipt line must be unique',
+  'err.purchaseOrder.receiveLineNotFound': 'The receipt line does not belong to this order',
   'err.purchaseOrder.receiveExceedsLineRemaining':
     'The received quantity exceeds the line balance (ordered {{quantity}}, ' +
     'already received {{received}}, to receive {{remaining}})',
@@ -791,6 +792,8 @@ export const en: Record<string, string> = {
   'err.bankStatement.matchFailed': 'Failed to post a payment for the transaction',
   'err.bankStatement.invalidOperationDate':
     'Invalid transaction date "{{value}}" (expected YYYY-MM-DD or ISO)',
+  'err.bankStatement.amountBaseOverflow':
+    'The base-currency amount at this rate is too large — at most 9,999,999,999.99',
   // ── DTO validation: bank-statements ──
   'err.dto.bankStatement.bankAccountId.uuid': 'Invalid bank account identifier',
   'err.dto.bankStatement.startRow.int': 'Start row must be an integer',
@@ -1032,6 +1035,8 @@ export const en: Record<string, string> = {
   'err.reportBuilder.disallowedRelation': 'Disallowed relation in field: {{prefix}}',
   'err.reportBuilder.unknownEnum': 'Unknown enum: {{enumName}}',
   'err.reportBuilder.disallowedEnumValue': 'Disallowed value "{{value}}" for {{enumName}}',
+  'err.reportBuilder.filterValueInvalid': 'Invalid filter value for "{{label}}"',
+  'err.query.nulCharacter': 'The request contains a disallowed character (NUL)',
 
   // ── Exception messages: reports module ──
   'err.report.startAfterEnd': 'The start date must not be later than the end date',

@@ -585,6 +585,7 @@ export const VALIDATION_KEYS = [
   'err.purchaseOrder.receiveOnlyOrderedOrPartial',
   'err.purchaseOrder.unitNotFoundInOrg',
   'err.purchaseOrder.receiveLineMustBeUnique',
+  'err.purchaseOrder.receiveLineNotFound',
   'err.purchaseOrder.receiveExceedsLineRemaining',
   'err.purchaseOrder.statusChangedRetry',
   'err.purchaseOrder.receiveAlreadyProcessed',
@@ -829,6 +830,7 @@ export const VALIDATION_KEYS = [
   'err.bankStatement.noDataRows',
   'err.bankStatement.matchFailed',
   'err.bankStatement.invalidOperationDate',
+  'err.bankStatement.amountBaseOverflow',
   // DTO-валідація bank-statements
   'err.dto.bankStatement.bankAccountId.uuid',
   'err.dto.bankStatement.startRow.int',
@@ -1024,6 +1026,8 @@ export const VALIDATION_KEYS = [
   'err.reportBuilder.disallowedRelation',
   'err.reportBuilder.unknownEnum',
   'err.reportBuilder.disallowedEnumValue',
+  'err.reportBuilder.filterValueInvalid',
+  'err.query.nulCharacter',
   // Exception-повідомлення: reports-модуль
   'err.report.startAfterEnd',
   'err.report.warehouseNotFound',
