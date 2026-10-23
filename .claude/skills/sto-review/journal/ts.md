@@ -116,3 +116,13 @@
 який не підпав під жоден?» і прогнати скрипт на 1 реальному файлі кожного типу.
 **Fix:** помилка → окремий exit code і текст «НЕ ЗРОБЛЕНО»; непокрите — назвати у виводі
 («ПОЗА СЕЛЕКТОРОМ»); правило «усе поза X» замість переліку тек; тест на кожен випадок.
+
+### 2026-10-23 — path-фільтр / diff-гейт CI проти `github.event.before` при cancel-in-progress — §1
+
+**Сигнал:** job `changes` (`dorny/paths-filter`) і diff-гейти (jscpd, migration-safety) на push брали
+базу `github.event.before`, а `concurrency.cancel-in-progress: true` скасовує попередній прогін. Push
+коду, за яким за хвилину йде push лише `CHANGELOG.md`, лишав код без type-check/тестів/E2E — main зелений.
+**Grep:** `grep -n "event.before\|cancel-in-progress" .github/workflows/*.yml` — є обидва в одному workflow → перевірити базу.
+**Фікс:** база push — коміт останнього успішного прогону (`gh run list --status success`, перевірка
+`git merge-base --is-ancestor`), вихід `changes.outputs.base`; гейти — `needs.changes.outputs.base || github.event.before`.
+**Severity:** CRITICAL — пропущена перевірка коду на main без жодного червоного сигналу.

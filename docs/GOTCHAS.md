@@ -4,6 +4,18 @@
 
 ---
 
+## [2026-10-23] CI: path-фільтр проти `github.event.before` + cancel-in-progress губить код
+
+`dorny/paths-filter` на push типово порівнює з `github.event.before` — попереднім комітом push-у.
+Разом із `concurrency: cancel-in-progress` це пропускає код: push A (код) скасовано push-ем B
+(лише `CHANGELOG.md` — звичайний крок після коміту), B проти `before` = A бачить лише документацію,
+і type-check, тести, E2E для коду A не йдуть НІКОЛИ, а main зелений. Те саме з будь-яким
+diff-гейтом проти `before` (jscpd, migration-safety). Тому в `ci.yml` база push — коміт останнього
+УСПІШНОГО прогону CI (`gh run list --status success`, job `changes`, вихід `base`); diff-гейти беруть
+її ж. Новий diff-гейт на push — теж `needs.changes.outputs.base || github.event.before`.
+
+---
+
 ## [2026-10-22] Після `pnpm install` dev API: «`@prisma/client` has no exported member `PrismaClient`»
 
 Згенерований Prisma-клієнт живе всередині пакета `@prisma/client` у `node_modules/.pnpm`. Будь-який

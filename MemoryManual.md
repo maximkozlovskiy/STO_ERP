@@ -161,7 +161,8 @@ python scripts/check-doc-links.py; python scripts/check-mojibake.py   # поси
   (`.next-e2e`, `NEXT_PUBLIC_E2E=1`); dev-сервер `:3001` заради Playwright не зупиняти
 - **CI запускає важкі job-и лише на зміну коду** (job `changes`, `dorny/paths-filter`): правка лише
   `docs/`/скілів — тільки `quality` без типів/тестів. Новий шлях, що впливає на збірку, — дописати у
-  фільтр `code`/`docker` у `ci.yml`, інакше його зміна пройде без перевірки
+  фільтр `code`/`docker` у `ci.yml`, інакше його зміна пройде без перевірки. База push — останній успішний
+  прогін, не `before` (GOTCHAS 2026-10-23: інакше cancel-in-progress губить код скасованого push)
 - **tsc web incremental cache** ламається → використовувати `npx tsc --noEmit --incremental false`
   (голий tsc дає фантомну PricingRulesClient-помилку)
 

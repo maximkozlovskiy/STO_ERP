@@ -26,19 +26,51 @@ jobs:
   # Що змінив diff — щоб важкі job-и не йшли на правку лише документації чи скілів (у цьому репо
   # таких комітів більшість). Ручний запуск — завжди все. Фільтр навмисно широкий: пропустити
   # потрібну перевірку дорожче, ніж зайвий прогін.
+  #
+  # База push — НЕ `github.event.before`, а коміт останнього УСПІШНОГО прогону CI на main. Разом із
+  # cancel-in-progress `before` губить код: push A (код) скасовано push-ем B (лише CHANGELOG —
+  # звичайний крок після кожного коміту), а B проти `before` = A бачить лише документацію, і важкі
+  # job-и для коду A не йдуть ніколи. Від останнього успіху diff охоплює й скасовані, і впалі прогони.
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # dorny: список файлів PR через API
+      actions: read # gh run list: коміт останнього успішного прогону
     outputs:
       code: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.code == 'true' }}
       docker: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.docker == 'true' }}
       installer: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.installer == 'true' }}
       migrations: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.migrations == 'true' }}
+      # База push для diff-гейтів (jscpd); на PR і ручному запуску порожня.
+      base: ${{ steps.base.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # перевірка «база — предок HEAD» і diff проти давнього успіху
+
+      - name: База push — останній успішний прогін
+        id: base
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --branch "$GITHUB_REF_NAME" \
+            --event push --status success --limit 1 --json headSha --jq '.[0].headSha // empty' 2>/dev/null || true)
+          # Force-push переписав історію (успіх не предок HEAD) або успіхів ще немає — порожньо:
+          # dorny тоді бере свій типовий `before`, jscpd — теж `before` (як до цього кроку).
+          if [ -n "$sha" ] && ! git merge-base --is-ancestor "$sha" HEAD 2>/dev/null; then sha=""; fi
+          # Повторний запуск уже успішного коміту: diff проти самого себе порожній — теж `before`.
+          if [ "$sha" = "$(git rev-parse HEAD)" ]; then sha=""; fi
+          echo "База push: ${sha:-github.event.before}"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # На PR ігнорується (dorny бере файли PR через API); на push — SHA останнього успіху,
+          # порожньо — типова поведінка (`github.event.before`).
+          base: ${{ steps.base.outputs.sha }}
           filters: |
             code:
               - 'apps/**'
@@ -53,6 +85,8 @@ jobs:
               - '.dependency-cruiser.cjs'
               - '.jscpd.json'
               - 'scripts/check-dupes.sh'
+              # Справжній прогін drift-гейта (проти БД) — лише в integration-tests.
+              - 'scripts/check-schema-drift.py'
               - '.github/workflows/ci.yml'
             # Образ ламають залежності, Dockerfile/.dockerignore, спільні пакети й конфіги збирання.
             # Звичайну правку apps/*/src тут не ловимо: `next build`/`tsc` того самого коду вже
@@ -153,7 +187,8 @@ jobs:
       # Copy-paste — БЛОКУЮЧИЙ лише для НОВИХ клонів: jscpd сканує базовий коміт тією самою
       # конфігурацією (.jscpd.json) і валить, якщо diff приніс клон, якого там не було. Наявні
       # (2026-10-22: 335 клонів, 3.43% рядків прод-коду) не чіпає — інакше гейт був би червоним
-      # з першого дня. База: ціль PR або попередній коміт push; без бази — лише звіт.
+      # з першого дня. База: ціль PR або база push із job `changes` (останній успішний прогін);
+      # без бази — лише звіт.
       - name: Copy-paste (нові клони проти бази)
         if: needs.changes.outputs.code == 'true'
         run: |
@@ -161,7 +196,12 @@ jobs:
             git fetch --quiet --depth=50 origin "${GITHUB_BASE_REF}"
             base="origin/${GITHUB_BASE_REF}"
           else
-            base="${{ github.event.before }}"
+            # База — та сама, що в job `changes` (останній успіх), інакше `before`.
+            base="${{ needs.changes.outputs.base || github.event.before }}"
+            # Давній успіх може лежати глибше за fetch-depth: 50 — догрузити сам коміт.
+            if [ -n "$base" ] && ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+              git fetch --quiet --depth=1 origin "$base" || true
+            fi
           fi
           bash scripts/check-dupes.sh "$base"
 
@@ -718,12 +758,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # База для diff: цільова гілка PR, або попередній коміт push.
+          # База для diff: цільова гілка PR, або база push із job `changes` (останній успішний
+          # прогін — щоб міграція зі скасованого прогону не проскочила), інакше попередній коміт.
           if [ -n "${GITHUB_BASE_REF:-}" ]; then
             base="origin/${GITHUB_BASE_REF}"
             git fetch --quiet origin "${GITHUB_BASE_REF}"
           else
-            base="${{ github.event.before }}"
+            base="${{ needs.changes.outputs.base || github.event.before }}"
           fi
           # Порожня база (перший push гілки) → нема з чим порівнювати, пропускаємо.
           if [ -z "$base" ] || ! git rev-parse --verify --quiet "$base" >/dev/null; then
