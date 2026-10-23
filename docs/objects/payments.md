@@ -150,11 +150,11 @@ create (метод без requiresFiscal) → null
 
 ### `/api/cash-shifts` (`CashShiftController`)
 
-| Метод | URL                          | Дія                                                                                                            | Ролі                                   |
-| ----- | ---------------------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| GET   | `/api/cash-shifts/current`   | OPEN-зміна каси (`?branchId&cashRegisterId`, BR-CASH-027) чи філії (без каси) або null                         | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
-| POST  | `/api/cash-shifts/open`      | Відкрити зміну (`?branchId&cashRegisterId`; без каси — найстаріша каса філії; PIN→token→ПРРО); throttle 10/60с | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
-| POST  | `/api/cash-shifts/:id/close` | Закрити зміну (Z-звіт); throttle 10/60с                                                                        | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
+| Метод | URL                          | Дія                                                                                                                                                      | Ролі                                   |
+| ----- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| GET   | `/api/cash-shifts/current`   | OPEN-зміна каси (`?branchId&cashRegisterId`, BR-CASH-027) чи філії (без каси) або null                                                                   | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
+| POST  | `/api/cash-shifts/open`      | Відкрити зміну (`?branchId&cashRegisterId`; без каси — найстаріша фіскальна каса філії, далі будь-яка; чужа каса — 404; PIN→token→ПРРО); throttle 10/60с | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
+| POST  | `/api/cash-shifts/:id/close` | Закрити зміну (Z-звіт); throttle 10/60с                                                                                                                  | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
 
 ### `/api/payment-gateways` (`PaymentGatewaysController`, `kind=PAYMENT`) · `/api/fiscal-providers` (`FiscalProvidersController`, `kind=FISCAL`)
 
@@ -273,7 +273,7 @@ BR-INV-018), рахунок без наряду — PAID/PARTIALLY_PAID → PART
 
 ### Касова зміна (cash-shift)
 
-- **BR-PAY-010**: `open()`: резолвить активний FISCAL-провайдер; бере активну касу філії; **one-open-per-register**
+- **BR-PAY-010**: `open()`: резолвить активний FISCAL-провайдер; бере вказану касу (немає у філії → 404) або найстаріше фіскальну касу філії (BR-CASH-027); **one-open-per-register**
   guard (pre-check + partial-unique `cash_shifts_one_open_per_register_uq` як race-backstop → повертає
   переможця). `provider.signIn` (PIN→token) + `provider.openShift` → `checkboxShiftId`. Токен шифрується.
 - **BR-PAY-011**: `close()`: **CAS-claim** `OPEN→CLOSED` **до** зовнішнього виклику (Bug #711 — проти подвійного Z-звіту);
@@ -410,7 +410,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | Аспект                                          | Тест                                                     | Кейсів |
 | ----------------------------------------------- | -------------------------------------------------------- | ------ |
 | сервісна логіка                                 | `cash-shift.service.spec.ts`                             | 31     |
-| зміна своя в кожної каси (BR-CASH-027)          | `cash-shift.per-register.spec.ts`                        | 9      |
+| зміна своя в кожної каси (BR-CASH-027)          | `cash-shift.per-register.spec.ts`                        | 13     |
 | HTTP-контракт стану зміни (BR-CASH-027)         | `cash-shift.current-route.contract.spec.ts`              | 3      |
 | HTTP-клієнт                                     | `checkbox.client.spec.ts`                                | 31     |
 | BullMQ-processor                                | `checkbox.processor.spec.ts`                             | 27     |

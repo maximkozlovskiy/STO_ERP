@@ -111,7 +111,9 @@ export class CashShiftService {
     userId?: string,
     cashRegisterId?: string,
   ): Promise<CurrentShiftDto> {
-    // Локальна каса для зміни: задана явно (з привʼязкою до провайдера) або перша каса філії.
+    // Локальна каса для зміни: задана явно (з привʼязкою до провайдера) або найстаріша каса філії —
+    // спершу ФІСКАЛЬНА. Віджет зміни є лише у фіскальної каси й питає зміну саме її (BR-CASH-027):
+    // зміна, відкрита AUTO_OPEN-ом на нефіскальній касі, ніде не видна й не закривається (Bug #960).
     const register = await this.prisma.cashRegister.findFirst({
       where: {
         orgId,
@@ -119,13 +121,17 @@ export class CashShiftService {
         deletedAt: null,
         ...(cashRegisterId ? { id: cashRegisterId } : {}),
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ isFiscal: 'desc' }, { createdAt: 'asc' }],
       select: { id: true, fiscalProvider: true },
     });
-    if (!register)
+    if (!register) {
+      // Явна каса не цієї організації чи філії (або видалена) — 404, як у getCurrent (Bug #961).
+      if (cashRegisterId)
+        throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
       throw new BadRequestException(
         translateError('err.cashShift.noCashRegisterForBranch', getLocale()),
       );
+    }
 
     // Провайдер зміни: якщо каса привʼязана (fiscalProvider) — саме він; інакше активний per-branch.
     // CashShift.provider = provider.code (нижче) → sell/ensureToken працюють проти правильного ПРРО.

@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { CashShiftService } from './cash-shift.service';
 import { FiscalProviderRegistry } from './fiscal/fiscal-provider-registry';
 import { ProviderConfigService } from './provider-config.service';
@@ -64,11 +65,28 @@ function makeDb() {
     [...rows].sort((a, b) => (b.openedAt as Date).getTime() - (a.openedAt as Date).getTime());
   const oldestFirst = (rows: Row[]) =>
     [...rows].sort((a, b) => (a.createdAt as Date).getTime() - (b.createdAt as Date).getTime());
+  /** `orderBy` Prisma (обʼєкт або масив) над рядками; без нього — від найстаріших. */
+  const ordered = (rows: Row[], orderBy?: Row | Row[]) => {
+    if (!orderBy) return oldestFirst(rows);
+    const keys = (Array.isArray(orderBy) ? orderBy : [orderBy]).map(
+      o => Object.entries(o)[0] as [string, 'asc' | 'desc'],
+    );
+    const num = (v: unknown) => (v instanceof Date ? v.getTime() : Number(v ?? 0));
+    return [...rows].sort((a, b) => {
+      for (const [k, dir] of keys) {
+        const d = num(a[k]) - num(b[k]);
+        if (d !== 0) return dir === 'desc' ? -d : d;
+      }
+      return 0;
+    });
+  };
 
   const prisma = {
     cashRegister: {
-      findFirst: vi.fn((args: { where: Row; select?: Row }) => {
-        const hit = oldestFirst(tables.cashRegister).find(r => matches(r, args.where, resolve));
+      findFirst: vi.fn((args: { where: Row; select?: Row; orderBy?: Row | Row[] }) => {
+        const hit = ordered(tables.cashRegister, args.orderBy).find(r =>
+          matches(r, args.where, resolve),
+        );
         return Promise.resolve(hit ? pick(hit, args.select) : null);
       }),
     },
@@ -119,6 +137,7 @@ describe('CashShiftService — зміна своя в кожної каси (BR-
         orgId: ORG,
         branchId: BR,
         name: 'Каса A',
+        isFiscal: true,
         fiscalProvider: null,
         deletedAt: null,
         createdAt: new Date('2026-01-01'),
@@ -128,6 +147,7 @@ describe('CashShiftService — зміна своя в кожної каси (BR-
         orgId: ORG,
         branchId: BR,
         name: 'Каса B',
+        isFiscal: true,
         fiscalProvider: null,
         deletedAt: null,
         createdAt: new Date('2026-02-01'),
@@ -288,6 +308,52 @@ describe('CashShiftService — зміна своя в кожної каси (BR-
     });
 
     // guards: BR-CASH-027
+    // guards: BR-CASH-027
+    // Без явної каси (AUTO_OPEN для оплати карткою/QR, старий клієнт) зміна відкривається на
+    // найстарішій ФІСКАЛЬНІЙ касі: віджет є лише у фіскальної каси й питає зміну саме її, тож зміна
+    // нефіскальної каси ніде не видна й не закривається (Bug #960).
+    // Mutation-verify: `orderBy: { createdAt: 'asc' }` без `isFiscal` → кейс червоний.
+    it('без каси — найстаріша фіскальна каса філії, навіть коли нефіскальна старша', async () => {
+      db.tables.cashShift.length = 0;
+      db.tables.cashRegister.push({
+        id: 'reg-cash',
+        orgId: ORG,
+        branchId: BR,
+        name: 'Готівкова',
+        isFiscal: false,
+        fiscalProvider: null,
+        deletedAt: null,
+        createdAt: new Date('2025-06-01'),
+      });
+      expect(await service.open(ORG, BR, 'user-1')).toMatchObject({ cashRegisterId: REG_A });
+    });
+
+    // guards: BR-CASH-027
+    it('без каси й без фіскальних кас у філії — як раніше, найстаріша каса філії', async () => {
+      db.tables.cashShift.length = 0;
+      for (const r of db.tables.cashRegister) r.isFiscal = false;
+      expect(await service.open(ORG, BR, 'user-1')).toMatchObject({ cashRegisterId: REG_A });
+    });
+
+    // guards: BR-CASH-027
+    // Bug #961: явна каса, якої немає у філії, — 404 «Касу не знайдено», як у getCurrent, а не 400
+    // «Немає каси для цієї філії». Mutation-verify: прибрати гілку 404 → кейс червоний.
+    it('явна каса іншої філії / організації / видалена → 404 «Касу не знайдено», ПРРО не кличемо', async () => {
+      db.tables.cashRegister.find(r => r.id === REG_B)!.deletedAt = new Date();
+      for (const reg of ['reg-other-branch', 'reg-foreign', REG_B]) {
+        const err = await service.open(ORG, BR, 'user-1', reg).catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(NotFoundException);
+        expect((err as Error).message).toBe(translateError('err.cashRegister.notFound', 'uk'));
+      }
+      expect(signIn).not.toHaveBeenCalled();
+    });
+
+    it('без каси, а кас у філії немає — 400 «Немає каси для цієї філії»', async () => {
+      await expect(service.open(ORG, 'br-empty', 'user-1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
     it('відкриття на касі B, коли відкрита A, — нова зміна саме B; після цього B бачить свою', async () => {
       const opened = await service.open(ORG, BR, 'user-1', REG_B);
       expect(opened).toMatchObject({ cashRegisterId: REG_B, status: 'OPEN' });
