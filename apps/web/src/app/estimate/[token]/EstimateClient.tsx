@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Printer } from 'lucide-react';
 import { publicNeutralFetch } from '@/lib/api-client';
+import { safeImageSrc } from '@/lib/safe-image-src';
 import { EstimateTotals } from './EstimateTotals';
 
 interface EstimateLine {
@@ -115,6 +116,7 @@ export default function EstimateClient() {
     );
   }
 
+  const orgLogoSrc = safeImageSrc(data.orgLogoUrl);
   const docDate = data.documentDate
     ? DATE_FMT.format(new Date(data.documentDate))
     : DATE_FMT.format(new Date());
@@ -134,10 +136,11 @@ export default function EstimateClient() {
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
-            {data.orgLogoUrl && (
-              // раст-логотип org за довільним URL — next/image тут не підходить; звичайний <img>
+            {orgLogoSrc && (
+              // раст-логотип org за довільним URL — next/image тут не підходить; звичайний <img>.
+              // URL — вільний рядок із налаштувань: лише безпечна схема, як у НДІ (Bug #953).
               <img
-                src={data.orgLogoUrl}
+                src={orgLogoSrc}
                 alt={data.orgName ?? 'Логотип'}
                 className="h-14 w-auto object-contain"
                 onError={e => {
