@@ -17,7 +17,7 @@ import {
   ApiProperty,
   ApiPropertyOptional,
 } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean, IsObject, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsIn } from 'class-validator';
 import { ShiftMode } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -32,7 +32,8 @@ import { ProviderConfigService } from './provider-config.service';
 class UpsertFiscalDto {
   @ApiProperty() @IsString() provider!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() apiUrl?: string;
-  @ApiPropertyOptional() @IsOptional() @IsBoolean() enabled?: boolean;
+  // Без `enabled`: увімкнення — лише через POST …/activate (креди обов'язкові, один активний на
+  // філію й тип). `enabled` тут обходив обидві перевірки (рішення власника 2026-10-23).
   @ApiPropertyOptional({ enum: ShiftMode })
   @IsOptional()
   @IsIn(Object.values(ShiftMode))

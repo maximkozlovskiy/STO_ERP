@@ -4352,6 +4352,16 @@
    "ProviderConfigService upsertConfig (creds write-only merge) нові непорожні поля мерджаться у наявні; порожнє не затирає",
    "ProviderConfigService upsertConfig (creds write-only merge) та сама адреса з кінцевим слешем → креди мерджаться як раніше"
   ],
+  "apps/api/src/modules/payments/provider-upsert-dto.contract.spec.ts": [
+   "PATCH upsert провайдера (банк-виписки) `enabled` у тілі → 400 (увімкнення лише через activate)",
+   "PATCH upsert провайдера (банк-виписки) без `enabled` — тіло проходить",
+   "PATCH upsert провайдера (доставка) `enabled` у тілі → 400 (увімкнення лише через activate)",
+   "PATCH upsert провайдера (доставка) без `enabled` — тіло проходить",
+   "PATCH upsert провайдера (еквайринг) `enabled` у тілі → 400 (увімкнення лише через activate)",
+   "PATCH upsert провайдера (еквайринг) без `enabled` — тіло проходить",
+   "PATCH upsert провайдера (фіскалізація) `enabled` у тілі → 400 (увімкнення лише через activate)",
+   "PATCH upsert провайдера (фіскалізація) без `enabled` — тіло проходить"
+  ],
   "apps/api/src/modules/payroll/payroll.access.spec.ts": [
    "PayrollController — ролі доступу compute — OWNER, ADMIN, ACCOUNTANT (перегляд, створення, розрахунок)",
    "PayrollController — ролі доступу create — OWNER, ADMIN, ACCOUNTANT (перегляд, створення, розрахунок)",

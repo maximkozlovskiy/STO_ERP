@@ -17,7 +17,7 @@ import {
   ApiProperty,
   ApiPropertyOptional,
 } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean, IsObject } from 'class-validator';
+import { IsString, IsOptional, IsObject } from 'class-validator';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -32,7 +32,8 @@ import { BankStatementPullScheduler } from './bank-statement-pull.scheduler';
 class UpsertBankProviderDto {
   @ApiProperty() @IsString() provider!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() apiUrl?: string;
-  @ApiPropertyOptional() @IsOptional() @IsBoolean() enabled?: boolean;
+  // Без `enabled`: увімкнення — лише через POST …/activate (креди обов'язкові, один активний на
+  // філію й тип). `enabled` тут обходив обидві перевірки (рішення власника 2026-10-23).
   // credentials write-only: передаються лише при зміні; порожні поля не затирають наявні.
   @ApiPropertyOptional() @IsOptional() @IsObject() credentials?: Record<string, string>;
 }

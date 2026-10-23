@@ -17,7 +17,8 @@ export interface UpsertProviderConfigInput {
   apiUrl?: string | null;
   /** Плоскі секрети провайдера (checkbox: licenseKey/pinCode/cashRegisterId; monobank: token; ...). */
   credentials?: Record<string, string>;
-  enabled?: boolean;
+  // `enabled` свідомо немає: увімкнення лише через activate() — там перевірка кредів і «один
+  // активний на філію й тип».
   shiftMode?: ShiftMode;
 }
 
@@ -196,7 +197,6 @@ export class ProviderConfigService {
     const data = {
       apiUrl,
       credentials,
-      ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
       ...(input.shiftMode !== undefined ? { shiftMode: input.shiftMode } : {}),
       deletedAt: null,
     };
