@@ -20,7 +20,14 @@ const ENTITY_KEYS = Object.keys(REGISTRY);
 export class ReportFilterDto {
   @ApiProperty() @IsString() field!: string;
   @ApiProperty({ enum: ALLOWED_OPS }) @IsIn(ALLOWED_OPS) op!: string;
-  @ApiPropertyOptional() @IsOptional() value?: unknown;
+  // Тип значення перевіряє побудова запиту за типом поля (BR-RPT-024) — там же, де й для
+  // збережених звітів, чий config не проходить цей DTO під час запуску.
+  @ApiPropertyOptional({
+    description:
+      "Примітив за типом поля (рядок, число, так/ні, дата ISO) або масив примітивів для `in`; об'єкт — 400",
+  })
+  @IsOptional()
+  value?: unknown;
 }
 
 export class ReportSortDto {

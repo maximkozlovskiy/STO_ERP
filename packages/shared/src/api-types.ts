@@ -9933,6 +9933,7 @@ export interface components {
             field: string;
             /** @enum {string} */
             op: "eq" | "ne" | "in" | "gt" | "gte" | "lt" | "lte" | "contains" | "isNull";
+            /** @description Примітив за типом поля (рядок, число, так/ні, дата ISO) або масив примітивів для `in`; об'єкт — 400 */
             value?: Record<string, never>;
         };
         ReportSortDto: {

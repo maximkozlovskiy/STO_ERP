@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { normalizeKyivDateRange } from '../../common/utils/kyiv-date';
-import type { ReportEntityDef, FilterOp } from './report-registry';
+import type { ReportEntityDef, ReportFieldDef, FilterOp, FieldType } from './report-registry';
 import {
   getEntity,
   getField,
@@ -74,6 +74,75 @@ function hasWherePath(where: Obj, prismaPath: string): boolean {
     node = node[seg] as Obj | undefined;
   }
   return node !== undefined;
+}
+
+/** Скільки значень приймає один фільтр `in` (як `@ArrayMaxSize` у DTO — проти роздутого IN). */
+export const REPORT_FILTER_IN_MAX = 500;
+
+/** Число в рядку, як його вводить поле «значення» конструктора: «12», «-3», «12.5». */
+const NUMERIC_TEXT_RE = /^-?\d+(\.\d+)?$/;
+
+const INVALID = Symbol('invalid');
+
+/**
+ * Одне значення фільтра за типом поля → значення для Prisma або INVALID. Лише примітиви: об'єкт
+ * чи масив тут — це спроба передати оператор Prisma (`{ startsWith: … }`, `{ not: … }`) повз білий
+ * список операторів, тож він не проходить ніколи. Поле «значення» в UI віддає рядок, тому число й
+ * так/ні приймаються і рядком: число для цілого поля (`number`) приводиться до Number (Prisma Int
+ * рядка не приймає), десяткове (`decimal`) лишається рядком — Prisma Decimal бере його без втрати
+ * точності.
+ */
+function scalarFilterValue(type: FieldType, v: unknown): unknown {
+  switch (type) {
+    case 'scalar':
+    case 'enum':
+      return typeof v === 'string' ? v : INVALID;
+    case 'number':
+      if (typeof v === 'number') return Number.isFinite(v) ? v : INVALID;
+      return typeof v === 'string' && NUMERIC_TEXT_RE.test(v.trim()) ? Number(v.trim()) : INVALID;
+    case 'decimal':
+      if (typeof v === 'number') return Number.isFinite(v) ? v : INVALID;
+      return typeof v === 'string' && NUMERIC_TEXT_RE.test(v.trim()) ? v.trim() : INVALID;
+    case 'date':
+      return typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : INVALID;
+    case 'boolean':
+      if (typeof v === 'boolean') return v;
+      return v === 'true' ? true : v === 'false' ? false : INVALID;
+    default: {
+      const _exhaustive: never = type;
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * BR-RPT-024: значення фільтра — лише примітив (або масив примітивів для `in`) того типу, що
+ * й поле; інакше 400 `err.reportBuilder.filterValueInvalid`. `isNull` значення не потребує:
+ * `false` / `'false'` — «заповнено», будь-який інший примітив чи відсутність — «порожньо»;
+ * об'єкт чи масив — 400 (UI лишає в `value` введене до зміни оператора — це завжди рядок).
+ */
+function normalizeFilterValue(op: FilterOp, value: unknown, fld: ReportFieldDef): unknown {
+  const invalid = () =>
+    new BadRequestException(
+      translateError('err.reportBuilder.filterValueInvalid', getLocale(), { label: fld.label }),
+    );
+  if (op === 'isNull') {
+    if (value !== null && typeof value === 'object') throw invalid();
+    return value === false || value === 'false' ? false : value;
+  }
+  if (op === 'in') {
+    // Не масив — окрема помилка в buildCond (filterInRequiresArray), як і раніше.
+    if (!Array.isArray(value)) return value;
+    if (value.length > REPORT_FILTER_IN_MAX) throw invalid();
+    return value.map(v => {
+      const out = scalarFilterValue(fld.type, v);
+      if (out === INVALID) throw invalid();
+      return out;
+    });
+  }
+  const out = scalarFilterValue(fld.type, value);
+  if (out === INVALID) throw invalid();
+  return out;
 }
 
 /** Будує Prisma-умову з op + value + типу поля. op з фіксованого whitelist. */
@@ -195,10 +264,11 @@ export function buildQuery(config: ReportConfigInput, orgId: string): BuiltQuery
         translateError('err.reportBuilder.fieldNotFilterable', getLocale(), { label: fld.label }),
       );
     assertRelationPath(entity, fld.prismaPath);
+    const value = normalizeFilterValue(f.op, f.value, fld);
     if (fld.type === 'enum' && fld.enumName && f.op !== 'isNull') {
-      assertEnumValue(fld.enumName, f.value);
+      assertEnumValue(fld.enumName, value);
     }
-    const cond = buildCond(f.op, f.value, fld.type);
+    const cond = buildCond(f.op, value, fld.type);
     // BR-RPT-022: друга умова на те саме поле (або фільтр по полю дати поверх dateRange) не
     // перезаписує першу, а додається в AND. Раніше `node[leaf] = cond` губив попередню умову:
     // «сума від 100 до 500» показувала все до 500, без жодної помилки.

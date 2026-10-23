@@ -412,4 +412,77 @@ describe('report-query.builder', () => {
       expect(q.args.where.AND).toBeUndefined();
     });
   });
+
+  // TECH-DEBT §8 «звіти»: значення фільтра йшло в Prisma як є, тож `{ startsWith: 'A' }` чи
+  // `{ not: … }` обходили білий список операторів. Мутація: у buildQuery передати `f.value`
+  // замість нормалізованого значення → кейси «об'єкт → 400» і «число рядком» червоніють.
+  describe('значення фільтра — примітив за типом поля (BR-RPT-024)', () => {
+    const where = (entity: string, field: string, op: string, value: unknown) =>
+      buildQuery(
+        { entity, columns: [], groupBy: [], filters: [{ field, op: op as never, value }] },
+        ORG,
+      ).args.where;
+    const rejects = (entity: string, field: string, op: string, value: unknown) =>
+      expect(() => where(entity, field, op, value)).toThrow('Неприпустиме значення фільтра');
+
+    // guards: BR-RPT-024
+    it.each([
+      ['eq', { startsWith: 'A' }],
+      ['ne', { not: 'x' }],
+      ['gt', ['A']],
+      ['contains', { contains: 'A' }],
+      ['isNull', { not: null }],
+    ])(
+      "текстове поле, оператор %s з об'єктом чи масивом → 400, у Prisma не потрапляє",
+      (op, value) => {
+        rejects('workOrder', 'number', op, value);
+      },
+    );
+
+    // guards: BR-RPT-024
+    it('in: масив з об’єктом → 400; понад 500 значень → 400', () => {
+      rejects('workOrder', 'number', 'in', ['WO-1', { startsWith: 'W' }]);
+      rejects(
+        'workOrder',
+        'number',
+        'in',
+        Array.from({ length: 501 }, (_, i) => `WO-${i}`),
+      );
+      expect(where('workOrder', 'number', 'in', ['WO-1', 'WO-2'])).toMatchObject({
+        number: { in: ['WO-1', 'WO-2'] },
+      });
+    });
+
+    // guards: BR-RPT-024
+    it('тип значення має збігатися з типом поля: число в текстовому, текст у числовому, дата-сміття → 400', () => {
+      rejects('workOrder', 'number', 'eq', 42);
+      rejects('workOrderPart', 'quantity', 'gte', 'багато');
+      rejects('invoice', 'amount', 'gt', '1e400');
+      rejects('workOrder', 'completedAt', 'gte', 'вчора');
+      rejects('stockBatch', 'isActive', 'eq', 'так');
+      rejects('workOrder', 'status', 'eq', 7);
+    });
+
+    // guards: BR-RPT-024
+    it('рядок із поля «значення» UI приводиться: ціле → Number, десяткове лишається рядком, так/ні → boolean', () => {
+      expect(where('workOrderPart', 'quantity', 'gte', ' 5 ')).toMatchObject({
+        quantity: { gte: 5 },
+      });
+      expect(where('invoice', 'amount', 'lt', '100.50')).toMatchObject({
+        amount: { lt: '100.50' },
+      });
+      expect(where('stockBatch', 'isActive', 'eq', 'false')).toMatchObject({ isActive: false });
+      expect(where('workOrder', 'completedAt', 'gte', '2026-09-15T00:00:00.000Z')).toMatchObject({
+        completedAt: { gte: '2026-09-15T00:00:00.000Z' },
+      });
+    });
+
+    // guards: BR-RPT-024
+    it('isNull: рядок, лишений у value після зміни оператора, не заважає; false / "false" — «заповнено»', () => {
+      expect(where('payment', 'reversedAt', 'isNull', 'abc')).toMatchObject({ reversedAt: null });
+      expect(where('payment', 'reversedAt', 'isNull', 'false')).toMatchObject({
+        reversedAt: { not: null },
+      });
+    });
+  });
 });
