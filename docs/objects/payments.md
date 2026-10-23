@@ -165,7 +165,7 @@ create (метод без requiresFiscal) → null
 | GET   | `/api/…`                                         | Метадані провайдерів (`code`, `name`)                              |
 | POST  | `/api/…/:code/verify`                            | Перевірка креденшелів (без реального чека/інвойсу); throttle 5/60с |
 | GET   | `/api/…/branch/:branchId`                        | Конфіги філії (без сирих секретів, лише `hasCredentials`)          |
-| PATCH | `/api/…/branch/:branchId`                        | Створити/оновити конфіг (creds write-only, пусте не перетирає)     |
+| PATCH | `/api/…/branch/:branchId`                        | Створити/оновити конфіг (creds write-only); `enabled` у тілі → 400 |
 | POST  | `/api/…/branch/:branchId/activate`               | Ексклюзивна активація (решта того ж kind → `enabled:false`)        |
 
 ---
@@ -284,6 +284,9 @@ BR-INV-018), рахунок без наряду — PAID/PARTIALLY_PAID → PART
 
 - **BR-PAY-013**: **Ексклюзивна активація** (`activate`): у `$transaction` — усі інші того ж `kind` → `enabled:false`,
   target → `enabled:true`. Рівно 1 enabled per kind per branch. Target мусить мати збережені креденшели.
+  Це ЄДИНИЙ шлях змінити `enabled`: PATCH-upsert поля не приймає (400), а повторне збереження
+  конфіга `enabled` не чіпає — активний лишається активним (рішення власника 2026-10-23).
+  Окремого вимкнення провайдера немає — лише перемкнути на іншого через `activate`.
 - **BR-PAY-014**: **Legacy fallback**: якщо немає enabled-конфігу — читає `BranchSettings` (checkbox: `checkboxLicenseKey/
 PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(checkbox) і PAYMENT(monobank).
 - **BR-PAY-015**: `credentials` — JSON-рядок, шифрується at-rest (`prisma.service ENCRYPTED_FIELDS`); write-only у API
@@ -422,8 +425,8 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | query dto                                       | `payments.query-dto.spec.ts`                             | 43     |
 | передумови + наряд                              | `payments.work-order.spec.ts`                            | 52     |
 | політика повторів черг                          | `payments.queue-retry-policy.spec.ts`                    | 6      |
-| сервісна логіка                                 | `provider-config.service.spec.ts`                        | 34     |
-| upsert провайдера без `enabled` (лише activate) | `provider-upsert-dto.contract.spec.ts`                   | 8      |
+| сервісна логіка                                 | `provider-config.service.spec.ts`                        | 35     |
+| upsert провайдера без `enabled` (лише activate) | `provider-upsert-dto.contract.spec.ts`                   | 12     |
 | шифрування at-rest                              | `../../prisma/field-encryption.extension.spec.ts`        | 21     |
 | шифрування (сервіс)                             | `../../common/crypto/encryption.service.spec.ts`         | 11     |
 | готівка — через касу, безготівкова — з рахунком | `payments.cash-register-required.spec.ts`                | 14     |

@@ -27452,9 +27452,6 @@
           "apiUrl": {
             "type": "string"
           },
-          "enabled": {
-            "type": "boolean"
-          },
           "credentials": {
             "type": "object"
           }
@@ -30773,9 +30770,6 @@
           "apiUrl": {
             "type": "string"
           },
-          "enabled": {
-            "type": "boolean"
-          },
           "credentials": {
             "type": "object"
           }
@@ -30803,9 +30797,6 @@
           },
           "apiUrl": {
             "type": "string"
-          },
-          "enabled": {
-            "type": "boolean"
           },
           "shiftMode": {
             "type": "string",
@@ -31586,9 +31577,6 @@
           },
           "apiUrl": {
             "type": "string"
-          },
-          "enabled": {
-            "type": "boolean"
           },
           "credentials": {
             "type": "object"

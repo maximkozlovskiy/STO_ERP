@@ -498,6 +498,28 @@ describe('ProviderConfigService', () => {
       expect(mergedCreds).toEqual({ publicKey: 'NEW-PUB', privateKey: 'OLD-PRIV' });
     });
 
+    // guards: BR-PAY-013
+    it('повторне збереження активного провайдера НЕ чіпає enabled (лишається увімкненим)', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        id: 'c1',
+        apiUrl: null,
+        credentials: JSON.stringify({ token: 'T' }),
+      });
+      prisma.branchProviderConfig.upsert.mockResolvedValue({
+        provider: 'monobank',
+        enabled: true,
+        apiUrl: null,
+        shiftMode: 'MANUAL',
+      });
+      const view = await svc.upsertConfig(ORG, BRANCH, 'PAYMENT', { provider: 'monobank' });
+      const upsertArg = prisma.branchProviderConfig.upsert.mock.calls[0][0];
+      // Увімкнення/вимкнення — лише activate(); upsert не пише enabled ні в update, ні в create
+      // (новий рядок → @default(false)). MUTATION-VERIFY: `enabled: false` у data → червоний.
+      expect(upsertArg.update).not.toHaveProperty('enabled');
+      expect(upsertArg.create).not.toHaveProperty('enabled');
+      expect(view.enabled).toBe(true);
+    });
+
     // Рішення власника 2026-10-23 (TECH-DEBT §19.6): збережені креди не переносяться на нову адресу.
     it('змінено apiUrl → збережені креди НЕ мерджаться, лишаються лише введені зараз', async () => {
       prisma.branchProviderConfig.findFirst.mockResolvedValue({

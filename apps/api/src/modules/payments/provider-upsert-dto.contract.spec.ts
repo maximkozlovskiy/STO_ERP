@@ -1,6 +1,9 @@
 import 'reflect-metadata';
 import { BadRequestException, ValidationPipe, type Type } from '@nestjs/common';
+import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
+import { RouteParamtypes } from '@nestjs/common/enums/route-paramtypes.enum';
 import { describe, it, expect } from 'vitest';
+import { validationExceptionFactory } from '../../common/pipes/validation-error.factory';
 import { FiscalProvidersController } from './fiscal-providers.controller';
 import { PaymentGatewaysController } from './payment-gateways.controller';
 import { BankStatementProvidersController } from '../bank-statements/bank-statement-providers.controller';
@@ -11,19 +14,32 @@ import { DeliveryProvidersController } from '../purchase-orders/delivery/deliver
  * увімкнення — лише через POST …/activate, де креди обов'язкові й активний один на філію й тип.
  * `enabled` в upsert обходив обидві перевірки (знахідка review блоку CodeQL).
  *
- * DTO-класи не експортуються — тип тіла береться з метаданих параметрів `upsert` і йде через той
- * самий ValidationPipe, що в main.ts (whitelist + forbidNonWhitelisted).
+ * DTO-класи не експортуються — тип тіла береться з метаданих: позиція параметра з `@Body()`
+ * (route-args Nest) → його тип у `design:paramtypes`. Не залежить ні від назви DTO, ні від порядку
+ * параметрів. Тіло йде через той самий ValidationPipe, що в main.ts.
  */
-const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true });
+const pipe = new ValidationPipe({
+  whitelist: true,
+  forbidNonWhitelisted: true,
+  transform: true,
+  exceptionFactory: validationExceptionFactory,
+});
 
 const upsertBodyType = (controller: Type<unknown>): Type<unknown> => {
+  const args = (Reflect.getMetadata(ROUTE_ARGS_METADATA, controller, 'upsert') ?? {}) as Record<
+    string,
+    { index: number }
+  >;
+  const bodyKey = Object.keys(args).find(k => k.startsWith(`${RouteParamtypes.BODY}:`));
+  if (!bodyKey) throw new Error(`${controller.name}.upsert: немає параметра з @Body()`);
   const params = Reflect.getMetadata(
     'design:paramtypes',
     controller.prototype as object,
     'upsert',
   ) as Type<unknown>[];
-  const dto = params.find(p => /Upsert\w*Dto$/.test(p.name));
-  if (!dto) throw new Error(`${controller.name}.upsert: немає Upsert*Dto серед параметрів`);
+  const dto = params[args[bodyKey]!.index];
+  // Object/undefined — тіло без класу: ValidationPipe нічого б не перевірив, і спек хибно зеленів би.
+  if (!dto || dto === Object) throw new Error(`${controller.name}.upsert: тіло без DTO-класу`);
   return dto;
 };
 
@@ -36,8 +52,9 @@ describe.each([
   ['банк-виписки', BankStatementProvidersController],
   ['доставка', DeliveryProvidersController],
 ])('PATCH upsert провайдера (%s)', (_name, controller) => {
-  it('`enabled` у тілі → 400 (увімкнення лише через activate)', async () => {
-    await expect(validate(controller, { provider: 'x', enabled: true })).rejects.toBeInstanceOf(
+  // guards: BR-PAY-013
+  it.each([true, false])('`enabled: %s` у тілі → 400 (стан вмикає лише activate)', async value => {
+    await expect(validate(controller, { provider: 'x', enabled: value })).rejects.toBeInstanceOf(
       BadRequestException,
     );
   });

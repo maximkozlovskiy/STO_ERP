@@ -8453,7 +8453,6 @@ export interface components {
         UpsertDeliveryDto: {
             provider: string;
             apiUrl?: string;
-            enabled?: boolean;
             credentials?: Record<string, never>;
         };
         ActivateDeliveryDto: {
@@ -9290,7 +9289,6 @@ export interface components {
         UpsertGatewayDto: {
             provider: string;
             apiUrl?: string;
-            enabled?: boolean;
             credentials?: Record<string, never>;
         };
         ActivateGatewayDto: {
@@ -9299,7 +9297,6 @@ export interface components {
         UpsertFiscalDto: {
             provider: string;
             apiUrl?: string;
-            enabled?: boolean;
             /** @enum {string} */
             shiftMode?: "MANUAL" | "AUTO_OPEN";
             credentials?: Record<string, never>;
@@ -9539,7 +9536,6 @@ export interface components {
         UpsertBankProviderDto: {
             provider: string;
             apiUrl?: string;
-            enabled?: boolean;
             credentials?: Record<string, never>;
         };
         ActivateBankProviderDto: {
