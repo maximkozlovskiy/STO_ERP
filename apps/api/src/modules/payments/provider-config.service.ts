@@ -4,6 +4,9 @@ import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 
+/** Назва поля кредів провайдера: ідентифікатор до 64 символів (`apiKey`, `merchantId`, `pinCode`). */
+const CREDENTIAL_KEY_RE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+
 /** DTO апсерту конфіга провайдера (creds write-only — порожнє → зберегти наявні). */
 export interface UpsertProviderConfigInput {
   provider: string;
@@ -180,6 +183,13 @@ export class ProviderConfigService {
     const merged = this.parseCreds(existing?.credentials ?? null);
     if (input.credentials) {
       for (const [k, v] of Object.entries(input.credentials)) {
+        // Назва поля — з тіла запиту і стає ключем об'єкта: лише ідентифікатор (`apiKey`,
+        // `licenseKey`…), тож `__proto__` і сміттєві ключі в збережений JSON не потрапляють.
+        if (!CREDENTIAL_KEY_RE.test(k)) {
+          throw new BadRequestException(
+            translateError('err.providerConfig.invalidCredentialKey', getLocale(), { key: k }),
+          );
+        }
         if (typeof v === 'string' && v !== '') merged[k] = v;
       }
     }

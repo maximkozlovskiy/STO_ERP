@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ProviderConfigService } from './provider-config.service';
 
 /**
@@ -441,6 +441,20 @@ describe('ProviderConfigService', () => {
       const upsertArg = prisma.branchProviderConfig.upsert.mock.calls[0][0];
       const mergedCreds = JSON.parse(upsertArg.update.credentials);
       expect(mergedCreds).toEqual({ publicKey: 'NEW-PUB', privateKey: 'OLD-PRIV' });
+    });
+
+    it('назва поля кредів не ідентифікатор (`__proto__`, пробіл) → 400, нічого не пише', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue(null);
+      // JSON.parse, як тіло запиту: літерал `{ __proto__: … }` поставив би прототип, а не поле.
+      for (const credentials of [
+        JSON.parse('{"__proto__":"x"}') as Record<string, string>,
+        { 'api key': 'x' },
+      ]) {
+        await expect(
+          svc.upsertConfig(ORG, BRANCH, 'PAYMENT', { provider: 'liqpay', credentials }),
+        ).rejects.toThrow(BadRequestException);
+      }
+      expect(prisma.branchProviderConfig.upsert).not.toHaveBeenCalled();
     });
 
     // guards: BR-PAY-015

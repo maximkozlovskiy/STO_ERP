@@ -9,6 +9,7 @@ import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
 import { BankStatementPullScheduler } from '../bank-statements/bank-statement-pull.scheduler';
 import { AuditService } from '../audit/audit.service';
 import type { MockInstance } from 'vitest';
+import type { HostLookup } from '../../common/utils/url-guard';
 
 /**
  * Bug #665 — regression guard для SettingsService.verifyFiscal
@@ -61,11 +62,16 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
     fetchSpy.mockRestore();
   });
 
+  // Підставний DNS: unit-тест не ходить у мережу, а ім'я «резолвиться» в публічну адресу.
+  const publicLookup: HostLookup = () => Promise.resolve([{ address: '93.184.216.34', family: 4 }]);
+  const verify = (dto: { apiUrl?: string; licenseKey?: string }, lookup = publicLookup) =>
+    service.verifyFiscal(ORG, BRANCH, dto, lookup);
+
   it('невідома філія → NotFoundException', async () => {
     prisma.garageBranch.findFirst.mockResolvedValue(null);
-    await expect(
-      service.verifyFiscal(ORG, BRANCH, { apiUrl: 'https://api.checkbox.ua', licenseKey: 'k' }),
-    ).rejects.toThrow(NotFoundException);
+    await expect(verify({ apiUrl: 'https://api.checkbox.ua', licenseKey: 'k' })).rejects.toThrow(
+      NotFoundException,
+    );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -74,13 +80,13 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
       checkboxLicenseKey: null,
       checkboxApiUrl: null,
     });
-    const res = await service.verifyFiscal(ORG, BRANCH, {});
+    const res = await verify({});
     expect(res).toEqual({ valid: false, error: 'Не вказано ліцензійний ключ' });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('SSRF-заблокований apiUrl (cloud metadata) → {valid:false} БЕЗ fetch', async () => {
-    const res = await service.verifyFiscal(ORG, BRANCH, {
+    const res = await verify({
       apiUrl: 'http://169.254.169.254',
       licenseKey: 'k',
     });
@@ -90,7 +96,7 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
   });
 
   it('SSRF: loopback apiUrl → {valid:false} БЕЗ fetch', async () => {
-    const res = await service.verifyFiscal(ORG, BRANCH, {
+    const res = await verify({
       apiUrl: 'http://127.0.0.1:8080',
       licenseKey: 'k',
     });
@@ -102,7 +108,7 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
     fetchSpy.mockResolvedValueOnce(
       new Response('', { status: 302, headers: { Location: 'http://169.254.169.254/' } }),
     );
-    const res = await service.verifyFiscal(ORG, BRANCH, {
+    const res = await verify({
       apiUrl: 'https://attacker.example',
       licenseKey: 'k',
     });
@@ -115,7 +121,7 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
 
   it('non-ok (401) → {valid:false} з кодом статусу', async () => {
     fetchSpy.mockResolvedValueOnce(new Response('unauthorized', { status: 401 }));
-    const res = await service.verifyFiscal(ORG, BRANCH, {
+    const res = await verify({
       apiUrl: 'https://api.checkbox.ua',
       licenseKey: 'bad',
     });
@@ -127,7 +133,7 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
     fetchSpy.mockResolvedValueOnce(
       new Response(JSON.stringify({ results: [{ title: 'Каса №1' }] }), { status: 200 }),
     );
-    const res = await service.verifyFiscal(ORG, BRANCH, {
+    const res = await verify({
       apiUrl: 'https://api.checkbox.ua',
       licenseKey: 'good-key',
     });
@@ -138,7 +144,7 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
     fetchSpy.mockResolvedValueOnce(
       new Response(JSON.stringify([{ title: 'Каса А' }]), { status: 200 }),
     );
-    const res = await service.verifyFiscal(ORG, BRANCH, {
+    const res = await verify({
       apiUrl: 'https://api.checkbox.ua',
       licenseKey: 'good-key',
     });
@@ -148,7 +154,7 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
 
   it('success з порожнім списком кас → {valid:true} без cashRegisterName', async () => {
     fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ results: [] }), { status: 200 }));
-    const res = await service.verifyFiscal(ORG, BRANCH, {
+    const res = await verify({
       apiUrl: 'https://api.checkbox.ua',
       licenseKey: 'good-key',
     });
@@ -164,7 +170,7 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
     fetchSpy.mockResolvedValueOnce(
       new Response(JSON.stringify({ results: [{ title: 'Каса' }] }), { status: 200 }),
     );
-    const res = await service.verifyFiscal(ORG, BRANCH, {});
+    const res = await verify({});
     expect(res.valid).toBe(true);
     // Authorization несе збережений ключ
     const [, init] = fetchSpy.mock.calls[0];
@@ -172,11 +178,46 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
     expect(headers.Authorization).toBe('Bearer stored-key');
   });
 
+  it('збережений ключ НЕ йде на іншу адресу з body → {valid:false} без fetch', async () => {
+    prisma.branchSettings.findFirst.mockResolvedValue({
+      checkboxLicenseKey: 'stored-key',
+      checkboxApiUrl: 'https://api.checkbox.ua',
+    });
+    const res = await verify({ apiUrl: 'https://collector.example' });
+    expect(res).toEqual({
+      valid: false,
+      error: 'Для нової адреси API введіть ліцензійний ключ ще раз',
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('та сама збережена адреса з кінцевим слешем → збережений ключ іде на неї', async () => {
+    prisma.branchSettings.findFirst.mockResolvedValue({
+      checkboxLicenseKey: 'stored-key',
+      checkboxApiUrl: 'https://api.checkbox.ua',
+    });
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }));
+    const res = await verify({ apiUrl: 'https://api.checkbox.ua/' });
+    expect(res.valid).toBe(true);
+    const [, init] = fetchSpy.mock.calls[0];
+    expect((init as { headers: Record<string, string> }).headers.Authorization).toBe(
+      'Bearer stored-key',
+    );
+  });
+
+  it('публічне ім`я, що резолвиться в loopback → {valid:false} БЕЗ fetch', async () => {
+    const toLoopback: HostLookup = () => Promise.resolve([{ address: '127.0.0.1', family: 4 }]);
+    const res = await verify({ apiUrl: 'https://rebind.example', licenseKey: 'k' }, toLoopback);
+    expect(res.valid).toBe(false);
+    expect(res.error).toMatch(/127\.0\.0\.1/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('КРЕДИ ніколи не потрапляють у повернутий об`єкт (success)', async () => {
     fetchSpy.mockResolvedValueOnce(
       new Response(JSON.stringify({ results: [{ title: 'Каса' }] }), { status: 200 }),
     );
-    const res = await service.verifyFiscal(ORG, BRANCH, {
+    const res = await verify({
       apiUrl: 'https://api.checkbox.ua',
       licenseKey: 'super-secret-key',
     });
@@ -188,7 +229,7 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
 
   it('КРЕДИ ніколи не потрапляють у повернутий об`єкт (error/non-ok)', async () => {
     fetchSpy.mockResolvedValueOnce(new Response('nope', { status: 403 }));
-    const res = await service.verifyFiscal(ORG, BRANCH, {
+    const res = await verify({
       apiUrl: 'https://api.checkbox.ua',
       licenseKey: 'super-secret-key',
     });
@@ -197,7 +238,7 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
 
   it('мережевий збій (fetch reject) → {valid:false} з повідомленням, не кидає', async () => {
     fetchSpy.mockRejectedValueOnce(new Error('ECONNREFUSED'));
-    const res = await service.verifyFiscal(ORG, BRANCH, {
+    const res = await verify({
       apiUrl: 'https://api.checkbox.ua',
       licenseKey: 'k',
     });

@@ -424,6 +424,7 @@ export const en: Record<string, string> = {
   'err.providerConfig.notConfiguredForBranch': 'The provider is not configured for this branch',
   'err.providerConfig.enterCredentialsFirst': 'Enter the provider credentials first',
   'err.providerConfig.branchNotFound': 'Branch not found',
+  'err.providerConfig.invalidCredentialKey': 'Invalid provider credential field name: {{key}}',
 
   // ── Exception messages: supplier-payments module ──
   'err.supplierPayment.dateXorTarget': 'You must specify exactly one: date OR target',

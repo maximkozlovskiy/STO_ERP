@@ -79,7 +79,13 @@ function readCachedEmployee(): AuthEmployee | null {
 function writeCachedEmployee(employee: AuthEmployee | null) {
   try {
     if (employee) {
-      localStorage.setItem(EMPLOYEE_CACHE_KEY, JSON.stringify(employee));
+      // Лише поля AuthEmployee для оптимістичного рендеру шапки: якщо відповідь входу колись
+      // принесе більше (телефон, email), у localStorage воно не ляже (CodeQL clear-text storage).
+      const { id, orgId, firstName, lastName, role } = employee;
+      localStorage.setItem(
+        EMPLOYEE_CACHE_KEY,
+        JSON.stringify({ id, orgId, firstName, lastName, role } satisfies AuthEmployee),
+      );
     } else {
       localStorage.removeItem(EMPLOYEE_CACHE_KEY);
     }

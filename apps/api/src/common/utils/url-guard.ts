@@ -1,3 +1,6 @@
+import { lookup as dnsLookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
+
 /**
  * SSRF defense for outbound webhooks (and any future user-supplied URL).
  *
@@ -128,5 +131,38 @@ export function validatePublicUrl(raw: string): string | null {
     }
   }
 
+  return null;
+}
+
+/** Усі адреси імені (`dns.promises.lookup(host, { all: true })`); підміняється в тестах. */
+export type HostLookup = (host: string) => Promise<Array<{ address: string; family: number }>>;
+
+export const lookupAllAddresses: HostLookup = host => dnsLookup(host, { all: true });
+
+/**
+ * `validatePublicUrl` + резолвинг імені: кожна адреса хоста — під тим самим блок-листом. Без
+ * цього публічне ім'я, що веде на приватну адресу (`127.0.0.1.nip.io`, власний DNS-запис), минає
+ * перевірку, яка бачить лише текст хоста. Ім'я не резолвиться — null: fetch сам упаде з ENOTFOUND.
+ * Залишковий ризик — DNS rebinding між перевіркою й з'єднанням (fetch резолвить ще раз).
+ */
+export async function validatePublicUrlResolved(
+  raw: string,
+  lookup: HostLookup = lookupAllAddresses,
+): Promise<string | null> {
+  const reason = validatePublicUrl(raw);
+  if (reason) return reason;
+  const host = new URL(raw).hostname.replace(/^\[|\]$/g, '');
+  if (isIP(host)) return null; // літерал уже перевірено
+  let addresses: Array<{ address: string; family: number }>;
+  try {
+    addresses = await lookup(host);
+  } catch {
+    return null;
+  }
+  for (const a of addresses) {
+    const literal = a.family === 6 || a.address.includes(':') ? `[${a.address}]` : a.address;
+    const blocked = validatePublicUrl(`http://${literal}/`);
+    if (blocked) return `${host} → ${a.address}: ${blocked}`;
+  }
   return null;
 }

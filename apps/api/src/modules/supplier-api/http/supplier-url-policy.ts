@@ -1,11 +1,11 @@
-import { lookup as dnsLookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
-import { validatePublicUrl } from '../../../common/utils/url-guard';
+import {
+  lookupAllAddresses,
+  validatePublicUrl,
+  validatePublicUrlResolved,
+  type HostLookup,
+} from '../../../common/utils/url-guard';
 
-/** Усі адреси імені (`dns.promises.lookup(host, { all: true })`); підміняється в тестах. */
-export type HostLookup = (host: string) => Promise<Array<{ address: string; family: number }>>;
-
-const defaultLookup: HostLookup = host => dnsLookup(host, { all: true });
+export type { HostLookup };
 
 /**
  * Куди дозволено ходити HTTP-клієнту постачальників (BR-SCON-005).
@@ -29,7 +29,7 @@ export class SupplierUrlPolicy {
 
   static fromEnv(
     env: NodeJS.ProcessEnv | Record<string, string | undefined>,
-    lookup: HostLookup = defaultLookup,
+    lookup: HostLookup = lookupAllAddresses,
   ): SupplierUrlPolicy {
     return new SupplierUrlPolicy(
       parseDevAllowedOrigins(env.SUPPLIER_API_DEV_ALLOWED_ORIGINS, env.NODE_ENV),
@@ -68,22 +68,8 @@ export class SupplierUrlPolicy {
   async checkResolved(rawUrl: string): Promise<string | null> {
     const reason = this.check(rawUrl);
     if (reason) return reason;
-    const url = new URL(rawUrl);
-    if (this.allowedOrigins.has(url.origin)) return null;
-    const host = url.hostname.replace(/^\[|\]$/g, '');
-    if (isIP(host)) return null; // літерал уже перевірено
-    let addresses: Array<{ address: string; family: number }>;
-    try {
-      addresses = await this.lookup(host);
-    } catch {
-      return null;
-    }
-    for (const a of addresses) {
-      const literal = a.family === 6 || a.address.includes(':') ? `[${a.address}]` : a.address;
-      const blocked = validatePublicUrl(`http://${literal}/`);
-      if (blocked) return `${host} → ${a.address}: ${blocked}`;
-    }
-    return null;
+    if (this.allowedOrigins.has(new URL(rawUrl).origin)) return null;
+    return validatePublicUrlResolved(rawUrl, this.lookup);
   }
 
   get devAllowlistActive(): boolean {

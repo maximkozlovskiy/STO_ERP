@@ -16,7 +16,12 @@ import { REDIS_CLIENT } from '../../redis/redis.module';
 import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
 import { BankStatementPullScheduler } from '../bank-statements/bank-statement-pull.scheduler';
 import { AuditService } from '../audit/audit.service';
-import { validatePublicUrl } from '../../common/utils/url-guard';
+import {
+  lookupAllAddresses,
+  validatePublicUrlResolved,
+  type HostLookup,
+} from '../../common/utils/url-guard';
+import { trimTrailingSlashes } from '../../common/utils/trim-trailing-slashes';
 import { workHoursOf } from '../../common/utils/work-hours';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -846,12 +851,15 @@ export class SettingsService {
    * Перевірка кредів ПРРО (Checkbox): тест-виклик без пробиття чеку. Валідує ключ/URL.
    * SSRF-захист (validatePublicUrl + redirect:'manual'), AbortController 10s (offline-інваріант).
    * Креди з body write-only — не логуються, не зберігаються. Якщо licenseKey не передано,
-   * використати збережений (щоб «Перевірити» працювало без повторного вводу ключа).
+   * використати збережений (щоб «Перевірити» працювало без повторного вводу ключа) — але ЛИШЕ на
+   * збережену адресу: інакше `apiUrl` у тілі переслав би write-only ключ ліцензії ПРРО на будь-який
+   * сервер у заголовку Authorization. Адреса перевіряється й після DNS-резолву.
    */
   async verifyFiscal(
     orgId: string,
     branchId: string,
     dto: { apiUrl?: string; licenseKey?: string },
+    lookup: HostLookup = lookupAllAddresses,
   ): Promise<{ valid: boolean; cashRegisterName?: string; error?: string }> {
     const branch = await this.prisma.garageBranch.findFirst({
       where: { id: branchId, orgId, deletedAt: null },
@@ -860,19 +868,26 @@ export class SettingsService {
     if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
     // licenseKey: з body (write-only) або збережений (extension дешифрує при читанні).
-    let licenseKey = dto.licenseKey;
-    let apiUrl = dto.apiUrl;
-    if (!licenseKey || !apiUrl) {
-      const bs = await this.prisma.branchSettings.findFirst({
-        where: { branchId, orgId },
-        select: { checkboxLicenseKey: true, checkboxApiUrl: true },
-      });
-      licenseKey = licenseKey || bs?.checkboxLicenseKey || undefined;
-      apiUrl = apiUrl || bs?.checkboxApiUrl || 'https://api.checkbox.ua';
+    const stored =
+      dto.licenseKey && dto.apiUrl
+        ? null
+        : await this.prisma.branchSettings.findFirst({
+            where: { branchId, orgId },
+            select: { checkboxLicenseKey: true, checkboxApiUrl: true },
+          });
+    const storedUrl = stored?.checkboxApiUrl || 'https://api.checkbox.ua';
+    const apiUrl = dto.apiUrl || storedUrl;
+    if (
+      !dto.licenseKey &&
+      stored?.checkboxLicenseKey &&
+      trimTrailingSlashes(apiUrl) !== trimTrailingSlashes(storedUrl)
+    ) {
+      return { valid: false, error: 'Для нової адреси API введіть ліцензійний ключ ще раз' };
     }
+    const licenseKey = dto.licenseKey || stored?.checkboxLicenseKey || undefined;
     if (!licenseKey) return { valid: false, error: 'Не вказано ліцензійний ключ' };
 
-    const urlError = validatePublicUrl(apiUrl);
+    const urlError = await validatePublicUrlResolved(apiUrl, lookup);
     if (urlError) return { valid: false, error: `Невалідний API URL: ${urlError}` };
 
     const controller = new AbortController();

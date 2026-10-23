@@ -12,6 +12,7 @@ import { Select } from '@/components/ui/select';
 import { useBankAccountOptions } from '@/hooks/api/useBankStatements';
 import type { ApiSchema } from '@sto/shared';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
+import { safeImageSrc } from '@/lib/safe-image-src';
 
 type OrgInfo = ApiSchema<'OrganisationResponseDto'>;
 
@@ -141,6 +142,9 @@ export default function OrgInfoTab() {
     }
   };
 
+  // Адреса логотипа — вільний рядок із налаштувань: показуємо лише безпечну схему.
+  const logoSrc = safeImageSrc(logoPreview ?? orgInfo?.logoUrl);
+
   return (
     <div className="bg-surface rounded-xl border border-border p-6 space-y-5">
       {error && (
@@ -157,25 +161,23 @@ export default function OrgInfoTab() {
         <div className="flex items-start gap-5">
           {/* Preview box */}
           <div
-            role={logoPreview || orgInfo?.logoUrl ? 'button' : undefined}
-            tabIndex={logoPreview || orgInfo?.logoUrl ? 0 : -1}
-            aria-label={logoPreview || orgInfo?.logoUrl ? t('orgInfo.zoomAria') : undefined}
-            className={`group relative shrink-0 w-48 h-28 rounded-xl border-2 border-dashed border-border bg-secondary flex items-center justify-center overflow-hidden transition-all ${logoPreview || orgInfo?.logoUrl ? 'cursor-zoom-in hover:border-primary/50 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary' : ''}`}
+            role={logoSrc ? 'button' : undefined}
+            tabIndex={logoSrc ? 0 : -1}
+            aria-label={logoSrc ? t('orgInfo.zoomAria') : undefined}
+            className={`group relative shrink-0 w-48 h-28 rounded-xl border-2 border-dashed border-border bg-secondary flex items-center justify-center overflow-hidden transition-all ${logoSrc ? 'cursor-zoom-in hover:border-primary/50 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary' : ''}`}
             onClick={() => {
-              const src = logoPreview ?? orgInfo?.logoUrl;
-              if (src) setLogoLightbox(src);
+              if (logoSrc) setLogoLightbox(logoSrc);
             }}
             onKeyDown={e => {
               if (e.key !== 'Enter' && e.key !== ' ') return;
-              const src = logoPreview ?? orgInfo?.logoUrl;
-              if (!src) return;
+              if (!logoSrc) return;
               e.preventDefault();
-              setLogoLightbox(src);
+              setLogoLightbox(logoSrc);
             }}
           >
-            {logoPreview || orgInfo?.logoUrl ? (
+            {logoSrc ? (
               <img
-                src={logoPreview ?? orgInfo!.logoUrl!}
+                src={logoSrc}
                 alt={t('orgInfo.logoAlt')}
                 className="w-full h-full object-contain p-3"
                 loading="lazy"
@@ -193,14 +195,14 @@ export default function OrgInfoTab() {
             ) : null}
             <div
               data-logo-fallback
-              style={{ display: logoPreview || orgInfo?.logoUrl ? 'none' : 'flex' }}
+              style={{ display: logoSrc ? 'none' : 'flex' }}
               className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-muted-foreground"
             >
               <ImageIcon className="w-10 h-10 opacity-30" />
               <span className="text-xs opacity-50">{t('orgInfo.noLogo')}</span>
             </div>
             {/* Zoom hint */}
-            {(logoPreview || orgInfo?.logoUrl) && (
+            {logoSrc && (
               <div className="absolute bottom-1.5 right-1.5 bg-black/40 rounded-md p-0.5 opacity-0 group-hover:opacity-100 pointer-events-none">
                 <ZoomIn className="w-3.5 h-3.5 text-white" />
               </div>

@@ -11,6 +11,10 @@ env:
   # Тег — версія релізу; ручний прогін — 0.0.0-<sha>, щоб не плутати з релізами.
   VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('0.0.0-{0}', github.sha) }}
 
+# Типово — лише читання; запис (GitHub Release) має тільки build-installer, у власному блоці.
+permissions:
+  contents: read
+
 jobs:
   # Образи — Linux (node:22-alpine, postgres:16-alpine…), тож збираються на Linux-раннері.
   # На windows-latest Docker працює з Windows-контейнерами: Linux-образ там не збирається і не
@@ -99,7 +103,7 @@ jobs:
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: installer/output/*.exe
           generate_release_notes: true

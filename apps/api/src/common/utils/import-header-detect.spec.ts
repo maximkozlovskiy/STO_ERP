@@ -38,6 +38,15 @@ describe('normalizeHeader', () => {
   it('типографське тире і пробіли навколо дефіса стискаються', () => {
     expect(normalizeHeader('К – ть')).toBe('к-ть');
     expect(normalizeHeader('К - ть')).toBe('к-ть');
+    expect(normalizeHeader('К   -   ть')).toBe('к-ть');
+    expect(normalizeHeader('к - - ть')).toBe('к--ть');
+  });
+
+  it('довга серія пробілів без дефіса — лінійно (комірка завантаженого файла)', () => {
+    const t0 = Date.now();
+    expect(normalizeHeader(`${' '.repeat(100_000)}ціна`)).toBe('ціна');
+    // Старий `\s*-\s*` на такому рядку йшов ~1.7 с на 50 тис. пробілів; лінійний — мілісекунди.
+    expect(Date.now() - t0).toBeLessThan(500);
   });
 
   it('апостроф прибирається (кіл’сть ≡ кілсть)', () => {

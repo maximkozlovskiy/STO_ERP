@@ -1482,6 +1482,12 @@ instead of rejecting`), окремо — 5 із 5 зелені. `purchase-lists.
    lint чисті. Перевірити, чи це пам'ять (type-aware lint + sonarjs), — якщо повториться на вільній машині.
 4. **Повний E2E після цих змін локально не ганявся**: у той момент паралельна сесія ганяла свій
    Playwright на тій самій dev-базі (ліміт входів 10/хв). Покриває job `e2e-full` CI на push.
+5. **HTTP-клієнти провайдерів перевіряють адресу лише текстом хоста** (`validatePublicUrl`): checkbox,
+   vchasno, monobank (оплата й виписка), privat24, nova-poshta, liqpay, turbosms, esputnik. Ім'я, що
+   резолвиться в приватну адресу, проходить. Перевірку після DNS (`validatePublicUrlResolved` у
+   `url-guard.ts`) мають лише `SupplierUrlPolicy` і `SettingsService.verifyFiscal` (CodeQL 2026-10-23).
+   Переводити разом із підставним `lookup` у спеках клієнтів — інакше unit-тести ходять у справжній DNS.
+   Ризик обмежений: `apiUrl` задає лише OWNER/ADMIN.
 
 ## Що НЕ є боргом, хоч виглядає так
 

@@ -414,6 +414,7 @@
    "normalizeHeader Ціна, грн → ціна",
    "normalizeHeader Ціна, ₴ → ціна",
    "normalizeHeader апостроф прибирається (кіл’сть ≡ кілсть)",
+   "normalizeHeader довга серія пробілів без дефіса — лінійно (комірка завантаженого файла)",
    "normalizeHeader типографське тире і пробіли навколо дефіса стискаються",
    "normalizeHeader № → "
   ],
@@ -4338,6 +4339,7 @@
    "ProviderConfigService resolveByCode немає config; legacy — ІНШИЙ провайдер (default checkbox), питаємо vchasno → null",
    "ProviderConfigService resolveByCode немає config; legacy — той самий провайдер (checkbox) → legacy",
    "ProviderConfigService upsertConfig (creds write-only merge) view повертає hasCredentials, НЕ сирі credentials",
+   "ProviderConfigService upsertConfig (creds write-only merge) назва поля кредів не ідентифікатор (`__proto__`, пробіл) → 400, нічого не пише",
    "ProviderConfigService upsertConfig (creds write-only merge) нові непорожні поля мерджаться у наявні; порожнє не затирає"
   ],
   "apps/api/src/modules/payroll/payroll.access.spec.ts": [
@@ -5393,9 +5395,12 @@
    "SettingsService.verifyFiscal — Bug #665 КРЕДИ ніколи не потрапляють у повернутий об`єкт (error/non-ok)",
    "SettingsService.verifyFiscal — Bug #665 КРЕДИ ніколи не потрапляють у повернутий об`єкт (success)",
    "SettingsService.verifyFiscal — Bug #665 використовує збережений ключ коли body не містить licenseKey",
+   "SettingsService.verifyFiscal — Bug #665 збережений ключ НЕ йде на іншу адресу з body → {valid:false} без fetch",
    "SettingsService.verifyFiscal — Bug #665 ключ не переданий і не збережений → {valid:false} без fetch",
    "SettingsService.verifyFiscal — Bug #665 мережевий збій (fetch reject) → {valid:false} з повідомленням, не кидає",
-   "SettingsService.verifyFiscal — Bug #665 невідома філія → NotFoundException"
+   "SettingsService.verifyFiscal — Bug #665 невідома філія → NotFoundException",
+   "SettingsService.verifyFiscal — Bug #665 публічне ім`я, що резолвиться в loopback → {valid:false} БЕЗ fetch",
+   "SettingsService.verifyFiscal — Bug #665 та сама збережена адреса з кінцевим слешем → збережений ключ іде на неї"
   ],
   "apps/api/src/modules/settlements/settlements.access.spec.ts": [
    "SettlementsController — ролі доступу createAct — лише OWNER, ADMIN, ACCOUNTANT (без приймальника)",

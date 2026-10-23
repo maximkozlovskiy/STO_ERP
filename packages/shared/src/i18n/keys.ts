@@ -549,6 +549,7 @@ export const VALIDATION_KEYS = [
   'err.providerConfig.notConfiguredForBranch',
   'err.providerConfig.enterCredentialsFirst',
   'err.providerConfig.branchNotFound',
+  'err.providerConfig.invalidCredentialKey',
   // Exception-повідомлення: supplier-payments-модуль
   'err.supplierPayment.dateXorTarget',
   'err.supplierPayment.supplierNotFound',

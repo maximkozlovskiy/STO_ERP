@@ -414,6 +414,7 @@ export const uk: Record<string, string> = {
   'err.providerConfig.notConfiguredForBranch': 'Провайдера не налаштовано для цієї філії',
   'err.providerConfig.enterCredentialsFirst': 'Спершу введіть креди провайдера',
   'err.providerConfig.branchNotFound': 'Філію не знайдено',
+  'err.providerConfig.invalidCredentialKey': 'Некоректна назва поля кредів провайдера: {{key}}',
 
   // ── Exception-повідомлення: supplier-payments-модуль ──
   'err.supplierPayment.dateXorTarget': 'Потрібно вказати рівно одне: date АБО target',
