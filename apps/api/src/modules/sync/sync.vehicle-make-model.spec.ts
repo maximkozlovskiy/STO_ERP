@@ -39,7 +39,9 @@ describe('SyncService.push vehicles — марка й модель з довід
         }),
       },
     };
-    prisma.$transaction = vi.fn((work: (tx: unknown) => Promise<unknown>) => work(prisma));
+    Object.assign(prisma, {
+      $transaction: vi.fn((work: (tx: unknown) => Promise<unknown>) => work(prisma)),
+    });
     sync = new SyncService(
       prisma as unknown as PrismaService,
       {} as WorkOrdersService,
