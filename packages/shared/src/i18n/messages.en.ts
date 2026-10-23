@@ -1074,6 +1074,25 @@ export const en: Record<string, string> = {
   'err.vehicle.hasActiveWorkOrders':
     'Cannot delete: the vehicle has active work orders ({{count}})',
   'err.vehicle.nodeNotFound': 'Node not found',
+  'err.vehicle.makeNotFound': 'Vehicle make not found',
+  'err.vehicle.modelNotFound': 'Vehicle model not found',
+  'err.vehicle.modelNotOfMake': 'The model does not belong to the selected make',
+  'err.vehicle.makeRequiresModel': 'Choose a model together with the new make',
+  'err.vehicleMake.nameExists': 'A make with this name already exists',
+  'err.vehicleMake.nameExistsDeleted': 'A deleted make has this name — restore it',
+  'err.vehicleMake.deletedNotFound': 'Deleted make not found',
+  'err.vehicleMake.inUse':
+    'Vehicles use this make — it cannot be deleted. Merge it into another make',
+  'err.vehicleMake.mergeSelf': 'A make cannot be merged into itself',
+  'err.vehicleModel.nameExists': 'This make already has a model with this name',
+  'err.vehicleModel.nameExistsDeleted': 'A deleted model has this name — restore it',
+  'err.vehicleModel.deletedNotFound': 'Deleted model not found',
+  'err.vehicleModel.inUse':
+    'Vehicles use this model — it cannot be deleted. Merge it into another model',
+  'err.vehicleModel.mergeSelf': 'A model cannot be merged into itself',
+  'err.vehicleModel.mergeOtherMake': 'Only models of the same make can be merged',
+  'err.vehicleModel.makeDeletedRestoreFirst':
+    'The make of this model is deleted — restore the make first',
 
   // ── Exception messages: inspection module ──
   'err.inspection.reportExists': 'An inspection report already exists for this work order',

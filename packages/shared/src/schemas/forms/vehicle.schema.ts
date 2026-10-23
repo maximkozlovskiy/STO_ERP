@@ -75,9 +75,11 @@ const optionalNonNegFloat = () =>
   z.preprocess(emptyToUndefined, z.coerce.number().min(0, 'v.vehicle.nonNegFloat').optional());
 
 // Базові поля Vehicle (без customerGarageId — його додає create-схема окремо: update його не має).
+// Марка й модель — лише з довідників (BR-VEH-008): клієнт передає ідентифікатори, назву
+// (`make` / `model`) пише сервіс. Порожній вибір ('') не проходить uuid → «Вкажіть марку».
 const vehicleBaseShape = {
-  make: z.string().trim().min(1, 'v.vehicle.make.required').max(100, 'v.vehicle.make.max'),
-  model: z.string().trim().min(1, 'v.vehicle.model.required').max(100, 'v.vehicle.model.max'),
+  makeId: z.string().uuid('v.vehicle.make.required'),
+  modelId: z.string().uuid('v.vehicle.model.required'),
   vin: optionalString(),
   licensePlate: optionalString(),
   year: optionalYear(),
@@ -113,6 +115,68 @@ export const vehicleCreateSchema = z.object({
 });
 export type VehicleCreateValues = z.infer<typeof vehicleCreateSchema>;
 
-/** Бек-update (PATCH): без customerGarageId (перенос гаража неможливий), усі поля опційні. */
-export const vehicleUpdateSchema = z.object(vehicleBaseShape).partial();
+/**
+ * Бек-update (PATCH): без customerGarageId (перенос гаража неможливий), усі поля опційні. Нова
+ * марка — лише разом із моделлю: стара модель їй не належить (BR-VEH-008).
+ */
+export const vehicleUpdateSchema = z
+  .object(vehicleBaseShape)
+  .partial()
+  .refine(v => v.makeId === undefined || v.modelId !== undefined, {
+    message: 'v.vehicle.model.required',
+    path: ['modelId'],
+  });
 export type VehicleUpdateValues = z.infer<typeof vehicleUpdateSchema>;
+
+/**
+ * Назва марки чи моделі в довіднику (BR-VEH-006/007): крайні пробіли прибрано, внутрішні
+ * стиснуто до одного. Унікальність — за `vehicleNameKey` (без урахування регістру).
+ */
+const vehicleDirectoryName = (required: string, max: string) =>
+  z
+    .string()
+    .transform(s => s.trim().replace(/\s+/g, ' '))
+    .pipe(z.string().min(1, required).max(100, max));
+
+export const vehicleMakeSchema = z.object({
+  name: vehicleDirectoryName('v.vehicle.make.required', 'v.vehicle.make.max'),
+});
+export type VehicleMakeValues = z.infer<typeof vehicleMakeSchema>;
+
+export const vehicleModelSchema = z.object({
+  name: vehicleDirectoryName('v.vehicle.model.required', 'v.vehicle.model.max'),
+});
+export type VehicleModelValues = z.infer<typeof vehicleModelSchema>;
+
+/** Злиття марки чи моделі в іншу (BR-VEH-010): авто й моделі переходять до `targetId`. */
+export const vehicleDirectoryMergeSchema = z.object({
+  targetId: z.string().uuid(),
+});
+export type VehicleDirectoryMergeValues = z.infer<typeof vehicleDirectoryMergeSchema>;
+
+/**
+ * Ключ унікальності назви марки чи моделі — той самий, що в міграції
+ * `20261023180000_vehicle_makes_and_models`: `lower(regexp_replace(btrim(x), '\s+', ' ', 'g'))`.
+ */
+export function vehicleNameKey(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** Довідник марок для форм і вкладки (GET /vehicle-makes). */
+export interface VehicleMakeDto {
+  id: string;
+  name: string;
+  /** Живі авто з цією маркою — видалити марку з ними не можна (BR-VEH-009). */
+  vehicleCount: number;
+  modelCount: number;
+  deletedAt: string | null;
+}
+
+/** Моделі марки (GET /vehicle-makes/:id/models). */
+export interface VehicleModelDto {
+  id: string;
+  makeId: string;
+  name: string;
+  vehicleCount: number;
+  deletedAt: string | null;
+}

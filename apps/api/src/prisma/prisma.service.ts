@@ -30,6 +30,8 @@ const SYNC_VERSION_MODELS = new Set([
   'Counterparty',
   'CustomerGarage',
   'Vehicle',
+  'VehicleMake',
+  'VehicleModel',
   'VehicleNode',
   'WorkCategory',
   'Work',

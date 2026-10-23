@@ -7,9 +7,17 @@
 
 ## Prisma модель
 
-`Vehicle` (`packages/database/prisma/schema/04_crm.prisma`): `vin`, `licensePlate`, `make`,
-`model`, `year`, `currentMileage`, `customerGarageId`; soft delete (`deletedAt`), `syncVersion`.
-`VehicleNode` — вузли авто (`mileageAtInstall`), теж soft delete.
+`Vehicle` (`packages/database/prisma/schema/04_crm.prisma`): `vin`, `licensePlate`, `makeId`,
+`modelId`, `make`, `model`, `year`, `currentMileage`, `customerGarageId`; soft delete (`deletedAt`),
+`syncVersion`. `VehicleNode` — вузли авто (`mileageAtInstall`), теж soft delete.
+
+Марка й модель — з довідників `VehicleMake` / `VehicleModel` (з 2026-10-23, міграція
+`20261023180000_vehicle_makes_and_models`). `make` / `model` у `Vehicle` — знімок назви, який пише
+лише сервіс: його читають PDF наряду й акту (`formatVehicleLabel`), `vehicleSummary` нарядів і
+календаря, шаблони нагадувань (`{{vehicleMake}}`), сирий SQL зарплати, конструктор звітів,
+експорт і мобільний застосунок. `VehicleMake`: `name`, `nameKey` (унікальний у організації разом із
+видаленими); `VehicleModel`: `makeId`, `name`, `nameKey` (унікальний у марці). Обидві — soft
+delete, `syncVersion`.
 
 Пробіг зберігається у двох місцях: `Vehicle.currentMileage` (останнє відоме значення; росте
 лише вгору — оновлюється подією завершення наряду та sync) і `WorkOrder.inMileage` /
@@ -74,6 +82,43 @@
   `GET /vehicles/:id`). Перевірка авто — окремим запитом з `orgId` і `deletedAt: null`.
 - **BR-VEH-005**: Повертається не більше 200 останніх записів; порядок у відповіді все одно
   від старішого до новішого.
+
+### Довідники марок і моделей (рішення власника 2026-10-23)
+
+- **BR-VEH-006**: Назва марки — до 100 символів, крайні пробіли прибрано, внутрішні стиснуто до
+  одного. Ключ `nameKey` = та сама назва в нижньому регістрі (`vehicleNameKey` у
+  `@sto/shared`, у SQL — `lower(regexp_replace(btrim(x), '\s+', ' ', 'g'))`). Ключ унікальний в
+  організації разом із видаленими. Назва живої марки → 409 `err.vehicleMake.nameExists`; видаленої →
+  409 `err.vehicleMake.nameExistsDeleted` (відновити її, а не створити другу). Те саме при
+  перейменуванні.
+- **BR-VEH-007**: Модель належить марці; назва й ключ — як у BR-VEH-006, ключ унікальний у межах
+  марки (`err.vehicleModel.nameExists` / `nameExistsDeleted`). Модель видаленої марки не
+  створюється й не відновлюється (`err.vehicleModel.makeDeletedRestoreFirst`).
+- **BR-VEH-008**: Авто має марку й модель із довідника (`makeId`, `modelId` обов'язкові, у
+  формі — лише вибір). Модель мусить належати цій марці (`err.vehicle.modelNotOfMake`), обидві живі
+  й своєї організації (`err.vehicle.makeNotFound` / `modelNotFound`), інакше 400. Зміна марки без
+  моделі — 400 (`err.vehicle.makeRequiresModel`). `make` / `model` авто пише сервіс — назвами з
+  довідника; клієнт їх не передає. Так само для `POST /sync/push` (`makeId` / `modelId`).
+- **BR-VEH-009**: Марку чи модель, яку мають живі авто, видалити не можна — 400
+  `err.vehicleMake.inUse` / `err.vehicleModel.inUse` з пропозицією злити. Видалення марки без живих
+  авто видаляє й її живі моделі.
+- **BR-VEH-010**: Злиття марки A в B: авто A переходять на B; моделі A, чий ключ уже є в B,
+  зливаються з моделлю B (авто переходять на неї), решта моделей переходять до B; A видаляється.
+  Злиття моделі — так само, лише в межах однієї марки (`err.vehicleModel.mergeOtherMake`). Злиття з
+  собою — 400. Ціль мусить бути живою.
+- **BR-VEH-011**: Перейменування й злиття оновлюють знімок назви (`make` / `model`) в усіх авто
+  марки чи моделі, разом із видаленими авто, у тій самій транзакції (`syncVersion + 1`).
+- **BR-VEH-012**: Стартовий список марок (`vehicle-make-defaults.ts`, без моделей) сіється при
+  створенні організації; для наявних організацій — міграцією. Список у міграції збігається зі
+  списком у коді.
+- **BR-VEH-013**: Ролі довідника: читання — OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT, MECHANIC
+  (механік обирає марку у формі авто); створення й перейменування — OWNER, ADMIN, RECEPTIONIST;
+  видалення, відновлення, злиття — OWNER, ADMIN.
+
+Перенесення старих даних (міграція): ключ назви як у BR-VEH-006; аліаси стартового списку (VW,
+Мерседес, ВАЗ, кирилиця) зводяться до марки зі списку; назва нової марки чи моделі — найчастіше
+написання в організації; не впізнане («ferari», «Майота») стає окремою маркою для ручного злиття.
+Переносяться всі авто, разом із видаленими.
 
 ## Аспекти і тести, що їх стережуть
 

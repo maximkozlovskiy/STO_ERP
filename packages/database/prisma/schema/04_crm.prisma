@@ -190,6 +190,11 @@ model Vehicle {
   customerGarageId String    @db.Uuid
   vin              String?
   licensePlate     String?
+  // Марка й модель — з довідників (BR-VEH-006…). `make`/`model` — знімок назви, який пише лише
+  // сервіс (і перейменування / злиття в довіднику): їх читають PDF, наряди, календар, шаблони
+  // повідомлень, зарплата (сирий SQL), конструктор звітів і мобільний застосунок.
+  makeId           String    @db.Uuid
+  modelId          String    @db.Uuid
   make             String
   model            String
   year             Int?
@@ -210,6 +215,8 @@ model Vehicle {
   deletedAt        DateTime?
 
   customerGarage       CustomerGarage        @relation(fields: [customerGarageId], references: [id])
+  vehicleMake          VehicleMake           @relation(fields: [makeId], references: [id])
+  vehicleModel         VehicleModel          @relation(fields: [modelId], references: [id])
   vehicleNodes         VehicleNode[]
   workOrders           WorkOrder[]
   maintenanceSchedules MaintenanceSchedule[]
@@ -218,7 +225,54 @@ model Vehicle {
   @@index([orgId, deletedAt])
   @@index([orgId, vin])
   @@index([orgId, syncVersion])
+  @@index([orgId, makeId])
+  @@index([orgId, modelId])
   @@map("vehicles")
+}
+
+/// Довідник марок авто (BR-VEH-006…). `nameKey` — назва без зайвих пробілів у нижньому регістрі:
+/// унікальність у організації за ним, разом із видаленими (створення такої ж назви відновлює
+/// видалену). Стартовий список сіється при створенні організації.
+model VehicleMake {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  nameKey     String
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org      Organisation   @relation(fields: [orgId], references: [id])
+  models   VehicleModel[]
+  vehicles Vehicle[]
+
+  @@unique([orgId, nameKey])
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("vehicle_makes")
+}
+
+/// Модель авто в межах марки; `nameKey` унікальний у марці (BR-VEH-007).
+model VehicleModel {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  makeId      String    @db.Uuid
+  name        String
+  nameKey     String
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org      Organisation @relation(fields: [orgId], references: [id])
+  make     VehicleMake  @relation(fields: [makeId], references: [id])
+  vehicles Vehicle[]
+
+  @@unique([orgId, makeId, nameKey])
+  @@index([orgId, makeId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("vehicle_models")
 }
 
 model VehicleNode {

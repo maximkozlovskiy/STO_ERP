@@ -1053,6 +1053,22 @@ export const uk: Record<string, string> = {
   'err.vehicle.hasActiveWorkOrders':
     'Неможливо видалити: автомобіль має активні наряди ({{count}})',
   'err.vehicle.nodeNotFound': 'Вузол не знайдено',
+  'err.vehicle.makeNotFound': 'Марку авто не знайдено',
+  'err.vehicle.modelNotFound': 'Модель авто не знайдено',
+  'err.vehicle.modelNotOfMake': 'Модель не належить обраній марці',
+  'err.vehicle.makeRequiresModel': 'Зі зміною марки оберіть і модель',
+  'err.vehicleMake.nameExists': 'Марка з такою назвою вже є',
+  'err.vehicleMake.nameExistsDeleted': 'Марка з такою назвою є серед видалених — відновіть її',
+  'err.vehicleMake.deletedNotFound': 'Видалену марку не знайдено',
+  'err.vehicleMake.inUse': 'Марку мають авто — видалити не можна. Злийте її з іншою маркою',
+  'err.vehicleMake.mergeSelf': 'Марку не можна злити саму з собою',
+  'err.vehicleModel.nameExists': 'Модель з такою назвою в цій марці вже є',
+  'err.vehicleModel.nameExistsDeleted': 'Модель з такою назвою є серед видалених — відновіть її',
+  'err.vehicleModel.deletedNotFound': 'Видалену модель не знайдено',
+  'err.vehicleModel.inUse': 'Модель мають авто — видалити не можна. Злийте її з іншою моделлю',
+  'err.vehicleModel.mergeSelf': 'Модель не можна злити саму з собою',
+  'err.vehicleModel.mergeOtherMake': 'Злити можна лише моделі однієї марки',
+  'err.vehicleModel.makeDeletedRestoreFirst': 'Марку цієї моделі видалено — спершу відновіть марку',
 
   // ── Exception-повідомлення: inspection-модуль ──
   'err.inspection.reportExists': 'Звіт огляду вже існує для цього наряду',

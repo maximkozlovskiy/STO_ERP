@@ -40,6 +40,8 @@ model Organisation {
   cashRegisters         CashRegister[]
   savedReports          SavedReport[]
   counterpartyStatuses  CounterpartyStatus[]
+  vehicleMakes          VehicleMake[]
+  vehicleModels         VehicleModel[]
   goodStatuses          GoodStatus[]
   payrollPeriods        PayrollPeriod[]
   expenseCategories     ExpenseCategory[]
