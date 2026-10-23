@@ -72,19 +72,19 @@ Orphan-Payment (create ok, link fail) benign: retry натрапляє на CAS-
 
 ## API Endpoints (bank-statements.controller, ролі OWNER/ADMIN/ACCOUNTANT)
 
-| Метод  | Шлях                                                            | Призначення                                             |
-| ------ | --------------------------------------------------------------- | ------------------------------------------------------- |
-| POST   | `/bank-statements/import/raw-preview`                           | сира сітка (multipart)                                  |
-| POST   | `/bank-statements/import/preview`                               | dry-run матч (multipart + mapping)                      |
-| POST   | `/bank-statements/import/apply`                                 | створити UNMATCHED-транзакції                           |
-| GET    | `/bank-statements/transactions`                                 | список (status/direction/q/dateFrom/dateTo/page/limit)  |
-| POST   | `/bank-statements/transactions/:id/match`                       | рознести ВХІДНИЙ → Payment                              |
-| POST   | `/bank-statements/transactions/:id/ignore`                      | позначити IGNORED                                       |
-| POST   | `/bank-statements/transactions`                                 | внести вручну (Idempotency-Key) + рознести, BR-BANK-041 |
-| DELETE | `/bank-statements/transactions/:id`                             | видалити ручний нерознесений платіж                     |
-| GET    | `/bank-statements/transactions/:id/supplier-payment-candidates` | проведені оплати постачальнику для прив'язки            |
-| POST   | `/bank-statements/transactions/:id/reconcile`                   | рознести ВИХІДНИЙ (і TRANSFER для вхідного)             |
-| POST   | `/bank-statements/transactions/:id/unreconcile`                 | скасувати рознесення (причина обов'язкова)              |
+| Метод  | Шлях                                                            | Призначення                                                                |
+| ------ | --------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| POST   | `/bank-statements/import/raw-preview`                           | сира сітка (multipart)                                                     |
+| POST   | `/bank-statements/import/preview`                               | dry-run матч (multipart + mapping)                                         |
+| POST   | `/bank-statements/import/apply`                                 | створити UNMATCHED-транзакції                                              |
+| GET    | `/bank-statements/transactions`                                 | список (status/direction/q/dateFrom/dateTo/page/limit)                     |
+| POST   | `/bank-statements/transactions/:id/match`                       | рознести ВХІДНИЙ → Payment                                                 |
+| POST   | `/bank-statements/transactions/:id/ignore`                      | позначити IGNORED                                                          |
+| POST   | `/bank-statements/transactions`                                 | внести вручну (Idempotency-Key обов'язковий — 400) + рознести, BR-BANK-041 |
+| DELETE | `/bank-statements/transactions/:id`                             | видалити ручний нерознесений платіж                                        |
+| GET    | `/bank-statements/transactions/:id/supplier-payment-candidates` | проведені оплати постачальнику для прив'язки                               |
+| POST   | `/bank-statements/transactions/:id/reconcile`                   | рознести ВИХІДНИЙ (і TRANSFER для вхідного)                                |
+| POST   | `/bank-statements/transactions/:id/unreconcile`                 | скасувати рознесення (причина обов'язкова)                                 |
 
 ## UI (Web)
 
@@ -282,7 +282,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 Спільні zod-схеми рознесення при внесенні (види за напрямом, обов'язкові поля виду) —
 `packages/shared/src/schemas/forms/bank-transaction.schema.spec.ts` (поза модулем api).
 
-**Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: що `ValidationPipe` і `RolesGuard` справді спрацьовують на маршрутах (статуси 400/403), покриває лише E2E — unit-спеки перевіряють самі декоратори DTO та metadata ролей. Те саме з ідемпотентністю ручного внесення: unit стереже лише наявність `IdempotencyInterceptor` на маршруті, а не те, що повтор із тим самим `Idempotency-Key` справді не створює другий рядок.
+**Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: що `ValidationPipe` і `RolesGuard` справді спрацьовують на маршрутах (статуси 400/403), покриває лише E2E — unit-спеки перевіряють самі декоратори DTO та metadata ролей. Те саме з ідемпотентністю ручного внесення: unit стереже лише наявність `RequiredIdempotencyInterceptor` на маршруті (без ключа — 400, 2026-10-23), а не те, що повтор із тим самим `Idempotency-Key` справді не створює другий рядок.
 Integration-спеку (`*.integration.spec.ts`) немає, тому лише на моках, без справжньої БД, лишаються: унікальний індекс `orgId + bankAccountId + externalId` і `paymentId @unique` (unit стереже прапорець `skipDuplicates`, а не сам індекс); унікальні індекси `supplierPaymentId` і `cashOperationId` (unit стереже лише переклад `P2002` у 409); гонка двох одночасних рознесень або скасувань одного рядка (CAS перевірено формою `where` і підробленим `count: 0`, не конкурентно); відкат транзакції БД при збої проведення чи каси (відкочує підробка, а не PostgreSQL); сирітський `Payment`, якщо платіж створено, а запис `paymentId` у рядок упав.
 Датування проведень перевірено наполовину: що курс і дата документа беруться з `operationDate` — стережуть спеки рознесення; що саме проведення й касова операція датуються моментом рознесення (`createdAt`) — ні: `createdAt` ставить БД у `SettlementsService` / `CashService`, їхні моки тут дати не мають.
 Внесення з рознесенням у unit-спеку перевірене на підробці: що відмова всередині транзакції відкочує й сам вставлений рядок — відкочує підробка, а що справжній `PaymentsService.create` відмовляє (сума більша за залишок рахунку) і рядок після цього зникає зі списку — лише E2E `apps/web/e2e/bank-allocation.spec.ts`. Повтор із тим самим `Idempotency-Key` після відмови (ключ звільняється) стереже сам інтерсептор (`common/interceptors/idempotency.interceptor.spec.ts`, «handler кинув → резервацію видалено»); що саме цей маршрут повторює запит після відмови, а успішний — віддає той самий рядок, перевірено лише наживо (review 2026-10-15), не тестом модуля. Повтор після збою, за якого рядок лишився рознесеним з оплатою, створить другий платіж — питання власнику, `docs/TECH-DEBT.md` §10 п. 35.
