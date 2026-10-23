@@ -1,11 +1,12 @@
 'use client';
 
-import { Suspense, useEffect, useMemo } from 'react';
+import { Fragment, Suspense, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import { TabDivider } from '@/components/ui/tab-divider';
 
 const CashOperationsTab = dynamic(() => import('./CashOperationsTab'), { ssr: false });
 const CashRegistersTab = dynamic(() => import('./CashRegistersTab'), { ssr: false });
@@ -58,18 +59,21 @@ function CashPageShell() {
 
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
         {visibleTabs.map(tabDef => (
-          <button
-            key={tabDef.key}
-            onClick={() => setTab(tabDef.key)}
-            className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
-              tab === tabDef.key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {tabDef.label}
-          </button>
+          <Fragment key={tabDef.key}>
+            {/* Операції | довідники до них (каси, статті руху коштів) — як на «Каталозі» */}
+            {tabDef.key === 'registers' && <TabDivider />}
+            <button
+              onClick={() => setTab(tabDef.key)}
+              className={cn(
+                'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
+                tab === tabDef.key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {tabDef.label}
+            </button>
+          </Fragment>
         ))}
       </div>
 
