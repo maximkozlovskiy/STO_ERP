@@ -182,6 +182,14 @@
    "purchaseOrderFormSchema (спільна, web ↔ api) валідний create з рядками; quantity/price коерситься; pricedSalePrice опційна",
    "purchaseOrderFormSchema (спільна, web ↔ api) порожні lines — валідно (default [])"
   ],
+  "apps/api/src/common/pipes/reject-nul-character.pipe.spec.ts": [
+   "RejectNulCharacterPipe en-локаль запиту → англійський текст",
+   "RejectNulCharacterPipe globalPipes(): перша труба — RejectNulCharacterPipe, далі ValidationPipe; main.ts бере саме їх",
+   "RejectNulCharacterPipe path-параметр із NUL → 400",
+   "RejectNulCharacterPipe query-DTO цілком (`@Query() dto`): NUL у вкладеному значенні чи масиві → 400",
+   "RejectNulCharacterPipe query-рядок із NUL → 400 з українським текстом",
+   "RejectNulCharacterPipe тіло запиту не чіпає; чисті значення повертає як є"
+  ],
   "apps/api/src/common/pipes/stock-document-schema.spec.ts": [
    "stockDocumentFormSchema (спільна, web ↔ api) TRANSFER без targetWarehouseId → помилка на targetWarehouseId (Bug #462)",
    "stockDocumentFormSchema (спільна, web ↔ api) TRANSFER де target === source → помилка (склади збігаються)",
@@ -861,6 +869,7 @@
   ],
   "apps/api/src/modules/bank-statements/bank-reconciliation.import.spec.ts": [
    "BankReconciliationService.applyImport — tenant-фільтр applyImport: банківський рахунок шукається у своїй orgId і лише невидалений",
+   "BankReconciliationService.applyImport — межа amountBase (BR-BANK-042) рядок, чий еквівалент у базовій валюті понад межу колонки → 400 до запису; імпорт не пише нічого",
    "BankReconciliationService.applyImport — ідемпотентність запису і нормалізація IBAN createMany викликається зі skipDuplicates: true — повторний імпорт не дублює рядок",
    "BankReconciliationService.applyImport — ідемпотентність запису і нормалізація IBAN payerIban зберігається нормалізованим (UPPERCASE, без пробілів); порожній → null",
    "BankReconciliationService.applyImport — ідемпотентність запису і нормалізація IBAN імпорт лише кладе рядки у staging: Payment НЕ створюється",
@@ -872,6 +881,8 @@
    "BankReconciliationService.createManual — ручне внесення платежу operationDate 2026-10-09 зберігається як північ UTC цього дня (день не з’їжджає)",
    "BankReconciliationService.createManual — ручне внесення платежу валюта = валюта рахунку; amountBase і rateUsed — з resolveBaseConversion на дату операції",
    "BankReconciliationService.createManual — ручне внесення платежу два внесення підряд отримують різні externalId (ключ ідемпотентності рядка не збігається)",
+   "BankReconciliationService.createManual — ручне внесення платежу еквівалент рівно 9 999 999 999,99 вміщається → рядок створено",
+   "BankReconciliationService.createManual — ручне внесення платежу еквівалент у базовій валюті понад 9 999 999 999,99 → 400 amountBaseOverflow, рядок не створено",
    "BankReconciliationService.createManual — ручне внесення платежу рахунок видалений → 404, рядок не створено",
    "BankReconciliationService.createManual — ручне внесення платежу рахунок неіснуючий → 404, рядок не створено",
    "BankReconciliationService.createManual — ручне внесення платежу рахунок чужої організації → 404, рядок не створено",
@@ -2212,6 +2223,9 @@
    "CompletionActsService — sign() idempotency + auto-invoice cancel(): DRAFT → CAS updateMany з предикатом status ≠ SIGNED (не update за id)",
    "CompletionActsService — sign() idempotency + auto-invoice cancel(): sign() закомітився між читанням і записом (CAS count=0) → 400, акт не перезаписано",
    "CompletionActsService — sign() idempotency + auto-invoice cancel(): уже SIGNED → 400 ще до запису; не знайдено → 404",
+   "CompletionActsService — sign() idempotency + auto-invoice createFromWorkOrder(): активний акт з’явився, поки чекали блокування → 400 activeExists, другої чернетки немає",
+   "CompletionActsService — sign() idempotency + auto-invoice createFromWorkOrder(): наряд скасовано між читанням і блокуванням → 400, акт не створено",
+   "CompletionActsService — sign() idempotency + auto-invoice createFromWorkOrder(): чернетка створюється в транзакції під блокуванням наряду",
    "CompletionActsService — sign() idempotency + auto-invoice sign() (concurrent/retry): CAS count=0 → BadRequestException, WO не оновлено, auto-invoice не викликано",
    "CompletionActsService — sign() idempotency + auto-invoice sign() без userId (системний виклик): подія переходу все одно емітиться — гейтить хендлер, не сервіс",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): CAS updateMany where status:DRAFT переводить у SIGNED + WO COMPLETED→INVOICED + auto-invoice",
@@ -2219,6 +2233,7 @@
    "CompletionActsService — sign() idempotency + auto-invoice sign(): auto-invoice \"вже існує активний рахунок\" НЕ роллбечить підписання (best-effort ПОЗА tx)",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): авто-рахунок упав з довільної причини → підписання і перехід лишаються, подія вже пішла, збій у warn",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): акт не знайдено → NotFoundException",
+   "CompletionActsService — sign() idempotency + auto-invoice sign(): блокує наряд ДО запису в акт (порядок «наряд → акт», як у скасуванні наряду)",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): вже SIGNED → BadRequestException ПЕРЕД CAS",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд ARCHIVED → акт підписується",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд CANCELLED → 400, акт лишається DRAFT, рахунок не створюється",
@@ -3633,7 +3648,9 @@
    "FollowUpProcessor.handleSendReminders повертається без виклику sendWithConfig, якщо followUpActive=false",
    "FollowUpProcessor.handleSendReminders повертається без виклику sendWithConfig, якщо org не має активного branch",
    "FollowUpProcessor.handleSendReminders пропускає клієнтів без phone",
-   "FollowUpProcessor.handleSendReminders фільтрує soft-deleted vehicles/garages/counterparties у maintenance"
+   "FollowUpProcessor.handleSendReminders фільтрує soft-deleted vehicles/garages/counterparties у maintenance",
+   "FollowUpProcessor.handleSendReminders якір вікна — 09:00 за Києвом у київський день запуску (BR-MAINT-007) зима (+02:00): запуск о 00:30 Києва 16.01 (ще 15.01 за UTC) → 16.01 09:00 Києва = 07:00 UTC",
+   "FollowUpProcessor.handleSendReminders якір вікна — 09:00 за Києвом у київський день запуску (BR-MAINT-007) літо (+03:00): CRON о 09:00 Києва 16.07 → якір 06:00 UTC, а не 09:00 UTC"
   ],
   "apps/api/src/modules/notifications/notifications.activate-provider.spec.ts": [
    "NotificationsService.activateProvider legacy: ДВА провайдери enabled одночасно → активація одного лишає enabled ЛИШЕ його",
@@ -4107,6 +4124,16 @@
    "PaymentsService — FIN-C1 ідемпотентність оплати часткова оплата: 200 з 500 → paidAmount=200, status=PARTIALLY_PAID",
    "PaymentsService — FIN-C1 ідемпотентність оплати явний sourceType=BANK_ACCOUNT з DTO + невалідний/чужий рахунок → NotFound (строга валідація вводу)"
   ],
+  "apps/api/src/modules/payments/payments.list-query.contract.spec.ts": [
+   "GET /payments — query DTO і NUL (HTTP-контракт) NUL у q → 400 з текстом, а не 500 від Postgres",
+   "GET /payments — query DTO і NUL (HTTP-контракт) counterpartyId не UUID → 400, сервіс не викликається",
+   "GET /payments — query DTO і NUL (HTTP-контракт) method довший за 64 символи → 400, сервіс не викликається",
+   "GET /payments — query DTO і NUL (HTTP-контракт) method масивом → 400, сервіс не викликається",
+   "GET /payments — query DTO і NUL (HTTP-контракт) q масивом → 400, сервіс не викликається",
+   "GET /payments — query DTO і NUL (HTTP-контракт) без параметрів → page 1, limit 20 (як раніше)",
+   "GET /payments — query DTO і NUL (HTTP-контракт) невідомий параметр → 400, сервіс не викликається",
+   "GET /payments — query DTO і NUL (HTTP-контракт) усі параметри рядками → 200; у сервіс ідуть ті самі значення, page/limit — числа"
+  ],
   "apps/api/src/modules/payments/payments.money-model.spec.ts": [
    "CreatePaymentDto — межі суми (Bug #846) найбільша сума, яку вміщує колонка, проходить",
    "CreatePaymentDto — межі суми (Bug #846) сума понад місткість Decimal(12,2) → помилка поля amount, а не 500 від бази",
@@ -4168,6 +4195,9 @@
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto fiscalStatus=garbage → фільтр НЕ застосовано (без 500) — MUTATION guard enum-Set",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto method=card → where.method=card (eq)",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto pagination: limit клампиться у [1,200], page у [1,∞) — DoS-hardening",
+   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto pagination: limit=NaN (?limit=xyz) → дефолт (skip 0, take 20), skip/take скінченні — не NaN у Prisma",
+   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto pagination: page=NaN (?page=abc) → дефолт (skip 0, take 20), skip/take скінченні — не NaN у Prisma",
+   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto pagination: обидва ±Infinity (?page=1e999) → дефолт (skip 0, take 20), skip/take скінченні — не NaN у Prisma",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto q із символами підстановки LIKE (% _) шукається буквально",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto q → клієнт (назва / прізвище / імʼя), номер рахунку, номер наряду або примітка",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: FAILED + без receiptId → update QUEUED + checkboxQueue.add",
@@ -4848,6 +4878,9 @@
   ],
   "apps/api/src/modules/purchase-orders/delivery/delivery-tracking.service.spec.ts": [
    "DeliveryTrackingService enqueueInitial offline-safe: черга кидає → enqueueInitial НЕ кидає (PO усе одно збережений)",
+   "DeliveryTrackingService enqueueInitial активний крок цього документа → другого ланцюжка немає, promote не викликається",
+   "DeliveryTrackingService enqueueInitial живий відкладений крок цього документа → другого ланцюжка немає; крок переведено в «зараз»",
+   "DeliveryTrackingService enqueueInitial живі лише кроки інших документів → новий ланцюжок (крок 0)",
    "DeliveryTrackingService enqueueInitial ставить poll-job з jobId single-flight (np-poll-<poId>) і delay=0 (одразу)",
    "DeliveryTrackingService pollDelayMs — clamp [5,1440] хв 0 → clamp до MIN 5 хв",
    "DeliveryTrackingService pollDelayMs — clamp [5,1440] хв 1440 (рівно MAX) → 1440 хв",
@@ -4862,10 +4895,12 @@
   "apps/api/src/modules/purchase-orders/delivery/nova-poshta-polling.processor.spec.ts": [
    "NovaPoshtaPollingProcessor PO видалено → стоп (не опитуємо, не re-enqueue)",
    "NovaPoshtaPollingProcessor cap: pollAttempts на межі MAX → НЕ re-enqueue (зупинка зомбі-poll)",
-   "NovaPoshtaPollingProcessor re-enqueue: jobId стабільний (np-poll-<poId>) — single-flight на документ",
+   "NovaPoshtaPollingProcessor re-enqueue: id наступного кроку ≠ id поточної задачі; кроки детерміновані (p1, p2, …)",
    "NovaPoshtaPollingProcessor tenant: findFirst несе orgId+deletedAt; resolveActive — branchId складу",
    "NovaPoshtaPollingProcessor zombie-job: job.data НЕ містить ЕН — трекінг керується re-read з БД (не payload)",
+   "NovaPoshtaPollingProcessor ЕН змінили під час опитування (запис статусу зачепив 0 рядків) → не стоп навіть на термінальному: наступний крок одразу",
    "NovaPoshtaPollingProcessor ЕН прибрано (trackingNumber=null) → стоп",
+   "NovaPoshtaPollingProcessor збій запису статусу → наступний крок зі звичайним інтервалом (не стоп і не частий повтор)",
    "NovaPoshtaPollingProcessor немає активної служби → не FAILED, не re-enqueue (конфіг-стан)",
    "NovaPoshtaPollingProcessor статус НЕ змінився → update НЕ викликається, але re-enqueue продовжується",
    "NovaPoshtaPollingProcessor статус змінився → update PO (delivery-метадані) + re-enqueue з delay з налаштувань",
@@ -5029,7 +5064,8 @@
   ],
   "apps/api/src/modules/purchase-orders/purchase-orders.receive-ledger.spec.ts": [
    "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE CAS ДРУГОГО рядка не зійшовся → throw; жодного RECEIPT-руху (і для першого рядка теж) і без SUPPLIER_CHARGE",
-   "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE lineId, якого немає серед рядків замовлення → мовчки відкидається (без 4xx); решта запиту приймається",
+   "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE lineId, якого немає серед рядків замовлення (з receivedQty=0) → 400 receiveLineNotFound до транзакції; нічого не прийнято",
+   "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE lineId, якого немає серед рядків замовлення (з receivedQty>0) → 400 receiveLineNotFound до транзакції; нічого не прийнято",
    "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE два рядки → CAS обох рядків ДО першого руху; RECEIPT на кожен рядок; РІВНО ОДИН SUPPLIER_CHARGE на Σ",
    "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE повністю прийнятий рядок із receivedQty>0 у запиті → НЕ відфільтровується за залишком, а дає 400 over-receipt",
    "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE рядок запиту з receivedQty=0 → не активний: без CAS і без RECEIPT для нього; борг лише за прийнятий рядок"
@@ -5160,6 +5196,15 @@
    "report-query.builder relation-фільтр додає nested deletedAt (Bug #607)",
    "report-query.builder sort по relation-полю будує вкладений orderBy",
    "report-query.builder take завжди 5000 — для кожної сутності реєстру, незалежно від config",
+   "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) in: масив з об’єктом → 400; понад 500 значень → 400",
+   "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) isNull: рядок, лишений у value після зміни оператора, не заважає; false / \"false\" — «заповнено»",
+   "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) рядок із поля «значення» UI приводиться: ціле → Number, десяткове лишається рядком, так/ні → boolean",
+   "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) текстове поле, оператор contains з об'єктом чи масивом → 400, у Prisma не потрапляє",
+   "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) текстове поле, оператор eq з об'єктом чи масивом → 400, у Prisma не потрапляє",
+   "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) текстове поле, оператор gt з об'єктом чи масивом → 400, у Prisma не потрапляє",
+   "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) текстове поле, оператор isNull з об'єктом чи масивом → 400, у Prisma не потрапляє",
+   "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) текстове поле, оператор ne з об'єктом чи масивом → 400, у Prisma не потрапляє",
+   "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) тип значення має збігатися з типом поля: число в текстовому, текст у числовому, дата-сміття → 400",
    "report-query.builder кілька умов на одне поле діють разом (BR-RPT-022) «від 100 до 500»: перша умова лишається на полі, друга йде в AND — жодна не губиться",
    "report-query.builder кілька умов на одне поле діють разом (BR-RPT-022) одна умова на поле — форма where як раніше, AND не з’являється",
    "report-query.builder кілька умов на одне поле діють разом (BR-RPT-022) три умови на одне поле → одна на полі й дві в AND, у порядку запиту",
@@ -6183,9 +6228,12 @@
    "SupplierPaymentsService — update-guards update(): PATCH sourceType=CASH_REGISTER без cashRegisterId (чернетка на банку) → BadRequestException, БЕЗ DB-виклику",
    "SupplierPaymentsService — update-guards update(): PATCH без полів джерела → збережене джерело проходить перевірку і переписується як було",
    "SupplierPaymentsService — update-guards update(): PATCH на CONFIRMED → BadRequestException, ніяких writes",
+   "SupplierPaymentsService — update-guards update(): гривнева чернетка на банку → інший рахунок у USD → currencyId = валюта нового рахунку",
+   "SupplierPaymentsService — update-guards update(): джерело без валюти → 400 sourceHasNoCurrency, без запису",
    "SupplierPaymentsService — update-guards update(): зміна supplierId без purchaseOrderId → авто-очищення orphan PO (Bug #588)",
    "SupplierPaymentsService — update-guards update(): зміна supplierId коли purchaseOrderId вже null → НЕ пише зайвий purchaseOrderId",
    "SupplierPaymentsService — update-guards update(): зміна supplierId на контрагента-CLIENT → BadRequestException, ніяких writes",
+   "SupplierPaymentsService — update-guards update(): каса (UAH) → банківський рахунок у USD → currencyId із рахунку, не з каси",
    "SupplierPaymentsService — update-guards update(): перехід банк → каса → у запис іде cashRegisterId, а bankAccountId обнуляється",
    "SupplierPaymentsService — update-guards update(): перехід каса → банк → у запис іде bankAccountId, а cashRegisterId обнуляється"
   ],
@@ -7650,7 +7698,13 @@
    "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера кожне секретне поле пишеться шифротекстом CashShift.checkboxAccessToken — токен касира відкритої зміни ПРРО",
    "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера кожне секретне поле пишеться шифротекстом NotificationChannelConfig.apiKey — канал сповіщень SMS / Viber / Email",
    "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера кожне секретне поле пишеться шифротекстом SupplierConnection.authState — кеш JWT API постачальника (UTR, AD)",
-   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера кожне секретне поле пишеться шифротекстом SupplierConnection.credentials — API постачальника (ключ, токен, логін і пароль)"
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера кожне секретне поле пишеться шифротекстом SupplierConnection.credentials — API постачальника (ключ, токен, логін і пароль)",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера шляхи запису: { set }, *AndReturn, вкладений запис через зв’язок (BR-PAY-026) createManyAndReturn: кожен рядок — шифротекст",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера шляхи запису: { set }, *AndReturn, вкладений запис через зв’язок (BR-PAY-026) update з `{ set: секрет }` → шифротекст",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера шляхи запису: { set }, *AndReturn, вкладений запис через зв’язок (BR-PAY-026) updateMany з `{ set: секрет }` → шифротекст",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера шляхи запису: { set }, *AndReturn, вкладений запис через зв’язок (BR-PAY-026) updateManyAndReturn → шифротекст",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера шляхи запису: { set }, *AndReturn, вкладений запис через зв’язок (BR-PAY-026) вкладений upsert (create і update) через зв’язок → шифротекст в обох гілках",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера шляхи запису: { set }, *AndReturn, вкладений запис через зв’язок (BR-PAY-026) вкладений запис через зв’язок: garageBranch.update → branchSettings.update → шифротекст"
   ],
   "apps/api/src/prisma/field-encryption.integration.spec.ts": [
    "Prisma field-encryption extension (integration, live DB) (a) write через розширення → CIPHERTEXT at-rest у Postgres (не plaintext)",

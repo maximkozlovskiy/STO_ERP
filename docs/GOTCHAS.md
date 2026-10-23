@@ -17,7 +17,7 @@ lint-staged 17.6 читає `git diff` через tinyexec 1.3.1, а той де
 `exec` з tinyexec і через `execFileSync(..., { encoding: 'utf8' })` — порівняти рядки й кількість U+FFFD.
 Ліки в корені — декодувати потік цілим (`StringDecoder`/`setEncoding`). Застосовано 2026-10-24
 латкою `patches/tinyexec@1.3.1.patch` (`patchedDependencies` у `pnpm-workspace.yaml`; Dockerfile-и
-копіюють `patches/` перед `pnpm install`): той самий прогін — 0 з 30 відмінностей. Оновлюєте tinyexec
+копіюють `patches/` перед `pnpm install`): той самий прогін — 0 з 30 відмінностей. Issue в upstream: https://github.com/tinylibs/tinyexec/issues/183. Оновлюєте tinyexec
 чи lint-staged — перевірити, чи виправлено в upstream, і прибрати латку. `git commit -- <шляхи>` не допомагає. Цього вечора так тричі: мої коміти забрали
 файли виконавця, а його коміти — мій `TECH-DEBT.md`. Поки у дереві лежить великий незбережений файл із
 кирилицею, а хтось комітить: (1) спершу закомітити або дочекатись того файла; (2) після КОЖНОГО коміту
