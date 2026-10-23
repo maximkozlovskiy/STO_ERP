@@ -277,7 +277,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 виконує `where`, справжній CAS в `updateMany`, відкат записів tx-клієнта в `$transaction`; сервіс збирається
 через DI за токенами класів).
 
-Разом: **587** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **595** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Спільні zod-схеми рознесення при внесенні (види за напрямом, обов'язкові поля виду) —
 `packages/shared/src/schemas/forms/bank-transaction.schema.spec.ts` (поза модулем api).

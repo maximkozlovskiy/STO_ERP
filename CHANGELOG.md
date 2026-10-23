@@ -5,6 +5,17 @@
 
 ---
 
+### 5759489c..HEAD статичний аналіз: sonarjs, jscpd, CodeQL; CI за змінами (2026-10-23)
+
+- `5759489c` ci(quality): `eslint-plugin-sonarjs` — лише правила класу «баг» (`packages/config/eslint/sonar.js`);
+  виправлено знайдене (однакові гілки, двійник обробника входу, ReDoS у сумі виписки → `\d+(?:\.\d*)?`,
+  `trimTrailingSlashes`, ключ ідемпотентності з `crypto.getRandomValues` замість `Math.random`).
+  `jscpd` валить лише нові клони проти бази (`scripts/check-dupes.sh`); CodeQL (`codeql.yml`); `ci.yml` —
+  `concurrency`, job `changes` з фільтрами шляхів, кеш Docker без запису на PR і `mode=min`. SECURITY-AUDIT
+  звірено з кодом, TECH-DEBT §19.
+- Review `11e52c00`: база push — коміт останнього успішного прогону (скасований `cancel-in-progress` прогін
+  інакше губив перевірку коду). Tester `94ca6c66`: межі регекса суми й посилання кошторису без `//`.
+
 ### 08788c8b..HEAD патчі залежностей, списки як наряди (2026-10-22/23)
 
 - `08788c8b` chore(deps): оновлення в межах діапазонів (Next 16.4, NestJS 12.2, Prisma 7.10.1, React 19.3,
