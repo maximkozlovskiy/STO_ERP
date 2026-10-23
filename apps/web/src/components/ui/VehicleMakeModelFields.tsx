@@ -1,25 +1,34 @@
 'use client';
 
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Select } from '@/components/ui/select';
+import { EntityPickerField } from '@/components/ui/entity-picker-field';
+import { SearchPickerModal } from '@/components/ui/search-picker-modal';
 import { useAuth } from '@/lib/auth';
 import {
   VEHICLE_DIRECTORY_WRITE_ROLES,
   useVehicleMakes,
   useVehicleModels,
+  type VehicleMake,
+  type VehicleModel,
 } from '@/hooks/api/useVehicleMakes';
 
 /**
  * Марка й модель авто — лише вибір із довідника (BR-VEH-008). Керований компонент: значення —
  * ідентифікатори, батько тримає їх у своїй формі (RHF у `VehicleForm`, стан майстра календаря).
  *
+ * - Поле — як поле клієнта: пошук під час введення (випадний список), «…» — вікно вибору з пошуком
+ *   і всім списком, × — очистити. Шукає в уже завантаженому довіднику, без запитів до сервера.
  * - Модель — лише моделі обраної марки; без марки поле вимкнене.
- * - Зміна марки скидає модель: стара модель новій марці не належить (сервер відповів би 400).
+ * - Зміна марки (і × на марці) скидає модель: стара модель новій марці не належить (сервер
+ *   відповів би 400).
  * - Порожній список моделей — підказка, де їх додати; посилання — лише ролям, що ведуть довідник,
  *   у новій вкладці: незбережена форма авто лишається відкритою (список перечитується при поверненні).
  * - Збій завантаження марок чи моделей — текст помилки з «Повторити» (Bug #958).
  * - `currentMake` / `currentModel` — назви зі знімка авто: показуються, поки довідник вантажиться,
  *   а після завантаження, якщо запису в ньому вже немає, — з позначкою «недоступна».
+ * - `onMakeBlur` / `onModelBlur` — після вибору чи очищення: поле без нативного blur, а RHF
+ *   (`mode: 'onBlur'`) інакше не позначив би його торкнутим.
  */
 interface Props {
   makeId: string;
@@ -35,6 +44,115 @@ interface Props {
   required?: boolean;
   disabled?: boolean;
   idPrefix?: string;
+}
+
+interface DirectoryItem {
+  id: string;
+  primary: string;
+}
+
+const NO_ITEMS: DirectoryItem[] = [];
+
+const toItems = (rows: readonly (VehicleMake | VehicleModel)[] | undefined): DirectoryItem[] =>
+  rows ? rows.map(r => ({ id: r.id, primary: r.name })) : NO_ITEMS;
+
+/** Пошук по назві: без регістру, входження підрядка; порожній запит — увесь список. */
+function filterByName(items: DirectoryItem[], q: string): DirectoryItem[] {
+  const needle = q.trim().toLocaleLowerCase();
+  if (!needle) return items;
+  return items.filter(i => i.primary.toLocaleLowerCase().includes(needle));
+}
+
+interface DirectoryFieldProps {
+  id: string;
+  label: string;
+  required: boolean;
+  disabled: boolean;
+  display: string;
+  selectedId: string;
+  /** Записи довідника; поки він вантажиться — чекає на завантаження, а не віддає порожній список. */
+  load: () => Promise<DirectoryItem[]>;
+  pickerTitle: string;
+  searchPlaceholder: string;
+  emptyText: string;
+  hint?: string;
+  error?: string;
+  onSelect: (item: DirectoryItem) => void;
+  onClear: () => void;
+}
+
+/**
+ * Поле довідника: підпис, EntityPickerField з пошуком, вікно вибору й текст помилки/підказки під
+ * полем. `role="group"` з підписом і `aria-describedby` — бо в EntityPickerField немає власних
+ * `id`/`aria-invalid`, а показ обраного значення — не поле вводу.
+ */
+function DirectoryField({
+  id,
+  label,
+  required,
+  disabled,
+  display,
+  selectedId,
+  load,
+  pickerTitle,
+  searchPlaceholder,
+  emptyText,
+  hint,
+  error,
+  onSelect,
+  onClear,
+}: DirectoryFieldProps) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const search = useCallback((q: string) => load().then(items => filterByName(items, q)), [load]);
+  const labelId = `${id}-label`;
+  const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
+
+  return (
+    <div
+      id={id}
+      role="group"
+      aria-labelledby={labelId}
+      aria-describedby={describedBy}
+      className="flex min-w-0 flex-col gap-1"
+    >
+      <span id={labelId} className="text-[13px] font-medium text-foreground leading-none">
+        {label}
+        {required && <span className="ml-0.5 text-destructive">*</span>}
+      </span>
+      <EntityPickerField<DirectoryItem>
+        display={display}
+        ariaLabel={label}
+        placeholder={searchPlaceholder}
+        disabled={disabled}
+        onPick={() => setPickerOpen(true)}
+        onClear={onClear}
+        onSearch={search}
+        onSearchSelect={onSelect}
+        className={error ? 'border-destructive' : undefined}
+      />
+      {error ? (
+        <p id={`${id}-error`} className="text-[12px] text-destructive leading-tight">
+          {error}
+        </p>
+      ) : (
+        hint && (
+          <p id={`${id}-hint`} className="text-[12px] text-muted-foreground leading-tight">
+            {hint}
+          </p>
+        )
+      )}
+      <SearchPickerModal<DirectoryItem>
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        title={pickerTitle}
+        selectedId={selectedId}
+        fetchItems={search}
+        searchPlaceholder={searchPlaceholder}
+        emptyText={emptyText}
+        onSelect={onSelect}
+      />
+    </div>
+  );
 }
 
 export function VehicleMakeModelFields({
@@ -57,16 +175,35 @@ export function VehicleMakeModelFields({
   const canEditDirectory = VEHICLE_DIRECTORY_WRITE_ROLES.includes(employee?.role ?? '');
   const makesQuery = useVehicleMakes();
   const modelsQuery = useVehicleModels(makeId || null);
-  const makes = makesQuery.data ?? [];
-  const models = modelsQuery.data ?? [];
+  const { data: makesData, refetch: refetchMakes } = makesQuery;
+  const { data: modelsData, refetch: refetchModels } = modelsQuery;
+  const makeItems = useMemo(() => toItems(makesData), [makesData]);
+  // Без марки запит моделей вимкнений, але кеш попередньої марки міг би лишитись у `data`.
+  const modelItems = useMemo(() => (makeId ? toItems(modelsData) : NO_ITEMS), [makeId, modelsData]);
+  // Пошук, набраний до відповіді сервера, чекає на неї: інакше «Нічого не знайдено» на марку, що є.
+  // `cancelRefetch: false` — приєднатись до запиту, що вже йде, а не слати другий.
+  const loadMakes = useCallback(
+    async () =>
+      makesData ? makeItems : toItems((await refetchMakes({ cancelRefetch: false })).data),
+    [makesData, makeItems, refetchMakes],
+  );
+  const loadModels = useCallback(async () => {
+    if (!makeId) return NO_ITEMS;
+    return modelsData ? modelItems : toItems((await refetchModels({ cancelRefetch: false })).data);
+  }, [makeId, modelsData, modelItems, refetchModels]);
 
   const missingLabel = (loaded: boolean, name: string | undefined): string => {
     const shown = name || '…';
     return loaded ? t('form.unavailable', { name: shown }) : shown;
   };
-  const makeMissing = !!makeId && !makes.some(m => m.id === makeId);
-  const modelMissing = !!modelId && !models.some(m => m.id === modelId);
   const modelsLoaded = !!makeId && modelsQuery.isSuccess;
+  const makeDisplay = makeId
+    ? (makeItems.find(m => m.id === makeId)?.primary ??
+      missingLabel(makesQuery.isSuccess, currentMake))
+    : '';
+  const modelDisplay = modelId
+    ? (modelItems.find(m => m.id === modelId)?.primary ?? missingLabel(modelsLoaded, currentModel))
+    : '';
   // Збій завантаження — свій текст, а не «Оберіть марку» над порожнім списком (Bug #958).
   const failedQuery = makesQuery.isError
     ? makesQuery
@@ -74,55 +211,61 @@ export function VehicleMakeModelFields({
       ? modelsQuery
       : null;
 
+  const selectMake = (item: DirectoryItem) => {
+    if (item.id !== makeId) {
+      onMakeChange(item.id);
+      onModelChange('');
+    }
+    onMakeBlur?.();
+  };
+  const clearMake = () => {
+    onMakeChange('');
+    onModelChange('');
+    onMakeBlur?.();
+  };
+  const selectModel = (item: DirectoryItem) => {
+    onModelChange(item.id);
+    onModelBlur?.();
+  };
+  const clearModel = () => {
+    onModelChange('');
+    onModelBlur?.();
+  };
+
   return (
     <div className="space-y-1.5">
       <div className="grid grid-cols-2 gap-3">
-        <Select
+        <DirectoryField
           id={`${idPrefix}-make`}
           label={t('form.make')}
           required={required}
           disabled={disabled}
-          value={makeId}
-          onChange={e => {
-            const next = e.target.value;
-            if (next === makeId) return;
-            onMakeChange(next);
-            onModelChange('');
-          }}
-          onBlur={onMakeBlur}
-          errorMessage={makeError}
-        >
-          <option value="">{t('form.makePlaceholder')}</option>
-          {makeMissing && (
-            <option value={makeId}>{missingLabel(makesQuery.isSuccess, currentMake)}</option>
-          )}
-          {makes.map(m => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </Select>
-        <Select
+          display={makeDisplay}
+          selectedId={makeId}
+          load={loadMakes}
+          pickerTitle={t('form.makePickerTitle')}
+          searchPlaceholder={t('form.makeSearchPlaceholder')}
+          emptyText={t('form.makeNotFound')}
+          error={makeError}
+          onSelect={selectMake}
+          onClear={clearMake}
+        />
+        <DirectoryField
           id={`${idPrefix}-model`}
           label={t('form.model')}
           required={required}
           disabled={disabled || !makeId}
-          value={modelId}
-          onChange={e => onModelChange(e.target.value)}
-          onBlur={onModelBlur}
-          errorMessage={modelError}
+          display={modelDisplay}
+          selectedId={modelId}
+          load={loadModels}
+          pickerTitle={t('form.modelPickerTitle')}
+          searchPlaceholder={t('form.modelSearchPlaceholder')}
+          emptyText={t('form.modelNotFound')}
           hint={makeId ? undefined : t('form.pickMakeFirst')}
-        >
-          <option value="">{t('form.modelPlaceholder')}</option>
-          {modelMissing && (
-            <option value={modelId}>{missingLabel(modelsLoaded, currentModel)}</option>
-          )}
-          {models.map(m => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </Select>
+          error={modelError}
+          onSelect={selectModel}
+          onClear={clearModel}
+        />
       </div>
       {failedQuery && (
         <p
@@ -140,7 +283,7 @@ export function VehicleMakeModelFields({
           </button>
         </p>
       )}
-      {modelsLoaded && models.length === 0 && (
+      {modelsLoaded && modelItems.length === 0 && (
         <p className="text-[12px] text-muted-foreground" data-testid="vehicle-no-models-hint">
           {canEditDirectory ? (
             <>
