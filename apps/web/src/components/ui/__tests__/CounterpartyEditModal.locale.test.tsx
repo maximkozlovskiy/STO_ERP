@@ -129,7 +129,7 @@ describe('CounterpartyEditModal — тексти за мовою інтерфе�
     expect(screen.getByText('1 авто')).toBeInTheDocument();
     expect(screen.getByText('Марка / Модель')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Додати авто' }));
-    expect(screen.getByLabelText(/^Марка/)).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /^Марка/ })).toBeInTheDocument();
     expect(screen.getByLabelText('Держномер')).toBeInTheDocument();
 
     await openTab(/^Договори/, 'Додати договір');
@@ -163,7 +163,11 @@ describe('CounterpartyEditModal — тексти за мовою інтерфе�
     expect(screen.getByText('Vehicles: 1')).toBeInTheDocument();
     expect(screen.getByText('Make / Model')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Add vehicle' }));
-    expect(screen.getByLabelText(/^Make/)).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /^Make/ })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Make' })).toHaveAttribute(
+      'placeholder',
+      'Search make…',
+    );
     expect(screen.getByLabelText('Plate number')).toBeInTheDocument();
     expect(dialog.textContent).not.toMatch(CYRILLIC);
 

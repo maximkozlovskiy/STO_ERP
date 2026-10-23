@@ -128,7 +128,8 @@ delete, `syncVersion`.
   марки (`err.vehicleModel.nameExists` / `nameExistsDeleted`). Модель видаленої марки не
   створюється й не відновлюється (`err.vehicleModel.makeDeletedRestoreFirst`).
 - **BR-VEH-008**: Авто має марку й модель із довідника (`makeId`, `modelId` обов'язкові, у
-  формі — лише вибір). Модель мусить належати цій марці (`err.vehicle.modelNotOfMake`), обидві живі
+  формі — лише вибір: поле як у клієнта — пошук під час введення і «…» з вікном вибору; модель —
+  лише моделі обраної марки, зміна марки скидає модель). Модель мусить належати цій марці (`err.vehicle.modelNotOfMake`), обидві живі
   й своєї організації (`err.vehicle.makeNotFound` / `modelNotFound`), інакше 400. Зміна марки без
   моделі — 400 (`err.vehicle.makeRequiresModel`). `make` / `model` авто пише сервіс — назвами з
   довідника; клієнт їх не передає. Так само для `POST /sync/push` (`makeId` / `modelId`).
@@ -189,13 +190,15 @@ cd apps/api && npx vitest run src/modules/vehicles/<файл>.spec.ts
   з `makeId` / `modelId`, назви пише сервер (BR-VEH-008), запис пари скидає кеш списку марок;
 - `apps/api/src/modules/setup/setup.service.spec.ts` — стартовий список марок нової організації
   (BR-VEH-012, 2 кейси з 15);
-- web: `components/ui/__tests__/VehicleMakeModelFields.test.tsx` (9), `vehicle.schema.test.ts`
+- web: `components/ui/__tests__/VehicleMakeModelFields.test.tsx` (17), `vehicle.schema.test.ts`
   (14), `VehicleForm.test.tsx` (5), `CounterpartyEditModal.test.tsx` (18),
-  `app/(app)/calendar/__tests__/CalendarSlotModal.new-client-vehicle.test.tsx` (2),
-  `app/(app)/counterparties/__tests__/VehicleMakesTab.test.tsx` (9);
+  `app/(app)/calendar/__tests__/CalendarSlotModal.new-client-vehicle.test.tsx` (3),
+  `app/(app)/counterparties/__tests__/VehicleMakesTab.test.tsx` (9); кроки вибору марки й моделі
+  в цих тестах — `src/__tests__/vehicle-directory-picker.ts`;
 - E2E: `apps/web/e2e/vehicle-makes.spec.ts` (марка й модель у вкладці → авто з вибору →
-  видалення заблоковане → злиття переносить авто), `vehicles.spec.ts` (вибір у формі). Авто-передумови
-  інших E2E беруть пару з `e2e/vehicle-directory.ts` (`ensureVehicleModel`).
+  видалення заблоковане → злиття переносить авто), `vehicles.spec.ts` (вибір у формі: марка пошуком,
+  модель через «…»). Кроки вибору — `searchVehicleDirectory` / `pickVehicleDirectory`, авто-передумови
+  інших E2E беруть пару — `ensureVehicleModel`, усе в `e2e/vehicle-directory.ts`.
 
 **Чого тут НЕМА.** Інтеграційного тесту міграції `20261023180000_vehicle_makes_and_models` на
 засіяних текстових даних немає: перенесення перевірено на копії dev-бази (головним агентом) і

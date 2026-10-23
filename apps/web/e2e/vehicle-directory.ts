@@ -1,4 +1,4 @@
-import { expect } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import type { ApiResult } from './api-helpers';
 
 /**
@@ -70,4 +70,44 @@ export async function ensureVehicleModel(
     model,
   );
   return { makeId, modelId };
+}
+
+/**
+ * Поле марки / моделі у формі авто — як поле клієнта (EntityPickerField): пошук під час введення
+ * і «…» → вікно вибору з пошуком і всім списком. `scope` — сторінка чи вікно з формою.
+ */
+export type VehicleDirectoryKind = 'make' | 'model';
+
+export const vehicleDirectoryField = (scope: Page | Locator, kind: VehicleDirectoryKind): Locator =>
+  scope.getByRole('group', { name: kind === 'make' ? /^Марка/ : /^Модель/ });
+
+/** Обрати пошуком у полі: ввести частину назви → рядок випадного списку. */
+export async function searchVehicleDirectory(
+  scope: Page | Locator,
+  kind: VehicleDirectoryKind,
+  query: string,
+  name: string,
+): Promise<void> {
+  const field = vehicleDirectoryField(scope, kind);
+  await field.getByRole('combobox').fill(query);
+  await field.getByRole('option', { name, exact: true }).click();
+  await expect(field).toContainText(name);
+}
+
+/** Обрати через «…»: вікно вибору показує весь список, пошук звужує, клік по рядку закриває. */
+export async function pickVehicleDirectory(
+  page: Page,
+  scope: Page | Locator,
+  kind: VehicleDirectoryKind,
+  name: string,
+): Promise<void> {
+  const field = vehicleDirectoryField(scope, kind);
+  await field.getByRole('button', { name: 'Обрати', exact: true }).click();
+  const picker = page.getByRole('dialog', {
+    name: kind === 'make' ? 'Оберіть марку' : 'Оберіть модель',
+  });
+  await picker.getByRole('textbox').fill(name);
+  await picker.getByRole('button', { name, exact: true }).click();
+  await expect(picker).toBeHidden();
+  await expect(field).toContainText(name);
 }

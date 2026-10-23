@@ -1,7 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { API } from './api-url';
 import { apiCall, getToken } from './api-helpers';
-import { ensureVehicleModel, type ApiCaller } from './vehicle-directory';
+import {
+  ensureVehicleModel,
+  pickVehicleDirectory,
+  searchVehicleDirectory,
+  vehicleDirectoryField,
+  type ApiCaller,
+} from './vehicle-directory';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -165,9 +171,9 @@ test.describe('Автомобілі', () => {
     await expect(page.locator('h1:has-text("Новий автомобіль")')).toBeVisible({ timeout: 20_000 });
     // Форма мігрувала на спільний RHF-native VehicleForm (commit 2bd77ba9): плоский layout полів
     // без h2-секцій. Перевіряємо, що ключові поля форми присутні (марка/модель/VIN/технічні).
-    // За label, не за текстом: у випадних списках марок і моделей є назви з «VIN» (дані довідника).
-    await expect(page.getByLabel('Марка')).toBeVisible();
-    await expect(page.getByLabel('Модель')).toBeVisible();
+    // За label, не за текстом: у довіднику марок і моделей є назви з «VIN» (дані довідника).
+    await expect(vehicleDirectoryField(page, 'make')).toBeVisible();
+    await expect(vehicleDirectoryField(page, 'model')).toBeVisible();
     await expect(page.getByLabel('VIN')).toBeVisible();
     await expect(page.getByText('Пальне', { exact: false }).first()).toBeVisible();
   });
@@ -211,12 +217,12 @@ test.describe('Автомобілі', () => {
     const modelName = `000 E2E ${Date.now().toString().slice(-6)}`;
     const { modelId } = await ensureVehicleModel(call, 'Toyota', modelName);
 
-    const make = page.getByLabel('Марка');
-    const model = page.getByLabel('Модель');
-    await expect(model).toBeDisabled();
-    await make.selectOption({ label: 'Toyota' });
-    await expect(model).toBeEnabled();
-    await model.selectOption({ label: modelName });
+    // Марка — пошуком у полі, модель — через «…» (вікно вибору з пошуком і всім списком).
+    const modelSearch = vehicleDirectoryField(page, 'model').getByRole('combobox');
+    await expect(modelSearch).toBeDisabled();
+    await searchVehicleDirectory(page, 'make', 'toyo', 'Toyota');
+    await expect(modelSearch).toBeEnabled();
+    await pickVehicleDirectory(page, page, 'model', modelName);
 
     const submit = page
       .locator('button:has-text("Створити"), button:has-text("Зберегти"), button[type="submit"]')

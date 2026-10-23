@@ -18,6 +18,10 @@ import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 import { CounterpartyEditModal, type CounterpartyForModal } from '../CounterpartyEditModal';
 import { createQueryWrapper } from '@/__tests__/query-utils';
+import {
+  pickVehicleDirectoryItem,
+  vehicleDirectoryField,
+} from '@/__tests__/vehicle-directory-picker';
 
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
@@ -519,14 +523,10 @@ describe('CounterpartyEditModal — CRUD договору (BR-CP-006)', () => {
 // ─── BR-CP-007 ────────────────────────────────────────────────────────────────
 
 describe('CounterpartyEditModal — CRUD авто (BR-CP-007)', () => {
-  const makeSelect = () => screen.getByLabelText(/^Марка/) as HTMLSelectElement;
-  const modelSelect = () => screen.getByLabelText(/^Модель/) as HTMLSelectElement;
-  /** Марка й модель — вибір із довідника: модель з'являється після завантаження моделей марки. */
+  /** Марка й модель — вибір із довідника через «…» (вікно вибору над карткою). */
   const fillVehicle = async (makeId: string, modelId: string) => {
-    await screen.findByRole('option', { name: nameOf(makeId) });
-    fireEvent.change(makeSelect(), { target: { value: makeId } });
-    await screen.findByRole('option', { name: nameOf(modelId) });
-    fireEvent.change(modelSelect(), { target: { value: modelId } });
+    await pickVehicleDirectoryItem('make', nameOf(makeId));
+    await pickVehicleDirectoryItem('model', nameOf(modelId));
   };
   const savedVehicle = (body: Record<string, unknown> | undefined) => ({
     id: 'v-new',
@@ -630,16 +630,15 @@ describe('CounterpartyEditModal — CRUD авто (BR-CP-007)', () => {
 
     fireEvent.click(within(row('Toyota Camry')).getByTitle('Редагувати'));
 
-    await screen.findByRole('option', { name: 'Corolla' });
-    expect(makeSelect().value).toBe('0a000000-0000-4000-8000-00000000a002');
-    expect(modelSelect().value).toBe('0a000000-0000-4000-8000-00000000b003');
+    await waitFor(() => expect(vehicleDirectoryField('make')).toHaveTextContent('Toyota'));
+    expect(vehicleDirectoryField('model')).toHaveTextContent('Camry');
     expect((screen.getByPlaceholderText('2015') as HTMLInputElement).value).toBe('2018');
     expect((screen.getByPlaceholderText('AA 1234 BB') as HTMLInputElement).value).toBe('AA1234BB');
     expect((screen.getByPlaceholderText('WVWZZZ1JZXW000001') as HTMLInputElement).value).toBe(
       'JTDBE32K123456789',
     );
 
-    fireEvent.change(modelSelect(), { target: { value: '0a000000-0000-4000-8000-00000000b004' } });
+    await pickVehicleDirectoryItem('model', 'Corolla');
     fireEvent.click(formButton('Оновити'));
 
     await screen.findByText('Toyota Corolla');

@@ -2,10 +2,16 @@
 // вибір із довідника (BR-VEH-008). Раніше тут були вільні текстові поля, і `POST /vehicles` ніс
 // рядки `make` / `model`; тепер — `makeId` / `modelId`, «Зберегти» — лише з обома.
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createQueryWrapper } from '@/__tests__/query-utils';
+import {
+  pickVehicleDirectoryItem,
+  vehicleDirectoryField,
+  vehicleDirectoryPickButton,
+  vehicleDirectorySearch,
+} from '@/__tests__/vehicle-directory-picker';
 
 const L1 = '11111111-1111-4111-8111-000000000001';
 const CP = '33333333-3333-4333-8333-000000000001';
@@ -102,11 +108,8 @@ async function openVehicleStep() {
   fireEvent.change(await screen.findByLabelText("Ім'я"), { target: { value: 'Іван' } });
   fireEvent.click(screen.getByRole('button', { name: 'Далі →' }));
   await screen.findByText('Автомобіль клієнта');
-  await screen.findByRole('option', { name: 'Toyota' });
 }
 
-const makeSelect = () => screen.getByLabelText(/^Марка/) as HTMLSelectElement;
-const modelSelect = () => screen.getByLabelText(/^Модель/) as HTMLSelectElement;
 const wizard = () => screen.getByRole('dialog', { name: 'Автомобіль клієнта' });
 const saveButton = () => within(wizard()).getByRole('button', { name: 'Зберегти' });
 
@@ -115,12 +118,11 @@ describe('CalendarSlotModal — майстер «Новий клієнт», ав
   it('«Зберегти» — лише з маркою й моделлю; POST /vehicles несе makeId / modelId', async () => {
     await openVehicleStep();
     expect(saveButton()).toBeDisabled();
-    expect(modelSelect()).toBeDisabled();
+    expect(vehicleDirectorySearch('model')).toBeDisabled();
 
-    fireEvent.change(makeSelect(), { target: { value: TOYOTA } });
-    await screen.findByRole('option', { name: 'Camry' });
+    await pickVehicleDirectoryItem('make', 'Toyota');
     expect(saveButton()).toBeDisabled();
-    fireEvent.change(modelSelect(), { target: { value: CAMRY } });
+    await pickVehicleDirectoryItem('model', 'Camry');
     fireEvent.click(saveButton());
 
     await waitFor(() =>
@@ -139,15 +141,33 @@ describe('CalendarSlotModal — майстер «Новий клієнт», ав
   // guards: BR-VEH-008
   it('зміна марки скидає модель — «Зберегти» знову недоступне', async () => {
     await openVehicleStep();
-    fireEvent.change(makeSelect(), { target: { value: TOYOTA } });
-    await screen.findByRole('option', { name: 'Camry' });
-    fireEvent.change(modelSelect(), { target: { value: CAMRY } });
+    await pickVehicleDirectoryItem('make', 'Toyota');
+    await pickVehicleDirectoryItem('model', 'Camry');
     expect(saveButton()).toBeEnabled();
 
-    fireEvent.change(makeSelect(), { target: { value: BMW } });
+    await pickVehicleDirectoryItem('make', 'BMW');
 
-    await screen.findByRole('option', { name: 'X5' });
-    expect(modelSelect().value).toBe('');
+    expect(vehicleDirectoryField('model')).not.toHaveTextContent('Camry');
     expect(saveButton()).toBeDisabled();
+    await pickVehicleDirectoryItem('model', 'X5');
+    expect(saveButton()).toBeEnabled();
+  });
+
+  // GOTCHAS 2026-10-21: вікно вибору марки — шар Escape над майстром.
+  it('Escape у «Оберіть марку» закриває лише вікно вибору — майстер лишається з введеним', async () => {
+    await openVehicleStep();
+    await pickVehicleDirectoryItem('make', 'Toyota');
+    fireEvent.click(vehicleDirectoryPickButton('model'));
+    await screen.findByRole('dialog', { name: 'Оберіть модель' });
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Оберіть модель' })).not.toBeInTheDocument(),
+    );
+    expect(wizard()).toBeInTheDocument();
+    expect(vehicleDirectoryField('make')).toHaveTextContent('Toyota');
   });
 });

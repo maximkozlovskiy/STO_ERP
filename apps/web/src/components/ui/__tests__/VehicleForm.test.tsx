@@ -11,6 +11,7 @@ import {
 } from '@sto/shared';
 import i18n from '@/i18n/config';
 import { createQueryWrapper } from '@/__tests__/query-utils';
+import { pickVehicleDirectoryItem } from '@/__tests__/vehicle-directory-picker';
 import { VehicleForm } from '../VehicleForm';
 
 // Марка й модель — вибір із довідника (BR-VEH-008); ідентифікатори — UUID, як у схемі форми.
@@ -98,10 +99,8 @@ describe('VehicleForm', () => {
   it('валідна форма → onValid з коерснутим year (number)', async () => {
     const onValid = vi.fn();
     renderHarness({ onValid });
-    await screen.findByRole('option', { name: 'BMW' });
-    fireEvent.change(screen.getByLabelText(/^Марка/), { target: { value: BMW } });
-    await screen.findByRole('option', { name: 'X5' });
-    fireEvent.change(screen.getByLabelText(/^Модель/), { target: { value: X5 } });
+    await pickVehicleDirectoryItem('make', 'BMW');
+    await pickVehicleDirectoryItem('model', 'X5');
     fireEvent.change(screen.getByPlaceholderText('2015'), { target: { value: '2015' } });
     fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
     await waitFor(() => {

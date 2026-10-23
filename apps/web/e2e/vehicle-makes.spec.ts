@@ -1,6 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
 import { apiCall, getToken } from './api-helpers';
 import { createCounterparty } from './cash-desk.helpers';
+import {
+  pickVehicleDirectory,
+  searchVehicleDirectory,
+  vehicleDirectoryField,
+} from './vehicle-directory';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -138,9 +143,9 @@ test.describe('Марки авто — довідник через інтерф�
     // ── Форма авто: лише вибір; модель — моделі обраної марки ────────────────
     await page.goto(`/vehicles/new?garageId=${state.garageId}`);
     await expect(page.locator('h1:has-text("Новий автомобіль")')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByLabel('Модель')).toBeDisabled();
-    await page.getByLabel('Марка').selectOption({ label: MAKE_A });
-    await page.getByLabel('Модель').selectOption({ label: MODEL });
+    await expect(vehicleDirectoryField(page, 'model').getByRole('combobox')).toBeDisabled();
+    await pickVehicleDirectory(page, page, 'make', MAKE_A);
+    await searchVehicleDirectory(page, 'model', `модель ${uid}`, MODEL);
     await page
       .getByRole('button', { name: /Створити|Зберегти/ })
       .first()
