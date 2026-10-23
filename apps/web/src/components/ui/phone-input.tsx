@@ -22,8 +22,9 @@ function applyMask(raw: string): string {
   if (rest.startsWith('+38 (')) rest = rest.slice(5);
 
   let digits = rest.replace(/\D/g, '');
-  if (digits.startsWith('380')) digits = digits.slice(2);
-  else if (digits.startsWith('38') && digits.length >= 11) digits = digits.slice(2);
+  if (digits.startsWith('380') || (digits.startsWith('38') && digits.length >= 11)) {
+    digits = digits.slice(2);
+  }
 
   const d = digits.slice(0, 10);
   if (!d.length) return '';

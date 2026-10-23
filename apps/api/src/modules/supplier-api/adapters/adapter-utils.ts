@@ -1,4 +1,5 @@
 import { normalizeArticle } from '../../../common/utils/normalize-article';
+import { trimTrailingSlashes } from '../../../common/utils/trim-trailing-slashes';
 import { SupplierAuthError, SupplierProtocolError } from '../http/supplier-errors';
 import type { NormalizedOffer, SupplierConnectionContext } from './supplier-adapter.interface';
 
@@ -78,7 +79,7 @@ export function baseUrlOf(
   prod: string,
   test?: string,
 ): string {
-  if (conn.apiUrl) return conn.apiUrl.replace(/\/+$/, '');
+  if (conn.apiUrl) return trimTrailingSlashes(conn.apiUrl);
   if (conn.testMode && test) return test;
   return prod;
 }

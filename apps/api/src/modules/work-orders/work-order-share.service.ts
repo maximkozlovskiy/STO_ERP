@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { plannedWorkOrderTotals } from '../../common/utils/vat';
+import { trimTrailingSlashes } from '../../common/utils/trim-trailing-slashes';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { formatPersonName, translateError } from '@sto/shared';
@@ -238,7 +239,7 @@ export class WorkOrderShareService {
       );
     }
     // Підрізаємо trailing slash для уніфікації — щоб не отримати `https://x.com//estimate/...`
-    const link = `${publicUrl.replace(/\/+$/, '')}/estimate/${token}`;
+    const link = `${trimTrailingSlashes(publicUrl)}/estimate/${token}`;
 
     const clientName = formatPersonName(
       wo.counterparty.lastName,

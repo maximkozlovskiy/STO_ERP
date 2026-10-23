@@ -18,7 +18,11 @@ module.exports = {
     project: ['./tsconfig.json'],
     tsconfigRootDir: __dirname,
   },
-  extends: ['plugin:@typescript-eslint/recommended-type-checked'],
+  // sonar — правила класу «баг» з eslint-plugin-sonarjs (спільні з api/mobile, packages/config).
+  extends: [
+    'plugin:@typescript-eslint/recommended-type-checked',
+    require.resolve('@sto/config/eslint/sonar'),
+  ],
   plugins: ['react-hooks', '@typescript-eslint'],
   rules: {
     // ERROR, а не warn: борг обробки помилок закрито (264 → 0, пункт 1 техборгу).
@@ -44,6 +48,9 @@ module.exports = {
     // web ніколи не лінтився no-unused-vars → 53 накопичених dead-import/var. Це cleanliness, не bug —
     // тримаємо як warn (не блокує CI), підтягнути до error окремим cleanup-проходом.
     '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    // Math.random у web — лише локальні id рядків, тостів, вкладок. Ключ ідемпотентності грошових
+    // запитів береться з crypto (lib/idempotency-key.ts), секретів браузер не генерує.
+    'sonarjs/pseudo-random': 'off',
   },
   ignorePatterns: [
     '.next/',

@@ -1,0 +1,17 @@
+{
+  "path": ["apps/api/src", "apps/web/src", "packages/shared/src", "packages/ui/src"],
+  "format": ["typescript", "tsx"],
+  "minTokens": 70,
+  "ignore": [
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/__tests__/**",
+    "**/*.testing.ts",
+    "**/*.d.ts",
+    "**/api-types.ts",
+    "**/messages.*.ts",
+    "**/i18n/locales/**"
+  ],
+  "reporters": ["console"]
+}

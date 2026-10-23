@@ -68,6 +68,8 @@ fi
 # Prisma-клієнт у node_modules) — «cache hit» тоді повторює старий вердикт.
 bg "type-check · lint (api · web · shared · mobile)"   pnpm exec turbo run type-check lint --force --continue --output-logs=errors-only
 bg "circular dependencies" pnpm run --silent cycles
+# Нові клони проти @{u} — рівно те, що піде в push (CI порівнює з попереднім комітом push).
+bg "copy-paste (нові клони)" bash scripts/check-dupes.sh
 bg "verdict.sh self-test" bash scripts/verdict.sh --self-test
 bg "stop-hook contract" $PY scripts/hooks/test-check-claims.py
 bg "skill-before-edit hook contract" $PY scripts/hooks/test-require-skill.py

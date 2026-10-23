@@ -272,6 +272,8 @@ describe('ReportsService — Bug #629 квантування грошей у з�
         v !== null &&
         Array.isArray((v as { strings?: unknown }).strings) &&
         typeof (v as { sql?: unknown }).sql === 'string';
+      // Без початкового значення навмисно: перший шматок — початок тексту, далі `i` від 1.
+      // eslint-disable-next-line sonarjs/reduce-initial-value
       return strings.reduce((acc, s, i) => {
         const v = values[i - 1];
         return acc + (isSqlFragment(v) ? v.sql : '?') + s;

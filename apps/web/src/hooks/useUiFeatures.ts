@@ -98,20 +98,15 @@ export function useUiFeatures(): UiFeatures {
       invalidateUiFeaturesCache();
       if (!cancelled) setFeatures(DEFAULTS);
     };
-    const onLogin = () => {
-      invalidateUiFeaturesCache();
-      void loadFeatures().then(f => {
-        if (!cancelled) setFeatures(f);
-      });
-    };
+    // Вхід — те саме перечитування, що й зміна налаштувань (нова організація — нові прапорці).
     window.addEventListener('sto:ui-features-change', refresh);
     window.addEventListener('sto:logout', onLogout);
-    window.addEventListener('sto:login', onLogin);
+    window.addEventListener('sto:login', refresh);
     return () => {
       cancelled = true;
       window.removeEventListener('sto:ui-features-change', refresh);
       window.removeEventListener('sto:logout', onLogout);
-      window.removeEventListener('sto:login', onLogin);
+      window.removeEventListener('sto:login', refresh);
     };
   }, []);
 

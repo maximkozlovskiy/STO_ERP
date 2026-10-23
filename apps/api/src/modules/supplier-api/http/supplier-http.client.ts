@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { redactSecrets } from '../../../common/utils/redact';
+import { trimTrailingSlashes } from '../../../common/utils/trim-trailing-slashes';
 import { SupplierUrlPolicy } from './supplier-url-policy';
 import { DEFAULT_RATE_LIMIT_PAUSE_MS, SupplierRateLimiter } from './supplier-rate-limiter';
 import {
@@ -270,7 +271,7 @@ export function buildUrl(
   path: string,
   query?: Record<string, QueryValue>,
 ): string {
-  const base = baseUrl.replace(/\/+$/, '');
+  const base = trimTrailingSlashes(baseUrl);
   const p = path.startsWith('/') ? path : `/${path}`;
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query ?? {})) {

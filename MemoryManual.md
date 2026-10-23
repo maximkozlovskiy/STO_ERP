@@ -9,7 +9,7 @@
 ## Поточний стан
 
 ```
-Дата:       2026-10-22
+Дата:       2026-10-23
 HEAD:       див. `git log --oneline -1` (хеш тут НЕ дублюється — старіє щокоміту)
 Фаза:       PHASES.md 229/231 закрито. Хвости: EAS Build (mobile) + smoke на чистій
             Windows VM — обидва потребують фізичного оточення, не коду.
@@ -94,6 +94,8 @@ python scripts/check-doc-links.py; python scripts/check-mojibake.py   # поси
 | `apps/api/src/modules/xlsx/document-line-import.adapter.ts`                                                   | Generic import: PO/StockDocument адаптери + registry (loadDoc/assertDraft/replaceLines)                                                                                               |
 | `apps/api/src/modules/xlsx/import.dto.ts`                                                                     | PreviewImportDto (multipart) + ApplyImportDto (@ArrayMaxSize 1000)                                                                                                                    |
 | `apps/api/src/modules/counterparty-import-mappings/`                                                          | Персист мапінгу колонок Excel per-контрагент (GET/PUT, upsert по @unique)                                                                                                             |
+| `packages/config/eslint/sonar.js`, `scripts/check-dupes.sh`, `.github/workflows/codeql.yml`                   | sonarjs — лише правила класу «баг» (у lint); jscpd — нові клони проти бази (CI `quality`, prepush, `pnpm dupes`); CodeQL — SAST (TECH-DEBT §19)                                       |
+| `apps/api/src/common/utils/trim-trailing-slashes.ts`                                                          | кінцеві `/` адреси без регекса (`/\/+$/` — ReDoS); нове склеювання URL — через нього                                                                                                  |
 | `scripts/verdict.sh`                                                                                          | SOT вердикту «чисто/не чисто» (текст виводу > exit code; невідоме ≠ чисто)                                                                                                            |
 | `scripts/measure.sh`                                                                                          | SOT усіх цифр проєкту (tests/e2e/routes/bundle/docs/commits, фіксована база)                                                                                                          |
 | `scripts/audit-claims.py`                                                                                     | Витягує з транскрипту мої твердження, що потребують доказу (для auditor'а)                                                                                                            |
@@ -157,6 +159,9 @@ python scripts/check-doc-links.py; python scripts/check-mojibake.py   # поси
   Рядки «ІНШЕ:» — теж команди (гейти, тест селектора, тести `packages/shared`).
   Повний прогін — CI і раз перед підсумком блоку. E2E ходить на ВЛАСНИЙ сервер `:3002`
   (`.next-e2e`, `NEXT_PUBLIC_E2E=1`); dev-сервер `:3001` заради Playwright не зупиняти
+- **CI запускає важкі job-и лише на зміну коду** (job `changes`, `dorny/paths-filter`): правка лише
+  `docs/`/скілів — тільки `quality` без типів/тестів. Новий шлях, що впливає на збірку, — дописати у
+  фільтр `code`/`docker` у `ci.yml`, інакше його зміна пройде без перевірки
 - **tsc web incremental cache** ламається → використовувати `npx tsc --noEmit --incremental false`
   (голий tsc дає фантомну PricingRulesClient-помилку)
 

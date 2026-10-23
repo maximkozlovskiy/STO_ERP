@@ -45,7 +45,7 @@ interface SentQuery {
 /** Усе, що PrismaService відправив у драйвер від останнього `beforeEach`. */
 let sent: SentQuery[] = [];
 /** Що «БД» повертає на запит: за таблицею з тексту SQL. Порожньо — рядків немає. */
-let dbRows: (sql: string) => Record<string, unknown>[] = () => [];
+let dbRows: (sql: string) => Record<string, unknown>[] = _sql => [];
 
 /** Імена колонок із `SELECT … FROM` / `… RETURNING …` — у тому порядку, як їх чекає Prisma. */
 function projection(sql: string): string[] {

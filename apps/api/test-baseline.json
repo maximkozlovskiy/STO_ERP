@@ -607,6 +607,12 @@
    "redactSecrets пропускає 2-символьний секрет (нижче порогу — не маскується)",
    "redactSecrets ігнорує лише вироджені значення (порожнє / 1-2 символи, не псує весь текст)"
   ],
+  "apps/api/src/common/utils/trim-trailing-slashes.spec.ts": [
+   "trimTrailingSlashes довга серія слешів не в кінці — лінійно, без зависання",
+   "trimTrailingSlashes порожній рядок і рядок лише зі слешів → порожній",
+   "trimTrailingSlashes прибирає один і кілька кінцевих слешів",
+   "trimTrailingSlashes слеші всередині адреси лишаються"
+  ],
   "apps/api/src/common/utils/url-guard.spec.ts": [
    "validatePublicUrl ALLOWED — public URLs allows http://api.public.io:8080/path",
    "validatePublicUrl ALLOWED — public URLs allows https://1.1.1.1",

@@ -93,19 +93,29 @@ public-policy до `org/*/logo/*` і лишити медіа presigned-only, а�
 
 ## Підсумок дій
 
-| #                              | Severity    | Статус                                                               |
-| ------------------------------ | ----------- | -------------------------------------------------------------------- |
-| H-1 default admin123 у prod    | CRITICAL    | ✅ ВИПРАВЛЕНО (seed-guard + installer)                               |
-| #1 CSV formula-injection       | MEDIUM      | ✅ ВИПРАВЛЕНО (escapeCsvCell + тест)                                 |
-| #2 XLSX formula-injection      | MEDIUM      | ✅ ВИПРАВЛЕНО (xlsxSafe)                                             |
-| H-2 ПРРО/SMS plaintext at-rest | HIGH        | 🟠 TODO — AES-256-GCM at-rest (окрема задача)                        |
-| #3 MinIO public bucket         | MEDIUM      | 🟠 TODO — потребує продуктового рішення (логотипи)                   |
-| M-1..M-5 (auth hardening)      | MEDIUM      | 🟠 TODO — owner-пароль ≥12, refresh revocation, TTL, in-memory token |
-| orgId bare-id мутації          | LOW         | 🟢 Nice-to-have hardening                                            |
-| Dependency middie CVE          | (недосяжна) | 🟢 з Fastify 5 migration                                             |
+> **Стан на 2026-10-22** — звірено з кодом (не з цим документом): для кожного пункту названо коміт
+> або файл, що його закриває, чи те, чого бракує. Розділи нижче — опис стану на 2026-09-06, лишені
+> як історія знахідок.
 
-**Tenant-ізоляція — CLEAN.** Три вразливості виправлено цю сесію (1 CRITICAL + 2 MEDIUM).
-Решта — задокументована з рекомендаціями; H-2 (шифрування секретів) — найпріоритетніша з TODO.
+| #                               | Severity    | Статус 2026-10-22                                                                                                                                                                                                                                                                     |
+| ------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| H-1 default admin123 у prod     | CRITICAL    | ✅ ВИПРАВЛЕНО (seed-guard + installer)                                                                                                                                                                                                                                                |
+| #1 CSV formula-injection        | MEDIUM      | ✅ ВИПРАВЛЕНО (escapeCsvCell + тест)                                                                                                                                                                                                                                                  |
+| #2 XLSX formula-injection       | MEDIUM      | ✅ ВИПРАВЛЕНО (xlsxSafe)                                                                                                                                                                                                                                                              |
+| H-2 ПРРО/SMS plaintext at-rest  | HIGH        | ✅ ВИПРАВЛЕНО `509aa40a` (2026-09-06): AES-256-GCM через Prisma-розширення, перелік полів — `ENCRYPTED_FIELDS` у `prisma.service.ts` (ПРРО, SMS, monobank, креди провайдерів і постачальників); ключ `NOTIFICATION_ENC_KEY`. Спеки `field-encryption.{extension,integration}.spec.ts` |
+| #3 MinIO public bucket          | MEDIUM      | ✅ ВИПРАВЛЕНО `7f4940a1` (2026-09-09), варіант (а): публічний read лише `org/*/public/*` (логотипи), медіа наряду — presigned URL (`files.service.ts`)                                                                                                                                |
+| M-1 довжина пароля              | MEDIUM      | 🟡 ЧАСТКОВО `575875db`: власник (`/setup`) і зміна пароля — ≥8, блокування після 5 невдалих входів на 15 хв. Відкрито: пароль працівника ≥6 (`employees.dto.ts`), ≥12 і складність — ніде                                                                                             |
+| M-2 відкликання refresh         | MEDIUM      | 🟡 ЧАСТКОВО `575875db`: `tokenVersion` — «вийти на всіх пристроях» і зміна пароля роблять недійсними всі токени. Відкрито: звичайний logout лише чистить cookie, вкрадений refresh живе до кінця TTL (немає таблиці сесій / jti)                                                      |
+| M-3 TTL refresh                 | MEDIUM      | 🟠 ВІДКРИТО: типово `30d` (`auth.service.ts`, змінна `JWT_REFRESH_EXPIRES_IN`)                                                                                                                                                                                                        |
+| M-4 access-токен у браузері     | MEDIUM      | 🟠 ВІДКРИТО: `sessionStorage` (`apps/web/src/lib/api-client.ts`). CSP у prod виставляє API для своїх відповідей (`main.ts`); CSP сторінок web не перевірялась                                                                                                                         |
+| M-5 `New-RandomBase64`          | MEDIUM      | ✅ ВИПРАВЛЕНО `9676ce95` (2026-09-10, T15/R5): CI job `installer-scripts` виконує функцію на Windows PowerShell 5.1 і перевіряє секрети                                                                                                                                               |
+| orgId bare-id мутації           | LOW         | ✅ ЗАКРИТО механізмом: A1 tenant-guard (`7a382075` і далі) — fail-closed Prisma-розширення валить guarded-виклик без `orgId` у `where`, зокрема `update({ where: { id } })`                                                                                                           |
+| Dependency middie CVE           | (недосяжна) | ✅ ЗАКРИТО `c4094dce` (2026-10-02): NestJS 12 + Fastify 5, `@fastify/middie` 9.3.5 (фікс із 9.3.2)                                                                                                                                                                                    |
+| CVE залежностей загалом         | —           | Поточний стан — `docs/TECH-DEBT.md` §18 (після патчів 2026-10-22). Рекомендацію «`pnpm audit` у CI» не виконано: Renovate шле security-PR (`vulnerabilityAlerts`), але гейта в CI немає                                                                                               |
+| SAST (статичний аналіз безпеки) | —           | ➕ 2026-10-22: CodeQL (`.github/workflows/codeql.yml`, security-extended, JS/TS + workflows) і правила класу «баг» `eslint-plugin-sonarjs` у lint (`packages/config/eslint/sonar.js`, зокрема ReDoS-регекси)                                                                          |
+
+**Tenant-ізоляція — CLEAN.** Відкрите на 2026-10-22 — лише auth-hardening (M-1…M-4, частково
+закрите); найпріоритетніше з нього — M-2/M-3 (відкликання та строк життя refresh-токена).
 
 ## 3. Auth / JWT / secrets
 
@@ -145,7 +155,3 @@ setup TOCTOU-safe (advisory lock + in-tx re-check); паролі не витік
 - **M-4** access-token у `sessionStorage` (XSS-exfil, 15хв вікно) → in-memory + CSP (refresh
   httpOnly вже захищає головний credential — прийнятно).
 - **M-5** `New-RandomBase64` (installer) — крихкий pipeline (працює, але footgun) → переписати.
-
-## 4. Broad appsec — _[заповнюється агентом]_
-
-## 4. Broad appsec (input/upload/public/mass-assignment/XSS/SSRF) — _[заповнюється агентом]_

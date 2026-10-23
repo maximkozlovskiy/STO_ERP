@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type Redis from 'ioredis';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -106,7 +107,7 @@ export class SupplierAuthSession {
     if (isUsable(cached)) return cached.accessToken;
 
     const lockKey = `supplier:auth:${conn.id}`;
-    const owner = `${process.pid}:${Math.random().toString(36).slice(2)}`;
+    const owner = `${process.pid}:${randomUUID()}`;
     const locked = await this.tryLock(lockKey, owner);
     if (locked === false) {
       // Хтось уже оновлює — чекаємо його результату.

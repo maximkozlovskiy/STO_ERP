@@ -79,12 +79,17 @@ const COMPANION_TOKENS = new Set<string>([
 
 /** Розбиває ключ на нормалізовані lowercase-токени по camelCase / snake / kebab / цифрових межах. */
 function keyTokens(key: string): string[] {
-  return key
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
-    .split(/[^a-zA-Z0-9]+/)
-    .filter(Boolean)
-    .map(t => t.toLowerCase());
+  return (
+    key
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      // Відкат квадратичний лише на довгій серії великих літер, а `key` — ім'я поля payload-у з коду
+      // (кілька символів), не введення користувача.
+      // eslint-disable-next-line sonarjs/super-linear-regex
+      .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+      .split(/[^a-zA-Z0-9]+/)
+      .filter(Boolean)
+      .map(t => t.toLowerCase())
+  );
 }
 
 /**

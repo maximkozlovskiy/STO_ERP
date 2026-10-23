@@ -67,6 +67,12 @@ module.exports = {
         // У ПРОД-коді правило лишається error — там воно ловить реальні баги
         // (на web саме воно показало 264 випадки необробленої відмови).
         '@typescript-eslint/no-misused-promises': 'off',
+        // sonarjs у тестах: точні очікувані числа (`toBe(0.1)`), схожі describe-фабрики й регекси
+        // статичних спеків, що читають вихідний код (не введення користувача), — норма тестів,
+        // не дефект (104 + 2 + 4 знахідки на момент вмикання).
+        'sonarjs/no-floating-point-equality': 'off',
+        'sonarjs/no-identical-functions': 'off',
+        'sonarjs/super-linear-regex': 'off',
       },
     },
   ],

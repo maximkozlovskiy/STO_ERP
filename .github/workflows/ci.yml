@@ -14,12 +14,79 @@ on:
         type: boolean
         default: true
 
+# Новий push у ту саму гілку (чи PR) скасовує попередній прогін: його вердикт уже нікому не
+# потрібен, а хвилини Actions — ліміт (22.09–22.10.2026: 3041 хв за 86 прогонів, з них e2e-full
+# 955 — пушів у main кілька за годину). Ручний запуск (workflow_dispatch) — окрема група за run_id:
+# повний E2E перед релізом не має зникати від чергового push.
+concurrency:
+  group: ci-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Що змінив diff — щоб важкі job-и не йшли на правку лише документації чи скілів (у цьому репо
+  # таких комітів більшість). Ручний запуск — завжди все. Фільтр навмисно широкий: пропустити
+  # потрібну перевірку дорожче, ніж зайвий прогін.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.code == 'true' }}
+      docker: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.docker == 'true' }}
+      installer: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.installer == 'true' }}
+      migrations: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.migrations == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'apps/**'
+              - 'packages/**'
+              - 'tools/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+              - '.npmrc'
+              - 'knip.jsonc'
+              - '.dependency-cruiser.cjs'
+              - '.jscpd.json'
+              - 'scripts/check-dupes.sh'
+              - '.github/workflows/ci.yml'
+            # Образ ламають залежності, Dockerfile/.dockerignore, спільні пакети й конфіги збирання.
+            # Звичайну правку apps/*/src тут не ловимо: `next build`/`tsc` того самого коду вже
+            # проходять у bundle-budget і quality, а .dockerignore-пастку (TS2307 у образі, 2026-10-16)
+            # стереже check-docker-context.py у quality. Повну збірку образів робить release.yml.
+            docker:
+              - 'apps/*/Dockerfile'
+              - '.dockerignore'
+              - '**/package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.npmrc'
+              - 'packages/**'
+              - 'apps/*/tsconfig*.json'
+              - 'apps/web/next.config.*'
+              - 'apps/api/nest-cli.json'
+              - 'docker-compose*.yml'
+              - '.github/workflows/ci.yml'
+            installer:
+              - 'installer/**'
+              - '.github/workflows/ci.yml'
+            migrations:
+              - 'packages/database/prisma/migrations/**'
+              - '.github/workflows/ci.yml'
+
   # Якісні гейти — type-check + lint + unit-тести на кожен PR/push. Раніше CI мав ЛИШЕ
   # migration-safety, тож зламаний type-check/lint/тест не ловився до релізу (напр. mobile-tsc,
   # відсутній backend-lint). Юніт-тести замокані (без реальних БД/Redis), тож зовнішні сервіси
   # не потрібні; лише prisma generate для типів @prisma/client.
+  # Іде на КОЖЕН прогін: гейти документації й скілів (посилання, mojibake, розмір скілів, реєстри
+  # дос'є, контракти хуків) потрібні й правці лише .md. Важкі кроки (типи, lint, тести, покриття,
+  # цикли, клони) — лише коли змінено код (`needs.changes.outputs.code`).
   quality:
+    needs: changes
     runs-on: ubuntu-latest
     env:
       # Prisma 7 читає prisma.config.ts, а той вимагає DATABASE_URL для валідації
@@ -49,9 +116,12 @@ jobs:
         run: pnpm --filter @sto/database exec prisma generate
 
       - name: Type-check (api · web · shared · mobile)
+        if: needs.changes.outputs.code == 'true'
         run: pnpm run type-check
 
+      # Разом з eslint-plugin-sonarjs: правила класу «баг» (packages/config/eslint/sonar.js).
       - name: Lint (api · web · mobile)
+        if: needs.changes.outputs.code == 'true'
         run: pnpm run lint
 
       # --reporter=json ДОДАТКОВО до дефолтного: звіт потрібен гейту A нижче, і так
@@ -60,6 +130,7 @@ jobs:
       # крок називався «Unit tests», а фільтрував лише api та web. Мутація плейсхолдера
       # `{{max}}` в messages.en.ts лишала api і web зеленими.
       - name: Unit tests
+        if: needs.changes.outputs.code == 'true'
         run: pnpm --filter @sto/api exec vitest run --reporter=default --reporter=json --outputFile=.vitest-report.json && pnpm --filter @sto/web run test && pnpm --filter @sto/shared run test
 
       # Пороги покриття живуть у apps/api/vitest.config.ts і зафіксовані від фактичного
@@ -67,6 +138,7 @@ jobs:
       # coverage був налаштований у конфізі, але НІКОЛИ не запускався (навіть пакет
       # @vitest/coverage-v8 не був встановлений), тож регрес покриття не ловився взагалі.
       - name: Coverage thresholds (api)
+        if: needs.changes.outputs.code == 'true'
         run: pnpm --filter @sto/api exec vitest run --coverage
 
       # Циклічні залежності — БЛОКУЮЧИЙ крок: на момент вмикання їх було 0 (три цикли в
@@ -75,12 +147,29 @@ jobs:
       # Інструмент — dependency-cruiser, а не madge: madge@8 (остання) прибита до
       # typescript ^5.4.4 і на TS 7 падає з «Cannot read properties of undefined».
       - name: Circular dependencies
+        if: needs.changes.outputs.code == 'true'
         run: pnpm run cycles
+
+      # Copy-paste — БЛОКУЮЧИЙ лише для НОВИХ клонів: jscpd сканує базовий коміт тією самою
+      # конфігурацією (.jscpd.json) і валить, якщо diff приніс клон, якого там не було. Наявні
+      # (2026-10-22: 335 клонів, 3.43% рядків прод-коду) не чіпає — інакше гейт був би червоним
+      # з першого дня. База: ціль PR або попередній коміт push; без бази — лише звіт.
+      - name: Copy-paste (нові клони проти бази)
+        if: needs.changes.outputs.code == 'true'
+        run: |
+          if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            git fetch --quiet --depth=50 origin "${GITHUB_BASE_REF}"
+            base="origin/${GITHUB_BASE_REF}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          bash scripts/check-dupes.sh "$base"
 
       # Мертвий код — ЗВІТНИЙ крок (--no-exit-code): knip корисний, але частина знахідок
       # лишається оцінковою (динамічні імпорти, ESLint-плагіни). Блокувати на цьому PR не
       # варто — звіт читається очима.
       - name: Dead code report
+        if: needs.changes.outputs.code == 'true'
         run: pnpm run deadcode
 
       # Stop-hook, що блокує вердикт/цифри без доказу (.claude/settings.json), ламався
@@ -157,7 +246,14 @@ jobs:
       # Гейт C (цілісність дос'є) закриває дірку check-doc-links.py, який за конструкцією
       # бачить лише .md-цілі, а не .ts-шляхи з реєстрів.
       - name: Spec registry gates
+        if: needs.changes.outputs.code == 'true'
         run: python3 scripts/check-spec-registry.py --from-report apps/api/.vitest-report.json
+
+      # Правка лише документації: unit-тести не йшли, тож звіту для гейта A немає. Гейти B–D
+      # (моноліти, реєстри дос'є, правило → тест) звіту не потребують, а дос'є правляться саме так.
+      - name: Spec registry gates (без звіту тестів)
+        if: needs.changes.outputs.code != 'true'
+        run: python3 scripts/check-spec-registry.py --gate-size --gate-registry --gate-br
 
   # R5 (pre-prod re-review): PowerShell-інсталятор раніше НЕ мав жодного quality-gate — саме тому
   # T15 CRITICAL (New-RandomBase64 крашив на PS 5.1 через статичний RandomNumberGenerator::GetBytes,
@@ -170,7 +266,14 @@ jobs:
   # TS2307; `pnpm prune` без TTY; husky після видалення devDeps) — аудит 2026-10.
   # Тут образи збираються на КОЖЕН PR. Без push/registry: нас цікавить лише те, що збірка
   # взагалі проходить.
+  #
+  # Кеш шарів: PR лише ЧИТАЄ кеш main, але не пише свій. main пише mode=min (лише шари фінальних
+  # образів): mode=max (усі проміжні шари multi-stage) 2026-10-22 тримав 130 записів buildkit на
+  # 11.14 ГБ — понад ліміт кешу репозиторію, і вони витісняли кеш pnpm, без якого кожен job ставить
+  # залежності з нуля. Ціна — стадія `pnpm install` в образі не кешується.
   docker-build:
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -185,7 +288,7 @@ jobs:
           push: false
           tags: sto-api:ci
           cache-from: type=gha,scope=api
-          cache-to: type=gha,scope=api,mode=max
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,scope=api,mode=min' || '' }}
 
       - name: Build web image
         uses: docker/build-push-action@v6
@@ -195,7 +298,7 @@ jobs:
           push: false
           tags: sto-web:ci
           cache-from: type=gha,scope=web
-          cache-to: type=gha,scope=web,mode=max
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,scope=web,mode=min' || '' }}
 
   # 9 integration-специв (tenant-guard, append-only тригери, field-encryption,
   # schema-integrity, dead-letter, stock-effects, line-import, нарахування зарплати — у РЕАЛЬНУ
@@ -216,6 +319,8 @@ jobs:
   #    завантажує одна сторінка — тому окремий скрипт.
   # Виміряно 2026-10-04: бандл 1.28 MB gzip, найважча сторінка /invoices 512 KB gzip.
   bundle-budget:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -249,6 +354,8 @@ jobs:
         run: pnpm --filter @sto/web size:pages
 
   integration-tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -331,6 +438,8 @@ jobs:
   # редіректять на /login. Ця пастка вже траплялась; у playwright.config webServer у CI
   # вимкнений саме тому, що сервер піднімає цей workflow.
   e2e-smoke:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     # Без явного ліміту job висів би до GitHub-дефолту 6 год, якби сервер не піднявся.
     timeout-minutes: 20
@@ -441,7 +550,8 @@ jobs:
     # Повний прогін локально ≈ 6-9 хв; 40 — запас на холодну компіляцію Next.js у CI
     # (перший прохід компілює сторінки on-demand) + 2 retries на flaky.
     timeout-minutes: 40
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: changes
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.code == 'true'
     services:
       postgres:
         image: postgres:16-alpine
@@ -549,7 +659,11 @@ jobs:
             /tmp/supplier-fakes.log
           retention-days: 7
 
+  # Windows-хвилина рахується за дві, а кожен job округлюється до хвилини вгору: короткий job на
+  # кожен push коштував 174 хв за місяць — тепер лише коли змінено installer/.
   installer-scripts:
+    needs: changes
+    if: needs.changes.outputs.installer == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -592,6 +706,8 @@ jobs:
   # Перевіряємо ЛИШЕ НОВІ міграції (git-diff проти базового коміту) — історичні вже застосовані й
   # не мають перевірятись (їхні checksum-и заморожені Prisma). Дозволено з маркером `-- destructive-ok:`.
   migration-safety:
+    needs: changes
+    if: needs.changes.outputs.migrations == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

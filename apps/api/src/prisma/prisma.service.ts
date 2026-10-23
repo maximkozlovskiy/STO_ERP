@@ -110,11 +110,7 @@ function withSyncVersion(client: PrismaClient): PrismaClient {
                   syncVersion: item.syncVersion ?? 1,
                 })),
               };
-            } else if (operation === 'update') {
-              const data = (args.data ?? {}) as Record<string, unknown>;
-              data.syncVersion = { increment: 1 };
-              args = { ...args, data };
-            } else if (operation === 'updateMany') {
+            } else if (operation === 'update' || operation === 'updateMany') {
               const data = (args.data ?? {}) as Record<string, unknown>;
               data.syncVersion = { increment: 1 };
               args = { ...args, data };

@@ -1454,6 +1454,28 @@ instead of rejecting`), окремо — 5 із 5 зелені. `purchase-lists.
    Виправлення: інтеграційні спеки з `DISABLE TRIGGER` — послідовно (окремий проєкт vitest чи
    `describe.sequential` + спільний лок), або прибирання без вимкнення тригера.
 
+## 19. Статичний аналіз 2026-10-22/23: sonarjs, jscpd, CodeQL — що свідомо лишилось
+
+Вмикання (рішення власника): `eslint-plugin-sonarjs` (лише клас «баг», `packages/config/eslint/sonar.js`),
+`jscpd` (нові клони проти бази, `scripts/check-dupes.sh`), CodeQL (`.github/workflows/codeql.yml`).
+
+1. **15 клонів рядка фільтрів у сторінках списків** — прийшли разом із гейтом із паралельної сесії
+   (коміти `5d445e96..f28cbc60`, «list toolbar»): `counterparties`, `employees`, `invoices`,
+   `stock-documents`, `work-orders` `page.tsx` і `catalog/{Goods,Services,Works}Tab.tsx`, по 14–37 рядків
+   JSX. Гейт їх не валить (перший push із ним лише звітує — рішення власника 2026-10-23), але це
+   кандидат на винесення в `ListFiltersRow`. Список — `pnpm exec jscpd -c .jscpd.json` (рядки «Clone found»).
+2. **Вимкнені правила sonarjs** (обґрунтування — у `sonar.js`): `different-types-comparison` (14/14
+   хибні: захисні `=== null`, `arr[0] === undefined` без `noUncheckedIndexedAccess`), `no-alphabetical-sort`
+   (14/14 — сортування id/ключів), `no-clear-text-protocols` (on-prem http у LAN); у web — `pseudo-random`
+   (лише UI-id). Стильові правила (795 знахідок) не вмикались зовсім; серед них варто переглянути
+   `no-dead-store` (14, переважно невикористані `useState`-сетери в `employees`/`purchase-orders` page)
+   і `deprecation` (50) — окремим проходом, коли сторінки списків не в роботі.
+3. **Локальний `prepush.sh` падав з exit 134** на `turbo run type-check lint` (паралельно в 7 пакетах),
+   коли процесор був завантажений на 100% паралельною сесією; послідовно (`--concurrency=1`) і типи, і
+   lint чисті. Перевірити, чи це пам'ять (type-aware lint + sonarjs), — якщо повториться на вільній машині.
+4. **Повний E2E після цих змін локально не ганявся**: у той момент паралельна сесія ганяла свій
+   Playwright на тій самій dev-базі (ліміт входів 10/хв). Покриває job `e2e-full` CI на push.
+
 ## Що НЕ є боргом, хоч виглядає так
 
 **2730 eslint-попереджень в `apps/api`.** З них **2529 — у spec-файлах**: `any`-мокі, що

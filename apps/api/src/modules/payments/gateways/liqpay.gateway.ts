@@ -43,6 +43,8 @@ export class LiqpayGateway implements PaymentGateway {
     payload: Record<string, unknown>,
   ): { data: string; signature: string } {
     const data = Buffer.from(JSON.stringify(payload)).toString('base64');
+    // SHA1 вимагає протокол LiqPay (підпис запиту), вибору алгоритму в нас немає.
+    // eslint-disable-next-line sonarjs/hashing
     const signature = createHash('sha1')
       .update(privateKey + data + privateKey)
       .digest('base64');

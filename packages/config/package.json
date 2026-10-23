@@ -6,6 +6,7 @@
     "./eslint": "./eslint/base.js",
     "./eslint/nestjs": "./eslint/nestjs.js",
     "./eslint/nextjs": "./eslint/nextjs.js",
+    "./eslint/sonar": "./eslint/sonar.js",
     "./tsconfig/base": "./tsconfig/base.json",
     "./tsconfig/nestjs": "./tsconfig/nestjs.json",
     "./tsconfig/nextjs": "./tsconfig/nextjs.json",

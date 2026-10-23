@@ -69,6 +69,9 @@ if [[ "${1:-}" == "--self-test" ]]; then
   sample dep-ok '\n✔ no dependency violations found (812 modules, 2403 dependencies cruised)\n'
   sample dep-err '  error no-circular: a.ts → b.ts\n\nx 3 dependency violations (3 errors, 0 warnings). 812 modules, 2403 dependencies cruised.\n'
   sample tsc-err 'src/a.ts(1,20): error TS2307: Cannot find module x\n'
+  # jscpd 5 фарбує підсумок ANSI-кодами, тож «^Found» не матчиться — зразки з кодами, як у терміналі.
+  sample jscpd-ok '\033[90mFound 335 clones.\033[39m\n\033[90mtime: 6.22s\033[39m\n'
+  sample jscpd-new '\033[90mFound 335 clones (15 new).\033[39m\n\033[31mERROR: jscpd found 15 new clones not in the baseline (allowed: 0)\033[39m\n'
   sample unknown 'hello world\n'
   : > "$T/empty"
   # Великий вивід: ~600 КБ попереджень lint — саме на ньому --cmd зависав під pre-push.
@@ -91,6 +94,8 @@ if [[ "${1:-}" == "--self-test" ]]; then
   check 1 "eslint з errors"                           "eslint errors" bash "$SELF" lint < "$T/eslint-err"
   check 0 "depcruise без порушень"                    "ЧИСТО"     bash "$SELF" cycles < "$T/dep-ok"
   check 1 "depcruise 3 errors"                        "dependency-cruiser" bash "$SELF" cycles < "$T/dep-err"
+  check 0 "jscpd без нових клонів"                    "ЧИСТО"     bash "$SELF" dupes < "$T/jscpd-ok"
+  check 1 "jscpd 15 нових клонів (ANSI)"              "jscpd: нові клони" bash "$SELF" dupes < "$T/jscpd-new"
   check 0 "tsc: порожній вивід + exit 0 (--cmd)"      "порожній вивід" bash "$SELF" --cmd tsc -- true
   check 1 "--cmd: exit code ≠ 0"                      "exit code 1" bash "$SELF" --cmd tsc -- cat "$T/tsc-err" "$T/no-such-file"
   check 1 "error TS у pipe"                           "error TS"  bash "$SELF" tsc < "$T/tsc-err"
@@ -173,6 +178,10 @@ has "✖ [0-9]+ problems? \([1-9][0-9]* errors?" && { fail=1; notes+=("eslint er
 # dependency-cruiser: «x 3 dependency violations (3 errors, 0 warnings)». Без цієї ознаки
 # в об'єднаному виводі (`pnpm cycles; pnpm type-check`) цикл ховався за успіхом turbo.
 has "[0-9]+ dependency violations \([1-9][0-9]* errors?" && { fail=1; notes+=("dependency-cruiser errors"); }
+# jscpd --fail-on-new-clones: «ERROR: jscpd found 15 new clones not in the baseline». Рядок
+# пофарбований (ANSI на початку), тож загальне «^ERROR» нижче його не бачить.
+has "jscpd found [0-9]+ new clones?" &&
+  { fail=1; notes+=("jscpd: нові клони ($(grep -oE "found [0-9]+ new" "$F" | head -1 | grep -oE "[0-9]+"))"); }
 # загальні
 has "^(FAIL|ERROR)\b" && { fail=1; notes+=("рядок FAIL/ERROR"); }
 
@@ -183,6 +192,8 @@ has "^[[:space:]]*[0-9]+ passed \(" && ok=1
 has "✖ [0-9]+ problems? \(0 errors" && ok=1
 # dependency-cruiser (pnpm run cycles): «✔ no dependency violations found (N modules, …)».
 has "no dependency violations found" && ok=1
+# jscpd: «Found 335 clones.» — клони, що вже були в базі, не падіння (падіння — рядок ERROR вище).
+has "Found [0-9]+ clones?( \([0-9]+ new\))?\." && ok=1
 # Turborepo (pnpm run type-check / lint / build): "Tasks:    7 successful, 7 total".
 # Успіх лише коли обидва числа рівні — tsc на успіху мовчить, тож іншої ознаки немає.
 # Перевіряється КОЖЕН підсумок, не лише останній: у `pnpm lint; pnpm type-check` перший

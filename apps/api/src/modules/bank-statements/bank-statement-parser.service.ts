@@ -377,7 +377,10 @@ export class BankStatementParserService {
     } else if (lastDot >= 0 && s.indexOf('.') !== lastDot) {
       s = s.split('.').join('');
     }
-    if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(s)) return null;
+    // `\d+(?:\.\d*)?`, а не `\d+\.?\d*`: та сама мова, але без двох способів поділити серію цифр
+    // між `\d+` і `\d*` — інакше рядок цифр із зайвим символом у кінці (комірка завантаженого
+    // файла) відкочується квадратично (sonarjs/super-linear-regex).
+    if (!/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(s)) return null;
     const num = Number(s);
     if (!Number.isFinite(num)) return null;
     return bracketed ? -Math.abs(num) : num;

@@ -1,6 +1,11 @@
 /** @type {import("eslint").Linter.Config} */
 module.exports = {
-  extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended-type-checked', 'prettier'],
+  extends: [
+    'eslint:recommended',
+    'plugin:@typescript-eslint/recommended-type-checked',
+    './sonar.js',
+    'prettier',
+  ],
   plugins: ['@typescript-eslint'],
   parser: '@typescript-eslint/parser',
   rules: {

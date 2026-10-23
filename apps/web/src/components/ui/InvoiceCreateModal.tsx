@@ -1030,9 +1030,7 @@ export function InvoiceCreateModal({
             ) : (
               <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             )}
-            <span className="text-muted-foreground">
-              {headerCollapsed ? t('common:documentHeader') : t('common:documentHeader')}
-            </span>
+            <span className="text-muted-foreground">{t('common:documentHeader')}</span>
             {headerChips.map((chip, i) => (
               <span
                 key={i}

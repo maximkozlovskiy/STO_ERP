@@ -1,0 +1,74 @@
+name: CodeQL
+
+# Статичний аналіз безпеки (SAST): taint-аналіз — чи доходять дані запиту до небезпечного виклику
+# ($queryRawUnsafe, шлях файла, URL зовнішнього запиту, regex). eslint цього не бачить: він дивиться
+# на один вираз, а не на шлях даних через модулі. Знахідки — у вкладці Security → Code scanning.
+#
+# Безкоштовно лише для ПУБЛІЧНОГО репозиторію; у приватному потрібен GitHub Code Security —
+# без нього крок upload падає (оцінка 2026-10-22).
+#
+# Тиждень за розкладом — бо нові запити CodeQL знаходять вразливості й у коді, що не змінювався.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'tools/**'
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'tools/**'
+      - '.github/workflows/**'
+  schedule:
+    - cron: '17 3 * * 1' # понеділок 03:17 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # actions — ін'єкції в самих workflow (`${{ github.event.* }}` у run:, небезпечні тригери).
+        language: [javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@v4
+
+      # build-mode none: JS/TS аналізується з вихідного коду, збирати проєкт не потрібно.
+      # security-extended — ширший набір запитів безпеки, ніж типовий.
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+          config: |
+            paths-ignore:
+              - '**/*.spec.ts'
+              - '**/*.test.ts'
+              - '**/*.test.tsx'
+              - '**/__tests__/**'
+              - 'apps/web/e2e/**'
+              - 'tools/supplier-fakes/**'
+              - '**/dist/**'
+              - 'packages/shared/src/api-types.ts'
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: '/language:${{ matrix.language }}'

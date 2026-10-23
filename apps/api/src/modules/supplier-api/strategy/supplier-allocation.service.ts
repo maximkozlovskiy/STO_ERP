@@ -360,5 +360,7 @@ function planToken(plans: ItemPlan[]): string {
     p.result.uncovered,
     p.result.parts.map(x => [x.offerId, x.qty, x.priceUah]),
   ]);
+  // Відбиток для порівняння «план не змінився», не захист: стійкість до колізій тут не потрібна.
+  // eslint-disable-next-line sonarjs/hashing
   return createHash('sha1').update(JSON.stringify(shape)).digest('hex');
 }
