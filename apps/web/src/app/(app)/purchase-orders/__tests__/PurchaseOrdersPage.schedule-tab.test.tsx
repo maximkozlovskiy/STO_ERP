@@ -108,10 +108,11 @@ describe('«Купівля» — вкладка «Графік оплат»', ()
     expect(screen.queryByTestId('schedule-tab')).not.toBeInTheDocument();
   });
 
-  it('?tab=schedule показує графік замість списку замовлень', () => {
+  it('?tab=schedule показує графік замість списку замовлень', async () => {
     search = 'tab=schedule';
     renderPage();
-    expect(screen.getByTestId('schedule-tab')).toBeInTheDocument();
+    // Вкладка вантажиться окремим чанком (next/dynamic) — з'являється асинхронно.
+    expect(await screen.findByTestId('schedule-tab')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Графік оплат' })).toHaveClass('text-primary');
     expect(screen.getByRole('button', { name: 'Замовлення постачальникам' })).not.toHaveClass(
       'text-primary',

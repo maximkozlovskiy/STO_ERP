@@ -151,10 +151,10 @@ describe('«Купівля» — вкладка «Управління купі�
   });
 
   // guards: BR-PL-015
-  it('бухгалтер: вкладки немає (лише графік оплат)', () => {
+  it('бухгалтер: вкладки немає (лише графік оплат)', async () => {
     role = 'ACCOUNTANT';
     renderPage();
     expect(screen.queryByText(PROCUREMENT)).not.toBeInTheDocument();
-    expect(screen.getByTestId('schedule-tab')).toBeInTheDocument();
+    expect(await screen.findByTestId('schedule-tab')).toBeInTheDocument();
   });
 });

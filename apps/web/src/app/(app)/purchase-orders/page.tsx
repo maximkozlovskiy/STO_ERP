@@ -22,8 +22,6 @@ import {
   Warehouse,
 } from 'lucide-react';
 import { useAuth, useRequireAuth } from '@/lib/auth';
-import { SupplierPaymentScheduleTab } from './SupplierPaymentScheduleTab';
-import { ProcurementTab } from './ProcurementTab';
 import { PURCHASE_DOCUMENT_ROLES } from './purchase-roles';
 import { apiFetch } from '@/lib/api-client';
 import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
@@ -90,6 +88,15 @@ import { PurchaseOrderCreateModal } from '@/components/ui/PurchaseOrderCreateMod
 // sto-optimize: SupplierReturnCreateModal — 856 LOC secondary action на сторінці
 // /purchase-orders. Завантажується тільки при відкритті модального вікна
 // (Створити SR / Редагувати SR). PO modal лишається eager — це primary action.
+// Вкладки «Управління купівлями» й «Графік оплат» — не типові: окремими чанками, а не в first load
+// сторінки (563 КБ при ліміті 560, `check-page-budget.mjs`, 2026-10-23).
+const ProcurementTab = dynamic(() => import('./ProcurementTab').then(m => m.ProcurementTab), {
+  ssr: false,
+});
+const SupplierPaymentScheduleTab = dynamic(
+  () => import('./SupplierPaymentScheduleTab').then(m => m.SupplierPaymentScheduleTab),
+  { ssr: false },
+);
 const SupplierReturnCreateModal = dynamic(
   () =>
     import('@/components/ui/SupplierReturnCreateModal').then(m => ({

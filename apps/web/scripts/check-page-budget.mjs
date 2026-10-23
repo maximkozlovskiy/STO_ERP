@@ -24,8 +24,12 @@ const OUT = join(webRoot, 'out');
 /** Ліміт на сторінку, KB gzip. Виміряно 2026-10-04: 408–510 KB. */
 const LIMIT_KB = 560;
 
-/** Сторінки-представники: найважча (invoices) + типові робочі. */
-const PAGES = ['invoices', 'work-orders', 'reports', 'dashboard'];
+/**
+ * Сторінки-представники: найважчі (invoices, purchase-orders) + типові робочі. purchase-orders додано
+ * 2026-10-23: поза переліком вона непомітно доросла до 563 KB (ліміт 560); вкладки купівлі й графіка
+ * оплат тепер — next/dynamic, 546 KB.
+ */
+const PAGES = ['invoices', 'purchase-orders', 'work-orders', 'reports', 'dashboard'];
 
 if (!existsSync(OUT)) {
   console.error('out/ не знайдено — спершу `pnpm --filter @sto/web build`');
