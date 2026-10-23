@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { withTenantGuard } from './tenant-guard.extension';
@@ -132,19 +132,80 @@ function withSyncVersion(client: PrismaClient): PrismaClient {
   }) as unknown as PrismaClient;
 }
 
-// Шифрує секретні поля у write-payload (data/create/update). Значення {increment}/null/не-string
-// пропускаємо; EncryptionService.encrypt ідемпотентний (вже-зашифроване → без змін).
-function encryptWriteData(
-  enc: EncryptionService,
-  fields: readonly string[],
-  data: Record<string, unknown> | undefined,
-): void {
-  if (!data) return;
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v);
+
+const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : v === undefined ? [] : [v]);
+
+// Шифрує секретні поля у write-payload (data/create/update): і рядок, і обгортку `{ set: рядок }`.
+// null/порожнє/не-рядок пропускаємо; EncryptionService.encrypt ідемпотентний (вже-зашифроване →
+// без змін), тож повторний обхід того самого payload безпечний.
+function encryptWriteData(enc: EncryptionService, fields: readonly string[], data: unknown): void {
+  if (!isRecord(data)) return;
   for (const f of fields) {
     const v = data[f];
     if (typeof v === 'string' && v !== '') data[f] = enc.encrypt(v);
+    else if (isRecord(v) && typeof v.set === 'string' && v.set !== '') {
+      data[f] = { ...v, set: enc.encrypt(v.set) };
+    }
   }
 }
+
+/** Модель → (поле-зв'язок → модель цілі), з DMMF: вкладений запис іде через поле-зв'язок. */
+const RELATIONS: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map(
+  Prisma.dmmf.datamodel.models.map(m => [
+    m.name,
+    new Map(m.fields.filter(f => f.kind === 'object').map(f => [f.name, f.type])),
+  ]),
+);
+
+/**
+ * Шифрує секрети у write-payload моделі `model` І у вкладених записах через її зв'язки
+ * (`create`, `createMany.data`, `connectOrCreate.create`, `update` / `updateMany` (`data` або
+ * сам payload), `upsert.create` / `upsert.update`) — рекурсивно. Хук `$allOperations` бачить лише
+ * модель верхнього рівня: `garageBranch.update({ data: { branchSettings: { update: { smsApiKey } } } })`
+ * інакше писав би секрет у `branch_settings` відкритим текстом.
+ */
+function encryptNestedWrite(enc: EncryptionService, model: string, data: unknown): void {
+  if (!isRecord(data)) return;
+  const fields = ENCRYPTED_FIELDS[model];
+  if (fields) encryptWriteData(enc, fields, data);
+  const relations = RELATIONS.get(model);
+  if (!relations) return;
+  for (const [field, target] of relations) {
+    const ops = data[field];
+    if (!isRecord(ops)) continue;
+    for (const item of asArray(ops.create)) encryptNestedWrite(enc, target, item);
+    for (const item of asArray(ops.connectOrCreate)) {
+      if (isRecord(item)) encryptNestedWrite(enc, target, item.create);
+    }
+    if (isRecord(ops.createMany)) {
+      for (const row of asArray(ops.createMany.data)) encryptNestedWrite(enc, target, row);
+    }
+    for (const item of [...asArray(ops.update), ...asArray(ops.updateMany)]) {
+      // to-one `update` — або сам payload, або `{ where, data }`; to-many — `{ where, data }`.
+      // Обходимо обидва варіанти: шифрування ідемпотентне, чужих полів encryptWriteData не чіпає.
+      encryptNestedWrite(enc, target, item);
+      if (isRecord(item)) encryptNestedWrite(enc, target, item.data);
+    }
+    for (const item of asArray(ops.upsert)) {
+      if (!isRecord(item)) continue;
+      encryptNestedWrite(enc, target, item.create);
+      encryptNestedWrite(enc, target, item.update);
+    }
+  }
+}
+
+/** Операції запису верхнього рівня і де в їхніх args лежить payload. */
+const WRITE_PAYLOADS: Readonly<Record<string, readonly string[]>> = {
+  create: ['data'],
+  update: ['data'],
+  updateMany: ['data'],
+  updateManyAndReturn: ['data'],
+  createMany: ['data'],
+  createManyAndReturn: ['data'],
+  upsert: ['create', 'update'],
+};
 
 // Дешифрує секретні поля у прочитаному результаті (один рядок або масив). Толерантно:
 // legacy-plaintext повертається як є; null/undefined пропускаються.
@@ -185,25 +246,21 @@ function withFieldEncryption(client: PrismaClient, enc: EncryptionService): Pris
           args: Record<string, unknown>;
           query: (args: Record<string, unknown>) => Promise<unknown>;
         }) {
-          const fields = model ? ENCRYPTED_FIELDS[model] : undefined;
-          if (!fields) return query(args);
+          if (!model) return query(args);
+          const fields = ENCRYPTED_FIELDS[model];
 
-          // WRITE — шифруємо перед відправкою у БД.
-          if (operation === 'create' || operation === 'update') {
-            encryptWriteData(enc, fields, args.data as Record<string, unknown> | undefined);
-          } else if (operation === 'createMany') {
-            const rows = args.data as Record<string, unknown>[] | undefined;
-            if (Array.isArray(rows)) rows.forEach(r => encryptWriteData(enc, fields, r));
-          } else if (operation === 'updateMany') {
-            encryptWriteData(enc, fields, args.data as Record<string, unknown> | undefined);
-          } else if (operation === 'upsert') {
-            encryptWriteData(enc, fields, args.create as Record<string, unknown> | undefined);
-            encryptWriteData(enc, fields, args.update as Record<string, unknown> | undefined);
+          // WRITE — шифруємо перед відправкою у БД: payload моделі і вкладені записи в моделі з
+          // секретами (тому й для моделей без власних секретних полів). `createMany*` — масив
+          // рядків, решта — один payload. Сирий SQL (`$executeRaw`) сюди не доходить — секрети
+          // ним не пишуться.
+          for (const key of WRITE_PAYLOADS[operation] ?? []) {
+            for (const payload of asArray(args[key])) encryptNestedWrite(enc, model, payload);
           }
 
+          if (!fields) return query(args);
           const result = await query(args);
 
-          // READ — дешифруємо результат (find*/upsert/create/update повертають рядок(и)).
+          // READ — дешифруємо результат (find*/upsert/create/update/*AndReturn повертають рядок(и)).
           decryptReadResult(enc, fields, result);
           return result;
         },

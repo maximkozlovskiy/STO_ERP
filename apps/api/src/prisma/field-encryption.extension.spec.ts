@@ -366,6 +366,107 @@ describe('Шифрування секретів at-rest — справжній P
     });
   });
 
+  // ── 3a. Шляхи запису поза простим `data: { поле: рядок }` (TECH-DEBT §8, проба 2026-10-08) ──
+  // До 2026-10-24 повз шифрування йшли обгортка `{ set: … }`, `createManyAndReturn`,
+  // `updateManyAndReturn` і вкладений запис через зв'язок батьківської моделі. Мутації:
+  // (1) прибрати гілку `v.set` в encryptWriteData → кейси `{ set }` червоніють; (2) прибрати
+  // `*AndReturn` з WRITE_PAYLOADS → кейси `*AndReturn`; (3) encryptNestedWrite без обходу зв'язків
+  // → кейси вкладеного запису.
+  describe('шляхи запису: { set }, *AndReturn, вкладений запис через зв’язок (BR-PAY-026)', () => {
+    const SECRET = 'SET-SECRET-7f1c';
+
+    // guards: BR-PAY-026
+    it('update з `{ set: секрет }` → шифротекст', async () => {
+      dbRows = () => [{ id: ROW_ID, provider: 'checkbox' }];
+      await prisma.branchProviderConfig.update({
+        where: { id: ROW_ID, orgId: ORG },
+        data: { credentials: { set: SECRET } },
+        select: { provider: true },
+      });
+
+      expectEncryptedAtRest(SECRET);
+    });
+
+    // guards: BR-PAY-026
+    it('updateMany з `{ set: секрет }` → шифротекст', async () => {
+      await prisma.branchSettings.updateMany({
+        where: { orgId: ORG },
+        data: { smsApiKey: { set: SECRET } },
+      });
+
+      expectEncryptedAtRest(SECRET);
+    });
+
+    // guards: BR-PAY-026
+    it('createManyAndReturn: кожен рядок — шифротекст', async () => {
+      await prisma.branchProviderConfig.createManyAndReturn({
+        data: [
+          {
+            orgId: ORG,
+            branchId: BRANCH,
+            kind: 'FISCAL',
+            provider: 'checkbox',
+            credentials: SECRET,
+          },
+          {
+            orgId: ORG,
+            branchId: BRANCH,
+            kind: 'FISCAL',
+            provider: 'vchasno',
+            credentials: SECRET,
+          },
+        ],
+        select: { provider: true },
+      });
+
+      expectEncryptedAtRest(SECRET, 2);
+    });
+
+    // guards: BR-PAY-026
+    it('updateManyAndReturn → шифротекст', async () => {
+      await prisma.supplierConnection.updateManyAndReturn({
+        where: { orgId: ORG },
+        data: { credentials: SECRET },
+        select: { id: true },
+      });
+
+      expectEncryptedAtRest(SECRET);
+    });
+
+    // guards: BR-PAY-026
+    it('вкладений запис через зв’язок: garageBranch.update → branchSettings.update → шифротекст', async () => {
+      dbRows = () => [{ id: BRANCH, branchId: BRANCH, orgId: ORG }];
+      await prisma.garageBranch.update({
+        where: { id: BRANCH, orgId: ORG },
+        data: { branchSettings: { update: { smsApiKey: SECRET } } },
+        select: { id: true },
+      });
+
+      expectEncryptedAtRest(SECRET);
+    });
+
+    // guards: BR-PAY-026
+    it('вкладений upsert (create і update) через зв’язок → шифротекст в обох гілках', async () => {
+      dbRows = () => [{ id: BRANCH, branchId: BRANCH, orgId: ORG }];
+      await prisma.garageBranch.update({
+        where: { id: BRANCH, orgId: ORG },
+        data: {
+          branchSettings: {
+            upsert: {
+              create: { orgId: ORG, monobankToken: SECRET },
+              update: { monobankToken: { set: SECRET } },
+            },
+          },
+        },
+        select: { id: true },
+      });
+
+      const args = stringArgs();
+      expect(args.filter(a => a.includes(SECRET))).toEqual([]);
+      expect(args.filter(a => a.startsWith(PREFIX)).length).toBeGreaterThan(0);
+    });
+  });
+
   // ── 4. Ключ ──────────────────────────────────────────────────────────────────────────────────
   it('дамп БД без ключа марний: шифротекст, записаний цим сервісом, іншим ключем не розшифровується', async () => {
     await prisma.branchProviderConfig.updateMany({
