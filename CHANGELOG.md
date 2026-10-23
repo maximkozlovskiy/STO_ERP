@@ -21,6 +21,13 @@
 - Dev-середовище: Docker у WSL — один dockerd (flock) і задача «STO WSL Docker», що тримає дистрибутив
   (`scripts/wsl/`); postgres-mcp через `scripts/mcp/postgres-mcp.sh` прибирає контейнери закритих сесій
   (клієнт `docker run` з ppid=1); `compact-wsl-disk.ps1` — стискання vhdx (sparse вимкнено).
+  Review `f617a13b`: задача перезапускається повторюваним тригером, лок не успадковує containerd.
+- Tester: #951 ключі ПРРО/monobank/SMS у дифі аудиту — маскою (`ec4e3a9c`), #952/#953 логотип (`b25cc381`,
+  `03c73fa8`).
+- `801d8ab1` fix(security): зміна адреси API провайдера скидає збережені ключі (рішення власника, TECH-DEBT
+  §19.6) — `upsertConfig`, `updateBranchSettings`, форма просить ключі заново. Review `3d55af2d`: legacy-ключ
+  філії лише на свою адресу. Tester: #954 Ctrl+Enter в обхід вимкненої кнопки (`773fb528`), #955 порожня
+  адреса конфігу вела legacy-ключ на типову адресу (`24f2281b`).
 
 ### 08788c8b..HEAD патчі залежностей, списки як наряди (2026-10-22/23)
 
