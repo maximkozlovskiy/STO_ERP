@@ -11,7 +11,7 @@ describe('DeliveryTrackingService', () => {
   const ORG = 'org-1';
   const PO = 'po-1';
   let settings: { getOrganisationSettings: ReturnType<typeof vi.fn> };
-  let pollQueue: { add: ReturnType<typeof vi.fn> };
+  let pollQueue: { add: ReturnType<typeof vi.fn>; getJobs: ReturnType<typeof vi.fn> };
   let service: DeliveryTrackingService;
 
   const withInterval = (v: unknown) =>
@@ -19,7 +19,10 @@ describe('DeliveryTrackingService', () => {
 
   beforeEach(() => {
     settings = { getOrganisationSettings: vi.fn().mockResolvedValue({}) };
-    pollQueue = { add: vi.fn().mockResolvedValue(undefined) };
+    pollQueue = {
+      add: vi.fn().mockResolvedValue(undefined),
+      getJobs: vi.fn().mockResolvedValue([]),
+    };
     service = new DeliveryTrackingService(settings as never, pollQueue as never);
   });
 
@@ -88,7 +91,52 @@ describe('DeliveryTrackingService', () => {
 
     it('offline-safe: черга кидає → enqueueInitial НЕ кидає (PO усе одно збережений)', async () => {
       pollQueue.add.mockRejectedValue(new Error('Redis unavailable'));
+      pollQueue.getJobs.mockRejectedValue(new Error('Redis unavailable'));
       await expect(service.enqueueInitial(ORG, PO)).resolves.toBeUndefined();
+    });
+
+    // Кроки ланцюжка мають власні id (`np-poll-<poId>-p<N>`), тож дедуп за id кроку 0 уже не
+    // тримає single-flight: другий ланцюжок не ставиться, поки живий перший. Мутація: прибрати
+    // перевірку живого ланцюжка → кейси «живий» червоніють (add викликано).
+    const job = (purchaseOrderId: string, delayed: boolean) => ({
+      data: { purchaseOrderId, orgId: ORG },
+      isDelayed: vi.fn().mockResolvedValue(delayed),
+      promote: vi.fn().mockResolvedValue(undefined),
+    });
+
+    // guards: BR-PO-013
+    it('живий відкладений крок цього документа → другого ланцюжка немає; крок переведено в «зараз»', async () => {
+      const live = job(PO, true);
+      pollQueue.getJobs.mockResolvedValue([job('po-other', true), live]);
+
+      await service.enqueueInitial(ORG, PO);
+
+      expect(pollQueue.add).not.toHaveBeenCalled();
+      expect(live.promote).toHaveBeenCalledTimes(1);
+      expect(pollQueue.getJobs.mock.calls[0][0]).toEqual(
+        expect.arrayContaining(['active', 'waiting', 'delayed']),
+      );
+    });
+
+    // guards: BR-PO-013
+    it('активний крок цього документа → другого ланцюжка немає, promote не викликається', async () => {
+      const active = job(PO, false);
+      pollQueue.getJobs.mockResolvedValue([active]);
+
+      await service.enqueueInitial(ORG, PO);
+
+      expect(pollQueue.add).not.toHaveBeenCalled();
+      expect(active.promote).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-PO-013
+    it('живі лише кроки інших документів → новий ланцюжок (крок 0)', async () => {
+      pollQueue.getJobs.mockResolvedValue([job('po-other', true)]);
+
+      await service.enqueueInitial(ORG, PO);
+
+      expect(pollQueue.add).toHaveBeenCalledTimes(1);
+      expect(pollQueue.add.mock.calls[0][2].jobId).toBe(`np-poll-${PO}`);
     });
   });
 });

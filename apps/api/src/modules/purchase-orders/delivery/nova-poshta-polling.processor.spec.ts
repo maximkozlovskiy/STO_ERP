@@ -104,20 +104,21 @@ describe('NovaPoshtaPollingProcessor', () => {
     await processor.process(makeJob({ purchaseOrderId: PO, orgId: ORG }));
     // update лише delivery-полів (не status закупівлі), scoped orgId+deletedAt (race-safe).
     expect(prisma.purchaseOrder.updateMany).toHaveBeenCalledWith({
-      where: { id: PO, orgId: ORG, deletedAt: null },
+      // trackingNumber у where — статус старої накладної не лягає на нову (ЕН змінили під час опитування).
+      where: { id: PO, orgId: ORG, deletedAt: null, trackingNumber: '204...' },
       data: {
         deliveryStatus: 'ARRIVED',
         deliveryStatusRaw: 'на відділенні',
         deliveryStatusUpdatedAt: expect.any(Date),
       },
     });
-    // re-enqueue з delay = pollDelayMs, jobId-дедуп, pollAttempts+1.
+    // re-enqueue з delay = pollDelayMs, власний id кроку, pollAttempts+1.
     expect(tracking.pollDelayMs).toHaveBeenCalledWith(ORG);
     expect(pollQueue.add).toHaveBeenCalledTimes(1);
     const [, jobData, opts] = pollQueue.add.mock.calls[0];
     expect(jobData).toEqual({ purchaseOrderId: PO, orgId: ORG, pollAttempts: 1 });
     expect(opts.delay).toBe(30 * 60_000);
-    expect(opts.jobId).toBe(`np-poll-${PO}`);
+    expect(opts.jobId).toBe(`np-poll-${PO}-p1`);
   });
 
   it('статус НЕ змінився → update НЕ викликається, але re-enqueue продовжується', async () => {
@@ -162,14 +163,47 @@ describe('NovaPoshtaPollingProcessor', () => {
     expect(providerConfig.resolveActive).toHaveBeenCalledWith(ORG, 'br-1', 'DELIVERY');
   });
 
-  // Bug #698: zombie-job / jobId single-flight — re-enqueue шле стабільний jobId np-poll-<poId>
-  // (same як enqueueInitial) → BullMQ дедуп: старий delayed job не подвоюється новим.
-  it('re-enqueue: jobId стабільний (np-poll-<poId>) — single-flight на документ', async () => {
+  // TECH-DEBT §8 «Нова пошта: трекінг опитується один раз»: re-enqueue слав той самий id
+  // `np-poll-<poId>`, що й поточна (ще активна) задача, і BullMQ мовчки відкидав add — накладна
+  // опитувалась рівно раз. Тепер кожен крок має власний детермінований id; дубль того самого
+  // кроку зливається (single-flight). Мутація: повернути `jobId: np-poll-${poId}` → кейс червоніє.
+  // guards: BR-PO-013
+  it('re-enqueue: id наступного кроку ≠ id поточної задачі; кроки детерміновані (p1, p2, …)', async () => {
     providerImpl.getStatus.mockResolvedValue({ status: 'IN_TRANSIT', raw: 'x' });
+    // Перший крок — задача enqueueInitial (id `np-poll-<poId>`, без pollAttempts).
     await processor.process(makeJob({ purchaseOrderId: PO, orgId: ORG }));
-    const opts = pollQueue.add.mock.calls[0][2];
-    expect(opts.jobId).toBe(`np-poll-${PO}`);
-    expect(opts.removeOnComplete).toBe(true);
+    // Далі — задача кроку 1.
+    await processor.process(makeJob({ purchaseOrderId: PO, orgId: ORG, pollAttempts: 1 }));
+
+    const ids = pollQueue.add.mock.calls.map(c => (c[2] as { jobId: string }).jobId);
+    expect(ids).toEqual([`np-poll-${PO}-p1`, `np-poll-${PO}-p2`]);
+    expect(ids).not.toContain(`np-poll-${PO}`); // id задачі enqueueInitial, що ще активна
+    expect(pollQueue.add.mock.calls[0][2].removeOnComplete).toBe(true);
+  });
+
+  // guards: BR-PO-013
+  it('ЕН змінили під час опитування (запис статусу зачепив 0 рядків) → не стоп навіть на термінальному: наступний крок одразу', async () => {
+    providerImpl.getStatus.mockResolvedValue({ status: 'DELIVERED', raw: 'отримано' });
+    prisma.purchaseOrder.updateMany.mockResolvedValue({ count: 0 });
+
+    await processor.process(makeJob({ purchaseOrderId: PO, orgId: ORG, pollAttempts: 3 }));
+
+    expect(pollQueue.add).toHaveBeenCalledTimes(1);
+    const [, jobData, opts] = pollQueue.add.mock.calls[0];
+    expect(jobData.pollAttempts).toBe(4);
+    expect(opts.delay).toBe(0);
+    expect(opts.jobId).toBe(`np-poll-${PO}-p4`);
+  });
+
+  // guards: BR-PO-013
+  it('збій запису статусу → наступний крок зі звичайним інтервалом (не стоп і не частий повтор)', async () => {
+    providerImpl.getStatus.mockResolvedValue({ status: 'DELIVERED', raw: 'отримано' });
+    prisma.purchaseOrder.updateMany.mockRejectedValue(new Error('db down'));
+
+    await processor.process(makeJob({ purchaseOrderId: PO, orgId: ORG }));
+
+    expect(pollQueue.add).toHaveBeenCalledTimes(1);
+    expect(pollQueue.add.mock.calls[0][2].delay).toBe(30 * 60_000);
   });
 
   // Bug #698: payload НЕ несе trackingNumber → зомбі-job (ЕН змінили між постановкою і виконанням)

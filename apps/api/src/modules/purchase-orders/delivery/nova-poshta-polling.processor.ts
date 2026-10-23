@@ -6,7 +6,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { runWithTenant } from '../../../common/tenant/tenant-context';
 import { ProviderConfigService } from '../../payments/provider-config.service';
 import { DeliveryProviderRegistry } from './delivery-provider-registry';
-import { DeliveryTrackingService } from './delivery-tracking.service';
+import { DeliveryTrackingService, npPollJobId } from './delivery-tracking.service';
 import { IntegrationLogService } from '../../integration-logs/integration-log.service';
 import { DeadLetterWorkerHost } from '../../../modules/dead-letter/dead-letter-worker-host';
 import { DeadLetterService } from '../../../modules/dead-letter/dead-letter.service';
@@ -30,8 +30,9 @@ const TERMINAL: ReadonlySet<DeliveryStatus> = new Set<DeliveryStatus>([
 /**
  * Опитує статус доставки PurchaseOrder за номером накладної через активну службу доставки.
  * Self-re-enqueue з delay = OrganisationSettings.deliveryPollIntervalMinutes (НЕ hardcoded).
- * jobId-дедуп (`np-poll-<poId>`) — single-flight на документ. Зупинка: термінальний статус,
- * зникнення ЕН, видалення PO, або MAX_POLL_ATTEMPTS. Оновлює лише delivery-метадані (НЕ FSM закупівлі).
+ * Кожен крок має власний id (`npPollJobId`): з одним id на документ наступний крок BullMQ
+ * відкидав, бо поточна задача ще існує. Зупинка: термінальний статус, зникнення ЕН, видалення
+ * PO, або MAX_POLL_ATTEMPTS. Оновлює лише delivery-метадані (НЕ FSM закупівлі).
  */
 @Injectable()
 @Processor('nova-poshta-polling', { concurrency: 3 })
@@ -107,25 +108,50 @@ export class NovaPoshtaPollingProcessor extends DeadLetterWorkerHost {
       }
 
       // Оновлюємо статус лише якщо змінився (менше write-ів + коректний updatedAt).
+      // null — статус не змінився (запису не було); інакше — скільки рядків зачепив запис.
+      let writtenRows: number | null = null;
+      let writeFailed = false;
       if (result.status !== po.deliveryStatus) {
-        await this.prisma.purchaseOrder
+        const res = await this.prisma.purchaseOrder
           .updateMany({
             // deletedAt:null у where — PO міг бути soft-deleted між read і write;
             // updateMany з compound-фільтром просто зачепить 0 рядків (не резурект delivery-метадані).
-            where: { id: purchaseOrderId, orgId, deletedAt: null },
+            // trackingNumber у where: ЕН могли змінити, поки ми питали службу, — статус СТАРОЇ
+            // накладної не лягає на нову (та вже PENDING після зміни ЕН).
+            where: {
+              id: purchaseOrderId,
+              orgId,
+              deletedAt: null,
+              trackingNumber: po.trackingNumber,
+            },
             data: {
               deliveryStatus: result.status,
               deliveryStatusRaw: result.raw.slice(0, 300),
               deliveryStatusUpdatedAt: new Date(),
             },
           })
-          .catch((e: unknown) =>
+          .catch((e: unknown) => {
             this.logger.error(
               `Не вдалось оновити статус доставки PO=${purchaseOrderId}: ${e instanceof Error ? e.message : e}`,
-            ),
-          );
+            );
+            return null;
+          });
+        if (res === null) writeFailed = true;
+        else writtenRows = res.count;
       }
 
+      // ЕН змінили під час опитування (запис зачепив 0 рядків): ланцюжок не зупиняємо навіть на
+      // термінальному статусі старої накладної — наступний крок одразу, він перечитає новий ЕН
+      // (enqueueInitial для нового ЕН другого ланцюжка не ставить, поки цей живий). Збій запису —
+      // наступний крок зі звичайним інтервалом, без зупинки й без частого повтору.
+      if (writtenRows === 0) {
+        await this.reEnqueue(orgId, purchaseOrderId, pollAttempts, 0);
+        return;
+      }
+      if (writeFailed) {
+        await this.reEnqueue(orgId, purchaseOrderId, pollAttempts);
+        return;
+      }
       if (TERMINAL.has(result.status)) {
         this.logger.log(`Трекінг PO=${purchaseOrderId} завершено: ${result.status}`);
         return; // термінальний — стоп
@@ -134,11 +160,12 @@ export class NovaPoshtaPollingProcessor extends DeadLetterWorkerHost {
     });
   }
 
-  /** Re-enqueue з delay з налаштувань + cap на кількість спроб. */
+  /** Re-enqueue з delay з налаштувань (або заданим) + cap на кількість спроб. */
   private async reEnqueue(
     orgId: string,
     purchaseOrderId: string,
     pollAttempts: number,
+    delayMs?: number,
   ): Promise<void> {
     const next = pollAttempts + 1;
     if (next > MAX_POLL_ATTEMPTS) {
@@ -147,12 +174,18 @@ export class NovaPoshtaPollingProcessor extends DeadLetterWorkerHost {
       );
       return;
     }
-    const delay = await this.tracking.pollDelayMs(orgId);
+    const delay = delayMs ?? (await this.tracking.pollDelayMs(orgId));
     await this.pollQueue
       .add(
         'poll',
         { purchaseOrderId, orgId, pollAttempts: next },
-        { delay, jobId: `np-poll-${purchaseOrderId}`, removeOnComplete: true, removeOnFail: 200 },
+        {
+          delay,
+          // Новий id на кожен крок — НЕ id поточної задачі (див. npPollJobId).
+          jobId: npPollJobId(purchaseOrderId, next),
+          removeOnComplete: true,
+          removeOnFail: 200,
+        },
       )
       .catch(() => undefined);
   }

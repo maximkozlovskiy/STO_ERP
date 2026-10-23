@@ -201,6 +201,7 @@ receivedQty:<очікуване>}, data:{increment}})` ПОСЛІДОВНО; `co
 10. **BR-PO-010**: **Замовлення і позиції списків купівлі.** Перезапис рядків чернетки (`update` з `lines`, імпорт XLSX), видалення чернетки, скасування й повне приймання з недостачею повертають незамовлене чи неотримане в позиції списків (BR-PL-009, BR-PL-010, BR-PL-012). Замовлення зі списку пише `insertInTx` — той самий запис, що й `create()` (`createInTx` = `insertInTx` + перечитування), у транзакції виклику (BR-PL-008).
 11. **BR-PO-011**: **Передача постачальнику через API** (рішення власника 2026-10-18; [supplier-connection.md](supplier-connection.md) BR-SCON-009…013). Кнопкою «Відправити в API» або автоматично при переході в «Замовлено» — за налаштуванням `supplierOrderSendMode`. Підсумок — `supplierApiStatus` (`NOT_SENT` / `QUEUED` / `SENT` / `PARTIAL` / `CONFIRMED` / `FAILED` / `NEEDS_ATTENTION`), деталі — `SupplierOrder`. Зовнішній статус не змінює залишків, боргу й FSM: приймання — лише вручну.
 12. **BR-PO-012**: **Скасування відправленого в API.** Скасування чи видалення замовлення з уже прийнятим постачальником зовнішнім замовленням — 400 `err.supplierApi.cancelSentOrder` без `force`; із `force` — дозволено (BR-SCON-014), постачальнику нічого не надсилається.
+13. **BR-PO-013**: **Опитування статусу доставки — ланцюжок кроків, один на документ** (2026-10-24). Номер накладної (ЕН) у створенні чи зміні замовлення ставить опитування в чергу `nova-poshta-polling`; кожен крок після опитування ставить наступний з інтервалом `deliveryPollIntervalMinutes` (до 480 кроків), доки статус не стане термінальним (`DELIVERED` / `RETURNED` / `NOT_FOUND`), ЕН не приберуть або замовлення не видалять. Кожен крок має власний id задачі (`np-poll-<id>-p<N>`, крок 0 — `np-poll-<id>`): з одним id на документ BullMQ відкидав постановку наступного кроку, бо поточна задача ще існувала, і накладна опитувалась рівно раз. Другий ланцюжок для документа не ставиться, поки живий перший (відкладений крок лише переводиться в «зараз», ЕН перечитується з БД). Статус пишеться лише для тієї ЕН, яку опитали (`trackingNumber` у `where`): якщо ЕН змінили під час опитування, статус старої накладної не записується, а наступний крок ставиться одразу. Зовнішній статус не змінює FSM, залишків і боргу.
 
 > Борг, створений `receive()`, закривається документом [SupplierPayment](supplier-payment.md)
 > (`SettlementTransaction(PAYMENT)`). PO можна опціонально прив'язати до оплати для аналітики.
@@ -232,22 +233,24 @@ else → newContractId = po.contractId                         // unchanged
 cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.spec.ts
 ```
 
-| Аспект                                                         | Тест                                                             | Кейсів |
-| -------------------------------------------------------------- | ---------------------------------------------------------------- | ------ |
-| `applyPricing` — правила ціноутворення                         | `purchase-orders.pricing.spec.ts`                                | 13     |
-| `receive()` — UoM-override + tenant-валідація                  | `purchase-orders.receive-uom.spec.ts`                            | 13     |
-| `receive()` — activeLines, CAS → RECEIPT, борг                 | `purchase-orders.receive-ledger.spec.ts`                         | 6      |
-| `create`/`update` — tenant-guard goodId рядків                 | `purchase-orders.line-goods.spec.ts`                             | 3      |
-| `update()` — резолв контракту контрагента                      | `purchase-orders.contract-resolution.spec.ts`                    | 9      |
-| `transition()` — карта `PO_TRANSITIONS`                        | `purchase-orders.fsm.spec.ts`                                    | 15     |
-| `findAll` — `sortBy=paymentDate`, nulls-last                   | `purchase-orders.sort.spec.ts`                                   | 7      |
-| linked-documents — межові випадки, списки купівлі замовлення   | `purchase-orders.linked-docs.spec.ts`                            | 6      |
-| `create` — Σ(lines.amount) === totalAmount                     | `purchase-orders.totals.spec.ts`                                 | 1      |
-| швидкий імпорт рядків XLSX: виклик перерахунку                 | `../xlsx/xlsx.po-lines-import-totals.spec.ts`                    | 3      |
-| імпорт рядків: ПДВ рядків і тотали, звірка списків (адаптер)   | `../xlsx/document-line-import.adapter.spec.ts`                   | 14     |
-| HTTP-контракт (DTO, статуси, валідація)                        | `purchase-orders.contract.spec.ts`                               | 48     |
-| документ, позначений на видалення, — лише перегляд (BR-WO-012) | `purchase-orders.with-deleted.spec.ts`                           | 11     |
-| Доставка (Нова Пошта)                                          | `delivery/*.spec.ts`, `purchase-orders.delivery.service.spec.ts` | —      |
+| Аспект                                                            | Тест                                                             | Кейсів |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------- | ------ |
+| `applyPricing` — правила ціноутворення                            | `purchase-orders.pricing.spec.ts`                                | 13     |
+| `receive()` — UoM-override + tenant-валідація                     | `purchase-orders.receive-uom.spec.ts`                            | 13     |
+| `receive()` — activeLines, CAS → RECEIPT, борг                    | `purchase-orders.receive-ledger.spec.ts`                         | 6      |
+| `create`/`update` — tenant-guard goodId рядків                    | `purchase-orders.line-goods.spec.ts`                             | 3      |
+| `update()` — резолв контракту контрагента                         | `purchase-orders.contract-resolution.spec.ts`                    | 9      |
+| `transition()` — карта `PO_TRANSITIONS`                           | `purchase-orders.fsm.spec.ts`                                    | 15     |
+| `findAll` — `sortBy=paymentDate`, nulls-last                      | `purchase-orders.sort.spec.ts`                                   | 7      |
+| linked-documents — межові випадки, списки купівлі замовлення      | `purchase-orders.linked-docs.spec.ts`                            | 6      |
+| `create` — Σ(lines.amount) === totalAmount                        | `purchase-orders.totals.spec.ts`                                 | 1      |
+| швидкий імпорт рядків XLSX: виклик перерахунку                    | `../xlsx/xlsx.po-lines-import-totals.spec.ts`                    | 3      |
+| імпорт рядків: ПДВ рядків і тотали, звірка списків (адаптер)      | `../xlsx/document-line-import.adapter.spec.ts`                   | 14     |
+| HTTP-контракт (DTO, статуси, валідація)                           | `purchase-orders.contract.spec.ts`                               | 48     |
+| документ, позначений на видалення, — лише перегляд (BR-WO-012)    | `purchase-orders.with-deleted.spec.ts`                           | 11     |
+| Доставка (Нова Пошта)                                             | `delivery/*.spec.ts`, `purchase-orders.delivery.service.spec.ts` | —      |
+| опитування доставки: кроки з власним id, ЕН у `where` (BR-PO-013) | `delivery/nova-poshta-polling.processor.spec.ts`                 | 14     |
+| опитування доставки: один живий ланцюжок на документ (BR-PO-013)  | `delivery/delivery-tracking.service.spec.ts`                     | 14     |
 
 Правило → тест для BR-PO-009 / BR-PO-010 (списки купівлі, мітки `// guards:`) — у спеках
 `apps/api/src/modules/purchase-lists/`: `purchase-lists.receive-allocation.spec.ts` (RECEIPT з
