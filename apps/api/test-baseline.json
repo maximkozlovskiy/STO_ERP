@@ -2041,6 +2041,13 @@
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations/:operationId/reverse — сторно причина понад 500 символів → 400, до сервісу не доходить",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations/:operationId/reverse — сторно причина рівно 500 символів → проходить"
   ],
+  "apps/api/src/modules/cash-registers/cash-registers.open-shift-guard.spec.ts": [
+   "CashRegistersService — каса з відкритою зміною (BR-CASH-028) PATCH {isFiscal:false} при відкритій зміні → 400, каса лишається фіскальною",
+   "CashRegistersService — каса з відкритою зміною (BR-CASH-028) en: текст відмови з каталогу (не літерал у сервісі)",
+   "CashRegistersService — каса з відкритою зміною (BR-CASH-028) без відкритої зміни видалення й зняття «фіскальна» проходять",
+   "CashRegistersService — каса з відкритою зміною (BR-CASH-028) видалення каси з відкритою зміною → 400 «спершу закрийте зміну», каса не видаляється",
+   "CashRegistersService — каса з відкритою зміною (BR-CASH-028) інші зміни каси при відкритій зміні дозволені: перейменування, переведення в іншу філію"
+  ],
   "apps/api/src/modules/cash-registers/cash-registers.service.spec.ts": [
    "CashRegistersService — assertFiscalProvider (привʼязка каси до ПРРО) Bug #731: битий JSON-креди → 400",
    "CashRegistersService — assertFiscalProvider (привʼязка каси до ПРРО) Bug #731: конфіг з порожнім JSON-кредами (\"{}\") → 400 (як runtime-резолвер)",
@@ -3811,6 +3818,26 @@
    "PaymentMethodsService — isSystem guard update isActive/sortOrder системного методу → дозволено (косметика per-org)",
    "PaymentMethodsService — isSystem guard update name системного методу → BadRequestException"
   ],
+  "apps/api/src/modules/payments/cash-shift.current-route.contract.spec.ts": [
+   "GET /cash-shifts/current — HTTP-контракт (BR-CASH-027) cashRegisterId не UUID → 400, до сервісу не доходить",
+   "GET /cash-shifts/current — HTTP-контракт (BR-CASH-027) без каси — як раніше: getCurrent(orgId, branchId, undefined)",
+   "GET /cash-shifts/current — HTTP-контракт (BR-CASH-027) каса доходить до сервісу: getCurrent(orgId, branchId, cashRegisterId)"
+  ],
+  "apps/api/src/modules/payments/cash-shift.per-register.spec.ts": [
+   "CashShiftService — зміна своя в кожної каси (BR-CASH-027) findOpenShift і відкриття за касою findOpenShift з касою B — null, з A — зміна A; без каси — будь-яка OPEN-зміна філії",
+   "CashShiftService — зміна своя в кожної каси (BR-CASH-027) findOpenShift і відкриття за касою без каси й без фіскальних кас у філії — як раніше, найстаріша каса філії",
+   "CashShiftService — зміна своя в кожної каси (BR-CASH-027) findOpenShift і відкриття за касою без каси — найстаріша фіскальна каса філії, навіть коли нефіскальна старша",
+   "CashShiftService — зміна своя в кожної каси (BR-CASH-027) findOpenShift і відкриття за касою без каси, а кас у філії немає — 400 «Немає каси для цієї філії»",
+   "CashShiftService — зміна своя в кожної каси (BR-CASH-027) findOpenShift і відкриття за касою відкриття на касі B, коли відкрита A, — нова зміна саме B; після цього B бачить свою",
+   "CashShiftService — зміна своя в кожної каси (BR-CASH-027) findOpenShift і відкриття за касою каса переведена в іншу філію при відкритій зміні → її зміну й далі видно",
+   "CashShiftService — зміна своя в кожної каси (BR-CASH-027) findOpenShift і відкриття за касою явна каса іншої філії / організації / видалена → 404 «Касу не знайдено», ПРРО не кличемо",
+   "CashShiftService — зміна своя в кожної каси (BR-CASH-027) getCurrent з касою «чеків очікує» каси — QUEUED-оплати саме цієї каси; без каси — за нарядами філії",
+   "CashShiftService — зміна своя в кожної каси (BR-CASH-027) getCurrent з касою без каси — як раніше: найновіша OPEN-зміна філії (зворотна сумісність)",
+   "CashShiftService — зміна своя в кожної каси (BR-CASH-027) getCurrent з касою видалена каса → 404",
+   "CashShiftService — зміна своя в кожної каси (BR-CASH-027) getCurrent з касою зміна відкрита на A: каса B бачить null, каса A — свою зміну",
+   "CashShiftService — зміна своя в кожної каси (BR-CASH-027) getCurrent з касою каса іншої організації → 404, зміна не шукається",
+   "CashShiftService — зміна своя в кожної каси (BR-CASH-027) getCurrent з касою каса іншої філії тієї ж організації → 404"
+  ],
   "apps/api/src/modules/payments/cash-shift.service.spec.ts": [
    "CashShiftService (ПРРО registry) close CAS-claim програний (concurrent close виграв) → 400, closeShift НЕ викликається",
    "CashShiftService (ПРРО registry) close OPEN → CAS-claim → ensureToken → closeShift → CLOSED + zReportId",
@@ -3893,6 +3920,14 @@
    "CheckboxProcessor (ПРРО registry — sell у зміну) onFailed: FAILED лише на термінальній спробі термінальна (attemptsMade >= attempts) → FAILED + fiscalError",
    "CheckboxProcessor (ПРРО registry — sell у зміну) success: sell у зміну через provider(cfg,token) → DONE + fiscalReceiptId",
    "CheckboxProcessor (ПРРО registry — sell у зміну) ПРРО не налаштовано (resolveActive→null) → SKIPPED, без sell",
+   "CheckboxProcessor (ПРРО registry — sell у зміну) зміна за касою оплати (BR-CASH-027) AUTO_OPEN без зміни каси → відкривається саме каса оплати",
+   "CheckboxProcessor (ПРРО registry — sell у зміну) зміна за касою оплати (BR-CASH-027) AUTO_OPEN: відкрити зміну каси оплати не вдалось → throw для BullMQ retry, без sell",
+   "CheckboxProcessor (ПРРО registry — sell у зміну) зміна за касою оплати (BR-CASH-027) MANUAL: зміна каси оплати закрита → чек чекає, навіть коли інша каса філії відкрита",
+   "CheckboxProcessor (ПРРО registry — sell у зміну) зміна за касою оплати (BR-CASH-027) оплата без каси (картка, QR) → зміна й авто-відкриття за філією, як раніше",
+   "CheckboxProcessor (ПРРО registry — sell у зміну) зміна за касою оплати (BR-CASH-027) оплата без каси й без наряду → зміну не шукає й не відкриває, чек чекає (retry)",
+   "CheckboxProcessor (ПРРО registry — sell у зміну) зміна за касою оплати (BR-CASH-027) оплата через НЕфіскальну касу → за філією (у нефіскальної каси змін немає)",
+   "CheckboxProcessor (ПРРО registry — sell у зміну) зміна за касою оплати (BR-CASH-027) оплата через фіскальну касу → findOpenShift із касою оплати, чек у її зміну",
+   "CheckboxProcessor (ПРРО registry — sell у зміну) зміна за касою оплати (BR-CASH-027) філія — та, де стоїть каса: наряд іншої філії чи оплата без наряду не змінюють зміну",
    "CheckboxProcessor (ПРРО registry — sell у зміну) не-401 помилка sell → throw (retry), без DONE",
    "CheckboxProcessor (ПРРО registry — sell у зміну) платіж не знайдено → skip (deleted/cross-tenant)",
    "CheckboxProcessor — конфіг воркера (метадані @Processor) concurrency = 3 — кожен job це мережевий виклик ПРРО до 15 с: число обмежує паралелізм (rate-limit ліцензії) і дренить чергу ~3× швидше",

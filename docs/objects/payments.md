@@ -430,7 +430,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | політика повторів черг                          | `payments.queue-retry-policy.spec.ts`                    | 6      |
 | сервісна логіка                                 | `provider-config.service.spec.ts`                        | 35     |
 | upsert провайдера без `enabled` (лише activate) | `provider-upsert-dto.contract.spec.ts`                   | 12     |
-| шифрування at-rest                              | `../../prisma/field-encryption.extension.spec.ts`        | 21     |
+| шифрування at-rest                              | `../../prisma/field-encryption.extension.spec.ts`        | 23     |
 | шифрування (сервіс)                             | `../../common/crypto/encryption.service.spec.ts`         | 11     |
 | готівка — через касу, безготівкова — з рахунком | `payments.cash-register-required.spec.ts`                | 14     |
 | куди надходять кошти                            | `../payment-methods/payment-methods.destination.spec.ts` | 24     |
@@ -439,9 +439,9 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | сторно безготівкової оплати (BR-PAY-024)        | `payments.reverse-noncash.spec.ts`                       | 24     |
 | HTTP-контракт сторно (BR-PAY-024)               | `payments.reverse-route.contract.spec.ts`                | 15     |
 
-Разом: **512** кейсів — 444 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
+Разом: **561** кейс — 491 у модулі + 34 у двох спеках шифрування + 36 у довіднику способів оплати
 (`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
-`vitest --reporter=json` (2026-10-15), не з grep.
+`vitest --reporter=json` (2026-10-24), не з grep.
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 
