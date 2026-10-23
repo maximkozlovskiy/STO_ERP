@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { VehiclesService } from './vehicles.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../redis/cache.service';
 import type { PrismaModelMock } from '../../common/testing/prisma-mock';
 
 /**
@@ -23,6 +24,10 @@ describe('VehiclesService', () => {
     // BR-CP-015: create / restore блокують рядок гаража в транзакції.
     $queryRaw: ReturnType<typeof vi.fn>;
     $transaction: ReturnType<typeof vi.fn>;
+    // BR-VEH-008: create бере спільне блокування довідника й читає назви марки та моделі.
+    $executeRaw: ReturnType<typeof vi.fn>;
+    vehicleMake: PrismaModelMock;
+    vehicleModel: PrismaModelMock;
   };
 
   const rawVehicle = (overrides: Record<string, unknown> = {}) => ({
@@ -71,6 +76,9 @@ describe('VehiclesService', () => {
       // BR-CP-015: create блокує рядок гаража (FOR SHARE) у транзакції зі вставкою авто.
       $queryRaw: vi.fn().mockResolvedValue([{ id: 'g-1' }]),
       $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      vehicleMake: { findFirst: vi.fn().mockResolvedValue({ name: 'Toyota' }) },
+      vehicleModel: { findFirst: vi.fn().mockResolvedValue({ name: 'Camry', makeId: 'mk-1' }) },
       vehicleNode: {
         findFirst: vi.fn(),
         findMany: vi.fn(),
@@ -80,7 +88,11 @@ describe('VehiclesService', () => {
     };
 
     const module = await Test.createTestingModule({
-      providers: [VehiclesService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        VehiclesService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CacheService, useValue: { del: vi.fn().mockResolvedValue(undefined) } },
+      ],
     }).compile();
     service = module.get(VehiclesService);
   });
@@ -241,7 +253,12 @@ describe('VehiclesService', () => {
     it('create з дубль-VIN → BadRequestException', async () => {
       prisma.vehicle.findFirst.mockResolvedValueOnce({ id: 'other' }); // VIN clash
       await expect(
-        service.create('org-1', { customerGarageId: 'g-1', vin: 'WVWZZZ' } as never),
+        service.create('org-1', {
+          customerGarageId: 'g-1',
+          makeId: 'mk-1',
+          modelId: 'md-1',
+          vin: 'WVWZZZ',
+        } as never),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.vehicle.create).not.toHaveBeenCalled();
     });
@@ -249,7 +266,12 @@ describe('VehiclesService', () => {
     it('create з унікальним VIN → створює', async () => {
       prisma.vehicle.findFirst.mockResolvedValueOnce(null); // no clash
       prisma.vehicle.create.mockResolvedValueOnce({ id: 'v-1', customerGarageId: 'g-1' });
-      await service.create('org-1', { customerGarageId: 'g-1', vin: 'UNIQUE1' } as never);
+      await service.create('org-1', {
+        customerGarageId: 'g-1',
+        makeId: 'mk-1',
+        modelId: 'md-1',
+        vin: 'UNIQUE1',
+      } as never);
       expect(prisma.vehicle.create).toHaveBeenCalledTimes(1);
       // VIN-lookup виключає deletedAt (лише активні дублі).
       const vinCall = prisma.vehicle.findFirst.mock.calls[0][0];
@@ -258,7 +280,11 @@ describe('VehiclesService', () => {
 
     it('create без VIN → перевірка пропускається', async () => {
       prisma.vehicle.create.mockResolvedValueOnce({ id: 'v-1', customerGarageId: 'g-1' });
-      await service.create('org-1', { customerGarageId: 'g-1' } as never);
+      await service.create('org-1', {
+        customerGarageId: 'g-1',
+        makeId: 'mk-1',
+        modelId: 'md-1',
+      } as never);
       expect(prisma.vehicle.create).toHaveBeenCalledTimes(1);
     });
   });
@@ -267,7 +293,11 @@ describe('VehiclesService', () => {
   describe('create — гараж блокується до вставки авто', () => {
     it('рядок гаража читається FOR SHARE у тій самій транзакції, що й вставка', async () => {
       prisma.vehicle.create.mockResolvedValueOnce({ id: 'v-1', customerGarageId: 'g-1' });
-      await service.create('org-1', { customerGarageId: 'g-1' } as never);
+      await service.create('org-1', {
+        customerGarageId: 'g-1',
+        makeId: 'mk-1',
+        modelId: 'md-1',
+      } as never);
       const sql = (prisma.$queryRaw.mock.calls[0]![0] as TemplateStringsArray).join('?');
       expect(sql).toMatch(/FROM customer_garages/);
       expect(sql).toMatch(/"deletedAt" IS NULL/);
@@ -278,7 +308,11 @@ describe('VehiclesService', () => {
     it('гараж уже видалено (блокування не повернуло рядка) → 404, авто не створюється', async () => {
       prisma.$queryRaw.mockResolvedValueOnce([]);
       await expect(
-        service.create('org-1', { customerGarageId: 'g-1' } as never),
+        service.create('org-1', {
+          customerGarageId: 'g-1',
+          makeId: 'mk-1',
+          modelId: 'md-1',
+        } as never),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.vehicle.create).not.toHaveBeenCalled();
     });

@@ -11,6 +11,11 @@ import {
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { movesWorkOrderSlot, relinksSlot } from '../work-orders/work-order-slot-move';
 import type { CalendarSlotEdit } from '../calendar/calendar.dto';
+import {
+  lockVehicleDirectoryShared,
+  resolveVehicleNames,
+  vehiclePairToWrite,
+} from '../vehicle-makes/vehicle-directory';
 
 // Minimal interface for the dynamic Prisma model operations used in sync
 interface DynamicPrismaModel {
@@ -119,10 +124,11 @@ const PULL_FIELD_BLACKLIST: Record<string, Set<string>> = {
 // from pull payloads and must only be writable through the authenticated web API with full validation.
 const PUSH_FIELD_WHITELIST: Record<string, Set<string>> = {
   counterparties: new Set(['firstName', 'lastName', 'companyName', 'notes', 'type', 'vatPayer']),
+  // BR-VEH-008: марка й модель — ідентифікатори довідника; назви (`make` / `model`) пише сервер.
   vehicles: new Set([
     'licensePlate',
-    'make',
-    'model',
+    'makeId',
+    'modelId',
     'year',
     'vin',
     'engineVolume',
@@ -301,6 +307,7 @@ export class SyncService {
           startAt: true,
           endAt: true,
         }),
+        ...(rec.table === 'vehicles' && { makeId: true }),
       },
     });
 
@@ -380,10 +387,10 @@ export class SyncService {
         }
         return;
       }
-      if (rec.table === 'vehicles' && hasGarage(safePayload)) {
-        await this.writeVehicleInGarage(orgId, safePayload, tx =>
+      if (rec.table === 'vehicles') {
+        await this.writeVehicle(orgId, safePayload, null, (tx, data) =>
           tx.vehicle.create({
-            data: { ...safePayload, id: rec.id, orgId } as Prisma.VehicleUncheckedCreateInput,
+            data: { ...data, id: rec.id, orgId } as Prisma.VehicleUncheckedCreateInput,
           }),
         );
         return;
@@ -424,12 +431,10 @@ export class SyncService {
         mileageToWrite !== undefined
           ? { ...safePayload, currentMileage: mileageToWrite }
           : safePayload;
-      if (rec.table === 'vehicles' && hasGarage(safePayload)) {
-        await this.writeVehicleInGarage(orgId, safePayload, tx =>
-          tx.vehicle.update({
-            where: { id: rec.id, orgId },
-            data,
-          }),
+      if (rec.table === 'vehicles') {
+        const current = { makeId: typeof existing.makeId === 'string' ? existing.makeId : null };
+        await this.writeVehicle(orgId, data, current, (tx, vehicleData) =>
+          tx.vehicle.update({ where: { id: rec.id, orgId }, data: vehicleData }),
         );
         return;
       }
@@ -486,26 +491,39 @@ export class SyncService {
   }
 
   /**
-   * BR-CP-015 (Bug #950): авто з планшета лягає в гараж під блокуванням рядка гаража (FOR SHARE) в
-   * одній транзакції із записом — як `VehiclesService.create`. Інакше одночасне видалення гаража
-   * (`CounterpartiesService.removeGarage`, FOR UPDATE) проходило між перевіркою FK і записом, і авто
-   * лишалось живим у видаленому гаражі.
+   * Запис авто з планшета — тими самими правилами, що й `VehiclesService`:
+   * - BR-CP-015 (Bug #950): авто лягає в гараж під блокуванням рядка гаража (FOR SHARE) в одній
+   *   транзакції із записом. Інакше одночасне видалення гаража (`removeGarage`, FOR UPDATE)
+   *   проходило між перевіркою FK і записом, і авто лишалось живим у видаленому гаражі.
+   * - BR-VEH-008: нове авто — з маркою й моделлю довідника; нова марка — лише з моделлю; назви
+   *   (`make` / `model`) пише сервер, під спільним блокуванням довідника (як `VehiclesService`).
+   * `existing` — марка наявного авто (`null` для нового).
    */
-  private async writeVehicleInGarage(
+  private async writeVehicle(
     orgId: string,
     payload: Record<string, unknown>,
-    write: (tx: Prisma.TransactionClient) => Promise<unknown>,
+    existing: { makeId: string | null } | null,
+    write: (tx: Prisma.TransactionClient, data: Record<string, unknown>) => Promise<unknown>,
   ): Promise<void> {
-    const garageId = payload.customerGarageId as string;
+    const pair = vehiclePairToWrite(payload, existing);
+    const garageId = hasGarage(payload) ? (payload.customerGarageId as string) : null;
+    if (!pair && !garageId) {
+      await write(this.prisma, payload);
+      return;
+    }
     await this.prisma.$transaction(async tx => {
-      const garage = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT id FROM customer_garages
-        WHERE id = ${garageId}::uuid AND "orgId" = ${orgId}::uuid AND "deletedAt" IS NULL
-        FOR SHARE
-      `;
-      if (garage.length === 0)
-        throw new Error(`Поле customerGarageId=${garageId} не знайдено в межах організації`);
-      await write(tx);
+      if (pair) await lockVehicleDirectoryShared(tx, orgId);
+      if (garageId) {
+        const garage = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM customer_garages
+          WHERE id = ${garageId}::uuid AND "orgId" = ${orgId}::uuid AND "deletedAt" IS NULL
+          FOR SHARE
+        `;
+        if (garage.length === 0)
+          throw new Error(`Поле customerGarageId=${garageId} не знайдено в межах організації`);
+      }
+      const names = pair ? await resolveVehicleNames(tx, orgId, pair.makeId, pair.modelId) : {};
+      await write(tx, { ...payload, ...pair, ...names });
     });
   }
 

@@ -6,6 +6,7 @@ import type { AuthService } from '../../auth/auth.service';
 import type { SetupInitDto } from './setup.dto';
 import { DocumentType } from '@prisma/client';
 import { DOCUMENT_NUMBER_DEFAULTS } from './document-number-defaults';
+import { DEFAULT_VEHICLE_MAKES } from '../vehicle-makes/vehicle-make-defaults';
 
 /**
  * Regression (audit settings/setup/reports): TOCTOU race у first-run wizard.
@@ -53,6 +54,7 @@ function makePrisma(orgCountOutsideTx: number, orgCountInsideTx: number) {
     documentNumberConfig: { createMany: vi.fn().mockResolvedValue({ count: 8 }) },
     paymentMethodConfig: { createMany: vi.fn().mockResolvedValue({ count: 5 }) },
     taxRate: { createMany: vi.fn().mockResolvedValue({ count: 3 }) },
+    vehicleMake: { createMany: vi.fn().mockResolvedValue({ count: 58 }) },
     garageBranch: { create: vi.fn().mockResolvedValue({ id: 'branch-1' }) },
     branchSettings: { create: vi.fn().mockResolvedValue({}) },
     warehouse: { create: vi.fn().mockResolvedValue({ id: 'wh-1' }) },
@@ -184,5 +186,33 @@ describe('SetupService.init — нумерація для ВСІХ типів д
     expect(Object.keys(DOCUMENT_NUMBER_DEFAULTS).sort()).toEqual(
       Object.values(DocumentType).sort(),
     );
+  });
+});
+
+describe('SetupService.init — стартовий довідник марок авто (BR-VEH-012)', () => {
+  const authService = {
+    generateAccessToken: vi.fn().mockReturnValue('jwt-token'),
+  } as unknown as AuthService;
+
+  // guards: BR-VEH-012
+  it('нова організація отримує весь стартовий список марок у транзакції створення', async () => {
+    const { prisma, tx } = makePrisma(0, 0);
+    await new SetupService(prisma, authService).init(dto);
+    expect(tx.vehicleMake.createMany).toHaveBeenCalledTimes(1);
+    const arg = tx.vehicleMake.createMany.mock.calls[0][0] as {
+      data: { orgId: string; name: string; nameKey: string }[];
+    };
+    expect(arg.data.map(m => m.name)).toEqual(DEFAULT_VEHICLE_MAKES.map(m => m.name));
+    expect(arg.data.every(m => m.orgId === 'org-1')).toBe(true);
+    expect(arg.data.find(m => m.name === 'Land Rover')?.nameKey).toBe('land rover');
+  });
+
+  // guards: BR-VEH-012
+  it('повторний init (організація вже є) марок не сіє', async () => {
+    const { prisma, tx } = makePrisma(0, 1);
+    await expect(new SetupService(prisma, authService).init(dto)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(tx.vehicleMake.createMany).not.toHaveBeenCalled();
   });
 });

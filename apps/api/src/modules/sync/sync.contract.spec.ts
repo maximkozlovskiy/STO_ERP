@@ -48,6 +48,9 @@ const prismaMock = {
   warranty: makeModelMock(),
   lift: makeModelMock(),
   employee: makeModelMock(),
+  // BR-VEH-008: авто з планшета — з маркою й моделлю довідника (назви пише сервер).
+  vehicleMake: makeModelMock(),
+  vehicleModel: makeModelMock(),
   syncJob: {
     count: vi.fn().mockResolvedValue(0),
     findFirst: vi.fn().mockResolvedValue(null),
@@ -55,6 +58,7 @@ const prismaMock = {
   },
   // BR-CP-015 (Bug #950): авто з гаражем пишеться під блокуванням рядка гаража в транзакції.
   $queryRaw: vi.fn().mockResolvedValue([{ id: 'garage' }]),
+  $executeRaw: vi.fn().mockResolvedValue(1),
   $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(prismaMock)),
 };
 
@@ -67,6 +71,9 @@ const mockJwtGuard = {
     }),
 };
 const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
+
+const MAKE_ID = '880e8400-e29b-41d4-a716-446655440001';
+const MODEL_ID = '880e8400-e29b-41d4-a716-446655440002';
 
 describe('Sync — HTTP Contract', () => {
   let app: NestFastifyApplication;
@@ -383,6 +390,8 @@ describe('Sync — HTTP Contract', () => {
       const VID = '770e8400-e29b-41d4-a716-446655440555';
       const GID = '660e8400-e29b-41d4-a716-446655440555';
       prismaMock.customerGarage.findFirst.mockResolvedValueOnce({ id: GID }); // FK-перевірка
+      prismaMock.vehicleMake.findFirst.mockResolvedValueOnce({ name: 'Toyota' });
+      prismaMock.vehicleModel.findFirst.mockResolvedValueOnce({ name: 'E2E', makeId: MAKE_ID });
       const res = await app.inject({
         method: 'POST',
         url: '/sync/push',
@@ -393,7 +402,7 @@ describe('Sync — HTTP Contract', () => {
               id: VID,
               operation: 'INSERT',
               syncVersion: 1,
-              payload: { customerGarageId: GID, make: 'Toyota', model: 'E2E' },
+              payload: { customerGarageId: GID, makeId: MAKE_ID, modelId: MODEL_ID },
             },
           ],
         },
@@ -426,7 +435,7 @@ describe('Sync — HTTP Contract', () => {
               id: VID,
               operation: 'INSERT',
               syncVersion: 1,
-              payload: { customerGarageId: GID, make: 'Toyota', model: 'E2E' },
+              payload: { customerGarageId: GID, makeId: MAKE_ID, modelId: MODEL_ID },
             },
           ],
         },

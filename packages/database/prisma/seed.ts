@@ -435,6 +435,17 @@ async function main() {
       isDefault: true,
     },
   });
+  // BR-VEH-008: марка й модель авто — з довідника; `make` / `model` — знімок назви.
+  const toyota = await prisma.vehicleMake.upsert({
+    where: { orgId_nameKey: { orgId: ORG_ID, nameKey: 'toyota' } },
+    update: {},
+    create: { orgId: ORG_ID, name: 'Toyota', nameKey: 'toyota' },
+  });
+  const camry = await prisma.vehicleModel.upsert({
+    where: { orgId_makeId_nameKey: { orgId: ORG_ID, makeId: toyota.id, nameKey: 'camry' } },
+    update: {},
+    create: { orgId: ORG_ID, makeId: toyota.id, name: 'Camry', nameKey: 'camry' },
+  });
   await prisma.vehicle.upsert({
     where: { id: VEHICLE_ID },
     update: {},
@@ -442,8 +453,10 @@ async function main() {
       id: VEHICLE_ID,
       orgId: ORG_ID,
       customerGarageId: GARAGE_ID,
-      make: 'Toyota',
-      model: 'Camry',
+      makeId: toyota.id,
+      modelId: camry.id,
+      make: toyota.name,
+      model: camry.name,
       year: 2020,
       licensePlate: 'AA1234BB',
     },

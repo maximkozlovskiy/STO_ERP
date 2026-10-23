@@ -1,12 +1,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import type { DocumentType } from '@prisma/client';
-import { translateError } from '@sto/shared';
+import { translateError, vehicleNameKey } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from '../../auth/auth.service';
 import { runUnscoped, getLocale } from '../../common/tenant/tenant-context';
 import { SetupInitDto, SetupInitResponseDto } from './setup.dto';
 import { DOCUMENT_NUMBER_DEFAULTS, type DocumentNumberDefault } from './document-number-defaults';
+import { DEFAULT_VEHICLE_MAKES } from '../vehicle-makes/vehicle-make-defaults';
 
 @Injectable()
 export class SetupService {
@@ -120,6 +121,15 @@ export class SetupService {
             ];
             await tx.paymentMethodConfig.createMany({
               data: methods.map(m => ({ orgId: org.id, ...m })),
+            });
+
+            // BR-VEH-012: стартовий довідник марок (без моделей) — у тій самій транзакції.
+            await tx.vehicleMake.createMany({
+              data: DEFAULT_VEHICLE_MAKES.map(m => ({
+                orgId: org.id,
+                name: m.name,
+                nameKey: vehicleNameKey(m.name),
+              })),
             });
 
             await tx.taxRate.createMany({

@@ -36,6 +36,7 @@ import { GoodsModule } from './modules/goods/goods.module';
 import { ServicesModule } from './modules/services/services.module';
 import { BrandsModule } from './modules/brands/brands.module';
 import { CounterpartyStatusesModule } from './modules/counterparty-statuses/counterparty-statuses.module';
+import { VehicleMakesModule } from './modules/vehicle-makes/vehicle-makes.module';
 import { GoodStatusesModule } from './modules/good-statuses/good-statuses.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { ExpenseCategoriesModule } from './modules/expense-categories/expense-categories.module';
@@ -199,6 +200,7 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
     ServicesModule,
     BrandsModule,
     CounterpartyStatusesModule,
+    VehicleMakesModule,
     GoodStatusesModule,
     PayrollModule,
     ExpenseCategoriesModule,

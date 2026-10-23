@@ -17,8 +17,11 @@ export class CreateVehicleDto {
   @ApiProperty()
   @IsUUID()
   customerGarageId!: string;
-  @ApiProperty({ example: 'Toyota' }) @IsString() @IsNotEmpty() make!: string;
-  @ApiProperty({ example: 'Camry' }) @IsString() @IsNotEmpty() model!: string;
+  // BR-VEH-008: марка й модель — ідентифікатори довідника; назви (`make` / `model`) пише сервіс.
+  @ApiProperty({ description: 'Марка з довідника (GET /vehicle-makes)' }) @IsUUID() makeId!: string;
+  @ApiProperty({ description: 'Модель цієї марки (GET /vehicle-makes/:id/models)' })
+  @IsUUID()
+  modelId!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() vin?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() licensePlate?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() year?: number;
@@ -44,8 +47,11 @@ export class CreateVehicleDto {
 }
 
 export class UpdateVehicleDto {
-  @ApiPropertyOptional() @IsOptional() @IsString() make?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() model?: string;
+  @ApiPropertyOptional({ description: 'Нова марка — лише разом із modelId' })
+  @IsOptional()
+  @IsUUID()
+  makeId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() modelId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() vin?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() licensePlate?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() year?: number;
@@ -74,8 +80,10 @@ export class VehicleResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() orgId!: string;
   @ApiProperty() customerGarageId!: string;
-  @ApiProperty() make!: string;
-  @ApiProperty() model!: string;
+  @ApiProperty() makeId!: string;
+  @ApiProperty() modelId!: string;
+  @ApiProperty({ description: 'Назва марки з довідника (знімок)' }) make!: string;
+  @ApiProperty({ description: 'Назва моделі з довідника (знімок)' }) model!: string;
   @ApiPropertyOptional() vin?: string | null;
   @ApiPropertyOptional() licensePlate?: string | null;
   @ApiPropertyOptional() year?: number | null;

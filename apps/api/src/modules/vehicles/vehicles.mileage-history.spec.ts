@@ -4,6 +4,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import type { VehicleMileagePoint } from '@sto/shared';
 import { VehiclesService } from './vehicles.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../redis/cache.service';
 import type { PrismaModelMock } from '../../common/testing/prisma-mock';
 
 /**
@@ -166,7 +167,11 @@ describe('VehiclesService — історія пробігу (BR-VEH-001…005)',
     };
 
     const module = await Test.createTestingModule({
-      providers: [VehiclesService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        VehiclesService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CacheService, useValue: { del: vi.fn() } },
+      ],
     }).compile();
     service = module.get(VehiclesService);
   });

@@ -3,6 +3,13 @@ import { translateError, type VehicleMileagePoint } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { kyivYmd } from '../../common/utils/kyiv-date';
+import { CacheService } from '../../redis/cache.service';
+import {
+  lockVehicleDirectoryShared,
+  resolveVehicleNames,
+  vehicleMakesCacheKey,
+  vehiclePairToWrite,
+} from '../vehicle-makes/vehicle-directory';
 import {
   CreateVehicleDto,
   CreateVehicleNodeDto,
@@ -22,7 +29,10 @@ const MILEAGE_HISTORY_FETCH_CAP = 2000;
 
 @Injectable()
 export class VehiclesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
 
   async findAll(
     orgId: string,
@@ -61,7 +71,11 @@ export class VehiclesService {
     // видалення гаража (FOR UPDATE у `CounterpartiesService.removeGarage`) або чекає й лічильником
     // бачить це авто (400), або встигає першим — і тоді тут гараж уже видалений (404). Без
     // блокування авто могло опинитись у щойно видаленому гаражі (TECH-DEBT §17.2).
+    // BR-VEH-008: марка й модель — з довідника, назви пише сервіс. Спільне блокування довідника:
+    // одночасне видалення чи злиття марки (ексклюзивне) або чекає й бачить це авто, або вже
+    // відбулось — і тоді марка тут не жива (400).
     const item = await this.prisma.$transaction(async tx => {
+      await lockVehicleDirectoryShared(tx, orgId);
       const garage = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM customer_garages
         WHERE id = ${dto.customerGarageId}::uuid AND "orgId" = ${orgId}::uuid AND "deletedAt" IS NULL
@@ -69,23 +83,41 @@ export class VehiclesService {
       `;
       if (garage.length === 0)
         throw new NotFoundException(translateError('err.vehicle.garageNotFound', getLocale()));
-      return tx.vehicle.create({ data: { ...dto, orgId } });
+      const names = await resolveVehicleNames(tx, orgId, dto.makeId, dto.modelId);
+      return tx.vehicle.create({ data: { ...dto, ...names, orgId } });
     });
+    await this.invalidateMakes(orgId);
     return this.toDto(item);
   }
 
   async update(orgId: string, id: string, dto: UpdateVehicleDto): Promise<VehicleResponseDto> {
     const existing = await this.prisma.vehicle.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, makeId: true },
     });
     if (!existing) throw new NotFoundException(translateError('err.vehicle.notFound', getLocale()));
     // MD-M5: UpdateVehicleDto НЕ містить customerGarageId (перенос гаража недоступний через update)
     // → крос-тенант-перенос неможливий за побудовою, окремий guard не потрібен.
     // MD-H2: VIN unique (виключаючи сам авто).
     await this.assertVinUnique(orgId, dto.vin, id);
-    const item = await this.prisma.vehicle.update({ where: { id, orgId }, data: dto });
+    // BR-VEH-008: нова марка — лише з моделлю; нова модель без марки — моделлю поточної марки.
+    const pair = vehiclePairToWrite(dto, existing);
+    if (!pair) {
+      const item = await this.prisma.vehicle.update({ where: { id, orgId }, data: dto });
+      return this.toDto(item);
+    }
+    const item = await this.prisma.$transaction(async tx => {
+      await lockVehicleDirectoryShared(tx, orgId);
+      const names = await resolveVehicleNames(tx, orgId, pair.makeId, pair.modelId);
+      return tx.vehicle.update({ where: { id, orgId }, data: { ...dto, ...pair, ...names } });
+    });
+    await this.invalidateMakes(orgId);
     return this.toDto(item);
+  }
+
+  /** Лічильники авто у кеші довідника марок (BR-VEH-009) — після кожного запису авто. */
+  private async invalidateMakes(orgId: string): Promise<void> {
+    await this.cache.del(vehicleMakesCacheKey(orgId));
   }
 
   /** VIN унікальний у межах org серед активних авто (крім excludeId). Порожній VIN пропускається. */
@@ -129,6 +161,7 @@ export class VehiclesService {
     });
     if (result.count === 0)
       throw new NotFoundException(translateError('err.vehicle.notFound', getLocale()));
+    await this.invalidateMakes(orgId);
   }
 
   async restore(orgId: string, id: string): Promise<VehicleResponseDto> {
@@ -193,6 +226,7 @@ export class VehiclesService {
     });
     if (result.count === 0)
       throw new NotFoundException(translateError('err.vehicle.deletedNotFound', getLocale()));
+    await this.invalidateMakes(orgId);
     const item = await this.prisma.vehicle.findFirstOrThrow({ where: { id, orgId } });
     return this.toDto(item);
   }
@@ -331,6 +365,8 @@ export class VehiclesService {
     id: string;
     orgId: string;
     customerGarageId: string;
+    makeId: string;
+    modelId: string;
     make: string;
     model: string;
     vin: string | null;
@@ -355,6 +391,8 @@ export class VehiclesService {
       id: v.id,
       orgId: v.orgId,
       customerGarageId: v.customerGarageId,
+      makeId: v.makeId,
+      modelId: v.modelId,
       make: v.make,
       model: v.model,
       vin: v.vin,

@@ -6399,6 +6399,478 @@
         ]
       }
     },
+    "/api/v1/vehicle-makes": {
+      "get": {
+        "operationId": "VehicleMakesController_findAll_v1",
+        "parameters": [
+          {
+            "name": "showDeleted",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleMakeListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Довідник марок авто",
+        "tags": [
+          "Марки авто"
+        ]
+      },
+      "post": {
+        "operationId": "VehicleMakesController_create_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VehicleDirectoryNameDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleMakeResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Марка з такою назвою вже є (жива чи видалена)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Додати марку",
+        "tags": [
+          "Марки авто"
+        ]
+      }
+    },
+    "/api/v1/vehicle-makes/{id}/models": {
+      "get": {
+        "operationId": "VehicleMakesController_findModels_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "showDeleted",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleModelListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Моделі марки",
+        "tags": [
+          "Марки авто"
+        ]
+      },
+      "post": {
+        "operationId": "VehicleMakesController_createModel_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VehicleDirectoryNameDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleModelResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Додати модель марки",
+        "tags": [
+          "Марки авто"
+        ]
+      }
+    },
+    "/api/v1/vehicle-makes/{id}/restore": {
+      "post": {
+        "operationId": "VehicleMakesController_restore_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleMakeResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Відновити видалену марку (разом із моделями, видаленими з нею)",
+        "tags": [
+          "Марки авто"
+        ]
+      }
+    },
+    "/api/v1/vehicle-makes/{id}/merge": {
+      "post": {
+        "operationId": "VehicleMakesController_merge_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VehicleDirectoryMergeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleMakeResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Злити марку в іншу: авто й моделі переходять до цілі",
+        "tags": [
+          "Марки авто"
+        ]
+      }
+    },
+    "/api/v1/vehicle-makes/{id}": {
+      "patch": {
+        "operationId": "VehicleMakesController_rename_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VehicleDirectoryNameDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleMakeResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Перейменувати марку (назва оновлюється й в авто)",
+        "tags": [
+          "Марки авто"
+        ]
+      },
+      "delete": {
+        "operationId": "VehicleMakesController_remove_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Видалити марку (400, якщо її мають живі авто)",
+        "tags": [
+          "Марки авто"
+        ]
+      }
+    },
+    "/api/v1/vehicle-models/{id}/restore": {
+      "post": {
+        "operationId": "VehicleModelsController_restore_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleModelResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Відновити видалену модель",
+        "tags": [
+          "Марки авто"
+        ]
+      }
+    },
+    "/api/v1/vehicle-models/{id}/merge": {
+      "post": {
+        "operationId": "VehicleModelsController_merge_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VehicleDirectoryMergeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleModelResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Злити модель в іншу модель тієї ж марки",
+        "tags": [
+          "Марки авто"
+        ]
+      }
+    },
+    "/api/v1/vehicle-models/{id}": {
+      "patch": {
+        "operationId": "VehicleModelsController_rename_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VehicleDirectoryNameDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleModelResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Перейменувати модель (назва оновлюється й в авто)",
+        "tags": [
+          "Марки авто"
+        ]
+      },
+      "delete": {
+        "operationId": "VehicleModelsController_remove_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Видалити модель (400, якщо її мають живі авто)",
+        "tags": [
+          "Марки авто"
+        ]
+      }
+    },
     "/api/v1/payroll/preview": {
       "get": {
         "operationId": "PayrollController_preview_v1",
@@ -15514,7 +15986,17 @@
       },
       "post": {
         "operationId": "BankStatementsController_createManual_v1",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -21609,11 +22091,19 @@
           "customerGarageId": {
             "type": "string"
           },
-          "make": {
+          "makeId": {
             "type": "string"
           },
-          "model": {
+          "modelId": {
             "type": "string"
+          },
+          "make": {
+            "type": "string",
+            "description": "Назва марки з довідника (знімок)"
+          },
+          "model": {
+            "type": "string",
+            "description": "Назва моделі з довідника (знімок)"
           },
           "vin": {
             "type": "string",
@@ -21687,6 +22177,8 @@
           "id",
           "orgId",
           "customerGarageId",
+          "makeId",
+          "modelId",
           "make",
           "model",
           "createdAt",
@@ -23713,6 +24205,125 @@
         },
         "required": [
           "name"
+        ]
+      },
+      "VehicleMakeResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "vehicleCount": {
+            "type": "number",
+            "description": "Живі авто цієї марки — з ними марку не видалити (BR-VEH-009)"
+          },
+          "modelCount": {
+            "type": "number",
+            "description": "Живі моделі марки"
+          },
+          "deletedAt": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "vehicleCount",
+          "modelCount"
+        ]
+      },
+      "VehicleMakeListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VehicleMakeResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ]
+      },
+      "VehicleDirectoryNameDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Toyota",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "VehicleModelResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "makeId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "vehicleCount": {
+            "type": "number",
+            "description": "Живі авто цієї моделі — з ними модель не видалити (BR-VEH-009)"
+          },
+          "deletedAt": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "makeId",
+          "name",
+          "vehicleCount"
+        ]
+      },
+      "VehicleModelListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VehicleModelResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ]
+      },
+      "VehicleDirectoryMergeDto": {
+        "type": "object",
+        "properties": {
+          "targetId": {
+            "type": "string",
+            "description": "Марка чи модель, у яку переходять авто",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "targetId"
         ]
       },
       "PayrollLineWorkOrderDto": {

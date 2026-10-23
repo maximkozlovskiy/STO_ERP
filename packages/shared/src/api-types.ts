@@ -1816,6 +1816,146 @@ export interface paths {
         patch: operations["BrandsController_update_v1"];
         trace?: never;
     };
+    "/api/v1/vehicle-makes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Довідник марок авто */
+        get: operations["VehicleMakesController_findAll_v1"];
+        put?: never;
+        /** Додати марку */
+        post: operations["VehicleMakesController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vehicle-makes/{id}/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Моделі марки */
+        get: operations["VehicleMakesController_findModels_v1"];
+        put?: never;
+        /** Додати модель марки */
+        post: operations["VehicleMakesController_createModel_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vehicle-makes/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Відновити видалену марку (разом із моделями, видаленими з нею) */
+        post: operations["VehicleMakesController_restore_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vehicle-makes/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Злити марку в іншу: авто й моделі переходять до цілі */
+        post: operations["VehicleMakesController_merge_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vehicle-makes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Видалити марку (400, якщо її мають живі авто) */
+        delete: operations["VehicleMakesController_remove_v1"];
+        options?: never;
+        head?: never;
+        /** Перейменувати марку (назва оновлюється й в авто) */
+        patch: operations["VehicleMakesController_rename_v1"];
+        trace?: never;
+    };
+    "/api/v1/vehicle-models/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Відновити видалену модель */
+        post: operations["VehicleModelsController_restore_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vehicle-models/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Злити модель в іншу модель тієї ж марки */
+        post: operations["VehicleModelsController_merge_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vehicle-models/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Видалити модель (400, якщо її мають живі авто) */
+        delete: operations["VehicleModelsController_remove_v1"];
+        options?: never;
+        head?: never;
+        /** Перейменувати модель (назва оновлюється й в авто) */
+        patch: operations["VehicleModelsController_rename_v1"];
+        trace?: never;
+    };
     "/api/v1/payroll/preview": {
         parameters: {
             query?: never;
@@ -6793,7 +6933,11 @@ export interface components {
             id: string;
             orgId: string;
             customerGarageId: string;
+            makeId: string;
+            modelId: string;
+            /** @description Назва марки з довідника (знімок) */
             make: string;
+            /** @description Назва моделі з довідника (знімок) */
             model: string;
             vin?: string | null;
             licensePlate?: string | null;
@@ -7380,6 +7524,42 @@ export interface components {
              *     ]
              */
             synonyms?: string[];
+        };
+        VehicleMakeResponseDto: {
+            id: string;
+            name: string;
+            /** @description Живі авто цієї марки — з ними марку не видалити (BR-VEH-009) */
+            vehicleCount: number;
+            /** @description Живі моделі марки */
+            modelCount: number;
+            deletedAt?: string | null;
+        };
+        VehicleMakeListResponseDto: {
+            items: components["schemas"]["VehicleMakeResponseDto"][];
+            total: number;
+        };
+        VehicleDirectoryNameDto: {
+            /** @example Toyota */
+            name: string;
+        };
+        VehicleModelResponseDto: {
+            id: string;
+            makeId: string;
+            name: string;
+            /** @description Живі авто цієї моделі — з ними модель не видалити (BR-VEH-009) */
+            vehicleCount: number;
+            deletedAt?: string | null;
+        };
+        VehicleModelListResponseDto: {
+            items: components["schemas"]["VehicleModelResponseDto"][];
+            total: number;
+        };
+        VehicleDirectoryMergeDto: {
+            /**
+             * Format: uuid
+             * @description Марка чи модель, у яку переходять авто
+             */
+            targetId: string;
         };
         PayrollLineWorkOrderDto: {
             workOrderId: string;
@@ -14080,6 +14260,285 @@ export interface operations {
             };
         };
     };
+    VehicleMakesController_findAll_v1: {
+        parameters: {
+            query?: {
+                showDeleted?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleMakeListResponseDto"];
+                };
+            };
+        };
+    };
+    VehicleMakesController_create_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VehicleDirectoryNameDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleMakeResponseDto"];
+                };
+            };
+            /** @description Марка з такою назвою вже є (жива чи видалена) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VehicleMakesController_findModels_v1: {
+        parameters: {
+            query?: {
+                showDeleted?: boolean;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleModelListResponseDto"];
+                };
+            };
+        };
+    };
+    VehicleMakesController_createModel_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VehicleDirectoryNameDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleModelResponseDto"];
+                };
+            };
+        };
+    };
+    VehicleMakesController_restore_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleMakeResponseDto"];
+                };
+            };
+        };
+    };
+    VehicleMakesController_merge_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VehicleDirectoryMergeDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleMakeResponseDto"];
+                };
+            };
+        };
+    };
+    VehicleMakesController_remove_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VehicleMakesController_rename_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VehicleDirectoryNameDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleMakeResponseDto"];
+                };
+            };
+        };
+    };
+    VehicleModelsController_restore_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleModelResponseDto"];
+                };
+            };
+        };
+    };
+    VehicleModelsController_merge_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VehicleDirectoryMergeDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleModelResponseDto"];
+                };
+            };
+        };
+    };
+    VehicleModelsController_remove_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    VehicleModelsController_rename_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VehicleDirectoryNameDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleModelResponseDto"];
+                };
+            };
+        };
+    };
     PayrollController_preview_v1: {
         parameters: {
             query: {
@@ -19052,7 +19511,10 @@ export interface operations {
     BankStatementsController_createManual_v1: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
