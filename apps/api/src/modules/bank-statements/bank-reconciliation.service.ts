@@ -35,6 +35,7 @@ import {
 import { extractDocumentNumberCandidates, parsePurpose } from './purpose-parser';
 import {
   ApplyImportDto,
+  BANK_TX_AMOUNT_MAX,
   BANK_TX_IN_MATCH_TYPES,
   BankTransactionAllocationDto,
   BankTransactionResponseDto,
@@ -531,6 +532,21 @@ export class BankReconciliationService {
   }
 
   /**
+   * BR-BANK-042: еквівалент у базовій валюті мусить вміститися в `amountBase Decimal(12,2)`.
+   * Сума рядка обмежена DTO (`BANK_TX_AMOUNT_MAX`), але валютна сума × курс може вийти за межу —
+   * тоді БД відповідала 500 (`numeric field overflow`). Порівнюємо округлене до копійки — саме
+   * так значення ляже в колонку.
+   */
+  private assertAmountBaseFits(amountBase: number): void {
+    const stored = Math.round(Math.abs(amountBase) * 100) / 100;
+    if (!Number.isFinite(stored) || stored > BANK_TX_AMOUNT_MAX) {
+      throw new BadRequestException(
+        translateError('err.bankStatement.amountBaseOverflow', getLocale()),
+      );
+    }
+  }
+
+  /**
    * Guarded-парс operationDate з ApplyRowDto (money-critical: визначає курс для amountBase).
    * Мірорить rollover-guard провайдерів/парсера: '2026-02-31' тихо перекочує у 03-02, 'garbage' →
    * Invalid Date. Приймаємо YYYY-MM-DD (компонентна звірка) та повний ISO з зоною/часом (нативний
@@ -600,6 +616,7 @@ export class BankReconciliationService {
           row.amount,
           true, // fallbackToLatest: імпорт виписки — документний потік
         );
+        this.assertAmountBaseFits(conv.amountBase);
         // BR-BANK-020: payerIban — IBAN КОНТРАГЕНТА. Виписки часто мають колонку з нашим власним
         // рахунком; збережений як IBAN контрагента, він зводив би авто-матч до пошуку нас самих.
         const normIban = normalizeIban(row.payerIban);
@@ -920,6 +937,7 @@ export class BankReconciliationService {
       dto.amount,
       true,
     );
+    this.assertAmountBaseFits(conv.amountBase);
     const normIban = normalizeIban(dto.payerIban);
 
     const data = {

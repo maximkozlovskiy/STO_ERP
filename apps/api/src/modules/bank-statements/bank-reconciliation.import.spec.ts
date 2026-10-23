@@ -88,6 +88,36 @@ describe('BankReconciliationService.previewImport — межі дедуп-пер
   });
 });
 
+describe('BankReconciliationService.applyImport — межа amountBase (BR-BANK-042)', () => {
+  // Мутація: прибрати assertAmountBaseFits у applyImport → кейс червоніє (createMany викликано).
+  // guards: BR-BANK-042
+  it('рядок, чий еквівалент у базовій валюті понад межу колонки → 400 до запису; імпорт не пише нічого', async () => {
+    const prisma = makePrisma();
+    prisma.bankAccount.findFirst.mockResolvedValue({ id: 'ba-1', currencyId: 'cur-usd' });
+    const createMany = vi.fn();
+    prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({ bankTransaction: { createMany } }),
+    );
+    const exchange = makeExchange();
+    exchange.resolveBaseConversion.mockImplementation(
+      (_o: string, _c: string, _d: Date, amount: number) =>
+        Promise.resolve({ rateUsed: 45, amountBase: amount * 45 }),
+    );
+    const service = await build(prisma, exchange, makePayments());
+
+    await expect(
+      service.applyImport(ORG, {
+        bankAccountId: 'ba-1',
+        rows: [
+          { externalId: 'ok', operationDate: '2026-09-01', amount: 100 },
+          { externalId: 'huge', operationDate: '2026-09-01', amount: 9_000_000_000 },
+        ],
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(createMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('BankReconciliationService.applyImport — tenant-фільтр', () => {
   // guards: BR-BANK-016
   it('applyImport: банківський рахунок шукається у своїй orgId і лише невидалений', async () => {

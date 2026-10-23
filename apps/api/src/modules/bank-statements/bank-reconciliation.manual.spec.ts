@@ -150,6 +150,39 @@ describe('BankReconciliationService.createManual — ручне внесення
 
     expect(w.db.rows('bankTransaction')).toEqual([]);
   });
+
+  // TECH-DEBT §8 «Вихідні банківські платежі» п. 11: валютна сума, чий еквівалент у базовій валюті
+  // не вміщається в `amountBase Decimal(12,2)`, давала 500 від БД. Мутація: прибрати
+  // assertAmountBaseFits у createManual → кейс «понад межу» червоніє (рядок створено).
+  // guards: BR-BANK-042
+  it('еквівалент у базовій валюті понад 9 999 999 999,99 → 400 amountBaseOverflow, рядок не створено', async () => {
+    const w = await makeWorld();
+    w.exchange.resolveBaseConversion.mockResolvedValue({
+      rateUsed: 50,
+      amountBase: 10_000_000_000,
+    });
+
+    await expect(
+      w.service.createManual(ORG, dto({ bankAccountId: ID.accountUsd, amount: 200_000_000 }), USER),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: translateError('err.bankStatement.amountBaseOverflow', 'uk'),
+    });
+    expect(w.db.rows('bankTransaction')).toEqual([]);
+  });
+
+  // guards: BR-BANK-042
+  it('еквівалент рівно 9 999 999 999,99 вміщається → рядок створено', async () => {
+    const w = await makeWorld();
+    w.exchange.resolveBaseConversion.mockResolvedValue({
+      rateUsed: 50,
+      amountBase: 9_999_999_999.99,
+    });
+
+    await w.service.createManual(ORG, dto({ bankAccountId: ID.accountUsd, amount: 1000 }), USER);
+
+    expect(Number(created(w).amountBase)).toBe(9_999_999_999.99);
+  });
 });
 
 describe('BankReconciliationService.removeManual — видалення ручного рядка', () => {
