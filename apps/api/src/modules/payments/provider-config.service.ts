@@ -8,6 +8,9 @@ import { sameApiUrl } from '../../common/utils/trim-trailing-slashes';
 /** Назва поля кредів провайдера: ідентифікатор до 64 символів (`apiKey`, `merchantId`, `pinCode`). */
 const CREDENTIAL_KEY_RE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 
+/** Поля конфіга, з яких складається ResolvedProvider (resolveActive / resolveByCode). */
+const CONFIG_SELECT = { provider: true, apiUrl: true, credentials: true, shiftMode: true } as const;
+
 /** DTO апсерту конфіга провайдера (creds write-only — порожнє → зберегти наявні). */
 export interface UpsertProviderConfigInput {
   provider: string;
@@ -60,20 +63,11 @@ export class ProviderConfigService {
         deletedAt: null,
         ...(branchId ? { branchId } : {}),
       },
-      select: { provider: true, apiUrl: true, credentials: true, shiftMode: true },
+      select: CONFIG_SELECT,
     });
     // Enabled-конфіг з непорожніми кредами → його й повертаємо.
-    if (cfg) {
-      const parsed = this.parseCreds(cfg.credentials);
-      if (this.hasCreds(parsed)) {
-        return {
-          provider: cfg.provider,
-          apiUrl: cfg.apiUrl,
-          credentials: parsed,
-          shiftMode: cfg.shiftMode,
-        };
-      }
-    }
+    const withCreds = this.withCreds(cfg);
+    if (withCreds) return withCreds;
 
     // Legacy-fallback на старі BranchSettings-колонки. Спрацьовує коли:
     //  - немає enabled-конфіга взагалі, АБО
@@ -124,19 +118,10 @@ export class ProviderConfigService {
   ): Promise<ResolvedProvider | null> {
     const cfg = await this.prisma.branchProviderConfig.findFirst({
       where: { orgId, kind, provider, deletedAt: null, ...(branchId ? { branchId } : {}) },
-      select: { provider: true, apiUrl: true, credentials: true, shiftMode: true },
+      select: CONFIG_SELECT,
     });
-    if (cfg) {
-      const parsed = this.parseCreds(cfg.credentials);
-      if (this.hasCreds(parsed)) {
-        return {
-          provider: cfg.provider,
-          apiUrl: cfg.apiUrl,
-          credentials: parsed,
-          shiftMode: cfg.shiftMode,
-        };
-      }
-    }
+    const withCreds = this.withCreds(cfg);
+    if (withCreds) return withCreds;
     // Legacy: код збігається з дефолтним провайдером старих колонок.
     const legacy = await this.legacyFromBranchSettings(orgId, branchId, kind);
     return legacy && legacy.provider === provider ? legacy : null;
@@ -344,6 +329,26 @@ export class ProviderConfigService {
     } catch {
       return {};
     }
+  }
+
+  /** Конфіг із непорожніми кредами → ResolvedProvider; без конфіга чи без кредів → null. */
+  private withCreds(
+    cfg: {
+      provider: string;
+      apiUrl: string | null;
+      credentials: string | null;
+      shiftMode: ShiftMode;
+    } | null,
+  ): ResolvedProvider | null {
+    if (!cfg) return null;
+    const parsed = this.parseCreds(cfg.credentials);
+    if (!this.hasCreds(parsed)) return null;
+    return {
+      provider: cfg.provider,
+      apiUrl: cfg.apiUrl,
+      credentials: parsed,
+      shiftMode: cfg.shiftMode,
+    };
   }
 
   private hasCreds(c: Record<string, string>): boolean {
