@@ -4,6 +4,19 @@
 
 ---
 
+## [2026-10-23] Задача Windows «перезапуск при збої» не перезапускає на ненульовий код; лок через `exec` успадковують нащадки демона
+
+**«Перезапускати при збої» (`RestartCount`/`RestartInterval`)** спрацьовує, коли задачу не вдалось
+запустити, а не коли програма вийшла з ненульовим кодом. Перевірено: `cmd /c exit 1` із `RestartCount 3`
+за 150 с запустився один раз. Тримати процес живим — другим тригером `-Once -At (Get-Date)
+-RepetitionInterval` (без `-RepetitionDuration` — безстроково) з `-MultipleInstances IgnoreNew`: той самий
+пробник запускався щохвилини (`scripts/wsl/setup-docker-autostart.ps1`).
+
+**Лок `exec 9>lock; flock -n 9; exec daemon`** тримає не лише демон: дескриптор без close-on-exec
+успадковують його нащадки (dockerd → containerd → containerd-shim), що переживають падіння демона, — і
+наступний запуск вічно бачить лок зайнятим. Відтворено на `bash -c 'sleep 30 & exit 3'`. Демон —
+дочірнім процесом із `9>&-`, лок тримає скрипт, що робить `wait` (`scripts/wsl/start-docker.sh`).
+
 ## [2026-10-23] MCP у Docker через `wsl -e docker run -i --rm` лишає живі контейнери-сирітки
 
 Claude Code, закриваючи сесію, вбиває `wsl.exe`, але клієнт `docker run` усередині WSL не гине —

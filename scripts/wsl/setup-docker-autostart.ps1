@@ -9,7 +9,10 @@
 #  2. реєструє задачу планувальника «STO WSL Docker» (вхід користувача): `wsl.exe -u root
 #     start-docker.sh` без вікна (conhost --headless). Відкритий wsl.exe тримає дистрибутив живим —
 #     без systemd WSL гасить його разом із dockerd, щойно закривається остання сесія;
-#  3. після `wsl --shutdown` задача завершується з помилкою і перезапускається щохвилини;
+#  3. після `wsl --shutdown` (чи падіння dockerd) задача завершується, і за хвилину її запускає другий
+#     тригер — повтор щохвилини; поки задача працює, повтор нічого не робить (IgnoreNew). Саме повтор,
+#     а не «перезапуск при збої»: той спрацьовує лише коли задачу не вдалось запустити, а не на
+#     ненульовий код виходу (перевірено 2026-10-23: `cmd /c exit 1` із RestartCount 3 не перезапустився);
 #  4. одразу запускає задачу.
 # Права адміністратора не потрібні: задача — лише для поточного користувача.
 param([switch]$Remove)
@@ -41,12 +44,13 @@ if ($conf -notmatch [regex]::Escape($bootLine)) {
 
 $action = New-ScheduledTaskAction -Execute "$env:WINDIR\System32\conhost.exe" `
   -Argument "--headless wsl.exe -d $distro -u root -e /usr/local/bin/start-docker.sh"
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+$logon = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+# Без -RepetitionDuration повтор безстроковий.
+$keepAlive = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 1)
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-  -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
-  -MultipleInstances IgnoreNew
+  -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings `
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($logon, $keepAlive) -Settings $settings `
   -Principal $principal -Description 'STO ERP: dockerd у WSL (scripts/wsl/start-docker.sh) і тримання дистрибутива живим' `
   -Force | Out-Null
 

@@ -1488,6 +1488,14 @@ instead of rejecting`), окремо — 5 із 5 зелені. `purchase-lists.
    `url-guard.ts`) мають лише `SupplierUrlPolicy` і `SettingsService.verifyFiscal` (CodeQL 2026-10-23).
    Переводити разом із підставним `lookup` у спеках клієнтів — інакше unit-тести ходять у справжній DNS.
    Ризик обмежений: `apiUrl` задає лише OWNER/ADMIN.
+6. **Нова адреса провайдера не вимагає повторного ключа** (review 2026-10-23). `verifyFiscal` шле
+   збережений ключ лише на збережену адресу, але саму збережену адресу той самий OWNER/ADMIN міняє без
+   ключа: `PATCH /settings/branch/:id` з `checkboxApiUrl` (легасі-колонки, `fiscalEnabled` + ключ ще
+   читає `legacyFromBranchSettings`) і `PATCH /fiscal-providers|payment-gateways|…/branch/:id` з
+   `apiUrl` — `upsertConfig` мерджить наявні креди, і робочий клієнт провайдера понесе їх на нову
+   адресу. Web цього свідомо хоче («оновлюємо apiUrl/режим без повторного вводу секретів»,
+   `ProviderRegistryPanel.credsReady`), тож закриття — рішення власника: при зміні `apiUrl` скидати
+   секретні поля (сервер має знати, які секретні) або вимагати їх у тому ж запиті.
 
 ## Що НЕ є боргом, хоч виглядає так
 

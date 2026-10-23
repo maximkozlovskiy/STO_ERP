@@ -894,7 +894,7 @@ export class SettingsService {
     const timer = setTimeout(() => controller.abort(), 10_000);
     try {
       // /api/v1/cash-registers — підтверджує валідність ключа й повертає касу(и).
-      const res = await fetch(`${apiUrl}/api/v1/cash-registers`, {
+      const res = await fetch(`${trimTrailingSlashes(apiUrl)}/api/v1/cash-registers`, {
         method: 'GET',
         redirect: 'manual',
         headers: {

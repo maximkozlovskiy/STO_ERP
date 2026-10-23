@@ -39,17 +39,18 @@ $vhdx = Join-Path $reg.BasePath 'ext4.vhdx'
 $before = (Get-Item $vhdx).Length
 Write-Host ("vhdx: {0} — {1:N1} ГБ" -f $vhdx, ($before / 1GB))
 
+# Питання — ДО чистки Docker: «ні» не має лишати вже видалені зупинені контейнери й кеш збірки.
+if (-not $Force) {
+  $answer = Read-Host 'Почистити Docker і зупинити WSL (wsl --shutdown) — усе у WSL буде зупинено. Продовжити? [y/N]'
+  if ($answer -notmatch '^(y|т|так|yes)$') { Write-Host 'Скасовано.'; exit 1 }
+}
+
 Write-Host 'Docker: зупинені контейнери, кеш збірки, образи без тегу…'
 Invoke-Wsl @('-d', $distro, '-e', 'sh', '-c', 'docker container prune -f; docker builder prune -af; docker image prune -f')
 # Звільнені блоки ext4 позначаються як вільні для vhdx лише після TRIM.
 Invoke-Wsl @('-d', $distro, '-u', 'root', '-e', 'fstrim', '-av')
 
-if (-not $Force) {
-  $answer = Read-Host 'Зупинити WSL (wsl --shutdown) — усе у WSL буде зупинено. Продовжити? [y/N]'
-  if ($answer -notmatch '^(y|т|так|yes)$') { Write-Host 'Скасовано.'; exit 1 }
-}
-
-# Задача «STO WSL Docker» після `wsl --shutdown` перезапускається за хвилину й знову підняла б WSL —
+# Задача «STO WSL Docker» після `wsl --shutdown` за хвилину стартує знову (тригер-повтор) і підняла б WSL —
 # посеред Optimize-VHD, коли vhdx зайнятий. Тому на час стискання вона вимкнена.
 $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 if ($task) { Stop-ScheduledTask -TaskName $taskName; Disable-ScheduledTask -TaskName $taskName | Out-Null }

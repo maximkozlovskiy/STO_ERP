@@ -14,8 +14,11 @@ IMAGE='crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d0
 for c in $(docker ps -aq --filter label=sto.mcp=postgres 2>/dev/null); do
   client=$(docker inspect -f '{{index .Config.Labels "sto.mcp.client"}}' "$c" 2>/dev/null)
   ppid=$(ps -o ppid= -p "$client" 2>/dev/null | tr -d ' ')
-  if [ -z "$ppid" ] || [ "$ppid" = 1 ]; then
-    [ -n "$ppid" ] && kill "$client" 2>/dev/null
+  comm=$(ps -o comm= -p "$client" 2>/dev/null)
+  # Процес із цим PID — не `docker`: клієнт давно помер, а номер дістався іншому процесу (його не
+  # чіпаємо, а контейнер — сирота).
+  if [ -z "$ppid" ] || [ "$comm" != docker ] || [ "$ppid" = 1 ]; then
+    [ "$comm" = docker ] && kill "$client" 2>/dev/null
     docker rm -f "$c" >/dev/null 2>&1
   fi
 done

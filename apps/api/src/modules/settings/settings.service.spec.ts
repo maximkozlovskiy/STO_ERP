@@ -199,7 +199,8 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
     fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }));
     const res = await verify({ apiUrl: 'https://api.checkbox.ua/' });
     expect(res.valid).toBe(true);
-    const [, init] = fetchSpy.mock.calls[0];
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe('https://api.checkbox.ua/api/v1/cash-registers'); // без `//` у шляху
     expect((init as { headers: Record<string, string> }).headers.Authorization).toBe(
       'Bearer stored-key',
     );
