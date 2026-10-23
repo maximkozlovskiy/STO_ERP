@@ -13,6 +13,7 @@ import {
   WorkOrderStatus,
 } from '@prisma/client';
 import { createPgAdapter } from './pg-adapter';
+import { SEED_VEHICLE_MAKES, seedVehicleNameKey } from './seed-vehicle-makes';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient({ adapter: createPgAdapter() });
@@ -434,6 +435,18 @@ async function main() {
       name: 'Основний',
       isDefault: true,
     },
+  });
+  // BR-VEH-012: стартовий список марок — той самий, що сіє `/setup` для нової організації (Bug #956:
+  // у CI міграції йдуть на порожню базу, і організація без цього мала одну марку). Наявні й
+  // видалені власником марки не чіпаються: ключ унікальний разом із видаленими.
+  await prisma.vehicleMake.createMany({
+    data: SEED_VEHICLE_MAKES.map(name => ({
+      orgId: ORG_ID,
+      name,
+      nameKey: seedVehicleNameKey(name),
+      syncVersion: 1,
+    })),
+    skipDuplicates: true,
   });
   // BR-VEH-008: марка й модель авто — з довідника; `make` / `model` — знімок назви.
   const toyota = await prisma.vehicleMake.upsert({

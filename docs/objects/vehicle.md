@@ -140,8 +140,9 @@ delete, `syncVersion`.
 - **BR-VEH-011**: Перейменування й злиття оновлюють знімок назви (`make` / `model`) в усіх авто
   марки чи моделі, разом із видаленими авто, у тій самій транзакції (`syncVersion + 1`).
 - **BR-VEH-012**: Стартовий список марок (`vehicle-make-defaults.ts`, без моделей) сіється при
-  створенні організації; для наявних організацій — міграцією. Список у міграції збігається зі
-  списком у коді.
+  створенні організації; для наявних організацій — міграцією; для dev/CI-організації — `seed.ts`
+  (`packages/database/prisma/seed-vehicle-makes.ts`: пакет бази не імпортує api, тому копія назв,
+  Bug #956). Списки в міграції й у seed збігаються зі списком у коді.
 - **BR-VEH-013**: Ролі довідника: читання — OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT, MECHANIC
   (механік обирає марку у формі авто); створення й перейменування — OWNER, ADMIN, RECEPTIONIST;
   видалення, відновлення, злиття — OWNER, ADMIN.
@@ -176,7 +177,7 @@ cd apps/api && npx vitest run src/modules/vehicles/<файл>.spec.ts
 | довідник: ключ назви, перейменування й знімок назви в авто (BR-VEH-006, 007, 011)                                                                          | `vehicle-makes.names.spec.ts`        | 15     |
 | довідник: видалення, відновлення, злиття (BR-VEH-009…011)                                                                                                  | `vehicle-makes.delete-merge.spec.ts` | 11     |
 | HTTP-контракт довідника: ролі всіх маршрутів, UUID, zod (BR-VEH-013)                                                                                       | `vehicle-makes.contract.spec.ts`     | 88     |
-| стартовий список марок: код ↔ SQL міграції (BR-VEH-012)                                                                                                    | `vehicle-make-defaults.spec.ts`      | 3      |
+| стартовий список марок: код ↔ SQL міграції ↔ dev/CI seed (BR-VEH-012)                                                                                      | `vehicle-make-defaults.spec.ts`      | 4      |
 
 Разом: **188** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
