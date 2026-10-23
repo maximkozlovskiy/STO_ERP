@@ -372,6 +372,35 @@ describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
     });
 
     // guards: BR-CASH-027
+    // Оплата без каси й без наряду (job.branchId=null): філії немає ні з каси, ні з наряду.
+    // Зміну «будь-якої філії» не шукаємо й навмання не відкриваємо — чек чекає (throw → retry).
+    // Mutation-verify (review 2026-10-23): кликати findOpenShift/open без філії → кейс червоний.
+    it('оплата без каси й без наряду → зміну не шукає й не відкриває, чек чекає (retry)', async () => {
+      autoOpen();
+      paymentFindFirst.mockResolvedValueOnce({
+        fiscalReceiptId: null,
+        reversedAt: null,
+        cashRegister: null,
+      });
+      await expect(processor.process(makeJob({ branchId: null }))).rejects.toThrow(/зміни/);
+      expect(resolveActive).toHaveBeenCalledWith('org-1', null, 'FISCAL');
+      expect(findOpenShift).not.toHaveBeenCalled();
+      expect(open).not.toHaveBeenCalled();
+      expect(sellReceipt).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-CASH-027
+    it('AUTO_OPEN: відкрити зміну каси оплати не вдалось → throw для BullMQ retry, без sell', async () => {
+      autoOpen();
+      viaRegister();
+      findOpenShift.mockResolvedValueOnce(null);
+      open.mockRejectedValueOnce(new Error('ПРРО недоступний'));
+      await expect(processor.process(makeJob())).rejects.toThrow(/Авто-відкриття/);
+      expect(open).toHaveBeenCalledWith('org-1', 'br-1', undefined, 'reg-b');
+      expect(sellReceipt).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-CASH-027
     it('оплата через НЕфіскальну касу → за філією (у нефіскальної каси змін немає)', async () => {
       viaRegister({ isFiscal: false, branchId: 'br-cash' });
       await processor.process(makeJob());

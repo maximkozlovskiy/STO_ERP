@@ -410,10 +410,10 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | Аспект                                          | Тест                                                     | Кейсів |
 | ----------------------------------------------- | -------------------------------------------------------- | ------ |
 | сервісна логіка                                 | `cash-shift.service.spec.ts`                             | 31     |
-| зміна своя в кожної каси (BR-CASH-027)          | `cash-shift.per-register.spec.ts`                        | 8      |
+| зміна своя в кожної каси (BR-CASH-027)          | `cash-shift.per-register.spec.ts`                        | 9      |
 | HTTP-контракт стану зміни (BR-CASH-027)         | `cash-shift.current-route.contract.spec.ts`              | 3      |
 | HTTP-клієнт                                     | `checkbox.client.spec.ts`                                | 31     |
-| BullMQ-processor                                | `checkbox.processor.spec.ts`                             | 25     |
+| BullMQ-processor                                | `checkbox.processor.spec.ts`                             | 27     |
 | fiscal provider registry                        | `fiscal/fiscal-provider-registry.spec.ts`                | 16     |
 | провайдер                                       | `fiscal/vchasno.provider.spec.ts`                        | 29     |
 | payment gateway registry                        | `gateways/payment-gateway-registry.spec.ts`              | 12     |

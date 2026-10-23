@@ -272,6 +272,22 @@ describe('CashShiftService — зміна своя в кожної каси (BR-
     });
 
     // guards: BR-CASH-027
+    // Касу перевели в іншу філію, поки зміна відкрита (PATCH каси дозволяє `branchId`): зміна
+    // лишається зміною цієї каси. Фільтр за філією сховав би її від віджета й обробника, а `open()`
+    // бачить → «зміна вже відкрита», закрити нічим, чеки чекають вічно (review 2026-10-23).
+    // Mutation-verify: повернути `branchId` у where режиму каси → кейс червоний.
+    it('каса переведена в іншу філію при відкритій зміні → її зміну й далі видно', async () => {
+      db.tables.cashRegister.find(r => r.id === REG_A)!.branchId = BR2;
+      expect(await service.getCurrent(ORG, BR2, REG_A)).toMatchObject({ id: 'shift-a' });
+      expect(await service.findOpenShift(ORG, BR2, REG_A)).toEqual({
+        id: 'shift-a',
+        checkboxShiftId: 'cbx-a',
+      });
+      // Режим філії не змінився: нова філія без своїх змін — null.
+      expect(await service.findOpenShift(ORG, BR2)).toBeNull();
+    });
+
+    // guards: BR-CASH-027
     it('відкриття на касі B, коли відкрита A, — нова зміна саме B; після цього B бачить свою', async () => {
       const opened = await service.open(ORG, BR, 'user-1', REG_B);
       expect(opened).toMatchObject({ cashRegisterId: REG_B, status: 'OPEN' });

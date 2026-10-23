@@ -126,9 +126,11 @@ export default function CashOperationsTab({
   const curSymbol = selected?.currencySymbol ?? selected?.currencyCode ?? '';
   const isBaseCurrency = !baseCurrency || (selected?.currencyCode ?? baseCode) === baseCode;
 
+  // Зміна є лише у фіскальної каси (BR-CASH-027): для нефіскальної віджета немає — не питаємо.
+  const fiscalSelected = selected?.isFiscal ? selected : null;
   const { data: shift, isLoading: shiftLoading } = useCurrentShift(
-    selected?.branchId ?? null,
-    selected?.id ?? null,
+    fiscalSelected?.branchId ?? null,
+    fiscalSelected?.id ?? null,
   );
   const openShift = useOpenShift();
   const closeShift = useCloseShift();

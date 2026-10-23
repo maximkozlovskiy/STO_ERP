@@ -84,13 +84,7 @@ export class CashShiftService {
         throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
     }
     const shift = await this.prisma.cashShift.findFirst({
-      where: {
-        orgId,
-        branchId,
-        status: 'OPEN',
-        deletedAt: null,
-        ...(cashRegisterId ? { cashRegisterId } : {}),
-      },
+      where: { ...this.openShiftScope(orgId, branchId, cashRegisterId), status: 'OPEN' },
       orderBy: { openedAt: 'desc' },
       include: { cashRegister: { select: { name: true } } },
     });
@@ -314,16 +308,23 @@ export class CashShiftService {
    */
   async findOpenShift(orgId: string, branchId: string, cashRegisterId?: string) {
     return this.prisma.cashShift.findFirst({
-      where: {
-        orgId,
-        branchId,
-        status: 'OPEN',
-        deletedAt: null,
-        ...(cashRegisterId ? { cashRegisterId } : {}),
-      },
+      where: { ...this.openShiftScope(orgId, branchId, cashRegisterId), status: 'OPEN' },
       orderBy: { openedAt: 'desc' },
       select: { id: true, checkboxShiftId: true },
     });
+  }
+
+  /**
+   * Де шукати OPEN-зміну. З касою — лише за касою, БЕЗ філії: зміна належить касі (одна OPEN на
+   * касу — частковий унікальний індекс), а `CashShift.branchId` — філія на момент відкриття. Касу
+   * можна перевести в іншу філію при відкритій зміні; фільтр за філією тоді ховав би цю зміну від
+   * віджета й обробника чеків, а `open()` і касова операція (`cash.service`) її бачать → «зміна вже
+   * відкрита», закрити нічим, чеки чекають вічно. Без каси — будь-яка зміна філії, як раніше.
+   */
+  private openShiftScope(orgId: string, branchId: string, cashRegisterId?: string) {
+    return cashRegisterId
+      ? { orgId, cashRegisterId, deletedAt: null }
+      : { orgId, branchId, deletedAt: null };
   }
 
   /** Re-sign-in примусово (для processor при 401). */

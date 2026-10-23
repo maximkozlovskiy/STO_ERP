@@ -37,7 +37,12 @@ const fiscalRegister = (id: string, name: string) => ({
   initialBalance: 0,
   balance: 0,
 });
-const REGISTERS = [fiscalRegister('reg-1', 'Каса №1'), fiscalRegister('reg-2', 'Каса №2')];
+// Третя — нефіскальна: зміни в неї немає, віджета теж, і стан зміни для неї не питається.
+const REGISTERS = [
+  fiscalRegister('reg-1', 'Каса №1'),
+  fiscalRegister('reg-2', 'Каса №2'),
+  { ...fiscalRegister('reg-3', 'Каса без ПРРО'), isFiscal: false },
+];
 vi.mock('@/hooks/api/useCash', () => ({
   useCashRegisters: () => ({ data: REGISTERS, isLoading: false }),
   useCashOperations: () => ({ data: [], isLoading: false }),
@@ -178,6 +183,22 @@ describe('CashOperationsTab — ПРРО зміна (фіскальна каса
     await waitFor(() =>
       expect(openMutateAsync).toHaveBeenCalledWith({ branchId: 'br-1', cashRegisterId: 'reg-2' }),
     );
+  });
+
+  // guards: BR-CASH-027
+  // Mutation-verify (review 2026-10-23): питати зміну й для нефіскальної каси → кейс червоний.
+  it('нефіскальна каса → стан зміни не питається, віджета зміни немає', async () => {
+    useCurrentShiftMock.mockReturnValue({ data: null, isLoading: false });
+    const user = userEvent.setup();
+    render(<CashOperationsTab />);
+    await screen.findByText(/Зміну закрито/);
+    const registerSelect = screen
+      .getAllByRole('combobox')
+      .find(el => el.querySelector('option[value="reg-3"]'))!;
+    await user.selectOptions(registerSelect, 'reg-3');
+    expect(useCurrentShiftMock).toHaveBeenLastCalledWith(null, null);
+    expect(screen.queryByText(/Зміну закрито/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Відкрити зміну/ })).not.toBeInTheDocument();
   });
 
   it('клік «Закрити зміну» → useCloseShift.mutateAsync(shift.id)', async () => {
