@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { useRequireAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { PAGE_TAB_ACTIVE, PAGE_TAB_CLASS, PAGE_TAB_IDLE } from '@/lib/page-tabs';
+import { TabDivider } from '@/components/ui/tab-divider';
 import type { BankTxDirection } from '@/hooks/api/useBankStatements';
 
 const BankTransactionsTab = dynamic(() => import('./BankTransactionsTab'), { ssr: false });
@@ -58,11 +59,14 @@ function BankStatementsPageShell() {
             </button>
           );
         })}
+        {/* Довідник рахунків — останньою вкладкою за роздільником, як на «Купівлі» й «Каталозі»
+            (рішення власника 2026-10-23; раніше стояв праворуч на краю рядка). */}
+        <TabDivider />
         <button
           type="button"
           onClick={() => go('tab=accounts')}
           aria-current={showAccounts ? 'page' : undefined}
-          className={cn(PAGE_TAB_CLASS, 'ml-auto', showAccounts ? PAGE_TAB_ACTIVE : PAGE_TAB_IDLE)}
+          className={cn(PAGE_TAB_CLASS, showAccounts ? PAGE_TAB_ACTIVE : PAGE_TAB_IDLE)}
         >
           {t('page.tabs.accounts')}
         </button>

@@ -1,7 +1,8 @@
 // Regression-guard для рядка вкладок сторінки /bank-statements.
 //
 // Рішення власника 2026-10-08: вкладки — як на «Купівлі» і «Складі». Зліва розрізи списку
-// платежів за напрямком («Всі» / «Вхідні» / «Вихідні»), праворуч — «Банк. рахунки». Окремої
+// платежів за напрямком («Всі» / «Вхідні» / «Вихідні»), «Банк. рахунки» — остання (з 2026-10-23 одразу
+// за роздільником, а не на правому краю рядка). Окремої
 // вкладки «Список платежів» більше немає.
 //
 // Load-bearing поведінка:
@@ -46,7 +47,7 @@ describe('BankStatementsPage — рядок вкладок', () => {
     search = {};
   });
 
-  it('вкладки: «Всі», «Вхідні», «Вихідні» і остання праворуч — «Банк. рахунки»; «Список платежів» немає', async () => {
+  it('вкладки: «Всі», «Вхідні», «Вихідні», роздільник і остання — «Банк. рахунки»; «Список платежів» немає', async () => {
     render(<BankStatementsPage />);
     const all = await screen.findByRole('button', { name: 'Всі' });
     const accounts = screen.getByRole('button', { name: 'Банк. рахунки' });
@@ -54,6 +55,9 @@ describe('BankStatementsPage — рядок вкладок', () => {
     expect(screen.getByRole('button', { name: 'Вихідні' })).toBeInTheDocument();
     expect(accounts.parentElement).toBe(all.parentElement);
     expect(accounts.parentElement?.lastElementChild).toBe(accounts);
+    // Рішення власника 2026-10-23: роздільник одразу перед «Банк. рахунки», без зсуву праворуч.
+    expect(accounts.previousElementSibling).toBe(screen.getByTestId('tabs-divider'));
+    expect(accounts.className).not.toMatch(/ml-auto/);
     expect(screen.queryByRole('button', { name: 'Список платежів' })).not.toBeInTheDocument();
   });
 
