@@ -1,0 +1,23 @@
+diff --git a/dist/main.mjs b/dist/main.mjs
+index 772f544440a7e283cdc6feb25363158b34477327..8e2153555fb7065e3134389ea72def2198041e92 100644
+--- a/dist/main.mjs
++++ b/dist/main.mjs
+@@ -1,3 +1,4 @@
++import { StringDecoder } from "node:string_decoder";
+ import { spawn, spawnSync } from "node:child_process";
+ import { cwd } from "node:process";
+ import { basename, delimiter, dirname, normalize, resolve } from "node:path";
+@@ -218,7 +219,12 @@ function combineSignals(signals) {
+ async function readStream(stream) {
+ 	let output = "";
+ 	try {
+-		for await (const chunk of stream) output += chunk.toString();
++		// STO ERP patch: decode the whole stream, not each chunk — a multibyte UTF-8 character
++		// split across chunks became U+FFFD, and lint-staged then staged unrelated files
++		// (docs/GOTCHAS.md 2026-10-23). Upstream: tinylibs/tinyexec readStream.
++		const decoder = new StringDecoder("utf8");
++		for await (const chunk of stream) output += typeof chunk === "string" ? chunk : decoder.write(chunk);
++		output += decoder.end();
+ 	} catch {}
+ 	return output;
+ }

@@ -93,3 +93,5 @@ minimumReleaseAgeExclude:
   # «відома вразливість у дереві»; перше менш ризиковане, бо пакет у прод-образ не
   # потрапляє (ланцюжок @nestjs/cli > @swc/cli).
   - http-cache-semantics@4.3.0
+patchedDependencies:
+  tinyexec@1.3.1: patches/tinyexec@1.3.1.patch

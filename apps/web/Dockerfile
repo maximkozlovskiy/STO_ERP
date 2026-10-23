@@ -4,6 +4,8 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+# Латки залежностей (pnpm patchedDependencies) — install без них падає.
+COPY patches ./patches
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
 COPY packages/ui/package.json packages/ui/
