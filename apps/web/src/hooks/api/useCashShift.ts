@@ -15,24 +15,38 @@ export interface CashShift {
 
 export const cashShiftKeys = {
   all: ['cash-shifts'] as const,
-  current: (branchId: string) => [...cashShiftKeys.all, 'current', branchId] as const,
+  current: (branchId: string, cashRegisterId: string) =>
+    [...cashShiftKeys.all, 'current', branchId, cashRegisterId] as const,
 };
 
-/** Поточна відкрита зміна філії (null якщо закрита). */
-export function useCurrentShift(branchId: string | null) {
+/**
+ * Поточна відкрита зміна КАСИ (null якщо закрита). Зміна своя в кожної фіскальної каси
+ * (BR-CASH-027): без id каси сервер віддав би зміну будь-якої каси філії.
+ */
+export function useCurrentShift(branchId: string | null, cashRegisterId: string | null) {
   return useQuery({
-    queryKey: branchId ? cashShiftKeys.current(branchId) : [...cashShiftKeys.all, 'current', null],
-    queryFn: () => apiFetch<CashShift | null>(`/cash-shifts/current?branchId=${branchId}`),
-    enabled: !!branchId,
+    queryKey:
+      branchId && cashRegisterId
+        ? cashShiftKeys.current(branchId, cashRegisterId)
+        : [...cashShiftKeys.all, 'current', null],
+    queryFn: () =>
+      apiFetch<CashShift | null>(
+        `/cash-shifts/current?branchId=${branchId}&cashRegisterId=${cashRegisterId}`,
+      ),
+    enabled: !!branchId && !!cashRegisterId,
     staleTime: 15_000,
   });
 }
 
+/** Відкрити зміну саме на цій касі (без id каси сервер відкрив би найстарішу касу філії). */
 export function useOpenShift() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (branchId: string) =>
-      apiFetch<CashShift>(`/cash-shifts/open?branchId=${branchId}`, { method: 'POST' }),
+    mutationFn: ({ branchId, cashRegisterId }: { branchId: string; cashRegisterId: string }) =>
+      apiFetch<CashShift>(
+        `/cash-shifts/open?branchId=${branchId}&cashRegisterId=${cashRegisterId}`,
+        { method: 'POST' },
+      ),
     onSuccess: () => void qc.invalidateQueries({ queryKey: cashShiftKeys.all }),
   });
 }

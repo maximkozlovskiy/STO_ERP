@@ -126,7 +126,10 @@ export default function CashOperationsTab({
   const curSymbol = selected?.currencySymbol ?? selected?.currencyCode ?? '';
   const isBaseCurrency = !baseCurrency || (selected?.currencyCode ?? baseCode) === baseCode;
 
-  const { data: shift, isLoading: shiftLoading } = useCurrentShift(selected?.branchId ?? null);
+  const { data: shift, isLoading: shiftLoading } = useCurrentShift(
+    selected?.branchId ?? null,
+    selected?.id ?? null,
+  );
   const openShift = useOpenShift();
   const closeShift = useCloseShift();
   // Період за замовчуванням — сьогодні (київський день): касир дивиться поточну зміну, а не
@@ -211,7 +214,7 @@ export default function CashOperationsTab({
   const onOpenShift = async () => {
     if (!selected) return;
     try {
-      await openShift.mutateAsync(selected.branchId);
+      await openShift.mutateAsync({ branchId: selected.branchId, cashRegisterId: selected.id });
       toast.success(t('operations.shiftOpened'));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('operations.openShiftError'));
