@@ -11,7 +11,6 @@ import {
   Query,
   Request,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiConsumes, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
@@ -24,7 +23,7 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { getLocale } from '../../common/tenant/tenant-context';
-import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
+import { RequireIdempotencyKey } from '../../common/interceptors/idempotency.interceptor';
 import { BankReconciliationService } from './bank-reconciliation.service';
 import {
   BankStatementParserService,
@@ -128,7 +127,9 @@ export class BankStatementsController {
 
   @Post('transactions')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @UseInterceptors(IdempotencyInterceptor) // повтор запиту з тим самим ключем не створює другий платіж
+  // Ключ обов'язковий (рішення власника 2026-10-23, як каса й оплати): повтор без ключа дав би
+  // другий платіж; з тим самим ключем — повертає перший.
+  @RequireIdempotencyKey()
   @ApiOperation({ summary: 'Внести банківський платіж вручну (вхідний або вихідний)' })
   @ApiOkResponse({ type: BankTransactionResponseDto })
   async createManual(

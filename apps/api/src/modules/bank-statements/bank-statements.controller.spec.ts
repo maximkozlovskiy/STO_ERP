@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
-import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
+import { RequiredIdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { BankStatementsController } from './bank-statements.controller';
 
 // Доступ до банківських платежів (BR-BANK-015, BR-BANK-038). RolesGuard читає metadata 'roles' з методу,
@@ -52,15 +52,15 @@ describe('BankStatementsController — доступ', () => {
     expect(routed.sort()).toEqual([...ROUTES].sort());
   });
 
-  // Повторний запит із тим самим Idempotency-Key не має створити другий платіж: це тримає
-  // IdempotencyInterceptor на маршруті, а не сервіс.
+  // Повторний запит із тим самим Idempotency-Key не має створити другий платіж, а запит без ключа —
+  // 400 (рішення власника 2026-10-23): це тримає RequiredIdempotencyInterceptor на маршруті.
   // guards: BR-BANK-023
-  it('createManual закритий IdempotencyInterceptor — повтор із тим самим ключем не створює другий рядок', () => {
+  it('createManual закритий RequiredIdempotencyInterceptor — без ключа 400, повтор не створює другий рядок', () => {
     const interceptors = Reflect.getMetadata(
       '__interceptors__',
       BankStatementsController.prototype.createManual,
     ) as unknown[] | undefined;
-    expect(interceptors).toContain(IdempotencyInterceptor);
+    expect(interceptors).toContain(RequiredIdempotencyInterceptor);
   });
 
   // HTTP-методи й шляхи нових маршрутів — як у таблиці «API Endpoints» дос'є.
