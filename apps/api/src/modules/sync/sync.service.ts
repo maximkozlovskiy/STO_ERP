@@ -136,6 +136,10 @@ const PUSH_FIELD_WHITELIST: Record<string, Set<string>> = {
   calendar_slots: new Set(['liftId', 'employeeId', 'workOrderId', 'startAt', 'endAt', 'notes']),
 };
 
+/** Запис авто з sync push несе гараж (створення чи перенесення) — пишеться під блокуванням гаража. */
+const hasGarage = (payload: Record<string, unknown>): boolean =>
+  typeof payload.customerGarageId === 'string' && payload.customerGarageId !== '';
+
 @Injectable()
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
@@ -376,6 +380,14 @@ export class SyncService {
         }
         return;
       }
+      if (rec.table === 'vehicles' && hasGarage(safePayload)) {
+        await this.writeVehicleInGarage(orgId, safePayload, tx =>
+          tx.vehicle.create({
+            data: { ...safePayload, id: rec.id, orgId } as Prisma.VehicleUncheckedCreateInput,
+          }),
+        );
+        return;
+      }
       await model.create({ data: { ...safePayload, id: rec.id, orgId } });
       return;
     }
@@ -412,6 +424,15 @@ export class SyncService {
         mileageToWrite !== undefined
           ? { ...safePayload, currentMileage: mileageToWrite }
           : safePayload;
+      if (rec.table === 'vehicles' && hasGarage(safePayload)) {
+        await this.writeVehicleInGarage(orgId, safePayload, tx =>
+          tx.vehicle.update({
+            where: { id: rec.id, orgId },
+            data,
+          }),
+        );
+        return;
+      }
       await model.update({ where: { id: rec.id, orgId }, data });
     } else if (mileageToWrite !== undefined) {
       // LWW програв, АЛЕ пробіг більший за поточний → пишемо лише mileage (монотонність).
@@ -462,6 +483,30 @@ export class SyncService {
       select: { currentMileage: true },
     });
     return Number(v?.currentMileage ?? 0);
+  }
+
+  /**
+   * BR-CP-015 (Bug #950): авто з планшета лягає в гараж під блокуванням рядка гаража (FOR SHARE) в
+   * одній транзакції із записом — як `VehiclesService.create`. Інакше одночасне видалення гаража
+   * (`CounterpartiesService.removeGarage`, FOR UPDATE) проходило між перевіркою FK і записом, і авто
+   * лишалось живим у видаленому гаражі.
+   */
+  private async writeVehicleInGarage(
+    orgId: string,
+    payload: Record<string, unknown>,
+    write: (tx: Prisma.TransactionClient) => Promise<unknown>,
+  ): Promise<void> {
+    const garageId = payload.customerGarageId as string;
+    await this.prisma.$transaction(async tx => {
+      const garage = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM customer_garages
+        WHERE id = ${garageId}::uuid AND "orgId" = ${orgId}::uuid AND "deletedAt" IS NULL
+        FOR SHARE
+      `;
+      if (garage.length === 0)
+        throw new Error(`Поле customerGarageId=${garageId} не знайдено в межах організації`);
+      await write(tx);
+    });
   }
 
   // FK fields that must belong to the same org, keyed by table name

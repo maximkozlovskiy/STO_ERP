@@ -143,6 +143,7 @@ export class VehiclesService {
       where: { id, orgId },
       select: {
         deletedAt: true,
+        customerGarageId: true,
         customerGarage: {
           select: {
             deletedAt: true,
@@ -170,9 +171,25 @@ export class VehiclesService {
     // Atomic updateMany з `NOT: { deletedAt: null }` — один statement стверджує
     // (id, orgId, currently-deleted), усуває race-вікно між findFirst + update
     // (еталон brands.service.restore).
-    const result = await this.prisma.vehicle.updateMany({
-      where: { id, orgId, NOT: { deletedAt: null } },
-      data: { deletedAt: null },
+    // BR-CP-015 (Bug #949): відновлення — теж шлях, яким авто з'являється в гаражі. Гараж блокується
+    // (FOR SHARE, як у `create`) у транзакції з відновленням: одночасне `removeGarage` (FOR UPDATE)
+    // або чекає й лічильником бачить відновлене авто (400), або встигає першим — тоді тут 400.
+    // Без блокування перевірка вище читала живий гараж, а він видалявся до запису (25/25 наживо).
+    const result = await this.prisma.$transaction(async tx => {
+      const garage = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM customer_garages
+        WHERE id = ${existing.customerGarageId}::uuid AND "orgId" = ${orgId}::uuid
+          AND "deletedAt" IS NULL
+        FOR SHARE
+      `;
+      if (garage.length === 0)
+        throw new BadRequestException(
+          translateError('err.vehicle.garageDeletedRestoreFirst', getLocale()),
+        );
+      return tx.vehicle.updateMany({
+        where: { id, orgId, NOT: { deletedAt: null } },
+        data: { deletedAt: null },
+      });
     });
     if (result.count === 0)
       throw new NotFoundException(translateError('err.vehicle.deletedNotFound', getLocale()));

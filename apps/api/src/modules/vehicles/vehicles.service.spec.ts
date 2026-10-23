@@ -157,6 +157,7 @@ describe('VehiclesService', () => {
       }> = {},
     ) => ({
       deletedAt: 'deletedAt' in overrides ? overrides.deletedAt : new Date('2026-01-01T00:00:00Z'),
+      customerGarageId: 'g-1',
       customerGarage: {
         deletedAt: 'garageDeleted' in overrides ? overrides.garageDeleted : null,
         counterparty: {
@@ -277,6 +278,36 @@ describe('VehiclesService', () => {
         service.create('org-1', { customerGarageId: 'g-1' } as never),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.vehicle.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // BR-CP-015 (Bug #949): відновлення — теж шлях, яким авто з'являється в гаражі.
+  describe('restore — гараж блокується до відновлення авто', () => {
+    const deletedVehicle = {
+      deletedAt: new Date('2026-01-01T00:00:00Z'),
+      customerGarageId: 'g-1',
+      customerGarage: { deletedAt: null, counterparty: { deletedAt: null } },
+    };
+
+    it('рядок гаража авто читається FOR SHARE у транзакції, що відновлює авто', async () => {
+      prisma.vehicle.findFirst.mockResolvedValueOnce(deletedVehicle);
+      prisma.vehicle.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.vehicle.findFirstOrThrow.mockResolvedValueOnce(rawVehicle({ deletedAt: null }));
+      await service.restore('org-1', 'veh-1');
+      const call = prisma.$queryRaw.mock.calls[0]!;
+      const sql = (call[0] as TemplateStringsArray).join('?');
+      expect(sql).toMatch(/FROM customer_garages/);
+      expect(sql).toMatch(/"deletedAt" IS NULL/);
+      expect(sql).toMatch(/FOR SHARE/);
+      expect(call.slice(1)).toEqual(['g-1', 'org-1']);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('гараж видалили між перевіркою і записом (блокування без рядка) → 400, авто не відновлюється', async () => {
+      prisma.vehicle.findFirst.mockResolvedValueOnce(deletedVehicle);
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+      await expect(service.restore('org-1', 'veh-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.vehicle.updateMany).not.toHaveBeenCalled();
     });
   });
 });

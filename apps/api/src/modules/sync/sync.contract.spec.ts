@@ -53,6 +53,9 @@ const prismaMock = {
     findFirst: vi.fn().mockResolvedValue(null),
     create: vi.fn(),
   },
+  // BR-CP-015 (Bug #950): авто з гаражем пишеться під блокуванням рядка гаража в транзакції.
+  $queryRaw: vi.fn().mockResolvedValue([{ id: 'garage' }]),
+  $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(prismaMock)),
 };
 
 const mockJwtGuard = {
@@ -373,6 +376,66 @@ describe('Sync — HTTP Contract', () => {
           data: expect.objectContaining({ deletedAt: expect.any(Date) }),
         }),
       );
+    });
+
+    // guards: BR-CP-015
+    it('Bug #950: нове авто з гаражем — гараж блокується FOR SHARE у транзакції зі вставкою', async () => {
+      const VID = '770e8400-e29b-41d4-a716-446655440555';
+      const GID = '660e8400-e29b-41d4-a716-446655440555';
+      prismaMock.customerGarage.findFirst.mockResolvedValueOnce({ id: GID }); // FK-перевірка
+      const res = await app.inject({
+        method: 'POST',
+        url: '/sync/push',
+        payload: {
+          records: [
+            {
+              table: 'vehicles',
+              id: VID,
+              operation: 'INSERT',
+              syncVersion: 1,
+              payload: { customerGarageId: GID, make: 'Toyota', model: 'E2E' },
+            },
+          ],
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      expect((res.json() as { accepted: number }).accepted).toBe(1);
+      const call = prismaMock.$queryRaw.mock.calls[0]!;
+      const sql = (call[0] as TemplateStringsArray).join('?');
+      expect(sql).toMatch(/FROM customer_garages/);
+      expect(sql).toMatch(/"deletedAt" IS NULL/);
+      expect(sql).toMatch(/FOR SHARE/);
+      expect(call[1]).toBe(GID);
+      expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+      expect(prismaMock.vehicle.create).toHaveBeenCalledTimes(1);
+    });
+
+    // guards: BR-CP-015
+    it('Bug #950: гараж видалили після FK-перевірки (блокування без рядка) → конфлікт, авто не створюється', async () => {
+      const VID = '770e8400-e29b-41d4-a716-446655440666';
+      const GID = '660e8400-e29b-41d4-a716-446655440666';
+      prismaMock.customerGarage.findFirst.mockResolvedValueOnce({ id: GID });
+      prismaMock.$queryRaw.mockResolvedValueOnce([]);
+      const res = await app.inject({
+        method: 'POST',
+        url: '/sync/push',
+        payload: {
+          records: [
+            {
+              table: 'vehicles',
+              id: VID,
+              operation: 'INSERT',
+              syncVersion: 1,
+              payload: { customerGarageId: GID, make: 'Toyota', model: 'E2E' },
+            },
+          ],
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      const body = res.json() as { accepted: number; conflicts: number };
+      expect(body.accepted).toBe(0);
+      expect(body.conflicts).toBe(1);
+      expect(prismaMock.vehicle.create).not.toHaveBeenCalled();
     });
 
     // A4.2: Vehicle mileage — монотонний max-wins (не LWW).

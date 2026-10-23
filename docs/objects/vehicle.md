@@ -87,11 +87,11 @@ cd apps/api && npx vitest run src/modules/vehicles/<файл>.spec.ts
 
 **Маршрути UI:** `/vehicles`, `/counterparties`
 
-| Аспект                                                                                     | Тест                               | Кейсів |
-| ------------------------------------------------------------------------------------------ | ---------------------------------- | ------ |
-| сервіс: список, VIN, soft delete, відновлення, блокування гаража при створенні (BR-CP-015) | `vehicles.service.spec.ts`         | 19     |
-| історія пробігу (BR-VEH-001…005)                                                           | `vehicles.mileage-history.spec.ts` | 25     |
-| HTTP-контракт `GET /:id/mileage`: ролі, UUID                                               | `vehicles.contract.spec.ts`        | 15     |
+| Аспект                                                                                                   | Тест                               | Кейсів |
+| -------------------------------------------------------------------------------------------------------- | ---------------------------------- | ------ |
+| сервіс: список, VIN, soft delete, відновлення, блокування гаража при створенні й відновленні (BR-CP-015) | `vehicles.service.spec.ts`         | 21     |
+| історія пробігу (BR-VEH-001…005)                                                                         | `vehicles.mileage-history.spec.ts` | 25     |
+| HTTP-контракт `GET /:id/mileage`: ролі, UUID                                                             | `vehicles.contract.spec.ts`        | 15     |
 
 Разом: **59** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
