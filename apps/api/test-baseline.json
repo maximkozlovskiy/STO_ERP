@@ -1299,7 +1299,7 @@
   ],
   "apps/api/src/modules/bank-statements/bank-statements.controller.spec.ts": [
    "BankStatementsController — доступ apply — рівно OWNER / ADMIN / ACCOUNTANT",
-   "BankStatementsController — доступ createManual закритий IdempotencyInterceptor — повтор із тим самим ключем не створює другий рядок",
+   "BankStatementsController — доступ createManual закритий RequiredIdempotencyInterceptor — без ключа 400, повтор не створює другий рядок",
    "BankStatementsController — доступ createManual — HTTP-метод і шлях із дос’є",
    "BankStatementsController — доступ createManual — рівно OWNER / ADMIN / ACCOUNTANT",
    "BankStatementsController — доступ ignore — рівно OWNER / ADMIN / ACCOUNTANT",
