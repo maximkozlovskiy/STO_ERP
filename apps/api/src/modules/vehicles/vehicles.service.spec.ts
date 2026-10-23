@@ -20,6 +20,9 @@ describe('VehiclesService', () => {
     customerGarage: PrismaModelMock;
     vehicleNode: PrismaModelMock;
     workOrder: PrismaModelMock;
+    // BR-CP-015: create / restore блокують рядок гаража в транзакції.
+    $queryRaw: ReturnType<typeof vi.fn>;
+    $transaction: ReturnType<typeof vi.fn>;
   };
 
   const rawVehicle = (overrides: Record<string, unknown> = {}) => ({
