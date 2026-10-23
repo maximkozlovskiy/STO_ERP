@@ -245,6 +245,15 @@ BR-INV-018), рахунок без наряду — PAID/PARTIALLY_PAID → PART
   `err.query.nulCharacter` від глобальної труби `RejectNulCharacterPipe` (`globalPipes()` у
   `main.ts`), а не 500 від Postgres.
 
+- **BR-PAY-026**: **Секрети провайдерів шифруються на всіх шляхах запису Prisma** (2026-10-24).
+  Розширення `withFieldEncryption` (`prisma.service.ts`) шифрує поля `ENCRYPTED_FIELDS` у `create`,
+  `createMany`, `createManyAndReturn`, `update`, `updateMany`, `updateManyAndReturn`, `upsert` — і
+  рядком, і обгорткою `{ set: … }`, — а також у вкладених записах через зв'язки будь-якої моделі
+  (`create`, `createMany`, `connectOrCreate`, `update`, `updateMany`, `upsert`; зв'язки — з DMMF),
+  напр. `garageBranch.update({ data: { branchSettings: { update: { smsApiKey } } } })`. До
+  2026-10-24 (проба 2026-10-08) повз шифрування йшли `{ set }`, `*AndReturn` і вкладений запис.
+  Поза розширенням лишається сирий SQL (`$executeRaw`) — секрети ним не пишуться.
+
 ### Side-effects після `create` (усі поза транзакцією, best-effort)
 
 Перехід наряду в «Оплачено» серед них більше немає: він у транзакції оплати (BR-PAY-005); після
@@ -439,7 +448,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | політика повторів черг                                | `payments.queue-retry-policy.spec.ts`                    | 6      |
 | сервісна логіка                                       | `provider-config.service.spec.ts`                        | 35     |
 | upsert провайдера без `enabled` (лише activate)       | `provider-upsert-dto.contract.spec.ts`                   | 12     |
-| шифрування at-rest                                    | `../../prisma/field-encryption.extension.spec.ts`        | 23     |
+| шифрування at-rest, усі шляхи запису (BR-PAY-026)     | `../../prisma/field-encryption.extension.spec.ts`        | 29     |
 | шифрування (сервіс)                                   | `../../common/crypto/encryption.service.spec.ts`         | 11     |
 | готівка — через касу, безготівкова — з рахунком       | `payments.cash-register-required.spec.ts`                | 14     |
 | куди надходять кошти                                  | `../payment-methods/payment-methods.destination.spec.ts` | 24     |
@@ -463,11 +472,8 @@ HTTP-контракт є в маршруту сторно `POST /payments/:id/re
 Виключення `branch_provider_configs` з `PULL_TABLES` (друга половина правила про креденшели
 провайдерів) unit-тестом не стережеться: список живе в `sync/`, там тестів на цю модель немає.
 
-Шифрування at-rest стережеться лише для операцій, які розширення знає: `create`, `createMany`,
-`update`, `updateMany`, `upsert` верхнього рівня. Перевірено пробою 2026-10-08 — повз шифрування
-йдуть `createManyAndReturn`, `updateManyAndReturn`, обгортка `{ set: … }`, вкладений запис через
-батьківську модель (`garageBranch.update({ data: { branchSettings: { update } } })`) і сирий SQL.
-Продукт-код цими шляхами секрети зараз не пише, але й тесту, що заборонив би, немає.
+Шифрування at-rest: поза розширенням лишається лише сирий SQL (`$executeRaw`) — продукт-код секрети
+ним не пише, тесту, що заборонив би, немає.
 Integration-спек `field-encryption.integration.spec.ts` ганяє round-trip на живій БД, проте на
 власній копії розширення — зміну продуктового `ENCRYPTED_FIELDS` він не помічає.
 
