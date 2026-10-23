@@ -616,4 +616,47 @@ describe('FollowUpProcessor.handleSendReminders', () => {
       }),
     );
   });
+
+  // ── BR-MAINT-007: якір «сьогодні» — 09:00 за Києвом (DST-aware), а не 09:00 UTC ──
+  // Раніше `setUTCHours(9)`: 11:00 взимку і 12:00 влітку за Києвом, а повтор задачі після київської
+  // півночі (ще вчорашня UTC-дата) брав учорашній день. Мутація: повернути
+  // `today = new Date(); today.setUTCHours(9, 0, 0, 0)` → обидва кейси червоніють.
+  describe('якір вікна — 09:00 за Києвом у київський день запуску (BR-MAINT-007)', () => {
+    const runAt = async (iso: string, followUpDays = 90, forecast = 14) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(iso));
+      try {
+        prisma.organisationSettings.findFirst.mockResolvedValue({
+          followUpActive: true,
+          followUpDays,
+          maintenanceForecastDays: forecast,
+        });
+        prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
+        prisma.maintenanceSchedule.findMany.mockResolvedValue([]);
+        prisma.vehicle.findMany.mockResolvedValue([]);
+        await processor.process(makeJob());
+      } finally {
+        vi.useRealTimers();
+      }
+      const m = prisma.maintenanceSchedule.findMany.mock.calls[0][0].where.nextMaintenanceDate;
+      const v = prisma.vehicle.findMany.mock.calls[0][0].where.workOrders.some.completedAt;
+      return { gte: m.gte as Date, lte: m.lte as Date, cutoff: v.lt as Date };
+    };
+
+    // guards: BR-MAINT-007
+    it('зима (+02:00): запуск о 00:30 Києва 16.01 (ще 15.01 за UTC) → 16.01 09:00 Києва = 07:00 UTC', async () => {
+      const w = await runAt('2026-01-15T22:30:00.000Z');
+      expect(w.gte.toISOString()).toBe('2026-01-16T07:00:00.000Z');
+      expect(w.lte.toISOString()).toBe('2026-01-30T07:00:00.000Z');
+      expect(w.cutoff.toISOString()).toBe('2025-10-18T07:00:00.000Z');
+    });
+
+    // guards: BR-MAINT-007
+    it('літо (+03:00): CRON о 09:00 Києва 16.07 → якір 06:00 UTC, а не 09:00 UTC', async () => {
+      const w = await runAt('2026-07-16T06:00:05.000Z', 30, 7);
+      expect(w.gte.toISOString()).toBe('2026-07-16T06:00:00.000Z');
+      expect(w.lte.toISOString()).toBe('2026-07-23T06:00:00.000Z');
+      expect(w.cutoff.toISOString()).toBe('2026-06-16T06:00:00.000Z');
+    });
+  });
 });

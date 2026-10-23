@@ -46,8 +46,10 @@ export class NbuFetchScheduler implements OnModuleInit {
       { orgId },
       {
         repeat: { pattern: `0 ${hour} * * *`, tz: 'Europe/Kyiv' },
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 300_000 },
+        // CLAUDE.md «зовнішні API — attempts ≥ 10, backoff exponential»: 1, 2, 4 … 256 хв —
+        // повтори ~8,5 год, у межах доби (раніше 5 спроб, TECH-DEBT §8).
+        attempts: 10,
+        backoff: { type: 'exponential', delay: 60_000 },
         jobId: `nbu-fetch-${orgId}`,
         removeOnComplete: true,
         // F1: repeatable — cap failed-set (інакше росте безмежно у Redis).
@@ -68,8 +70,10 @@ export class NbuFetchScheduler implements OnModuleInit {
       { orgId },
       {
         repeat: { pattern: `0 ${newHour} * * *`, tz: 'Europe/Kyiv' },
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 300_000 },
+        // CLAUDE.md «зовнішні API — attempts ≥ 10, backoff exponential»: 1, 2, 4 … 256 хв —
+        // повтори ~8,5 год, у межах доби (раніше 5 спроб, TECH-DEBT §8).
+        attempts: 10,
+        backoff: { type: 'exponential', delay: 60_000 },
         jobId: `nbu-fetch-${orgId}`,
         removeOnComplete: true,
         // F1: repeatable — cap failed-set.
@@ -84,8 +88,9 @@ export class NbuFetchScheduler implements OnModuleInit {
       'fetch-rates',
       { orgId },
       {
-        attempts: 3,
-        backoff: { type: 'fixed', delay: 5_000 },
+        // attempts ≥ 10 + exponential (CLAUDE.md): 5 с … ~21 хв, повтори ~43 хв (раніше 3 × fixed).
+        attempts: 10,
+        backoff: { type: 'exponential', delay: 5_000 },
         // jobId-дедуп: спам кнопки «оновити зараз» не ставить дублі паралельних fetch-ів.
         // Окремий від repeatable (`nbu-fetch-<org>`), щоб не конфліктувати з cron-записом.
         jobId: `nbu-fetch-now-${orgId}`,

@@ -3,6 +3,7 @@ import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runWithTenant } from '../../common/tenant/tenant-context';
+import { kyivOffsetMs, kyivYmd } from '../../common/utils/kyiv-date';
 import { NotificationsService, NotificationConfig } from './notifications.service';
 import { DeadLetterWorkerHost } from '../../modules/dead-letter/dead-letter-worker-host';
 import { DeadLetterService } from '../../modules/dead-letter/dead-letter.service';
@@ -26,6 +27,19 @@ const MAINTENANCE_FORECAST_DEFAULT_DAYS = 14;
 // per call. Used in hot loop через `for (const schedule of upcomingMaintenance)` × N schedules
 // × щоденний tick → hoist to module-level (sto-optimize: Intl.DateTimeFormat у hot-path).
 const UA_DATE_FMT = new Intl.DateTimeFormat('uk-UA');
+
+/** Година розсилки нагадувань за Києвом — та сама, що в CRON `followup.scheduler` (`0 9 * * *`). */
+const FOLLOWUP_KYIV_HOUR = 9;
+
+/**
+ * 09:00 за Києвом у київський календарний день миті `now`, як мить UTC. DST-aware через
+ * `kyivOffsetMs` (+02:00 взимку, +03:00 влітку) — ніколи не фіксований зсув.
+ */
+export function kyivFollowUpAnchor(now: Date): Date {
+  const hh = String(FOLLOWUP_KYIV_HOUR).padStart(2, '0');
+  const wall = new Date(`${kyivYmd(now)}T${hh}:00:00.000Z`);
+  return new Date(wall.getTime() - kyivOffsetMs(wall));
+}
 
 // concurrency: 1 — followup is a scheduled daily batch per org; a single run fans-out
 // all SMS via Promise.allSettled internally. Parallel org runs would contend on the SMS
@@ -62,18 +76,18 @@ export class FollowUpProcessor extends DeadLetterWorkerHost {
       if (!settings?.followUpActive) return;
       if (!fallbackBranch) return;
 
-      // DST-safe Kyiv "today" anchor. Set UTC 09:00 (= 11:00/12:00 Kyiv depending on DST)
-      // so setDate(±N) operates well away from the local-midnight boundary.
-      const today = new Date();
-      today.setUTCHours(9, 0, 0, 0);
+      // Якір «сьогодні» — 09:00 за Києвом у київський день запуску (час розсилки, CRON о 09:00
+      // Europe/Kyiv). Раніше `setUTCHours(9)` давав 11:00 взимку і 12:00 влітку, а повтор задачі
+      // після київської півночі (до 02:00/03:00 UTC) брав ще вчорашню UTC-дату.
+      const today = kyivFollowUpAnchor(new Date());
 
       // T13: горизонт прогнозу ТО з налаштувань (було hardcoded 14). Різні СТО хочуть різний обрій.
       const forecastDays = settings.maintenanceForecastDays ?? MAINTENANCE_FORECAST_DEFAULT_DAYS;
       const todayPlusForecast = new Date(today);
-      todayPlusForecast.setDate(todayPlusForecast.getDate() + forecastDays);
+      todayPlusForecast.setUTCDate(todayPlusForecast.getUTCDate() + forecastDays);
 
       const cutoffDate = new Date(today);
-      cutoffDate.setDate(cutoffDate.getDate() - (settings.followUpDays ?? 90));
+      cutoffDate.setUTCDate(cutoffDate.getUTCDate() - (settings.followUpDays ?? 90));
 
       // T12: cursor-пагінація. Обидва джерела (maintenanceSchedule / vehicle) сторінкуємо по PAGE_SIZE
       // через keyset-cursor (id, orderBy id asc) і будуємо дедуплікований recipients-список

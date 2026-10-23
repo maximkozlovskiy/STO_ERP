@@ -65,31 +65,9 @@ const FISCAL_BACKOFF_DELAY_MS = 300_000;
  * (тест «білий список не містить застарілих записів» про це нагадає).
  */
 const KNOWN_VIOLATIONS: Record<string, RetryOpts> = {
-  // відоме порушення, див. звіт: attempts 5 < 10 (добовий CRON курсів НБУ)
-  'modules/exchange-rates/nbu-fetch.scheduler.ts#enqueueRepeatableForOrg': {
-    attempts: 5,
-    backoff: 'exponential',
-  },
-  // відоме порушення, див. звіт: attempts 5 < 10 (перепланування того самого CRON)
-  'modules/exchange-rates/nbu-fetch.scheduler.ts#rescheduleForOrg': {
-    attempts: 5,
-    backoff: 'exponential',
-  },
-  // відоме порушення, див. звіт: attempts 3 < 10 і backoff fixed (кнопка «оновити зараз»)
-  'modules/exchange-rates/nbu-fetch.scheduler.ts#enqueueImmediate': {
-    attempts: 3,
-    backoff: 'fixed',
-  },
-  // відоме порушення, див. звіт: attempts 5 < 10 (періодичне підтягування виписок)
-  'modules/bank-statements/bank-statement-pull.scheduler.ts#enqueueRepeatableForOrg': {
-    attempts: 5,
-    backoff: 'exponential',
-  },
-  // відоме порушення, див. звіт: attempts 3 < 10 і backoff fixed (кнопка «підтягнути зараз»)
-  'modules/bank-statements/bank-statement-pull.scheduler.ts#enqueueImmediate': {
-    attempts: 3,
-    backoff: 'fixed',
-  },
+  // NBU (nbu-fetch.scheduler) і автопідтягування виписок (bank-statement-pull.scheduler) зі списку
+  // прибрано 2026-10-24: attempts 10 + exponential, як вимагає правило (TECH-DEBT §8).
+
   // відоме порушення, див. звіт: без attempts/backoff. Polling-черги побудовані як self-re-enqueue
   // (процесор сам ставить наступний job із delay), тож BullMQ-ретраїв не мають узагалі (attempts=1).
   'modules/payments/online-payment.service.ts#createIntent': { attempts: null, backoff: null },

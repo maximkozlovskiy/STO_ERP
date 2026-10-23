@@ -59,8 +59,10 @@ export class BankStatementPullScheduler implements OnModuleInit {
       { orgId },
       {
         repeat: { every: clampInterval(minutes) * 60_000, tz: 'Europe/Kyiv' },
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 300_000 },
+        // CLAUDE.md «зовнішні API — attempts ≥ 10, backoff exponential»: 1, 2, 4 … 256 хв —
+        // повтори ~8,5 год, у межах доби (раніше 5 спроб, TECH-DEBT §8).
+        attempts: 10,
+        backoff: { type: 'exponential', delay: 60_000 },
         jobId: `bank-pull-${orgId}`,
         removeOnComplete: true,
         // F1: repeatable — cap failed-set (інакше росте безмежно у Redis).
@@ -88,8 +90,9 @@ export class BankStatementPullScheduler implements OnModuleInit {
       'pull',
       { orgId },
       {
-        attempts: 3,
-        backoff: { type: 'fixed', delay: 5_000 },
+        // attempts ≥ 10 + exponential (CLAUDE.md): 5 с … ~21 хв, повтори ~43 хв (раніше 3 × fixed).
+        attempts: 10,
+        backoff: { type: 'exponential', delay: 5_000 },
         // Окремий jobId від repeatable (`bank-pull-<org>`) — щоб не конфліктувати з cron-записом.
         jobId: `bank-pull-now-${orgId}`,
         removeOnComplete: true,

@@ -472,8 +472,10 @@ Integration-спек `field-encryption.integration.spec.ts` ганяє round-tri
 власній копії розширення — зміну продуктового `ENCRYPTED_FIELDS` він не помічає.
 
 Статичний сторож `payments.queue-retry-policy.spec.ts` тримає білий список відомих порушень правила
-«зовнішнє API → attempts ≥ 10, exponential backoff» (черги `nbu-fetch`, `bank-statement-polling`,
-`payment-polling`, `nova-poshta-polling`): код не правився, запис у списку — не дозвіл, а межа між
-старим і новим. Чому `payment-polling` має `concurrency: 3`, у коді не записано — тест фіксує число.
+«зовнішнє API → attempts ≥ 10, exponential backoff» — лише polling-черги (`payment-polling`,
+`nova-poshta-polling`, перша постановка онлайн-наміру): вони самі ставлять наступну задачу, тож
+BullMQ-повторів не мають за задумом. Запис у списку — не дозвіл, а межа між старим і новим. Черги
+`nbu-fetch` і `bank-statement-polling` зі списку вийшли 2026-10-24: CRON — attempts 10, exponential
+від 60 с (повтори ~8,5 год), кнопка «зараз» — attempts 10, exponential від 5 с. Чому `payment-polling` має `concurrency: 3`, у коді не записано — тест фіксує число.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
