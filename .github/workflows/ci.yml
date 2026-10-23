@@ -666,6 +666,10 @@ jobs:
         env:
           # Дозволяє адреси фейків постачальників попри SSRF-захист (BR-SCON-005; лише не production).
           SUPPLIER_API_DEV_ALLOWED_ORIGINS: http://127.0.0.1:4100,http://localhost:4100
+          # E2E логіниться один раз (setup-auth) і токен не оновлює (refresh-cookie крос-доменно не
+          # ловиться, Bug #567). З типовими 15 хв усі тести після 15-ї хвилини прогону йшли на /login:
+          # CI 142 тривав 17.3 хв і впав 4 тестами карток нарядів. Прогін живе довше — і токен теж.
+          JWT_ACCESS_EXPIRES_IN: 2h
         run: |
           pnpm --filter @sto/api dev > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do
