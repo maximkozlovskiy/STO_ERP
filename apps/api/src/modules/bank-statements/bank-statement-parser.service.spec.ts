@@ -494,6 +494,29 @@ describe('BankStatementParserService.parseRows — формати сум', () =>
     },
   );
 
+  // Межі регексу числа: дробова частина після крапки може бути порожньою («12.»), ціла — ні,
+  // якщо є дробова («.5»). Регекс переписано проти квадратичного відкату (sonarjs/super-linear-regex).
+  // guards: BR-BANK-017, BR-BANK-018
+  it.each([
+    ['крапка в кінці', '-12.', 'OUT', 12],
+    ['без цілої частини, крапка', '.5', 'IN', 0.5],
+    ['без цілої частини, кома', ',5', 'IN', 0.5],
+  ] as const)('межа формату числа, %s: «%s» → %s %s', async (_name, text, direction, amount) => {
+    expect(await parseAmount(text)).toEqual([['row-1', direction, amount]]);
+  });
+
+  // guards: BR-BANK-018
+  it.each(['12a', '.', '-.', '+'])('не число «%s» → рядок пропускається', async text => {
+    expect(await parseAmount(text)).toEqual([]);
+  });
+
+  // guards: BR-BANK-018
+  it('довга серія цифр із зайвим символом у кінці — відхиляється без квадратичного відкату', async () => {
+    const started = performance.now();
+    expect(await parseAmount(`${'1'.repeat(100_000)}x`)).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(1500);
+  });
+
   // guards: BR-BANK-017
   it.each([
     ['три знаки після коми', '-7,129', 'OUT', 7.13],

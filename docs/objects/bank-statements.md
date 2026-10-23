@@ -259,7 +259,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 | сервісна логіка                                       | `bank-reconciliation.service.spec.ts`                      | 27     |
 | вихідний як оплата постачальнику, кандидати           | `bank-reconciliation.supplier-payment.spec.ts`             | 32     |
 | скасування рознесення                                 | `bank-reconciliation.unreconcile.spec.ts`                  | 35     |
-| парсер файлу виписки (+ напрям рядка)                 | `bank-statement-parser.service.spec.ts`                    | 63     |
+| парсер файлу виписки (+ напрям рядка)                 | `bank-statement-parser.service.spec.ts`                    | 71     |
 | контролер провайдерів                                 | `bank-statement-providers.controller.spec.ts`              | 7      |
 | BullMQ-processor                                      | `bank-statement-pull.processor.spec.ts`                    | 24     |
 | scheduler                                             | `bank-statement-pull.scheduler.spec.ts`                    | 4      |

@@ -354,7 +354,7 @@ describe('WorkOrderShareService — ПДВ у публічному коштор�
     expect(dto).toMatchObject({ totalNet: 1500, totalVat: 0, totalAmount: 1500 });
   });
 
-  function smsService(totals: Record<string, number>) {
+  function smsService(totals: Record<string, number>, publicUrl = 'https://sto.example') {
     const send = vi.fn().mockResolvedValue(undefined);
     const prisma = {
       workOrder: {
@@ -375,7 +375,7 @@ describe('WorkOrderShareService — ПДВ у публічному коштор�
     } as unknown as PrismaService;
     const service = new WorkOrderShareService(
       prisma,
-      { get: vi.fn().mockReturnValue('https://sto.example') } as never,
+      { get: vi.fn().mockReturnValue(publicUrl) } as never,
       { send } as never,
     );
     // Токен — окремий аспект; тут важлива лише сума в повідомленні.
@@ -406,4 +406,16 @@ describe('WorkOrderShareService — ПДВ у публічному коштор�
       expect(smsVars(send).totalAmount).toBe(page.totalAmount.toFixed(2));
     }
   });
+
+  // Адреса з налаштувань може бути зі слешем у кінці — посилання в SMS без `//estimate`.
+  it.each(['https://sto.example', 'https://sto.example/', 'https://sto.example///'])(
+    'sendEstimateSms: WEB_PUBLIC_URL «%s» → посилання https://sto.example/estimate/<токен>',
+    async publicUrl => {
+      const { service, send } = smsService(EXCL, publicUrl);
+
+      await service.sendEstimateSms('org-1', 'wo-1');
+
+      expect(smsVars(send).link).toBe(`https://sto.example/estimate/${TOKEN}`);
+    },
+  );
 });
