@@ -436,7 +436,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | сторно безготівкової оплати (BR-PAY-024)        | `payments.reverse-noncash.spec.ts`                       | 24     |
 | HTTP-контракт сторно (BR-PAY-024)               | `payments.reverse-route.contract.spec.ts`                | 15     |
 
-Разом: **490** кейсів — 422 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
+Разом: **495** кейсів — 427 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
 (`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
 `vitest --reporter=json` (2026-10-15), не з grep.
 

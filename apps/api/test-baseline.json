@@ -4350,16 +4350,21 @@
    "ProviderConfigService upsertConfig (creds write-only merge) змінено apiUrl → збережені креди НЕ мерджаться, лишаються лише введені зараз",
    "ProviderConfigService upsertConfig (creds write-only merge) назва поля кредів не ідентифікатор (`__proto__`, пробіл) → 400, нічого не пише",
    "ProviderConfigService upsertConfig (creds write-only merge) нові непорожні поля мерджаться у наявні; порожнє не затирає",
+   "ProviderConfigService upsertConfig (creds write-only merge) повторне збереження активного провайдера НЕ чіпає enabled (лишається увімкненим)",
    "ProviderConfigService upsertConfig (creds write-only merge) та сама адреса з кінцевим слешем → креди мерджаться як раніше"
   ],
   "apps/api/src/modules/payments/provider-upsert-dto.contract.spec.ts": [
-   "PATCH upsert провайдера (банк-виписки) `enabled` у тілі → 400 (увімкнення лише через activate)",
+   "PATCH upsert провайдера (банк-виписки) `enabled: false` у тілі → 400 (стан вмикає лише activate)",
+   "PATCH upsert провайдера (банк-виписки) `enabled: true` у тілі → 400 (стан вмикає лише activate)",
    "PATCH upsert провайдера (банк-виписки) без `enabled` — тіло проходить",
-   "PATCH upsert провайдера (доставка) `enabled` у тілі → 400 (увімкнення лише через activate)",
+   "PATCH upsert провайдера (доставка) `enabled: false` у тілі → 400 (стан вмикає лише activate)",
+   "PATCH upsert провайдера (доставка) `enabled: true` у тілі → 400 (стан вмикає лише activate)",
    "PATCH upsert провайдера (доставка) без `enabled` — тіло проходить",
-   "PATCH upsert провайдера (еквайринг) `enabled` у тілі → 400 (увімкнення лише через activate)",
+   "PATCH upsert провайдера (еквайринг) `enabled: false` у тілі → 400 (стан вмикає лише activate)",
+   "PATCH upsert провайдера (еквайринг) `enabled: true` у тілі → 400 (стан вмикає лише activate)",
    "PATCH upsert провайдера (еквайринг) без `enabled` — тіло проходить",
-   "PATCH upsert провайдера (фіскалізація) `enabled` у тілі → 400 (увімкнення лише через activate)",
+   "PATCH upsert провайдера (фіскалізація) `enabled: false` у тілі → 400 (стан вмикає лише activate)",
+   "PATCH upsert провайдера (фіскалізація) `enabled: true` у тілі → 400 (стан вмикає лише activate)",
    "PATCH upsert провайдера (фіскалізація) без `enabled` — тіло проходить"
   ],
   "apps/api/src/modules/payroll/payroll.access.spec.ts": [
