@@ -15,6 +15,16 @@ import { getCached, setCache } from '@/lib/ref-cache';
 import { cn } from '@/lib/utils';
 import { type BranchInfo } from './shared';
 
+/** Та сама адреса API, що й на сервері (`sameApiUrl` в api): без пробілів і кінцевих `/`, порожня ≡ null. */
+function sameApiUrl(a: string | null, b: string | null): boolean {
+  const norm = (u: string | null) => {
+    let s = (u ?? '').trim();
+    while (s.endsWith('/')) s = s.slice(0, -1); // не `/\/+$/` — квадратичний відкат (sonarjs)
+    return s;
+  };
+  return norm(a) === norm(b);
+}
+
 /** Опис поля кредів провайдера (write-only секрет чи звичайне). */
 export interface CredField {
   key: string;
@@ -133,12 +143,23 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
   const closeCreds = useCallback(() => setCredsProvider(null), []);
 
   // Чи можна зберегти/перевірити: введено хоча б одне поле (порожні мерджаться як «не змінювати»)
-  // АБО конфіг уже має збережені креди (оновлюємо apiUrl/режим без повторного вводу секретів).
+  // АБО конфіг уже має збережені креди (оновлюємо режим без повторного вводу секретів).
+  // Змінено адресу API — сервер збережені креди на неї НЕ переносить (TECH-DEBT §19.6), тож тоді
+  // потрібні всі поля заново.
   const existingHasCreds = (code: string) => configByCode.get(code)?.hasCredentials ?? false;
+  const urlChanged =
+    !!credsProvider &&
+    !sameApiUrl(apiUrl, configByCode.get(credsProvider.code)?.apiUrl ?? null) &&
+    configByCode.has(credsProvider.code);
+  const credsFilled = (fields: PanelProviderMeta['fields']) =>
+    fields.every(f => (creds[f.key] ?? '').trim() !== '');
   const credsReady =
     !!credsProvider &&
-    (credsProvider.fields.some(f => (creds[f.key] ?? '').trim() !== '') ||
-      existingHasCreds(credsProvider.code));
+    (urlChanged
+      ? credsFilled(credsProvider.fields)
+      : credsProvider.fields.some(f => (creds[f.key] ?? '').trim() !== '') ||
+        existingHasCreds(credsProvider.code));
+  const keepsSavedCreds = !!credsProvider && existingHasCreds(credsProvider.code) && !urlChanged;
 
   const verify = async () => {
     if (!credsProvider) return;
@@ -320,7 +341,7 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
                 value={creds[f.key] ?? ''}
                 onChange={e => setCreds(c => ({ ...c, [f.key]: e.target.value }))}
                 placeholder={
-                  f.secret && existingHasCreds(credsProvider.code)
+                  f.secret && keepsSavedCreds
                     ? t('registry.secretSavedPlaceholder')
                     : (f.placeholder ?? '')
                 }
@@ -333,6 +354,11 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
               onChange={e => setApiUrl(e.target.value)}
               placeholder={t('registry.apiUrlPlaceholder')}
             />
+            {urlChanged && existingHasCreds(credsProvider.code) && (
+              <p className="text-xs text-warning-text" role="status">
+                {t('registry.urlChangedReenterCreds')}
+              </p>
+            )}
             {credsProvider.hasShiftMode && (
               <label className="block">
                 <span className="text-sm text-foreground">{t('registry.shiftMode')}</span>

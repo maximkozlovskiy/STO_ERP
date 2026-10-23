@@ -11,3 +11,12 @@ export function trimTrailingSlashes(s: string): string {
   while (end > 0 && s[end - 1] === '/') end--;
   return s.slice(0, end);
 }
+
+/**
+ * Та сама адреса API провайдера: без пробілів і кінцевих `/`; порожня ≡ null (типова адреса).
+ * Змінилась — збережені write-only ключі на неї не переносяться (TECH-DEBT §19.6).
+ */
+export function sameApiUrl(a: string | null | undefined, b: string | null | undefined): boolean {
+  const norm = (u: string | null | undefined) => trimTrailingSlashes((u ?? '').trim());
+  return norm(a) === norm(b);
+}

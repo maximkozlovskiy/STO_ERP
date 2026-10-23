@@ -189,6 +189,7 @@
     "noProviders": "Провайдери не знайдено",
     "credsSettingsTitle": "{{name}} — налаштування",
     "secretSavedPlaceholder": "Збережено — введіть, щоб змінити",
+    "urlChangedReenterCreds": "Адресу API змінено — введіть ключі заново: збережені на нову адресу не надсилаються.",
     "apiUrl": "API URL (необовʼязково)",
     "apiUrlPlaceholder": "Залиште порожнім для стандартного",
     "shiftMode": "Режим зміни",

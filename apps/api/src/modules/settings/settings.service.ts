@@ -21,7 +21,7 @@ import {
   validatePublicUrlResolved,
   type HostLookup,
 } from '../../common/utils/url-guard';
-import { trimTrailingSlashes } from '../../common/utils/trim-trailing-slashes';
+import { sameApiUrl, trimTrailingSlashes } from '../../common/utils/trim-trailing-slashes';
 import { workHoursOf } from '../../common/utils/work-hours';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -370,10 +370,11 @@ export class SettingsService {
       }
     }
 
+    const secretsReset = await this.secretsResetOnUrlChange(branchId, dto);
     const settings = await this.prisma.branchSettings.upsert({
       where: { branchId },
       create: { branchId, orgId, ...dto },
-      update: dto,
+      update: { ...dto, ...secretsReset },
     });
 
     await this.invalidateBranchCache(orgId, branchId);
@@ -383,9 +384,45 @@ export class SettingsService {
       await this.invalidateWorkHoursCache(orgId, branchId);
     }
 
-    this.auditSettings(orgId, 'BranchSettings', branchId, 'UPDATE', userId, undefined, { ...dto });
+    this.auditSettings(orgId, 'BranchSettings', branchId, 'UPDATE', userId, undefined, {
+      ...dto,
+      ...secretsReset,
+    });
 
     return this.mapBranchSettings(settings);
+  }
+
+  /**
+   * Змінено адресу API Checkbox / monobank, а ключі цього провайдера в запиті не передано — збережені
+   * скидаються в null. Write-only ключ не має піти на адресу, яку не підтвердили введенням ключа:
+   * інакше OWNER/ADMIN перенаправив би його на свій сервер, не знаючи самого ключа (рішення власника
+   * 2026-10-23, TECH-DEBT §19.6). Ту саму адресу (з `/` чи без) зміною не вважаємо.
+   */
+  private async secretsResetOnUrlChange(
+    branchId: string,
+    dto: UpdateBranchSettingsDto,
+  ): Promise<{ checkboxLicenseKey?: null; checkboxPinCode?: null; monobankToken?: null }> {
+    if (dto.checkboxApiUrl === undefined && dto.monobankApiUrl === undefined) return {};
+    const current = await this.prisma.branchSettings.findUnique({
+      where: { branchId },
+      select: { checkboxApiUrl: true, monobankApiUrl: true },
+    });
+    if (!current) return {};
+    const reset: { checkboxLicenseKey?: null; checkboxPinCode?: null; monobankToken?: null } = {};
+    if (
+      dto.checkboxApiUrl !== undefined &&
+      !sameApiUrl(current.checkboxApiUrl, dto.checkboxApiUrl)
+    ) {
+      if (dto.checkboxLicenseKey === undefined) reset.checkboxLicenseKey = null;
+      if (dto.checkboxPinCode === undefined) reset.checkboxPinCode = null;
+    }
+    if (
+      dto.monobankApiUrl !== undefined &&
+      !sameApiUrl(current.monobankApiUrl, dto.monobankApiUrl)
+    ) {
+      if (dto.monobankToken === undefined) reset.monobankToken = null;
+    }
+    return reset;
   }
 
   async invalidateOrgCache(orgId: string): Promise<void> {

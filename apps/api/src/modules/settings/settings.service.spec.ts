@@ -374,6 +374,8 @@ describe('SettingsService — аудит налаштувань філії ма�
     const prisma = {
       garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: 'b-1' }) },
       branchSettings: {
+        // Налаштувань філії ще немає — зміни адреси API немає з чим порівнювати.
+        findUnique: vi.fn().mockResolvedValue(null),
         upsert: vi.fn().mockResolvedValue({ branchId: 'b-1', orgId: 'org-1', workDays: [] }),
       },
     };
@@ -426,6 +428,78 @@ describe('SettingsService — аудит налаштувань філії ма�
     );
     const newData = auditRecord.mock.calls[0]![6] as Record<string, unknown>;
     expect(newData).toEqual({ checkboxLicenseKey: null });
+  });
+});
+
+/**
+ * Зміна адреси API скидає збережені write-only ключі (рішення власника 2026-10-23, TECH-DEBT §19.6):
+ * інакше OWNER/ADMIN у два кроки — змінити `checkboxApiUrl`, потім «Перевірити» чи пробити чек —
+ * відправив би ключ ліцензії ПРРО на свій сервер, не знаючи його.
+ */
+describe('SettingsService — зміна адреси API скидає збережені ключі провайдера', () => {
+  let service: SettingsService;
+  let upsert: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    upsert = vi.fn().mockResolvedValue({ branchId: 'b-1', orgId: 'org-1', workDays: [] });
+    const prisma = {
+      garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: 'b-1' }) },
+      branchSettings: {
+        findUnique: vi.fn().mockResolvedValue({
+          checkboxApiUrl: 'https://api.checkbox.ua',
+          monobankApiUrl: null,
+        }),
+        upsert,
+      },
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        SettingsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        { provide: REDIS_CLIENT, useValue: { get: vi.fn(), set: vi.fn(), del: vi.fn() } },
+        { provide: NbuFetchScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+        { provide: BankStatementPullScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+      ],
+    }).compile();
+    service = module.get(SettingsService);
+  });
+
+  const updateArg = () => (upsert.mock.calls[0]![0] as { update: Record<string, unknown> }).update;
+
+  it('нова адреса Checkbox без ключа → ключ і PIN скинуто в null', async () => {
+    await service.updateBranchSettings('org-1', 'b-1', {
+      checkboxApiUrl: 'https://collector.example',
+    });
+    expect(updateArg()).toEqual({
+      checkboxApiUrl: 'https://collector.example',
+      checkboxLicenseKey: null,
+      checkboxPinCode: null,
+    });
+  });
+
+  it('нова адреса разом із новим ключем → ключ лишається, PIN скинуто', async () => {
+    await service.updateBranchSettings('org-1', 'b-1', {
+      checkboxApiUrl: 'https://collector.example',
+      checkboxLicenseKey: 'NEW-KEY',
+    });
+    expect(updateArg()).toEqual({
+      checkboxApiUrl: 'https://collector.example',
+      checkboxLicenseKey: 'NEW-KEY',
+      checkboxPinCode: null,
+    });
+  });
+
+  it('та сама адреса з кінцевим слешем → ключі не чіпаються', async () => {
+    await service.updateBranchSettings('org-1', 'b-1', {
+      checkboxApiUrl: 'https://api.checkbox.ua/',
+    });
+    expect(updateArg()).toEqual({ checkboxApiUrl: 'https://api.checkbox.ua/' });
+  });
+
+  it('адреса monobank із null на власну → токен скинуто', async () => {
+    await service.updateBranchSettings('org-1', 'b-1', { monobankApiUrl: 'https://mono.example' });
+    expect(updateArg()).toEqual({ monobankApiUrl: 'https://mono.example', monobankToken: null });
   });
 });
 

@@ -3,6 +3,7 @@ import { ProviderKind, ShiftMode } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
+import { sameApiUrl } from '../../common/utils/trim-trailing-slashes';
 
 /** Назва поля кредів провайдера: ідентифікатор до 64 символів (`apiKey`, `merchantId`, `pinCode`). */
 const CREDENTIAL_KEY_RE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
@@ -162,6 +163,9 @@ export class ProviderConfigService {
    * Створити/оновити конфіг провайдера (atomic upsert по @@unique(branchId,kind,provider)).
    * credentials write-only: передані поля мерджаться у наявні; порожні значення НЕ затирають
    * (щоб «зберегти» не стирало вже введений ключ). Reactivate soft-deleted рядок.
+   * Змінено apiUrl — збережені креди НЕ переносяться: на нову адресу підуть лише ті, що введено в
+   * цьому запиті. Інакше OWNER/ADMIN міг би перенаправити write-only ключ на свій сервер, не знаючи
+   * його (рішення власника 2026-10-23, TECH-DEBT §19.6).
    */
   async upsertConfig(
     orgId: string,
@@ -176,11 +180,14 @@ export class ProviderConfigService {
 
     const existing = await this.prisma.branchProviderConfig.findFirst({
       where: { branchId, kind, provider: input.provider },
-      select: { id: true, credentials: true },
+      select: { id: true, credentials: true, apiUrl: true },
     });
 
-    // Мердж credentials: наявні ← нові непорожні поля (write-only).
-    const merged = this.parseCreds(existing?.credentials ?? null);
+    // Мердж credentials: наявні ← нові непорожні поля (write-only). `apiUrl ?? null` — саме це й
+    // запишеться нижче, тож порівнюємо з ним.
+    const apiUrl = input.apiUrl ?? null;
+    const urlChanged = existing !== null && !sameApiUrl(existing.apiUrl, apiUrl);
+    const merged = urlChanged ? {} : this.parseCreds(existing?.credentials ?? null);
     if (input.credentials) {
       for (const [k, v] of Object.entries(input.credentials)) {
         // Назва поля — з тіла запиту і стає ключем об'єкта: лише ідентифікатор (`apiKey`,
@@ -196,7 +203,7 @@ export class ProviderConfigService {
     const credentials = Object.keys(merged).length > 0 ? JSON.stringify(merged) : null;
 
     const data = {
-      apiUrl: input.apiUrl ?? null,
+      apiUrl,
       credentials,
       ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
       ...(input.shiftMode !== undefined ? { shiftMode: input.shiftMode } : {}),

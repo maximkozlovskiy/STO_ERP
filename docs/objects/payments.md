@@ -422,7 +422,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | query dto                                       | `payments.query-dto.spec.ts`                             | 43     |
 | передумови + наряд                              | `payments.work-order.spec.ts`                            | 52     |
 | політика повторів черг                          | `payments.queue-retry-policy.spec.ts`                    | 6      |
-| сервісна логіка                                 | `provider-config.service.spec.ts`                        | 28     |
+| сервісна логіка                                 | `provider-config.service.spec.ts`                        | 31     |
 | шифрування at-rest                              | `../../prisma/field-encryption.extension.spec.ts`        | 21     |
 | шифрування (сервіс)                             | `../../common/crypto/encryption.service.spec.ts`         | 11     |
 | готівка — через касу, безготівкова — з рахунком | `payments.cash-register-required.spec.ts`                | 14     |
@@ -432,7 +432,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | сторно безготівкової оплати (BR-PAY-024)        | `payments.reverse-noncash.spec.ts`                       | 24     |
 | HTTP-контракт сторно (BR-PAY-024)               | `payments.reverse-route.contract.spec.ts`                | 15     |
 
-Разом: **476** кейсів — 408 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
+Разом: **479** кейсів — 411 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
 (`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
 `vitest --reporter=json` (2026-10-15), не з grep.
 

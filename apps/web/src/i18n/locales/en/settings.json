@@ -189,6 +189,7 @@
     "noProviders": "No providers found",
     "credsSettingsTitle": "{{name}} — settings",
     "secretSavedPlaceholder": "Saved — enter to change",
+    "urlChangedReenterCreds": "API address changed — enter the keys again: saved keys are not sent to a new address.",
     "apiUrl": "API URL (optional)",
     "apiUrlPlaceholder": "Leave empty for default",
     "shiftMode": "Shift mode",

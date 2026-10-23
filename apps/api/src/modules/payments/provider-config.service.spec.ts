@@ -443,6 +443,70 @@ describe('ProviderConfigService', () => {
       expect(mergedCreds).toEqual({ publicKey: 'NEW-PUB', privateKey: 'OLD-PRIV' });
     });
 
+    // Рішення власника 2026-10-23 (TECH-DEBT §19.6): збережені креди не переносяться на нову адресу.
+    it('змінено apiUrl → збережені креди НЕ мерджаться, лишаються лише введені зараз', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        id: 'c1',
+        apiUrl: null,
+        credentials: JSON.stringify({ publicKey: 'OLD-PUB', privateKey: 'OLD-PRIV' }),
+      });
+      prisma.branchProviderConfig.upsert.mockResolvedValue({
+        provider: 'liqpay',
+        enabled: false,
+        apiUrl: 'https://collector.example',
+        shiftMode: 'MANUAL',
+      });
+      const view = await svc.upsertConfig(ORG, BRANCH, 'PAYMENT', {
+        provider: 'liqpay',
+        apiUrl: 'https://collector.example',
+        credentials: { publicKey: 'NEW-PUB' },
+      });
+      const upsertArg = prisma.branchProviderConfig.upsert.mock.calls[0][0];
+      expect(JSON.parse(upsertArg.update.credentials)).toEqual({ publicKey: 'NEW-PUB' });
+      expect(view.hasCredentials).toBe(true);
+    });
+
+    it('змінено apiUrl без кредів → креди скинуто (null), «не налаштовано»', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        id: 'c1',
+        apiUrl: 'https://api.checkbox.ua',
+        credentials: JSON.stringify({ licenseKey: 'OLD-KEY', pinCode: '1234' }),
+      });
+      prisma.branchProviderConfig.upsert.mockResolvedValue({
+        provider: 'checkbox',
+        enabled: true,
+        apiUrl: 'https://collector.example',
+        shiftMode: 'MANUAL',
+      });
+      const view = await svc.upsertConfig(ORG, BRANCH, 'FISCAL', {
+        provider: 'checkbox',
+        apiUrl: 'https://collector.example',
+      });
+      const upsertArg = prisma.branchProviderConfig.upsert.mock.calls[0][0];
+      expect(upsertArg.update.credentials).toBeNull();
+      expect(view.hasCredentials).toBe(false);
+    });
+
+    it('та сама адреса з кінцевим слешем → креди мерджаться як раніше', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        id: 'c1',
+        apiUrl: 'https://api.checkbox.ua',
+        credentials: JSON.stringify({ licenseKey: 'OLD-KEY' }),
+      });
+      prisma.branchProviderConfig.upsert.mockResolvedValue({
+        provider: 'checkbox',
+        enabled: true,
+        apiUrl: 'https://api.checkbox.ua/',
+        shiftMode: 'MANUAL',
+      });
+      await svc.upsertConfig(ORG, BRANCH, 'FISCAL', {
+        provider: 'checkbox',
+        apiUrl: 'https://api.checkbox.ua/',
+      });
+      const upsertArg = prisma.branchProviderConfig.upsert.mock.calls[0][0];
+      expect(JSON.parse(upsertArg.update.credentials)).toEqual({ licenseKey: 'OLD-KEY' });
+    });
+
     it('назва поля кредів не ідентифікатор (`__proto__`, пробіл) → 400, нічого не пише', async () => {
       prisma.branchProviderConfig.findFirst.mockResolvedValue(null);
       // JSON.parse, як тіло запиту: літерал `{ __proto__: … }` поставив би прототип, а не поле.

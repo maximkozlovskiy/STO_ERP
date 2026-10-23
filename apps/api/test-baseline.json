@@ -609,6 +609,9 @@
    "redactSecrets ігнорує лише вироджені значення (порожнє / 1-2 символи, не псує весь текст)"
   ],
   "apps/api/src/common/utils/trim-trailing-slashes.spec.ts": [
+   "sameApiUrl кінцеві слеші й пробіли не роблять адресу іншою",
+   "sameApiUrl порожня ≡ null ≡ undefined (типова адреса провайдера)",
+   "sameApiUrl інший хост чи шлях — інша адреса",
    "trimTrailingSlashes довга серія слешів не в кінці — лінійно, без зависання",
    "trimTrailingSlashes порожній рядок і рядок лише зі слешів → порожній",
    "trimTrailingSlashes прибирає один і кілька кінцевих слешів",
@@ -4340,8 +4343,11 @@
    "ProviderConfigService resolveByCode немає config; legacy — ІНШИЙ провайдер (default checkbox), питаємо vchasno → null",
    "ProviderConfigService resolveByCode немає config; legacy — той самий провайдер (checkbox) → legacy",
    "ProviderConfigService upsertConfig (creds write-only merge) view повертає hasCredentials, НЕ сирі credentials",
+   "ProviderConfigService upsertConfig (creds write-only merge) змінено apiUrl без кредів → креди скинуто (null), «не налаштовано»",
+   "ProviderConfigService upsertConfig (creds write-only merge) змінено apiUrl → збережені креди НЕ мерджаться, лишаються лише введені зараз",
    "ProviderConfigService upsertConfig (creds write-only merge) назва поля кредів не ідентифікатор (`__proto__`, пробіл) → 400, нічого не пише",
-   "ProviderConfigService upsertConfig (creds write-only merge) нові непорожні поля мерджаться у наявні; порожнє не затирає"
+   "ProviderConfigService upsertConfig (creds write-only merge) нові непорожні поля мерджаться у наявні; порожнє не затирає",
+   "ProviderConfigService upsertConfig (creds write-only merge) та сама адреса з кінцевим слешем → креди мерджаться як раніше"
   ],
   "apps/api/src/modules/payroll/payroll.access.spec.ts": [
    "PayrollController — ролі доступу compute — OWNER, ADMIN, ACCOUNTANT (перегляд, створення, розрахунок)",
@@ -5382,6 +5388,12 @@
    "SettingsService — C1b audit TaxRate deleteTaxRate → record(orgId, TaxRate, id, DELETE, userId) з old-data назвою",
    "SettingsService — C1b audit TaxRate updateTaxRate (non-default) → record(orgId, TaxRate, id, UPDATE, userId)",
    "SettingsService — C1b audit TaxRate userId відсутній → record() НЕ викликається (best-effort gate)",
+   "SettingsService — аудит налаштувань філії маскує секрети (Bug #951) ключ прибрали (null) — у сліді лишається null",
+   "SettingsService — аудит налаштувань філії маскує секрети (Bug #951) секрети в дифі — маскою, решта полів — як є",
+   "SettingsService — зміна адреси API скидає збережені ключі провайдера адреса monobank із null на власну → токен скинуто",
+   "SettingsService — зміна адреси API скидає збережені ключі провайдера нова адреса Checkbox без ключа → ключ і PIN скинуто в null",
+   "SettingsService — зміна адреси API скидає збережені ключі провайдера нова адреса разом із новим ключем → ключ лишається, PIN скинуто",
+   "SettingsService — зміна адреси API скидає збережені ключі провайдера та сама адреса з кінцевим слешем → ключі не чіпаються",
    "SettingsService — кеш налаштувань організації з відбитком схеми invalidateOrgCache видаляє саме версійний ключ",
    "SettingsService — кеш налаштувань організації з відбитком схеми запис старого формату (без полів supplier*) не читається — повні поля з БД",
    "SettingsService — кеш налаштувань організації з відбитком схеми ключ кешу несе відбиток поточної схеми; повторне читання — з кешу",

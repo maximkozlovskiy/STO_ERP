@@ -1,5 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { trimTrailingSlashes } from './trim-trailing-slashes';
+import { sameApiUrl, trimTrailingSlashes } from './trim-trailing-slashes';
+
+describe('sameApiUrl', () => {
+  it('кінцеві слеші й пробіли не роблять адресу іншою', () => {
+    expect(sameApiUrl('https://api.checkbox.ua', 'https://api.checkbox.ua/')).toBe(true);
+    expect(sameApiUrl(' https://api.checkbox.ua ', 'https://api.checkbox.ua')).toBe(true);
+  });
+
+  it('порожня ≡ null ≡ undefined (типова адреса провайдера)', () => {
+    expect(sameApiUrl(null, '')).toBe(true);
+    expect(sameApiUrl(undefined, null)).toBe(true);
+  });
+
+  it('інший хост чи шлях — інша адреса', () => {
+    expect(sameApiUrl('https://api.checkbox.ua', 'https://collector.example')).toBe(false);
+    expect(sameApiUrl(null, 'https://api.checkbox.ua')).toBe(false);
+    expect(sameApiUrl('https://x.ua/api', 'https://x.ua/api/v2')).toBe(false);
+  });
+});
 
 describe('trimTrailingSlashes', () => {
   it('прибирає один і кілька кінцевих слешів', () => {

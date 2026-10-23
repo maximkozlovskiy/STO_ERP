@@ -113,6 +113,29 @@ describe('ProviderRegistryPanel', () => {
     });
   });
 
+  // TECH-DEBT §19.6: сервер не переносить збережені креди на нову адресу — форма вимагає їх заново.
+  it('змінено API URL при збережених кредах → підказка, «Зберегти» лише з усіма полями', async () => {
+    mock([{ provider: 'checkbox', enabled: true, apiUrl: null, hasCredentials: true }]);
+    const user = userEvent.setup();
+    render(
+      <ProviderRegistryPanel title="ПРРО" endpoint="fiscal-providers" providers={[CHECKBOX]} />,
+    );
+    await user.click(await screen.findByRole('button', { name: /Налаштувати креди Checkbox/ }));
+    const save = screen.getByRole('button', { name: 'Зберегти' });
+    expect(save).toBeEnabled(); // та сама адреса: збережені креди лишаються
+
+    await user.type(screen.getByLabelText('API URL (необовʼязково)'), 'https://collector.example');
+    expect(screen.getByRole('status')).toHaveTextContent(/введіть ключі заново/);
+    expect(save).toBeDisabled();
+    const license = screen.getByLabelText('Ліцензійний ключ каси') as HTMLInputElement;
+    expect(license.placeholder).not.toMatch(/Збережено/);
+
+    await user.type(license, 'LIC-NEW');
+    expect(save).toBeDisabled(); // PIN ще порожній
+    await user.type(screen.getByLabelText('PIN касира'), '0000');
+    expect(save).toBeEnabled();
+  });
+
   it('verify happy → POST /:endpoint/:code/verify → «Дійсні креди»', async () => {
     mock([{ provider: 'checkbox', enabled: false, apiUrl: null, hasCredentials: true }], {
       valid: true,
