@@ -387,7 +387,7 @@ describe('MaintenanceSchedulesService', () => {
   describe('rebuildFromHistory — графік ТО після скасування ТО-наряду', () => {
     const SCHEDULE = { id: 'ms-1', intervalDays: 180, intervalMileage: 10_000 };
 
-    // guards: BR-WO-031
+    // guards: BR-WO-031, BR-MAINT-006
     it('дата — від останнього завершеного ТО-наряду, пробіг — від останнього з пробігом', async () => {
       prisma.maintenanceSchedule.findMany.mockResolvedValue([SCHEDULE]);
       prisma.workOrder.findMany.mockResolvedValue([
@@ -412,7 +412,7 @@ describe('MaintenanceSchedulesService', () => {
       expect(data.nextMaintenanceDate).toBeInstanceOf(Date);
     });
 
-    // guards: BR-WO-031
+    // guards: BR-WO-031, BR-MAINT-006
     it('інших завершених ТО-нарядів немає → останнє й наступне ТО очищаються', async () => {
       prisma.maintenanceSchedule.findMany.mockResolvedValue([SCHEDULE]);
       prisma.workOrder.findMany.mockResolvedValue([]);

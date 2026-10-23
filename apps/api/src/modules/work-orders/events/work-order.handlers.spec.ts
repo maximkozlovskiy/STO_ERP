@@ -131,7 +131,7 @@ describe('WorkOrderEventHandlers', () => {
   const transitioned = (from: string, to: string) =>
     new WorkOrderTransitionedEvent('o1', 'wo1', from as never, to as never, 'u1');
 
-  // guards: BR-WO-031
+  // guards: BR-WO-031, BR-MAINT-006
   it.each(['COMPLETED', 'INVOICED'])(
     'rollbackMaintenance: %s → CANCELLED, ТО-наряд → графік від історії авто',
     async from => {
@@ -144,7 +144,7 @@ describe('WorkOrderEventHandlers', () => {
     },
   );
 
-  // guards: BR-WO-031
+  // guards: BR-WO-031, BR-MAINT-006
   it('rollbackMaintenance: не ТО-наряд або скасування не з «Виконано»/«Виставлено» → no-op', async () => {
     workOrderFindFirst.mockResolvedValueOnce({ vehicleId: 'v1', repairCategory: 'REPAIR' });
     await handlers.rollbackMaintenance(transitioned('COMPLETED', 'CANCELLED'));
