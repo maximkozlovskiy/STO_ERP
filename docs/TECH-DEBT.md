@@ -1447,7 +1447,9 @@ update -r` без mobile, overrides у `pnpm-workspace.yaml`, `csv-parse` ^7, `r
    рішення (інший образ/форк чи збірка), не тегу.
 4. **Expo очікує нижчих `@types/react` (~19.0) і `typescript` (~5.8)**, ніж стоять у mobile (19.2, 5.9) —
    це відкат, не патч; `expo install --check` про це попереджає, mobile type-check зелений.
-5. **Нестабільний інтеграційний тест тригерів** (не від патчів): `append-only-triggers.integration.spec.ts`
+5. ~~**Нестабільний інтеграційний тест тригерів**~~ — ✅ ЗАКРИТО 2026-10-23: обидві спеки, що вимикають
+   тригер, — окремий vitest-проєкт `ledger-triggers` з `fileParallelism: false` (`apps/api/vitest.config.ts`).
+   Було (не від патчів): `append-only-triggers.integration.spec.ts`
    («batchId разом із price заборонено») у повному прогоні api 2026-10-22 раз упав (`resolved "1"
 instead of rejecting`), окремо — 5 із 5 зелені. `purchase-lists.receive-vs-cancel.integration.spec.ts`
    на час прибирання робить `ALTER TABLE … DISABLE TRIGGER` на тій самій dev-базі, паралельно з ним.

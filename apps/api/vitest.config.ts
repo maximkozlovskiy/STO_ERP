@@ -1,6 +1,12 @@
 import { defineConfig } from 'vitest/config';
 import swc from 'unplugin-swc';
 
+/** Інтеграційні спеки, що вимикають тригер незмінності журналу складу (див. проєкт `ledger-triggers`). */
+const LEDGER_TRIGGER_SPECS = [
+  'src/prisma/append-only-triggers.integration.spec.ts',
+  'src/modules/purchase-lists/purchase-lists.receive-vs-cancel.integration.spec.ts',
+];
+
 export default defineConfig({
   test: {
     globals: true,
@@ -53,7 +59,22 @@ export default defineConfig({
             'src/modules/notifications/providers/email.provider.spec.ts',
             'src/**/*.integration.spec.ts',
           ],
+          exclude: LEDGER_TRIGGER_SPECS,
           isolate: true,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'ledger-triggers',
+          // Ці спеки на час прибирання роблять `ALTER TABLE stock_movements DISABLE TRIGGER` на
+          // спільній dev-/CI-базі, а `append-only-triggers` перевіряє, що тригер ДІЄ. Паралельно
+          // вони гналися одна з одною: 2026-10-22 «batchId разом із price заборонено» у повному
+          // прогоні отримав `resolved "1" instead of rejecting` (окремо — 5/5 зелені, TECH-DEBT
+          // §18.5). Файли цього проєкту — строго по черзі.
+          include: LEDGER_TRIGGER_SPECS,
+          isolate: true,
+          fileParallelism: false,
         },
       },
     ],
