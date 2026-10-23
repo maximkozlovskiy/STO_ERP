@@ -26,6 +26,15 @@ interface EntityPickerFieldProps<T extends SearchItem = SearchItem> {
   hidePick?: boolean;
   /** Optional aria-label for the search input (improves a11y when no <label> wrap). */
   ariaLabel?: string;
+  /** Поле пошуку з помилкою (`aria-invalid`) — коли підпис і текст помилки рендерить батько. */
+  ariaInvalid?: boolean;
+  /** `aria-describedby` поля пошуку: id тексту помилки чи підказки, що їх рендерить батько. */
+  ariaDescribedBy?: string;
+  /**
+   * Сховати 🔍 «Відкрити картку» — для довідників, у записів яких картки немає (марка, модель).
+   * Без нього кнопка лишається вимкненою з підказкою «Спочатку оберіть запис» і після вибору.
+   */
+  hideDetail?: boolean;
   /**
    * Called when the 🔍 button is clicked.
    * Undefined = button is disabled (no entity selected yet).
@@ -52,7 +61,7 @@ interface EntityPickerFieldProps<T extends SearchItem = SearchItem> {
  * Standard inline-button field for entity references.
  * Layout: [ display text / search input    × 🔍 … ]
  *   ×  — clear selection (shown only when value selected and not disabled)
- *   🔍 — open detail modal/page; disabled when onOpenDetail is undefined
+ *   🔍 — open detail modal/page; disabled when onOpenDetail is undefined, hidden when hideDetail
  *   …  — open SearchPickerModal; hidden when hidePick=true
  *
  * When onSearch is provided the display span becomes a text input with a
@@ -67,6 +76,9 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
   disabled = false,
   hidePick = false,
   ariaLabel,
+  ariaInvalid,
+  ariaDescribedBy,
+  hideDetail = false,
   onOpenDetail,
   onPick,
   onClear,
@@ -252,6 +264,8 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
           autoComplete="off"
           role="combobox"
           aria-label={ariaLabel}
+          aria-invalid={ariaInvalid || undefined}
+          aria-describedby={ariaDescribedBy}
           aria-autocomplete="list"
           aria-expanded={open}
           aria-controls={open ? listboxId : undefined}
@@ -290,16 +304,18 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
       )}
 
       {/* Open detail */}
-      <button
-        type="button"
-        disabled={!onOpenDetail}
-        onClick={onOpenDetail}
-        className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
-        aria-label={t('openCard')}
-        title={onOpenDetail ? t('openCard') : t('entityPicker.selectFirst')}
-      >
-        <Search className="h-3.5 w-3.5" />
-      </button>
+      {!hideDetail && (
+        <button
+          type="button"
+          disabled={!onOpenDetail}
+          onClick={onOpenDetail}
+          className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+          aria-label={t('openCard')}
+          title={onOpenDetail ? t('openCard') : t('entityPicker.selectFirst')}
+        >
+          <Search className="h-3.5 w-3.5" />
+        </button>
+      )}
 
       {/* Open picker */}
       {!hidePick && onPick && (

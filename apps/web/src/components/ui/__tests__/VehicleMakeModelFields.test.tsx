@@ -247,9 +247,65 @@ describe('VehicleMakeModelFields', () => {
     expect(onMakeBlur).toHaveBeenCalledTimes(1);
   });
 
-  it('помилка марки — під полем, пов’язана з групою поля', async () => {
+  it('помилка марки — під полем, пов’язана з групою і з полем пошуку (aria-invalid)', async () => {
     renderFields({ makeError: 'Оберіть марку зі списку' });
     expect(vehicleDirectoryField('make')).toHaveAccessibleDescription('Оберіть марку зі списку');
+    expect(vehicleDirectorySearch('make')).toHaveAccessibleDescription('Оберіть марку зі списку');
+    expect(vehicleDirectorySearch('make')).toHaveAttribute('aria-invalid', 'true');
+    expect(vehicleDirectorySearch('model')).not.toHaveAttribute('aria-invalid');
+    expect(vehicleDirectorySearch('model')).toHaveAccessibleDescription('Спершу оберіть марку');
+  });
+
+  it('без 🔍 «Відкрити картку»: у марки й моделі картки немає', async () => {
+    renderFields({ initial: { make: 'mk-toyota', model: 'md-camry' } });
+    await waitFor(() => expect(vehicleDirectoryField('model')).toHaveTextContent('Camry'));
+    for (const kind of ['make', 'model'] as const) {
+      const field = within(vehicleDirectoryField(kind));
+      expect(field.getByRole('button', { name: 'Обрати' })).toBeInTheDocument();
+      expect(field.queryByRole('button', { name: 'Відкрити картку' })).toBeNull();
+    }
+  });
+
+  it('збій завантаження марок: пошук і вікно вибору кажуть «не вдалося», а не «не знайдено»', async () => {
+    const ok = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/vehicle-makes' ? Promise.reject(new Error('Помилка сервера')) : ok(path),
+    );
+    renderFields();
+    await screen.findByTestId('vehicle-directory-load-error');
+
+    fireEvent.change(vehicleDirectorySearch('make'), { target: { value: 'bmw' } });
+    const status = await within(vehicleDirectoryField('make')).findByRole('status');
+    expect(status).toHaveTextContent('Не вдалося виконати пошук');
+
+    fireEvent.click(vehicleDirectoryPickButton('make'));
+    const dialog = await screen.findByRole('dialog', { name: 'Оберіть марку' });
+    expect(await within(dialog).findByText('Помилка сервера')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Марку не знайдено')).toBeNull();
+  });
+
+  it('вікно вибору, відкрите до завантаження: прихід довідника не скидає набраний пошук', async () => {
+    let resolveMakes: (v: unknown) => void = () => {};
+    const ok = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/vehicle-makes' ? new Promise(r => (resolveMakes = r)) : ok(path),
+    );
+    renderFields();
+    fireEvent.click(vehicleDirectoryPickButton('make'));
+    const dialog = await screen.findByRole('dialog', { name: 'Оберіть марку' });
+    fireEvent.change(within(dialog).getByPlaceholderText('Пошук марки…'), {
+      target: { value: 'bm' },
+    });
+    await new Promise(r => setTimeout(r, 400));
+
+    act(() => resolveMakes({ items: MAKES, total: MAKES.length }));
+
+    await within(dialog).findByRole('button', { name: 'BMW' });
+    // Даємо час перечитуванню, яке стара реалізація запускала після приходу даних.
+    await new Promise(r => setTimeout(r, 100));
+    expect(within(dialog).queryByRole('button', { name: 'Toyota' })).toBeNull();
+    expect(within(dialog).getByRole('button', { name: 'BMW' })).toBeInTheDocument();
+    expect(apiFetchMock.mock.calls.filter(c => c[0] === '/vehicle-makes')).toHaveLength(1);
   });
 
   // GOTCHAS 2026-10-21: вікно вибору — шар Escape над карткою контрагента чи майстром календаря.

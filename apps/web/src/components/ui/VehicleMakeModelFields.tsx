@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal } from '@/components/ui/search-picker-modal';
@@ -9,6 +10,8 @@ import {
   VEHICLE_DIRECTORY_WRITE_ROLES,
   useVehicleMakes,
   useVehicleModels,
+  vehicleMakesQuery,
+  vehicleModelsQuery,
   type VehicleMake,
   type VehicleModel,
 } from '@/hooks/api/useVehicleMakes';
@@ -83,8 +86,8 @@ interface DirectoryFieldProps {
 
 /**
  * Поле довідника: підпис, EntityPickerField з пошуком, вікно вибору й текст помилки/підказки під
- * полем. `role="group"` з підписом і `aria-describedby` — бо в EntityPickerField немає власних
- * `id`/`aria-invalid`, а показ обраного значення — не поле вводу.
+ * полем. Помилка чи підказка пов'язана і з полем пошуку (`aria-describedby`, `aria-invalid`), і з
+ * `role="group"` з підписом — бо обране значення показується не полем вводу, а текстом.
  */
 function DirectoryField({
   id,
@@ -106,6 +109,8 @@ function DirectoryField({
   const search = useCallback((q: string) => load().then(items => filterByName(items, q)), [load]);
   const labelId = `${id}-label`;
   const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
+  // 🔍 «Відкрити картку» прихована: у марки й моделі картки немає, а вимкнена кнопка з підказкою
+  // «Спочатку оберіть запис» вводила б в оману й після вибору.
 
   return (
     <div
@@ -122,8 +127,11 @@ function DirectoryField({
       <EntityPickerField<DirectoryItem>
         display={display}
         ariaLabel={label}
+        ariaInvalid={!!error}
+        ariaDescribedBy={describedBy}
         placeholder={searchPlaceholder}
         disabled={disabled}
+        hideDetail
         onPick={() => setPickerOpen(true)}
         onClear={onClear}
         onSearch={search}
@@ -175,22 +183,26 @@ export function VehicleMakeModelFields({
   const canEditDirectory = VEHICLE_DIRECTORY_WRITE_ROLES.includes(employee?.role ?? '');
   const makesQuery = useVehicleMakes();
   const modelsQuery = useVehicleModels(makeId || null);
-  const { data: makesData, refetch: refetchMakes } = makesQuery;
-  const { data: modelsData, refetch: refetchModels } = modelsQuery;
-  const makeItems = useMemo(() => toItems(makesData), [makesData]);
+  const qc = useQueryClient();
+  const makeItems = useMemo(() => toItems(makesQuery.data), [makesQuery.data]);
   // Без марки запит моделей вимкнений, але кеш попередньої марки міг би лишитись у `data`.
-  const modelItems = useMemo(() => (makeId ? toItems(modelsData) : NO_ITEMS), [makeId, modelsData]);
-  // Пошук, набраний до відповіді сервера, чекає на неї: інакше «Нічого не знайдено» на марку, що є.
-  // `cancelRefetch: false` — приєднатись до запиту, що вже йде, а не слати другий.
-  const loadMakes = useCallback(
-    async () =>
-      makesData ? makeItems : toItems((await refetchMakes({ cancelRefetch: false })).data),
-    [makesData, makeItems, refetchMakes],
+  const modelItems = useMemo(
+    () => (makeId ? toItems(modelsQuery.data) : NO_ITEMS),
+    [makeId, modelsQuery.data],
   );
-  const loadModels = useCallback(async () => {
-    if (!makeId) return NO_ITEMS;
-    return modelsData ? modelItems : toItems((await refetchModels({ cancelRefetch: false })).data);
-  }, [makeId, modelsData, modelItems, refetchModels]);
+  // Пошук, набраний до відповіді сервера, чекає на неї: інакше «Нічого не знайдено» на марку, що є.
+  // `ensureQueryData` приєднується до запиту, що вже йде (другого не шле), а збій кидає — поле й
+  // вікно вибору показують «не вдалося», а не «не знайдено». Колбеки не залежать від `data`:
+  // інакше прихід даних змінив би `fetchItems` відкритого вікна вибору, і воно перечитало б увесь
+  // список поверх уже набраного пошуку.
+  const loadMakes = useCallback(
+    async () => toItems(await qc.ensureQueryData(vehicleMakesQuery())),
+    [qc],
+  );
+  const loadModels = useCallback(
+    async () => (makeId ? toItems(await qc.ensureQueryData(vehicleModelsQuery(makeId))) : NO_ITEMS),
+    [qc, makeId],
+  );
 
   const missingLabel = (loaded: boolean, name: string | undefined): string => {
     const shown = name || '…';

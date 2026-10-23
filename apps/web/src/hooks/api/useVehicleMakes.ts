@@ -1,4 +1,10 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
 import type { ApiSchema } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { counterpartiesKeys } from '@/hooks/api/useCounterparties';
@@ -38,11 +44,15 @@ interface DirectoryQueryOptions {
   fresh?: boolean;
 }
 
-export function useVehicleMakes(
+/**
+ * Опції запитів довідника — спільні для хуків і для `queryClient.ensureQueryData` (поле вибору
+ * марки/моделі чекає на перше завантаження й приєднується до запиту, що вже йде).
+ */
+export function vehicleMakesQuery(
   showDeleted = false,
   { fresh = false }: DirectoryQueryOptions = {},
 ) {
-  return useQuery({
+  return queryOptions({
     queryKey: vehicleMakesKeys.list(showDeleted),
     queryFn: ({ signal }) =>
       apiFetch<{ items: VehicleMake[]; total: number }>(
@@ -54,22 +64,33 @@ export function useVehicleMakes(
   });
 }
 
-export function useVehicleModels(
-  makeId: string | null | undefined,
+export function vehicleModelsQuery(
+  makeId: string,
   showDeleted = false,
   { fresh = false }: DirectoryQueryOptions = {},
 ) {
-  return useQuery({
-    queryKey: vehicleMakesKeys.modelList(makeId ?? '', showDeleted),
+  return queryOptions({
+    queryKey: vehicleMakesKeys.modelList(makeId, showDeleted),
     queryFn: ({ signal }) =>
       apiFetch<{ items: VehicleModel[]; total: number }>(
-        `/vehicle-makes/${makeId ?? ''}/models${showDeleted ? '?showDeleted=true' : ''}`,
+        `/vehicle-makes/${makeId}/models${showDeleted ? '?showDeleted=true' : ''}`,
         { signal },
       ).then(r => r.items),
-    enabled: !!makeId,
     staleTime: fresh ? 0 : REFERENCE_STALE_MS,
     refetchOnWindowFocus: true,
   });
+}
+
+export function useVehicleMakes(showDeleted = false, options: DirectoryQueryOptions = {}) {
+  return useQuery(vehicleMakesQuery(showDeleted, options));
+}
+
+export function useVehicleModels(
+  makeId: string | null | undefined,
+  showDeleted = false,
+  options: DirectoryQueryOptions = {},
+) {
+  return useQuery({ ...vehicleModelsQuery(makeId ?? '', showDeleted, options), enabled: !!makeId });
 }
 
 /**

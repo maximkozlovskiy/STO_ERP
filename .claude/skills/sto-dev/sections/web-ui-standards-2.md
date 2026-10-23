@@ -276,7 +276,13 @@ onClick={() => router.push(`/counterparties/${id}`)}
 ```
 [ ] Поле відображається через EntityPickerField, не через кастомну кнопку
 [ ] Кнопка … відкриває SearchPickerModal для пошуку і вибору
-[ ] Кнопка 🔍 disabled якщо нема вибраного (onOpenDetail = undefined)
+[ ] Кнопка 🔍 disabled якщо нема вибраного (onOpenDetail = undefined); у записів без картки
+    (довідник: марка, модель) — `hideDetail`, а не вічно вимкнена кнопка
+[ ] Помилка/підказка поля, які рендерить батько → `ariaInvalid` + `ariaDescribedBy` на поле пошуку
+[ ] Пошук по вже завантаженому довіднику (useQuery): `onSearch`/`fetchItems` — СТАБІЛЬНИЙ колбек
+    через `queryClient.ensureQueryData(<опції запиту>)`, не `refetch()` із залежністю від `data`:
+    `refetch` збою не кидає («не знайдено» замість «не вдалося»), а зміна колбека з приходом
+    даних перечитує відкрите вікно вибору поверх набраного пошуку (`VehicleMakeModelFields`)
 [ ] Кнопка 🔍 робить lazy fetch + відкриває *EditModal
 [ ] Кнопка × очищає вибір (hidden якщо display = '')
 [ ] Якщо є дія "створити новий" — кнопка UserPlus/FilePlus ЗОВНІ поля

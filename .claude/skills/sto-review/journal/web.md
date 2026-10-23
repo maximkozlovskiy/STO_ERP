@@ -554,3 +554,15 @@ RECEPTIONIST (`POST /payments`). Для нього перелік — 403: «Н�
 (на 7656be4f — 5 влучань, після фіксу — порожньо); ефекти — `grep -n -B30 "exhaustive-deps" <файл> | grep ": t('"`.
 **Фікс:** en «Vehicles: {{count}}», «Goods priced: {{count}}», «{{value}} pts», «{{days}} d» (uk не змінюється);
 `i18n.t('counterparties:editModal.load*')` (6cfbb150). **Severity:** SUGGESTION
+
+### 2026-10-23 — Пошук по кешу довідника через `refetch()` — §8.2
+
+**Сигнал:** `onSearch`/`fetchItems` поля-вибору (EntityPickerField + SearchPickerModal) чекав на
+перше завантаження через `refetch({ cancelRefetch: false })` і залежав від `data`. Два дефекти:
+`refetch` збою НЕ кидає (повертає `{ data: undefined }`) → при впалому довіднику випадний список
+казав «Нічого не знайдено», вікно — «Марку не знайдено»; а прихід даних міняв колбек → ефект
+`SearchPickerModal` `[open, fetchItems]` перечитував `''` і ставив увесь список під набраний пошук.
+**Grep:** `grep -rn "refetch[A-Za-z]*({ cancelRefetch" apps/web/src --include=*.tsx` — кожен у
+колбеку пошуку = підозра. **Фікс:** опції запиту в хуку (`queryOptions`) +
+`useCallback(() => qc.ensureQueryData(opts), [qc, …ключ])`: приєднується до запиту, що йде, кидає
+збій, стабільний (review 6691b865..cf2f8332). **Severity:** IMPORTANT

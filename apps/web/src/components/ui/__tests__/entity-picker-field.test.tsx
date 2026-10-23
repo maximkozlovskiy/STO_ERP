@@ -373,6 +373,41 @@ describe('EntityPickerField — search mode (regression guards for 7b58af2c / c7
     expect(screen.getByLabelText('Відкрити картку')).toBeDisabled();
   });
 
+  it('hideDetail ховає 🔍 «Відкрити картку», «…» лишається', () => {
+    render(
+      <EntityPickerField<CpItem>
+        display="Toyota"
+        onSearch={async () => []}
+        onSearchSelect={vi.fn()}
+        onPick={vi.fn()}
+        onClear={vi.fn()}
+        hideDetail
+      />,
+    );
+    expect(screen.queryByLabelText('Відкрити картку')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Обрати')).toBeInTheDocument();
+  });
+
+  it('ariaInvalid / ariaDescribedBy — на полі пошуку', () => {
+    render(
+      <>
+        <p id="cp-err">Оберіть клієнта</p>
+        <EntityPickerField<CpItem>
+          display=""
+          ariaLabel="Клієнт"
+          ariaInvalid
+          ariaDescribedBy="cp-err"
+          onSearch={async () => []}
+          onSearchSelect={vi.fn()}
+          onClear={vi.fn()}
+        />
+      </>,
+    );
+    const input = screen.getByRole('combobox', { name: 'Клієнт' });
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveAccessibleDescription('Оберіть клієнта');
+  });
+
   it('disabled=true вимикає input', () => {
     render(
       <EntityPickerField<CpItem>
