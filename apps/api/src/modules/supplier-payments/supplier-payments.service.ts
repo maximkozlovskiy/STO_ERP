@@ -714,13 +714,13 @@ export class SupplierPaymentsService {
       nextSourceType === PaymentSourceType.BANK_ACCOUNT && nextBankAccountId
         ? this.prisma.bankAccount.findFirst({
             where: { id: nextBankAccountId, orgId, deletedAt: null },
-            select: { id: true },
+            select: { id: true, currencyId: true },
           })
         : Promise.resolve(null),
       nextSourceType === PaymentSourceType.CASH_REGISTER && nextCashRegisterId
         ? this.prisma.cashRegister.findFirst({
             where: { id: nextCashRegisterId, orgId, deletedAt: null },
-            select: { id: true },
+            select: { id: true, currencyId: true },
           })
         : Promise.resolve(null),
       dto.purchaseOrderId
@@ -760,10 +760,24 @@ export class SupplierPaymentsService {
       }
     }
 
+    // BR-SUPPAY-011: валюта чернетки — валюта ефективного джерела, як у create(). Раніше update()
+    // міняв рахунок чи касу, а currencyId лишав старий: гривнева чернетка, перенесена на валютний
+    // рахунок, проводилась би як гривнева (неправильний курс і борг у базовій валюті).
+    const currencyId =
+      nextSourceType === PaymentSourceType.BANK_ACCOUNT
+        ? bankAccount?.currencyId
+        : cashRegister?.currencyId;
+    if (!currencyId) {
+      throw new BadRequestException(
+        translateError('err.supplierPayment.sourceHasNoCurrency', getLocale()),
+      );
+    }
+
     await this.prisma.supplierPayment.update({
       where: { id, orgId },
       data: {
         ...(dto.supplierId ? { supplierId: dto.supplierId } : {}),
+        currencyId,
         ...(dto.sourceType ? { sourceType: dto.sourceType } : {}),
         // Джерело перезаписуємо узгоджено з ефективним sourceType.
         bankAccountId:

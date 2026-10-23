@@ -747,6 +747,14 @@ export class PurchaseOrdersService {
       seen.add(recv.lineId);
     }
 
+    const lineById = new Map(po.lines.map(l => [l.id, l]));
+    // BR-PO-001: `lineId`, якого немає серед активних рядків ЦЬОГО замовлення (чужий, видалений,
+    // вигаданий), — 400 до будь-якого запису. Раніше такий рядок мовчки відкидався з відповіддю 200:
+    // комірник бачив «прийнято», а товар не надходив і борг не виникав.
+    if (dto.lines.some(recv => !lineById.has(recv.lineId))) {
+      throw new BadRequestException(err('err.purchaseOrder.receiveLineNotFound'));
+    }
+
     // sto-optimize: всі лінії незалежні (різні lineId/goodId rows) — паралелимо.
     // Всередині лінії: createMovement і lineUpdate пишуть у різні таблиці → теж паралельно.
     // NB: Prisma всередині $transaction виконує DB-операції послідовно (один pinned connection),
@@ -755,7 +763,6 @@ export class PurchaseOrdersService {
     //
     // sto-optimize (2026-08-30): bucket-by-id Map замість Array.find() у циклі →
     // O(N+M) замість O(N×M). Помітно на PO з 100+ ліній (10_000 порівнянь → 200).
-    const lineById = new Map(po.lines.map(l => [l.id, l]));
     const activeLines = dto.lines
       .map(recv => ({ recv, line: lineById.get(recv.lineId) }))
       .filter(

@@ -133,7 +133,7 @@ describe('SupplierPaymentsService — update-guards', () => {
       })
       .mockResolvedValueOnce({ ...confirmedRow, supplierId: NEW_SUPPLIER, purchaseOrderId: null }); // findOne
     prisma.counterparty.findFirst.mockResolvedValueOnce({ id: NEW_SUPPLIER, type: 'SUPPLIER' });
-    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID });
+    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID, currencyId: 'uah-cur' });
 
     await service.update(ORG, SP_ID, { supplierId: NEW_SUPPLIER });
 
@@ -163,7 +163,7 @@ describe('SupplierPaymentsService — update-guards', () => {
       })
       .mockResolvedValueOnce({ ...confirmedRow, supplierId: NEW_SUPPLIER });
     prisma.counterparty.findFirst.mockResolvedValueOnce({ id: NEW_SUPPLIER, type: 'SUPPLIER' });
-    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID });
+    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID, currencyId: 'uah-cur' });
 
     await service.update(ORG, SP_ID, { supplierId: NEW_SUPPLIER });
 
@@ -193,7 +193,7 @@ describe('SupplierPaymentsService — update-guards', () => {
     const CLIENT_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
     prisma.supplierPayment.findFirst.mockResolvedValueOnce(draftRow);
     prisma.counterparty.findFirst.mockResolvedValueOnce({ id: CLIENT_ID, type: 'CLIENT' });
-    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID });
+    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID, currencyId: 'uah-cur' });
 
     await expect(service.update(ORG, SP_ID, { supplierId: CLIENT_ID })).rejects.toBeInstanceOf(
       BadRequestException,
@@ -206,7 +206,7 @@ describe('SupplierPaymentsService — update-guards', () => {
     const OTHER_SUPPLIER = '88888888-8888-4888-8888-888888888888';
     const PO_ID = '99999999-9999-4999-8999-999999999999';
     prisma.supplierPayment.findFirst.mockResolvedValueOnce(draftRow);
-    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID });
+    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID, currencyId: 'uah-cur' });
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ id: PO_ID, supplierId: OTHER_SUPPLIER });
 
     await expect(service.update(ORG, SP_ID, { purchaseOrderId: PO_ID })).rejects.toBeInstanceOf(
@@ -248,7 +248,7 @@ describe('SupplierPaymentsService — update-guards', () => {
     prisma.supplierPayment.findFirst
       .mockResolvedValueOnce(draftRow) // чернетка на касі CASH_ID
       .mockResolvedValueOnce({ ...confirmedRow, status: 'DRAFT' }); // findOne
-    prisma.bankAccount.findFirst.mockResolvedValueOnce({ id: BANK_ID });
+    prisma.bankAccount.findFirst.mockResolvedValueOnce({ id: BANK_ID, currencyId: 'uah-cur' });
 
     await service.update(ORG, SP_ID, {
       sourceType: PaymentSourceType.BANK_ACCOUNT,
@@ -273,7 +273,7 @@ describe('SupplierPaymentsService — update-guards', () => {
     prisma.supplierPayment.findFirst
       .mockResolvedValueOnce(bankDraftRow)
       .mockResolvedValueOnce({ ...confirmedRow, status: 'DRAFT' }); // findOne
-    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID });
+    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID, currencyId: 'uah-cur' });
 
     await service.update(ORG, SP_ID, {
       sourceType: PaymentSourceType.CASH_REGISTER,
@@ -297,7 +297,7 @@ describe('SupplierPaymentsService — update-guards', () => {
     prisma.supplierPayment.findFirst
       .mockResolvedValueOnce(bankDraftRow)
       .mockResolvedValueOnce({ ...confirmedRow, status: 'DRAFT' }); // findOne
-    prisma.bankAccount.findFirst.mockResolvedValueOnce({ id: BANK_ID });
+    prisma.bankAccount.findFirst.mockResolvedValueOnce({ id: BANK_ID, currencyId: 'uah-cur' });
 
     await service.update(ORG, SP_ID, { amount: 750 });
 
@@ -306,5 +306,58 @@ describe('SupplierPaymentsService — update-guards', () => {
     };
     expect(data).toMatchObject({ amount: 750, bankAccountId: BANK_ID, cashRegisterId: null });
     expect(data).not.toHaveProperty('sourceType');
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // BR-SUPPAY-011: валюта чернетки — валюта ефективного джерела (як у create())
+  // Мутація: прибрати `currencyId,` із data в update() → кейси «→ usd» червоніють.
+  // ──────────────────────────────────────────────────────────────────────
+
+  // guards: BR-SUPPAY-011
+  it('update(): гривнева чернетка на банку → інший рахунок у USD → currencyId = валюта нового рахунку', async () => {
+    const USD_BANK = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    prisma.supplierPayment.findFirst
+      .mockResolvedValueOnce(bankDraftRow)
+      .mockResolvedValueOnce({ ...confirmedRow, status: 'DRAFT' }); // findOne
+    prisma.bankAccount.findFirst.mockResolvedValueOnce({ id: USD_BANK, currencyId: 'usd-cur' });
+
+    await service.update(ORG, SP_ID, { bankAccountId: USD_BANK });
+
+    expect(prisma.bankAccount.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: USD_BANK, orgId: ORG, deletedAt: null } }),
+    );
+    const { data } = prisma.supplierPayment.update.mock.calls[0]![0] as {
+      data: Record<string, unknown>;
+    };
+    expect(data).toMatchObject({ bankAccountId: USD_BANK, currencyId: 'usd-cur' });
+  });
+
+  // guards: BR-SUPPAY-011
+  it('update(): каса (UAH) → банківський рахунок у USD → currencyId із рахунку, не з каси', async () => {
+    prisma.supplierPayment.findFirst
+      .mockResolvedValueOnce(draftRow)
+      .mockResolvedValueOnce({ ...confirmedRow, status: 'DRAFT' }); // findOne
+    prisma.bankAccount.findFirst.mockResolvedValueOnce({ id: BANK_ID, currencyId: 'usd-cur' });
+
+    await service.update(ORG, SP_ID, {
+      sourceType: PaymentSourceType.BANK_ACCOUNT,
+      bankAccountId: BANK_ID,
+    });
+
+    const { data } = prisma.supplierPayment.update.mock.calls[0]![0] as {
+      data: Record<string, unknown>;
+    };
+    expect(data).toMatchObject({ sourceType: 'BANK_ACCOUNT', currencyId: 'usd-cur' });
+  });
+
+  // guards: BR-SUPPAY-011
+  it('update(): джерело без валюти → 400 sourceHasNoCurrency, без запису', async () => {
+    prisma.supplierPayment.findFirst.mockResolvedValueOnce(draftRow);
+    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID, currencyId: null });
+
+    await expect(service.update(ORG, SP_ID, { amount: 100 })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prisma.supplierPayment.update).not.toHaveBeenCalled();
   });
 });

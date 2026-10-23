@@ -164,9 +164,11 @@ UI показує режим лише коли в документі вже є �
 
 1. **BR-PO-001**: `activeLines` — рядки ЗАПИТУ (`dto.lines`), у яких `lineId` належить цьому замовленню
    і `receivedQty` у запиті > 0. На залишок рядка (`quantity - receivedQty`) фільтр НЕ дивиться:
-   рядок запиту з `receivedQty = 0` пропускається без запису; `lineId`, якого немає серед рядків
-   замовлення, мовчки відкидається (без 4xx); повністю прийнятий рядок із `receivedQty > 0` у запиті
-   не відфільтровується, а дає 400 від over-receipt guard (BR-PO-003).
+   рядок запиту з `receivedQty = 0` пропускається без запису; `lineId`, якого немає серед активних
+   рядків замовлення (чужий, видалений, вигаданий), — 400 `err.purchaseOrder.receiveLineNotFound` ДО
+   `$transaction`, запит відхиляється цілком (до 2026-10-24 такий рядок мовчки відкидався з 200);
+   повністю прийнятий рядок із `receivedQty > 0` у запиті не відфільтровується, а дає 400 від
+   over-receipt guard (BR-PO-003).
 2. **BR-PO-002**: дубль `lineId` у `dto.lines` → 400 `err.purchaseOrder.receiveLineMustBeUnique` ДО
    `$transaction` (перевірка через `Set`, жодного запису). Дублі НЕ схлопуються: два рядки з тим самим
    `lineId` дали б подвійний `increment`. `deduplicateBy` у `receive()` не вживається — єдиний його
@@ -234,7 +236,7 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 | -------------------------------------------------------------- | ---------------------------------------------------------------- | ------ |
 | `applyPricing` — правила ціноутворення                         | `purchase-orders.pricing.spec.ts`                                | 13     |
 | `receive()` — UoM-override + tenant-валідація                  | `purchase-orders.receive-uom.spec.ts`                            | 13     |
-| `receive()` — activeLines, CAS → RECEIPT, борг                 | `purchase-orders.receive-ledger.spec.ts`                         | 5      |
+| `receive()` — activeLines, CAS → RECEIPT, борг                 | `purchase-orders.receive-ledger.spec.ts`                         | 6      |
 | `create`/`update` — tenant-guard goodId рядків                 | `purchase-orders.line-goods.spec.ts`                             | 3      |
 | `update()` — резолв контракту контрагента                      | `purchase-orders.contract-resolution.spec.ts`                    | 9      |
 | `transition()` — карта `PO_TRANSITIONS`                        | `purchase-orders.fsm.spec.ts`                                    | 15     |

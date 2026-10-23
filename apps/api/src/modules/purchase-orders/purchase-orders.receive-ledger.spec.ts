@@ -238,9 +238,9 @@ describe('PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUP
   });
   // ── BR-PO-001: які рядки ЗАПИТУ стають «активними» ─────────────────────────────────────────
   // Фільтр дивиться на запит, а не на залишок рядка замовлення: рядок активний, коли його lineId
-  // належить цьому замовленню І receivedQty у запиті > 0. Мутації, якими доведено три кейси:
-  // (6) прибрано `x.recv.receivedQty > 0`; (7) прибрано `!!x.line`; (8) у фільтр додано
-  // «залишок рядка > 0» (стара редакція правила) — кожна валить свій кейс.
+  // належить цьому замовленню І receivedQty у запиті > 0; чужий lineId — 400 (2026-10-24).
+  // Мутації, якими доведено кейси: (6) прибрано `x.recv.receivedQty > 0`; (7) прибрано перевірку
+  // `!lineById.has(recv.lineId)`; (8) у фільтр додано «залишок рядка > 0» (стара редакція правила).
 
   // guards: BR-PO-001
   it('рядок запиту з receivedQty=0 → не активний: без CAS і без RECEIPT для нього; борг лише за прийнятий рядок', async () => {
@@ -276,35 +276,39 @@ describe('PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUP
   });
 
   // guards: BR-PO-001
-  it('lineId, якого немає серед рядків замовлення → мовчки відкидається (без 4xx); решта запиту приймається', async () => {
-    const UNKNOWN_LINE = '22222222-2222-4222-8222-22222222222f';
+  // Раніше чужий lineId мовчки відкидався з 200 (TECH-DEBT §8 «прийом»). Мутація: прибрати
+  // перевірку `!lineById.has(recv.lineId)` у receive() → кейс червоніє (resolves замість 400).
+  it.each([
+    ['з receivedQty>0', 3],
+    ['з receivedQty=0', 0],
+  ])(
+    'lineId, якого немає серед рядків замовлення (%s) → 400 receiveLineNotFound до транзакції; нічого не прийнято',
+    async (_label, qty) => {
+      const UNKNOWN_LINE = '22222222-2222-4222-8222-22222222222f';
 
-    await expect(
-      service.receive(
-        ORG,
-        PO_ID,
-        {
-          lines: [
-            { lineId: UNKNOWN_LINE, receivedQty: 3 },
-            { lineId: LINE_1, receivedQty: 4 },
-          ],
-        },
-        USER_ID,
-      ),
-    ).resolves.toBeDefined();
+      const err: unknown = await service
+        .receive(
+          ORG,
+          PO_ID,
+          {
+            lines: [
+              { lineId: UNKNOWN_LINE, receivedQty: qty },
+              { lineId: LINE_1, receivedQty: 4 },
+            ],
+          },
+          USER_ID,
+        )
+        .catch((e: unknown) => e);
 
-    // Жодного запису з чужим lineId: CAS і рух — лише для рядка 1.
-    expect(prisma.purchaseOrderLine.updateMany).toHaveBeenCalledTimes(1);
-    expect(prisma.purchaseOrderLine.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: LINE_1, orgId: ORG, receivedQty: 2 } }),
-    );
-    expect(inventory.createMovement).toHaveBeenCalledTimes(1);
-    expect(settlements.createTransaction).toHaveBeenCalledWith(
-      ORG,
-      expect.objectContaining({ type: 'SUPPLIER_CHARGE', amount: 400 }),
-      prisma,
-    );
-  });
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as Error).message).toBe('Рядок прийому не належить цьому замовленню');
+      // Законний рядок 1 теж не прийнято: запит відхилено цілком, до будь-якого запису.
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.purchaseOrderLine.updateMany).not.toHaveBeenCalled();
+      expect(inventory.createMovement).not.toHaveBeenCalled();
+      expect(settlements.createTransaction).not.toHaveBeenCalled();
+    },
+  );
 
   // guards: BR-PO-001
   it('повністю прийнятий рядок із receivedQty>0 у запиті → НЕ відфільтровується за залишком, а дає 400 over-receipt', async () => {
