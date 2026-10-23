@@ -29,7 +29,19 @@ export const vehicleMakesKeys = {
 // вкладці («Контрагенти → Марки авто» з підказки форми) і повертаються до незбереженої форми авто.
 const REFERENCE_STALE_MS = 5 * 60_000;
 
-export function useVehicleMakes(showDeleted = false, enabled = true) {
+/**
+ * `fresh` — вкладка довідника: щоразу при відкритті перечитує список (Bug #957). Її лічильники
+ * авто (`vehicleCount`, BR-VEH-009) міняє кожен запис авто — форма, картка контрагента, майстер
+ * календаря, планшет; 5 хв кешу форми показали б «0 авто» перед видаленням чи злиттям марки.
+ */
+interface DirectoryQueryOptions {
+  fresh?: boolean;
+}
+
+export function useVehicleMakes(
+  showDeleted = false,
+  { fresh = false }: DirectoryQueryOptions = {},
+) {
   return useQuery({
     queryKey: vehicleMakesKeys.list(showDeleted),
     queryFn: ({ signal }) =>
@@ -37,13 +49,16 @@ export function useVehicleMakes(showDeleted = false, enabled = true) {
         `/vehicle-makes${showDeleted ? '?showDeleted=true' : ''}`,
         { signal },
       ).then(r => r.items),
-    enabled,
-    staleTime: REFERENCE_STALE_MS,
+    staleTime: fresh ? 0 : REFERENCE_STALE_MS,
     refetchOnWindowFocus: true,
   });
 }
 
-export function useVehicleModels(makeId: string | null | undefined, showDeleted = false) {
+export function useVehicleModels(
+  makeId: string | null | undefined,
+  showDeleted = false,
+  { fresh = false }: DirectoryQueryOptions = {},
+) {
   return useQuery({
     queryKey: vehicleMakesKeys.modelList(makeId ?? '', showDeleted),
     queryFn: ({ signal }) =>
@@ -52,7 +67,7 @@ export function useVehicleModels(makeId: string | null | undefined, showDeleted 
         { signal },
       ).then(r => r.items),
     enabled: !!makeId,
-    staleTime: REFERENCE_STALE_MS,
+    staleTime: fresh ? 0 : REFERENCE_STALE_MS,
     refetchOnWindowFocus: true,
   });
 }

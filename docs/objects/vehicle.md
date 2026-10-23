@@ -65,7 +65,9 @@ delete, `syncVersion`.
 
 Список марок кешується в Redis (`ref:vehicle-makes:<orgId>`); кеш скидають записи довідника й авто
 (лічильник `vehicleCount`). Записи авто з `POST /sync/push` кеш не скидають — лічильник у вкладці
-може відставати до 5 хв (TTL); перевірка видалення рахує по базі.
+може відставати до 5 хв (TTL); перевірка видалення рахує по базі. На клієнті форма авто тримає
+список 5 хв, а вкладка «Марки авто» перечитує марки й моделі при кожному відкритті (`fresh`, Bug #957):
+записи авто з форм кеш довідника на клієнті не скидають.
 
 `GET /:id/mileage` → `VehicleMileagePoint[]` (тип у `packages/shared/src/types.ts`): масив без
 пагінації, від старішого запису до новішого.
@@ -190,7 +192,7 @@ cd apps/api && npx vitest run src/modules/vehicles/<файл>.spec.ts
 - web: `components/ui/__tests__/VehicleMakeModelFields.test.tsx` (7), `vehicle.schema.test.ts`
   (14), `VehicleForm.test.tsx` (5), `CounterpartyEditModal.test.tsx` (18),
   `app/(app)/calendar/__tests__/CalendarSlotModal.new-client-vehicle.test.tsx` (2),
-  `app/(app)/counterparties/__tests__/VehicleMakesTab.test.tsx` (8);
+  `app/(app)/counterparties/__tests__/VehicleMakesTab.test.tsx` (9);
 - E2E: `apps/web/e2e/vehicle-makes.spec.ts` (марка й модель у вкладці → авто з вибору →
   видалення заблоковане → злиття переносить авто), `vehicles.spec.ts` (вибір у формі). Авто-передумови
   інших E2E беруть пару з `e2e/vehicle-directory.ts` (`ensureVehicleModel`).

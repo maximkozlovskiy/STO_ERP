@@ -94,10 +94,11 @@ export default function VehicleMakesTab() {
   const [mergeError, setMergeError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const makesQuery = useVehicleMakes(withDeleted);
+  // `fresh`: лічильники авто міняють записи авто поза вкладкою — список перечитується щоразу (Bug #957).
+  const makesQuery = useVehicleMakes(withDeleted, { fresh: true });
   const makes = makesQuery.data ?? [];
   const selectedMake = makes.find(m => m.id === selectedId) ?? null;
-  const modelsQuery = useVehicleModels(selectedMake?.id ?? null, withDeleted);
+  const modelsQuery = useVehicleModels(selectedMake?.id ?? null, withDeleted, { fresh: true });
   const models = modelsQuery.data ?? [];
 
   const createMake = useCreateVehicleMake();

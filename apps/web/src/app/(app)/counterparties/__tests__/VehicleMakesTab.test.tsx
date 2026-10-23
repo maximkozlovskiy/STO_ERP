@@ -1,6 +1,8 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createQueryWrapper } from '@/__tests__/query-utils';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { createQueryWrapper, makeTestQueryClient } from '@/__tests__/query-utils';
+import { vehicleMakesKeys } from '@/hooks/api/useVehicleMakes';
 import VehicleMakesTab from '../VehicleMakesTab';
 
 /**
@@ -195,5 +197,22 @@ describe('VehicleMakesTab', () => {
     finish({ ...TOYOTA, id: 'mk-9', name: 'Skoda' });
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Нова марка' })).toBeNull());
     expect(mutations()).toHaveLength(1);
+  });
+  // guards: BR-VEH-009
+  it('кількість авто — свіжа при кожному відкритті, а не з 5-хв кешу форми авто (Bug #957)', async () => {
+    // Форма авто щойно завантажила довідник (ще 0 авто), потім зберегла авто цієї марки.
+    const qc = makeTestQueryClient();
+    qc.setQueryData(vehicleMakesKeys.list(false), [{ ...TOYOTA, vehicleCount: 0 }]);
+    qc.setQueryData(vehicleMakesKeys.modelList('mk-1', false), [{ ...CAMRY, vehicleCount: 0 }]);
+    render(
+      <QueryClientProvider client={qc}>
+        <VehicleMakesTab />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(within(makeRow('Toyota')).getByText('3')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Toyota' }));
+    const camryRow = (await screen.findByText('Camry')).closest('tr');
+    if (!camryRow) throw new Error('рядок Camry не знайдено');
+    await waitFor(() => expect(within(camryRow).getByText('3')).toBeInTheDocument());
   });
 });
