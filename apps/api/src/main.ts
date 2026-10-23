@@ -4,7 +4,7 @@
 };
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
+import { Logger, VersioningType } from '@nestjs/common';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import fastifyCookie from '@fastify/cookie';
@@ -13,7 +13,7 @@ import fastifyMultipart from '@fastify/multipart';
 import { AppModule } from './app.module';
 import { CORS_OPTIONS } from './common/cors.options';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-import { validationExceptionFactory } from './common/pipes/validation-error.factory';
+import { globalPipes } from './common/pipes/global-pipes';
 import { registerBullBoardGuard } from './modules/bull-board/bull-board.guard';
 
 async function bootstrap() {
@@ -69,14 +69,8 @@ async function bootstrap() {
   // No-op у production (модуль там не монтується). Реєструємо ДО app.listen, у контексті DI-контейнера.
   await registerBullBoardGuard(app);
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      exceptionFactory: validationExceptionFactory,
-    }),
-  );
+  // NUL у query/param → 400, далі ValidationPipe (whitelist + forbidNonWhitelisted) — globalPipes().
+  app.useGlobalPipes(...globalPipes());
 
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useLogger(app.get(PinoLogger));

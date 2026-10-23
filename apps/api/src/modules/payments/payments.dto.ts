@@ -68,6 +68,56 @@ export class CreatePaymentDto {
   settlementType?: PaymentSettlementType;
 }
 
+/**
+ * Query `GET /payments`. До 2026-10-24 параметри йшли без DTO: `?method=a&method=b` (масив) ставав
+ * `where.method = [...]`, і Prisma відповідала 500. Тепер кожен — рядок (масив → 400), `method` —
+ * код способу оплати (`PaymentMethodConfig.code`, довільний рядок організації) до 64 символів.
+ */
+export class PaymentsListQueryDto {
+  @ApiPropertyOptional({ description: 'Сторінка (з 1)' })
+  @IsOptional()
+  @IsString()
+  page?: string;
+
+  @ApiPropertyOptional({ description: 'Рядків на сторінку (сервіс обмежує)' })
+  @IsOptional()
+  @IsString()
+  limit?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  counterpartyId?: string;
+
+  @ApiPropertyOptional({ description: 'YYYY-MM-DD, київська доба' })
+  @IsOptional()
+  @IsString()
+  dateFrom?: string;
+
+  @ApiPropertyOptional({ description: 'YYYY-MM-DD, київська доба' })
+  @IsOptional()
+  @IsString()
+  dateTo?: string;
+
+  @ApiPropertyOptional({ description: 'Код способу оплати (PaymentMethodConfig.code)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  method?: string;
+
+  @ApiPropertyOptional({ description: "Статус фіскалізації або 'none'" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  fiscalStatus?: string;
+
+  @ApiPropertyOptional({ description: 'Клієнт, номер рахунку, номер наряду або примітка' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  q?: string;
+}
+
 export class PaymentResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() orgId!: string;

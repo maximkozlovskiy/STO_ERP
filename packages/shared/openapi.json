@@ -14875,10 +14875,29 @@
         "operationId": "PaymentsController_findAll_v1",
         "parameters": [
           {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Сторінка (з 1)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Рядків на сторінку (сервіс обмежує)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "counterpartyId",
             "required": false,
             "in": "query",
             "schema": {
+              "format": "uuid",
               "type": "string"
             }
           },
@@ -14886,6 +14905,7 @@
             "name": "dateFrom",
             "required": false,
             "in": "query",
+            "description": "YYYY-MM-DD, київська доба",
             "schema": {
               "type": "string"
             }
@@ -14894,6 +14914,7 @@
             "name": "dateTo",
             "required": false,
             "in": "query",
+            "description": "YYYY-MM-DD, київська доба",
             "schema": {
               "type": "string"
             }
@@ -14902,7 +14923,9 @@
             "name": "method",
             "required": false,
             "in": "query",
+            "description": "Код способу оплати (PaymentMethodConfig.code)",
             "schema": {
+              "maxLength": 64,
               "type": "string"
             }
           },
@@ -14910,7 +14933,9 @@
             "name": "fiscalStatus",
             "required": false,
             "in": "query",
+            "description": "Статус фіскалізації або 'none'",
             "schema": {
+              "maxLength": 32,
               "type": "string"
             }
           },
@@ -14920,20 +14945,9 @@
             "in": "query",
             "description": "Клієнт, номер рахунку, номер наряду або примітка",
             "schema": {
+              "maxLength": 200,
               "type": "string"
             }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {}
-          },
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {}
           }
         ],
         "responses": {

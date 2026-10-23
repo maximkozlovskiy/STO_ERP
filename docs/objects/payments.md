@@ -236,6 +236,15 @@ BR-INV-018), рахунок без наряду — PAID/PARTIALLY_PAID → PART
 `payments.reversal-excluded.spec.ts`); безготівкового (BR-PAY-024) — у реєстрі нижче
 (`payments.reverse-noncash.spec.ts`, `payments.reverse-route.contract.spec.ts`).
 
+- **BR-PAY-025**: **Параметри списку `GET /payments` — через DTO** (`PaymentsListQueryDto`, 2026-10-24).
+  Кожен параметр — рядок: повторений параметр (масив) → 400; `counterpartyId` — UUID; `method` —
+  код способу оплати до 64 символів (довільний рядок організації, тому без переліку), `fiscalStatus`
+  до 32, `q` до 200; невідомий параметр → 400 (`forbidNonWhitelisted`, як у решті DTO). Раніше
+  параметри йшли без DTO, і `?method=a&method=b` ставав масивом у `where.method` — 500 від Prisma.
+  Символ NUL у будь-якому query- чи path-параметрі будь-якого маршруту — 400
+  `err.query.nulCharacter` від глобальної труби `RejectNulCharacterPipe` (`globalPipes()` у
+  `main.ts`), а не 500 від Postgres.
+
 ### Side-effects після `create` (усі поза транзакцією, best-effort)
 
 Перехід наряду в «Оплачено» серед них більше немає: він у транзакції оплати (BR-PAY-005); після
@@ -407,37 +416,39 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 
 **Маршрути UI:** `/cash`, `/invoices` (`/payments` — лише редирект)
 
-| Аспект                                          | Тест                                                     | Кейсів |
-| ----------------------------------------------- | -------------------------------------------------------- | ------ |
-| сервісна логіка                                 | `cash-shift.service.spec.ts`                             | 31     |
-| зміна своя в кожної каси (BR-CASH-027)          | `cash-shift.per-register.spec.ts`                        | 13     |
-| HTTP-контракт стану зміни (BR-CASH-027)         | `cash-shift.current-route.contract.spec.ts`              | 3      |
-| HTTP-клієнт                                     | `checkbox.client.spec.ts`                                | 31     |
-| BullMQ-processor                                | `checkbox.processor.spec.ts`                             | 27     |
-| fiscal provider registry                        | `fiscal/fiscal-provider-registry.spec.ts`                | 16     |
-| провайдер                                       | `fiscal/vchasno.provider.spec.ts`                        | 29     |
-| payment gateway registry                        | `gateways/payment-gateway-registry.spec.ts`              | 12     |
-| HTTP-клієнт                                     | `monobank.client.spec.ts`                                | 26     |
-| сервісна логіка                                 | `online-payment.service.spec.ts`                         | 15     |
-| BullMQ-processor                                | `payment-polling.processor.spec.ts`                      | 26     |
-| ланцюг опитування (Redis)                       | `payment-polling.queue.integration.spec.ts`              | 1      |
-| fiscal gate                                     | `payments.fiscal-gate.spec.ts`                           | 8      |
-| idempotency                                     | `payments.idempotency.spec.ts`                           | 7      |
-| money model                                     | `payments.money-model.spec.ts`                           | 22     |
-| multicurrency                                   | `payments.multicurrency.spec.ts`                         | 23     |
-| query dto                                       | `payments.query-dto.spec.ts`                             | 43     |
-| передумови + наряд                              | `payments.work-order.spec.ts`                            | 52     |
-| політика повторів черг                          | `payments.queue-retry-policy.spec.ts`                    | 6      |
-| сервісна логіка                                 | `provider-config.service.spec.ts`                        | 35     |
-| upsert провайдера без `enabled` (лише activate) | `provider-upsert-dto.contract.spec.ts`                   | 12     |
-| шифрування at-rest                              | `../../prisma/field-encryption.extension.spec.ts`        | 23     |
-| шифрування (сервіс)                             | `../../common/crypto/encryption.service.spec.ts`         | 11     |
-| готівка — через касу, безготівкова — з рахунком | `payments.cash-register-required.spec.ts`                | 14     |
-| куди надходять кошти                            | `../payment-methods/payment-methods.destination.spec.ts` | 24     |
-| HTTP-контракт способів                          | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
-| системні способи оплати                         | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
-| сторно безготівкової оплати (BR-PAY-024)        | `payments.reverse-noncash.spec.ts`                       | 24     |
-| HTTP-контракт сторно (BR-PAY-024)               | `payments.reverse-route.contract.spec.ts`                | 15     |
+| Аспект                                                | Тест                                                     | Кейсів |
+| ----------------------------------------------------- | -------------------------------------------------------- | ------ |
+| сервісна логіка                                       | `cash-shift.service.spec.ts`                             | 31     |
+| зміна своя в кожної каси (BR-CASH-027)                | `cash-shift.per-register.spec.ts`                        | 13     |
+| HTTP-контракт стану зміни (BR-CASH-027)               | `cash-shift.current-route.contract.spec.ts`              | 3      |
+| HTTP-клієнт                                           | `checkbox.client.spec.ts`                                | 31     |
+| BullMQ-processor                                      | `checkbox.processor.spec.ts`                             | 27     |
+| fiscal provider registry                              | `fiscal/fiscal-provider-registry.spec.ts`                | 16     |
+| провайдер                                             | `fiscal/vchasno.provider.spec.ts`                        | 29     |
+| payment gateway registry                              | `gateways/payment-gateway-registry.spec.ts`              | 12     |
+| HTTP-клієнт                                           | `monobank.client.spec.ts`                                | 26     |
+| сервісна логіка                                       | `online-payment.service.spec.ts`                         | 15     |
+| BullMQ-processor                                      | `payment-polling.processor.spec.ts`                      | 26     |
+| ланцюг опитування (Redis)                             | `payment-polling.queue.integration.spec.ts`              | 1      |
+| fiscal gate                                           | `payments.fiscal-gate.spec.ts`                           | 8      |
+| idempotency                                           | `payments.idempotency.spec.ts`                           | 7      |
+| money model                                           | `payments.money-model.spec.ts`                           | 22     |
+| multicurrency                                         | `payments.multicurrency.spec.ts`                         | 23     |
+| query dto                                             | `payments.query-dto.spec.ts`                             | 43     |
+| передумови + наряд                                    | `payments.work-order.spec.ts`                            | 52     |
+| політика повторів черг                                | `payments.queue-retry-policy.spec.ts`                    | 6      |
+| сервісна логіка                                       | `provider-config.service.spec.ts`                        | 35     |
+| upsert провайдера без `enabled` (лише activate)       | `provider-upsert-dto.contract.spec.ts`                   | 12     |
+| шифрування at-rest                                    | `../../prisma/field-encryption.extension.spec.ts`        | 23     |
+| шифрування (сервіс)                                   | `../../common/crypto/encryption.service.spec.ts`         | 11     |
+| готівка — через касу, безготівкова — з рахунком       | `payments.cash-register-required.spec.ts`                | 14     |
+| куди надходять кошти                                  | `../payment-methods/payment-methods.destination.spec.ts` | 24     |
+| HTTP-контракт способів                                | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
+| системні способи оплати                               | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
+| сторно безготівкової оплати (BR-PAY-024)              | `payments.reverse-noncash.spec.ts`                       | 24     |
+| HTTP-контракт сторно (BR-PAY-024)                     | `payments.reverse-route.contract.spec.ts`                | 15     |
+| HTTP-контракт списку: query DTO, NUL (BR-PAY-025)     | `payments.list-query.contract.spec.ts`                   | 8      |
+| NUL у query/param → 400, глобальні труби (BR-PAY-025) | `../../common/pipes/reject-nul-character.pipe.spec.ts`   | 6      |
 
 Разом: **561** кейс — 491 у модулі + 34 у двох спеках шифрування + 36 у довіднику способів оплати
 (`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
@@ -445,8 +456,9 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 
-HTTP-контракт є лише в маршруту сторно `POST /payments/:id/reverse` (`payments.reverse-route.contract.spec.ts`);
-решту маршрутів `/payments` (DTO, статуси, валідацію) покриває лише E2E. У довідника способів оплати контракт є — `../payment-methods/payment-methods.contract.spec.ts`.
+HTTP-контракт є в маршруту сторно `POST /payments/:id/reverse` (`payments.reverse-route.contract.spec.ts`)
+і списку `GET /payments` (`payments.list-query.contract.spec.ts`); решту маршрутів `/payments` (DTO,
+статуси, валідацію) покриває лише E2E. У довідника способів оплати контракт є — `../payment-methods/payment-methods.contract.spec.ts`.
 
 Виключення `branch_provider_configs` з `PULL_TABLES` (друга половина правила про креденшели
 провайдерів) unit-тестом не стережеться: список живе в `sync/`, там тестів на цю модель немає.

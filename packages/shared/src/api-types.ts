@@ -18905,15 +18905,21 @@ export interface operations {
     PaymentsController_findAll_v1: {
         parameters: {
             query?: {
+                /** @description Сторінка (з 1) */
+                page?: string;
+                /** @description Рядків на сторінку (сервіс обмежує) */
+                limit?: string;
                 counterpartyId?: string;
+                /** @description YYYY-MM-DD, київська доба */
                 dateFrom?: string;
+                /** @description YYYY-MM-DD, київська доба */
                 dateTo?: string;
+                /** @description Код способу оплати (PaymentMethodConfig.code) */
                 method?: string;
+                /** @description Статус фіскалізації або 'none' */
                 fiscalStatus?: string;
                 /** @description Клієнт, номер рахунку, номер наряду або примітка */
                 q?: string;
-                limit?: unknown;
-                page?: unknown;
             };
             header?: never;
             path?: never;

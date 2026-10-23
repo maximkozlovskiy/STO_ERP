@@ -8,14 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiBearerAuth,
-  ApiQuery,
-  ApiBody,
-  ApiCreatedResponse,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody, ApiCreatedResponse } from '@nestjs/swagger';
 import { paymentReversalSchema, type PaymentReversalFormValues } from '@sto/shared';
 import { Throttle } from '@nestjs/throttler';
 import { RequireIdempotencyKey } from '../../common/interceptors/idempotency.interceptor';
@@ -27,7 +20,12 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { assertCalendarDateQuery } from '../../common/utils/date-query';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { PaymentsService } from './payments.service';
-import { CreatePaymentDto, PaymentResponseDto, PaymentReversalDto } from './payments.dto';
+import {
+  CreatePaymentDto,
+  PaymentResponseDto,
+  PaymentReversalDto,
+  PaymentsListQueryDto,
+} from './payments.dto';
 
 @ApiTags('Payments')
 @Controller('payments')
@@ -39,39 +37,18 @@ export class PaymentsController {
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Список платежів' })
-  @ApiQuery({ name: 'page', required: false })
-  @ApiQuery({ name: 'limit', required: false })
-  @ApiQuery({ name: 'counterpartyId', required: false })
-  @ApiQuery({ name: 'dateFrom', required: false })
-  @ApiQuery({ name: 'dateTo', required: false })
-  @ApiQuery({ name: 'method', required: false })
-  @ApiQuery({ name: 'fiscalStatus', required: false })
-  @ApiQuery({
-    name: 'q',
-    required: false,
-    description: 'Клієнт, номер рахунку, номер наряду або примітка',
-  })
-  findAll(
-    @OrgContext() orgId: string,
-    @Query('page') page = '1',
-    @Query('limit') limit = '20',
-    @Query('counterpartyId', new ParseUUIDPipe({ optional: true })) counterpartyId?: string,
-    @Query('dateFrom') dateFrom?: string,
-    @Query('dateTo') dateTo?: string,
-    @Query('method') method?: string,
-    @Query('fiscalStatus') fiscalStatus?: string,
-    @Query('q') q?: string,
-  ) {
+  findAll(@OrgContext() orgId: string, @Query() query: PaymentsListQueryDto) {
+    const { page = '1', limit = '20', dateFrom, dateTo } = query;
     assertCalendarDateQuery(dateFrom, dateTo);
     return this.service.findAll(orgId, {
       page: +page,
       limit: +limit,
-      counterpartyId,
+      counterpartyId: query.counterpartyId,
       dateFrom,
       dateTo,
-      method,
-      fiscalStatus,
-      q,
+      method: query.method,
+      fiscalStatus: query.fiscalStatus,
+      q: query.q,
     });
   }
 
