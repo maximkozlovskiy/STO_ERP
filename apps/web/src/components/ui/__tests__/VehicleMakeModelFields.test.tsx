@@ -133,4 +133,31 @@ describe('VehicleMakeModelFields', () => {
     await screen.findByRole('option', { name: 'Toyota' });
     await waitFor(() => expect(makeSelect().selectedOptions[0]?.text).toBe('Toyota (недоступна)'));
   });
+  it('збій завантаження марок — текст помилки й «Повторити», що перечитує список (Bug #958)', async () => {
+    let failMakes = true;
+    const ok = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/vehicle-makes' && failMakes
+        ? Promise.reject(new Error('Помилка сервера'))
+        : ok(path),
+    );
+    renderFields();
+    const alert = await screen.findByTestId('vehicle-directory-load-error');
+    expect(alert).toHaveTextContent('Не вдалося завантажити марки');
+    failMakes = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Повторити' }));
+    await screen.findByRole('option', { name: 'Toyota' });
+    expect(screen.queryByTestId('vehicle-directory-load-error')).toBeNull();
+  });
+
+  it('збій завантаження моделей обраної марки — свій текст, не «моделей ще немає» (Bug #958)', async () => {
+    const ok = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string) =>
+      path.endsWith('/models') ? Promise.reject(new Error('Помилка сервера')) : ok(path),
+    );
+    renderFields({ make: 'mk-bmw', model: '' });
+    const alert = await screen.findByTestId('vehicle-directory-load-error');
+    expect(alert).toHaveTextContent('Не вдалося завантажити моделі цієї марки');
+    expect(screen.queryByTestId('vehicle-no-models-hint')).toBeNull();
+  });
 });

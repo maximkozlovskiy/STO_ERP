@@ -118,7 +118,10 @@
     "unavailable": "{{name}} (unavailable)",
     "noModelsHint": "This make has no models yet.",
     "noModelsLink": "Add them in “Counterparties → Car makes”",
-    "noModelsAskAdmin": "This make has no models yet — ask an administrator to add them to the directory."
+    "noModelsAskAdmin": "This make has no models yet — ask an administrator to add them to the directory.",
+    "makesLoadFailed": "Could not load makes.",
+    "modelsLoadFailed": "Could not load the models of this make.",
+    "directoryRetry": "Retry"
   },
   "options": {
     "fuel": {

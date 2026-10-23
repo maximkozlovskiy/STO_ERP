@@ -189,7 +189,7 @@ cd apps/api && npx vitest run src/modules/vehicles/<файл>.spec.ts
   з `makeId` / `modelId`, назви пише сервер (BR-VEH-008), запис пари скидає кеш списку марок;
 - `apps/api/src/modules/setup/setup.service.spec.ts` — стартовий список марок нової організації
   (BR-VEH-012, 2 кейси з 15);
-- web: `components/ui/__tests__/VehicleMakeModelFields.test.tsx` (7), `vehicle.schema.test.ts`
+- web: `components/ui/__tests__/VehicleMakeModelFields.test.tsx` (9), `vehicle.schema.test.ts`
   (14), `VehicleForm.test.tsx` (5), `CounterpartyEditModal.test.tsx` (18),
   `app/(app)/calendar/__tests__/CalendarSlotModal.new-client-vehicle.test.tsx` (2),
   `app/(app)/counterparties/__tests__/VehicleMakesTab.test.tsx` (9);

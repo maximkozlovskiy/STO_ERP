@@ -17,6 +17,7 @@ import {
  * - Зміна марки скидає модель: стара модель новій марці не належить (сервер відповів би 400).
  * - Порожній список моделей — підказка, де їх додати; посилання — лише ролям, що ведуть довідник,
  *   у новій вкладці: незбережена форма авто лишається відкритою (список перечитується при поверненні).
+ * - Збій завантаження марок чи моделей — текст помилки з «Повторити» (Bug #958).
  * - `currentMake` / `currentModel` — назви зі знімка авто: показуються, поки довідник вантажиться,
  *   а після завантаження, якщо запису в ньому вже немає, — з позначкою «недоступна».
  */
@@ -66,6 +67,12 @@ export function VehicleMakeModelFields({
   const makeMissing = !!makeId && !makes.some(m => m.id === makeId);
   const modelMissing = !!modelId && !models.some(m => m.id === modelId);
   const modelsLoaded = !!makeId && modelsQuery.isSuccess;
+  // Збій завантаження — свій текст, а не «Оберіть марку» над порожнім списком (Bug #958).
+  const failedQuery = makesQuery.isError
+    ? makesQuery
+    : makeId && modelsQuery.isError
+      ? modelsQuery
+      : null;
 
   return (
     <div className="space-y-1.5">
@@ -117,6 +124,22 @@ export function VehicleMakeModelFields({
           ))}
         </Select>
       </div>
+      {failedQuery && (
+        <p
+          role="alert"
+          className="text-[12px] text-destructive-text"
+          data-testid="vehicle-directory-load-error"
+        >
+          {t(failedQuery === makesQuery ? 'form.makesLoadFailed' : 'form.modelsLoadFailed')}{' '}
+          <button
+            type="button"
+            onClick={() => void failedQuery.refetch()}
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            {t('form.directoryRetry')}
+          </button>
+        </p>
+      )}
       {modelsLoaded && models.length === 0 && (
         <p className="text-[12px] text-muted-foreground" data-testid="vehicle-no-models-hint">
           {canEditDirectory ? (
