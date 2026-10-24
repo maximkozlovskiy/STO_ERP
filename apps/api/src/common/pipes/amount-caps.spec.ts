@@ -23,6 +23,7 @@ import {
   workOrderFormLineSchema,
   workOrderFormPartSchema,
   workOrderFormSchema,
+  goodFormSchema,
 } from '@sto/shared';
 import { ZodValidationPipe } from './zod-validation.pipe';
 import { globalPipes } from './global-pipes';
@@ -291,6 +292,25 @@ describe('Стелі сум і кількостей — форма web (та с�
     ],
   ] as const)('%s понад стелю — помилка форми', (_name, schema, value) => {
     expect((schema as ZodSchema).safeParse(value).success).toBe(false);
+  });
+});
+
+// ─── Bug #971: ціна товару (purchasePrice/salePrice) лягає в Decimal(12,2) ──────────────────────
+// `goodFormSchema` валідує POST/PATCH /goods через ZodValidationPipe; обидві ціни — у Decimal(12,2)
+// колонках Good. Без стелі 1e30 доходив до Prisma → безіменна 500. Мутація: прибери MONEY_CAP у
+// purchasePrice/salePrice → «понад стелю» проходить (success === true).
+describe('Ціна товару — стеля Decimal(12,2) (Bug #968)', () => {
+  const base = { name: 'Фільтр 000 E2E' };
+  it('salePrice понад MONEY_AMOUNT_MAX — помилка форми', () => {
+    expect(goodFormSchema.safeParse({ ...base, salePrice: OVER_MONEY }).success).toBe(false);
+  });
+  it('purchasePrice понад MONEY_AMOUNT_MAX — помилка форми', () => {
+    expect(goodFormSchema.safeParse({ ...base, purchasePrice: OVER_MONEY }).success).toBe(false);
+  });
+  it('обидві ціни рівно на межі — проходить (контроль)', () => {
+    expect(
+      goodFormSchema.safeParse({ ...base, purchasePrice: MONEY, salePrice: MONEY }).success,
+    ).toBe(true);
   });
 });
 

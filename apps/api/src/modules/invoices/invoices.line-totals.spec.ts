@@ -195,6 +195,74 @@ describe('InvoicesService — line-totals (recalcTotals на бекенді)', (
       );
       expect(lines.update).not.toHaveBeenCalled();
     });
+
+    // ─── Bug #969: net на межі + ПДВ зверху переповнює колонку priceWithVat ───
+    // Чистий добуток (net) рівно на межі Decimal(12,2), але priceWithVat = net × 1,2 (EXCLUSIVE)
+    // уже за межею — і саме priceWithVat зберігається. Асерт на net пропустив би це → 500.
+    // Мутація: прибери `assertMoneyFits(priceWithVat, …)` → ці кейси падають (рядок створюється/
+    // оновлюється, 1,2e10 летить у Decimal(12,2)). Контроль: NONE-режим (priceWithVat = net) проходить.
+    // guards: BR-FIN-001
+    it('addLine: net на межі + ПДВ зверху 20% → priceWithVat переповнює колонку — 400, рядок не створюється', async () => {
+      settings.getDefaultVatRate.mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 20 });
+      await expect(
+        service.addLine(ORG, INV_ID, {
+          description: 'Робота',
+          quantity: 1,
+          unitPrice: 9_999_999_999.99,
+        } as never),
+      ).rejects.toSatisfy(
+        (e: Error) => e.message.includes('завелика') || e.message.includes(OVERFLOW),
+      );
+      expect(lines.create).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-FIN-001
+    it('addLine: net на межі + режим без ПДВ → priceWithVat = net → проходить (контроль мутації)', async () => {
+      settings.getDefaultVatRate.mockResolvedValue({ vatMode: 'NONE', vatRate: 0 });
+      await expect(
+        service.addLine(ORG, INV_ID, {
+          description: 'Робота',
+          quantity: 1,
+          unitPrice: 9_999_999_999.99,
+        } as never),
+      ).resolves.toBeDefined();
+      expect(lines.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ─── Bug #970: агрегат totalWithVat понад Decimal(12,2) → 400 (не 500) ───────
+  // Кожен рядок у межах стелі, але СУМА рядків (totalWithVat → amount) теж лягає в Decimal(12,2).
+  // recalcTotals бере суму з aggregate(_sum) — мокаємо його понад межу. Мутація: прибери
+  // `assertMoneyFits(totalWithVat, …)` у recalcTotals → invoice.update викликається з 2e10 (500 у БД).
+  describe('агрегат рахунку понад Decimal(12,2) (Bug #967)', () => {
+    const OVERFLOW = 'err.money.lineAmountOverflow';
+    // guards: BR-FIN-001
+    it('removeLine → сума рядків що лишились ≈2e10 → 400, invoice.update не викликається', async () => {
+      lines.aggregate.mockResolvedValue({
+        _sum: {
+          priceWithoutVat: 16_000_000_000,
+          vatAmount: 4_000_000_000,
+          priceWithVat: 20_000_000_000,
+        },
+      });
+      await expect(service.removeLine(ORG, INV_ID, LINE_ID)).rejects.toSatisfy(
+        (e: Error) => e.message.includes('завелика') || e.message.includes(OVERFLOW),
+      );
+      expect(prisma.invoice.update).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-FIN-001
+    it('агрегат рівно на межі Decimal(12,2) — проходить (контроль)', async () => {
+      lines.aggregate.mockResolvedValue({
+        _sum: {
+          priceWithoutVat: 8_333_333_333.33,
+          vatAmount: 1_666_666_666.66,
+          priceWithVat: 9_999_999_999.99,
+        },
+      });
+      await expect(service.removeLine(ORG, INV_ID, LINE_ID)).resolves.toBeUndefined();
+      expect(prisma.invoice.update).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ─── BR-INV-017: ПДВ ручного рядка — за режимом організації ─────────────────

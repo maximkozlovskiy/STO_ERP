@@ -848,6 +848,10 @@ export class InvoicesService {
       vatRate,
       settingsVat.vatMode,
     );
+    // Bug #969: у колонку priceWithVat лягає сума З ПДВ (EXCLUSIVE: net × (1 + vatRate/100)) —
+    // вона більша за net, тож net на межі стелі + ПДВ зверху все одно переповнює Decimal(12,2).
+    // Перевіряємо саме те значення, що зберігається.
+    assertMoneyFits(priceWithVat, 'сума рядка рахунку з ПДВ');
 
     const line = await this.prisma.invoiceLine.create({
       data: {
@@ -908,6 +912,8 @@ export class InvoicesService {
       vatRate,
       vatMode,
     );
+    // Bug #969: priceWithVat (сума З ПДВ) лягає в Decimal(12,2) і більша за net — перевіряємо її.
+    assertMoneyFits(priceWithVat, 'сума рядка рахунку з ПДВ');
 
     const updated = await this.prisma.invoiceLine.update({
       where: { id: lineId, orgId },
@@ -1098,6 +1104,9 @@ export class InvoicesService {
     const totalWithoutVat = money(Number(result._sum.priceWithoutVat ?? 0));
     const totalVat = money(Number(result._sum.vatAmount ?? 0));
     const totalWithVat = money(Number(result._sum.priceWithVat ?? 0));
+    // Bug #970: кожен рядок у межах стелі, але СУМА рядків (totalWithVat/amount) теж лягає в
+    // Decimal(12,2) — два рядки близько стелі переповнюють агрегат. 400 з назвою поля замість 500.
+    assertMoneyFits(totalWithVat, 'разом по рахунку');
 
     // Base-сума рахунку по курсу на дату документа (fallbackToLatest — документний потік).
     const conv = inv?.currencyId

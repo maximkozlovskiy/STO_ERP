@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
-import { lineAmount, money, moneyFromDecimal } from '../../common/utils/money';
+import { assertMoneyFits, lineAmount, money, moneyFromDecimal } from '../../common/utils/money';
 import { calcVatOnBase, splitWorkOrderTotal } from '../../common/utils/vat';
 import { SettingsService } from '../settings/settings.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
@@ -78,6 +78,12 @@ export class WorkOrderTotalsService {
     // BR-WO-007: totalAmount — сума ДО СПЛАТИ (її бере CHARGE і рахунок), тож ПДВ у ній є завжди,
     // коли він є взагалі; totalNet — сума без ПДВ. Інваріант: totalNet + totalVat = totalAmount.
     const { totalNet, totalAmount } = splitWorkOrderTotal(money(totalBase), totalVat, vatMode);
+    // Bug #970: кожен рядок у межах стелі, але СУМА рядків лягає в Decimal(12,2)-тотали наряду
+    // (totalLabor/totalParts/totalAmount) — кілька рядків близько стелі переповнюють агрегат.
+    // Перевіряємо найбільші persisted-магнітуди → 400 з назвою поля замість 500 numeric overflow.
+    assertMoneyFits(totalLabor, 'разом роботи');
+    assertMoneyFits(totalParts, 'разом запчастини');
+    assertMoneyFits(totalAmount, 'разом по наряду');
     // Мультивалюта (Фаза 3): base-сума тоталу по курсу на дату документа (fallbackToLatest — документний
     // потік). Без currencyId → base (rate=1, base=total). Курс — на documentDate (наряд ведеться у валюті).
     const conv = wo?.currencyId

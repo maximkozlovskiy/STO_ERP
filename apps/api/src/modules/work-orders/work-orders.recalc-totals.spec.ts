@@ -229,6 +229,35 @@ describe('WorkOrdersService.recalcTotals — totalActualLabor formula', () => {
     expect(data.totalAmountBase).toBe(500);
     expect(data.rateUsed).toBe(1);
   });
+
+  // ─── Bug #970: агрегатні тотали наряду понад Decimal(12,2) → 400 (не 500) ──────
+  // Кожен рядок у межах стелі, але СУМА рядків (totalLabor/totalParts/totalAmount) теж лягає в
+  // Decimal(12,2). Два рядки близько стелі переповнюють агрегат. Мутація: прибери
+  // `assertMoneyFits(totalAmount, …)` у WorkOrderTotalsService.recalc → updateMany викликається з
+  // ≈2e10 (500 у БД). Контроль: агрегат рівно на межі проходить.
+  it('дві роботи близько стелі → totalAmount ≈2e10 → 400, workOrder.updateMany не викликається', async () => {
+    const lines: LineRow[] = [
+      { amount: 9_999_999_999.99, actualHours: null, normoHours: 1, price: 9_999_999_999.99 },
+      { amount: 9_999_999_999.99, actualHours: null, normoHours: 1, price: 9_999_999_999.99 },
+    ];
+    const { prisma, woUpdate } = makePrismaSpy(lines, 0);
+    const service = makeService(prisma);
+    await expect(
+      service.addPart(ORG, WO_ID, { goodId: GOOD_ID, warehouseId: WAREHOUSE_ID, quantity: 1 }),
+    ).rejects.toSatisfy((e: Error) => e.message.includes('завелика'));
+    expect(woUpdate).not.toHaveBeenCalled();
+  });
+
+  it('агрегат рівно на межі Decimal(12,2) — проходить (контроль)', async () => {
+    const lines: LineRow[] = [
+      { amount: 9_999_999_999.99, actualHours: 1, normoHours: 1, price: 9_999_999_999.99 },
+    ];
+    const { prisma, woUpdate } = makePrismaSpy(lines, 0);
+    const service = makeService(prisma);
+    await service.addPart(ORG, WO_ID, { goodId: GOOD_ID, warehouseId: WAREHOUSE_ID, quantity: 1 });
+    expect(woUpdate).toHaveBeenCalledTimes(1);
+    expect(woUpdate.mock.calls[0][0].data.totalAmount).toBe(9_999_999_999.99);
+  });
 });
 
 // ─── BR-WO-007: склад суми наряду за режимом ПДВ ─────────────────────────────

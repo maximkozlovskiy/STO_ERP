@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { optionalString, optionalUuid, optionalNonNegNumber } from '../validators';
+import { optionalString, optionalUuid, optionalNonNegNumber, MONEY_CAP } from '../validators';
 
 /**
  * Спільна zod-схема форми товару (Good) — ЄДИНЕ джерело правди валідації для web і api.
@@ -18,8 +18,10 @@ export const goodFormSchema = z.object({
   unit: optionalString(),
   unitId: optionalUuid(),
   brandId: optionalUuid(),
-  purchasePrice: optionalNonNegNumber(),
-  salePrice: optionalNonNegNumber(),
+  // Bug #971: обидві ціни лягають у Decimal(12,2) (Good.purchasePrice/salePrice) — стеля MONEY_CAP,
+  // інакше 1e30 доходить до Prisma → безіменна 500 numeric field overflow (клас BR-FIN-001).
+  purchasePrice: optionalNonNegNumber(MONEY_CAP),
+  salePrice: optionalNonNegNumber(MONEY_CAP),
   category: optionalString(),
   goodCategoryId: optionalUuid(),
   barcode: optionalString(),

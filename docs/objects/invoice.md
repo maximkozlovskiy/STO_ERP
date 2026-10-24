@@ -240,7 +240,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | dto and linked docs                                                | `invoices.dto-and-linked-docs.spec.ts`     | 11     |
 | due date                                                           | `invoices.due-date.spec.ts`                | 7      |
 | find by work order                                                 | `invoices.find-by-work-order.spec.ts`      | 5      |
-| line totals (recalcTotals на бекенді)                              | `invoices.line-totals.spec.ts`             | 15     |
+| line totals (recalcTotals на бекенді)                              | `invoices.line-totals.spec.ts`             | 19     |
 | список: відбір за датою документа                                  | `invoices.list-date-filter.spec.ts`        | 6      |
 | список: відбір за контрагентом, статусами, пошук                   | `invoices.list-filters.spec.ts`            | 7      |
 | refresh from work order                                            | `invoices.refresh-from-work-order.spec.ts` | 15     |

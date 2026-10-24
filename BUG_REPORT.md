@@ -4401,3 +4401,59 @@ access-токен, вилітає на /login через тимчасовий 42
 фіксованого «OC 90», що після першого прогону лишався soft-deleted і давав 409 (самоізоляція тесту).
 
 **Статус:** [x] виправлено
+
+## Session 2026-10-24 — share perimeter + money/overflow hunt (sto-tester, діапазон 4f69e769..17db4a45)
+
+> Полювання на money + публічний share-периметр після M3 (стелі сум/кількостей, BR-FIN-001
+> `assertMoneyFits`, share-token TTL/revoke). Share-периметр і повнота стель — підтверджено
+> безпечними (деталі у звіті). Знайдено три діри переповнення `Decimal(12,2)`, усі того самого
+> класу, що BR-FIN-001: безіменна 500 `numeric field overflow` замість 400 з назвою поля.
+
+### Bug #969 — [HIGH] Рядок рахунку: `assertMoneyFits` стереже ЧИСТУ суму, а в колонку лягає сума З ПДВ — одного рядка на межі стелі досить для 500
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts:845,905`
+**Severity:** HIGH
+**Категорія:** business-logic / overflow
+
+**Опис:** `assertMoneyFits(dto.quantity * dto.unitPrice, …)` перевіряє ЧИСТИЙ добуток (net), але
+`manualLineVat` у режимі `EXCLUSIVE` («ПДВ зверху») рахує `priceWithVat = net × (1 + vatRate/100)`,
+і саме `priceWithVat` пишеться в колонку `InvoiceLine.priceWithVat Decimal(12,2)`. Якщо net рівно
+на межі (`MONEY_AMOUNT_MAX = 9 999 999 999,99`), то при vatRate 20 `priceWithVat = 1,2e10` >
+місткості колонки → `numeric field overflow` на ЄДИНОМУ `invoiceLine.create`/`update`. Гейт
+перевіряє менше значення, ніж те, що реально зберігається (коментар у коді каже «priceWith*», але
+асерт — на net).
+**Очікувана поведінка:** 400 `err.money.lineAmountOverflow` з назвою поля, якщо сума рядка з ПДВ не
+вміщується в `Decimal(12,2)`.
+**Фактична поведінка:** безіменна 500 `numeric field overflow` (net на межі + ПДВ зверху).
+**Статус:** [x] виправлено
+
+### Bug #970 — [MEDIUM] Агрегатні тотали (рахунок `recalcTotals`, наряд `WorkOrderTotalsService.recalc`) пишуть суму рядків у `Decimal(12,2)` без `assertMoneyFits`
+
+**Файл:** `apps/api/src/modules/invoices/invoices.service.ts:1098-1120` · `apps/api/src/modules/work-orders/work-order-totals.service.ts:95-107`
+**Severity:** MEDIUM
+**Категорія:** business-logic / overflow
+
+**Опис:** Кожен рядок обмежений `MONEY_AMOUNT_MAX`, але СУМА рядків, що лягає в
+`totalWithVat`/`amount` (рахунок) і `totalLabor`/`totalParts`/`totalAmount` (наряд) — теж
+`Decimal(12,2)` — не перевіряється. Два рядки близько стелі (≈1e10 кожен) → сума ≈2e10 > місткості
+колонки → 500 на `recalcTotals`/`recalc`. BR-FIN-001 у дос'є міркує лише про ПОЛЬОВИЙ добуток
+рядка, агрегат пропущено.
+**Очікувана поведінка:** 400 з назвою поля, якщо агрегатний тотал не вміщується в колонку.
+**Фактична поведінка:** безіменна 500 `numeric field overflow`.
+**Статус:** [x] виправлено
+
+### Bug #971 — [MEDIUM] `goodFormSchema`: `purchasePrice`/`salePrice` БЕЗ стелі — обидва лягають у `Decimal(12,2)`, 1e30 → 500
+
+**Файл:** `packages/shared/src/schemas/forms/good.schema.ts:21-22`
+**Severity:** MEDIUM
+**Категорія:** validation / overflow
+
+**Опис:** `purchasePrice`/`salePrice` — `optionalNonNegNumber()` БЕЗ `MONEY_CAP`, тоді як колонки
+`Good.purchasePrice Decimal?(12,2)` і `Good.salePrice Decimal(12,2)`. Маршрут `POST/PATCH /goods`
+валідує `goodFormSchema` через `ZodValidationPipe`, тож `salePrice: 1e30` проходить Zod → доходить
+до Prisma → `numeric field overflow` → безіменна 500. Та сама діра класу BR-FIN-001, яку
+закрили для рахунку/наряду/оплати постачальнику, але не для ціни товару (поза діапазоном M3, але
+названо в брифі як обов'язкова перевірка).
+**Очікувана поведінка:** 400 `v.amountMax` з назвою поля для ціни понад `MONEY_AMOUNT_MAX`.
+**Фактична поведінка:** безіменна 500.
+**Статус:** [x] виправлено
