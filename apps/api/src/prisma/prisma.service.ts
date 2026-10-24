@@ -3,6 +3,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { withTenantGuard } from './tenant-guard.extension';
+import { extendAllModels } from './extend-all-models';
 import { createPgAdapter } from './pg-adapter';
 
 // Секретні поля що шифруються at-rest (Phase 4, H-2). Ключ — модель Prisma, значення —
@@ -83,53 +84,38 @@ const SYNC_VERSION_MODELS = new Set([
   'ExpenseCategory',
 ]);
 
-// Prisma 5 requires $extends for query middleware — $use was removed in v5
+// Prisma 5 requires $extends for query middleware — $use was removed in v5.
+// Спільний каркас/тип хука — у extendAllModels; тут лише handler-логіка syncVersion.
 function withSyncVersion(client: PrismaClient): PrismaClient {
-  return client.$extends({
-    query: {
-      $allModels: {
-        async $allOperations({
-          model,
-          operation,
-          args,
-          query,
-        }: {
-          model?: string;
-          operation: string;
-          args: Record<string, unknown>;
-          query: (args: Record<string, unknown>) => Promise<unknown>;
-        }) {
-          if (model && SYNC_VERSION_MODELS.has(model)) {
-            if (operation === 'create') {
-              const data = (args.data ?? {}) as Record<string, unknown>;
-              if (data.syncVersion === undefined) data.syncVersion = 1;
-              args = { ...args, data };
-            } else if (operation === 'createMany') {
-              const rows = args.data as Record<string, unknown>[];
-              args = {
-                ...args,
-                data: rows.map(item => ({
-                  ...item,
-                  syncVersion: item.syncVersion ?? 1,
-                })),
-              };
-            } else if (operation === 'update' || operation === 'updateMany') {
-              const data = (args.data ?? {}) as Record<string, unknown>;
-              data.syncVersion = { increment: 1 };
-              args = { ...args, data };
-            } else if (operation === 'upsert') {
-              const update = (args.update ?? {}) as Record<string, unknown>;
-              update.syncVersion = { increment: 1 };
-              const create = (args.create ?? {}) as Record<string, unknown>;
-              if (create.syncVersion === undefined) create.syncVersion = 1;
-              args = { ...args, update, create };
-            }
-          }
-          return query(args);
-        },
-      },
-    },
-  }) as unknown as PrismaClient;
+  return extendAllModels(client, async ({ model, operation, args, query }) => {
+    if (model && SYNC_VERSION_MODELS.has(model)) {
+      if (operation === 'create') {
+        const data = (args.data ?? {}) as Record<string, unknown>;
+        if (data.syncVersion === undefined) data.syncVersion = 1;
+        args = { ...args, data };
+      } else if (operation === 'createMany') {
+        const rows = args.data as Record<string, unknown>[];
+        args = {
+          ...args,
+          data: rows.map(item => ({
+            ...item,
+            syncVersion: item.syncVersion ?? 1,
+          })),
+        };
+      } else if (operation === 'update' || operation === 'updateMany') {
+        const data = (args.data ?? {}) as Record<string, unknown>;
+        data.syncVersion = { increment: 1 };
+        args = { ...args, data };
+      } else if (operation === 'upsert') {
+        const update = (args.update ?? {}) as Record<string, unknown>;
+        update.syncVersion = { increment: 1 };
+        const create = (args.create ?? {}) as Record<string, unknown>;
+        if (create.syncVersion === undefined) create.syncVersion = 1;
+        args = { ...args, update, create };
+      }
+    }
+    return query(args);
+  });
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -232,41 +218,26 @@ function decryptReadResult(
  * (включно з `...dto`-spread у settings.service.updateBranchSettings).
  */
 function withFieldEncryption(client: PrismaClient, enc: EncryptionService): PrismaClient {
-  return client.$extends({
-    query: {
-      $allModels: {
-        async $allOperations({
-          model,
-          operation,
-          args,
-          query,
-        }: {
-          model?: string;
-          operation: string;
-          args: Record<string, unknown>;
-          query: (args: Record<string, unknown>) => Promise<unknown>;
-        }) {
-          if (!model) return query(args);
-          const fields = ENCRYPTED_FIELDS[model];
+  // Спільний каркас/тип хука — у extendAllModels; тут лише handler-логіка шифрування.
+  return extendAllModels(client, async ({ model, operation, args, query }) => {
+    if (!model) return query(args);
+    const fields = ENCRYPTED_FIELDS[model];
 
-          // WRITE — шифруємо перед відправкою у БД: payload моделі і вкладені записи в моделі з
-          // секретами (тому й для моделей без власних секретних полів). `createMany*` — масив
-          // рядків, решта — один payload. Сирий SQL (`$executeRaw`) сюди не доходить — секрети
-          // ним не пишуться.
-          for (const key of WRITE_PAYLOADS[operation] ?? []) {
-            for (const payload of asArray(args[key])) encryptNestedWrite(enc, model, payload);
-          }
+    // WRITE — шифруємо перед відправкою у БД: payload моделі і вкладені записи в моделі з
+    // секретами (тому й для моделей без власних секретних полів). `createMany*` — масив
+    // рядків, решта — один payload. Сирий SQL (`$executeRaw`) сюди не доходить — секрети
+    // ним не пишуться.
+    for (const key of WRITE_PAYLOADS[operation] ?? []) {
+      for (const payload of asArray(args[key])) encryptNestedWrite(enc, model, payload);
+    }
 
-          if (!fields) return query(args);
-          const result = await query(args);
+    if (!fields) return query(args);
+    const result = await query(args);
 
-          // READ — дешифруємо результат (find*/upsert/create/update/*AndReturn повертають рядок(и)).
-          decryptReadResult(enc, fields, result);
-          return result;
-        },
-      },
-    },
-  }) as unknown as PrismaClient;
+    // READ — дешифруємо результат (find*/upsert/create/update/*AndReturn повертають рядок(и)).
+    decryptReadResult(enc, fields, result);
+    return result;
+  });
 }
 
 /**

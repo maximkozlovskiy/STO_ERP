@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { getTenantOrgId, isTenantBypassed } from '../common/tenant/tenant-context';
 import { TenantIsolationError } from './tenant-isolation.error';
+import { extendAllModels } from './extend-all-models';
 
 /**
  * Prisma `$extends` GUARD (A1 — fail-closed tenant isolation).
@@ -142,62 +143,48 @@ function stampOrThrowOrgId(model: string, operation: string, data: Record<string
 }
 
 export function withTenantGuard(client: PrismaClient): PrismaClient {
-  return client.$extends({
-    query: {
-      $allModels: {
-        async $allOperations({
-          model,
-          operation,
-          args,
-          query,
-        }: {
-          model?: string;
-          operation: string;
-          args: Record<string, unknown>;
-          query: (args: Record<string, unknown>) => Promise<unknown>;
-        }) {
-          // Легітимний глобальний доступ (login/setup/share/cross-org) → пропуск.
-          if (!model || isTenantBypassed() || TENANT_EXEMPT_MODELS.has(model)) {
-            return query(args);
-          }
+  // Спільний каркас/тип хука — у extendAllModels; тут лише guard-логіка (її рішення незмінні).
+  // Композиція OUTERMOST гарантується порядком застосування у [prisma.service.ts], не тут.
+  return extendAllModels(client, async ({ model, operation, args, query }) => {
+    // Легітимний глобальний доступ (login/setup/share/cross-org) → пропуск.
+    if (!model || isTenantBypassed() || TENANT_EXEMPT_MODELS.has(model)) {
+      return query(args);
+    }
 
-          // CREATE — стемп/перевірка orgId у data (найвищий leak-ризик: рядок у чужому tenant вічний).
-          if (operation === 'create') {
-            const data = (args.data ?? {}) as Record<string, unknown>;
-            stampOrThrowOrgId(model, operation, data);
-            args = { ...args, data };
-            return query(args);
-          }
-          if (operation === 'createMany') {
-            const rows = args.data as Record<string, unknown>[] | undefined;
-            if (Array.isArray(rows)) {
-              rows.forEach(r => stampOrThrowOrgId(model, operation, r));
-            }
-            return query(args);
-          }
-          if (operation === 'upsert') {
-            // upsert.where — ЗАВЖДИ unique-ключ, тож мапить рівно на ОДИН рядок. Tenant-safe, бо:
-            // (а) якщо ключ несе orgId/branchId (composite-unique orgId_email) — where вже scoped;
-            // (б) якщо ключ глобально-унікальний (counterpartyId @unique) — цільовий рядок один
-            //     org-wide, його orgId незмінний з create → крос-tenant запис неможливий.
-            // У ОБОХ випадках create-гілку стемпимо/перевіряємо orgId (throw, якщо нема ані data, ані
-            // ambient — тоді це справжній пропуск tenant-контексту).
-            const create = (args.create ?? {}) as Record<string, unknown>;
-            stampOrThrowOrgId(model, operation, create);
-            args = { ...args, create };
-            return query(args);
-          }
+    // CREATE — стемп/перевірка orgId у data (найвищий leak-ризик: рядок у чужому tenant вічний).
+    if (operation === 'create') {
+      const data = (args.data ?? {}) as Record<string, unknown>;
+      stampOrThrowOrgId(model, operation, data);
+      args = { ...args, data };
+      return query(args);
+    }
+    if (operation === 'createMany') {
+      const rows = args.data as Record<string, unknown>[] | undefined;
+      if (Array.isArray(rows)) {
+        rows.forEach(r => stampOrThrowOrgId(model, operation, r));
+      }
+      return query(args);
+    }
+    if (operation === 'upsert') {
+      // upsert.where — ЗАВЖДИ unique-ключ, тож мапить рівно на ОДИН рядок. Tenant-safe, бо:
+      // (а) якщо ключ несе orgId/branchId (composite-unique orgId_email) — where вже scoped;
+      // (б) якщо ключ глобально-унікальний (counterpartyId @unique) — цільовий рядок один
+      //     org-wide, його orgId незмінний з create → крос-tenant запис неможливий.
+      // У ОБОХ випадках create-гілку стемпимо/перевіряємо orgId (throw, якщо нема ані data, ані
+      // ambient — тоді це справжній пропуск tenant-контексту).
+      const create = (args.create ?? {}) as Record<string, unknown>;
+      stampOrThrowOrgId(model, operation, create);
+      args = { ...args, create };
+      return query(args);
+    }
 
-          // READ/UPDATE/DELETE/AGGREGATE — `where` мусить нести tenant-scope.
-          if (GUARDED_WHERE_OPS.has(operation)) {
-            if (!whereHasTenantScope(args.where)) throw new TenantIsolationError(model, operation);
-            return query(args);
-          }
+    // READ/UPDATE/DELETE/AGGREGATE — `where` мусить нести tenant-scope.
+    if (GUARDED_WHERE_OPS.has(operation)) {
+      if (!whereHasTenantScope(args.where)) throw new TenantIsolationError(model, operation);
+      return query(args);
+    }
 
-          // Інші операції (без where/data) — пропуск.
-          return query(args);
-        },
-      },
-    },
-  }) as unknown as PrismaClient;
+    // Інші операції (без where/data) — пропуск.
+    return query(args);
+  });
 }

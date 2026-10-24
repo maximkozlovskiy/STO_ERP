@@ -571,18 +571,8 @@ export class SupplierPaymentsService {
             select: { id: true, currencyId: true },
           })
         : Promise.resolve(null),
-      dto.cashRegisterId
-        ? this.prisma.cashRegister.findFirst({
-            where: { id: dto.cashRegisterId, orgId, deletedAt: null },
-            select: { id: true, currencyId: true },
-          })
-        : Promise.resolve(null),
-      dto.purchaseOrderId
-        ? this.prisma.purchaseOrder.findFirst({
-            where: { id: dto.purchaseOrderId, orgId, deletedAt: null },
-            select: { id: true, supplierId: true },
-          })
-        : Promise.resolve(null),
+      this.findCashRegisterForPayment(orgId, dto.cashRegisterId),
+      this.findPurchaseOrderForPayment(orgId, dto.purchaseOrderId),
     ]);
 
     if (!supplier)
@@ -717,18 +707,11 @@ export class SupplierPaymentsService {
             select: { id: true, currencyId: true },
           })
         : Promise.resolve(null),
-      nextSourceType === PaymentSourceType.CASH_REGISTER && nextCashRegisterId
-        ? this.prisma.cashRegister.findFirst({
-            where: { id: nextCashRegisterId, orgId, deletedAt: null },
-            select: { id: true, currencyId: true },
-          })
-        : Promise.resolve(null),
-      dto.purchaseOrderId
-        ? this.prisma.purchaseOrder.findFirst({
-            where: { id: dto.purchaseOrderId, orgId, deletedAt: null },
-            select: { id: true, supplierId: true },
-          })
-        : Promise.resolve(null),
+      this.findCashRegisterForPayment(
+        orgId,
+        nextSourceType === PaymentSourceType.CASH_REGISTER ? nextCashRegisterId : undefined,
+      ),
+      this.findPurchaseOrderForPayment(orgId, dto.purchaseOrderId),
     ]);
 
     if (dto.supplierId) {
@@ -1199,6 +1182,38 @@ export class SupplierPaymentsService {
    * BANK_ACCOUNT → потрібен bankAccountId (без cashRegisterId);
    * CASH_REGISTER → потрібен cashRegisterId (без bankAccountId).
    */
+  /**
+   * Пошук каси для оплати: `{ id, orgId, deletedAt: null }` + `select { id, currencyId }`.
+   * Приймає ВЖЕ-резолвлений id — guard (сорс-тип/наявність) лишається у викликача.
+   */
+  private findCashRegisterForPayment(
+    orgId: string,
+    cashRegisterId?: string | null,
+  ): Promise<{ id: string; currencyId: string } | null> {
+    return cashRegisterId
+      ? this.prisma.cashRegister.findFirst({
+          where: { id: cashRegisterId, orgId, deletedAt: null },
+          select: { id: true, currencyId: true },
+        })
+      : Promise.resolve(null);
+  }
+
+  /**
+   * Пошук PO для оплати: `{ id, orgId, deletedAt: null }` + `select { id, supplierId }`.
+   * Приймає ВЖЕ-резолвлений id — guard лишається у викликача.
+   */
+  private findPurchaseOrderForPayment(
+    orgId: string,
+    purchaseOrderId?: string | null,
+  ): Promise<{ id: string; supplierId: string } | null> {
+    return purchaseOrderId
+      ? this.prisma.purchaseOrder.findFirst({
+          where: { id: purchaseOrderId, orgId, deletedAt: null },
+          select: { id: true, supplierId: true },
+        })
+      : Promise.resolve(null);
+  }
+
   private assertSourceConsistency(
     sourceType: PaymentSourceType,
     bankAccountId?: string,
