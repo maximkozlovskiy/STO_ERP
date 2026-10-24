@@ -180,6 +180,90 @@
 
 ---
 
+## Аудит логіки 2026-10-24 — не виправлено (запис на доопрацювання)
+
+> Прохід на логічні помилки по всій бізнес-логіці (три read-only агенти: календар/CRM/доступ,
+> склад/наряди, гроші/розрахунки). Лише **запис** — нічого з цього не виправлено цим проходом.
+> Класифікація за кодом (не наживо). «NEW» = не було в попередніх списках цього файла.
+>
+> Overflow-баги `priceWithVat`/totals/good-price (#969-#971), знайдені тим самим днем, —
+> **уже виправлені** (комміти `dedd0f8a`/`76cad5d0`, BR-FIN-001) і тут НЕ числяться.
+
+### Гроші й розрахунки
+
+- **[HIGH, NEW] F6 — ручний перехід інвойсу `→PAID` губить паралельну оплату (CAS без `paidAmount`).**
+  `invoices.service.ts:570-584,611-628`. `transition()` читає `inv.paidAmount` поза транзакцією,
+  рахує `paymentRemaining = amount − paidAmount` (570) і постить дзеркальний `PAYMENT` на залишок
+  (614-628). CAS на зміні статусу — `where { id, orgId, status: inv.status, deletedAt: null }`
+  (577), **`paidAmount` у where НЕМАЄ**, а запис сліпо ставить `paidAmount: inv.amount` (582).
+  `PARTIALLY_PAID→PAID` і `OVERDUE→PAID` дозволені (`INV_TRANSITIONS:57,59`); ендпоінт
+  `POST /invoices/:id/transition` (controller:210-219). Сценарій (amount=1000): A відкриває
+  «позначити оплаченим» при `paidAmount=300` → remaining=700; B тим часом проводить реальні +200
+  (статус лишається `PARTIALLY_PAID`, `paidAmount→500`); транзакція A: CAS `status=PARTIALLY_PAID`
+  досі збігається, перезаписує `paidAmount→1000` (±200 B втрачено), постить дзеркальні 700. Ledger:
+  CHARGE1000 − PAY(300+200) − mirror700 = **−200 фантомний кредит клієнта**. Шлях через
+  payments-модуль **захищений** (`where paidAmount: inv.paidAmount`, :617) — цей transition-шлях ні.
+  Фікс: додати `paidAmount: inv.paidAmount` у CAS `where` :577 → count=0 = `err.invoice.statusChanged`,
+  повтор зі свіжим залишком. Досяжно звичайними паралельними діями (два приймальники / подвійний
+  сабміт / онлайн-оплата проти ручного закриття).
+- **[MEDIUM, NEW] F7 — `SettlementsService.createTransaction` пише `amountBase`/`balance` у
+  Decimal(12,2) без `assertMoneyFits`.** `settlements.service.ts:96-144`. (а) `amountBase = amount × rate`:
+  `amount` DTO-капнутий, добуток ні; валютна сума × великий `rate` (Decimal 18,6) > 1e10 → PG
+  `numeric overflow` **500** замість названого **400**. (б) `SettlementAccount.balance` —
+  акумулятор Decimal(12,2), ніколи не перевіряється; кумулятивний знаковий баланс може перетнути
+  1e10 → 500 на наступній проводці. Той самий клас, що закритий BR-BANK-042, лишений у settlements.
+  Фікс: `assertMoneyFits(conv.amountBase, 'сума проводки')` перед записом; за духом — і результуючий
+  баланс.
+- **[LOW, NEW] F8 — `Payment.amountBase` у `payments.create` без overflow-гейта.**
+  `payments.service.ts:437-445,644`. `conv.amountBase = dto.amount × rate` → `Payment.amountBase`
+  Decimal(12,2) без `assertMoneyFits`. Той самий клас, що F7(а). Фікс: `assertMoneyFits(conv.amountBase)`.
+- **[LOW, NEW] F9 — реверс зняття готівки бере курс за `now()`, не дзеркалить оригінал → дрейф
+  base-ledger.** `bank-reconciliation.service.ts:1580-1604` (unreconcile `CASH_WITHDRAWAL`) проти
+  :1276-1300 (оригінал). Зворотний OUT (`cash.createOperation` :1590) НЕ передає `conversion` →
+  `amountBase` перераховується за поточним курсом; для валютної каси два `amountBase` різні → дрейф
+  base-view готівки (баланс у валюті каси коректний). Реверси клієнт/постачальник свідомо передають
+  оригінальний `conversion`. Фікс: передати `conversion: { rateUsed, amountBase }` з оригінального
+  `CashOperation` (дзеркалити BR-CASH-023).
+- **[LOW, NEW] F10 — ручний перехід інвойсу пише проводки з `createdBy: undefined` (без атрибуції).**
+  `invoices.controller.ts:219` кличе `service.transition(orgId, id, dto.status)` — `userId` не
+  передається → CHARGE / дзеркальний PAYMENT / FX з ручних переходів мають `createdBy: null`.
+  Фікс: протягнути `userId` через контролер у `transition`.
+
+### Склад і наряди
+
+- **[HIGH, NEW] F4 — коефіцієнт одиниці виміру застосовується на списанні наряду, але НЕ на прийомі
+  замовлення й підтвердженні складського документа → розбіжність одиниць у ledger.** Списання:
+  `work-order-stock-effects.service.ts:236/351` (`baseQty = qty × coeff`). Прийом сирцем:
+  `purchase-orders.service.ts:874` (RECEIPT), :781 (гард над-прийому), :800 (`SUPPLIER_CHARGE qty×price`).
+  Складські документи сирцем: `stock-documents.service.ts:475/485/492` (WRITEOFF/RECEIPT/TRANSFER).
+  Контракт каже `qty_base = qty × coefficient` (stock-documents:693, purchase-orders:1251). Товар із
+  coeff≠1 існує (`good_uom`: coeff 10/10/4/4). Сценарій: прийняли «1 Пак» → склад +1; наряд «1 Пак»
+  списує 1×10=10 → `insufficientStock` або вибірка 10× зі спільного `StockItem.quantity`; борг
+  постачальнику недорахований. Досяжно для `GoodUoM` із coeff≠1 (override `unitOfMeasureId` у
+  `ReceiveLineDto`, або базова одиниця товару з coeff≠1). Фікс: зробити ledger авторитетним у базових
+  одиницях — множити на coeff у `PO.receive` + `StockDocuments.transition` (дзеркалити
+  `work-order-stock-requirements.partBaseQty`) АБО заштовхнути `qty×coeff` у
+  `InventoryService.createMovement` один раз; покрити RECEIPT/WRITEOFF/TRANSFER/RESERVATION/RETURN +
+  SUPPLIER_CHARGE. **УВАГА: не застосувати двічі** — обрати єдиний шар.
+- **[LOW latent, NEW] F5 — ідемпотентність `returnToBatch` ігнорує кількість.**
+  `batch.service.ts:398-402` — ключ «чи існує будь-яке додатне return-споживання для (batch,doc)»,
+  кількість не враховує → майбутній частковий/повторний повернення з іншою qty мовчки пропуститься.
+  Сьогодні недосяжно (RETURN — все-або-нічого). Фікс перед відкриттям часткових повернень: ключ на
+  `documentLineId` або порівняння повернуто-проти-спожито.
+
+### Календар, CRM, доступ
+
+- **[MEDIUM, NEW] F1 — доступність слота рахується через входження дати початку в день, а не
+  перетин інтервалів.** `booking.service.ts:155-158`. Нічний слот (через північ) показує підйомник
+  вільним на наступний день. Фікс: перевірка перетину `[start,end)` інтервалів, не `startOfDay`.
+- **[MEDIUM] F2 — подвійне бронювання механіка не має DB-страховки.** `calendar.service.ts` —
+  лише прикладна проба під Read-Committed, без `EXCLUDE`-обмеження в БД; під паралеллю можливий
+  двійний запис. Фікс: GiST `EXCLUDE USING` на (механік, діапазон часу) або серіалізація.
+- **[LOW/MEDIUM, owner-confirm] F3 — звільнений працівник на фіксованому окладі недоплачений.**
+  `payroll.service.ts:187-211`. Потребує рішення власника: як рахувати частковий місяць звільнення.
+
+---
+
 ## 1. Борг обробки помилок на фронті — ✅ ЗАКРИТО (2026-10-03)
 
 **264 → 0.** Обидва правила (`no-misused-promises`, `no-floating-promises`) підняті з
