@@ -4,6 +4,13 @@ import type { Job } from 'bullmq';
 import { OutboundWebhookProcessor } from './webhooks.processor';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DeadLetterService } from '../dead-letter/dead-letter.service';
+import { HOST_LOOKUP } from '../../common/utils/host-lookup.token';
+import {
+  publicHostLookup,
+  loopbackHostLookup,
+  metadataHostLookup,
+} from '../../common/testing/host-lookup';
+import type { HostLookup } from '../../common/utils/url-guard';
 import type { MockInstance } from 'vitest';
 
 /**
@@ -54,14 +61,19 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
   let processor: OutboundWebhookProcessor;
   let prisma: ReturnType<typeof makePrismaMock>;
   let fetchSpy: MockInstance<typeof fetch>;
+  let lookup: HostLookup;
 
   beforeEach(async () => {
     prisma = makePrismaMock();
+    lookup = publicHostLookup;
     const module = await Test.createTestingModule({
       providers: [
         OutboundWebhookProcessor,
         { provide: PrismaService, useValue: prisma },
         { provide: DeadLetterService, useValue: { capture: vi.fn() } },
+        // Фейковий DNS: публічний хост hooks.example.com «резолвиться» у публічну адресу —
+        // success-шлях не ходить у мережу. Тест rebinding свопає lookup на loopback/metadata.
+        { provide: HOST_LOOKUP, useValue: ((...args) => lookup(...args)) as HostLookup },
       ],
     }).compile();
     processor = module.get(OutboundWebhookProcessor);
@@ -108,6 +120,31 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
       await expect(
         processor.process(makeJob({ url: 'http://localhost/' })),
       ).resolves.toBeUndefined();
+    });
+
+    // guards: BR-SEC-SSRF — resolved-перевірка після DNS на доставці: публічне ім'я, що тепер
+    // резолвиться у приватну адресу (DNS rebinding / застарілий конфіг), блокується, пише
+    // FAILED і НЕ кидає (config-level блок не ретраїти).
+    it('публічне ім`я → loopback (DNS) → FAILED delivery, не fetch, не throw', async () => {
+      lookup = loopbackHostLookup;
+      await expect(
+        processor.process(makeJob({ url: 'https://hooks.example.com/webhook' })),
+      ).resolves.toBeUndefined();
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(prisma.webhookDelivery.create).toHaveBeenCalledTimes(1);
+      const call = prisma.webhookDelivery.create.mock.calls[0][0];
+      expect(call.data.status).toBe('FAILED');
+      expect(call.data.responseBody).toContain('127.0.0.1');
+    });
+
+    it('публічне ім`я → cloud-metadata (DNS) → FAILED delivery, не fetch, не throw', async () => {
+      lookup = metadataHostLookup;
+      await expect(
+        processor.process(makeJob({ url: 'https://hooks.example.com/webhook' })),
+      ).resolves.toBeUndefined();
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(prisma.webhookDelivery.create).toHaveBeenCalledTimes(1);
+      expect(prisma.webhookDelivery.create.mock.calls[0][0].data.status).toBe('FAILED');
     });
   });
 

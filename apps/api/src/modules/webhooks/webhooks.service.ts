@@ -1,11 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { randomUUID } from 'crypto';
 import { Queue } from 'bullmq';
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
-import { validatePublicUrl } from '../../common/utils/url-guard';
+import { validatePublicUrlResolved, type HostLookup } from '../../common/utils/url-guard';
+import { HOST_LOOKUP } from '../../common/utils/host-lookup.token';
 import {
   CreateWebhookDto,
   UpdateWebhookDto,
@@ -18,6 +19,7 @@ export class WebhooksService {
   constructor(
     private prisma: PrismaService,
     @InjectQueue('outbound-webhook') private webhookQueue: Queue,
+    @Inject(HOST_LOOKUP) private readonly lookup: HostLookup,
   ) {}
 
   private toDto(e: {
@@ -43,7 +45,7 @@ export class WebhooksService {
     // @IsUrl({ require_tld: false }) on the DTO accepts `http://localhost:6379`
     // which would let a compromised admin pipe webhook payloads to internal
     // Redis/Postgres/cloud-metadata endpoints.
-    const urlError = validatePublicUrl(dto.url);
+    const urlError = await validatePublicUrlResolved(dto.url, this.lookup);
     if (urlError) throw new BadRequestException(urlError);
 
     const e = await this.prisma.webhookEndpoint.create({
@@ -76,7 +78,7 @@ export class WebhooksService {
   ): Promise<WebhookEndpointResponseDto> {
     // Re-validate URL on update (same SSRF defense as create).
     if (dto.url !== undefined) {
-      const urlError = validatePublicUrl(dto.url);
+      const urlError = await validatePublicUrlResolved(dto.url, this.lookup);
       if (urlError) throw new BadRequestException(urlError);
     }
     // Defense-in-depth: scope by orgId у where (sto-review pattern 2026-05-30

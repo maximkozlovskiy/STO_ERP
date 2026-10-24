@@ -1,11 +1,12 @@
 import { Processor, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { createHmac } from 'crypto';
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runUnscoped } from '../../common/tenant/tenant-context';
-import { validatePublicUrl } from '../../common/utils/url-guard';
+import { validatePublicUrlResolved, type HostLookup } from '../../common/utils/url-guard';
+import { HOST_LOOKUP } from '../../common/utils/host-lookup.token';
 import { DeadLetterWorkerHost } from '../../modules/dead-letter/dead-letter-worker-host';
 import { DeadLetterService } from '../../modules/dead-letter/dead-letter.service';
 
@@ -21,6 +22,7 @@ export class OutboundWebhookProcessor extends DeadLetterWorkerHost {
   constructor(
     private prisma: PrismaService,
     deadLetter: DeadLetterService,
+    @Inject(HOST_LOOKUP) private readonly lookup: HostLookup,
   ) {
     super(deadLetter);
   }
@@ -45,7 +47,9 @@ export class OutboundWebhookProcessor extends DeadLetterWorkerHost {
       // Defense-in-depth SSRF check at delivery time. The URL was validated
       // at create/update, but DNS rebinding or a stale endpoint config could still
       // route to an internal target. We refuse to even open the connection.
-      const urlError = validatePublicUrl(url);
+      // Resolved check (after DNS) — a public hostname that now resolves to an
+      // internal address is caught here even though the literal passed on save.
+      const urlError = await validatePublicUrlResolved(url, this.lookup);
       if (urlError) {
         this.logger.warn(`Webhook ${endpointId}: blocked SSRF candidate — ${urlError}`);
         // Log failed delivery, then mark job as permanently failed (no retry — config bug).
