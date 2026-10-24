@@ -172,8 +172,9 @@ describe('Глобальний guard «закрито за замовчуван�
   });
 
   it('login і refresh лишаються throttled (ліміт зберігся при зміні на @Public)', () => {
-    const login = (AuthController.prototype as Record<string, unknown>).login;
-    const refresh = (AuthController.prototype as Record<string, unknown>).refresh;
+    const proto = AuthController.prototype as unknown as Record<string, unknown>;
+    const login = proto.login;
+    const refresh = proto.refresh;
     const loginLimit = reflector.get<number>(`${THROTTLER_LIMIT}default`, login as never);
     const loginTtl = reflector.get<number>(`${THROTTLER_TTL}default`, login as never);
     const refreshLimit = reflector.get<number>(`${THROTTLER_LIMIT}default`, refresh as never);
