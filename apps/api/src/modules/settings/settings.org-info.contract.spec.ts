@@ -20,6 +20,8 @@ import { REDIS_CLIENT } from '../../redis/redis.module';
 import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
 import { BankStatementPullScheduler } from '../bank-statements/bank-statement-pull.scheduler';
 import { AuditService } from '../audit/audit.service';
+import { HOST_LOOKUP } from '../../common/utils/host-lookup.token';
+import { publicHostLookup } from '../../common/testing/host-lookup';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
@@ -95,6 +97,9 @@ describe('PATCH /settings/org-info — реквізити для друку', ()
         { provide: NbuFetchScheduler, useValue: {} },
         { provide: BankStatementPullScheduler, useValue: {} },
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        // SettingsService інжектить HOST_LOOKUP (SSRF-перевірка адрес); цей спек DNS не торкає —
+        // фейк резолвить у публічну адресу, щоб модуль зібрався (org-info адрес не зберігає).
+        { provide: HOST_LOOKUP, useValue: publicHostLookup },
       ],
     })
       .overrideGuard(JwtAuthGuard)

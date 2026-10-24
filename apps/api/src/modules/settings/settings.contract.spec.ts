@@ -14,6 +14,8 @@ import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
+import { HOST_LOOKUP } from '../../common/utils/host-lookup.token';
+import { publicHostLookup } from '../../common/testing/host-lookup';
 import { UI_FEATURES_DEFAULTS } from './settings.dto';
 import type { MockInstance } from 'vitest';
 
@@ -155,6 +157,10 @@ describe('Settings — HTTP Contract', () => {
         },
         { provide: BankStatementPullScheduler, useValue: { rescheduleForOrg: vi.fn() } },
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        // Фейковий DNS: verifyFiscal іде через HTTP (app.inject), 4-й аргумент lookup не передати —
+        // без цього дефолтний lookupAllAddresses резолвив би api.checkbox.ua у справжній мережі й
+        // зрідка валив повний прогін (flaky). Публічний фейк → перевірка проходить, fetch мокнутий.
+        { provide: HOST_LOOKUP, useValue: publicHostLookup },
       ],
     })
       .overrideGuard(JwtAuthGuard)

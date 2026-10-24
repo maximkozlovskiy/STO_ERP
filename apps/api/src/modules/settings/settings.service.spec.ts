@@ -10,6 +10,12 @@ import { BankStatementPullScheduler } from '../bank-statements/bank-statement-pu
 import { AuditService } from '../audit/audit.service';
 import type { MockInstance } from 'vitest';
 import type { HostLookup } from '../../common/utils/url-guard';
+import { HOST_LOOKUP } from '../../common/utils/host-lookup.token';
+import {
+  publicHostLookup,
+  loopbackHostLookup,
+  metadataHostLookup,
+} from '../../common/testing/host-lookup';
 
 /**
  * Bug #665 — regression guard для SettingsService.verifyFiscal
@@ -52,6 +58,7 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
         },
         { provide: NbuFetchScheduler, useValue: { rescheduleForOrg: vi.fn() } },
         { provide: BankStatementPullScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+        { provide: HOST_LOOKUP, useValue: publicHostLookup },
       ],
     }).compile();
     service = module.get(SettingsService);
@@ -301,6 +308,7 @@ describe('SettingsService — C1b audit TaxRate', () => {
         { provide: REDIS_CLIENT, useValue: { get: vi.fn(), set: vi.fn(), del: vi.fn() } },
         { provide: NbuFetchScheduler, useValue: { rescheduleForOrg: vi.fn() } },
         { provide: BankStatementPullScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+        { provide: HOST_LOOKUP, useValue: publicHostLookup },
       ],
     }).compile();
     service = module.get(SettingsService);
@@ -387,6 +395,7 @@ describe('SettingsService — аудит налаштувань філії ма�
         { provide: REDIS_CLIENT, useValue: { get: vi.fn(), set: vi.fn(), del: vi.fn() } },
         { provide: NbuFetchScheduler, useValue: { rescheduleForOrg: vi.fn() } },
         { provide: BankStatementPullScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+        { provide: HOST_LOOKUP, useValue: publicHostLookup },
       ],
     }).compile();
     service = module.get(SettingsService);
@@ -460,6 +469,7 @@ describe('SettingsService — зміна адреси API скидає збер�
         { provide: REDIS_CLIENT, useValue: { get: vi.fn(), set: vi.fn(), del: vi.fn() } },
         { provide: NbuFetchScheduler, useValue: { rescheduleForOrg: vi.fn() } },
         { provide: BankStatementPullScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+        { provide: HOST_LOOKUP, useValue: publicHostLookup },
       ],
     }).compile();
     service = module.get(SettingsService);
@@ -500,6 +510,70 @@ describe('SettingsService — зміна адреси API скидає збер�
   it('адреса monobank із null на власну → токен скинуто', async () => {
     await service.updateBranchSettings('org-1', 'b-1', { monobankApiUrl: 'https://mono.example' });
     expect(updateArg()).toEqual({ monobankApiUrl: 'https://mono.example', monobankToken: null });
+  });
+});
+
+/**
+ * guards: BR-SEC-SSRF — updateBranchSettings валідує будь-яке поле `*ApiUrl` з dto ПІСЛЯ DNS і
+ * до upsert. Публічне ім'я на приватну/метадані-адресу → BadRequestException (400), запис не
+ * відбувається; літеральна приватна адреса блокується теж; публічна — проходить.
+ */
+describe('SettingsService — SSRF-перевірка адрес провайдера при збереженні філії', () => {
+  let upsert: ReturnType<typeof vi.fn>;
+
+  const makeService = async (lookup: HostLookup): Promise<SettingsService> => {
+    upsert = vi.fn().mockResolvedValue({ branchId: 'b-1', orgId: 'org-1', workDays: [] });
+    const prisma = {
+      garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: 'b-1' }) },
+      branchSettings: {
+        findUnique: vi.fn().mockResolvedValue({ checkboxApiUrl: null, monobankApiUrl: null }),
+        upsert,
+      },
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        SettingsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        { provide: REDIS_CLIENT, useValue: { get: vi.fn(), set: vi.fn(), del: vi.fn() } },
+        { provide: NbuFetchScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+        { provide: BankStatementPullScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+        { provide: HOST_LOOKUP, useValue: lookup },
+      ],
+    }).compile();
+    return module.get(SettingsService);
+  };
+
+  it('checkboxApiUrl → loopback (DNS) → 400, upsert НЕ викликається', async () => {
+    const service = await makeService(loopbackHostLookup);
+    await expect(
+      service.updateBranchSettings('org-1', 'b-1', { checkboxApiUrl: 'https://rebind.example' }),
+    ).rejects.toThrow(/loopback|127\.0\.0\.1/i);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('monobankApiUrl → cloud-metadata (DNS) → 400, upsert НЕ викликається', async () => {
+    const service = await makeService(metadataHostLookup);
+    await expect(
+      service.updateBranchSettings('org-1', 'b-1', { monobankApiUrl: 'https://rebind.example' }),
+    ).rejects.toThrow();
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('літеральний loopback checkboxApiUrl → 400 (без DNS)', async () => {
+    const service = await makeService(publicHostLookup);
+    await expect(
+      service.updateBranchSettings('org-1', 'b-1', { checkboxApiUrl: 'http://127.0.0.1:8080' }),
+    ).rejects.toThrow();
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('публічна адреса → проходить, upsert викликається', async () => {
+    const service = await makeService(publicHostLookup);
+    await service.updateBranchSettings('org-1', 'b-1', {
+      checkboxApiUrl: 'https://api.checkbox.ua',
+    });
+    expect(upsert).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -568,6 +642,7 @@ describe('SettingsService — кеш налаштувань організаці
         },
         { provide: NbuFetchScheduler, useValue: { rescheduleForOrg: vi.fn() } },
         { provide: BankStatementPullScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+        { provide: HOST_LOOKUP, useValue: publicHostLookup },
       ],
     }).compile();
     service = module.get(SettingsService);

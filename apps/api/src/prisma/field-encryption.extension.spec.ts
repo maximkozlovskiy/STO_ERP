@@ -3,6 +3,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import type { ConfigService } from '@nestjs/config';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { ProviderConfigService } from '../modules/payments/provider-config.service';
+import { publicHostLookup } from '../common/testing/host-lookup';
 import { PrismaService } from './prisma.service';
 
 /**
@@ -267,7 +268,7 @@ describe('Шифрування секретів at-rest — справжній P
       'upsertConfig %s/%s: жоден секрет не йде в SQL відкритим текстом, відповідь без секретів',
       async (kind, provider, credentials) => {
         withDb([providerRow({ provider })]);
-        const svc = new ProviderConfigService(prisma);
+        const svc = new ProviderConfigService(prisma, publicHostLookup);
 
         const view = await svc.upsertConfig(ORG, BRANCH, kind, { provider, credentials });
 
@@ -308,7 +309,7 @@ describe('Шифрування секретів at-rest — справжній P
           providerRow({ provider: 'vchasno', credentials: null }),
         ],
       );
-      const svc = new ProviderConfigService(prisma);
+      const svc = new ProviderConfigService(prisma, publicHostLookup);
 
       const views = await svc.getBranchConfigs(ORG, BRANCH, 'FISCAL');
 
@@ -339,7 +340,7 @@ describe('Шифрування секретів at-rest — справжній P
         [],
         [providerRow({ enabled: true, credentials: enc.encrypt(JSON.stringify(credentials)) })],
       );
-      const svc = new ProviderConfigService(prisma);
+      const svc = new ProviderConfigService(prisma, publicHostLookup);
 
       const active = await svc.resolveActive(ORG, BRANCH, 'FISCAL');
 

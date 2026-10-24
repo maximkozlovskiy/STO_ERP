@@ -150,8 +150,10 @@ Nav — «Банківські платежі» (Landmark, section settlements).
   per-рахунок) + `BankAccount.lastPulledAt` (курсор). Інтервал — `OrganisationSettings.bankStatementPollIntervalMinutes`
   (clamp [15,1440]).
 - **Provider-шар** (`providers/`, за DELIVERY-зразком): interface `BankStatementProvider {fetchStatements, verifyCredentials}`
-  - registry. Спільний HTTP-каркас: SSRF `validatePublicUrl` + timeout 10s + redirect:manual + reject-3xx +
-    `redactSecrets`. Кожен provider має **захисну mapTx** (fallback-ключі, credit-only фільтр, skip невалідних, rawData):
+  - registry. Спільний HTTP-каркас: SSRF `validatePublicUrlResolved` (перевірка ПІСЛЯ DNS, **BR-SEC-SSRF**) +
+    timeout 10s + redirect:manual + reject-3xx + `redactSecrets`. `HostLookup` інжектиться через спільний
+    DI-токен `HOST_LOOKUP` (глобальний `CommonModule`, дефолт `lookupAllAddresses`; тест підставляє фейк).
+    Кожен provider має **захисну mapTx** (fallback-ключі, credit-only фільтр, skip невалідних, rawData):
   * **privat24** — POST /statements/transactions, id+token, DD-MM-YYYY, followId-пагінація (MAX_PAGES=200). Поля REF/OSND/SUM/TRANTYPE.
   * **monobank** — GET /personal/statement/{account}/{unixFrom}/{unixTo}, **X-Token**; **WINDOWING** (≤31д/запит,
     MAX_WINDOWS=12; rate-limit sleep 60с МІЖ шматками лише backfill, у воркері). **amount=minor/100** (МІНОР-ОДИНИЦІ —
@@ -267,9 +269,9 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 | scheduler                                             | `bank-statement-pull.scheduler.spec.ts`                    | 4      |
 | DTO-межі запитів                                      | `bank-statement.dto.spec.ts`                               | 92     |
 | доступ (ролі), маршрути                               | `bank-statements.controller.spec.ts`                       | 19     |
-| HTTP-клієнт                                           | `providers/mono-statement.client.spec.ts`                  | 13     |
+| HTTP-клієнт                                           | `providers/mono-statement.client.spec.ts`                  | 16     |
 | провайдер                                             | `providers/monobank-statement.provider.spec.ts`            | 26     |
-| HTTP-клієнт                                           | `providers/privat24.client.spec.ts`                        | 10     |
+| HTTP-клієнт                                           | `providers/privat24.client.spec.ts`                        | 13     |
 | провайдер                                             | `providers/privat24.provider.spec.ts`                      | 25     |
 | purpose parser                                        | `purpose-parser.spec.ts`                                   | 11     |
 | курс проведення оплати постачальнику на дату операції | `../supplier-payments/supplier-payments.rate-date.spec.ts` | 4      |
