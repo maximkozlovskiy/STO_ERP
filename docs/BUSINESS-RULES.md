@@ -288,6 +288,38 @@ tx.stockDocumentLine.update({ where: { id: line.id, orgId } });
 
 ---
 
+## Автентифікація — «закрито за замовчуванням» (BR-SEC-AUTHZ)
+
+**BR-SEC-AUTHZ** (рішення власника 2026-10-24): **кожен роут вимагає валідного JWT за замовчуванням.**
+`JwtAuthGuard` зареєстрований ГЛОБАЛЬНО (`{ provide: APP_GUARD, useClass: JwtAuthGuard }` у
+`app.module.ts`), тож роут без явного guard-а й без `@Public()` «падає закрито» (401), а не відкривається.
+Публічні роути позначаються ЯВНО декоратором `@Public()` (`auth/decorators/public.decorator.ts`,
+`IS_PUBLIC_KEY`), і їх перелік жорстко фіксований контракт-тестом.
+
+- Порядок `APP_GUARD` важливий: `ThrottlerGuard` реєструється ПЕРЕД `JwtAuthGuard`, щоб rate-limit діяв
+  і на `@Public` роути (throttle входу `login` 10/хв і `refresh` 30/хв спрацьовує до JWT-перевірки).
+- `RolesGuard` лишається per-controller (без `@Roles` = дозвіл) — рольова логіка не змінюється.
+- Per-controller `@UseGuards(JwtAuthGuard, RolesGuard)` на 74 контролерах лишено (повторний пропуск
+  нешкідливий) — це подвійний пояс: роут захищений навіть без глобального guard-а.
+
+**Дозволений список `@Public()` (єдине місце правди — контракт-тест, будь-який новий `@Public()` поза
+списком валить CI):**
+
+| Контролер / роут                                                                | Чому публічний                                                |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `AuthController::login`, `AuthController::refresh`                              | вхід і оновлення токена (решта auth — guarded)                |
+| `BookingController` — `listPublicBranches`, `getAvailability`, `createPublic`   | публічний віджет онлайн-запису (авторизований блок — guarded) |
+| `HealthController` — весь                                                       | docker healthcheck / installer / e2e-smoke без JWT            |
+| `SetupController` — весь (`status`, `init`)                                     | first-run wizard до появи org/user                            |
+| `WorkOrdersPublicController` — весь (`getPublicEstimate`, export pdf/xlsx/docx) | зовнішні SMS/email-лінки на кошторис за share-токеном         |
+
+Контракт-тест `apps/api/src/auth/auth-global-guard.contract.spec.ts` перелічує метадані ВСІХ
+зареєстрованих роутів (обхід графа модулів без підняття застосунку) і стверджує: множина `@Public()`
+точно дорівнює списку вище; `JwtAuthGuard` зареєстрований глобально; `ThrottlerGuard` стоїть перед ним.
+Плюс smoke: неавтентифікований запит до захищеного роута → 401, до `@Public` → не 401.
+
+---
+
 ## Soft Delete
 
 **Ніколи** `prisma.X.delete()`. Тільки:
