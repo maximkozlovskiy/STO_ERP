@@ -3,7 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma, type WorkOrder } from '@prisma/client';
 
 import { kyivToday, dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
-import { lineAmount, money, moneyFromDecimal } from '../../common/utils/money';
+import { assertMoneyFits, lineAmount, money, moneyFromDecimal } from '../../common/utils/money';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
@@ -2046,6 +2046,8 @@ export class WorkOrdersService {
     const normoHours = dto.normoHours ?? work.normoHours;
     const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(work.price);
     const amount = lineAmount(normoHours, price);
+    // BR-FIN-001: нормогодини × ціна може перевищити Decimal(12,2), хоч кожне поле в межах стелі.
+    assertMoneyFits(amount, 'сума роботи');
 
     const line = await this.prisma.$transaction(
       async tx => {
@@ -2143,6 +2145,8 @@ export class WorkOrdersService {
     const normoHours = dto.normoHours ?? line.normoHours;
     const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(line.price);
     const amount = lineAmount(normoHours, price);
+    // BR-FIN-001: добуток може перевищити Decimal(12,2) навіть при полях у межах стелі.
+    assertMoneyFits(amount, 'сума роботи');
 
     const updated = await this.prisma.$transaction(
       async tx => {
@@ -2253,6 +2257,8 @@ export class WorkOrdersService {
 
     const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(good.salePrice);
     const amount = lineAmount(dto.quantity, price);
+    // BR-FIN-001: кількість × ціна може перевищити Decimal(12,2) навіть при полях у межах стелі.
+    assertMoneyFits(amount, 'сума запчастини');
 
     const part = await this.prisma.$transaction(
       async tx => {
@@ -2309,6 +2315,8 @@ export class WorkOrdersService {
     const quantity = dto.quantity ?? part.quantity;
     const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(part.price);
     const amount = lineAmount(quantity, price);
+    // BR-FIN-001: добуток може перевищити Decimal(12,2) навіть при полях у межах стелі.
+    assertMoneyFits(amount, 'сума запчастини');
 
     // Validate new unitOfMeasureId if provided
     let uomJunction: UomJunction | null = null;

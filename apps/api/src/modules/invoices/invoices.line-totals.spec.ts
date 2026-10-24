@@ -141,6 +141,62 @@ describe('InvoicesService — line-totals (recalcTotals на бекенді)', (
     );
   });
 
+  // ─── BR-FIN-001: сума рядка (кількість × ціна) понад Decimal(12,2) → 400 ─────
+  //
+  // Кожне поле в межах стелі (quantity ≤ QTY_MAX, unitPrice ≤ MONEY_AMOUNT_MAX), але добуток
+  // виходить за місткість колонки priceWith* → 400 з назвою поля, а не 500 numeric field overflow.
+  // Мутація: прибери `assertMoneyFits` у addLine/updateLine — тест «понад межу» падає (create/update
+  // викликались би й сума пішла б у Decimal(12,2)).
+  describe('сума рядка понад Decimal(12,2) (BR-FIN-001)', () => {
+    const OVERFLOW = 'err.money.lineAmountOverflow';
+    // 2 000 000 × 6000 = 12 000 000 000 > 9 999 999 999,99; обидва поля — у межах власних стель.
+    beforeEach(() => {
+      lines.aggregate.mockResolvedValue({
+        _sum: { priceWithoutVat: 0, vatAmount: 0, priceWithVat: 0 },
+      });
+    });
+
+    // guards: BR-FIN-001
+    it('addLine: добуток понад місткість колонки — 400, рядок не створюється', async () => {
+      await expect(
+        service.addLine(ORG, INV_ID, {
+          description: 'Робота',
+          quantity: 2_000_000,
+          unitPrice: 6000,
+          vatRate: 0,
+        } as never),
+      ).rejects.toSatisfy(
+        (e: Error) => e.message.includes('завелика') || e.message.includes(OVERFLOW),
+      );
+      expect(lines.create).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-FIN-001
+    it('addLine: добуток рівно на межі Decimal(12,2) — проходить', async () => {
+      // 9 999 999 999,99 / 1 → рівно межа.
+      await expect(
+        service.addLine(ORG, INV_ID, {
+          description: 'Робота',
+          quantity: 1,
+          unitPrice: 9_999_999_999.99,
+          vatRate: 0,
+        } as never),
+      ).resolves.toBeDefined();
+      expect(lines.create).toHaveBeenCalledTimes(1);
+    });
+
+    // guards: BR-FIN-001
+    it('updateLine: новий добуток понад місткість — 400, рядок не оновлюється', async () => {
+      // existing.unitPrice = 500 (dbLine); нова кількість робить добуток завеликим.
+      await expect(
+        service.updateLine(ORG, INV_ID, LINE_ID, { quantity: 50_000_000 } as never),
+      ).rejects.toSatisfy(
+        (e: Error) => e.message.includes('завелика') || e.message.includes(OVERFLOW),
+      );
+      expect(lines.update).not.toHaveBeenCalled();
+    });
+  });
+
   // ─── BR-INV-017: ПДВ ручного рядка — за режимом організації ─────────────────
   //
   // Сума рядка = кількість × ціна. «ПДВ у ціні» — ПДВ ВИДІЛЯЄТЬСЯ з цієї суми (рядок не

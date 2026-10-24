@@ -1,4 +1,7 @@
+import { BadRequestException } from '@nestjs/common';
+import { MONEY_AMOUNT_MAX, translateError } from '@sto/shared';
 import { roundMoney } from './math';
+import { getLocale } from '../tenant/tenant-context';
 
 /**
  * Брендований тип для грошових сум.
@@ -48,6 +51,32 @@ export const ZERO_MONEY = money(0);
  */
 export function lineAmount(quantity: number, price: number): Money {
   return money(quantity * price);
+}
+
+/**
+ * BR-FIN-001 (M3, рішення власника 2026-10-24): грошова сума, що лягає в колонку `Decimal(12,2)`,
+ * мусить вміститися в її місткість (`MONEY_AMOUNT_MAX = 9 999 999 999,99`), інакше — **400** із
+ * назвою поля, а не безіменна 500 `numeric field overflow`.
+ *
+ * ЧОМУ ОКРЕМО ВІД ПОЛЬОВИХ СТЕЛЬ. Кількість (`QTY_MAX`) і ціна (`MONEY_AMOUNT_MAX`) обмежені
+ * кожна окремо у спільних Zod-схемах, але їхній ДОБУТОК (сума рядка `quantity × unitPrice`) усе
+ * одно може перевищити колонку: 1 000 000 × 10 000 = 10 000 000 000. Та сама діра, що її закрив
+ * `assertAmountBaseFits` для base-конвертації виписки (BR-BANK-042) — тут один спільний помічник
+ * для рядків наряду, рахунку й будь-якого похідного тоталу, що лягає в `Decimal(12,2)`.
+ *
+ * Порівнюємо ОКРУГЛЕНЕ до копійки абсолютне значення — саме так воно ляже в колонку. `field`
+ * іде в повідомлення, щоб користувач бачив, яка саме сума завелика.
+ */
+export function assertMoneyFits(amount: number, field?: string): void {
+  const stored = Math.round(Math.abs(amount) * 100) / 100;
+  if (!Number.isFinite(stored) || stored > MONEY_AMOUNT_MAX) {
+    // `{{field}}` завжди підставляється (навіть порожнім), щоб плейсхолдер не протік у текст.
+    throw new BadRequestException(
+      translateError('err.money.lineAmountOverflow', getLocale(), {
+        field: field ? ` (${field})` : '',
+      }),
+    );
+  }
 }
 
 /**

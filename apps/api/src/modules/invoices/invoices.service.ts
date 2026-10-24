@@ -12,7 +12,7 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { toLinkedPaymentRows } from '../payments/payment-cash-desk';
 import { kyivToday, addDaysKyiv, dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
 import { safeCoeff } from '../../common/utils/math';
-import { money, moneyFromDecimal } from '../../common/utils/money';
+import { assertMoneyFits, money, moneyFromDecimal } from '../../common/utils/money';
 import { sumLineTotals, calcLineVat } from '../../common/utils/vat';
 import {
   buildInvoiceLinesFromWorkOrder,
@@ -840,6 +840,9 @@ export class InvoicesService {
     // createFromWorkOrder/PO/WO.
     const settingsVat = await this.settingsService.getDefaultVatRate(orgId);
     const vatRate = dto.vatRate != null ? dto.vatRate : settingsVat.vatRate;
+    // BR-FIN-001: кількість × ціна може перевищити Decimal(12,2) (priceWith*), хоч кожне поле в межах
+    // стелі — 400 з назвою поля замість безіменної 500 numeric field overflow.
+    assertMoneyFits(dto.quantity * dto.unitPrice, 'сума рядка рахунку');
     const { priceWithoutVat, vatAmount, priceWithVat } = manualLineVat(
       dto.quantity * dto.unitPrice,
       vatRate,
@@ -898,6 +901,8 @@ export class InvoicesService {
       dto.unitPrice !== undefined ? money(dto.unitPrice) : moneyFromDecimal(existing.unitPrice);
     const vatRate = dto.vatRate !== undefined ? dto.vatRate : Number(existing.vatRate);
     const { vatMode } = await this.settingsService.getDefaultVatRate(orgId);
+    // BR-FIN-001: кількість × ціна може перевищити Decimal(12,2) (priceWith*), хоч кожне поле в межах стелі.
+    assertMoneyFits(quantity * unitPrice, 'сума рядка рахунку');
     const { priceWithoutVat, vatAmount, priceWithVat } = manualLineVat(
       quantity * unitPrice,
       vatRate,

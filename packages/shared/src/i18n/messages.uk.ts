@@ -20,6 +20,8 @@ export const uk: Record<string, string> = {
   'v.nonNeg': "Значення не може бути від'ємним",
   'v.amountMax': 'Сума завелика — не більше 9 999 999 999,99',
   'v.qtyMax': 'Значення завелике — не більше 1 000 000',
+  'err.money.lineAmountOverflow':
+    'Сума рядка завелика{{field}} — не більше 9 999 999 999,99 (зменшіть кількість або ціну)',
   'v.dateFormat': 'Невірний формат дати',
 
   // ── counterparty.schema.ts ──

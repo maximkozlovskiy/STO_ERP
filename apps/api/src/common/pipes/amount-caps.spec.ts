@@ -27,6 +27,7 @@ import {
 import { ZodValidationPipe } from './zod-validation.pipe';
 import { globalPipes } from './global-pipes';
 import { StockItemsController } from '../../modules/inventory/stock-items.controller';
+import { assertMoneyFits } from '../utils/money';
 
 // ─── Стелі сум і кількостей (M3 безпекового блоку, 2026-10-24) ──────────────────────────────────
 //
@@ -316,5 +317,38 @@ describe('Стеля мінімального залишку — PATCH /stock-it
 
   it('minStock = QTY_MAX проходить', async () => {
     await expect(validate(QTY)).resolves.toEqual({ minStock: QTY });
+  });
+});
+
+// ─── BR-FIN-001: сума рядка (кількість × ціна) понад Decimal(12,2) ───────────────────────────────
+//
+// Польові стелі обмежують quantity (QTY_MAX) і unitPrice (MONEY_AMOUNT_MAX) ОКРЕМО, але їхній
+// ДОБУТОК усе одно може перевищити колонку (`QTY_MAX × 10_000 = 10_000_000_000`). `assertMoneyFits`
+// — спільний запобіжник (інваріант BR-BANK-042 для base-конвертації), застосований у addLine/
+// updateLine наряду й рахунку. Мутація: прибери перевірку `stored > MONEY_AMOUNT_MAX` → «понад межу»
+// проходить; зміни MONEY_AMOUNT_MAX → «на межі» падає.
+describe('assertMoneyFits — сума рядка в межах Decimal(12,2) (BR-FIN-001)', () => {
+  it('добуток максимальних полів у межах стель перевищує колонку — 400', () => {
+    expect(() => assertMoneyFits(QTY_MAX * 10_000)).toThrow(BadRequestException);
+  });
+
+  it('сума рівно на межі MONEY_AMOUNT_MAX — проходить', () => {
+    expect(() => assertMoneyFits(MONEY_AMOUNT_MAX)).not.toThrow();
+  });
+
+  it('на копійку понад межу — 400; від’ємна сума оцінюється за модулем', () => {
+    expect(() => assertMoneyFits(MONEY_AMOUNT_MAX + 0.01)).toThrow(BadRequestException);
+    expect(() => assertMoneyFits(-(MONEY_AMOUNT_MAX + 0.01))).toThrow(BadRequestException);
+    expect(() => assertMoneyFits(-MONEY_AMOUNT_MAX)).not.toThrow();
+  });
+
+  it('назва поля потрапляє в повідомлення', () => {
+    try {
+      assertMoneyFits(QTY_MAX * 10_000, 'сума роботи');
+      throw new Error('мало кинути');
+    } catch (e) {
+      const msg = ((e as BadRequestException).getResponse() as { message: string }).message;
+      expect(msg).toContain('сума роботи');
+    }
   });
 });
