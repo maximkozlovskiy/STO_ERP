@@ -106,6 +106,7 @@ import { newIdempotencyKey } from '@/lib/idempotency-key';
 import { PartsTable, type PartRow } from './work-order/PartsTable';
 import { WorksTable } from './work-order/WorksTable';
 import { InvoiceConflictDialog } from './work-order/InvoiceConflictDialog';
+import { ShareLinkPanel } from './work-order/ShareLinkPanel';
 import { PlannedActualMetrics } from './work-order/PlannedActualMetrics';
 import type { LocalPart, LocalLine, WorkOrderFormState } from './work-order/types';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -1893,6 +1894,12 @@ export function CreateWorkOrderModal({
     handlePrintInvoice,
     handleSaveAs,
     handleShare,
+    shareOpen,
+    setShareOpen,
+    shareLink,
+    handleCopyShareLink,
+    handleRegenerateShare,
+    handleRevokeShare,
     handleSendSms,
     handleInvoice,
     handleInvoiceRefresh,
@@ -1919,8 +1926,11 @@ export function CreateWorkOrderModal({
   useEscapeLayer(statusMenuShown, () => setStatusMenuOpen(false));
   useEscapeLayer(saveAsOpen, () => setSaveAsOpen(false));
   useEffect(() => {
-    if (open) setSaveAsOpen(false);
-  }, [open, workOrderId, setSaveAsOpen]);
+    if (open) {
+      setSaveAsOpen(false);
+      setShareOpen(false);
+    }
+  }, [open, workOrderId, setSaveAsOpen, setShareOpen]);
 
   // regression: читаємо `saving`/`transitioning` ВИКЛЮЧНО з ref'ів —
   // вони оновлюються СИНХРОННО у setSavingBoth/setTransitioningBoth ДО React state-flush.
@@ -2149,17 +2159,30 @@ export function CreateWorkOrderModal({
                     </div>
                     {!viewOnly && (
                       <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void handleShare()}
-                          loading={shareLoading}
-                          disabled={shareLoading || smsLoading || saving || transitioning}
-                          title={t('card.shareTitle')}
-                        >
-                          <Share2 size={15} className="mr-1" />
-                          {t('card.share')}
-                        </Button>
+                        <div className="relative">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void handleShare()}
+                            loading={shareLoading && !shareOpen}
+                            disabled={shareLoading || smsLoading || saving || transitioning}
+                            title={t('card.shareTitle')}
+                            aria-expanded={shareOpen}
+                          >
+                            <Share2 size={15} className="mr-1" />
+                            {t('card.share')}
+                          </Button>
+                          {shareOpen && shareLink && (
+                            <ShareLinkPanel
+                              link={shareLink}
+                              loading={shareLoading}
+                              onCopy={() => void handleCopyShareLink()}
+                              onRegenerate={() => void handleRegenerateShare()}
+                              onRevoke={() => void handleRevokeShare()}
+                              onClose={() => setShareOpen(false)}
+                            />
+                          )}
+                        </div>
                         <Button
                           variant="outline"
                           size="sm"

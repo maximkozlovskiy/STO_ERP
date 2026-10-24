@@ -5,6 +5,7 @@ import {
   WO_INVOICEABLE_STATUSES,
   WO_INVOICE_VISIBLE_STATUSES,
 } from '@sto/shared';
+import type { ApiSchema } from '@sto/shared';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { downloadBlob, printPdf } from '@/lib/download';
@@ -21,6 +22,17 @@ export const INVOICE_PRINT_ROLES: readonly string[] = [
   'ACCOUNTANT',
   'RECEPTIONIST',
 ];
+
+type ShareToken = ApiSchema<'WorkOrderShareTokenResponseDto'>;
+
+/**
+ * BR-WO-032: що картка знає про посилання на кошторис після дії «Поділитись». `null` — ще не
+ * питали (картка нічого не показує); `revoked` — відкликали з цієї картки.
+ */
+export type ShareLinkState =
+  { status: 'active'; token: string; expiresAt: string } | { status: 'revoked' } | null;
+
+export const shareUrl = (token: string) => `${window.location.origin}/estimate/${token}`;
 
 /**
  * A3-modal: дії edit-режиму наряду (друк/зберегти-як/поділитись/SMS/рахунок), винесені з
@@ -69,6 +81,9 @@ export function useWorkOrderActions({
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoiceConflict, setInvoiceConflict] = useState(false);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
+  // BR-WO-032: панель посилання (дата згорання, «Згенерувати нове», «Відкликати»).
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareLink, setShareLink] = useState<ShareLinkState>(null);
 
   const [printLoading, setPrintLoading] = useState(false);
   // Рахунок наряду для «Друк рахунку»: null — рахунку немає (або роль його не бачить).
@@ -108,6 +123,16 @@ export function useWorkOrderActions({
     const msg = e instanceof Error && e.message ? e.message : fallback;
     if (features.toastEnabled) toast.error(msg);
     else setError(msg);
+  };
+
+  // BR-WO-032: друк, «Зберегти як» і «Поділитись» беруть токен одним запитом; POST міг видати
+  // новий (старий прострочений чи відкликаний) — панель посилання бачить актуальний.
+  const issueShareToken = async (): Promise<ShareToken> => {
+    const res = await apiFetch<ShareToken>(`/work-orders/${workOrderId}/share-token`, {
+      method: 'POST',
+    });
+    setShareLink({ status: 'active', token: res.token, expiresAt: res.expiresAt });
+    return res;
   };
 
   // BR-WO-013: серверний PDF наряд-замовлення. printPdf відкриває вікно СИНХРОННО — він перший
@@ -156,6 +181,14 @@ export function useWorkOrderActions({
     }
   };
 
+  // Інший наряд у тій самій картці — посилання попереднього не показуємо.
+  useEffect(() => {
+    setShareOpen(false);
+    setShareLink(null);
+  }, [workOrderId]);
+  // Панель посилання — шар над карткою: Escape закриває лише її.
+  useEscapeLayer(shareOpen, () => setShareOpen(false));
+
   // Діалог конфлікту — власний оверлей, не <Modal>: шар Escape над карткою наряду. Esc закриває лише
   // його (поки запит не в польоті), картка лишається.
   useEscapeLayer(invoiceConflict, () => {
@@ -168,10 +201,7 @@ export function useWorkOrderActions({
     const win = window.open('', '_blank');
     setShareLoading(true);
     try {
-      const { token } = await apiFetch<{ token: string }>(
-        `/work-orders/${workOrderId}/share-token`,
-        { method: 'POST' },
-      );
+      const { token } = await issueShareToken();
       if (win) {
         win.location.href = `/estimate/${token}?print=1`;
       } else {
@@ -193,10 +223,7 @@ export function useWorkOrderActions({
     if (!workOrderId) return;
     setShareLoading(true);
     try {
-      const { token } = await apiFetch<{ token: string }>(
-        `/work-orders/${workOrderId}/share-token`,
-        { method: 'POST' },
-      );
+      const { token } = await issueShareToken();
       const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
       const res = await fetch(`${apiBase}/api/public/work-orders/${token}/export/${format}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -218,20 +245,70 @@ export function useWorkOrderActions({
     }
   };
 
+  const reportShareError = (e: unknown) => {
+    const msg = e instanceof Error ? e.message : 'Помилка';
+    if (features.toastEnabled) toast.error(msg);
+    else setError(msg);
+  };
+
+  // Буфер обміну недоступний поза HTTPS/localhost і без дозволу — посилання все одно видно в
+  // панелі, тож відмова копіювання не є помилкою дії.
+  const copyShareLink = async (token: string, successKey: string) => {
+    try {
+      await navigator.clipboard.writeText(shareUrl(token));
+      if (features.toastEnabled) toast.success(t(successKey));
+    } catch {
+      /* посилання лишається в панелі для ручного копіювання */
+    }
+  };
+
   const handleShare = async () => {
     if (!workOrderId) return;
     setShareLoading(true);
     try {
-      const { token } = await apiFetch<{ token: string }>(
-        `/work-orders/${workOrderId}/share-token`,
-        { method: 'POST' },
-      );
-      await navigator.clipboard.writeText(`${window.location.origin}/estimate/${token}`);
-      if (features.toastEnabled) toast.success(t('actions.linkCopied'));
+      const { token } = await issueShareToken();
+      setShareOpen(true);
+      await copyShareLink(token, 'actions.linkCopied');
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка';
-      if (features.toastEnabled) toast.error(msg);
-      else setError(msg);
+      reportShareError(e);
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleCopyShareLink = async () => {
+    if (shareLink?.status !== 'active') return;
+    await copyShareLink(shareLink.token, 'share.copied');
+  };
+
+  // BR-WO-032: «Згенерувати нове» — старе посилання відкликається, видається нове на 30 днів.
+  // POST сам по собі повертає ЧИННИЙ токен, тому чинний спершу відкликаємо.
+  const handleRegenerateShare = async () => {
+    if (!workOrderId) return;
+    setShareLoading(true);
+    try {
+      if (shareLink?.status === 'active') {
+        await apiFetch(`/work-orders/${workOrderId}/share-token`, { method: 'DELETE' });
+        setShareLink({ status: 'revoked' });
+      }
+      const { token } = await issueShareToken();
+      await copyShareLink(token, 'share.regenerated');
+    } catch (e: unknown) {
+      reportShareError(e);
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleRevokeShare = async () => {
+    if (!workOrderId) return;
+    setShareLoading(true);
+    try {
+      await apiFetch(`/work-orders/${workOrderId}/share-token`, { method: 'DELETE' });
+      setShareLink({ status: 'revoked' });
+      if (features.toastEnabled) toast.success(t('share.revoked'));
+    } catch (e: unknown) {
+      reportShareError(e);
     } finally {
       setShareLoading(false);
     }
@@ -359,6 +436,9 @@ export function useWorkOrderActions({
     setInvoiceConflict,
     saveAsOpen,
     setSaveAsOpen,
+    shareOpen,
+    setShareOpen,
+    shareLink,
     canShare,
     canInvoice,
     canPrintOrder,
@@ -369,6 +449,9 @@ export function useWorkOrderActions({
     handlePrintInvoice,
     handleSaveAs,
     handleShare,
+    handleCopyShareLink,
+    handleRegenerateShare,
+    handleRevokeShare,
     handleSendSms,
     handleInvoice,
     handleInvoiceRefresh,

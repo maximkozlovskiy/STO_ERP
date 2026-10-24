@@ -301,6 +301,21 @@
     "linkCopied": "Link copied",
     "smsSent": "SMS sent to client"
   },
+  "share": {
+    "title": "Estimate link",
+    "linkLabel": "Estimate link for the client",
+    "copy": "Copy",
+    "copied": "Link copied",
+    "expiresAt": "Valid until {{date}}",
+    "regenerate": "Generate new",
+    "regenerateTitle": "The old link will stop working; send the client the new one",
+    "regenerated": "New link copied",
+    "revoke": "Revoke",
+    "revokeTitle": "The link will stop working",
+    "revoked": "Link revoked",
+    "revokedHint": "The estimate no longer opens at the old address.",
+    "close": "Close"
+  },
   "toast": {
     "partAdded": "Part added",
     "lineAdded": "Work added"
