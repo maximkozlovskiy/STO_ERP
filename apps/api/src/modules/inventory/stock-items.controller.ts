@@ -18,8 +18,8 @@ import {
   ApiProperty,
   ApiOkResponse,
 } from '@nestjs/swagger';
-import { IsNumber, IsOptional, Min } from 'class-validator';
-import { translateError } from '@sto/shared';
+import { IsNumber, IsOptional, Max, Min } from 'class-validator';
+import { QTY_MAX, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -41,6 +41,8 @@ class UpdateMinStockDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  // Колонка Float не переповнюється, але мільйонний мінімум — помилка вводу (спільна стеля кількості).
+  @Max(QTY_MAX)
   minStock?: number | null;
 }
 

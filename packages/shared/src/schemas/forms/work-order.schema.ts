@@ -7,6 +7,9 @@ import {
   optionalMoneyNumber,
   numericString,
   moneyString,
+  withCap,
+  MONEY_CAP,
+  QTY_CAP,
 } from '../validators';
 
 /**
@@ -74,7 +77,7 @@ export const workOrderHeaderSchema = z.object({
   documentDate: optionalDateString(),
   currencyId: optionalUuid(),
   liftId: optionalUuid(),
-  plannedHours: optionalNonNegNumber(),
+  plannedHours: optionalNonNegNumber(QTY_CAP),
 });
 export type WorkOrderHeaderValues = z.infer<typeof workOrderHeaderSchema>;
 export type WorkOrderHeaderInput = z.input<typeof workOrderHeaderSchema>;
@@ -103,8 +106,8 @@ export const workOrderUpdateSchema = z.object({
   documentDate: optionalDateString(),
   currencyId: optionalUuid(),
   liftId: nullable(z.string().uuid('v.workOrder.uuid.invalid')),
-  plannedHours: nullable(z.coerce.number().min(0, 'v.workOrder.hours.nonNeg')),
-  actualHours: nullable(z.coerce.number().min(0, 'v.workOrder.hours.nonNeg')),
+  plannedHours: nullable(withCap(z.coerce.number().min(0, 'v.workOrder.hours.nonNeg'), QTY_CAP)),
+  actualHours: nullable(withCap(z.coerce.number().min(0, 'v.workOrder.hours.nonNeg'), QTY_CAP)),
 });
 export type WorkOrderUpdateValues = z.infer<typeof workOrderUpdateSchema>;
 
@@ -116,10 +119,10 @@ export const workOrderLineSchema = z.object({
   // normoHours опційна на беку (@Min(0.01)); price/actualHours опційні (@Min(0)).
   normoHours: z.preprocess(
     v => (v === '' || v === null || v === undefined ? undefined : v),
-    z.coerce.number().min(0.01, 'v.workOrder.line.normoHours.min').optional(),
+    withCap(z.coerce.number().min(0.01, 'v.workOrder.line.normoHours.min'), QTY_CAP).optional(),
   ),
-  actualHours: optionalNonNegNumber(),
-  price: optionalNonNegNumber(),
+  actualHours: optionalNonNegNumber(QTY_CAP),
+  price: optionalNonNegNumber(MONEY_CAP),
   notes: optionalString(),
 });
 export type WorkOrderLineValues = z.infer<typeof workOrderLineSchema>;
@@ -132,10 +135,10 @@ export const workOrderLineUpdateSchema = z.object({
   liftId: optionalUuid(),
   normoHours: z.preprocess(
     v => (v === '' || v === null || v === undefined ? undefined : v),
-    z.coerce.number().min(0.01, 'v.workOrder.line.normoHours.min').optional(),
+    withCap(z.coerce.number().min(0.01, 'v.workOrder.line.normoHours.min'), QTY_CAP).optional(),
   ),
-  actualHours: nullable(z.coerce.number().min(0, 'v.workOrder.hours.nonNeg')),
-  price: optionalNonNegNumber(),
+  actualHours: nullable(withCap(z.coerce.number().min(0, 'v.workOrder.hours.nonNeg'), QTY_CAP)),
+  price: optionalNonNegNumber(MONEY_CAP),
   notes: optionalString(),
 });
 export type WorkOrderLineUpdateValues = z.infer<typeof workOrderLineUpdateSchema>;
@@ -144,8 +147,10 @@ export type WorkOrderLineUpdateValues = z.infer<typeof workOrderLineUpdateSchema
 export const workOrderPartSchema = z.object({
   goodId: z.string().uuid('v.workOrder.part.good.required'),
   warehouseId: z.string().uuid('v.workOrder.part.warehouse.required'),
-  quantity: numericString().pipe(z.number().min(0.001, 'v.workOrder.part.quantity.min')),
-  price: optionalNonNegNumber(),
+  quantity: numericString().pipe(
+    withCap(z.number().min(0.001, 'v.workOrder.part.quantity.min'), QTY_CAP),
+  ),
+  price: optionalNonNegNumber(MONEY_CAP),
   unitOfMeasureId: optionalUuid(),
 });
 export type WorkOrderPartValues = z.infer<typeof workOrderPartSchema>;
@@ -156,9 +161,9 @@ export const workOrderPartUpdateSchema = z.object({
   warehouseId: optionalUuid(),
   quantity: z.preprocess(
     v => (v === '' || v === null || v === undefined ? undefined : v),
-    z.coerce.number().min(0.001, 'v.workOrder.part.quantity.min').optional(),
+    withCap(z.coerce.number().min(0.001, 'v.workOrder.part.quantity.min'), QTY_CAP).optional(),
   ),
-  price: optionalNonNegNumber(),
+  price: optionalNonNegNumber(MONEY_CAP),
   unitOfMeasureId: optionalUuid(),
 });
 export type WorkOrderPartUpdateValues = z.infer<typeof workOrderPartUpdateSchema>;
@@ -182,10 +187,10 @@ export const workOrderFormLineSchema = z.object({
         : typeof v === 'string'
           ? Number(v.replace(',', '.'))
           : v,
-    z.number().min(0.01, 'v.workOrder.line.normoHours.min').optional(),
+    withCap(z.number().min(0.01, 'v.workOrder.line.normoHours.min'), QTY_CAP).optional(),
   ),
-  actualHours: optionalMoneyNumber(),
-  price: optionalMoneyNumber(),
+  actualHours: optionalMoneyNumber(QTY_CAP),
+  price: optionalMoneyNumber(MONEY_CAP),
 });
 
 export const workOrderFormPartSchema = z.object({
@@ -193,8 +198,10 @@ export const workOrderFormPartSchema = z.object({
   id: z.string().optional(),
   goodId: z.string().uuid('v.workOrder.part.good.required'),
   warehouseId: z.string().uuid('v.workOrder.part.warehouse.required'),
-  quantity: moneyString().pipe(z.number().min(0.001, 'v.workOrder.part.quantity.min')),
-  price: optionalMoneyNumber(),
+  quantity: moneyString().pipe(
+    withCap(z.number().min(0.001, 'v.workOrder.part.quantity.min'), QTY_CAP),
+  ),
+  price: optionalMoneyNumber(MONEY_CAP),
   unitOfMeasureId: optionalUuid(),
 });
 
@@ -214,8 +221,8 @@ export const workOrderFormSchema = z.object({
   plannedStartAt: optionalDateString(),
   plannedEndAt: optionalDateString(),
   // Кома-aware: інпути «Планові/Фактичні години» — вільний рядок (UA '1,5').
-  plannedHours: optionalMoneyNumber(),
-  actualHours: optionalMoneyNumber(),
+  plannedHours: optionalMoneyNumber(QTY_CAP),
+  actualHours: optionalMoneyNumber(QTY_CAP),
   lines: z.array(workOrderFormLineSchema).default([]),
   parts: z.array(workOrderFormPartSchema).default([]),
 });

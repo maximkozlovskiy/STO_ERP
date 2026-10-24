@@ -15,6 +15,8 @@ export const en: Record<string, string> = {
   'v.uuid': 'Invalid UUID format',
   'v.positive': 'Value must be greater than zero',
   'v.nonNeg': 'Value cannot be negative',
+  'v.amountMax': 'Amount is too large — at most 9,999,999,999.99',
+  'v.qtyMax': 'Value is too large — at most 1,000,000',
   'v.dateFormat': 'Invalid date format',
 
   // ── counterparty.schema.ts ──

@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsNumber,
   Min,
+  Max,
   IsDateString,
   IsBooleanString,
   IsEnum,
@@ -14,6 +15,10 @@ import {
   ArrayMinSize,
   ArrayMaxSize,
 } from 'class-validator';
+// Стелі — місткість колонок (MONEY_AMOUNT_MAX = Decimal(12,2)) і QTY_MAX для кількості/годин:
+// понад них 400 з назвою поля, а не 500 `numeric field overflow`. На маршрутах із ZodValidationPipe
+// працює та сама стеля спільної схеми; тут — для Swagger і маршрутів на class-validator.
+import { MONEY_AMOUNT_MAX } from '@sto/shared';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SupplierPaymentStatus, PaymentSourceType } from '@prisma/client';
@@ -50,6 +55,7 @@ export class CreateSupplierPaymentDto {
   @ApiProperty()
   @IsNumber()
   @Min(0.01, { message: 'err.dto.supplierPayment.amount.min' })
+  @Max(MONEY_AMOUNT_MAX)
   amount!: number;
 
   @ApiProperty({ description: 'Метод оплати (код з PaymentMethodConfig)' })
@@ -103,6 +109,7 @@ export class UpdateSupplierPaymentDto {
   @IsOptional()
   @IsNumber()
   @Min(0.01, { message: 'err.dto.supplierPayment.amount.min' })
+  @Max(MONEY_AMOUNT_MAX)
   amount?: number;
 
   @ApiPropertyOptional()

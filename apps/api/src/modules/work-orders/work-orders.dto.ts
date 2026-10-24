@@ -18,6 +18,10 @@ import {
   ArrayMaxSize,
   ValidateIf,
 } from 'class-validator';
+// Стелі — місткість колонок (MONEY_AMOUNT_MAX = Decimal(12,2)) і QTY_MAX для кількості/годин:
+// понад них 400 з назвою поля, а не 500 `numeric field overflow`. На маршрутах із ZodValidationPipe
+// працює та сама стеля спільної схеми; тут — для Swagger і маршрутів на class-validator.
+import { MONEY_AMOUNT_MAX, QTY_MAX } from '@sto/shared';
 import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
@@ -106,6 +110,7 @@ export class CreateWorkOrderDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Max(QTY_MAX)
   plannedHours?: number;
 }
 
@@ -172,6 +177,7 @@ export class UpdateWorkOrderDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Max(QTY_MAX)
   plannedHours?: number | null;
 
   @ApiPropertyOptional({
@@ -182,6 +188,7 @@ export class UpdateWorkOrderDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Max(QTY_MAX)
   actualHours?: number | null;
 }
 
@@ -454,9 +461,9 @@ export class CreateWorkOrderLineDto {
   @Transform(emptyToUndefined)
   @IsUUID()
   liftId?: string;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) normoHours?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) actualHours?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) price?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) @Max(QTY_MAX) normoHours?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(QTY_MAX) actualHours?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(MONEY_AMOUNT_MAX) price?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
 
@@ -480,6 +487,7 @@ export class UpdateWorkOrderLineDto extends PartialType(
   @ValidateIf((o: { actualHours?: number | null }) => o.actualHours !== null)
   @IsNumber()
   @Min(0)
+  @Max(QTY_MAX)
   actualHours?: number | null;
 }
 
@@ -508,8 +516,8 @@ export class CreateWorkOrderPartDto {
   @ApiProperty()
   @IsUUID()
   warehouseId!: string;
-  @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) price?: number;
+  @ApiProperty() @IsNumber() @Min(0.001) @Max(QTY_MAX) quantity!: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(MONEY_AMOUNT_MAX) price?: number;
   @ApiPropertyOptional({
     description: 'ID одиниці виміру з GoodUoM. Якщо не передано — базова одиниця товару.',
   })
@@ -627,6 +635,17 @@ export class LinkedCountsDto {
 
 export class WorkOrderShareTokenResponseDto {
   @ApiProperty({ description: 'Токен публічного кошторису' }) token!: string;
+  @ApiProperty({
+    description: 'Коли посилання перестане відкриватись (ISO 8601), BR-WO-032',
+    format: 'date-time',
+  })
+  expiresAt!: string;
+}
+
+/** BR-WO-032: після відкликання токена й терміну немає. */
+export class WorkOrderShareRevokeResponseDto {
+  @ApiProperty({ type: String, nullable: true, example: null }) token!: null;
+  @ApiProperty({ type: String, nullable: true, example: null }) expiresAt!: null;
 }
 
 // ─── Linked documents (detail) ─────────────────────────────

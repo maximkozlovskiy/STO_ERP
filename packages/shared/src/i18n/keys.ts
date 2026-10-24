@@ -17,6 +17,8 @@ export const V = {
   uuid: 'v.uuid',
   positive: 'v.positive',
   nonNeg: 'v.nonNeg',
+  amountMax: 'v.amountMax',
+  qtyMax: 'v.qtyMax',
   dateFormat: 'v.dateFormat',
 
   counterparty: {
@@ -225,6 +227,8 @@ export const VALIDATION_KEYS = [
   'v.uuid',
   'v.positive',
   'v.nonNeg',
+  'v.amountMax',
+  'v.qtyMax',
   'v.dateFormat',
   'v.counterparty.type.required',
   'v.counterparty.email.invalid',

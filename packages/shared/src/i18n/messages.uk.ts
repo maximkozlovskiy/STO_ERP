@@ -18,6 +18,8 @@ export const uk: Record<string, string> = {
   'v.uuid': 'Невірний UUID формат',
   'v.positive': 'Значення має бути більше нуля',
   'v.nonNeg': "Значення не може бути від'ємним",
+  'v.amountMax': 'Сума завелика — не більше 9 999 999 999,99',
+  'v.qtyMax': 'Значення завелике — не більше 1 000 000',
   'v.dateFormat': 'Невірний формат дати',
 
   // ── counterparty.schema.ts ──

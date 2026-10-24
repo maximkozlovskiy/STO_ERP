@@ -5,6 +5,9 @@ import {
   optionalDateString,
   moneyString,
   optionalMoneyNumber,
+  withCap,
+  MONEY_CAP,
+  QTY_CAP,
 } from '../validators';
 
 /**
@@ -33,8 +36,10 @@ export const stockDocumentLineSchema = z.object({
   goodId: z.string().uuid('v.stockDocument.line.good.required'),
   // moneyString/optionalMoneyNumber (UA-кома backstop) замість numericString/optionalNonNegNumber:
   // захищає програмні/Excel-значення '1,5' (Number('1,5')=NaN інакше). Numeric JSON з фронта проходить.
-  quantity: moneyString().pipe(z.number().min(0.001, 'v.stockDocument.line.quantity.min')),
-  price: optionalMoneyNumber(),
+  quantity: moneyString().pipe(
+    withCap(z.number().min(0.001, 'v.stockDocument.line.quantity.min'), QTY_CAP),
+  ),
+  price: optionalMoneyNumber(MONEY_CAP),
 });
 export type StockDocumentLineInput = z.input<typeof stockDocumentLineSchema>;
 export type StockDocumentLineValues = z.infer<typeof stockDocumentLineSchema>;

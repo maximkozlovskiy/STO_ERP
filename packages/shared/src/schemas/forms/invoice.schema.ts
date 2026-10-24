@@ -1,5 +1,13 @@
 import { z } from 'zod';
-import { optionalString, optionalUuid, optionalDateString, moneyString } from '../validators';
+import {
+  optionalString,
+  optionalUuid,
+  optionalDateString,
+  moneyString,
+  withCap,
+  MONEY_CAP,
+  QTY_CAP,
+} from '../validators';
 
 /**
  * Спільні zod-схеми рахунку (Invoice) — ЄДИНЕ джерело правди web ↔ api.
@@ -26,8 +34,12 @@ const invoiceLineShape = {
     .min(1, 'v.invoice.line.description.required')
     .max(500, 'v.invoice.line.description.max'),
   // moneyString (UA-кома-aware): endpoint отримує numeric JSON (проходить), backstop для '1,5'.
-  quantity: moneyString().pipe(z.number().min(0.001, 'v.invoice.line.quantity.min')),
-  unitPrice: moneyString().pipe(z.number().min(0, 'v.invoice.line.unitPrice.nonNeg')),
+  quantity: moneyString().pipe(
+    withCap(z.number().min(0.001, 'v.invoice.line.quantity.min'), QTY_CAP),
+  ),
+  unitPrice: moneyString().pipe(
+    withCap(z.number().min(0, 'v.invoice.line.unitPrice.nonNeg'), MONEY_CAP),
+  ),
   vatRate: z.preprocess(
     v => (v === '' || v === null || v === undefined ? undefined : Number(v)),
     z
@@ -56,7 +68,7 @@ export const invoiceHeaderSchema = z.object({
   counterpartyId: z.string().uuid('v.invoice.counterparty.required'),
   workOrderId: optionalUuid(),
   // amount обчислює фронт (сума рядків); бек-мінімум 0.01 (дзеркалить @Min(0.01)).
-  amount: moneyString().pipe(z.number().min(0.01, 'v.invoice.amount.min')),
+  amount: moneyString().pipe(withCap(z.number().min(0.01, 'v.invoice.amount.min'), MONEY_CAP)),
   invoiceType: z.preprocess(
     v => (v === '' || v === null ? undefined : v),
     z.enum(INVOICE_TYPE_VALUES).optional(),
@@ -81,8 +93,12 @@ export const invoiceFormLineSchema = z.object({
   description: z.string().trim().min(1, 'v.invoice.line.description.required').max(500),
   // moneyString (не numericString): UA-кома-aware backstop — інпут вільний рядок; хоча зараз
   // type=number блокує кому в браузері, це захищає програмні/Excel-значення (Number('1,5')=NaN інакше).
-  quantity: moneyString().pipe(z.number().min(0.001, 'v.invoice.line.quantity.min')),
-  unitPrice: moneyString().pipe(z.number().min(0, 'v.invoice.line.unitPrice.nonNeg')),
+  quantity: moneyString().pipe(
+    withCap(z.number().min(0.001, 'v.invoice.line.quantity.min'), QTY_CAP),
+  ),
+  unitPrice: moneyString().pipe(
+    withCap(z.number().min(0, 'v.invoice.line.unitPrice.nonNeg'), MONEY_CAP),
+  ),
 });
 
 export const invoiceFormSchema = z.object({

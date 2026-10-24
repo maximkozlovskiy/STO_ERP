@@ -16,6 +16,10 @@ import {
   IsDateString,
   IsBooleanString,
 } from 'class-validator';
+// Стелі — місткість колонок (MONEY_AMOUNT_MAX = Decimal(12,2)) і QTY_MAX для кількості/годин:
+// понад них 400 з назвою поля, а не 500 `numeric field overflow`. На маршрутах із ZodValidationPipe
+// працює та сама стеля спільної схеми; тут — для Swagger і маршрутів на class-validator.
+import { MONEY_AMOUNT_MAX, QTY_MAX } from '@sto/shared';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { StockDocumentType, StockDocumentStatus } from '@prisma/client';
@@ -27,8 +31,8 @@ export class StockDocumentLineDto {
   @ApiProperty()
   @IsUUID()
   goodId!: string;
-  @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) price?: number;
+  @ApiProperty() @IsNumber() @Min(0.001) @Max(QTY_MAX) quantity!: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(MONEY_AMOUNT_MAX) price?: number;
 }
 
 export class CreateStockDocumentDto {

@@ -14,6 +14,10 @@ import {
   ArrayMinSize,
   ArrayMaxSize,
 } from 'class-validator';
+// Стелі — місткість колонок (MONEY_AMOUNT_MAX = Decimal(12,2)) і QTY_MAX для кількості/годин:
+// понад них 400 з назвою поля, а не 500 `numeric field overflow`. На маршрутах із ZodValidationPipe
+// працює та сама стеля спільної схеми; тут — для Swagger і маршрутів на class-validator.
+import { MONEY_AMOUNT_MAX, QTY_MAX } from '@sto/shared';
 import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -29,7 +33,7 @@ export class CreateInvoiceDto {
   @Transform(emptyToUndefined)
   @IsUUID()
   workOrderId?: string;
-  @ApiProperty() @IsNumber() @Min(0.01) amount!: number;
+  @ApiProperty() @IsNumber() @Min(0.01) @Max(MONEY_AMOUNT_MAX) amount!: number;
   @ApiPropertyOptional() @IsOptional() @IsString() invoiceType?: string;
   // emptyToUndefined gap: date-input reset → 400 without transform.
   @ApiPropertyOptional()
@@ -53,7 +57,12 @@ export class CreateInvoiceDto {
 }
 
 export class UpdateInvoiceDto {
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) amount?: number;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  @Max(MONEY_AMOUNT_MAX)
+  amount?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() invoiceType?: string;
   @ApiPropertyOptional()
   @IsOptional()
@@ -95,8 +104,8 @@ export class TransitionInvoiceDto {
 
 export class CreateInvoiceLineDto {
   @ApiProperty() @IsString() description!: string;
-  @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
-  @ApiProperty() @IsNumber() @Min(0) unitPrice!: number;
+  @ApiProperty() @IsNumber() @Min(0.001) @Max(QTY_MAX) quantity!: number;
+  @ApiProperty() @IsNumber() @Min(0) @Max(MONEY_AMOUNT_MAX) unitPrice!: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) vatRate?: number;
   @ApiPropertyOptional()
   @IsOptional()
@@ -118,8 +127,13 @@ export class CreateInvoiceLineDto {
 
 export class UpdateInvoiceLineDto {
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.001) quantity?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) unitPrice?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.001) @Max(QTY_MAX) quantity?: number;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(MONEY_AMOUNT_MAX)
+  unitPrice?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) vatRate?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) sortOrder?: number;
   @ApiPropertyOptional({ description: 'ID одиниці виміру з GoodUoM товару' })
