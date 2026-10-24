@@ -1,13 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { plannedWorkOrderTotals } from '../../common/utils/vat';
 import ExcelJS from 'exceljs';
 import PizZip from 'pizzip';
 import * as path from 'path';
 import * as fs from 'fs';
-import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
-import { getLocale, runUnscoped } from '../../common/tenant/tenant-context';
-import { liveShareTokenWhere } from './work-order-share-token';
+import { runUnscoped } from '../../common/tenant/tenant-context';
+import { loadShareableWorkOrder } from './work-order-share-token';
 
 /**
  * SECURITY: нейтралізація formula-injection у XLSX-клітинці (CWE-1236).
@@ -64,42 +63,8 @@ export class EstimateExportService {
     // shareToken (16 байт), а не за tenant. GoodUoM-lookup нижче теж без orgId. Обгортаємо весь метод у
     // runUnscoped, щоб tenant-guard пропустив ці легітимні tenant-less запити (симетрично findByShareToken).
     return runUnscoped(async () => {
-      const wo = await this.prisma.workOrder.findFirst({
-        // BR-WO-032: той самий відбір, що й JSON-кошторис — прострочений токен не експортує.
-        where: liveShareTokenWhere(token, new Date()),
-        include: {
-          vehicle: { select: { make: true, model: true, licensePlate: true } },
-          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-          branch: { select: { name: true } },
-          lines: {
-            where: { deletedAt: null },
-            orderBy: { createdAt: 'asc' },
-            take: 500,
-            select: {
-              normoHours: true,
-              price: true,
-              amount: true,
-              work: { select: { name: true } },
-            },
-          },
-          parts: {
-            where: { deletedAt: null },
-            orderBy: { createdAt: 'asc' },
-            take: 500,
-            select: {
-              quantity: true,
-              price: true,
-              amount: true,
-              unitOfMeasureId: true,
-              good: {
-                select: { name: true, unit: true, unitOfMeasure: { select: { shortName: true } } },
-              },
-            },
-          },
-        },
-      });
-      if (!wo)
-        throw new NotFoundException(translateError('err.workOrder.shareLinkInvalid', getLocale()));
+      // BR-WO-032: той самий відбір, що й JSON-кошторис — прострочений токен не експортує.
+      const wo = await loadShareableWorkOrder(this.prisma, token);
 
       // sto-optimize 2026-06-17: tier merger — org та uoms обидва залежать лише
       // від wo (orgId + parts.unitOfMeasureId). Раніше: 2 RTT sequential. Тепер

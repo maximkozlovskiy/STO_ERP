@@ -117,6 +117,33 @@ async function doRefresh(): Promise<RefreshResult> {
 // double-invoke and rapid UI interactions hitting the same endpoint.
 const inFlight = new Map<string, Promise<unknown>>();
 
+/**
+ * Спільний 401→refresh→retry для всіх трьох авторизованих обгорток (apiFetch/apiBlob/apiMultipart).
+ * `makeRequest(token)` — як кожна обгортка будує свій fetch (різні метод/тіло/заголовки).
+ * Повертає остаточний Response, АБО null — коли сесія справді мертва: токен скинуто й виконано
+ * redirect на /login, викликач має завершитись без кидання (apiFetch повертає undefined).
+ * 429 (throttle) — транзієнт (Bug #966): кидаємо «тимчасово перевантажений», НЕ логаутимо.
+ * `sessionExpired` — текст для випадку мертвої сесії, якщо обгортці треба кинути (blob/multipart).
+ */
+async function fetchWithRefresh(
+  makeRequest: (token: string | null) => Promise<Response>,
+  sessionExpired?: string,
+): Promise<Response | null> {
+  const res = await makeRequest(getToken());
+  if (res.status !== 401) return res;
+
+  const newToken = await tryRefresh();
+  if (newToken === THROTTLED) {
+    throw new Error('Сервіс тимчасово перевантажений, спробуйте ще раз');
+  }
+  if (newToken) return makeRequest(newToken);
+
+  clearToken();
+  if (typeof window !== 'undefined') window.location.replace('/login');
+  if (sessionExpired) throw new Error(sessionExpired);
+  return null;
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase();
   // Only dedup plain GETs. A request carrying an AbortSignal must NOT share a promise:
@@ -134,55 +161,36 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 }
 
 async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
-
   // Only add Content-Type: application/json when there is a body to send.
   // Sending Content-Type: application/json with an empty body causes Fastify to
   // attempt JSON parsing → SyntaxError → 500 (e.g. PATCH /booking/:id/confirm).
   const hasBody = init?.body != null;
-  const makeRequest = (accessToken: string | null) =>
-    fetch(`${API_BASE}${path}`, {
-      credentials: 'include',
-      ...init,
-      headers: buildHeaders({ json: hasBody, auth: accessToken, extra: init?.headers }),
-    });
-
-  let res: Response;
-  try {
-    res = await makeRequest(token);
-  } catch (networkErr) {
-    // T3: втрата зв'язку з локальним API → запит НЕ виконано. Черги offline-запису немає (система
-    // працює в LAN, але не накопичує мутації для подальшої синхронізації) — просто прокидаємо помилку,
-    // а SyncIndicator показує «Офлайн — збереження недоступне». Fake pending-ops лічильник прибрано.
-    // R3: сигналимо indicator, що локальний API недосяжний (навіть якщо navigator.onLine=true).
-    // Bug #839: скасований запит (AbortController — TanStack Query скасовує запит, коли його
-    // споживач зник: закрили бокову панель, вибрали інший рядок) — це НЕ втрата зв'язку. Без цієї
-    // перевірки індикатор показував «Офлайн — збереження недоступне» і лишався таким до наступної
-    // успішної відповіді, хоча сервер був на місці.
-    if (!isAbortError(networkErr, init?.signal)) emitSyncStatus('offline');
-    throw networkErr;
-  }
-  // R3: успішна відповідь від локального API → відновлення зв'язку (скидає 'offline' у indicator).
-  emitSyncStatus('idle');
-
-  // Silent token refresh on 401
-  if (res.status === 401) {
-    const newToken = await tryRefresh();
-    if (newToken === THROTTLED) {
-      // Bug #966: refresh was rate-limited, not rejected. Keep the session and surface a
-      // transient error so TanStack Query retries — do NOT clearToken/redirect to /login.
-      throw new Error('Сервіс тимчасово перевантажений, спробуйте ще раз');
+  // makeRequest also carries this wrapper's offline-signal logic (only apiFetch feeds the
+  // SyncIndicator), so it fires around the refresh-retry too, not just the first attempt:
+  // T3: втрата зв'язку з локальним API → запит НЕ виконано. Черги offline-запису немає (система
+  // працює в LAN, але не накопичує мутації для подальшої синхронізації) — просто прокидаємо помилку,
+  // а SyncIndicator показує «Офлайн — збереження недоступне». Fake pending-ops лічильник прибрано.
+  // Bug #839: скасований запит (AbortController) — це НЕ втрата зв'язку, індикатор не чіпаємо.
+  const makeRequest = async (accessToken: string | null): Promise<Response> => {
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        credentials: 'include',
+        ...init,
+        headers: buildHeaders({ json: hasBody, auth: accessToken, extra: init?.headers }),
+      });
+    } catch (networkErr) {
+      if (!isAbortError(networkErr, init?.signal)) emitSyncStatus('offline');
+      throw networkErr;
     }
-    if (newToken) {
-      res = await makeRequest(newToken);
-    } else {
-      clearToken();
-      if (typeof window !== 'undefined') {
-        window.location.replace('/login');
-      }
-      return undefined as T;
-    }
-  }
+    // R3: успішна відповідь від локального API → відновлення зв'язку (скидає 'offline' у indicator).
+    emitSyncStatus('idle');
+    return res;
+  };
+
+  // Silent token refresh on 401; null = dead session (token cleared, redirected to /login).
+  const res = await fetchWithRefresh(makeRequest);
+  if (res === null) return undefined as T;
 
   if (!res.ok) {
     await throwFromResponse(res, res.statusText);
@@ -212,32 +220,17 @@ export function apiPost<T>(
  * Same auth/refresh logic as `apiFetch`, but returns a `Blob` (no JSON parsing).
  */
 export async function apiBlobFetch(path: string, init?: RequestInit): Promise<Blob> {
-  const token = getToken();
-
-  const makeRequest = (accessToken: string | null) =>
-    fetch(`${API_BASE}${path}`, {
-      credentials: 'include',
-      ...init,
-      headers: buildHeaders({ auth: accessToken, extra: init?.headers }),
-    });
-
-  let res = await makeRequest(token);
-
-  if (res.status === 401) {
-    const newToken = await tryRefresh();
-    if (newToken === THROTTLED) {
-      throw new Error('Сервіс тимчасово перевантажений, спробуйте ще раз');
-    }
-    if (newToken) {
-      res = await makeRequest(newToken);
-    } else {
-      clearToken();
-      if (typeof window !== 'undefined') {
-        window.location.replace('/login');
-      }
-      throw new Error('Сесія застаріла, увійдіть знову');
-    }
-  }
+  const res = await fetchWithRefresh(
+    accessToken =>
+      fetch(`${API_BASE}${path}`, {
+        credentials: 'include',
+        ...init,
+        headers: buildHeaders({ auth: accessToken, extra: init?.headers }),
+      }),
+    'Сесія застаріла, увійдіть знову',
+  );
+  // null unreachable here (sessionExpired passed → throws on dead session); narrow for TS.
+  if (res === null) throw new Error('Сесія застаріла, увійдіть знову');
 
   if (!res.ok) {
     await throwFromResponse(res, `Помилка завантаження файлу (${res.status})`);
@@ -256,34 +249,18 @@ export async function apiMultipartFetch<T>(
   formData: FormData,
   init?: Omit<RequestInit, 'body' | 'headers'>,
 ): Promise<T> {
-  const token = getToken();
-
-  const makeRequest = (accessToken: string | null) =>
-    fetch(`${API_BASE}${path}`, {
-      method: 'POST',
-      credentials: 'include',
-      ...init,
-      headers: buildHeaders({ auth: accessToken }),
-      body: formData,
-    });
-
-  let res = await makeRequest(token);
-
-  if (res.status === 401) {
-    const newToken = await tryRefresh();
-    if (newToken === THROTTLED) {
-      throw new Error('Сервіс тимчасово перевантажений, спробуйте ще раз');
-    }
-    if (newToken) {
-      res = await makeRequest(newToken);
-    } else {
-      clearToken();
-      if (typeof window !== 'undefined') {
-        window.location.replace('/login');
-      }
-      throw new Error('Сесія застаріла, увійдіть знову');
-    }
-  }
+  const res = await fetchWithRefresh(
+    accessToken =>
+      fetch(`${API_BASE}${path}`, {
+        method: 'POST',
+        credentials: 'include',
+        ...init,
+        headers: buildHeaders({ auth: accessToken }),
+        body: formData,
+      }),
+    'Сесія застаріла, увійдіть знову',
+  );
+  if (res === null) throw new Error('Сесія застаріла, увійдіть знову');
 
   if (!res.ok) {
     await throwFromResponse(res, `Помилка завантаження (${res.status})`);

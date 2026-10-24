@@ -13,7 +13,11 @@ import type {
   WorkOrderShareRevokeResponseDto,
   WorkOrderShareTokenResponseDto,
 } from './work-orders.dto';
-import { isShareTokenLive, liveShareTokenWhere, shareTokenExpiry } from './work-order-share-token';
+import {
+  isShareTokenLive,
+  loadShareableWorkOrder,
+  shareTokenExpiry,
+} from './work-order-share-token';
 
 const toShareTokenDto = (wo: {
   shareToken: string;
@@ -112,45 +116,7 @@ export class WorkOrderShareService {
     // shareToken (16 байт), а не за tenant. GoodUoM-lookup нижче теж без orgId. Обгортаємо весь метод у
     // runUnscoped, щоб tenant-guard пропустив ці легітимні tenant-less запити публічного кошторису.
     return runUnscoped(async () => {
-      const wo = await this.prisma.workOrder.findFirst({
-        where: liveShareTokenWhere(token, new Date()),
-        include: {
-          vehicle: { select: { make: true, model: true, licensePlate: true } },
-          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-          branch: { select: { name: true } },
-          lines: {
-            where: { deletedAt: null },
-            orderBy: { createdAt: 'asc' },
-            take: 500,
-            select: {
-              id: true,
-              normoHours: true,
-              price: true,
-              amount: true,
-              notes: true,
-              work: { select: { name: true } },
-            },
-          },
-          parts: {
-            where: { deletedAt: null },
-            orderBy: { createdAt: 'asc' },
-            take: 500,
-            select: {
-              id: true,
-              goodId: true,
-              quantity: true,
-              price: true,
-              amount: true,
-              unitOfMeasureId: true,
-              good: {
-                select: { name: true, unit: true, unitOfMeasure: { select: { shortName: true } } },
-              },
-            },
-          },
-        },
-      });
-      if (!wo)
-        throw new NotFoundException(translateError('err.workOrder.shareLinkInvalid', getLocale()));
+      const wo = await loadShareableWorkOrder(this.prisma, token);
 
       // sto-optimize 2026-06-17: tier merger — org та uoms обидва залежать лише
       // від wo (orgId + parts.unitOfMeasureId), один від одного — ні. Раніше:
