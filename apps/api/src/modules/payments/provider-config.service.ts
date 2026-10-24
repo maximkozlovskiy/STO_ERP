@@ -1,9 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ProviderKind, ShiftMode } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { sameApiUrl } from '../../common/utils/trim-trailing-slashes';
+import { validatePublicUrlResolved, type HostLookup } from '../../common/utils/url-guard';
+import { HOST_LOOKUP } from '../../common/utils/host-lookup.token';
 
 /** Назва поля кредів провайдера: ідентифікатор до 64 символів (`apiKey`, `merchantId`, `pinCode`). */
 const CREDENTIAL_KEY_RE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
@@ -47,7 +49,10 @@ export interface ResolvedProvider {
  */
 @Injectable()
 export class ProviderConfigService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(HOST_LOOKUP) private readonly lookup: HostLookup,
+  ) {}
 
   /** Активний провайдер для (orgId, branchId?, kind) або null якщо не налаштовано. */
   async resolveActive(
@@ -178,6 +183,14 @@ export class ProviderConfigService {
     // Мердж credentials: наявні ← нові непорожні поля (write-only). `apiUrl ?? null` — саме це й
     // запишеться нижче, тож порівнюємо з ним.
     const apiUrl = input.apiUrl ?? null;
+
+    // SSRF-захист при ЗБЕРЕЖЕННІ: адреса провайдера перевіряється після DNS ще до запису, щоб
+    // приватна/loopback/метадані-адреса не осіла в конфізі й не пішла в запити пізніше (BR-SEC-SSRF).
+    // Причина вже локалізована (укр.) у url-guard — віддаємо її напряму, як webhooks.service.
+    if (apiUrl && apiUrl.trim()) {
+      const urlError = await validatePublicUrlResolved(apiUrl, this.lookup);
+      if (urlError) throw new BadRequestException(urlError);
+    }
     const urlChanged = existing !== null && !sameApiUrl(existing.apiUrl, apiUrl);
     const merged = urlChanged ? {} : this.parseCreds(existing?.credentials ?? null);
     if (input.credentials) {

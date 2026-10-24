@@ -21,6 +21,7 @@ import {
   validatePublicUrlResolved,
   type HostLookup,
 } from '../../common/utils/url-guard';
+import { HOST_LOOKUP } from '../../common/utils/host-lookup.token';
 import { sameApiUrl, trimTrailingSlashes } from '../../common/utils/trim-trailing-slashes';
 import { workHoursOf } from '../../common/utils/work-hours';
 import { translateError } from '@sto/shared';
@@ -105,6 +106,11 @@ export class SettingsService {
     private readonly nbuFetchScheduler: NbuFetchScheduler,
     private readonly bankPullScheduler: BankStatementPullScheduler,
     private readonly audit: AuditService,
+    // Один спільний DNS-резолвер для SSRF resolved-перевірки. Інжектиться через DI (дефолт
+    // `lookupAllAddresses`), бо resolved-перевірка викликається з HTTP-шляху, де 4-й аргумент не
+    // передати; тест-модуль перевизначає токен фейком → `settings.contract.spec` більше не ходить
+    // у справжній DNS (`api.checkbox.ua`), що зрідка валив повний прогін.
+    @Inject(HOST_LOOKUP) private readonly lookup: HostLookup = lookupAllAddresses,
   ) {}
 
   /** C1b: best-effort аудит зміни налаштувань (post-commit, не блокує). */
@@ -348,6 +354,15 @@ export class SettingsService {
       select: { id: true },
     });
     if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
+
+    // SSRF-захист при ЗБЕРЕЖЕННІ: будь-яке поле адреси провайдера (`*ApiUrl`), присутнє у dto,
+    // перевіряється після DNS ще до upsert — приватна/loopback/метадані-адреса не осідає в
+    // налаштуваннях і не піде в запити ПРРО/еквайрингу пізніше (BR-SEC-SSRF). Причина вже укр.
+    for (const [key, value] of Object.entries(dto)) {
+      if (!key.endsWith('ApiUrl') || typeof value !== 'string' || !value.trim()) continue;
+      const urlError = await validatePublicUrlResolved(value, this.lookup);
+      if (urlError) throw new BadRequestException(urlError);
+    }
 
     // Cross-field guard: workEndTime must be after workStartTime. Read current settings
     // (if only one field in PATCH) and merge with incoming before comparing.
@@ -926,8 +941,12 @@ export class SettingsService {
     orgId: string,
     branchId: string,
     dto: { apiUrl?: string; licenseKey?: string },
-    lookup: HostLookup = lookupAllAddresses,
+    // Явний аргумент (unit-спек передає фейк) має пріоритет; інакше — інжектований `this.lookup`
+    // (дефолт `lookupAllAddresses`, у тест-модулі перевизначений). Так HTTP-шлях контролера, що
+    // 4-й аргумент не передає, НЕ ходить у справжній DNS під час contract-тестів.
+    lookupArg?: HostLookup,
   ): Promise<{ valid: boolean; cashRegisterName?: string; error?: string }> {
+    const lookup = lookupArg ?? this.lookup;
     const branch = await this.prisma.garageBranch.findFirst({
       where: { id: branchId, orgId, deletedAt: null },
       select: { id: true },

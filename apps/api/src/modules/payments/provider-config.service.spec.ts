@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ProviderConfigService } from './provider-config.service';
+import type { HostLookup } from '../../common/utils/url-guard';
+import {
+  publicHostLookup,
+  loopbackHostLookup,
+  metadataHostLookup,
+} from '../../common/testing/host-lookup';
 
 /**
  * ProviderConfigService — резолвер активного провайдера (config + legacy-fallback) + CRUD/активація.
@@ -28,8 +34,10 @@ describe('ProviderConfigService', () => {
 
   const ORG = 'org-1';
   const BRANCH = 'branch-1';
+  let lookup: HostLookup;
 
   beforeEach(() => {
+    lookup = publicHostLookup;
     prisma = {
       branchProviderConfig: {
         findFirst: vi.fn(),
@@ -42,7 +50,7 @@ describe('ProviderConfigService', () => {
       cashRegister: { findFirst: vi.fn() },
       $transaction: vi.fn().mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops)),
     };
-    svc = new ProviderConfigService(prisma as never);
+    svc = new ProviderConfigService(prisma as never, (...args) => lookup(...args));
   });
 
   describe('resolveActive', () => {
@@ -621,6 +629,72 @@ describe('ProviderConfigService', () => {
         'shiftMode',
         'hasCredentials',
       ]);
+    });
+
+    // guards: BR-SEC-SSRF — адреса провайдера валідується після DNS при ЗБЕРЕЖЕННІ.
+    it('apiUrl → loopback (DNS) → 400, нічого не пише', async () => {
+      lookup = loopbackHostLookup;
+      prisma.branchProviderConfig.findFirst.mockResolvedValue(null);
+      await expect(
+        svc.upsertConfig(ORG, BRANCH, 'PAYMENT', {
+          provider: 'monobank',
+          apiUrl: 'https://rebind.example',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.branchProviderConfig.upsert).not.toHaveBeenCalled();
+    });
+
+    it('apiUrl → cloud-metadata (DNS) → 400', async () => {
+      lookup = metadataHostLookup;
+      prisma.branchProviderConfig.findFirst.mockResolvedValue(null);
+      await expect(
+        svc.upsertConfig(ORG, BRANCH, 'PAYMENT', {
+          provider: 'monobank',
+          apiUrl: 'https://rebind.example',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.branchProviderConfig.upsert).not.toHaveBeenCalled();
+    });
+
+    it('літеральний loopback apiUrl → 400 (без DNS)', async () => {
+      prisma.branchProviderConfig.findFirst.mockResolvedValue(null);
+      await expect(
+        svc.upsertConfig(ORG, BRANCH, 'PAYMENT', {
+          provider: 'monobank',
+          apiUrl: 'http://127.0.0.1:9000',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.branchProviderConfig.upsert).not.toHaveBeenCalled();
+    });
+
+    it('apiUrl → public (DNS) → зберігає (fetch не потрібен)', async () => {
+      lookup = publicHostLookup;
+      prisma.branchProviderConfig.findFirst.mockResolvedValue(null);
+      prisma.branchProviderConfig.upsert.mockResolvedValue({
+        provider: 'monobank',
+        enabled: false,
+        apiUrl: 'https://api.monobank.ua',
+        shiftMode: 'MANUAL',
+      });
+      const view = await svc.upsertConfig(ORG, BRANCH, 'PAYMENT', {
+        provider: 'monobank',
+        apiUrl: 'https://api.monobank.ua',
+      });
+      expect(view.apiUrl).toBe('https://api.monobank.ua');
+      expect(prisma.branchProviderConfig.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('apiUrl null/порожній → перевірка не запускається (навіть із loopback-резолвером)', async () => {
+      lookup = loopbackHostLookup;
+      prisma.branchProviderConfig.findFirst.mockResolvedValue(null);
+      prisma.branchProviderConfig.upsert.mockResolvedValue({
+        provider: 'monobank',
+        enabled: false,
+        apiUrl: null,
+        shiftMode: 'MANUAL',
+      });
+      await svc.upsertConfig(ORG, BRANCH, 'PAYMENT', { provider: 'monobank' });
+      expect(prisma.branchProviderConfig.upsert).toHaveBeenCalledTimes(1);
     });
   });
 
