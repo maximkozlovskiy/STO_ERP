@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { validatePublicUrl } from '../../common/utils/url-guard';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { validatePublicUrlResolved, type HostLookup } from '../../common/utils/url-guard';
+import { HOST_LOOKUP } from '../../common/utils/host-lookup.token';
 
 const DEFAULT_BASE = 'https://api.monobank.ua';
 const HTTP_TIMEOUT_MS = 10_000;
@@ -21,6 +22,8 @@ export interface CreateInvoiceResult {
 @Injectable()
 export class MonobankClient {
   private readonly logger = new Logger(MonobankClient.name);
+
+  constructor(@Inject(HOST_LOOKUP) private readonly lookup: HostLookup) {}
 
   /** Створити рахунок на оплату. amount — у копійках (cents). ccy 980 = UAH. */
   async createInvoice(
@@ -84,7 +87,7 @@ export class MonobankClient {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- зовнішній API-response (валідація/narrow нижче за викликом)
   ): Promise<any> {
     const apiUrl = apiUrlRaw || DEFAULT_BASE;
-    const urlError = validatePublicUrl(apiUrl);
+    const urlError = await validatePublicUrlResolved(apiUrl, this.lookup);
     if (urlError) throw new Error(`Невалідний monobank API URL: ${urlError}`);
 
     const controller = new AbortController();

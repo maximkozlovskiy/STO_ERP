@@ -3,6 +3,7 @@ import { PaymentGatewayRegistry } from './payment-gateway-registry';
 import { LiqpayGateway } from './liqpay.gateway';
 import { MonobankGateway } from './monobank.gateway';
 import { MonobankClient } from '../monobank.client';
+import { publicHostLookup } from '../../../common/testing/host-lookup';
 
 /**
  * Registry шлюзів + LiqPay/monobank gateway units.
@@ -10,7 +11,10 @@ import { MonobankClient } from '../monobank.client';
  */
 describe('PaymentGatewayRegistry', () => {
   const make = () =>
-    new PaymentGatewayRegistry([new MonobankGateway(new MonobankClient()), new LiqpayGateway()]);
+    new PaymentGatewayRegistry([
+      new MonobankGateway(new MonobankClient(publicHostLookup)),
+      new LiqpayGateway(publicHostLookup),
+    ]);
 
   it('get() повертає зареєстрований шлюз; невідомий → null (не кидає)', () => {
     const r = make();
@@ -27,7 +31,7 @@ describe('PaymentGatewayRegistry', () => {
 });
 
 describe('LiqpayGateway', () => {
-  const gw = new LiqpayGateway();
+  const gw = new LiqpayGateway(publicHostLookup);
   const cfg = { apiUrl: null, credentials: { publicKey: 'PUB', privateKey: 'PRIV' } };
 
   it('createInvoice: checkoutUrl = /api/3/checkout?data=..&signature=.. ; gatewayInvoiceId = reference', async () => {
@@ -54,7 +58,7 @@ describe('LiqpayGateway', () => {
     const sigA = new URL(a.checkoutUrl).searchParams.get('signature');
     const sigB = new URL(b.checkoutUrl).searchParams.get('signature');
     expect(sigA).toBe(sigB); // однаковий payload+key → однаковий підпис
-    const c = await new LiqpayGateway().createInvoice(
+    const c = await new LiqpayGateway(publicHostLookup).createInvoice(
       { apiUrl: null, credentials: { publicKey: 'PUB', privateKey: 'OTHER' } },
       { amountCents: 100, reference: 'ref' },
     );
@@ -127,6 +131,33 @@ describe('LiqpayGateway', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  // guards: BR-SEC-SSRF — resolved-перевірка після DNS (окремий gateway з фейковим lookup).
+  it('публічне ім`я → loopback (DNS) → SSRF-guard кидає на getStatus, fetch НЕ викликається', async () => {
+    const { loopbackHostLookup } = await import('../../../common/testing/host-lookup');
+    const g = new LiqpayGateway(loopbackHostLookup);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await expect(
+        g.getStatus({ apiUrl: 'https://rebind.example', credentials: cfg.credentials }, 'o'),
+      ).rejects.toThrow(/Невалідний LiqPay API URL/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('публічне ім`я → метадані (DNS) → SSRF-guard кидає на createInvoice (перед формуванням URL)', async () => {
+    const { metadataHostLookup } = await import('../../../common/testing/host-lookup');
+    const g = new LiqpayGateway(metadataHostLookup);
+    await expect(
+      g.createInvoice(
+        { apiUrl: 'https://rebind.example', credentials: cfg.credentials },
+        { amountCents: 100, reference: 'r' },
+      ),
+    ).rejects.toThrow(/Невалідний LiqPay API URL/);
   });
 });
 

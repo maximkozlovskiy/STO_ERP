@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Privat24Client } from './privat24.client';
+import type { HostLookup } from '../../../common/utils/url-guard';
+import {
+  publicHostLookup,
+  loopbackHostLookup,
+  metadataHostLookup,
+} from '../../../common/testing/host-lookup';
 
 /**
  * Privat24Client — тонкий HTTP-клієнт statements. Доводимо: DD-MM-YYYY дати, заголовки id+token,
@@ -9,6 +15,7 @@ import { Privat24Client } from './privat24.client';
 describe('Privat24Client', () => {
   let client: Privat24Client;
   let fetchMock: ReturnType<typeof vi.fn>;
+  let lookup: HostLookup;
 
   const okResponse = (body: unknown, status = 200): Response =>
     ({
@@ -18,7 +25,8 @@ describe('Privat24Client', () => {
     }) as unknown as Response;
 
   beforeEach(() => {
-    client = new Privat24Client();
+    lookup = publicHostLookup;
+    client = new Privat24Client((...args) => lookup(...args));
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
   });
@@ -76,6 +84,30 @@ describe('Privat24Client', () => {
       client.fetchTransactions({ ...baseArgs, apiUrl: 'http://169.254.169.254/api' }),
     ).rejects.toThrow(/URL/i);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-SEC-SSRF — resolved-перевірка після DNS.
+  it('SSRF після DNS: публічне ім`я → loopback → кидає, fetch не викликається', async () => {
+    lookup = loopbackHostLookup;
+    await expect(
+      client.fetchTransactions({ ...baseArgs, apiUrl: 'https://rebind.example/api' }),
+    ).rejects.toThrow(/Privat24 API URL/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('SSRF після DNS: публічне ім`я → cloud-metadata → кидає', async () => {
+    lookup = metadataHostLookup;
+    await expect(
+      client.fetchTransactions({ ...baseArgs, apiUrl: 'https://rebind.example/api' }),
+    ).rejects.toThrow(/Privat24 API URL/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('SSRF після DNS: публічне ім`я → публічна адреса → проходить до fetch', async () => {
+    lookup = publicHostLookup;
+    fetchMock.mockResolvedValue(okResponse({ transactions: [], exist_next_page: false }));
+    await client.fetchTransactions({ ...baseArgs, apiUrl: 'https://acp.privatbank.ua/api' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('timeout: fetch abort → проброс помилки', async () => {

@@ -4,6 +4,7 @@ import { CheckboxProvider } from './checkbox.provider';
 import { VchasnoProvider } from './vchasno.provider';
 import { CheckboxClient, CheckboxUnauthorizedError } from '../checkbox.client';
 import { FiscalUnauthorizedError } from './fiscal-provider.interface';
+import { publicHostLookup } from '../../../common/testing/host-lookup';
 
 /**
  * Registry провайдерів ПРРО + checkbox/vchasno units.
@@ -11,7 +12,10 @@ import { FiscalUnauthorizedError } from './fiscal-provider.interface';
  */
 describe('FiscalProviderRegistry', () => {
   const make = () =>
-    new FiscalProviderRegistry([new CheckboxProvider(new CheckboxClient()), new VchasnoProvider()]);
+    new FiscalProviderRegistry([
+      new CheckboxProvider(new CheckboxClient(publicHostLookup)),
+      new VchasnoProvider(publicHostLookup),
+    ]);
 
   it('get() повертає зареєстрований провайдер; невідомий → null', () => {
     const r = make();
@@ -106,7 +110,7 @@ describe('CheckboxProvider (обгортка parity)', () => {
 
 describe('VchasnoProvider', () => {
   const cfg = { apiUrl: 'https://kasa.vchasno.ua', credentials: { token: 'TOK' } };
-  const p = new VchasnoProvider();
+  const p = new VchasnoProvider(publicHostLookup);
 
   it('signIn повертає токен з кредів (без окремого обміну)', async () => {
     expect(await p.signIn(cfg)).toEqual({ accessToken: 'TOK' });

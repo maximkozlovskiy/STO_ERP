@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
-import { validatePublicUrl } from '../../../common/utils/url-guard';
+import { Inject, Injectable } from '@nestjs/common';
+import { validatePublicUrlResolved, type HostLookup } from '../../../common/utils/url-guard';
+import { HOST_LOOKUP } from '../../../common/utils/host-lookup.token';
 import {
   FiscalProvider,
   FiscalConfig,
@@ -41,6 +42,8 @@ const TASK = {
 export class VchasnoProvider implements FiscalProvider {
   readonly code = 'vchasno';
   readonly name = 'Вчасно.Каса';
+
+  constructor(@Inject(HOST_LOOKUP) private readonly lookup: HostLookup) {}
 
   private apiUrl(cfg: FiscalConfig): string {
     return cfg.apiUrl || DEFAULT_BASE;
@@ -133,7 +136,7 @@ export class VchasnoProvider implements FiscalProvider {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- зовнішній API-response (валідація/narrow нижче за викликом)
   ): Promise<any> {
     const apiUrl = this.apiUrl(cfg).replace(/\/$/, '');
-    const urlError = validatePublicUrl(apiUrl);
+    const urlError = await validatePublicUrlResolved(apiUrl, this.lookup);
     if (urlError) throw new Error(`Невалідний Вчасно API URL: ${urlError}`);
 
     const controller = new AbortController();

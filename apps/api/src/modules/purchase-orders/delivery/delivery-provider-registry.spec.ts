@@ -2,13 +2,19 @@ import { describe, it, expect, vi } from 'vitest';
 import { DeliveryProviderRegistry } from './delivery-provider-registry';
 import { NovaPoshtaProvider } from './nova-poshta.provider';
 import { NovaPoshtaClient } from './nova-poshta.client';
+import {
+  publicHostLookup,
+  loopbackHostLookup,
+  metadataHostLookup,
+} from '../../../common/testing/host-lookup';
 
 /**
  * Registry служб доставки + Нова Пошта client/provider units.
  * Доводимо: registry get/list; NovaPoshtaClient (SSRF/3xx/timeout/JSON-shape); mapStatus усіх кодів.
  */
 describe('DeliveryProviderRegistry', () => {
-  const make = () => new DeliveryProviderRegistry([new NovaPoshtaProvider(new NovaPoshtaClient())]);
+  const make = () =>
+    new DeliveryProviderRegistry([new NovaPoshtaProvider(new NovaPoshtaClient(publicHostLookup))]);
 
   it('get() повертає зареєстровану службу; невідома → null', () => {
     const r = make();
@@ -23,7 +29,7 @@ describe('DeliveryProviderRegistry', () => {
 });
 
 describe('NovaPoshtaClient', () => {
-  const client = new NovaPoshtaClient();
+  const client = new NovaPoshtaClient(publicHostLookup);
   const cfgUrl = 'https://api.novaposhta.ua';
 
   it('getStatusDocument: success → statusCode+status; тіло POST /v2.0/json/ з apiKey/model', async () => {
@@ -111,10 +117,39 @@ describe('NovaPoshtaClient', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  // guards: BR-SEC-SSRF — resolved-перевірка після DNS.
+  it('публічне ім`я → loopback (DNS) → SSRF-guard кидає, fetch НЕ викликається', async () => {
+    const c = new NovaPoshtaClient(loopbackHostLookup);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await expect(c.getStatusDocument('https://rebind.example', 'K', 'x')).rejects.toThrow(
+        /Невалідний Нова Пошта API URL/,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('публічне ім`я → cloud-metadata (DNS) → SSRF-guard кидає', async () => {
+    const c = new NovaPoshtaClient(metadataHostLookup);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await expect(c.getStatusDocument('https://rebind.example', 'K', 'x')).rejects.toThrow(
+        /Невалідний Нова Пошта API URL/,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('NovaPoshtaProvider.mapStatus', () => {
-  const provider = new NovaPoshtaProvider(new NovaPoshtaClient());
+  const provider = new NovaPoshtaProvider(new NovaPoshtaClient(publicHostLookup));
   const cfg = { apiUrl: null, credentials: { apiKey: 'K' } };
 
   const cases: Array<[string, string]> = [

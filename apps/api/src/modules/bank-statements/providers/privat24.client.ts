@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
-import { validatePublicUrl } from '../../../common/utils/url-guard';
+import { Inject, Injectable } from '@nestjs/common';
+import { validatePublicUrlResolved, type HostLookup } from '../../../common/utils/url-guard';
+import { HOST_LOOKUP } from '../../../common/utils/host-lookup.token';
 import { redactSecrets } from '../../../common/utils/redact';
 
 const DEFAULT_BASE = 'https://acp.privatbank.ua/api';
@@ -41,6 +42,8 @@ function toPrivatDate(d: Date): string {
  */
 @Injectable()
 export class Privat24Client {
+  constructor(@Inject(HOST_LOOKUP) private readonly lookup: HostLookup) {}
+
   /** Витягти сирі транзакції за вікно дат (усі сторінки followId). Повертає сирий масив об'єктів. */
   async fetchTransactions(args: Privat24FetchArgs): Promise<Record<string, unknown>[]> {
     const startDate = toPrivatDate(args.from);
@@ -86,7 +89,7 @@ export class Privat24Client {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- зовнішній API-response (нормалізація нижче за викликом)
   ): Promise<any> {
     const apiUrl = (apiUrlRaw || DEFAULT_BASE).replace(/\/$/, '');
-    const urlError = validatePublicUrl(apiUrl);
+    const urlError = await validatePublicUrlResolved(apiUrl, this.lookup);
     if (urlError) throw new Error(`Невалідний Privat24 API URL: ${urlError}`);
 
     const controller = new AbortController();

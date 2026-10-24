@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { validatePublicUrl } from '../../../common/utils/url-guard';
+import { validatePublicUrlResolved, type HostLookup } from '../../../common/utils/url-guard';
+import { HOST_LOOKUP } from '../../../common/utils/host-lookup.token';
 import type {
   PaymentGateway,
   GatewayConfig,
@@ -30,6 +31,8 @@ export class LiqpayGateway implements PaymentGateway {
   readonly code = 'liqpay';
   readonly name = 'LiqPay (ПриватБанк)';
 
+  constructor(@Inject(HOST_LOOKUP) private readonly lookup: HostLookup) {}
+
   private creds(cfg: GatewayConfig): { publicKey: string; privateKey: string } {
     const publicKey = cfg.credentials?.publicKey;
     const privateKey = cfg.credentials?.privateKey;
@@ -51,14 +54,13 @@ export class LiqpayGateway implements PaymentGateway {
     return { data, signature };
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- async за PaymentGateway-інтерфейсом (LiqPay формує URL синхронно, інші гейтвеї роблять мережевий виклик)
   async createInvoice(
     cfg: GatewayConfig,
     params: CreateInvoiceParams,
   ): Promise<CreateInvoiceResult> {
     const { publicKey, privateKey } = this.creds(cfg);
     const base = (cfg.apiUrl || DEFAULT_BASE).replace(/\/$/, '');
-    const urlError = validatePublicUrl(base);
+    const urlError = await validatePublicUrlResolved(base, this.lookup);
     if (urlError) throw new Error(`Невалідний LiqPay API URL: ${urlError}`);
 
     const { data, signature } = this.sign(privateKey, {
@@ -140,7 +142,7 @@ export class LiqpayGateway implements PaymentGateway {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- зовнішній API-response (валідація/narrow нижче за викликом)
   ): Promise<any> {
     const base = (apiUrlRaw || DEFAULT_BASE).replace(/\/$/, '');
-    const urlError = validatePublicUrl(base);
+    const urlError = await validatePublicUrlResolved(base, this.lookup);
     if (urlError) throw new Error(`Невалідний LiqPay API URL: ${urlError}`);
 
     const { data, signature } = this.sign(privateKey, payload);

@@ -1,5 +1,11 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MonobankClient } from './monobank.client';
+import type { HostLookup } from '../../common/utils/url-guard';
+import {
+  publicHostLookup,
+  loopbackHostLookup,
+  metadataHostLookup,
+} from '../../common/testing/host-lookup';
 
 /**
  * QR-оплата monobank — MonobankClient (тонкий HTTP-клієнт). Тести мокають global fetch і
@@ -23,10 +29,12 @@ const OK = (body: unknown, status = 200): Response =>
 describe('MonobankClient (QR-оплата — HTTP-клієнт)', () => {
   let client: MonobankClient;
   let fetchMock: ReturnType<typeof vi.fn>;
+  let lookup: HostLookup;
   const URL = 'https://api.monobank.ua';
 
   beforeEach(() => {
-    client = new MonobankClient();
+    lookup = publicHostLookup;
+    client = new MonobankClient((...args) => lookup(...args));
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
   });
@@ -163,6 +171,33 @@ describe('MonobankClient (QR-оплата — HTTP-клієнт)', () => {
         /monobank API URL/,
       );
       expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── SSRF guard ПІСЛЯ DNS ──────────────────────────────────────────────────────
+  // guards: BR-SEC-SSRF — resolved-перевірка: публічне ім'я на приватну адресу блокується.
+  describe('SSRF guard після DNS-резолву', () => {
+    it('публічне ім`я → loopback → reject ПЕРЕД fetch', async () => {
+      lookup = loopbackHostLookup;
+      await expect(
+        client.createInvoice('https://rebind.example', 'T', { amountCents: 1, reference: 'r' }),
+      ).rejects.toThrow(/monobank API URL/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('публічне ім`я → cloud-metadata → reject ПЕРЕД fetch', async () => {
+      lookup = metadataHostLookup;
+      await expect(client.getStatus('https://rebind.example', 'T', 'inv')).rejects.toThrow(
+        /monobank API URL/,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('публічне ім`я → публічна адреса → проходить до fetch', async () => {
+      lookup = publicHostLookup;
+      fetchMock.mockResolvedValueOnce(OK({ status: 'created' }));
+      await client.getStatus('https://api.monobank.ua', 'T', 'inv');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 

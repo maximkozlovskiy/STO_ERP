@@ -1,5 +1,11 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { CheckboxClient, CheckboxUnauthorizedError } from './checkbox.client';
+import type { HostLookup } from '../../common/utils/url-guard';
+import {
+  publicHostLookup,
+  loopbackHostLookup,
+  metadataHostLookup,
+} from '../../common/testing/host-lookup';
 
 /**
  * ПРРО Крок 2 — CheckboxClient (тонкий HTTP-клієнт Checkbox). Ці тести мокають global fetch і
@@ -23,10 +29,12 @@ const OK = (body: unknown, status = 200): Response =>
 describe('CheckboxClient (ПРРО Крок 2 — HTTP-клієнт)', () => {
   let client: CheckboxClient;
   let fetchMock: ReturnType<typeof vi.fn>;
+  let lookup: HostLookup;
   const URL = 'https://api.checkbox.ua';
 
   beforeEach(() => {
-    client = new CheckboxClient();
+    lookup = publicHostLookup;
+    client = new CheckboxClient((...args) => lookup(...args));
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
   });
@@ -268,6 +276,34 @@ describe('CheckboxClient (ПРРО Крок 2 — HTTP-клієнт)', () => {
       fetchMock.mockResolvedValueOnce(OK({ id: 's' }));
       await client.openShift('', 'tok');
       expect(fetchMock.mock.calls[0][0]).toBe('https://api.checkbox.ua/api/v1/shifts');
+    });
+  });
+
+  // ── SSRF guard ПІСЛЯ DNS (validatePublicUrlResolved) ─────────────────────────
+  // guards: BR-SEC-SSRF — адреса зовнішнього API перевіряється ПІСЛЯ резолву DNS: публічне
+  // ім'я, що веде на приватну/метадані-адресу, блокується ПЕРЕД fetch.
+  describe('SSRF guard після DNS-резолву', () => {
+    it('публічне ім`я → loopback-адреса → reject ПЕРЕД fetch', async () => {
+      lookup = loopbackHostLookup;
+      await expect(client.openShift('https://rebind.example', 'tok')).rejects.toThrow(
+        /Невалідний Checkbox API URL/,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('публічне ім`я → cloud-metadata (169.254.169.254) → reject ПЕРЕД fetch', async () => {
+      lookup = metadataHostLookup;
+      await expect(client.signInPinCode('https://rebind.example', 'l', 'p')).rejects.toThrow(
+        /Невалідний Checkbox API URL/,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('публічне ім`я → публічна адреса → проходить до fetch', async () => {
+      lookup = publicHostLookup;
+      fetchMock.mockResolvedValueOnce(OK({ id: 's' }));
+      await client.openShift('https://api.checkbox.ua', 'tok');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 

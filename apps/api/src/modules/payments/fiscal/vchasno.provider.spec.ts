@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { VchasnoProvider } from './vchasno.provider';
 import { FiscalUnauthorizedError } from './fiscal-provider.interface';
 import type { FiscalConfig } from './fiscal-provider.interface';
+import type { HostLookup } from '../../../common/utils/url-guard';
+import {
+  publicHostLookup,
+  loopbackHostLookup,
+  metadataHostLookup,
+} from '../../../common/testing/host-lookup';
 
 /**
  * Вчасно.Каса Cloud API v3 — контракт транспорту (звірено з офіц. wiki + Postman):
@@ -14,6 +20,7 @@ import type { FiscalConfig } from './fiscal-provider.interface';
 describe('VchasnoProvider — Cloud API v3 dispatcher', () => {
   let provider: VchasnoProvider;
   let fetchMock: ReturnType<typeof vi.fn>;
+  let lookup: HostLookup;
   const cfg: FiscalConfig = {
     apiUrl: 'https://kasa.vchasno.ua',
     credentials: { token: 'TKN-123' },
@@ -29,7 +36,8 @@ describe('VchasnoProvider — Cloud API v3 dispatcher', () => {
   beforeEach(() => {
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    provider = new VchasnoProvider();
+    lookup = publicHostLookup;
+    provider = new VchasnoProvider((...args) => lookup(...args));
   });
   afterEach(() => vi.unstubAllGlobals());
 
@@ -199,5 +207,31 @@ describe('VchasnoProvider — Cloud API v3 dispatcher', () => {
     await expect(
       provider.verifyCredentials({ apiUrl: null, credentials: {} } as FiscalConfig),
     ).resolves.toEqual({ valid: false, error: 'Вчасно: не задано API-токен' });
+  });
+
+  // guards: BR-SEC-SSRF — resolved-перевірка після DNS.
+  describe('SSRF guard після DNS-резолву', () => {
+    it('публічне ім`я → loopback → reject ПЕРЕД fetch', async () => {
+      lookup = loopbackHostLookup;
+      await expect(
+        provider.openShift({ apiUrl: 'https://rebind.example', credentials: { token: 't' } }, 't'),
+      ).rejects.toThrow(/Невалідний Вчасно API URL/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('публічне ім`я → cloud-metadata → reject ПЕРЕД fetch', async () => {
+      lookup = metadataHostLookup;
+      await expect(
+        provider.openShift({ apiUrl: 'https://rebind.example', credentials: { token: 't' } }, 't'),
+      ).rejects.toThrow(/Невалідний Вчасно API URL/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('публічне ім`я → публічна адреса → проходить до fetch', async () => {
+      lookup = publicHostLookup;
+      fetchMock.mockResolvedValue(okJson({ shift_id: 's1' }));
+      await provider.openShift(cfg, 'TKN-123');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MonoStatementClient } from './mono-statement.client';
+import type { HostLookup } from '../../../common/utils/url-guard';
+import {
+  publicHostLookup,
+  loopbackHostLookup,
+  metadataHostLookup,
+} from '../../../common/testing/host-lookup';
 
 /**
  * MonoStatementClient — тонкий HTTP-клієнт monobank personal statement. Доводимо: WINDOWING
@@ -10,6 +16,7 @@ import { MonoStatementClient } from './mono-statement.client';
 describe('MonoStatementClient', () => {
   let client: MonoStatementClient;
   let fetchMock: ReturnType<typeof vi.fn>;
+  let lookup: HostLookup;
 
   const okResponse = (body: unknown, status = 200): Response =>
     ({
@@ -19,7 +26,8 @@ describe('MonoStatementClient', () => {
     }) as unknown as Response;
 
   beforeEach(() => {
-    client = new MonoStatementClient();
+    lookup = publicHostLookup;
+    client = new MonoStatementClient((...args) => lookup(...args));
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
   });
@@ -156,6 +164,30 @@ describe('MonoStatementClient', () => {
       client.fetchStatements({ ...baseArgs, apiUrl: 'http://169.254.169.254' }),
     ).rejects.toThrow(/URL/i);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-SEC-SSRF — resolved-перевірка після DNS.
+  it('SSRF після DNS: публічне ім`я → loopback → кидає, fetch не викликається', async () => {
+    lookup = loopbackHostLookup;
+    await expect(
+      client.fetchStatements({ ...baseArgs, apiUrl: 'https://rebind.example' }),
+    ).rejects.toThrow(/monobank API URL/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('SSRF після DNS: публічне ім`я → cloud-metadata → кидає', async () => {
+    lookup = metadataHostLookup;
+    await expect(
+      client.fetchStatements({ ...baseArgs, apiUrl: 'https://rebind.example' }),
+    ).rejects.toThrow(/monobank API URL/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('SSRF після DNS: публічне ім`я → публічна адреса → проходить до fetch', async () => {
+    lookup = publicHostLookup;
+    fetchMock.mockResolvedValue(okResponse([]));
+    await client.fetchStatements({ ...baseArgs, apiUrl: 'https://api.monobank.ua' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('timeout: fetch abort → проброс помилки', async () => {

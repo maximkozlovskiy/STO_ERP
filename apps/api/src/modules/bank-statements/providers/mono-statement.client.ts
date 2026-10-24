@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
-import { validatePublicUrl } from '../../../common/utils/url-guard';
+import { Inject, Injectable } from '@nestjs/common';
+import { validatePublicUrlResolved, type HostLookup } from '../../../common/utils/url-guard';
+import { HOST_LOOKUP } from '../../../common/utils/host-lookup.token';
 import { redactSecrets } from '../../../common/utils/redact';
 
 const DEFAULT_BASE = 'https://api.monobank.ua';
@@ -58,6 +59,8 @@ function sleep(ms: number): Promise<void> {
  */
 @Injectable()
 export class MonoStatementClient {
+  constructor(@Inject(HOST_LOOKUP) private readonly lookup: HostLookup) {}
+
   /** Витягти проводки за вікно дат (WINDOWING по ≤31 день). Повертає сирий масив StatementItem. */
   async fetchStatements(args: MonoStatementFetchArgs): Promise<StatementItem[]> {
     const windows = this.splitWindows(args.from, args.to);
@@ -98,7 +101,7 @@ export class MonoStatementClient {
     token: string,
   ): Promise<StatementItem[]> {
     const apiUrl = (apiUrlRaw || DEFAULT_BASE).replace(/\/$/, '');
-    const urlError = validatePublicUrl(apiUrl);
+    const urlError = await validatePublicUrlResolved(apiUrl, this.lookup);
     if (urlError) throw new Error(`Невалідний monobank API URL: ${urlError}`);
 
     const path = `/personal/statement/${encodeURIComponent(account)}/${fromSec}/${toSec}`;
