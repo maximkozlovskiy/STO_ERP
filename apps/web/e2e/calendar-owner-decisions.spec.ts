@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
+import { loginViaForm } from './fixtures';
 import { apiCall, getToken } from './api-helpers';
 import { createCounterparty } from './cash-desk.helpers';
 import { createEmployeeViaUi } from './employee-ui';
@@ -231,8 +232,10 @@ test.describe('Календар — рішення власника 2026-10-16',
     await expect(woCard).toBeHidden({ timeout: 10_000 });
 
     // ── Механік входить і відкриває картку наряду ─────────────────────────
-    const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
-    const mp = await ctx.newPage();
+    const { ctx, page: mp } = await loginViaForm(browser, {
+      email: MECH_EMAIL,
+      password: MECH_PASSWORD,
+    });
     const forbidden: string[] = [];
     mp.on('response', r => {
       if (r.status() === 403) forbidden.push(`${r.request().method()} ${r.url()}`);
@@ -240,11 +243,6 @@ test.describe('Календар — рішення власника 2026-10-16',
     mp.on('console', m => {
       if (m.type() === 'error' && m.text().includes('403')) forbidden.push(`console: ${m.text()}`);
     });
-    await mp.goto('/login');
-    await mp.getByLabel('Email').fill(MECH_EMAIL);
-    await mp.getByLabel('Пароль').fill(MECH_PASSWORD);
-    await mp.getByRole('button', { name: 'Увійти' }).click();
-    await expect(mp).not.toHaveURL(/\/login/, { timeout: 30_000 });
     await mp.goto('/work-orders');
     // Механіку список відкривається на «Мої наряди» — наряд тесту не його, фільтр вимикаємо.
     const mine = mp.getByRole('button', { name: 'Мої наряди' });

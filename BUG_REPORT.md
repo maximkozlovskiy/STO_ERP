@@ -4335,3 +4335,69 @@ settle (успіх чи помилка), тож наступне протерм�
 (2) два 401 у різний час → два окремі refresh-и (in-flight очищено). Мутація (прибрати
 `if (refreshInFlight) return refreshInFlight;`) валить кейс (1): `count401()` 1 → 3.
 **Статус:** [x] виправлено
+
+## Session 2026-10-24 (b) — регресія security Stage 2: 429 на /auth/refresh вивалює щойно залогінену сесію (sto-tester)
+
+### Bug #966 — [HIGH, ✅ ВИПРАВЛЕНО 2026-10-24] throttle на /auth/refresh (Stage 2) + клієнт, що виходить з сесії на БУДЬ-ЯКИЙ не-OK refresh → користувача, який щойно увійшов, кидає на /login; у E2E — 4 рольові спеки
+
+**Де:**
+
+- Корінь регресії — `apps/api/src/auth/auth.controller.ts`: `@Post('refresh')` у Stage 2
+  втратив `@SkipThrottle()`, натомість `@Throttle({ limit: 30, ttl: 60_000 })` (per-IP).
+- Дефект застосунку — `apps/web/src/lib/auth/context.tsx` (`refreshToken`, фоновий refresh-on-mount)
+  і `apps/web/src/lib/api-client.ts` (`doRefresh`/401-обробники × 3).
+- Прогалина E2E-харнеса — чотири копії `loginAs` у `e2e/{calendar-owner-decisions,purchase-lists,
+purchase-storekeeper-suppliers,work-order-lookups-roles}.spec.ts`.
+
+**Severity:** HIGH (справжній auth-дефект: користувач, який щойно увійшов і має валідний
+access-токен, вилітає на /login через тимчасовий 429; у CI — 4 падіння E2E, що маскують справжню причину).
+**Категорія:** security / frontend / test-coverage
+
+**Діагноз (з мережевими доказами, власний API :3010 + web :3012 зі збірки поточного HEAD):**
+
+1. `POST /auth/login` → 200, ставить `sto_refresh` cookie (`SameSite=Strict`, `path=/api/v1/auth`).
+   Дата-запити з валідним токеном через глобальний `JwtAuthGuard` → 200; без токена → 401.
+   Отже гіпотеза «guard 401-ить роут, який UI смикає одразу після логіну» — ВІДКИНУТА.
+2. `POST /auth/refresh` 40× з одного IP → перші ~30 = 200, далі `429` (ліміт 30/хв). До Stage 2
+   роут був `@SkipThrottle()` → необмежений → 429 неможливий. Це і є зміна поведінки.
+3. Ланцюг bounce: `loginAs` (свіжий контекст, форм-логін) → навігація `goto('/work-orders')` →
+   AuthProvider ПЕРЕмонтовується → на mount (токен у sessionStorage, але БЕЗ `sto_e2e_skip_refresh`,
+   бо `loginAs` його не ставив) викликає `refreshToken()` → у кількапотоковому прогоні спільний
+   per-IP bucket на refresh вичерпано → `429` → `refreshToken` повертав `false` (трактував 429 як 401) → `sessionStorage.removeItem` + `dispatch(LOGOUT)` → `employee=null` → TopShell/`useRequireAuth`
+   роблять `router.replace('/login')`. Знімок сторінки показував форму логіну з placeholder
+   `admin@sto.local` — саме це бачив CI.
+
+**Очікувана поведінка:** тимчасовий `429` на фоновому refresh НЕ означає мертву сесію. Доки є
+валідний access-токен + кешований employee — сесія жива, її не можна гасити; вихід лише на
+справжній `401` (недійсна/протермінована сесія).
+**Фактична поведінка (до фіксу):** `!res.ok` трактувався однаково для 401 і 429 → примусовий logout.
+
+**Фікс (у ПРАВИЛЬНОМУ шарі — і застосунок, і харнес):**
+
+- **Застосунок (первинний):**
+  - `context.tsx refreshToken()`: на `res.status === 429`, якщо в сесії ще є токен + кешований
+    employee — повертає `true` (сесія жива), НЕ гасить стан. Інакше (нема на що спертись) — як раніше.
+  - `api-client.ts`: `doRefresh` на 429 повертає сентинел `THROTTLED`; усі три 401-обробники
+    (`_apiFetch`/`apiBlobFetch`/`apiMultipartFetch`) на `THROTTLED` кидають тимчасову помилку
+    «Сервіс тимчасово перевантажений…» (TanStack Query повторить) замість `clearToken()`+redirect.
+- **Харнес (вторинний, усуває сам сплеск):** спільний `loginViaForm(browser, login)` у `e2e/fixtures.ts`
+  дзеркалить `setup-auth.ts` — після форм-логіну ставить `sto_e2e_skip_refresh`(+`sto_e2e_disable_devtools`,
+  дзеркало токена), тож ad-hoc контексти поводяться як справжній застосунок для щойно залогіненого
+  користувача й не роблять refresh-on-mount. Усі 4 спеки тепер кличуть цей хелпер (замість 4 копій).
+
+**Тести (mutation-checked):**
+
+- `apps/web/src/lib/auth/context.test.tsx` — (1) mount-refresh 429 → employee лишається, токен на
+  місці; (2) контроль: 401 → LOGOUT, токен стерто. Мутація (прибрати гілку `res.status === 429`)
+  валить кейс (1).
+- `apps/web/src/lib/api-client.test.ts` — 401→refresh 429 → кидає тимчасову помилку, токен
+  лишається, редіректу на /login немає. Мутація (прибрати гілку `THROTTLED`) валить кейс (Symbol
+  тече у retry-гілку).
+
+**E2E (власні сервери, `--retries=0`):** 4 раніше-червоні спеки + їхні сусіди — **17/17 passed**
+(`--workers=2`, CI-парність). verdict.sh: ЧИСТО.
+
+**Бонус:** `e2e/supplier-api.spec.ts` — `ARTICLE` sku зроблено унікальним (`OC 90 ${uid}`) замість
+фіксованого «OC 90», що після першого прогону лишався soft-deleted і давав 409 (самоізоляція тесту).
+
+**Статус:** [x] виправлено

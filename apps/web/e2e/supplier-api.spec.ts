@@ -31,7 +31,10 @@ const CONN_AVD = `000 E2E AVD ${uid}`;
 const CONN_UTR = `000 E2E UTR ${uid}`;
 const GOOD = `000 E2E Фільтр OC90 ${uid}`;
 const LIST_NAME = `000 E2E API список ${uid}`;
-const ARTICLE = 'OC 90';
+// Bug #966: sku мусить бути УНІКАЛЬНИМ на прогін. Фіксований 'OC 90' після першого прогону
+// лишався soft-deleted-товаром, і повторне створення падало з 409 (sku унікальний навіть проти
+// м'яко видалених). `${uid}` робить тест самоізольованим — не залежить від стану dev-бази.
+const ARTICLE = `OC 90 ${uid}`;
 const BRAND = 'MAHLE';
 
 const state: {

@@ -132,6 +132,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         credentials: 'include',
         headers: { 'Accept-Language': getCurrentLocale() },
       });
+      // Bug #966: a throttled refresh (429) is TRANSIENT — it does NOT mean the session died.
+      // /auth/refresh is rate-limited (30/min per IP, @SkipThrottle removed in security Stage 2).
+      // A background refresh-on-mount that trips the limit must NOT log the user out while the
+      // current access token + cached employee are still present and usable: that bounced a
+      // just-logged-in user to /login. Keep the live session (return true) and let the token be
+      // used until it expires; a real 401 on the next data request still forces re-auth. Only
+      // when there is nothing to fall back on (no stored token) is a 429 treated as failure.
+      if (res.status === 429) {
+        const stillValid =
+          typeof window !== 'undefined' &&
+          !!sessionStorage.getItem(TOKEN_KEY) &&
+          !!readCachedEmployee();
+        return stillValid;
+      }
       if (!res.ok) return false;
       const data = (await res.json()) as { accessToken: string; employee?: AuthEmployee };
       if (!data.accessToken) return false;

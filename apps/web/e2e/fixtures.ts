@@ -1,4 +1,4 @@
-import { test as base, expect, Page } from '@playwright/test';
+import { test as base, expect, Browser, BrowserContext, Page } from '@playwright/test';
 import { API_ORIGIN } from './api-url';
 
 // ─── Shared auth helpers ──────────────────────────────────────────────────
@@ -10,6 +10,46 @@ export async function clearAuthState(page: Page): Promise<void> {
     sessionStorage.clear();
     localStorage.clear();
   });
+}
+
+/**
+ * Логін через РЕАЛЬНУ форму /login у свіжому browser-контексті (для рольових сценаріїв:
+ * приймальня / механік / комірник відкривають власну сесію поруч з адмінською).
+ *
+ * Чому не просто «заповнити форму й чекати редірект»: кожна навігація в контексті перемонтовує
+ * AuthProvider, і той на mount робить фоновий POST /auth/refresh (щоб підтвердити сесію). Але
+ * refresh-cookie `sto_refresh` виставлений на origin API, `SameSite=Strict`, `path=/api/v1/auth`;
+ * у кількапотоковому локальному прогоні паралельні refresh-и з одного IP вичерпують ліміт
+ * (30/хв) → 429. До Bug #966 застосунок трактував 429 як мертву сесію й кидав щойно
+ * залогіненого користувача на /login — чотири рольові E2E падали саме так.
+ *
+ * Тому дзеркалимо setup-auth.ts: після форм-логіну ставимо ті самі E2E-прапорці, що й
+ * globalSetup для адмінської сесії, — `sto_e2e_skip_refresh` (AuthProvider довіряє кешованому
+ * employee + токену й НЕ робить refresh-on-mount) плюс дзеркало токена в localStorage для
+ * гідратації sessionStorage після перезавантаження/нового таба. Так ad-hoc контекст поводиться
+ * рівно як справжній застосунок для користувача, який щойно увійшов. Прапорці діють лише у
+ * E2E-збірці (NEXT_PUBLIC_E2E=1) — у проді hatch tree-shake-иться.
+ */
+export async function loginViaForm(
+  browser: Browser,
+  login: { email: string; password: string },
+): Promise<{ ctx: BrowserContext; page: Page }> {
+  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const page = await ctx.newPage();
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(login.email);
+  await page.getByLabel('Пароль').fill(login.password);
+  await page.getByRole('button', { name: 'Увійти' }).click();
+  await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
+  // login() у AuthProvider уже записав sessionStorage[sto_access_token] і localStorage
+  // employee-cache. Додаємо E2E-прапорці, щоб наступні навігації не робили refresh-on-mount.
+  await page.evaluate(() => {
+    const token = sessionStorage.getItem('sto_access_token');
+    localStorage.setItem('sto_e2e_skip_refresh', '1');
+    localStorage.setItem('sto_e2e_disable_devtools', '1');
+    if (token) localStorage.setItem('sto_e2e_access_token', token);
+  });
+  return { ctx, page };
 }
 
 // ─── Shared date-filter helpers ───────────────────────────────────────────

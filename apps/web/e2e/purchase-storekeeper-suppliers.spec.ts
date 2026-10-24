@@ -1,4 +1,5 @@
 import { test, expect, type Browser, type Page, type Response } from '@playwright/test';
+import { loginViaForm } from './fixtures';
 import { apiCall, apiRequest, getToken } from './api-helpers';
 import { createEmployeeViaUi } from './employee-ui';
 
@@ -45,15 +46,11 @@ async function api<T = unknown>(page: Page, method: string, path: string, body?:
   return apiCall<T>(page, state.token ?? (await getToken(page)), method, path, body);
 }
 
+// Bug #966: форм-логін у свіжому контексті мусить ставити ті самі E2E-прапорці, що й
+// setup-auth.ts (skip-refresh), інакше refresh-on-mount у кількапотоковому прогоні ловить
+// 429 і кидає щойно залогінену сесію на /login. Делегуємо спільному хелперу.
 async function loginAs(browser: Browser) {
-  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
-  const page = await ctx.newPage();
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(LOGIN.email);
-  await page.getByLabel('Пароль').fill(LOGIN.password);
-  await page.getByRole('button', { name: 'Увійти' }).click();
-  await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
-  return { ctx, page };
+  return loginViaForm(browser, LOGIN);
 }
 
 /** Стежить за мережею комірника: 403 і тіла `GET /counterparties` (списків). */

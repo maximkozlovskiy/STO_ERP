@@ -74,9 +74,16 @@ async function throwFromResponse(res: Response, fallback: string): Promise<never
 // burst can exceed the limit → 429 → tryRefresh returns null → forced logout mid-session.
 // Mirror the GET-dedup pattern above: the first caller starts the POST; concurrent callers
 // await the SAME promise; it is cleared when it settles so the next expiry starts a fresh one.
-let refreshInFlight: Promise<string | null> | null = null;
+// Bug #966: a throttled refresh (429) is TRANSIENT, not a dead session. tryRefresh signals it
+// with THROTTLED so the 401-handlers below retry later instead of clearing the token and
+// redirecting to /login — a forced logout on a transient throttle is a worse failure than a
+// momentary 401 that resolves on the next poll.
+const THROTTLED = Symbol('refresh-throttled');
+type RefreshResult = string | null | typeof THROTTLED;
 
-async function tryRefresh(): Promise<string | null> {
+let refreshInFlight: Promise<RefreshResult> | null = null;
+
+async function tryRefresh(): Promise<RefreshResult> {
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = doRefresh().finally(() => {
     refreshInFlight = null;
@@ -84,13 +91,16 @@ async function tryRefresh(): Promise<string | null> {
   return refreshInFlight;
 }
 
-async function doRefresh(): Promise<string | null> {
+async function doRefresh(): Promise<RefreshResult> {
   try {
     const res = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
       headers: buildHeaders({}),
     });
+    // 429: refresh is rate-limited (30/min per IP, @SkipThrottle removed in security Stage 2).
+    // Do NOT treat a throttle as an invalid session — surface it so callers back off and retry.
+    if (res.status === 429) return THROTTLED;
     if (!res.ok) return null;
     const data = (await res.json()) as { accessToken?: string };
     if (data.accessToken) {
@@ -158,6 +168,11 @@ async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   // Silent token refresh on 401
   if (res.status === 401) {
     const newToken = await tryRefresh();
+    if (newToken === THROTTLED) {
+      // Bug #966: refresh was rate-limited, not rejected. Keep the session and surface a
+      // transient error so TanStack Query retries — do NOT clearToken/redirect to /login.
+      throw new Error('Сервіс тимчасово перевантажений, спробуйте ще раз');
+    }
     if (newToken) {
       res = await makeRequest(newToken);
     } else {
@@ -210,6 +225,9 @@ export async function apiBlobFetch(path: string, init?: RequestInit): Promise<Bl
 
   if (res.status === 401) {
     const newToken = await tryRefresh();
+    if (newToken === THROTTLED) {
+      throw new Error('Сервіс тимчасово перевантажений, спробуйте ще раз');
+    }
     if (newToken) {
       res = await makeRequest(newToken);
     } else {
@@ -253,6 +271,9 @@ export async function apiMultipartFetch<T>(
 
   if (res.status === 401) {
     const newToken = await tryRefresh();
+    if (newToken === THROTTLED) {
+      throw new Error('Сервіс тимчасово перевантажений, спробуйте ще раз');
+    }
     if (newToken) {
       res = await makeRequest(newToken);
     } else {

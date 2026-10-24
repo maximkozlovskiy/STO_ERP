@@ -200,3 +200,64 @@ describe('apiFetch — дедуплікація паралельних refresh (
     expect(count401()).toBe(2);
   });
 });
+
+// Bug #966 (регресія security Stage 2): /auth/refresh тепер throttled (30/хв), а не @SkipThrottle.
+// Коли дата-запит ловить 401, а наступний POST /auth/refresh повертає 429 (вичерпано ліміт з
+// одного IP у кількапотоковому прогоні), клієнт НЕ сміє clearToken()+redirect на /login:
+// throttle — тимчасовий, сесія жива. Кидаємо помилку, щоб TanStack Query повторив запит, і
+// лишаємо токен на місці. Мутаційна перевірка: приберіть гілку `if (newToken === THROTTLED)`
+// — тоді 429 падає у `else` (clearToken + location.replace('/login')), токен зникає, і
+// редірект відбувається → обидві асерції валяться.
+describe('apiFetch — 429 на refresh не вивалює сесію (Bug #966)', () => {
+  let replaceSpy: ReturnType<typeof vi.fn>;
+  let originalLocation: Location;
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+    sessionStorage.setItem(TOKEN_KEY, 'valid-but-just-expired');
+    // location.replace мокаємо, щоб довести: редіректу на /login немає.
+    originalLocation = window.location;
+    replaceSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, replace: replaceSpy },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: originalLocation,
+    });
+  });
+
+  it('401 → refresh 429: кидає тимчасову помилку, токен лишається, редіректу на /login немає', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        // throttle: refresh відмовляє тимчасово, НЕ 401.
+        return Promise.resolve({
+          ok: false,
+          status: 429,
+          statusText: 'Too Many Requests',
+          json: async () => ({ message: 'ThrottlerException: Too Many Requests' }),
+        } as unknown as Response);
+      }
+      // дата-запит зі stale токеном → 401.
+      return Promise.resolve({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        json: async () => ({ message: 'Unauthorized' }),
+      } as unknown as Response);
+    });
+
+    await expect(apiFetch('/work-orders')).rejects.toThrow(/перевантажений/);
+    // Токен НЕ стертий — сесія жива, запит можна повторити.
+    expect(sessionStorage.getItem(TOKEN_KEY)).toBe('valid-but-just-expired');
+    // Форсованого виходу на /login немає.
+    expect(replaceSpy).not.toHaveBeenCalled();
+  });
+});

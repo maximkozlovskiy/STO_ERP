@@ -1,4 +1,5 @@
 import { test, expect, type Browser, type Locator, type Page } from '@playwright/test';
+import { loginViaForm } from './fixtures';
 import { API } from './api-url';
 import { createEmployeeViaUi } from './employee-ui';
 import { ensureVehicleModel } from './vehicle-directory';
@@ -118,15 +119,11 @@ const state: {
   slotIds: string[];
 } = { slotIds: [] };
 
+// Bug #966: форм-логін у свіжому контексті мусить ставити ті самі E2E-прапорці, що й
+// setup-auth.ts (skip-refresh), інакше refresh-on-mount у кількапотоковому прогоні ловить
+// 429 і кидає щойно залогінену сесію на /login. Делегуємо спільному хелперу.
 async function loginAs(browser: Browser, login: { email: string; password: string }) {
-  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
-  const page = await ctx.newPage();
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(login.email);
-  await page.getByLabel('Пароль').fill(login.password);
-  await page.getByRole('button', { name: 'Увійти' }).click();
-  await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 });
-  return { ctx, page };
+  return loginViaForm(browser, login);
 }
 
 /** Відкриває картку наряду тесту зі списку нарядів (наведення на рядок → «Відкрити наряд»). */
