@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale, runUnscoped } from '../../common/tenant/tenant-context';
-import { SHAREABLE_STATUSES } from './work-orders.fsm';
+import { liveShareTokenWhere } from './work-order-share-token';
 
 /**
  * SECURITY: нейтралізація formula-injection у XLSX-клітинці (CWE-1236).
@@ -65,7 +65,8 @@ export class EstimateExportService {
     // runUnscoped, щоб tenant-guard пропустив ці легітимні tenant-less запити (симетрично findByShareToken).
     return runUnscoped(async () => {
       const wo = await this.prisma.workOrder.findFirst({
-        where: { shareToken: token, deletedAt: null, status: { in: [...SHAREABLE_STATUSES] } },
+        // BR-WO-032: той самий відбір, що й JSON-кошторис — прострочений токен не експортує.
+        where: liveShareTokenWhere(token, new Date()),
         include: {
           vehicle: { select: { make: true, model: true, licensePlate: true } },
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },

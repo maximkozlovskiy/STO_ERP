@@ -8,7 +8,20 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { getLocale, runUnscoped } from '../../common/tenant/tenant-context';
 import { SHAREABLE_STATUSES } from './work-orders.fsm';
-import type { EstimatePublicDto } from './work-orders.dto';
+import type {
+  EstimatePublicDto,
+  WorkOrderShareRevokeResponseDto,
+  WorkOrderShareTokenResponseDto,
+} from './work-orders.dto';
+import { isShareTokenLive, liveShareTokenWhere, shareTokenExpiry } from './work-order-share-token';
+
+const toShareTokenDto = (wo: {
+  shareToken: string;
+  shareTokenExpiresAt: Date;
+}): WorkOrderShareTokenResponseDto => ({
+  token: wo.shareToken,
+  expiresAt: wo.shareTokenExpiresAt.toISOString(),
+});
 
 /**
  * A3 (розбиття God-service): публічний перегляд кошторису наряду — окремий bounded context із власним
@@ -25,17 +38,21 @@ export class WorkOrderShareService {
   ) {}
 
   /**
-   * Генерує (або повертає існуючий) shareToken для публічного перегляду кошторису.
+   * Генерує (або повертає чинний) shareToken для публічного перегляду кошторису.
    * Обмежено статусами DRAFT/ESTIMATE/APPROVED — після початку робіт ділитися немає сенсу,
    * а CLOSED-статуси (COMPLETED/INVOICED/PAID/ARCHIVED/CANCELLED) містять чутливі дані.
    *
-   * Race-safe: умовний update `where: { shareToken: null }` — якщо інший запит щойно записав токен,
-   * цей update не зачепить рядок, і ми перечитаємо актуальний токен.
+   * BR-WO-032: чинний токен (термін не минув) повертається як є. Прострочений, відкликаний або
+   * виданий до появи терміну (`shareTokenExpiresAt = null`) замінюється новим на 30 днів.
+   *
+   * Race-safe: умовний update `where: { shareToken: <прочитане значення> }` — якщо інший запит
+   * щойно записав токен, цей update не зачепить рядок, і ми перечитаємо актуальний токен.
    */
-  async getOrCreateShareToken(orgId: string, id: string): Promise<{ token: string }> {
+  async getOrCreateShareToken(orgId: string, id: string): Promise<WorkOrderShareTokenResponseDto> {
+    const now = new Date();
     const wo = await this.prisma.workOrder.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { id: true, status: true, shareToken: true },
+      select: { id: true, status: true, shareToken: true, shareTokenExpiresAt: true },
     });
     if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
     if (!SHAREABLE_STATUSES.includes(wo.status)) {
@@ -43,34 +60,52 @@ export class WorkOrderShareService {
         translateError('err.workOrder.shareOnlyDraftEstimateApproved', getLocale()),
       );
     }
-    if (wo.shareToken) return { token: wo.shareToken };
+    if (isShareTokenLive(wo, now)) return toShareTokenDto(wo);
 
     const token = randomBytes(16).toString('hex');
-    // updateMany з умовою shareToken: null уникає race condition:
-    // якщо інший запит уже записав токен — count=0, ми перечитаємо актуальний.
+    const expiresAt = shareTokenExpiry(now);
+    // CAS на прочитане значення токена (null або прострочений): якщо інший запит уже видав
+    // новий — count=0, і ми перечитаємо актуальний.
     const { count } = await this.prisma.workOrder.updateMany({
-      where: { id, orgId, shareToken: null, deletedAt: null },
-      data: { shareToken: token },
+      where: { id, orgId, shareToken: wo.shareToken, deletedAt: null },
+      data: { shareToken: token, shareTokenExpiresAt: expiresAt },
     });
     if (count === 0) {
       const fresh = await this.prisma.workOrder.findFirst({
         where: { id, orgId, deletedAt: null },
-        select: { shareToken: true },
+        select: { shareToken: true, shareTokenExpiresAt: true },
       });
-      if (fresh?.shareToken) return { token: fresh.shareToken };
-      // Малоймовірний випадок — токен зник між викликами; кидаємо як conflict.
+      if (fresh && isShareTokenLive(fresh, now)) return toShareTokenDto(fresh);
+      // Малоймовірний випадок — токен зник між викликами (відкликали); кидаємо як conflict.
       throw new BadRequestException(
         translateError('err.workOrder.generateTokenFailed', getLocale()),
       );
     }
-    return { token };
+    return { token, expiresAt: expiresAt.toISOString() };
+  }
+
+  /**
+   * BR-WO-032: відкликати посилання — токен і термін у null одним умовним update (orgId у where).
+   * Старе посилання більше не відкривається; наступний `getOrCreateShareToken` видасть нове.
+   * Статус наряду не перевіряється: відкликати можна завжди, це лише зменшує доступ.
+   */
+  async revokeShareToken(orgId: string, id: string): Promise<WorkOrderShareRevokeResponseDto> {
+    const { count } = await this.prisma.workOrder.updateMany({
+      where: { id, orgId, deletedAt: null },
+      data: { shareToken: null, shareTokenExpiresAt: null },
+    });
+    if (count === 0) {
+      throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
+    }
+    return { token: null, expiresAt: null };
   }
 
   /**
    * Публічний перегляд кошторису. Повертає МІНІМАЛЬНИЙ DTO:
    * без orgId, FK-ів, paidAmount, slot-полів, dueDate, syncVersion тощо.
    * Доступний лише для shareable-статусів (DRAFT/ESTIMATE/APPROVED) —
-   * після переходу у CLOSED-статус посилання перестає працювати (404).
+   * після переходу у CLOSED-статус посилання перестає працювати (404). BR-WO-032: так само
+   * прострочений, відкликаний чи безтерміновий (до міграції) токен — `liveShareTokenWhere`.
    */
   async findByShareToken(token: string): Promise<EstimatePublicDto> {
     // A1: публічний неавтентифікований доступ — orgId відсутній; наряд ідентифікується за унікальним
@@ -78,11 +113,7 @@ export class WorkOrderShareService {
     // runUnscoped, щоб tenant-guard пропустив ці легітимні tenant-less запити публічного кошторису.
     return runUnscoped(async () => {
       const wo = await this.prisma.workOrder.findFirst({
-        where: {
-          shareToken: token,
-          deletedAt: null,
-          status: { in: [...SHAREABLE_STATUSES] },
-        },
+        where: liveShareTokenWhere(token, new Date()),
         include: {
           vehicle: { select: { make: true, model: true, licensePlate: true } },
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },

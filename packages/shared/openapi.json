@@ -9134,6 +9134,40 @@
         "tags": [
           "Work Orders"
         ]
+      },
+      "delete": {
+        "operationId": "WorkOrdersController_revokeShareToken_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderShareRevokeResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Відкликати посилання на кошторис",
+        "tags": [
+          "Work Orders"
+        ]
       }
     },
     "/api/v1/work-orders/{id}/send-estimate-sms": {
@@ -26809,10 +26843,35 @@
           "token": {
             "type": "string",
             "description": "Токен публічного кошторису"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "Коли посилання перестане відкриватись (ISO 8601), BR-WO-032",
+            "format": "date-time"
           }
         },
         "required": [
-          "token"
+          "token",
+          "expiresAt"
+        ]
+      },
+      "WorkOrderShareRevokeResponseDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "nullable": true,
+            "example": null
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true,
+            "example": null
+          }
+        },
+        "required": [
+          "token",
+          "expiresAt"
         ]
       },
       "SendEstimateSmsDto": {

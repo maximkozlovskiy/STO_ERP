@@ -379,7 +379,10 @@ describe('WorkOrderShareService — ПДВ у публічному коштор�
       { send } as never,
     );
     // Токен — окремий аспект; тут важлива лише сума в повідомленні.
-    vi.spyOn(service, 'getOrCreateShareToken').mockResolvedValue({ token: TOKEN });
+    vi.spyOn(service, 'getOrCreateShareToken').mockResolvedValue({
+      token: TOKEN,
+      expiresAt: '2026-11-23T10:00:00.000Z',
+    });
     return { service, send };
   }
   const smsVars = (send: ReturnType<typeof vi.fn>) =>

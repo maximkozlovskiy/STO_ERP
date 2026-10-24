@@ -71,6 +71,7 @@ import {
   WorkOrderPartResponseDto,
   PaginatedWorkOrdersDto,
   WorkOrderShareTokenResponseDto,
+  WorkOrderShareRevokeResponseDto,
   WorkOrderLinkedDocumentsDto,
   WorkOrderLinkedCountsEntryDto,
 } from './work-orders.dto';
@@ -268,6 +269,15 @@ export class WorkOrdersController {
   @ApiOkResponse({ type: WorkOrderShareTokenResponseDto })
   getShareToken(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.shareService.getOrCreateShareToken(orgId, id);
+  }
+
+  // BR-WO-032: відкликання — старе посилання мертве; нове видасть POST вище.
+  @Delete(':id/share-token')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Відкликати посилання на кошторис' })
+  @ApiOkResponse({ type: WorkOrderShareRevokeResponseDto })
+  revokeShareToken(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.shareService.revokeShareToken(orgId, id);
   }
 
   @Post(':id/send-estimate-sms')

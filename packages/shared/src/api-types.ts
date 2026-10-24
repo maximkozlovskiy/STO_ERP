@@ -2694,7 +2694,8 @@ export interface paths {
         put?: never;
         /** Отримати або створити share-токен для кошторису */
         post: operations["WorkOrdersController_getShareToken_v1"];
-        delete?: never;
+        /** Відкликати посилання на кошторис */
+        delete: operations["WorkOrdersController_revokeShareToken_v1"];
         options?: never;
         head?: never;
         patch?: never;
@@ -8266,6 +8267,17 @@ export interface components {
         WorkOrderShareTokenResponseDto: {
             /** @description Токен публічного кошторису */
             token: string;
+            /**
+             * Format: date-time
+             * @description Коли посилання перестане відкриватись (ISO 8601), BR-WO-032
+             */
+            expiresAt: string;
+        };
+        WorkOrderShareRevokeResponseDto: {
+            /** @example null */
+            token: string | null;
+            /** @example null */
+            expiresAt: string | null;
         };
         SendEstimateSmsDto: Record<string, never>;
         EstimatePublicLineDto: {
@@ -15807,6 +15819,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkOrderShareTokenResponseDto"];
+                };
+            };
+        };
+    };
+    WorkOrdersController_revokeShareToken_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderShareRevokeResponseDto"];
                 };
             };
         };
