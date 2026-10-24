@@ -68,7 +68,23 @@ async function throwFromResponse(res: Response, fallback: string): Promise<never
   throw new Error(msg);
 }
 
+// Dedup concurrent token refreshes. On token expiry a burst of parallel 401s (several
+// TanStack queries re-firing at once) would each POST /auth/refresh. Since /auth/refresh is
+// now rate-limited (30/min, @SkipThrottle removed — owner decision 2026-10-24), an un-deduped
+// burst can exceed the limit → 429 → tryRefresh returns null → forced logout mid-session.
+// Mirror the GET-dedup pattern above: the first caller starts the POST; concurrent callers
+// await the SAME promise; it is cleared when it settles so the next expiry starts a fresh one.
+let refreshInFlight: Promise<string | null> | null = null;
+
 async function tryRefresh(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = doRefresh().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
+async function doRefresh(): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',

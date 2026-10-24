@@ -7,6 +7,7 @@
 // Ці тести пінять точний URL-префікс кожного хелпера, щоб регрес не повторився без запуску E2E.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { apiFetch, publicFetch, publicNeutralFetch } from './api-client';
+import { TOKEN_KEY } from './auth';
 
 const fetchMock = vi.fn();
 
@@ -101,5 +102,101 @@ describe('apiFetch — статус зв’язку для індикатора 
     } as unknown as Response);
     await apiFetch('/work-orders');
     expect(statuses).toEqual(['offline', 'idle']);
+  });
+});
+
+// Security block Stage 2: /auth/refresh is no longer @SkipThrottle (owner decision 2026-10-24,
+// 30/min). tryRefresh() is invoked from 3 sites (apiFetch/apiBlobFetch/apiMultipartFetch) on 401.
+// A burst of concurrent 401s (several TanStack queries re-firing after one access-token expiry)
+// must NOT fan out into N parallel POST /auth/refresh — that can exceed 30/min → 429 → forced
+// logout mid-session. A module-level single in-flight refresh promise collapses the burst into
+// ONE network request. Mutation-check: drop `if (refreshInFlight) return refreshInFlight;` and the
+// "refresh called exactly once" assertion fails (each caller fires its own POST).
+describe('apiFetch — дедуплікація паралельних refresh (Security Stage 2, 30/min)', () => {
+  let releaseRefresh: (token: string) => void;
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+    sessionStorage.setItem(TOKEN_KEY, 'stale-access-token');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+  });
+
+  const count401 = () =>
+    fetchMock.mock.calls.filter(c => String(c[0]).endsWith('/auth/refresh')).length;
+
+  it('N паралельних 401 → рівно ОДИН POST /auth/refresh, усі отримують новий токен', async () => {
+    const refreshPending = new Promise<string>(resolve => {
+      releaseRefresh = resolve;
+    });
+
+    fetchMock.mockImplementation((url: string) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        // refresh «висить», доки тест не відпустить — моделює одночасні in-flight виклики
+        return refreshPending.then(
+          token =>
+            ({ ok: true, status: 200, json: async () => ({ accessToken: token }) }) as Response,
+        );
+      }
+      // Перший удар (stale токен) → 401; після refresh (повторний запит) → 200 з даними.
+      const auth = (fetchMock.mock.calls.at(-1)?.[1] as RequestInit | undefined)?.headers as
+        Record<string, string> | undefined;
+      const bearer = auth?.['Authorization'];
+      if (bearer === 'Bearer fresh-token') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true }),
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        json: async () => ({ message: 'Unauthorized' }),
+      } as unknown as Response);
+    });
+
+    const callers = [
+      apiFetch<{ ok: boolean }>('/work-orders'),
+      apiFetch<{ ok: boolean }>('/invoices'),
+      apiFetch<{ ok: boolean }>('/counterparties'),
+    ];
+    // Дати всім трьом дійти до 401 і стати в чергу на СПІЛЬНИЙ refresh promise.
+    await Promise.resolve();
+    await new Promise(r => setTimeout(r, 0));
+
+    releaseRefresh!('fresh-token');
+    const results = await Promise.all(callers);
+
+    // Ключова асерція (мутаційна): рівно один мережевий refresh на весь burst.
+    expect(count401()).toBe(1);
+    expect(results).toEqual([{ ok: true }, { ok: true }, { ok: true }]);
+    // Токен у сесії оновлено спільним refresh-ом.
+    expect(sessionStorage.getItem(TOKEN_KEY)).toBe('fresh-token');
+  });
+
+  it('після завершення refresh наступний 401 стартує СВІЖИЙ refresh', async () => {
+    // Перший цикл: 401 → refresh(fresh-1) → retry 200.
+    const seq: Array<() => Response> = [
+      () => ({ ok: false, status: 401, statusText: '', json: async () => ({}) }) as Response,
+      () => ({ ok: true, status: 200, json: async () => ({ accessToken: 'fresh-1' }) }) as Response,
+      () => ({ ok: true, status: 200, json: async () => ({ ok: true }) }) as Response,
+      () => ({ ok: false, status: 401, statusText: '', json: async () => ({}) }) as Response,
+      () => ({ ok: true, status: 200, json: async () => ({ accessToken: 'fresh-2' }) }) as Response,
+      () => ({ ok: true, status: 200, json: async () => ({ ok: true }) }) as Response,
+    ];
+    let i = 0;
+    fetchMock.mockImplementation(() => Promise.resolve(seq[i++]!()));
+
+    await apiFetch('/work-orders');
+    await apiFetch('/invoices');
+
+    // Два окремих у часі 401 → два окремих refresh-и (in-flight promise очищено після settle).
+    expect(count401()).toBe(2);
   });
 });

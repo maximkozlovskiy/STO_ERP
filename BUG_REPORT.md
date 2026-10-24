@@ -4301,3 +4301,37 @@ metadata/ULA/link-local), mixed public+private→block, приватна не-п
 резолву)?
 
 **Рішення власника 2026-10-24: лишити як є.**
+
+---
+
+## Session 2026-10-24 — security block Stage 2 (closed-by-default global JwtAuthGuard), range 4f453221..ad5d28e4
+
+Bug hunt + required client fix on the "closed-by-default" authz block (BR-SEC-AUTHZ).
+Backend changes (global JwtAuthGuard + @Public allowlist, contract spec) audited — no bug found,
+closed-by-default verified at runtime (scratch unguarded controller → 401). One required client
+fix applied: concurrent /auth/refresh dedup (now that refresh is rate-limited 30/min).
+
+## Bug #965 — [HIGH] Паралельні 401 → N одночасних POST /auth/refresh → 429 → примусовий logout
+
+**Файл:** `apps/web/src/lib/api-client.ts:71` (`tryRefresh`), викликається з рядків ~144/196/239
+**Severity:** HIGH
+**Категорія:** frontend / security
+
+**Опис:** `tryRefresh()` викликається з трьох місць (`apiFetch`, `apiBlobFetch`,
+`apiMultipartFetch`) без спільного in-flight promise. Коли access-токен протух, сплеск
+одночасних 401 (кілька TanStack-запитів перезапускаються разом) → кожен шле власний
+POST /auth/refresh. Після Stage 2 `/auth/refresh` більше не `@SkipThrottle`, а має явний ліміт
+30/хв (`auth.controller.ts`). Сплеск може перевищити ліміт → 429 → `tryRefresh` повертає null →
+`clearToken()` + redirect `/login` посеред сесії.
+**Очікувана поведінка:** на один burst протермінування — рівно ОДИН мережевий refresh; усі
+паралельні виклики чекають той самий promise і отримують той самий новий токен.
+**Фактична поведінка:** N паралельних POST /auth/refresh (підтверджено мутацією: без дедупу
+асерція «refresh рівно раз» дає 3 замість 1).
+**Фікс:** module-level `refreshInFlight` promise (дзеркалить GET-dedup патерн ~рядок 90-96):
+перший виклик стартує POST, решта awaitять той самий promise; очищається у `.finally()` після
+settle (успіх чи помилка), тож наступне протермінування стартує свіжий refresh.
+**Тест (mutation-checked):** `apps/web/src/lib/api-client.test.ts` — два кейси: (1) 3 паралельні
+`apiFetch` з 401 → рівно 1 POST /auth/refresh, усі 3 отримують дані, токен у сесії оновлено;
+(2) два 401 у різний час → два окремі refresh-и (in-flight очищено). Мутація (прибрати
+`if (refreshInFlight) return refreshInFlight;`) валить кейс (1): `count401()` 1 → 3.
+**Статус:** [x] виправлено
