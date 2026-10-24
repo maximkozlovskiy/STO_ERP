@@ -4247,3 +4247,53 @@ NaN: `Math.max(NaN,1)=NaN`, `Math.min(NaN,200)=NaN` → `safeLimit=NaN`, `safePa
 **Статус:** [x] виправлено — у `findAll` `page`/`limit` проходять `Number.isFinite`-guard перед
 клемпом (NaN/±Infinity → дефолт). Регресійний тест у `payments.list-query.contract.spec.ts`:
 `?page=abc`, `?limit=xyz`, `?page=1e999` → 200 з page 1/limit 20. Мутація (прибрати guard) → 500.
+
+---
+
+## Session 2026-10-24 — security bug hunt: SSRF block stage 1 (BR-SEC-SSRF, range c687b0c6..47bcb2e9)
+
+Ціль: `validatePublicUrlResolved` (DNS-resolved SSRF layer) + wiring у 7 провайдер-клієнтів,
+webhooks (save+delivery) і два save-шляхи (provider-config.upsertConfig, settings.updateBranchSettings).
+Перевірено атакувальними векторами через throwaway-спек (видалено). Код визнано коректним — exploitable
+діри немає; знайдено одну прогалину покриття й дві owner-questions.
+
+## Bug #964 — [MEDIUM] Немає прямого unit-тесту на `validatePublicUrlResolved` (resolved SSRF layer)
+
+**Файл:** `apps/api/src/common/utils/url-guard.spec.ts` (тест); SUT — `url-guard.ts:148-168`
+**Severity:** MEDIUM (клас «відсутній тест критичної security-гілки»)
+**Категорія:** test-coverage / security
+
+**Опис:** `url-guard.spec.ts` до цієї сесії тестував ЛИШЕ `validatePublicUrl` (літеральний шар).
+Новий і найкритичніший код блоку — `validatePublicUrlResolved` (резолвить ім'я й ганяє КОЖНУ
+A/AAAA-адресу через блок-лист) — мав покриття лише непряме, через модульні спеки з фейком на ОДНУ
+адресу. Головний захист від DNS-rebinding — цикл `for (const a of addresses)`, що блокує, якщо
+БУДЬ-ЯКА адреса приватна (у т.ч. mixed public+private) — не був закріплений жодним прямим тестом.
+Поведінка коректна (підтверджено атакувальним прогоном), але не застрахована від регресії: «оптимізація»
+циклу на перевірку лише першої адреси тихо відкриває bypass для multi-record хостів і не впала б у жодному
+наявному тесті.
+
+**Очікувана поведінка:** mixed public+private → block; приватна не-перша адреса → block; IP-літерал →
+без DNS-виклику; збій lookup → null (allow, свідомо); поганий scheme → block без DNS.
+**Фактична поведінка:** всі перелічені гілки працюють, але без регресійного guard.
+**Статус:** [x] виправлено — у `url-guard.spec.ts` додано блок `validatePublicUrlResolved — DNS-resolved
+SSRF layer (BR-SEC-SSRF)` (11 кейсів через фейкові HostLookup): public→allow, rebinding→block (loopback/
+metadata/ULA/link-local), mixed public+private→block, приватна не-перша→block, IP-літерал→без lookup,
+збій lookup→null, scheme→block без lookup. **Мутація підтверджена:** `break;` після першої адреси у циклі
+(re-open rebinding для multi-record) → падають кейси «mixed» і «private NOT first». tsc 0, 72/72 green.
+
+### Owner-question OQ-SSRF-1 — NAT64 (`64:ff9b::/96`) та 6to4 не блокуються
+
+`validatePublicUrl('http://[64:ff9b::7f00:1]/')` (NAT64-вкладення 127.0.0.1, RFC 6052) і
+`[2002:7f00:1::]` (6to4) повертають null (allow). Embedded-IPv4 regex ловить лише `::`/`::ffff:`/
+`::ffff:0:`-префікси. Реальна експлуатація вимагає NAT64/6to4-шлюзу в мережі СТО (on-prem, зазвичай
+відсутній), і DNS атакувальника не поверне `64:ff9b::` без його ж NAT64-інфраструктури. Поведінку НЕ
+змінював. Питання власнику: додавати блок NAT64/6to4 як defense-in-depth чи лишити як свідому прогалину?
+
+### Owner-question OQ-SSRF-2 — `validatePublicUrlResolved` повертає null (allow) при збої DNS lookup
+
+Рядок `catch { return null; }` (url-guard.ts:159-161): якщо ім'я не резолвиться — перевірка пропускає,
+покладаючись на те, що сам `fetch` упаде з ENOTFOUND. Теоретично атакувальник, що КОНТРОЛЮЄ резолвер і
+може зробити lookup керовано-невдалим, обходить guard — але тоді fetch теж не з'єднається, тож цінності
+для SSRF немає (запит нікуди не йде). Документовано в коді як свідомий вибір. Поведінку НЕ змінював.
+Питання власнику: лишити allow-on-failure (поточне) чи перейти на fail-closed (block при будь-якому збої
+резолву)?

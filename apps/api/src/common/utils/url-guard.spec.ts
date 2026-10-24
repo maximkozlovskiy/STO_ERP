@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validatePublicUrl } from './url-guard';
+import { validatePublicUrl, validatePublicUrlResolved, type HostLookup } from './url-guard';
 
 /**
  * Bug #124: regression guard for `validatePublicUrl`.
@@ -198,5 +198,111 @@ describe('validatePublicUrl', () => {
       const result = validatePublicUrl('http://[fc00::1]/webhook');
       expect(result).toContain('ULA');
     });
+  });
+});
+
+/**
+ * Regression guard for `validatePublicUrlResolved` — the DNS-resolved layer that is the
+ * actual SSRF defense for public hostnames (BR-SEC-SSRF). The literal layer above cannot
+ * catch `attacker.example` whose A/AAAA record points at an internal address; only the
+ * resolved layer can. These cases pin the behaviours a reviewer and implementer could
+ * silently break:
+ *
+ *  - EVERY resolved address must be screened (mixed public+private → block). Mutating the
+ *    loop to inspect only the first address, or to `return null` on the first PUBLIC one,
+ *    re-opens the DNS-rebinding bypass and fails `mixed addresses` / `private is not first`.
+ *  - A literal URL short-circuits DNS (no lookup call).
+ *  - Lookup failure returns null (allow) — fetch itself then fails with ENOTFOUND; this is a
+ *    deliberate design choice (documented in url-guard.ts), pinned so a change is intentional.
+ */
+describe('validatePublicUrlResolved — DNS-resolved SSRF layer (BR-SEC-SSRF)', () => {
+  const ADDR = {
+    public: { address: '93.184.216.34', family: 4 },
+    loopback: { address: '127.0.0.1', family: 4 },
+    metadata: { address: '169.254.169.254', family: 4 },
+    ula6: { address: 'fc00::1', family: 6 },
+    linklocal6: { address: 'fe80::1', family: 6 },
+  } as const;
+  const resolvesTo =
+    (...addresses: Array<{ address: string; family: number }>): HostLookup =>
+    () =>
+      Promise.resolve(addresses);
+
+  it('allows a public hostname that resolves to a public address', async () => {
+    expect(
+      await validatePublicUrlResolved('https://ok.example/', resolvesTo(ADDR.public)),
+    ).toBeNull();
+  });
+
+  it('blocks a public hostname that resolves to loopback (DNS rebinding)', async () => {
+    const r = await validatePublicUrlResolved('https://rebind.example/', resolvesTo(ADDR.loopback));
+    expect(r).not.toBeNull();
+    expect(r).toContain('loopback');
+  });
+
+  it('blocks when the hostname resolves to cloud-metadata (169.254.169.254)', async () => {
+    const r = await validatePublicUrlResolved('http://meta.example/', resolvesTo(ADDR.metadata));
+    expect(r).toContain('link-local');
+  });
+
+  it.each([
+    ['ULA IPv6', ADDR.ula6, 'ULA'],
+    ['link-local IPv6', ADDR.linklocal6, 'link-local'],
+  ])('blocks when the hostname resolves to a private %s address', async (_label, addr, reason) => {
+    const r = await validatePublicUrlResolved('http://v6.example/', resolvesTo(addr));
+    expect(r).toContain(reason);
+  });
+
+  it('blocks mixed addresses — ONE public + ONE private (every address screened)', async () => {
+    // The dangerous case: a hostname with both a public and a private A record. The guard
+    // MUST reject because ANY private address lets the request reach an internal target.
+    const r = await validatePublicUrlResolved(
+      'http://mixed.example/',
+      resolvesTo(ADDR.public, ADDR.loopback),
+    );
+    expect(r).not.toBeNull();
+    expect(r).toContain('loopback');
+  });
+
+  it('blocks even when the private address is NOT first in the resolved list', async () => {
+    // Guards against a mutation that returns on the first address or the first public one.
+    const r = await validatePublicUrlResolved(
+      'http://mixed2.example/',
+      resolvesTo(ADDR.public, ADDR.public, ADDR.metadata),
+    );
+    expect(r).not.toBeNull();
+    expect(r).toContain('link-local');
+  });
+
+  it('short-circuits an IP literal without ever calling DNS lookup', async () => {
+    let called = false;
+    const spy: HostLookup = () => {
+      called = true;
+      return Promise.resolve([ADDR.loopback]);
+    };
+    // Public literal → allowed; the literal path must not invoke the resolver.
+    expect(await validatePublicUrlResolved('https://8.8.8.8/', spy)).toBeNull();
+    expect(called).toBe(false);
+    // Private literal → still blocked by the literal layer, also without a lookup.
+    expect(await validatePublicUrlResolved('http://127.0.0.1/', spy)).toContain('loopback');
+    expect(called).toBe(false);
+  });
+
+  it('returns null (allow) when DNS lookup fails — deliberate; fetch then fails with ENOTFOUND', async () => {
+    const r = await validatePublicUrlResolved('http://nx.example/', () =>
+      Promise.reject(new Error('ENOTFOUND')),
+    );
+    expect(r).toBeNull();
+  });
+
+  it('still rejects a bad scheme before any DNS lookup', async () => {
+    let called = false;
+    const spy: HostLookup = () => {
+      called = true;
+      return Promise.resolve([ADDR.public]);
+    };
+    const r = await validatePublicUrlResolved('file:///etc/passwd', spy);
+    expect(r).toContain('http://');
+    expect(called).toBe(false);
   });
 });
