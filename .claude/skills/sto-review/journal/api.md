@@ -3,6 +3,25 @@
 > Архів реальних випадків (дата — назва — §N + Сигнал / Grep / Фікс / Severity).
 > Не читати цілком — шукати за ключовим словом. Чекліст секції: `../sections/api.md`.
 
+### 2026-10-24 — рефакторинг спільного каркаса/хелпера зберігає порядок і per-caller guard — §4/§5
+
+**Сигнал:** jscpd-рефактор витягує спільний boilerplate у хелпер — `$extends`-каркас Prisma-розширень
+(`extendAllModels`) або дубльований `findX` у сервісі (`findCashRegisterForPayment`). Два місця, де
+легко зламати мовчки: (1) **порядок композиції розширень** (tenant-guard МУСИТЬ лишатись OUTERMOST —
+застосований ОСТАННІМ у `$extends`-ланцюгу, бо судить оригінальні args до мутації syncVersion/encryption);
+(2) **per-caller умова, вкладена у виклик**: `create()` передавав `dto.cashRegisterId`, а `update()` —
+`nextSourceType === CASH_REGISTER ? nextCashRegisterId : undefined`. Якщо хелпер зробити «розумним»
+(сам читає sourceType) або викликати безумовно, bank-sourced-платіж підтягне СТАРИЙ `cashRegisterId`
+(stale з каси, з якої його перемкнули).
+**Grep:** `git diff <base> -- apps/api/src/prisma/prisma.service.ts | grep -nE "withTenantGuard\(|withSyncVersion\(|withFieldEncryption\("`
+→ композиція `withTenantGuard(withFieldEncryption(withSyncVersion(this)))` незмінна; для хелпера-екстракції
+звірити, що кожен викличний сайт зберіг СВІЙ `? : ` навколо аргументу (diff лівої vs правої гілки).
+**Фікс:** хелпер приймає ВЖЕ-резолвлений аргумент (guard лишається у викличного коду); handler-логіка
+кожного розширення переноситься байт-у-байт (лише boilerplate у каркас). Регрес: тест із
+`expect(prisma.cashRegister.findFirst).not.toHaveBeenCalled()` на переході каса→банк (мутант
+«викликати хелпер безумовно» падає).
+**Severity:** CRITICAL (tenant-leak при зміні порядку / stale FK у фін-записі) — обидва проходять tsc і моки.
+
 ### 2026-10-23 — пошук запису об'єкта ще й за змінюваним батьком — §5
 
 **Сигнал:** BR-CASH-027 шукав OPEN-зміну каси за `{ orgId, branchId, cashRegisterId }`, а `PATCH

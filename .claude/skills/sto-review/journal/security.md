@@ -3,6 +3,27 @@
 > Архів реальних випадків (дата — назва — §N + Сигнал / Grep / Фікс / Severity).
 > Не читати цілком — шукати за ключовим словом. Чекліст секції: `../sections/security.md`.
 
+### 2026-10-24 — SSRF: текстова `validatePublicUrl` не ловить DNS-rebinding — §2.3/§2.4
+
+**Сигнал:** клієнт зовнішнього API або write-path (збереження адреси провайдера) валідує
+`apiUrl` лише текстом (`validatePublicUrl`) → публічне ім'я, що резолвиться у приватну адресу
+(`127.0.0.1.nip.io`, власний DNS-запис, DNS-rebinding) проходить, бо текст легітимний. Resolved-
+перевірка (після DNS) потрібна І при збереженні (400), І перед КОЖНИМ запитом (defense-in-depth,
+бо адреса могла перерезолвитись між save і delivery — webhooks-процесор, scheduled polling).
+**Grep:** `grep -rn "validatePublicUrl\b" apps/api/src/modules --include="*.ts" | grep -v "Resolved\|spec"`
+→ кожен збіг у клієнті провайдера / write-path, що бере адресу ВІД КОРИСТУВАЧА (не хардкод-константа
+на кшталт `NBU_URL`/`ESPUTNIK_BASE`), має бути `await validatePublicUrlResolved(url, lookup)`.
+**Фікс:** `validatePublicUrlResolved(raw, lookup)` (`common/utils/url-guard.ts`): резолвить ім'я й
+ганяє КОЖНУ адресу через блок-лист. `HostLookup` інжектиться спільним DI-токеном `HOST_LOOKUP`
+(глобальний `CommonModule`, дефолт `lookupAllAddresses`) — бо перевірка викликається з HTTP-шляху,
+де 4-й аргумент не передати; тест-модуль підставляє фейк (`common/testing/host-lookup.ts`), тож
+unit/contract не ходять у мережу (усуває flaky `settings.contract.spec`, що резолвив `api.checkbox.ua`).
+Перевірити wiring: кожен Nest-test-module, що реєструє SSRF-consumer РЕАЛЬНИМ провайдером (не
+`useValue`-мок, не `new X(fakeLookup)`), має `{ provide: HOST_LOOKUP, useValue: publicHostLookup }`
+або імпорт `@Global CommonModule`. Delivery-гілка config-блоку (SSRF-кандидат) — НЕ re-throw
+(лог FAILED + `return`): BullMQ-retry на config-помилку безглуздий.
+**Severity:** CRITICAL (SSRF у внутрішню мережу / cloud-metadata) для write+request; IMPORTANT — flaky-fix.
+
 ### 2026-05-30 — `@Param('key')` без validation — нескінченний рядок у Prisma where — §2.3
 
 **Сигнал:** `@Param('key') key: string` (не uuid) → `prisma.X.findFirst({ where: { key } })`. ValidationPipe не валідує `@Param`.
