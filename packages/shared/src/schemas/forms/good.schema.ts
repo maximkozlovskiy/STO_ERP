@@ -19,7 +19,7 @@ export const goodFormSchema = z.object({
   unitId: optionalUuid(),
   brandId: optionalUuid(),
   // Bug #971: обидві ціни лягають у Decimal(12,2) (Good.purchasePrice/salePrice) — стеля MONEY_CAP,
-  // інакше 1e30 доходить до Prisma → безіменна 500 numeric field overflow (клас BR-FIN-001).
+  // інакше 1e30 доходить до Prisma → безіменна 500 numeric field overflow (клас BR-FIN-MONEYCAP).
   purchasePrice: optionalNonNegNumber(MONEY_CAP),
   salePrice: optionalNonNegNumber(MONEY_CAP),
   category: optionalString(),

@@ -141,13 +141,13 @@ describe('InvoicesService — line-totals (recalcTotals на бекенді)', (
     );
   });
 
-  // ─── BR-FIN-001: сума рядка (кількість × ціна) понад Decimal(12,2) → 400 ─────
+  // ─── BR-FIN-MONEYCAP: сума рядка (кількість × ціна) понад Decimal(12,2) → 400 ─────
   //
   // Кожне поле в межах стелі (quantity ≤ QTY_MAX, unitPrice ≤ MONEY_AMOUNT_MAX), але добуток
   // виходить за місткість колонки priceWith* → 400 з назвою поля, а не 500 numeric field overflow.
   // Мутація: прибери `assertMoneyFits` у addLine/updateLine — тест «понад межу» падає (create/update
   // викликались би й сума пішла б у Decimal(12,2)).
-  describe('сума рядка понад Decimal(12,2) (BR-FIN-001)', () => {
+  describe('сума рядка понад Decimal(12,2) (BR-FIN-MONEYCAP)', () => {
     const OVERFLOW = 'err.money.lineAmountOverflow';
     // 2 000 000 × 6000 = 12 000 000 000 > 9 999 999 999,99; обидва поля — у межах власних стель.
     beforeEach(() => {
@@ -156,7 +156,7 @@ describe('InvoicesService — line-totals (recalcTotals на бекенді)', (
       });
     });
 
-    // guards: BR-FIN-001
+    // guards: BR-FIN-MONEYCAP
     it('addLine: добуток понад місткість колонки — 400, рядок не створюється', async () => {
       await expect(
         service.addLine(ORG, INV_ID, {
@@ -171,7 +171,7 @@ describe('InvoicesService — line-totals (recalcTotals на бекенді)', (
       expect(lines.create).not.toHaveBeenCalled();
     });
 
-    // guards: BR-FIN-001
+    // guards: BR-FIN-MONEYCAP
     it('addLine: добуток рівно на межі Decimal(12,2) — проходить', async () => {
       // 9 999 999 999,99 / 1 → рівно межа.
       await expect(
@@ -185,7 +185,7 @@ describe('InvoicesService — line-totals (recalcTotals на бекенді)', (
       expect(lines.create).toHaveBeenCalledTimes(1);
     });
 
-    // guards: BR-FIN-001
+    // guards: BR-FIN-MONEYCAP
     it('updateLine: новий добуток понад місткість — 400, рядок не оновлюється', async () => {
       // existing.unitPrice = 500 (dbLine); нова кількість робить добуток завеликим.
       await expect(
@@ -201,7 +201,7 @@ describe('InvoicesService — line-totals (recalcTotals на бекенді)', (
     // уже за межею — і саме priceWithVat зберігається. Асерт на net пропустив би це → 500.
     // Мутація: прибери `assertMoneyFits(priceWithVat, …)` → ці кейси падають (рядок створюється/
     // оновлюється, 1,2e10 летить у Decimal(12,2)). Контроль: NONE-режим (priceWithVat = net) проходить.
-    // guards: BR-FIN-001
+    // guards: BR-FIN-MONEYCAP
     it('addLine: net на межі + ПДВ зверху 20% → priceWithVat переповнює колонку — 400, рядок не створюється', async () => {
       settings.getDefaultVatRate.mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 20 });
       await expect(
@@ -216,7 +216,7 @@ describe('InvoicesService — line-totals (recalcTotals на бекенді)', (
       expect(lines.create).not.toHaveBeenCalled();
     });
 
-    // guards: BR-FIN-001
+    // guards: BR-FIN-MONEYCAP
     it('addLine: net на межі + режим без ПДВ → priceWithVat = net → проходить (контроль мутації)', async () => {
       settings.getDefaultVatRate.mockResolvedValue({ vatMode: 'NONE', vatRate: 0 });
       await expect(
@@ -236,7 +236,7 @@ describe('InvoicesService — line-totals (recalcTotals на бекенді)', (
   // `assertMoneyFits(totalWithVat, …)` у recalcTotals → invoice.update викликається з 2e10 (500 у БД).
   describe('агрегат рахунку понад Decimal(12,2) (Bug #967)', () => {
     const OVERFLOW = 'err.money.lineAmountOverflow';
-    // guards: BR-FIN-001
+    // guards: BR-FIN-MONEYCAP
     it('removeLine → сума рядків що лишились ≈2e10 → 400, invoice.update не викликається', async () => {
       lines.aggregate.mockResolvedValue({
         _sum: {
@@ -251,7 +251,7 @@ describe('InvoicesService — line-totals (recalcTotals на бекенді)', (
       expect(prisma.invoice.update).not.toHaveBeenCalled();
     });
 
-    // guards: BR-FIN-001
+    // guards: BR-FIN-MONEYCAP
     it('агрегат рівно на межі Decimal(12,2) — проходить (контроль)', async () => {
       lines.aggregate.mockResolvedValue({
         _sum: {

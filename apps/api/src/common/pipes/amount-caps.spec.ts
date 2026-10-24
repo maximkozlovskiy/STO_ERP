@@ -340,14 +340,14 @@ describe('Стеля мінімального залишку — PATCH /stock-it
   });
 });
 
-// ─── BR-FIN-001: сума рядка (кількість × ціна) понад Decimal(12,2) ───────────────────────────────
+// ─── BR-FIN-MONEYCAP: сума рядка (кількість × ціна) понад Decimal(12,2) ───────────────────────────────
 //
 // Польові стелі обмежують quantity (QTY_MAX) і unitPrice (MONEY_AMOUNT_MAX) ОКРЕМО, але їхній
 // ДОБУТОК усе одно може перевищити колонку (`QTY_MAX × 10_000 = 10_000_000_000`). `assertMoneyFits`
 // — спільний запобіжник (інваріант BR-BANK-042 для base-конвертації), застосований у addLine/
 // updateLine наряду й рахунку. Мутація: прибери перевірку `stored > MONEY_AMOUNT_MAX` → «понад межу»
 // проходить; зміни MONEY_AMOUNT_MAX → «на межі» падає.
-describe('assertMoneyFits — сума рядка в межах Decimal(12,2) (BR-FIN-001)', () => {
+describe('assertMoneyFits — сума рядка в межах Decimal(12,2) (BR-FIN-MONEYCAP)', () => {
   it('добуток максимальних полів у межах стель перевищує колонку — 400', () => {
     expect(() => assertMoneyFits(QTY_MAX * 10_000)).toThrow(BadRequestException);
   });

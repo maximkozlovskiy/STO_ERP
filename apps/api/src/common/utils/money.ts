@@ -54,7 +54,7 @@ export function lineAmount(quantity: number, price: number): Money {
 }
 
 /**
- * BR-FIN-001 (M3, рішення власника 2026-10-24): грошова сума, що лягає в колонку `Decimal(12,2)`,
+ * BR-FIN-MONEYCAP (M3, рішення власника 2026-10-24): грошова сума, що лягає в колонку `Decimal(12,2)`,
  * мусить вміститися в її місткість (`MONEY_AMOUNT_MAX = 9 999 999 999,99`), інакше — **400** із
  * назвою поля, а не безіменна 500 `numeric field overflow`.
  *

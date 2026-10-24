@@ -721,7 +721,7 @@ export const VALIDATION_KEYS = [
   'err.pricingRule.categoryNotFound',
   'err.pricingRule.goodsNotFound',
   'err.pricingRule.goodsFileTooLong',
-  // Exception-повідомлення: грошові суми (спільне, BR-FIN-001)
+  // Exception-повідомлення: грошові суми (спільне, BR-FIN-MONEYCAP)
   'err.money.lineAmountOverflow',
   // Exception-повідомлення: work-orders-модуль
   'err.workOrder.notFound',

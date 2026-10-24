@@ -123,10 +123,10 @@
    "CorrelationIdMiddleware приймає короткий alphanumeric id (e.g. nginx X-Request-Id)"
   ],
   "apps/api/src/common/pipes/amount-caps.spec.ts": [
-   "assertMoneyFits — сума рядка в межах Decimal(12,2) (BR-FIN-001) добуток максимальних полів у межах стель перевищує колонку — 400",
-   "assertMoneyFits — сума рядка в межах Decimal(12,2) (BR-FIN-001) на копійку понад межу — 400; від’ємна сума оцінюється за модулем",
-   "assertMoneyFits — сума рядка в межах Decimal(12,2) (BR-FIN-001) назва поля потрапляє в повідомлення",
-   "assertMoneyFits — сума рядка в межах Decimal(12,2) (BR-FIN-001) сума рівно на межі MONEY_AMOUNT_MAX — проходить",
+   "assertMoneyFits — сума рядка в межах Decimal(12,2) (BR-FIN-MONEYCAP) добуток максимальних полів у межах стель перевищує колонку — 400",
+   "assertMoneyFits — сума рядка в межах Decimal(12,2) (BR-FIN-MONEYCAP) на копійку понад межу — 400; від’ємна сума оцінюється за модулем",
+   "assertMoneyFits — сума рядка в межах Decimal(12,2) (BR-FIN-MONEYCAP) назва поля потрапляє в повідомлення",
+   "assertMoneyFits — сума рядка в межах Decimal(12,2) (BR-FIN-MONEYCAP) сума рівно на межі MONEY_AMOUNT_MAX — проходить",
    "Стеля мінімального залишку — PATCH /stock-items/:id/min-stock (class-validator) minStock = QTY_MAX проходить",
    "Стеля мінімального залишку — PATCH /stock-items/:id/min-stock (class-validator) minStock понад QTY_MAX — 400",
    "Стеля мінімального залишку — PATCH /stock-items/:id/min-stock (class-validator) тіло маршруту — UpdateMinStockDto",
@@ -3457,11 +3457,11 @@
    "InvoicesService — line-totals (recalcTotals на бекенді) ПДВ ручного рядка за режимом організації (BR-INV-017) тотожність рядка в обох режимах на «незручній» сумі 33.33: без ПДВ + ПДВ = з ПДВ",
    "InvoicesService — line-totals (recalcTotals на бекенді) агрегат рахунку понад Decimal(12,2) (Bug #967) removeLine → сума рядків що лишились ≈2e10 → 400, invoice.update не викликається",
    "InvoicesService — line-totals (recalcTotals на бекенді) агрегат рахунку понад Decimal(12,2) (Bug #967) агрегат рівно на межі Decimal(12,2) — проходить (контроль)",
-   "InvoicesService — line-totals (recalcTotals на бекенді) сума рядка понад Decimal(12,2) (BR-FIN-001) addLine: net на межі + ПДВ зверху 20% → priceWithVat переповнює колонку — 400, рядок не створюється",
-   "InvoicesService — line-totals (recalcTotals на бекенді) сума рядка понад Decimal(12,2) (BR-FIN-001) addLine: net на межі + режим без ПДВ → priceWithVat = net → проходить (контроль мутації)",
-   "InvoicesService — line-totals (recalcTotals на бекенді) сума рядка понад Decimal(12,2) (BR-FIN-001) addLine: добуток понад місткість колонки — 400, рядок не створюється",
-   "InvoicesService — line-totals (recalcTotals на бекенді) сума рядка понад Decimal(12,2) (BR-FIN-001) addLine: добуток рівно на межі Decimal(12,2) — проходить",
-   "InvoicesService — line-totals (recalcTotals на бекенді) сума рядка понад Decimal(12,2) (BR-FIN-001) updateLine: новий добуток понад місткість — 400, рядок не оновлюється"
+   "InvoicesService — line-totals (recalcTotals на бекенді) сума рядка понад Decimal(12,2) (BR-FIN-MONEYCAP) addLine: net на межі + ПДВ зверху 20% → priceWithVat переповнює колонку — 400, рядок не створюється",
+   "InvoicesService — line-totals (recalcTotals на бекенді) сума рядка понад Decimal(12,2) (BR-FIN-MONEYCAP) addLine: net на межі + режим без ПДВ → priceWithVat = net → проходить (контроль мутації)",
+   "InvoicesService — line-totals (recalcTotals на бекенді) сума рядка понад Decimal(12,2) (BR-FIN-MONEYCAP) addLine: добуток понад місткість колонки — 400, рядок не створюється",
+   "InvoicesService — line-totals (recalcTotals на бекенді) сума рядка понад Decimal(12,2) (BR-FIN-MONEYCAP) addLine: добуток рівно на межі Decimal(12,2) — проходить",
+   "InvoicesService — line-totals (recalcTotals на бекенді) сума рядка понад Decimal(12,2) (BR-FIN-MONEYCAP) updateLine: новий добуток понад місткість — 400, рядок не оновлюється"
   ],
   "apps/api/src/modules/invoices/invoices.line-units.spec.ts": [
    "Рахунок — одиниця рядка як у наряді (Bug #868) addLine приймає UnitOfMeasure.id (як наряд): пара шукається за unitOfMeasureId товару",
@@ -7309,11 +7309,11 @@
   ],
   "apps/api/src/modules/work-orders/work-orders.line-update.spec.ts": [
    "WorkOrdersService.updateLine — робота й виконавець рядка виконавець чужої організації або видалений → 404, рядок не змінено",
-   "WorkOrdersService.updateLine — робота й виконавець рядка добуток рівно на межі Decimal(12,2) → проходить (BR-FIN-001)",
+   "WorkOrdersService.updateLine — робота й виконавець рядка добуток рівно на межі Decimal(12,2) → проходить (BR-FIN-MONEYCAP)",
    "WorkOrdersService.updateLine — робота й виконавець рядка зміна виконавця в наряді «В роботі» → 400: там правляться лише фактичні години",
    "WorkOrdersService.updateLine — робота й виконавець рядка нова робота пишеться в рядок; години й ціна беруться з запиту, а не з роботи",
    "WorkOrdersService.updateLine — робота й виконавець рядка новий виконавець пишеться в рядок і повертається у відповіді",
-   "WorkOrdersService.updateLine — робота й виконавець рядка нормогодини × ціна понад Decimal(12,2) → 400, рядок не оновлюється (BR-FIN-001)",
+   "WorkOrdersService.updateLine — робота й виконавець рядка нормогодини × ціна понад Decimal(12,2) → 400, рядок не оновлюється (BR-FIN-MONEYCAP)",
    "WorkOrdersService.updateLine — робота й виконавець рядка правка без роботи й виконавця (лише фактичні години) їх не чіпає",
    "WorkOrdersService.updateLine — робота й виконавець рядка робота чужої організації або видалена → 404, рядок не змінено",
    "WorkOrdersService.updateLine — робота й виконавець рядка ті самі робота й виконавець (картка шле їх щоразу) → без перевірки існування, поля не чіпаються"

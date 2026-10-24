@@ -106,8 +106,8 @@ describe('WorkOrdersService.updateLine — робота й виконавець 
     );
   });
 
-  // guards: BR-FIN-001
-  it('нормогодини × ціна понад Decimal(12,2) → 400, рядок не оновлюється (BR-FIN-001)', async () => {
+  // guards: BR-FIN-MONEYCAP
+  it('нормогодини × ціна понад Decimal(12,2) → 400, рядок не оновлюється (BR-FIN-MONEYCAP)', async () => {
     // Існуюча ціна рядка — 100; нормогодин у межах QTY_MAX, але добуток 20_000_000_000 > колонки.
     await expect(service.updateLine(ORG, WO, LINE, { normoHours: 200_000_000 })).rejects.toThrow(
       BadRequestException,
@@ -115,8 +115,8 @@ describe('WorkOrdersService.updateLine — робота й виконавець 
     expect(lineUpdate).not.toHaveBeenCalled();
   });
 
-  // guards: BR-FIN-001
-  it('добуток рівно на межі Decimal(12,2) → проходить (BR-FIN-001)', async () => {
+  // guards: BR-FIN-MONEYCAP
+  it('добуток рівно на межі Decimal(12,2) → проходить (BR-FIN-MONEYCAP)', async () => {
     await service.updateLine(ORG, WO, LINE, { normoHours: 1, price: 9_999_999_999.99 });
     expect(Number(data().amount)).toBe(9_999_999_999.99);
   });

@@ -840,7 +840,7 @@ export class InvoicesService {
     // createFromWorkOrder/PO/WO.
     const settingsVat = await this.settingsService.getDefaultVatRate(orgId);
     const vatRate = dto.vatRate != null ? dto.vatRate : settingsVat.vatRate;
-    // BR-FIN-001: кількість × ціна може перевищити Decimal(12,2) (priceWith*), хоч кожне поле в межах
+    // BR-FIN-MONEYCAP: кількість × ціна може перевищити Decimal(12,2) (priceWith*), хоч кожне поле в межах
     // стелі — 400 з назвою поля замість безіменної 500 numeric field overflow.
     assertMoneyFits(dto.quantity * dto.unitPrice, 'сума рядка рахунку');
     const { priceWithoutVat, vatAmount, priceWithVat } = manualLineVat(
@@ -905,7 +905,7 @@ export class InvoicesService {
       dto.unitPrice !== undefined ? money(dto.unitPrice) : moneyFromDecimal(existing.unitPrice);
     const vatRate = dto.vatRate !== undefined ? dto.vatRate : Number(existing.vatRate);
     const { vatMode } = await this.settingsService.getDefaultVatRate(orgId);
-    // BR-FIN-001: кількість × ціна може перевищити Decimal(12,2) (priceWith*), хоч кожне поле в межах стелі.
+    // BR-FIN-MONEYCAP: кількість × ціна може перевищити Decimal(12,2) (priceWith*), хоч кожне поле в межах стелі.
     assertMoneyFits(quantity * unitPrice, 'сума рядка рахунку');
     const { priceWithoutVat, vatAmount, priceWithVat } = manualLineVat(
       quantity * unitPrice,

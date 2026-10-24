@@ -2046,7 +2046,7 @@ export class WorkOrdersService {
     const normoHours = dto.normoHours ?? work.normoHours;
     const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(work.price);
     const amount = lineAmount(normoHours, price);
-    // BR-FIN-001: нормогодини × ціна може перевищити Decimal(12,2), хоч кожне поле в межах стелі.
+    // BR-FIN-MONEYCAP: нормогодини × ціна може перевищити Decimal(12,2), хоч кожне поле в межах стелі.
     assertMoneyFits(amount, 'сума роботи');
 
     const line = await this.prisma.$transaction(
@@ -2145,7 +2145,7 @@ export class WorkOrdersService {
     const normoHours = dto.normoHours ?? line.normoHours;
     const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(line.price);
     const amount = lineAmount(normoHours, price);
-    // BR-FIN-001: добуток може перевищити Decimal(12,2) навіть при полях у межах стелі.
+    // BR-FIN-MONEYCAP: добуток може перевищити Decimal(12,2) навіть при полях у межах стелі.
     assertMoneyFits(amount, 'сума роботи');
 
     const updated = await this.prisma.$transaction(
@@ -2257,7 +2257,7 @@ export class WorkOrdersService {
 
     const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(good.salePrice);
     const amount = lineAmount(dto.quantity, price);
-    // BR-FIN-001: кількість × ціна може перевищити Decimal(12,2) навіть при полях у межах стелі.
+    // BR-FIN-MONEYCAP: кількість × ціна може перевищити Decimal(12,2) навіть при полях у межах стелі.
     assertMoneyFits(amount, 'сума запчастини');
 
     const part = await this.prisma.$transaction(
@@ -2315,7 +2315,7 @@ export class WorkOrdersService {
     const quantity = dto.quantity ?? part.quantity;
     const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(part.price);
     const amount = lineAmount(quantity, price);
-    // BR-FIN-001: добуток може перевищити Decimal(12,2) навіть при полях у межах стелі.
+    // BR-FIN-MONEYCAP: добуток може перевищити Decimal(12,2) навіть при полях у межах стелі.
     assertMoneyFits(amount, 'сума запчастини');
 
     // Validate new unitOfMeasureId if provided
