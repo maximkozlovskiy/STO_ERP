@@ -2,6 +2,7 @@ import { Controller, Get, Param, Res, VERSION_NEUTRAL } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiProduces } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply } from 'fastify';
+import { Public } from '../../auth/decorators/public.decorator';
 import { WorkOrderShareService } from './work-order-share.service';
 import { EstimateExportService } from './work-orders-export.service';
 
@@ -20,6 +21,8 @@ import { EstimateExportService } from './work-orders-export.service';
 @ApiTags('Work Orders (Public)')
 // VERSION_NEUTRAL: URL лишається /api/public/work-orders/:token (не /api/v1/...) — на кошторис
 // шлються зовнішні SMS/email-лінки, що мусять лишатись стабільними попри версіонування API.
+// @Public — зовнішній отримувач кошторису не має JWT; під глобальним guard-ом це обов'язково.
+@Public()
 @Controller({ path: 'public/work-orders', version: VERSION_NEUTRAL })
 export class WorkOrdersPublicController {
   constructor(

@@ -30,6 +30,7 @@ import { assertCalendarDateQuery } from '../../common/utils/date-query';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { Public } from '../../auth/decorators/public.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { BookingService } from './booking.service';
 import {
@@ -53,6 +54,7 @@ export class BookingController {
    * provide a no-auth list endpoint that only exposes minimal fields.
    */
   @Get('branches')
+  @Public()
   // Public endpoint → throttle to prevent enumeration / abuse of branch list.
   // 30 req/min per IP is plenty for legitimate widget usage (typically 1 call per page load).
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
@@ -66,6 +68,7 @@ export class BookingController {
   }
 
   @Get('availability')
+  @Public()
   // Public endpoint → throttle slot enumeration (без cap зловмисник може
   // probing-ити доступність хвилину за хвилиною й мапити графік СТО).
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
@@ -97,6 +100,7 @@ export class BookingController {
   }
 
   @Post('request')
+  @Public()
   @HttpCode(HttpStatus.CREATED)
   // Public endpoint → strict throttle: 5 заявок/хв з одного IP блокує спам-флуд
   // (SMS уведомлення власнику СТО триггерять gateway-кошти).

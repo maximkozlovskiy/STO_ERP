@@ -3,12 +3,15 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { Public } from '../../auth/decorators/public.decorator';
 import { SetupInitDto, SetupInitResponseDto } from './setup.dto';
 import { SetupService } from './setup.service';
 
-// No JwtAuthGuard — intentionally public. Called before org/user exist (first-run wizard).
-// POST /init self-locks after first call via isAlreadyInitialized() check.
+// @Public — intentionally unauthenticated. Called before org/user exist (first-run wizard).
+// Під глобальним JwtAuthGuard контролер мусить мати явний @Public(), інакше status/init
+// повернули б 401. POST /init self-locks after first call via isAlreadyInitialized() check.
 @ApiTags('Перший запуск')
+@Public()
 @Controller('setup')
 export class SetupController {
   constructor(private readonly service: SetupService) {}

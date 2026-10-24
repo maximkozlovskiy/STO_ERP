@@ -9,7 +9,7 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import { Throttle, SkipThrottle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiTags,
   ApiOperation,
@@ -24,6 +24,7 @@ import { AuthService } from './auth.service';
 import { LoginDto, AuthResponseDto } from './auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { OrgContext } from './decorators/org-context.decorator';
 
@@ -60,6 +61,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @Public()
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Вхід у систему' })
@@ -73,7 +75,11 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @SkipThrottle()
+  @Public()
+  // L2 (безпека): refresh чутливіший за login — прибрано @SkipThrottle(), поставлено явний
+  // ліміт 30/хв. Глобальний ThrottlerGuard виконується ПЕРЕД JwtAuthGuard, тож throttle діє
+  // на @Public роут. 30/хв щедро для легітимного оновлення токена, але обмежує brute-force cookie.
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @ApiCookieAuth('sto_refresh')
   @ApiOperation({ summary: 'Оновити access token через refresh cookie' })

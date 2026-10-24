@@ -7,11 +7,14 @@ import type Redis from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { FilesService } from '../modules/files/files.service';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('health')
 // VERSION_NEUTRAL: URL лишається /api/health/* (не /api/v1/health) — docker healthcheck,
 // installer Update.ps1 та e2e-smoke б'ють /api/health/live; версіонування їх НЕ ламає.
+// @Public — healthcheck викликають docker/installer без JWT; під глобальним guard-ом обов'язково.
 @Controller({ path: 'health', version: VERSION_NEUTRAL })
+@Public()
 @SkipThrottle()
 export class HealthController {
   constructor(
