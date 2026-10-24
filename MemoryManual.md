@@ -9,7 +9,7 @@
 ## Поточний стан
 
 ```
-Дата:       2026-10-23
+Дата:       2026-10-24
 HEAD:       див. `git log --oneline -1` (хеш тут НЕ дублюється — старіє щокоміту)
 Фаза:       PHASES.md 229/231 закрито. Хвости: EAS Build (mobile) + smoke на чистій
             Windows VM — обидва потребують фізичного оточення, не коду.
@@ -38,9 +38,14 @@ python scripts/check-doc-links.py; python scripts/check-mojibake.py   # поси
 ## Останній commit
 
 ```
-Статичний аналіз і безпека — 2026-10-22/23 (CHANGELOG «5759489c..HEAD»):
-  sonarjs (клас «баг») у lint, jscpd (нові клони проти бази), CodeQL; 29 алертів CodeQL виправлено
-  або закрито з причиною; CI — concurrency, фільтри шляхів, база push = останній успішний прогін.
+Безпековий блок — 2026-10-24 (CHANGELOG, останні коміти):
+  Етап 1 SSRF (validatePublicUrlResolved після DNS у клієнтах/вебхуках/записі, HOST_LOOKUP DI),
+  Етап 2 «закрито за замовчуванням» (global JwtAuthGuard + @Public allowlist, контракт-спек на всі
+  контролери; refresh 30/хв без @SkipThrottle), Етап 3 термін дії кошторису (shareTokenExpiresAt,
+  revoke/regenerate, liveShareTokenWhere + loadShareableWorkOrder) + межі сум/кількості на DTO
+  (assertMoneyFits/MONEY_CAP/QTY_CAP; BR-FIN-001). api-client: один 401→refresh (fetchWithRefresh),
+  429 транзієнт без логауту (Bug #966). Логічний аудит 2026-10-24 (10 знахідок) — у TECH-DEBT, НЕ
+  виправлено. Етап 4 (NUL у тілі, тип файлу за байтами, ліміти імпорту) — ще не починали.
   Dev-середовище: Docker у WSL тримає задача «STO WSL Docker», postgres-mcp без сиріт (scripts/wsl,
   scripts/mcp). Модель спеків і гейти A–D — у /sto-spec і CLAUDE.md, не тут.
 
