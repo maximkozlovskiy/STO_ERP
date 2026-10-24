@@ -157,6 +157,10 @@ export async function validatePublicUrlResolved(
   try {
     addresses = await lookup(host);
   } catch {
+    // Ім'я не резолвиться → allow: сам `fetch` упаде з ENOTFOUND, запит нікуди не йде, SSRF-цінності
+    // немає. Fail-closed свідомо НЕ ставимо — блокував би провайдера при тимчасовому збої DNS
+    // (OQ-SSRF-2, рішення власника 2026-10-24: лишити як є). NAT64/6to4-префікси теж свідомо не в
+    // блок-листі (OQ-SSRF-1) — потребують шлюзу в локальній мережі.
     return null;
   }
   for (const a of addresses) {
