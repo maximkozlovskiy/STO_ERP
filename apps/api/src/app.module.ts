@@ -20,6 +20,7 @@ import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { HttpMetricsInterceptor } from './metrics/http-metrics.interceptor';
 import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RedisModule } from './redis/redis.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { PaymentMethodsModule } from './modules/payment-methods/payment-methods.module';
@@ -256,7 +257,12 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
   ],
   providers: [
     // Apply ThrottlerGuard globally — routes can override with @Throttle() or @SkipThrottle()
+    // ПОРЯДОК ВАЖЛИВИЙ: у Nest APP_GUARD виконуються у порядку реєстрації. ThrottlerGuard —
+    // ПЕРШИМ, щоб throttle діяв і на @Public роути (login/refresh throttle працює до JWT-перевірки).
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // «Закрито за замовчуванням» (рішення власника 2026-10-24): глобальний JwtAuthGuard — кожен
+    // роут вимагає JWT, доки не позначений @Public(). Реєструється ПІСЛЯ ThrottlerGuard навмисно.
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
     // A1 — tenant-scope ALS: входить у scope з request.user.orgId на весь ланцюг handler+service+prisma.
     // Global interceptor фаєрить ПІСЛЯ global guards, тож user вже populate-нутий. Guard-extension
     // ([tenant-guard.extension.ts]) читає цей scope для create-стемпу й bypass.
