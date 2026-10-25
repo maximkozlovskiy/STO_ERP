@@ -4,7 +4,7 @@
 // Тести: `lib/__tests__/report-export.test.ts`.
 
 import type { TFunction } from 'i18next';
-import type { Agg, GroupNode, ReportRunResult } from '@/hooks/api/useReportBuilder';
+import type { Agg, GroupNode, ReportFilter, ReportRunResult } from '@/hooks/api/useReportBuilder';
 import { fmtDate } from '@/lib/format';
 import { escapeCsvCell } from '@/lib/utils';
 import { downloadBlob } from '@/lib/download';
@@ -71,6 +71,25 @@ export function filterDayValue(value: unknown): string {
   const ua = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s);
   if (ua) return `${ua[3]}-${ua[2]}-${ua[1]}`;
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+}
+
+/**
+ * «Заповнене» — оператор лише інтерфейсу: на бекенд іде `isNull` зі значенням `false` (BR-RPT-024).
+ * Без нього не можна було показати саме сторновані платежі, які звіт за замовчуванням відсікає
+ * (BR-RPT-026).
+ */
+export const NOT_NULL = 'notNull';
+export type FilterOpChoice = ReportFilter['op'] | typeof NOT_NULL;
+
+export function filterOpChoice(f: ReportFilter): FilterOpChoice {
+  return f.op === 'isNull' && (f.value === false || f.value === 'false') ? NOT_NULL : f.op;
+}
+
+/** Зміна оператора: «порожнє» / «заповнене» несуть свій value, вихід із них скидає значення. */
+export function filterOpPatch(f: ReportFilter, choice: FilterOpChoice): Partial<ReportFilter> {
+  if (choice === NOT_NULL) return { op: 'isNull', value: false };
+  if (choice === 'isNull' || f.op === 'isNull') return { op: choice, value: undefined };
+  return { op: choice };
 }
 
 /** Підпис групи — той самий на екрані й у файлі: enum перекладений, так/ні, день — ДД.ММ.РРРР. */

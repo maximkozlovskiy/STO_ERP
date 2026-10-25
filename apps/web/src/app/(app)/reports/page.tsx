@@ -597,6 +597,10 @@ export default function ReportsPage() {
   );
 }
 
+/** Один знак після коми, але ЧИСЛОМ: escapeCsvCell пише його з десятковою комою, як решту чисел
+ *  файла (рядок `toFixed(1)` лишав крапку — Excel з українськими налаштуваннями читав «1.5» датою). */
+const round1 = (n: number): number => Math.round(n * 10) / 10;
+
 function buildCsv(tab: Tab, data: ReportData, t: TFunction<'reports'>): string {
   if (tab === 'revenue' && data._tab === 'revenue') return buildRevenueCsv(data, t);
   if (tab === 'work-orders' && data._tab === 'work-orders') {
@@ -639,7 +643,7 @@ function buildCsv(tab: Tab, data: ReportData, t: TFunction<'reports'>): string {
         r.liftName,
         r.zoneName,
         r.totalSlots,
-        r.totalHours.toFixed(1),
+        round1(r.totalHours),
         r.loadPercent,
       ]),
     ];
@@ -648,18 +652,18 @@ function buildCsv(tab: Tab, data: ReportData, t: TFunction<'reports'>): string {
   if (tab === 'profitability' && data._tab === 'profitability') {
     const rows = [
       [t('page.csv.indicator'), t('page.csv.amount'), t('page.csv.pctOfRevenue')],
-      [t('page.csv.profRevenue'), data.totalRevenue, '100.0'],
+      [t('page.csv.profRevenue'), data.totalRevenue, 100],
       [
         t('page.csv.profParts'),
         data.totalCostParts,
-        data.totalRevenue > 0 ? ((data.totalCostParts / data.totalRevenue) * 100).toFixed(1) : '0',
+        data.totalRevenue > 0 ? round1((data.totalCostParts / data.totalRevenue) * 100) : 0,
       ],
       [
         t('page.csv.profLabor'),
         data.totalCostLabor,
-        data.totalRevenue > 0 ? ((data.totalCostLabor / data.totalRevenue) * 100).toFixed(1) : '0',
+        data.totalRevenue > 0 ? round1((data.totalCostLabor / data.totalRevenue) * 100) : 0,
       ],
-      [t('page.csv.grossProfit'), data.grossProfit, data.margin.toFixed(1)],
+      [t('page.csv.grossProfit'), data.grossProfit, round1(data.margin)],
       [t('page.csv.profVat'), data.totalVat, ''],
       [t('page.csv.profRevenueWithVat'), data.totalRevenueWithVat, ''],
     ];

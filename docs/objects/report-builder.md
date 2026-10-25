@@ -263,7 +263,7 @@ cd apps/api && npx vitest run src/modules/report-builder/<файл>.spec.ts
 Разом: **245** кейсів — 109 конструктора і 136 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
 
 Web-тест експорту (`BR-RPT-021`) лежить поза модулем:
-`apps/web/src/lib/__tests__/report-export.test.ts` — 29 кейсів. Перевіряє чисту частину
+`apps/web/src/lib/__tests__/report-export.test.ts` — 31 кейс. Перевіряє чисту частину
 `apps/web/src/lib/report-export.ts` (винесена з `ReportBuilder.tsx`): дерево груп → плоскі рядки
 (відступ за рівнем, підсумки груп, рядок «Разом»), плоский звіт (нумерація, колонка «Склеєно»),
 значення клітинки (enum, дата, булеве), CSV (роздільник, лапки, захист від формул через

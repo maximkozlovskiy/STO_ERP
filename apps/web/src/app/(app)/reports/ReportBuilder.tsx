@@ -39,6 +39,10 @@ import { fmtMoney, fmtDate, fmtInt } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import {
+  NOT_NULL,
+  filterOpChoice,
+  filterOpPatch,
+  type FilterOpChoice,
   aggAliasLabel,
   enumLabel,
   exportReport,
@@ -826,25 +830,6 @@ function opsForType(type: string | undefined, current?: ReportFilter['op']): Rep
     if (op === 'in') return type !== 'date' && type !== 'boolean';
     return true;
   });
-}
-
-/**
- * «Заповнене» — оператор лише інтерфейсу: на бекенд іде `isNull` зі значенням `false` (BR-RPT-024).
- * Без нього не можна було показати саме сторновані платежі, які звіт за замовчуванням відсікає
- * (BR-RPT-026).
- */
-const NOT_NULL = 'notNull';
-type FilterOpChoice = ReportFilter['op'] | typeof NOT_NULL;
-
-function filterOpChoice(f: ReportFilter): FilterOpChoice {
-  return f.op === 'isNull' && (f.value === false || f.value === 'false') ? NOT_NULL : f.op;
-}
-
-/** Зміна оператора: «порожнє» / «заповнене» несуть свій value, вихід із них скидає значення. */
-function filterOpPatch(f: ReportFilter, choice: FilterOpChoice): Partial<ReportFilter> {
-  if (choice === NOT_NULL) return { op: 'isNull', value: false };
-  if (choice === 'isNull' || f.op === 'isNull') return { op: choice, value: undefined };
-  return { op: choice };
 }
 
 function FilterZone({

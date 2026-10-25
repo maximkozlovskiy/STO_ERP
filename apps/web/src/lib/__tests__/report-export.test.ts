@@ -12,6 +12,8 @@ import {
   buildExportNumericColumns,
   exportCell,
   filterDayValue,
+  filterOpChoice,
+  filterOpPatch,
   flattenTree,
 } from '@/lib/report-export';
 
@@ -498,5 +500,35 @@ describe('report-builder › значення фільтра дати для в�
     expect(filterDayValue('2026-10')).toBe('');
     expect(filterDayValue(undefined)).toBe('');
     expect(filterDayValue(['2026-10-22'])).toBe('');
+  });
+});
+
+// «Заповнене» — оператор лише інтерфейсу (BR-RPT-024 / BR-RPT-026): на бекенд іде isNull + false.
+describe('report-export › оператор «порожнє» / «заповнене» у фільтрі', () => {
+  // guards: BR-RPT-026
+  it('isNull з false чи «false» показується як «заповнене»; інше значення — як «порожнє»', () => {
+    expect(filterOpChoice({ field: 'reversedAt', op: 'isNull', value: false })).toBe('notNull');
+    expect(filterOpChoice({ field: 'reversedAt', op: 'isNull', value: 'false' })).toBe('notNull');
+    expect(filterOpChoice({ field: 'reversedAt', op: 'isNull', value: true })).toBe('isNull');
+    expect(filterOpChoice({ field: 'reversedAt', op: 'isNull' })).toBe('isNull');
+    expect(filterOpChoice({ field: 'reversedAt', op: 'isNull', value: 'abc' })).toBe('isNull');
+    expect(filterOpChoice({ field: 'number', op: 'eq', value: 'false' })).toBe('eq');
+  });
+
+  // guards: BR-RPT-026
+  it('«заповнене» ставить isNull + false; вихід із порожнє/заповнене скидає значення; решта — лише оператор', () => {
+    expect(filterOpPatch({ field: 'reversedAt', op: 'eq', value: 'x' }, 'notNull')).toEqual({
+      op: 'isNull',
+      value: false,
+    });
+    expect(filterOpPatch({ field: 'reversedAt', op: 'eq', value: 'x' }, 'isNull')).toEqual({
+      op: 'isNull',
+      value: undefined,
+    });
+    expect(filterOpPatch({ field: 'reversedAt', op: 'isNull', value: false }, 'gte')).toEqual({
+      op: 'gte',
+      value: undefined,
+    });
+    expect(filterOpPatch({ field: 'number', op: 'eq', value: 'WO-1' }, 'ne')).toEqual({ op: 'ne' });
   });
 });
