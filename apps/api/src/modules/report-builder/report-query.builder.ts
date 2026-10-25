@@ -321,7 +321,7 @@ export function buildQuery(config: ReportConfigInput, orgId: string): BuiltQuery
 
   const where: Obj = { orgId };
   if (entity.hasSoftDelete) where.deletedAt = null;
-  if (entity.parentRelation) where[entity.parentRelation] = { deletedAt: null };
+  for (const rel of entity.parentRelations ?? []) where[rel] = { deletedAt: null };
 
   // dateRange → фільтр по entity.dateField (Kyiv-межі; для `@db.Date` — самі дати)
   if (config.dateRange) {
@@ -344,6 +344,13 @@ export function buildQuery(config: ReportConfigInput, orgId: string): BuiltQuery
         translateError('err.reportBuilder.fieldNotFilterable', getLocale(), { label: fld.label }),
       );
     assertRelationPath(entity, fld.prismaPath);
+    // Оператор — до значення: збережений звіт із «містить» на даті інакше чув «Неприпустиме
+    // значення», хоча помилка в операторі, а UI такого оператора для дати вже не пропонує.
+    if (f.op === 'contains' && fld.type !== 'scalar') {
+      throw new BadRequestException(
+        translateError('err.reportBuilder.filterContainsTextOnly', getLocale()),
+      );
+    }
     const value = normalizeFilterValue(f.op, f.value, fld);
     if (fld.type === 'enum' && fld.enumName && f.op !== 'isNull') {
       assertEnumValue(fld.enumName, value);

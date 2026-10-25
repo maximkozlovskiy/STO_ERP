@@ -249,30 +249,32 @@ describe('report-export › підпис колонки агрегату (aggAli
 
 describe('report-export › CSV', () => {
   // guards: BR-RPT-021
-  it('роздільник клітинок — кома, рядків — \\n; без завершального переносу', () => {
+  // Роздільник — `;`, як в інших CSV застосунку: файл через кому Excel з українськими
+  // регіональними налаштуваннями відкривав одним стовпцем.
+  it('роздільник клітинок — `;`, рядків — \\n; без завершального переносу', () => {
     expect(
       buildCsvText([
         ['Група', 'Кількість'],
         ['Київ', '3'],
       ]),
-    ).toBe('Група,Кількість\nКиїв,3');
+    ).toBe('Група;Кількість\nКиїв;3');
   });
 
   // guards: BR-RPT-021
-  it('клітинка з комою, лапками чи переносом береться в лапки, лапки подвоюються', () => {
-    expect(buildCsvText([['ТОВ "Альфа", Київ', 'a;b', 'рядок1\nрядок2']])).toBe(
-      '"ТОВ ""Альфа"", Київ",a;b,"рядок1\nрядок2"',
+  it('клітинка з `;`, лапками чи переносом береться в лапки, лапки подвоюються; кома — ні', () => {
+    expect(buildCsvText([['ТОВ "Альфа", Київ', 'a;b', 'рядок1\nрядок2', 'a,b']])).toBe(
+      '"ТОВ ""Альфа"", Київ";"a;b";"рядок1\nрядок2";a,b',
     );
   });
 
   // guards: BR-RPT-021
   it('захист від формул: клітинки на =, +, -, @ отримують апостроф (escapeCsvCell)', () => {
     expect(buildCsvText([['=1+1', '+380501234567', '-cmd', '@SUM(A1)', 'звичайний']])).toBe(
-      "'=1+1,'+380501234567,'-cmd,'@SUM(A1),звичайний",
+      "'=1+1;'+380501234567;'-cmd;'@SUM(A1);звичайний",
     );
-    // формула з комою: і апостроф, і лапки
-    expect(buildCsvText([['=HYPERLINK("http://evil","x")']])).toBe(
-      '"\'=HYPERLINK(""http://evil"",""x"")"',
+    // формула з лапками: і апостроф, і лапки
+    expect(buildCsvText([['=HYPERLINK("http://evil";"x")']])).toBe(
+      '"\'=HYPERLINK(""http://evil"";""x"")"',
     );
   });
 
@@ -285,7 +287,7 @@ describe('report-export › CSV', () => {
 
     const lines = buildExportFile(result, 'csv', t).content.split('\n');
 
-    expect(lines[1]).toBe("'=cmd|calc,1");
+    expect(lines[1]).toBe("'=cmd|calc;1");
   });
 
   // guards: BR-RPT-021
@@ -293,8 +295,8 @@ describe('report-export › CSV', () => {
     const file = buildExportFile(groupedResult(), 'csv', t);
 
     expect(CSV_BOM).toBe('﻿');
-    expect(file.content.startsWith('﻿Група,Кількість,Σ Сума,сер. Ціна\n')).toBe(true);
-    expect(file.content.endsWith('\nРазом,5,350.5,70.1')).toBe(true);
+    expect(file.content.startsWith('﻿Група;Кількість;Σ Сума;сер. Ціна\n')).toBe(true);
+    expect(file.content.endsWith('\nРазом;5;350.5;70.1')).toBe(true);
     expect(file.mime).toBe('text/csv;charset=utf-8;');
     expect(file.filename).toBe('report-workOrder.csv');
   });
@@ -443,7 +445,7 @@ describe('report-export › файл збігається з екраном', ()
 
   // guards: BR-RPT-021
   it("CSV: від'ємне число лишається числом, а текст на мінус — з апострофом", () => {
-    expect(buildCsvText([['Списання', '-4865.968', '-cmd']])).toBe("Списання,-4865.968,'-cmd");
+    expect(buildCsvText([['Списання', '-4865.968', '-cmd']])).toBe("Списання;-4865.968;'-cmd");
   });
 
   // guards: BR-RPT-021

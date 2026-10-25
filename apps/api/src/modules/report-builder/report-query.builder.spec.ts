@@ -610,12 +610,36 @@ describe('report-query.builder', () => {
     it('«порожнє» для дати лишається умовою на null, без дня', () => {
       expect(cond('payment', 'reversedAt', 'isNull', undefined)).toBeNull();
     });
+
+    // Збережений до 2026-10-25 звіт із «містить» на даті: помилка має називати оператор, а не
+    // значення (поле дати в UI для нього порожнє).
+    // guards: BR-RPT-025
+    it('«містить» на даті без значення → помилка про оператор, не про значення', () => {
+      expect(() => cond('workOrder', 'documentDate', 'contains', undefined)).toThrow(
+        'Оператор «містить» — лише для текстових полів',
+      );
+    });
   });
 
   // Видалення закупівлі / наряду позначає лише документ; його рядки лишаються з deletedAt: null.
   // У dev-базі 2026-10-25 так у звіт потрапляли 277 рядків видалених закупівель і 504 запчастини
-  // видалених нарядів. Мутація: прибрати `parentRelation` у buildQuery → кейси червоніють.
+  // видалених нарядів. Мутація: прибрати `parentRelations` у buildQuery → кейси червоніють.
   describe('рядки видаленого документа не потрапляють у звіт (BR-RPT-007)', () => {
+    // Сторінка залишків відсікає видалені товари й склади, а конструктор показував їх: 62 рядки
+    // залишків і 2563 партії dev-бази. Рухи — історія, їх ця умова не стосується.
+    // guards: BR-RPT-007
+    it('залишки й партії — умова deletedAt: null на товар і склад; рухи — без неї', () => {
+      for (const entity of ['stockItem', 'stockBatch']) {
+        expect(
+          buildQuery({ entity, columns: [], groupBy: [] }, ORG).args.where,
+          entity,
+        ).toMatchObject({ good: { deletedAt: null }, warehouse: { deletedAt: null } });
+      }
+      const mov = buildQuery({ entity: 'stockMovement', columns: [], groupBy: [] }, ORG);
+      expect(mov.args.where).not.toHaveProperty('good');
+      expect(mov.args.where).not.toHaveProperty('warehouse');
+    });
+
     // guards: BR-RPT-007
     it('рядки закупівлі й запчастини наряду — умова deletedAt: null і на документ-власник', () => {
       const pol = buildQuery({ entity: 'purchaseOrderLine', columns: [], groupBy: [] }, ORG);

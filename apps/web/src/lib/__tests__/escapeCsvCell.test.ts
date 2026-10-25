@@ -14,6 +14,16 @@ describe('escapeCsvCell — formula-injection guard (CWE-1236)', () => {
     expect(escapeCsvCell('=1+1')).toBe("'=1+1");
   });
 
+  // Апостроф перед «-500» робив від'ємне сальдо текстом у Excel (у dev-базі 2026-10-25 таких
+  // рахунків 156); чисте число формулою бути не може.
+  it("від'ємне число лишається числом; «-» з чимось ще — як і раніше, з апострофом", () => {
+    expect(escapeCsvCell(-500)).toBe('-500');
+    expect(escapeCsvCell('-4865.968')).toBe('-4865.968');
+    expect(escapeCsvCell('-2+3')).toBe("'-2+3");
+    expect(escapeCsvCell('-1e3')).toBe("'-1e3");
+    expect(escapeCsvCell('-')).toBe("'-");
+  });
+
   it('звичайний текст не чіпає', () => {
     expect(escapeCsvCell('Іван Петренко')).toBe('Іван Петренко');
     expect(escapeCsvCell('ТОВ Альфа')).toBe('ТОВ Альфа');

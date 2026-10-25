@@ -236,13 +236,13 @@ export function buildExportNumericColumns(result: ReportRunResult): boolean[] {
 
 const PLAIN_NUMBER_RE = /^-?\d+(\.\d+)?$/;
 
-/** CSV-текст із рядків: роздільник — кома, кожна клітинка через escapeCsvCell. */
+/**
+ * CSV-текст із рядків: роздільник — `;`, як в інших CSV застосунку (звіти, взаєморозрахунки):
+ * Excel з українськими регіональними налаштуваннями розбиває колонки саме за ним, а файл через кому
+ * відкривав одним стовпцем. Кожна клітинка — через escapeCsvCell (захист від формул + лапки).
+ */
 export function buildCsvText(rows: string[][]): string {
-  // escapeCsvCell нейтралізує formula-injection (=,+,-,@) + квотує роздільник ',' . Чисте число
-  // формулою бути не може, а апостроф перед «-4865.968» робив зі списання текст у Excel.
-  return rows
-    .map(r => r.map(c => (PLAIN_NUMBER_RE.test(c) ? c : escapeCsvCell(c, ','))).join(','))
-    .join('\n');
+  return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
 }
 
 /** Готовий до завантаження файл експорту (ще без DOM): вміст, MIME і назва. */
