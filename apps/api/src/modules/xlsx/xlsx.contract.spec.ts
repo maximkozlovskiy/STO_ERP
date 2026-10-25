@@ -151,7 +151,8 @@ describe('Xlsx — HTTP Contract', () => {
           `--${BOUNDARY}\r\n` +
           'Content-Disposition: form-data; name="file"; filename="brands.xlsx"\r\n' +
           'Content-Type: application/octet-stream\r\n\r\n' +
-          'x\r\n' +
+          // BR-SEC-UPLOAD: валідна zip-сигнатура — контролер звіряє магічні байти .xlsx до розбору.
+          'PK\x03\x04payload\r\n' +
           `--${BOUNDARY}--\r\n`,
       });
 
@@ -195,7 +196,8 @@ describe('Xlsx — HTTP Contract', () => {
           `--${BOUNDARY}\r\n` +
           'Content-Disposition: form-data; name="file"; filename="goods.xlsx"\r\n' +
           'Content-Type: application/octet-stream\r\n\r\n' +
-          'x\r\n' +
+          // BR-SEC-UPLOAD: валідна zip-сигнатура — контролер звіряє магічні байти .xlsx до розбору.
+          'PK\x03\x04payload\r\n' +
           `--${BOUNDARY}--\r\n`,
       });
 

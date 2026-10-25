@@ -69,6 +69,16 @@ Orphan-Payment (create ok, link fail) benign: retry натрапляє на CAS-
 - `rawPreview` — сира сітка для column-mapping (формати банків різняться). `previewImport` — dry-run
   matched/ambiguous/notFound + дедуп-check по externalId (matchStatus='duplicate'). `applyImport` —
   createMany skipDuplicates, status=UNMATCHED; `amountBase` через resolveBaseConversion по валюті рахунку.
+- **BR-SEC-UPLOAD** (спільне правило безпеки завантаження/імпорту, 2026-10-25): файли імпорту
+  (виписки тут, xlsx-майстер у модулі `xlsx`) і завантаження медіа (`files.controller`) перевіряються
+  ДО розбору: (1) тип за **магічними байтами** вмісту, а не за заявленим клієнтом `Content-Type` чи
+  розширенням — перейменований .exe/.zip/.txt під .png/.xlsx → 400 `err.file.typeMismatch`
+  (`common/utils/file-signature.ts`); (2) окремий **ліміт розміру** імпорту 5 МБ, менший за глобальні
+  25 МБ для медіа → 400 `err.file.importTooLarge` (OCR-канал pdf/скан свідомо під глобальним лімітом);
+  (3) **кап рядків на парсі** 1000, узгоджений з apply-DTO `@ArrayMaxSize(1000)` → 400
+  `err.file.tooManyRows`, до повного читання/резолву файла (`common/utils/import-file-guard.ts`).
+  Межі свідомо вужчі за глобальні: імпорт — це таблиця, а не медіа. Продуктова поведінка на валідному
+  вводі не змінюється. OCR синхронного прев'ю не чіпаємо (рішення власника).
 
 ## API Endpoints (bank-statements.controller, ролі OWNER/ADMIN/ACCOUNTANT)
 

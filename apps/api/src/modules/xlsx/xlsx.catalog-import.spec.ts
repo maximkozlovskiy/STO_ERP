@@ -12,7 +12,13 @@ import { XlsxController } from './xlsx.controller';
 const ORG = 'org-1';
 const uk = (key: string) => translateError(key as never, 'uk');
 
-const req = () => ({ file: async () => ({ toBuffer: async () => Buffer.from('x') }) }) as never;
+// BR-SEC-UPLOAD: контролер звіряє розширення й магічні байти .xlsx (zip `PK\x03\x04`) до розбору,
+// тож харнес має віддавати валідний xlsx-файл (парсер усе одно замоканий).
+const XLSX_SIG = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00]);
+const req = () =>
+  ({
+    file: async () => ({ filename: 'catalog.xlsx', toBuffer: async () => XLSX_SIG }),
+  }) as never;
 
 function build(over: {
   goodRows?: Array<Record<string, unknown>>;
