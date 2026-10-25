@@ -4,16 +4,9 @@ import * as crypto from 'crypto';
 import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { detectMimeFromBuffer, isDetectedImage } from '../../common/utils/file-signature';
 import { FilesService } from '../files/files.service';
 import { WorkOrderMediaResponseDto, WorkOrderMediaListDto } from './work-order-media.dto';
-
-const ALLOWED_MIME_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/heic',
-  'image/heif',
-  'application/pdf',
-]);
 
 // Whitelist дозволених розширень — захист від файлів які mime спуфить
 // (HTML/JS не може бути виконаний через MinIO, але блокуємо явно для defense in depth).
@@ -56,11 +49,20 @@ export class WorkOrderMediaService {
     uploadedBy: string,
     file: UploadFileInput,
   ): Promise<WorkOrderMediaResponseDto> {
-    if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
+    // BR-SEC-UPLOAD (M4): тип визначаємо за МАГІЧНИМИ БАЙТАМИ вмісту, а не за заявленим клієнтом
+    // `part.mimetype` (його тривіально підробити — перейменувати .exe/.html → .png і виставити
+    // image/png у multipart-частині). Ендпоінт приймає зображення й PDF (фото/скани наряду; web
+    // шле `accept="image/*,application/pdf"`). Content-Type, який ляже у сховище й у DB (а отже й
+    // у signedUrl), — канонічний із сигнатури, а не з клієнта.
+    const detected = detectMimeFromBuffer(file.buffer);
+    if (!isDetectedImage(detected) && detected !== 'application/pdf') {
       throw new BadRequestException(
         translateError('err.workOrderMedia.disallowedFormat', getLocale()),
       );
     }
+    // Після guard вище `detected` гарантовано не null (кидає інакше); narrowing через
+    // boolean-функцію TS не виводить, тож фіксуємо тип явно (як у files.controller).
+    const mimetype = detected as string;
     if (file.size > MAX_SIZE_BYTES) {
       throw new BadRequestException(translateError('err.workOrderMedia.tooLarge', getLocale()));
     }
@@ -84,7 +86,7 @@ export class WorkOrderMediaService {
 
     const objectName = `org/${orgId}/work-orders/${workOrderId}/${crypto.randomUUID()}.${ext}`;
 
-    await this.files.uploadRaw(file.buffer, objectName, file.mimetype);
+    await this.files.uploadRaw(file.buffer, objectName, mimetype);
 
     const record = await this.prisma.workOrderMedia.create({
       data: {
@@ -92,7 +94,7 @@ export class WorkOrderMediaService {
         workOrderId,
         fileKey: objectName,
         filename,
-        mimeType: file.mimetype,
+        mimeType: mimetype,
         sizeBytes: file.size,
         uploadedBy,
       },

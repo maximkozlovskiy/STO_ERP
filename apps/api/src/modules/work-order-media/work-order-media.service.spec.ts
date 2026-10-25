@@ -14,10 +14,16 @@ import { modelMock, type PrismaModelMock } from '../../common/testing/prisma-moc
  *
  * Решта:
  *  - tenant+WO scope на findFirst/deleteMany (захист від cross-tenant видалення у race-вікні);
- *  - валідація mime/розширення/розміру ДО звернення до БД і MinIO;
+ *  - BR-SEC-UPLOAD (M4): тип визначається за МАГІЧНИМИ БАЙТАМИ вмісту, а не за клієнтським
+ *    `mimetype`; у MinIO і DB (отже й у signedUrl) лягає КАНОНІЧНИЙ тип із сигнатури;
+ *  - валідація байтів/розширення/розміру ДО звернення до БД і MinIO;
  *  - sanitizeFilename прибирає path-traversal;
  *  - total у findAll = реальний count, а не довжина take-зрізу.
  */
+
+// Реальні сигнатури: вміст визначає тип, а не заявлений клієнтом mimetype.
+const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+const PDF_BYTES = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
 describe('WorkOrderMediaService', () => {
   let prisma: { workOrder: PrismaModelMock; workOrderMedia: PrismaModelMock };
   let files: {
@@ -33,7 +39,7 @@ describe('WorkOrderMediaService', () => {
   const FILE_KEY = 'org/org-1/work-orders/wo-1/abc.jpg';
 
   const validFile = (over: Record<string, unknown> = {}) => ({
-    buffer: Buffer.from('data'),
+    buffer: JPEG_BYTES,
     filename: 'photo.jpg',
     mimetype: 'image/jpeg',
     size: 1024,
@@ -74,12 +80,27 @@ describe('WorkOrderMediaService', () => {
   });
 
   describe('upload — валідація ДО БД і MinIO', () => {
-    it('заборонений mime → 400, у MinIO/БД нічого не пишеться', async () => {
+    it('вміст не зображення/не PDF (хоч клієнт заявив image/png) → 400 (M4)', async () => {
+      // Вміст — HTML/текст (підробка .exe/.html → .png), клієнтський mimetype бреше image/png.
+      // Тип визначається за БАЙТАМИ → відмова; у MinIO/БД нічого не пишеться.
+      const htmlBytes = Buffer.from('<html><script>alert(1)</script></html>', 'utf-8');
       await expect(
-        svc.upload(ORG, WO, 'emp-1', validFile({ mimetype: 'text/html' })),
+        svc.upload(
+          ORG,
+          WO,
+          'emp-1',
+          validFile({ buffer: htmlBytes, mimetype: 'image/png', filename: 'evil.png' }),
+        ),
       ).rejects.toThrow(BadRequestException);
       expect(files.uploadRaw).not.toHaveBeenCalled();
       expect(prisma.workOrderMedia.create).not.toHaveBeenCalled();
+    });
+
+    it('тип у MinIO і БД — КАНОНІЧНИЙ із сигнатури, а не клієнтський mimetype (M4)', async () => {
+      // Клієнт бреше image/png, але байти — JPEG → і сховище, і DB мусять зафіксувати image/jpeg.
+      await svc.upload(ORG, WO, 'emp-1', validFile({ mimetype: 'image/png' }));
+      expect(files.uploadRaw.mock.calls[0][2]).toBe('image/jpeg');
+      expect(prisma.workOrderMedia.create.mock.calls[0][0].data.mimeType).toBe('image/jpeg');
     });
 
     it('розмір > 10MB → 400', async () => {
@@ -89,10 +110,15 @@ describe('WorkOrderMediaService', () => {
       expect(files.uploadRaw).not.toHaveBeenCalled();
     });
 
-    it('розширення не з whitelist (mime ок, але .exe) → 400', async () => {
-      // mime валідний (application/pdf), а розширення .exe — має впасти на ext-перевірці.
+    it('розширення не з whitelist (байти ок — PDF, але .exe) → 400', async () => {
+      // Вміст валідний (PDF-сигнатура), а розширення .exe — має впасти на ext-перевірці.
       await expect(
-        svc.upload(ORG, WO, 'emp-1', validFile({ mimetype: 'application/pdf', filename: 'x.exe' })),
+        svc.upload(
+          ORG,
+          WO,
+          'emp-1',
+          validFile({ buffer: PDF_BYTES, mimetype: 'application/pdf', filename: 'x.exe' }),
+        ),
       ).rejects.toThrow(BadRequestException);
       expect(files.uploadRaw).not.toHaveBeenCalled();
     });
