@@ -152,8 +152,11 @@ export class BookingService {
         select: { id: true, name: true },
         take: 50,
       }),
+      // BR-CAL-006: слот займає день, якщо ПЕРЕТИНАЄ його, а не лише починається в ньому —
+      // нічний запис (22:00 напередодні → 02:00) інакше випадав і підйомник здавався вільним.
+      // Дзеркалить `CalendarService.findSlots`; `dayEnd` — остання мілісекунда доби, тому `lte`.
       this.prisma.calendarSlot.findMany({
-        where: { orgId, startAt: { gte: dayStart, lte: dayEnd }, deletedAt: null },
+        where: { orgId, startAt: { lte: dayEnd }, endAt: { gt: dayStart }, deletedAt: null },
         select: { liftId: true, startAt: true, endAt: true },
         take: 500,
       }),

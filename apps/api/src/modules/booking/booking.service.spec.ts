@@ -505,6 +505,30 @@ describe('BookingService', () => {
       expect(times).not.toContain('10:00');
       expect(times).toContain('11:00');
     });
+
+    // Нічний запис почався НАПЕРЕДОДНІ й триває в запитаний день. Відбір за входженням `startAt`
+    // у добу його губив, і ранкові вікна показувались вільними на зайнятому підйомнику.
+    // Мутація: повернути `startAt: { gte: dayStart, lte: dayEnd }` → 00:00 і 01:00 «вільні».
+    // guards: BR-CAL-004, BR-CAL-006
+    it('слот 22:00 напередодні → 02:00 займає підйомник у ранкових вікнах запитаного дня', async () => {
+      arrange({
+        settings: {
+          workStartTime: '00:00',
+          workEndTime: '04:00',
+          slotDurationMinutes: 60,
+          workDays: [1, 2, 3, 4, 5],
+        },
+        slots: [
+          fakeSlot({
+            liftId: 'lift-1',
+            startAt: new Date('2026-05-31T22:00:00.000+03:00'),
+            endAt: kyiv('02:00'),
+          }),
+        ],
+      });
+
+      expect(await freeTimes()).toEqual(['02:00', '03:00']);
+    });
   });
 
   // Межі дня у запитах онлайн-запису. Зсув Києва береться ОДИН на день — на 12:00Z цієї дати
@@ -555,7 +579,12 @@ describe('BookingService', () => {
 
         const slotWhere = prisma.calendarSlot.findMany.mock.calls[0][0].where;
         const requestWhere = prisma.bookingRequest.findMany.mock.calls[0][0].where;
-        expect(iso(slotWhere.startAt)).toEqual([start, end]);
+        // BR-CAL-006: слоти — за перетином з добою (endAt > початку, startAt ≤ кінця), не за startAt.
+        expect([slotWhere.endAt.gt.toISOString(), slotWhere.startAt.lte.toISOString()]).toEqual([
+          start,
+          end,
+        ]);
+        expect(slotWhere.startAt.gte).toBeUndefined();
         expect(iso(requestWhere.requestedDate)).toEqual([start, end]);
         expect(slotWhere.orgId).toBe(orgId);
         expect(requestWhere.orgId).toBe(orgId);
@@ -610,7 +639,7 @@ describe('BookingService', () => {
       await service.findAll(orgId, { date: '0001-01-01' });
 
       const slotWhere = prisma.calendarSlot.findMany.mock.calls[0][0].where;
-      expect(slotWhere.startAt.gte.toISOString()).toBe('0001-01-01T00:00:00.000Z');
+      expect(slotWhere.endAt.gt.toISOString()).toBe('0001-01-01T00:00:00.000Z');
       for (const call of prisma.bookingRequest.findMany.mock.calls) {
         expect(call[0].where.requestedDate.gte.toISOString()).toBe('0001-01-01T00:00:00.000Z');
         expect(call[0].where.requestedDate.lte.getTime()).toBeGreaterThan(
