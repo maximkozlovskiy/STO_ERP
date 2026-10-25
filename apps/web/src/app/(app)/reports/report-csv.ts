@@ -102,5 +102,15 @@ export function buildCsv(tab: string, data: ReportData, t: TFunction<'reports'>)
     ];
     return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }
+  if (tab === 'vat' && data._tab === 'vat') {
+    // Bug #977: гілки «ПДВ» не було — кнопка «Експорт CSV» на вкладці давала файл з одним BOM.
+    const rows = [
+      [t('page.csv.indicator'), t('page.csv.amount')],
+      [t('page.vat.invoiced'), data.invoiced],
+      [t('page.vat.purchases'), data.purchases],
+      [t('page.vat.net'), data.net],
+    ];
+    return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
+  }
   return '';
 }

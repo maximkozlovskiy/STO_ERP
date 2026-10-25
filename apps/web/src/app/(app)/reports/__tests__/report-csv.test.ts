@@ -79,4 +79,39 @@ describe('report-csv › buildCsv', () => {
     expect(rows[2]).toMatch(/;100;10$/);
     expect(rows[3]).toMatch(/;593;59,3$/);
   });
+
+  // guards: BR-RPT-021
+  it("«ПДВ»: файл не порожній — нараховано, сплачено, до сплати; від'ємне — числом (Bug #977)", () => {
+    const data = {
+      _tab: 'vat',
+      invoiced: 1250.5,
+      purchases: 1400,
+      net: -149.5,
+      from: '2026-10-01',
+      to: '2026-10-25',
+    } as ReportData;
+    const csv = buildCsv('vat', data, t);
+    expect(csv.split('\n')).toHaveLength(4);
+    expect(lines(csv)).toEqual([
+      `${t('page.vat.invoiced')};1250,5`,
+      `${t('page.vat.purchases')};1400`,
+      `${t('page.vat.net')};-149,5`,
+    ]);
+  });
+
+  // guards: BR-RPT-021
+  it('кожна вкладка з даними дає непорожній CSV', () => {
+    // Вкладка без гілки в buildCsv мовчки віддавала '' — порожній файл замість помилки.
+    const tabs = ['revenue', 'work-orders', 'stock', 'settlements', 'load', 'profitability', 'vat'];
+    const minimal: Record<string, ReportData> = {
+      revenue: { _tab: 'revenue', rows: [], from: '', to: '' } as unknown as ReportData,
+      'work-orders': { _tab: 'work-orders', rows: [] } as unknown as ReportData,
+      stock: { _tab: 'stock', stockItems: [] } as unknown as ReportData,
+      settlements: { _tab: 'settlements', rows: [] } as unknown as ReportData,
+      load: { _tab: 'load', rows: [] } as unknown as ReportData,
+      profitability: { _tab: 'profitability', totalRevenue: 0 } as unknown as ReportData,
+      vat: { _tab: 'vat', invoiced: 0, purchases: 0, net: 0 } as unknown as ReportData,
+    };
+    for (const tab of tabs) expect(buildCsv(tab, minimal[tab], t), tab).not.toBe('');
+  });
 });
