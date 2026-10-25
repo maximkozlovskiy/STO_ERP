@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { createPgAdapter } from '../../prisma/pg-adapter';
 import { handleDbUnavailable, testDatabaseUrl } from '../../common/testing/require-db';
 import { ReportBuilderService, type FullReportConfig } from './report-builder.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import {
   REGISTRY,
@@ -12,7 +13,12 @@ import {
   type ReportFieldDef,
 } from './report-registry';
 import { buildQuery } from './report-query.builder';
-import { aggregate, type GroupNode, type ReportAggInput } from './report-aggregator';
+import {
+  aggregate,
+  type CurrencyAggregates,
+  type GroupNode,
+  type ReportAggInput,
+} from './report-aggregator';
 import type { ReportFilterInput } from './report-condition';
 
 /**
@@ -31,6 +37,8 @@ import type { ReportFilterInput } from './report-condition';
 let dbAvailable = false;
 let raw: PrismaClient;
 let orgId = '';
+/** Коди валют організації з довідника `Currency` (перша — базова, далі решта). */
+let currencyCodes: string[] = [];
 let service: ReportBuilderService;
 
 beforeAll(async () => {
@@ -52,7 +60,14 @@ beforeAll(async () => {
     handleDbUnavailable('no organisation in the database (seed not applied)');
     return;
   }
-  service = new ReportBuilderService(raw as unknown as PrismaService);
+  const rates = new ExchangeRatesService(raw as unknown as PrismaService);
+  service = new ReportBuilderService(raw as unknown as PrismaService, rates);
+  const { code: base } = await rates.getBaseCurrency(orgId);
+  const currencies = await raw.currency.findMany({
+    where: { orgId, deletedAt: null },
+    select: { code: true },
+  });
+  currencyCodes = [base, ...currencies.map(c => c.code).filter(c => c !== base)];
   dbAvailable = true;
 }, 60_000);
 
@@ -93,10 +108,17 @@ async function compare(config: FullReportConfig, label: string): Promise<void> {
   // й закупівлі в ту саму базу, і два окремі читання бачили різні дані (хибна розбіжність).
   const { actual, rows } = await raw.$transaction(
     async tx => {
-      const svc = new ReportBuilderService(tx as unknown as PrismaService);
-      const built = buildQuery(config, orgId);
+      const svc = new ReportBuilderService(
+        tx as unknown as PrismaService,
+        new ExchangeRatesService(tx as unknown as PrismaService),
+      );
+      const actual = await svc.run(orgId, config);
+      // Еталону потрібен код валюти кожного рядка (розбивка за валютами, BR-RPT-029).
+      const currencyPath = REGISTRY[config.entity].currencyPath;
+      const columns = currencyPath ? [...config.columns, currencyPath] : config.columns;
+      const built = buildQuery({ ...config, columns }, orgId, actual.baseCurrency);
       return {
-        actual: await svc.run(orgId, config),
+        actual,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         rows: (await (tx as any)[built.model].findMany({
           ...built.args,
@@ -109,7 +131,13 @@ async function compare(config: FullReportConfig, label: string): Promise<void> {
   const aggs: ReportAggInput[] = actual.aggregations.map(a => ({ field: a.field, agg: a.agg }));
   const expected = aggregate(
     rows,
-    { groupBy: config.groupBy, columns: config.columns, aggregations: aggs, includeRows: true },
+    {
+      groupBy: config.groupBy,
+      columns: config.columns,
+      aggregations: aggs,
+      includeRows: true,
+      baseCurrency: actual.baseCurrency,
+    },
     REGISTRY[config.entity],
   );
 
@@ -119,6 +147,11 @@ async function compare(config: FullReportConfig, label: string): Promise<void> {
       true,
     );
   }
+  expectSameByCurrency(
+    actual.result.grandTotalsByCurrency,
+    expected.grandTotalsByCurrency,
+    `${label}: Разом`,
+  );
 
   if (config.groupBy.length > 0) {
     const a = flattenTree(actual.result.tree);
@@ -130,13 +163,33 @@ async function compare(config: FullReportConfig, label: string): Promise<void> {
       for (const [alias, v] of Object.entries(en.aggregates)) {
         expect(close(an.aggregates[alias] ?? null, v), `${label}: ${path} ${alias}`).toBe(true);
       }
+      expectSameByCurrency(an.byCurrency, en.byCurrency, `${label}: ${path}`);
     }
   } else if (config.columns.length > 0 && !actual.result.detailTruncated) {
     const key = (r: Record<string, unknown>) =>
-      config.columns.map(c => cell(r[c])).join('|') + `#${String(r.__mergedCount)}`;
+      [...config.columns, '__currency'].map(c => cell(r[c])).join('|') +
+      `#${String(r.__mergedCount)}`;
     expect(actual.result.detailRows.map(key).sort(), `${label}: склеєні рядки`).toEqual(
       expected.detailRows.map(key).sort(),
     );
+  }
+}
+
+/** Розбивка за валютами (alias → код → значення) збігається з еталоном. */
+function expectSameByCurrency(
+  actual: CurrencyAggregates | undefined,
+  expected: CurrencyAggregates | undefined,
+  label: string,
+): void {
+  expect(actual === undefined, `${label}: є розбивка за валютами`).toBe(expected === undefined);
+  for (const [alias, perCode] of Object.entries(expected ?? {})) {
+    const got = actual?.[alias] ?? {};
+    expect(Object.keys(got).sort(), `${label}: валюти ${alias}`).toEqual(
+      Object.keys(perCode).sort(),
+    );
+    for (const [code, v] of Object.entries(perCode)) {
+      expect(close(got[code] ?? null, v), `${label}: ${alias} ${code}`).toBe(true);
+    }
   }
 }
 
@@ -152,6 +205,22 @@ function filtersFor(e: ReportEntityDef, f: ReportFieldDef): ReportFilterInput[] 
       { field: f.key, op: 'isNull', value: true },
       { field: f.key, op: 'isNull', value: false },
     );
+  }
+  // BR-RPT-029: документ без валюти — у базовій; Prisma дає це OR-гілкою «валюти немає», SQL — COALESCE.
+  // Коди — з довідника валют організації (базова першою), не літерали.
+  if (f.prismaPath === e.currencyPath) {
+    const [base, other] = currencyCodes;
+    out.push(
+      { field: f.key, op: 'eq', value: base },
+      { field: f.key, op: 'ne', value: base },
+      { field: f.key, op: 'contains', value: base.slice(0, 2).toLowerCase() },
+    );
+    if (other) {
+      out.push(
+        { field: f.key, op: 'eq', value: other },
+        { field: f.key, op: 'in', value: [base, other] },
+      );
+    }
   }
   switch (f.type) {
     case 'enum': {

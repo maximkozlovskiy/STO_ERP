@@ -33,6 +33,8 @@ function setup(stored: Record<string, unknown> | null = { id: ID, config: validC
   const service = new ReportBuilderService(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     { savedReport, invoice, $queryRaw } as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    { getBaseCurrency: async () => ({ id: null, code: 'UAH' }) } as any,
   );
   return { service, savedReport, invoice, $queryRaw };
 }
@@ -179,7 +181,8 @@ describe('ReportBuilderService — tenant-межа запуску', () => {
   it('run: кожен SQL-агрегат несе orgId викликача параметром, не текстом', async () => {
     const { service, $queryRaw } = setup();
     await service.run(ORG, validConfig());
-    expect($queryRaw).toHaveBeenCalledTimes(2); // «Разом» + склеєні плоскі рядки
+    // «Разом» + розбивка сум за валютами документа (BR-RPT-029) + склеєні плоскі рядки
+    expect($queryRaw).toHaveBeenCalledTimes(3);
     for (const [sql] of $queryRaw.mock.calls as [{ sql: string; values: unknown[] }][]) {
       expect(sql.values).toContain(ORG);
       expect(sql.sql).toContain('t0."orgId" =');

@@ -57,6 +57,9 @@ export interface ReportFieldDef {
   /** Колонка допускає NULL — лише тоді доречні «порожнє / заповнене» (інакше 400 з назвою поля).
    *  Звіряється зі схемою Prisma у `report-registry.spec.ts`. */
   nullable?: boolean;
+  /** Сума / ціна у валюті документа (BR-RPT-029): складається лише в межах однієї валюти — у групі й
+   *  «Разом» із кількома валютами показується розбивкою за кодом (`byCurrency`). */
+  inDocumentCurrency?: boolean;
 }
 
 export interface ReportRelationDef {
@@ -99,6 +102,9 @@ export interface ReportEntityDef {
    *  за замовчуванням не входить у звіт, як і в решті підсумків застосунку. Фільтр користувача по
    *  цьому полю (порожнє / заповнене / дата) замінює умову за замовчуванням. */
   voidedField?: string;
+  /** Шлях до коду валюти документа (`currency.code`, `workOrder.currency.code`). Порожня валюта
+   *  документа = базова валюта організації (BR-RPT-029, рішення власника 2026-10-25). */
+  currencyPath?: string;
   defaultSort: { path: string; dir: 'asc' | 'desc' };
   fields: ReportFieldDef[];
   relations: ReportRelationDef[];
@@ -242,6 +248,12 @@ const relation = (
   optional: opts.optional ?? false,
 });
 
+/** Сума / ціна у валюті документа (див. `ReportFieldDef.inDocumentCurrency`). */
+const inDocumentCurrency = (f: ReportFieldDef): ReportFieldDef => ({
+  ...f,
+  inDocumentCurrency: true,
+});
+
 /** Поле, колонка якого допускає NULL (див. `ReportFieldDef.nullable`). */
 const nullable = (f: ReportFieldDef): ReportFieldDef => ({ ...f, nullable: true });
 
@@ -254,6 +266,7 @@ const workOrder: ReportEntityDef = {
   label: 'Наряди',
   profile: 'FULL',
   hasSoftDelete: true,
+  currencyPath: 'currency.code',
   dateField: 'documentDate',
   defaultSort: { path: 'createdAt', dir: 'desc' },
   fields: [
@@ -261,12 +274,12 @@ const workOrder: ReportEntityDef = {
     enumField('status', 'Статус', 'WorkOrderStatus'),
     enumField('priority', 'Пріоритет', 'WorkOrderPriority'),
     // BR-RPT-023 / BR-WO-007: три однозначні суми наряду — без ПДВ, ПДВ, до сплати (з ПДВ).
-    sumField('totalNet', 'Сума (без ПДВ)'),
-    sumField('totalAmount', 'Сума з ПДВ'),
-    sumField('totalLabor', 'Роботи'),
-    sumField('totalParts', 'Запчастини'),
-    sumField('totalVat', 'ПДВ'),
-    sumField('paidAmount', 'Оплачено'),
+    inDocumentCurrency(sumField('totalNet', 'Сума без ПДВ (у валюті наряду)')),
+    inDocumentCurrency(sumField('totalAmount', 'Сума з ПДВ (у валюті наряду)')),
+    inDocumentCurrency(sumField('totalLabor', 'Роботи (у валюті наряду)')),
+    inDocumentCurrency(sumField('totalParts', 'Запчастини (у валюті наряду)')),
+    inDocumentCurrency(sumField('totalVat', 'ПДВ (у валюті наряду)')),
+    inDocumentCurrency(sumField('paidAmount', 'Оплачено (у валюті наряду)')),
     nullable(dateField('completedAt', 'Завершено')),
     dateField('documentDate', 'Дата', { dateOnly: true }),
     // Суми наряду — у його валюті; базової суми в чернетці ще немає (курс фіксується пізніше),
@@ -294,13 +307,14 @@ const workOrderPart: ReportEntityDef = {
   label: 'Запчастини у нарядах',
   profile: 'FULL',
   hasSoftDelete: true,
+  currencyPath: 'workOrder.currency.code',
   dateField: 'createdAt',
   parentRelations: ['workOrder'],
   defaultSort: { path: 'createdAt', dir: 'desc' },
   fields: [
     sumField('quantity', 'Кількість', 'number'),
-    rateField('price', 'Ціна'),
-    sumField('amount', 'Сума'),
+    inDocumentCurrency(rateField('price', 'Ціна (у валюті наряду)')),
+    inDocumentCurrency(sumField('amount', 'Сума (у валюті наряду)')),
     nullable(sumField('batchCostPrice', 'Собівартість')),
     // relation-колонки (good рівень 1, good→brand рівень 2 — зрозумілий ланцюг):
     textField('good.name', 'Товар'),
@@ -308,6 +322,7 @@ const workOrderPart: ReportEntityDef = {
     textField('good.brand.name', 'Бренд'),
     textField('warehouse.name', 'Склад'),
     textField('workOrder.number', 'Наряд'),
+    textField('workOrder.currency.code', 'Валюта'),
     nullable(textField('workOrder.counterparty.companyName', 'Контрагент')),
     enumField('workOrder.counterparty.type', 'Тип контрагента', 'CounterpartyType'),
   ],
@@ -316,6 +331,7 @@ const workOrderPart: ReportEntityDef = {
     relation('good.brand', 'Бренд', 'brand', { optional: true }),
     relation('warehouse', 'Склад', 'warehouse'),
     relation('workOrder', 'Наряд', 'workOrder'),
+    relation('workOrder.currency', 'Валюта наряду', 'currency'),
     relation('workOrder.counterparty', 'Контрагент (наряду)', 'counterparty'),
   ],
 };
@@ -327,18 +343,20 @@ const purchaseOrderLine: ReportEntityDef = {
   label: 'Рядки закупівель',
   profile: 'FULL',
   hasSoftDelete: true,
+  currencyPath: 'purchaseOrder.currency.code',
   dateField: 'createdAt',
   parentRelations: ['purchaseOrder'],
   defaultSort: { path: 'createdAt', dir: 'desc' },
   fields: [
     sumField('quantity', 'Кількість', 'number'),
-    rateField('price', 'Ціна'),
-    sumField('vatAmount', 'ПДВ'),
+    inDocumentCurrency(rateField('price', 'Ціна (у валюті закупівлі)')),
+    inDocumentCurrency(sumField('vatAmount', 'ПДВ (у валюті закупівлі)')),
     sumField('receivedQty', 'Отримано', 'number'),
     textField('good.name', 'Товар'),
     nullable(textField('good.sku', 'SKU')),
     textField('good.brand.name', 'Бренд'),
     textField('purchaseOrder.number', 'Закупівля'),
+    textField('purchaseOrder.currency.code', 'Валюта'),
     enumField('purchaseOrder.status', 'Статус', 'PurchaseOrderStatus'),
     nullable(textField('purchaseOrder.supplier.companyName', 'Постачальник')),
     enumField('purchaseOrder.supplier.type', 'Тип постачальника', 'CounterpartyType'),
@@ -347,6 +365,7 @@ const purchaseOrderLine: ReportEntityDef = {
     relation('good', 'Товар', 'good'),
     relation('good.brand', 'Бренд', 'brand', { optional: true }),
     relation('purchaseOrder', 'Закупівля', 'purchaseOrder'),
+    relation('purchaseOrder.currency', 'Валюта закупівлі', 'currency'),
     relation('purchaseOrder.supplier', 'Постачальник', 'counterparty'),
   ],
 };
@@ -359,17 +378,18 @@ const invoice: ReportEntityDef = {
   label: 'Рахунки',
   profile: 'FULL',
   hasSoftDelete: true,
+  currencyPath: 'currency.code',
   dateField: 'documentDate',
   defaultSort: { path: 'createdAt', dir: 'desc' },
   fields: [
     textField('number', 'Номер'),
     enumField('status', 'Статус', 'InvoiceStatus'),
-    sumField('amount', 'Сума (у валюті рахунку)'),
+    inDocumentCurrency(sumField('amount', 'Сума (у валюті рахунку)')),
     nullable(sumField('totalAmountBase', 'Сума в базовій валюті')),
     textField('currency.code', 'Валюта'),
-    sumField('totalWithoutVat', 'Без ПДВ'),
-    sumField('totalVat', 'ПДВ'),
-    sumField('totalWithVat', 'З ПДВ'),
+    inDocumentCurrency(sumField('totalWithoutVat', 'Без ПДВ (у валюті рахунку)')),
+    inDocumentCurrency(sumField('totalVat', 'ПДВ (у валюті рахунку)')),
+    inDocumentCurrency(sumField('totalWithVat', 'З ПДВ (у валюті рахунку)')),
     dateField('documentDate', 'Дата', { dateOnly: true }),
     nullable(dateField('dueDate', 'Термін оплати')),
     nullable(textField('counterparty.companyName', 'Контрагент')),
@@ -391,6 +411,7 @@ const payment: ReportEntityDef = {
   label: 'Платежі клієнтів',
   profile: 'APPEND_ONLY',
   hasSoftDelete: false,
+  currencyPath: 'currency.code',
   dateField: 'createdAt',
   // BR-CASH-024: сторнована оплата лишається в таблиці (append-only), але вже не «гроші в касі» —
   // рахунки, звірка й лояльність її не рахують, тож і звіт за замовчуванням (BR-RPT-026).
@@ -399,7 +420,7 @@ const payment: ReportEntityDef = {
   fields: [
     // Мультивалюта: «Сума» — у валюті оплати; складати різні валюти можна лише в межах однієї
     // (групування за «Валюта»), загальний підсумок — по сумі в базовій валюті.
-    sumField('amount', 'Сума (у валюті оплати)'),
+    inDocumentCurrency(sumField('amount', 'Сума (у валюті оплати)')),
     nullable(sumField('amountBase', 'Сума в базовій валюті')),
     textField('currency.code', 'Валюта'),
     textField('method', 'Спосіб'),
@@ -425,11 +446,12 @@ const settlementTransaction: ReportEntityDef = {
   label: 'Розрахунки (транзакції)',
   profile: 'APPEND_ONLY',
   hasSoftDelete: false,
+  currencyPath: 'currency.code',
   dateField: 'createdAt',
   defaultSort: { path: 'createdAt', dir: 'desc' },
   fields: [
     enumField('type', 'Тип', 'SettlementTransactionType'),
-    sumField('amount', 'Сума (у валюті проводки)'),
+    inDocumentCurrency(sumField('amount', 'Сума (у валюті проводки)')),
     nullable(sumField('amountBase', 'Сума в базовій валюті')),
     textField('currency.code', 'Валюта'),
     nullable(textField('documentType', 'Тип документа')),
@@ -634,8 +656,18 @@ export function emptinessOf(
   };
 }
 
+/** Чи потрібен детальному рядку код валюти документа: є колонка у валюті документа. */
+export function needsCurrency(entity: ReportEntityDef, columns: string[]): boolean {
+  return (
+    entity.currencyPath !== undefined &&
+    columns.some(k => getField(entity, k).inDocumentCurrency === true)
+  );
+}
+
 /** Чи може поле бути порожнім — лише тоді доречні «порожнє / заповнене». */
 export function canBeEmpty(entity: ReportEntityDef, prismaPath: string): boolean {
+  // Код валюти документа порожнім не буває: порожня валюта = базова (BR-RPT-029).
+  if (prismaPath === entity.currencyPath) return false;
   const e = emptinessOf(entity, prismaPath);
   return e.optionalHops.length > 0 || e.leafNullable || e.text;
 }

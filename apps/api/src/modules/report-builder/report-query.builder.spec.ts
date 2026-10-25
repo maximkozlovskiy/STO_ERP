@@ -2,12 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { buildQuery, REPORT_TAKE_CAP } from './report-query.builder';
 
+/** Базова валюта тестової організації (у застосунку — з OrganisationSettings). */
+const BASE = 'UAH';
+
 const ORG = 'org-1';
 
 describe('report-query.builder', () => {
   // guards: BR-RPT-006, BR-RPT-007
   it('інжектить orgId + deletedAt для FULL-профілю', () => {
-    const q = buildQuery({ entity: 'workOrder', columns: ['number'], groupBy: [] }, ORG);
+    const q = buildQuery({ entity: 'workOrder', columns: ['number'], groupBy: [] }, ORG, BASE);
     expect(q.model).toBe('workOrder');
     expect(q.args.where).toMatchObject({ orgId: ORG, deletedAt: null });
     expect(q.args.take).toBe(REPORT_TAKE_CAP);
@@ -15,7 +18,7 @@ describe('report-query.builder', () => {
 
   // guards: BR-RPT-001
   it('невідома сутність → BadRequestException', () => {
-    expect(() => buildQuery({ entity: 'hacker', columns: [], groupBy: [] }, ORG)).toThrow(
+    expect(() => buildQuery({ entity: 'hacker', columns: [], groupBy: [] }, ORG, BASE)).toThrow(
       BadRequestException,
     );
   });
@@ -23,7 +26,7 @@ describe('report-query.builder', () => {
   // guards: BR-RPT-001
   it('proto-injection у entity (__proto__/constructor) → BadRequestException', () => {
     for (const bad of ['__proto__', 'constructor', 'toString']) {
-      expect(() => buildQuery({ entity: bad, columns: [], groupBy: [] }, ORG)).toThrow(
+      expect(() => buildQuery({ entity: bad, columns: [], groupBy: [] }, ORG, BASE)).toThrow(
         BadRequestException,
       );
     }
@@ -32,7 +35,7 @@ describe('report-query.builder', () => {
   // guards: BR-RPT-002
   it('невідоме поле у columns → BadRequestException', () => {
     expect(() =>
-      buildQuery({ entity: 'workOrder', columns: ['secretField'], groupBy: [] }, ORG),
+      buildQuery({ entity: 'workOrder', columns: ['secretField'], groupBy: [] }, ORG, BASE),
     ).toThrow(BadRequestException);
   });
 
@@ -40,6 +43,7 @@ describe('report-query.builder', () => {
     const q = buildQuery(
       { entity: 'workOrderPart', columns: ['good.brand.name'], groupBy: [] },
       ORG,
+      BASE,
     );
     // good → select → brand → select:{name:true}. Все "усередині" — тільки select
     // (Prisma забороняє include+select на одному рівні).
@@ -56,6 +60,7 @@ describe('report-query.builder', () => {
     const q = buildQuery(
       { entity: 'workOrderPart', columns: ['good.name', 'good.brand.name'], groupBy: [] },
       ORG,
+      BASE,
     );
     const good = (q.args.include as Record<string, unknown>).good as Record<string, unknown>;
     // Bug #617: раніше було good.select + good.include одночасно → Prisma 400.
@@ -75,6 +80,7 @@ describe('report-query.builder', () => {
         groupBy: [],
       },
       ORG,
+      BASE,
     );
     const wo = (q.args.include as Record<string, unknown>).workOrder as Record<string, unknown>;
     expect(wo.include).toBeUndefined();
@@ -95,6 +101,7 @@ describe('report-query.builder', () => {
           filters: [{ field: 'status', op: 'eq', value: 'COMPLETED' }],
         },
         ORG,
+        BASE,
       ),
     ).not.toThrow();
     expect(() =>
@@ -106,6 +113,7 @@ describe('report-query.builder', () => {
           filters: [{ field: 'status', op: 'eq', value: 'HACKED' }],
         },
         ORG,
+        BASE,
       ),
     ).toThrow(BadRequestException);
   });
@@ -124,6 +132,7 @@ describe('report-query.builder', () => {
         filters: [{ field: 'counterparty.type', op: 'eq', value: 'CLIENT' }],
       },
       ORG,
+      BASE,
     );
     expect(q.args.where.counterparty).toEqual({ type: 'CLIENT' });
   });
@@ -135,6 +144,7 @@ describe('report-query.builder', () => {
       buildQuery(
         { entity, columns: [], groupBy: [], filters: [{ field, op: 'isNull', value }] },
         ORG,
+        BASE,
       ).args.where;
     // бренд товару необов'язковий, назва бренду — текст
     expect(where('workOrderPart', 'good.brand.name', true).AND).toEqual([
@@ -162,6 +172,7 @@ describe('report-query.builder', () => {
         dateRange: { from: '2026-09-01', to: '2026-09-30' },
       },
       ORG,
+      BASE,
     );
     const w = q.args.where as Record<string, { gte: Date; lte: Date }>;
     expect(w.documentDate.gte).toBeInstanceOf(Date);
@@ -170,7 +181,7 @@ describe('report-query.builder', () => {
   });
 
   it('orderBy fallback на defaultSort коли sort порожній', () => {
-    const q = buildQuery({ entity: 'workOrder', columns: ['number'], groupBy: [] }, ORG);
+    const q = buildQuery({ entity: 'workOrder', columns: ['number'], groupBy: [] }, ORG, BASE);
     expect(q.args.orderBy).toEqual([{ createdAt: 'desc' }]);
   });
 
@@ -183,6 +194,7 @@ describe('report-query.builder', () => {
         sort: [{ field: 'good.name', dir: 'asc' }],
       },
       ORG,
+      BASE,
     );
     expect(q.args.orderBy).toEqual([{ good: { name: 'asc' } }]);
   });
@@ -196,7 +208,7 @@ describe('report-query.builder', () => {
     ['sort', { sort: [{ field: 'secretField', dir: 'asc' as const }] }],
   ])('невідоме поле у %s → BadRequestException', (_slot, part) => {
     expect(() =>
-      buildQuery({ entity: 'workOrder', columns: [], groupBy: [], ...part }, ORG),
+      buildQuery({ entity: 'workOrder', columns: [], groupBy: [], ...part }, ORG, BASE),
     ).toThrow(BadRequestException);
   });
 
@@ -212,6 +224,7 @@ describe('report-query.builder', () => {
             filters: [{ field: 'number', op: op as never, value: 'WO' }],
           },
           ORG,
+          BASE,
         ),
       ).toThrow(BadRequestException);
     }
@@ -223,6 +236,7 @@ describe('report-query.builder', () => {
       buildQuery(
         { entity, columns: [], groupBy: [], filters: [{ field, op: 'contains', value }] },
         ORG,
+        BASE,
       );
     expect(() => run('workOrder', 'status', 'COMPLETED')).toThrow(BadRequestException); // enum
     expect(() => run('workOrderPart', 'quantity', 5)).toThrow(BadRequestException); // number
@@ -243,6 +257,7 @@ describe('report-query.builder', () => {
         filters: [{ field: 'method', op: 'contains', value: 'bank_100%\\x' }],
       },
       ORG,
+      BASE,
     ).args.where;
     expect(where.method).toEqual({ contains: 'bank\\_100\\%\\\\x', mode: 'insensitive' });
   });
@@ -258,6 +273,7 @@ describe('report-query.builder', () => {
           filters: [{ field: 'reversedAt', op: 'isNull', value }],
         },
         ORG,
+        BASE,
       ).args.where;
     expect(run(true)).toMatchObject({ orgId: ORG, reversedAt: null });
     expect(run(false)).toMatchObject({ orgId: ORG, reversedAt: { not: null } });
@@ -274,6 +290,7 @@ describe('report-query.builder', () => {
           filters: [{ field: 'number', op: 'in', value: 'WO-1' }],
         },
         ORG,
+        BASE,
       ),
     ).toThrow(BadRequestException);
   });
@@ -289,6 +306,7 @@ describe('report-query.builder', () => {
           filters: [{ field: 'quantity', op: 'gt', value: 0 }],
         },
         ORG,
+        BASE,
       ),
     ).toThrow(BadRequestException);
   });
@@ -308,7 +326,11 @@ describe('report-query.builder', () => {
       'stockBatch',
       'stockItem',
     ]) {
-      const q = buildQuery({ entity, columns: [], groupBy: [], take: 1_000_000 } as never, ORG);
+      const q = buildQuery(
+        { entity, columns: [], groupBy: [], take: 1_000_000 } as never,
+        ORG,
+        BASE,
+      );
       expect(q.args.take, entity).toBe(5000);
     }
   });
@@ -319,8 +341,11 @@ describe('report-query.builder', () => {
   it('dateRange — межі київської доби: літо UTC+3 і зима UTC+2', () => {
     const range = (from: string, to: string) =>
       (
-        buildQuery({ entity: 'payment', columns: [], groupBy: [], dateRange: { from, to } }, ORG)
-          .args.where as Record<string, { gte: Date; lte: Date }>
+        buildQuery(
+          { entity: 'payment', columns: [], groupBy: [], dateRange: { from, to } },
+          ORG,
+          BASE,
+        ).args.where as Record<string, { gte: Date; lte: Date }>
       ).createdAt;
     const summer = range('2026-09-01', '2026-09-30');
     expect(summer.gte.toISOString()).toBe('2026-08-31T21:00:00.000Z'); // 01.09 00:00 Київ
@@ -344,6 +369,7 @@ describe('report-query.builder', () => {
         buildQuery(
           { entity, columns: [], groupBy: [], dateRange: { from: '2026-10-20', to: '2026-10-20' } },
           ORG,
+          BASE,
         ).args.where as Record<string, { gte: Date; lte: Date }>
       ).documentDate;
       expect(r.gte.toISOString(), entity).toBe('2026-10-20T00:00:00.000Z');
@@ -361,6 +387,7 @@ describe('report-query.builder', () => {
         dateRange: { from: '2026-09-01', to: '2026-09-01' },
       },
       ORG,
+      BASE,
     ).args.where;
     expect(Object.keys(where).sort()).toEqual(['createdAt', 'orgId']);
   });
@@ -376,6 +403,7 @@ describe('report-query.builder', () => {
           dateRange: { from: '2026-09-30', to: '2026-09-01' },
         },
         ORG,
+        BASE,
       ),
     ).toThrow(BadRequestException);
   });
@@ -396,6 +424,7 @@ describe('report-query.builder', () => {
           ],
         },
         ORG,
+        BASE,
       );
       expect(q.args.where.amount).toEqual({ gte: 100 });
       expect(q.args.where.AND).toEqual([{ amount: { lte: 500 } }]);
@@ -415,6 +444,7 @@ describe('report-query.builder', () => {
           ],
         },
         ORG,
+        BASE,
       );
       expect(q.args.where.amount).toEqual({ gte: 100 });
       expect(q.args.where.AND).toEqual([{ amount: { lte: 500 } }, { amount: { not: 250 } }]);
@@ -431,6 +461,7 @@ describe('report-query.builder', () => {
           filters: [{ field: 'documentDate', op: 'gte', value: '2026-09-15' }],
         },
         ORG,
+        BASE,
       );
       const period = q.args.where.documentDate as { gte: Date; lte: Date };
       expect(period.gte).toBeInstanceOf(Date);
@@ -452,6 +483,7 @@ describe('report-query.builder', () => {
           ],
         },
         ORG,
+        BASE,
       );
       expect(q.args.where.orgId).toBe(ORG);
       expect(q.args.where.deletedAt).toBeNull();
@@ -466,6 +498,7 @@ describe('report-query.builder', () => {
           filters: [{ field: 'amount', op: 'gte', value: 100 }],
         },
         ORG,
+        BASE,
       );
       expect(q.args.where.amount).toEqual({ gte: 100 });
       expect(q.args.where.AND).toBeUndefined();
@@ -480,6 +513,7 @@ describe('report-query.builder', () => {
       buildQuery(
         { entity, columns: [], groupBy: [], filters: [{ field, op: op as never, value }] },
         ORG,
+        BASE,
       ).args.where;
     const rejects = (entity: string, field: string, op: string, value: unknown) =>
       expect(() => where(entity, field, op, value)).toThrow('Неприпустиме значення фільтра');
@@ -562,6 +596,7 @@ describe('report-query.builder', () => {
         buildQuery(
           { entity, columns: [], groupBy: [], filters: [{ field, op: op as never, value }] },
           ORG,
+          BASE,
         ).args.where as Record<string, unknown>
       )[field];
     const iso = (d: unknown) => (d as Date).toISOString();
@@ -600,6 +635,7 @@ describe('report-query.builder', () => {
           filters: [{ field: 'createdAt', op: 'ne', value: '20.10.2026' }],
         },
         ORG,
+        BASE,
       ).args.where as {
         createdAt: unknown;
         AND: Array<{ OR: Array<{ createdAt: Record<string, Date> }> }>;
@@ -621,6 +657,7 @@ describe('report-query.builder', () => {
           filters: [{ field: 'documentDate', op: 'ne', value: '2026-10-22' }],
         },
         ORG,
+        BASE,
       ).args.where as Record<string, unknown>;
       expect(wo.AND).toEqual([
         {
@@ -683,20 +720,20 @@ describe('report-query.builder', () => {
     it('залишки й партії — умова deletedAt: null на товар і склад; рухи — без неї', () => {
       for (const entity of ['stockItem', 'stockBatch']) {
         expect(
-          buildQuery({ entity, columns: [], groupBy: [] }, ORG).args.where,
+          buildQuery({ entity, columns: [], groupBy: [] }, ORG, BASE).args.where,
           entity,
         ).toMatchObject({ good: { deletedAt: null }, warehouse: { deletedAt: null } });
       }
-      const mov = buildQuery({ entity: 'stockMovement', columns: [], groupBy: [] }, ORG);
+      const mov = buildQuery({ entity: 'stockMovement', columns: [], groupBy: [] }, ORG, BASE);
       expect(mov.args.where).not.toHaveProperty('good');
       expect(mov.args.where).not.toHaveProperty('warehouse');
     });
 
     // guards: BR-RPT-007
     it('рядки закупівлі й запчастини наряду — умова deletedAt: null і на документ-власник', () => {
-      const pol = buildQuery({ entity: 'purchaseOrderLine', columns: [], groupBy: [] }, ORG);
+      const pol = buildQuery({ entity: 'purchaseOrderLine', columns: [], groupBy: [] }, ORG, BASE);
       expect(pol.args.where).toMatchObject({ deletedAt: null, purchaseOrder: { deletedAt: null } });
-      const wop = buildQuery({ entity: 'workOrderPart', columns: [], groupBy: [] }, ORG);
+      const wop = buildQuery({ entity: 'workOrderPart', columns: [], groupBy: [] }, ORG, BASE);
       expect(wop.args.where).toMatchObject({ deletedAt: null, workOrder: { deletedAt: null } });
     });
 
@@ -710,6 +747,7 @@ describe('report-query.builder', () => {
           filters: [{ field: 'workOrder.number', op: 'eq', value: 'WO-1' }],
         },
         ORG,
+        BASE,
       );
       expect(q.args.where).toMatchObject({ workOrder: { deletedAt: null, number: 'WO-1' } });
     });
@@ -725,6 +763,7 @@ describe('report-query.builder', () => {
         filters: [{ field: 'type', op: 'eq', value: 'RETURN' }],
       },
       ORG,
+      BASE,
     );
     expect(q.args.where).toMatchObject({ type: 'RETURN' });
   });
@@ -734,8 +773,11 @@ describe('report-query.builder', () => {
   // замовчуванням. Мутація: прибрати умову voidedField у buildQuery → перший кейс червоніє.
   describe('сторновані платежі за замовчуванням не входять у звіт (BR-RPT-026)', () => {
     const where = (filters?: { field: string; op: string; value?: unknown }[]) =>
-      buildQuery({ entity: 'payment', columns: [], groupBy: [], filters: filters as never }, ORG)
-        .args.where;
+      buildQuery(
+        { entity: 'payment', columns: [], groupBy: [], filters: filters as never },
+        ORG,
+        BASE,
+      ).args.where;
 
     // guards: BR-RPT-026
     it('без фільтра по «Сторновано» — лише чинні оплати (reversedAt: null)', () => {
@@ -754,8 +796,68 @@ describe('report-query.builder', () => {
 
     // guards: BR-RPT-026
     it('інші сутності без позначки сторно умови не отримують', () => {
-      const w = buildQuery({ entity: 'invoice', columns: [], groupBy: [] }, ORG).args.where;
+      const w = buildQuery({ entity: 'invoice', columns: [], groupBy: [] }, ORG, BASE).args.where;
       expect(w).not.toHaveProperty('reversedAt');
+    });
+  });
+
+  describe('BR-RPT-029: порожня валюта = базова', () => {
+    const payFilter = (op: string, value: unknown) =>
+      buildQuery(
+        {
+          entity: 'payment',
+          columns: [],
+          groupBy: [],
+          filters: [{ field: 'currency.code', op, value }] as never,
+        },
+        ORG,
+        'EUR',
+      ).args.where;
+
+    // Мутація: прибрати OR-гілку «валюти немає» в addCond → «= базова» губить платежі без валюти.
+    // guards: BR-RPT-029
+    it('умова, під яку підходить базова валюта, бере й документи без валюти (OR)', () => {
+      expect(payFilter('eq', 'EUR').AND).toEqual([
+        { OR: [{ currency: { code: 'EUR' } }, { currency: null }] },
+      ]);
+      expect(payFilter('in', ['USD', 'EUR']).AND).toEqual([
+        { OR: [{ currency: { code: { in: ['USD', 'EUR'] } } }, { currency: null }] },
+      ]);
+      expect(payFilter('ne', 'USD').AND).toEqual([
+        { OR: [{ currency: { code: { not: 'USD' } } }, { currency: null }] },
+      ]);
+      expect(payFilter('contains', 'eu').AND).toEqual([
+        {
+          OR: [{ currency: { code: { contains: 'eu', mode: 'insensitive' } } }, { currency: null }],
+        },
+      ]);
+    });
+
+    // guards: BR-RPT-029
+    it('умова, під яку базова не підходить, — без гілки «валюти немає»', () => {
+      const eqOther = payFilter('eq', 'USD');
+      expect(eqOther.currency).toEqual({ code: 'USD' });
+      expect(eqOther.AND).toBeUndefined();
+      expect(payFilter('ne', 'EUR').currency).toEqual({ code: { not: 'EUR' } });
+    });
+
+    // guards: BR-RPT-029
+    it("обов'язкова валюта (наряд) — без гілки; колонка у валюті документа тягне код валюти", () => {
+      const q = buildQuery(
+        {
+          entity: 'workOrderPart',
+          columns: ['amount'],
+          groupBy: [],
+          filters: [{ field: 'workOrder.currency.code', op: 'eq', value: 'EUR' }],
+        },
+        ORG,
+        'EUR',
+      );
+      expect(q.args.where.workOrder.currency).toEqual({ code: 'EUR' });
+      expect(q.args.where.AND).toBeUndefined();
+      expect(q.args.include).toEqual({
+        workOrder: { select: { currency: { select: { code: true } } } },
+      });
     });
   });
 });

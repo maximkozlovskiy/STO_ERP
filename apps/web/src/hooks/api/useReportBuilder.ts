@@ -36,6 +36,8 @@ export interface ReportAgg {
 export interface ReportAggEnriched extends ReportAgg {
   type: string;
   label: string;
+  /** Сума у валюті документа: у групі — розбивка `byCurrency` за кодом валюти (BR-RPT-029). */
+  inDocumentCurrency?: boolean;
 }
 export interface ReportConfig {
   entity: string;

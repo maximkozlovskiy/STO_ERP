@@ -3,6 +3,9 @@ import { BadRequestException } from '@nestjs/common';
 import { aggregate } from './report-aggregator';
 import { getEntity } from './report-registry';
 
+/** Базова валюта тестової організації (у застосунку — з OrganisationSettings). */
+const BASE = 'UAH';
+
 const woPart = getEntity('workOrderPart');
 const wo = getEntity('workOrder');
 
@@ -22,6 +25,7 @@ describe('report-aggregator', () => {
     const r = aggregate(
       rows,
       {
+        baseCurrency: BASE,
         groupBy: [],
         aggregations: [
           { field: 'amount', agg: 'SUM' },
@@ -48,14 +52,14 @@ describe('report-aggregator', () => {
     ];
     const r = aggregate(
       rows,
-      { groupBy: [], columns: ['amount', 'good.name'], includeRows: true },
+      { baseCurrency: BASE, groupBy: [], columns: ['amount', 'good.name'], includeRows: true },
       woPart,
     );
     expect(r.tree).toEqual([]);
     // Унікальні рядки (різний good.name) → по одному, кожен з __mergedCount=1.
     expect(r.detailRows).toEqual([
-      { amount: 100, 'good.name': 'Гальма', __mergedCount: 1 },
-      { amount: 200, 'good.name': 'Масло', __mergedCount: 1 },
+      { amount: 100, 'good.name': 'Гальма', __currency: 'UAH', __mergedCount: 1 },
+      { amount: 200, 'good.name': 'Масло', __currency: 'UAH', __mergedCount: 1 },
     ]);
   });
 
@@ -70,12 +74,12 @@ describe('report-aggregator', () => {
     ];
     const r = aggregate(
       rows,
-      { groupBy: [], columns: ['good.name', 'amount'], includeRows: true },
+      { baseCurrency: BASE, groupBy: [], columns: ['good.name', 'amount'], includeRows: true },
       woPart,
     );
     expect(r.detailRows).toEqual([
-      { 'good.name': 'Dup', amount: 15, __mergedCount: 3 },
-      { 'good.name': 'Інший', amount: 7, __mergedCount: 1 },
+      { 'good.name': 'Dup', amount: 15, __currency: 'UAH', __mergedCount: 3 },
+      { 'good.name': 'Інший', amount: 7, __currency: 'UAH', __mergedCount: 1 },
     ]);
     // Сумарний __mergedCount == сирий rowCount (нічого не загублено).
     const total = r.detailRows.reduce((s, x) => s + (x.__mergedCount as number), 0);
@@ -93,12 +97,17 @@ describe('report-aggregator', () => {
     });
     const r = aggregate(
       [line(100, 2), line(100, 3), line(120, 1)],
-      { groupBy: [], columns: ['good.name', 'price', 'quantity'], includeRows: true },
+      {
+        baseCurrency: BASE,
+        groupBy: [],
+        columns: ['good.name', 'price', 'quantity'],
+        includeRows: true,
+      },
       getEntity('purchaseOrderLine'),
     );
     expect(r.detailRows).toEqual([
-      { 'good.name': 'Фільтр', price: 100, quantity: 5, __mergedCount: 2 },
-      { 'good.name': 'Фільтр', price: 120, quantity: 1, __mergedCount: 1 },
+      { 'good.name': 'Фільтр', price: 100, quantity: 5, __currency: 'UAH', __mergedCount: 2 },
+      { 'good.name': 'Фільтр', price: 120, quantity: 1, __currency: 'UAH', __mergedCount: 1 },
     ]);
   });
 
@@ -110,24 +119,33 @@ describe('report-aggregator', () => {
     const r = aggregate(
       rows,
       {
+        baseCurrency: BASE,
         groupBy: ['workOrder.counterparty.companyName'],
         columns: ['amount'],
         includeRows: true,
       },
       woPart,
     );
-    expect(r.tree[0].rows).toEqual([{ amount: 100 }, { amount: 50 }]);
+    expect(r.tree[0].rows).toEqual([
+      { amount: 100, __currency: 'UAH' },
+      { amount: 50, __currency: 'UAH' },
+    ]);
   });
 
   it('includeRows + columns=[] → детальні рядки НЕ проєктуються (уникнення шуму)', () => {
     const rows = [part({ amount: 10 }), part({ amount: 20 })];
     // Без columns і без групування: detailRows має бути [], а не [{}, {}].
-    const flat = aggregate(rows, { groupBy: [], columns: [], includeRows: true }, woPart);
+    const flat = aggregate(
+      rows,
+      { baseCurrency: BASE, groupBy: [], columns: [], includeRows: true },
+      woPart,
+    );
     expect(flat.detailRows).toEqual([]);
     // З групуванням і без columns: node.rows не додається.
     const grouped = aggregate(
       rows,
       {
+        baseCurrency: BASE,
         groupBy: ['workOrder.counterparty.companyName'],
         columns: [],
         includeRows: true,
@@ -147,7 +165,11 @@ describe('report-aggregator', () => {
     const sm = getEntity('stockMovement');
     const r = aggregate(
       rows,
-      { groupBy: ['createdAt'], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
+      {
+        baseCurrency: BASE,
+        groupBy: ['createdAt'],
+        aggregations: [{ field: 'quantity', agg: 'SUM' }],
+      },
       sm,
     );
     expect(r.tree.map(n => n.key)).toEqual(['2026-09-03', '2026-09-04']);
@@ -169,7 +191,11 @@ describe('report-aggregator', () => {
     ];
     const r = aggregate(
       rows,
-      { groupBy: ['createdAt'], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
+      {
+        baseCurrency: BASE,
+        groupBy: ['createdAt'],
+        aggregations: [{ field: 'quantity', agg: 'SUM' }],
+      },
       sm,
     );
     const buckets = Object.fromEntries(r.tree.map(n => [n.key, n.aggregates.SUM_quantity]));
@@ -189,7 +215,11 @@ describe('report-aggregator', () => {
     ];
     const r = aggregate(
       rows,
-      { groupBy: ['createdAt'], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
+      {
+        baseCurrency: BASE,
+        groupBy: ['createdAt'],
+        aggregations: [{ field: 'quantity', agg: 'SUM' }],
+      },
       sm,
     );
     expect(r.tree.map(n => n.key)).toEqual(['2026-01-15']);
@@ -205,6 +235,7 @@ describe('report-aggregator', () => {
     const r = aggregate(
       rows,
       {
+        baseCurrency: BASE,
         groupBy: ['workOrder.counterparty.companyName'],
         aggregations: [{ field: 'amount', agg: 'SUM' }],
         sortByAggregate: { alias: 'SUM_amount', dir: 'desc' },
@@ -224,6 +255,7 @@ describe('report-aggregator', () => {
     const r = aggregate(
       rows,
       {
+        baseCurrency: BASE,
         groupBy: ['workOrder.counterparty.companyName', 'good.name'],
         aggregations: [{ field: 'amount', agg: 'SUM' }],
       },
@@ -244,6 +276,7 @@ describe('report-aggregator', () => {
     const r = aggregate(
       rows,
       {
+        baseCurrency: BASE,
         groupBy: ['workOrder.counterparty.companyName'],
         aggregations: [{ field: 'amount', agg: 'SUM' }],
       },
@@ -260,7 +293,7 @@ describe('report-aggregator', () => {
     expect(() =>
       aggregate(
         [part({})],
-        { groupBy: [], aggregations: [{ field: 'price', agg: 'SUM' }] },
+        { baseCurrency: BASE, groupBy: [], aggregations: [{ field: 'price', agg: 'SUM' }] },
         woPart,
       ),
     ).toThrow(BadRequestException);
@@ -270,6 +303,7 @@ describe('report-aggregator', () => {
     const r = aggregate(
       [],
       {
+        baseCurrency: BASE,
         groupBy: [],
         aggregations: [
           { field: 'amount', agg: 'AVG' },
@@ -291,7 +325,11 @@ describe('report-aggregator', () => {
     ];
     const r = aggregate(
       rows,
-      { groupBy: ['good.name'], aggregations: [{ field: 'amount', agg: 'SUM' }] },
+      {
+        baseCurrency: BASE,
+        groupBy: ['good.name'],
+        aggregations: [{ field: 'amount', agg: 'SUM' }],
+      },
       woPart,
     );
     expect(r.tree.map(n => n.key)).toEqual(['X', '∅']);
@@ -311,6 +349,7 @@ describe('report-aggregator', () => {
     const r = aggregate(
       rows,
       {
+        baseCurrency: BASE,
         groupBy: [
           'status',
           'priority',
@@ -348,7 +387,7 @@ describe('report-aggregator', () => {
     ];
     const r = aggregate(
       rows,
-      { groupBy: [], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
+      { baseCurrency: BASE, groupBy: [], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
       sm,
     );
     // Фізичне нетто: RECEIPT(+15) + WRITEOFF(-5) = +10.
@@ -365,7 +404,7 @@ describe('report-aggregator', () => {
     ];
     const r = aggregate(
       rows,
-      { groupBy: [], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
+      { baseCurrency: BASE, groupBy: [], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
       sm,
     );
     expect(r.grandTotals.SUM_quantity).toBe(7);
@@ -382,7 +421,7 @@ describe('report-aggregator', () => {
     ];
     const r = aggregate(
       rows,
-      { groupBy: ['type'], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
+      { baseCurrency: BASE, groupBy: ['type'], aggregations: [{ field: 'quantity', agg: 'SUM' }] },
       sm,
     );
     const buckets = Object.fromEntries(r.tree.map(n => [n.key, n.aggregates.SUM_quantity]));
@@ -397,20 +436,22 @@ describe('report-aggregator', () => {
     expect(() =>
       aggregate(
         [part({})],
-        { groupBy: [], aggregations: [{ field: 'secretField', agg: 'SUM' }] },
+        { baseCurrency: BASE, groupBy: [], aggregations: [{ field: 'secretField', agg: 'SUM' }] },
         woPart,
       ),
     ).toThrow(BadRequestException);
-    expect(() => aggregate([part({})], { groupBy: ['secretField'] }, woPart)).toThrow(
-      BadRequestException,
-    );
+    expect(() =>
+      aggregate([part({})], { baseCurrency: BASE, groupBy: ['secretField'] }, woPart),
+    ).toThrow(BadRequestException);
   });
 
   // guards: BR-RPT-008
   it('truncated: 5000 рядків і більше → true, 4999 → false', () => {
     const rows = Array.from({ length: 5000 }, () => ({ amount: 1 }));
-    expect(aggregate(rows, { groupBy: [] }, woPart).truncated).toBe(true);
-    expect(aggregate(rows.slice(0, 4999), { groupBy: [] }, woPart).truncated).toBe(false);
+    expect(aggregate(rows, { baseCurrency: BASE, groupBy: [] }, woPart).truncated).toBe(true);
+    expect(
+      aggregate(rows.slice(0, 4999), { baseCurrency: BASE, groupBy: [] }, woPart).truncated,
+    ).toBe(false);
   });
 
   // guards: BR-RPT-013
@@ -424,6 +465,7 @@ describe('report-aggregator', () => {
     const r = aggregate(
       rows,
       {
+        baseCurrency: BASE,
         groupBy: ['workOrder.counterparty.companyName', 'good.name'],
         aggregations: [
           { field: 'amount', agg: 'SUM' },
@@ -439,5 +481,62 @@ describe('report-aggregator', () => {
     expect(r.grandTotals.SUM_amount).toBe(200);
     // AVG: 200 / 4 рядки = 50; середнє двох груп верхнього рівня було б (60 + 20) / 2 = 40.
     expect(r.grandTotals.AVG_amount).toBe(50);
+  });
+
+  // Мутація: прибрати підстановку базової валюти в fieldValue → платежі без валюти йдуть у
+  // «(порожньо)», а не в групу базової валюти.
+  // guards: BR-RPT-029
+  it('JS-еталон: документ без валюти — у базовій; суми у валюті документа розбиті за валютою', () => {
+    const pay = getEntity('payment');
+    const rows = [
+      { amount: 100, amountBase: 100, currency: null },
+      { amount: 50, amountBase: 50, currency: { code: 'EUR' } },
+      { amount: 10, amountBase: 420, currency: { code: 'USD' } },
+    ];
+    const r = aggregate(
+      rows,
+      {
+        baseCurrency: 'EUR',
+        groupBy: ['currency.code'],
+        columns: ['amount'],
+        aggregations: [
+          { field: 'amount', agg: 'SUM' },
+          { field: 'amountBase', agg: 'SUM' },
+        ],
+        includeRows: true,
+      },
+      pay,
+    );
+    const eur = r.tree.find(n => n.key === 'EUR')!;
+    expect(eur.count).toBe(2);
+    expect(eur.aggregates.SUM_amount).toBe(150);
+    expect(eur.rows?.map(x => x.__currency)).toEqual(['EUR', 'EUR']);
+    expect(r.tree.map(n => n.key).sort()).toEqual(['EUR', 'USD']);
+    expect(r.grandTotalsByCurrency).toEqual({ SUM_amount: { EUR: 150, USD: 10 } });
+    expect(r.grandTotals).toEqual({ SUM_amount: null, SUM_amountBase: 570 });
+  });
+
+  // guards: BR-RPT-029
+  it('JS-еталон: склеювання не складає суми різних валют', () => {
+    const pay = getEntity('payment');
+    const rows = [
+      { amount: 100, currency: null, counterparty: { companyName: 'ТОВ А' } },
+      { amount: 50, currency: { code: 'USD' }, counterparty: { companyName: 'ТОВ А' } },
+      { amount: 20, currency: { code: BASE }, counterparty: { companyName: 'ТОВ А' } },
+    ];
+    const r = aggregate(
+      rows,
+      {
+        baseCurrency: BASE,
+        groupBy: [],
+        columns: ['counterparty.companyName', 'amount'],
+        includeRows: true,
+      },
+      pay,
+    );
+    expect(r.detailRows).toEqual([
+      { 'counterparty.companyName': 'ТОВ А', amount: 120, __currency: BASE, __mergedCount: 2 },
+      { 'counterparty.companyName': 'ТОВ А', amount: 50, __currency: 'USD', __mergedCount: 1 },
+    ]);
   });
 });

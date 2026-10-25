@@ -3,6 +3,9 @@ import { assembleMergedRows, assembleTree } from './report-sql-result';
 import { REPORT_GROUP_CAP, REPORT_MERGED_CAP } from './report-sql.builder';
 import { getEntity, getField } from './report-registry';
 
+/** Базова валюта тестової організації (у застосунку — з OrganisationSettings). */
+const BASE = 'UAH';
+
 /** Рядки SQL-агрегатів → дерево / склеєні рядки (BR-RPT-027). Чисті функції, без БД. */
 
 const wo = getEntity('workOrder');
@@ -25,6 +28,7 @@ describe('report-sql-result', () => {
       detail: null,
       columns: [],
       entity: wo,
+      baseCurrency: BASE,
     });
     expect(t.rowCount).toBe(6);
     expect(t.grandTotals).toEqual({ SUM_totalAmount: 600 });
@@ -51,6 +55,7 @@ describe('report-sql-result', () => {
       detail: null,
       columns: [],
       entity: wo,
+      baseCurrency: BASE,
       sortByAggregate: { alias: 'SUM_totalAmount', dir: 'desc' },
     });
     expect(t.tree.map(n => n.key)).toEqual(['B', 'A']);
@@ -58,6 +63,7 @@ describe('report-sql-result', () => {
       detail: null,
       columns: [],
       entity: wo,
+      baseCurrency: BASE,
     });
     expect(avg.grandTotals).toEqual({ AVG_totalAmount: null });
     expect(avg.rowCount).toBe(0);
@@ -75,7 +81,12 @@ describe('report-sql-result', () => {
       { status: 'PAID', number: 'WO-2' },
       { status: null, number: 'WO-3' },
     ];
-    const t = assembleTree(rollup, [status], aggs, { detail, columns: ['number'], entity: wo });
+    const t = assembleTree(rollup, [status], aggs, {
+      detail,
+      columns: ['number'],
+      entity: wo,
+      baseCurrency: BASE,
+    });
     expect(t.tree.find(n => n.key === 'PAID')?.rows).toEqual([
       { number: 'WO-1' },
       { number: 'WO-2' },
@@ -92,8 +103,12 @@ describe('report-sql-result', () => {
       a0: '1',
     }));
     expect(
-      assembleTree(rollup, [status], aggs, { detail: null, columns: [], entity: wo })
-        .groupsTruncated,
+      assembleTree(rollup, [status], aggs, {
+        detail: null,
+        columns: [],
+        entity: wo,
+        baseCurrency: BASE,
+      }).groupsTruncated,
     ).toBe(true);
   });
 
@@ -101,9 +116,13 @@ describe('report-sql-result', () => {
   it('склеєні рядки: колонки у формі детального рядка, кількість — у __mergedCount; понад ліміт — truncated', () => {
     const pol = getEntity('purchaseOrderLine');
     const cols = ['good.name', 'price', 'quantity'];
-    const out = assembleMergedRows([{ d0: 'Фільтр', d1: '100', s0: '5', n: 2 }], cols, pol);
+    const out = assembleMergedRows(
+      [{ d0: 'Фільтр', d1: '100', s0: '5', c0: 'USD', n: 2 }],
+      cols,
+      pol,
+    );
     expect(out.detailRows).toEqual([
-      { 'good.name': 'Фільтр', price: '100', quantity: 5, __mergedCount: 2 },
+      { 'good.name': 'Фільтр', price: '100', quantity: 5, __currency: 'USD', __mergedCount: 2 },
     ]);
     expect(out.truncated).toBe(false);
     const many = Array.from({ length: REPORT_MERGED_CAP + 1 }, () => ({
@@ -115,5 +134,52 @@ describe('report-sql-result', () => {
     const cut = assembleMergedRows(many, cols, pol);
     expect(cut.truncated).toBe(true);
     expect(cut.detailRows).toHaveLength(REPORT_MERGED_CAP);
+  });
+
+  // Мутація: не обнуляти aggregates при кількох валютах (maskMixedCurrency) → «Разом» складає
+  // гривні з доларами.
+  // guards: BR-RPT-029
+  it('розбивка за валютами: byCurrency у групах і «Разом»; кілька валют — спільне значення null', () => {
+    const pay = getEntity('payment');
+    const st = getField(pay, 'method');
+    const payAggs = [
+      { field: 'amount', agg: 'SUM' as const },
+      { field: 'amountBase', agg: 'SUM' as const },
+    ];
+    const rollup = [
+      { k0: null, g0: 1, n: 3, a0: '500', a1: '4600' },
+      { k0: 'PAID', g0: 0, n: 2, a0: '400', a1: '400' },
+      { k0: 'NEW', g0: 0, n: 1, a0: '100', a1: '4200' },
+    ];
+    const split = [
+      { k0: null, g0: 1, cur: 'UAH', a0: '400' },
+      { k0: null, g0: 1, cur: 'USD', a0: '100' },
+      { k0: 'PAID', g0: 0, cur: 'UAH', a0: '400' },
+      { k0: 'NEW', g0: 0, cur: 'USD', a0: '100' },
+    ];
+    const t = assembleTree(rollup, [st], payAggs, {
+      detail: null,
+      columns: [],
+      entity: pay,
+      currencySplit: split,
+      baseCurrency: BASE,
+    });
+    expect(t.grandTotalsByCurrency).toEqual({ SUM_amount: { UAH: 400, USD: 100 } });
+    expect(t.grandTotals).toEqual({ SUM_amount: null, SUM_amountBase: 4600 });
+    const paid = t.tree.find(n => n.key === 'PAID')!;
+    expect(paid.byCurrency).toEqual({ SUM_amount: { UAH: 400 } });
+    expect(paid.aggregates.SUM_amount).toBe(400);
+    const fresh = t.tree.find(n => n.key === 'NEW')!;
+    expect(fresh.byCurrency).toEqual({ SUM_amount: { USD: 100 } });
+    // без розбивки (у звіті немає сум у валюті документа) — поля немає зовсім
+    const plain = assembleTree(rollup, [st], [payAggs[1]], {
+      detail: null,
+      columns: [],
+      entity: pay,
+      currencySplit: null,
+      baseCurrency: BASE,
+    });
+    expect(plain.grandTotalsByCurrency).toBeUndefined();
+    expect(plain.tree[0].byCurrency).toBeUndefined();
   });
 });

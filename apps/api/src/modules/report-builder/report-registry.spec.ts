@@ -2,10 +2,13 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { $Enums } from '@prisma/client';
-import { REGISTRY, REGISTRY_ENUMS, getEntity, isDateOnlyPath } from './report-registry';
+import { REGISTRY, REGISTRY_ENUMS, canBeEmpty, getEntity, isDateOnlyPath } from './report-registry';
 import type { ReportFieldDef } from './report-registry';
 import { buildQuery } from './report-query.builder';
 import { resolveJoins } from './report-joins';
+
+/** Базова валюта тестової організації (у застосунку — з OrganisationSettings). */
+const BASE = 'UAH';
 
 /** Моделі схеми Prisma: модель → (поле → тип із `?`/`[]`). */
 function schemaModels(): Map<string, Map<string, string>> {
@@ -80,7 +83,7 @@ describe('report-registry цілісність', () => {
   // guards: BR-RPT-007
   it('append-only сутність: buildQuery НЕ інжектить deletedAt у корінь', () => {
     for (const key of APPEND_ONLY) {
-      const q = buildQuery({ entity: key, columns: [], groupBy: [] }, ORG);
+      const q = buildQuery({ entity: key, columns: [], groupBy: [] }, ORG, BASE);
       expect(q.args.where).toMatchObject({ orgId: ORG });
       expect((q.args.where as Record<string, unknown>).deletedAt).toBeUndefined();
     }
@@ -88,7 +91,7 @@ describe('report-registry цілісність', () => {
 
   // guards: BR-RPT-007
   it('FULL сутність: buildQuery інжектить deletedAt:null', () => {
-    const q = buildQuery({ entity: 'invoice', columns: [], groupBy: [] }, ORG);
+    const q = buildQuery({ entity: 'invoice', columns: [], groupBy: [] }, ORG, BASE);
     expect(q.args.where).toMatchObject({ orgId: ORG, deletedAt: null });
   });
 
@@ -112,7 +115,7 @@ describe('report-registry цілісність', () => {
         if (f.prismaPath.includes('.')) {
           // не кидає — prefix присутній у relations[]
           expect(() =>
-            buildQuery({ entity: e.key, columns: [f.key], groupBy: [] }, ORG),
+            buildQuery({ entity: e.key, columns: [f.key], groupBy: [] }, ORG, BASE),
           ).not.toThrow();
         }
       }
@@ -129,7 +132,7 @@ describe('report-registry цілісність', () => {
   // guards: BR-RPT-006
   it('кожна з 9 сутностей: orgId викликача стоїть у корені where', () => {
     for (const key of Object.keys(REGISTRY)) {
-      const q = buildQuery({ entity: key, columns: [], groupBy: [] }, 'org-caller');
+      const q = buildQuery({ entity: key, columns: [], groupBy: [] }, 'org-caller', BASE);
       expect((q.args.where as Record<string, unknown>).orgId, key).toBe('org-caller');
     }
   });
@@ -210,6 +213,48 @@ describe('report-registry цілісність', () => {
     }
   });
 
+  // Мутація: зняти `inDocumentCurrency` з payment.amount або прибрати «(у валюті …)» з підпису
+  // суми наряду → кейс червоніє.
+  // guards: BR-RPT-029
+  it('валюта документа: currencyPath — поле реєстру, ніколи не «порожнє»; суми у валюті документа підписані', () => {
+    const withCurrency = Object.values(REGISTRY).filter(e => e.currencyPath);
+    expect(withCurrency.map(e => e.key).sort()).toEqual(
+      [
+        'invoice',
+        'payment',
+        'purchaseOrderLine',
+        'settlementTransaction',
+        'workOrder',
+        'workOrderPart',
+      ].sort(),
+    );
+    for (const e of Object.values(REGISTRY)) {
+      if (e.currencyPath) {
+        const cur = e.fields.find(f => f.prismaPath === e.currencyPath);
+        expect(cur?.groupable, `${e.key}: поле валюти`).toBe(true);
+        // порожня валюта = базова: «порожнє / заповнене» для неї не пропонується
+        expect(canBeEmpty(e, e.currencyPath), `${e.key}: canBeEmpty`).toBe(false);
+      }
+      for (const f of e.fields.filter(x => x.inDocumentCurrency)) {
+        expect(e.currencyPath, `${e.key}.${f.key}: сутність без валюти`).toBeDefined();
+        expect(f.label, `${e.key}.${f.key}`).toMatch(/\(у валюті [а-яіїєґ]+\)/);
+      }
+      // і навпаки: «у валюті …» у підписі — лише в сум у валюті документа
+      for (const f of e.fields.filter(x => /у валюті [а-яіїєґ]+\)/.test(x.label))) {
+        expect(f.inDocumentCurrency, `${e.key}.${f.key}`).toBe(true);
+      }
+    }
+    expect(getEntity('payment').fields.find(f => f.key === 'amount')?.inDocumentCurrency).toBe(
+      true,
+    );
+    expect(
+      getEntity('payment').fields.find(f => f.key === 'amountBase')?.inDocumentCurrency,
+    ).toBeUndefined();
+    expect(getEntity('workOrder').fields.find(f => f.key === 'totalAmount')?.label).toBe(
+      'Сума з ПДВ (у валюті наряду)',
+    );
+  });
+
   // Перелік enum-значень реєстру відставав від схеми: рух RETURN у базі був, а фільтр по ньому
   // давав 400 (2026-10-25). Мутація: прибрати 'RETURN' з REGISTRY_ENUMS → кейс червоніє.
   // guards: BR-RPT-004
@@ -269,6 +314,7 @@ describe('report-registry цілісність', () => {
             ],
           },
           ORG,
+          BASE,
         ).args.where as Record<string, unknown>;
         expect(where.orgId, `${e.key}.${f.key} orgId`).toBe(ORG);
         expect('deletedAt' in where, `${e.key}.${f.key} deletedAt`).toBe(e.hasSoftDelete);

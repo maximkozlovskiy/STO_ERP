@@ -1,11 +1,15 @@
 import type { ReportEntityDef, ReportFieldDef } from './report-registry';
 import {
-  getPath,
+  documentCurrencyAggs,
+  fieldValue,
+  maskMixedCurrency,
+  needsCurrency,
   normalizeKey,
   projectRows,
   sortNodes,
   isSummable,
   type AggregateValues,
+  type CurrencyAggregates,
   type DetailRow,
   type GroupNode,
   type ReportAggInput,
@@ -42,6 +46,7 @@ function groupValue(fld: ReportFieldDef, key: string): unknown {
 export interface AssembledTree {
   tree: GroupNode[];
   grandTotals: AggregateValues;
+  grandTotalsByCurrency?: CurrencyAggregates;
   rowCount: number;
   groupsTruncated: boolean;
 }
@@ -60,8 +65,13 @@ export function assembleTree(
     columns: string[];
     entity: ReportEntityDef;
     sortByAggregate?: { alias: string; dir: 'asc' | 'desc' };
+    /** Рядки `buildCurrencySplitSql` (null — у звіті немає агрегацій у валюті документа). */
+    currencySplit?: Row[] | null;
+    /** Базова валюта організації — замість порожньої валюти документа (BR-RPT-029). */
+    baseCurrency: string;
   },
 ): AssembledTree {
+  const { baseCurrency } = opts;
   const groupsTruncated = rollup.length > REPORT_GROUP_CAP;
   const rows = groupsTruncated ? rollup.slice(0, REPORT_GROUP_CAP) : rollup;
   const depth = groupFields.length;
@@ -74,6 +84,14 @@ export function assembleTree(
     const k = r[`k${i}`] as string | null;
     return k === null || k === undefined ? '∅' : String(k);
   };
+  const byCurrency = currencySplitByPath(
+    opts.currencySplit ?? null,
+    aggs,
+    opts.entity,
+    depth,
+    level,
+    keyOf,
+  );
 
   let grandTotals: AggregateValues = {};
   let rowCount = 0;
@@ -84,6 +102,7 @@ export function assembleTree(
     if (l === 0) {
       grandTotals = aggValues(r, aggs);
       rowCount = Number(r.n);
+      if (byCurrency) maskMixedCurrency(grandTotals, byCurrency.get('') ?? {});
       continue;
     }
     const keys = Array.from({ length: l }, (_, i) => keyOf(r, i));
@@ -97,6 +116,11 @@ export function assembleTree(
       aggregates: aggValues(r, aggs),
       children: [],
     };
+    const split = byCurrency?.get(keys.join(KEY_SEP));
+    if (byCurrency) {
+      node.byCurrency = split ?? {};
+      maskMixedCurrency(node.aggregates, node.byCurrency);
+    }
     nodes.set(keys.join(KEY_SEP), node);
     if (l === 1) roots.push(node);
     else nodes.get(keys.slice(0, -1).join(KEY_SEP))?.children.push(node);
@@ -106,7 +130,9 @@ export function assembleTree(
     const byLeaf = new Map<string, Row[]>();
     for (const d of opts.detail) {
       const path = groupFields
-        .map(f => normalizeKey(getPath(d, f.prismaPath), f.type === 'date'))
+        .map(f =>
+          normalizeKey(fieldValue(d, opts.entity, f.prismaPath, baseCurrency), f.type === 'date'),
+        )
         .join(KEY_SEP);
       const list = byLeaf.get(path) ?? [];
       list.push(d);
@@ -114,7 +140,7 @@ export function assembleTree(
     }
     for (const [path, node] of nodes) {
       if (path.split(KEY_SEP).length !== depth) continue;
-      node.rows = projectRows(byLeaf.get(path) ?? [], opts.columns, opts.entity);
+      node.rows = projectRows(byLeaf.get(path) ?? [], opts.columns, opts.entity, baseCurrency);
     }
   }
 
@@ -125,7 +151,42 @@ export function assembleTree(
     list.forEach(n => sortDeep(n.children));
   };
   sortDeep(roots);
-  return { tree: roots, grandTotals, rowCount, groupsTruncated };
+  return {
+    tree: roots,
+    grandTotals,
+    ...(byCurrency ? { grandTotalsByCurrency: byCurrency.get('') ?? {} } : {}),
+    rowCount,
+    groupsTruncated,
+  };
+}
+
+/**
+ * Рядки `GROUPING SETS` розбивки за валютами → шлях групи (ключі через KEY_SEP; `''` — «Разом») →
+ * alias → код валюти → значення. Агрегати рядка — у порядку `documentCurrencyAggs`.
+ */
+function currencySplitByPath(
+  split: Row[] | null,
+  aggs: ReportAggInput[],
+  entity: ReportEntityDef,
+  depth: number,
+  level: (r: Row) => number,
+  keyOf: (r: Row, i: number) => string,
+): Map<string, CurrencyAggregates> | null {
+  if (!split) return null;
+  const docAggs = documentCurrencyAggs(aggs, entity);
+  const out = new Map<string, CurrencyAggregates>();
+  for (const r of split) {
+    const l = depth === 0 ? 0 : level(r);
+    const path = Array.from({ length: l }, (_, i) => keyOf(r, i)).join(KEY_SEP);
+    let entry = out.get(path);
+    if (!entry) {
+      entry = Object.fromEntries(docAggs.map(a => [`${a.agg}_${a.field}`, {}]));
+      out.set(path, entry);
+    }
+    const values = aggValues(r, docAggs);
+    for (const [alias, v] of Object.entries(values)) entry[alias][String(r.cur)] = v;
+  }
+  return out;
 }
 
 /** Рядки склеювання (`buildMergedRowsSql`) → детальні рядки у формі `mergeDetailRows`. */
@@ -138,12 +199,14 @@ export function assembleMergedRows(
   const rows = truncated ? merged.slice(0, REPORT_MERGED_CAP) : merged;
   const dims = columns.filter(k => !isSummable(entity, k));
   const sums = columns.filter(k => isSummable(entity, k));
+  const withCurrency = needsCurrency(entity, columns);
   const detailRows = rows.map(r => {
     const out: DetailRow = {};
     for (const key of columns) {
       const di = dims.indexOf(key);
       out[key] = di >= 0 ? (r[`d${di}`] ?? null) : Number(r[`s${sums.indexOf(key)}`]);
     }
+    if (withCurrency) out.__currency = r.c0 ?? null;
     out.__mergedCount = Number(r.n);
     return out;
   });

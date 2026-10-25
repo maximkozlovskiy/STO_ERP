@@ -10,6 +10,7 @@ import {
   buildExportRows,
   buildXlsxXml,
   buildExportNumericColumns,
+  currencyLines,
   exportCell,
   filterDayValue,
   filterOpChoice,
@@ -90,7 +91,12 @@ function groupedResult(): ReportRunResult {
 describe('report-export › дерево груп → плоскі рядки', () => {
   // guards: BR-RPT-021
   it('flattenTree обходить дерево вглиб і відбиває рівень відступом у два пробіли', () => {
-    const rows = flattenTree(groupedResult().result.tree, ['SUM_total', 'AVG_price'], t);
+    const rows = flattenTree(
+      groupedResult().result.tree,
+      [{ alias: 'SUM_total' }, { alias: 'AVG_price' }],
+      t,
+      groupedResult(),
+    );
 
     expect(rows).toEqual([
       ['Київ', '3', '300', '100'],
@@ -110,7 +116,9 @@ describe('report-export › дерево груп → плоскі рядки', 
       ]),
     ];
 
-    expect(flattenTree(tree, ['AVG_price', 'SUM_total'], t)).toEqual([
+    expect(
+      flattenTree(tree, [{ alias: 'AVG_price' }, { alias: 'SUM_total' }], t, groupedResult()),
+    ).toEqual([
       ['A', '4', '1', '4'],
       ['  B', '4', '1', '4'],
       ['    C', '4', '1', '4'],
@@ -530,5 +538,96 @@ describe('report-export › оператор «порожнє» / «заповн
       value: undefined,
     });
     expect(filterOpPatch({ field: 'number', op: 'eq', value: 'WO-1' }, 'ne')).toEqual({ op: 'ne' });
+  });
+});
+
+/** Платежі: сума у валюті оплати (з розбивкою) + сума в базовій валюті. Базова — EUR. */
+function currencyResult(groupBy: string[] = ['method']): ReportRunResult {
+  return makeResult({
+    entity: 'payment',
+    baseCurrency: 'EUR',
+    groupBy,
+    columns: [
+      { key: 'counterparty.companyName', label: 'Контрагент', type: 'scalar' },
+      { key: 'amount', label: 'Сума (у валюті оплати)', type: 'decimal', inDocumentCurrency: true },
+    ],
+    aggregations: [
+      {
+        field: 'amount',
+        agg: 'SUM',
+        type: 'decimal',
+        label: 'Сума (у валюті оплати)',
+        inDocumentCurrency: true,
+      },
+      { field: 'amountBase', agg: 'SUM', type: 'decimal', label: 'Сума в базовій валюті' },
+    ],
+    body: {
+      tree: groupBy.length
+        ? [
+            {
+              ...node('Готівка', 2, { SUM_amount: null, SUM_amountBase: 520 }),
+              byCurrency: { SUM_amount: { USD: 10, EUR: 100 } },
+            } as GroupNode,
+            {
+              ...node('Картка', 1, { SUM_amount: 50, SUM_amountBase: 50 }),
+              byCurrency: { SUM_amount: { EUR: 50 } },
+            } as GroupNode,
+          ]
+        : [],
+      detailRows: groupBy.length
+        ? []
+        : [
+            { 'counterparty.companyName': 'ТОВ А', amount: 150, __currency: 'EUR' },
+            { 'counterparty.companyName': 'ТОВ А', amount: 10, __currency: 'USD' },
+          ],
+      grandTotals: { SUM_amount: null, SUM_amountBase: 570 },
+      grandTotalsByCurrency: { SUM_amount: { USD: 10, EUR: 150 } },
+      rowCount: 3,
+    },
+  });
+}
+
+describe('report-export › суми у валюті документа (BR-RPT-029)', () => {
+  // Мутація: скласти валюти в одну колонку → у файлі «160» гривень із доларами.
+  // guards: BR-RPT-029
+  it('груповий експорт: колонка на кожну валюту вибірки (базова першою), базова сума — одна', () => {
+    const rows = buildExportRows(currencyResult(), t);
+    expect(rows[0]).toEqual([
+      'Група',
+      'Кількість',
+      'Σ Сума (у валюті оплати), EUR',
+      'Σ Сума (у валюті оплати), USD',
+      'Σ Сума в базовій валюті',
+    ]);
+    expect(rows.slice(1)).toEqual([
+      ['Готівка', '2', '100', '10', '520'],
+      ['Картка', '1', '50', '', '50'],
+      ['Разом', '3', '150', '10', '570'],
+    ]);
+    expect(buildExportNumericColumns(currencyResult())).toEqual([false, true, true, true, true]);
+  });
+
+  // guards: BR-RPT-029
+  it('плоский експорт: колонка «Валюта» поруч із детальними колонками', () => {
+    const result = currencyResult([]);
+    const rows = buildExportRows(result, t);
+    expect(rows[0].slice(0, 4)).toEqual(['№', 'Контрагент', 'Сума (у валюті оплати)', 'Валюта']);
+    expect(rows[1].slice(0, 4)).toEqual(['1', 'ТОВ А', '150', 'EUR']);
+    expect(rows[2].slice(0, 4)).toEqual(['2', 'ТОВ А', '10', 'USD']);
+    expect(buildExportNumericColumns(result).slice(0, 4)).toEqual([false, false, true, false]);
+  });
+
+  // guards: BR-RPT-029
+  it('клітинка на екрані: рядок на кожну валюту групи; базова сума — без розбивки', () => {
+    const result = currencyResult();
+    const [cash, card] = result.result.tree;
+    expect(currencyLines('SUM_amount', cash.byCurrency, result)).toEqual([
+      { code: 'EUR', value: 100 },
+      { code: 'USD', value: 10 },
+    ]);
+    expect(currencyLines('SUM_amount', card.byCurrency, result)).toEqual([
+      { code: 'EUR', value: 50 },
+    ]);
+    expect(currencyLines('SUM_amountBase', cash.byCurrency, result)).toBeNull();
   });
 });

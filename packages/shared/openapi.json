@@ -32788,6 +32788,17 @@
             },
             "description": "alias агрегації → значення (null якщо нема даних)"
           },
+          "byCurrency": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "nullable": true
+              }
+            },
+            "description": "Агрегації у валюті документа: alias → код валюти → значення (BR-RPT-029). Є, коли такі агрегації в звіті; при кількох валютах відповідне значення в aggregates — null"
+          },
           "children": {
             "type": "array",
             "items": {
@@ -32801,7 +32812,7 @@
               "type": "object",
               "additionalProperties": true
             },
-            "description": "Детальні рядки на листовому вузлі, коли includeRows"
+            "description": "Детальні рядки на листовому вузлі, коли includeRows; __currency — код валюти документа рядка, коли є колонка у валюті документа"
           }
         },
         "required": [
@@ -33144,6 +33155,10 @@
           },
           "enumName": {
             "type": "string"
+          },
+          "inDocumentCurrency": {
+            "type": "boolean",
+            "description": "Сума у валюті документа: у групі з кількома валютами — розбивка byCurrency"
           }
         },
         "required": [
@@ -33167,6 +33182,10 @@
           },
           "label": {
             "type": "string"
+          },
+          "inDocumentCurrency": {
+            "type": "boolean",
+            "description": "Сума у валюті документа: у групі з кількома валютами — розбивка byCurrency"
           }
         },
         "required": [
@@ -33192,7 +33211,7 @@
               "type": "object",
               "additionalProperties": true
             },
-            "description": "Плоскі детальні рядки — набір ключів задає config.columns у рантаймі"
+            "description": "Плоскі детальні рядки — набір ключів задає config.columns у рантаймі; __currency — код валюти документа (рядки різних валют не склеюються), __mergedCount — скільки склеєно"
           },
           "grandTotals": {
             "type": "object",
@@ -33201,6 +33220,17 @@
               "nullable": true
             },
             "description": "alias агрегації → значення (null якщо нема даних)"
+          },
+          "grandTotalsByCurrency": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number",
+                "nullable": true
+              }
+            },
+            "description": "Агрегації у валюті документа: alias → код валюти → значення (BR-RPT-029). Є, коли такі агрегації в звіті; при кількох валютах відповідне значення в aggregates — null"
           },
           "rowCount": {
             "type": "number",
@@ -33248,6 +33278,10 @@
               "type": "string"
             }
           },
+          "baseCurrency": {
+            "type": "string",
+            "description": "Базова валюта організації — нею рахуються документи без валюти"
+          },
           "aggregations": {
             "description": "Явні + авто-SUM",
             "type": "array",
@@ -33263,6 +33297,7 @@
           "entity",
           "columns",
           "groupBy",
+          "baseCurrency",
           "aggregations",
           "result"
         ]

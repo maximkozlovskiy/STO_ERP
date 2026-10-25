@@ -72,6 +72,8 @@ export interface ReportConditions {
   dateRange: ReportCond | null;
   /** Фільтри користувача в порядку конфігу. */
   filters: ReportCond[];
+  /** Базова валюта організації — значення порожньої валюти документа (BR-RPT-029). */
+  baseCurrency: string;
 }
 
 /** Скільки значень приймає один фільтр `in` (як `@ArrayMaxSize` у DTO — проти роздутого IN). */
@@ -273,7 +275,11 @@ function filterCond(entity: ReportEntityDef, f: ReportFilterInput): ReportCond {
 }
 
 /** Конфіг → перевірені умови. Кидає 400 на все, що не з реєстру (BR-RPT-001…005, 009, 024, 025). */
-export function buildConditions(config: ReportConfigInput, orgId: string): ReportConditions {
+export function buildConditions(
+  config: ReportConfigInput,
+  orgId: string,
+  baseCurrency: string,
+): ReportConditions {
   const entity = getEntity(config.entity);
   const voided = entity.voidedField;
 
@@ -301,5 +307,6 @@ export function buildConditions(config: ReportConfigInput, orgId: string): Repor
     voidedField: voided && !(config.filters ?? []).some(f => f.field === voided) ? voided : null,
     dateRange,
     filters: (config.filters ?? []).map(f => filterCond(entity, f)),
+    baseCurrency,
   };
 }

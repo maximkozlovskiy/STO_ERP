@@ -2,7 +2,9 @@ import { BadRequestException } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import type { Agg, ReportEntityDef } from './report-registry';
-import { getField } from './report-registry';
+import { getField, needsCurrency } from './report-registry';
+
+export { needsCurrency } from './report-registry';
 import { REPORT_TAKE_CAP } from './report-query.builder';
 
 export interface ReportAggInput {
@@ -13,6 +15,9 @@ export interface ReportAggInput {
 export interface AggregateValues {
   [alias: string]: number | null;
 }
+
+/** Агрегації у валюті документа за кодом валюти: alias → { UAH: 254216.55, USD: 344 } (BR-RPT-029). */
+export type CurrencyAggregates = Record<string, Record<string, number | null>>;
 
 /** Проєкція одного детального рядка: значення обраних колонок за їх key. */
 export type DetailRow = Record<string, unknown>;
@@ -27,6 +32,8 @@ export interface GroupNode {
   value: unknown;
   count: number;
   aggregates: AggregateValues;
+  /** Розбивка агрегацій у валюті документа за валютою (є, коли такі агрегації в звіті). */
+  byCurrency?: CurrencyAggregates;
   children: GroupNode[];
   /** Детальні рядки (проєкція columns) на листовому вузлі, коли includeRows. */
   rows?: DetailRow[];
@@ -38,6 +45,8 @@ export interface ReportResult {
   /** Плоскі детальні рядки (проєкція columns) — заповнюються коли includeRows і groupBy=[]. */
   detailRows: DetailRow[];
   grandTotals: AggregateValues;
+  /** Розбивка «Разом» для агрегацій у валюті документа (є, коли такі агрегації в звіті). */
+  grandTotalsByCurrency?: CurrencyAggregates;
   /** Скільки рядків відповідає умовам — точне (SQL), не обрізане лімітом детальних. */
   rowCount: number;
   /** Детальних рядків показано не всі (ліміт 5000) — групи й підсумки від цього не залежать. */
@@ -60,6 +69,41 @@ export function getPath(row: Row, prismaPath: string): unknown {
     node = (node as Row)[seg];
   }
   return node;
+}
+
+/**
+ * Значення поля рядка з підстановкою базової валюти: код валюти документа, якого немає
+ * (`currencyId = NULL` у старих платежах і проводках), — це базова валюта (BR-RPT-029).
+ */
+export function fieldValue(
+  row: Row,
+  entity: ReportEntityDef,
+  prismaPath: string,
+  baseCurrency: string,
+): unknown {
+  const v = getPath(row, prismaPath);
+  return prismaPath === entity.currencyPath && (v === null || v === undefined) ? baseCurrency : v;
+}
+
+/** Агрегації у валюті документа з переліку. */
+export function documentCurrencyAggs(
+  aggs: ReportAggInput[],
+  entity: ReportEntityDef,
+): ReportAggInput[] {
+  if (!entity.currencyPath) return [];
+  return aggs.filter(
+    a => a.agg !== 'COUNT' && getField(entity, a.field).inDocumentCurrency === true,
+  );
+}
+
+/**
+ * Значення агрегації у валюті документа має сенс лише в межах однієї валюти: якщо в групі їх кілька,
+ * спільне значення — null, а цифри — у розбивці `byCurrency` (рішення власника 2026-10-25).
+ */
+export function maskMixedCurrency(values: AggregateValues, byCurrency: CurrencyAggregates): void {
+  for (const [alias, perCurrency] of Object.entries(byCurrency)) {
+    if (Object.keys(perCurrency).length > 1) values[alias] = null;
+  }
 }
 
 /**
@@ -133,6 +177,30 @@ export function assertAggregations(aggs: ReportAggInput[], entity: ReportEntityD
       );
     }
   }
+}
+
+/** Розбивка агрегацій у валюті документа за кодом валюти (JS-еталон до SQL GROUPING SETS). */
+function computeByCurrency(
+  rows: Row[],
+  aggs: ReportAggInput[],
+  entity: ReportEntityDef,
+  baseCurrency: string,
+): CurrencyAggregates {
+  const docAggs = documentCurrencyAggs(aggs, entity);
+  const out: CurrencyAggregates = {};
+  if (docAggs.length === 0 || !entity.currencyPath) return out;
+  const path = entity.currencyPath;
+  const byCode = new Map<string, Row[]>();
+  for (const r of rows) {
+    const code = String(fieldValue(r, entity, path, baseCurrency));
+    byCode.set(code, [...(byCode.get(code) ?? []), r]);
+  }
+  for (const a of docAggs) out[`${a.agg}_${a.field}`] = {};
+  for (const [code, group] of byCode) {
+    const values = computeAggs(group, docAggs, entity);
+    for (const [alias, v] of Object.entries(values)) out[alias][code] = v;
+  }
+  return out;
 }
 
 /** Рахує вибрані агрегації над набором рядків. Whitelist + balance-SUM guard. */
@@ -209,6 +277,7 @@ function buildLevel(
   columns: string[],
   sortAlias: string | null,
   sortDir: 'asc' | 'desc',
+  baseCurrency: string,
 ): GroupNode[] {
   if (depth >= groupBy.length) return [];
   const fld = getField(entity, groupBy[depth]);
@@ -216,7 +285,7 @@ function buildLevel(
   const buckets = new Map<string, Row[]>();
   const firstValue = new Map<string, unknown>();
   for (const r of rows) {
-    const raw = getPath(r, fld.prismaPath);
+    const raw = fieldValue(r, entity, fld.prismaPath, baseCurrency);
     const k = normalizeKey(raw, isDate);
     let list = buckets.get(k);
     if (!list) {
@@ -229,14 +298,21 @@ function buildLevel(
   }
   const isLeaf = depth === groupBy.length - 1;
   const nodes: GroupNode[] = [];
+  const splitByCurrency = documentCurrencyAggs(aggs, entity).length > 0;
   for (const [k, groupRows] of buckets) {
+    const aggregates = computeAggs(groupRows, aggs, entity);
+    const byCurrency = splitByCurrency
+      ? computeByCurrency(groupRows, aggs, entity, baseCurrency)
+      : undefined;
+    if (byCurrency) maskMixedCurrency(aggregates, byCurrency);
     nodes.push({
       key: k,
       field: fld.key,
       label: fld.label,
       value: firstValue.get(k) ?? null,
       count: groupRows.length,
-      aggregates: computeAggs(groupRows, aggs, entity),
+      aggregates,
+      ...(byCurrency ? { byCurrency } : {}),
       children: isLeaf
         ? []
         : buildLevel(
@@ -249,9 +325,10 @@ function buildLevel(
             columns,
             sortAlias,
             sortDir,
+            baseCurrency,
           ),
       ...(isLeaf && includeRows && columns.length > 0
-        ? { rows: projectRows(groupRows, columns, entity) }
+        ? { rows: projectRows(groupRows, columns, entity, baseCurrency) }
         : {}),
     });
   }
@@ -259,13 +336,25 @@ function buildLevel(
   return nodes;
 }
 
-/** Проєкція сирих рядків у детальні (лише обрані columns, за їх key). */
-export function projectRows(rows: Row[], columns: string[], entity: ReportEntityDef): DetailRow[] {
+/**
+ * Проєкція сирих рядків у детальні (лише обрані columns, за їх key). Колонка у валюті документа —
+ * разом із кодом валюти рядка в `__currency` (рендер «344,00 USD»).
+ */
+export function projectRows(
+  rows: Row[],
+  columns: string[],
+  entity: ReportEntityDef,
+  baseCurrency: string,
+): DetailRow[] {
+  const withCurrency = needsCurrency(entity, columns);
   return rows.map(r => {
     const out: DetailRow = {};
     for (const key of columns) {
       const fld = getField(entity, key);
-      out[key] = getPath(r, fld.prismaPath) ?? null;
+      out[key] = fieldValue(r, entity, fld.prismaPath, baseCurrency) ?? null;
+    }
+    if (withCurrency && entity.currencyPath) {
+      out.__currency = fieldValue(r, entity, entity.currencyPath, baseCurrency);
     }
     return out;
   });
@@ -287,25 +376,36 @@ export function isSummable(entity: ReportEntityDef, key: string): boolean {
  * складаються — сума цін 49 рядків не є ціною, — а розрізняють рядки, як і текстові колонки.
  * `mergedCount` — скільки сирих рядків склеєно (рендериться у колонці «Склеєно»).
  */
-function mergeDetailRows(rows: Row[], columns: string[], entity: ReportEntityDef): DetailRow[] {
+function mergeDetailRows(
+  rows: Row[],
+  columns: string[],
+  entity: ReportEntityDef,
+  baseCurrency: string,
+): DetailRow[] {
   const numericCols = columns.filter(k => isSummable(entity, k));
   const dimCols = columns.filter(k => !isSummable(entity, k));
+  // Валюта документа — ще один вимір: суми різних валют у один рядок не складаються (BR-RPT-029).
+  const currencyPath = needsCurrency(entity, columns) ? entity.currencyPath : undefined;
   const buckets = new Map<string, { row: DetailRow; count: number }>();
 
   for (const r of rows) {
     const dimVals = dimCols.map(k => {
       const fld = getField(entity, k);
-      const v = getPath(r, fld.prismaPath) ?? '∅';
+      const v = fieldValue(r, entity, fld.prismaPath, baseCurrency) ?? '∅';
       // Дата — до мілісекунди: `String(Date)` рве їх до секунди, і дві різні оплати в одну секунду
       // зливались в один рядок (паритет із SQL-склеюванням, 2026-10-25).
       return v instanceof Date ? v.toISOString() : String(v);
     });
-    const key = dimVals.join(' ');
+    const currency = currencyPath ? String(fieldValue(r, entity, currencyPath, baseCurrency)) : '';
+    const key = [...dimVals, currency].join('');
     let bucket = buckets.get(key);
     if (!bucket) {
       const row: DetailRow = {};
-      for (const k of dimCols) row[k] = getPath(r, getField(entity, k).prismaPath) ?? null;
+      for (const k of dimCols) {
+        row[k] = fieldValue(r, entity, getField(entity, k).prismaPath, baseCurrency) ?? null;
+      }
       for (const k of numericCols) row[k] = 0;
+      if (currencyPath) row.__currency = currency;
       bucket = { row, count: 0 };
       buckets.set(key, bucket);
     }
@@ -332,9 +432,12 @@ export function aggregate(
     aggregations?: ReportAggInput[];
     includeRows?: boolean;
     sortByAggregate?: { alias: string; dir: 'asc' | 'desc' };
+    /** Базова валюта організації — замість порожньої валюти документа (BR-RPT-029). */
+    baseCurrency: string;
   },
   entity: ReportEntityDef,
 ): ReportResult {
+  const { baseCurrency } = config;
   const aggs = config.aggregations ?? [];
   const columns = config.columns ?? [];
   const includeRows = config.includeRows ?? false;
@@ -342,6 +445,11 @@ export function aggregate(
   const sortDir = config.sortByAggregate?.dir ?? 'desc';
 
   const grandTotals = computeAggs(rows, aggs, entity);
+  const grandTotalsByCurrency =
+    documentCurrencyAggs(aggs, entity).length > 0
+      ? computeByCurrency(rows, aggs, entity, baseCurrency)
+      : undefined;
+  if (grandTotalsByCurrency) maskMixedCurrency(grandTotals, grandTotalsByCurrency);
   const tree = buildLevel(
     rows,
     config.groupBy,
@@ -352,19 +460,21 @@ export function aggregate(
     columns,
     sortAlias,
     sortDir,
+    baseCurrency,
   );
   // Без групування — детальні рядки на верхньому рівні. Ідентичні рядки СКЛЕЮЮТЬСЯ
   // (mergeDetailRows): однакові за нечисловими колонками → один рядок, числові підсумовуються
   // (список 334× «Dup1 ×5» → «Dup1 · 1670»). Пропускаємо коли columns=[] — інакше шум порожніх.
   const detailRows =
     config.groupBy.length === 0 && includeRows && columns.length > 0
-      ? mergeDetailRows(rows, columns, entity)
+      ? mergeDetailRows(rows, columns, entity, baseCurrency)
       : [];
 
   return {
     tree,
     detailRows,
     grandTotals,
+    ...(grandTotalsByCurrency ? { grandTotalsByCurrency } : {}),
     rowCount: rows.length,
     detailTruncated: rows.length >= REPORT_TAKE_CAP,
     groupsTruncated: false,

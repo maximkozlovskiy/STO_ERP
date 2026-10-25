@@ -135,13 +135,84 @@ export function exportAggValue(
   return exportNumber(value);
 }
 
+// ── Суми у валюті документа (BR-RPT-029) ─────────────────────────────────────────
+
+type ByCurrency = Record<string, Record<string, number | null>> | undefined;
+
+/** Агрегація у валюті документа: її значення має сенс лише разом із кодом валюти. */
+export function isDocumentCurrencyAlias(alias: string, result: ReportRunResult): boolean {
+  const fieldKey = alias.slice(alias.indexOf('_') + 1);
+  const agg = alias.slice(0, alias.indexOf('_'));
+  return result.aggregations.some(
+    a => a.field === fieldKey && a.agg === agg && a.inDocumentCurrency === true,
+  );
+}
+
+/** Валюти вибірки для агрегації: базова першою, далі за абеткою (з розбивки «Разом»). */
+export function selectionCurrencies(alias: string, result: ReportRunResult): string[] {
+  const codes = Object.keys(result.result.grandTotalsByCurrency?.[alias] ?? {});
+  const base = result.baseCurrency;
+  return codes.sort((a, b) => (a === base ? -1 : b === base ? 1 : a.localeCompare(b)));
+}
+
+/**
+ * Рядки клітинки суми у валюті документа: «сума КОД» на кожну валюту групи (одна валюта — один
+ * рядок). null — агрегація не у валюті документа або розбивки немає (рендер звичайним числом).
+ */
+export function currencyLines(
+  alias: string,
+  byCurrency: ByCurrency,
+  result: ReportRunResult,
+): { code: string; value: number | null }[] | null {
+  if (!isDocumentCurrencyAlias(alias, result) || !byCurrency?.[alias]) return null;
+  const perCode = byCurrency[alias];
+  return selectionCurrencies(alias, result)
+    .filter(code => code in perCode)
+    .map(code => ({ code, value: perCode[code] ?? null }));
+}
+
+/** Колонка агрегації у файлі: сума у валюті документа — окрема колонка на кожну валюту вибірки. */
+export interface AggExportColumn {
+  alias: string;
+  code?: string;
+}
+
+function aggExportColumns(result: ReportRunResult): AggExportColumn[] {
+  return Object.keys(result.result.grandTotals).flatMap(alias => {
+    if (!isDocumentCurrencyAlias(alias, result) || !result.result.grandTotalsByCurrency) {
+      return [{ alias }];
+    }
+    return selectionCurrencies(alias, result).map(code => ({ alias, code }));
+  });
+}
+
+function aggExportHeader(col: AggExportColumn, result: ReportRunResult, t: TFunction<'reports'>) {
+  const label = aggAliasLabel(col.alias, result, t);
+  return col.code ? `${label}, ${col.code}` : label;
+}
+
+function aggExportValue(
+  col: AggExportColumn,
+  values: Record<string, number | null>,
+  byCurrency: ByCurrency,
+  result: ReportRunResult,
+): string {
+  if (!col.code) return exportAggValue(col.alias, values[col.alias], result);
+  return exportAggValue(col.alias, byCurrency?.[col.alias]?.[col.code], result);
+}
+
+/** Чи потрібна детальним рядкам колонка «Валюта» (є колонка у валюті документа). */
+function hasCurrencyColumn(result: ReportRunResult): boolean {
+  return result.columns.some(c => c.inDocumentCurrency === true);
+}
+
 // ── Експорт CSV / XLSX (клієнтський, з дерева) ──────────────────────────────────
 export function flattenTree(
   nodes: GroupNode[],
-  aggAliases: string[],
+  aggColumns: AggExportColumn[],
   t: TFunction<'reports'>,
+  result: ReportRunResult,
   depth = 0,
-  result?: ReportRunResult,
   enumByField: Record<string, string> = {},
 ): string[][] {
   const rows: string[][] = [];
@@ -150,10 +221,10 @@ export function flattenTree(
     rows.push([
       indent + groupLabel(n, enumByField, t),
       String(n.count),
-      ...aggAliases.map(a => exportAggValue(a, n.aggregates[a], result)),
+      ...aggColumns.map(c => aggExportValue(c, n.aggregates, n.byCurrency, result)),
     ]);
     if (n.children.length)
-      rows.push(...flattenTree(n.children, aggAliases, t, depth + 1, result, enumByField));
+      rows.push(...flattenTree(n.children, aggColumns, t, result, depth + 1, enumByField));
   }
   return rows;
 }
@@ -188,7 +259,11 @@ export function buildExportRows(
   t: TFunction<'reports'>,
   enumByField: Record<string, string> = {},
 ): string[][] {
-  const aggAliases = Object.keys(result.result.grandTotals);
+  const aggColumns = aggExportColumns(result);
+  const { grandTotals, grandTotalsByCurrency } = result.result;
+  const totalsCells = aggColumns.map(c =>
+    aggExportValue(c, grandTotals, grandTotalsByCurrency, result),
+  );
   let rows: string[][];
 
   if (result.groupBy.length) {
@@ -196,37 +271,37 @@ export function buildExportRows(
     const header = [
       t('export.group'),
       t('export.count'),
-      ...aggAliases.map(a => aggAliasLabel(a, result, t)),
+      ...aggColumns.map(c => aggExportHeader(c, result, t)),
     ];
-    const body = flattenTree(result.result.tree, aggAliases, t, 0, result, enumByField);
-    const totals = [
-      t('export.totals'),
-      String(result.result.rowCount),
-      ...aggAliases.map(a => exportAggValue(a, result.result.grandTotals[a], result)),
-    ];
+    const body = flattenTree(result.result.tree, aggColumns, t, result, 0, enumByField);
+    const totals = [t('export.totals'), String(result.result.rowCount), ...totalsCells];
     rows = [header, ...body, totals];
   } else {
     // Плоский режим — СКЛЕЄНІ детальні рядки (ті самі, що на екрані), а не лише «Усього».
     const cols = result.columns;
     const detail = result.result.detailRows;
     const showCount = detail.some(r => typeof r.__mergedCount === 'number' && r.__mergedCount > 1);
+    const withCurrency = hasCurrencyColumn(result);
     const header = [
       t('export.number'),
       ...cols.map(c => c.label),
+      ...(withCurrency ? [t('export.currency')] : []),
       ...(showCount ? [t('export.merged')] : []),
-      ...aggAliases.map(a => aggAliasLabel(a, result, t)),
+      ...aggColumns.map(c => aggExportHeader(c, result, t)),
     ];
     const body = detail.map((row, i) => [
       String(i + 1),
       ...cols.map(c => exportCell(row[c.key], c.type, c.enumName, t)),
+      ...(withCurrency ? [String(row.__currency ?? '')] : []),
       ...(showCount ? [String(typeof row.__mergedCount === 'number' ? row.__mergedCount : 1)] : []),
-      ...aggAliases.map(() => ''),
+      ...aggColumns.map(() => ''),
     ]);
     const totals = [
       t('export.totals'),
       ...cols.map(() => ''),
+      ...(withCurrency ? [''] : []),
       ...(showCount ? [String(result.result.rowCount)] : []),
-      ...aggAliases.map(a => exportAggValue(a, result.result.grandTotals[a], result)),
+      ...totalsCells,
     ];
     rows = [header, ...body, totals];
   }
@@ -240,7 +315,7 @@ export function buildExportRows(
  * `buildExportRows`.
  */
 export function buildExportNumericColumns(result: ReportRunResult): boolean[] {
-  const aggs = Object.keys(result.result.grandTotals).map(a => aggFieldType(a, result) !== 'date');
+  const aggs = aggExportColumns(result).map(c => aggFieldType(c.alias, result) !== 'date');
   if (result.groupBy.length) return [false, true, ...aggs];
   const showCount = result.result.detailRows.some(
     r => typeof r.__mergedCount === 'number' && r.__mergedCount > 1,
@@ -248,6 +323,7 @@ export function buildExportNumericColumns(result: ReportRunResult): boolean[] {
   return [
     false,
     ...result.columns.map(c => c.type === 'number' || c.type === 'decimal'),
+    ...(hasCurrencyColumn(result) ? [false] : []),
     ...(showCount ? [true] : []),
     ...aggs,
   ];

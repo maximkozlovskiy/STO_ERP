@@ -1,9 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { buildConditions, type ReportConfigInput } from './report-condition';
-import { assertGroupable, buildAggregateSql, buildMergedRowsSql } from './report-sql.builder';
+import {
+  assertGroupable,
+  buildAggregateSql,
+  buildCurrencySplitSql,
+  buildMergedRowsSql,
+} from './report-sql.builder';
 import { getEntity, getField } from './report-registry';
 import type { ReportAggInput } from './report-aggregator';
+
+/** Базова валюта тестової організації (у застосунку — з OrganisationSettings). */
+const BASE = 'UAH';
 
 /**
  * Форма SQL-агрегатів (BR-RPT-027). Що SQL дає ту саму вибірку й ті самі суми, що Prisma + JS,
@@ -14,7 +22,7 @@ import type { ReportAggInput } from './report-aggregator';
 const ORG = '11111111-1111-4111-8111-111111111111';
 
 const agg = (config: ReportConfigInput, aggs: ReportAggInput[] = []) => {
-  const conds = buildConditions(config, ORG);
+  const conds = buildConditions(config, ORG, BASE);
   const groupBy = assertGroupable(conds.entity, config.groupBy);
   return buildAggregateSql(conds, groupBy, aggs);
 };
@@ -127,6 +135,7 @@ describe('report-sql.builder', () => {
     const conds = buildConditions(
       { entity: 'purchaseOrderLine', columns: ['good.name', 'price', 'quantity'], groupBy: [] },
       ORG,
+      BASE,
     );
     const sql = buildMergedRowsSql(conds, ['good.name', 'price', 'quantity'], null);
     expect(sql.sql).toContain('AS d0'); // good.name
@@ -142,6 +151,7 @@ describe('report-sql.builder', () => {
     const conds = buildConditions(
       { entity: 'purchaseOrderLine', columns: ['quantity'], groupBy: [] },
       ORG,
+      BASE,
     );
     const sql = buildMergedRowsSql(conds, ['quantity'], null);
     expect(sql.sql).not.toContain('GROUP BY');
@@ -154,5 +164,63 @@ describe('report-sql.builder', () => {
     expect(() => assertGroupable(e, ['totalAmount'])).toThrow(BadRequestException);
     expect(() => assertGroupable(e, ['totalAmount'])).toThrow(getField(e, 'totalAmount').label);
     expect(assertGroupable(e, ['status']).map(f => f.key)).toEqual(['status']);
+  });
+
+  describe('BR-RPT-029: валюта документа', () => {
+    const pay = getEntity('payment');
+    const payConds = (filters: ReportConfigInput['filters'] = []) =>
+      buildConditions({ entity: 'payment', columns: [], groupBy: [], filters }, ORG, 'EUR');
+
+    // Мутація: прибрати COALESCE у SqlScope.column → група й фільтр «EUR» без документів без валюти.
+    // guards: BR-RPT-029
+    it('код валюти — COALESCE(код, базова) у ключі групи й у фільтрі; базова — параметром', () => {
+      const sql = buildAggregateSql(
+        payConds([{ field: 'currency.code', op: 'eq', value: 'EUR' }]),
+        [getField(pay, 'currency.code')],
+        [{ field: 'amountBase', agg: 'SUM' }],
+      );
+      expect(sql.sql).toMatch(/NULLIF\(COALESCE\(t\d+\."code", \?\)::text, ''\)/);
+      expect(sql.sql).toMatch(/COALESCE\(t\d+\."code", \?\) = \?/);
+      expect(sql.values).toContain('EUR');
+      expect(sql.sql).not.toContain('EUR');
+    });
+
+    // Мутація: прибрати набір (c0) «Разом» з GROUPING SETS → «Разом» без розбивки за валютами.
+    // guards: BR-RPT-029
+    it('розбивка за валютами: GROUPING SETS на кожен рівень разом із «Разом», лише суми у валюті документа', () => {
+      const aggs: ReportAggInput[] = [
+        { field: 'amount', agg: 'SUM' },
+        { field: 'amountBase', agg: 'SUM' },
+        { field: 'amount', agg: 'COUNT' },
+      ];
+      const sql = buildCurrencySplitSql(payConds(), [getField(pay, 'method')], aggs);
+      expect(sql?.sql).toContain('GROUP BY GROUPING SETS ((c0), (k0, c0))');
+      // лише SUM(amount) — базова сума й COUNT від валюти не залежать
+      expect(sql?.sql).toContain('AS a0');
+      expect(sql?.sql).not.toContain('AS a1');
+      expect(
+        buildCurrencySplitSql(payConds(), [], [{ field: 'amountBase', agg: 'SUM' }]),
+      ).toBeNull();
+      const flat = buildCurrencySplitSql(payConds(), [], aggs);
+      expect(flat?.sql).toContain('GROUP BY GROUPING SETS ((c0))');
+    });
+
+    // Мутація: не додавати валюту у виміри склеювання → суми різних валют в одному рядку.
+    // guards: BR-RPT-029
+    it('склеювання: валюта документа — ще один вимір, якщо є колонка у валюті документа', () => {
+      const merged = buildMergedRowsSql(payConds(), ['counterparty.companyName', 'amount'], null);
+      expect(merged.sql).toContain('AS c0');
+      expect(merged.sql).toContain('GROUP BY 1, 2');
+      const onlyBase = buildMergedRowsSql(
+        payConds(),
+        ['counterparty.companyName', 'amountBase'],
+        null,
+      );
+      expect(onlyBase.sql).not.toContain('AS c0');
+      // без жодного виміру, крім валюти, — групування за валютою, а не HAVING
+      const onlySum = buildMergedRowsSql(payConds(), ['amount'], null);
+      expect(onlySum.sql).toContain('GROUP BY 1');
+      expect(onlySum.sql).not.toContain('HAVING');
+    });
   });
 });

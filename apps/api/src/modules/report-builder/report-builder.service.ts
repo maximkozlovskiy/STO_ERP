@@ -3,17 +3,24 @@ import { Prisma } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import {
   REGISTRY,
   REGISTRY_ENUMS,
   getEntity,
   canBeEmpty,
   ReportEntityDef,
+  type ReportFieldDef,
 } from './report-registry';
 import { buildQuery, ReportConfigInput } from './report-query.builder';
 import { ReportResult, ReportAggInput, assertAggregations } from './report-aggregator';
-import { buildConditions } from './report-condition';
-import { assertGroupable, buildAggregateSql, buildMergedRowsSql } from './report-sql.builder';
+import { buildConditions, type ReportConditions } from './report-condition';
+import {
+  assertGroupable,
+  buildAggregateSql,
+  buildCurrencySplitSql,
+  buildMergedRowsSql,
+} from './report-sql.builder';
 import { assembleMergedRows, assembleTree } from './report-sql-result';
 
 /** Повний config звіту: білдер-частина + агрегація/групування для JS-шару. */
@@ -32,11 +39,21 @@ const NUMERIC_TYPES = new Set(['number', 'decimal']);
 export interface ReportAggEnriched extends ReportAggInput {
   type: string;
   label: string;
+  /** Сума у валюті документа: у групі з кількома валютами — розбивка `byCurrency` (BR-RPT-029). */
+  inDocumentCurrency?: boolean;
 }
 
 export interface ReportRunResult {
   entity: string;
-  columns: Array<{ key: string; label: string; type: string; enumName?: string }>;
+  columns: Array<{
+    key: string;
+    label: string;
+    type: string;
+    enumName?: string;
+    inDocumentCurrency?: boolean;
+  }>;
+  /** Базова валюта організації (нею рахуються документи без валюти). */
+  baseCurrency: string;
   groupBy: string[];
   /** Ефективні агрегації (явні + авто-SUM) — для рендеру заголовків/дерева. */
   aggregations: ReportAggEnriched[];
@@ -45,7 +62,10 @@ export interface ReportRunResult {
 
 @Injectable()
 export class ReportBuilderService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly exchangeRates: ExchangeRatesService,
+  ) {}
 
   /** Реєстр для фронта. advanced-зв'язки не приховуємо у v1 (їх немає), але поле лишаємо. */
   getMetadata() {
@@ -91,15 +111,25 @@ export class ReportBuilderService {
         agg: a.agg,
         type: fld?.type ?? 'scalar',
         label: fld?.label ?? a.field,
+        ...(fld?.inDocumentCurrency && a.agg !== 'COUNT' ? { inDocumentCurrency: true } : {}),
       };
     });
 
     // Детальні рядки завжди (діра #5: без цього «детальний звіт» неможливий).
     const includeRows = config.includeRows ?? true;
-    const result = await this.aggregateInDb(orgId, config, entity, aggregations, includeRows);
+    const { code: baseCurrency } = await this.exchangeRates.getBaseCurrency(orgId);
+    const result = await this.aggregateInDb(
+      orgId,
+      config,
+      entity,
+      aggregations,
+      includeRows,
+      baseCurrency,
+    );
     return {
       entity: entity.key,
       columns: this.expandColumns(entity, config.columns),
+      baseCurrency,
       groupBy: config.groupBy,
       aggregations, // ефективні (з авто-SUM) — фронт рендерить заголовки/дерево з них
       result,
@@ -116,18 +146,20 @@ export class ReportBuilderService {
     entity: ReportEntityDef,
     aggregations: ReportAggInput[],
     includeRows: boolean,
+    baseCurrency: string,
   ): Promise<ReportResult> {
-    const conds = buildConditions(config, orgId);
+    const conds = buildConditions(config, orgId, baseCurrency);
     const groupFields = assertGroupable(entity, config.groupBy);
     assertAggregations(aggregations, entity);
     const wantDetail = includeRows && config.columns.length > 0;
     const sort = config.sort?.[0] ?? null;
 
     if (groupFields.length === 0) {
-      const [totals, merged] = await Promise.all([
+      const [totals, split, merged] = await Promise.all([
         this.prisma.$queryRaw<Record<string, unknown>[]>(
           buildAggregateSql(conds, [], aggregations),
         ),
+        this.currencySplit(conds, [], aggregations),
         wantDetail
           ? this.prisma.$queryRaw<Record<string, unknown>[]>(
               buildMergedRowsSql(conds, config.columns, sort),
@@ -138,12 +170,17 @@ export class ReportBuilderService {
         detail: null,
         columns: config.columns,
         entity,
+        currencySplit: split,
+        baseCurrency,
       });
       const flat = assembleMergedRows(merged, config.columns, entity);
       return {
         tree: [],
         detailRows: flat.detailRows,
         grandTotals: assembled.grandTotals,
+        ...(assembled.grandTotalsByCurrency
+          ? { grandTotalsByCurrency: assembled.grandTotalsByCurrency }
+          : {}),
         rowCount: assembled.rowCount,
         detailTruncated: flat.truncated,
         groupsTruncated: false,
@@ -151,11 +188,12 @@ export class ReportBuilderService {
       };
     }
 
-    const built = buildQuery(config, orgId);
-    const [rollup, detail] = await Promise.all([
+    const built = buildQuery(config, orgId, baseCurrency);
+    const [rollup, split, detail] = await Promise.all([
       this.prisma.$queryRaw<Record<string, unknown>[]>(
         buildAggregateSql(conds, groupFields, aggregations),
       ),
+      this.currencySplit(conds, groupFields, aggregations),
       wantDetail ? this.runFindMany(built.model, built.args) : Promise.resolve(null),
     ]);
     const assembled = assembleTree(rollup, groupFields, aggregations, {
@@ -163,17 +201,32 @@ export class ReportBuilderService {
       columns: config.columns,
       entity,
       sortByAggregate: config.sortByAggregate,
+      currencySplit: split,
+      baseCurrency,
     });
     const detailTruncated = (detail?.length ?? 0) >= built.args.take;
     return {
       tree: assembled.tree,
       detailRows: [],
       grandTotals: assembled.grandTotals,
+      ...(assembled.grandTotalsByCurrency
+        ? { grandTotalsByCurrency: assembled.grandTotalsByCurrency }
+        : {}),
       rowCount: assembled.rowCount,
       detailTruncated,
       groupsTruncated: assembled.groupsTruncated,
       truncated: detailTruncated || assembled.groupsTruncated,
     };
+  }
+
+  /** Розбивка агрегацій у валюті документа за валютою; null — таких агрегацій у звіті немає. */
+  private async currencySplit(
+    conds: ReportConditions,
+    groupFields: ReportFieldDef[],
+    aggregations: ReportAggInput[],
+  ): Promise<Record<string, unknown>[] | null> {
+    const sql = buildCurrencySplitSql(conds, groupFields, aggregations);
+    return sql ? this.prisma.$queryRaw<Record<string, unknown>[]>(sql) : null;
   }
 
   /** Явні агрегації + авто-SUM для числових columns без власної агрегації. */
@@ -202,7 +255,13 @@ export class ReportBuilderService {
   private expandColumns(entity: ReportEntityDef, columns: string[]) {
     return columns.map(key => {
       const f = entity.fields.find(x => x.key === key);
-      return { key, label: f?.label ?? key, type: f?.type ?? 'scalar', enumName: f?.enumName };
+      return {
+        key,
+        label: f?.label ?? key,
+        type: f?.type ?? 'scalar',
+        enumName: f?.enumName,
+        ...(f?.inDocumentCurrency ? { inDocumentCurrency: true } : {}),
+      };
     });
   }
 
@@ -231,8 +290,9 @@ export class ReportBuilderService {
    * `groupable` (BR-RPT-002) — той самий набір, що кидає 400 під час запуску. Без `groupable` звіт із
    * групуванням за сумою зберігався і більше ніколи не запускався.
    */
-  private dryRun(config: FullReportConfig, orgId: string): void {
-    buildQuery(config, orgId);
+  private async dryRun(config: FullReportConfig, orgId: string): Promise<void> {
+    const { code: baseCurrency } = await this.exchangeRates.getBaseCurrency(orgId);
+    buildQuery(config, orgId, baseCurrency);
     const entity = getEntity(config.entity);
     assertGroupable(entity, config.groupBy ?? []);
     // BR-RPT-018 + 011: недозволена агрегація (SUM ціни тощо) — 400 вже під час збереження, а не
@@ -253,7 +313,7 @@ export class ReportBuilderService {
     dto: { name: string; config: FullReportConfig },
     userId?: string,
   ) {
-    this.dryRun(dto.config, orgId); // не зберігати невалідний config (400)
+    await this.dryRun(dto.config, orgId); // не зберігати невалідний config (400)
     return this.prisma.savedReport.create({
       data: {
         orgId,
@@ -276,7 +336,7 @@ export class ReportBuilderService {
 
   async updateSaved(orgId: string, id: string, dto: { name?: string; config?: FullReportConfig }) {
     await this.getSaved(orgId, id); // guard-404 + tenant (id належить org, не soft-deleted)
-    if (dto.config) this.dryRun(dto.config, orgId);
+    if (dto.config) await this.dryRun(dto.config, orgId);
     // update() повертає оновлений рядок одним UPDATE...RETURNING — без окремого re-fetch
     // (getSaved вище вже підтвердив tenant+not-deleted). where МУСИТЬ нести orgId+deletedAt:null:
     // (1) A1 tenant-guard відхиляє update без tenant-токена у where (TenantIsolationError);

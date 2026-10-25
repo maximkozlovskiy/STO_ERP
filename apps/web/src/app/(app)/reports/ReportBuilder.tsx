@@ -44,6 +44,7 @@ import {
   filterOpPatch,
   type FilterOpChoice,
   aggAliasLabel,
+  currencyLines,
   enumLabel,
   exportReport,
   filterDayValue,
@@ -1045,6 +1046,56 @@ function fmtCell(
   return String(value);
 }
 
+/**
+ * Клітинка агрегації. Сума у валюті документа (BR-RPT-029) — рядок «сума КОД» на кожну валюту
+ * групи: гривні з доларами не складаються; базову суму показує окрема агрегація.
+ */
+function AggCell({
+  alias,
+  values,
+  byCurrency,
+  result,
+}: {
+  alias: string;
+  values: Record<string, number | null>;
+  byCurrency: GroupNode['byCurrency'];
+  result: ReportRunResult;
+}) {
+  const lines = currencyLines(alias, byCurrency, result);
+  if (!lines) return <>{fmtAggValue(alias, values[alias], result.columns, result.aggregations)}</>;
+  if (lines.length === 0) return <>—</>;
+  return (
+    <>
+      {lines.map(l => (
+        <div key={l.code} className="whitespace-nowrap">
+          {fmtAggValue(alias, l.value, result.columns, result.aggregations)}{' '}
+          <span className="text-muted-foreground">{l.code}</span>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Детальна клітинка; сума у валюті документа — з кодом валюти рядка («344,00 USD»). */
+function DetailCell({
+  row,
+  col,
+  t,
+}: {
+  row: Record<string, unknown>;
+  col: ReportRunResult['columns'][number];
+  t: TFunction<'reports'>;
+}) {
+  const text = fmtCell(row[col.key], col.type, col.enumName, t);
+  const code = row.__currency;
+  if (!col.inDocumentCurrency || typeof code !== 'string' || text === '—') return <>{text}</>;
+  return (
+    <span className="whitespace-nowrap">
+      {text} <span className="text-muted-foreground">{code}</span>
+    </span>
+  );
+}
+
 function ResultView({
   result,
   sort,
@@ -1169,9 +1220,8 @@ function ResultView({
                     key={n.key + i}
                     node={n}
                     depth={0}
-                    cols={cols}
+                    result={result}
                     aggAliases={aggAliases}
-                    aggregations={result.aggregations}
                     enumByField={enumByField}
                     t={t}
                   />
@@ -1188,7 +1238,7 @@ function ResultView({
                           c.type === 'decimal' || c.type === 'number' ? 'text-right' : 'text-left',
                         )}
                       >
-                        {fmtCell(row[c.key], c.type, c.enumName, t)}
+                        <DetailCell row={row} col={c} t={t} />
                       </td>
                     ))}
                     {showCount && (
@@ -1223,8 +1273,13 @@ function ResultView({
                 </td>
               )}
               {aggAliases.map(a => (
-                <td key={a} className="text-right px-3 py-2 border-t border-border">
-                  {fmtAggValue(a, result.result.grandTotals[a], cols, result.aggregations)}
+                <td key={a} className="text-right px-3 py-2 border-t border-border align-top">
+                  <AggCell
+                    alias={a}
+                    values={result.result.grandTotals}
+                    byCurrency={result.result.grandTotalsByCurrency}
+                    result={result}
+                  />
                 </td>
               ))}
             </tr>
@@ -1238,20 +1293,19 @@ function ResultView({
 function GroupRows({
   node,
   depth,
-  cols,
+  result,
   aggAliases,
-  aggregations,
   enumByField,
   t,
 }: {
   node: GroupNode;
   depth: number;
-  cols: { key: string; label: string; type: string; enumName?: string }[];
+  result: ReportRunResult;
   aggAliases: string[];
-  aggregations: { field: string; agg: string; type?: string; label?: string }[];
   enumByField: Record<string, string>;
   t: TFunction<'reports'>;
 }) {
+  const cols = result.columns;
   const [open, setOpen] = useState(depth < 1);
   const hasChildren = node.children.length > 0;
   const hasRows = !!node.rows && node.rows.length > 0;
@@ -1294,8 +1348,13 @@ function GroupRows({
         ))}
         <td className="text-right px-3 py-1.5 text-muted-foreground">{node.count}</td>
         {aggAliases.map(a => (
-          <td key={a} className="text-right px-3 py-1.5">
-            {fmtAggValue(a, node.aggregates[a], cols, aggregations)}
+          <td key={a} className="text-right px-3 py-1.5 align-top">
+            <AggCell
+              alias={a}
+              values={node.aggregates}
+              byCurrency={node.byCurrency}
+              result={result}
+            />
           </td>
         ))}
       </tr>
@@ -1306,9 +1365,8 @@ function GroupRows({
             key={c.key + i}
             node={c}
             depth={depth + 1}
-            cols={cols}
+            result={result}
             aggAliases={aggAliases}
-            aggregations={aggregations}
             enumByField={enumByField}
             t={t}
           />
@@ -1330,7 +1388,7 @@ function GroupRows({
                   c.type === 'decimal' || c.type === 'number' ? 'text-right' : 'text-left',
                 )}
               >
-                {fmtCell(row[c.key], c.type, c.enumName, t)}
+                <DetailCell row={row} col={c} t={t} />
               </td>
             ))}
             <td />

@@ -6,7 +6,13 @@ import type { ReportEntityDef, ReportFieldDef } from './report-registry';
 import { getField, isDateOnlyPath } from './report-registry';
 import type { ReportCond, ReportConditions } from './report-condition';
 import { resolveJoins, type EntityJoins } from './report-joins';
-import { NON_PHYSICAL_MOVEMENT_TYPES, isSummable, type ReportAggInput } from './report-aggregator';
+import {
+  NON_PHYSICAL_MOVEMENT_TYPES,
+  documentCurrencyAggs,
+  isSummable,
+  needsCurrency,
+  type ReportAggInput,
+} from './report-aggregator';
 
 /**
  * SQL-агрегати конструктора (групи, «Разом», склеєні плоскі рядки) — точні на будь-якому обсязі,
@@ -23,6 +29,8 @@ import { NON_PHYSICAL_MOVEMENT_TYPES, isSummable, type ReportAggInput } from './
 export const REPORT_GROUP_CAP = 20000;
 /** Склеєних плоских рядків у відповіді — як детальних. */
 export const REPORT_MERGED_CAP = 5000;
+/** Рядків розбивки за валютами: групи всіх рівнів × валюти документів (з запасом). */
+export const REPORT_CURRENCY_SPLIT_CAP = (REPORT_GROUP_CAP + 1) * 10;
 
 const TABLE_RE = /^[a-z][a-z_]*$/;
 const COLUMN_RE = /^[A-Za-z][A-Za-z0-9]*$/;
@@ -55,6 +63,7 @@ class SqlScope {
   constructor(
     readonly entity: ReportEntityDef,
     private readonly orgId: string,
+    private readonly baseCurrency: string,
   ) {
     this.joins = resolveJoins(entity);
   }
@@ -72,11 +81,23 @@ class SqlScope {
     return alias;
   }
 
-  /** Колонка поля за prismaPath (`good.brand.name` → `t2."name"`). */
+  /**
+   * Колонка поля за prismaPath (`good.brand.name` → `t2."name"`). Код валюти документа —
+   * `COALESCE(код, базова)`: порожня валюта = базова валюта організації (BR-RPT-029).
+   */
   column(prismaPath: string): Prisma.Sql {
     const segments = prismaPath.split('.');
     const relPath = segments.slice(0, -1).join('.');
-    return rawCol(this.alias(relPath), segments[segments.length - 1]);
+    const c = rawCol(this.alias(relPath), segments[segments.length - 1]);
+    return prismaPath === this.entity.currencyPath
+      ? Prisma.sql`COALESCE(${c}, ${this.baseCurrency})`
+      : c;
+  }
+
+  /** Код валюти документа з підстановкою базової (сутність має `currencyPath`). */
+  currency(): Prisma.Sql {
+    if (!this.entity.currencyPath) throw new Error(`report-sql: ${this.entity.key} без валюти`);
+    return this.column(this.entity.currencyPath);
   }
 
   from(): Prisma.Sql {
@@ -245,7 +266,7 @@ export function buildAggregateSql(
   groupBy: ReportFieldDef[],
   aggs: ReportAggInput[],
 ): Prisma.Sql {
-  const scope = new SqlScope(conds.entity, conds.orgId);
+  const scope = new SqlScope(conds.entity, conds.orgId, conds.baseCurrency);
   const keys = groupBy.map((f, i) => rawAs(groupKeySql(scope, f), `k${i}`));
   const inputs = aggs.map((a, j) =>
     rawAs(aggInputSql(scope, getField(conds.entity, a.field)), `v${j}`),
@@ -272,6 +293,49 @@ export function buildAggregateSql(
 }
 
 /**
+ * Розбивка агрегацій у валюті документа за валютою (BR-RPT-029): ті самі умови, `GROUP BY GROUPING
+ * SETS ((cur), (k0, cur), …, (k0…kn-1, cur))`. Рядок має ключі `k{i}` (NULL вище свого рівня),
+ * прапорці `g{i}`, код `cur` і агрегати `a{j}` у порядку `documentCurrencyAggs`. Порожній, якщо
+ * таких агрегацій у звіті немає.
+ */
+export function buildCurrencySplitSql(
+  conds: ReportConditions,
+  groupBy: ReportFieldDef[],
+  aggs: ReportAggInput[],
+): Prisma.Sql | null {
+  const docAggs = documentCurrencyAggs(aggs, conds.entity);
+  if (docAggs.length === 0) return null;
+  const scope = new SqlScope(conds.entity, conds.orgId, conds.baseCurrency);
+  const keys = groupBy.map((f, i) => rawAs(groupKeySql(scope, f), `k${i}`));
+  const inputs = docAggs.map((a, j) =>
+    rawAs(aggInputSql(scope, getField(conds.entity, a.field)), `v${j}`),
+  );
+  const cur = rawAs(scope.currency(), 'c0');
+  const where = whereSql(scope, conds);
+  const inner = Prisma.join([cur, ...keys, ...inputs], ', ');
+  const outerKeys = groupBy.flatMap((_, i) => [
+    Prisma.raw(`k${i}`),
+    Prisma.raw(`GROUPING(k${i}) AS g${i}`),
+  ]);
+  const outerAggs = docAggs.map(
+    (a, j) => Prisma.sql`${aggFnSql(a.agg, Prisma.raw(`v${j}`))}::text AS ${Prisma.raw(`a${j}`)}`,
+  );
+  const select = Prisma.join([...outerKeys, Prisma.raw('c0 AS cur'), ...outerAggs], ', ');
+  // Набір на кожен рівень дерева разом із «Разом»: (c0), (k0, c0), …, (k0…kn-1, c0).
+  const keyList = groupBy.map((_, i) => `k${i}`);
+  const sets = keyList.map((_, l) => [...keyList.slice(0, l), 'c0']).concat([[...keyList, 'c0']]);
+  const levelOrder = keyList.length
+    ? ` ORDER BY ${keyList.map(k => `GROUPING(${k})`).join(' + ')} DESC`
+    : '';
+  // Ліміт — як у групах, помножений на валюти: зріз зачіпає лише найглибші групи, що й так
+  // відрізані лімітом груп (`groupsTruncated`).
+  const group = Prisma.raw(
+    `GROUP BY GROUPING SETS (${sets.map(set => `(${set.join(', ')})`).join(', ')})${levelOrder} LIMIT ${REPORT_CURRENCY_SPLIT_CAP}`,
+  );
+  return Prisma.sql`SELECT ${select} FROM (SELECT ${inner} ${scope.from()} ${where}) s ${group}`;
+}
+
+/**
  * Склеєні плоскі рядки (BR-RPT-015) — у БД: `GROUP BY` колонок, яких не підсумовують, і SUM тих,
  * яких підсумовують; `n` — скільки рядків склеєно. Порядок — як перша поява рядка у вибірці
  * детальних рядків (`MAX(createdAt)` для спадання).
@@ -281,11 +345,14 @@ export function buildMergedRowsSql(
   columns: string[],
   sort: { field: string; dir: 'asc' | 'desc' } | null,
 ): Prisma.Sql {
-  const scope = new SqlScope(conds.entity, conds.orgId);
+  const scope = new SqlScope(conds.entity, conds.orgId, conds.baseCurrency);
   const entity = conds.entity;
   const dims = columns.filter(k => !isSummable(entity, k));
   const sums = columns.filter(k => isSummable(entity, k));
   const dimExprs = dims.map((k, i) => rawAs(scope.column(getField(entity, k).prismaPath), `d${i}`));
+  // Валюта документа — ще один вимір: суми різних валют у один рядок не складаються (BR-RPT-029).
+  const withCurrency = needsCurrency(entity, columns);
+  if (withCurrency) dimExprs.push(rawAs(scope.currency(), 'c0'));
   const sumExprs = sums.map((k, i) =>
     rawAs(Prisma.sql`COALESCE(SUM(${aggInputSql(scope, getField(entity, k))}), 0)::text`, `s${i}`),
   );
@@ -298,8 +365,8 @@ export function buildMergedRowsSql(
   const select = Prisma.join([...dimExprs, ...sumExprs, Prisma.sql`COUNT(*)::int AS n`], ', ');
   // Без жодної непідсумовуваної колонки агрегат без GROUP BY дає рядок і над порожньою вибіркою —
   // фантомний «0 · склеєно 0»; JS-склеювання давало порожній список.
-  const group = dims.length
-    ? Prisma.sql`GROUP BY ${Prisma.raw(dims.map((_, i) => String(i + 1)).join(', '))}`
+  const group = dimExprs.length
+    ? Prisma.sql`GROUP BY ${Prisma.raw(dimExprs.map((_, i) => String(i + 1)).join(', '))}`
     : Prisma.sql`HAVING COUNT(*) > 0`;
   return Prisma.sql`SELECT ${select} ${scope.from()} ${where} ${group} ORDER BY ${orderAgg} ${orderDir} NULLS LAST LIMIT ${REPORT_MERGED_CAP + 1}`;
 }

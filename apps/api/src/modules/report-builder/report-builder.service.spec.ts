@@ -21,6 +21,8 @@ describe('ReportBuilderService — Bug #620: aggregations enrichment', () => {
   const service = new ReportBuilderService(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    { getBaseCurrency: async () => ({ id: null, code: 'UAH' }) } as any,
   );
 
   // guards: BR-RPT-012

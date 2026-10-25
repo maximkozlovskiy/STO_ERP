@@ -200,6 +200,10 @@ export class ReportRunColumnDto {
   @ApiProperty() label!: string;
   @ApiProperty() type!: string;
   @ApiPropertyOptional() enumName?: string;
+  @ApiPropertyOptional({
+    description: 'Сума у валюті документа: у групі з кількома валютами — розбивка byCurrency',
+  })
+  inDocumentCurrency?: boolean;
 }
 
 export class ReportRunAggregationDto {
@@ -207,6 +211,10 @@ export class ReportRunAggregationDto {
   @ApiProperty({ description: 'SUM | AVG | MIN | MAX | COUNT' }) agg!: string;
   @ApiProperty() type!: string;
   @ApiProperty() label!: string;
+  @ApiPropertyOptional({
+    description: 'Сума у валюті документа: у групі з кількома валютами — розбивка byCurrency',
+  })
+  inDocumentCurrency?: boolean;
 }
 
 /**
@@ -230,6 +238,17 @@ export class GroupNodeDto {
     description: 'alias агрегації → значення (null якщо нема даних)',
   })
   aggregates!: Record<string, number | null>;
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: {
+      type: 'object',
+      additionalProperties: { type: 'number', nullable: true },
+    },
+    description:
+      'Агрегації у валюті документа: alias → код валюти → значення (BR-RPT-029). Є, коли такі ' +
+      'агрегації в звіті; при кількох валютах відповідне значення в aggregates — null',
+  })
+  byCurrency?: Record<string, Record<string, number | null>>;
   @ApiProperty({
     type: 'array',
     items: { $ref: getSchemaPath(GroupNodeDto) },
@@ -239,7 +258,9 @@ export class GroupNodeDto {
   @ApiPropertyOptional({
     type: 'array',
     items: { type: 'object', additionalProperties: true },
-    description: 'Детальні рядки на листовому вузлі, коли includeRows',
+    description:
+      'Детальні рядки на листовому вузлі, коли includeRows; __currency — код валюти документа ' +
+      'рядка, коли є колонка у валюті документа',
   })
   rows?: Record<string, unknown>[];
 }
@@ -254,7 +275,9 @@ export class ReportRunResultBodyDto {
   @ApiProperty({
     type: 'array',
     items: { type: 'object', additionalProperties: true },
-    description: 'Плоскі детальні рядки — набір ключів задає config.columns у рантаймі',
+    description:
+      'Плоскі детальні рядки — набір ключів задає config.columns у рантаймі; __currency — код ' +
+      'валюти документа (рядки різних валют не склеюються), __mergedCount — скільки склеєно',
   })
   detailRows!: Record<string, unknown>[];
   @ApiProperty({
@@ -263,6 +286,17 @@ export class ReportRunResultBodyDto {
     description: 'alias агрегації → значення (null якщо нема даних)',
   })
   grandTotals!: Record<string, number | null>;
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: {
+      type: 'object',
+      additionalProperties: { type: 'number', nullable: true },
+    },
+    description:
+      'Агрегації у валюті документа: alias → код валюти → значення (BR-RPT-029). Є, коли такі ' +
+      'агрегації в звіті; при кількох валютах відповідне значення в aggregates — null',
+  })
+  grandTotalsByCurrency?: Record<string, Record<string, number | null>>;
   @ApiProperty({ description: 'Скільки рядків відповідає умовам — точне, не обрізане лімітом' })
   rowCount!: number;
   @ApiProperty({
@@ -279,6 +313,8 @@ export class ReportRunResponseDto {
   @ApiProperty({ description: 'Ключ сутності з реєстру' }) entity!: string;
   @ApiProperty({ type: [ReportRunColumnDto] }) columns!: ReportRunColumnDto[];
   @ApiProperty({ type: [String] }) groupBy!: string[];
+  @ApiProperty({ description: 'Базова валюта організації — нею рахуються документи без валюти' })
+  baseCurrency!: string;
   @ApiProperty({ type: [ReportRunAggregationDto], description: 'Явні + авто-SUM' })
   aggregations!: ReportRunAggregationDto[];
   @ApiProperty({ type: ReportRunResultBodyDto }) result!: ReportRunResultBodyDto;

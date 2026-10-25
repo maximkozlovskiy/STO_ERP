@@ -1,5 +1,5 @@
 import type { ReportEntityDef } from './report-registry';
-import { getField, assertRelationPath, emptinessOf } from './report-registry';
+import { getField, assertRelationPath, emptinessOf, needsCurrency } from './report-registry';
 import { buildConditions, type ReportCond, type ReportConfigInput } from './report-condition';
 
 export type { ReportConfigInput, ReportFilterInput, ReportSortInput } from './report-condition';
@@ -111,8 +111,36 @@ function mergeCond(where: Obj, path: string, leaf: unknown): void {
   }
 }
 
+/** Чи задовольняє базова валюта умову на код валюти (як `COALESCE(код, базова)` у SQL). */
+function baseCurrencyMatches(cond: ReportCond, base: string): boolean {
+  switch (cond.kind) {
+    case 'eq':
+      return cond.value === base;
+    case 'ne':
+      return cond.value !== base;
+    case 'in':
+      return cond.values.includes(base);
+    case 'contains':
+      return base.toLowerCase().includes(cond.value.replace(/\\(.)/g, '$1').toLowerCase());
+    default:
+      return false;
+  }
+}
+
 /** Додає умову до `where`. */
-function addCond(where: Obj, entity: ReportEntityDef, cond: ReportCond): void {
+function addCond(where: Obj, entity: ReportEntityDef, cond: ReportCond, base: string): void {
+  if (cond.kind !== 'isNull' && cond.kind !== 'outside' && cond.path === entity.currencyPath) {
+    // BR-RPT-029: документ без валюти — у базовій. Умова, під яку підходить базова валюта, бере й
+    // рядки без зв'язку з валютою (як `COALESCE(код, базова)` у SQL-агрегатах).
+    const missing = emptinessOf(entity, cond.path).optionalHops.map(h => pathWhere(h, null));
+    if (missing.length > 0 && baseCurrencyMatches(cond, base)) {
+      where.AND = [
+        ...((where.AND ?? []) as Obj[]),
+        { OR: [pathWhere(cond.path, prismaLeaf(cond)), ...missing] },
+      ];
+      return;
+    }
+  }
   if (cond.kind === 'isNull') {
     const branches = emptinessBranches(entity, cond.path, cond.isNull);
     if (branches.length === 1) mergeCond(where, branches[0].path, branches[0].cond);
@@ -194,25 +222,34 @@ function pathToOrderBy(prismaPath: string, dir: 'asc' | 'desc'): Obj {
  * orgId + deletedAt інжектяться завжди (deletedAt лише для FULL-профілю). Injection неможливий:
  * ключі з літералів реєстру.
  */
-export function buildQuery(config: ReportConfigInput, orgId: string): BuiltQuery {
-  const conds = buildConditions(config, orgId);
+export function buildQuery(
+  config: ReportConfigInput,
+  orgId: string,
+  baseCurrency: string,
+): BuiltQuery {
+  const conds = buildConditions(config, orgId, baseCurrency);
   const entity = conds.entity;
 
   const where: Obj = { orgId };
   if (entity.hasSoftDelete) where.deletedAt = null;
   for (const rel of conds.parentRelations) where[rel] = { deletedAt: null };
   if (conds.voidedField) where[conds.voidedField] = null;
-  if (conds.dateRange) addCond(where, entity, conds.dateRange);
-  for (const cond of conds.filters) addCond(where, entity, cond);
+  if (conds.dateRange) addCond(where, entity, conds.dateRange, conds.baseCurrency);
+  for (const cond of conds.filters) addCond(where, entity, cond, conds.baseCurrency);
 
   // include-дерево з relation-полів у columns ∪ groupBy
   const include: Obj = {};
-  const relationKeys = new Set<string>([...config.columns, ...config.groupBy]);
-  for (const key of relationKeys) {
-    const fld = getField(entity, key);
-    if (fld.prismaPath.includes('.')) {
-      assertRelationPath(entity, fld.prismaPath);
-      mergeIncludePath(include, entity, fld.prismaPath);
+  const relationPaths = new Set<string>(
+    [...config.columns, ...config.groupBy].map(key => getField(entity, key).prismaPath),
+  );
+  // Колонка у валюті документа рендериться з кодом валюти рядка (BR-RPT-029).
+  if (needsCurrency(entity, config.columns) && entity.currencyPath) {
+    relationPaths.add(entity.currencyPath);
+  }
+  for (const path of relationPaths) {
+    if (path.includes('.')) {
+      assertRelationPath(entity, path);
+      mergeIncludePath(include, entity, path);
     }
   }
 

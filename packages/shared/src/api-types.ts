@@ -9900,9 +9900,15 @@ export interface components {
             aggregates: {
                 [key: string]: number | null;
             };
+            /** @description Агрегації у валюті документа: alias → код валюти → значення (BR-RPT-029). Є, коли такі агрегації в звіті; при кількох валютах відповідне значення в aggregates — null */
+            byCurrency?: {
+                [key: string]: {
+                    [key: string]: number | null;
+                };
+            };
             /** @description Підгрупи наступного рівня groupBy (рекурсивно) */
             children: components["schemas"]["GroupNodeDto"][];
-            /** @description Детальні рядки на листовому вузлі, коли includeRows */
+            /** @description Детальні рядки на листовому вузлі, коли includeRows; __currency — код валюти документа рядка, коли є колонка у валюті документа */
             rows?: {
                 [key: string]: unknown;
             }[];
@@ -9992,6 +9998,8 @@ export interface components {
             label: string;
             type: string;
             enumName?: string;
+            /** @description Сума у валюті документа: у групі з кількома валютами — розбивка byCurrency */
+            inDocumentCurrency?: boolean;
         };
         ReportRunAggregationDto: {
             field: string;
@@ -9999,17 +10007,25 @@ export interface components {
             agg: string;
             type: string;
             label: string;
+            /** @description Сума у валюті документа: у групі з кількома валютами — розбивка byCurrency */
+            inDocumentCurrency?: boolean;
         };
         ReportRunResultBodyDto: {
             /** @description Рекурсивне дерево груп (GroupNode[]); порожнє коли groupBy=[] */
             tree: components["schemas"]["GroupNodeDto"][];
-            /** @description Плоскі детальні рядки — набір ключів задає config.columns у рантаймі */
+            /** @description Плоскі детальні рядки — набір ключів задає config.columns у рантаймі; __currency — код валюти документа (рядки різних валют не склеюються), __mergedCount — скільки склеєно */
             detailRows: {
                 [key: string]: unknown;
             }[];
             /** @description alias агрегації → значення (null якщо нема даних) */
             grandTotals: {
                 [key: string]: number | null;
+            };
+            /** @description Агрегації у валюті документа: alias → код валюти → значення (BR-RPT-029). Є, коли такі агрегації в звіті; при кількох валютах відповідне значення в aggregates — null */
+            grandTotalsByCurrency?: {
+                [key: string]: {
+                    [key: string]: number | null;
+                };
             };
             /** @description Скільки рядків відповідає умовам — точне, не обрізане лімітом */
             rowCount: number;
@@ -10025,6 +10041,8 @@ export interface components {
             entity: string;
             columns: components["schemas"]["ReportRunColumnDto"][];
             groupBy: string[];
+            /** @description Базова валюта організації — нею рахуються документи без валюти */
+            baseCurrency: string;
             /** @description Явні + авто-SUM */
             aggregations: components["schemas"]["ReportRunAggregationDto"][];
             result: components["schemas"]["ReportRunResultBodyDto"];
