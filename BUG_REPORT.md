@@ -4457,3 +4457,32 @@ access-токен, вилітає на /login через тимчасовий 42
 **Очікувана поведінка:** 400 `v.amountMax` з назвою поля для ціни понад `MONEY_AMOUNT_MAX`.
 **Фактична поведінка:** безіменна 500.
 **Статус:** [x] виправлено
+
+---
+
+## Session 2026-10-25 — Bug hunt F4 (UoM base-qty) + F6 (invoice CAS paidAmount), діапазон 98ac9adb..HEAD
+
+F4 (BR-INVT-UOMBASE) і F6 (BR-INV-012) перевірені статично + наживо на dev-БД:
+обидва фікси коректні, регресій не знайдено. Одна латентна не-регресійна знахідка (передана review).
+
+## Bug #972 — [LOW] PO/StockDocument DTO `coefficient` читає `UnitOfMeasure.coefficient`, а леджер (F4) — `GoodUoM.coefficient`
+
+**Файл:** `apps/api/src/modules/purchase-orders/purchase-orders.service.ts:1305`,
+`apps/api/src/modules/stock-documents/stock-documents.service.ts:747`
+**Severity:** LOW
+**Категорія:** business-logic (display-vs-ledger drift, передує F4, НЕ регресія)
+
+**Опис:** Дисплейне поле `coefficient` у рядку DTO обох агрегатів рахується з базової одиниці
+товару (`l.good?.unitOfMeasure?.coefficient` = `UnitOfMeasure.coefficient`). Після F4 рух складу
+й алокація конвертують у базові через `GoodUoM.coefficient` за парою (goodId, unitId). Для товару,
+де ці два значення розходяться (dev: «000 TST Свічка пак 97196» af5ccc60 — `UnitOfMeasure`=10 проти
+`GoodUoM`=4), DTO декларує інший множник, ніж фактично оприбутковується.
+**Очікувана поведінка:** дисплейний коефіцієнт = той самий, що у леджері (GoodUoM per good+unit).
+**Фактична поведінка:** DTO-коефіцієнт із `UnitOfMeasure`, леджер — із `GoodUoM`; можуть розходитись.
+**Пом'якшення (перевірено в коді):** поле `line.coefficient` PO/StockDoc DTO **не рендериться**
+жодним веб-компонентом (матчі `coefficient` у web — work-orders parts, catalog/GoodUoMTab,
+UnitsTab — інші контексти; картка/модалка прийому PO показує лише `quantity × price`, без coeff).
+Тож наживо користувача наразі НЕ збиває — це латентна неузгодженість DTO, не UI-помилка.
+**Рішення:** джерело дисплейного coeff НЕ правити без рішення власника (доменне питання —
+яка модель коефіцієнта канонічна для товару з альт-одиницею). Зафіксовано для видимості.
+**Статус:** [ ] відкритий (свідомо не фіксується — доменне рішення власника)
