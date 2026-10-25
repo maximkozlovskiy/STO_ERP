@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { ExchangeRatesService } from './exchange-rates.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -166,6 +166,31 @@ describe('ExchangeRatesService', () => {
       const lte = prisma.exchangeRate.findFirst.mock.calls[0][0].where.date.lte as Date;
       // Kyiv-дата інстанту = 2026-09-15 (а не 09-14 як дав би UTC-зріз).
       expect(lte.toISOString().slice(0, 10)).toBe('2026-09-15');
+    });
+
+    // MV-L1 (аудит 2026-10-25): read-backstop. Write-path захищений DTO, але legacy/seed/прямий-SQL
+    // міг покласти rate=0/негатив → convertToBase дав би тихий amountBase=0 (спотворений base-облік
+    // без сигналу). Краще доменна 400, ніж мовчазний 0. Мутація: прибери isValidRate-гард → rate=0
+    // повертається й дає amountBase=0.
+    // guards: BR-SETL-007
+    it.each([
+      ['нуль', 0],
+      ['від’ємний', -41.5],
+    ])('збережений rate %s → 400, не тихий 0', async (_n, rate) => {
+      prisma.exchangeRate.findFirst.mockResolvedValueOnce({ rate, coefficient: 1 });
+      await expect(
+        service.getRateAsOf('org-1', CURRENCY_ID, new Date('2026-05-28')),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    // guards: BR-SETL-007
+    it('fallbackToLatest: останній наявний rate=0 → теж 400 (backstop і на fallback-шляху)', async () => {
+      prisma.exchangeRate.findFirst
+        .mockResolvedValueOnce(null) // немає ≤ date
+        .mockResolvedValueOnce({ rate: 0, coefficient: 1 }); // битий останній
+      await expect(
+        service.getRateAsOf('org-1', CURRENCY_ID, new Date('2020-01-01'), true),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 

@@ -272,7 +272,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 | рознесення вхідних / ігнорування (FSM)                | `bank-reconciliation.posting.spec.ts`                      | 23     |
 | сервісна логіка                                       | `bank-reconciliation.service.spec.ts`                      | 27     |
 | вихідний як оплата постачальнику, кандидати           | `bank-reconciliation.supplier-payment.spec.ts`             | 32     |
-| скасування рознесення                                 | `bank-reconciliation.unreconcile.spec.ts`                  | 35     |
+| скасування рознесення                                 | `bank-reconciliation.unreconcile.spec.ts`                  | 37     |
 | парсер файлу виписки (+ напрям рядка)                 | `bank-statement-parser.service.spec.ts`                    | 71     |
 | контролер провайдерів                                 | `bank-statement-providers.controller.spec.ts`              | 7      |
 | BullMQ-processor                                      | `bank-statement-pull.processor.spec.ts`                    | 24     |
@@ -291,7 +291,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 виконує `where`, справжній CAS в `updateMany`, відкат записів tx-клієнта в `$transaction`; сервіс збирається
 через DI за токенами класів).
 
-Разом: **595** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **597** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Спільні zod-схеми рознесення при внесенні (види за напрямом, обов'язкові поля виду) —
 `packages/shared/src/schemas/forms/bank-transaction.schema.spec.ts` (поза модулем api).

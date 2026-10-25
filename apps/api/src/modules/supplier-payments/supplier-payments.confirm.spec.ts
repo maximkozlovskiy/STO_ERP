@@ -11,6 +11,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { SupplierPaymentStatus, PaymentSourceType } from '@prisma/client';
 import { it, expect } from 'vitest';
+import { MONEY_AMOUNT_MAX } from '@sto/shared';
 import {
   makeSpHarness,
   type SpHarness,
@@ -35,9 +36,10 @@ describe('SupplierPaymentsService — confirm', () => {
   let prisma: SpHarness['prisma'];
   let settlements: SpHarness['settlements'];
   let cash: SpHarness['cash'];
+  let exchangeRates: SpHarness['exchangeRates'];
 
   beforeEach(async () => {
-    ({ service, prisma, settlements, cash } = await makeSpHarness());
+    ({ service, prisma, settlements, cash, exchangeRates } = await makeSpHarness());
   });
 
   // ──────────────────────────────────────────────────────────────────────
@@ -183,5 +185,58 @@ describe('SupplierPaymentsService — confirm', () => {
     });
     await expect(service.confirm(ORG, SP_ID, USER_ID)).rejects.toBeInstanceOf(BadRequestException);
     expect(settlements.createTransaction).not.toHaveBeenCalled();
+  });
+
+  // MV-H2 (BR-FIN-MONEYCAP, аудит 2026-10-25): totalAmountBase = amount × rate на CONFIRM лягає у
+  // Decimal(12,2). Сума оплати в межах стелі, але base (× великий курс) переростає колонку → 400 з
+  // назвою поля «сума оплати постачальнику», а не 500 numeric field overflow. Дзеркаль settlements F7.
+  // Мутація: прибери assertMoneyFits(conv.amountBase) → overflow проходить до CAS-write (500).
+  // guards: BR-FIN-MONEYCAP
+  const USD = '55555555-5555-4555-8555-555555555555';
+  it('confirm(): amountBase (сума × курс) понад MONEY_AMOUNT_MAX → 400, CAS не виконується (MV-H2)', async () => {
+    prisma.supplierPayment.findFirst.mockResolvedValueOnce({
+      status: SupplierPaymentStatus.DRAFT,
+      supplierId: SUPPLIER_ID,
+      amount: 5_000_000, // у межах стелі
+      sourceType: PaymentSourceType.BANK_ACCOUNT,
+      cashRegisterId: null,
+      currencyId: USD,
+    });
+    // 5 000 000 × 3000 = 1.5e10 > 9 999 999 999,99.
+    exchangeRates.resolveBaseConversion.mockResolvedValue({
+      rateUsed: 3000,
+      amountBase: 5_000_000 * 3000,
+    });
+
+    await expect(service.confirm(ORG, SP_ID, USER_ID)).rejects.toThrow(
+      /завелика.*сума оплати постачальнику/s,
+    );
+    expect(prisma.supplierPayment.updateMany).not.toHaveBeenCalled();
+    expect(settlements.createTransaction).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-FIN-MONEYCAP
+  it('confirm(): amountBase рівно на межі MONEY_AMOUNT_MAX → проходить (MV-H2 межа)', async () => {
+    prisma.supplierPayment.findFirst
+      .mockResolvedValueOnce({
+        status: SupplierPaymentStatus.DRAFT,
+        supplierId: SUPPLIER_ID,
+        amount: MONEY_AMOUNT_MAX,
+        sourceType: PaymentSourceType.BANK_ACCOUNT,
+        cashRegisterId: null,
+        currencyId: USD,
+      })
+      .mockResolvedValueOnce(confirmedRow);
+    exchangeRates.resolveBaseConversion.mockResolvedValue({
+      rateUsed: 1,
+      amountBase: MONEY_AMOUNT_MAX,
+    });
+
+    await service.confirm(ORG, SP_ID, USER_ID);
+    expect(prisma.supplierPayment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ totalAmountBase: MONEY_AMOUNT_MAX }),
+      }),
+    );
   });
 });

@@ -8,6 +8,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { SupplierPaymentsController } from './supplier-payments.controller';
 import { SupplierPaymentsService } from './supplier-payments.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import {
@@ -147,7 +148,12 @@ describe('SupplierPayments — linked-documents HTTP Contract', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [SupplierPaymentsController],
-      providers: [{ provide: SupplierPaymentsService, useValue: linkedServiceMock }],
+      providers: [
+        { provide: SupplierPaymentsService, useValue: linkedServiceMock },
+        // MV-M2: confirm несе @RequireIdempotencyKey() → RequiredIdempotencyInterceptor (DI
+        // потребує PrismaService). idempotencyKey.* не викликається для «без ключа» (400 раніше).
+        { provide: PrismaService, useValue: { idempotencyKey: {} } },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue(mockJwtGuard)
@@ -268,6 +274,22 @@ describe('SupplierPayments — linked-documents HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(200);
       expect(linkedServiceMock.getLinkedCounts).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('POST /supplier-payments/:id/confirm — ідемпотентність (MV-M2)', () => {
+    // MV-M2 (аудит 2026-10-25): confirm має @RequireIdempotencyKey() — повтор після обриву з тим
+    // самим ключем віддає збережене тіло, а не 400 alreadyConfirmedOrChanged. Контрактний guard:
+    // без заголовка Idempotency-Key маршрут відмовляє 400 (доказ, що декоратор на місці).
+    // Мутація: прибери @RequireIdempotencyKey() з confirm → запит без ключа пройде (200/201).
+    it('без Idempotency-Key → 400, confirm НЕ викликається', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/supplier-payments/${VALID_UUID}/confirm`,
+        headers: { 'content-type': 'application/json' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(linkedServiceMock.confirm).not.toHaveBeenCalled();
     });
   });
 

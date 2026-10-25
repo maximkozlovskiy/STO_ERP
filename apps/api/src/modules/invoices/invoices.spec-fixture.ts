@@ -45,7 +45,7 @@ export interface InvoicesHarness {
     invoiceLine: { deleteMany: Fn; createMany: Fn };
     workOrder: { findFirst: Fn; updateMany: Fn };
     counterparty: { findFirst: Fn };
-    settlementTransaction: { count: Fn; aggregate: Fn };
+    settlementTransaction: { count: Fn; aggregate: Fn; findFirst: Fn };
     payment: { aggregate: Fn };
     $transaction: Fn;
   };
@@ -105,6 +105,9 @@ export async function makeInvoicesHarness(): Promise<InvoicesHarness> {
     settlementTransaction: {
       count: vi.fn().mockResolvedValue(0),
       aggregate: vi.fn().mockResolvedValue({ _sum: { amountBase: 0 } }),
+      // MV-H1 (BR-INV-022): скасування standalone читає оригінальну CHARGE для дзеркалення курсу.
+      // Дефолт null → legacy-fallback (re-конвертація за датою); тести з валютою перевизначають.
+      findFirst: vi.fn().mockResolvedValue(null),
     },
     payment: { aggregate: vi.fn().mockResolvedValue({ _sum: { amountBase: 0 } }) },
     $transaction: vi.fn().mockImplementation((arg: unknown) => {

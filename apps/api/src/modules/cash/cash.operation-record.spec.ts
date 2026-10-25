@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { MONEY_AMOUNT_MAX } from '@sto/shared';
 import { ORG, REG, USER, opRow, setup } from './cash.spec-fixture';
 
 describe('CashService.createOperation — сума операції', () => {
@@ -47,6 +48,46 @@ describe('CashService.createOperation — сума операції', () => {
     });
     expect(m.exchangeRates.resolveBaseConversion.mock.calls[0][3]).toBe(10.13);
     expect(m.prisma.cashOperation.create.mock.calls[0][0].data.amount).toBe(10.13);
+  });
+
+  // MV-M1 (BR-FIN-MONEYCAP, аудит 2026-10-25): amountBase = amount × rate лягає у Decimal(12,2).
+  // Сума операції в межах стелі, але base (× великий курс валютної каси) переростає колонку → 400 з
+  // назвою поля «сума касової операції», а не 500 numeric field overflow. Весь модуль cash раніше
+  // був без assertMoneyFits. Дзеркаль settlements F7. Мутація: прибери гард → overflow до Prisma.
+  // guards: BR-FIN-MONEYCAP
+  it('amountBase (сума × курс) понад MONEY_AMOUNT_MAX → 400, операцію не створено (MV-M1)', async () => {
+    const { m, service } = setup();
+    // Валютна каса: 5 000 000 × 3000 = 1.5e10 > 9 999 999 999,99 (amount у межах стелі, base — ні).
+    m.exchangeRates.resolveBaseConversion.mockResolvedValue({
+      rateUsed: 3000,
+      amountBase: 5_000_000 * 3000,
+    });
+    await expect(
+      service.createOperation(ORG, {
+        cashRegisterId: REG,
+        direction: 'IN',
+        amount: 5_000_000,
+        reason: 'MANUAL_IN',
+      }),
+    ).rejects.toThrow(/завелика.*сума касової операції/s);
+    expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-FIN-MONEYCAP
+  it('amountBase рівно на межі MONEY_AMOUNT_MAX → проходить (MV-M1 межа)', async () => {
+    const { m, service } = setup();
+    m.exchangeRates.resolveBaseConversion.mockResolvedValue({
+      rateUsed: 1,
+      amountBase: MONEY_AMOUNT_MAX,
+    });
+    await service.createOperation(ORG, {
+      cashRegisterId: REG,
+      direction: 'IN',
+      amount: MONEY_AMOUNT_MAX,
+      reason: 'MANUAL_IN',
+    });
+    expect(m.prisma.cashOperation.create).toHaveBeenCalledTimes(1);
+    expect(m.prisma.cashOperation.create.mock.calls[0][0].data.amountBase).toBe(MONEY_AMOUNT_MAX);
   });
 
   // guards: BR-CASH-004

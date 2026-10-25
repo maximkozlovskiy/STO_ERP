@@ -360,7 +360,7 @@ describe('InvoicesService — transition-settlements', () => {
       },
     );
 
-    it('non-PAID перехід (SENT→CANCELLED) НЕ пише paidAmount + без PAYMENT', async () => {
+    it('non-PAID перехід (SENT→CANCELLED) НЕ пише paidAmount + постить CREDIT_NOTE (MV-H1)', async () => {
       prisma.invoice.findFirst
         .mockResolvedValueOnce({
           status: 'SENT',
@@ -377,6 +377,168 @@ describe('InvoicesService — transition-settlements', () => {
       const call = prisma.invoice.updateMany.mock.calls[0][0];
       expect(call.data).toEqual({ status: 'CANCELLED' });
       expect(call.data).not.toHaveProperty('paidAmount');
+      // MV-H1 (BR-INV-022): скасування виставленого standalone-рахунку сторнує непогашений борг
+      // компенсуючим CREDIT_NOTE на повний amount (нічого не сплачено).
+      expect(settlementsMock.createTransaction).toHaveBeenCalledTimes(1);
+      expect(settlementsMock.createTransaction).toHaveBeenCalledWith(
+        ORG,
+        expect.objectContaining({
+          counterpartyId: CP_ID,
+          type: 'CREDIT_NOTE',
+          amount: 500,
+          documentType: 'Invoice',
+          documentId: INV_ID,
+          createdBy: 'user-1',
+        }),
+        expect.anything(),
+      );
+    });
+  });
+
+  // ─── MV-H1 (BR-INV-022, аудит 2026-10-25): скасування ВИСТАВЛЕНОГО standalone-рахунку ───
+  //
+  // До фіксу гілки CANCELLED не було → при SENT/PARTIALLY_PAID/OVERDUE→CANCELLED нарахований
+  // CHARGE лишався в леджері вічно (фантомний борг). Тепер постимо компенсуючий CREDIT_NOTE на
+  // НЕПОГАШЕНИЙ залишок (amount − paidAmount), часткові оплати лишаються; DRAFT→CANCELLED нічого
+  // не сторнує (CHARGE нараховується лише на DRAFT→SENT); WO-рахунок цю гілку не зачіпає.
+  describe('transition — MV-H1 скасування standalone → CREDIT_NOTE (BR-INV-022)', () => {
+    const CP_ID = '33333333-3333-4333-8333-333333333333';
+    const findOneRow = {
+      id: INV_ID,
+      orgId: ORG,
+      number: 'INV-1',
+      status: 'CANCELLED',
+      amount: 500,
+      paidAmount: 0,
+      workOrderId: null,
+      counterpartyId: CP_ID,
+      documentDate: new Date('2026-01-01'),
+      dueDate: null,
+      deletedAt: null,
+      totalWithoutVat: 0,
+      totalVat: 0,
+      totalWithVat: 500,
+      invoiceType: 'INVOICE',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      counterparty: { firstName: null, lastName: null, companyName: 'ТОВ' },
+      workOrder: null,
+      lines: [],
+    };
+
+    // guards: BR-INV-022
+    it('PARTIALLY_PAID→CANCELLED: CREDIT_NOTE лише на непогашене (amount − paidAmount), не на повний amount', async () => {
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({
+          status: 'PARTIALLY_PAID',
+          workOrderId: null,
+          counterpartyId: CP_ID,
+          amount: 500,
+          paidAmount: 200, // 200 уже сплачено — лишається в леджері
+        })
+        .mockResolvedValue(findOneRow);
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.transition(ORG, INV_ID, 'CANCELLED' as never, 'user-1');
+
+      // Сторнуємо рівно 500 − 200 = 300 (непогашене), не 500 → часткова оплата не подвоюється.
+      expect(settlementsMock.createTransaction).toHaveBeenCalledTimes(1);
+      expect(settlementsMock.createTransaction).toHaveBeenCalledWith(
+        ORG,
+        expect.objectContaining({ type: 'CREDIT_NOTE', amount: 300, documentId: INV_ID }),
+        expect.anything(),
+      );
+    });
+
+    // guards: BR-INV-022
+    it('DRAFT→CANCELLED: CHARGE ще не нараховано → жодної проводки', async () => {
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({
+          status: 'DRAFT',
+          workOrderId: null,
+          counterpartyId: CP_ID,
+          amount: 500,
+          paidAmount: 0,
+        })
+        .mockResolvedValue({ ...findOneRow, status: 'CANCELLED' });
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.transition(ORG, INV_ID, 'CANCELLED' as never, 'user-1');
+
+      expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-INV-022
+    it('WO-рахунок SENT→CANCELLED: гілка MV-H1 НЕ спрацьовує (WO-шлях сторнує окремо)', async () => {
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({
+          status: 'SENT',
+          workOrderId: WO_ID, // рахунок за нарядом
+          counterpartyId: CP_ID,
+          amount: 500,
+          paidAmount: 0,
+        })
+        .mockResolvedValue({ ...findOneRow, workOrderId: WO_ID });
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.transition(ORG, INV_ID, 'CANCELLED' as never, 'user-1');
+
+      expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-INV-022
+    // Конверсія CREDIT_NOTE дзеркалить курс оригінальної CHARGE: amountBase = залишок × rateUsed
+    // оригіналу (не повний amountBase CHARGE), щоб сторнувати рівно непогашене у base.
+    it('валютний SENT→CANCELLED: CREDIT_NOTE бере курс оригінальної CHARGE (залишок × rateUsed)', async () => {
+      const USD = 'usd-3333-3333-3333-333333333333';
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({
+          status: 'SENT',
+          workOrderId: null,
+          counterpartyId: CP_ID,
+          amount: 100, // USD
+          paidAmount: 0,
+          currencyId: USD,
+          documentDate: new Date('2026-01-01'),
+        })
+        .mockResolvedValue({ ...findOneRow, currencyId: USD });
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+      // Оригінальна CHARGE: 100 USD × 41.5 = 4150 base.
+      prisma.settlementTransaction.findFirst.mockResolvedValue({
+        amountBase: 4150,
+        rateUsed: 41.5,
+      });
+
+      await service.transition(ORG, INV_ID, 'CANCELLED' as never, 'user-1');
+
+      const call = settlementsMock.createTransaction.mock.calls.find(
+        (c: unknown[]) => (c[1] as { type?: string })?.type === 'CREDIT_NOTE',
+      );
+      expect(call, 'CREDIT_NOTE має бути створено').toBeDefined();
+      expect(call![1]).toMatchObject({
+        type: 'CREDIT_NOTE',
+        amount: 100, // повний залишок у валюті
+        currencyId: USD,
+        conversion: { rateUsed: 41.5, amountBase: 4150 }, // 100 × 41.5
+      });
+    });
+
+    // guards: BR-INV-022
+    // Мутація: якщо прибрати гілку reversesStandaloneOnCancel, цей тест стане червоним —
+    // CREDIT_NOTE не створиться й борг у леджері лишиться.
+    it('CAS count=0 (паралельна зміна) → throw, CREDIT_NOTE не створюється', async () => {
+      prisma.invoice.findFirst.mockResolvedValueOnce({
+        status: 'SENT',
+        workOrderId: null,
+        counterpartyId: CP_ID,
+        amount: 500,
+        paidAmount: 0,
+      });
+      prisma.invoice.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.transition(ORG, INV_ID, 'CANCELLED' as never, 'user-1')).rejects.toThrow(
+        /змінився/,
+      );
       expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
     });
   });

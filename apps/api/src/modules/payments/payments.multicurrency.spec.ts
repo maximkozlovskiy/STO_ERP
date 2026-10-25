@@ -13,6 +13,7 @@
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach, type Mock } from 'vitest';
 import { getQueueToken } from '@nestjs/bullmq';
+import { MONEY_AMOUNT_MAX } from '@sto/shared';
 import { PaymentsService } from './payments.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -183,6 +184,45 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
       expect.objectContaining({ type: 'PAYMENT', amount: 100, currencyId: USD_ID }),
       expect.anything(),
     );
+  });
+
+  // F8 (BR-FIN-MONEYCAP, аудит 2026-10-24): Payment.amountBase = dto.amount × rate лягає у
+  // Decimal(12,2). Сума оплати в межах стелі, але amountBase (× великий курс) переростає колонку
+  // → 400 з назвою поля «сума оплати», а не 500 numeric field overflow. Дзеркаль settlements F7.
+  // Мутація: прибери assertMoneyFits(conv.amountBase) → overflow проходить до Prisma (500).
+  it('amountBase (сума × курс) понад MONEY_AMOUNT_MAX → 400 «сума оплати», payment не створено (F8)', async () => {
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: USD_ID,
+    });
+    // 5 000 000 USD × 3000 = 1.5e10 > 9 999 999 999,99 (amount у межах стелі, amountBase — ні).
+    exchangeRates.resolveBaseConversion.mockResolvedValue({
+      rateUsed: 3000,
+      amountBase: 5_000_000 * 3000,
+    });
+
+    await expect(
+      service.create(ORG, { ...usdCashDto, amount: 5_000_000 }, 'user-1'),
+    ).rejects.toThrow(/завелика.*сума оплати/s);
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(settlements.createTransaction).not.toHaveBeenCalled();
+  });
+
+  it('amountBase рівно на межі MONEY_AMOUNT_MAX → проходить (F8 межа)', async () => {
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: USD_ID,
+    });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({
+      rateUsed: 1,
+      amountBase: MONEY_AMOUNT_MAX,
+    });
+
+    await service.create(ORG, { ...usdCashDto, amount: MONEY_AMOUNT_MAX }, 'user-1');
+    expect(prisma.payment.create).toHaveBeenCalledTimes(1);
+    expect(lastCreateData?.amountBase).toBe(MONEY_AMOUNT_MAX);
   });
 
   it('loyalty нараховує від amountBase (base), не від dto.amount', async () => {

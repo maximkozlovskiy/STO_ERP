@@ -471,7 +471,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | fiscal gate                                                        | `payments.fiscal-gate.spec.ts`                           | 8      |
 | idempotency                                                        | `payments.idempotency.spec.ts`                           | 7      |
 | money model                                                        | `payments.money-model.spec.ts`                           | 22     |
-| multicurrency                                                      | `payments.multicurrency.spec.ts`                         | 23     |
+| multicurrency                                                      | `payments.multicurrency.spec.ts`                         | 25     |
 | query dto                                                          | `payments.query-dto.spec.ts`                             | 46     |
 | передумови + наряд                                                 | `payments.work-order.spec.ts`                            | 52     |
 | політика повторів черг                                             | `payments.queue-retry-policy.spec.ts`                    | 6      |
@@ -488,7 +488,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | HTTP-контракт списку: query DTO, NUL (BR-PAY-025)                  | `payments.list-query.contract.spec.ts`                   | 8      |
 | NUL у query/param/тілі → 400, глоб. труби (BR-PAY-025, BR-SEC-NUL) | `../../common/pipes/reject-nul-character.pipe.spec.ts`   | 7      |
 
-Разом: **561** кейс — 491 у модулі + 34 у двох спеках шифрування + 36 у довіднику способів оплати
+Разом: **563** кейси — 493 у модулі + 34 у двох спеках шифрування + 36 у довіднику способів оплати
 (`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
 `vitest --reporter=json` (2026-10-24), не з grep.
 

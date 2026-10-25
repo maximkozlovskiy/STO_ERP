@@ -480,6 +480,50 @@ describe('BankReconciliationService.unreconcile — скасування роз�
       expect({ ...effectCalls(w), 'cash.createOperation': 0 }).toEqual(NO_EFFECTS);
     });
 
+    // F9 (аудит 2026-10-24): реверс зняття готівки мусить дзеркалити курс і базову суму ОРИГІНАЛУ,
+    // а не перераховувати за now() — інакше для валютної каси base-view готівки дрейфує (баланс у
+    // валюті каси лишається коректним, але два amountBase розходяться). Дзеркаль CLIENT_REFUND.
+    // Мутація: прибери conversion із реверсного createOperation → amountBase перерахується за
+    // поточним курсом (cash.createOperation), і цей assert на оригінальну базу впаде.
+    // guards: BR-BANK-039
+    it('CASH_WITHDRAWAL валютної каси: реверс бере conversion (rateUsed, amountBase) ОРИГІНАЛУ, не now()', async () => {
+      const w = await makeWorld();
+      arrangeMatched(w, 'CASH_WITHDRAWAL');
+      // Оригінал — валютна операція: курс 41.5, базова сума зафіксована на момент зняття.
+      const original = w.db.get('cashOperation', ID.cashOp) as Record<string, unknown>;
+      original.rateUsed = dec(41.5);
+      original.amountBase = dec(8300);
+
+      await unreconcile(w);
+
+      expect(w.cash.createOperation).toHaveBeenCalledTimes(1);
+      const [, input] = w.cash.createOperation.mock.calls[0]!;
+      expect(input).toMatchObject({
+        cashRegisterId: ID.cashUah,
+        direction: 'OUT',
+        reason: 'MANUAL_OUT',
+        // base реверсу == base оригіналу (не перераховано за now()).
+        conversion: { rateUsed: 41.5, amountBase: 8300 },
+      });
+    });
+
+    // F9 legacy: операція без збереженого курсу (amountBase/rateUsed null) — поточний now()-fallback
+    // (conversion НЕ передається, cash.createOperation конвертує сам). Guard не має впасти на null.
+    // guards: BR-BANK-039
+    it('CASH_WITHDRAWAL legacy (amountBase/rateUsed null): реверс БЕЗ conversion (now()-fallback)', async () => {
+      const w = await makeWorld();
+      arrangeMatched(w, 'CASH_WITHDRAWAL');
+      const original = w.db.get('cashOperation', ID.cashOp) as Record<string, unknown>;
+      original.rateUsed = null;
+      original.amountBase = null;
+
+      await unreconcile(w);
+
+      expect(w.cash.createOperation).toHaveBeenCalledTimes(1);
+      const [, input] = w.cash.createOperation.mock.calls[0]! as [string, Record<string, unknown>];
+      expect(input.conversion).toBeUndefined();
+    });
+
     // Готівку з каси вже витратили: CashService.createOperation відмовляє (овердрафт).
     // guards: BR-BANK-039
     it('CASH_WITHDRAWAL: готівки в касі не вистачає → та сама помилка, рядок лишається MATCHED з касовою операцією', async () => {

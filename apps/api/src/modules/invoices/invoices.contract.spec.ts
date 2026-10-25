@@ -323,6 +323,36 @@ describe('Invoices — HTTP Contract', () => {
     });
   });
 
+  describe('POST /invoices/:id/transition', () => {
+    // guards: BR-INV-022
+    // F10 (аудит 2026-10-24): ручний перехід мусить протягти userId у service.transition, інакше
+    // проводки переходу (CHARGE / дзеркальний PAYMENT / FX / CREDIT_NOTE) пишуться з createdBy=null.
+    it('передає userId (req.user.id) четвертим аргументом у service.transition', async () => {
+      serviceMock.transition.mockResolvedValueOnce({
+        id: VALID_UUID,
+        orgId: 'org-1',
+        number: 'INV-001',
+        status: 'SENT',
+        counterpartyId: VALID_UUID,
+        amount: 100,
+        totalWithoutVat: 100,
+        totalVat: 0,
+        totalWithVat: 100,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/invoices/${VALID_UUID}/transition`,
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ status: 'SENT' }),
+      });
+      expect(res.statusCode).toBe(201);
+      // req.user = { id: 'emp-1', ... } (див. beforeEach). 4-й аргумент — userId.
+      expect(serviceMock.transition).toHaveBeenCalledWith('org-1', VALID_UUID, 'SENT', 'emp-1');
+    });
+  });
+
   describe('GET /invoices/:id', () => {
     it('повертає 200 при валідному UUID', async () => {
       serviceMock.findOne.mockResolvedValueOnce({
