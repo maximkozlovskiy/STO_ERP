@@ -85,7 +85,7 @@ describe('report-sql.builder', () => {
     const sql = agg({ entity: 'workOrder', columns: [], groupBy: ['status', 'priority'] });
     // Без ORDER BY хешований ROLLUP віддає рядки довільно, і LIMIT різав «Разом» (rowCount 0).
     expect(sql.sql).toMatch(
-      /GROUP BY ROLLUP \(k0, k1\) ORDER BY GROUPING\(k0\) \+ GROUPING\(k1\) DESC LIMIT/,
+      /GROUP BY ROLLUP \(k0, k1\) ORDER BY GROUPING\(k0\) \+ GROUPING\(k1\) DESC, k0, k1 LIMIT/,
     );
   });
 
@@ -203,6 +203,17 @@ describe('report-sql.builder', () => {
       ).toBeNull();
       const flat = buildCurrencySplitSql(payConds(), [], aggs);
       expect(flat?.sql).toContain('GROUP BY GROUPING SETS ((c0))');
+    });
+
+    // Мутація: прибрати ключі з ORDER BY розбивки (лише рівень) → на перевищенні лімітів ROLLUP і
+    // розбивка відрізають РІЗНІ найглибші групи, і група в дереві лишається без своєї розбивки.
+    // guards: BR-RPT-029
+    it('розбивка й ROLLUP упорядковані однаково (рівень, далі ключі) — зріз відрізає ті самі групи', () => {
+      const groupBy = [getField(pay, 'method'), getField(pay, 'currency.code')];
+      const sumAmount: ReportAggInput[] = [{ field: 'amount', agg: 'SUM' }];
+      const order = 'ORDER BY GROUPING(k0) + GROUPING(k1) DESC, k0, k1 LIMIT';
+      expect(buildCurrencySplitSql(payConds(), groupBy, sumAmount)?.sql).toContain(order);
+      expect(buildAggregateSql(payConds(), groupBy, sumAmount).sql).toContain(order);
     });
 
     // Мутація: не додавати валюту у виміри склеювання → суми різних валют в одному рядку.

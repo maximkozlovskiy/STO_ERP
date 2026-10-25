@@ -119,7 +119,15 @@ export function assembleTree(
     const split = byCurrency?.get(keys.join(KEY_SEP));
     if (byCurrency) {
       node.byCurrency = split ?? {};
-      maskMixedCurrency(node.aggregates, node.byCurrency);
+      if (split) {
+        maskMixedCurrency(node.aggregates, split);
+      } else {
+        // Групи немає в розбивці лише тоді, коли її відрізав ліміт розбивки: валют групи не знаємо,
+        // тож і спільного числа немає — інакше клітинка показала б суму гривень із доларами.
+        for (const a of documentCurrencyAggs(aggs, opts.entity)) {
+          node.aggregates[`${a.agg}_${a.field}`] = null;
+        }
+      }
     }
     nodes.set(keys.join(KEY_SEP), node);
     if (l === 1) roots.push(node);

@@ -833,6 +833,18 @@ describe('report-query.builder', () => {
       ]);
     });
 
+    // Мутація: прибрати гілку 'bounds' у baseCurrencyMatches → «код ≥ D» губить платежі без валюти,
+    // які SQL `COALESCE(код, базова) >= 'D'` рахує (паритет SQL = Prisma).
+    // guards: BR-RPT-029
+    it('межі на коді («≥ / <»), під які підходить базова, теж беруть документи без валюти', () => {
+      expect(payFilter('gte', 'D').AND).toEqual([
+        { OR: [{ currency: { code: { gte: 'D' } } }, { currency: null }] },
+      ]);
+      const below = payFilter('lt', 'D');
+      expect(below.currency).toEqual({ code: { lt: 'D' } });
+      expect(below.AND).toBeUndefined();
+    });
+
     // guards: BR-RPT-029
     it('умова, під яку базова не підходить, — без гілки «валюти немає»', () => {
       const eqOther = payFilter('eq', 'USD');

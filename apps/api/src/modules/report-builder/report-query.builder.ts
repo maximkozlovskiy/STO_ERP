@@ -122,6 +122,18 @@ function baseCurrencyMatches(cond: ReportCond, base: string): boolean {
       return cond.values.includes(base);
     case 'contains':
       return base.toLowerCase().includes(cond.value.replace(/\\(.)/g, '$1').toLowerCase());
+    case 'bounds': {
+      // «> / ≥ / < / ≤» на тексті коду: SQL порівнює `COALESCE(код, базова)`, тож без цієї гілки
+      // Prisma губив документи без валюти, а SQL-агрегати їх рахували (рев'ю 2026-10-25).
+      const { gt, gte, lt, lte } = cond.bounds;
+      const s = (v: unknown) => String(v);
+      return (
+        (gt === undefined || base > s(gt)) &&
+        (gte === undefined || base >= s(gte)) &&
+        (lt === undefined || base < s(lt)) &&
+        (lte === undefined || base <= s(lte))
+      );
+    }
     default:
       return false;
   }

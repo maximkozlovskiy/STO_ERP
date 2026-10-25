@@ -248,7 +248,14 @@ export function sortNodes(
     // форсуємо в кінець, інакше «топ за сумою» не відсортується коректно).
     // hasOwnProperty guard проти prototype-poisoning: aggregates['__proto__'] інакше
     // повертає Object.prototype → arith NaN, undefined sort order.
+    // Група з кількома валютами (BR-RPT-029) не має спільного числа (null) — це не «0»: інакше
+    // найбільша змішана група опинялась унизу «топу за сумою». Такі групи — в кінець за будь-якого
+    // напрямку, як NULLS LAST склеєних рядків.
+    const mixed = (n: GroupNode) =>
+      n.aggregates[sortAlias] === null && Object.keys(n.byCurrency?.[sortAlias] ?? {}).length > 1;
     nodes.sort((a, b) => {
+      const am = mixed(a);
+      if (am !== mixed(b)) return am ? 1 : -1;
       const av = Object.prototype.hasOwnProperty.call(a.aggregates, sortAlias)
         ? (a.aggregates[sortAlias] ?? 0)
         : 0;

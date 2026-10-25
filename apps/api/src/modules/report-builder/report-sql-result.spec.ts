@@ -182,4 +182,59 @@ describe('report-sql-result', () => {
     expect(plain.grandTotalsByCurrency).toBeUndefined();
     expect(plain.tree[0].byCurrency).toBeUndefined();
   });
+
+  const pay = getEntity('payment');
+  const method = getField(pay, 'method');
+  const sumAmount = [{ field: 'amount', agg: 'SUM' as const }];
+
+  // Мутація: прибрати `mixed` у sortNodes → змішана група (null) сортується як 0 і найбільша сума
+  // опиняється внизу «топу за сумою».
+  // guards: BR-RPT-029
+  it('сортування за сумою у валюті документа: група з кількома валютами — у кінці, а не як 0', () => {
+    const rollup = [
+      { k0: null, g0: 1, n: 4, a0: '1100' },
+      { k0: 'cash', g0: 0, n: 2, a0: '1000' },
+      { k0: 'card', g0: 0, n: 1, a0: '60' },
+      { k0: 'bank', g0: 0, n: 1, a0: '40' },
+    ];
+    const split = [
+      { k0: null, g0: 1, cur: 'UAH', a0: '1060' },
+      { k0: null, g0: 1, cur: 'USD', a0: '40' },
+      { k0: 'cash', g0: 0, cur: 'UAH', a0: '960' },
+      { k0: 'cash', g0: 0, cur: 'USD', a0: '40' },
+      { k0: 'card', g0: 0, cur: 'UAH', a0: '60' },
+      { k0: 'bank', g0: 0, cur: 'UAH', a0: '40' },
+    ];
+    for (const dir of ['desc', 'asc'] as const) {
+      const t = assembleTree(rollup, [method], sumAmount, {
+        detail: null,
+        columns: [],
+        entity: pay,
+        currencySplit: split,
+        baseCurrency: BASE,
+        sortByAggregate: { alias: 'SUM_amount', dir },
+      });
+      expect(t.tree.map(n => n.key)).toEqual(
+        dir === 'desc' ? ['card', 'bank', 'cash'] : ['bank', 'card', 'cash'],
+      );
+    }
+  });
+
+  // Мутація: лишити aggregates групи без розбивки як є → клітинка показує суму гривень із доларами.
+  // guards: BR-RPT-029
+  it('група, яку відрізав ліміт розбивки, — без спільного числа (валют не знаємо)', () => {
+    const rollup = [
+      { k0: null, g0: 1, n: 2, a0: '1000' },
+      { k0: 'cash', g0: 0, n: 2, a0: '1000' },
+    ];
+    const t = assembleTree(rollup, [method], sumAmount, {
+      detail: null,
+      columns: [],
+      entity: pay,
+      currencySplit: [{ k0: null, g0: 1, cur: 'UAH', a0: '1000' }],
+      baseCurrency: BASE,
+    });
+    expect(t.tree[0].aggregates.SUM_amount).toBeNull();
+    expect(t.tree[0].byCurrency).toEqual({});
+  });
 });

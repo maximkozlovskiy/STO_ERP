@@ -257,6 +257,15 @@ export function assertGroupable(entity: ReportEntityDef, groupBy: string[]): Rep
 }
 
 /**
+ * Порядок рядків групових агрегатів перед LIMIT: рівнем (сума GROUPING спадає — «Разом», далі рівень
+ * 1, 2…), усередині рівня — ключами. Ключі роблять зріз детермінованим: ROLLUP і розбивка за
+ * валютами (`buildCurrencySplitSql`) відрізають ОДНІ Й ТІ САМІ найглибші групи, а не кожен свої.
+ */
+function levelOrderSql(keyList: string[]): string {
+  return `${keyList.map(k => `GROUPING(${k})`).join(' + ')} DESC, ${keyList.join(', ')}`;
+}
+
+/**
  * Групи всіх рівнів + «Разом» одним запитом: `GROUP BY ROLLUP(k0…kn)`. Рядок має ключі `k{i}`,
  * прапорці `g{i}` (1 — рівень вище цього ключа), `n` (кількість рядків) і агрегати `v{j}`.
  * Без групування — один рядок із «Разом».
@@ -286,7 +295,7 @@ export function buildAggregateSql(
   // групи (rowCount 0, діти-сироти). Так відрізаються лише найглибші групи.
   const keyList = groupBy.map((_, i) => `k${i}`);
   const group = groupBy.length
-    ? Prisma.sql`GROUP BY ROLLUP (${Prisma.raw(keyList.join(', '))}) ORDER BY ${Prisma.raw(keyList.map(k => `GROUPING(${k})`).join(' + '))} DESC LIMIT ${REPORT_GROUP_CAP + 1}`
+    ? Prisma.sql`GROUP BY ROLLUP (${Prisma.raw(keyList.join(', '))}) ORDER BY ${Prisma.raw(levelOrderSql(keyList))} LIMIT ${REPORT_GROUP_CAP + 1}`
     : Prisma.empty;
   // FROM будується після виразів: з'єднання додаються, коли вирази звертаються до зв'язків.
   return Prisma.sql`SELECT ${select} FROM (SELECT ${inner} ${scope.from()} ${where}) s ${group}`;
@@ -324,11 +333,10 @@ export function buildCurrencySplitSql(
   // Набір на кожен рівень дерева разом із «Разом»: (c0), (k0, c0), …, (k0…kn-1, c0).
   const keyList = groupBy.map((_, i) => `k${i}`);
   const sets = keyList.map((_, l) => [...keyList.slice(0, l), 'c0']).concat([[...keyList, 'c0']]);
-  const levelOrder = keyList.length
-    ? ` ORDER BY ${keyList.map(k => `GROUPING(${k})`).join(' + ')} DESC`
-    : '';
-  // Ліміт — як у групах, помножений на валюти: зріз зачіпає лише найглибші групи, що й так
-  // відрізані лімітом груп (`groupsTruncated`).
+  const levelOrder = keyList.length ? ` ORDER BY ${levelOrderSql(keyList)}` : '';
+  // Ліміт — як у групах, помножений на валюти. Порядок той самий, що в ROLLUP (`levelOrderSql`):
+  // обидва запити відрізають той самий хвіст найглибших груп, тож групи, що лишились у дереві,
+  // мають свою розбивку (групу без розбивки `assembleTree` показує без спільного числа).
   const group = Prisma.raw(
     `GROUP BY GROUPING SETS (${sets.map(set => `(${set.join(', ')})`).join(', ')})${levelOrder} LIMIT ${REPORT_CURRENCY_SPLIT_CAP}`,
   );
