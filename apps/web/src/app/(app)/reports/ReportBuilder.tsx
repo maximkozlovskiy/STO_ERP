@@ -265,6 +265,8 @@ export function ReportBuilder() {
 
   const doSave = async () => {
     if (!saveName.trim()) return toast.warning(t('builder.toastEnterName'));
+    // Як і в run(): одна дата без другої мовчки зберегла б звіт без періоду.
+    if (Boolean(from) !== Boolean(to)) return toast.warning(t('builder.toastPeriodBothDates'));
     try {
       await saveMut.mutateAsync({ name: saveName.trim(), config: buildConfig() });
       toast.success(t('builder.toastSaved'));
@@ -806,9 +808,14 @@ const FILTER_OP_KEY = {
   isNull: 'builder.opIsNull',
 } as const satisfies Record<ReportFilter['op'], string>;
 
-/** Оператори, які бекенд приймає для типу поля: «містить» — лише текст, «в списку» — не для дат. */
-function opsForType(type: string | undefined): ReportFilter['op'][] {
+/**
+ * Оператори, які бекенд приймає для типу поля: «містить» — лише текст, «в списку» — не для дат.
+ * Поточний оператор фільтра лишається в списку завжди: збережений до звуження звіт (напр. «містить»
+ * по даті) інакше показував би в select «=», а слав «містить» — і 400 без видимої причини.
+ */
+function opsForType(type: string | undefined, current?: ReportFilter['op']): ReportFilter['op'][] {
   return FILTER_OPS.filter(op => {
+    if (op === current) return true;
     if (op === 'contains') return type === 'scalar';
     if (op === 'in') return type !== 'date' && type !== 'boolean';
     return true;
@@ -872,7 +879,7 @@ function FilterZone({
                   onChange={e => update(i, { op: e.target.value as ReportFilter['op'] })}
                   className="rounded border border-border bg-surface px-1.5 py-1"
                 >
-                  {opsForType(fld?.type).map(op => (
+                  {opsForType(fld?.type, f.op).map(op => (
                     <option key={op} value={op}>
                       {t(FILTER_OP_KEY[op])}
                     </option>

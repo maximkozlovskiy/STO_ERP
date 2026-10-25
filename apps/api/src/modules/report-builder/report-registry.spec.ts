@@ -1,5 +1,8 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { REGISTRY, REGISTRY_ENUMS, getEntity } from './report-registry';
+import { $Enums } from '@prisma/client';
+import { REGISTRY, REGISTRY_ENUMS, getEntity, isDateOnlyPath } from './report-registry';
 import { buildQuery } from './report-query.builder';
 
 /**
@@ -97,6 +100,49 @@ describe('report-registry цілісність', () => {
     for (const key of Object.keys(REGISTRY)) {
       const q = buildQuery({ entity: key, columns: [], groupBy: [] }, 'org-caller');
       expect((q.args.where as Record<string, unknown>).orgId, key).toBe('org-caller');
+    }
+  });
+
+  // Перелік enum-значень реєстру відставав від схеми: рух RETURN у базі був, а фільтр по ньому
+  // давав 400 (2026-10-25). Мутація: прибрати 'RETURN' з REGISTRY_ENUMS → кейс червоніє.
+  // guards: BR-RPT-004
+  it('REGISTRY_ENUMS збігаються зі значеннями enum-ів Prisma', () => {
+    const prismaEnums = $Enums as unknown as Record<string, Record<string, string> | undefined>;
+    for (const [name, values] of Object.entries(REGISTRY_ENUMS)) {
+      const schemaValues = prismaEnums[name];
+      expect(schemaValues, `${name} має бути enum-ом Prisma`).toBeDefined();
+      expect([...values].sort(), name).toEqual(Object.values(schemaValues ?? {}).sort());
+    }
+  });
+
+  // Колонка `@db.Date` без `dateOnly` зсуває період і фільтр на день назад (Prisma зводить київську
+  // межу до дати) — так було з documentDate наряду й рахунку до 2026-10-25. Нова колонка
+  // `@db.Date` у реєстрі без прапорця має падати тут, а не в звіті. Мутація: прибрати
+  // `dateOnly: true` з invoice.documentDate → кейс червоніє.
+  // guards: BR-RPT-009
+  it('dateOnly стоїть рівно на колонках @db.Date схеми Prisma', () => {
+    const schemaDir = join(__dirname, '../../../../../packages/database/prisma/schema');
+    const schema = readdirSync(schemaDir)
+      .filter(f => f.endsWith('.prisma'))
+      .map(f => readFileSync(join(schemaDir, f), 'utf8'))
+      .join('\n');
+    const dbDateCols = new Map<string, Set<string>>();
+    for (const m of schema.matchAll(/^model (\w+) \{([\s\S]*?)^\}/gm)) {
+      const cols = new Set<string>();
+      for (const line of m[2].split('\n')) {
+        const col = /^\s*(\w+)\s+DateTime\??\s.*@db\.Date\b/.exec(line);
+        if (col) cols.add(col[1]);
+      }
+      dbDateCols.set(m[1], cols);
+    }
+    for (const e of Object.values(REGISTRY)) {
+      const model = e.prismaModel.charAt(0).toUpperCase() + e.prismaModel.slice(1);
+      const cols = dbDateCols.get(model);
+      expect(cols, `модель ${model}`).toBeDefined();
+      for (const f of e.fields.filter(x => x.type === 'date' && !x.prismaPath.includes('.'))) {
+        expect(f.dateOnly === true, `${e.key}.${f.key}`).toBe(cols!.has(f.prismaPath));
+      }
+      expect(isDateOnlyPath(e, e.dateField), `${e.key} dateField`).toBe(cols!.has(e.dateField));
     }
   });
 

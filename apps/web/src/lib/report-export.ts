@@ -77,6 +77,8 @@ export function groupLabel(
 
 /** Тип поля агрегату за alias `AGG_поле`: з ефективних агрегацій, далі з колонок. */
 function aggFieldType(alias: string, result: ReportRunResult | undefined): string | undefined {
+  // COUNT — завжди ціле число, навіть над полем-датою (як `fmtAggValue` на екрані).
+  if (alias.startsWith('COUNT_')) return 'number';
   if (!result) return undefined;
   const fieldKey = alias.slice(alias.indexOf('_') + 1);
   return (

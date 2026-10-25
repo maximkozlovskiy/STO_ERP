@@ -422,6 +422,24 @@ describe('report-export › файл збігається з екраном', ()
     expect(rows[2]).toEqual(['Разом', '2', '20.10.2026', '0.3']);
   });
 
+  // Екран (`fmtAggValue`) показує COUNT цілим числом і над полем-датою; файл не має робити з
+  // лічильника «01.01.1970». Мутація: прибрати гілку COUNT_ в aggFieldType → кейс червоніє.
+  // guards: BR-RPT-021
+  it('COUNT над полем-датою — число, а не дата', () => {
+    const result = makeResult({
+      groupBy: ['status'],
+      aggregations: [{ field: 'documentDate', agg: 'COUNT', type: 'date', label: 'Дата' }],
+      body: {
+        tree: [node('PAID', 3, { COUNT_documentDate: 3 })],
+        grandTotals: { COUNT_documentDate: 3 },
+        rowCount: 3,
+      },
+    });
+
+    expect(buildExportRows(result, t)[2]).toEqual(['Разом', '3', '3']);
+    expect(buildExportNumericColumns(result)).toEqual([false, true, true]);
+  });
+
   // guards: BR-RPT-021
   it("CSV: від'ємне число лишається числом, а текст на мінус — з апострофом", () => {
     expect(buildCsvText([['Списання', '-4865.968', '-cmd']])).toBe("Списання,-4865.968,'-cmd");
