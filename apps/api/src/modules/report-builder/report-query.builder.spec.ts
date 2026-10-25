@@ -452,9 +452,19 @@ describe('report-query.builder', () => {
     ])(
       "текстове поле, оператор %s з об'єктом чи масивом → 400, у Prisma не потрапляє",
       (op, value) => {
-        rejects('workOrder', 'number', op, value);
+        // «Порожнє» — лише для поля, що може бути порожнім (номер наряду обов'язковий).
+        rejects('workOrder', op === 'isNull' ? 'counterparty.companyName' : 'number', op, value);
       },
     );
+
+    // Обов'язкова колонка: Prisma відповідала загальною 400 «Некоректні дані запиту».
+    // guards: BR-RPT-024
+    it("«порожнє / заповнене» на обов'язковому полі → 400 з назвою поля", () => {
+      expect(() => where('workOrder', 'number', 'isNull', true)).toThrow(
+        'Поле "Номер" завжди заповнене',
+      );
+      expect(() => where('payment', 'amount', 'isNull', false)).toThrow('завжди заповнене');
+    });
 
     // guards: BR-RPT-024
     it('in: масив з об’єктом → 400; понад 500 значень → 400', () => {

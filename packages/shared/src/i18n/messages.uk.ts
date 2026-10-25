@@ -1015,6 +1015,9 @@ export const uk: Record<string, string> = {
   'err.reportBuilder.savedReportNotFound': 'Збережений звіт не знайдено',
   'err.reportBuilder.filterInRequiresArray': 'Оператор «в списку» потребує перелік значень',
   'err.reportBuilder.filterContainsTextOnly': 'Оператор «містить» — лише для текстових полів',
+  'err.reportBuilder.fieldNotGroupable': 'За полем "{{label}}" групувати не можна',
+  'err.reportBuilder.fieldNotNullable':
+    'Поле "{{label}}" завжди заповнене — «порожнє» / «заповнене» до нього не застосовні',
   'err.reportBuilder.disallowedOperator': 'Недозволений оператор: {{op}}',
   'err.reportBuilder.startAfterEnd': 'Дата початку має бути не пізніше дати закінчення',
   'err.reportBuilder.fieldNotFilterable': 'Поле "{{label}}" не фільтрується',

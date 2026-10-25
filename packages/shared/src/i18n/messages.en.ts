@@ -1036,6 +1036,9 @@ export const en: Record<string, string> = {
   'err.reportBuilder.savedReportNotFound': 'Saved report not found',
   'err.reportBuilder.filterInRequiresArray': 'The "in list" operator requires a list of values',
   'err.reportBuilder.filterContainsTextOnly': 'The "contains" operator is only for text fields',
+  'err.reportBuilder.fieldNotGroupable': 'Field "{{label}}" cannot be used for grouping',
+  'err.reportBuilder.fieldNotNullable':
+    'Field "{{label}}" is always filled — "empty" / "not empty" do not apply',
   'err.reportBuilder.disallowedOperator': 'Disallowed operator: {{op}}',
   'err.reportBuilder.startAfterEnd': 'The start date must not be later than the end date',
   'err.reportBuilder.fieldNotFilterable': 'Field "{{label}}" is not filterable',

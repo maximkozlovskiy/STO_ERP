@@ -264,5 +264,12 @@ test.describe('Конструктор звітів', () => {
     // append-only (без deletedAt) не падає; є групи по типах руху
     expect(resp.body.result.tree.length).toBeGreaterThan(0);
     expect(resp.body.result.grandTotals).toHaveProperty('SUM_quantity');
+    // BR-RPT-027: групи й «Разом» рахує БД — повні незалежно від ліміту 5000 детальних рядків.
+    // Сума кількостей груп = rowCount, сума SUM груп = «Разом», групи не обрізані.
+    const tree = resp.body.result.tree as { count: number; aggregates: Record<string, number> }[];
+    expect(tree.reduce((s, n) => s + n.count, 0)).toBe(resp.body.result.rowCount);
+    const groupSum = tree.reduce((s, n) => s + (n.aggregates.SUM_quantity || 0), 0);
+    expect(Math.abs(groupSum - resp.body.result.grandTotals.SUM_quantity)).toBeLessThan(1e-6);
+    expect(resp.body.result.groupsTruncated).toBe(false);
   });
 });

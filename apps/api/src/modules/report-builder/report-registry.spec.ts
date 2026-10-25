@@ -3,7 +3,38 @@ import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { $Enums } from '@prisma/client';
 import { REGISTRY, REGISTRY_ENUMS, getEntity, isDateOnlyPath } from './report-registry';
+import type { ReportFieldDef } from './report-registry';
 import { buildQuery } from './report-query.builder';
+import { resolveJoins } from './report-joins';
+
+/** Моделі схеми Prisma: модель → (поле → тип із `?`/`[]`). */
+function schemaModels(): Map<string, Map<string, string>> {
+  const schemaDir = join(__dirname, '../../../../../packages/database/prisma/schema');
+  const schema = readdirSync(schemaDir)
+    .filter(f => f.endsWith('.prisma'))
+    .map(f => readFileSync(join(schemaDir, f), 'utf8'))
+    .join('\n');
+  const models = new Map<string, Map<string, string>>();
+  for (const m of schema.matchAll(/^model (\w+) \{([\s\S]*?)^\}/gm)) {
+    const fields = new Map<string, string>();
+    for (const line of m[2].split('\n')) {
+      const f = /^\s*(\w+)\s+([\w?[\]]+)/.exec(line);
+      if (f && !line.trim().startsWith('//') && !line.trim().startsWith('@@'))
+        fields.set(f[1], f[2]);
+    }
+    models.set(m[1], fields);
+  }
+  return models;
+}
+
+/** Значення для `eq`, яке приймає поле свого типу. */
+function sampleValue(f: ReportFieldDef): unknown {
+  if (f.enumName) return REGISTRY_ENUMS[f.enumName][0];
+  if (f.type === 'number' || f.type === 'decimal') return '1';
+  if (f.type === 'date') return '2026-10-01';
+  if (f.type === 'boolean') return 'true';
+  return 'x';
+}
 
 /**
  * Реєстр-цілісність. Ключове: hasSoftDelete прапорець МАЄ збігатися з реальною наявністю
@@ -103,6 +134,40 @@ describe('report-registry цілісність', () => {
     }
   });
 
+  // «Порожнє / заповнене» на обов'язковій колонці Prisma відхиляла загальною 400 «Некоректні дані
+  // запиту»; тепер — 400 з назвою поля, а UI ці оператори такому полю не пропонує. Прапорець
+  // звіряється зі схемою, щоб нове поле не забули позначити. Мутація: прибрати nullable(...) з
+  // payment.reversedAt → кейс червоніє.
+  // guards: BR-RPT-024
+  it("nullable стоїть рівно на полях, колонка яких у схемі необов'язкова (`?`)", () => {
+    const models = schemaModels();
+    for (const e of Object.values(REGISTRY)) {
+      for (const f of e.fields) {
+        const segments = f.prismaPath.split('.');
+        let model = e.prismaModel.charAt(0).toUpperCase() + e.prismaModel.slice(1);
+        for (const seg of segments.slice(0, -1)) {
+          model = (models.get(model)?.get(seg) ?? '').replace(/[?[\]]/g, '');
+        }
+        const type = models.get(model)?.get(segments[segments.length - 1]);
+        expect(type, `${e.key}.${f.key}`).toBeDefined();
+        expect(f.nullable === true, `${e.key}.${f.key} (${type})`).toBe(type!.endsWith('?'));
+      }
+    }
+  });
+
+  // SQL-агрегати з'єднують таблиці за FK з реєстру (Prisma 7 runtime-DMMF FK не дає). Помилкова FK
+  // мовчки дала б порожні групи — тут вона падає. Мутація: fk 'accountId' у settlementTransaction.
+  // guards: BR-RPT-027
+  it("кожен зв'язок реєстру резолвиться в з'єднання: FK є колонкою батька, таблиця кореня — tableName", () => {
+    for (const e of Object.values(REGISTRY)) {
+      const joins = resolveJoins(e);
+      expect(joins.rootTable, e.key).toBe(e.tableName);
+      expect([...joins.hops.keys()].sort(), e.key).toEqual(
+        e.relations.map(r => r.prismaPath).sort(),
+      );
+    }
+  });
+
   // Перелік enum-значень реєстру відставав від схеми: рух RETURN у базі був, а фільтр по ньому
   // давав 400 (2026-10-25). Мутація: прибрати 'RETURN' з REGISTRY_ENUMS → кейс червоніє.
   // guards: BR-RPT-004
@@ -155,7 +220,11 @@ describe('report-registry цілісність', () => {
             entity: e.key,
             columns: [],
             groupBy: [],
-            filters: [{ field: f.key, op: 'isNull', value: true }],
+            filters: [
+              f.nullable
+                ? { field: f.key, op: 'isNull', value: true }
+                : { field: f.key, op: 'eq', value: sampleValue(f) },
+            ],
           },
           ORG,
         ).args.where as Record<string, unknown>;

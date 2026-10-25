@@ -9918,6 +9918,8 @@ export interface components {
             aggregations: string[];
             filterable: boolean;
             groupable: boolean;
+            /** @description Колонка допускає NULL — доречні «порожнє / заповнене» */
+            nullable: boolean;
         };
         ReportMetadataRelationDto: {
             /** @description dot-path гілки: 'counterparty' | 'good.brand' */
@@ -10009,8 +10011,13 @@ export interface components {
             grandTotals: {
                 [key: string]: number | null;
             };
+            /** @description Скільки рядків відповідає умовам — точне, не обрізане лімітом */
             rowCount: number;
-            /** @description true — результат обрізано лімітом */
+            /** @description Детальних рядків показано не всі (ліміт 5000); групи й підсумки повні */
+            detailTruncated: boolean;
+            /** @description Груп більше за ліміт відповіді — показано не всі */
+            groupsTruncated: boolean;
+            /** @description Застаріле: detailTruncated || groupsTruncated */
             truncated: boolean;
         };
         ReportRunResponseDto: {

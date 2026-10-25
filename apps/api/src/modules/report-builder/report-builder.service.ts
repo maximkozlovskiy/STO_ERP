@@ -5,7 +5,10 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REGISTRY, REGISTRY_ENUMS, getEntity, ReportEntityDef } from './report-registry';
 import { buildQuery, ReportConfigInput } from './report-query.builder';
-import { aggregate, ReportResult, ReportAggInput } from './report-aggregator';
+import { ReportResult, ReportAggInput, assertAggregations } from './report-aggregator';
+import { buildConditions } from './report-condition';
+import { assertGroupable, buildAggregateSql, buildMergedRowsSql } from './report-sql.builder';
+import { assembleMergedRows, assembleTree } from './report-sql-result';
 
 /** Повний config звіту: білдер-частина + агрегація/групування для JS-шару. */
 export type FullReportConfig = ReportConfigInput & {
@@ -53,6 +56,7 @@ export class ReportBuilderService {
           aggregations: f.aggregations,
           filterable: f.filterable,
           groupable: f.groupable,
+          nullable: f.nullable === true,
         })),
         relations: e.relations.map(r => ({
           key: r.key,
@@ -67,8 +71,6 @@ export class ReportBuilderService {
   /** Виконує ad-hoc звіт: config → Prisma findMany → JS-групування. */
   async run(orgId: string, config: FullReportConfig): Promise<ReportRunResult> {
     const entity = getEntity(config.entity);
-    const built = buildQuery(config, orgId);
-    const rows = await this.runFindMany(built.model, built.args);
 
     // Ефективні агрегації: явні + авто-SUM для числових колонок без обраної агрегації
     // (діра #1: колонка-число без agg раніше губилась). Знакові поля (signedByType) —
@@ -88,24 +90,83 @@ export class ReportBuilderService {
 
     // Детальні рядки завжди (діра #5: без цього «детальний звіт» неможливий).
     const includeRows = config.includeRows ?? true;
-
-    const result = aggregate(
-      rows,
-      {
-        groupBy: config.groupBy,
-        columns: config.columns,
-        aggregations,
-        includeRows,
-        sortByAggregate: config.sortByAggregate,
-      },
-      entity,
-    );
+    const result = await this.aggregateInDb(orgId, config, entity, aggregations, includeRows);
     return {
       entity: entity.key,
       columns: this.expandColumns(entity, config.columns),
       groupBy: config.groupBy,
       aggregations, // ефективні (з авто-SUM) — фронт рендерить заголовки/дерево з них
       result,
+    };
+  }
+
+  /**
+   * Групи, «Разом» і склеєні плоскі рядки рахує PostgreSQL — точно на будь-якому обсязі
+   * (BR-RPT-027); детальні рядки груп (≤5000) читає Prisma з тим самим набором умов.
+   */
+  private async aggregateInDb(
+    orgId: string,
+    config: FullReportConfig,
+    entity: ReportEntityDef,
+    aggregations: ReportAggInput[],
+    includeRows: boolean,
+  ): Promise<ReportResult> {
+    const conds = buildConditions(config, orgId);
+    const groupFields = assertGroupable(entity, config.groupBy);
+    assertAggregations(aggregations, entity);
+    const wantDetail = includeRows && config.columns.length > 0;
+    const sort = config.sort?.[0] ?? null;
+
+    if (groupFields.length === 0) {
+      const [totals, merged] = await Promise.all([
+        this.prisma.$queryRaw<Record<string, unknown>[]>(
+          buildAggregateSql(conds, [], aggregations),
+        ),
+        wantDetail
+          ? this.prisma.$queryRaw<Record<string, unknown>[]>(
+              buildMergedRowsSql(conds, config.columns, sort),
+            )
+          : Promise.resolve([]),
+      ]);
+      const assembled = assembleTree(totals, [], aggregations, {
+        detail: null,
+        columns: config.columns,
+        entity,
+      });
+      const flat = assembleMergedRows(merged, config.columns, entity);
+      return {
+        tree: [],
+        detailRows: flat.detailRows,
+        grandTotals: assembled.grandTotals,
+        rowCount: assembled.rowCount,
+        detailTruncated: flat.truncated,
+        groupsTruncated: false,
+        truncated: flat.truncated,
+      };
+    }
+
+    const built = buildQuery(config, orgId);
+    const [rollup, detail] = await Promise.all([
+      this.prisma.$queryRaw<Record<string, unknown>[]>(
+        buildAggregateSql(conds, groupFields, aggregations),
+      ),
+      wantDetail ? this.runFindMany(built.model, built.args) : Promise.resolve(null),
+    ]);
+    const assembled = assembleTree(rollup, groupFields, aggregations, {
+      detail,
+      columns: config.columns,
+      entity,
+      sortByAggregate: config.sortByAggregate,
+    });
+    const detailTruncated = (detail?.length ?? 0) >= built.args.take;
+    return {
+      tree: assembled.tree,
+      detailRows: [],
+      grandTotals: assembled.grandTotals,
+      rowCount: assembled.rowCount,
+      detailTruncated,
+      groupsTruncated: assembled.groupsTruncated,
+      truncated: detailTruncated || assembled.groupsTruncated,
     };
   }
 

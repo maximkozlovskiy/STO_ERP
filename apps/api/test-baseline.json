@@ -5348,8 +5348,20 @@
   "apps/api/src/modules/report-builder/report-builder.dto.spec.ts": [
    "ReportConfigDto — межі config groupBy: 5 рівнів проходить, 6 — помилка валідації з ключем err.dto.reportBuilder.groupBy.max"
   ],
+  "apps/api/src/modules/report-builder/report-builder.parity.integration.spec.ts": [
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) invoice: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) payment: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) purchaseOrderLine: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) settlementTransaction: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) stockBatch: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) stockItem: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) stockMovement: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) workOrder: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) workOrderPart: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном"
+  ],
   "apps/api/src/modules/report-builder/report-builder.saved-reports.spec.ts": [
-   "ReportBuilderService — tenant-межа запуску run: findMany моделі з реєстру отримує where.orgId викликача і take-ліміт",
+   "ReportBuilderService — tenant-межа запуску run: детальні рядки груп — findMany з where.orgId викликача і take-ліміт",
+   "ReportBuilderService — tenant-межа запуску run: кожен SQL-агрегат несе orgId викликача параметром, не текстом",
    "ReportBuilderService — tenant-межа запуску runSaved: orgId береться від викликача, а не зі збереженого config",
    "ReportBuilderService — збережені звіти createSaved з невалідним config → BadRequestException, запис не створюється",
    "ReportBuilderService — збережені звіти createSaved пише orgId викликача, entity з config і автора у createdBy",
@@ -5383,6 +5395,7 @@
    "report-query.builder take завжди 5000 — для кожної сутності реєстру, незалежно від config",
    "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) in: масив з об’єктом → 400; понад 500 значень → 400",
    "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) isNull: рядок, лишений у value після зміни оператора, не заважає; false / \"false\" — «заповнено»",
+   "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) «порожнє / заповнене» на обов'язковому полі → 400 з назвою поля",
    "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) рядок із поля «значення» UI приводиться: ціле → Number, десяткове лишається рядком, так/ні → boolean",
    "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) текстове поле, оператор contains з об'єктом чи масивом → 400, у Prisma не потрапляє",
    "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) текстове поле, оператор eq з об'єктом чи масивом → 400, у Prisma не потрапляє",
@@ -5426,12 +5439,32 @@
    "report-registry цілісність append-only сутність: buildQuery НЕ інжектить deletedAt у корінь",
    "report-registry цілісність dateOnly стоїть рівно на колонках @db.Date схеми Prisma",
    "report-registry цілісність hasSoftDelete узгоджений з profile (APPEND_ONLY → hasSoftDelete:false)",
+   "report-registry цілісність nullable стоїть рівно на полях, колонка яких у схемі необов'язкова (`?`)",
    "report-registry цілісність signedByType поле посилається на сусіднє enum-поле (StockMovement.quantity → type)",
    "report-registry цілісність кожен relation-field prismaPath має валідний relation-prefix",
+   "report-registry цілісність кожен зв'язок реєстру резолвиться в з'єднання: FK є колонкою батька, таблиця кореня — tableName",
    "report-registry цілісність кожна з 9 сутностей: orgId викликача стоїть у корені where",
    "report-registry цілісність кожне enum-поле посилається на наявний REGISTRY_ENUMS",
    "report-registry цілісність усі 9 сутностей присутні",
    "report-registry цілісність фільтр по будь-якому полю реєстру не перезаписує orgId і deletedAt кореня"
+  ],
+  "apps/api/src/modules/report-builder/report-sql-result.spec.ts": [
+   "report-sql-result ROLLUP → дерево: рівень за GROUPING, «Разом» з рядка без ключів, NULL-група — «∅»",
+   "report-sql-result груп більше за ліміт відповіді → groupsTruncated",
+   "report-sql-result детальні рядки (≤5000) чіпляються до листових груп за тими самими ключами",
+   "report-sql-result склеєні рядки: колонки у формі детального рядка, кількість — у __mergedCount; понад ліміт — truncated",
+   "report-sql-result сортування груп за агрегатом; AVG над порожнім — null, а не 0"
+  ],
+  "apps/api/src/modules/report-builder/report-sql.builder.spec.ts": [
+   "report-sql.builder orgId — параметром на корені й у ON кожного з’єднання, ніколи не текстом запиту",
+   "report-sql.builder soft delete кореня й документа-власника; сторно платежу за замовчуванням",
+   "report-sql.builder «≠ день» — OR двох меж; колонка @db.Date порівнюється з датою, не з міткою",
+   "report-sql.builder групи всіх рівнів і «Разом» — один GROUP BY ROLLUP з GROUPING на кожен ключ",
+   "report-sql.builder групування за датою-міткою — київський день через подвійний AT TIME ZONE; @db.Date — як є",
+   "report-sql.builder групування лише за полем з groupable; інше → 400 з назвою поля",
+   "report-sql.builder знакова кількість руху: резерви поза сумою, списання від’ємне",
+   "report-sql.builder склеєні плоскі рядки: GROUP BY непідсумовуваних колонок, SUM підсумовуваних, ліміт 5000+1",
+   "report-sql.builder фільтр по зв’язку — зв’язок має існувати й бути живим, як Prisma-фільтр `is`"
   ],
   "apps/api/src/modules/reports/reports.contract.spec.ts": [
    "Reports — HTTP-контракт дат періоду GET /reports/load — період обовʼязковий без from → 400, сервіс не викликається",

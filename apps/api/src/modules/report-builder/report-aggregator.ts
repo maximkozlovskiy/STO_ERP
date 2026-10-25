@@ -38,7 +38,13 @@ export interface ReportResult {
   /** Плоскі детальні рядки (проєкція columns) — заповнюються коли includeRows і groupBy=[]. */
   detailRows: DetailRow[];
   grandTotals: AggregateValues;
+  /** Скільки рядків відповідає умовам — точне (SQL), не обрізане лімітом детальних. */
   rowCount: number;
+  /** Детальних рядків показано не всі (ліміт 5000) — групи й підсумки від цього не залежать. */
+  detailTruncated: boolean;
+  /** Груп більше за ліміт відповіді — показано не всі. */
+  groupsTruncated: boolean;
+  /** Застаріле: `detailTruncated || groupsTruncated` (для клієнтів до 2026-10-25). */
   truncated: boolean;
 }
 
@@ -46,7 +52,7 @@ export interface ReportResult {
 type Row = Record<string, any>;
 
 /** Читає значення за dot-path з рядка (relation-поля лежать вкладено через include). */
-function getPath(row: Row, prismaPath: string): unknown {
+export function getPath(row: Row, prismaPath: string): unknown {
   const segments = prismaPath.split('.');
   let node: unknown = row;
   for (const seg of segments) {
@@ -67,7 +73,7 @@ function getPath(row: Row, prismaPath: string): unknown {
  */
 const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 
-function normalizeKey(value: unknown, isDate: boolean): string {
+export function normalizeKey(value: unknown, isDate: boolean): string {
   if (value === null || value === undefined || value === '') return '∅';
   if (isDate) {
     const d = value instanceof Date ? value : new Date(String(value));
@@ -89,7 +95,10 @@ function normalizeKey(value: unknown, isDate: boolean): string {
  * OPENING_BALANCE — беруться as-is: їхній знак приходить правильним з сервісу
  * (RECEIPT >0, TRANSFER-writeoff <0, TRANSFER-receipt >0).
  */
-const NON_PHYSICAL_MOVEMENT_TYPES = new Set(['RESERVATION', 'RESERVATION_RELEASE']);
+export const NON_PHYSICAL_MOVEMENT_TYPES: ReadonlySet<string> = new Set([
+  'RESERVATION',
+  'RESERVATION_RELEASE',
+]);
 
 function numericValue(row: Row, entity: ReportEntityDef, field: string): number | null {
   const fld = getField(entity, field);
@@ -106,13 +115,8 @@ function numericValue(row: Row, entity: ReportEntityDef, field: string): number 
   return n;
 }
 
-/** Рахує вибрані агрегації над набором рядків. Whitelist + balance-SUM guard. */
-function computeAggs(
-  rows: Row[],
-  aggs: ReportAggInput[],
-  entity: ReportEntityDef,
-): AggregateValues {
-  const out: AggregateValues = {};
+/** Агрегація поля — лише з білого списку реєстру (BR-RPT-011); SUM стану заборонений. */
+export function assertAggregations(aggs: ReportAggInput[], entity: ReportEntityDef): void {
   for (const { field, agg } of aggs) {
     const fld = getField(entity, field);
     if (!fld.aggregations.includes(agg)) {
@@ -128,6 +132,18 @@ function computeAggs(
         translateError('err.reportBuilder.sumNotAllowedState', getLocale(), { label: fld.label }),
       );
     }
+  }
+}
+
+/** Рахує вибрані агрегації над набором рядків. Whitelist + balance-SUM guard. */
+function computeAggs(
+  rows: Row[],
+  aggs: ReportAggInput[],
+  entity: ReportEntityDef,
+): AggregateValues {
+  assertAggregations(aggs, entity);
+  const out: AggregateValues = {};
+  for (const { field, agg } of aggs) {
     const alias = `${agg}_${field}`;
     if (agg === 'COUNT') {
       out[alias] = rows.length;
@@ -154,7 +170,11 @@ function computeAggs(
 }
 
 /** Впорядковує вузли одного рівня: за агрегатом (якщо задано sortAlias) або за ключем. */
-function sortNodes(nodes: GroupNode[], sortAlias: string | null, sortDir: 'asc' | 'desc'): void {
+export function sortNodes(
+  nodes: GroupNode[],
+  sortAlias: string | null,
+  sortDir: 'asc' | 'desc',
+): void {
   if (sortAlias) {
     // За агрегатом '∅'-група бере участь як звичайна (її сума може бути найбільшою — не
     // форсуємо в кінець, інакше «топ за сумою» не відсортується коректно).
@@ -240,7 +260,7 @@ function buildLevel(
 }
 
 /** Проєкція сирих рядків у детальні (лише обрані columns, за їх key). */
-function projectRows(rows: Row[], columns: string[], entity: ReportEntityDef): DetailRow[] {
+export function projectRows(rows: Row[], columns: string[], entity: ReportEntityDef): DetailRow[] {
   return rows.map(r => {
     const out: DetailRow = {};
     for (const key of columns) {
@@ -254,7 +274,7 @@ function projectRows(rows: Row[], columns: string[], entity: ReportEntityDef): D
 const NUMERIC_COL_TYPES = new Set(['number', 'decimal']);
 
 /** Колонка, яку склеювання підсумовує: число, якому реєстр дозволяє SUM (не ціна, не стан). */
-function isSummable(entity: ReportEntityDef, key: string): boolean {
+export function isSummable(entity: ReportEntityDef, key: string): boolean {
   const fld = getField(entity, key);
   return NUMERIC_COL_TYPES.has(fld.type) && fld.aggregations.includes('SUM') && !fld.stateNotFlow;
 }
@@ -275,7 +295,10 @@ function mergeDetailRows(rows: Row[], columns: string[], entity: ReportEntityDef
   for (const r of rows) {
     const dimVals = dimCols.map(k => {
       const fld = getField(entity, k);
-      return String(getPath(r, fld.prismaPath) ?? '∅');
+      const v = getPath(r, fld.prismaPath) ?? '∅';
+      // Дата — до мілісекунди: `String(Date)` рве їх до секунди, і дві різні оплати в одну секунду
+      // зливались в один рядок (паритет із SQL-склеюванням, 2026-10-25).
+      return v instanceof Date ? v.toISOString() : String(v);
     });
     const key = dimVals.join(' ');
     let bucket = buckets.get(key);
@@ -343,6 +366,8 @@ export function aggregate(
     detailRows,
     grandTotals,
     rowCount: rows.length,
+    detailTruncated: rows.length >= REPORT_TAKE_CAP,
+    groupsTruncated: false,
     truncated: rows.length >= REPORT_TAKE_CAP,
   };
 }

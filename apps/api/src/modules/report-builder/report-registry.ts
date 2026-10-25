@@ -54,6 +54,9 @@ export interface ReportFieldDef {
   /** Колонка `@db.Date` (дата без часу): межі дня — сама дата, а не київська доба. Prisma зводить
    *  параметр до типу колонки, тож київська межа «з 20.10» (19.10 21:00 UTC) ставала 19.10. */
   dateOnly?: boolean;
+  /** Колонка допускає NULL — лише тоді доречні «порожнє / заповнене» (інакше 400 з назвою поля).
+   *  Звіряється зі схемою Prisma у `report-registry.spec.ts`. */
+  nullable?: boolean;
 }
 
 export interface ReportRelationDef {
@@ -68,7 +71,8 @@ export interface ReportRelationDef {
   /** 3+ хопи або дубль — сховати за замовчуванням у UI. */
   advanced: boolean;
   /** Чи інжектити deletedAt:null у nested include на цьому хопі (Bug #607). */
-  targetHasSoftDelete: boolean;
+  targetHasSoftDelete: boolean; /** FK-колонка в таблиці батька (SQL-агрегати); типово `<зв'язок>Id`. */
+  fk: string;
 }
 
 export type EntityProfile = 'FULL' | 'APPEND_ONLY';
@@ -223,7 +227,7 @@ const relation = (
   key: string,
   label: string,
   target: string,
-  opts: { targetHasSoftDelete?: boolean } = {},
+  opts: { targetHasSoftDelete?: boolean; fk?: string } = {},
 ): ReportRelationDef => ({
   key,
   label,
@@ -232,7 +236,11 @@ const relation = (
   depth: key.split('.').length,
   advanced: false,
   targetHasSoftDelete: opts.targetHasSoftDelete ?? true,
+  fk: opts.fk ?? `${key.split('.').pop()}Id`,
 });
+
+/** Поле, колонка якого допускає NULL (див. `ReportFieldDef.nullable`). */
+const nullable = (f: ReportFieldDef): ReportFieldDef => ({ ...f, nullable: true });
 
 // ─── Entity definitions (v1: 3 сутності; реєстр розширюваний) ────────────────────
 
@@ -256,14 +264,14 @@ const workOrder: ReportEntityDef = {
     sumField('totalParts', 'Запчастини'),
     sumField('totalVat', 'ПДВ'),
     sumField('paidAmount', 'Оплачено'),
-    dateField('completedAt', 'Завершено'),
+    nullable(dateField('completedAt', 'Завершено')),
     dateField('documentDate', 'Дата', { dateOnly: true }),
     // relation-колонки (рівень 1 — прямий шлях WO→CP, рекомендований):
     enumField('counterparty.type', 'Тип контрагента', 'CounterpartyType'),
-    textField('counterparty.companyName', 'Контрагент'),
+    nullable(textField('counterparty.companyName', 'Контрагент')),
     textField('branch.name', 'Філія'),
     textField('vehicle.make', 'Авто (марка)'),
-    textField('vehicle.licensePlate', 'Авто (номер)'),
+    nullable(textField('vehicle.licensePlate', 'Авто (номер)')),
   ],
   relations: [
     relation('counterparty', 'Контрагент', 'counterparty'),
@@ -286,14 +294,14 @@ const workOrderPart: ReportEntityDef = {
     sumField('quantity', 'Кількість', 'number'),
     rateField('price', 'Ціна'),
     sumField('amount', 'Сума'),
-    sumField('batchCostPrice', 'Собівартість'),
+    nullable(sumField('batchCostPrice', 'Собівартість')),
     // relation-колонки (good рівень 1, good→brand рівень 2 — зрозумілий ланцюг):
     textField('good.name', 'Товар'),
-    textField('good.sku', 'SKU'),
+    nullable(textField('good.sku', 'SKU')),
     textField('good.brand.name', 'Бренд'),
     textField('warehouse.name', 'Склад'),
     textField('workOrder.number', 'Наряд'),
-    textField('workOrder.counterparty.companyName', 'Контрагент'),
+    nullable(textField('workOrder.counterparty.companyName', 'Контрагент')),
     enumField('workOrder.counterparty.type', 'Тип контрагента', 'CounterpartyType'),
   ],
   relations: [
@@ -321,11 +329,11 @@ const purchaseOrderLine: ReportEntityDef = {
     sumField('vatAmount', 'ПДВ'),
     sumField('receivedQty', 'Отримано', 'number'),
     textField('good.name', 'Товар'),
-    textField('good.sku', 'SKU'),
+    nullable(textField('good.sku', 'SKU')),
     textField('good.brand.name', 'Бренд'),
     textField('purchaseOrder.number', 'Закупівля'),
     enumField('purchaseOrder.status', 'Статус', 'PurchaseOrderStatus'),
-    textField('purchaseOrder.supplier.companyName', 'Постачальник'),
+    nullable(textField('purchaseOrder.supplier.companyName', 'Постачальник')),
     enumField('purchaseOrder.supplier.type', 'Тип постачальника', 'CounterpartyType'),
   ],
   relations: [
@@ -354,8 +362,8 @@ const invoice: ReportEntityDef = {
     sumField('totalVat', 'ПДВ'),
     sumField('totalWithVat', 'З ПДВ'),
     dateField('documentDate', 'Дата', { dateOnly: true }),
-    dateField('dueDate', 'Термін оплати'),
-    textField('counterparty.companyName', 'Контрагент'),
+    nullable(dateField('dueDate', 'Термін оплати')),
+    nullable(textField('counterparty.companyName', 'Контрагент')),
     enumField('counterparty.type', 'Тип контрагента', 'CounterpartyType'),
     textField('workOrder.number', 'Наряд'),
   ],
@@ -382,8 +390,8 @@ const payment: ReportEntityDef = {
     sumField('amount', 'Сума'),
     textField('method', 'Спосіб'),
     dateField('createdAt', 'Дата'),
-    dateField('reversedAt', 'Сторновано', { groupable: false }),
-    textField('counterparty.companyName', 'Контрагент'),
+    nullable(dateField('reversedAt', 'Сторновано', { groupable: false })),
+    nullable(textField('counterparty.companyName', 'Контрагент')),
     enumField('counterparty.type', 'Тип контрагента', 'CounterpartyType'),
     textField('workOrder.number', 'Наряд'),
   ],
@@ -407,13 +415,16 @@ const settlementTransaction: ReportEntityDef = {
   fields: [
     enumField('type', 'Тип', 'SettlementTransactionType'),
     sumField('amount', 'Сума'),
-    textField('documentType', 'Тип документа'),
+    nullable(textField('documentType', 'Тип документа')),
     dateField('createdAt', 'Дата'),
-    textField('account.counterparty.companyName', 'Контрагент'),
+    nullable(textField('account.counterparty.companyName', 'Контрагент')),
     enumField('account.counterparty.type', 'Тип контрагента', 'CounterpartyType'),
   ],
   relations: [
-    relation('account', 'Рахунок', 'settlementAccount', { targetHasSoftDelete: false }),
+    relation('account', 'Рахунок', 'settlementAccount', {
+      targetHasSoftDelete: false,
+      fk: 'settlementAccountId',
+    }),
     relation('account.counterparty', 'Контрагент', 'counterparty'),
   ],
 };
@@ -447,8 +458,8 @@ const stockMovement: ReportEntityDef = {
       groupable: false,
       signedByType: 'type',
     },
-    rateField('price', 'Ціна'),
-    textField('documentType', 'Тип документа'),
+    nullable(rateField('price', 'Ціна')),
+    nullable(textField('documentType', 'Тип документа')),
     dateField('createdAt', 'Дата'),
     textField('good.name', 'Товар'),
     textField('good.brand.name', 'Бренд'),
@@ -487,7 +498,7 @@ const stockBatch: ReportEntityDef = {
       filterable: true,
       groupable: true,
     },
-    dateField('expiryDate', 'Термін придатності'),
+    nullable(dateField('expiryDate', 'Термін придатності')),
     textField('good.name', 'Товар'),
     textField('good.brand.name', 'Бренд'),
     textField('warehouse.name', 'Склад'),
@@ -513,9 +524,9 @@ const stockItem: ReportEntityDef = {
   fields: [
     sumField('quantity', 'Кількість', 'number'),
     sumField('reserved', 'Зарезервовано', 'number'),
-    rateField('minStock', 'Мін. запас', 'number'),
+    nullable(rateField('minStock', 'Мін. запас', 'number')),
     textField('good.name', 'Товар'),
-    textField('good.sku', 'SKU'),
+    nullable(textField('good.sku', 'SKU')),
     textField('good.brand.name', 'Бренд'),
     textField('warehouse.name', 'Склад'),
   ],

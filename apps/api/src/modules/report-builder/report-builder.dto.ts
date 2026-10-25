@@ -162,6 +162,8 @@ export class ReportMetadataFieldDto {
   aggregations!: string[];
   @ApiProperty() filterable!: boolean;
   @ApiProperty() groupable!: boolean;
+  @ApiProperty({ description: 'Колонка допускає NULL — доречні «порожнє / заповнене»' })
+  nullable!: boolean;
 }
 
 export class ReportMetadataRelationDto {
@@ -258,8 +260,16 @@ export class ReportRunResultBodyDto {
     description: 'alias агрегації → значення (null якщо нема даних)',
   })
   grandTotals!: Record<string, number | null>;
-  @ApiProperty() rowCount!: number;
-  @ApiProperty({ description: 'true — результат обрізано лімітом' }) truncated!: boolean;
+  @ApiProperty({ description: 'Скільки рядків відповідає умовам — точне, не обрізане лімітом' })
+  rowCount!: number;
+  @ApiProperty({
+    description: 'Детальних рядків показано не всі (ліміт 5000); групи й підсумки повні',
+  })
+  detailTruncated!: boolean;
+  @ApiProperty({ description: 'Груп більше за ліміт відповіді — показано не всі' })
+  groupsTruncated!: boolean;
+  @ApiProperty({ description: 'Застаріле: detailTruncated || groupsTruncated' })
+  truncated!: boolean;
 }
 
 export class ReportRunResponseDto {

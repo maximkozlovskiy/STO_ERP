@@ -476,7 +476,7 @@ jobs:
         # Список явний: новий `*.integration.spec.ts` сюди треба ДОПИСАТИ, інакше в CI він іде
         # у skip у звичайному unit-job (там немає ні Postgres, ні Redis). Так спек нарахування
         # зарплати (BR-PAYR-001/015 — сирий SQL) жив поза CI від самого додавання (Bug #806).
-        run: pnpm --filter @sto/api exec vitest run src/prisma src/modules/dead-letter src/modules/work-orders/work-order-stock-effects.integration.spec.ts src/modules/xlsx/document-line-import.adapter.integration.spec.ts src/modules/payroll/payroll.accrual.integration.spec.ts src/modules/payments/payment-polling.queue.integration.spec.ts
+        run: pnpm --filter @sto/api exec vitest run src/prisma src/modules/dead-letter src/modules/work-orders/work-order-stock-effects.integration.spec.ts src/modules/xlsx/document-line-import.adapter.integration.spec.ts src/modules/payroll/payroll.accrual.integration.spec.ts src/modules/payments/payment-polling.queue.integration.spec.ts src/modules/report-builder/report-builder.parity.integration.spec.ts
 
   # E2E (smoke-підмножина). 321 тест ганявся ЛИШЕ локально — у CI Playwright не було
   # взагалі. Тут беремо smoke + auth-flow (14 тестів): вони відповідають на головне

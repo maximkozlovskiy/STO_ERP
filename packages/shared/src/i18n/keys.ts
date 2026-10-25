@@ -1028,6 +1028,8 @@ export const VALIDATION_KEYS = [
   'err.reportBuilder.savedReportNotFound',
   'err.reportBuilder.filterInRequiresArray',
   'err.reportBuilder.filterContainsTextOnly',
+  'err.reportBuilder.fieldNotNullable',
+  'err.reportBuilder.fieldNotGroupable',
   'err.reportBuilder.disallowedOperator',
   'err.reportBuilder.startAfterEnd',
   'err.reportBuilder.fieldNotFilterable',

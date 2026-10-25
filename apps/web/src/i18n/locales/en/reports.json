@@ -245,7 +245,9 @@
   },
   "result": {
     "summary": "Result · rows: {{count}}",
-    "truncated": " (truncated to 5000 — narrow the period)",
+    "truncated": " · groups and totals are complete; showing the first 5000 detail records",
+    "groupsTruncated": " · too many groups — not all shown, narrow the filters",
+    "rowsPartial": "showing {{shown}} of {{total}} records — narrow the filters to see all",
     "noGroupingBefore": "No grouping set — detail rows shown. To group (e.g. by counterparty, date or status) and see totals — click the",
     "noGroupingAfter": "button on the desired field in the palette on the left.",
     "colGroup": "Group",

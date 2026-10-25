@@ -28,11 +28,13 @@ function setup(stored: Record<string, unknown> | null = { id: ID, config: validC
     deleteMany: vi.fn(),
   };
   const invoice = { findMany: vi.fn().mockResolvedValue([]) };
+  // SQL-агрегати (групи, «Разом», склеєні рядки) — один рядок «Разом» без даних.
+  const $queryRaw = vi.fn().mockResolvedValue([{ n: 0 }]);
   const service = new ReportBuilderService(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    { savedReport, invoice } as any,
+    { savedReport, invoice, $queryRaw } as any,
   );
-  return { service, savedReport, invoice };
+  return { service, savedReport, invoice, $queryRaw };
 }
 
 describe('ReportBuilderService — збережені звіти', () => {
@@ -127,9 +129,9 @@ describe('ReportBuilderService — збережені звіти', () => {
 
 describe('ReportBuilderService — tenant-межа запуску', () => {
   // guards: BR-RPT-006
-  it('run: findMany моделі з реєстру отримує where.orgId викликача і take-ліміт', async () => {
+  it('run: детальні рядки груп — findMany з where.orgId викликача і take-ліміт', async () => {
     const { service, invoice } = setup();
-    await service.run(ORG, validConfig());
+    await service.run(ORG, { ...validConfig(), groupBy: ['status'] });
     expect(invoice.findMany).toHaveBeenCalledTimes(1);
     const args = invoice.findMany.mock.calls[0][0];
     expect(args.where).toEqual({ orgId: ORG, deletedAt: null });
@@ -137,10 +139,29 @@ describe('ReportBuilderService — tenant-межа запуску', () => {
   });
 
   // guards: BR-RPT-006
+  it('run: кожен SQL-агрегат несе orgId викликача параметром, не текстом', async () => {
+    const { service, $queryRaw } = setup();
+    await service.run(ORG, validConfig());
+    expect($queryRaw).toHaveBeenCalledTimes(2); // «Разом» + склеєні плоскі рядки
+    for (const [sql] of $queryRaw.mock.calls as [{ sql: string; values: unknown[] }][]) {
+      expect(sql.values).toContain(ORG);
+      expect(sql.sql).toContain('t0."orgId" =');
+      expect(sql.sql).not.toContain(ORG);
+    }
+  });
+
+  // guards: BR-RPT-006
   it('runSaved: orgId береться від викликача, а не зі збереженого config', async () => {
     const poisoned = { ...validConfig(), orgId: 'org-other', where: { orgId: 'org-other' } };
     const { service, invoice } = setup({ id: ID, orgId: ORG, config: poisoned });
     await service.runSaved(ORG, ID);
-    expect(invoice.findMany.mock.calls[0][0].where).toEqual({ orgId: ORG, deletedAt: null });
+    expect(invoice.findMany).not.toHaveBeenCalled(); // плоский звіт — лише SQL
+    const { service: grouped, invoice: inv2 } = setup({
+      id: ID,
+      orgId: ORG,
+      config: { ...poisoned, groupBy: ['status'] },
+    });
+    await grouped.runSaved(ORG, ID);
+    expect(inv2.findMany.mock.calls[0][0].where).toEqual({ orgId: ORG, deletedAt: null });
   });
 });

@@ -1,42 +1,12 @@
-import { BadRequestException } from '@nestjs/common';
-import { translateError } from '@sto/shared';
-import { getLocale } from '../../common/tenant/tenant-context';
-import {
-  isCalendarDate,
-  kyivDayEnd,
-  kyivDayStart,
-  normalizeKyivDateRange,
-} from '../../common/utils/kyiv-date';
-import type { ReportEntityDef, ReportFieldDef, FilterOp, FieldType } from './report-registry';
-import {
-  getEntity,
-  getField,
-  assertRelationPath,
-  relationForPrefix,
-  assertEnumValue,
-  isDateOnlyPath,
-} from './report-registry';
+import type { ReportEntityDef } from './report-registry';
+import { getField, assertRelationPath, relationForPrefix } from './report-registry';
+import { buildConditions, type ReportCond, type ReportConfigInput } from './report-condition';
 
-/** Cap проти DoS (як reports.service). Якщо rowCount === take → truncated. */
+export type { ReportConfigInput, ReportFilterInput, ReportSortInput } from './report-condition';
+export { REPORT_FILTER_IN_MAX } from './report-condition';
+
+/** Cap проти DoS (як reports.service): детальних рядків не більше; групи й підсумки — SQL без cap. */
 export const REPORT_TAKE_CAP = 5000;
-
-export interface ReportFilterInput {
-  field: string;
-  op: FilterOp;
-  value?: unknown;
-}
-export interface ReportSortInput {
-  field: string;
-  dir: 'asc' | 'desc';
-}
-export interface ReportConfigInput {
-  entity: string;
-  columns: string[];
-  groupBy: string[];
-  filters?: ReportFilterInput[];
-  sort?: ReportSortInput[];
-  dateRange?: { from: string; to: string };
-}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Obj = Record<string, any>;
@@ -82,178 +52,52 @@ function hasWherePath(where: Obj, prismaPath: string): boolean {
   return node !== undefined;
 }
 
-/** Скільки значень приймає один фільтр `in` (як `@ArrayMaxSize` у DTO — проти роздутого IN). */
-export const REPORT_FILTER_IN_MAX = 500;
-
-/** Число в рядку, як його вводить поле «значення» конструктора: «12», «-3», «12.5». */
-const NUMERIC_TEXT_RE = /^-?\d+(\.\d+)?$/;
-
-const INVALID = Symbol('invalid');
-
-const UA_DATE_RE = /^(\d{2})\.(\d{2})\.(\d{4})$/;
-
-/**
- * День фільтра дати → `YYYY-MM-DD` або null. Приймає ISO-день (так його дає вибір дати) і
- * `ДД.ММ.РРРР` (так його пише людина). Не `Date.parse`: той читає «01.10.2026» як 10 січня
- * (американський порядок), а повна мітка часу як значення «дати» Prisma-колонки не потрібна.
- */
-function calendarDay(v: string): string | null {
-  const s = v.trim();
-  const ua = UA_DATE_RE.exec(s);
-  const ymd = ua ? `${ua[3]}-${ua[2]}-${ua[1]}` : s;
-  return isCalendarDate(ymd) ? ymd : null;
-}
-
-/** Межі дня для поля: київська доба для мітки часу, сама дата для колонки `@db.Date`. */
-function dayBounds(ymd: string, dateOnly: boolean): { start: Date; end: Date } {
-  if (dateOnly) {
-    const d = new Date(`${ymd}T00:00:00.000Z`);
-    return { start: d, end: d };
-  }
-  return { start: kyivDayStart(ymd), end: kyivDayEnd(ymd) };
-}
-
-/**
- * «≠ день» — дві умови поля через OR (до початку дня АБО після його кінця). Окремий тип, бо одним
- * фільтром поля Prisma цього не виражає: `{ not: { gte, lte } }` вона розкладає на
- * `NOT(≥ a) AND NOT(≤ b)` — порожня множина, і «≠ 22.10» давав 0 рядків (Bug #973).
- */
-class DateOutsideDay {
-  constructor(readonly conds: [unknown, unknown]) {}
-}
-
-/**
- * Умова по полю дати (BR-RPT-025): значення — день, і оператор порівнює цілими днями. «= 20.10»
- * — увесь день 20.10, «> 20.10» — від 21.10, «≤ 20.10» — до кінця 20.10. Перелік днів (`in`) не
- * підтримується: його не виразити однією умовою поля.
- */
-function buildDateCond(
-  op: FilterOp,
-  ymd: unknown,
-  dateOnly: boolean,
-  fld: ReportFieldDef,
-): unknown {
-  if (typeof ymd !== 'string') {
-    throw new BadRequestException(
-      translateError('err.reportBuilder.filterValueInvalid', getLocale(), { label: fld.label }),
-    );
-  }
-  const { start, end } = dayBounds(ymd, dateOnly);
-  switch (op) {
+/** Prisma-значення листка для умови (крім «поза днем» — її рендерить OR). */
+function prismaLeaf(cond: Exclude<ReportCond, { kind: 'outside' }>): unknown {
+  switch (cond.kind) {
     case 'eq':
-      return { gte: start, lte: end };
+      return cond.value;
     case 'ne':
-      return new DateOutsideDay([{ lt: start }, { gt: end }]);
-    case 'gt':
-      return { gt: end };
-    case 'gte':
-      return { gte: start };
-    case 'lt':
-      return { lt: start };
-    case 'lte':
-      return { lte: end };
-    default:
-      throw new BadRequestException(
-        translateError('err.reportBuilder.disallowedOperator', getLocale(), { op: String(op) }),
-      );
-  }
-}
-
-/**
- * Одне значення фільтра за типом поля → значення для Prisma або INVALID. Лише примітиви: об'єкт
- * чи масив тут — це спроба передати оператор Prisma (`{ startsWith: … }`, `{ not: … }`) повз білий
- * список операторів, тож він не проходить ніколи. Поле «значення» в UI віддає рядок, тому число й
- * так/ні приймаються і рядком: число для цілого поля (`number`) приводиться до Number (Prisma Int
- * рядка не приймає), десяткове (`decimal`) лишається рядком — Prisma Decimal бере його без втрати
- * точності.
- */
-function scalarFilterValue(type: FieldType, v: unknown): unknown {
-  switch (type) {
-    case 'scalar':
-    case 'enum':
-      return typeof v === 'string' ? v : INVALID;
-    case 'number':
-      if (typeof v === 'number') return Number.isFinite(v) ? v : INVALID;
-      return typeof v === 'string' && NUMERIC_TEXT_RE.test(v.trim()) ? Number(v.trim()) : INVALID;
-    case 'decimal':
-      if (typeof v === 'number') return Number.isFinite(v) ? v : INVALID;
-      return typeof v === 'string' && NUMERIC_TEXT_RE.test(v.trim()) ? v.trim() : INVALID;
-    case 'date':
-      return typeof v === 'string' ? (calendarDay(v) ?? INVALID) : INVALID;
-    case 'boolean':
-      if (typeof v === 'boolean') return v;
-      return v === 'true' ? true : v === 'false' ? false : INVALID;
+      return { not: cond.value };
+    case 'in':
+      return { in: cond.values };
+    case 'bounds':
+      return { ...cond.bounds };
+    case 'contains':
+      return { contains: cond.value, mode: 'insensitive' };
+    case 'isNull':
+      return cond.isNull ? null : { not: null };
     default: {
-      const _exhaustive: never = type;
+      const _exhaustive: never = cond;
       return _exhaustive;
     }
   }
 }
 
-/**
- * BR-RPT-024: значення фільтра — лише примітив (або масив примітивів для `in`) того типу, що
- * й поле; інакше 400 `err.reportBuilder.filterValueInvalid`. `isNull` значення не потребує:
- * `false` / `'false'` — «заповнено», будь-який інший примітив чи відсутність — «порожньо»;
- * об'єкт чи масив — 400 (UI лишає в `value` введене до зміни оператора — це завжди рядок).
- */
-function normalizeFilterValue(op: FilterOp, value: unknown, fld: ReportFieldDef): unknown {
-  const invalid = () =>
-    new BadRequestException(
-      translateError('err.reportBuilder.filterValueInvalid', getLocale(), { label: fld.label }),
-    );
-  if (op === 'isNull') {
-    if (value !== null && typeof value === 'object') throw invalid();
-    return value === false || value === 'false' ? false : value;
-  }
-  if (op === 'in') {
-    // Не масив — окрема помилка в buildCond (filterInRequiresArray), як і раніше.
-    if (!Array.isArray(value)) return value;
-    if (value.length > REPORT_FILTER_IN_MAX) throw invalid();
-    return value.map(v => {
-      const out = scalarFilterValue(fld.type, v);
-      if (out === INVALID) throw invalid();
-      return out;
+/** Додає умову до `where`: перша на шлях — у сам шлях, наступна — в AND (BR-RPT-022). */
+function addCond(where: Obj, entity: ReportEntityDef, cond: ReportCond): void {
+  if (cond.kind === 'outside') {
+    // «≠ день» — OR двох умов поля (до початку / після кінця): одною умовою поля Prisma його не
+    // виражає — `{ not: { gte, lte } }` вона розкладає на NOT(≥) AND NOT(≤), порожня множина
+    // (Bug #973). Іде в AND, тож разом із періодом і іншими умовами звужує.
+    const branches = [{ lt: cond.start }, { gt: cond.end }].map(c => {
+      const branch: Obj = {};
+      setWherePath(branch, entity, cond.path, c);
+      return branch;
     });
+    where.AND = [...((where.AND ?? []) as Obj[]), { OR: branches }];
+    return;
   }
-  const out = scalarFilterValue(fld.type, value);
-  if (out === INVALID) throw invalid();
-  return out;
-}
-
-/** Будує Prisma-умову з op + value + типу поля. op з фіксованого whitelist. */
-function buildCond(op: FilterOp, value: unknown, fieldType: string): unknown {
-  switch (op) {
-    case 'eq':
-      return value;
-    case 'ne':
-      return { not: value };
-    case 'in':
-      if (!Array.isArray(value))
-        throw new BadRequestException(
-          translateError('err.reportBuilder.filterInRequiresArray', getLocale()),
-        );
-      return { in: value };
-    case 'gt':
-      return { gt: value };
-    case 'gte':
-      return { gte: value };
-    case 'lt':
-      return { lt: value };
-    case 'lte':
-      return { lte: value };
-    case 'contains':
-      if (fieldType !== 'scalar') {
-        throw new BadRequestException(
-          translateError('err.reportBuilder.filterContainsTextOnly', getLocale()),
-        );
-      }
-      return { contains: String(value), mode: 'insensitive' };
-    case 'isNull':
-      return value === false ? { not: null } : null;
-    default:
-      throw new BadRequestException(
-        translateError('err.reportBuilder.disallowedOperator', getLocale(), { op: String(op) }),
-      );
+  const leaf = prismaLeaf(cond);
+  // BR-RPT-022: друга умова на те саме поле (або фільтр по полю дати поверх dateRange) не
+  // перезаписує першу, а додається в AND. Раніше `node[leaf] = cond` губив попередню умову:
+  // «сума від 100 до 500» показувала все до 500, без жодної помилки.
+  if (hasWherePath(where, cond.path)) {
+    const extra: Obj = {};
+    setWherePath(extra, entity, cond.path, leaf);
+    where.AND = [...((where.AND ?? []) as Obj[]), extra];
+  } else {
+    setWherePath(where, entity, cond.path, leaf);
   }
 }
 
@@ -313,77 +157,20 @@ function pathToOrderBy(prismaPath: string, dir: 'asc' | 'desc'): Obj {
 }
 
 /**
- * config → безпечні Prisma findMany-args. Уся валідність — проти реєстру; orgId + deletedAt
- * інжектяться завжди (deletedAt лише для FULL-профілю). Injection неможливий: ключі з літералів.
+ * config → безпечні Prisma findMany-args. Уся валідність — у `buildConditions` (проти реєстру);
+ * orgId + deletedAt інжектяться завжди (deletedAt лише для FULL-профілю). Injection неможливий:
+ * ключі з літералів реєстру.
  */
 export function buildQuery(config: ReportConfigInput, orgId: string): BuiltQuery {
-  const entity = getEntity(config.entity);
+  const conds = buildConditions(config, orgId);
+  const entity = conds.entity;
 
   const where: Obj = { orgId };
   if (entity.hasSoftDelete) where.deletedAt = null;
-  for (const rel of entity.parentRelations ?? []) where[rel] = { deletedAt: null };
-  const voided = entity.voidedField;
-  if (voided && !(config.filters ?? []).some(f => f.field === voided)) where[voided] = null;
-
-  // dateRange → фільтр по entity.dateField (Kyiv-межі; для `@db.Date` — самі дати)
-  if (config.dateRange) {
-    const { fromDate, toDate } = normalizeKyivDateRange(config.dateRange.from, config.dateRange.to);
-    if (fromDate > toDate) {
-      throw new BadRequestException(translateError('err.reportBuilder.startAfterEnd', getLocale()));
-    }
-    const dateOnly = isDateOnlyPath(entity, entity.dateField);
-    where[entity.dateField] = {
-      gte: dayBounds(config.dateRange.from, dateOnly).start,
-      lte: dayBounds(config.dateRange.to, dateOnly).end,
-    };
-  }
-
-  // filters — кожен звіряється з реєстром
-  for (const f of config.filters ?? []) {
-    const fld = getField(entity, f.field);
-    if (!fld.filterable)
-      throw new BadRequestException(
-        translateError('err.reportBuilder.fieldNotFilterable', getLocale(), { label: fld.label }),
-      );
-    assertRelationPath(entity, fld.prismaPath);
-    // Оператор — до значення: збережений звіт із «містить» на даті інакше чув «Неприпустиме
-    // значення», хоча помилка в операторі, а UI такого оператора для дати вже не пропонує.
-    if (f.op === 'contains' && fld.type !== 'scalar') {
-      throw new BadRequestException(
-        translateError('err.reportBuilder.filterContainsTextOnly', getLocale()),
-      );
-    }
-    const value = normalizeFilterValue(f.op, f.value, fld);
-    if (fld.type === 'enum' && fld.enumName && f.op !== 'isNull') {
-      assertEnumValue(fld.enumName, value);
-    }
-    const cond =
-      fld.type === 'date' && f.op !== 'isNull'
-        ? buildDateCond(f.op, value, fld.dateOnly === true, fld)
-        : buildCond(f.op, value, fld.type);
-    if (cond instanceof DateOutsideDay) {
-      // «≠ день» — OR двох умов поля; іде в AND, тож разом із періодом і іншими умовами звужує.
-      const branches = cond.conds.map(c => {
-        const branch: Obj = {};
-        setWherePath(branch, entity, fld.prismaPath, c);
-        return branch;
-      });
-      where.AND = [...((where.AND ?? []) as Obj[]), { OR: branches }];
-      continue;
-    }
-    // BR-RPT-022: друга умова на те саме поле (або фільтр по полю дати поверх dateRange) не
-    // перезаписує першу, а додається в AND. Раніше `node[leaf] = cond` губив попередню умову:
-    // «сума від 100 до 500» показувала все до 500, без жодної помилки.
-    if (hasWherePath(where, fld.prismaPath)) {
-      const extra: Obj = {};
-      setWherePath(extra, entity, fld.prismaPath, cond);
-      const and = (where.AND ?? []) as Obj[];
-      and.push(extra);
-      where.AND = and;
-    } else {
-      setWherePath(where, entity, fld.prismaPath, cond);
-    }
-  }
+  for (const rel of conds.parentRelations) where[rel] = { deletedAt: null };
+  if (conds.voidedField) where[conds.voidedField] = null;
+  if (conds.dateRange) addCond(where, entity, conds.dateRange);
+  for (const cond of conds.filters) addCond(where, entity, cond);
 
   // include-дерево з relation-полів у columns ∪ groupBy
   const include: Obj = {};

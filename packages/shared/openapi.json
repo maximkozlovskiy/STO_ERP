@@ -32843,6 +32843,10 @@
           },
           "groupable": {
             "type": "boolean"
+          },
+          "nullable": {
+            "type": "boolean",
+            "description": "Колонка допускає NULL — доречні «порожнє / заповнене»"
           }
         },
         "required": [
@@ -32851,7 +32855,8 @@
           "type",
           "aggregations",
           "filterable",
-          "groupable"
+          "groupable",
+          "nullable"
         ]
       },
       "ReportMetadataRelationDto": {
@@ -33198,11 +33203,20 @@
             "description": "alias агрегації → значення (null якщо нема даних)"
           },
           "rowCount": {
-            "type": "number"
+            "type": "number",
+            "description": "Скільки рядків відповідає умовам — точне, не обрізане лімітом"
+          },
+          "detailTruncated": {
+            "type": "boolean",
+            "description": "Детальних рядків показано не всі (ліміт 5000); групи й підсумки повні"
+          },
+          "groupsTruncated": {
+            "type": "boolean",
+            "description": "Груп більше за ліміт відповіді — показано не всі"
           },
           "truncated": {
             "type": "boolean",
-            "description": "true — результат обрізано лімітом"
+            "description": "Застаріле: detailTruncated || groupsTruncated"
           }
         },
         "required": [
@@ -33210,6 +33224,8 @@
           "detailRows",
           "grandTotals",
           "rowCount",
+          "detailTruncated",
+          "groupsTruncated",
           "truncated"
         ]
       },

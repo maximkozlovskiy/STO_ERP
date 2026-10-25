@@ -820,12 +820,19 @@ const FILTER_OP_KEY = {
 
 /**
  * Оператори, які бекенд приймає для типу поля: «містить» — лише текст, «в списку» — не для дат.
- * Поточний оператор фільтра лишається в списку завжди: збережений до звуження звіт (напр. «містить»
- * по даті) інакше показував би в select «=», а слав «містить» — і 400 без видимої причини.
+ * «Порожнє» — лише полю, колонка якого може бути порожньою (`nullable`; обов'язкове поле бекенд
+ * відхиляє 400). Поточний оператор фільтра лишається в списку завжди: збережений до звуження звіт
+ * (напр. «містить» по даті) інакше показував би в select «=», а слав «містить» — і 400 без
+ * видимої причини.
  */
-function opsForType(type: string | undefined, current?: ReportFilter['op']): ReportFilter['op'][] {
+function opsForType(
+  fld: MetaField | undefined,
+  current?: ReportFilter['op'],
+): ReportFilter['op'][] {
+  const type = fld?.type;
   return FILTER_OPS.filter(op => {
     if (op === current) return true;
+    if (op === 'isNull') return fld?.nullable === true;
     if (op === 'contains') return type === 'scalar';
     if (op === 'in') return type !== 'date' && type !== 'boolean';
     return true;
@@ -889,12 +896,14 @@ function FilterZone({
                   onChange={e => update(i, filterOpPatch(f, e.target.value as FilterOpChoice))}
                   className="rounded border border-border bg-surface px-1.5 py-1"
                 >
-                  {opsForType(fld?.type, f.op).map(op => (
+                  {opsForType(fld, f.op).map(op => (
                     <option key={op} value={op}>
                       {t(FILTER_OP_KEY[op])}
                     </option>
                   ))}
-                  <option value={NOT_NULL}>{t('builder.opNotNull')}</option>
+                  {(fld?.nullable === true || filterOpChoice(f) === NOT_NULL) && (
+                    <option value={NOT_NULL}>{t('builder.opNotNull')}</option>
+                  )}
                 </select>
                 {f.op !== 'isNull' &&
                   (f.op === 'in' ? (
@@ -1067,7 +1076,8 @@ function ResultView({
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary shrink-0">
         <span className="text-sm font-medium">
           {t('result.summary', { count: result.result.rowCount })}
-          {result.result.truncated && t('result.truncated')}
+          {result.result.detailTruncated && t('result.truncated')}
+          {result.result.groupsTruncated && t('result.groupsTruncated')}
         </span>
       </div>
       {!hasGroups && (
@@ -1245,7 +1255,10 @@ function GroupRows({
   const [open, setOpen] = useState(depth < 1);
   const hasChildren = node.children.length > 0;
   const hasRows = !!node.rows && node.rows.length > 0;
-  const expandable = hasChildren || hasRows;
+  // Групи рахує БД повністю, а детальних рядків прочитано не більше 5000 — листова група може мати
+  // менше рядків, ніж її кількість (BR-RPT-008).
+  const partialRows = node.rows !== undefined && node.rows.length < node.count;
+  const expandable = hasChildren || hasRows || partialRows;
   return (
     <>
       <tr className="border-b border-border">
@@ -1326,6 +1339,17 @@ function GroupRows({
             ))}
           </tr>
         ))}
+      {open && partialRows && (
+        <tr className="border-b border-border/50 bg-secondary/20">
+          <td
+            colSpan={1 + cols.length + 1 + aggAliases.length}
+            className="px-4 py-1 text-[12px] text-muted-foreground italic"
+            style={{ paddingLeft: `${16 + (depth + 1) * 20}px` }}
+          >
+            {t('result.rowsPartial', { shown: node.rows?.length ?? 0, total: node.count })}
+          </td>
+        </tr>
+      )}
     </>
   );
 }
