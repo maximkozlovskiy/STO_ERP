@@ -14,6 +14,7 @@ import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagina
 import { searchContains } from '../../common/utils/like-pattern';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff } from '../../common/utils/math';
+import { fetchPartCoefficients } from '../work-orders/work-order-stock-requirements';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -391,26 +392,10 @@ export class StockDocumentsService {
     orgId: string,
     lines: { id: string; goodId: string; unitOfMeasureId?: string | null }[],
   ): Promise<Map<string, number>> {
-    const uomIds = Array.from(
-      new Set(lines.map(l => l.unitOfMeasureId).filter((v): v is string => !!v)),
-    );
-    const result = new Map<string, number>();
-    if (uomIds.length === 0) return result;
-    const goodIds = Array.from(new Set(lines.map(l => l.goodId)));
-    const uoms = await this.prisma.goodUoM.findMany({
-      where: { orgId, unitOfMeasureId: { in: uomIds }, goodId: { in: goodIds } },
-      select: { unitOfMeasureId: true, goodId: true, coefficient: true },
-    });
-    const coeffByGoodUom = new Map<string, number>(
-      uoms.map(u => [`${u.goodId}|${u.unitOfMeasureId}`, u.coefficient]),
-    );
-    for (const l of lines) {
-      if (l.unitOfMeasureId) {
-        // safeCoeff: legacy/seed 0/NaN/negative → 1; відсутній рядок → undefined → 1.
-        result.set(l.id, safeCoeff(coeffByGoodUom.get(`${l.goodId}|${l.unitOfMeasureId}`)));
-      }
-    }
-    return result;
+    // Спільний lookup GoodUoM (tenant-scoped, safeCoeff fallback) — `fetchPartCoefficients`
+    // (work-order-stock-requirements), той самий, що й WO-списання; `lines` уже в його формі.
+    const coeffById = await fetchPartCoefficients(this.prisma, orgId, lines);
+    return new Map(Object.entries(coeffById));
   }
 
   async transition(

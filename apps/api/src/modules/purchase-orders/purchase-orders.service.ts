@@ -4,6 +4,7 @@ import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 import { kyivToday, addDaysKyiv, dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff } from '../../common/utils/math';
+import { fetchPartCoefficients } from '../work-orders/work-order-stock-requirements';
 import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
@@ -698,30 +699,19 @@ export class PurchaseOrdersService {
     activeLines: { line: { id: string; goodId: string } }[],
     resolvedByLineId: Map<string, string | null>,
   ): Promise<Map<string, number>> {
-    const uomIds = Array.from(
-      new Set(
-        activeLines
-          .map(({ line }) => resolvedByLineId.get(line.id))
-          .filter((v): v is string => !!v),
-      ),
+    // Спільний lookup GoodUoM (tenant-scoped, safeCoeff fallback) — `fetchPartCoefficients`
+    // (work-order-stock-requirements), той самий, що й WO-списання. Рядок прийому несе UoM у
+    // `resolvedByLineId` (override → good.unitId → null), тож подаємо її як `unitOfMeasureId`.
+    const coeffById = await fetchPartCoefficients(
+      this.prisma,
+      orgId,
+      activeLines.map(({ line }) => ({
+        id: line.id,
+        goodId: line.goodId,
+        unitOfMeasureId: resolvedByLineId.get(line.id) ?? null,
+      })),
     );
-    const result = new Map<string, number>();
-    if (uomIds.length === 0) return result;
-    const goodIds = Array.from(new Set(activeLines.map(({ line }) => line.goodId)));
-    // A1/A3: +orgId у where — GoodUoM tenant-scoped (інакше coeff міг би прийти з чужої org).
-    const uoms = await this.prisma.goodUoM.findMany({
-      where: { orgId, unitOfMeasureId: { in: uomIds }, goodId: { in: goodIds } },
-      select: { unitOfMeasureId: true, goodId: true, coefficient: true },
-    });
-    const coeffByGoodUom = new Map<string, number>(
-      uoms.map(u => [`${u.goodId}|${u.unitOfMeasureId}`, u.coefficient]),
-    );
-    for (const { line } of activeLines) {
-      const uomId = resolvedByLineId.get(line.id);
-      // safeCoeff: legacy/seed coefficient=0/NaN/negative → 1; відсутній рядок → undefined → 1.
-      result.set(line.id, safeCoeff(uomId ? coeffByGoodUom.get(`${line.goodId}|${uomId}`) : 1));
-    }
-    return result;
+    return new Map(activeLines.map(({ line }) => [line.id, coeffById[line.id] ?? 1]));
   }
 
   async receive(
