@@ -67,6 +67,15 @@ grep -rn "ALTER TYPE.*ADD VALUE" packages/database/prisma/migrations/ | tail -5
       дає рядок — склеювання лише сум над порожньою вибіркою показувало «0 · склеєно 0». Grep:
       `grep -rn "ROLLUP\|GROUPING SETS\|CUBE (" apps/api/src --include="*.ts" | grep -v spec` → поруч
       `ORDER BY GROUPING(…) DESC` до `LIMIT` (`journal/database.md`, 2026-10-25)
+      **Два LIMIT-запити, що зшиваються за ключем групи** (ROLLUP + розбивка за валютами): порядок
+      усередині рівня теж однаковий і детермінований (`…DESC, k0, k1`) — інакше кожен відрізає свій
+      хвіст, і група з дерева лишається без пари (сума гривень із доларами в клітинці, 2026-10-26).
+
+- [ ] **Підстановка в SQL (`COALESCE(col, X)`) і її емуляція в Prisma (OR-гілка «значення немає»)
+      покривають УСІ оператори фільтра поля** — не лише `eq/ne/in/contains`, а й `gt/gte/lt/lte` на
+      тексті. Пропущений оператор = розбіжність SQL-агрегатів і Prisma-рядків (паритет). Grep:
+      `grep -n "case '" apps/api/src/modules/report-builder/report-query.builder.ts` проти `ReportCond`
+      у `report-condition.ts` (2026-10-26, `baseCurrencyMatches` без `bounds`)
 
 - [ ] Читання «всіх записів» сторінками (`skip`/`take`, `page`/`limit` — експорт, догрузка): `orderBy` має
       унікальний другий ключ (`[{ createdAt: 'desc' }, { id: 'desc' }]`), а клієнт відсіює дублікати за `id`.
