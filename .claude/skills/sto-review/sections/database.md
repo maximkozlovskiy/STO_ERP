@@ -68,6 +68,13 @@ grep -rn "ALTER TYPE.*ADD VALUE" packages/database/prisma/migrations/ | tail -5
       `grep -rn "ROLLUP\|GROUPING SETS\|CUBE (" apps/api/src --include="*.ts" | grep -v spec` → поруч
       `ORDER BY GROUPING(…) DESC` до `LIMIT` (`journal/database.md`, 2026-10-25)
 
+- [ ] Читання «всіх записів» сторінками (`skip`/`take`, `page`/`limit` — експорт, догрузка): `orderBy` має
+      унікальний другий ключ (`[{ createdAt: 'desc' }, { id: 'desc' }]`), а клієнт відсіює дублікати за `id`.
+      Інакше рядки з однаковим `createdAt` міняються місцями між сторінками (губляться / дублюються), а нова
+      запис під час читання зсуває межу сторінки (CSV операцій контрагента, 2026-10-25). Grep:
+      `grep -rn "skip" apps/api/src/modules --include=*.service.ts | grep -v spec` → у кожного findMany зі `skip`
+      перевірити `orderBy` на унікальний хвіст.
+
 ---
 
 ### §9 Sync Readiness

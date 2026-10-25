@@ -50,7 +50,9 @@ export class SettlementsAccountService {
     const [items, total] = await Promise.all([
       this.prisma.settlementTransaction.findMany({
         where: { settlementAccountId: account.id, orgId },
-        orderBy: { createdAt: 'desc' },
+        // id — другий ключ: проводки з однаковим createdAt (createMany) без нього приходили між
+        // сторінками в різному порядку, і посторінковий експорт CSV губив або дублював рядок.
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip,
         take: safeLimit,
         // Мультивалюта (Фаза 2): код валюти транзакції для UI (символ + base-сума).

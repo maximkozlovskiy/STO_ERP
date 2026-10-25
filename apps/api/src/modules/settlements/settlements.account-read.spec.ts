@@ -48,6 +48,21 @@ describe('SettlementsAccountService — читання балансу і жур�
     expect(prisma.settlementTransaction.findMany).not.toHaveBeenCalled();
   });
 
+  // Посторінковий експорт CSV (рішення власника 2026-10-25 — «усі записи») читає сторінки по 200;
+  // без другого ключа проводки з однаковим createdAt мінялись місцями між сторінками. Мутація:
+  // прибрати { id: 'desc' } → кейс червоніє.
+  // guards: BR-SETL-013
+  it('журнал контрагента — стабільний порядок сторінок: createdAt, потім id', async () => {
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementTransaction.findMany.mockResolvedValue([]);
+    prisma.settlementTransaction.count.mockResolvedValue(0);
+    await service.getTransactions('org-1', 'cp-1', 2, 200);
+    expect(prisma.settlementTransaction.findMany.mock.calls[0][0].orderBy).toEqual([
+      { createdAt: 'desc' },
+      { id: 'desc' },
+    ]);
+  });
+
   // guards: BR-SETL-006, BR-SETL-013
   it('журнал: лише свій рахунок і своя організація, від найновіших', async () => {
     prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
@@ -60,7 +75,7 @@ describe('SettlementsAccountService — читання балансу і жур�
     expect(prisma.settlementTransaction.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { settlementAccountId: 'acc-1', orgId: 'org-1' },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: 10,
         take: 10,
       }),
