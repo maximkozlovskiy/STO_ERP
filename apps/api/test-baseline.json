@@ -3556,6 +3556,7 @@
    "InvoicesService — transition-settlements transition — FIN-C2 CHARGE для standalone на DRAFT→SENT WO-рахунок DRAFT→SENT → CHARGE НЕ створюється (уникнення подвійного боргу)",
    "InvoicesService — transition-settlements transition — FIN-C2 CHARGE для standalone на DRAFT→SENT standalone DRAFT→SENT → createTransaction(CHARGE) з сумою рахунку",
    "InvoicesService — transition-settlements transition — FIN-C2 CHARGE для standalone на DRAFT→SENT standalone у валюті DRAFT→SENT → CHARGE з currencyId + date + fallbackToLatest",
+   "InvoicesService — transition-settlements transition — manual PAID + дзеркальний PAYMENT для standalone (Bug #675) OVERDUE→PAID: паралельна оплата (updateMany count=0) → statusChanged, PAYMENT не створюється",
    "InvoicesService — transition-settlements transition — manual PAID + дзеркальний PAYMENT для standalone (Bug #675) WO-рахунок у OVERDUE → ручний PAID: 400 «закривається оплатою», ні статусу, ні проводки",
    "InvoicesService — transition-settlements transition — manual PAID + дзеркальний PAYMENT для standalone (Bug #675) WO-рахунок у PARTIALLY_PAID → ручний PAID: 400 «закривається оплатою», ні статусу, ні проводки",
    "InvoicesService — transition-settlements transition — manual PAID + дзеркальний PAYMENT для standalone (Bug #675) WO-рахунок у SENT → ручний PAID: 400 «закривається оплатою», ні статусу, ні проводки",
@@ -4969,6 +4970,7 @@
    "BR-PL-012 остача після повного приймання часткове приймання (PARTIAL) позицій не розділяє"
   ],
   "apps/api/src/modules/purchase-lists/purchase-lists.receive-allocation.spec.ts": [
+   "BR-PL-011 розподіл отриманого між позиціями й резерв під наряди F4: прийом «2 Пак» (coeff=10) → позиція й резерв у БАЗОВИХ (20), борг у замовлених",
    "BR-PL-011 розподіл отриманого між позиціями й резерв під наряди FIFO за позиціями; кожному наряду — резерв рухом RESERVATION з documentType WorkOrder",
    "BR-PL-011 розподіл отриманого між позиціями й резерв під наряди «В роботу» після приймання не подвоює резерв",
    "BR-PL-011 розподіл отриманого між позиціями й резерв під наряди вільного залишку менше за потребу: резерв не більший за available, наступній позиції — решта",
@@ -5236,6 +5238,7 @@
    "PurchaseOrdersService.receive — UoM override tenant validation (Bug #239) Bug #712: прийом > orderedQty (fresh line) → 400, ЖОДНОГО inventory/settlement write",
    "PurchaseOrdersService.receive — UoM override tenant validation (Bug #239) Bug #712: прийом РІВНО до orderedQty (граничний) → дозволено (не хибне 400)",
    "PurchaseOrdersService.receive — UoM override tenant validation (Bug #239) CAS-guard: рядок уже змінено (updateMany count=0) → throw, БЕЗ RECEIPT-руху і БЕЗ SUPPLIER_CHARGE",
+   "PurchaseOrdersService.receive — UoM override tenant validation (Bug #239) F4: прийом «1 Пак» (coeff=10) → RECEIPT 10 базових, SUPPLIER_CHARGE у замовлених (receivedQty×price)",
    "PurchaseOrdersService.receive — UoM override tenant validation (Bug #239) receive без unitOfMeasureId override → fallback на good.unitId, createMovement отримує good.unitId",
    "PurchaseOrdersService.receive — UoM override tenant validation (Bug #239) receive без договору → paymentDate НЕ встановлюється",
    "PurchaseOrdersService.receive — UoM override tenant validation (Bug #239) receive з cross-tenant unitOfMeasureId → BadRequestException, inventory write НЕ викликаний (Bug #186)",
@@ -5885,6 +5888,8 @@
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) Bug #610: TRANSFER передає src.weightedCostPrice у target RECEIPT.price (cost carry)",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) CONFIRM (concurrent/retry): CAS count=0 → BadRequestException, ЖОДНОГО руху складу",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) CONFIRM: CAS-гейт спрацьовує ПЕРЕД рухами складу (updateMany where status:DRAFT перший у tx)",
+   "StockDocumentsService — RECEIPT type (Bug #480 regression guard) F4: RECEIPT-рядок «3 Пак» (coeff=10) → рух складу 30 базових (не 3)",
+   "StockDocumentsService — RECEIPT type (Bug #480 regression guard) F4: TRANSFER-рядок «2 Пак» (coeff=10) → WRITEOFF −20 і RECEIPT +20",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) confirmTxTimeoutMs(1 рядків) = 15000 мс: малі документи — 15 с, далі 120 мс на рядок",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) confirmTxTimeoutMs(125 рядків) = 15000 мс: малі документи — 15 с, далі 120 мс на рядок",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) confirmTxTimeoutMs(126 рядків) = 15120 мс: малі документи — 15 с, далі 120 мс на рядок",

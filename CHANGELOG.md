@@ -5,6 +5,22 @@
 
 ---
 
+### 98ac9adb..HEAD tech-debt: HIGH логічні баги F6 + F4 (2026-10-25)
+
+- F6 (BR-INV-012): ручний перехід інвойсу `→PAID` губив паралельну оплату — CAS `updateMany` у
+  `transition()` не мав `paidAmount` у `where`, тож дзеркальний PAYMENT рахувався зі стального
+  залишку й лишав фантомний кредит клієнта. Додано `paidAmount: inv.paidAmount` у CAS (дзеркалить
+  payments.service / work-order-invoice-mirror); count=0 → `err.invoice.statusChanged`.
+- F4 (BR-INVT-UOMBASE): коефіцієнт одиниці виміру застосовувався на списанні наряду, але не на
+  прийомі замовлення й підтвердженні складського документа — `StockItem.quantity` дрейфував для
+  товару з coeff≠1. Coeff тепер множиться по-call-site перед `createMovement` у `PO.receive`
+  (RECEIPT + алокація в базових одиницях) і `StockDocuments.applyLine` (WRITEOFF/RECEIPT/TRANSFER).
+  `createMovement` лишається base-only. SUPPLIER_CHARGE — у замовлених одиницях (борг коректний,
+  не чіпали).
+- Bug #972 (LOW, латентний, записано): дисплейне `coefficient` у PO/StockDoc DTO читає
+  `UnitOfMeasure.coefficient`, а леджер — `GoodUoM.coefficient`; поле ніде не рендериться —
+  вирівнювання джерела відкладено (доменне рішення).
+
 ### bb45477d..HEAD безпека, етап 4: завантаження файлів і ввід (2026-10-25)
 
 - BR-SEC-NUL (M2): `RejectNulCharacterPipe` (перша у `globalPipes()`) тепер перевіряє й `body`, не лише

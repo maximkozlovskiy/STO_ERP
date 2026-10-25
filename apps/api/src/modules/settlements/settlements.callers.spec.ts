@@ -61,7 +61,9 @@ interface CallSite {
 }
 
 const INVOICE_STATUS_CAS = [
-  /tx\.invoice\.updateMany\(\{\s*where:\s*\{[^}]*\bstatus:\s*inv\.status\b/,
+  // [\s\S]*? між `({` і `where:` терпить коментар, який F6 вставив над where (BR-INV-012:
+  // paidAmount у CAS). Якір стереже сам CAS статусу (`status: inv.status` у where), не формат.
+  /tx\.invoice\.updateMany\(\{[\s\S]*?where:\s*\{[^}]*\bstatus:\s*inv\.status\b/,
   /if\s*\(moved\.count === 0\)\s*\{\s*throw\b/,
 ];
 const WORK_ORDER_STATUS_CAS = [

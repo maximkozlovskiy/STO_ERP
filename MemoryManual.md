@@ -48,8 +48,11 @@ python scripts/check-doc-links.py; python scripts/check-mojibake.py   # поси
   контролери; refresh 30/хв без @SkipThrottle), Етап 3 термін дії кошторису (shareTokenExpiresAt,
   revoke/regenerate, liveShareTokenWhere + loadShareableWorkOrder) + межі сум/кількості на DTO
   (assertMoneyFits/MONEY_CAP/QTY_CAP; BR-FIN-MONEYCAP). api-client: один 401→refresh (fetchWithRefresh),
-  429 транзієнт без логауту (Bug #966). Логічний аудит 2026-10-24 (10 знахідок, F1-F10) — у TECH-DEBT, НЕ
-  виправлено. Етап 4 (2026-10-25): NUL у тілі (BR-SEC-NUL), тип файлу за магічними байтами
+  429 транзієнт без логауту (Bug #966). Логічний аудит 2026-10-24 (10 знахідок, F1-F10) — у TECH-DEBT;
+  F6+F4 (HIGH) ЗАКРИТО 2026-10-25 (`cec2423f`): F6 — paidAmount у CAS інвойсу (BR-INV-012);
+  F4 — coeff UoM по-call-site на прийомі/складських доках (BR-INVT-UOMBASE), SUPPLIER_CHARGE у
+  замовлених одиницях; решта F1-F3,F5,F7-F10 відкриті. Bug #972 (дисплейний coeff DTO) — LOW, відкрито.
+  Етап 4 (2026-10-25): NUL у тілі (BR-SEC-NUL), тип файлу за магічними байтами
   (common/utils/file-signature.ts, BR-SEC-UPLOAD) у files + work-order-media, ліміти імпорту
   (common/utils/import-file-guard.ts: 5МБ + 1000 рядків) у xlsx + bank. Review залатав пропущену ціль:
   медіа наряду довіряло клієнтському mimetype.

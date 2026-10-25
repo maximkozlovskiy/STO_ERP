@@ -191,7 +191,10 @@
 
 ### Гроші й розрахунки
 
-- **[HIGH, NEW] F6 — ручний перехід інвойсу `→PAID` губить паралельну оплату (CAS без `paidAmount`).**
+- ~~**[HIGH, NEW] F6 — ручний перехід інвойсу `→PAID` губить паралельну оплату (CAS без `paidAmount`).**~~
+  ✅ ЗАКРИТО 2026-10-25 (`cec2423f`): `paidAmount: inv.paidAmount` додано в CAS `where` (BR-INV-012),
+  дзеркалить payments.service/work-order-invoice-mirror; count=0 → `err.invoice.statusChanged`.
+  Наживо: обидва напрямки гонки → один дістає statusChanged, ledger = 0 без фантомного кредиту.
   `invoices.service.ts:570-584,611-628`. `transition()` читає `inv.paidAmount` поза транзакцією,
   рахує `paymentRemaining = amount − paidAmount` (570) і постить дзеркальний `PAYMENT` на залишок
   (614-628). CAS на зміні статусу — `where { id, orgId, status: inv.status, deletedAt: null }`
@@ -231,8 +234,16 @@
 
 ### Склад і наряди
 
-- **[HIGH, NEW] F4 — коефіцієнт одиниці виміру застосовується на списанні наряду, але НЕ на прийомі
-  замовлення й підтвердженні складського документа → розбіжність одиниць у ledger.** Списання:
+- ~~**[HIGH, NEW] F4 — коефіцієнт одиниці виміру застосовується на списанні наряду, але НЕ на прийомі
+  замовлення й підтвердженні складського документа → розбіжність одиниць у ledger.**~~
+  ✅ ЗАКРИТО 2026-10-25 (`cec2423f`, BR-INVT-UOMBASE): coeff застосовано по-call-site перед
+  `createMovement` у `PO.receive` (RECEIPT + алокація в базових) і `StockDocuments.applyLine`
+  (WRITEOFF/RECEIPT/TRANSFER), reuse `safeCoeff`+GoodUoM-lookup як WO. SUPPLIER_CHARGE лишений у
+  ЗАМОВЛЕНИХ одиницях (борг самоузгоджений — рішення власника; НЕ дрейф). Наживо: прийом «1 Пак»
+  coeff=10 → склад +10, борг −100 (замовлені); WRITEOFF → залишок 0 без дрейфу. **Супутнє:**
+  дисплейне поле `coefficient` у PO/StockDoc DTO читає `UnitOfMeasure.coefficient`, а леджер —
+  `GoodUoM.coefficient` (Bug #972, LOW, латентний: поле ніде не рендериться, користувача не збиває;
+  вирівняти джерело — окреме доменне рішення). Списання:
   `work-order-stock-effects.service.ts:236/351` (`baseQty = qty × coeff`). Прийом сирцем:
   `purchase-orders.service.ts:874` (RECEIPT), :781 (гард над-прийому), :800 (`SUPPLIER_CHARGE qty×price`).
   Складські документи сирцем: `stock-documents.service.ts:475/485/492` (WRITEOFF/RECEIPT/TRANSFER).
