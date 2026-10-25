@@ -46,6 +46,12 @@ grep -rn "async findAll\|async getAll" apps/api/src/modules/ --include="*.servic
       `OR: [...pairs]` з `take: pairs.size` (`sto-dev` sections/api.md, «Запобігання N+1»). Grep:
       `git diff <base> -- apps/api/src | grep -nE "^\+.*Id: \{ in: " ` → два `IN` в одному `where`
       (`journal/api.md`, 2026-10-22)
+- [ ] **BR-ID у коментарі коду збігається з дос'є і міткою `// guards:` тесту.** Нова гілка
+      бізнес-правила часто копіює коментар сусідньої й лишає чужий BR-ID: `MV-H1 (BR-INV-020)` у
+      коді при тому, що дос'є й `// guards:` тесту вказують BR-INV-022 (BR-INV-020 — зовсім інше
+      правило). Grep: `git diff <base> -- apps/api/src | grep -nE "^\+.*BR-[A-Z]+-[0-9]{3}"` → кожен
+      BR-ID у коді звірити з текстом правила в дос'є і міткою `// guards:` його тесту
+      (`journal/api.md`, 2026-10-25). Severity: IMPORTANT (трасування)
 - [ ] **Новий тест, вставлений між міткою `// guards: BR-…` і чужим `it(`, краде мітку:** правило
       сусіда лишається без сторожа, а новий тест стереже не своє. Grep:
       `git diff <base> -U3 -- '*.spec.ts' | grep -A1 "^ .*// guards:" | grep "^+.*it("` → кожен збіг
