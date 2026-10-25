@@ -38,7 +38,13 @@ import { Modal } from '@/components/ui/modal';
 import { fmtMoney, fmtDate, fmtInt } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
-import { aggAliasLabel, enumLabel, exportReport, groupLabel } from '@/lib/report-export';
+import {
+  aggAliasLabel,
+  enumLabel,
+  exportReport,
+  filterDayValue,
+  groupLabel,
+} from '@/lib/report-export';
 
 type Zone = 'columns' | 'groupBy' | 'filters';
 
@@ -924,7 +930,7 @@ function FilterZone({
                     )
                   ) : fld?.type === 'date' ? (
                     <DatePickerInput
-                      value={typeof f.value === 'string' ? f.value : ''}
+                      value={filterDayValue(f.value)}
                       onChange={v => update(i, { value: v })}
                       placeholder={t('builder.datePlaceholder')}
                       className="w-32"

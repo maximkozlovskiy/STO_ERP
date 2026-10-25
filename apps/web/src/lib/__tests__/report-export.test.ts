@@ -11,6 +11,7 @@ import {
   buildXlsxXml,
   buildExportNumericColumns,
   exportCell,
+  filterDayValue,
   flattenTree,
 } from '@/lib/report-export';
 
@@ -465,5 +466,18 @@ describe('report-export › файл збігається з екраном', ()
     expect(xml).toContain(
       '<Cell><Data ss:Type="String">0451103316</Data></Cell><Cell><Data ss:Type="Number">2</Data></Cell>',
     );
+  });
+});
+
+// Bug #974: бекенд приймає день фільтра і як ДД.ММ.РРРР (BR-RPT-025), а вибір дати показує лише
+// РРРР-ММ-ДД — збережений звіт з «22.10.2026» фільтрував, а поле дати було порожнім. Мутація:
+// повернути в FilterZone `typeof f.value === 'string' ? f.value : ''` / прибрати гілку ДД.ММ.РРРР.
+describe('report-builder › значення фільтра дати для вибору дати', () => {
+  it('ДД.ММ.РРРР → РРРР-ММ-ДД; ISO-день як є; інше — порожньо', () => {
+    expect(filterDayValue('22.10.2026')).toBe('2026-10-22');
+    expect(filterDayValue(' 2026-10-22 ')).toBe('2026-10-22');
+    expect(filterDayValue('2026-10')).toBe('');
+    expect(filterDayValue(undefined)).toBe('');
+    expect(filterDayValue(['2026-10-22'])).toBe('');
   });
 });

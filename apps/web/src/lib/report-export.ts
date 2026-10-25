@@ -60,6 +60,19 @@ export function aggAliasLabel(
   return `${short} ${label}`;
 }
 
+/**
+ * Значення фільтра дати для вибору дати (`РРРР-ММ-ДД`). Бекенд приймає і `ДД.ММ.РРРР`
+ * (BR-RPT-025), а вибір дати показує лише ISO — збережений звіт із «22.10.2026» фільтрував
+ * звіт, а поле дати лишалось порожнім (Bug #974). Інше значення — порожнє: його бекенд відхилить.
+ */
+export function filterDayValue(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const s = value.trim();
+  const ua = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s);
+  if (ua) return `${ua[3]}-${ua[2]}-${ua[1]}`;
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+}
+
 /** Підпис групи — той самий на екрані й у файлі: enum перекладений, так/ні, день — ДД.ММ.РРРР. */
 export function groupLabel(
   node: GroupNode,
