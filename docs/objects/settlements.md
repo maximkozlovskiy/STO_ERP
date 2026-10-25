@@ -134,14 +134,14 @@ cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
 | Аспект                                                                          | Тест                                     | Кейсів |
 | ------------------------------------------------------------------------------- | ---------------------------------------- | ------ |
 | ролі доступу на маршрутах                                                       | `settlements.access.spec.ts`             | 5      |
-| читання балансу і журналу                                                       | `settlements.account-read.spec.ts`       | 7      |
+| читання балансу і журналу                                                       | `settlements.account-read.spec.ts`       | 8      |
 | інваріанти (property-based)                                                     | `settlements.invariants.spec.ts`         | 18     |
-| акт звірки                                                                      | `settlements.reconciliation-act.spec.ts` | 19     |
+| акт звірки                                                                      | `settlements.reconciliation-act.spec.ts` | 20     |
 | `createTransaction` (сервісна логіка; межа Decimal(12,2) суми й балансу)        | `settlements.service.spec.ts`            | 33     |
 | єдиний писар балансу (статичний сторож)                                         | `settlements.single-writer.spec.ts`      | 3      |
 | місця виклику `createTransaction` і їхній захист від повтору (статичний сторож) | `settlements.callers.spec.ts`            | 6      |
 
-Разом: **89** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **93** кейси (цифри з `vitest --reporter=json`, не з grep).
 
 Спільний сетап спеків `SettlementsAccountService` — `settlements.spec-fixture.ts` (factory).
 
