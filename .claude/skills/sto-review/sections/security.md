@@ -71,6 +71,27 @@ grep -rnE "\b(in)\s+[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method
 - [ ] `process.env` тільки у `main.ts` та конфіг-файлах — сервіси → `ConfigService`
 - [ ] Немає `eval()`, `new Function()`, `child_process.exec()`
 
+#### §2.3.1 Тип завантаженого файла — за байтами, не за клієнтським mimetype
+
+```bash
+# Контролер/сервіс завантаження, що бере part.mimetype як істину (а не звіряє сигнатуру)
+grep -rn "part\.mimetype\|= *part\.mimetype\|mimetype: *part\." apps/api/src/modules --include="*.ts" | grep -v spec
+# Хто пише Content-Type у сховище / DB mimeType — має брати КАНОНІЧНИЙ тип із detectMimeFromBuffer
+grep -rnE "'Content-Type':|mimeType:|mimetype:" apps/api/src/modules --include="*.service.ts" | grep -v "spec\|detectMimeFromBuffer"
+```
+
+- [ ] **Будь-який multipart-ендпоінт, що зберігає файл → тип за МАГІЧНИМИ БАЙТАМИ
+      (`detectMimeFromBuffer` / `isDetectedImage`), а не за клієнтським `part.mimetype`; у сховище
+      (MinIO `Content-Type`) і DB (`mimeType`) лягає КАНОНІЧНИЙ тип із сигнатури.** Клієнт тривіально
+      бреше `Content-Type` + розширенням (перейменувати .exe/.html → .png, виставити image/png) →
+      сервер зберігає й роздає довільний вміст під виглядом зображення (content-spoofing / stored
+      XSS через signedUrl). Whitelist розширень — ДРУГИЙ бар'єр, не заміна: `.png`-названий
+      виконуваний проходить його. **Коли хардениться ОДИН upload-ендпоінт — пройти ВСІ сусідні:**
+      2026-10-25 Етап 4 закрив `files.controller`, але медіа наряду (`/work-orders/:id/media` →
+      `work-order-media.service`) лишилось на `part.mimetype` — і саме воно обслуговує UI-контракт
+      `accept="image/*,application/pdf"`. Grep: детектори вище → кожен match перевірити
+      (`journal/security.md`, 2026-10-25). Severity: CRITICAL
+
 #### §2.4 Витік даних
 
 ```bash

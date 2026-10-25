@@ -3,6 +3,23 @@
 > Архів реальних випадків (дата — назва — §N + Сигнал / Grep / Фікс / Severity).
 > Не читати цілком — шукати за ключовим словом. Чекліст секції: `../sections/security.md`.
 
+### 2026-10-25 — Upload-ендпоінт довіряє клієнтському `part.mimetype` — §2.3.1
+
+**Сигнал:** безпековий Етап 4 захистив `files.controller` (тип за магічними байтами), але
+сусідній upload — медіа наряду `/work-orders/:id/media` → `work-order-media.service.upload` —
+лишився на `mimetype = part.mimetype` з контролера. Клієнт бреше `Content-Type` + розширенням
+(.exe/.html → .png, multipart `image/png`) → whitelist mime І whitelist розширень проходять,
+файл лягає в MinIO й DB з брехливим `Content-Type`, signedUrl роздає його під тим типом
+(content-spoofing / stored XSS). Whitelist розширень — ДРУГИЙ бар'єр, не заміна детекту за байтами.
+**Grep:** `grep -rn "part\.mimetype" apps/api/src/modules --include="*.ts" | grep -v spec` →
+кожен match перевірити проти `detectMimeFromBuffer`/`isDetectedImage`; і хто пише `'Content-Type'`
+/ `mimeType:` у сховище/DB — бере КАНОНІЧНИЙ тип із сигнатури, не клієнтський.
+**Фікс:** у `work-order-media.service.upload` — `detectMimeFromBuffer(file.buffer)` → лише
+`isDetectedImage || application/pdf`, інакше 400; у `uploadRaw` і `workOrderMedia.create` — канонічний
+mime. Регресійні кейси: HTML-байти з заявленим image/png → 400; збережений mime = канонічний (не клієнтський).
+**Урок:** коли хардениться ОДИН upload-ендпоінт — у ТОМУ Ж проході пройти всі сусідні (grep `part.mimetype`).
+**Severity:** CRITICAL
+
 ### 2026-10-24 — SSRF: текстова `validatePublicUrl` не ловить DNS-rebinding — §2.3/§2.4
 
 **Сигнал:** клієнт зовнішнього API або write-path (збереження адреси провайдера) валідує
