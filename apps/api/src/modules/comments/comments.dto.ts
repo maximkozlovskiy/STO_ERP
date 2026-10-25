@@ -1,7 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsUUID, MaxLength, MinLength, IsIn } from 'class-validator';
 
-export const COMMENT_ENTITY_TYPES = ['WorkOrder', 'Counterparty', 'Vehicle', 'Invoice'] as const;
+export const COMMENT_ENTITY_TYPES = [
+  'WorkOrder',
+  'Counterparty',
+  'Vehicle',
+  'Invoice',
+  'Task',
+] as const;
 export type CommentEntityType = (typeof COMMENT_ENTITY_TYPES)[number];
 
 export class CreateCommentDto {

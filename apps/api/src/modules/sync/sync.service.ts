@@ -64,6 +64,9 @@ const PULL_TABLES = [
   'pricing_rules',
   // B3: warranties — mobile mechanics need to see which work is under warranty
   'warranties',
+  // Задачі співробітникам (BR-TASK-*): лише читання — статус змінюється через
+  // `POST /tasks/:id/transition` (FSM, BR-TASK-003), тож у PUSH_SAFE_TABLES їх немає.
+  'tasks',
 ] as const;
 
 // Явно ВИКЛЮЧЕНІ з sync (не додавати до PULL_TABLES/PUSH_SAFE_TABLES):
@@ -115,6 +118,7 @@ const TABLE_TO_MODEL: Record<string, string> = {
   completion_acts: 'completionAct',
   pricing_rules: 'pricingRule',
   warranties: 'warranty',
+  tasks: 'task',
 };
 
 // Fields stripped from pull payloads to protect sensitive data sent to mobile clients

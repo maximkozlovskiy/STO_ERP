@@ -73,6 +73,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { WorkOrderMediaModule } from './modules/work-order-media/work-order-media.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { WarrantiesModule } from './modules/warranties/warranties.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { InspectionModule } from './modules/inspection/inspection.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
@@ -237,6 +238,7 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
     WorkOrderMediaModule,
     AuditModule,
     WarrantiesModule,
+    TasksModule,
     LoyaltyModule,
     InspectionModule,
     WebhooksModule,

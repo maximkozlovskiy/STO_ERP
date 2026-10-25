@@ -47,6 +47,7 @@ const prismaMock = {
   completionAct: makeModelMock(),
   pricingRule: makeModelMock(),
   warranty: makeModelMock(),
+  task: makeModelMock(),
   lift: makeModelMock(),
   employee: makeModelMock(),
   // BR-VEH-008: авто з планшета — з маркою й моделлю довідника (назви пише сервер).

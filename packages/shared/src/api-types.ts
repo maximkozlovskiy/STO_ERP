@@ -5673,6 +5673,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Список задач (виконавець бачить лише свої) */
+        get: operations["TasksController_findAll_v1"];
+        put?: never;
+        /** Поставити задачу */
+        post: operations["TasksController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}/transition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Змінити статус задачі (BR-TASK-003) */
+        post: operations["TasksController_transition_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Задача */
+        get: operations["TasksController_findOne_v1"];
+        put?: never;
+        post?: never;
+        /** Видалити задачу (soft) */
+        delete: operations["TasksController_remove_v1"];
+        options?: never;
+        head?: never;
+        /** Змінити задачу (повна форма; статус — лише через transition) */
+        patch: operations["TasksController_update_v1"];
+        trace?: never;
+    };
     "/api/v1/work-orders/{workOrderId}/inspection": {
         parameters: {
             query?: never;
@@ -10141,7 +10195,7 @@ export interface components {
         };
         CreateCommentDto: {
             /** @enum {string} */
-            entityType: "WorkOrder" | "Counterparty" | "Vehicle" | "Invoice";
+            entityType: "WorkOrder" | "Counterparty" | "Vehicle" | "Invoice" | "Task";
             /** Format: uuid */
             entityId: string;
             body: string;
@@ -10193,6 +10247,67 @@ export interface components {
         WorkOrderMediaListDto: {
             items: components["schemas"]["WorkOrderMediaResponseDto"][];
             total: number;
+        };
+        TaskResponseDto: {
+            id: string;
+            title: string;
+            description: string | null;
+            /** @enum {string} */
+            status: "NEW" | "IN_PROGRESS" | "DONE" | "CANCELLED";
+            /** @enum {string} */
+            priority: "LOW" | "NORMAL" | "HIGH" | "URGENT";
+            assigneeId: string;
+            assigneeName: string;
+            createdById: string;
+            createdByName: string;
+            startAt: string | null;
+            dueAt: string | null;
+            completedAt: string | null;
+            workOrderId: string | null;
+            workOrderNumber: string | null;
+            /** @description Наряд прив’язки видалено після постановки задачі (BR-TASK-006) */
+            workOrderDeleted: boolean;
+            vehicleId: string | null;
+            /** @description Марка, модель, номер */
+            vehicleSummary: string | null;
+            counterpartyId: string | null;
+            counterpartyName: string | null;
+            /** @description Термін минув, задача не виконана й не скасована (BR-TASK-005) */
+            overdue: boolean;
+            syncVersion: number;
+            createdAt: string;
+            updatedAt: string;
+        };
+        PaginatedTasksDto: {
+            items: components["schemas"]["TaskResponseDto"][];
+            total: number;
+            page: number;
+            limit: number;
+        };
+        TaskFormDto: {
+            title: string;
+            description?: string;
+            /** Format: uuid */
+            assigneeId: string;
+            /**
+             * @default NORMAL
+             * @enum {string}
+             */
+            priority: "LOW" | "NORMAL" | "HIGH" | "URGENT";
+            /** @description Початок — мітка часу ISO */
+            startAt?: string;
+            /** @description Термін — мітка часу ISO */
+            dueAt?: string;
+            /** Format: uuid */
+            workOrderId?: string;
+            /** Format: uuid */
+            vehicleId?: string;
+            /** Format: uuid */
+            counterpartyId?: string;
+        };
+        TaskTransitionDto: {
+            /** @enum {string} */
+            status: "NEW" | "IN_PROGRESS" | "DONE" | "CANCELLED";
         };
         InspectionPointDto: {
             name: string;
@@ -20655,6 +20770,165 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    TasksController_findAll_v1: {
+        parameters: {
+            query?: {
+                /** @description Пошук за назвою */
+                q?: string;
+                /** @description Статуси через кому */
+                status?: string;
+                /** @description Пріоритети через кому */
+                priority?: string;
+                /** @description Виконавець */
+                assigneeId?: string;
+                /** @description Лише мої задачі (true / 1) */
+                mine?: string;
+                /** @description Лише прострочені (BR-TASK-005) */
+                overdue?: string;
+                /** @description Від (YYYY-MM-DD, день за Києвом): задачі, чий проміжок [початок ?? термін, термін ?? початок] перетинає [from, to]. Задачі без обох дат у відбір за датами не потрапляють. */
+                from?: string;
+                /** @description До (YYYY-MM-DD, включно, день за Києвом) */
+                to?: string;
+                /** @description Задачі наряду (секція «Пов'язані документи») */
+                workOrderId?: string;
+                /** @description Лише ця задача (посилання) */
+                id?: string;
+                /** @description Типово — dueAt */
+                sortBy?: "dueAt" | "startAt" | "priority" | "createdAt";
+                /** @description Типово — asc */
+                sortDir?: "asc" | "desc";
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedTasksDto"];
+                };
+            };
+        };
+    };
+    TasksController_create_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskFormDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponseDto"];
+                };
+            };
+        };
+    };
+    TasksController_transition_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskTransitionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponseDto"];
+                };
+            };
+        };
+    };
+    TasksController_findOne_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponseDto"];
+                };
+            };
+        };
+    };
+    TasksController_remove_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    TasksController_update_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskFormDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponseDto"];
+                };
             };
         };
     };

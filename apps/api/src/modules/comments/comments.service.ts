@@ -7,6 +7,7 @@ import {
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { taskVisibilityWhere, type TaskActor } from '../tasks/tasks.service';
 import {
   CreateCommentDto,
   CommentResponseDto,
@@ -38,6 +39,7 @@ export class CommentsService {
     orgId: string,
     entityType: string,
     entityId: string,
+    actor: TaskActor,
   ): Promise<CommentsListResponseDto> {
     // Reject arbitrary entity types — without this guard, callers could probe arbitrary
     // string values and bypass the polymorphic relation contract. Also keeps the composite
@@ -50,6 +52,9 @@ export class CommentsService {
     if (!entityId || typeof entityId !== 'string') {
       throw new BadRequestException(translateError('err.comment.entityIdRequired', getLocale()));
     }
+    // BR-TASK-008: коментарі задачі читає лише той, хто бачить саму задачу (BR-TASK-002).
+    if (entityType === 'Task')
+      await this.assertEntityBelongsToOrg(orgId, entityType, entityId, actor);
     const [items, total] = await Promise.all([
       this.prisma.comment.findMany({
         where: { orgId, entityType, entityId },
@@ -79,13 +84,14 @@ export class CommentsService {
 
   async create(
     orgId: string,
-    authorId: string,
+    author: TaskActor,
     dto: CreateCommentDto,
   ): Promise<CommentResponseDto> {
+    const authorId = author.id;
     // Cross-tenant FK guard: `Comment.entityId` is a polymorphic reference without a Prisma FK.
     // Without this check, a user from org A can create a comment about an entity from org B →
     // `Comment.orgId=A, entityId=<from-B>` sits in the DB invisible to both sides, breaking audit-trail.
-    await this.assertEntityBelongsToOrg(orgId, dto.entityType, dto.entityId);
+    await this.assertEntityBelongsToOrg(orgId, dto.entityType, dto.entityId, author);
     const comment = await this.prisma.comment.create({
       data: { orgId, entityType: dto.entityType, entityId: dto.entityId, body: dto.body, authorId },
       include: { author: { select: { firstName: true, lastName: true } } },
@@ -96,11 +102,13 @@ export class CommentsService {
   /**
    * Assert polymorphic entity belongs to org. Uses a map instead of switch —
    * easier to add new entity types (Vehicle, Invoice, ...).
+   * Задача — ще й видима тому, хто звертається (BR-TASK-002 / 008): виконавець — лише своя.
    */
   private async assertEntityBelongsToOrg(
     orgId: string,
     entityType: CommentEntityType,
     entityId: string,
+    actor: TaskActor,
   ): Promise<void> {
     const where = { id: entityId, orgId, deletedAt: null } as const;
     const fetchers: Record<CommentEntityType, () => Promise<{ id: string } | null>> = {
@@ -108,6 +116,11 @@ export class CommentsService {
       Counterparty: () => this.prisma.counterparty.findFirst({ where, select: { id: true } }),
       Vehicle: () => this.prisma.vehicle.findFirst({ where, select: { id: true } }),
       Invoice: () => this.prisma.invoice.findFirst({ where, select: { id: true } }),
+      Task: () =>
+        this.prisma.task.findFirst({
+          where: { ...where, ...taskVisibilityWhere(actor) },
+          select: { id: true },
+        }),
     };
     const parent = await fetchers[entityType]();
     if (!parent)

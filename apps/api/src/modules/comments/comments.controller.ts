@@ -38,8 +38,9 @@ export class CommentsController {
     @OrgContext() orgId: string,
     @Query('entityType') entityType: string,
     @Query('entityId', new ParseUUIDPipe()) entityId: string,
+    @CurrentUser() user: { id: string; role: string },
   ): Promise<CommentsListResponseDto> {
-    return this.service.findAll(orgId, entityType, entityId);
+    return this.service.findAll(orgId, entityType, entityId, user);
   }
 
   @Post()
@@ -47,10 +48,10 @@ export class CommentsController {
   @ApiOperation({ summary: 'Додати коментар' })
   create(
     @OrgContext() orgId: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
     @Body() dto: CreateCommentDto,
   ): Promise<CommentResponseDto> {
-    return this.service.create(orgId, user.id, dto);
+    return this.service.create(orgId, user, dto);
   }
 
   @Delete(':id')

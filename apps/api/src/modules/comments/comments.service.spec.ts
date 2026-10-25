@@ -33,6 +33,7 @@ describe('CommentsService', () => {
 
   const ORG = 'org-1';
   const AUTHOR = 'emp-author';
+  const ACTOR = { id: AUTHOR, role: 'MECHANIC' };
   const COMMENT_ID = 'c-1';
   const ENTITY_ID = 'wo-1';
 
@@ -70,16 +71,18 @@ describe('CommentsService', () => {
 
   describe('findAll — whitelist entityType і tenant isolation', () => {
     it('невідомий entityType → 400, у БД не ходимо', async () => {
-      await expect(svc.findAll(ORG, 'Secret', ENTITY_ID)).rejects.toThrow(BadRequestException);
+      await expect(svc.findAll(ORG, 'Secret', ENTITY_ID, ACTOR)).rejects.toThrow(
+        BadRequestException,
+      );
       expect(prisma.comment.findMany).not.toHaveBeenCalled();
     });
 
     it('порожній entityId → 400', async () => {
-      await expect(svc.findAll(ORG, 'WorkOrder', '')).rejects.toThrow(BadRequestException);
+      await expect(svc.findAll(ORG, 'WorkOrder', '', ACTOR)).rejects.toThrow(BadRequestException);
     });
 
     it('валідний запит: where містить orgId + entityType + entityId, ліміт 500', async () => {
-      await svc.findAll(ORG, 'WorkOrder', ENTITY_ID);
+      await svc.findAll(ORG, 'WorkOrder', ENTITY_ID, ACTOR);
       const call = prisma.comment.findMany.mock.calls[0][0];
       expect(call.where).toEqual({ orgId: ORG, entityType: 'WorkOrder', entityId: ENTITY_ID });
       expect(call.take).toBe(500);
@@ -88,7 +91,7 @@ describe('CommentsService', () => {
     });
 
     it('authorName збирається з firstName + lastName', async () => {
-      const res = await svc.findAll(ORG, 'WorkOrder', ENTITY_ID);
+      const res = await svc.findAll(ORG, 'WorkOrder', ENTITY_ID, ACTOR);
       expect(res.items[0].authorName).toBe('Іван Петренко');
     });
   });
@@ -97,7 +100,7 @@ describe('CommentsService', () => {
     it('чужа/видалена батьківська сутність → 404, коментар НЕ створюється', async () => {
       prisma.workOrder.findFirst.mockResolvedValue(null);
       await expect(
-        svc.create(ORG, AUTHOR, {
+        svc.create(ORG, ACTOR, {
           entityType: 'WorkOrder',
           entityId: 'foreign',
           body: 'x',
@@ -107,7 +110,7 @@ describe('CommentsService', () => {
     });
 
     it('FK guard читає батька у СВОЇЙ org і не видаленого', async () => {
-      await svc.create(ORG, AUTHOR, {
+      await svc.create(ORG, ACTOR, {
         entityType: 'WorkOrder',
         entityId: ENTITY_ID,
         body: 'x',
@@ -120,7 +123,7 @@ describe('CommentsService', () => {
     });
 
     it('entityType маршрутизується до правильної моделі (Vehicle → prisma.vehicle)', async () => {
-      await svc.create(ORG, AUTHOR, {
+      await svc.create(ORG, ACTOR, {
         entityType: 'Vehicle',
         entityId: ENTITY_ID,
         body: 'x',
@@ -130,7 +133,7 @@ describe('CommentsService', () => {
     });
 
     it('orgId і authorId пишуться з контексту, не з DTO', async () => {
-      await svc.create(ORG, AUTHOR, {
+      await svc.create(ORG, ACTOR, {
         entityType: 'WorkOrder',
         entityId: ENTITY_ID,
         body: 'x',
