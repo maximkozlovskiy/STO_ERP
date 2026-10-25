@@ -617,6 +617,33 @@ describe('report-export › суми у валюті документа (BR-RPT-
     expect(buildExportNumericColumns(result).slice(0, 4)).toEqual([false, false, true, false]);
   });
 
+  // Мутація: прибрати гілку «валют нуль → одна колонка» → колонка суми зникає з файла.
+  // guards: BR-RPT-029
+  it('порожня вибірка (валют нуль): колонка суми у валюті документа лишається одна, як на екрані', () => {
+    const base = currencyResult([]);
+    const result: ReportRunResult = {
+      ...base,
+      result: {
+        ...base.result,
+        detailRows: [],
+        grandTotals: { SUM_amount: 0, SUM_amountBase: 0 },
+        grandTotalsByCurrency: {},
+        rowCount: 0,
+      },
+    };
+    const rows = buildExportRows(result, t);
+    expect(rows[0]).toEqual([
+      '№',
+      'Контрагент',
+      'Сума (у валюті оплати)',
+      'Валюта',
+      'Σ Сума (у валюті оплати)',
+      'Σ Сума в базовій валюті',
+    ]);
+    expect(rows[rows.length - 1]).toEqual(['Разом', '', '', '', '0', '0']);
+    expect(buildExportNumericColumns(result)).toHaveLength(rows[0].length);
+  });
+
   // guards: BR-RPT-029
   it('клітинка на екрані: рядок на кожну валюту групи; базова сума — без розбивки', () => {
     const result = currencyResult();

@@ -182,7 +182,10 @@ function aggExportColumns(result: ReportRunResult): AggExportColumn[] {
     if (!isDocumentCurrencyAlias(alias, result) || !result.result.grandTotalsByCurrency) {
       return [{ alias }];
     }
-    return selectionCurrencies(alias, result).map(code => ({ alias, code }));
+    const codes = selectionCurrencies(alias, result);
+    // Порожня вибірка валют не має — колонка лишається одна, як на екрані (Bug #982).
+    if (codes.length === 0) return [{ alias }];
+    return codes.map(code => ({ alias, code }));
   });
 }
 
