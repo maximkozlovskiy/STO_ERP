@@ -210,6 +210,7 @@ StockItem/StockMovement → docs/objects/inventory.md
 SettlementAccount/Transaction → docs/objects/settlements.md
 BankTransaction → docs/objects/bank-statements.md
 Vehicle         → docs/objects/vehicle.md
+Task            → docs/objects/task.md
 ```
 
 **НЕ** дублювати деталі між файлами — одне місце правди.

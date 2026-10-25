@@ -396,6 +396,64 @@ export const FISCAL_STATUS_DESCRIPTIONS: Record<string, string> = {
   SKIPPED: 'Пропущено — фіскалізацію вимкнено на філії',
 };
 
+// ─── Tasks (Задачі співробітникам, BR-TASK-*) ──────────────────────────────────
+
+export const TASK_STATUS_LABELS: Record<string, string> = {
+  NEW: 'Нова',
+  IN_PROGRESS: 'В роботі',
+  DONE: 'Виконана',
+  CANCELLED: 'Скасована',
+};
+
+export const TASK_STATUS_DESCRIPTIONS: Record<string, string> = {
+  NEW: 'Нова — задачу поставлено, виконавець ще не взяв її в роботу',
+  IN_PROGRESS: 'В роботі — виконавець працює над задачею',
+  DONE: 'Виконана — задачу завершено',
+  CANCELLED: 'Скасована — задача більше не потрібна',
+};
+
+export const TASK_STATUS_BADGE: Record<string, BadgeVariant> = {
+  NEW: 'secondary',
+  IN_PROGRESS: 'warning',
+  DONE: 'success',
+  CANCELLED: 'destructive',
+};
+
+/** Ролі, що ставлять, правлять, переназначають і скасовують задачі (BR-TASK-001). */
+export const TASK_MANAGE_ROLES = ['OWNER', 'ADMIN', 'RECEPTIONIST'] as const;
+
+export function isTaskManagerRole(role: string | null | undefined): boolean {
+  return (TASK_MANAGE_ROLES as readonly string[]).includes(role ?? '');
+}
+
+/**
+ * FSM задачі (BR-TASK-003) — ЄДИНЕ джерело правди для api (`assertTaskTransition`) і web (кнопки).
+ * Скасувати й повернути виконану в роботу — лише ролі керування; виконавець рухає свою задачу
+ * NEW → IN_PROGRESS → DONE (або одразу DONE).
+ */
+export const TASK_STATUS_TRANSITIONS: Record<string, string[]> = {
+  NEW: ['IN_PROGRESS', 'DONE', 'CANCELLED'],
+  IN_PROGRESS: ['DONE', 'CANCELLED'],
+  DONE: ['IN_PROGRESS'],
+  CANCELLED: [],
+};
+
+/** Переходи, дозволені лише ролям керування: скасування і повернення виконаної в роботу. */
+export function isTaskManagerOnlyTransition(from: string, to: string): boolean {
+  return to === 'CANCELLED' || (from === 'DONE' && to === 'IN_PROGRESS');
+}
+
+/** Чи може користувач перевести задачу `from` → `to` (виконавець — лише свою, BR-TASK-003). */
+export function canTransitionTask(
+  from: string,
+  to: string,
+  opts: { isManager: boolean; isAssignee: boolean },
+): boolean {
+  if (!(TASK_STATUS_TRANSITIONS[from] ?? []).includes(to)) return false;
+  if (opts.isManager) return true;
+  return opts.isAssignee && !isTaskManagerOnlyTransition(from, to);
+}
+
 // ─── Stock Documents ──────────────────────────────────────────────────────────
 
 export const STOCK_DOC_STATUS_LABELS: Record<string, string> = {

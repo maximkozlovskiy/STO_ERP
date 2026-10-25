@@ -1,0 +1,39 @@
+// Задачі співробітникам (docs/objects/task.md, BR-TASK-*). Ставлять OWNER/ADMIN/RECEPTIONIST,
+// виконує будь-який активний працівник. Окремий тип у календарі, але НЕ CalendarSlot: задача не
+// займає підйомник і час механіка (EXCLUDE-обмеження calendar_slots її не бачать, BR-TASK-007).
+model Task {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String            @db.Uuid
+  title          String
+  description    String?
+  status         TaskStatus        @default(NEW)
+  priority       WorkOrderPriority @default(NORMAL)
+  assigneeId     String            @db.Uuid
+  createdById    String            @db.Uuid
+  // Мітки часу (не @db.Date): день задачі в календарі — за Києвом (BR-TASK-004).
+  startAt        DateTime?
+  dueAt          DateTime?
+  completedAt    DateTime?
+  workOrderId    String?           @db.Uuid
+  vehicleId      String?           @db.Uuid
+  counterpartyId String?           @db.Uuid
+  syncVersion    BigInt            @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  deletedAt      DateTime?
+
+  org          Organisation  @relation(fields: [orgId], references: [id])
+  assignee     Employee      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  createdBy    Employee      @relation("TaskCreator", fields: [createdById], references: [id])
+  workOrder    WorkOrder?    @relation(fields: [workOrderId], references: [id])
+  vehicle      Vehicle?      @relation(fields: [vehicleId], references: [id])
+  counterparty Counterparty? @relation(fields: [counterpartyId], references: [id])
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, assigneeId, status, deletedAt])
+  @@index([orgId, dueAt])
+  @@index([orgId, startAt])
+  @@index([orgId, workOrderId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("tasks")
+}

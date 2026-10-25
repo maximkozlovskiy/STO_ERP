@@ -446,6 +446,14 @@ enum CalendarSlotType {
   MEETING
 }
 
+// Задача співробітнику (BR-TASK-003). Не займає календарний час (BR-TASK-007).
+enum TaskStatus {
+  NEW
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
 enum EmployeeStatus {
   ACTIVE
   ON_LEAVE

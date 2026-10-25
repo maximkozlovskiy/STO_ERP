@@ -44,6 +44,7 @@ model Counterparty {
   pricingRules       PricingRule[]          @relation("PricingRuleSupplier")
   warranties         Warranty[]
   calendarSlots      CalendarSlot[]
+  tasks              Task[]
   statusLinks        CounterpartyStatusLink[]
   bankTransactions   BankTransaction[]
 
@@ -221,6 +222,7 @@ model Vehicle {
   workOrders           WorkOrder[]
   maintenanceSchedules MaintenanceSchedule[]
   calendarSlots        CalendarSlot[]
+  tasks                Task[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, vin])

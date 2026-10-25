@@ -41,6 +41,7 @@ model Organisation {
   savedReports          SavedReport[]
   counterpartyStatuses  CounterpartyStatus[]
   vehicleMakes          VehicleMake[]
+  tasks                 Task[]
   vehicleModels         VehicleModel[]
   goodStatuses          GoodStatus[]
   payrollPeriods        PayrollPeriod[]

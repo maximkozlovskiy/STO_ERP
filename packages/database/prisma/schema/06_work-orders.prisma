@@ -58,6 +58,7 @@ model WorkOrder {
   payments         Payment[]
   invoices         Invoice[]
   calendarSlots    CalendarSlot[]
+  tasks            Task[]
   completionActs   CompletionAct[]
   media            WorkOrderMedia[]
   warranties       Warranty[]

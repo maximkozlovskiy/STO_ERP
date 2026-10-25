@@ -57,6 +57,7 @@ const SYNC_VERSION_MODELS = new Set([
   'StockDocumentLine',
   'Invoice',
   'CalendarSlot',
+  'Task',
   'ReconciliationAct',
   'OrganisationSettings',
   'BranchSettings',

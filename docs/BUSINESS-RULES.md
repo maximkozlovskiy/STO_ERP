@@ -47,6 +47,18 @@ status re-read + термінальний CANCELLED (та сама гарант�
 
 ---
 
+## FSM — Tasks (задачі працівникам)
+
+```
+NEW → IN_PROGRESS → DONE → IN_PROGRESS (лише керування)
+   ↘ DONE
+NEW | IN_PROGRESS ↘ CANCELLED (лише керування)
+```
+
+Єдине джерело переходів — `TASK_STATUS_TRANSITIONS` / `canTransitionTask` у `packages/shared`.
+Ставлять задачі OWNER / ADMIN / RECEPTIONIST; виконавець бачить і рухає лише свої. Задача не
+займає календарний час. Повністю — [docs/objects/task.md](objects/task.md) (BR-TASK-001…008).
+
 ## FSM — Stock Documents
 
 ```

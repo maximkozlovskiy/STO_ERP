@@ -31,6 +31,14 @@ export const V = {
     name: { required: 'v.good.name.required', max: 'v.good.name.max' },
   },
 
+  task: {
+    title: { required: 'v.task.title.required', max: 'v.task.title.max' },
+    description: { max: 'v.task.description.max' },
+    assignee: { required: 'v.task.assignee.required' },
+    dateTime: { invalid: 'v.task.dateTime.invalid' },
+    dueBeforeStart: 'v.task.dueBeforeStart',
+  },
+
   warranty: {
     expiresAt: {
       required: 'v.warranty.expiresAt.required',
@@ -236,6 +244,12 @@ export const VALIDATION_KEYS = [
   'v.counterparty.name.any',
   'v.warranty.expiresAt.required',
   'v.warranty.expiresAt.format',
+  'v.task.title.required',
+  'v.task.title.max',
+  'v.task.description.max',
+  'v.task.assignee.required',
+  'v.task.dateTime.invalid',
+  'v.task.dueBeforeStart',
   'v.good.name.required',
   'v.good.name.max',
   'v.employee.firstName.required',
@@ -431,6 +445,15 @@ export const VALIDATION_KEYS = [
   'err.cashRegister.prroOnlyFiscal',
   'err.cashRegister.prroNotConfigured',
   'err.cashRegister.shiftOpen',
+  // Exception-повідомлення: tasks-модуль (BR-TASK-*)
+  'err.task.notFound',
+  'err.task.assigneeNotFound',
+  'err.task.assigneeOnLeave',
+  'err.task.dueBeforeStart',
+  'err.task.workOrderNotFound',
+  'err.task.vehicleNotFound',
+  'err.task.counterpartyNotFound',
+  'err.task.transitionForbidden',
   // Exception-повідомлення: warranties-модуль
   'err.warranty.notFound',
   'err.warranty.workOrderNotFound',

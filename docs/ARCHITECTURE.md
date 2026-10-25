@@ -30,6 +30,7 @@ sto-erp/
 | `auth`                  | `/api/auth`                                                                                                   | login, refresh, logout                                                                                                                                                                            |
 | `work-orders`           | `/api/work-orders`                                                                                            | CRUD + `/transition` + `/clone` + `/parts` + `/lines`                                                                                                                                             |
 | `calendar`              | `/api/calendar`                                                                                               | `/slots`, `/slots/:id`, `/slots/check-conflicts`                                                                                                                                                  |
+| `tasks`                 | `/api/tasks`                                                                                                  | CRUD + `/transition`; задачі працівникам, окремий тип у календарі (не займає час)                                                                                                                 |
 | `invoices`              | `/api/invoices`                                                                                               | CRUD + `/transition` + `/lines`                                                                                                                                                                   |
 | `purchase-orders`       | `/api/purchase-orders`                                                                                        | CRUD + `/transition` + `/receive` + `/apply-pricing`                                                                                                                                              |
 | `stock-documents`       | `/api/stock-documents`                                                                                        | CRUD + `/transition`                                                                                                                                                                              |
@@ -135,7 +136,7 @@ syncVersion BigInt    @default(0)
 
 **Finance:** `Invoice`, `Payment`, `SettlementAccount`, `SettlementTransaction`, `ReconciliationAct`
 
-**Scheduling:** `CalendarSlot`
+**Scheduling:** `CalendarSlot`, `Task` (задачі працівникам — не займають календарний час)
 
 **Sync:** `SyncJob`
 
@@ -226,6 +227,7 @@ syncVersion BigInt    @default(0)
 | [good.md](objects/good.md)                                   | Good — каталог, UoM, barcodes, pricing          |
 | [work.md](objects/work.md)                                   | Work + WorkCategory — норми-годин               |
 | [calendar.md](objects/calendar.md)                           | CalendarSlot — split-day, conflict              |
+| [task.md](objects/task.md)                                   | Task — задачі працівникам, FSM, видимість       |
 | [inventory.md](objects/inventory.md)                         | StockItem + StockMovement — залишки             |
 | [settlements.md](objects/settlements.md)                     | SettlementAccount + Transaction                 |
 | [payments.md](objects/payments.md)                           | Payment — фіскалізація, QR, cash-shift          |

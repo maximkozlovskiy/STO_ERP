@@ -11,6 +11,7 @@ export * from './purchase-order.schema';
 export * from './purchase-list.schema';
 export * from './supplier-api.schema';
 export * from './warranty.schema';
+export * from './task.schema';
 export * from './work-order.schema';
 export * from './bank-transaction.schema';
 export * from './cash-operation.schema';

@@ -33,6 +33,8 @@ model Employee {
   preferences            UserPreference[]
   payrollLines           PayrollLine[]
   bankTransactions       BankTransaction[]
+  assignedTasks          Task[]                 @relation("TaskAssignee")
+  createdTasks           Task[]                 @relation("TaskCreator")
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
