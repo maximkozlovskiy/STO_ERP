@@ -296,9 +296,26 @@ describe('report-export › CSV', () => {
 
     expect(CSV_BOM).toBe('﻿');
     expect(file.content.startsWith('﻿Група;Кількість;Σ Сума;сер. Ціна\n')).toBe(true);
-    expect(file.content.endsWith('\nРазом;5;350.5;70.1')).toBe(true);
+    // Числові колонки — з десятковою комою (Excel з українськими налаштуваннями).
+    expect(file.content.endsWith('\nРазом;5;350,5;70,1')).toBe(true);
     expect(file.mime).toBe('text/csv;charset=utf-8;');
     expect(file.filename).toBe('report-workOrder.csv');
+  });
+
+  // Крапка в дробі: Excel з українськими налаштуваннями читав «-4865.968» текстом, «1.05» — датою.
+  // Мутація: прибрати заміну в buildCsvText → кейс червоніє.
+  // guards: BR-RPT-021
+  it('кома в дробі — лише в числових колонках; текстова колонка («1.05» як артикул) не змінюється', () => {
+    expect(
+      buildCsvText(
+        [
+          ['SKU', 'Кількість'],
+          ['1.05', '-4865.968'],
+          ['A-1', '2'],
+        ],
+        [false, true],
+      ),
+    ).toBe('SKU;Кількість\n1.05;-4865,968\nA-1;2');
   });
 });
 

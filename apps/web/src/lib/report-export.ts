@@ -240,9 +240,21 @@ const PLAIN_NUMBER_RE = /^-?\d+(\.\d+)?$/;
  * CSV-текст із рядків: роздільник — `;`, як в інших CSV застосунку (звіти, взаєморозрахунки):
  * Excel з українськими регіональними налаштуваннями розбиває колонки саме за ним, а файл через кому
  * відкривав одним стовпцем. Кожна клітинка — через escapeCsvCell (захист від формул + лапки).
+ * Число в числовій колонці (`numericColumns`, як у XLSX) — з десятковою комою, як його читає
+ * Excel з українськими налаштуваннями; текстова колонка лишається як є (артикул «1.05»).
  */
-export function buildCsvText(rows: string[][]): string {
-  return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
+export function buildCsvText(rows: string[][], numericColumns?: boolean[]): string {
+  return rows
+    .map(r =>
+      r
+        .map((c, i) =>
+          escapeCsvCell(
+            numericColumns?.[i] === true && PLAIN_NUMBER_RE.test(c) ? c.replace('.', ',') : c,
+          ),
+        )
+        .join(';'),
+    )
+    .join('\n');
 }
 
 /** Готовий до завантаження файл експорту (ще без DOM): вміст, MIME і назва. */
@@ -261,7 +273,7 @@ export function buildExportFile(
   const rows = buildExportRows(result, t, enumByField);
   if (format === 'csv') {
     return {
-      content: CSV_BOM + buildCsvText(rows),
+      content: CSV_BOM + buildCsvText(rows, buildExportNumericColumns(result)),
       mime: 'text/csv;charset=utf-8;',
       filename: `report-${result.entity}.csv`,
     };

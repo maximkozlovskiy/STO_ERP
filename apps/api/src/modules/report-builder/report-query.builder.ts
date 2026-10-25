@@ -322,6 +322,8 @@ export function buildQuery(config: ReportConfigInput, orgId: string): BuiltQuery
   const where: Obj = { orgId };
   if (entity.hasSoftDelete) where.deletedAt = null;
   for (const rel of entity.parentRelations ?? []) where[rel] = { deletedAt: null };
+  const voided = entity.voidedField;
+  if (voided && !(config.filters ?? []).some(f => f.field === voided)) where[voided] = null;
 
   // dateRange → фільтр по entity.dateField (Kyiv-межі; для `@db.Date` — самі дати)
   if (config.dateRange) {

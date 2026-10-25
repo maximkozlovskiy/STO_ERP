@@ -24,6 +24,17 @@ describe('escapeCsvCell — formula-injection guard (CWE-1236)', () => {
     expect(escapeCsvCell('-')).toBe("'-");
   });
 
+  // Excel з українськими налаштуваннями читає дріб із комою; «1250.5» лишався текстом, «1.05» —
+  // ставав датою. Рядок не чіпається: «1.05» у тексті може бути артикулом.
+  it('число (number) — з десятковою комою; рядок із крапкою — як є', () => {
+    expect(escapeCsvCell(1250.5)).toBe('1250,5');
+    expect(escapeCsvCell(-1250.5)).toBe('-1250,5');
+    expect(escapeCsvCell(0.3)).toBe('0,3');
+    expect(escapeCsvCell('1.05')).toBe('1.05');
+    // кома-роздільник (виклик із ',') — дріб із комою береться в лапки
+    expect(escapeCsvCell(1.5, ',')).toBe('"1,5"');
+  });
+
   it('звичайний текст не чіпає', () => {
     expect(escapeCsvCell('Іван Петренко')).toBe('Іван Петренко');
     expect(escapeCsvCell('ТОВ Альфа')).toBe('ТОВ Альфа');

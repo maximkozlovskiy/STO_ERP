@@ -676,4 +676,34 @@ describe('report-query.builder', () => {
     );
     expect(q.args.where).toMatchObject({ type: 'RETURN' });
   });
+
+  // До 2026-10-25 «Платежі клієнтів» рахували й сторновані оплати (113 на 34 312,03 грн у
+  // dev-базі), хоча рахунки, звірка й лояльність їх не рахують. Рішення власника — виключати за
+  // замовчуванням. Мутація: прибрати умову voidedField у buildQuery → перший кейс червоніє.
+  describe('сторновані платежі за замовчуванням не входять у звіт (BR-RPT-026)', () => {
+    const where = (filters?: { field: string; op: string; value?: unknown }[]) =>
+      buildQuery({ entity: 'payment', columns: [], groupBy: [], filters: filters as never }, ORG)
+        .args.where;
+
+    // guards: BR-RPT-026
+    it('без фільтра по «Сторновано» — лише чинні оплати (reversedAt: null)', () => {
+      expect(where()).toMatchObject({ reversedAt: null });
+    });
+
+    // guards: BR-RPT-026
+    it('фільтр користувача по «Сторновано» замінює умову: «заповнене» показує саме сторновані', () => {
+      expect(where([{ field: 'reversedAt', op: 'isNull', value: false }])).toMatchObject({
+        reversedAt: { not: null },
+      });
+      const byDay = where([{ field: 'reversedAt', op: 'gte', value: '2026-10-01' }]);
+      expect(byDay.reversedAt).toHaveProperty('gte');
+      expect(byDay.AND).toBeUndefined();
+    });
+
+    // guards: BR-RPT-026
+    it('інші сутності без позначки сторно умови не отримують', () => {
+      const w = buildQuery({ entity: 'invoice', columns: [], groupBy: [] }, ORG).args.where;
+      expect(w).not.toHaveProperty('reversedAt');
+    });
+  });
 });

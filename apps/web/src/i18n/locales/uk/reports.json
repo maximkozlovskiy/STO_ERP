@@ -208,6 +208,7 @@
     "opLt": "<",
     "opLte": "≤",
     "opIsNull": "порожнє",
+    "opNotNull": "заповнене",
     "valuesPlaceholder": "знач1,знач2",
     "valuePlaceholder": "значення",
     "saveTitle": "Зберегти звіт",

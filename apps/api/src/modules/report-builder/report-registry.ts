@@ -88,6 +88,10 @@ export interface ReportEntityDef {
    *  або товар і склад залишку. Видалення позначає лише сам документ / товар / склад, рядки
    *  лишаються з `deletedAt: null` — тому умова `deletedAt: null` ставиться і на кожен із них. */
   parentRelations?: readonly string[];
+  /** Позначка сторно append-only рядка (`payment.reversedAt`): заповнена — рядок уже не діє, тож
+   *  за замовчуванням не входить у звіт, як і в решті підсумків застосунку. Фільтр користувача по
+   *  цьому полю (порожнє / заповнене / дата) замінює умову за замовчуванням. */
+  voidedField?: string;
   defaultSort: { path: string; dir: 'asc' | 'desc' };
   fields: ReportFieldDef[];
   relations: ReportRelationDef[];
@@ -370,13 +374,14 @@ const payment: ReportEntityDef = {
   profile: 'APPEND_ONLY',
   hasSoftDelete: false,
   dateField: 'createdAt',
+  // BR-CASH-024: сторнована оплата лишається в таблиці (append-only), але вже не «гроші в касі» —
+  // рахунки, звірка й лояльність її не рахують, тож і звіт за замовчуванням (BR-RPT-026).
+  voidedField: 'reversedAt',
   defaultSort: { path: 'createdAt', dir: 'desc' },
   fields: [
     sumField('amount', 'Сума'),
     textField('method', 'Спосіб'),
     dateField('createdAt', 'Дата'),
-    // BR-CASH-024: сторнована оплата лишається в таблиці (append-only), але вже не «гроші в касі».
-    // Фільтр «Сторновано — порожньо» (isNull) лишає лише чинні оплати.
     dateField('reversedAt', 'Сторновано', { groupable: false }),
     textField('counterparty.companyName', 'Контрагент'),
     enumField('counterparty.type', 'Тип контрагента', 'CounterpartyType'),

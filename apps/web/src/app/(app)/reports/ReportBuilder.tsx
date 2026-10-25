@@ -828,6 +828,25 @@ function opsForType(type: string | undefined, current?: ReportFilter['op']): Rep
   });
 }
 
+/**
+ * «Заповнене» — оператор лише інтерфейсу: на бекенд іде `isNull` зі значенням `false` (BR-RPT-024).
+ * Без нього не можна було показати саме сторновані платежі, які звіт за замовчуванням відсікає
+ * (BR-RPT-026).
+ */
+const NOT_NULL = 'notNull';
+type FilterOpChoice = ReportFilter['op'] | typeof NOT_NULL;
+
+function filterOpChoice(f: ReportFilter): FilterOpChoice {
+  return f.op === 'isNull' && (f.value === false || f.value === 'false') ? NOT_NULL : f.op;
+}
+
+/** Зміна оператора: «порожнє» / «заповнене» несуть свій value, вихід із них скидає значення. */
+function filterOpPatch(f: ReportFilter, choice: FilterOpChoice): Partial<ReportFilter> {
+  if (choice === NOT_NULL) return { op: 'isNull', value: false };
+  if (choice === 'isNull' || f.op === 'isNull') return { op: choice, value: undefined };
+  return { op: choice };
+}
+
 function FilterZone({
   filters,
   fieldByKey,
@@ -881,8 +900,8 @@ function FilterZone({
                   {fld?.label ?? f.field}
                 </span>
                 <select
-                  value={f.op}
-                  onChange={e => update(i, { op: e.target.value as ReportFilter['op'] })}
+                  value={filterOpChoice(f)}
+                  onChange={e => update(i, filterOpPatch(f, e.target.value as FilterOpChoice))}
                   className="rounded border border-border bg-surface px-1.5 py-1"
                 >
                   {opsForType(fld?.type, f.op).map(op => (
@@ -890,6 +909,7 @@ function FilterZone({
                       {t(FILTER_OP_KEY[op])}
                     </option>
                   ))}
+                  <option value={NOT_NULL}>{t('builder.opNotNull')}</option>
                 </select>
                 {f.op !== 'isNull' &&
                   (f.op === 'in' ? (

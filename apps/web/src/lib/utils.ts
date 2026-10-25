@@ -22,9 +22,13 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 export function escapeCsvCell(value: unknown, delimiter = ';'): string {
   if (value === null || value === undefined) return '';
   let s = String(value);
+  // Число (`number`) — з десятковою комою: Excel з українськими регіональними налаштуваннями читає
+  // «1250,5» як число, а «1250.5» — як текст, «1.05» — як дату. Рядок не чіпаємо: «1.05» у тексті
+  // може бути артикулом; числові колонки з рядків переводить викликач (report-export).
+  if (typeof value === 'number' && Number.isFinite(value)) s = s.replace('.', ',');
   // Formula-injection guard: небезпечні лідери → префікс апострофа (нейтралізує формулу). Чисте
   // число формулою бути не може, а апостроф робив від'ємне сальдо «-500» текстом у Excel.
-  if (/^[=+\-@\t\r]/.test(s) && !/^-\d+(\.\d+)?$/.test(s)) s = `'${s}`;
+  if (/^[=+\-@\t\r]/.test(s) && !/^-\d+([.,]\d+)?$/.test(s)) s = `'${s}`;
   // CSV-квотування, якщо містить роздільник, лапки або перенос.
   if (s.includes(delimiter) || s.includes('"') || s.includes('\n') || s.includes('\r')) {
     s = `"${s.replace(/"/g, '""')}"`;

@@ -208,6 +208,7 @@
     "opLt": "<",
     "opLte": "≤",
     "opIsNull": "empty",
+    "opNotNull": "not empty",
     "valuesPlaceholder": "val1,val2",
     "valuePlaceholder": "value",
     "saveTitle": "Save report",
