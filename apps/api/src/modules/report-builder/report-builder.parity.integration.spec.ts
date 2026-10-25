@@ -267,7 +267,11 @@ describe('report-builder: SQL-агрегати = Prisma where + JS-агрега�
       if (!dbAvailable) return skip();
       for (const f of e.fields.filter(x => x.groupable && x.filterable)) {
         const grouped = await service.run(orgId, { entity: e.key, columns: [], groupBy: [f.key] });
-        for (const node of grouped.result.tree.slice(0, 8)) {
+        // Група «(порожньо)» сортується останньою: без явного додавання полів із >8 групами
+        // (контрагент, номер авто) вибірка «перші 8» її не бачила — саме її правило й міняло.
+        const tree = grouped.result.tree;
+        const empty = tree.slice(8).filter(n => n.key === '∅');
+        for (const node of [...tree.slice(0, 8), ...empty]) {
           const filter: ReportFilterInput =
             node.key === '∅'
               ? { field: f.key, op: 'isNull', value: true }
