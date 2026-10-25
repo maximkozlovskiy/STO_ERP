@@ -114,6 +114,15 @@ function dayBounds(ymd: string, dateOnly: boolean): { start: Date; end: Date } {
 }
 
 /**
+ * «≠ день» — дві умови поля через OR (до початку дня АБО після його кінця). Окремий тип, бо одним
+ * фільтром поля Prisma цього не виражає: `{ not: { gte, lte } }` вона розкладає на
+ * `NOT(≥ a) AND NOT(≤ b)` — порожня множина, і «≠ 22.10» давав 0 рядків (Bug #973).
+ */
+class DateOutsideDay {
+  constructor(readonly conds: [unknown, unknown]) {}
+}
+
+/**
  * Умова по полю дати (BR-RPT-025): значення — день, і оператор порівнює цілими днями. «= 20.10»
  * — увесь день 20.10, «> 20.10» — від 21.10, «≤ 20.10» — до кінця 20.10. Перелік днів (`in`) не
  * підтримується: його не виразити однією умовою поля.
@@ -134,7 +143,7 @@ function buildDateCond(
     case 'eq':
       return { gte: start, lte: end };
     case 'ne':
-      return { not: { gte: start, lte: end } };
+      return new DateOutsideDay([{ lt: start }, { gt: end }]);
     case 'gt':
       return { gt: end };
     case 'gte':
@@ -343,6 +352,16 @@ export function buildQuery(config: ReportConfigInput, orgId: string): BuiltQuery
       fld.type === 'date' && f.op !== 'isNull'
         ? buildDateCond(f.op, value, fld.dateOnly === true, fld)
         : buildCond(f.op, value, fld.type);
+    if (cond instanceof DateOutsideDay) {
+      // «≠ день» — OR двох умов поля; іде в AND, тож разом із періодом і іншими умовами звужує.
+      const branches = cond.conds.map(c => {
+        const branch: Obj = {};
+        setWherePath(branch, entity, fld.prismaPath, c);
+        return branch;
+      });
+      where.AND = [...((where.AND ?? []) as Obj[]), { OR: branches }];
+      continue;
+    }
     // BR-RPT-022: друга умова на те саме поле (або фільтр по полю дати поверх dateRange) не
     // перезаписує першу, а додається в AND. Раніше `node[leaf] = cond` губив попередню умову:
     // «сума від 100 до 500» показувала все до 500, без жодної помилки.

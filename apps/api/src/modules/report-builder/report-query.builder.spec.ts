@@ -532,8 +532,52 @@ describe('report-query.builder', () => {
       expect(gt.gt.getTime()).toBe(eq.lte.getTime());
       const lt = cond('payment', 'createdAt', 'lt', '20.10.2026') as { lt: Date };
       expect(iso(lt.lt)).toBe('2026-10-19T21:00:00.000Z');
-      const ne = cond('payment', 'createdAt', 'ne', '20.10.2026') as { not: { gte: Date } };
-      expect(iso(ne.not.gte)).toBe('2026-10-19T21:00:00.000Z');
+    });
+
+    // Bug #973: `{ not: { gte, lte } }` Prisma розкладає на NOT(≥) AND NOT(≤) — порожня множина,
+    // і «≠ 22.10» давав 0 рядків на живій базі (553 наряди за SQL). Мутація: повернути
+    // `{ not: { gte: start, lte: end } }` у buildDateCond('ne') → кейс червоніє.
+    // guards: BR-RPT-025
+    it('≠ день — OR «до початку дня» / «після кінця дня» в AND, разом із періодом', () => {
+      const where = buildQuery(
+        {
+          entity: 'payment',
+          columns: [],
+          groupBy: [],
+          dateRange: { from: '2026-10-18', to: '2026-10-24' },
+          filters: [{ field: 'createdAt', op: 'ne', value: '20.10.2026' }],
+        },
+        ORG,
+      ).args.where as {
+        createdAt: unknown;
+        AND: Array<{ OR: Array<{ createdAt: Record<string, Date> }> }>;
+      };
+      expect(where.createdAt).toMatchObject({ gte: new Date('2026-10-17T21:00:00.000Z') });
+      expect(where.AND).toHaveLength(1);
+      const [before, after] = where.AND[0].OR;
+      expect(iso(before.createdAt.lt)).toBe('2026-10-19T21:00:00.000Z');
+      expect(after.createdAt.gt.getTime()).toBeGreaterThanOrEqual(
+        Date.parse('2026-10-20T20:59:59.999Z'),
+      );
+      expect(JSON.stringify(where)).not.toContain('"not"');
+      // @db.Date — межі є самою датою
+      const wo = buildQuery(
+        {
+          entity: 'workOrder',
+          columns: [],
+          groupBy: [],
+          filters: [{ field: 'documentDate', op: 'ne', value: '2026-10-22' }],
+        },
+        ORG,
+      ).args.where as Record<string, unknown>;
+      expect(wo.AND).toEqual([
+        {
+          OR: [
+            { documentDate: { lt: new Date('2026-10-22T00:00:00.000Z') } },
+            { documentDate: { gt: new Date('2026-10-22T00:00:00.000Z') } },
+          ],
+        },
+      ]);
     });
 
     // guards: BR-RPT-025
