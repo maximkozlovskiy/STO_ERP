@@ -214,6 +214,8 @@ export const uk: Record<string, string> = {
     'Базову валюту ({{code}}) не налаштовано — створіть її у НДІ → Валюти',
   'err.exchangeRate.noRateForDate':
     'Немає курсу валюти {{code}} на {{date}} — додайте курс у НДІ → Курси валют',
+  'err.exchangeRate.invalidStoredRate':
+    'Збережений курс валюти некоректний (0 або від’ємний) — виправте курс у НДІ → Курси валют',
 
   // ── Exception-повідомлення: good-categories-модуль ──
   'err.goodCategory.notFound': 'Категорію товарів не знайдено',

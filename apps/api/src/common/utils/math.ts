@@ -13,6 +13,19 @@ export function safeCoeff(value: number | null | undefined): number {
 }
 
 /**
+ * Валідація курсу валюти на READ-path (`base = amount × rate`).
+ *
+ * На відміну від `safeCoeff` (0/негатив → 1, бо коефіцієнт — множник одиниць і «1» безпечний),
+ * курс 0/негатив/NaN/Infinity НЕ можна тихо замінювати: `amountBase = amount × 0 = 0` спотворив би
+ * base-облік БЕЗ сигналу. Write-path захищений DTO (`@IsPositive`), але legacy/seed/прямий-SQL
+ * могли покласти 0 чи негатив — тоді `isValidRate` false, і виклик (exchange-rates.service) кидає
+ * доменну 400, а не повертає тихий 0 (MV-L1). Pure-предикат: i18n/HTTP лишаються у сервісі.
+ */
+export function isValidRate(value: number | null | undefined): value is number {
+  return value != null && Number.isFinite(value) && value > 0;
+}
+
+/**
  * Округлення грошей до 2 знаків (копійки), half-away-from-zero (бухгалтерське).
  *
  * Гроші зберігаються у Postgres `Decimal(12,2)`, але обчислення (ПДВ, суми, собівартість)

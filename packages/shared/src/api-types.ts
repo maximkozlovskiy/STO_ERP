@@ -18201,7 +18201,10 @@ export interface operations {
     SupplierPaymentsController_confirm_v1: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400. */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };

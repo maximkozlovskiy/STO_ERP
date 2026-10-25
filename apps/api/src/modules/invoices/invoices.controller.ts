@@ -215,8 +215,11 @@ export class InvoicesController {
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TransitionInvoiceDto,
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.transition(orgId, id, dto.status);
+    // F10: протягуємо userId у проводки ручного переходу (CHARGE / дзеркальний PAYMENT / FX /
+    // CREDIT_NOTE при скасуванні) — без нього createdBy=null. user.id, не user.sub (jwt.strategy).
+    return this.service.transition(orgId, id, dto.status, user?.id);
   }
 
   @Post(':id/clone')

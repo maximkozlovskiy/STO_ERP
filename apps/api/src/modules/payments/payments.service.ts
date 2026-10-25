@@ -42,7 +42,7 @@ import { syncWorkOrderInvoicePaid } from '../invoices/work-order-invoice-mirror'
 import { LoyaltyService, type LoyaltyEarnReversal } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
-import { money, moneyFromDecimal } from '../../common/utils/money';
+import { assertMoneyFits, money, moneyFromDecimal } from '../../common/utils/money';
 import { searchContains } from '../../common/utils/like-pattern';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 import { paymentsInCashDesk } from './payment-cash-desk';
@@ -443,6 +443,12 @@ export class PaymentsService {
           dto.amount,
         )
       : { rateUsed: 1, amountBase: dto.amount };
+
+    // BR-FIN-MONEYCAP: Payment.amount і Payment.amountBase — Decimal(12,2). Іновалютна сума × курс
+    // (conv.amountBase) може перерости колонку, хоч сама сума в межах — тоді 400 з назвою поля,
+    // а не 500 numeric field overflow. Дзеркаль settlements F7.
+    assertMoneyFits(dto.amount, 'сума оплати');
+    assertMoneyFits(conv.amountBase, 'сума оплати');
 
     // Інваріант «фіскальна каса = UAH»: ПРРО (Checkbox/Vchasno) фіскалізує чеки лише у базовій
     // валюті. Оплата у фіскальну касу/метод в іновалюті створила б чек у не-UAH → відхиляємо.

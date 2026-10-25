@@ -388,6 +388,7 @@ export const VALIDATION_KEYS = [
   'err.exchangeRate.dateExists',
   'err.exchangeRate.baseCurrencyNotConfigured',
   'err.exchangeRate.noRateForDate',
+  'err.exchangeRate.invalidStoredRate',
   // Exception-повідомлення: good-categories-модуль
   'err.goodCategory.notFound',
   'err.goodCategory.parentNotFound',

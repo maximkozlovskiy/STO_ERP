@@ -571,6 +571,17 @@ export class InvoicesService {
     const settlesStandaloneOnPaid =
       newStatus === InvoiceStatus.PAID && inv.workOrderId === null && paymentRemaining > 1e-9;
 
+    // MV-H1 (BR-INV-020): скасування ВИСТАВЛЕНОГО standalone-рахунку мусить сторнувати непогашений
+    // борг компенсуючим CREDIT_NOTE, інакше CHARGE висить у леджері вічно. CHARGE нараховується лише
+    // на DRAFT→SENT, тож DRAFT→CANCELLED нічого не сторнує (CHARGE ще не було); SENT/PARTIALLY_PAID/
+    // OVERDUE→CANCELLED сторнують рівно непогашене (amount − paidAmount), не повний amount — часткові
+    // оплати лишаються. WO-рахунок цю гілку НЕ зачіпає (має власний шлях returnPartsAndCredit).
+    const reversesStandaloneOnCancel =
+      newStatus === InvoiceStatus.CANCELLED &&
+      inv.workOrderId === null &&
+      inv.status !== InvoiceStatus.DRAFT &&
+      paymentRemaining > 1e-9;
+
     await this.prisma.$transaction(
       async tx => {
         const moved = await tx.invoice.updateMany({
@@ -696,9 +707,47 @@ export class InvoicesService {
             }
           }
         }
+        if (reversesStandaloneOnCancel) {
+          // Сторно дзеркалить оригінальну CHARGE цього рахунку (курс, валюта), як WO-шлях
+          // returnPartsAndCredit (work-order-stock-effects.service.ts:377-424), але на НЕПОГАШЕНИЙ
+          // залишок (paymentRemaining), не на повний amount — частково оплачене лишається в леджері.
+          const charge = await tx.settlementTransaction.findFirst({
+            where: { orgId, type: 'CHARGE', documentType: 'Invoice', documentId: id },
+            orderBy: { createdAt: 'asc' },
+            select: { amountBase: true, rateUsed: true },
+          });
+          await this.settlements.createTransaction(
+            orgId,
+            {
+              counterpartyId: inv.counterpartyId,
+              type: 'CREDIT_NOTE',
+              amount: paymentRemaining,
+              // amountBase сторна = залишок × курс ОРИГІНАЛУ (не повний amountBase CHARGE — ми
+              // сторнуємо лише непогашене). Legacy без збереженого курсу (amountBase/rateUsed null)
+              // — re-конвертація за курсом на дату документа, як WO-fallback.
+              ...(charge && charge.amountBase != null && charge.rateUsed != null
+                ? {
+                    currencyId: inv.currencyId ?? undefined,
+                    conversion: {
+                      rateUsed: Number(charge.rateUsed),
+                      amountBase: money(paymentRemaining * Number(charge.rateUsed)),
+                    },
+                  }
+                : {
+                    currencyId: inv.currencyId ?? undefined,
+                    date: inv.documentDate ?? undefined,
+                    fallbackToLatest: true,
+                  }),
+              documentType: 'Invoice',
+              documentId: id,
+              createdBy: userId,
+            },
+            tx,
+          );
+        }
       },
       { timeout: 10_000 },
-    ); // updateMany + до 3 settlement-write (CHARGE/PAYMENT/FX) — узгоджено з іншими tx у файлі
+    ); // updateMany + до 3 settlement-write (CHARGE/PAYMENT/FX/CREDIT_NOTE) — узгоджено з іншими tx
     return this.findOne(orgId, id);
   }
 

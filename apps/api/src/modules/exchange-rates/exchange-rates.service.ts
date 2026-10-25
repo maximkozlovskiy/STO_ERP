@@ -13,6 +13,7 @@ type Decimal = Prisma.Decimal;
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { convertToBase } from '../../common/utils/currency';
+import { isValidRate } from '../../common/utils/math';
 import { kyivYmd } from '../../common/utils/kyiv-date';
 import { getLocale } from '../../common/tenant/tenant-context';
 import {
@@ -88,7 +89,18 @@ export class ExchangeRatesService {
       orderBy: { date: 'desc' },
       select: { rate: true, coefficient: true },
     });
-    if (row) return { rate: Number(row.rate), coefficient: Number(row.coefficient) };
+    if (row) {
+      // MV-L1: read-backstop. Write-path захищений DTO, але legacy/seed/прямий-SQL міг покласти
+      // 0/негатив → convertToBase дав би тихий amountBase=0 (спотворений base-облік без сигналу).
+      // Краще доменна 400, ніж мовчазний 0.
+      const rate = Number(row.rate);
+      if (!isValidRate(rate)) {
+        throw new BadRequestException(
+          translateError('err.exchangeRate.invalidStoredRate', getLocale()),
+        );
+      }
+      return { rate, coefficient: Number(row.coefficient) };
+    }
     // Фаза 3 (opt-in): документні потоки допускають fallback на ОСТАННІЙ наявний курс (будь-яка дата),
     // якщо на/до дати події курсу немає. Каса/Payment (strict) НЕ передають fallbackToLatest → 400.
     if (fallbackToLatest) {
@@ -97,7 +109,15 @@ export class ExchangeRatesService {
         orderBy: { date: 'desc' },
         select: { rate: true, coefficient: true },
       });
-      if (latest) return { rate: Number(latest.rate), coefficient: Number(latest.coefficient) };
+      if (latest) {
+        const rate = Number(latest.rate);
+        if (!isValidRate(rate)) {
+          throw new BadRequestException(
+            translateError('err.exchangeRate.invalidStoredRate', getLocale()),
+          );
+        }
+        return { rate, coefficient: Number(latest.coefficient) };
+      }
     }
     return null;
   }

@@ -5,7 +5,7 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
-import { type Money, money, moneyFromDecimal } from '../../common/utils/money';
+import { assertMoneyFits, type Money, money, moneyFromDecimal } from '../../common/utils/money';
 import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { searchContains } from '../../common/utils/like-pattern';
 import { uniqueDefinedIds } from '../../common/utils/linked-counts';
@@ -126,6 +126,12 @@ export class CashService {
         new Date(),
         amount,
       ));
+
+    // BR-FIN-MONEYCAP: CashOperation.amount і .amountBase — Decimal(12,2). Іновалютна сума × курс
+    // (conv.amountBase) може перерости колонку, хоч сама сума в межах — 400 з назвою поля, а не
+    // 500 numeric field overflow. Дзеркаль settlements F7.
+    assertMoneyFits(amount, 'сума касової операції');
+    assertMoneyFits(conv.amountBase, 'сума касової операції');
 
     const expenseCategoryId = input.reversalOfId
       ? (input.expenseCategoryId ?? null)

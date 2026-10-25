@@ -13517,6 +13517,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {

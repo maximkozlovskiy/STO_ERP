@@ -8,7 +8,7 @@ import {
 
 import { kyivToday, dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
-import { money, moneyFromDecimal } from '../../common/utils/money';
+import { assertMoneyFits, money, moneyFromDecimal } from '../../common/utils/money';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -851,6 +851,11 @@ export class SupplierPaymentsService {
           true,
         )
       : { rateUsed: 1, amountBase: Number(pre.amount) };
+
+    // BR-FIN-MONEYCAP: SupplierPayment.totalAmountBase — Decimal(12,2). Іновалютна сума × курс
+    // (conv.amountBase) може перерости колонку на CONFIRM, хоч сама сума в межах — 400 з назвою
+    // поля, а не 500 numeric field overflow. Дзеркаль settlements F7.
+    assertMoneyFits(conv.amountBase, 'сума оплати постачальнику');
 
     const allowed = SP_TRANSITIONS[pre.status];
     if (!allowed.includes(SupplierPaymentStatus.CONFIRMED)) {

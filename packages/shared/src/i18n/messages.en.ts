@@ -211,6 +211,8 @@ export const en: Record<string, string> = {
     'The base currency ({{code}}) is not configured — create it in Reference → Currencies',
   'err.exchangeRate.noRateForDate':
     'No exchange rate for currency {{code}} on {{date}} — add a rate in Reference → Exchange rates',
+  'err.exchangeRate.invalidStoredRate':
+    'The stored exchange rate is invalid (zero or negative) — fix the rate in Reference → Exchange rates',
 
   // ── Exception messages: good-categories module ──
   'err.goodCategory.notFound': 'Product category not found',

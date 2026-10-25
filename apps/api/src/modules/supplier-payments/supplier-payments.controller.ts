@@ -36,6 +36,7 @@ import {
   type SupplierPaymentUpdateValues,
 } from '@sto/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { RequireIdempotencyKey } from '../../common/interceptors/idempotency.interceptor';
 import {
   WithDeletedQueryPipe,
   WITH_DELETED_API_QUERY,
@@ -127,6 +128,10 @@ export class SupplierPaymentsController {
   @Post(':id/confirm')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @HttpCode(HttpStatus.OK)
+  // MV-M2: повтор confirm після обриву відповіді має віддати збережене тіло, а не 400
+  // alreadyConfirmedOrChanged (CAS блокує подвоєння проводки, але контракт має бути ідемпотентним).
+  // Дзеркаль payments.controller.ts create/reverse.
+  @RequireIdempotencyKey()
   @ApiOperation({ summary: 'Провести оплату (settlement PAYMENT)' })
   @ApiOkResponse({ type: SupplierPaymentResponseDto })
   confirm(

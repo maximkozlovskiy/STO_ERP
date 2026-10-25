@@ -1583,10 +1583,21 @@ export class BankReconciliationService {
           const original = row.cashOperationId
             ? await tx.cashOperation.findFirst({
                 where: { id: row.cashOperationId, orgId },
-                select: { cashRegisterId: true },
+                select: { cashRegisterId: true, amountBase: true, rateUsed: true },
               })
             : null;
           if (!original) throw notMatched();
+          // F9: сторно дзеркалить курс і базову суму ОРИГІНАЛУ (як CLIENT_REFUND вище), а не
+          // перераховує за now(). Інакше для валютної каси два amountBase розходяться й base-view
+          // готівки дрейфує. Legacy-операції без збереженого курсу (amountBase/rateUsed null) —
+          // поточний now()-fallback (cash.createOperation конвертує сам).
+          const conversion =
+            original.amountBase != null && original.rateUsed != null
+              ? {
+                  rateUsed: Number(original.rateUsed),
+                  amountBase: Number(original.amountBase),
+                }
+              : undefined;
           await this.cash.createOperation(
             orgId,
             {
@@ -1595,6 +1606,7 @@ export class BankReconciliationService {
               reason: 'MANUAL_OUT',
               withoutCategory: true, // зворотний рух того самого переміщення — теж без статті
               amount,
+              ...(conversion ? { conversion } : {}),
               documentType: 'BankTransaction',
               documentId: txId,
               notes: reason,
