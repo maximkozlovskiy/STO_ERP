@@ -47,6 +47,17 @@ export type FreeSlotInput = Omit<CreateCalendarSlotDto, 'workOrderId'> & { workO
  * бронювання (CAL-C1). Його ім'я шукає `throwIfExclusionConflict` тут і в нарядах (BR-WO-020).
  */
 export const CALENDAR_SLOT_EXCLUSION = 'calendar_slots_no_overlap';
+/** Те саме для механіка: два живі записи одного механіка не перетинаються (BR-CAL-006). */
+export const CALENDAR_SLOT_MECHANIC_EXCLUSION = 'calendar_slots_mechanic_no_overlap';
+
+/**
+ * Текст 409 за назвою порушеного EXCLUDE — тим самим перекладом, що й 400 проби зайнятості.
+ * Підйомник — першим: 23P01 без назви констрейнта звучить, як і до механічного EXCLUDE.
+ */
+export const slotExclusionMessages = (): Record<string, string> => ({
+  [CALENDAR_SLOT_EXCLUSION]: err('err.calendar.liftBusy'),
+  [CALENDAR_SLOT_MECHANIC_EXCLUSION]: err('err.calendar.employeeBusy'),
+});
 
 // sto-optimize (cycle 3/3): shared include shape для create()/update() — попереджає alloc per-request.
 // Дзеркалить SLOT_INCLUDE що раніше жив у тілі create(). Прив'язан до Prisma Client через inference.
@@ -424,7 +435,7 @@ export class CalendarService {
     } catch (e) {
       // CAL-C1 backstop: DB EXCLUDE-constraint зловив пересічний слот, який обійшов app-probe
       // (concurrent booking). Конвертуємо у 409 UA замість generic 500.
-      throwIfExclusionConflict(e, CALENDAR_SLOT_EXCLUSION, err('err.calendar.liftBusy'));
+      throwIfExclusionConflict(e, slotExclusionMessages());
     }
 
     return { slots: slots.map(s => this.toDto(s)) };
@@ -590,7 +601,7 @@ export class CalendarService {
         { timeout: TRANSACTION_TIMEOUT_MS },
       );
     } catch (e) {
-      throwIfExclusionConflict(e, CALENDAR_SLOT_EXCLUSION, err('err.calendar.liftBusy'));
+      throwIfExclusionConflict(e, slotExclusionMessages());
     }
 
     const res = this.toDto(updated);
@@ -852,31 +863,35 @@ export class CalendarService {
     const segments = [...chain].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
     const first = segments[0];
     const { employeeId } = change;
-    await this.prisma.$transaction(
-      async tx => {
-        if (employeeId) {
-          const hit = await tx.calendarSlot.findFirst({
-            where: busyWhere(orgId, { employeeId }, segments, { ids }),
-            select: { startAt: true, endAt: true },
-          });
-          if (hit)
-            throw new BadRequestException(
-              err(
-                hit.startAt < first.endAt && hit.endAt > first.startAt
-                  ? 'err.calendar.employeeBusy'
-                  : 'err.calendar.employeeBusyNextDay',
-              ),
-            );
-        }
-        await opts.inTx?.(tx);
-        if (Object.keys(data).length > 0)
-          await tx.calendarSlot.updateMany({
-            where: { orgId, id: { in: ids }, deletedAt: null },
-            data,
-          });
-      },
-      { timeout: TRANSACTION_TIMEOUT_MS },
-    );
+    // Проба механіка на READ COMMITTED не бачить паралельного запису — його ловить EXCLUDE
+    // `calendar_slots_mechanic_no_overlap`, і гонка дає 409 «механік зайнятий», а не 500.
+    await this.prisma
+      .$transaction(
+        async tx => {
+          if (employeeId) {
+            const hit = await tx.calendarSlot.findFirst({
+              where: busyWhere(orgId, { employeeId }, segments, { ids }),
+              select: { startAt: true, endAt: true },
+            });
+            if (hit)
+              throw new BadRequestException(
+                err(
+                  hit.startAt < first.endAt && hit.endAt > first.startAt
+                    ? 'err.calendar.employeeBusy'
+                    : 'err.calendar.employeeBusyNextDay',
+                ),
+              );
+          }
+          await opts.inTx?.(tx);
+          if (Object.keys(data).length > 0)
+            await tx.calendarSlot.updateMany({
+              where: { orgId, id: { in: ids }, deletedAt: null },
+              data,
+            });
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      )
+      .catch((e: unknown) => throwIfExclusionConflict(e, slotExclusionMessages()));
   }
 
   /** Живий запис календаря за id (відповідь зміни ланцюжка без перебудови, Bug #906). */

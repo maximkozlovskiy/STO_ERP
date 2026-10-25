@@ -211,6 +211,27 @@ describe('Schema integrity — manual-SQL конструкти живі у БД 
     ).toBe(1);
   });
 
+  // guards: BR-CAL-006
+  it('GiST EXCLUDE-констрейнт антидубль механіка живий (calendar_slots_mechanic_no_overlap)', async () => {
+    if (!dbAvailable) return;
+    // Семантика, а не лише ім'я: EXCLUDE (contype 'x') на calendar_slots, частковий — лише живі
+    // записи з механіком. Без предиката deletedAt видалений запис тримав би механіка назавжди.
+    const rows = await raw.$queryRawUnsafe<{ def: string }[]>(
+      `SELECT pg_get_constraintdef(c.oid) AS "def"
+         FROM pg_constraint c
+        WHERE c.conname = 'calendar_slots_mechanic_no_overlap'
+          AND c.contype = 'x'
+          AND c.conrelid = '"calendar_slots"'::regclass`,
+    );
+    expect(
+      rows.length,
+      'Втрачено EXCLUDE-констрейнт механіка — можливе подвійне бронювання механіка',
+    ).toBe(1);
+    expect(rows[0]?.def).toMatch(/"employeeId" WITH =/);
+    expect(rows[0]?.def).toMatch(/"deletedAt" IS NULL/);
+    expect(rows[0]?.def).toMatch(/"employeeId" IS NOT NULL/);
+  });
+
   it('CHECK-констрейнти незмінного stock non-negative живі', async () => {
     if (!dbAvailable) return;
     const rows = await raw.$queryRawUnsafe<{ conname: string }[]>(

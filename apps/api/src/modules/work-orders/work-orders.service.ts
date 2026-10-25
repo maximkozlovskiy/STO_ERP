@@ -39,7 +39,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
-import { CalendarService, CALENDAR_SLOT_EXCLUSION } from '../calendar/calendar.service';
+import { CalendarService, slotExclusionMessages } from '../calendar/calendar.service';
 import { assertServiceSlotUnlinked } from '../calendar/calendar-slot-type';
 import {
   changedPlannedDates,
@@ -222,9 +222,6 @@ const SLOT_EDIT_SELECT = {
 type SlotEditRow = Prisma.CalendarSlotGetPayload<{ select: typeof SLOT_EDIT_SELECT }>;
 /** Запис наряду (`workOrderId` є). */
 type WorkOrderSlotRow = SlotEditRow & { workOrderId: string };
-
-/** 409 гонки за підйомник — тим самим перекладеним текстом, що й 400 перевірки зайнятості. */
-const slotRaceMessage = (): string => err('err.calendar.liftBusy');
 
 /** Значення дати після PATCH: `undefined` — без змін, `null` — стерто. */
 function nextDate(value: string | null | undefined, stored: Date | null): Date | null {
@@ -604,9 +601,7 @@ export class WorkOrdersService {
               },
               { timeout: TRANSACTION_TIMEOUT_MS },
             )
-            .catch((e: unknown) =>
-              throwIfExclusionConflict(e, CALENDAR_SLOT_EXCLUSION, slotRaceMessage()),
-            )
+            .catch((e: unknown) => throwIfExclusionConflict(e, slotExclusionMessages()))
         : await createWo(this.prisma);
 
     if (userId) {
@@ -1499,8 +1494,7 @@ export class WorkOrdersService {
         if (currencyChanging)
           throw new BadRequestException(err('err.workOrder.paidCurrencyLocked'));
       }
-      if (slotAction !== null || inTx)
-        throwIfExclusionConflict(e, CALENDAR_SLOT_EXCLUSION, slotRaceMessage());
+      if (slotAction !== null || inTx) throwIfExclusionConflict(e, slotExclusionMessages());
       throw e;
     });
 

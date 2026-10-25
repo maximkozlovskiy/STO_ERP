@@ -483,4 +483,102 @@ describe('CalendarService — конфлікти слотів (BR-CAL-006)', () 
       });
     });
   });
+  // Гонка, яку проба не бачить (READ COMMITTED): два EXCLUDE на одній таблиці — підйомник
+  // (`calendar_slots_no_overlap`) і механік (`calendar_slots_mechanic_no_overlap`). Текст 409 мусить
+  // назвати саме той ресурс, чий констрейнт спрацював. Помилку подано у формі драйвер-адаптера
+  // (`DriverAdapterError`: текст Postgres у message, код 23P01 у cause) — так її віддає `adapter-pg`.
+  // Мутація: у `slotExclusionMessages` мапити механічний констрейнт на liftBusy → кейси механіка
+  // червоніють; прибрати `.catch` у updateSlotChainDetails → кейс ланцюжка дає не 409.
+  describe('EXCLUDE-гонка → 409 з назвою зайнятого ресурсу', () => {
+    function exclusion(constraint: string | null): Error {
+      const message = constraint
+        ? `conflicting key value violates exclusion constraint "${constraint}"`
+        : 'conflicting key value violates exclusion constraint';
+      const e = new Error(message);
+      e.name = 'DriverAdapterError';
+      Object.assign(e, { cause: { kind: 'postgres', code: '23P01', message } });
+      return e;
+    }
+
+    async function rejection(promise: Promise<unknown>): Promise<unknown> {
+      return promise.then(
+        () => null,
+        (e: unknown) => e,
+      );
+    }
+
+    const MECHANIC_SLOT = { liftId: LIFT_1, employeeId: MECHANIC };
+
+    // guards: BR-CAL-006
+    it.each([
+      ['calendar_slots_mechanic_no_overlap', 'err.calendar.employeeBusy'],
+      ['calendar_slots_no_overlap', 'err.calendar.liftBusy'],
+    ] as const)('createSlot: порушено %s → 409 «%s»', async (constraint, key) => {
+      const { prisma, service } = serviceOver([]);
+      prisma.$transaction = vi.fn().mockRejectedValue(exclusion(constraint));
+
+      const e = await rejection(
+        service.createSlot(FAKE_ORG_ID, {
+          ...MECHANIC_SLOT,
+          startAt: iso('10:00'),
+          endAt: iso('11:00'),
+        }),
+      );
+
+      expect(e).toBeInstanceOf(ConflictException);
+      expect((e as ConflictException).message).toBe(msg(key));
+    });
+
+    // guards: BR-CAL-006
+    it.each([
+      ['calendar_slots_mechanic_no_overlap', 'err.calendar.employeeBusy'],
+      ['calendar_slots_no_overlap', 'err.calendar.liftBusy'],
+    ] as const)('updateSlot: порушено %s → 409 «%s»', async (constraint, key) => {
+      const moved = fakeSlot({ ...MECHANIC_SLOT, startAt: at('09:00'), endAt: at('10:00') });
+      const { prisma, service } = serviceOver([moved]);
+      prisma.$transaction = vi.fn().mockRejectedValue(exclusion(constraint));
+
+      const e = await rejection(
+        service.updateSlot(FAKE_ORG_ID, moved.id, { startAt: iso('08:00'), endAt: iso('09:00') }),
+      );
+
+      expect(e).toBeInstanceOf(ConflictException);
+      expect((e as ConflictException).message).toBe(msg(key));
+    });
+
+    // Механік ланцюжка запису наряду міняється без перебудови (BR-WO-027) — та сама гонка.
+    // guards: BR-CAL-006
+    it('updateSlotChainDetails: механічний EXCLUDE → 409 «механік зайнятий», а не 500', async () => {
+      const { prisma, service } = serviceOver([]);
+      prisma.$transaction = vi
+        .fn()
+        .mockRejectedValue(exclusion('calendar_slots_mechanic_no_overlap'));
+
+      const e = await rejection(
+        service.updateSlotChainDetails(
+          FAKE_ORG_ID,
+          [{ id: 'slot-1', startAt: at('10:00'), endAt: at('11:00') }],
+          { employeeId: MECHANIC },
+        ),
+      );
+
+      expect(e).toBeInstanceOf(ConflictException);
+      expect((e as ConflictException).message).toBe(msg('err.calendar.employeeBusy'));
+    });
+
+    // guards: BR-CAL-006
+    it('23P01 без назви констрейнта → 409 «підйомник зайнятий»; інша помилка БД іде як є', async () => {
+      const { prisma, service } = serviceOver([]);
+      const input = { ...MECHANIC_SLOT, startAt: iso('10:00'), endAt: iso('11:00') };
+
+      prisma.$transaction = vi.fn().mockRejectedValue(exclusion(null));
+      const unnamed = await rejection(service.createSlot(FAKE_ORG_ID, input));
+      expect(unnamed).toBeInstanceOf(ConflictException);
+      expect((unnamed as ConflictException).message).toBe(msg('err.calendar.liftBusy'));
+
+      const other = new Error('connection terminated unexpectedly');
+      prisma.$transaction = vi.fn().mockRejectedValue(other);
+      expect(await rejection(service.createSlot(FAKE_ORG_ID, input))).toBe(other);
+    });
+  });
 });
