@@ -8,6 +8,7 @@ import { parse as parseCSV } from 'csv-parse/sync';
 import { DBFFile } from 'dbffile';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { assertImportRowCount } from '../../common/utils/import-file-guard';
 import { roundMoney } from '../../common/utils/math';
 import type { RawTx } from './bank-reconciliation.service';
 import { BANK_IMPORT_DIRECTION_MODES, type BankImportDirectionMode } from './bank-statement.dto';
@@ -82,6 +83,7 @@ export class BankStatementParserService {
 
     if (this.isCsv(filename)) {
       const grid = this.parseCsvGrid(buffer);
+      assertImportRowCount(grid.length); // BR-SEC-UPLOAD
       const rows = grid.slice(0, cap);
       const columnCount = rows.reduce((m, r) => Math.max(m, r.length), 0);
       return { totalRows: grid.length, columnCount, rows };
@@ -89,6 +91,7 @@ export class BankStatementParserService {
 
     if (this.isDbf(filename)) {
       const grid = await this.parseDbfGrid(buffer);
+      assertImportRowCount(grid.length); // BR-SEC-UPLOAD
       const rows = grid.slice(0, cap);
       const columnCount = rows.reduce((m, r) => Math.max(m, r.length), 0);
       return { totalRows: grid.length, columnCount, rows };
@@ -108,6 +111,7 @@ export class BankStatementParserService {
         translateError('err.bankStatement.fileReadFailed', getLocale()),
       );
     }
+    assertImportRowCount(sheet.actualRowCount); // BR-SEC-UPLOAD
     const rows: string[][] = [];
     let columnCount = 0;
     sheet.eachRow(row => {
@@ -137,6 +141,8 @@ export class BankStatementParserService {
       : this.isDbf(filename)
         ? await this.parseDbfGrid(buffer)
         : await this.parseXlsxGrid(buffer);
+    // BR-SEC-UPLOAD: кап рядків на парсі — роздутий файл не йде далі в резолв/запис.
+    assertImportRowCount(grid.length);
 
     const startRow = mapping.startRow && mapping.startRow >= 1 ? mapping.startRow : 1;
     const mode = mapping.directionMode ?? 'SIGN';

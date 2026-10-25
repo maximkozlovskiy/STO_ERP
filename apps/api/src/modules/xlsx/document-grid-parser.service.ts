@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { parse as parseCSV } from 'csv-parse/sync';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { assertImportRowCount } from '../../common/utils/import-file-guard';
 import {
   PdfNoTableError,
   PdfScannedError,
@@ -82,6 +83,10 @@ export class DocumentGridParserService {
         rows = await this.parseXlsxGrid(buffer);
         break;
     }
+
+    // BR-SEC-UPLOAD: кап рядків на парсі для табличних форматів. OCR-канал (pdf/скан) свідомо
+    // не чіпаємо (рішення власника) — там рядків одиниці й розбір власний.
+    if (kind === 'xlsx' || kind === 'csv') assertImportRowCount(rows.length);
 
     const columnCount = rows.reduce((max, r) => Math.max(max, r.length), 0);
     return { rows, totalRows: rows.length, columnCount, kind, ocr };

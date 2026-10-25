@@ -5,6 +5,7 @@ import { FastifyRequest } from 'fastify';
 import { translateError } from '@sto/shared';
 import * as path from 'path';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { detectMimeFromBuffer, isDetectedImage } from '../../common/utils/file-signature';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -43,7 +44,6 @@ export class FilesController {
     const parts = req.parts();
     let fileBuffer: Buffer | null = null;
     let filename = 'photo.jpg';
-    let mimetype = 'image/jpeg';
     let workOrderId: string | undefined;
 
     for await (const part of parts) {
@@ -54,7 +54,6 @@ export class FilesController {
         }
         fileBuffer = Buffer.concat(chunks);
         filename = part.filename;
-        mimetype = part.mimetype;
       } else if (part.fieldname === 'workOrderId' && typeof part.value === 'string') {
         workOrderId = part.value;
       }
@@ -62,10 +61,18 @@ export class FilesController {
 
     if (!fileBuffer)
       throw new BadRequestException(translateError('err.file.notReceived', getLocale()));
-    if (!mimetype.startsWith('image/'))
-      throw new BadRequestException(translateError('err.file.onlyImages', getLocale()));
     if (fileBuffer.length > 10 * 1024 * 1024)
       throw new BadRequestException(translateError('err.file.tooLarge', getLocale()));
+
+    // BR-SEC-UPLOAD: тип визначаємо за МАГІЧНИМИ БАЙТАМИ вмісту, а не за заявленим клієнтом
+    // `part.mimetype` (його тривіально підробити перейменуванням). Ендпоінт приймає зображення й
+    // PDF (фото авто, логотип org, медіа наряду — web шле `image/*,application/pdf`); будь-що інше
+    // (перейменований .exe/.zip/.txt під .png) → 400 typeMismatch. Content-Type у сховищі —
+    // канонічний із сигнатури, а не з клієнта.
+    const detected = detectMimeFromBuffer(fileBuffer);
+    if (!isDetectedImage(detected) && detected !== 'application/pdf')
+      throw new BadRequestException(translateError('err.file.typeMismatch', getLocale()));
+    const mimetype = detected as string;
 
     // Захист від path traversal у назві файлу + DB overflow guard (узгоджено
     // з work-order-media.service.ts sanitizeFilename).

@@ -29,6 +29,7 @@ import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { normalizeArticle } from '../../common/utils/normalize-article';
 import { err } from '../../common/utils/err';
+import { assertImportFile, type ImportFileKind } from '../../common/utils/import-file-guard';
 import { XlsxService, ImportResult, type ImportMapping } from './xlsx.service';
 import type { ImportDocType } from './document-line-import.adapter';
 import { ApplyImportDto, ResolveGoodsFileResponseDto } from './import.dto';
@@ -124,8 +125,7 @@ export class XlsxController {
     @OrgContext() orgId: string,
     @Request() req: FastifyRequest,
   ): Promise<ImportResult> {
-    const file = await this.getUploadedFile(req);
-    const buffer = await file.toBuffer();
+    const { buffer } = await this.readImportFile(req, 'xlsx');
     const rows = await this.xlsxService.parseGoods(buffer);
 
     const result: ImportResult = { created: 0, updated: 0, skipped: 0, errors: [] };
@@ -173,8 +173,7 @@ export class XlsxController {
     @OrgContext() orgId: string,
     @Request() req: FastifyRequest,
   ): Promise<ImportResult> {
-    const file = await this.getUploadedFile(req);
-    const buffer = await file.toBuffer();
+    const { buffer } = await this.readImportFile(req, 'xlsx');
     const rows = await this.xlsxService.parseBrands(buffer);
 
     const result: ImportResult = { created: 0, updated: 0, skipped: 0, errors: [] };
@@ -206,8 +205,7 @@ export class XlsxController {
     @OrgContext() orgId: string,
     @Request() req: FastifyRequest,
   ): Promise<ImportResult> {
-    const file = await this.getUploadedFile(req);
-    const buffer = await file.toBuffer();
+    const { buffer } = await this.readImportFile(req, 'xlsx');
     const rows = await this.xlsxService.parseUnits(buffer);
 
     const result: ImportResult = { created: 0, updated: 0, skipped: 0, errors: [] };
@@ -243,8 +241,7 @@ export class XlsxController {
     @OrgContext() orgId: string,
     @Request() req: FastifyRequest,
   ): Promise<ImportResult> {
-    const file = await this.getUploadedFile(req);
-    const buffer = await file.toBuffer();
+    const { buffer } = await this.readImportFile(req, 'xlsx');
     const rows = await this.xlsxService.parseWorks(buffer);
 
     const result: ImportResult = { created: 0, updated: 0, errors: [] };
@@ -283,8 +280,7 @@ export class XlsxController {
     @Param('poId', ParseUUIDPipe) poId: string,
     @Request() req: FastifyRequest,
   ): Promise<ImportResult> {
-    const file = await this.getUploadedFile(req);
-    const buffer = await file.toBuffer();
+    const { buffer } = await this.readImportFile(req, 'xlsx');
     return this.xlsxService.importPOLines(orgId, poId, buffer);
   }
 
@@ -297,8 +293,7 @@ export class XlsxController {
     @Param('docId', ParseUUIDPipe) docId: string,
     @Request() req: FastifyRequest,
   ): Promise<ImportResult> {
-    const file = await this.getUploadedFile(req);
-    const buffer = await file.toBuffer();
+    const { buffer } = await this.readImportFile(req, 'xlsx');
     return this.xlsxService.importSDLines(orgId, docId, buffer);
   }
 
@@ -311,8 +306,7 @@ export class XlsxController {
     @Param('woId', ParseUUIDPipe) woId: string,
     @Request() req: FastifyRequest,
   ): Promise<ImportResult> {
-    const file = await this.getUploadedFile(req);
-    const buffer = await file.toBuffer();
+    const { buffer } = await this.readImportFile(req, 'xlsx');
     return this.xlsxService.importWOParts(orgId, woId, buffer);
   }
 
@@ -323,11 +317,8 @@ export class XlsxController {
   @ApiOperation({ summary: 'Розцінити товари за списком XLSX/CSV' })
   @ApiConsumes('multipart/form-data')
   async applyPricingFromList(@OrgContext() orgId: string, @Request() req: FastifyRequest) {
-    const file = await this.getUploadedFile(req);
-    const buffer = await file.toBuffer();
-    const fileType: 'xlsx' | 'csv' = (file.filename ?? '').toLowerCase().endsWith('.csv')
-      ? 'csv'
-      : 'xlsx';
+    const { buffer, filename } = await this.readImportFile(req, 'sheet');
+    const fileType: 'xlsx' | 'csv' = filename.toLowerCase().endsWith('.csv') ? 'csv' : 'xlsx';
     return this.xlsxService.applyPricingFromList(orgId, buffer, fileType);
   }
 
@@ -342,11 +333,8 @@ export class XlsxController {
     @OrgContext() orgId: string,
     @Request() req: FastifyRequest,
   ): Promise<ResolveGoodsFileResponseDto> {
-    const file = await this.getUploadedFile(req);
-    const buffer = await file.toBuffer();
-    const fileType: 'xlsx' | 'csv' = (file.filename ?? '').toLowerCase().endsWith('.csv')
-      ? 'csv'
-      : 'xlsx';
+    const { buffer, filename } = await this.readImportFile(req, 'sheet');
+    const fileType: 'xlsx' | 'csv' = filename.toLowerCase().endsWith('.csv') ? 'csv' : 'xlsx';
     return this.xlsxService.resolvePricingRuleGoods(orgId, buffer, fileType);
   }
 
@@ -357,8 +345,7 @@ export class XlsxController {
   @ApiOperation({ summary: 'Прев’ю generic-імпорту товарів у документ (PO/склад)' })
   @ApiConsumes('multipart/form-data')
   async previewImport(@OrgContext() orgId: string, @Request() req: FastifyRequest) {
-    const file = await this.getUploadedFile(req);
-    const buffer = await file.toBuffer();
+    const { buffer, filename, file } = await this.readImportFile(req, 'document');
     // Multipart form-fields доступні на file.fields як { fieldname: { value } }.
     const fields =
       (file as unknown as { fields?: Record<string, { value?: unknown }> }).fields ?? {};
@@ -394,7 +381,7 @@ export class XlsxController {
       docType,
       docId,
       buffer,
-      file.filename ?? '',
+      filename,
       mapping,
     );
     return { rows };
@@ -405,9 +392,8 @@ export class XlsxController {
   @ApiOperation({ summary: 'Сирий передперегляд Excel (перші рядки як текстова сітка)' })
   @ApiConsumes('multipart/form-data')
   async rawPreviewImport(@Request() req: FastifyRequest) {
-    const file = await this.getUploadedFile(req);
-    const buffer = await file.toBuffer();
-    return this.xlsxService.rawPreview(buffer, file.filename ?? '', 20);
+    const { buffer, filename } = await this.readImportFile(req, 'document');
+    return this.xlsxService.rawPreview(buffer, filename, 20);
   }
 
   @Post('import/apply')
@@ -423,6 +409,20 @@ export class XlsxController {
   }
 
   // ─── Helper ───────────────────────────────────────────────────────────────────
+
+  /**
+   * BR-SEC-UPLOAD: дістати й ПЕРЕВІРИТИ файл імпорту одним кроком — розмір, розширення й (для
+   * .xlsx) магічні байти до будь-якого розбору. `kind` задає допустимі розширення ендпоінта.
+   */
+  private async readImportFile(
+    req: FastifyRequest,
+    kind: ImportFileKind,
+  ): Promise<{ buffer: Buffer; filename: string; file: MultipartFile }> {
+    const file = await this.getUploadedFile(req);
+    const filename = file.filename ?? '';
+    const buffer = assertImportFile(await file.toBuffer(), filename, kind);
+    return { buffer, filename, file };
+  }
 
   private async getUploadedFile(req: FastifyRequest): Promise<MultipartFile> {
     // fastify-multipart throws FastifyError "the request is not multipart" with 406

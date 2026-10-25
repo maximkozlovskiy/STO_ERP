@@ -23,6 +23,7 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { assertImportFile } from '../../common/utils/import-file-guard';
 import { RequireIdempotencyKey } from '../../common/interceptors/idempotency.interceptor';
 import { BankReconciliationService } from './bank-reconciliation.service';
 import {
@@ -67,8 +68,10 @@ export class BankStatementsController {
   @ApiConsumes('multipart/form-data')
   async rawPreview(@Request() req: FastifyRequest) {
     const file = await this.getUploadedFile(req);
-    const buffer = await file.toBuffer();
-    return this.parser.rawPreview(buffer, file.filename ?? '', 50);
+    const filename = file.filename ?? '';
+    // BR-SEC-UPLOAD: розмір / розширення (.xlsx/.csv/.dbf) / магічні байти .xlsx до розбору.
+    const buffer = assertImportFile(await file.toBuffer(), filename, 'bank');
+    return this.parser.rawPreview(buffer, filename, 50);
   }
 
   // ─── Import: preview (авто-матч) ────────────────────────────────────────────────
@@ -80,7 +83,9 @@ export class BankStatementsController {
   @ApiConsumes('multipart/form-data')
   async preview(@OrgContext() orgId: string, @Request() req: FastifyRequest) {
     const file = await this.getUploadedFile(req);
-    const buffer = await file.toBuffer();
+    const filename = file.filename ?? '';
+    // BR-SEC-UPLOAD: розмір / розширення (.xlsx/.csv/.dbf) / магічні байти .xlsx до розбору.
+    const buffer = assertImportFile(await file.toBuffer(), filename, 'bank');
     const fields =
       (file as unknown as { fields?: Record<string, { value?: unknown }> }).fields ?? {};
     const num = (k: string): number | undefined => {
@@ -98,7 +103,7 @@ export class BankStatementsController {
       );
     }
     const mapping = this.buildMapping(num, str);
-    const rows = await this.parser.parseRows(buffer, file.filename ?? '', mapping);
+    const rows = await this.parser.parseRows(buffer, filename, mapping);
     const previewRows = await this.reconciliation.previewImport(orgId, bankAccountId, rows);
     return { rows: previewRows };
   }
