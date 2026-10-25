@@ -33,6 +33,7 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
       findMany: ReturnType<typeof vi.fn>;
     };
     unitOfMeasure: { findMany: ReturnType<typeof vi.fn> };
+    goodUoM: { findMany: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
   let inventory: { createMovement: ReturnType<typeof vi.fn> };
@@ -61,6 +62,9 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
         findMany: vi.fn(),
       },
       unitOfMeasure: { findMany: vi.fn() },
+      // F4 (BR-INVT-UOMBASE): receive тепер читає GoodUoM-коефіцієнти. [] → coeff=1 (товари цих
+      // кейсів без альт-одиниць), тож оприбуткування raw receivedQty незмінне.
+      goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return Promise.resolve(arg);
@@ -190,6 +194,103 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
         documentType: 'PurchaseOrder',
       }),
       expect.anything(),
+    );
+  });
+
+  // guards: BR-INVT-UOMBASE
+  // F4 (аудит 2026-10-24): прийом в альт-одиниці («1 Пак» = 10 шт) мусить оприбуткувати БАЗОВІ
+  // (receivedQty × coeff), інакше StockItem.quantity дрейфує в разів. Борг постачальнику
+  // (SUPPLIER_CHARGE) лишається в ЗАМОВЛЕНИХ одиницях (receivedQty × price) — множити = подвійне
+  // застосування. Мутація: прибрати `× coeff` у baseQty → RECEIPT quantity впаде до raw.
+  it('F4: прийом «1 Пак» (coeff=10) → RECEIPT 10 базових, SUPPLIER_CHARGE у замовлених (receivedQty×price)', async () => {
+    prisma.unitOfMeasure.findMany.mockResolvedValueOnce([{ id: OWN_UOM_ID }]);
+    // GoodUoM: 1 Пак = 10 базових для цього товару.
+    prisma.goodUoM.findMany.mockResolvedValueOnce([
+      { goodId: GOOD_ID, unitOfMeasureId: OWN_UOM_ID, coefficient: 10 },
+    ]);
+    // In-tx guard re-read (Bug #616): статус має збігатися з pre-tx (ORDERED) → не throw.
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.ORDERED });
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-RX',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: SUPPLIER_ID,
+      warehouseId: WAREHOUSE_ID,
+      totalAmount: 1000,
+      lines: [],
+      supplier: { firstName: 'S', lastName: '', companyName: null },
+      warehouse: { name: 'W' },
+    });
+
+    // Фікстура: line quantity=10, price=100, receivedQty=0. Приймаємо 2 Пак.
+    prisma.purchaseOrder.findFirst.mockReset();
+    prisma.purchaseOrder.findFirst
+      .mockResolvedValueOnce({
+        id: PO_ID,
+        orgId: ORG,
+        number: 'PO-RX',
+        status: PurchaseOrderStatus.ORDERED,
+        supplierId: SUPPLIER_ID,
+        warehouseId: WAREHOUSE_ID,
+        lines: [
+          {
+            id: LINE_ID,
+            goodId: GOOD_ID,
+            quantity: 10,
+            price: 100,
+            receivedQty: 0,
+            good: { unitId: GOOD_UNIT_ID },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ status: PurchaseOrderStatus.ORDERED })
+      .mockResolvedValue({
+        id: PO_ID,
+        orgId: ORG,
+        number: 'PO-RX',
+        status: PurchaseOrderStatus.PARTIAL,
+        supplierId: SUPPLIER_ID,
+        warehouseId: WAREHOUSE_ID,
+        totalAmount: 1000,
+        lines: [],
+        supplier: { firstName: 'S', lastName: '', companyName: null },
+        warehouse: { name: 'W' },
+      });
+    prisma.purchaseOrderLine.findMany.mockResolvedValue([
+      { id: LINE_ID, quantity: 10, receivedQty: 2 },
+    ]);
+
+    await service.receive(
+      ORG,
+      PO_ID,
+      { lines: [{ lineId: LINE_ID, receivedQty: 2, unitOfMeasureId: OWN_UOM_ID }] },
+      USER_ID,
+    );
+
+    // RECEIPT оприбутковує БАЗОВІ: 2 Пак × 10 = 20.
+    expect(inventory.createMovement).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({
+        type: 'RECEIPT',
+        goodId: GOOD_ID,
+        quantity: 20,
+        unitOfMeasureId: OWN_UOM_ID,
+      }),
+      expect.anything(),
+    );
+    // Борг постачальнику — у ЗАМОВЛЕНИХ: 2 × 100 = 200 (НЕ 2000). Подвійне застосування відсутнє.
+    expect(settlements.createTransaction).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ type: 'SUPPLIER_CHARGE', amount: 200 }),
+      expect.anything(),
+    );
+    // CAS рядка — у ЗАМОВЛЕНИХ (receivedQty increment 2, не 20): BR-PO-003 незмінний.
+    expect(prisma.purchaseOrderLine.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: LINE_ID, orgId: ORG, receivedQty: 0 },
+        data: expect.objectContaining({ receivedQty: { increment: 2 } }),
+      }),
     );
   });
 

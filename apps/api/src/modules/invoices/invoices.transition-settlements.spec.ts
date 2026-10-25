@@ -234,6 +234,35 @@ describe('InvoicesService — transition-settlements', () => {
       );
     });
 
+    // guards: BR-INV-012
+    // F6 (аудит 2026-10-24): CAS має ловити й паралельну ОПЛАТУ, не лише зміну статусу. Якщо
+    // payments-модуль збільшив paidAmount між findFirst і updateMany, where містить paidAmount
+    // (=стальне значення) → count=0 → statusChanged, а дзеркальний PAYMENT на застарілий залишок
+    // НЕ створюється (інакше фантомний кредит клієнта в ledger).
+    it('OVERDUE→PAID: паралельна оплата (updateMany count=0) → statusChanged, PAYMENT не створюється', async () => {
+      prisma.invoice.findFirst.mockResolvedValueOnce({
+        status: 'OVERDUE',
+        workOrderId: null,
+        counterpartyId: CP_ID,
+        amount: 500,
+        paidAmount: 200, // стальне значення на момент читання
+      });
+      // Паралельна оплата зсунула paidAmount → where {paidAmount:200} не збігся.
+      prisma.invoice.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.transition(ORG, INV_ID, 'PAID' as never, 'user-1')).rejects.toThrow(
+        /змінився/,
+      );
+      // where CAS мусить містити paidAmount — інакше паралельна оплата не детектиться (F6).
+      expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: 'OVERDUE', paidAmount: 200 }),
+        }),
+      );
+      // Фантомного кредиту нема: дзеркальний PAYMENT не створено.
+      expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
+    });
+
     // Bug #745: іновалютний standalone-рахунок з ЧАСТКОВИМИ реальними оплатами (різні курси),
     // вручну переведений PARTIALLY_PAID→PAID, мусить визнати курсову різницю (FX_GAIN/FX_LOSS),
     // інакше base-залишок ≠ 0 (Σчасткові×(r_doc−r_pay) висить). До фіксу цей шлях FX не бронював.

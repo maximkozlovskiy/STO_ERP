@@ -182,6 +182,11 @@ receivedQty:<очікуване>}, data:{increment}})` ПОСЛІДОВНО; `co
      receive() уже змінив receivedQty → CAS не матчить → rollback ДО руху/боргу (без подвоєння).
    - **КРОК 2** (після CAS усіх рядків): `InventoryService.createMovement(RECEIPT)` (Promise.all) +
      один `SettlementsService.createTransaction(SUPPLIER_CHARGE)` — борг перед постачальником.
+   - **Одиниця виміру (BR-INVT-UOMBASE, визначене в [inventory.md](inventory.md)):** RECEIPT
+     оприбутковує в БАЗОВИХ одиницях (`receivedQty × GoodUoM.coefficient` за `(goodId, resolvedUomId)`;
+     немає рядка → coeff 1), і базова кількість іде також в алокацію списків купівлі та RESERVATION
+     (BR-PL-002/011). CAS-інкремент `receivedQty`, гард над-прийому (BR-PO-003) і `SUPPLIER_CHARGE`
+     лишаються в ЗАМОВЛЕНИХ одиницях — множити борг = подвійне застосування (аудит 2026-10-24, F4).
 
 6. **BR-PO-006**: **«Розцінити правилом» (`applyPricing` з `ruleId`) змінює лише рядки, які обране
    правило покриває.** Рядок поза областю правила (товар не у списку правила, інший бренд чи
@@ -236,7 +241,7 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 | Аспект                                                            | Тест                                                             | Кейсів |
 | ----------------------------------------------------------------- | ---------------------------------------------------------------- | ------ |
 | `applyPricing` — правила ціноутворення                            | `purchase-orders.pricing.spec.ts`                                | 13     |
-| `receive()` — UoM-override + tenant-валідація                     | `purchase-orders.receive-uom.spec.ts`                            | 13     |
+| `receive()` — UoM-override + tenant-валідація                     | `purchase-orders.receive-uom.spec.ts`                            | 14     |
 | `receive()` — activeLines, CAS → RECEIPT, борг                    | `purchase-orders.receive-ledger.spec.ts`                         | 6      |
 | `create`/`update` — tenant-guard goodId рядків                    | `purchase-orders.line-goods.spec.ts`                             | 3      |
 | `update()` — резолв контракту контрагента                         | `purchase-orders.contract-resolution.spec.ts`                    | 9      |

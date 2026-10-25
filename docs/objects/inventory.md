@@ -92,6 +92,27 @@
 - **BR-INVT-017**: Одиниця виміру, передана в рух, мусить належати організації; чужа або видалена → 400 до будь-якого запису.
 - **BR-INVT-018**: Резерв, який тримає наряд, — завжди рухи `RESERVATION`/`RESERVATION_RELEASE` з `documentType 'WorkOrder'` і `documentId` наряду, хоч би хто його створив (перехід наряду, приймання замовлення постачальнику за позицією списку купівлі — BR-PL-011, «Зняти резерв» — BR-PL-016). Net-резерв наряду за товаром і складом = сума цих рухів; на ньому стоять дорезервування, зняття й списання наряду (BR-WO-021). Наряд може тримати резерв і до статусу «В роботі».
 - **BR-INVT-019**: **Знак кількості відповідає типу руху** (техборг 2026-10-22). `RECEIPT`, `OPENING_BALANCE`, `RESERVATION` і `RETURN` — лише додатна кількість; `WRITEOFF`, `RESERVATION_RELEASE` і `TRANSFER` — лише від'ємна. Хибний знак → 400 до будь-якого запису. `TRANSFER` — тільки вибуття: надходження на склад-ціль іде як `RECEIPT`, щоб завести партію (BR-INVT-008); `TRANSFER` чи `WRITEOFF` з плюсом інакше збільшували б залишок без партії. Модуль `inventory` (`InventoryService.createMovement`)
+- **BR-INVT-UOMBASE** (крос-агрегатне, аудит логіки 2026-10-24, F4): **`StockItem.quantity` /
+  `StockMovement.quantity` зберігаються в БАЗОВИХ одиницях товару.** `createMovement` — base-only:
+  він НЕ множить на коефіцієнт (лише штампує `unitOfMeasureId` на рух/батч як tenant-guard). Тому
+  кожен call-site, що приймає кількість в одиниці документа (альтернативній, напр. «1 Пак = 10 шт»),
+  множить її на коефіцієнт `GoodUoM.coefficient` за парою (`goodId`, обрана одиниця) **перед**
+  викликом `createMovement`. Рядка `GoodUoM` немає (товар у базовій одиниці) → `safeCoeff = 1`
+  (поведінка товарів без альтернативних одиниць незмінна). Застосовують це:
+  - **Списання наряду** (еталон, `work-order-stock-requirements.ts` `fetchPartCoefficients` /
+    `partBaseQty`) — було завжди коректним.
+  - **Приймання замовлення постачальнику** (`PurchaseOrdersService.receive` → RECEIPT; алокація в
+    списки купівлі `PurchaseListReceiptService.allocateOnReceipt` — `PurchaseListItem` і
+    RESERVATION-рухи теж у базових, BR-PL-002/BR-PL-011): коефіцієнт за (`goodId`, `resolvedUomId`).
+  - **Підтвердження складського документа** (`StockDocumentsService` `applyLine` на CONFIRM:
+    WRITEOFF / RECEIPT / OPENING_BALANCE; `TRANSFER` множить ОБИДВА плеча): коефіцієнт за
+    (`goodId`, `line.unitOfMeasureId`).
+
+  **Межа:** борг постачальнику `SUPPLIER_CHARGE` (`receive`) НЕ множиться на коефіцієнт — він
+  самоузгоджений у ЗАМОВЛЕНИХ одиницях (`receivedQty × price` за одиницю прийому); множення було б
+  подвійним застосуванням. CAS-інкремент `PurchaseOrderLine.receivedQty` і гард над-прийому теж
+  лишаються в замовлених одиницях (BR-PO-003). Див. згадки у `purchase-order.md` та
+  `stock-document.md`. Мітки сторожів — `// guards: BR-INVT-UOMBASE`.
 
 ---
 

@@ -3,6 +3,7 @@ import {
   GOOD,
   ORG,
   SUPPLIER,
+  UOM_PACK,
   WH,
   WH_2,
   WO_A,
@@ -209,6 +210,77 @@ describe('BR-PL-011 розподіл отриманого між позиція�
 
     expect(h.netOf(WO_A)).toBe(2);
     expect(h.reserved()).toBe(3);
+  });
+
+  // guards: BR-INVT-UOMBASE, BR-PL-011, BR-PL-002
+  // F4 (аудит 2026-10-24): PurchaseListItem.quantity/receivedQty/reservedQty — БАЗОВІ (BR-PL-002),
+  // тож прийом в альт-одиниці («2 Пак» = 20 шт) мусить лягти у позицію й RESERVATION у БАЗОВИХ (20),
+  // а не raw ordered (2). Мутація: прибрати `× coeff` у baseQty приймання → receivedQty/reserved
+  // позиції впадуть до 2, резерв наряду до 2. SUPPLIER_CHARGE лишається у замовлених (ordered×price).
+  it('F4: прийом «2 Пак» (coeff=10) → позиція й резерв у БАЗОВИХ (20), борг у замовлених', async () => {
+    const h = procurementHarness({
+      goodUoMs: [
+        { id: 'gu-1', orgId: ORG, goodId: GOOD, unitOfMeasureId: UOM_PACK, coefficient: 10 },
+      ],
+      workOrders: [woRow(WO_A, { status: 'APPROVED' })],
+      parts: [partRow('pa', WO_A, { quantity: 20 })], // наряду треба 20 базових
+      purchaseOrders: [
+        {
+          id: PO,
+          orgId: ORG,
+          number: 'ЗП-UOM',
+          status: 'ORDERED',
+          supplierId: SUPPLIER,
+          warehouseId: WH,
+          totalAmount: 150,
+          paidAmount: 0,
+          paymentDate: null,
+          currencyId: null,
+          notes: null,
+          createdAt: new Date('2026-10-17T07:00:00Z'),
+          updatedAt: new Date('2026-10-17T07:00:00Z'),
+          deletedAt: null,
+        },
+      ],
+      purchaseOrderLines: [
+        {
+          id: 'l1',
+          orgId: ORG,
+          purchaseOrderId: PO,
+          goodId: GOOD,
+          quantity: 3, // 3 Пак замовлено
+          receivedQty: 0,
+          price: 50, // ціна за Пак
+          unitOfMeasureId: UOM_PACK,
+          deletedAt: null,
+        },
+      ],
+      items: [itemRow('ia', ordered(WO_A, 'pa', 20))], // позиція у БАЗОВИХ (20)
+    });
+    // Одиниця «Пак» має бути валідною в org (tenant-перевірка override у receive).
+    h.tables.unitOfMeasure.rows.push({ id: UOM_PACK, orgId: ORG, deletedAt: null });
+
+    // Приймаємо 2 Пак → 20 базових (receivedQty у замовленій одиниці рядка = Пак).
+    await h.purchaseOrders.receive(
+      ORG,
+      PO,
+      { lines: [{ lineId: 'l1', receivedQty: 2, unitOfMeasureId: UOM_PACK }] } as never,
+      'u',
+    );
+
+    // Позиція й резерв — у БАЗОВИХ: 20 отримано, 20 зарезервовано під наряд.
+    expect(h.item('ia')).toMatchObject({ status: 'RECEIVED', receivedQty: 20, reservedQty: 20 });
+    expect(h.netOf(WO_A)).toBe(20);
+    expect(h.reserved()).toBe(20);
+    // CAS рядка замовлення — у ЗАМОВЛЕНИХ (receivedQty 2, не 20): BR-PO-003 незмінний.
+    const poLine = h.tables.purchaseOrderLine.rows.find(r => r.id === 'l1');
+    expect(poLine?.receivedQty).toBe(2);
+    // Борг постачальнику — у ЗАМОВЛЕНИХ: 2 Пак × 50 = 100 (НЕ 1000).
+    expect(h.supplierSettlements.createTransaction).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ type: 'SUPPLIER_CHARGE', amount: 100 }),
+      expect.anything(),
+    );
   });
 });
 

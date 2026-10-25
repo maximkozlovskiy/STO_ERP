@@ -47,6 +47,7 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
     garageBranch: { findFirst: ReturnType<typeof vi.fn> };
     warehouse: { findFirst: ReturnType<typeof vi.fn> };
     good: { findMany: ReturnType<typeof vi.fn> };
+    goodUoM: { findMany: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
   let inventory: { createMovement: ReturnType<typeof vi.fn> };
@@ -86,6 +87,9 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
             Promise.resolve(args.where.id.in.map(id => ({ id }))),
           ),
       },
+      // F4 (BR-INVT-UOMBASE): CONFIRM читає GoodUoM-коефіцієнти. [] → coeff=1 (рядки цих кейсів у
+      // базовій одиниці, line.unitOfMeasureId відсутній), тож рухи складу — raw quantity незмінно.
+      goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
@@ -250,6 +254,121 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
         }),
       }),
     );
+  });
+
+  // guards: BR-INVT-UOMBASE
+  // F4 (аудит 2026-10-24): рядок в альт-одиниці («1 Пак» = 10 шт) мусить провести БАЗОВІ
+  // (quantity × coeff) у рух складу, інакше StockItem.quantity дрейфує в разів. Рядок у базовій
+  // одиниці (unitOfMeasureId=null) незмінний (coeff=1). Мутація: прибрати `× coeff` у baseQty →
+  // RECEIPT quantity впаде до raw 3.
+  it('F4: RECEIPT-рядок «3 Пак» (coeff=10) → рух складу 30 базових (не 3)', async () => {
+    prisma.goodUoM.findMany.mockResolvedValueOnce([
+      { goodId: GOOD_ID, unitOfMeasureId: UNIT_ID, coefficient: 10 },
+    ]);
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПТ-2026-UOM',
+      type: StockDocumentType.RECEIPT,
+      status: 'DRAFT',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: null,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 3,
+          price: 100,
+          unitOfMeasureId: UNIT_ID, // рядок введено в альт-одиниці
+          good: { unitId: UNIT_ID },
+        },
+      ],
+    });
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПТ-2026-UOM',
+      type: StockDocumentType.RECEIPT,
+      status: 'CONFIRMED',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: null,
+      notes: null,
+      documentDate: new Date(),
+      confirmedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      branch: { name: 'Філія 1' },
+      warehouse: { name: 'Склад 1' },
+      targetWarehouse: null,
+      lines: [],
+    });
+
+    await service.transition(ORG, DOC_ID, 'CONFIRMED', 'user-1');
+
+    expect(inventory.createMovement).toHaveBeenCalledTimes(1);
+    const [, dtoArg] = inventory.createMovement.mock.calls[0]!;
+    expect(dtoArg.quantity).toBe(30); // 3 × 10
+    expect(dtoArg.type).toBe(StockMovementType.RECEIPT);
+  });
+
+  // guards: BR-INVT-UOMBASE
+  // F4: TRANSFER множить ОБИДВА плеча — WRITEOFF джерела (−baseQty) і RECEIPT цілі (+baseQty).
+  it('F4: TRANSFER-рядок «2 Пак» (coeff=10) → WRITEOFF −20 і RECEIPT +20', async () => {
+    const TARGET_WH = '99999999-9999-4999-8999-999999999999';
+    prisma.goodUoM.findMany.mockResolvedValueOnce([
+      { goodId: GOOD_ID, unitOfMeasureId: UNIT_ID, coefficient: 10 },
+    ]);
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПМ-2026-UOM',
+      type: StockDocumentType.TRANSFER,
+      status: 'DRAFT',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: TARGET_WH,
+      lines: [
+        {
+          id: LINE_ID,
+          goodId: GOOD_ID,
+          quantity: 2,
+          price: 50,
+          unitOfMeasureId: UNIT_ID,
+          good: { unitId: UNIT_ID },
+        },
+      ],
+    });
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПМ-2026-UOM',
+      type: StockDocumentType.TRANSFER,
+      status: 'CONFIRMED',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: TARGET_WH,
+      notes: null,
+      documentDate: new Date(),
+      confirmedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      branch: { name: 'Філія 1' },
+      warehouse: { name: 'Склад-1' },
+      targetWarehouse: { name: 'Склад-2' },
+      lines: [],
+    });
+    inventory.createMovement
+      .mockResolvedValueOnce({ movementId: 'm-wo', consumed: [], weightedCostPrice: 42 })
+      .mockResolvedValueOnce({ movementId: 'm-rc', consumed: [], weightedCostPrice: null });
+
+    await service.transition(ORG, DOC_ID, 'CONFIRMED', 'user-1');
+
+    expect(inventory.createMovement).toHaveBeenCalledTimes(2);
+    const [writeoffCall, receiptCall] = inventory.createMovement.mock.calls;
+    expect(writeoffCall![1]).toMatchObject({ type: StockMovementType.WRITEOFF, quantity: -20 });
+    expect(receiptCall![1]).toMatchObject({ type: StockMovementType.RECEIPT, quantity: 20 });
   });
 
   it('transition(RECEIPT → CONFIRMED): MOVEMENT_TYPES[RECEIPT] resolved → не кидає "Непідтримуваний тип документу"', async () => {

@@ -185,6 +185,12 @@ PARTIALLY_PAID)`. `count=0` (гонка паралельного платежу)
   йде окремо через `payments`) — інакше подвійний облік. Рядок `Payment` ручний перехід не створює
   в жодному випадку: це закриття боргу в леджері, а не запис про отримані гроші (без каси, ПРРО
   і рахунку-призначення). Звичайний шлях погашення — реєстрація платежу (кнопка «Оплатити»).
+  CAS-перехід у `PAID` має у `where` і `status`, і **`paidAmount`** (дзеркалить `payments.service`,
+  `work-order-invoice-mirror`): дзеркальний `PAYMENT` рахується зі стального `paymentRemaining`
+  (прочитаного поза транзакцією), тож без `paidAmount` у `where` паралельна оплата через
+  `payments`-модуль не детектилась би — `updateMany` затер би `paidAmount = amount` і створив
+  фантомний кредит клієнта в леджері (аудит логіки 2026-10-24, F6). `count === 0` → той самий
+  `err.invoice.statusChanged`, жодного дзеркального PAYMENT.
 
 ### Рахунок-призначення платежу (`Payment.sourceType`)
 
@@ -244,14 +250,14 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | список: відбір за датою документа                                  | `invoices.list-date-filter.spec.ts`        | 6      |
 | список: відбір за контрагентом, статусами, пошук                   | `invoices.list-filters.spec.ts`            | 7      |
 | refresh from work order                                            | `invoices.refresh-from-work-order.spec.ts` | 15     |
-| transition settlements                                             | `invoices.transition-settlements.spec.ts`  | 12     |
+| transition settlements                                             | `invoices.transition-settlements.spec.ts`  | 13     |
 | рахунок наряду — дзеркало наряду (BR-INV-018, 020)                 | `work-order-invoice-mirror.spec.ts`        | 32     |
 | update: зміна контрагента (org, роль)                              | `invoices.update-counterparty.spec.ts`     | 5      |
 | рядки рахунку з наряду (чиста функція)                             | `invoices.work-order-lines.spec.ts`        | 23     |
 | друкований рахунок: реквізити своєї організації, дата, валюта, 404 | `invoices.pdf.spec.ts`                     | 4      |
 | одиниця рядка як у наряді (Bug #868), робота — «год»               | `invoices.line-units.spec.ts`              | 8      |
 
-Разом: **223** кейси (цифри з `vitest --reporter=json`, не з grep).
+Разом: **224** кейси (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для правил про суму з наряду і ПДВ рядка:
 

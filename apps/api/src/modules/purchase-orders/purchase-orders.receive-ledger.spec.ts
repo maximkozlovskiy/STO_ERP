@@ -40,6 +40,7 @@ describe('PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUP
       findMany: ReturnType<typeof vi.fn>;
     };
     unitOfMeasure: { findMany: ReturnType<typeof vi.fn> };
+    goodUoM: { findMany: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
   let inventory: { createMovement: ReturnType<typeof vi.fn> };
@@ -126,6 +127,8 @@ describe('PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUP
         ]),
       },
       unitOfMeasure: { findMany: vi.fn() },
+      // F4 (BR-INVT-UOMBASE): [] → coeff=1 (товари цих кейсів без альт-одиниць), оприбуткування raw.
+      goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return Promise.resolve(arg);
