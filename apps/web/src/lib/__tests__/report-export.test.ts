@@ -9,6 +9,7 @@ import {
   buildExportFile,
   buildExportRows,
   buildXlsxXml,
+  buildExportNumericColumns,
   exportCell,
   flattenTree,
 } from '@/lib/report-export';
@@ -388,5 +389,63 @@ describe('report-export › XLSX (SpreadsheetML)', () => {
     expect(file.content.startsWith('﻿')).toBe(false);
     expect(file.mime).toBe('application/vnd.ms-excel');
     expect(file.filename).toBe('report-workOrder.xls');
+  });
+});
+
+// До 2026-10-25 файл розходився з екраном: група enum ішла кодом (`PAID`), MIN/MAX дати — міткою
+// в мс, суми — з хвостом двійкового дробу, від'ємне число в CSV отримувало апостроф (текст у
+// Excel), а XLSX робив числом будь-яку цифрову клітинку — артикул «0451103316» втрачав нуль.
+describe('report-export › файл збігається з екраном', () => {
+  // guards: BR-RPT-021
+  it('група enum перекладена, MIN дати — ДД.ММ.РРРР, сума без хвоста дробу', () => {
+    const result = makeResult({
+      groupBy: ['status'],
+      aggregations: [
+        { field: 'documentDate', agg: 'MIN', type: 'date', label: 'Дата' },
+        { field: 'total', agg: 'SUM', type: 'decimal', label: 'Сума' },
+      ],
+      body: {
+        tree: [
+          node('PAID', 2, {
+            MIN_documentDate: Date.parse('2026-10-20T00:00:00.000Z'),
+            SUM_total: 0.1 + 0.2,
+          }),
+        ],
+        grandTotals: { MIN_documentDate: Date.parse('2026-10-20T00:00:00.000Z'), SUM_total: 0.3 },
+        rowCount: 2,
+      },
+    });
+
+    const rows = buildExportRows(result, t, { status: 'WorkOrderStatus' });
+
+    expect(rows[1]).toEqual(['Оплачено', '2', '20.10.2026', '0.3']);
+    expect(rows[2]).toEqual(['Разом', '2', '20.10.2026', '0.3']);
+  });
+
+  // guards: BR-RPT-021
+  it("CSV: від'ємне число лишається числом, а текст на мінус — з апострофом", () => {
+    expect(buildCsvText([['Списання', '-4865.968', '-cmd']])).toBe("Списання,-4865.968,'-cmd");
+  });
+
+  // guards: BR-RPT-021
+  it('XLSX: числова колонка — за типом колонки; цифровий артикул лишається текстом із нулем', () => {
+    const result = makeResult({
+      columns: [
+        { key: 'good.sku', label: 'SKU', type: 'scalar' },
+        { key: 'quantity', label: 'Кількість', type: 'number' },
+      ],
+      aggregations: [{ field: 'quantity', agg: 'SUM', type: 'number', label: 'Кількість' }],
+      body: {
+        detailRows: [{ 'good.sku': '0451103316', quantity: 2 }],
+        grandTotals: { SUM_quantity: 2 },
+        rowCount: 1,
+      },
+    });
+
+    expect(buildExportNumericColumns(result)).toEqual([false, false, true, true]);
+    const xml = buildExportFile(result, 'xlsx', t).content;
+    expect(xml).toContain(
+      '<Cell><Data ss:Type="String">0451103316</Data></Cell><Cell><Data ss:Type="Number">2</Data></Cell>',
+    );
   });
 });

@@ -82,6 +82,26 @@ describe('report-aggregator', () => {
     expect(total).toBe(r.rowCount);
   });
 
+  // Склеювання підсумовувало будь-яке число: 49 рядків закупівлі з ціною ~100 давали рядок
+  // «Ціна 4 900». Мутація: у mergeDetailRows узяти всі number/decimal як підсумовувані → кейс червоніє.
+  // guards: BR-RPT-015
+  it('склеювання не складає ціну: різні ціни — різні рядки, однакова лишається ціною', () => {
+    const line = (price: number, quantity: number) => ({
+      price,
+      quantity,
+      good: { name: 'Фільтр' },
+    });
+    const r = aggregate(
+      [line(100, 2), line(100, 3), line(120, 1)],
+      { groupBy: [], columns: ['good.name', 'price', 'quantity'], includeRows: true },
+      getEntity('purchaseOrderLine'),
+    );
+    expect(r.detailRows).toEqual([
+      { 'good.name': 'Фільтр', price: 100, quantity: 5, __mergedCount: 2 },
+      { 'good.name': 'Фільтр', price: 120, quantity: 1, __mergedCount: 1 },
+    ]);
+  });
+
   it('includeRows з групуванням → детальні рядки на листі', () => {
     const rows = [
       part({ cp: 'А', goodName: 'Гальма', amount: 100 }),

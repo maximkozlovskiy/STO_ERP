@@ -51,6 +51,9 @@ export interface ReportFieldDef {
   stateNotFlow?: boolean;
   /** Знакове поле (StockMovement.quantity): знак береться з сусіднього enum-поля (напр. 'type'). */
   signedByType?: string;
+  /** Колонка `@db.Date` (дата без часу): межі дня — сама дата, а не київська доба. Prisma зводить
+   *  параметр до типу колонки, тож київська межа «з 20.10» (19.10 21:00 UTC) ставала 19.10. */
+  dateOnly?: boolean;
 }
 
 export interface ReportRelationDef {
@@ -81,6 +84,9 @@ export interface ReportEntityDef {
   hasSoftDelete: boolean;
   /** Поле для dateRange-фільтра. */
   dateField: string;
+  /** Зв'язок на документ-власник рядка (наряд, закупівля). Видалення документа позначає лише його
+   *  самого, рядки лишаються з `deletedAt: null` — тому умова `deletedAt: null` ставиться і на нього. */
+  parentRelation?: string;
   defaultSort: { path: string; dir: 'asc' | 'desc' };
   fields: ReportFieldDef[];
   relations: ReportRelationDef[];
@@ -130,6 +136,7 @@ export const REGISTRY_ENUMS: Record<string, readonly string[]> = {
     'RESERVATION',
     'RESERVATION_RELEASE',
     'OPENING_BALANCE',
+    'RETURN',
   ],
   GoodType: ['SPARE_PART', 'CONSUMABLE', 'MATERIAL', 'TOOL'],
 };
@@ -247,6 +254,7 @@ const workOrder: ReportEntityDef = {
       aggregations: ['MIN', 'MAX'],
       filterable: true,
       groupable: true,
+      dateOnly: true,
     },
     // relation-колонки (рівень 1 — прямий шлях WO→CP, рекомендований):
     {
@@ -335,6 +343,7 @@ const workOrderPart: ReportEntityDef = {
   profile: 'FULL',
   hasSoftDelete: true,
   dateField: 'createdAt',
+  parentRelation: 'workOrder',
   defaultSort: { path: 'createdAt', dir: 'desc' },
   fields: [
     {
@@ -496,6 +505,7 @@ const purchaseOrderLine: ReportEntityDef = {
   profile: 'FULL',
   hasSoftDelete: true,
   dateField: 'createdAt',
+  parentRelation: 'purchaseOrder',
   defaultSort: { path: 'createdAt', dir: 'desc' },
   fields: [
     {
@@ -714,6 +724,7 @@ const invoice: ReportEntityDef = {
       aggregations: ['MIN', 'MAX'],
       filterable: true,
       groupable: true,
+      dateOnly: true,
     },
     {
       key: 'dueDate',
@@ -1374,6 +1385,11 @@ export function assertRelationPath(entity: ReportEntityDef, prismaPath: string):
       );
     }
   }
+}
+
+/** Чи поле за цим шляхом — колонка `@db.Date` (див. `ReportFieldDef.dateOnly`). */
+export function isDateOnlyPath(entity: ReportEntityDef, prismaPath: string): boolean {
+  return entity.fields.some(f => f.prismaPath === prismaPath && f.dateOnly === true);
 }
 
 export function relationForPrefix(

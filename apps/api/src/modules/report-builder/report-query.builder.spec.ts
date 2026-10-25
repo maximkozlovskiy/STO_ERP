@@ -277,9 +277,9 @@ describe('report-query.builder', () => {
   it('dateRange — межі київської доби: літо UTC+3 і зима UTC+2', () => {
     const range = (from: string, to: string) =>
       (
-        buildQuery({ entity: 'invoice', columns: [], groupBy: [], dateRange: { from, to } }, ORG)
+        buildQuery({ entity: 'payment', columns: [], groupBy: [], dateRange: { from, to } }, ORG)
           .args.where as Record<string, { gte: Date; lte: Date }>
-      ).documentDate;
+      ).createdAt;
     const summer = range('2026-09-01', '2026-09-30');
     expect(summer.gte.toISOString()).toBe('2026-08-31T21:00:00.000Z'); // 01.09 00:00 Київ
     // Верхня межа — кінець київської доби 30.09. Точне значення не фіксуємо: kyivOffsetMs губить
@@ -290,6 +290,23 @@ describe('report-query.builder', () => {
     expect(winter.gte.toISOString()).toBe('2026-01-14T22:00:00.000Z');
     expect(winter.lte.getTime()).toBeGreaterThanOrEqual(Date.parse('2026-01-15T21:59:59.999Z'));
     expect(winter.lte.getTime()).toBeLessThan(Date.parse('2026-01-15T22:00:01.000Z'));
+  });
+
+  // Prisma зводить параметр до типу колонки `@db.Date`: київська межа «з 20.10» (19.10 21:00 UTC)
+  // ставала 19.10, і звіт за 20.10 показував наряди й рахунки 19.10. Мутація: у dateRange узяти
+  // kyivDayStart/kyivDayEnd і для documentDate → кейс червоніє.
+  // guards: BR-RPT-009
+  it('dateRange на колонці @db.Date (наряд, рахунок) — самі дати, без зсуву на київський пояс', () => {
+    for (const entity of ['workOrder', 'invoice']) {
+      const r = (
+        buildQuery(
+          { entity, columns: [], groupBy: [], dateRange: { from: '2026-10-20', to: '2026-10-20' } },
+          ORG,
+        ).args.where as Record<string, { gte: Date; lte: Date }>
+      ).documentDate;
+      expect(r.gte.toISOString(), entity).toBe('2026-10-20T00:00:00.000Z');
+      expect(r.lte.toISOString(), entity).toBe('2026-10-20T00:00:00.000Z');
+    }
   });
 
   // guards: BR-RPT-009
@@ -472,9 +489,6 @@ describe('report-query.builder', () => {
         amount: { lt: '100.50' },
       });
       expect(where('stockBatch', 'isActive', 'eq', 'false')).toMatchObject({ isActive: false });
-      expect(where('workOrder', 'completedAt', 'gte', '2026-09-15T00:00:00.000Z')).toMatchObject({
-        completedAt: { gte: '2026-09-15T00:00:00.000Z' },
-      });
     });
 
     // guards: BR-RPT-024
@@ -484,5 +498,114 @@ describe('report-query.builder', () => {
         reversedAt: { not: null },
       });
     });
+  });
+
+  // Значення фільтра дати йшло в Prisma рядком: «2026-10-01» і «01.10.2026» Prisma відхиляла (400
+  // «Некоректні дані запиту»), а `Date.parse('01.10.2026')` до того ж читав 10 січня. Фільтр по даті
+  // з UI не працював жодним форматом. Мутація: повернути `v` замість дня в scalarFilterValue('date')
+  // або прибрати buildDateCond → кейси червоніють.
+  describe('фільтр дати порівнює цілими днями (BR-RPT-025)', () => {
+    const cond = (entity: string, field: string, op: string, value: unknown) =>
+      (
+        buildQuery(
+          { entity, columns: [], groupBy: [], filters: [{ field, op: op as never, value }] },
+          ORG,
+        ).args.where as Record<string, unknown>
+      )[field];
+    const iso = (d: unknown) => (d as Date).toISOString();
+
+    // guards: BR-RPT-025
+    it('ДД.ММ.РРРР і РРРР-ММ-ДД — той самий день; «01.10» не стає 10 січня', () => {
+      const a = cond('payment', 'createdAt', 'gte', '01.10.2026') as { gte: Date };
+      const b = cond('payment', 'createdAt', 'gte', '2026-10-01') as { gte: Date };
+      expect(iso(a.gte)).toBe('2026-09-30T21:00:00.000Z'); // 01.10 00:00 Київ (літо)
+      expect(iso(b.gte)).toBe(iso(a.gte));
+    });
+
+    // guards: BR-RPT-025
+    it('мітка часу: = день — уся київська доба; > день — після кінця доби; < день — до її початку', () => {
+      const eq = cond('payment', 'createdAt', 'eq', '20.10.2026') as { gte: Date; lte: Date };
+      expect(iso(eq.gte)).toBe('2026-10-19T21:00:00.000Z');
+      expect(eq.lte.getTime()).toBeGreaterThanOrEqual(Date.parse('2026-10-20T20:59:59.999Z'));
+      expect(eq.lte.getTime()).toBeLessThan(Date.parse('2026-10-20T21:00:01.000Z'));
+      const gt = cond('payment', 'createdAt', 'gt', '20.10.2026') as { gt: Date };
+      expect(gt.gt.getTime()).toBe(eq.lte.getTime());
+      const lt = cond('payment', 'createdAt', 'lt', '20.10.2026') as { lt: Date };
+      expect(iso(lt.lt)).toBe('2026-10-19T21:00:00.000Z');
+      const ne = cond('payment', 'createdAt', 'ne', '20.10.2026') as { not: { gte: Date } };
+      expect(iso(ne.not.gte)).toBe('2026-10-19T21:00:00.000Z');
+    });
+
+    // guards: BR-RPT-025
+    it('колонка @db.Date (дата наряду) — межі є самою датою', () => {
+      expect(cond('workOrder', 'documentDate', 'eq', '20.10.2026')).toEqual({
+        gte: new Date('2026-10-20T00:00:00.000Z'),
+        lte: new Date('2026-10-20T00:00:00.000Z'),
+      });
+      expect(cond('workOrder', 'documentDate', 'lte', '2026-10-20')).toEqual({
+        lte: new Date('2026-10-20T00:00:00.000Z'),
+      });
+    });
+
+    // guards: BR-RPT-025
+    it('не день (31.02, мітка часу, «вчора») → 400; «в списку» і «містить» для дати → 400', () => {
+      for (const v of ['31.02.2026', '2026-09-15T00:00:00.000Z', 'вчора', '1.10.2026']) {
+        expect(() => cond('workOrder', 'completedAt', 'gte', v), v).toThrow(
+          'Неприпустиме значення фільтра',
+        );
+      }
+      expect(() => cond('workOrder', 'completedAt', 'in', ['2026-10-01'])).toThrow(
+        BadRequestException,
+      );
+      expect(() => cond('workOrder', 'completedAt', 'contains', '2026-10-01')).toThrow(
+        BadRequestException,
+      );
+    });
+
+    // guards: BR-RPT-025
+    it('«порожнє» для дати лишається умовою на null, без дня', () => {
+      expect(cond('payment', 'reversedAt', 'isNull', undefined)).toBeNull();
+    });
+  });
+
+  // Видалення закупівлі / наряду позначає лише документ; його рядки лишаються з deletedAt: null.
+  // У dev-базі 2026-10-25 так у звіт потрапляли 277 рядків видалених закупівель і 504 запчастини
+  // видалених нарядів. Мутація: прибрати `parentRelation` у buildQuery → кейси червоніють.
+  describe('рядки видаленого документа не потрапляють у звіт (BR-RPT-007)', () => {
+    // guards: BR-RPT-007
+    it('рядки закупівлі й запчастини наряду — умова deletedAt: null і на документ-власник', () => {
+      const pol = buildQuery({ entity: 'purchaseOrderLine', columns: [], groupBy: [] }, ORG);
+      expect(pol.args.where).toMatchObject({ deletedAt: null, purchaseOrder: { deletedAt: null } });
+      const wop = buildQuery({ entity: 'workOrderPart', columns: [], groupBy: [] }, ORG);
+      expect(wop.args.where).toMatchObject({ deletedAt: null, workOrder: { deletedAt: null } });
+    });
+
+    // guards: BR-RPT-007
+    it('фільтр по полю документа-власника не знімає умову на його deletedAt', () => {
+      const q = buildQuery(
+        {
+          entity: 'workOrderPart',
+          columns: [],
+          groupBy: [],
+          filters: [{ field: 'workOrder.number', op: 'eq', value: 'WO-1' }],
+        },
+        ORG,
+      );
+      expect(q.args.where).toMatchObject({ workOrder: { deletedAt: null, number: 'WO-1' } });
+    });
+  });
+
+  // guards: BR-RPT-004
+  it('тип руху «Повернення» (RETURN) є в переліку — фільтр по ньому не 400', () => {
+    const q = buildQuery(
+      {
+        entity: 'stockMovement',
+        columns: [],
+        groupBy: [],
+        filters: [{ field: 'type', op: 'eq', value: 'RETURN' }],
+      },
+      ORG,
+    );
+    expect(q.args.where).toMatchObject({ type: 'RETURN' });
   });
 });

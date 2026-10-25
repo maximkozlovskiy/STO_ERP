@@ -220,6 +220,7 @@
     "toastAlreadyFiltered": "Фільтр за цим полем уже є",
     "toastChooseSource": "Оберіть джерело даних",
     "toastAddColumn": "Додайте хоча б одну колонку",
+    "toastPeriodBothDates": "Вкажіть обидві дати періоду: «З» і «По»",
     "toastReportError": "Помилка звіту",
     "toastEnterName": "Вкажіть назву",
     "toastSaved": "Звіт збережено",

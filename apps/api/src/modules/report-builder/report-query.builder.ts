@@ -1,7 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
-import { normalizeKyivDateRange } from '../../common/utils/kyiv-date';
+import {
+  isCalendarDate,
+  kyivDayEnd,
+  kyivDayStart,
+  normalizeKyivDateRange,
+} from '../../common/utils/kyiv-date';
 import type { ReportEntityDef, ReportFieldDef, FilterOp, FieldType } from './report-registry';
 import {
   getEntity,
@@ -9,6 +14,7 @@ import {
   assertRelationPath,
   relationForPrefix,
   assertEnumValue,
+  isDateOnlyPath,
 } from './report-registry';
 
 /** Cap проти DoS (як reports.service). Якщо rowCount === take → truncated. */
@@ -84,6 +90,66 @@ const NUMERIC_TEXT_RE = /^-?\d+(\.\d+)?$/;
 
 const INVALID = Symbol('invalid');
 
+const UA_DATE_RE = /^(\d{2})\.(\d{2})\.(\d{4})$/;
+
+/**
+ * День фільтра дати → `YYYY-MM-DD` або null. Приймає ISO-день (так його дає вибір дати) і
+ * `ДД.ММ.РРРР` (так його пише людина). Не `Date.parse`: той читає «01.10.2026» як 10 січня
+ * (американський порядок), а повна мітка часу як значення «дати» Prisma-колонки не потрібна.
+ */
+function calendarDay(v: string): string | null {
+  const s = v.trim();
+  const ua = UA_DATE_RE.exec(s);
+  const ymd = ua ? `${ua[3]}-${ua[2]}-${ua[1]}` : s;
+  return isCalendarDate(ymd) ? ymd : null;
+}
+
+/** Межі дня для поля: київська доба для мітки часу, сама дата для колонки `@db.Date`. */
+function dayBounds(ymd: string, dateOnly: boolean): { start: Date; end: Date } {
+  if (dateOnly) {
+    const d = new Date(`${ymd}T00:00:00.000Z`);
+    return { start: d, end: d };
+  }
+  return { start: kyivDayStart(ymd), end: kyivDayEnd(ymd) };
+}
+
+/**
+ * Умова по полю дати (BR-RPT-025): значення — день, і оператор порівнює цілими днями. «= 20.10»
+ * — увесь день 20.10, «> 20.10» — від 21.10, «≤ 20.10» — до кінця 20.10. Перелік днів (`in`) не
+ * підтримується: його не виразити однією умовою поля.
+ */
+function buildDateCond(
+  op: FilterOp,
+  ymd: unknown,
+  dateOnly: boolean,
+  fld: ReportFieldDef,
+): unknown {
+  if (typeof ymd !== 'string') {
+    throw new BadRequestException(
+      translateError('err.reportBuilder.filterValueInvalid', getLocale(), { label: fld.label }),
+    );
+  }
+  const { start, end } = dayBounds(ymd, dateOnly);
+  switch (op) {
+    case 'eq':
+      return { gte: start, lte: end };
+    case 'ne':
+      return { not: { gte: start, lte: end } };
+    case 'gt':
+      return { gt: end };
+    case 'gte':
+      return { gte: start };
+    case 'lt':
+      return { lt: start };
+    case 'lte':
+      return { lte: end };
+    default:
+      throw new BadRequestException(
+        translateError('err.reportBuilder.disallowedOperator', getLocale(), { op: String(op) }),
+      );
+  }
+}
+
 /**
  * Одне значення фільтра за типом поля → значення для Prisma або INVALID. Лише примітиви: об'єкт
  * чи масив тут — це спроба передати оператор Prisma (`{ startsWith: … }`, `{ not: … }`) повз білий
@@ -104,7 +170,7 @@ function scalarFilterValue(type: FieldType, v: unknown): unknown {
       if (typeof v === 'number') return Number.isFinite(v) ? v : INVALID;
       return typeof v === 'string' && NUMERIC_TEXT_RE.test(v.trim()) ? v.trim() : INVALID;
     case 'date':
-      return typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : INVALID;
+      return typeof v === 'string' ? (calendarDay(v) ?? INVALID) : INVALID;
     case 'boolean':
       if (typeof v === 'boolean') return v;
       return v === 'true' ? true : v === 'false' ? false : INVALID;
@@ -167,7 +233,7 @@ function buildCond(op: FilterOp, value: unknown, fieldType: string): unknown {
     case 'lte':
       return { lte: value };
     case 'contains':
-      if (fieldType === 'enum' || fieldType === 'number' || fieldType === 'decimal') {
+      if (fieldType !== 'scalar') {
         throw new BadRequestException(
           translateError('err.reportBuilder.filterContainsTextOnly', getLocale()),
         );
@@ -246,14 +312,19 @@ export function buildQuery(config: ReportConfigInput, orgId: string): BuiltQuery
 
   const where: Obj = { orgId };
   if (entity.hasSoftDelete) where.deletedAt = null;
+  if (entity.parentRelation) where[entity.parentRelation] = { deletedAt: null };
 
-  // dateRange → фільтр по entity.dateField (Kyiv-межі)
+  // dateRange → фільтр по entity.dateField (Kyiv-межі; для `@db.Date` — самі дати)
   if (config.dateRange) {
     const { fromDate, toDate } = normalizeKyivDateRange(config.dateRange.from, config.dateRange.to);
     if (fromDate > toDate) {
       throw new BadRequestException(translateError('err.reportBuilder.startAfterEnd', getLocale()));
     }
-    where[entity.dateField] = { gte: fromDate, lte: toDate };
+    const dateOnly = isDateOnlyPath(entity, entity.dateField);
+    where[entity.dateField] = {
+      gte: dayBounds(config.dateRange.from, dateOnly).start,
+      lte: dayBounds(config.dateRange.to, dateOnly).end,
+    };
   }
 
   // filters — кожен звіряється з реєстром
@@ -268,7 +339,10 @@ export function buildQuery(config: ReportConfigInput, orgId: string): BuiltQuery
     if (fld.type === 'enum' && fld.enumName && f.op !== 'isNull') {
       assertEnumValue(fld.enumName, value);
     }
-    const cond = buildCond(f.op, value, fld.type);
+    const cond =
+      fld.type === 'date' && f.op !== 'isNull'
+        ? buildDateCond(f.op, value, fld.dateOnly === true, fld)
+        : buildCond(f.op, value, fld.type);
     // BR-RPT-022: друга умова на те саме поле (або фільтр по полю дати поверх dateRange) не
     // перезаписує першу, а додається в AND. Раніше `node[leaf] = cond` губив попередню умову:
     // «сума від 100 до 500» показувала все до 500, без жодної помилки.

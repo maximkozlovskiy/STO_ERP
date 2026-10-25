@@ -253,16 +253,23 @@ function projectRows(rows: Row[], columns: string[], entity: ReportEntityDef): D
 
 const NUMERIC_COL_TYPES = new Set(['number', 'decimal']);
 
+/** Колонка, яку склеювання підсумовує: число, якому реєстр дозволяє SUM (не ціна, не стан). */
+function isSummable(entity: ReportEntityDef, key: string): boolean {
+  const fld = getField(entity, key);
+  return NUMERIC_COL_TYPES.has(fld.type) && fld.aggregations.includes('SUM') && !fld.stateNotFlow;
+}
+
 /**
  * Склеювання ідентичних детальних рядків (плоский режим, без groupBy): рядки з однаковими
- * значеннями ВСІХ нечислових колонок згортаються в один; числові колонки підсумовуються
+ * значеннями решти колонок згортаються в один; колонки, які можна підсумувати, підсумовуються
  * (з урахуванням signedByType — через numericValue, як у SUM). Так список 334× «Dup1 ×5»
- * стає одним рядком «Dup1 · 1670». Для рядків без числових колонок — це звичайний distinct.
- * `mergedCount` — скільки сирих рядків склеєно (рендериться у колонці «Кількість»).
+ * стає одним рядком «Dup1 · 1670». Числа без SUM (ціна, собівартість, мін. запас) не
+ * складаються — сума цін 49 рядків не є ціною, — а розрізняють рядки, як і текстові колонки.
+ * `mergedCount` — скільки сирих рядків склеєно (рендериться у колонці «Склеєно»).
  */
 function mergeDetailRows(rows: Row[], columns: string[], entity: ReportEntityDef): DetailRow[] {
-  const numericCols = columns.filter(k => NUMERIC_COL_TYPES.has(getField(entity, k).type));
-  const dimCols = columns.filter(k => !NUMERIC_COL_TYPES.has(getField(entity, k).type));
+  const numericCols = columns.filter(k => isSummable(entity, k));
+  const dimCols = columns.filter(k => !isSummable(entity, k));
   const buckets = new Map<string, { row: DetailRow; count: number }>();
 
   for (const r of rows) {

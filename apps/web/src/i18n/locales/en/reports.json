@@ -220,6 +220,7 @@
     "toastAlreadyFiltered": "A filter for this field already exists",
     "toastChooseSource": "Select a data source",
     "toastAddColumn": "Add at least one column",
+    "toastPeriodBothDates": "Set both period dates: \"From\" and \"To\"",
     "toastReportError": "Report error",
     "toastEnterName": "Enter a name",
     "toastSaved": "Report saved",

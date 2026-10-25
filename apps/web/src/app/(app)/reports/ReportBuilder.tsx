@@ -38,7 +38,7 @@ import { Modal } from '@/components/ui/modal';
 import { fmtMoney, fmtDate, fmtInt } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
-import { aggAliasLabel, enumLabel, exportReport } from '@/lib/report-export';
+import { aggAliasLabel, enumLabel, exportReport, groupLabel } from '@/lib/report-export';
 
 type Zone = 'columns' | 'groupBy' | 'filters';
 
@@ -240,6 +240,8 @@ export function ReportBuilder() {
   const run = async (sortOverride?: { alias: string; dir: 'asc' | 'desc' } | null) => {
     if (!entityKey) return toast.warning(t('builder.toastChooseSource'));
     if (!columns.length && !groupBy.length) return toast.warning(t('builder.toastAddColumn'));
+    // Період іде на бекенд лише парою: одна дата без другої мовчки давала звіт за весь час.
+    if (Boolean(from) !== Boolean(to)) return toast.warning(t('builder.toastPeriodBothDates'));
     try {
       setResult(await runMut.mutateAsync(buildConfig(sortOverride)));
       // Після ручного «Сформувати» — авто-згортати налаштування (звільнити місце під звіт).
@@ -358,10 +360,16 @@ export function ReportBuilder() {
             </Button>
             {result && (
               <>
-                <Button variant="outline" onClick={() => exportReport(result, 'csv', t)}>
+                <Button
+                  variant="outline"
+                  onClick={() => exportReport(result, 'csv', t, enumByField)}
+                >
                   <Download className="size-4" /> {t('builder.csv')}
                 </Button>
-                <Button variant="outline" onClick={() => exportReport(result, 'xlsx', t)}>
+                <Button
+                  variant="outline"
+                  onClick={() => exportReport(result, 'xlsx', t, enumByField)}
+                >
                   <Download className="size-4" /> {t('builder.xlsx')}
                 </Button>
               </>
@@ -775,6 +783,38 @@ function DropZone({
 }
 
 // ── Зона фільтрів (з op + value) ─────────────────────────────────────────────────
+const FILTER_OPS: ReportFilter['op'][] = [
+  'eq',
+  'ne',
+  'in',
+  'contains',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+  'isNull',
+];
+const FILTER_OP_KEY = {
+  eq: 'builder.opEq',
+  ne: 'builder.opNe',
+  in: 'builder.opIn',
+  contains: 'builder.opContains',
+  gt: 'builder.opGt',
+  gte: 'builder.opGte',
+  lt: 'builder.opLt',
+  lte: 'builder.opLte',
+  isNull: 'builder.opIsNull',
+} as const satisfies Record<ReportFilter['op'], string>;
+
+/** Оператори, які бекенд приймає для типу поля: «містить» — лише текст, «в списку» — не для дат. */
+function opsForType(type: string | undefined): ReportFilter['op'][] {
+  return FILTER_OPS.filter(op => {
+    if (op === 'contains') return type === 'scalar';
+    if (op === 'in') return type !== 'date' && type !== 'boolean';
+    return true;
+  });
+}
+
 function FilterZone({
   filters,
   fieldByKey,
@@ -832,15 +872,11 @@ function FilterZone({
                   onChange={e => update(i, { op: e.target.value as ReportFilter['op'] })}
                   className="rounded border border-border bg-surface px-1.5 py-1"
                 >
-                  <option value="eq">{t('builder.opEq')}</option>
-                  <option value="ne">{t('builder.opNe')}</option>
-                  <option value="in">{t('builder.opIn')}</option>
-                  <option value="contains">{t('builder.opContains')}</option>
-                  <option value="gt">{t('builder.opGt')}</option>
-                  <option value="gte">{t('builder.opGte')}</option>
-                  <option value="lt">{t('builder.opLt')}</option>
-                  <option value="lte">{t('builder.opLte')}</option>
-                  <option value="isNull">{t('builder.opIsNull')}</option>
+                  {opsForType(fld?.type).map(op => (
+                    <option key={op} value={op}>
+                      {t(FILTER_OP_KEY[op])}
+                    </option>
+                  ))}
                 </select>
                 {f.op !== 'isNull' &&
                   (f.op === 'in' ? (
@@ -879,6 +915,13 @@ function FilterZone({
                         className="rounded border border-border bg-surface px-2 py-1 w-40"
                       />
                     )
+                  ) : fld?.type === 'date' ? (
+                    <DatePickerInput
+                      value={typeof f.value === 'string' ? f.value : ''}
+                      onChange={v => update(i, { value: v })}
+                      placeholder={t('builder.datePlaceholder')}
+                      className="w-32"
+                    />
                   ) : enumVals ? (
                     <select
                       value={String(f.value ?? '')}
@@ -975,23 +1018,6 @@ function fmtCell(
   return String(value);
 }
 
-/** enumName поля групування (за node.field). */
-function displayGroupValue(
-  node: GroupNode,
-  enumByField: Record<string, string>,
-  t: TFunction<'reports'>,
-): string {
-  if (node.key === '∅') return t('result.emptyGroup');
-  const v = node.value;
-  if (typeof v === 'boolean') return v ? t('result.boolYes') : t('result.boolNo');
-  const enumName = enumByField[node.field];
-  if (enumName) return enumLabel(enumName, v);
-  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) {
-    return fmtDate(v);
-  }
-  return String(v ?? node.key);
-}
-
 function ResultView({
   result,
   sort,
@@ -1067,6 +1093,18 @@ function ResultView({
                 </th>
               )}
               {aggAliases.map(a => {
+                // Сортування за агрегатом упорядковує ГРУПИ; у плоскому режимі груп немає, і
+                // клікабельний заголовок лише ставив стрілку, не змінюючи порядку рядків.
+                if (!hasGroups) {
+                  return (
+                    <th
+                      key={a}
+                      className="text-right font-medium px-3 py-2 border-b border-border whitespace-nowrap"
+                    >
+                      {aggAliasLabel(a, result, t)}
+                    </th>
+                  );
+                }
                 const active = sort?.alias === a;
                 const ariaSort: 'ascending' | 'descending' | 'none' = active
                   ? sort.dir === 'asc'
@@ -1215,7 +1253,7 @@ function GroupRows({
               <span className="inline-block w-3.5" />
             )}
             <span className={cn(depth === 0 && 'font-medium')}>
-              {displayGroupValue(node, enumByField, t)}
+              {groupLabel(node, enumByField, t)}
             </span>
           </button>
         </td>

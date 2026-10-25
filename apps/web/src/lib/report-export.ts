@@ -60,26 +60,66 @@ export function aggAliasLabel(
   return `${short} ${label}`;
 }
 
+/** Підпис групи — той самий на екрані й у файлі: enum перекладений, так/ні, день — ДД.ММ.РРРР. */
+export function groupLabel(
+  node: GroupNode,
+  enumByField: Record<string, string>,
+  t: TFunction<'reports'>,
+): string {
+  if (node.key === '∅') return t('result.emptyGroup');
+  const v = node.value;
+  if (typeof v === 'boolean') return v ? t('result.boolYes') : t('result.boolNo');
+  const enumName = enumByField[node.field];
+  if (enumName) return enumLabel(enumName, v);
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return fmtDate(v);
+  return String(v ?? node.key);
+}
+
+/** Тип поля агрегату за alias `AGG_поле`: з ефективних агрегацій, далі з колонок. */
+function aggFieldType(alias: string, result: ReportRunResult | undefined): string | undefined {
+  if (!result) return undefined;
+  const fieldKey = alias.slice(alias.indexOf('_') + 1);
+  return (
+    result.aggregations.find(a => a.field === fieldKey)?.type ??
+    result.columns.find(c => c.key === fieldKey)?.type
+  );
+}
+
+/** Число для файла без хвоста двійкового дробу: 0.1 + 0.2 — «0.3», а не «0.30000000000000004». */
+function exportNumber(n: number): string {
+  return String(Number(n.toFixed(6)));
+}
+
+/** Значення агрегату для файла: MIN/MAX дати — ДД.ММ.РРРР (бекенд шле мітку часу в мс), решта — число. */
+export function exportAggValue(
+  alias: string,
+  value: number | null | undefined,
+  result?: ReportRunResult,
+): string {
+  if (value === null || value === undefined) return '';
+  if (aggFieldType(alias, result) === 'date') return fmtDate(new Date(value));
+  return exportNumber(value);
+}
+
 // ── Експорт CSV / XLSX (клієнтський, з дерева) ──────────────────────────────────
 export function flattenTree(
   nodes: GroupNode[],
   aggAliases: string[],
   t: TFunction<'reports'>,
   depth = 0,
+  result?: ReportRunResult,
+  enumByField: Record<string, string> = {},
 ): string[][] {
   const rows: string[][] = [];
   for (const n of nodes) {
     const indent = '  '.repeat(depth);
-    const label = n.key === '∅' ? t('result.emptyGroup') : String(n.value ?? n.key);
     rows.push([
-      indent + label,
+      indent + groupLabel(n, enumByField, t),
       String(n.count),
-      ...aggAliases.map(a => {
-        const v = n.aggregates[a];
-        return v === null || v === undefined ? '' : String(v);
-      }),
+      ...aggAliases.map(a => exportAggValue(a, n.aggregates[a], result)),
     ]);
-    if (n.children.length) rows.push(...flattenTree(n.children, aggAliases, t, depth + 1));
+    if (n.children.length)
+      rows.push(...flattenTree(n.children, aggAliases, t, depth + 1, result, enumByField));
   }
   return rows;
 }
@@ -101,6 +141,7 @@ export function exportCell(
   if (value === null || value === undefined) return '';
   if (enumName) return enumLabel(enumName, value);
   if (type === 'date') return fmtDate(String(value));
+  if (typeof value === 'number') return exportNumber(value);
   return String(value);
 }
 
@@ -108,7 +149,11 @@ export function exportCell(
 export const CSV_BOM = '\uFEFF';
 
 /** Чиста частина експорту: результат звіту → рядки таблиці (заголовок, тіло, «Усього»). */
-export function buildExportRows(result: ReportRunResult, t: TFunction<'reports'>): string[][] {
+export function buildExportRows(
+  result: ReportRunResult,
+  t: TFunction<'reports'>,
+  enumByField: Record<string, string> = {},
+): string[][] {
   const aggAliases = Object.keys(result.result.grandTotals);
   let rows: string[][];
 
@@ -119,11 +164,11 @@ export function buildExportRows(result: ReportRunResult, t: TFunction<'reports'>
       t('export.count'),
       ...aggAliases.map(a => aggAliasLabel(a, result, t)),
     ];
-    const body = flattenTree(result.result.tree, aggAliases, t);
+    const body = flattenTree(result.result.tree, aggAliases, t, 0, result, enumByField);
     const totals = [
       t('export.totals'),
       String(result.result.rowCount),
-      ...aggAliases.map(a => String(result.result.grandTotals[a] ?? '')),
+      ...aggAliases.map(a => exportAggValue(a, result.result.grandTotals[a], result)),
     ];
     rows = [header, ...body, totals];
   } else {
@@ -147,7 +192,7 @@ export function buildExportRows(result: ReportRunResult, t: TFunction<'reports'>
       t('export.totals'),
       ...cols.map(() => ''),
       ...(showCount ? [String(result.result.rowCount)] : []),
-      ...aggAliases.map(a => String(result.result.grandTotals[a] ?? '')),
+      ...aggAliases.map(a => exportAggValue(a, result.result.grandTotals[a], result)),
     ];
     rows = [header, ...body, totals];
   }
@@ -155,10 +200,34 @@ export function buildExportRows(result: ReportRunResult, t: TFunction<'reports'>
   return rows;
 }
 
+/**
+ * Які колонки файла числові — за ТИПОМ колонки звіту, а не за вмістом клітинки: артикул
+ * «0451103316» чи номер «00123» — текст, і Excel не має зрізати їм нулі. Порядок колонок — як у
+ * `buildExportRows`.
+ */
+export function buildExportNumericColumns(result: ReportRunResult): boolean[] {
+  const aggs = Object.keys(result.result.grandTotals).map(a => aggFieldType(a, result) !== 'date');
+  if (result.groupBy.length) return [false, true, ...aggs];
+  const showCount = result.result.detailRows.some(
+    r => typeof r.__mergedCount === 'number' && r.__mergedCount > 1,
+  );
+  return [
+    false,
+    ...result.columns.map(c => c.type === 'number' || c.type === 'decimal'),
+    ...(showCount ? [true] : []),
+    ...aggs,
+  ];
+}
+
+const PLAIN_NUMBER_RE = /^-?\d+(\.\d+)?$/;
+
 /** CSV-текст із рядків: роздільник — кома, кожна клітинка через escapeCsvCell. */
 export function buildCsvText(rows: string[][]): string {
-  // escapeCsvCell нейтралізує formula-injection (=,+,-,@) + квотує роздільник ',' .
-  return rows.map(r => r.map(c => escapeCsvCell(c, ',')).join(',')).join('\n');
+  // escapeCsvCell нейтралізує formula-injection (=,+,-,@) + квотує роздільник ',' . Чисте число
+  // формулою бути не може, а апостроф перед «-4865.968» робив зі списання текст у Excel.
+  return rows
+    .map(r => r.map(c => (PLAIN_NUMBER_RE.test(c) ? c : escapeCsvCell(c, ','))).join(','))
+    .join('\n');
 }
 
 /** Готовий до завантаження файл експорту (ще без DOM): вміст, MIME і назва. */
@@ -172,8 +241,9 @@ export function buildExportFile(
   result: ReportRunResult,
   format: 'csv' | 'xlsx',
   t: TFunction<'reports'>,
+  enumByField: Record<string, string> = {},
 ): ReportExportFile {
-  const rows = buildExportRows(result, t);
+  const rows = buildExportRows(result, t, enumByField);
   if (format === 'csv') {
     return {
       content: CSV_BOM + buildCsvText(rows),
@@ -183,7 +253,7 @@ export function buildExportFile(
   }
   // XLSX через SpreadsheetML (простий, без бібліотеки) — відкривається Excel-ом.
   return {
-    content: buildXlsxXml(rows, t),
+    content: buildXlsxXml(rows, t, buildExportNumericColumns(result)),
     mime: 'application/vnd.ms-excel',
     filename: `report-${result.entity}.xls`,
   };
@@ -194,17 +264,24 @@ export function exportReport(
   result: ReportRunResult,
   format: 'csv' | 'xlsx',
   t: TFunction<'reports'>,
+  enumByField: Record<string, string> = {},
 ): void {
-  const file = buildExportFile(result, format, t);
+  const file = buildExportFile(result, format, t, enumByField);
   downloadBlob(new Blob([file.content], { type: file.mime }), file.filename);
 }
 
-export function buildXlsxXml(rows: string[][], t: TFunction<'reports'>): string {
+/** `numericColumns` — числові колонки за типом (`buildExportNumericColumns`); без нього — за вмістом. */
+export function buildXlsxXml(
+  rows: string[][],
+  t: TFunction<'reports'>,
+  numericColumns?: boolean[],
+): string {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const cells = (r: string[], isHeader: boolean) =>
     r
       .map((c, i) => {
-        const num = i > 0 && c !== '' && !isNaN(Number(c));
+        const numericColumn = numericColumns ? numericColumns[i] === true : i > 0;
+        const num = numericColumn && PLAIN_NUMBER_RE.test(c);
         return num
           ? `<Cell><Data ss:Type="Number">${c}</Data></Cell>`
           : `<Cell><Data ss:Type="String">${esc(c)}</Data></Cell>`;
