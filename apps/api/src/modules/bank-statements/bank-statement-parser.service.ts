@@ -54,6 +54,26 @@ export class BankStatementParserService {
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
   }
 
+  /** Завантажує xlsx і повертає перший аркуш; нечитабельний файл / без аркуша → 400. Спільне для
+   *  rawPreview і parseXlsxGrid (блок дублювався — jscpd клон). */
+  private async loadFirstSheet(buffer: Buffer | Uint8Array): Promise<ExcelJS.Worksheet> {
+    const workbook = new ExcelJS.Workbook();
+    try {
+      await workbook.xlsx.load(this.toArrayBuffer(buffer));
+    } catch {
+      throw new BadRequestException(
+        translateError('err.bankStatement.fileReadFailed', getLocale()),
+      );
+    }
+    const sheet = workbook.worksheets[0];
+    if (!sheet) {
+      throw new BadRequestException(
+        translateError('err.bankStatement.fileReadFailed', getLocale()),
+      );
+    }
+    return sheet;
+  }
+
   private isCsv(filename: string): boolean {
     return filename.toLowerCase().endsWith('.csv');
   }
@@ -97,20 +117,7 @@ export class BankStatementParserService {
       return { totalRows: grid.length, columnCount, rows };
     }
 
-    const workbook = new ExcelJS.Workbook();
-    try {
-      await workbook.xlsx.load(this.toArrayBuffer(buffer));
-    } catch {
-      throw new BadRequestException(
-        translateError('err.bankStatement.fileReadFailed', getLocale()),
-      );
-    }
-    const sheet = workbook.worksheets[0];
-    if (!sheet) {
-      throw new BadRequestException(
-        translateError('err.bankStatement.fileReadFailed', getLocale()),
-      );
-    }
+    const sheet = await this.loadFirstSheet(buffer);
     assertImportRowCount(sheet.actualRowCount); // BR-SEC-UPLOAD
     const rows: string[][] = [];
     let columnCount = 0;
@@ -264,20 +271,7 @@ export class BankStatementParserService {
   }
 
   private async parseXlsxGrid(buffer: Buffer | Uint8Array): Promise<string[][]> {
-    const workbook = new ExcelJS.Workbook();
-    try {
-      await workbook.xlsx.load(this.toArrayBuffer(buffer));
-    } catch {
-      throw new BadRequestException(
-        translateError('err.bankStatement.fileReadFailed', getLocale()),
-      );
-    }
-    const sheet = workbook.worksheets[0];
-    if (!sheet) {
-      throw new BadRequestException(
-        translateError('err.bankStatement.fileReadFailed', getLocale()),
-      );
-    }
+    const sheet = await this.loadFirstSheet(buffer);
     // Матеріалізуємо у 0-based сітку з абсолютною нумерацією рядків (порожні провідні → порожні рядки),
     // щоб startRow-семантика збігалась із UI-передпереглядом (rawPreview показує ті самі рядки).
     const grid: string[][] = [];

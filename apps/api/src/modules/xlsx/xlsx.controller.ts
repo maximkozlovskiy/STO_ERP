@@ -29,7 +29,11 @@ import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { normalizeArticle } from '../../common/utils/normalize-article';
 import { err } from '../../common/utils/err';
-import { assertImportFile, type ImportFileKind } from '../../common/utils/import-file-guard';
+import {
+  assertImportFile,
+  multipartFields,
+  type ImportFileKind,
+} from '../../common/utils/import-file-guard';
 import { XlsxService, ImportResult, type ImportMapping } from './xlsx.service';
 import type { ImportDocType } from './document-line-import.adapter';
 import { ApplyImportDto, ResolveGoodsFileResponseDto } from './import.dto';
@@ -346,16 +350,7 @@ export class XlsxController {
   @ApiConsumes('multipart/form-data')
   async previewImport(@OrgContext() orgId: string, @Request() req: FastifyRequest) {
     const { buffer, filename, file } = await this.readImportFile(req, 'document');
-    // Multipart form-fields доступні на file.fields як { fieldname: { value } }.
-    const fields =
-      (file as unknown as { fields?: Record<string, { value?: unknown }> }).fields ?? {};
-    const num = (k: string): number | undefined => {
-      const v = fields[k]?.value;
-      if (v === undefined || v === null || v === '') return undefined;
-      const n = Number(v);
-      return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : undefined;
-    };
-    const str = (k: string): string => String(fields[k]?.value ?? '').trim();
+    const { num, str } = multipartFields(file);
 
     const docType = str('docType') as ImportDocType;
     if (!IMPORT_DOC_TYPES.includes(docType)) {

@@ -89,3 +89,24 @@ export function assertImportRowCount(totalRows: number): void {
     throw new BadRequestException(translateError('err.file.tooManyRows', getLocale()));
   }
 }
+
+/**
+ * Акцесори multipart form-полів (`file.fields` = `{ fieldname: { value } }`) для import-контролерів.
+ * `num(k)` — ціле ≥ 1 або undefined; `str(k)` — trim-рядок (порожній, якщо поля немає). Спільне для
+ * xlsx- і bank-імпорту (один і той самий блок дублювався в обох контролерах — jscpd клон).
+ */
+export function multipartFields(file: unknown): {
+  num: (k: string) => number | undefined;
+  str: (k: string) => string;
+} {
+  const fields = (file as { fields?: Record<string, { value?: unknown }> }).fields ?? {};
+  return {
+    num: (k: string): number | undefined => {
+      const v = fields[k]?.value;
+      if (v === undefined || v === null || v === '') return undefined;
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : undefined;
+    },
+    str: (k: string): string => String(fields[k]?.value ?? '').trim(),
+  };
+}
