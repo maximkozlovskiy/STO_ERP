@@ -52,8 +52,11 @@ python scripts/check-doc-links.py; python scripts/check-mojibake.py   # поси
   F6+F4 (HIGH) ЗАКРИТО 2026-10-25 (`cec2423f`); F7+F1+F2 (MEDIUM) ЗАКРИТО 2026-10-25: F7 — assertMoneyFits
   у settlements.createTransaction (BR-FIN-MONEYCAP); F1 — overlap-фільтр доступності онлайн-запису
   (BR-CAL-004/006); F2 — другий GiST EXCLUDE на механіка (calendar_slots_mechanic_no_overlap, міграція
-  20261025120000) + мапінг 23P01→409 employeeBusy/liftBusy. Решта F3/F5/F8/F9/F10 відкриті. Окремий
-  аудит руху коштів 2026-10-25 (MV-H1/H2/M1/M2/M3/L1-L3) — у TECH-DEBT, не виправлено. Bug #972 — LOW.
+  20261025120000) + мапінг 23P01→409 employeeBusy/liftBusy. Грошовий блок F8/F9/F10 + MV-H1/H2/M1/M2/
+  L1/L2 ЗАКРИТО 2026-10-25 (`a0e3890c`): overflow-гейти (payments/supplier-payments/cash, BR-FIN-MONEYCAP);
+  F9 реверс каси з conversion оригіналу; F10 createdBy; MV-H1 скасування standalone-інвойсу → CREDIT_NOTE
+  на непогашене (BR-INV-022); MV-M2 supplier confirm idempotency; MV-L1 isValidRate. Відкриті: F3/F5,
+  MV-M3 (balance-race, гроші race-safe), MV-L3, sync EXCLUDE→409, Bug #972 — усі в TECH-DEBT.
   Етап 4 (2026-10-25): NUL у тілі (BR-SEC-NUL), тип файлу за магічними байтами
   (common/utils/file-signature.ts, BR-SEC-UPLOAD) у files + work-order-media, ліміти імпорту
   (common/utils/import-file-guard.ts: 5МБ + 1000 рядків) у xlsx + bank. Review залатав пропущену ціль:

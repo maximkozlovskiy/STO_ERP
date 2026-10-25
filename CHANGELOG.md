@@ -5,6 +5,24 @@
 
 ---
 
+### 3597343a..HEAD tech-debt: грошові знахідки — overflow + F9/F10/MV-H1/MV-M2 (2026-10-25)
+
+- Overflow-гейти (BR-FIN-MONEYCAP, дзеркаль F7): `assertMoneyFits(conv.amountBase)` перед записом у
+  `payments.create` (F8), `supplier-payments.confirm` перед CAS (MV-H2), `cash.createOperation`
+  (MV-M1) — валютна сума × курс понад Decimal(12,2) тепер 400 з назвою поля, не безіменна 500.
+- F9: unreconcile CASH_WITHDRAWAL передає `conversion` оригінальної операції у зворотний OUT —
+  base-ledger валютної каси більше не дрейфує за поточним курсом (BR-CASH-023).
+- F10: ручний перехід інвойсу (`transition`) бере `@CurrentUser().id` — проводки CHARGE/PAYMENT/FX
+  більше не з `createdBy: null`.
+- MV-H1 (BR-INV-022): скасування виставленого standalone-рахунку тепер постить компенсуючий
+  CREDIT_NOTE на непогашений залишок (`amount − paidAmount`, курс оригінальної CHARGE) — борг не
+  висить у ledger вічно. WO-рахунок і DRAFT→CANCELLED гілку не зачіпають; часткові оплати лишаються.
+- MV-M2: `POST /supplier-payments/:id/confirm` під `@RequireIdempotencyKey` — offline-retry повертає
+  те саме тіло (200), не 400.
+- MV-L1: `isValidRate` backstop у `getRateAsOf` — невалідний збережений курс (0/негатив) → 400
+  `err.exchangeRate.invalidStoredRate`, не тихий `amountBase=0`.
+- MV-L2: BR-SETL-003 doc доповнено 4 `*_CANCEL`-типами. Решта (MV-M3, MV-L3) — свідомо відкриті.
+
 ### fix(report-builder): конструктор звітів — вірність результату (2026-10-25)
 
 - Перевірка конструктора проти SQL dev-бази. Рядки видалених закупівель і запчастини видалених
