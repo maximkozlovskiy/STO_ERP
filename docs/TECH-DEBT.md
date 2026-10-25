@@ -275,6 +275,81 @@
 
 ---
 
+## Аудит руху коштів 2026-10-25 — не виправлено (запис на доопрацювання)
+
+> Цільовий read-only прохід по всьому грошовому ledger (три агенти: settlements/payments/
+> supplier-payments; cash/bank/FX; invoice↔WO↔ledger-цілісність). Лише **запис**, без фіксів.
+> Дедупльовано з F6-F10 (ті лишаються у секції вище). Знаки проводок, append-only, CAS на
+> `paidAmount`, сторно=дзеркало-курсу, round-once, овердрафт каси (advisory lock + Serializable),
+> подвійне застосування банк-рядка — перевірено й **чисто**.
+
+### HIGH
+
+- **[HIGH, NEW] MV-H1 — скасування STANDALONE-рахунку (`workOrderId=null`) НЕ сторнує нарахований
+  CHARGE → вічний фантомний борг клієнта.** `invoices.service.ts` `transition()` (~:524-703): є
+  грошові гілки лише `chargesStandaloneOnSend` (DRAFT→SENT постить CHARGE) і `settlesStandaloneOnPaid`
+  (→PAID). Гілки для `CANCELLED` немає — при не-PAID `updateMany.data = { status: 'CANCELLED' }`,
+  `createTransaction` не викликається. `INV_TRANSITIONS` дозволяє SENT/PARTIALLY_PAID/OVERDUE→CANCELLED.
+  Сценарій: `POST /invoices` без наряду → SENT (+CHARGE, баланс +amount) → CANCELLED → CHARGE
+  лишається в ledger, баланс несе борг; PARTIALLY_PAID→CANCELLED → завислий чистий борг CHARGE−PAYMENT.
+  Контраст: WO-шлях при скасуванні сторнує (`returnPartsAndCredit` → CREDIT_NOTE,
+  `work-order-stock-effects.service.ts:336-426`). Дос'є invoice.md теж не має правила «скасування
+  SENT = CREDIT_NOTE». Фікс (кандидат): у `transition` при →CANCELLED для standalone зі станом
+  нарахованого CHARGE постити компенсуючий CREDIT_NOTE на непогашений залишок, дзеркалячи WO-шлях.
+- **[HIGH, NEW] MV-H2 — supplier-payments `create`/`confirm` пишуть `amount`/`totalAmountBase` у
+  Decimal(12,2) без `assertMoneyFits`.** `supplier-payments.service.ts:620-643` (create `amount`),
+  `:869-877` (confirm `totalAmountBase = conv.amountBase`). Settlement-проводка в `confirm` має гейт,
+  але власний запис `SupplierPayment.totalAmountBase = amount × rate` — ні. Сценарій: amount=5e6 у
+  валюті rate=3000 → base=15e9 > `MONEY_AMOUNT_MAX` → `numeric field overflow` 500 замість названої 400. F8 (TECH-DEBT) покриває лише `Payment.amountBase` (клієнт), supplier-бік НЕ покритий. Той
+  самий overflow-клас, що BR-BANK-042 / BR-FIN-MONEYCAP.
+
+### MEDIUM
+
+- **[MEDIUM, NEW] MV-M1 — `CashService.createOperation` пише `amount`/`amountBase`/`rateUsed` у
+  Decimal(12,2) без `assertMoneyFits`.** `cash.service.ts:173-195` (create), конверсія `:121-128`.
+  У всьому модулі cash — 0 викликів `assertMoneyFits` (єдиний виняток проти settlements/invoices/
+  work-orders/bank). Валютна каса: `amount` капнутий zod-ом, але `amountBase = amount × rate` (D18,6)
+  — ні → overflow 500. Той самий клас, що MV-H2/F8/BR-BANK-042.
+- **[MEDIUM, NEW] MV-M2 — supplier-payments `confirm` (`POST /:id/confirm`) без
+  `@RequireIdempotencyKey()`.** `supplier-payments.controller.ts:127-138` (порівн.
+  `payments.controller.ts:64,78` — create і reverse мають). CAS `DRAFT→CONFIRMED` (service:869,
+  count=0→400) блокує тихе подвоєння проводки, тож double-charge немає. Але offline-retry після
+  обриву відповіді → 400 `alreadyConfirmedOrChanged` замість ідемпотентного 200+тіло → оператор
+  думає «не провелось» і робить дубль-створення. Невідповідність контракту в межах грошового домену.
+- **[MEDIUM, суміжне з F7] MV-M3 — `settlements.createTransaction` overflow-гейт балансу оминається
+  під конкурентністю.** `settlements.service.ts:116-127` — `assertMoneyFits(balance+delta)` на
+  прочитаному `findFirst`-балансі, а запис — атомарний `increment`. Сума **race-safe** (гроші не
+  губляться), але дві паралельні проводки, кожна в межах, разом можуть вигнати balance за колонку →
+  одна дістає 500 замість 400. Коментар коду це визнає. Повне закриття — `pg_advisory_xact_lock`
+  на рахунок перед читанням; оцінено як прийнятний залишок (стеля ~10 млрд UAH).
+
+### LOW
+
+- **[LOW, NEW] MV-L1 — `convertToBase`/`getRateAsOf` не гардить `rate` (0/NaN/Infinity) на
+  read-path.** `currency.ts:13-15` гардить лише `coefficient` (`safeCoeff`); `exchange-rates.service.ts:91,100`
+  читає сире `Number(row.rate)`. Write-path захищений (`@IsPositive`/`@IsNumber` у dto), але
+  legacy/seed/прямий-SQL `rate=0`/негатив → `convertToBase` тихо дає `amountBase=0` (не 400) →
+  спотворений base-облік без сигналу. Defense-in-depth.
+- **[LOW, NEW] MV-L2 — doc-hygiene: `BR-SETL-003` (settlements.md:90) прозовий перелік знаків
+  пропускає 4 `*_CANCEL`-типи** (`PAYMENT_CANCEL`, `PREPAYMENT_CANCEL`, `SUPPLIER_PAYMENT_CANCEL`,
+  `SUPPLIER_PAYMENT_RETURN_CANCEL`) проти 18-типного `BALANCE_SIGN`. Знаки правильні (у таблиці
+  `:40-43` є) — лише неповний повтор правила.
+- **[LOW, info] MV-L3 — append-only integration-спек не має явного кейса на DELETE
+  `settlement_transactions`** (лише UPDATE); тригер `BEFORE UPDATE OR DELETE` його покриває. Не
+  варте фіксу, лише нотатка. Також `Promise.all` двох записів в interactive `$transaction`
+  (`settlements.service.ts:133-153`) безпечний лише доки записи незалежні — коментар є.
+
+> **Спільна тема overflow (MV-H2 + MV-M1 + F8):** єдиний спільний гейт у ledger-write-шарі
+> (`settlements`/`payments`/`supplier-payments`/`cash` — скрізь `amount × rate → Decimal(12,2)`)
+> закрив би всі три одним місцем. Варте розгляду при фіксі.
+
+> **Sync-мапінг EXCLUDE→409 (суміжне з F2, із QA F2):** `sync.service.ts` пише календар
+> узагальненим делегатом; порушення EXCLUDE (підйомник/механік) ловиться загальним catch →
+> `syncJob FAILED` із сирим текстом Postgres замість локалізованого 409. Система не падає; планшет
+> бачить сиру причину. Кандидат — винести мапінг `prisma-errors` і в sync-push для calendar_slots.
+
+---
+
 ## 1. Борг обробки помилок на фронті — ✅ ЗАКРИТО (2026-10-03)
 
 **264 → 0.** Обидва правила (`no-misused-promises`, `no-floating-promises`) підняті з
