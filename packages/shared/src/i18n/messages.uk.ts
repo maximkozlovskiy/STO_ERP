@@ -303,6 +303,9 @@ export const uk: Record<string, string> = {
   'err.file.tooLarge': 'Файл завеликий (максимум 10 МБ)',
   'err.file.serviceUnavailable': 'Сервіс файлів недоступний',
   'err.file.disallowedFormat': 'Недозволений формат файлу',
+  'err.file.typeMismatch': 'Вміст файлу не відповідає його розширенню',
+  'err.file.importTooLarge': 'Файл для імпорту завеликий',
+  'err.file.tooManyRows': 'Забагато рядків у файлі для імпорту',
   'err.file.workOrderNotFound': 'Наряд не знайдено',
   'err.file.saveFailed': 'Помилка збереження файлу',
 

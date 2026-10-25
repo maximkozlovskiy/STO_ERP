@@ -457,6 +457,9 @@ export const VALIDATION_KEYS = [
   'err.file.tooLarge',
   'err.file.serviceUnavailable',
   'err.file.disallowedFormat',
+  'err.file.typeMismatch',
+  'err.file.importTooLarge',
+  'err.file.tooManyRows',
   'err.file.workOrderNotFound',
   'err.file.saveFailed',
   // Exception-повідомлення: work-order-media-модуль
