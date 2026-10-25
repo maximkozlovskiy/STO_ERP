@@ -2758,7 +2758,9 @@
    "ExchangeRatesService getRateAsOf повертає найближчий курс ≤ date",
    "ExchangeRatesService resolveBaseConversion fallbackToLatest=true: немає курсу на дату → останній курс (не 400)",
    "ExchangeRatesService resolveBaseConversion базова валюта (code === settings.currency) → rate=1, base=amount (без курсу)",
+   "ExchangeRatesService resolveBaseConversion базова валюта — з налаштувань, а не UAH за замовчуванням",
    "ExchangeRatesService resolveBaseConversion невідома валюта → NotFound",
+   "ExchangeRatesService resolveBaseConversion немає налаштувань організації → 400, а не базова гривня",
    "ExchangeRatesService resolveBaseConversion інша валюта без курсу на дату → 400",
    "ExchangeRatesService resolveBaseConversion інша валюта → base = amount × rate (курс на дату)",
    "ExchangeRatesService sameCurrency USD vs UAH (обидві задані, різні) → false",
@@ -5391,6 +5393,7 @@
    "ReportBuilderService — Bug #620: aggregations enrichment авто-SUM не додається числовій колонці, якій реєстр SUM не дозволяє (price: лише AVG/MIN/MAX)"
   ],
   "apps/api/src/modules/report-builder/report-query.builder.spec.ts": [
+   "report-query.builder BR-RPT-029: порожня валюта = базова межі на коді («≥ / <»), під які підходить базова, теж беруть документи без валюти",
    "report-query.builder BR-RPT-029: порожня валюта = базова обов'язкова валюта (наряд) — без гілки; колонка у валюті документа тягне код валюти",
    "report-query.builder BR-RPT-029: порожня валюта = базова умова, під яку базова не підходить, — без гілки «валюти немає»",
    "report-query.builder BR-RPT-029: порожня валюта = базова умова, під яку підходить базова валюта, бере й документи без валюти (OR)",
@@ -5472,14 +5475,18 @@
   "apps/api/src/modules/report-builder/report-sql-result.spec.ts": [
    "report-sql-result ROLLUP → дерево: рівень за GROUPING, «Разом» з рядка без ключів, NULL-група — «∅»",
    "report-sql-result груп більше за ліміт відповіді → groupsTruncated",
+   "report-sql-result група, яку відрізав ліміт розбивки, — без спільного числа (валют не знаємо)",
    "report-sql-result детальні рядки (≤5000) чіпляються до листових груп за тими самими ключами",
    "report-sql-result розбивка за валютами: byCurrency у групах і «Разом»; кілька валют — спільне значення null",
    "report-sql-result склеєні рядки: колонки у формі детального рядка, кількість — у __mergedCount; понад ліміт — truncated",
-   "report-sql-result сортування груп за агрегатом; AVG над порожнім — null, а не 0"
+   "report-sql-result сортування груп за агрегатом; AVG над порожнім — null, а не 0",
+   "report-sql-result сортування за сумою у валюті документа: група з кількома валютами — у кінці, а не як 0",
+   "report-sql-result сортування за сумою у валюті документа: групи в «чужій» валюті — після базової, перед змішаними"
   ],
   "apps/api/src/modules/report-builder/report-sql.builder.spec.ts": [
    "report-sql.builder BR-RPT-029: валюта документа код валюти — COALESCE(код, базова) у ключі групи й у фільтрі; базова — параметром",
    "report-sql.builder BR-RPT-029: валюта документа розбивка за валютами: GROUPING SETS на кожен рівень разом із «Разом», лише суми у валюті документа",
+   "report-sql.builder BR-RPT-029: валюта документа розбивка й ROLLUP упорядковані однаково (рівень, далі ключі) — зріз відрізає ті самі групи",
    "report-sql.builder BR-RPT-029: валюта документа склеювання: валюта документа — ще один вимір, якщо є колонка у валюті документа",
    "report-sql.builder orgId — параметром на корені й у ON кожного з’єднання, ніколи не текстом запиту",
    "report-sql.builder soft delete кореня й документа-власника; сторно платежу за замовчуванням",

@@ -242,20 +242,31 @@ export function sortNodes(
   nodes: GroupNode[],
   sortAlias: string | null,
   sortDir: 'asc' | 'desc',
+  baseCurrency: string,
 ): void {
   if (sortAlias) {
     // За агрегатом '∅'-група бере участь як звичайна (її сума може бути найбільшою — не
     // форсуємо в кінець, інакше «топ за сумою» не відсортується коректно).
     // hasOwnProperty guard проти prototype-poisoning: aggregates['__proto__'] інакше
     // повертає Object.prototype → arith NaN, undefined sort order.
-    // Група з кількома валютами (BR-RPT-029) не має спільного числа (null) — це не «0»: інакше
-    // найбільша змішана група опинялась унизу «топу за сумою». Такі групи — в кінець за будь-якого
-    // напрямку, як NULLS LAST склеєних рядків.
-    const mixed = (n: GroupNode) =>
-      n.aggregates[sortAlias] === null && Object.keys(n.byCurrency?.[sortAlias] ?? {}).length > 1;
+    // Сума у валюті документа (BR-RPT-029) порівнянна лише в одній валюті. Порядок: групи в базовій
+    // валюті (за сумою), далі групи в одній «чужій» валюті (за кодом, у ній — за сумою), у кінці —
+    // групи з кількома валютами (спільного числа немає) — за будь-якого напрямку, як NULLS LAST.
+    // Інакше «233 USD» ставала серед гривневих груп як 233 грн (рішення власника 2026-10-26).
+    const currencies = (n: GroupNode) => Object.keys(n.byCurrency?.[sortAlias] ?? {});
+    const rank = (n: GroupNode) => {
+      const codes = currencies(n);
+      if (codes.length > 1) return 2;
+      return codes.length === 1 && codes[0] !== baseCurrency ? 1 : 0;
+    };
     nodes.sort((a, b) => {
-      const am = mixed(a);
-      if (am !== mixed(b)) return am ? 1 : -1;
+      const ar = rank(a);
+      const br = rank(b);
+      if (ar !== br) return ar - br;
+      if (ar === 1) {
+        const byCode = currencies(a)[0].localeCompare(currencies(b)[0]);
+        if (byCode !== 0) return byCode;
+      }
       const av = Object.prototype.hasOwnProperty.call(a.aggregates, sortAlias)
         ? (a.aggregates[sortAlias] ?? 0)
         : 0;
@@ -339,7 +350,7 @@ function buildLevel(
         : {}),
     });
   }
-  sortNodes(nodes, sortAlias, sortDir);
+  sortNodes(nodes, sortAlias, sortDir, baseCurrency);
   return nodes;
 }
 

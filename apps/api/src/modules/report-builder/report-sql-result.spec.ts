@@ -220,6 +220,42 @@ describe('report-sql-result', () => {
     }
   });
 
+  // Рішення власника 2026-10-26. Мутація: прибрати ранг «чужої» валюти в sortNodes → «233 USD»
+  // стає серед гривневих груп як 233 грн.
+  // guards: BR-RPT-029
+  it('сортування за сумою у валюті документа: групи в «чужій» валюті — після базової, перед змішаними', () => {
+    const rollup = [
+      { k0: null, g0: 1, n: 6, a0: '0' },
+      { k0: 'cash', g0: 0, n: 1, a0: '500' },
+      { k0: 'card', g0: 0, n: 1, a0: '100' },
+      { k0: 'usd', g0: 0, n: 1, a0: '233' },
+      { k0: 'eur', g0: 0, n: 1, a0: '900' },
+      { k0: 'usd2', g0: 0, n: 1, a0: '10' },
+      { k0: 'mix', g0: 0, n: 1, a0: '5000' },
+    ];
+    const split = [
+      { k0: null, g0: 1, cur: 'UAH', a0: '0' },
+      { k0: 'cash', g0: 0, cur: 'UAH', a0: '500' },
+      { k0: 'card', g0: 0, cur: 'UAH', a0: '100' },
+      { k0: 'usd', g0: 0, cur: 'USD', a0: '233' },
+      { k0: 'eur', g0: 0, cur: 'EUR', a0: '900' },
+      { k0: 'usd2', g0: 0, cur: 'USD', a0: '10' },
+      { k0: 'mix', g0: 0, cur: 'UAH', a0: '4000' },
+      { k0: 'mix', g0: 0, cur: 'USD', a0: '1000' },
+    ];
+    const order = (dir: 'asc' | 'desc') =>
+      assembleTree(rollup, [method], sumAmount, {
+        detail: null,
+        columns: [],
+        entity: pay,
+        currencySplit: split,
+        baseCurrency: BASE,
+        sortByAggregate: { alias: 'SUM_amount', dir },
+      }).tree.map(n => n.key);
+    expect(order('desc')).toEqual(['cash', 'card', 'eur', 'usd', 'usd2', 'mix']);
+    expect(order('asc')).toEqual(['card', 'cash', 'eur', 'usd2', 'usd', 'mix']);
+  });
+
   // Мутація: лишити aggregates групи без розбивки як є → клітинка показує суму гривень із доларами.
   // guards: BR-RPT-029
   it('група, яку відрізав ліміт розбивки, — без спільного числа (валют не знаємо)', () => {

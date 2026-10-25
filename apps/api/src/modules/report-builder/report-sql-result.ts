@@ -155,7 +155,7 @@ export function assembleTree(
   const sortAlias = opts.sortByAggregate?.alias ?? null;
   const sortDir = opts.sortByAggregate?.dir ?? 'desc';
   const sortDeep = (list: GroupNode[]) => {
-    sortNodes(list, sortAlias, sortDir);
+    sortNodes(list, sortAlias, sortDir, baseCurrency);
     list.forEach(n => sortDeep(n.children));
   };
   sortDeep(roots);
