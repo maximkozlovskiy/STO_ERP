@@ -219,7 +219,12 @@ test.describe('Оплати постачальникам', () => {
       async ({ token, API, id }) => {
         const r = await fetch(`${API}/supplier-payments/${id}/confirm`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          // MV-M2: confirm під @RequireIdempotencyKey (money-critical) — ключ обов'язковий.
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            'Idempotency-Key': crypto.randomUUID(),
+          },
           body: '{}',
         });
         return { status: r.status, body: r.ok ? await r.json() : await r.text() };
