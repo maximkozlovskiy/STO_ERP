@@ -5411,12 +5411,15 @@
    "report-query.builder фільтр дати порівнює цілими днями (BR-RPT-025) колонка @db.Date (дата наряду) — межі є самою датою",
    "report-query.builder фільтр дати порівнює цілими днями (BR-RPT-025) мітка часу: = день — уся київська доба; > день — після кінця доби; < день — до її початку",
    "report-query.builder фільтр дати порівнює цілими днями (BR-RPT-025) не день (31.02, мітка часу, «вчора») → 400; «в списку» і «містить» для дати → 400",
+   "report-query.builder фільтр дати порівнює цілими днями (BR-RPT-025) ≠ день — OR «до початку дня» / «після кінця дня» в AND, разом із періодом",
    "report-query.builder фільтр по нефільтровному полю (stockMovement.quantity) → BadRequestException",
    "report-query.builder інжектить orgId + deletedAt для FULL-профілю"
   ],
   "apps/api/src/modules/report-builder/report-registry.spec.ts": [
    "report-registry цілісність FULL сутність: buildQuery інжектить deletedAt:null",
+   "report-registry цілісність REGISTRY_ENUMS збігаються зі значеннями enum-ів Prisma",
    "report-registry цілісність append-only сутність: buildQuery НЕ інжектить deletedAt у корінь",
+   "report-registry цілісність dateOnly стоїть рівно на колонках @db.Date схеми Prisma",
    "report-registry цілісність hasSoftDelete узгоджений з profile (APPEND_ONLY → hasSoftDelete:false)",
    "report-registry цілісність signedByType поле посилається на сусіднє enum-поле (StockMovement.quantity → type)",
    "report-registry цілісність кожен relation-field prismaPath має валідний relation-prefix",
