@@ -381,6 +381,38 @@ export class StockDocumentsService {
     return this.toDto(updated);
   }
 
+  /**
+   * BR-INVT-UOMBASE: коефіцієнт конвертації у базові одиниці для кожного рядка (`line.id → coeff`)
+   * з GoodUoM за парою (goodId, line.unitOfMeasureId). Один запит на документ; рядок у базовій
+   * одиниці (unitOfMeasureId=null) або без рядка GoodUoM → safeCoeff=1. +orgId у where —
+   * GoodUoM tenant-scoped. Дзеркалить fetchPartCoefficients (work-order-stock-requirements).
+   */
+  private async fetchLineCoefficients(
+    orgId: string,
+    lines: { id: string; goodId: string; unitOfMeasureId?: string | null }[],
+  ): Promise<Map<string, number>> {
+    const uomIds = Array.from(
+      new Set(lines.map(l => l.unitOfMeasureId).filter((v): v is string => !!v)),
+    );
+    const result = new Map<string, number>();
+    if (uomIds.length === 0) return result;
+    const goodIds = Array.from(new Set(lines.map(l => l.goodId)));
+    const uoms = await this.prisma.goodUoM.findMany({
+      where: { orgId, unitOfMeasureId: { in: uomIds }, goodId: { in: goodIds } },
+      select: { unitOfMeasureId: true, goodId: true, coefficient: true },
+    });
+    const coeffByGoodUom = new Map<string, number>(
+      uoms.map(u => [`${u.goodId}|${u.unitOfMeasureId}`, u.coefficient]),
+    );
+    for (const l of lines) {
+      if (l.unitOfMeasureId) {
+        // safeCoeff: legacy/seed 0/NaN/negative → 1; відсутній рядок → undefined → 1.
+        result.set(l.id, safeCoeff(coeffByGoodUom.get(`${l.goodId}|${l.unitOfMeasureId}`)));
+      }
+    }
+    return result;
+  }
+
   async transition(
     orgId: string,
     id: string,
@@ -393,7 +425,16 @@ export class StockDocumentsService {
         lines: {
           where: { deletedAt: null },
           take: 1000,
-          include: { good: { select: { unitId: true } } },
+          // unitOfMeasureId — ОДИНИЦЯ рядка, у якій введено quantity (може бути альт.: «Пак»).
+          // Потрібна для BR-INVT-UOMBASE: coeff конвертації у базові одиниці на CONFIRM.
+          select: {
+            id: true,
+            goodId: true,
+            quantity: true,
+            price: true,
+            unitOfMeasureId: true,
+            good: { select: { unitId: true } },
+          },
         },
       },
     });
@@ -408,6 +449,13 @@ export class StockDocumentsService {
           translateError('err.stockDocument.confirmRequiresLines', getLocale()),
         );
       }
+
+      // BR-INVT-UOMBASE: StockItem.quantity зберігається у БАЗОВИХ одиницях. Якщо рядок введено в
+      // альт-одиниці (line.unitOfMeasureId, напр. «Пак» = 10 шт), quantity рядка множимо на coeff
+      // перед рухом складу (WRITEOFF/RECEIPT/TRANSFER/OPENING_BALANCE), інакше залишок дрейфує у
+      // разів. Рядок у базовій одиниці (unitOfMeasureId=null) → coeff=1. coeff — з GoodUoM за
+      // (goodId, line.unitOfMeasureId); рядка немає → safeCoeff=1. Дзеркалить WO-списання.
+      const coeffByLineId = await this.fetchLineCoefficients(orgId, doc.lines);
 
       await this.prisma.$transaction(
         async tx => {
@@ -444,6 +492,9 @@ export class StockDocumentsService {
           // запчастин наряду (BR-WO-003).
           const applyLine = async (line: (typeof doc.lines)[number]): Promise<unknown> => {
             const lineUnitId = line.good?.unitId ?? null;
+            // BR-INVT-UOMBASE: кількість у базових одиницях = quantity рядка × coeff його одиниці.
+            const coeff = coeffByLineId.get(line.id) ?? 1;
+            const baseQty = line.quantity * coeff;
             // persist resolved UoM — extracted to avoid duplication in both branches.
             // defense-in-depth: include orgId у where (узгоджено з PO.receive
             // де line update теж компаундний where: { id, orgId }).
@@ -472,7 +523,8 @@ export class StockDocumentsService {
                   ...baseArgs,
                   warehouseId: doc.warehouseId,
                   type: 'WRITEOFF',
-                  quantity: -line.quantity,
+                  // BR-INVT-UOMBASE: TRANSFER множить ОБИДВА плеча (джерело WRITEOFF).
+                  quantity: -baseQty,
                 },
                 tx,
               );
@@ -482,14 +534,16 @@ export class StockDocumentsService {
                   ...baseArgs,
                   warehouseId: doc.targetWarehouseId!,
                   type: 'RECEIPT',
-                  quantity: line.quantity,
+                  // BR-INVT-UOMBASE: друге плече TRANSFER (ціль RECEIPT) — теж базові.
+                  quantity: baseQty,
                   price: src.weightedCostPrice ?? baseArgs.price,
                 },
                 tx,
               );
               return maybeUpdateUom;
             }
-            const quantity = doc.type === 'WRITEOFF' ? -line.quantity : line.quantity;
+            // BR-INVT-UOMBASE: WRITEOFF/RECEIPT/OPENING_BALANCE — у базових одиницях (× coeff).
+            const quantity = doc.type === 'WRITEOFF' ? -baseQty : baseQty;
             return Promise.all([
               this.inventory.createMovement(
                 orgId,

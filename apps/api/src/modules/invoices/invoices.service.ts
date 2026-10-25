@@ -574,9 +574,15 @@ export class InvoicesService {
     await this.prisma.$transaction(
       async tx => {
         const moved = await tx.invoice.updateMany({
-          where: { id, orgId, status: inv.status, deletedAt: null },
+          // F6 (BR-INV-012): paidAmount у where — CAS має ловити й паралельну ОПЛАТУ, не лише зміну
+          // статусу. Для PARTIALLY_PAID/OVERDUE→PAID paymentRemaining (:570, поза tx) рахується зі
+          // стального paidAmount; якщо тим часом payments-модуль збільшив paidAmount, цей updateMany
+          // без paidAmount у where однаково пройшов би (status той самий), затер paidAmount=amount і
+          // створив дзеркальний PAYMENT на застарілий залишок → фантомний кредит клієнта в ledger.
+          // Дзеркалить payments.service.ts (CAS payment) і work-order-invoice-mirror.ts.
+          where: { id, orgId, status: inv.status, paidAmount: inv.paidAmount, deletedAt: null },
           // Ручний перехід у PAID синхронізує paidAmount=amount (щоб «залишок» був 0). CAS
-          // (status:inv.status у where) проти подвійного PAYMENT при concurrent transition.
+          // (status+paidAmount у where) проти подвійного PAYMENT / фантомного кредиту при concurrent.
           data:
             newStatus === InvoiceStatus.PAID
               ? { status: newStatus, paidAmount: inv.amount }

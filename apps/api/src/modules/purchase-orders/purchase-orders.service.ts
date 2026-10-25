@@ -687,6 +687,43 @@ export class PurchaseOrdersService {
     return this.findOne(orgId, id);
   }
 
+  /**
+   * BR-INVT-UOMBASE: коефіцієнт одиниці прийому (`line.id → coefficient`) з GoodUoM за парою
+   * (goodId, resolvedUomId). Один запит на всі рядки; рядка GoodUoM немає (прийом у базовій
+   * одиниці) → safeCoeff=1. Дзеркалить fetchPartCoefficients (work-order-stock-requirements),
+   * але ключ — resolvedUomId прийому, не per-line UoM наряду.
+   */
+  private async fetchReceiveCoefficients(
+    orgId: string,
+    activeLines: { line: { id: string; goodId: string } }[],
+    resolvedByLineId: Map<string, string | null>,
+  ): Promise<Map<string, number>> {
+    const uomIds = Array.from(
+      new Set(
+        activeLines
+          .map(({ line }) => resolvedByLineId.get(line.id))
+          .filter((v): v is string => !!v),
+      ),
+    );
+    const result = new Map<string, number>();
+    if (uomIds.length === 0) return result;
+    const goodIds = Array.from(new Set(activeLines.map(({ line }) => line.goodId)));
+    // A1/A3: +orgId у where — GoodUoM tenant-scoped (інакше coeff міг би прийти з чужої org).
+    const uoms = await this.prisma.goodUoM.findMany({
+      where: { orgId, unitOfMeasureId: { in: uomIds }, goodId: { in: goodIds } },
+      select: { unitOfMeasureId: true, goodId: true, coefficient: true },
+    });
+    const coeffByGoodUom = new Map<string, number>(
+      uoms.map(u => [`${u.goodId}|${u.unitOfMeasureId}`, u.coefficient]),
+    );
+    for (const { line } of activeLines) {
+      const uomId = resolvedByLineId.get(line.id);
+      // safeCoeff: legacy/seed coefficient=0/NaN/negative → 1; відсутній рядок → undefined → 1.
+      result.set(line.id, safeCoeff(uomId ? coeffByGoodUom.get(`${line.goodId}|${uomId}`) : 1));
+    }
+    return result;
+  }
+
   async receive(
     orgId: string,
     id: string,
@@ -795,12 +832,35 @@ export class PurchaseOrdersService {
 
     // money(): receivedAmount живить SUPPLIER_CHARGE (борг постачальнику) — грошовий
     // результат перед createTransaction має бути квантований до копійки (не float-дрейф).
+    // SUPPLIER_CHARGE рахується у ЗАМОВЛЕНИХ одиницях (receivedQty × price): price — ціна за
+    // одиницю прийому, тож борг самоузгоджений. НЕ множити на coeff (F4: подвійне застосування).
     const receivedAmount = money(
       activeLines.reduce(
         (sum, { recv, line }) => sum + recv.receivedQty * moneyFromDecimal(line.price),
         0,
       ),
     );
+
+    // BR-INVT-UOMBASE: StockItem.quantity зберігається у БАЗОВИХ одиницях (як WO-списання), тож
+    // кількість руху складу = receivedQty × coeff одиниці прийому. resolvedUomId рахуємо тут один
+    // раз (далі reuse у CAS/рух/алокації), а coeff — з GoodUoM за (goodId, resolvedUomId); рядка
+    // немає (прийом у базовій одиниці товару) → safeCoeff=1 (поведінка товарів без альт-одиниць
+    // незмінна). Еталон — fetchPartCoefficients у work-order-stock-requirements.
+    const resolveUomId = (
+      recv: (typeof activeLines)[number]['recv'],
+      line: (typeof activeLines)[number]['line'],
+    ) =>
+      (recv.unitOfMeasureId && allowedUomIds.has(recv.unitOfMeasureId)
+        ? recv.unitOfMeasureId
+        : null) ??
+      line.good?.unitId ??
+      null;
+    const resolvedByLineId = new Map<string, string | null>(
+      activeLines.map(({ recv, line }) => [line.id, resolveUomId(recv, line)]),
+    );
+    const coeffByLineId = await this.fetchReceiveCoefficients(orgId, activeLines, resolvedByLineId);
+    const baseQty = (line: (typeof activeLines)[number]['line'], receivedQty: number) =>
+      receivedQty * (coeffByLineId.get(line.id) ?? 1);
 
     await this.prisma.$transaction(
       async tx => {
@@ -836,12 +896,7 @@ export class PurchaseOrdersService {
         // → rollback ДО createMovement/SUPPLIER_CHARGE (жодного подвоєння). Послідовно, щоб при
         // count=0 не лишити orphan RECEIPT-руху.
         for (const { recv, line } of activeLines) {
-          const resolvedUomId =
-            (recv.unitOfMeasureId && allowedUomIds.has(recv.unitOfMeasureId)
-              ? recv.unitOfMeasureId
-              : null) ??
-            line.good?.unitId ??
-            null;
+          const resolvedUomId = resolvedByLineId.get(line.id) ?? null;
           const shouldUpdateLineUom = line.receivedQty === 0 || !!recv.unitOfMeasureId;
           const casResult = await tx.purchaseOrderLine.updateMany({
             where: { id: recv.lineId, orgId, receivedQty: line.receivedQty },
@@ -859,19 +914,15 @@ export class PurchaseOrdersService {
         // warehouse) rows → незалежні, паралелимо (Prisma серіалізує у tx, але економія JS).
         await Promise.all(
           activeLines.map(({ recv, line }) => {
-            const resolvedUomId =
-              (recv.unitOfMeasureId && allowedUomIds.has(recv.unitOfMeasureId)
-                ? recv.unitOfMeasureId
-                : null) ??
-              line.good?.unitId ??
-              null;
+            const resolvedUomId = resolvedByLineId.get(line.id) ?? null;
             return this.inventory.createMovement(
               orgId,
               {
                 goodId: line.goodId,
                 warehouseId: po.warehouseId,
                 type: 'RECEIPT',
-                quantity: recv.receivedQty,
+                // BR-INVT-UOMBASE: оприбутковуємо у БАЗОВИХ одиницях (receivedQty × coeff).
+                quantity: baseQty(line, recv.receivedQty),
                 price: Number(line.price),
                 documentType: 'PurchaseOrder',
                 documentId: id,
@@ -891,9 +942,11 @@ export class PurchaseOrdersService {
           tx,
           orgId,
           { id, warehouseId: po.warehouseId },
+          // BR-INVT-UOMBASE: PurchaseListItem.quantity/receivedQty/reservedQty — БАЗОВІ (BR-PL-002),
+          // тож в алокацію (і RESERVATION всередині неї) передаємо базову кількість (× coeff).
           activeLines.map(({ recv, line }) => ({
             goodId: line.goodId,
-            quantity: recv.receivedQty,
+            quantity: baseQty(line, recv.receivedQty),
           })),
           userId,
         );
