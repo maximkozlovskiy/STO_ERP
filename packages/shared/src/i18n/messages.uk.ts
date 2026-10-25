@@ -212,6 +212,8 @@ export const uk: Record<string, string> = {
   'err.exchangeRate.dateExists': 'Курс на цю дату вже існує',
   'err.exchangeRate.baseCurrencyNotConfigured':
     'Базову валюту ({{code}}) не налаштовано — створіть її у НДІ → Валюти',
+  'err.exchangeRate.baseCurrencyNotSet':
+    'Базову валюту організації не задано — вкажіть її в налаштуваннях організації',
   'err.exchangeRate.noRateForDate':
     'Немає курсу валюти {{code}} на {{date}} — додайте курс у НДІ → Курси валют',
   'err.exchangeRate.invalidStoredRate':

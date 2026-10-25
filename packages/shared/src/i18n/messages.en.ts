@@ -209,6 +209,8 @@ export const en: Record<string, string> = {
   'err.exchangeRate.dateExists': 'A rate for this date already exists',
   'err.exchangeRate.baseCurrencyNotConfigured':
     'The base currency ({{code}}) is not configured — create it in Reference → Currencies',
+  'err.exchangeRate.baseCurrencyNotSet':
+    "The organisation's base currency is not set — specify it in the organisation settings",
   'err.exchangeRate.noRateForDate':
     'No exchange rate for currency {{code}} on {{date}} — add a rate in Reference → Exchange rates',
   'err.exchangeRate.invalidStoredRate':

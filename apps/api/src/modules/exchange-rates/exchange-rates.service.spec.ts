@@ -230,6 +230,27 @@ describe('ExchangeRatesService', () => {
       ).rejects.toThrow(/Немає курсу валюти/);
     });
 
+    // Рішення власника 2026-10-26: без налаштувань організації базову валюту не вгадуємо (раніше —
+    // тиха гривня). Мутація: повернути `?? 'UAH'` у baseCurrencyCode → кейси червоніють.
+    it('немає налаштувань організації → 400, а не базова гривня', async () => {
+      prisma.currency.findFirst.mockResolvedValueOnce({ code: 'UAH' });
+      prisma.organisationSettings.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        service.resolveBaseConversion('org-1', CURRENCY_ID, new Date('2026-05-28'), 100),
+      ).rejects.toThrow(BadRequestException);
+      prisma.organisationSettings.findFirst.mockResolvedValueOnce(null);
+      await expect(service.getBaseCurrency('org-1')).rejects.toThrow(
+        /Базову валюту організації не задано/,
+      );
+      expect(prisma.currency.findFirst).toHaveBeenCalledTimes(1); // getBaseCurrency не шукав валюту
+    });
+
+    it('базова валюта — з налаштувань, а не UAH за замовчуванням', async () => {
+      prisma.organisationSettings.findFirst.mockResolvedValueOnce({ currency: 'EUR' });
+      prisma.currency.findFirst.mockResolvedValueOnce({ id: 'eur-1' });
+      await expect(service.getBaseCurrency('org-1')).resolves.toEqual({ id: 'eur-1', code: 'EUR' });
+    });
+
     it('невідома валюта → NotFound', async () => {
       prisma.currency.findFirst.mockResolvedValueOnce(null);
       await expect(

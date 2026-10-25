@@ -128,13 +128,27 @@ export class ExchangeRatesService {
    * Інакше — курс на дату (getRateAsOf); якщо курсу немає → 400 (НЕ тихо rate=1: це спотворило б
    * base-облік). Спільна точка мультивалютної конвертації для всіх грошових агрегатів.
    */
-  /** Базова валюта org (за OrganisationSettings.currency code) → {id?, code}. code завжди (default UAH). */
-  async getBaseCurrency(orgId: string): Promise<{ id: string | null; code: string }> {
+  /**
+   * Код базової валюти org — лише з OrganisationSettings.currency. Налаштувань немає — 400, а не
+   * тиха гривня: базова валюта визначає всі суми в базі, і вгадувати її не можна (рішення власника
+   * 2026-10-26).
+   */
+  private async baseCurrencyCode(orgId: string): Promise<string> {
     const settings = await this.prisma.organisationSettings.findFirst({
       where: { orgId },
       select: { currency: true },
     });
-    const code = settings?.currency ?? 'UAH';
+    if (!settings?.currency) {
+      throw new BadRequestException(
+        translateError('err.exchangeRate.baseCurrencyNotSet', getLocale()),
+      );
+    }
+    return settings.currency;
+  }
+
+  /** Базова валюта org (за OrganisationSettings.currency code) → {id?, code}. Без налаштувань — 400. */
+  async getBaseCurrency(orgId: string): Promise<{ id: string | null; code: string }> {
+    const code = await this.baseCurrencyCode(orgId);
     const cur = await this.prisma.currency.findFirst({
       where: { orgId, code, deletedAt: null },
       select: { id: true },
@@ -180,19 +194,15 @@ export class ExchangeRatesService {
     amount: number,
     fallbackToLatest = false,
   ): Promise<{ rateUsed: number; amountBase: number }> {
-    const [currency, settings] = await Promise.all([
+    const [currency, baseCode] = await Promise.all([
       this.prisma.currency.findFirst({
         where: { id: currencyId, orgId, deletedAt: null },
         select: { code: true },
       }),
-      this.prisma.organisationSettings.findFirst({
-        where: { orgId },
-        select: { currency: true },
-      }),
+      this.baseCurrencyCode(orgId),
     ]);
     if (!currency)
       throw new NotFoundException(translateError('err.currency.notFound', getLocale()));
-    const baseCode = settings?.currency ?? 'UAH';
     // Базова валюта — без конвертації (rate=1). Порівнюємо за кодом (base зберігається кодом).
     if (currency.code === baseCode) {
       return { rateUsed: 1, amountBase: amount };
