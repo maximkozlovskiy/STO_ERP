@@ -70,10 +70,11 @@ export interface ReportRelationDef {
   depth: number;
   /** 3+ хопи або дубль — сховати за замовчуванням у UI. */
   advanced: boolean;
-  /** Чи інжектити deletedAt:null у nested include на цьому хопі (Bug #607). */
-  targetHasSoftDelete: boolean;
   /** FK-колонка в таблиці батька (SQL-агрегати); типово `<зв'язок>Id`. */
-  fk: string; /** FK необов'язковий (`brandId String?`): зв'язку може не бути — «порожнє» поля за ним (BR-RPT-028). */
+  fk: string;
+  /** FK необов'язковий (`brandId String?`): зв'язку може не бути — «порожнє» поля за ним (BR-RPT-028).
+   *  Умови «живий» (`deletedAt`) на хоп зв'язку немає: видалений пов'язаний запис — звичайне значення
+   *  (до 2026-10-25 її ставив прапорець `targetHasSoftDelete`, Bug #607). */
   optional: boolean;
 }
 
@@ -224,12 +225,12 @@ const rateField = (
   groupable: false,
 });
 
-/** Зв'язок: prismaPath = key, глибина = кількість хопів; цільова сутність типово має soft delete. */
+/** Зв'язок: prismaPath = key, глибина = кількість хопів; FK типово `<останній сегмент>Id`. */
 const relation = (
   key: string,
   label: string,
   target: string,
-  opts: { targetHasSoftDelete?: boolean; fk?: string; optional?: boolean } = {},
+  opts: { fk?: string; optional?: boolean } = {},
 ): ReportRelationDef => ({
   key,
   label,
@@ -237,7 +238,6 @@ const relation = (
   prismaPath: key,
   depth: key.split('.').length,
   advanced: false,
-  targetHasSoftDelete: opts.targetHasSoftDelete ?? true,
   fk: opts.fk ?? `${key.split('.').pop()}Id`,
   optional: opts.optional ?? false,
 });
@@ -438,10 +438,7 @@ const settlementTransaction: ReportEntityDef = {
     enumField('account.counterparty.type', 'Тип контрагента', 'CounterpartyType'),
   ],
   relations: [
-    relation('account', 'Рахунок', 'settlementAccount', {
-      targetHasSoftDelete: false,
-      fk: 'settlementAccountId',
-    }),
+    relation('account', 'Рахунок', 'settlementAccount', { fk: 'settlementAccountId' }),
     relation('account.counterparty', 'Контрагент', 'counterparty'),
     relation('currency', 'Валюта', 'currency', { optional: true }),
   ],

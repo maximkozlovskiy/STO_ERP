@@ -14,6 +14,7 @@ import {
 const t = i18n.getFixedT('uk', 'settlements') as unknown as TFunction<'settlements'>;
 
 const tx = (i: number): CsvTransaction => ({
+  id: `tx-${i}`,
   type: 'PAYMENT',
   amount: i,
   createdAt: '2026-10-20T10:00:00.000Z',
@@ -43,6 +44,23 @@ describe('settlements › transactions-csv', () => {
     const none = pager(0);
     expect(await fetchAllTransactions(none)).toEqual([]);
     expect(none).toHaveBeenCalledTimes(1);
+  });
+
+  // Нова операція під час експорту зсуває сторінки на одну позицію: остання операція першої
+  // сторінки приходить і на другій. Мутація: прибрати відсів за id → 451 рядок замість 450.
+  it('операція, проведена під час експорту, — без повтору рядка на межі сторінок', async () => {
+    const all = Array.from({ length: 450 }, (_, i) => tx(i + 1));
+    const fetchPage = vi.fn((page: number, limit: number) => {
+      // після першої сторінки зверху з'являється нова операція
+      const list = page === 1 ? all : [tx(0), ...all];
+      return Promise.resolve({
+        items: list.slice((page - 1) * limit, page * limit),
+        total: list.length,
+      });
+    });
+    const got = await fetchAllTransactions(fetchPage);
+    expect(got.map(x => x.id)).toEqual([...new Set(got.map(x => x.id))]);
+    expect(got).toHaveLength(450);
   });
 
   it('CSV: заголовок + рядок на кожну операцію, базова сума — числом з комою', () => {

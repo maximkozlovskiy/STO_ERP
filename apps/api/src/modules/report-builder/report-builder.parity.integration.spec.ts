@@ -7,6 +7,7 @@ import type { PrismaService } from '../../prisma/prisma.service';
 import {
   REGISTRY,
   REGISTRY_ENUMS,
+  canBeEmpty,
   type ReportEntityDef,
   type ReportFieldDef,
 } from './report-registry';
@@ -142,9 +143,11 @@ async function compare(config: FullReportConfig, label: string): Promise<void> {
 // ── Матриця ───────────────────────────────────────────────────────────────────────
 
 /** Фільтри, що зачіпають кожен тип поля й оператор. */
-function filtersFor(f: ReportFieldDef): ReportFilterInput[] {
+function filtersFor(e: ReportEntityDef, f: ReportFieldDef): ReportFilterInput[] {
   const out: ReportFilterInput[] = [];
-  if (f.nullable) {
+  // Не лише `nullable`: «порожнє / заповнене» дозволене кожному полю, що може бути порожнім
+  // (текст, поле за optional-зв'язком — BR-RPT-028), і Prisma OR-гілки мусять дати те саме, що SQL.
+  if (canBeEmpty(e, f.prismaPath)) {
     out.push(
       { field: f.key, op: 'isNull', value: true },
       { field: f.key, op: 'isNull', value: false },
@@ -216,7 +219,7 @@ function configsFor(e: ReportEntityDef): { label: string; config: FullReportConf
     });
   }
   for (const f of e.fields.filter(x => x.filterable)) {
-    for (const filter of filtersFor(f)) {
+    for (const filter of filtersFor(e, f)) {
       out.push({
         label: `${e.key} фільтр ${f.key} ${filter.op} ${JSON.stringify(filter.value)}`,
         config: {

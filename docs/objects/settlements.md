@@ -79,7 +79,8 @@ _Stub — заповнити при роботі з settlements модулем._
 
 - **CSV операцій контрагента** (`settlements/transactions-csv.ts`) — усі операції, а не перші 50,
   які показує вкладка: експорт дочитує сторінками по 200 (cap API) до `total` (рішення власника
-  2026-10-25). Файл — з BOM, роздільник `;`, сума в базовій валюті окремою колонкою; тест —
+  2026-10-25), без повторів за `id` (операція, проведена під час експорту, зсуває сторінки).
+  Файл — з BOM, роздільник `;`, сума в базовій валюті окремою колонкою; тест —
   `settlements/__tests__/transactions-csv.test.ts`.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md) · [docs/objects/supplier-payment.md](supplier-payment.md)

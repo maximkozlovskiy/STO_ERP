@@ -7,7 +7,7 @@
 
 - **Метадата-реєстр** (`report-registry.ts`) — ЄДИНЕ ДЖЕРЕЛО ПРАВДИ. Описує сутності: `fields[]`
   ({key, label, type, prismaPath, enumName?, aggregations[], filterable, groupable, stateNotFlow?,
-  signedByType?}), `relations[]` ({prismaPath, depth, advanced, targetHasSoftDelete}), прапорці
+  signedByType?}), `relations[]` ({prismaPath, depth, advanced, fk, optional}), прапорці
   `hasSoftDelete`/`profile: FULL|APPEND_ONLY`, `dateField`. Живить і backend-білдер, і фронт
   (`GET /reports/builder/metadata`).
 - **9 сутностей:** WorkOrder (Наряди), WorkOrderPart (Запчастини), PurchaseOrderLine (Закупівлі),
@@ -31,8 +31,9 @@
   (захист від `__proto__`/`constructor`/`toString`, як `buildSortOrderBy`).
 - Жоден ключ Prisma (`where`/`include`/`select`/`orderBy`) не походить із вводу. Значення фільтрів
   параметризує Prisma-клієнт. Enum-значення + `op` — з фіксованих whitelist.
-- `orgId` інжектиться у КОЖЕН `where`; `deletedAt:null` — лише де `hasSoftDelete`; nested
-  `deletedAt` на relation-хопах у WHERE (Bug #607).
+- `orgId` інжектиться у КОЖЕН `where`; `deletedAt:null` — лише де `hasSoftDelete` і на
+  `parentRelations`; на хопах зв'язку умови `deletedAt` немає (BR-RPT-028, Bug #607 скасовано
+  2026-10-25).
 
 ## Prisma-нюанси (баги live-верифікації)
 

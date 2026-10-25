@@ -8,6 +8,7 @@ import { settlementTxTypeLabel } from '@/i18n/enumLabel';
 
 /** Рядок операції, як його віддає `GET /counterparties/:id/transactions`. */
 export interface CsvTransaction {
+  id: string;
   type: string;
   amount: number;
   currencyCode?: string | null;
@@ -24,15 +25,18 @@ export const TX_EXPORT_PAGE_SIZE = 200;
  * Усі операції контрагента сторінками по 200 — експорт до 2026-10-25 брав лише перші 50, які
  * показує вкладка, хоча в заголовку стояла загальна кількість (рішення власника: «усі записи»).
  * Зупиняється, коли зібрано `total` або сторінка прийшла неповною.
+ *
+ * Сторінки — зсувом від найновішої: операція, проведена під час експорту, зсуває решту на одну
+ * позицію, і остання операція попередньої сторінки приходить удруге. Тому — без повторів за `id`.
  */
-export async function fetchAllTransactions<T>(
+export async function fetchAllTransactions<T extends { id: string }>(
   fetchPage: (page: number, limit: number) => Promise<{ items: T[]; total: number }>,
 ): Promise<T[]> {
-  const all: T[] = [];
+  const byId = new Map<string, T>();
   for (let page = 1; ; page++) {
     const { items, total } = await fetchPage(page, TX_EXPORT_PAGE_SIZE);
-    all.push(...items);
-    if (items.length < TX_EXPORT_PAGE_SIZE || all.length >= total) return all;
+    for (const item of items) if (!byId.has(item.id)) byId.set(item.id, item);
+    if (items.length < TX_EXPORT_PAGE_SIZE || byId.size >= total) return [...byId.values()];
   }
 }
 
