@@ -3,6 +3,13 @@
 > Архів реальних випадків (дата — назва — §N + Сигнал / Grep / Фікс / Severity).
 > Не читати цілком — шукати за ключовим словом. Чекліст секції: `../sections/database.md`.
 
+### 2026-10-25 — ROLLUP + LIMIT без ORDER BY ріже «Разом»; агрегат без GROUP BY — фантомний рядок — §6
+
+**Сигнал:** `report-sql.builder.ts` (BR-RPT-027): `GROUP BY ROLLUP (k0, k1) LIMIT 20001` без `ORDER BY`. EXPLAIN на dev-БД — `MixedAggregate` (хеш), порядок рядків довільний; на перевищенні ліміту губились «Разом» і батьківські групи. Склеювання плоских рядків лише з підсумовуваних колонок: `SELECT SUM(…) … WHERE …` без GROUP BY над порожньою вибіркою давав рядок нулів (JS-еталон — `[]`). Паритет-тест не ловив: матриця не мала ні >20 000 груп, ні конфігу «лише суми + порожньо».
+**Grep:** `grep -rn "ROLLUP\|GROUPING SETS" apps/api/src --include="*.ts" | grep -v spec`
+**Фікс:** `ORDER BY GROUPING(k0) + … DESC LIMIT …`; `HAVING COUNT(*) > 0`, коли GROUP BY порожній. Тести форми SQL з мутацією (`report-sql.builder.spec.ts`).
+**Severity:** IMPORTANT
+
 ### 2026-05-28 — schema.prisma enum/поле змінено без міграції — §6
 
 **Сигнал:** diff містить зміну `schema.prisma` (нове enum-значення/поле/модель) але без папки у `migrations/`.

@@ -61,6 +61,13 @@ grep -rn "ALTER TYPE.*ADD VALUE" packages/database/prisma/migrations/ | tail -5
       Grep: `git diff <base> -- apps/api/src | grep -nE "^\+.*status: \{ not:"` → для кожного фільтра
       звірити `pg_constraint` таблиці й інших читачів (`journal/database.md`, 2026-10-18)
 
+- [ ] **Сирий SQL з `GROUP BY ROLLUP/CUBE/GROUPING SETS` + `LIMIT` → `ORDER BY` рівня перед LIMIT; агрегат БЕЗ `GROUP BY` → `HAVING COUNT(*) > 0`, якщо порожня вибірка має дати 0 рядків.**
+      Хешований ROLLUP (`MixedAggregate`) віддає рядки довільно: LIMIT на перевищенні ліміту відрізав
+      «Разом» (rowCount 0) і батьківські групи (діти-сироти мовчки зникали). Агрегат без GROUP BY завжди
+      дає рядок — склеювання лише сум над порожньою вибіркою показувало «0 · склеєно 0». Grep:
+      `grep -rn "ROLLUP\|GROUPING SETS\|CUBE (" apps/api/src --include="*.ts" | grep -v spec` → поруч
+      `ORDER BY GROUPING(…) DESC` до `LIMIT` (`journal/database.md`, 2026-10-25)
+
 ---
 
 ### §9 Sync Readiness
