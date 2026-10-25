@@ -267,7 +267,8 @@
    "RejectNulCharacterPipe path-параметр із NUL → 400",
    "RejectNulCharacterPipe query-DTO цілком (`@Query() dto`): NUL у вкладеному значенні чи масиві → 400",
    "RejectNulCharacterPipe query-рядок із NUL → 400 з українським текстом",
-   "RejectNulCharacterPipe тіло запиту не чіпає; чисті значення повертає як є"
+   "RejectNulCharacterPipe валідне тіло, query та custom-аргумент проходять як є",
+   "RejectNulCharacterPipe тіло запиту з NUL у рядковому полі → 400 (BR-SEC-NUL)"
   ],
   "apps/api/src/common/pipes/stock-document-schema.spec.ts": [
    "stockDocumentFormSchema (спільна, web ↔ api) TRANSFER без targetWarehouseId → помилка на targetWarehouseId (Bug #462)",
@@ -452,6 +453,22 @@
    "assertRequiredCalendarDateQuery повідомлення — те саме, що для необовʼязкових меж: «Невірна дата у відборі»",
    "assertRequiredCalendarDateQuery порожня дата → 400 (у необовʼязкових межах порожнє означало б «без межі»)"
   ],
+  "apps/api/src/common/utils/file-signature.spec.ts": [
+   "detectMimeFromBuffer RIFF без WEBP-бренда (напр. WAV) → null, не зображення",
+   "detectMimeFromBuffer Uint8Array приймається так само, як Buffer",
+   "detectMimeFromBuffer виконуваний MZ → null (підробка .exe→.png)",
+   "detectMimeFromBuffer впізнає GIF",
+   "detectMimeFromBuffer впізнає HEIC (ftyp heic)",
+   "detectMimeFromBuffer впізнає JPEG (FF D8 FF)",
+   "detectMimeFromBuffer впізнає PDF (%PDF-)",
+   "detectMimeFromBuffer впізнає PNG за сигнатурою",
+   "detectMimeFromBuffer впізнає WEBP (RIFF…WEBP)",
+   "detectMimeFromBuffer впізнає ZIP/XLSX (PK\\x03\\x04) як OOXML",
+   "detectMimeFromBuffer короткий буфер (< 4 байт) → null",
+   "detectMimeFromBuffer текстовий файл → null (підробка .txt→.xlsx)",
+   "isDetectedImage / isDetectedZip zip: лише OOXML-mime — true",
+   "isDetectedImage / isDetectedZip зображення: PNG/JPEG/WEBP/GIF/HEIC — true; PDF/ZIP/null — false"
+  ],
   "apps/api/src/common/utils/fsm.spec.ts": [
    "assertFsmTransition дозволяє self-loop якщо є у transitions",
    "assertFsmTransition кидає BadRequestException для забороненого переходу",
@@ -460,6 +477,27 @@
    "assertFsmTransition не кидає виключення для кожного дозволеного переходу DRAFT",
    "assertFsmTransition не кидає виключення коли перехід дозволений",
    "assertFsmTransition повідомлення помилки містить from і to статуси"
+  ],
+  "apps/api/src/common/utils/import-file-guard.spec.ts": [
+   "assertImportFile — магічні байти .xlsx .csv не вимагає zip-сигнатури (текст проходить)",
+   "assertImportFile — магічні байти .xlsx .txt/.exe перейменований у .xlsx → 400 typeMismatch",
+   "assertImportFile — магічні байти .xlsx .xlsx з валідною zip-сигнатурою проходить",
+   "assertImportFile — розмір OCR-канал (pdf/зображення у document) НЕ ріжеться 5 МБ",
+   "assertImportFile — розмір табличний у document-каналі (.xlsx/.csv) — ріжеться 5 МБ",
+   "assertImportFile — розмір файл > MAX_IMPORT_FILE_BYTES → 400 importTooLarge",
+   "assertImportFile — розширення kind=bank файл=statement.dbf дозволено=true",
+   "assertImportFile — розширення kind=bank файл=statement.pdf дозволено=false",
+   "assertImportFile — розширення kind=document файл=invoice.exe дозволено=false",
+   "assertImportFile — розширення kind=document файл=invoice.jpg дозволено=true",
+   "assertImportFile — розширення kind=document файл=invoice.pdf дозволено=true",
+   "assertImportFile — розширення kind=sheet файл=list.csv дозволено=true",
+   "assertImportFile — розширення kind=sheet файл=list.dbf дозволено=false",
+   "assertImportFile — розширення kind=sheet файл=list.xlsx дозволено=true",
+   "assertImportFile — розширення kind=xlsx файл=goods.csv дозволено=false",
+   "assertImportFile — розширення kind=xlsx файл=goods.txt дозволено=false",
+   "assertImportFile — розширення kind=xlsx файл=goods.xlsx дозволено=true",
+   "assertImportRowCount > MAX_IMPORT_ROWS → 400 tooManyRows",
+   "assertImportRowCount у межах ліміту — не кидає"
   ],
   "apps/api/src/common/utils/import-header-detect.spec.ts": [
    "detectMappingFromGrid XLSX-шаблон проєкту: Артикул (SKU)/Назва товару/К-ть/Ціна, ₴",
@@ -6930,10 +6968,11 @@
    "WorkOrderMediaService upload — валідація ДО БД і MinIO WO-guard читає наряд у СВОЇЙ org і не видалений",
    "WorkOrderMediaService upload — валідація ДО БД і MinIO fileKey НЕ потрапляє у DTO (лише через тимчасовий signedUrl)",
    "WorkOrderMediaService upload — валідація ДО БД і MinIO path-traversal у filename знешкоджується (../../etc/passwd → basename)",
-   "WorkOrderMediaService upload — валідація ДО БД і MinIO заборонений mime → 400, у MinIO/БД нічого не пишеться",
+   "WorkOrderMediaService upload — валідація ДО БД і MinIO вміст не зображення/не PDF (хоч клієнт заявив image/png) → 400 (M4)",
    "WorkOrderMediaService upload — валідація ДО БД і MinIO запис у БД містить orgId із контексту і objectName під префіксом org",
    "WorkOrderMediaService upload — валідація ДО БД і MinIO розмір > 10MB → 400",
-   "WorkOrderMediaService upload — валідація ДО БД і MinIO розширення не з whitelist (mime ок, але .exe) → 400",
+   "WorkOrderMediaService upload — валідація ДО БД і MinIO розширення не з whitelist (байти ок — PDF, але .exe) → 400",
+   "WorkOrderMediaService upload — валідація ДО БД і MinIO тип у MinIO і БД — КАНОНІЧНИЙ із сигнатури, а не клієнтський mimetype (M4)",
    "WorkOrderMediaService upload — валідація ДО БД і MinIO чужий/видалений наряд → 404, upload у MinIO НЕ відбувається"
   ],
   "apps/api/src/modules/work-order-templates/work-order-templates.service.spec.ts": [

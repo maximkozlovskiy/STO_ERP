@@ -5,6 +5,22 @@
 
 ---
 
+### bb45477d..HEAD безпека, етап 4: завантаження файлів і ввід (2026-10-25)
+
+- BR-SEC-NUL (M2): `RejectNulCharacterPipe` (перша у `globalPipes()`) тепер перевіряє й `body`, не лише
+  query/param — NUL у рядковому полі тіла → 400 `err.query.nulCharacter`, а не 500 від Postgres. `custom`-
+  аргументи (JWT/контекст) пропускаються.
+- BR-SEC-UPLOAD (M4): новий `common/utils/file-signature.ts` — тип файлу за магічними байтами
+  (PNG/JPEG/WEBP/GIF/HEIC/PDF/ZIP). `files.controller` і `work-order-media.service` визначають тип із
+  буфера, не з клієнтського `mimetype`; у сховище лягає канонічний Content-Type. Перейменований не-image
+  (.exe/.html→.png) → 400 `err.file.typeMismatch`. **Review знайшов пропущену ціль:** медіа наряду
+  (`/work-orders/:id/media`) — окремий upload-шлях — досі довіряло клієнтському типу (content-spoofing /
+  stored-XSS через signedUrl); залатано (`e2b15219`).
+- BR-SEC-UPLOAD (M5): новий `common/utils/import-file-guard.ts` — розширення + магічні байти (.xlsx=zip) +
+  ліміт 5 МБ (`err.file.importTooLarge`) + кап 1000 рядків на парсі (`err.file.tooManyRows`) у xlsx- і
+  bank-імпорті. OCR-канал (pdf/скан) свідомо без 5 МБ-ліміту (рішення власника).
+- Нові ключі i18n (uk/en parity): `err.file.typeMismatch`/`importTooLarge`/`tooManyRows`.
+
 ### 9a54497d..HEAD безпека, етап 2: «закрито за замовчуванням» + оновлення токена (2026-10-24)
 
 - BR-SEC-AUTHZ: `JwtAuthGuard` тепер глобальний (`APP_GUARD` після `ThrottlerGuard`), роут без guard-а за

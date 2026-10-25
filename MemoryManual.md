@@ -47,9 +47,12 @@ python scripts/check-doc-links.py; python scripts/check-mojibake.py   # поси
   Етап 2 «закрито за замовчуванням» (global JwtAuthGuard + @Public allowlist, контракт-спек на всі
   контролери; refresh 30/хв без @SkipThrottle), Етап 3 термін дії кошторису (shareTokenExpiresAt,
   revoke/regenerate, liveShareTokenWhere + loadShareableWorkOrder) + межі сум/кількості на DTO
-  (assertMoneyFits/MONEY_CAP/QTY_CAP; BR-FIN-001). api-client: один 401→refresh (fetchWithRefresh),
-  429 транзієнт без логауту (Bug #966). Логічний аудит 2026-10-24 (10 знахідок) — у TECH-DEBT, НЕ
-  виправлено. Етап 4 (NUL у тілі, тип файлу за байтами, ліміти імпорту) — ще не починали.
+  (assertMoneyFits/MONEY_CAP/QTY_CAP; BR-FIN-MONEYCAP). api-client: один 401→refresh (fetchWithRefresh),
+  429 транзієнт без логауту (Bug #966). Логічний аудит 2026-10-24 (10 знахідок, F1-F10) — у TECH-DEBT, НЕ
+  виправлено. Етап 4 (2026-10-25): NUL у тілі (BR-SEC-NUL), тип файлу за магічними байтами
+  (common/utils/file-signature.ts, BR-SEC-UPLOAD) у files + work-order-media, ліміти імпорту
+  (common/utils/import-file-guard.ts: 5МБ + 1000 рядків) у xlsx + bank. Review залатав пропущену ціль:
+  медіа наряду довіряло клієнтському mimetype.
   Dev-середовище: Docker у WSL тримає задача «STO WSL Docker», postgres-mcp без сиріт (scripts/wsl,
   scripts/mcp). Модель спеків і гейти A–D — у /sto-spec і CLAUDE.md, не тут.
 
