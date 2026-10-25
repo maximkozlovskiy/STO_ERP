@@ -113,6 +113,22 @@ describe('ReportBuilderService — збережені звіти', () => {
     expect(savedReport.update).not.toHaveBeenCalled();
   });
 
+  // guards: BR-RPT-018, BR-RPT-002
+  it('createSaved / updateSaved з групуванням за полем без groupable → 400, запису немає', async () => {
+    // Bug #975: dry-run не перевіряв groupable — звіт «групувати за Сумою» зберігався, а кожен
+    // його запуск давав 400 «За полем "Сума" групувати не можна».
+    const { service, savedReport } = setup();
+    const bad = { ...validConfig(), groupBy: ['amount'] };
+    await expect(service.createSaved(ORG, { name: 'x', config: bad }, 'u')).rejects.toThrow(
+      /групувати не можна/,
+    );
+    await expect(service.updateSaved(ORG, ID, { config: bad })).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(savedReport.create).not.toHaveBeenCalled();
+    expect(savedReport.update).not.toHaveBeenCalled();
+  });
+
   // guards: BR-RPT-019
   it('removeSaved — soft delete: updateMany з deletedAt, фізичного delete немає', async () => {
     const { service, savedReport } = setup();

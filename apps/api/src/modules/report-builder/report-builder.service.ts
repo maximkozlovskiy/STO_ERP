@@ -220,6 +220,16 @@ export class ReportBuilderService {
 
   // ── SavedReport CRUD ──────────────────────────────────────────────────────────
 
+  /**
+   * Перевірка config перед збереженням (BR-RPT-018): побудова запиту (BR-RPT-001…005, 009, 024) і
+   * `groupable` (BR-RPT-002) — той самий набір, що кидає 400 під час запуску. Без `groupable` звіт із
+   * групуванням за сумою зберігався і більше ніколи не запускався.
+   */
+  private dryRun(config: FullReportConfig, orgId: string): void {
+    buildQuery(config, orgId);
+    assertGroupable(getEntity(config.entity), config.groupBy ?? []);
+  }
+
   async listSaved(orgId: string) {
     return this.prisma.savedReport.findMany({
       where: { orgId, deletedAt: null },
@@ -233,8 +243,7 @@ export class ReportBuilderService {
     dto: { name: string; config: FullReportConfig },
     userId?: string,
   ) {
-    // dry-run: не зберігати невалідний config (кине 400 з білдера).
-    buildQuery(dto.config, orgId);
+    this.dryRun(dto.config, orgId); // не зберігати невалідний config (400)
     return this.prisma.savedReport.create({
       data: {
         orgId,
@@ -257,7 +266,7 @@ export class ReportBuilderService {
 
   async updateSaved(orgId: string, id: string, dto: { name?: string; config?: FullReportConfig }) {
     await this.getSaved(orgId, id); // guard-404 + tenant (id належить org, не soft-deleted)
-    if (dto.config) buildQuery(dto.config, orgId); // dry-run
+    if (dto.config) this.dryRun(dto.config, orgId);
     // update() повертає оновлений рядок одним UPDATE...RETURNING — без окремого re-fetch
     // (getSaved вище вже підтвердив tenant+not-deleted). where МУСИТЬ нести orgId+deletedAt:null:
     // (1) A1 tenant-guard відхиляє update без tenant-токена у where (TenantIsolationError);
