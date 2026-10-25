@@ -5,6 +5,22 @@
 
 ---
 
+### ba2b9b7d..HEAD tech-debt: MEDIUM логічні баги F7 + F1 + F2 (2026-10-25)
+
+- F7 (BR-FIN-MONEYCAP): `SettlementsService.createTransaction` пише `amountBase`/`balance` у
+  Decimal(12,2) — додано `assertMoneyFits` на суму проводки й на проєктований баланс → 400 замість
+  безіменної 500 на переповненні (і на вході, і на накопиченні; increment атомарний, тож гроші
+  race-safe).
+- F1 (BR-CAL-004/006): доступність онлайн-запису фільтрувала слоти за входженням `startAt` у день →
+  нічний (через північ) слот показував підйомник вільним наступного дня. Замінено на напіввідкритий
+  перетин із добою (`startAt < dayEnd AND endAt > dayStart`), дзеркалить `calendar.findSlots`.
+- F2 (BR-CAL-006): подвійне бронювання механіка стерегла лише app-проба під Read-Committed. Додано
+  другий partial GiST EXCLUDE `calendar_slots_mechanic_no_overlap` (orgId, employeeId, tsrange) —
+  дзеркалить lift-констрейнт; бекенд мапить 23P01 за назвою констрейнта → 409 `employeeBusy` vs
+  `liftBusy` (createSlot/updateSlot/updateSlotChainDetails/upsertWorkOrderSlot). Lift-констрейнт не
+  змінено. Міграція `20261025120000`.
+- Аудит руху коштів 2026-10-25 записано в TECH-DEBT (MV-H1/H2/M1/M2/M3/L1-L3) — не виправлено.
+
 ### 98ac9adb..HEAD tech-debt: HIGH логічні баги F6 + F4 (2026-10-25)
 
 - F6 (BR-INV-012): ручний перехід інвойсу `→PAID` губив паралельну оплату — CAS `updateMany` у

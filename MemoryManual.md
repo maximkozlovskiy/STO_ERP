@@ -49,9 +49,11 @@ python scripts/check-doc-links.py; python scripts/check-mojibake.py   # поси
   revoke/regenerate, liveShareTokenWhere + loadShareableWorkOrder) + межі сум/кількості на DTO
   (assertMoneyFits/MONEY_CAP/QTY_CAP; BR-FIN-MONEYCAP). api-client: один 401→refresh (fetchWithRefresh),
   429 транзієнт без логауту (Bug #966). Логічний аудит 2026-10-24 (10 знахідок, F1-F10) — у TECH-DEBT;
-  F6+F4 (HIGH) ЗАКРИТО 2026-10-25 (`cec2423f`): F6 — paidAmount у CAS інвойсу (BR-INV-012);
-  F4 — coeff UoM по-call-site на прийомі/складських доках (BR-INVT-UOMBASE), SUPPLIER_CHARGE у
-  замовлених одиницях; решта F1-F3,F5,F7-F10 відкриті. Bug #972 (дисплейний coeff DTO) — LOW, відкрито.
+  F6+F4 (HIGH) ЗАКРИТО 2026-10-25 (`cec2423f`); F7+F1+F2 (MEDIUM) ЗАКРИТО 2026-10-25: F7 — assertMoneyFits
+  у settlements.createTransaction (BR-FIN-MONEYCAP); F1 — overlap-фільтр доступності онлайн-запису
+  (BR-CAL-004/006); F2 — другий GiST EXCLUDE на механіка (calendar_slots_mechanic_no_overlap, міграція
+  20261025120000) + мапінг 23P01→409 employeeBusy/liftBusy. Решта F3/F5/F8/F9/F10 відкриті. Окремий
+  аудит руху коштів 2026-10-25 (MV-H1/H2/M1/M2/M3/L1-L3) — у TECH-DEBT, не виправлено. Bug #972 — LOW.
   Етап 4 (2026-10-25): NUL у тілі (BR-SEC-NUL), тип файлу за магічними байтами
   (common/utils/file-signature.ts, BR-SEC-UPLOAD) у files + work-order-media, ліміти імпорту
   (common/utils/import-file-guard.ts: 5МБ + 1000 рядків) у xlsx + bank. Review залатав пропущену ціль:
