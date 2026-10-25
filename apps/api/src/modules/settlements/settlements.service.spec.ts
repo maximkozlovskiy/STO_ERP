@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { MONEY_AMOUNT_MAX, translateError } from '@sto/shared';
 import { SettlementsService } from './settlements.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
@@ -78,7 +79,7 @@ describe('SettlementsService.createTransaction', () => {
 
   // guards: BR-SETL-004
   it('кидає BadRequestException при amount = Infinity, нічого не пише', async () => {
-    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
     await expect(service.createTransaction('org-1', dto({ amount: Infinity }))).rejects.toThrow(
       BadRequestException,
     );
@@ -94,11 +95,11 @@ describe('SettlementsService.createTransaction', () => {
 
   // guards: BR-SETL-006
   it('рахунок шукається за організацією і контрагентом — чужа організація рахунку не бачить', async () => {
-    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
     await service.createTransaction('org-1', dto({ counterpartyId: 'cp-7' }));
     expect(prisma.settlementAccount.findFirst).toHaveBeenCalledWith({
       where: { orgId: 'org-1', counterpartyId: 'cp-7' },
-      select: { id: true },
+      select: { id: true, balance: true },
     });
   });
 
@@ -106,7 +107,7 @@ describe('SettlementsService.createTransaction', () => {
   it('з переданим tx пише журнал і баланс у транзакції викликача, власну не відкриває', async () => {
     const txClient = {
       settlementAccount: {
-        findFirst: vi.fn().mockResolvedValue({ id: 'acc-tx' }),
+        findFirst: vi.fn().mockResolvedValue({ id: 'acc-tx', balance: 0 }),
         update: vi.fn().mockResolvedValue({}),
       },
       settlementTransaction: { create: vi.fn().mockResolvedValue({}) },
@@ -129,7 +130,7 @@ describe('SettlementsService.createTransaction', () => {
   it('без tx відкриває власну $transaction: рядок журналу і зміна балансу — в ній обидва', async () => {
     const txClient = {
       settlementAccount: {
-        findFirst: vi.fn().mockResolvedValue({ id: 'acc-own' }),
+        findFirst: vi.fn().mockResolvedValue({ id: 'acc-own', balance: 0 }),
         update: vi.fn().mockResolvedValue({}),
       },
       settlementTransaction: { create: vi.fn().mockResolvedValue({}) },
@@ -152,7 +153,7 @@ describe('SettlementsService.createTransaction', () => {
 
   // guards: BR-SETL-003, BR-SETL-006
   it('CHARGE інкрементує balance на +amount', async () => {
-    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
     await service.createTransaction('org-1', dto({ type: 'CHARGE', amount: 100 }));
     expect(prisma.settlementAccount.update).toHaveBeenCalledWith({
       where: { id: 'acc-1', orgId: 'org-1' },
@@ -162,7 +163,7 @@ describe('SettlementsService.createTransaction', () => {
 
   // guards: BR-SETL-003
   it('PAYMENT декрементує balance на -amount', async () => {
-    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
     await service.createTransaction('org-1', dto({ type: 'PAYMENT', amount: 100 }));
     expect(prisma.settlementAccount.update).toHaveBeenCalledWith({
       where: { id: 'acc-1', orgId: 'org-1' },
@@ -174,7 +175,7 @@ describe('SettlementsService.createTransaction', () => {
   it.each(['PREPAYMENT', 'REFUND', 'CREDIT_NOTE'] as const)(
     '%s декрементує balance на -amount',
     async type => {
-      prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+      prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
       await service.createTransaction('org-1', dto({ type, amount: 50 }));
       expect(prisma.settlementAccount.update).toHaveBeenCalledWith({
         where: { id: 'acc-1', orgId: 'org-1' },
@@ -187,7 +188,7 @@ describe('SettlementsService.createTransaction', () => {
   // отримали товар (SUPPLIER_CHARGE) → ми винні (balance↓); заплатили/повернули → borg↑.
   // guards: BR-SETL-003
   it('SUPPLIER_CHARGE декрементує balance на -amount (ми винні постачальнику)', async () => {
-    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
     await service.createTransaction('org-1', dto({ type: 'SUPPLIER_CHARGE', amount: 100 }));
     expect(prisma.settlementAccount.update).toHaveBeenCalledWith({
       where: { id: 'acc-1', orgId: 'org-1' },
@@ -199,7 +200,7 @@ describe('SettlementsService.createTransaction', () => {
   it.each(['SUPPLIER_PAYMENT', 'SUPPLIER_REFUND'] as const)(
     '%s інкрементує balance на +amount (наш борг постачальнику меншає)',
     async type => {
-      prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+      prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
       await service.createTransaction('org-1', dto({ type, amount: 100 }));
       expect(prisma.settlementAccount.update).toHaveBeenCalledWith({
         where: { id: 'acc-1', orgId: 'org-1' },
@@ -210,7 +211,7 @@ describe('SettlementsService.createTransaction', () => {
 
   // guards: BR-SETL-006, BR-SETL-008
   it('створює settlementTransaction з усіма полями', async () => {
-    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
     await service.createTransaction(
       'org-1',
       dto({
@@ -243,7 +244,7 @@ describe('SettlementsService.createTransaction', () => {
   // ── Мультивалюта (Фаза 2) ──────────────────────────────────────────────────
   // guards: BR-SETL-007
   it('без currencyId → base (rate=1, amountBase=amount), resolveBaseConversion не викликається', async () => {
-    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
     await service.createTransaction('org-1', dto({ type: 'CHARGE', amount: 250 }));
     expect(exchangeRates.resolveBaseConversion).not.toHaveBeenCalled();
     expect(prisma.settlementAccount.update).toHaveBeenCalledWith({
@@ -254,7 +255,7 @@ describe('SettlementsService.createTransaction', () => {
 
   // guards: BR-SETL-007
   it('з currencyId (USD) → balanceDelta від amountBase, не від amount', async () => {
-    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
     // 100 USD × курс 41.50 = 4150 UAH base
     exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
     await service.createTransaction(
@@ -286,7 +287,7 @@ describe('SettlementsService.createTransaction', () => {
   // Фаза 3: документні потоки передають date (дата події) + fallbackToLatest у resolveBaseConversion.
   // guards: BR-SETL-007
   it('пробрасує date + fallbackToLatest у resolveBaseConversion (документний потік)', async () => {
-    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
     exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
     const docDate = new Date('2026-01-01');
     await service.createTransaction(
@@ -310,7 +311,7 @@ describe('SettlementsService.createTransaction', () => {
 
   // guards: BR-SETL-007
   it('без date → new Date(); без fallbackToLatest → false (BC для Фази 2)', async () => {
-    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
     exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
     await service.createTransaction(
       'org-1',
@@ -327,7 +328,7 @@ describe('SettlementsService.createTransaction', () => {
 
   // guards: BR-SETL-007
   it('курсу немає (конвертація кидає) → помилка йде назовні, журнал і баланс не чіпаються', async () => {
-    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
     exchangeRates.resolveBaseConversion.mockRejectedValue(
       new BadRequestException('немає курсу USD на дату'),
     );
@@ -343,7 +344,7 @@ describe('SettlementsService.createTransaction', () => {
   // додати чи виправити пізніше, і перерахунок лишив би в балансі різницю.
   // guards: BR-SETL-007
   it('з явною conversion → баланс і журнал за нею; курс не шукається навіть із date і fallbackToLatest', async () => {
-    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
     // Курс «зараз» дав би 4210 — сторно має лишитись на 4150, як початкове проведення.
     exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 42.1, amountBase: 4210 });
     await service.createTransaction(
@@ -380,7 +381,7 @@ describe('SettlementsService.createTransaction', () => {
     ['rateUsed = 0', { rateUsed: 0, amountBase: 4150 }],
     ['rateUsed = Infinity', { rateUsed: Number.POSITIVE_INFINITY, amountBase: 4150 }],
   ])('явна conversion з %s → 400, журнал і баланс не чіпаються', async (_name, conversion) => {
-    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1', balance: 0 });
     await expect(
       service.createTransaction('org-1', dto({ amount: 100, currencyId: 'usd-1', conversion })),
     ).rejects.toThrow(BadRequestException);
@@ -407,7 +408,9 @@ describe('SettlementsService.createTransaction', () => {
     const account = { balance: 0 };
     const client = {
       settlementAccount: {
-        findFirst: vi.fn().mockResolvedValue({ id: 'acc-1' }),
+        findFirst: vi
+          .fn()
+          .mockImplementation(() => Promise.resolve({ id: 'acc-1', balance: account.balance })),
         update: vi
           .fn()
           .mockImplementation(async (args: { data: { balance: { increment: number } } }) => {
@@ -509,5 +512,60 @@ describe('SettlementsService.createTransaction', () => {
       'settlementTransaction.create',
       'settlementTransaction.create',
     ]);
+  });
+  // ── BR-FIN-MONEYCAP: сума проводки й накопичений баланс — Decimal(12,2) ──────────────────────
+  // Сума в іноземній валюті в межах стелі, але × курс переростає `amountBase`; або сама проводка
+  // мала, а баланс рахунку після інкременту виходить за колонку. Раніше обидва давали 500
+  // `numeric field overflow` від БД. Мутація: прибрати будь-який із двох `assertMoneyFits` у
+  // createTransaction → відповідний кейс червоніє (рядок журналу записано / баланс змінено).
+  describe('межа Decimal(12,2) (BR-FIN-MONEYCAP)', () => {
+    const overflow = (field: string) =>
+      translateError('err.money.lineAmountOverflow', 'uk', { field: ` (${field})` });
+
+    // guards: BR-FIN-MONEYCAP
+    it('сума × курс понад 9 999 999 999,99 → 400 lineAmountOverflow, журнал і баланс не змінено', async () => {
+      const { client, journal, account } = fakeLedger();
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn(client),
+      );
+      // 200 000 000 USD × 50 ≈ 10 000 000 000 UAH: еквівалент на копійку понад місткість колонки.
+      exchangeRates.resolveBaseConversion.mockResolvedValue({
+        rateUsed: 50,
+        amountBase: MONEY_AMOUNT_MAX + 0.01,
+      });
+
+      await expect(
+        service.createTransaction(
+          'org-1',
+          dto({ type: 'CHARGE', amount: 200_000_000, currencyId: 'usd-1' }),
+        ),
+      ).rejects.toMatchObject({ status: 400, message: overflow('сума проводки') });
+      expect(journal).toEqual([]);
+      expect(account.balance).toBe(0);
+      expect(client.settlementAccount.update).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-FIN-MONEYCAP
+    it('проводка в межах, але баланс після неї понад межу → 400 «баланс рахунку»; рівно на межі — проходить', async () => {
+      const { client, journal, account } = fakeLedger();
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn(client),
+      );
+      account.balance = MONEY_AMOUNT_MAX - 100;
+
+      await service.createTransaction('org-1', dto({ type: 'CHARGE', amount: 100 }));
+      expect(account.balance).toBeCloseTo(MONEY_AMOUNT_MAX, 2);
+      expect(journal).toHaveLength(1);
+
+      await expect(
+        service.createTransaction('org-1', dto({ type: 'CHARGE', amount: 0.01 })),
+      ).rejects.toMatchObject({ status: 400, message: overflow('баланс рахунку') });
+      expect(account.balance).toBeCloseTo(MONEY_AMOUNT_MAX, 2);
+      expect(journal).toHaveLength(1);
+
+      // Знак балансу від типу: PAYMENT зменшує борг — той самий рахунок далі приймає проводки.
+      await service.createTransaction('org-1', dto({ type: 'PAYMENT', amount: 100 }));
+      expect(account.balance).toBeCloseTo(MONEY_AMOUNT_MAX - 100, 2);
+    });
   });
 });

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { assertMoneyFits } from '../../common/utils/money';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { Prisma, SettlementTransactionType } from '@prisma/client';
 
@@ -104,18 +105,26 @@ export class SettlementsService {
             dto.fallbackToLatest ?? false,
           )
         : { rateUsed: 1, amountBase: dto.amount };
+    // BR-FIN-MONEYCAP: `amount`, `amountBase` і `balance` — Decimal(12,2). Іновалютна сума × курс
+    // може перерости колонку, хоч сама сума в межах — тоді 400 з назвою поля, а не 500 overflow.
+    assertMoneyFits(dto.amount, 'сума проводки');
+    assertMoneyFits(conv.amountBase, 'сума проводки');
     const balanceDelta = BALANCE_SIGN[dto.type] * conv.amountBase;
 
     const run = async (db: Prisma.TransactionClient | PrismaService) => {
       // SettlementAccount has no deletedAt — it's a singleton per counterparty, never soft-deleted
       const account = await db.settlementAccount.findFirst({
         where: { orgId, counterpartyId: dto.counterpartyId },
-        select: { id: true },
+        select: { id: true, balance: true },
       });
       if (!account)
         throw new NotFoundException(
           translateError('err.settlement.counterpartyAccountNotFound', getLocale()),
         );
+      // Переповнюється не вхідна сума, а НАКОПИЧЕНИЙ баланс після інкременту. Перевірка за
+      // прочитаним значенням: паралельна проводка між читанням і записом може його зсунути —
+      // тоді лишається DB-overflow, але звичайне накопичення дає 400.
+      assertMoneyFits(Number(account.balance) + balanceDelta, 'баланс рахунку');
 
       // sto-optimize: create + balance update пишуть у різні таблиці (SettlementTransaction
       // та SettlementAccount), не залежать один від одного, обидва читають account.id зі scope.

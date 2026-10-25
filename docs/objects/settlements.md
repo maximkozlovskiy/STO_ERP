@@ -131,7 +131,7 @@ cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
 | читання балансу і журналу                                                       | `settlements.account-read.spec.ts`       | 7      |
 | інваріанти (property-based)                                                     | `settlements.invariants.spec.ts`         | 18     |
 | акт звірки                                                                      | `settlements.reconciliation-act.spec.ts` | 19     |
-| `createTransaction` (сервісна логіка)                                           | `settlements.service.spec.ts`            | 31     |
+| `createTransaction` (сервісна логіка; межа Decimal(12,2) суми й балансу)        | `settlements.service.spec.ts`            | 33     |
 | єдиний писар балансу (статичний сторож)                                         | `settlements.single-writer.spec.ts`      | 3      |
 | місця виклику `createTransaction` і їхній захист від повтору (статичний сторож) | `settlements.callers.spec.ts`            | 6      |
 
@@ -144,7 +144,12 @@ cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
 - `settlements.single-writer.spec.ts` — BR-SETL-001, 009.
 - `settlements.service.spec.ts` — BR-SETL-002, 003, 004, 005 (і BR-CP-012), 006, 007, 008, 010
   (контракт: два однакові виклики — два рядки журналу і дві зміни балансу; журнал перед записом не
-  читається).
+  читається); BR-FIN-MONEYCAP (дос'є `work-order.md`) — `createTransaction` відхиляє 400
+  `err.money.lineAmountOverflow` суму проводки, чий еквівалент у базовій валюті (сума × курс) не
+  вміщається в `amountBase Decimal(12,2)`, і проводку, після якої накопичений `balance` рахунку
+  (теж `Decimal(12,2)`) вийшов би за межу; журнал і баланс не змінюються. Баланс перевіряється за
+  прочитаним значенням рахунку: паралельна проводка між читанням і записом може його зсунути, і тоді
+  лишається помилка переповнення від БД (500) — звичайне накопичення дає 400.
 - `settlements.callers.spec.ts` — BR-SETL-010: перелік усіх місць виклику `createTransaction` у
   `apps/api/src` (зараз 17, серед них каса: `cash-desk.service.ts#moveCashWithSettlement` і сторно: `PaymentsService.reverse`, `SupplierPaymentsService.reverse`, `CashDeskService.reverseRefundSettlement`) із механізмом захисту від повтору; нове місце без запису, зникле місце
   або зниклий із коду захист (CAS статусу, перевірка наявної проводки) валять тест. Там само для
