@@ -72,6 +72,15 @@ describe('report-sql.builder', () => {
     expect(flat.sql).not.toContain('GROUP BY');
   });
 
+  // guards: BR-RPT-013
+  it('ліміт груп відрізає лише найглибші: ORDER BY рівня перед LIMIT («Разом» і батьки — першими)', () => {
+    const sql = agg({ entity: 'workOrder', columns: [], groupBy: ['status', 'priority'] });
+    // Без ORDER BY хешований ROLLUP віддає рядки довільно, і LIMIT різав «Разом» (rowCount 0).
+    expect(sql.sql).toMatch(
+      /GROUP BY ROLLUP \(k0, k1\) ORDER BY GROUPING\(k0\) \+ GROUPING\(k1\) DESC LIMIT/,
+    );
+  });
+
   // guards: BR-RPT-014
   it('знакова кількість руху: резерви поза сумою, списання від’ємне', () => {
     const sql = agg({ entity: 'stockMovement', columns: [], groupBy: [] }, [
@@ -125,6 +134,17 @@ describe('report-sql.builder', () => {
     expect(sql.sql).toContain('GROUP BY 1, 2');
     expect(sql.sql).toContain('ORDER BY MAX(t0."createdAt") DESC');
     expect(sql.values).toContain(5001);
+  });
+
+  // guards: BR-RPT-015
+  it('склеювання лише підсумовуваних колонок: HAVING — порожня вибірка не дає фантомного рядка нулів', () => {
+    const conds = buildConditions(
+      { entity: 'purchaseOrderLine', columns: ['quantity'], groupBy: [] },
+      ORG,
+    );
+    const sql = buildMergedRowsSql(conds, ['quantity'], null);
+    expect(sql.sql).not.toContain('GROUP BY');
+    expect(sql.sql).toContain('HAVING COUNT(*) > 0');
   });
 
   // guards: BR-RPT-002

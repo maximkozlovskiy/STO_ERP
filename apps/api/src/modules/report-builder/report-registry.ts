@@ -71,7 +71,8 @@ export interface ReportRelationDef {
   /** 3+ хопи або дубль — сховати за замовчуванням у UI. */
   advanced: boolean;
   /** Чи інжектити deletedAt:null у nested include на цьому хопі (Bug #607). */
-  targetHasSoftDelete: boolean; /** FK-колонка в таблиці батька (SQL-агрегати); типово `<зв'язок>Id`. */
+  targetHasSoftDelete: boolean;
+  /** FK-колонка в таблиці батька (SQL-агрегати); типово `<зв'язок>Id`. */
   fk: string;
 }
 

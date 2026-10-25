@@ -271,8 +271,12 @@ export function buildAggregateSql(
     (a, j) => Prisma.sql`${aggFnSql(a.agg, Prisma.raw(`v${j}`))}::text AS ${Prisma.raw(`a${j}`)}`,
   );
   const select = Prisma.join([...outerKeys, Prisma.sql`COUNT(*)::int AS n`, ...outerAggs], ', ');
+  // ORDER BY рівнем (сума GROUPING спадає: «Разом», далі рівень 1, 2…): ROLLUP хешується й віддає
+  // рядки в довільному порядку, і LIMIT на перевищенні ліміту відрізав би «Разом» чи батьківські
+  // групи (rowCount 0, діти-сироти). Так відрізаються лише найглибші групи.
+  const keyList = groupBy.map((_, i) => `k${i}`);
   const group = groupBy.length
-    ? Prisma.sql`GROUP BY ROLLUP (${Prisma.raw(groupBy.map((_, i) => `k${i}`).join(', '))}) LIMIT ${REPORT_GROUP_CAP + 1}`
+    ? Prisma.sql`GROUP BY ROLLUP (${Prisma.raw(keyList.join(', '))}) ORDER BY ${Prisma.raw(keyList.map(k => `GROUPING(${k})`).join(' + '))} DESC LIMIT ${REPORT_GROUP_CAP + 1}`
     : Prisma.empty;
   // FROM будується після виразів: з'єднання додаються, коли вирази звертаються до зв'язків.
   return Prisma.sql`SELECT ${select} FROM (SELECT ${inner} ${scope.from()} ${where}) s ${group}`;
@@ -303,9 +307,11 @@ export function buildMergedRowsSql(
   const orderDir = Prisma.raw(sortDir === 'asc' ? 'ASC' : 'DESC');
   const where = whereSql(scope, conds);
   const select = Prisma.join([...dimExprs, ...sumExprs, Prisma.sql`COUNT(*)::int AS n`], ', ');
+  // Без жодної непідсумовуваної колонки агрегат без GROUP BY дає рядок і над порожньою вибіркою —
+  // фантомний «0 · склеєно 0»; JS-склеювання давало порожній список.
   const group = dims.length
     ? Prisma.sql`GROUP BY ${Prisma.raw(dims.map((_, i) => String(i + 1)).join(', '))}`
-    : Prisma.empty;
+    : Prisma.sql`HAVING COUNT(*) > 0`;
   return Prisma.sql`SELECT ${select} ${scope.from()} ${where} ${group} ORDER BY ${orderAgg} ${orderDir} NULLS LAST LIMIT ${REPORT_MERGED_CAP + 1}`;
 }
 
