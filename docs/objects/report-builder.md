@@ -118,6 +118,8 @@ CSV/XLSX клієнтський (SpreadsheetML).
 - **BR-RPT-003** — Оператор фільтра — лише один із дев'яти: `eq`, `ne`, `in`, `gt`, `gte`, `lt`,
   `lte`, `contains`, `isNull`; інший → 400. `in` вимагає масив (інакше 400). `contains` дозволено
   лише нечисловим не-enum полям (для `enum` / `number` / `decimal` → 400) і він нечутливий до регістру.
+  Текст шукається буквально: `%`, `_` і `\` у значенні екрануються (`escapeLike`) — до 2026-10-25
+  «містить a_h» знаходив «cash», а «%» — усі рядки (Bug #976).
 - **BR-RPT-004** — Значення фільтра по enum-полю (крім оператора `isNull`) мусить входити в перелік
   значень цього enum у реєстрі (`REGISTRY_ENUMS`); для `in` — кожен елемент масиву. Інакше → 400.
 - **BR-RPT-005** — Фільтрувати можна лише поля з `filterable: true`; фільтр по нефільтровному полю
@@ -174,7 +176,9 @@ CSV/XLSX клієнтський (SpreadsheetML).
   Усередині організації всі, хто має доступ до конструктора, бачать і можуть змінювати всі збережені
   звіти; автор лише записується в `createdBy`.
 - **BR-RPT-018** — Невалідний config не зберігається: і створення, і оновлення спершу проганяють
-  config через побудову запиту (правила BR-RPT-001…005 і 009); помилка → 400, запису в БД немає.
+  config через побудову запиту (правила BR-RPT-001…005 і 009) і перевірку `groupable`
+  (BR-RPT-002; до 2026-10-25 звіт «групувати за Сумою» зберігався і не запускався, Bug #975);
+  помилка → 400, запису в БД немає.
 - **BR-RPT-019** — Видалення збереженого звіту — soft delete (`deletedAt`), фізичного видалення немає.
 - **BR-RPT-020** — Доступ до всіх 8 маршрутів конструктора мають лише ролі OWNER, ADMIN, ACCOUNTANT.
   Обмежень за роллю на окремі джерела чи колонки немає: хто має доступ до конструктора, бачить усі
@@ -273,20 +277,20 @@ cd apps/api && npx vitest run src/modules/report-builder/<файл>.spec.ts
 | Аспект                                                                              | Тест                                        | Кейсів |
 | ----------------------------------------------------------------------------------- | ------------------------------------------- | ------ |
 | цілісність реєстру, tenant-умова, enum-и, @db.Date, nullable, FK проти схеми        | `report-registry.spec.ts`                   | 13     |
-| побудова запиту: білі списки, ліміт, період, значення фільтра за типом (BR-RPT-024) | `report-query.builder.spec.ts`              | 54     |
+| побудова запиту: білі списки, ліміт, період, значення фільтра за типом (BR-RPT-024) | `report-query.builder.spec.ts`              | 55     |
 | SQL-агрегати: orgId, з'єднання, київський день, ROLLUP, знакова кількість (027)     | `report-sql.builder.spec.ts`                | 11     |
 | рядки SQL → дерево груп, «Разом», склеєні рядки, ліміти (027)                       | `report-sql-result.spec.ts`                 | 5      |
 | паритет SQL = Prisma + JS на живій БД, 9 сутностей (027; CI `integration-tests`)    | `report-builder.parity.integration.spec.ts` | 9      |
 | групування, агрегації, підсумки                                                     | `report-aggregator.spec.ts`                 | 22     |
 | авто-SUM і збагачення агрегацій                                                     | `report-builder.service.spec.ts`            | 3      |
-| збережені звіти, tenant-межа запуску                                                | `report-builder.saved-reports.spec.ts`      | 11     |
+| збережені звіти, tenant-межа запуску                                                | `report-builder.saved-reports.spec.ts`      | 12     |
 | ролі доступу                                                                        | `report-builder.access.spec.ts`             | 9      |
 | межі config (DTO)                                                                   | `report-builder.dto.spec.ts`                | 1      |
 | фіксовані звіти (сусідній модуль `reports`)                                         | `reports.service.spec.ts`                   | 20     |
 | фіксовані звіти: дати періоду в запиті (400)                                        | `reports.contract.spec.ts`                  | 74     |
 | фіксовані звіти: межі періоду за Києвом, ПДВ                                        | `reports.period-bounds.spec.ts`             | 42     |
 
-Разом: **272** кейси — 136 конструктора і 136 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **274** кейси — 138 конструктора і 136 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
 
 Web-тест експорту (`BR-RPT-021`) лежить поза модулем:
 `apps/web/src/lib/__tests__/report-export.test.ts` — 31 кейс. Перевіряє чисту частину
@@ -296,7 +300,7 @@ Web-тест експорту (`BR-RPT-021`) лежить поза модуле�
 `escapeCsvCell`, BOM), XLSX-XML (екранування, числа як `Number`, заголовок, каркас книги). Запуск:
 `cd apps/web && npx vitest run src/lib/__tests__/report-export.test.ts`.
 CSV фіксованих звітів (`apps/web/src/app/(app)/reports/report-csv.ts`, числа з комою, BOM у
-файлі) — `apps/web/src/app/(app)/reports/__tests__/report-csv.test.ts`, 3 кейси.
+файлі) — `apps/web/src/app/(app)/reports/__tests__/report-csv.test.ts`, 5 кейсів.
 
 **Чого тут НЕМА.**
 
