@@ -129,6 +129,27 @@ describe('ReportBuilderService — збережені звіти', () => {
     expect(savedReport.update).not.toHaveBeenCalled();
   });
 
+  // Рішення власника 2026-10-25: звіт із недозволеною агрегацією (SUM ціни) раніше зберігався і
+  // падав при кожному запуску. Мутація: прибрати assertAggregations з dryRun → кейс червоніє.
+  // guards: BR-RPT-018, BR-RPT-011
+  it('createSaved / updateSaved з недозволеною агрегацією → 400, запису немає', async () => {
+    const { service, savedReport } = setup();
+    const bad = {
+      entity: 'purchaseOrderLine',
+      columns: ['price'],
+      groupBy: [],
+      aggregations: [{ field: 'price', agg: 'SUM' as const }],
+    };
+    await expect(service.createSaved(ORG, { name: 'x', config: bad }, 'u')).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(service.updateSaved(ORG, ID, { config: bad })).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(savedReport.create).not.toHaveBeenCalled();
+    expect(savedReport.update).not.toHaveBeenCalled();
+  });
+
   // guards: BR-RPT-019
   it('removeSaved — soft delete: updateMany з deletedAt, фізичного delete немає', async () => {
     const { service, savedReport } = setup();

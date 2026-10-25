@@ -70,7 +70,7 @@ describe('ReportBuilderService — Bug #620: aggregations enrichment', () => {
     });
     expect(enriched).toEqual([
       { field: 'documentDate', agg: 'MIN', type: 'date', label: 'Дата' },
-      { field: 'amount', agg: 'SUM', type: 'decimal', label: 'Сума' },
+      { field: 'amount', agg: 'SUM', type: 'decimal', label: 'Сума (у валюті рахунку)' },
     ]);
   });
 });

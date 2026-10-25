@@ -108,8 +108,8 @@ describe('report-sql.builder', () => {
     expect(sql.values).toContain('2026-10-22');
   });
 
-  // guards: BR-RPT-022
-  it('фільтр по зв’язку — зв’язок має існувати й бути живим, як Prisma-фільтр `is`', () => {
+  // guards: BR-RPT-028
+  it('фільтр по зв’язку — без умов на хоп: видалений пов’язаний запис — звичайне значення', () => {
     const sql = agg({
       entity: 'purchaseOrderLine',
       columns: [],
@@ -118,7 +118,8 @@ describe('report-sql.builder', () => {
     });
     expect(sql.sql).toMatch(/ILIKE/);
     expect(sql.values).toContain('%тов%');
-    expect(sql.sql.match(/"id" IS NOT NULL/g)?.length).toBeGreaterThanOrEqual(2);
+    // лише документ-власник (parentRelations) несе умову на «живий»; постачальник — ні
+    expect(sql.sql.match(/"id" IS NOT NULL/g)).toHaveLength(1);
   });
 
   // guards: BR-RPT-015

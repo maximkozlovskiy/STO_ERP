@@ -77,6 +77,11 @@ _Stub — заповнити при роботі з settlements модулем._
 > `counterparties/[id]/PageClient.tsx`, `ReportBuilder.tsx`, `pdf.service.ts`
 > (`generateReconciliationActPdf`) — grep `SETTLEMENT_TX_TYPE_LABELS\|txTypeLabel` перед комітом.
 
+- **CSV операцій контрагента** (`settlements/transactions-csv.ts`) — усі операції, а не перші 50,
+  які показує вкладка: експорт дочитує сторінками по 200 (cap API) до `total` (рішення власника
+  2026-10-25). Файл — з BOM, роздільник `;`, сума в базовій валюті окремою колонкою; тест —
+  `settlements/__tests__/transactions-csv.test.ts`.
+
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md) · [docs/objects/supplier-payment.md](supplier-payment.md)
 
 ---

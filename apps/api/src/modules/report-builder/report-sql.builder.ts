@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import type { ReportEntityDef, ReportFieldDef } from './report-registry';
-import { getField, relationForPrefix, isDateOnlyPath } from './report-registry';
+import { getField, isDateOnlyPath } from './report-registry';
 import type { ReportCond, ReportConditions } from './report-condition';
 import { resolveJoins, type EntityJoins } from './report-joins';
 import { NON_PHYSICAL_MOVEMENT_TYPES, isSummable, type ReportAggInput } from './report-aggregator';
@@ -95,24 +95,6 @@ class SqlScope {
     }
     return Prisma.join(parts, ' ');
   }
-
-  /**
-   * Умова «зв'язок існує» для кожного хопу шляху поля — як Prisma-фільтр по зв'язку (`is`): рядок
-   * без зв'язку не проходить; цілі з soft delete — лише живі (Bug #607, як `setWherePath`).
-   */
-  hopConditions(prismaPath: string): Prisma.Sql[] {
-    const segments = prismaPath.split('.');
-    const out: Prisma.Sql[] = [];
-    for (let i = 1; i < segments.length; i++) {
-      const prefix = segments.slice(0, i).join('.');
-      const a = this.alias(prefix);
-      out.push(Prisma.sql`${rawCol(a, 'id')} IS NOT NULL`);
-      if (relationForPrefix(this.entity, prefix)?.targetHasSoftDelete) {
-        out.push(Prisma.sql`${rawCol(a, 'deletedAt')} IS NULL`);
-      }
-    }
-    return out;
-  }
 }
 
 /** Поле реєстру за prismaPath (key = prismaPath у всьому реєстрі) або undefined (поле періоду). */
@@ -164,6 +146,11 @@ function condSql(scope: SqlScope, cond: ReportCond): Prisma.Sql {
       // Як Prisma `contains` + `mode: 'insensitive'` на PostgreSQL (паритет — інтеграційний тест).
       return Prisma.sql`${c} ILIKE ${`%${cond.value}%`}`;
     case 'isNull':
+      // BR-RPT-028: «порожнє» = група «(порожньо)»: NULL (зокрема немає зв'язку — LEFT JOIN дає
+      // NULL) або порожній рядок тексту; «заповнене» — решта.
+      if (fld?.type === 'scalar') {
+        return cond.isNull ? Prisma.sql`(${c} IS NULL OR ${c} = '')` : Prisma.sql`${c} <> ''`;
+      }
       return cond.isNull ? Prisma.sql`${c} IS NULL` : Prisma.sql`${c} IS NOT NULL`;
     case 'outside':
       return Prisma.sql`(${c} < ${p(cond.start)} OR ${c} > ${p(cond.end)})`;
@@ -185,7 +172,9 @@ function whereSql(scope: SqlScope, conds: ReportConditions): Prisma.Sql {
   }
   if (conds.voidedField) parts.push(Prisma.sql`${scope.column(conds.voidedField)} IS NULL`);
   for (const cond of [...(conds.dateRange ? [conds.dateRange] : []), ...conds.filters]) {
-    parts.push(...scope.hopConditions(cond.path), condSql(scope, cond));
+    // Без умов на хоп зв'язку: значення на LEFT JOIN без зв'язку — NULL, і порівняння його відсікає
+    // так само, як Prisma-фільтр по зв'язку; видалений пов'язаний запис — звичайне значення (028).
+    parts.push(condSql(scope, cond));
   }
   return Prisma.sql`WHERE ${Prisma.join(parts, ' AND ')}`;
 }

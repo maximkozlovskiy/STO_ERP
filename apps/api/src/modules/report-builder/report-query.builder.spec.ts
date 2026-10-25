@@ -110,8 +110,12 @@ describe('report-query.builder', () => {
     ).toThrow(BadRequestException);
   });
 
-  // guards: BR-RPT-007
-  it('relation-фільтр додає nested deletedAt (Bug #607)', () => {
+  // До 2026-10-25 фільтр по зв'язку ставив `deletedAt: null` на хоп (Bug #607), і «Тип контрагента =
+  // CLIENT» не бачив нарядів видаленого клієнта, які група «Клієнт» показувала. Тепер видалений
+  // пов'язаний запис — звичайне значення і для фільтра, і для групи. Мутація: повернути deletedAt
+  // на хоп у setWherePath → кейс червоніє.
+  // guards: BR-RPT-028
+  it('фільтр по зв’язку не відсікає видалений пов’язаний запис — як і групування', () => {
     const q = buildQuery(
       {
         entity: 'workOrder',
@@ -121,8 +125,31 @@ describe('report-query.builder', () => {
       },
       ORG,
     );
-    expect(q.args.where).toMatchObject({
-      counterparty: { deletedAt: null, type: 'CLIENT' },
+    expect(q.args.where.counterparty).toEqual({ type: 'CLIENT' });
+  });
+
+  // «Порожнє» = група «(порожньо)»: немає зв'язку на необов'язковому хопі, NULL, порожній рядок.
+  // guards: BR-RPT-028
+  it('«порожнє» по полю за необов’язковим зв’язком — OR: зв’язку немає / колонка NULL / порожній рядок', () => {
+    const where = (entity: string, field: string, value: unknown) =>
+      buildQuery(
+        { entity, columns: [], groupBy: [], filters: [{ field, op: 'isNull', value }] },
+        ORG,
+      ).args.where;
+    // бренд товару необов'язковий, назва бренду — текст
+    expect(where('workOrderPart', 'good.brand.name', true).AND).toEqual([
+      { OR: [{ good: { brand: null } }, { good: { brand: { name: '' } } }] },
+    ]);
+    // «заповнене» — непорожній текст (і тим самим зв'язок є)
+    expect(where('workOrderPart', 'good.brand.name', false)).toMatchObject({
+      good: { brand: { name: { not: '' } } },
+    });
+    // наряд у платежі необов'язковий: «порожнє» = наряду немає або номер порожній
+    expect(where('payment', 'workOrder.number', true).AND).toEqual([
+      { OR: [{ workOrder: null }, { workOrder: { number: '' } }] },
+    ]);
+    expect(where('payment', 'workOrder.number', false)).toMatchObject({
+      workOrder: { number: { not: '' } },
     });
   });
 
@@ -475,8 +502,8 @@ describe('report-query.builder', () => {
     // Обов'язкова колонка: Prisma відповідала загальною 400 «Некоректні дані запиту».
     // guards: BR-RPT-024
     it("«порожнє / заповнене» на обов'язковому полі → 400 з назвою поля", () => {
-      expect(() => where('workOrder', 'number', 'isNull', true)).toThrow(
-        'Поле "Номер" завжди заповнене',
+      expect(() => where('workOrder', 'status', 'isNull', true)).toThrow(
+        'Поле "Статус" завжди заповнене',
       );
       expect(() => where('payment', 'amount', 'isNull', false)).toThrow('завжди заповнене');
     });

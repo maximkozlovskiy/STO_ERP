@@ -5350,20 +5350,30 @@
   ],
   "apps/api/src/modules/report-builder/report-builder.parity.integration.spec.ts": [
    "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) invoice: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) invoice: кожна група = фільтр за її значенням",
    "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) payment: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) payment: кожна група = фільтр за її значенням",
    "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) purchaseOrderLine: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) purchaseOrderLine: кожна група = фільтр за її значенням",
    "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) settlementTransaction: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) settlementTransaction: кожна група = фільтр за її значенням",
    "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) stockBatch: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) stockBatch: кожна група = фільтр за її значенням",
    "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) stockItem: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) stockItem: кожна група = фільтр за її значенням",
    "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) stockMovement: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) stockMovement: кожна група = фільтр за її значенням",
    "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) workOrder: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
-   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) workOrderPart: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном"
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) workOrder: кожна група = фільтр за її значенням",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) workOrderPart: групи, «Разом», склеєні рядки й фільтри збігаються з еталоном",
+   "report-builder: SQL-агрегати = Prisma where + JS-агрегатор (паритет) workOrderPart: кожна група = фільтр за її значенням"
   ],
   "apps/api/src/modules/report-builder/report-builder.saved-reports.spec.ts": [
    "ReportBuilderService — tenant-межа запуску run: детальні рядки груп — findMany з where.orgId викликача і take-ліміт",
    "ReportBuilderService — tenant-межа запуску run: кожен SQL-агрегат несе orgId викликача параметром, не текстом",
    "ReportBuilderService — tenant-межа запуску runSaved: orgId береться від викликача, а не зі збереженого config",
    "ReportBuilderService — збережені звіти createSaved / updateSaved з групуванням за полем без groupable → 400, запису немає",
+   "ReportBuilderService — збережені звіти createSaved / updateSaved з недозволеною агрегацією → 400, запису немає",
    "ReportBuilderService — збережені звіти createSaved з невалідним config → BadRequestException, запис не створюється",
    "ReportBuilderService — збережені звіти createSaved пише orgId викликача, entity з config і автора у createdBy",
    "ReportBuilderService — збережені звіти getSaved шукає за id + orgId + deletedAt:null; не знайдено → NotFoundException",
@@ -5392,9 +5402,9 @@
    "report-query.builder orderBy fallback на defaultSort коли sort порожній",
    "report-query.builder proto-injection у entity (__proto__/constructor) → BadRequestException",
    "report-query.builder relation-колонка будує nested select (без include/select mix — Bug #617)",
-   "report-query.builder relation-фільтр додає nested deletedAt (Bug #607)",
    "report-query.builder sort по relation-полю будує вкладений orderBy",
    "report-query.builder take завжди 5000 — для кожної сутності реєстру, незалежно від config",
+   "report-query.builder «порожнє» по полю за необов’язковим зв’язком — OR: зв’язку немає / колонка NULL / порожній рядок",
    "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) in: масив з об’єктом → 400; понад 500 значень → 400",
    "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) isNull: рядок, лишений у value після зміни оператора, не заважає; false / \"false\" — «заповнено»",
    "report-query.builder значення фільтра — примітив за типом поля (BR-RPT-024) «порожнє / заповнене» на обов'язковому полі → 400 з назвою поля",
@@ -5432,6 +5442,7 @@
    "report-query.builder фільтр дати порівнює цілими днями (BR-RPT-025) мітка часу: = день — уся київська доба; > день — після кінця доби; < день — до її початку",
    "report-query.builder фільтр дати порівнює цілими днями (BR-RPT-025) не день (31.02, мітка часу, «вчора») → 400; «в списку» і «містить» для дати → 400",
    "report-query.builder фільтр дати порівнює цілими днями (BR-RPT-025) ≠ день — OR «до початку дня» / «після кінця дня» в AND, разом із періодом",
+   "report-query.builder фільтр по зв’язку не відсікає видалений пов’язаний запис — як і групування",
    "report-query.builder фільтр по нефільтровному полю (stockMovement.quantity) → BadRequestException",
    "report-query.builder інжектить orgId + deletedAt для FULL-профілю"
   ],
@@ -5442,11 +5453,13 @@
    "report-registry цілісність dateOnly стоїть рівно на колонках @db.Date схеми Prisma",
    "report-registry цілісність hasSoftDelete узгоджений з profile (APPEND_ONLY → hasSoftDelete:false)",
    "report-registry цілісність nullable стоїть рівно на полях, колонка яких у схемі необов'язкова (`?`)",
+   "report-registry цілісність optional стоїть рівно на зв'язках з необов'язковою FK у схемі",
    "report-registry цілісність signedByType поле посилається на сусіднє enum-поле (StockMovement.quantity → type)",
    "report-registry цілісність кожен relation-field prismaPath має валідний relation-prefix",
    "report-registry цілісність кожен зв'язок реєстру резолвиться в з'єднання: FK є колонкою батька, таблиця кореня — tableName",
    "report-registry цілісність кожна з 9 сутностей: orgId викликача стоїть у корені where",
    "report-registry цілісність кожне enum-поле посилається на наявний REGISTRY_ENUMS",
+   "report-registry цілісність мультивалюта: сума в базовій валюті (SUM) і «Валюта» (групування) там, де є валюта",
    "report-registry цілісність усі 9 сутностей присутні",
    "report-registry цілісність фільтр по будь-якому полю реєстру не перезаписує orgId і deletedAt кореня"
   ],
@@ -5468,7 +5481,7 @@
    "report-sql.builder ліміт груп відрізає лише найглибші: ORDER BY рівня перед LIMIT («Разом» і батьки — першими)",
    "report-sql.builder склеювання лише підсумовуваних колонок: HAVING — порожня вибірка не дає фантомного рядка нулів",
    "report-sql.builder склеєні плоскі рядки: GROUP BY непідсумовуваних колонок, SUM підсумовуваних, ліміт 5000+1",
-   "report-sql.builder фільтр по зв’язку — зв’язок має існувати й бути живим, як Prisma-фільтр `is`"
+   "report-sql.builder фільтр по зв’язку — без умов на хоп: видалений пов’язаний запис — звичайне значення"
   ],
   "apps/api/src/modules/reports/reports.contract.spec.ts": [
    "Reports — HTTP-контракт дат періоду GET /reports/load — період обовʼязковий без from → 400, сервіс не викликається",

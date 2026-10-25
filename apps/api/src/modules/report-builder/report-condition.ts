@@ -14,6 +14,7 @@ import {
   assertRelationPath,
   assertEnumValue,
   isDateOnlyPath,
+  canBeEmpty,
 } from './report-registry';
 
 /**
@@ -257,7 +258,7 @@ function filterCond(entity: ReportEntityDef, f: ReportFilterInput): ReportCond {
       translateError('err.reportBuilder.filterContainsTextOnly', getLocale()),
     );
   }
-  if (f.op === 'isNull' && !fld.nullable) {
+  if (f.op === 'isNull' && !canBeEmpty(entity, fld.prismaPath)) {
     throw new BadRequestException(
       translateError('err.reportBuilder.fieldNotNullable', getLocale(), { label: fld.label }),
     );

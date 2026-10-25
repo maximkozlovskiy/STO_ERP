@@ -10,9 +10,10 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
-import { cn, escapeCsvCell, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
+import { cn, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
 import { downloadBlob } from '@/lib/download';
 import { CSV_BOM } from '@/lib/report-export';
+import { buildTransactionsCsv, fetchAllTransactions } from './transactions-csv';
 import { fmtMoney, fmtDate } from '@/lib/format';
 import { SETTLEMENT_BALANCE_UP_TYPES, SETTLEMENT_TX_CHARGE_LIKE_TYPES } from '@sto/shared';
 import { settlementTxTypeLabel } from '@/i18n/enumLabel';
@@ -105,6 +106,7 @@ export function SettlementsTabContent() {
     null,
   );
   const [error, setError] = useState('');
+  const [exporting, setExporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [downloadingActId, setDownloadingActId] = useState<string | null>(null);
 
@@ -298,37 +300,27 @@ export function SettlementsTabContent() {
                     size="sm"
                     onClick={() => {
                       if (!selected || transactions.length === 0) return;
-                      const name = cpDisplayName(selected, t('noName'));
-                      // Мультивалюта: окремі колонки «Валюта» + «Сума (базова)», щоб експорт не
-                      // змішував суми різних валют у одній колонці (100 USD і 4150 UAH виглядали б
-                      // однаково → нескладна сума). Base-колонка (amountBase ?? amount — історичні =
-                      // base UAH) — єдина, яку коректно підсумовувати.
-                      const rows = [
-                        [
-                          t('csv.date'),
-                          t('csv.type'),
-                          t('csv.amount'),
-                          t('csv.currency'),
-                          t('csv.amountBase', { code: baseCode }),
-                          t('csv.document'),
-                          t('csv.notes'),
-                        ],
-                        ...transactions.map(tx => [
-                          fmtDate(tx.createdAt),
-                          settlementTxTypeLabel(tx.type),
-                          tx.amount,
-                          tx.currencyCode ?? baseCode,
-                          tx.amountBase ?? tx.amount,
-                          tx.documentType ?? '',
-                          tx.notes ?? '',
-                        ]),
-                      ];
-                      const csv = rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
-                      // BOM — щоб Excel з українськими налаштуваннями відкрив UTF-8 без кракозябр.
-                      const blob = new Blob([CSV_BOM + csv], { type: 'text/csv;charset=utf-8;' });
-                      downloadBlob(blob, `transactions-${name}.csv`);
+                      const cp = selected;
+                      setExporting(true);
+                      fetchAllTransactions((page, limit) =>
+                        apiFetch<{ items: Transaction[]; total: number }>(
+                          `/counterparties/${cp.id}/transactions?page=${page}&limit=${limit}`,
+                        ),
+                      )
+                        .then(all => {
+                          const csv = buildTransactionsCsv(all, t, baseCode);
+                          // BOM — щоб Excel з українськими налаштуваннями відкрив UTF-8 без кракозябр.
+                          const blob = new Blob([CSV_BOM + csv], {
+                            type: 'text/csv;charset=utf-8;',
+                          });
+                          downloadBlob(blob, `transactions-${cpDisplayName(cp, t('noName'))}.csv`);
+                        })
+                        .catch((e: unknown) =>
+                          setError(e instanceof Error ? e.message : t('errors.loadFailed')),
+                        )
+                        .finally(() => setExporting(false));
                     }}
-                    disabled={transactions.length === 0}
+                    disabled={transactions.length === 0 || exporting}
                     aria-label={t('actions.exportCsvAria')}
                     title={t('actions.exportCsvTitle')}
                   >

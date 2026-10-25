@@ -3,7 +3,13 @@ import { Prisma } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
-import { REGISTRY, REGISTRY_ENUMS, getEntity, ReportEntityDef } from './report-registry';
+import {
+  REGISTRY,
+  REGISTRY_ENUMS,
+  getEntity,
+  canBeEmpty,
+  ReportEntityDef,
+} from './report-registry';
 import { buildQuery, ReportConfigInput } from './report-query.builder';
 import { ReportResult, ReportAggInput, assertAggregations } from './report-aggregator';
 import { buildConditions } from './report-condition';
@@ -56,7 +62,7 @@ export class ReportBuilderService {
           aggregations: f.aggregations,
           filterable: f.filterable,
           groupable: f.groupable,
-          nullable: f.nullable === true,
+          nullable: canBeEmpty(e, f.prismaPath),
         })),
         relations: e.relations.map(r => ({
           key: r.key,
@@ -227,7 +233,11 @@ export class ReportBuilderService {
    */
   private dryRun(config: FullReportConfig, orgId: string): void {
     buildQuery(config, orgId);
-    assertGroupable(getEntity(config.entity), config.groupBy ?? []);
+    const entity = getEntity(config.entity);
+    assertGroupable(entity, config.groupBy ?? []);
+    // BR-RPT-018 + 011: недозволена агрегація (SUM ціни тощо) — 400 вже під час збереження, а не
+    // збережений звіт, що падає при кожному запуску (рішення власника 2026-10-25).
+    assertAggregations(config.aggregations ?? [], entity);
   }
 
   async listSaved(orgId: string) {

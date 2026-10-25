@@ -168,6 +168,48 @@ describe('report-registry цілісність', () => {
     }
   });
 
+  // «Порожнє» по полю за зв'язком охоплює рядки без зв'язку лише на необов'язковому хопі (FK `?`);
+  // `is: null` на обов'язковому Prisma відхиляє. Мутація: прибрати optional з good.brand → кейс червоніє.
+  // guards: BR-RPT-028
+  it("optional стоїть рівно на зв'язках з необов'язковою FK у схемі", () => {
+    const models = schemaModels();
+    for (const e of Object.values(REGISTRY)) {
+      for (const r of e.relations) {
+        const segments = r.prismaPath.split('.');
+        let model = e.prismaModel.charAt(0).toUpperCase() + e.prismaModel.slice(1);
+        for (const seg of segments.slice(0, -1)) {
+          model = (models.get(model)?.get(seg) ?? '').replace(/[?[\]]/g, '');
+        }
+        const fkType = models.get(model)?.get(r.fk);
+        expect(fkType, `${e.key}.${r.prismaPath}.${r.fk}`).toBeDefined();
+        expect(r.optional, `${e.key}.${r.prismaPath} (${fkType})`).toBe(fkType!.endsWith('?'));
+      }
+    }
+  });
+
+  // «Сума» платежів складала різні валюти (338 221,32 у змішаних проти 352 755,32 у базовій —
+  // 9 оплат у USD, dev-база 2026-10-25). Мутація: прибрати поле базової суми з payment → кейс червоніє.
+  // guards: BR-RPT-029
+  it('мультивалюта: сума в базовій валюті (SUM) і «Валюта» (групування) там, де є валюта', () => {
+    const base: Record<string, string> = {
+      payment: 'amountBase',
+      settlementTransaction: 'amountBase',
+      invoice: 'totalAmountBase',
+    };
+    for (const [key, baseField] of Object.entries(base)) {
+      const e = getEntity(key);
+      const f = e.fields.find(x => x.key === baseField);
+      expect(f?.aggregations, `${key}.${baseField}`).toContain('SUM');
+      expect(f?.label, key).toBe('Сума в базовій валюті');
+      // сума у валюті документа підписана так, щоб її не сприйняли за загальну
+      expect(e.fields.find(x => x.key === 'amount')?.label, key).toMatch(/у валюті/);
+    }
+    for (const key of [...Object.keys(base), 'workOrder']) {
+      const cur = getEntity(key).fields.find(x => x.key === 'currency.code');
+      expect(cur?.groupable, `${key}.currency.code`).toBe(true);
+    }
+  });
+
   // Перелік enum-значень реєстру відставав від схеми: рух RETURN у базі був, а фільтр по ньому
   // давав 400 (2026-10-25). Мутація: прибрати 'RETURN' з REGISTRY_ENUMS → кейс червоніє.
   // guards: BR-RPT-004

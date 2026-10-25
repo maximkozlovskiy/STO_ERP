@@ -30,6 +30,7 @@ import type { ReportFilterInput } from './report-condition';
 let dbAvailable = false;
 let raw: PrismaClient;
 let orgId = '';
+let service: ReportBuilderService;
 
 beforeAll(async () => {
   raw = new PrismaClient({ adapter: createPgAdapter(testDatabaseUrl()) });
@@ -50,6 +51,7 @@ beforeAll(async () => {
     handleDbUnavailable('no organisation in the database (seed not applied)');
     return;
   }
+  service = new ReportBuilderService(raw as unknown as PrismaService);
   dbAvailable = true;
 }, 60_000);
 
@@ -249,6 +251,36 @@ describe('report-builder: SQL-агрегати = Prisma where + JS-агрега�
       if (!dbAvailable) return skip();
       for (const { label, config } of configsFor(e)) {
         await compare(config, label);
+      }
+    }, 300_000);
+  }
+
+  // BR-RPT-028: група «X» = фільтр «= X», група «(порожньо)» = фільтр «порожнє». До 2026-10-25
+  // фільтр по зв'язку відсікав видалений пов'язаний запис, а групування — ні («Платежі» за
+  // контрагентом: група ∅ = 930, фільтр «порожнє» = 928).
+  for (const e of Object.values(REGISTRY)) {
+    // guards: BR-RPT-028
+    it(`${e.key}: кожна група = фільтр за її значенням`, async ({ skip }) => {
+      if (!dbAvailable) return skip();
+      for (const f of e.fields.filter(x => x.groupable && x.filterable)) {
+        const grouped = await service.run(orgId, { entity: e.key, columns: [], groupBy: [f.key] });
+        for (const node of grouped.result.tree.slice(0, 8)) {
+          const filter: ReportFilterInput =
+            node.key === '∅'
+              ? { field: f.key, op: 'isNull', value: true }
+              : {
+                  field: f.key,
+                  op: 'eq',
+                  value: f.type === 'boolean' ? node.key === 'true' : node.key,
+                };
+          const filtered = await service.run(orgId, {
+            entity: e.key,
+            columns: [],
+            groupBy: [],
+            filters: [filter],
+          });
+          expect(filtered.result.rowCount, `${e.key}.${f.key} = ${node.key}`).toBe(node.count);
+        }
       }
     }, 300_000);
   }

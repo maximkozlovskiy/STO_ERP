@@ -1,5 +1,5 @@
 import type { ReportEntityDef } from './report-registry';
-import { getField, assertRelationPath, relationForPrefix } from './report-registry';
+import { getField, assertRelationPath, emptinessOf } from './report-registry';
 import { buildConditions, type ReportCond, type ReportConfigInput } from './report-condition';
 
 export type { ReportConfigInput, ReportFilterInput, ReportSortInput } from './report-condition';
@@ -18,28 +18,27 @@ export interface BuiltQuery {
 
 /**
  * Записує значення у вкладений шлях `where`/`orderBy`. Ключі беруться ВИКЛЮЧНО з реєстрового
- * prismaPath (літерал), не з вводу. Для relation-хопів з softDelete додає deletedAt:null.
+ * prismaPath (літерал), не з вводу. Видалений пов'язаний запис (контрагент, товар…) — звичайне
+ * значення, як і в групуванні (BR-RPT-028): умову `deletedAt` на хоп зв'язку не ставимо (до
+ * 2026-10-25 ставили — Bug #607 — і фільтр «= ТОВ X» не бачив платежів видаленого ТОВ X, які група
+ * «ТОВ X» показувала). Рядки видаленого документа відсікає `parentRelations`, а не це.
  */
-function setWherePath(
-  where: Obj,
-  entity: ReportEntityDef,
-  prismaPath: string,
-  cond: unknown,
-): void {
+function setWherePath(where: Obj, prismaPath: string, cond: unknown): void {
   const segments = prismaPath.split('.');
   let node = where;
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i];
-    const prefix = segments.slice(0, i + 1).join('.');
-    const rel = relationForPrefix(entity, prefix);
     node[seg] = node[seg] ?? {};
     node = node[seg] as Obj;
-    // Bug #607: не протікати soft-deleted relation-записи у фільтр.
-    if (rel?.targetHasSoftDelete && node['deletedAt'] === undefined) {
-      node['deletedAt'] = null;
-    }
   }
   node[segments[segments.length - 1]] = cond;
+}
+
+/** Об'єкт `where` з однією умовою на вкладеному шляху. */
+function pathWhere(prismaPath: string, cond: unknown): Obj {
+  const out: Obj = {};
+  setWherePath(out, prismaPath, cond);
+  return out;
 }
 
 /** Чи вже стоїть умова на листку цього шляху (поле вже фільтрується або зайняте періодом). */
@@ -66,6 +65,7 @@ function prismaLeaf(cond: Exclude<ReportCond, { kind: 'outside' }>): unknown {
     case 'contains':
       return { contains: cond.value, mode: 'insensitive' };
     case 'isNull':
+      // Рендерить `emptinessBranches` (зв'язок, NULL, порожній рядок) — сюди не доходить.
       return cond.isNull ? null : { not: null };
     default: {
       const _exhaustive: never = cond;
@@ -74,31 +74,64 @@ function prismaLeaf(cond: Exclude<ReportCond, { kind: 'outside' }>): unknown {
   }
 }
 
-/** Додає умову до `where`: перша на шлях — у сам шлях, наступна — в AND (BR-RPT-022). */
+/**
+ * «Порожнє / заповнене» (BR-RPT-028) — рівно ті рядки, що потрапляють у групу «(порожньо)»:
+ * немає зв'язку на необов'язковому хопі, колонка NULL або (текст) порожній рядок. Повертає
+ * альтернативи як пари «шлях — умова» (для «порожнє» — OR, для «заповнене» — одна).
+ */
+function emptinessBranches(
+  entity: ReportEntityDef,
+  path: string,
+  isEmpty: boolean,
+): { path: string; cond: unknown }[] {
+  const e = emptinessOf(entity, path);
+  if (isEmpty) {
+    return [
+      ...e.optionalHops.map(h => ({ path: h, cond: null })),
+      ...(e.leafNullable ? [{ path, cond: null }] : []),
+      ...(e.text ? [{ path, cond: '' }] : []),
+    ];
+  }
+  // «Заповнене»: умова на листку вимагає й існування всіх зв'язків шляху.
+  if (e.text) return [{ path, cond: { not: '' } }];
+  if (e.leafNullable) return [{ path, cond: { not: null } }];
+  const deepest = e.optionalHops[e.optionalHops.length - 1];
+  return deepest ? [{ path: deepest, cond: { isNot: null } }] : [];
+}
+
+/** Одна умова на шлях: перша — у сам шлях, наступна — в AND (BR-RPT-022). */
+function mergeCond(where: Obj, path: string, leaf: unknown): void {
+  // BR-RPT-022: друга умова на те саме поле (або фільтр по полю дати поверх dateRange) не
+  // перезаписує першу, а додається в AND. Раніше `node[leaf] = cond` губив попередню умову:
+  // «сума від 100 до 500» показувала все до 500, без жодної помилки.
+  if (hasWherePath(where, path)) {
+    where.AND = [...((where.AND ?? []) as Obj[]), pathWhere(path, leaf)];
+  } else {
+    setWherePath(where, path, leaf);
+  }
+}
+
+/** Додає умову до `where`. */
 function addCond(where: Obj, entity: ReportEntityDef, cond: ReportCond): void {
+  if (cond.kind === 'isNull') {
+    const branches = emptinessBranches(entity, cond.path, cond.isNull);
+    if (branches.length === 1) mergeCond(where, branches[0].path, branches[0].cond);
+    else
+      where.AND = [
+        ...((where.AND ?? []) as Obj[]),
+        { OR: branches.map(b => pathWhere(b.path, b.cond)) },
+      ];
+    return;
+  }
   if (cond.kind === 'outside') {
     // «≠ день» — OR двох умов поля (до початку / після кінця): одною умовою поля Prisma його не
     // виражає — `{ not: { gte, lte } }` вона розкладає на NOT(≥) AND NOT(≤), порожня множина
     // (Bug #973). Іде в AND, тож разом із періодом і іншими умовами звужує.
-    const branches = [{ lt: cond.start }, { gt: cond.end }].map(c => {
-      const branch: Obj = {};
-      setWherePath(branch, entity, cond.path, c);
-      return branch;
-    });
+    const branches = [{ lt: cond.start }, { gt: cond.end }].map(c => pathWhere(cond.path, c));
     where.AND = [...((where.AND ?? []) as Obj[]), { OR: branches }];
     return;
   }
-  const leaf = prismaLeaf(cond);
-  // BR-RPT-022: друга умова на те саме поле (або фільтр по полю дати поверх dateRange) не
-  // перезаписує першу, а додається в AND. Раніше `node[leaf] = cond` губив попередню умову:
-  // «сума від 100 до 500» показувала все до 500, без жодної помилки.
-  if (hasWherePath(where, cond.path)) {
-    const extra: Obj = {};
-    setWherePath(extra, entity, cond.path, leaf);
-    where.AND = [...((where.AND ?? []) as Obj[]), extra];
-  } else {
-    setWherePath(where, entity, cond.path, leaf);
-  }
+  mergeCond(where, cond.path, prismaLeaf(cond));
 }
 
 /**

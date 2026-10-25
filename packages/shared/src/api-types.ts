@@ -9918,7 +9918,7 @@ export interface components {
             aggregations: string[];
             filterable: boolean;
             groupable: boolean;
-            /** @description Колонка допускає NULL — доречні «порожнє / заповнене» */
+            /** @description Поле може бути порожнім (NULL, порожній текст або немає зв’язку) — доречні «порожнє / заповнене» */
             nullable: boolean;
         };
         ReportMetadataRelationDto: {

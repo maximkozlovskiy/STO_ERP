@@ -73,7 +73,8 @@ export interface ReportRelationDef {
   /** Чи інжектити deletedAt:null у nested include на цьому хопі (Bug #607). */
   targetHasSoftDelete: boolean;
   /** FK-колонка в таблиці батька (SQL-агрегати); типово `<зв'язок>Id`. */
-  fk: string;
+  fk: string; /** FK необов'язковий (`brandId String?`): зв'язку може не бути — «порожнє» поля за ним (BR-RPT-028). */
+  optional: boolean;
 }
 
 export type EntityProfile = 'FULL' | 'APPEND_ONLY';
@@ -228,7 +229,7 @@ const relation = (
   key: string,
   label: string,
   target: string,
-  opts: { targetHasSoftDelete?: boolean; fk?: string } = {},
+  opts: { targetHasSoftDelete?: boolean; fk?: string; optional?: boolean } = {},
 ): ReportRelationDef => ({
   key,
   label,
@@ -238,6 +239,7 @@ const relation = (
   advanced: false,
   targetHasSoftDelete: opts.targetHasSoftDelete ?? true,
   fk: opts.fk ?? `${key.split('.').pop()}Id`,
+  optional: opts.optional ?? false,
 });
 
 /** Поле, колонка якого допускає NULL (див. `ReportFieldDef.nullable`). */
@@ -267,6 +269,9 @@ const workOrder: ReportEntityDef = {
     sumField('paidAmount', 'Оплачено'),
     nullable(dateField('completedAt', 'Завершено')),
     dateField('documentDate', 'Дата', { dateOnly: true }),
+    // Суми наряду — у його валюті; базової суми в чернетці ще немає (курс фіксується пізніше),
+    // тож різні валюти розводить групування за «Валюта».
+    textField('currency.code', 'Валюта'),
     // relation-колонки (рівень 1 — прямий шлях WO→CP, рекомендований):
     enumField('counterparty.type', 'Тип контрагента', 'CounterpartyType'),
     nullable(textField('counterparty.companyName', 'Контрагент')),
@@ -278,6 +283,7 @@ const workOrder: ReportEntityDef = {
     relation('counterparty', 'Контрагент', 'counterparty'),
     relation('branch', 'Філія', 'garageBranch'),
     relation('vehicle', 'Авто', 'vehicle'),
+    relation('currency', 'Валюта', 'currency'),
   ],
 };
 
@@ -307,7 +313,7 @@ const workOrderPart: ReportEntityDef = {
   ],
   relations: [
     relation('good', 'Товар', 'good'),
-    relation('good.brand', 'Бренд', 'brand'),
+    relation('good.brand', 'Бренд', 'brand', { optional: true }),
     relation('warehouse', 'Склад', 'warehouse'),
     relation('workOrder', 'Наряд', 'workOrder'),
     relation('workOrder.counterparty', 'Контрагент (наряду)', 'counterparty'),
@@ -339,7 +345,7 @@ const purchaseOrderLine: ReportEntityDef = {
   ],
   relations: [
     relation('good', 'Товар', 'good'),
-    relation('good.brand', 'Бренд', 'brand'),
+    relation('good.brand', 'Бренд', 'brand', { optional: true }),
     relation('purchaseOrder', 'Закупівля', 'purchaseOrder'),
     relation('purchaseOrder.supplier', 'Постачальник', 'counterparty'),
   ],
@@ -358,7 +364,9 @@ const invoice: ReportEntityDef = {
   fields: [
     textField('number', 'Номер'),
     enumField('status', 'Статус', 'InvoiceStatus'),
-    sumField('amount', 'Сума'),
+    sumField('amount', 'Сума (у валюті рахунку)'),
+    nullable(sumField('totalAmountBase', 'Сума в базовій валюті')),
+    textField('currency.code', 'Валюта'),
     sumField('totalWithoutVat', 'Без ПДВ'),
     sumField('totalVat', 'ПДВ'),
     sumField('totalWithVat', 'З ПДВ'),
@@ -370,7 +378,8 @@ const invoice: ReportEntityDef = {
   ],
   relations: [
     relation('counterparty', 'Контрагент', 'counterparty'),
-    relation('workOrder', 'Наряд', 'workOrder'),
+    relation('workOrder', 'Наряд', 'workOrder', { optional: true }),
+    relation('currency', 'Валюта', 'currency'),
   ],
 };
 
@@ -388,7 +397,11 @@ const payment: ReportEntityDef = {
   voidedField: 'reversedAt',
   defaultSort: { path: 'createdAt', dir: 'desc' },
   fields: [
-    sumField('amount', 'Сума'),
+    // Мультивалюта: «Сума» — у валюті оплати; складати різні валюти можна лише в межах однієї
+    // (групування за «Валюта»), загальний підсумок — по сумі в базовій валюті.
+    sumField('amount', 'Сума (у валюті оплати)'),
+    nullable(sumField('amountBase', 'Сума в базовій валюті')),
+    textField('currency.code', 'Валюта'),
     textField('method', 'Спосіб'),
     dateField('createdAt', 'Дата'),
     nullable(dateField('reversedAt', 'Сторновано', { groupable: false })),
@@ -398,7 +411,8 @@ const payment: ReportEntityDef = {
   ],
   relations: [
     relation('counterparty', 'Контрагент', 'counterparty'),
-    relation('workOrder', 'Наряд', 'workOrder'),
+    relation('workOrder', 'Наряд', 'workOrder', { optional: true }),
+    relation('currency', 'Валюта', 'currency', { optional: true }),
   ],
 };
 
@@ -415,7 +429,9 @@ const settlementTransaction: ReportEntityDef = {
   defaultSort: { path: 'createdAt', dir: 'desc' },
   fields: [
     enumField('type', 'Тип', 'SettlementTransactionType'),
-    sumField('amount', 'Сума'),
+    sumField('amount', 'Сума (у валюті проводки)'),
+    nullable(sumField('amountBase', 'Сума в базовій валюті')),
+    textField('currency.code', 'Валюта'),
     nullable(textField('documentType', 'Тип документа')),
     dateField('createdAt', 'Дата'),
     nullable(textField('account.counterparty.companyName', 'Контрагент')),
@@ -427,6 +443,7 @@ const settlementTransaction: ReportEntityDef = {
       fk: 'settlementAccountId',
     }),
     relation('account.counterparty', 'Контрагент', 'counterparty'),
+    relation('currency', 'Валюта', 'currency', { optional: true }),
   ],
 };
 
@@ -468,7 +485,7 @@ const stockMovement: ReportEntityDef = {
   ],
   relations: [
     relation('good', 'Товар', 'good'),
-    relation('good.brand', 'Бренд', 'brand'),
+    relation('good.brand', 'Бренд', 'brand', { optional: true }),
     relation('warehouse', 'Склад', 'warehouse'),
   ],
 };
@@ -506,7 +523,7 @@ const stockBatch: ReportEntityDef = {
   ],
   relations: [
     relation('good', 'Товар', 'good'),
-    relation('good.brand', 'Бренд', 'brand'),
+    relation('good.brand', 'Бренд', 'brand', { optional: true }),
     relation('warehouse', 'Склад', 'warehouse'),
   ],
 };
@@ -533,7 +550,7 @@ const stockItem: ReportEntityDef = {
   ],
   relations: [
     relation('good', 'Товар', 'good'),
-    relation('good.brand', 'Бренд', 'brand'),
+    relation('good.brand', 'Бренд', 'brand', { optional: true }),
     relation('warehouse', 'Склад', 'warehouse'),
   ],
 };
@@ -596,6 +613,34 @@ export function assertRelationPath(entity: ReportEntityDef, prismaPath: string):
 /** Чи поле за цим шляхом — колонка `@db.Date` (див. `ReportFieldDef.dateOnly`). */
 export function isDateOnlyPath(entity: ReportEntityDef, prismaPath: string): boolean {
   return entity.fields.some(f => f.prismaPath === prismaPath && f.dateOnly === true);
+}
+
+/**
+ * Що означає «порожнє» для поля (BR-RPT-028): немає зв'язку на необов'язковому хопі, колонка NULL,
+ * або (текст) порожній рядок — рівно ті рядки, що потрапляють у групу «(порожньо)».
+ */
+export function emptinessOf(
+  entity: ReportEntityDef,
+  prismaPath: string,
+): { optionalHops: string[]; leafNullable: boolean; text: boolean } {
+  const segments = prismaPath.split('.');
+  const optionalHops: string[] = [];
+  for (let i = 1; i < segments.length; i++) {
+    const prefix = segments.slice(0, i).join('.');
+    if (relationForPrefix(entity, prefix)?.optional) optionalHops.push(prefix);
+  }
+  const fld = entity.fields.find(f => f.prismaPath === prismaPath);
+  return {
+    optionalHops,
+    leafNullable: fld?.nullable === true,
+    text: fld?.type === 'scalar',
+  };
+}
+
+/** Чи може поле бути порожнім — лише тоді доречні «порожнє / заповнене». */
+export function canBeEmpty(entity: ReportEntityDef, prismaPath: string): boolean {
+  const e = emptinessOf(entity, prismaPath);
+  return e.optionalHops.length > 0 || e.leafNullable || e.text;
 }
 
 export function relationForPrefix(
