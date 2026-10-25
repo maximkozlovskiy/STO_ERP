@@ -198,6 +198,15 @@ function normalizeFilterValue(op: FilterOp, value: unknown, fld: ReportFieldDef)
   return out;
 }
 
+/**
+ * «Містить» шукає текст як є (Bug #976): `%` і `_` — символи шаблону LIKE, і ні Prisma `contains`,
+ * ні ILIKE їх не екранують — «Спосіб містить a_h» знаходив «cash», «%» — усі рядки. Екранування
+ * зворотною косою (типовий ESCAPE PostgreSQL) діє в обох рендерерах однаково.
+ */
+export function escapeLike(v: string): string {
+  return v.replace(/[\\%_]/g, '\\$&');
+}
+
 /** Умова з op + нормалізованого значення для недатового поля. op з фіксованого whitelist. */
 function scalarCond(op: FilterOp, value: unknown, fld: ReportFieldDef): ReportCond {
   const path = fld.prismaPath;
@@ -223,7 +232,7 @@ function scalarCond(op: FilterOp, value: unknown, fld: ReportFieldDef): ReportCo
           translateError('err.reportBuilder.filterContainsTextOnly', getLocale()),
         );
       }
-      return { kind: 'contains', path, value: String(value) };
+      return { kind: 'contains', path, value: escapeLike(String(value)) };
     case 'isNull':
       return { kind: 'isNull', path, isNull: value !== false };
     default:

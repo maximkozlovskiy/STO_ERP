@@ -205,6 +205,21 @@ describe('report-query.builder', () => {
     });
   });
 
+  // guards: BR-RPT-003
+  it('contains шукає «%», «_» і «\\» буквально — символи шаблону LIKE екрануються (Bug #976)', () => {
+    // Без екранування «Спосіб містить a_h» знаходив «cash», а «%» — усі платежі (і Prisma, і SQL).
+    const where = buildQuery(
+      {
+        entity: 'payment',
+        columns: [],
+        groupBy: [],
+        filters: [{ field: 'method', op: 'contains', value: 'bank_100%\\x' }],
+      },
+      ORG,
+    ).args.where;
+    expect(where.method).toEqual({ contains: 'bank\\_100\\%\\\\x', mode: 'insensitive' });
+  });
+
   // guards: BR-RPT-003, BR-CASH-024
   it('оплати: «Сторновано» — фільтр isNull відділяє чинні оплати від сторнованих', () => {
     const run = (value: boolean) =>
