@@ -294,6 +294,8 @@ Web-тест експорту (`BR-RPT-021`) лежить поза модуле�
 значення клітинки (enum, дата, булеве), CSV (роздільник, лапки, захист від формул через
 `escapeCsvCell`, BOM), XLSX-XML (екранування, числа як `Number`, заголовок, каркас книги). Запуск:
 `cd apps/web && npx vitest run src/lib/__tests__/report-export.test.ts`.
+CSV фіксованих звітів (`apps/web/src/app/(app)/reports/report-csv.ts`, числа з комою, BOM у
+файлі) — `apps/web/src/app/(app)/reports/__tests__/report-csv.test.ts`, 3 кейси.
 
 **Чого тут НЕМА.**
 

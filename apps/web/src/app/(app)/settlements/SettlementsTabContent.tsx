@@ -11,6 +11,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { cn, escapeCsvCell, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
+import { downloadBlob } from '@/lib/download';
+import { CSV_BOM } from '@/lib/report-export';
 import { fmtMoney, fmtDate } from '@/lib/format';
 import { SETTLEMENT_BALANCE_UP_TYPES, SETTLEMENT_TX_CHARGE_LIKE_TYPES } from '@sto/shared';
 import { settlementTxTypeLabel } from '@/i18n/enumLabel';
@@ -322,15 +324,9 @@ export function SettlementsTabContent() {
                         ]),
                       ];
                       const csv = rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
-                      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `transactions-${name}.csv`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      setTimeout(() => URL.revokeObjectURL(url), 100);
+                      // BOM — щоб Excel з українськими налаштуваннями відкрив UTF-8 без кракозябр.
+                      const blob = new Blob([CSV_BOM + csv], { type: 'text/csv;charset=utf-8;' });
+                      downloadBlob(blob, `transactions-${name}.csv`);
                     }}
                     disabled={transactions.length === 0}
                     aria-label={t('actions.exportCsvAria')}
