@@ -571,7 +571,7 @@ export class InvoicesService {
     const settlesStandaloneOnPaid =
       newStatus === InvoiceStatus.PAID && inv.workOrderId === null && paymentRemaining > 1e-9;
 
-    // MV-H1 (BR-INV-020): скасування ВИСТАВЛЕНОГО standalone-рахунку мусить сторнувати непогашений
+    // MV-H1 (BR-INV-022): скасування ВИСТАВЛЕНОГО standalone-рахунку мусить сторнувати непогашений
     // борг компенсуючим CREDIT_NOTE, інакше CHARGE висить у леджері вічно. CHARGE нараховується лише
     // на DRAFT→SENT, тож DRAFT→CANCELLED нічого не сторнує (CHARGE ще не було); SENT/PARTIALLY_PAID/
     // OVERDUE→CANCELLED сторнують рівно непогашене (amount − paidAmount), не повний amount — часткові
