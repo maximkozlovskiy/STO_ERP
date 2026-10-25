@@ -209,14 +209,14 @@
   Фікс: додати `paidAmount: inv.paidAmount` у CAS `where` :577 → count=0 = `err.invoice.statusChanged`,
   повтор зі свіжим залишком. Досяжно звичайними паралельними діями (два приймальники / подвійний
   сабміт / онлайн-оплата проти ручного закриття).
-- **[MEDIUM, NEW] F7 — `SettlementsService.createTransaction` пише `amountBase`/`balance` у
-  Decimal(12,2) без `assertMoneyFits`.** `settlements.service.ts:96-144`. (а) `amountBase = amount × rate`:
-  `amount` DTO-капнутий, добуток ні; валютна сума × великий `rate` (Decimal 18,6) > 1e10 → PG
-  `numeric overflow` **500** замість названого **400**. (б) `SettlementAccount.balance` —
-  акумулятор Decimal(12,2), ніколи не перевіряється; кумулятивний знаковий баланс може перетнути
-  1e10 → 500 на наступній проводці. Той самий клас, що закритий BR-BANK-042, лишений у settlements.
-  Фікс: `assertMoneyFits(conv.amountBase, 'сума проводки')` перед записом; за духом — і результуючий
-  баланс.
+- ~~**[MEDIUM, NEW] F7 — `SettlementsService.createTransaction` пише `amountBase`/`balance` у
+  Decimal(12,2) без `assertMoneyFits`.**~~ ✅ ЗАКРИТО 2026-10-25 (`ee3fb398`, BR-FIN-MONEYCAP):
+  `assertMoneyFits(dto.amount)` + `assertMoneyFits(conv.amountBase)` (сума × курс) + `assertMoneyFits(
+Number(account.balance) + balanceDelta)` (накопичений баланс) у `createTransaction` → 400
+  `err.money.lineAmountOverflow` із назвою поля замість 500 `numeric field overflow`. Unit
+  (`settlements.service.spec.ts`, 2 кейси): amountBase > cap → 400 «сума проводки»; баланс біля
+  стелі + ще проводка → 400 «баланс рахунку», рівно на межі проходить, журнал/баланс не змінено.
+  Залишок — balance read-write race (MV-M3 нижче), свідомо прийнятний.
 - **[LOW, NEW] F8 — `Payment.amountBase` у `payments.create` без overflow-гейта.**
   `payments.service.ts:437-445,644`. `conv.amountBase = dto.amount × rate` → `Payment.amountBase`
   Decimal(12,2) без `assertMoneyFits`. Той самий клас, що F7(а). Фікс: `assertMoneyFits(conv.amountBase)`.
@@ -264,12 +264,20 @@
 
 ### Календар, CRM, доступ
 
-- **[MEDIUM, NEW] F1 — доступність слота рахується через входження дати початку в день, а не
-  перетин інтервалів.** `booking.service.ts:155-158`. Нічний слот (через північ) показує підйомник
-  вільним на наступний день. Фікс: перевірка перетину `[start,end)` інтервалів, не `startOfDay`.
-- **[MEDIUM] F2 — подвійне бронювання механіка не має DB-страховки.** `calendar.service.ts` —
-  лише прикладна проба під Read-Committed, без `EXCLUDE`-обмеження в БД; під паралеллю можливий
-  двійний запис. Фікс: GiST `EXCLUDE USING` на (механік, діапазон часу) або серіалізація.
+- ~~**[MEDIUM, NEW] F1 — доступність слота рахується через входження дати початку в день, а не
+  перетин інтервалів.**~~ ✅ ЗАКРИТО 2026-10-25 (`7abffbfc`, BR-CAL-006): `booking.service.ts`
+  `getAvailability` відбирає слоти за перетином із добою (`startAt ≤ dayEnd AND endAt > dayStart`),
+  дзеркалить `findSlots`. Наживо (postgres MCP, предикат на реальному нічному слоті 22:00→02:00):
+  новий предикат матчить слот (підйомник зайнятий у ранкових вікнах), старий `startAt ≥ dayStart`
+  — ні; край `endAt == 00:00` доби не матчиться (half-open), `startAt == 00:00` матчиться.
+- ~~**[MEDIUM] F2 — подвійне бронювання механіка не має DB-страховки.**~~ ✅ ЗАКРИТО 2026-10-25
+  (`651dc390`/`7d2117cc`, BR-CAL-006): GiST `EXCLUDE calendar_slots_mechanic_no_overlap` на
+  `(orgId, employeeId, tsrange[))` частковий (`deletedAt IS NULL AND employeeId IS NOT NULL`),
+  міграція `20261025120000`; 23P01→409 мапиться за назвою констрейнта (`slotExclusionMessages`,
+  `prisma-errors.ts`). Наживо (API :3000): паралельні вставки одного механіка на різні підйомники
+  → друга 400 «Співробітник вже зайнятий», у БД один слот; підйомникова гонка досі дає liftBusy
+  (прямий `/calendar/slots` і WO-шлях `upsertWorkOrderSlot`). Обидва EXCLUDE підтверджено живими
+  в БД. Залишок — Sync-мапінг (нотатка нижче), свідомо.
 - **[LOW/MEDIUM, owner-confirm] F3 — звільнений працівник на фіксованому окладі недоплачений.**
   `payroll.service.ts:187-211`. Потребує рішення власника: як рахувати частковий місяць звільнення.
 
