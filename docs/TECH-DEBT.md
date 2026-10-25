@@ -217,9 +217,12 @@ Number(account.balance) + balanceDelta)` (накопичений баланс) �
   (`settlements.service.spec.ts`, 2 кейси): amountBase > cap → 400 «сума проводки»; баланс біля
   стелі + ще проводка → 400 «баланс рахунку», рівно на межі проходить, журнал/баланс не змінено.
   Залишок — balance read-write race (MV-M3 нижче), свідомо прийнятний.
-- **[LOW, NEW] F8 — `Payment.amountBase` у `payments.create` без overflow-гейта.**
+- ✅ ЗАКРИТО 2026-10-25 (`a0e3890c`): `assertMoneyFits(conv.amountBase, 'сума оплати')` перед
+  `payment.create` (BR-FIN-MONEYCAP). ~~**[LOW, NEW] F8 — `Payment.amountBase` у `payments.create` без overflow-гейта.**~~
   `payments.service.ts:437-445,644`. `conv.amountBase = dto.amount × rate` → `Payment.amountBase`
   Decimal(12,2) без `assertMoneyFits`. Той самий клас, що F7(а). Фікс: `assertMoneyFits(conv.amountBase)`.
+- ✅ ЗАКРИТО 2026-10-25 (`a0e3890c`): unreconcile CASH_WITHDRAWAL передає `conversion` оригіналу
+  (BR-CASH-023), legacy-null → now()-fallback.
 - **[LOW, NEW] F9 — реверс зняття готівки бере курс за `now()`, не дзеркалить оригінал → дрейф
   base-ledger.** `bank-reconciliation.service.ts:1580-1604` (unreconcile `CASH_WITHDRAWAL`) проти
   :1276-1300 (оригінал). Зворотний OUT (`cash.createOperation` :1590) НЕ передає `conversion` →
@@ -227,6 +230,7 @@ Number(account.balance) + balanceDelta)` (накопичений баланс) �
   base-view готівки (баланс у валюті каси коректний). Реверси клієнт/постачальник свідомо передають
   оригінальний `conversion`. Фікс: передати `conversion: { rateUsed, amountBase }` з оригінального
   `CashOperation` (дзеркалити BR-CASH-023).
+- ✅ ЗАКРИТО 2026-10-25 (`a0e3890c`): контролер передає `@CurrentUser().id` у `transition`.
 - **[LOW, NEW] F10 — ручний перехід інвойсу пише проводки з `createdBy: undefined` (без атрибуції).**
   `invoices.controller.ts:219` кличе `service.transition(orgId, id, dto.status)` — `userId` не
   передається → CHARGE / дзеркальний PAYMENT / FX з ручних переходів мають `createdBy: null`.
@@ -283,7 +287,14 @@ Number(account.balance) + balanceDelta)` (накопичений баланс) �
 
 ---
 
-## Аудит руху коштів 2026-10-25 — не виправлено (запис на доопрацювання)
+## Аудит руху коштів 2026-10-25
+
+> **СТАТУС 2026-10-25 (`a0e3890c`):** ✅ ЗАКРИТО — MV-H1 (CANCELLED standalone → CREDIT_NOTE на
+> непогашене, BR-INV-022), MV-H2 (supplier-payments confirm overflow-гейт), MV-M1 (cash
+> createOperation overflow-гейт), MV-M2 (supplier confirm `@RequireIdempotencyKey`), MV-L1
+> (`isValidRate` backstop у `getRateAsOf`), MV-L2 (BR-SETL-003 doc). ❌ ВІДКРИТО (рішення власника):
+> MV-M3 (balance-race overflow — гроші race-safe), MV-L3 (append-only DELETE-тест + Promise.all info).
+> Нижче — вихідний опис (історичний; номери рядків до фіксів).
 
 > Цільовий read-only прохід по всьому грошовому ledger (три агенти: settlements/payments/
 > supplier-payments; cash/bank/FX; invoice↔WO↔ledger-цілісність). Лише **запис**, без фіксів.

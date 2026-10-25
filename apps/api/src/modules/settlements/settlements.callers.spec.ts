@@ -122,6 +122,25 @@ const CALL_SITES: Record<string, CallSite> = {
       },
     ],
   },
+  'modules/invoices/invoices.service.ts#transition:CREDIT_NOTE': {
+    guard:
+      'MV-H1 (BR-INV-022): той самий CAS статусу (updateMany where status+paidAmount) у тій самій tx; ' +
+      'CREDIT_NOTE поститься ЛИШЕ після успішного flip (count=0 → throw до проводки). CANCELLED — ' +
+      'термінальний статус (INV_TRANSITIONS.CANCELLED=[]), повторно увійти не можна → другого ' +
+      'CREDIT_NOTE немає. Лише standalone-рахунок (workOrderId===null) і лише з SENT/PARTIALLY_PAID/' +
+      'OVERDUE (status!==DRAFT); сторнує рівно непогашене (amount − paidAmount).',
+    anchors: [
+      ...INVOICE_STATUS_CAS,
+      /newStatus === InvoiceStatus\.CANCELLED/,
+      /inv\.workOrderId === null/,
+    ],
+    raceTests: [],
+    note:
+      'Окремого «CAS програв на →CANCELLED → CREDIT_NOTE не пишеться» кейсу немає: спільний CAS ' +
+      'перевірено кейсами DRAFT→SENT (CHARGE) і OVERDUE→PAID (PAYMENT). Сума й виключення DRAFT/WO — ' +
+      'кейси MV-H1 (SENT→CANCELLED повний amount; PARTIALLY_PAID→CANCELLED лише залишок; DRAFT→CANCELLED ' +
+      'без проводки; WO-рахунок — createTransaction не викликано).',
+  },
 
   // ── Оплати клієнтів ────────────────────────────────────────────────────────────────────
   'modules/payments/payments.service.ts#create:PAYMENT|PREPAYMENT': {
@@ -647,6 +666,7 @@ describe('Settlements — місця виклику createTransaction (стат�
       .map(([key]) => key)
       .sort();
     expect(untested).toEqual([
+      'modules/invoices/invoices.service.ts#transition:CREDIT_NOTE',
       'modules/invoices/invoices.service.ts#transition:PAYMENT',
       'modules/work-orders/work-order-stock-effects.service.ts#returnPartsAndCredit:CREDIT_NOTE',
     ]);
