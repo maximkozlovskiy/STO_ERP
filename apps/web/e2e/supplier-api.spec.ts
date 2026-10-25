@@ -31,10 +31,13 @@ const CONN_AVD = `000 E2E AVD ${uid}`;
 const CONN_UTR = `000 E2E UTR ${uid}`;
 const GOOD = `000 E2E Фільтр OC90 ${uid}`;
 const LIST_NAME = `000 E2E API список ${uid}`;
-// Bug #966: sku мусить бути УНІКАЛЬНИМ на прогін. Фіксований 'OC 90' після першого прогону
-// лишався soft-deleted-товаром, і повторне створення падало з 409 (sku унікальний навіть проти
-// м'яко видалених). `${uid}` робить тест самоізольованим — не залежить від стану dev-бази.
-const ARTICLE = `OC 90 ${uid}`;
+// sku МУСИТЬ дорівнювати артикулу з каталогу фейків (`tools/supplier-fakes/providers/catalog.js`):
+// пошук пропозицій шле `good.sku` як артикул (supplier-offers.service.ts:149) і матчить його
+// `normalizeArticle` проти дзеркала синхронізованого каталогу. Унікальний `OC 90 ${uid}` нормується
+// у `OC90<uid>` ≠ `OC90` → жодної пропозиції (регресія Stage 2 / Bug #966 fix — тест зеленів на
+// CI 145, червонів із 146). Самоізоляція від 409 — не через унікальний sku, а прибиранням
+// залишкового живого товару з цим sku перед створенням (див. нижче).
+const ARTICLE = 'OC 90';
 const BRAND = 'MAHLE';
 
 const state: {
@@ -44,6 +47,8 @@ const state: {
   brandId?: string;
   brandCreated?: boolean;
   goodId?: string;
+  goodName?: string;
+  goodReused?: boolean;
   warehouse?: { id: string; name: string };
   listId?: string;
   connIds: string[];
@@ -85,9 +90,10 @@ async function listItems(page: Page): Promise<ItemDto[]> {
 }
 
 async function openItems(page: Page) {
+  const good = state.goodName ?? GOOD;
   await page.goto('/purchase-orders?tab=procurement&view=items');
-  await page.getByLabel('Товар, артикул, код').fill(GOOD);
-  const rows = page.getByTestId('purchase-list-item-row').filter({ hasText: GOOD });
+  await page.getByLabel('Товар, артикул, код').fill(good);
+  const rows = page.getByTestId('purchase-list-item-row').filter({ hasText: good });
   await expect(rows.first()).toBeVisible({ timeout: 30_000 });
   return rows;
 }
@@ -166,7 +172,9 @@ test.describe('Постачальники API — від підключення 
       const res = await apiRequest(request, token, 'DELETE', `/supplier-connections/${id}`);
       expect.soft(res.status, 'DELETE підключення').toBeLessThan(300);
     }
-    if (state.goodId) {
+    // Лише створений нами товар видаляємо; перевикористаний живий OC 90 лишаємо (його DELETE
+    // і так інколи 400 через посилання, і він потрібен наступному прогону для матчу пропозицій).
+    if (state.goodId && !state.goodReused) {
       const res = await apiRequest(request, token, 'DELETE', `/goods/${state.goodId}`);
       expect.soft(res.status, 'DELETE товару').toBeLessThan(300);
     }
@@ -215,15 +223,35 @@ test.describe('Постачальники API — від підключення 
       state.brandId = created.body.id;
       state.brandCreated = true;
     }
-    const good = await api<{ id: string }>(page, 'POST', '/goods', {
-      name: GOOD,
-      sku: ARTICLE,
-      brandId: state.brandId,
-      salePrice: 300,
-      purchasePrice: 120,
-    });
-    expect(good.status, JSON.stringify(good.body)).toBe(201);
-    state.goodId = good.body.id;
+    // sku МУСИТЬ дорівнювати артикулу каталогу (OC 90) для матчу пропозицій, тож унікальним бути
+    // не може. На брудній dev-базі з цим sku вже може лежати ЖИВИЙ товар попереднього прогону
+    // (його DELETE інколи 400 — товар у рухах/замовленнях, тож просто видалити не можна). Тому:
+    // є живий OC 90 → ПЕРЕВИКОРИСТАТИ його id, інакше створити. Самоізоляція без залежності від
+    // того, чи вдалося прибрати попередній. На чистій базі CI — завжди гілка create.
+    const existing = await api<{ items: Array<{ id: string; sku: string | null; name: string }> }>(
+      page,
+      'GET',
+      `/goods?q=${encodeURIComponent(ARTICLE)}&limit=50`,
+    );
+    const liveSameSku = existing.body.items.find(x => x.sku === ARTICLE);
+    if (liveSameSku) {
+      // Перевикористаний товар має СВОЮ назву (не цьогопрогонний GOOD) — пошук у пікері нижче
+      // мусить шукати саме її, інакше опція не зʼявиться (Bug: тест шукав GOOD поточного прогону).
+      state.goodId = liveSameSku.id;
+      state.goodName = liveSameSku.name;
+      state.goodReused = true;
+    } else {
+      const good = await api<{ id: string }>(page, 'POST', '/goods', {
+        name: GOOD,
+        sku: ARTICLE,
+        brandId: state.brandId,
+        salePrice: 300,
+        purchasePrice: 120,
+      });
+      expect(good.status, JSON.stringify(good.body)).toBe(201);
+      state.goodId = good.body.id;
+      state.goodName = GOOD;
+    }
     const warehouses = await api<Array<{ id: string; name: string; isMain: boolean }>>(
       page,
       'GET',
@@ -285,11 +313,9 @@ test.describe('Постачальники API — від підключення 
     await expect(detail).toBeVisible({ timeout: 20_000 });
     await detail.getByRole('button', { name: 'Додати позицію' }).click();
     const add = page.getByRole('dialog').filter({ hasText: 'Кількість (базові од.)' });
-    await add.getByRole('combobox', { name: 'Товар' }).fill(GOOD);
-    await page
-      .getByRole('option', { name: new RegExp(GOOD) })
-      .first()
-      .click();
+    const goodName = state.goodName ?? GOOD;
+    await add.getByRole('combobox', { name: 'Товар' }).fill(goodName);
+    await page.getByRole('option', { name: goodName }).first().click();
     await add.getByLabel('Склад').selectOption({ label: state.warehouse!.name });
     await add.getByLabel('Кількість (базові од.)').fill('4');
     await add.getByRole('button', { name: 'Додати позицію' }).click();
@@ -309,7 +335,7 @@ test.describe('Постачальники API — від підключення 
     const rows = await openItems(page);
     await rows
       .first()
-      .getByRole('button', { name: `Пропозиції постачальників для ${GOOD}` })
+      .getByRole('button', { name: `Пропозиції постачальників для ${goodName}` })
       .click();
     const dialog = page.getByTestId('supplier-offers-dialog');
     await expect(dialog).toBeVisible();
@@ -344,7 +370,9 @@ test.describe('Постачальники API — від підключення 
     const dialog = page.getByTestId('auto-allocate-dialog');
     await expect(dialog).toBeVisible();
     await dialog.getByLabel('Стратегія').selectOption({ label: 'Дешево' });
-    const preview = dialog.getByTestId('allocation-row').filter({ hasText: GOOD });
+    const preview = dialog
+      .getByTestId('allocation-row')
+      .filter({ hasText: state.goodName ?? GOOD });
     await expect(preview).toContainText('обрано вручну — лишається', { timeout: 30_000 });
     await dialog.getByLabel(/Перезаписати ручний вибір/).check();
     await expect(preview).toContainText(SUP_AVD, { timeout: 15_000 });
@@ -416,7 +444,9 @@ test.describe('Постачальники API — від підключення 
     const open = rows.first();
 
     // Спершу звичайний пошук — є останні відомі пропозиції UTR.
-    await open.getByRole('button', { name: `Пропозиції постачальників для ${GOOD}` }).click();
+    await open
+      .getByRole('button', { name: `Пропозиції постачальників для ${state.goodName ?? GOOD}` })
+      .click();
     const dialog = page.getByTestId('supplier-offers-dialog');
     const utrChip = dialog.getByTestId('offer-connection-chip').filter({ hasText: SUP_UTR });
     await expect(utrChip).toContainText(/пропоз|кешу/, { timeout: 30_000 });
