@@ -82,8 +82,9 @@ const TASK_INCLUDE = {
 
 type TaskRow = Prisma.TaskGetPayload<{ include: typeof TASK_INCLUDE }>;
 
+// «Прізвище Ім'я» — як механік запису календаря й поле «Виконавець» картки.
 const personName = (p: { firstName: string | null; lastName: string | null } | null): string =>
-  p ? [p.firstName, p.lastName].filter(Boolean).join(' ') : '';
+  p ? [p.lastName, p.firstName].filter(Boolean).join(' ') : '';
 
 function toDto(t: TaskRow, now: Date): TaskResponseDto {
   const v = t.vehicle;
