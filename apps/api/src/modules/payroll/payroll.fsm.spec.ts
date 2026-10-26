@@ -356,7 +356,14 @@ describe('PayrollService.remove — що можна відкинути', () => {
     f.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ status: 'CANCELLED' });
     await f.service.remove(ORG, PID, 'user-1');
     expect(f.prisma.payrollPeriod.updateMany).toHaveBeenCalledWith({
-      where: { id: PID, orgId: ORG, deletedAt: null, status: { not: 'PAID' } },
+      where: {
+        id: PID,
+        orgId: ORG,
+        deletedAt: null,
+        status: { not: 'PAID' },
+        // рознесений між перевіркою й записом рядок не дає видалити (BR-PAYR-012, рішення №9)
+        bankTransactions: { none: { status: 'MATCHED', deletedAt: null } },
+      },
       data: { deletedAt: expect.any(Date) },
     });
   });

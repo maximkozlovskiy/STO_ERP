@@ -2,7 +2,9 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 import { apiCall, apiRequest, getToken } from './api-helpers';
 import { ensureVehicleModel } from './vehicle-directory';
 
-test.use({ storageState: 'e2e/.auth/admin.json' });
+// Вище за типові 720 px: попап пікера відкривається лише вниз, і рядок «19» наступного місяця
+// виходив за край вікна — прокрутка картки рухала попап, клік по дню губився (TECH-DEBT №74).
+test.use({ storageState: 'e2e/.auth/admin.json', viewport: { width: 1280, height: 960 } });
 test.describe.configure({ mode: 'serial' });
 
 /**

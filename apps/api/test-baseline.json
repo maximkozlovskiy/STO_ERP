@@ -924,6 +924,7 @@
   "apps/api/src/modules/bank-accounts/bank-accounts.service.spec.ts": [
    "BankAccountsService.remove — рахунок із рознесеними рядками виписки рахунку немає → 404",
    "BankAccountsService.remove — рахунок із рознесеними рядками виписки рознесений рядок виписки цього рахунку → 400, рахунок не видалено",
+   "BankAccountsService.remove — рахунок із рознесеними рядками виписки рядок рознесли між перевіркою і видаленням (запис не пройшов умову) → 400, не 404",
    "BankAccountsService.remove — рахунок із рознесеними рядками виписки рядок іншого рахунку рознесено як переказ на цей → 400, рахунок не видалено",
    "BankAccountsService.remove — рахунок із рознесеними рядками виписки шукаються лише живі MATCHED рядки своєї організації; нема таких → рахунок видалено"
   ],
@@ -3506,6 +3507,7 @@
    "InvoicesService — linked-documents edge cases getLinkedCounts: cross-org id → всі нулі, чужі дані не протікають",
    "InvoicesService — linked-documents edge cases getLinkedCounts: duplicate ids у запиті не ламають мапу (keyed by id)",
    "InvoicesService — linked-documents edge cases getLinkedCounts: zero-count id присутній у мапі з усіма нулями (не absent)",
+   "InvoicesService — linked-documents edge cases getLinkedCounts: видалений рахунок (список із видаленими) → лічильники як у панелі",
    "InvoicesService — linked-documents edge cases getLinkedDocuments: cross-org id → порожні секції, не чужі дані",
    "InvoicesService — linked-documents edge cases getLinkedDocuments: inCashDesk — за sourceType, cashRegisterId або рядком каси своєї org",
    "InvoicesService — linked-documents edge cases getLinkedDocuments: видалений рахунок (перегляд) → секції заповнені, orgId у пошуку",
@@ -4803,6 +4805,14 @@
    "PayrollService — філія періоду попередній розрахунок по філії, якої немає в організації → 404, агрегат не запускається",
    "PayrollService — філія періоду створення періоду по філії, якої немає в організації → 404, запис не створюється"
   ],
+  "apps/api/src/modules/payroll/payroll.remove.spec.ts": [
+   "PayrollService.remove — guard COMPUTED видаляється (ще не виплачено) → soft-delete",
+   "PayrollService.remove — guard DRAFT → soft-delete",
+   "PayrollService.remove — guard PAID не видаляється → BadRequest",
+   "PayrollService.remove — guard на період рознесено рядок виписки → 400 hasReconciledLines, період не видалено",
+   "PayrollService.remove — guard рознесені рядки шукаються лише живі MATCHED цього періоду своєї організації",
+   "PayrollService.remove — guard рядок рознесли між перевіркою і видаленням (запис не пройшов) → 400 hasReconciledLines"
+  ],
   "apps/api/src/modules/payroll/payroll.service.spec.ts": [
    "PayrollService.compute — FSM DRAFT → фіксує lines у транзакції (claim + createMany)",
    "PayrollService.compute — FSM DRAFT → фіксує розшифровку по нарядах (snapshot номера/авто)",
@@ -4833,12 +4843,7 @@
    "PayrollService.preview branchId не належить org → 404",
    "PayrollService.preview from > to → BadRequest",
    "PayrollService.preview агрегує виробіток і рахує accrued за rateScheme",
-   "PayrollService.preview невалідна rateScheme → accrued 0, rateSchemeType=unknown",
-   "PayrollService.remove — guard COMPUTED видаляється (ще не виплачено) → soft-delete",
-   "PayrollService.remove — guard DRAFT → soft-delete",
-   "PayrollService.remove — guard PAID не видаляється → BadRequest",
-   "PayrollService.remove — guard на період рознесено рядок виписки → 400 hasReconciledLines, період не видалено",
-   "PayrollService.remove — guard рознесені рядки шукаються лише живі MATCHED цього періоду своєї організації"
+   "PayrollService.preview невалідна rateScheme → accrued 0, rateSchemeType=unknown"
   ],
   "apps/api/src/modules/payroll/payroll.tenant.spec.ts": [
    "PayrollService — ізоляція організацій compute по чужій відомості → «Період не знайдено», жодного запису й касової операції",
@@ -5276,6 +5281,7 @@
    "PurchaseOrdersService — linked-documents edge cases getLinkedCounts: cross-org → нулі, orgId у where",
    "PurchaseOrdersService — linked-documents edge cases getLinkedCounts: duplicate ids keyed by id, лічильник коректний",
    "PurchaseOrdersService — linked-documents edge cases getLinkedCounts: zero-count id → присутній з усіма нулями",
+   "PurchaseOrdersService — linked-documents edge cases getLinkedCounts: видалене замовлення (список із видаленими) → лічильники як у панелі",
    "PurchaseOrdersService — linked-documents edge cases getLinkedDocuments: cross-org id → порожні секції",
    "PurchaseOrdersService — linked-documents edge cases getLinkedDocuments: видалене замовлення (перегляд) → секції заповнені, orgId у пошуку",
    "PurchaseOrdersService — linked-documents edge cases списки купівлі замовлення: різні списки рахуються один раз, лише в своїй org"
@@ -6472,6 +6478,7 @@
    "SupplierPaymentsService — linked-documents edge cases getLinkedCounts: cross-org → нулі, orgId у where",
    "SupplierPaymentsService — linked-documents edge cases getLinkedCounts: duplicate ids keyed by id",
    "SupplierPaymentsService — linked-documents edge cases getLinkedCounts: без bank і cash → account=0 (не crash)",
+   "SupplierPaymentsService — linked-documents edge cases getLinkedCounts: видалена оплата (список із видаленими) → лічильники як у панелі",
    "SupplierPaymentsService — linked-documents edge cases getLinkedDocuments: bank account soft-deleted → account:[] (не crash)",
    "SupplierPaymentsService — linked-documents edge cases getLinkedDocuments: cross-org id → порожні секції",
    "SupplierPaymentsService — linked-documents edge cases getLinkedDocuments: видалена оплата (перегляд) → секції заповнені, orgId у пошуку"
