@@ -123,6 +123,7 @@ model BrandSynonym {
   @@unique([orgId, synonym])
   @@index([orgId, brandId, deletedAt])
   @@index([orgId, normalizedSynonym])
+  // + ручний partial-unique (orgId, lower(synonym)) WHERE deletedAt IS NULL — міграція 20261026130000
   @@map("brand_synonyms")
 }
 

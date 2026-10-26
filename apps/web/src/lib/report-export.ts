@@ -4,6 +4,7 @@
 // Тести: `lib/__tests__/report-export.test.ts`.
 
 import type { TFunction } from 'i18next';
+import { CALENDAR_DATE_RE } from '@sto/shared';
 import type { Agg, GroupNode, ReportFilter, ReportRunResult } from '@/hooks/api/useReportBuilder';
 import { fmtDate } from '@/lib/format';
 import { escapeCsvCell } from '@/lib/utils';
@@ -70,7 +71,7 @@ export function filterDayValue(value: unknown): string {
   const s = value.trim();
   const ua = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s);
   if (ua) return `${ua[3]}-${ua[2]}-${ua[1]}`;
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+  return CALENDAR_DATE_RE.test(s) ? s : '';
 }
 
 /**

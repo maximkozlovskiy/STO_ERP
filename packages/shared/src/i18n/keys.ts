@@ -163,7 +163,7 @@ export const V = {
     bankAccount: { required: 'v.bankTransaction.bankAccount.required' },
     direction: { required: 'v.bankTransaction.direction.required' },
     amount: { min: 'v.bankTransaction.amount.min' },
-    date: { required: 'v.bankTransaction.date.required' },
+    date: { required: 'v.bankTransaction.date.required', future: 'v.bankTransaction.date.future' },
     purpose: { max: 'v.bankTransaction.purpose.max' },
     type: { required: 'v.bankTransaction.type.required' },
     supplier: { required: 'v.bankTransaction.supplier.required' },
@@ -336,6 +336,7 @@ export const VALIDATION_KEYS = [
   'v.bankTransaction.direction.required',
   'v.bankTransaction.amount.min',
   'v.bankTransaction.date.required',
+  'v.bankTransaction.date.future',
   'v.bankTransaction.purpose.max',
   'v.bankTransaction.type.required',
   'v.bankTransaction.supplier.required',
@@ -396,6 +397,7 @@ export const VALIDATION_KEYS = [
   'err.currency.systemUndeletable',
   // Exception-повідомлення: bank-accounts-модуль
   'err.bankAccount.notFound',
+  'err.bankAccount.hasReconciledLines',
   'err.branch.notFound',
   // Exception-повідомлення: exchange-rates-модуль
   'err.exchangeRate.notFound',
@@ -749,6 +751,7 @@ export const VALIDATION_KEYS = [
   'err.pricingRule.categoryNotFound',
   'err.pricingRule.goodsNotFound',
   'err.pricingRule.goodsFileTooLong',
+  'err.pricingRule.inactive',
   // Exception-повідомлення: грошові суми (спільне, BR-FIN-MONEYCAP)
   'err.money.lineAmountOverflow',
   // Exception-повідомлення: work-orders-модуль
@@ -856,6 +859,8 @@ export const VALIDATION_KEYS = [
   'err.bankStatement.alreadyMatched',
   'err.bankStatement.notUnmatched',
   'err.bankStatement.bankAccountNotFound',
+  'err.bankStatement.operationDateInFuture',
+  'err.bankStatement.transferCurrencyMismatch',
   'err.bankStatement.counterpartyNotFound',
   'err.bankStatement.invoiceNotFound',
   'err.bankStatement.invoiceRequiredForType',
@@ -1040,6 +1045,7 @@ export const VALIDATION_KEYS = [
   // Exception-повідомлення: payroll-модуль
   'err.payroll.startAfterEnd',
   'err.payroll.periodNotFound',
+  'err.payroll.hasReconciledLines',
   'err.payroll.onlyDraftCalculable',
   'err.payroll.calculateConcurrentChange',
   'err.payroll.onlyCalculatedPayable',

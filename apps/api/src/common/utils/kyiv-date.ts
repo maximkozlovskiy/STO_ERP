@@ -1,3 +1,5 @@
+import { CALENDAR_DATE_RE } from '@sto/shared';
+
 const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 
 export const kyivToday = (): Date => new Date(KYIV_YMD.format(new Date()));
@@ -106,7 +108,7 @@ export function dateOnlyRangeFilter(
  * refused here, in the shape itself, so DTOs with `@Matches(CALENDAR_DATE_RE)` answer 400 too -
  * not only the query parameters that go through `isCalendarDate`.
  */
-export const CALENDAR_DATE_RE = /^(?!0000)\d{4}-\d{2}-\d{2}$/;
+export { CALENDAR_DATE_RE };
 
 /** YYYY-MM-DD, що існує в календарі (31.02 → false): для query-параметрів без DTO. */
 export function isCalendarDate(value: string): boolean {

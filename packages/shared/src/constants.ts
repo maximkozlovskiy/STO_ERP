@@ -1,5 +1,17 @@
 export const LOCALE = 'uk-UA';
 export const TIMEZONE = 'Europe/Kyiv';
+
+/**
+ * Форма календарної дати `YYYY-MM-DD` — ЄДИНЕ визначення для api (DTO `@Matches`), web і схем форм.
+ * Року 0000 у календарі немає (JS читає його як 1 р. до н. е., Postgres відхиляє — Bug #818). Чи
+ * існує сам день (31.02), перевіряє `isCalendarDate` в api.
+ */
+export const CALENDAR_DATE_RE = /^(?!0000)\d{4}-\d{2}-\d{2}$/;
+
+/** Сьогоднішня дата за Києвом, `YYYY-MM-DD` (en-CA дає саме цей формат). */
+export function kyivTodayYmd(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(now);
+}
 export const CURRENCY = 'UAH';
 export const CURRENCY_SYMBOL = '₴';
 

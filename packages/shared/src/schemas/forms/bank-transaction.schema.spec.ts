@@ -17,11 +17,13 @@ import {
   BANK_TX_IN_MATCH_TYPE_VALUES,
   BANK_TX_OUT_MATCH_TYPE_VALUES,
   bankTransactionAllocationSchema,
+  bankTransactionCreateFormSchema,
   bankTransactionCreateOutgoingAllocationFormSchema,
   bankTransactionCreateRequestSchema,
   bankTransactionIncomingAllocationSchema,
   bankTransactionReconcileFormSchema,
 } from './bank-transaction.schema';
+import { kyivTodayYmd } from '../../constants';
 
 const UUID_A = '11111111-1111-4111-8111-111111111111';
 const UUID_B = '22222222-2222-4222-8222-222222222222';
@@ -186,5 +188,32 @@ describe('bankTransactionCreateRequestSchema — вид проти напрям�
         payment({ direction, allocation: { type: 'TRANSFER', transferBankAccountId: UUID_B } }),
       ),
     ).toEqual([]);
+  });
+});
+
+// Майбутня дата ручного платежу (TECH-DEBT §8 «Вихідні банківські платежі» п.10): форма відхиляє
+// день після сьогоднішнього за Києвом; сервер перевіряє те саме (bank-reconciliation.createManual).
+describe('bankTransactionCreateFormSchema — дата операції не в майбутньому', () => {
+  const base = {
+    bankAccountId: UUID_A,
+    direction: 'IN',
+    amount: '100',
+  };
+  const dateIssues = (operationDate: string) =>
+    issues(bankTransactionCreateFormSchema, { ...base, operationDate }).filter(i =>
+      i.startsWith('operationDate'),
+    );
+
+  it('сьогодні за Києвом — приймається; завтра — «не може бути в майбутньому»', () => {
+    const today = kyivTodayYmd();
+    const next = new Date(`${today}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    const tomorrow = next.toISOString().slice(0, 10);
+    expect(dateIssues(today)).toEqual([]);
+    expect(dateIssues(tomorrow)).toEqual(['operationDate: v.bankTransaction.date.future']);
+  });
+
+  it('рік 0000 — не дата', () => {
+    expect(dateIssues('0000-01-01')).toContain('operationDate: v.bankTransaction.date.required');
   });
 });

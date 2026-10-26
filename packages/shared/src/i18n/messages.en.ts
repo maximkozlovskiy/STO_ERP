@@ -139,6 +139,7 @@ export const en: Record<string, string> = {
   'v.bankTransaction.direction.required': 'Select the payment direction',
   'v.bankTransaction.amount.min': 'Payment amount must be greater than zero',
   'v.bankTransaction.date.required': 'Enter the operation date',
+  'v.bankTransaction.date.future': 'The operation date cannot be in the future',
   'v.bankTransaction.purpose.max': 'The purpose is too long (up to 500 characters)',
   'v.bankTransaction.type.required': 'Select the match type',
   'v.bankTransaction.supplier.required': 'Select the supplier or an existing payment',
@@ -208,6 +209,8 @@ export const en: Record<string, string> = {
 
   // ── Exception messages: bank-accounts module ──
   'err.bankAccount.notFound': 'Bank account not found',
+  'err.bankAccount.hasReconciledLines':
+    'Bank statement lines are reconciled to this account — cancel the reconciliation first',
   'err.branch.notFound': 'Branch not found',
 
   // ── Exception messages: exchange-rates module ──
@@ -666,6 +669,7 @@ export const en: Record<string, string> = {
     'Some goods of the list were not found ({{count}}): refresh the list and save again',
   'err.pricingRule.goodsFileTooLong':
     'The file has {{count}} rows, a rule list holds at most {{max}} goods',
+  'err.pricingRule.inactive': 'The rule is disabled — enable it to apply it to goods',
 
   // ── Exception messages: work-orders module ──
   'err.workOrder.notFound': 'Work order not found',
@@ -808,6 +812,9 @@ export const en: Record<string, string> = {
   'err.bankStatement.alreadyMatched': 'The transaction is already matched or posted',
   'err.bankStatement.notUnmatched': 'The action is allowed only for unmatched transactions',
   'err.bankStatement.bankAccountNotFound': 'Bank account not found',
+  'err.bankStatement.operationDateInFuture': 'The operation date cannot be in the future',
+  'err.bankStatement.transferCurrencyMismatch':
+    'A transfer from a foreign-currency line can only go to an account in the same currency',
   'err.bankStatement.counterpartyNotFound': 'Counterparty not found',
   'err.bankStatement.invoiceNotFound': 'Invoice not found',
   'err.bankStatement.invoiceRequiredForType': 'An invoice is required for the "Invoice" match type',
@@ -938,7 +945,7 @@ export const en: Record<string, string> = {
   'err.cash.concurrentOperation': 'Register is busy with a concurrent operation — retry',
   'err.cash.expenseRequiresCategory': 'For an expense, specify an expense category',
   'err.cash.insufficientCash':
-    'Insufficient cash in the register: available {{available}}, required {{required}}',
+    'Insufficient cash in the register: available {{available}} {{currency}}, required {{required}} {{currency}}',
   'err.cash.reasonAutoOnly':
     'The reason «{{reason}}» is set by the system only and cannot be posted manually',
   'err.cash.reasonDirectionMismatch':
@@ -1037,6 +1044,8 @@ export const en: Record<string, string> = {
   // ── Exception messages: payroll module ──
   'err.payroll.startAfterEnd': 'The start date must not be later than the end date',
   'err.payroll.periodNotFound': 'Period not found',
+  'err.payroll.hasReconciledLines':
+    'Bank statement lines are reconciled to this period — cancel the reconciliation first',
   'err.payroll.onlyDraftCalculable': 'Only a period in "Draft" status can be calculated',
   'err.payroll.calculateConcurrentChange':
     'The period has already been calculated or changed by another user',

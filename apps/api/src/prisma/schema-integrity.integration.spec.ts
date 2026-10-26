@@ -73,6 +73,10 @@ const REQUIRED_NAMED_INDEXES: { name: string; why: string }[] = [
     why: 'унікальність № списку купівлі серед активних (BR-PL-001)',
   },
   {
+    name: 'brand_synonyms_orgId_lower_synonym_active_uq',
+    why: 'синонім бренду унікальний без урахування регістру серед активних (BR-GOOD-007)',
+  },
+  {
     name: 'stock_documents_orgId_number_active_uq',
     why: 'унікальність № складського док. серед активних',
   },
@@ -159,6 +163,19 @@ describe('Schema integrity — manual-SQL конструкти живі у БД 
       notPartial.map(r => r.indexname),
       'Ці doc-number індекси НЕ часткові — soft-delete більше не звільняє номер',
     ).toEqual([]);
+  });
+
+  // guards: BR-GOOD-007
+  it('синонім бренду: унікальність за lower(synonym) і лише серед активних', async () => {
+    if (!dbAvailable) return;
+    const rows = await raw.$queryRawUnsafe<{ def: string }[]>(
+      `SELECT indexdef AS def FROM pg_indexes
+        WHERE indexname = 'brand_synonyms_orgId_lower_synonym_active_uq'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].def).toMatch(/UNIQUE/);
+    expect(rows[0].def).toMatch(/lower\(synonym\)/);
+    expect(rows[0].def).toMatch(/WHERE \("deletedAt" IS NULL\)/);
   });
 
   // guards: BR-SETL-015

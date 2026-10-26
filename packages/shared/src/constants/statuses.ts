@@ -123,6 +123,17 @@ export const PAYMENT_CREATE_ROLES: readonly string[] = Object.freeze([
  */
 export const AUDIT_VIEW_ROLES: readonly string[] = Object.freeze(['OWNER', 'ADMIN', 'ACCOUNTANT']);
 /**
+ * Ролі, яким API віддає акти виконаних робіт і рахунок наряду (`completion-acts.controller`,
+ * `invoices/from-work-order/:id/find`). Сторінка наряду не запитує їх для інших ролей — інакше 403.
+ */
+export const COMPLETION_ACT_READ_ROLES: readonly string[] = Object.freeze([
+  'OWNER',
+  'ADMIN',
+  'ACCOUNTANT',
+  'RECEPTIONIST',
+]);
+export const INVOICE_READ_ROLES: readonly string[] = COMPLETION_ACT_READ_ROLES;
+/**
  * Ролі, яким видно закупівельні ціни: собівартість товару, ціна рядка наряду, очікувана ціна й
  * ціна пропозиції позиції списку купівлі (BR-SOFR-010). Решта ролей отримує `null` (fail-closed).
  */
@@ -581,6 +592,8 @@ export const SETTLEMENT_TX_CHARGE_LIKE_TYPES: ReadonlySet<string> = new Set([
   'PAYMENT_CANCEL',
   'PREPAYMENT_CANCEL',
   'SUPPLIER_PAYMENT_CANCEL',
+  // Повернення клієнту: борг клієнта зростає (знак +1) — колір як у нарахування, не «оплата».
+  'REFUND_OUT',
 ]);
 
 export const STOCK_DOC_TYPE_BADGE: Record<string, BadgeVariant> = {

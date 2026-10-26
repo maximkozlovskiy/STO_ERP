@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CALENDAR_DATE_RE } from '../../constants';
 import { optionalString } from '../validators';
 
 /**
@@ -13,7 +14,7 @@ export const warrantyFormSchema = z.object({
     .string()
     .trim()
     .min(1, 'v.warranty.expiresAt.required')
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'v.warranty.expiresAt.format'),
+    .regex(CALENDAR_DATE_RE, 'v.warranty.expiresAt.format'),
   description: optionalString(),
 });
 

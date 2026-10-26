@@ -265,9 +265,14 @@ describe('Settlements — balance invariants (property-based)', () => {
       'CHARGE',
       'PAYMENT_CANCEL',
       'PREPAYMENT_CANCEL',
+      'REFUND_OUT',
       'SUPPLIER_CHARGE',
       'SUPPLIER_PAYMENT_CANCEL',
     ]);
+    // REFUND_OUT: повернення клієнту — борг клієнта зростає (знак +1), колір як у нарахування
+    // (TECH-DEBT §8 «Вихідні банківські платежі» п.15, 2026-10-26).
+    expect(SETTLEMENT_TX_CHARGE_LIKE_TYPES.has('REFUND_OUT')).toBe(true);
+    expect(SETTLEMENT_BALANCE_UP_TYPES.has('REFUND_OUT')).toBe(true);
     // SUPPLIER_CHARGE: charge-like (червоний) АЛЕ balance-sign −1 (не у UP-set) — навмисне
     // розходження кольору й знаку. Цей рядок фіксує його, щоб «спрощення» не злило їх назад.
     expect(SETTLEMENT_TX_CHARGE_LIKE_TYPES.has('SUPPLIER_CHARGE')).toBe(true);

@@ -98,6 +98,15 @@ export function withCap<T extends { max(value: number, message?: string): T }>(
 }
 
 /**
+ * Рядок числа з поля форми → вигляд для `Number()`: прибирає пробіли між розрядами (звичайні, NBSP
+ * U+00A0 і вузький U+202F — саме їх ставить `Intl` для uk-UA) і міняє кому на крапку.
+ * «1 000,50» → «1000.50». Раніше «1 000,50» давало NaN, а поле суми — помилку.
+ */
+export function normalizeDecimalInput(v: string): string {
+  return v.replace(/[\s\u00A0\u202F]/g, '').replace(',', '.');
+}
+
+/**
  * Грошова сума з рядка форми з підтримкою UA-локалі (кома як десятковий роздільник).
  * Дзеркалить фронтове `amount.replace(',', '.')` — '1,5' → 1.5. `z.input` — рядок, `z.output` = number.
  * Порожнє/нечислове → NaN → падає на .number(); діапазон (min 0.01) додає доменна схема через .pipe().
@@ -105,7 +114,7 @@ export function withCap<T extends { max(value: number, message?: string): T }>(
 export const moneyString = () =>
   z.preprocess(v => {
     if (v === '' || v === null || v === undefined) return NaN;
-    if (typeof v === 'string') return Number(v.replace(',', '.'));
+    if (typeof v === 'string') return Number(normalizeDecimalInput(v));
     return Number(v);
   }, z.number('v.invalidNumber'));
 
@@ -120,7 +129,7 @@ export const optionalMoneyNumber = (cap?: NumberCap) =>
   z.preprocess(
     v => {
       if (v === '' || v === null || v === undefined) return undefined;
-      if (typeof v === 'string') return Number(v.replace(',', '.'));
+      if (typeof v === 'string') return Number(normalizeDecimalInput(v));
       return v;
     },
     withCap(z.number().min(0, 'v.nonNeg'), cap).optional(),

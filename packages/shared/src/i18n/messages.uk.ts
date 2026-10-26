@@ -141,6 +141,7 @@ export const uk: Record<string, string> = {
   'v.bankTransaction.direction.required': 'Оберіть напрям платежу',
   'v.bankTransaction.amount.min': 'Сума платежу повинна бути більшою за нуль',
   'v.bankTransaction.date.required': 'Вкажіть дату операції',
+  'v.bankTransaction.date.future': 'Дата операції не може бути в майбутньому',
   'v.bankTransaction.purpose.max': 'Призначення задовге (до 500 символів)',
   'v.bankTransaction.type.required': 'Оберіть вид рознесення',
   'v.bankTransaction.supplier.required': 'Оберіть постачальника або наявну оплату',
@@ -211,6 +212,8 @@ export const uk: Record<string, string> = {
 
   // ── Exception-повідомлення: bank-accounts-модуль ──
   'err.bankAccount.notFound': 'Банківський рахунок не знайдено',
+  'err.bankAccount.hasReconciledLines':
+    'На рахунок рознесено рядки банківської виписки — спершу скасуйте рознесення',
   'err.branch.notFound': 'Філію не знайдено',
 
   // ── Exception-повідомлення: exchange-rates-модуль ──
@@ -654,6 +657,7 @@ export const uk: Record<string, string> = {
     'Частину товарів списку не знайдено ({{count}}): оновіть список і збережіть ще раз',
   'err.pricingRule.goodsFileTooLong':
     'У файлі {{count}} рядків, а список правила вміщує не більше {{max}} товарів',
+  'err.pricingRule.inactive': 'Правило вимкнене — увімкніть його, щоб застосувати до товарів',
 
   // ── Exception-повідомлення: work-orders-модуль ──
   'err.workOrder.notFound': 'Наряд не знайдено',
@@ -791,6 +795,9 @@ export const uk: Record<string, string> = {
   'err.bankStatement.alreadyMatched': 'Транзакцію вже рознесено або проведено',
   'err.bankStatement.notUnmatched': 'Дію дозволено лише для нерознесених транзакцій',
   'err.bankStatement.bankAccountNotFound': 'Банківський рахунок не знайдено',
+  'err.bankStatement.operationDateInFuture': 'Дата операції не може бути в майбутньому',
+  'err.bankStatement.transferCurrencyMismatch':
+    'Переказ з валютного рядка можна рознести лише на рахунок у тій самій валюті',
   'err.bankStatement.counterpartyNotFound': 'Контрагента не знайдено',
   'err.bankStatement.invoiceNotFound': 'Рахунок не знайдено',
   'err.bankStatement.invoiceRequiredForType': 'Для типу «Рахунок» потрібно вказати рахунок',
@@ -923,7 +930,7 @@ export const uk: Record<string, string> = {
   'err.cash.concurrentOperation': 'Каса зайнята паралельною операцією — повторіть',
   'err.cash.expenseRequiresCategory': 'Для витрати вкажіть статтю витрат',
   'err.cash.insufficientCash':
-    'Недостатньо готівки в касі: доступно {{available}}, потрібно {{required}}',
+    'Недостатньо готівки в касі: доступно {{available}} {{currency}}, потрібно {{required}} {{currency}}',
   'err.cash.reasonAutoOnly':
     'Привід «{{reason}}» ставить лише система — вручну провести його не можна',
   'err.cash.reasonDirectionMismatch': 'Привід «{{reason}}» не відповідає напряму операції',
@@ -1018,6 +1025,8 @@ export const uk: Record<string, string> = {
   // ── Exception-повідомлення: payroll-модуль ──
   'err.payroll.startAfterEnd': 'Дата початку має бути не пізніше дати закінчення',
   'err.payroll.periodNotFound': 'Період не знайдено',
+  'err.payroll.hasReconciledLines':
+    'На період рознесено рядки банківської виписки — спершу скасуйте рознесення',
   'err.payroll.onlyDraftCalculable': 'Розрахувати можна лише період у статусі «Чернетка»',
   'err.payroll.calculateConcurrentChange': 'Період уже розраховано або змінено іншим користувачем',
   'err.payroll.onlyCalculatedPayable': 'Виплатити можна лише розрахований період',

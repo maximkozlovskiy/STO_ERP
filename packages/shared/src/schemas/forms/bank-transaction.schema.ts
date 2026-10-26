@@ -1,3 +1,4 @@
+import { CALENDAR_DATE_RE, kyivTodayYmd } from '../../constants';
 import { z } from 'zod';
 import { optionalString, optionalUuid, moneyString, uuidFieldSchema } from '../validators';
 
@@ -77,8 +78,6 @@ export const BANK_TX_CREATE_CONFIRM_TYPES: ReadonlySet<string> = new Set([
 /** Довжина причини скасування рознесення і призначення ручного платежу. */
 export const BANK_TX_REASON_MAX_LENGTH = 500;
 
-const CALENDAR_DATE = /^(?!0000)\d{4}-\d{2}-\d{2}$/;
-
 // ─── Ручне внесення ───────────────────────────────────────────────────────────
 
 export const bankTransactionCreateFormSchema = z.object({
@@ -89,7 +88,11 @@ export const bankTransactionCreateFormSchema = z.object({
   // UA-кома підтримується (moneyString); мінімум 0.01 (дзеркалить @Min(0.01)).
   amount: moneyString().pipe(z.number().min(0.01, 'v.bankTransaction.amount.min')),
   // Календарна дата без часу (BR-BANK-021).
-  operationDate: z.string().regex(CALENDAR_DATE, 'v.bankTransaction.date.required'),
+  // Майбутня дата операції не приймається (за Києвом; сервер перевіряє те саме).
+  operationDate: z
+    .string()
+    .regex(CALENDAR_DATE_RE, 'v.bankTransaction.date.required')
+    .refine(v => v <= kyivTodayYmd(), 'v.bankTransaction.date.future'),
   payerName: optionalString(),
   payerIban: optionalString(),
   payerEdrpou: optionalString(),
