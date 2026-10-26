@@ -66,6 +66,7 @@
 - ~~§13 п. 2 / 9 / 19 / 20 / 32 — E2E-пошук картки під «ще N»; перечитати механіків після 400; прибрати `syncCalendarSlotWithPlannedHours`; prefill через `calcEndFromHours`; видалення в минулих днях.~~ ✅ ЗАКРИТО 2026-10-26: п. 2 / 9 / 20 / 32 — `b5fdcaaf`; п. 19 — `f8856921` (міграція `20261026140000_drop_sync_calendar_slot_setting`).
 - ~~§15 п. 6 / 13 — `applyOfferData` / `setItemQuantity`; `SupplierOptionsSelect` у `components/` і в `SupplierConnectionModal`.~~ ✅ ЗАКРИТО 2026-10-26: п. 6 — `5e148b4c` (некратна кількість округлюється вгору, BR-SOFR-006, рішення власника); п. 13 — `b74b1288`.
 - (2026-10-26, tester) Суми рядків у кількох картках документів друкуються через `toFixed(2)` («30.00», не «30,00») — перевести на `formatMoney`.
+- (2026-10-26) Публічна сторінка кошторису на 429 (ліміт 10/хв, `work-orders-public.controller.ts`) показує клієнту сирий текст `ThrottlerException: Too Many Requests` — потрібне українське «Забагато запитів, спробуйте за хвилину». Той самий ліміт робить flaky `e2e/estimate-share-revoke.spec.ts` у повному прогоні й при `--repeat-each`.
 
 **S/M:**
 
