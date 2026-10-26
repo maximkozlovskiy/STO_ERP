@@ -109,6 +109,14 @@ describe('VehicleMakesTab', () => {
     expect(screen.queryByRole('button', { name: 'Марка' })).toBeNull();
   });
 
+  it('клік по рядку марки (не лише по назві) показує її моделі', async () => {
+    renderTab();
+    await screen.findByRole('button', { name: 'Toyota' });
+    fireEvent.click(within(makeRow('Toyota')).getAllByRole('cell')[1]);
+    expect(await screen.findByText('Camry')).toBeInTheDocument();
+    expect(screen.getByText('Моделі Toyota')).toBeInTheDocument();
+  });
+
   it('клік по марці показує її моделі праворуч', async () => {
     renderTab();
     fireEvent.click(await screen.findByRole('button', { name: 'Toyota' }));

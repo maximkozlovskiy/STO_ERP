@@ -193,7 +193,7 @@ cd apps/api && npx vitest run src/modules/vehicles/<файл>.spec.ts
 - web: `components/ui/__tests__/VehicleMakeModelFields.test.tsx` (20), `vehicle.schema.test.ts`
   (14), `VehicleForm.test.tsx` (5), `CounterpartyEditModal.test.tsx` (18),
   `app/(app)/calendar/__tests__/CalendarSlotModal.new-client-vehicle.test.tsx` (3),
-  `app/(app)/counterparties/__tests__/VehicleMakesTab.test.tsx` (9); кроки вибору марки й моделі
+  `app/(app)/counterparties/__tests__/VehicleMakesTab.test.tsx` (10); кроки вибору марки й моделі
   в цих тестах — `src/__tests__/vehicle-directory-picker.ts`;
 - E2E: `apps/web/e2e/vehicle-makes.spec.ts` (марка й модель у вкладці → авто з вибору →
   видалення заблоковане → злиття переносить авто), `vehicles.spec.ts` (вибір у формі: марка пошуком,

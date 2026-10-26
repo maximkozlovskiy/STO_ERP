@@ -395,6 +395,9 @@ export default function VehicleMakesTab() {
                   <TableRow
                     key={m.id}
                     data-testid="vehicle-make-row"
+                    // Моделі марки — кліком по будь-якому місцю рядка; кнопка з назвою лишається для
+                    // вибору з клавіатури.
+                    onClick={() => setSelectedId(m.id)}
                     className={cn(
                       m.id === selectedMake?.id && 'bg-primary/5',
                       m.deletedAt && 'opacity-60',
