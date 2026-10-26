@@ -7,8 +7,24 @@ import { taskListPath, type PaginatedTasks } from '@/hooks/api/useTasks';
 import type { CalView } from './calendar.types';
 import { tasksByDay, tasksOfDay, type CalendarTask } from './calendar-tasks';
 
-/** Найбільша сторінка `GET /tasks` — задач одного місяця в календарі більше не буває. */
-const TASKS_PER_RANGE = 200;
+/** Найбільша сторінка `GET /tasks` (`@Max(200)` у DTO). */
+const TASKS_PER_PAGE = 200;
+/** Запобіжник: більше сторінок за один період не читаємо (25 × 200 = 5000 задач). */
+export const TASKS_MAX_PAGES = 25;
+
+/**
+ * Усі задачі періоду: перша сторінка, далі — решта паралельно за `total`. Раніше календар брав
+ * лише першу сотню-дві, і задачі понад неї в місяці мовчки зникали з календаря.
+ */
+export async function loadAllTaskPages<T>(
+  fetchPage: (page: number) => Promise<{ items: T[]; total: number }>,
+): Promise<T[]> {
+  const first = await fetchPage(1);
+  const pages = Math.min(Math.ceil(first.total / TASKS_PER_PAGE), TASKS_MAX_PAGES);
+  if (pages <= 1) return first.items;
+  const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => fetchPage(i + 2)));
+  return [first, ...rest].flatMap(r => r.items);
+}
 
 /** Межі видимого періоду: день — одна доба, місяць — від 1-го до останнього числа. */
 export function calendarTaskRange(
@@ -45,17 +61,13 @@ export function useCalendarTasks(view: CalView, date: string) {
       setTasks([]);
       return;
     }
-    const path = taskListPath({
-      page: 1,
-      limit: TASKS_PER_RANGE,
-      from,
-      to,
-      sortBy: 'startAt',
-      sortDir: 'asc',
-    });
-    apiFetch<PaginatedTasks>(path).then(
-      res => {
-        if (req === reqRef.current) setTasks(res.items);
+    const fetchPage = (page: number) =>
+      apiFetch<PaginatedTasks>(
+        taskListPath({ page, limit: TASKS_PER_PAGE, from, to, sortBy: 'startAt', sortDir: 'asc' }),
+      );
+    loadAllTaskPages(fetchPage).then(
+      items => {
+        if (req === reqRef.current) setTasks(items);
       },
       () => {
         // Збій задач не ламає календар записів — смуга просто порожня.

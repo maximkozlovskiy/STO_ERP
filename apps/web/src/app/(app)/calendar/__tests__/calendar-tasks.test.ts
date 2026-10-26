@@ -12,6 +12,7 @@ import {
   tasksByDay,
   type CalendarTask,
 } from '../calendar-tasks';
+import { loadAllTaskPages, TASKS_MAX_PAGES } from '../useCalendarTasks';
 import type { MonthEntry } from '../calendar-categories';
 import type { CalendarSlot } from '../calendar.types';
 
@@ -148,5 +149,43 @@ describe('картки клітинки «Місяця» (BR-TASK-007)', () => {
       '2026-05-22',
     );
     expect(cards[0]).toMatchObject({ kind: 'task' });
+  });
+});
+
+// Мутація: повернути один запит першої сторінки → задачі понад 200 у місяці зникають.
+// guards: BR-TASK-004
+describe('loadAllTaskPages — усі сторінки періоду', () => {
+  const page = (n: number, total: number, size: number) => ({
+    items: Array.from({ length: size }, (_, i) => task({ title: `p${n}-${i}` })),
+    total,
+    page: n,
+    limit: 200,
+  });
+
+  it('дочитує решту сторінок за total і зберігає порядок', async () => {
+    const asked: number[] = [];
+    const items = await loadAllTaskPages(async n => {
+      asked.push(n);
+      return n < 3 ? page(n, 450, 200) : page(n, 450, 50);
+    });
+    expect(asked.sort()).toEqual([1, 2, 3]);
+    expect(items).toHaveLength(450);
+    expect(items[0].title).toBe('p1-0');
+    expect(items[449].title).toBe('p3-49');
+  });
+
+  it('одна сторінка — один запит; запобіжник обмежує кількість сторінок', async () => {
+    let calls = 0;
+    await loadAllTaskPages(async n => {
+      calls += 1;
+      return page(n, 3, 3);
+    });
+    expect(calls).toBe(1);
+    calls = 0;
+    await loadAllTaskPages(async n => {
+      calls += 1;
+      return page(n, 1_000_000, 200);
+    });
+    expect(calls).toBe(TASKS_MAX_PAGES);
   });
 });
