@@ -120,14 +120,21 @@ describe('Сторінка «Задачі»', () => {
     expect(lastListParams().get('to')).toBe(today);
   });
 
-  // guards: BR-TASK-005
-  it('чип «Прострочені» знімає типовий період: давні прострочені не відсікаються датою', async () => {
+  // guards: BR-TASK-009
+  it('список шле includeOpen=true: відкриті без дат і з минулими датами не губляться за періодом', async () => {
+    renderPage();
+    await screen.findByText('Перевірити гальма');
+    expect(lastListParams().get('includeOpen')).toBe('true');
+  });
+
+  // guards: BR-TASK-005, BR-TASK-009
+  it('чип «Прострочені» лишає період: давні прострочені приходять через includeOpen', async () => {
     renderPage();
     await screen.findByText('Перевірити гальма');
     fireEvent.click(screen.getByRole('button', { name: 'Прострочені' }));
     await waitFor(() => expect(lastListParams().get('overdue')).toBe('true'));
-    expect(lastListParams().get('from')).toBeNull();
-    expect(lastListParams().get('to')).toBeNull();
+    expect(lastListParams().get('from')).toBe(kyivToday());
+    expect(lastListParams().get('includeOpen')).toBe('true');
   });
 
   // guards: BR-TASK-005

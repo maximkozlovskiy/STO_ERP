@@ -43,7 +43,8 @@ export function isTaskOverdue(
 
 /** Умова Prisma «прострочена» — дзеркало `isTaskOverdue`. */
 export function overdueWhere(now: Date): Prisma.TaskWhereInput {
-  return { dueAt: { lt: now }, status: { in: [...OPEN_TASK_STATUSES] } };
+  // `not: null` явно — як у `taskRangeWhere`: не кожен читач умови відкидає NULL сам.
+  return { dueAt: { not: null, lt: now }, status: { in: [...OPEN_TASK_STATUSES] } };
 }
 
 /**
@@ -68,6 +69,22 @@ export function taskRangeWhere(from?: string, to?: string): Prisma.TaskWhereInpu
       // Лише початок або лише термін — точка всередині [start, end].
       { dueAt: null, startAt: within },
       { startAt: null, dueAt: within },
+    ],
+  };
+}
+
+/**
+ * BR-TASK-009: у списку з періодом незроблене не губиться — відкрита задача без дат або з
+ * проміжком, що скінчився до першого дня періоду (кінець = термін ?? початок), видна завжди.
+ * Відкриті задачі на пізніші дні під виняток не потрапляють: їх показує сам період.
+ */
+export function openOutsideRangeWhere(from?: string): Prisma.TaskWhereInput {
+  const start = from ? kyivDayStart(from) : undefined;
+  return {
+    status: { in: [...OPEN_TASK_STATUSES] },
+    OR: [
+      { startAt: null, dueAt: null },
+      ...(start ? [{ dueAt: { lt: start } }, { dueAt: null, startAt: { lt: start } }] : []),
     ],
   };
 }
@@ -150,7 +167,10 @@ export class TasksService {
     if (query.workOrderId) and.push({ workOrderId: query.workOrderId });
     if (query.id) and.push({ id: query.id });
     const range = taskRangeWhere(query.from, query.to);
-    if (range) and.push(range);
+    if (range)
+      and.push(
+        isTrue(query.includeOpen) ? { OR: [range, openOutsideRangeWhere(query.from)] } : range,
+      );
     const contains = searchContains(query.q);
     if (contains) and.push({ title: contains });
 

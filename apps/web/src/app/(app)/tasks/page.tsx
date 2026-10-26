@@ -130,7 +130,8 @@ function TasksPageClient() {
   const [assigneeId, setAssigneeId] = useState('');
   const [mine, setMine] = useState(false);
   const [overdue, setOverdue] = useState(false);
-  // Типово — сьогоднішні задачі, як у нарядах; «×» у полі знімає межу.
+  // Типово — сьогоднішні задачі, як у нарядах; «×» у полі знімає межу. Відкриті без дат і з
+  // минулими датами список показує й так (`includeOpen`, BR-TASK-009).
   const [from, setFrom] = useState(() => kyivToday());
   const [to, setTo] = useState(() => kyivToday());
   const { sort, toggle: toggleSort, set: setSort } = useSortState('dueAt', 'asc');
@@ -157,6 +158,7 @@ function TasksPageClient() {
     overdue: overdue || undefined,
     from: from || undefined,
     to: to || undefined,
+    includeOpen: true,
     sortBy: SORTABLE.has(sort.sortBy) ? (sort.sortBy as TaskListFilters['sortBy']) : 'dueAt',
     sortDir: sort.sortDir,
   };
@@ -292,12 +294,6 @@ function TasksPageClient() {
               {chip(
                 overdue,
                 () => {
-                  // Прострочені — це терміни ДО сьогодні: з типовим періодом «сьогодні» чип не показав
-                  // би жодної давньої, тож увімкнення знімає межі періоду.
-                  if (!overdue) {
-                    setFrom('');
-                    setTo('');
-                  }
                   setOverdue(v => !v);
                   changed();
                 },

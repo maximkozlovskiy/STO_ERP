@@ -183,3 +183,56 @@ describe('Задача не займає календарний час (BR-TASK-
     expect(after.employeeConflict).toBe(true);
   });
 });
+
+describe('Задачі — список із періодом не губить відкритих (BR-TASK-009)', () => {
+  const DAY = { from: '2026-05-20', to: '2026-05-20' };
+  const rows = () => [
+    fakeTask({ title: 'сьогодні', dueAt: new Date('2026-05-20T10:00:00Z') }),
+    fakeTask({ title: 'без дат' }),
+    fakeTask({ title: 'без дат, виконана', status: 'DONE' }),
+    fakeTask({ title: 'минулий термін', dueAt: new Date('2026-05-18T10:00:00Z') }),
+    fakeTask({
+      title: 'минулий термін, в роботі',
+      status: 'IN_PROGRESS',
+      dueAt: new Date('2026-05-19T20:00:00Z'),
+    }),
+    fakeTask({ title: 'минулий початок без терміну', startAt: new Date('2026-05-10T08:00:00Z') }),
+    fakeTask({
+      title: 'минулий термін, скасована',
+      status: 'CANCELLED',
+      dueAt: new Date('2026-05-18T10:00:00Z'),
+    }),
+    fakeTask({ title: 'майбутня', dueAt: new Date('2026-06-01T10:00:00Z') }),
+  ];
+
+  // guards: BR-TASK-009
+  it('includeOpen: + відкриті без дат і з минулими датами; закриті й майбутні — ні', async () => {
+    expect(await titlesFor(rows(), { ...DAY, includeOpen: 'true' })).toEqual([
+      'без дат',
+      'минулий початок без терміну',
+      'минулий термін',
+      'минулий термін, в роботі',
+      'сьогодні',
+    ]);
+  });
+
+  // guards: BR-TASK-009
+  it('без includeOpen (календар) — лише проміжок періоду, як і раніше', async () => {
+    expect(await titlesFor(rows(), DAY)).toEqual(['сьогодні']);
+  });
+
+  // guards: BR-TASK-009
+  it('includeOpen разом із «Прострочені» — давні прострочені видно і з періодом «сьогодні»', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-20T12:00:00Z'));
+    try {
+      expect(await titlesFor(rows(), { ...DAY, includeOpen: 'true', overdue: 'true' })).toEqual([
+        'минулий термін',
+        'минулий термін, в роботі',
+        'сьогодні',
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

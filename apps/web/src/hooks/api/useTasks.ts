@@ -27,6 +27,8 @@ export interface TaskListFilters {
   /** Дні за Києвом `YYYY-MM-DD` включно: задачі, чий проміжок їх перетинає (BR-TASK-004). */
   from?: string;
   to?: string;
+  /** Список (не календар): + відкриті без дат і з датами до `from` (BR-TASK-009). */
+  includeOpen?: boolean;
   workOrderId?: string;
   sortBy?: 'dueAt' | 'startAt' | 'priority' | 'createdAt' | 'completedAt';
   sortDir?: 'asc' | 'desc';
@@ -49,6 +51,7 @@ export function taskListPath(f: TaskListFilters): string {
   if (f.overdue) params.set('overdue', 'true');
   if (f.from) params.set('from', f.from);
   if (f.to) params.set('to', f.to);
+  if (f.includeOpen) params.set('includeOpen', 'true');
   if (f.workOrderId) params.set('workOrderId', f.workOrderId);
   if (f.sortBy) params.set('sortBy', f.sortBy);
   if (f.sortDir) params.set('sortDir', f.sortDir);

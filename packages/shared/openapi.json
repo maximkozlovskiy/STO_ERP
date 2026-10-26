@@ -18030,6 +18030,15 @@
             }
           },
           {
+            "name": "includeOpen",
+            "required": false,
+            "in": "query",
+            "description": "Список (не календар) з періодом: додати відкриті задачі (NEW / IN_PROGRESS) без дат або з датами, що скінчились до `from` (BR-TASK-009). Без `from`/`to` нічого не змінює.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "workOrderId",
             "required": false,
             "in": "query",

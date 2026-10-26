@@ -130,6 +130,15 @@ export class TaskListQueryDto {
   @IsDateString({ strict: true })
   to?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Список (не календар) з періодом: додати відкриті задачі (NEW / IN_PROGRESS) без дат або з ' +
+      'датами, що скінчились до `from` (BR-TASK-009). Без `from`/`to` нічого не змінює.',
+  })
+  @IsOptional()
+  @IsBooleanString()
+  includeOpen?: string;
+
   @ApiPropertyOptional({ description: "Задачі наряду (секція «Пов'язані документи»)" })
   @IsOptional()
   @Transform(emptyToUndefined)

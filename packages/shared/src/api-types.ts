@@ -20792,6 +20792,8 @@ export interface operations {
                 from?: string;
                 /** @description До (YYYY-MM-DD, включно, день за Києвом) */
                 to?: string;
+                /** @description Список (не календар) з періодом: додати відкриті задачі (NEW / IN_PROGRESS) без дат або з датами, що скінчились до `from` (BR-TASK-009). Без `from`/`to` нічого не змінює. */
+                includeOpen?: string;
                 /** @description Задачі наряду (секція «Пов'язані документи») */
                 workOrderId?: string;
                 /** @description Лише ця задача (посилання) */
