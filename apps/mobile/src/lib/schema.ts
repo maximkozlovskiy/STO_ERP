@@ -1,7 +1,30 @@
-import { appSchema, tableSchema } from '@nozbe/watermelondb';
+import { appSchema, tableSchema, type ColumnSchema } from '@nozbe/watermelondb';
+
+/**
+ * Колонки таблиці `tasks` — одне джерело для схеми й кроку міграції `createTable` (версія 3):
+ * якщо вони розійдуться, свіжа база й оновлена матимуть різні таблиці.
+ */
+export const TASK_COLUMNS: readonly ColumnSchema[] = [
+  { name: 'remote_id', type: 'string', isIndexed: true },
+  { name: 'title', type: 'string' },
+  { name: 'description', type: 'string', isOptional: true },
+  { name: 'status', type: 'string', isIndexed: true },
+  { name: 'priority', type: 'string' },
+  { name: 'start_at', type: 'number', isOptional: true },
+  { name: 'due_at', type: 'number', isOptional: true },
+  { name: 'completed_at', type: 'number', isOptional: true },
+  { name: 'created_by_name', type: 'string', isOptional: true },
+  { name: 'work_order_id', type: 'string', isOptional: true },
+  { name: 'work_order_number', type: 'string', isOptional: true },
+  { name: 'work_order_deleted', type: 'boolean' },
+  { name: 'vehicle_summary', type: 'string', isOptional: true },
+  { name: 'counterparty_name', type: 'string', isOptional: true },
+  { name: 'synced_at', type: 'number', isOptional: true },
+  { name: 'is_dirty', type: 'boolean' },
+];
 
 export const schema = appSchema({
-  version: 2,
+  version: 3,
   tables: [
     tableSchema({
       name: 'work_orders',
@@ -51,5 +74,6 @@ export const schema = appSchema({
         { name: 'amount', type: 'number' },
       ],
     }),
+    tableSchema({ name: 'tasks', columns: [...TASK_COLUMNS] }),
   ],
 });

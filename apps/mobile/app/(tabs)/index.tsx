@@ -11,7 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Q } from '@nozbe/watermelondb';
 import { database } from '../../src/lib/database';
-import { syncWorkOrders } from '../../src/lib/sync';
+import { syncTasks, syncWorkOrders } from '../../src/lib/sync';
 
 interface WorkOrder {
   id: string;
@@ -86,13 +86,14 @@ export default function MyWorkOrdersScreen() {
 
   useEffect(() => {
     setLoading(true);
-    loadFromDb().finally(() => setLoading(false));
+    void loadFromDb().finally(() => setLoading(false));
   }, [loadFromDb]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Background sync — updates WDB, then reload
-    await syncWorkOrders().catch(() => {});
+    // Background sync — updates WDB, then reload. Задачі (вкладка «Задачі») синхронізуються
+    // разом із нарядами: невідправлені зміни статусу йдуть на сервер при будь-якому оновленні.
+    await Promise.allSettled([syncWorkOrders(), syncTasks()]);
     await loadFromDb();
     setRefreshing(false);
   };
@@ -132,7 +133,11 @@ export default function MyWorkOrdersScreen() {
         keyExtractor={item => item.id}
         contentContainerStyle={styles.list}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563eb" />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor="#2563eb"
+          />
         }
         ListEmptyComponent={
           <View style={styles.center}>

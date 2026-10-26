@@ -7,7 +7,7 @@ export default function RootLayout() {
   const router = useRouter();
 
   useEffect(() => {
-    loadToken().then(token => {
+    void loadToken().then(token => {
       if (!token) router.replace('/login');
     });
   }, []);
@@ -21,6 +21,15 @@ export default function RootLayout() {
           name="work-order/[id]"
           options={{
             title: 'Наряд',
+            headerBackTitle: 'Назад',
+            headerStyle: { backgroundColor: '#fff' },
+            headerTitleStyle: { fontWeight: '600', color: '#111827' },
+          }}
+        />
+        <Stack.Screen
+          name="task/[id]"
+          options={{
+            title: 'Задача',
             headerBackTitle: 'Назад',
             headerStyle: { backgroundColor: '#fff' },
             headerTitleStyle: { fontWeight: '600', color: '#111827' },

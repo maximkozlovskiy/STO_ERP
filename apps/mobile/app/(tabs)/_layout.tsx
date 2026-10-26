@@ -1,3 +1,4 @@
+import { Text } from 'react-native';
 import { Tabs } from 'expo-router';
 
 export default function TabsLayout() {
@@ -20,6 +21,14 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="tasks"
+        options={{
+          title: 'Мої задачі',
+          tabBarLabel: 'Задачі',
+          tabBarIcon: ({ color }) => <TabIcon label="📋" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Профіль',
@@ -32,6 +41,5 @@ export default function TabsLayout() {
 }
 
 function TabIcon({ label, color }: { label: string; color: string }) {
-  const { Text } = require('react-native');
   return <Text style={{ fontSize: 20, color }}>{label}</Text>;
 }

@@ -5,6 +5,7 @@ import { migrations } from './migrations';
 import { WorkOrderModel } from '../models/WorkOrderModel';
 import { WorkOrderLineModel } from '../models/WorkOrderLineModel';
 import { WorkOrderPartModel } from '../models/WorkOrderPartModel';
+import { TaskModel } from '../models/TaskModel';
 
 const adapter = new SQLiteAdapter({
   schema,
@@ -17,5 +18,5 @@ const adapter = new SQLiteAdapter({
 
 export const database = new Database({
   adapter,
-  modelClasses: [WorkOrderModel, WorkOrderLineModel, WorkOrderPartModel],
+  modelClasses: [WorkOrderModel, WorkOrderLineModel, WorkOrderPartModel, TaskModel],
 });

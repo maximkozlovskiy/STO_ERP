@@ -1,4 +1,5 @@
-import { schemaMigrations, addColumns } from '@nozbe/watermelondb/Schema/migrations';
+import { schemaMigrations, addColumns, createTable } from '@nozbe/watermelondb/Schema/migrations';
+import { TASK_COLUMNS } from './schema';
 
 /**
  * Міграції локальної бази. Без них WatermelonDB при зміні `schema.version` СКИДАЄ базу —
@@ -20,6 +21,12 @@ export const migrations = schemaMigrations({
           ],
         }),
       ],
+    },
+    {
+      // Задачі співробітникам (docs/objects/task.md): вкладка «Задачі» механіка. Колонки — ті
+      // самі `TASK_COLUMNS`, що й у схемі, щоб оновлена й свіжа бази не розійшлись.
+      toVersion: 3,
+      steps: [createTable({ name: 'tasks', columns: [...TASK_COLUMNS] })],
     },
   ],
 });

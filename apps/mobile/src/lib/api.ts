@@ -18,6 +18,26 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
+/**
+ * Відповідь сервера з кодом помилки. Відрізняє «сервер відхилив» (є `status`) від «сервер
+ * недосяжний» (`fetch` кидає TypeError ще до відповіді) — офлайн-синхронізація тримає зміну
+ * до наступної спроби лише в другому випадку.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/** Немає зв'язку з сервером (запит не дійшов або відповідь не прийшла). */
+export function isNetworkError(e: unknown): boolean {
+  return !(e instanceof ApiError);
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -27,8 +47,12 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body?.message ?? `HTTP ${res.status}`);
+    const body: unknown = await res.json().catch(() => ({}));
+    const message =
+      body && typeof body === 'object' && 'message' in body && typeof body.message === 'string'
+        ? body.message
+        : `HTTP ${res.status}`;
+    throw new ApiError(message, res.status);
   }
   if (res.status === 204) return undefined as unknown as T;
   return res.json();
