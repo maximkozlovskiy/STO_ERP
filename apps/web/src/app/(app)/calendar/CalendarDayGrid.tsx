@@ -315,9 +315,13 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
     <div
       ref={setNodeRef}
       data-pending-slot
-      className="absolute top-1 bottom-1 bg-primary/20 border-2 border-primary rounded flex items-center overflow-hidden group select-none z-10"
+      className="absolute top-1 bottom-1 bg-primary/20 border-2 border-primary rounded flex items-center overflow-hidden group select-none z-10 cursor-grab active:cursor-grabbing"
       style={style}
       title={t('day.pendingTooltip')}
+      // Тягнути за будь-яку точку картки, а не лише за текст часу. Ручки й «скасувати» зупиняють
+      // pointerdown самі; клік без руху (distance 5 у PointerSensor) лишається кліком. `attributes`
+      // (role="button") — на тексті: на картці вони обгорнули б кнопку «скасувати» (nested-interactive).
+      {...listeners}
     >
       <div
         className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-primary/20 rounded-l flex items-center justify-center"
@@ -331,9 +335,8 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
       </div>
 
       <span
-        className="flex-1 text-xs text-primary font-medium px-3 truncate cursor-grab active:cursor-grabbing"
+        className="flex-1 text-xs text-primary font-medium px-3 truncate"
         onClick={onOpen}
-        {...listeners}
         {...attributes}
       >
         {decimalHoursToHHMM(pending.startH)}–{decimalHoursToHHMM(pending.endH)}
