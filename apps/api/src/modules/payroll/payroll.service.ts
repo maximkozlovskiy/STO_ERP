@@ -574,9 +574,9 @@ export class PayrollService {
     return this.findOne(orgId, id);
   }
 
-  /** Soft-delete періоду (не PAID і без рознесених на нього рядків виписки — BR-PAYR-012). */
-  async remove(orgId: string, id: string, userId?: string): Promise<void> {
-    const [period, reconciledLine] = await Promise.all([
+  /** Стан для видалення періоду: сам період і рознесений як його зарплата рядок виписки. */
+  private removalState(orgId: string, id: string) {
+    return Promise.all([
       this.prisma.payrollPeriod.findFirst({
         where: { id, orgId, deletedAt: null },
         select: { status: true },
@@ -586,6 +586,12 @@ export class PayrollService {
         select: { id: true },
       }),
     ]);
+  }
+
+  private assertRemovable([period, reconciledLine]: [
+    { status: string } | null,
+    { id: string } | null,
+  ]) {
     if (!period)
       throw new NotFoundException(translateError('err.payroll.periodNotFound', getLocale()));
     // Виплачений період — фінансовий факт, не видаляємо. DRAFT/COMPUTED/CANCELLED можна відкинути
@@ -596,6 +602,11 @@ export class PayrollService {
     // період (рішення власника №9, 2026-10-26): спершу скасувати рознесення.
     if (reconciledLine)
       throw new BadRequestException(translateError('err.payroll.hasReconciledLines', getLocale()));
+  }
+
+  /** Soft-delete періоду (не PAID і без рознесених на нього рядків виписки — BR-PAYR-012). */
+  async remove(orgId: string, id: string, userId?: string): Promise<void> {
+    this.assertRemovable(await this.removalState(orgId, id));
     // Умови «не PAID» і «без рознесених рядків» — у самому записі: виплата чи рознесення, що
     // пройшли між читанням і видаленням, інакше лишились би на видаленому періоді (гонка
     // «виплата / рознесення ‖ видалення»).
@@ -610,22 +621,8 @@ export class PayrollService {
       data: { deletedAt: new Date() },
     });
     if (deleted.count === 0) {
-      const [now, lineNow] = await Promise.all([
-        this.prisma.payrollPeriod.findFirst({
-          where: { id, orgId, deletedAt: null },
-          select: { status: true },
-        }),
-        this.prisma.bankTransaction.findFirst({
-          where: { orgId, payrollPeriodId: id, status: 'MATCHED', deletedAt: null },
-          select: { id: true },
-        }),
-      ]);
-      if (!now)
-        throw new NotFoundException(translateError('err.payroll.periodNotFound', getLocale()));
-      if (now.status !== 'PAID' && lineNow)
-        throw new BadRequestException(
-          translateError('err.payroll.hasReconciledLines', getLocale()),
-        );
+      // Запис не пройшов умов — перечитати й назвати точну причину.
+      this.assertRemovable(await this.removalState(orgId, id));
       throw new BadRequestException(translateError('err.payroll.paidNotDeletable', getLocale()));
     }
     if (userId) {
