@@ -32,6 +32,8 @@ const form = (over: Record<string, unknown> = {}) => ({
   title: 'Замінити лампу',
   assigneeId: MECH_A,
   priority: 'NORMAL' as const,
+  startAt: undefined,
+  dueAt: undefined,
   ...over,
 });
 
