@@ -3,7 +3,13 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CircleHelp } from 'lucide-react';
-import { CATEGORY_VIEW, SLOT_CATEGORIES, SLOT_TYPES, SLOT_TYPE_ICON } from './calendar-categories';
+import {
+  CATEGORY_VIEW,
+  SLOT_CATEGORIES,
+  SLOT_TYPES,
+  SLOT_TYPE_ICON,
+  TASK_VIEW,
+} from './calendar-categories';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 
 /**
@@ -108,6 +114,26 @@ export function CalendarLegend() {
               );
             })}
           </ul>
+          {/* Задача — окремий тип (BR-TASK-007): не категорія запису й не тип запису */}
+          <p className="mt-3 mb-1 text-[12px] font-medium text-muted-foreground">
+            {t('month.legend.tasks')}
+          </p>
+          <div className="flex items-start gap-2" data-legend="task">
+            <span
+              className={`mt-0.5 h-4 w-0 shrink-0 border-l-4 ${TASK_VIEW.barClassName.open}`}
+              aria-hidden="true"
+            />
+            <TASK_VIEW.icon
+              className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${TASK_VIEW.className}`}
+              aria-hidden="true"
+            />
+            <span className="min-w-0">
+              <span className="font-medium text-foreground">{t('month.legend.task')}</span>
+              <span className="block text-[12px] text-muted-foreground">
+                {t('month.legend.taskHint')}
+              </span>
+            </span>
+          </div>
         </div>
       )}
     </div>

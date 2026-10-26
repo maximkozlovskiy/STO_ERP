@@ -239,6 +239,7 @@ const openCpDetail = useCallback(async () => {
 | `PurchaseOrderCreateModal` | `ui/PurchaseOrderCreateModal.tsx` | замовлення постачальнику           |
 | `InvoiceCreateModal`       | `ui/InvoiceCreateModal.tsx`       | рахунок                            |
 | `StockDocumentCreateModal` | `ui/StockDocumentCreateModal.tsx` | документ складу                    |
+| `TaskEditModal`            | `ui/TaskEditModal.tsx`            | задача співробітнику               |
 
 > При додаванні нової сутності — додай рядок у цю таблицю.
 

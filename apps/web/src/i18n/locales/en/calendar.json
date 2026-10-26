@@ -81,7 +81,10 @@
         "done": "Work order completed, invoiced, paid or archived",
         "cancelled": "Work order cancelled",
         "other": "Service booking or booking without a work order"
-      }
+      },
+      "tasks": "Employee tasks",
+      "task": "Task",
+      "taskHint": "A separate type: does not occupy a lift or the mechanic’s time; red bar — overdue"
     },
     "category": {
       "overdue": "Overdue",
@@ -269,5 +272,12 @@
     "vinPlaceholder": "1HGBH41JXMN109186",
     "save": "Save",
     "skip": "Skip"
+  },
+  "tasks": {
+    "strip": "Tasks",
+    "stripHint": "Tasks do not occupy a lift or the mechanic’s time",
+    "new": "Task",
+    "newOnDate": "New task on {{date}}",
+    "blockAria": "Task “{{title}}”, {{assignee}}, {{status}}"
   }
 }

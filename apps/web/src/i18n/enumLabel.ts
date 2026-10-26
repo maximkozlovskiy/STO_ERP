@@ -24,6 +24,7 @@ import {
   GOOD_TYPE_LABELS,
   PURCHASE_LIST_STATUS_LABELS,
   PURCHASE_LIST_ITEM_STATUS_LABELS,
+  TASK_STATUS_LABELS,
 } from '@sto/shared';
 // DELIVERY_STATUS_LABELS живе у web (panel-schema), а не в @sto/shared — Нова Пошта
 // web-only. panel-schema НЕ імпортує enumLabel → циклу немає.
@@ -48,6 +49,7 @@ function tEnum(mapName: string, fallbackMap: LabelMap, code: string | null | und
 export const woStatusLabel = (c?: string | null) => tEnum('WO_STATUS', WO_STATUS_LABELS, c);
 export const woPriorityLabel = (c?: string | null) => tEnum('WO_PRIORITY', WO_PRIORITY_LABELS, c);
 export const woCategoryLabel = (c?: string | null) => tEnum('WO_CATEGORY', WO_CATEGORY_LABELS, c);
+export const taskStatusLabel = (c?: string | null) => tEnum('TASK_STATUS', TASK_STATUS_LABELS, c);
 export const invoiceStatusLabel = (c?: string | null) =>
   tEnum('INVOICE_STATUS', INVOICE_STATUS_LABELS, c);
 export const invoiceTypeLabel = (c?: string | null) =>

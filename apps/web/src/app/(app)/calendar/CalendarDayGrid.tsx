@@ -35,6 +35,8 @@ import {
   workOrderTimeLock,
 } from './calendar-day';
 import { PENDING_DRAG_ID, type CalendarState } from './useCalendarState';
+import { CalendarTaskStrip } from './CalendarTaskStrip';
+import type { CalendarTask } from './calendar-tasks';
 
 // Module-level stable refs — `useMemo<[]>(() => [], [])` всередині компонента
 // створює новий [] на КОЖНОМУ mount, але reference стабільна між render-ами.
@@ -555,14 +557,24 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
 
 interface CalendarDayGridProps {
   state: CalendarState;
+  /** Задачі дня — смуга «Задачі» над підйомниками (BR-TASK-007); не займають підйомник. */
+  tasks?: readonly CalendarTask[];
+  onOpenTask?: (task: CalendarTask) => void;
 }
+
+const NO_TASKS: readonly CalendarTask[] = [];
+const noop = () => {};
 
 /**
  * Renders the day-view: hint paragraphs, loading/empty states, DnD timeline
  * (hours header + lift rows with drag/resize/draw), and the unassigned-slots
  * list. All state and handlers come from `useCalendarState()` via `state`.
  */
-export function CalendarDayGrid({ state }: CalendarDayGridProps) {
+export function CalendarDayGrid({
+  state,
+  tasks = NO_TASKS,
+  onOpenTask = noop,
+}: CalendarDayGridProps) {
   const { t } = useTranslation('calendar');
   const {
     loading,
@@ -687,6 +699,14 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                   />
                 )}
               </div>
+              {/* Смуга «Задачі» — поза рядками підйомників: блоки не drag-ються й не займають пост */}
+              <CalendarTaskStrip
+                tasks={tasks}
+                date={date}
+                windowStart={windowStart}
+                windowEnd={windowEnd}
+                onOpen={onOpenTask}
+              />
               {/* Scrollable rows — flex-1 so rows fill remaining height; scrollbar stays below header */}
               <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
                 {lifts.map((lift: Lift) => (

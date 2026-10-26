@@ -29,6 +29,7 @@ import {
   ClipboardList,
   Banknote,
   Landmark,
+  ListTodo,
 } from 'lucide-react';
 
 export type NavSection = 'top' | 'documents' | 'settlements' | 'reports' | 'refs' | 'settings';
@@ -99,6 +100,16 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     icon: Wrench,
     section: 'documents',
     roles: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT'],
+  },
+  {
+    // Задачі співробітникам (docs/objects/task.md): бачать усі ролі персоналу — виконавець лише
+    // свої (BR-TASK-002), ставлять ролі керування (BR-TASK-001).
+    href: '/tasks',
+    labelKey: 'tasks',
+    label: 'Задачі',
+    icon: ListTodo,
+    section: 'documents',
+    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT'],
   },
   {
     href: '/purchase-orders',

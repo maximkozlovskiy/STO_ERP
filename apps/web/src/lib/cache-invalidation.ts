@@ -16,6 +16,8 @@ import { cashKeys } from '@/hooks/api/useCash';
 import { purchaseListsKeys } from '@/hooks/api/usePurchaseLists';
 import { supplierOffersKeys } from '@/hooks/api/useSupplierOffers';
 import { supplierApiOrderKeys } from '@/hooks/api/useSupplierApiOrder';
+import { tasksKeys } from '@/hooks/api/useTasks';
+import { notifyCalendarChanged } from '@/lib/calendar-events';
 
 /**
  * Спільні cross-cache інвалідатори (WEB-H1/H2 з аудиту).
@@ -98,6 +100,20 @@ export function invalidateWorkOrderSideEffects(qc: QueryClient): void {
 export function invalidateWarrantyAffected(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: warrantiesKeys.all });
   void qc.invalidateQueries({ queryKey: dashboardKeys.expiringWarranties() });
+}
+
+/**
+ * Задача (створення, зміна, перехід статусу, видалення): списки й картки задач (зокрема секція
+ * «Задачі наряду») і відкритий календар — смуга «Задачі» дня та картки місяця читаються не з кешу
+ * TanStack, а самим календарем (`useCalendarTasks`), тож він отримує подію `notifyCalendarChanged`.
+ */
+export function invalidateTaskAffected(qc: QueryClient, deletedId?: string): void {
+  // Картка видаленої задачі ще відкрита, поки мутація завершується: її перечитування дало б 404.
+  void qc.invalidateQueries({
+    queryKey: tasksKeys.all,
+    predicate: q => !deletedId || q.queryKey[1] !== 'detail' || q.queryKey[2] !== deletedId,
+  });
+  notifyCalendarChanged();
 }
 
 /** Складський документ (RECEIPT/WRITEOFF/TRANSFER) → власний список + рух складу. */

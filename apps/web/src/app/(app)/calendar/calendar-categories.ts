@@ -8,6 +8,7 @@ import {
   Clock,
   Coffee,
   Hammer,
+  ListTodo,
   PencilLine,
   Users,
   Wrench,
@@ -172,3 +173,27 @@ export function slotType(type: string | undefined): SlotType {
 export function isServiceSlotType(type: SlotType): boolean {
   return type !== 'WORK';
 }
+
+/**
+ * Задача співробітнику — окремий тип календаря (docs/objects/task.md, BR-TASK-007), не категорія
+ * запису: не займає підйомник, не входить у лічильники категорій. Свій колір — основний
+ * (`primary`), якого немає серед семи категорій; смуга — за станом задачі: прострочена —
+ * червона, виконана — зелена, скасована — сіра. Фон — `bg-primary/10`: `primary-subtle` у темній
+ * темі не перевизначено, і світлий фон під світлим текстом був би нечитабельний.
+ */
+export const TASK_VIEW = {
+  icon: ListTodo,
+  className: 'text-primary',
+  bgClassName: 'bg-primary/10',
+  barClassName: {
+    open: 'border-l-primary',
+    overdue: 'border-l-destructive',
+    done: 'border-l-success-text',
+    cancelled: 'border-l-muted-foreground',
+  },
+} as const satisfies {
+  icon: LucideIcon;
+  className: string;
+  bgClassName: string;
+  barClassName: Record<'open' | 'overdue' | 'done' | 'cancelled', string>;
+};

@@ -2,9 +2,9 @@
 
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Eye, Plus } from 'lucide-react';
+import { Eye, ListPlus, Plus } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
-import { woStatusLabel } from '@/i18n/enumLabel';
+import { taskStatusLabel, woStatusLabel } from '@/i18n/enumLabel';
 import type { CalendarSlot, MonthSlots } from './calendar.types';
 import { fmtTime, toDateString } from './calendar.utils';
 import {
@@ -13,9 +13,16 @@ import {
   isServiceSlotType,
   slotCategory,
   slotType,
+  TASK_VIEW,
   type MonthEntry,
 } from './calendar-categories';
-import { monthCards } from './calendar-month';
+import {
+  monthCellCards,
+  taskMomentOnDay,
+  taskSpan,
+  taskTone,
+  type CalendarTask,
+} from './calendar-tasks';
 import { CalendarCategoryCounters } from './CalendarCategoryCounters';
 
 interface CalendarMonthViewProps {
@@ -30,7 +37,16 @@ interface CalendarMonthViewProps {
   onOpenSlot: (slot: CalendarSlot) => void;
   /** Дія «Новий запис на цю дату»; без неї (механік — лише перегляд) дії немає. */
   onNewOnDate?: (dateStr: string) => void;
+  /** Задачі за днями — картки окремого типу (BR-TASK-007), рахуються в «ще N». */
+  tasksByDay?: Readonly<Record<string, readonly CalendarTask[]>>;
+  onOpenTask?: (task: CalendarTask) => void;
+  /** Дія «Нова задача на цю дату» — лише ролям керування задачами (BR-TASK-001). */
+  onNewTaskOnDate?: (dateStr: string) => void;
 }
+
+const NO_TASKS: readonly CalendarTask[] = [];
+const noop = () => {};
+const NO_TASKS_BY_DAY: Readonly<Record<string, readonly CalendarTask[]>> = {};
 
 /** Наскільки блідшає фон завантаженості минулого дня (раніше — `opacity-60` кнопки). */
 const PAST_DIM = 0.6;
@@ -132,6 +148,47 @@ const MonthSlotCard = memo(function MonthSlotCard({ entry, nowMs, onOpen }: Mont
   );
 });
 
+interface MonthTaskCardProps {
+  task: CalendarTask;
+  date: string;
+  onOpen: (task: CalendarTask) => void;
+}
+
+/** Картка задачі в клітинці дня: свій колір і іконка, смуга — за станом задачі (BR-TASK-005). */
+const MonthTaskCard = memo(function MonthTaskCard({ task, date, onOpen }: MonthTaskCardProps) {
+  const { t } = useTranslation('calendar');
+  const tone = taskTone(task);
+  const span = taskSpan(task);
+  // Продовження з попереднього дня — без часу: початок був раніше.
+  const continues = taskMomentOnDay(task, date) === Number.NEGATIVE_INFINITY;
+  const time = span && !continues ? fmtTime(span.start) : '';
+  const status = taskStatusLabel(task.status);
+  const typeLabel = t('month.legend.task');
+  return (
+    <button
+      type="button"
+      onClick={e => {
+        e.stopPropagation();
+        onOpen(task);
+      }}
+      title={[time, task.title, task.assigneeName, status, typeLabel].filter(Boolean).join('\n')}
+      aria-label={`${time} ${t('tasks.blockAria', {
+        title: task.title,
+        assignee: task.assigneeName,
+        status,
+      })}`}
+      data-testid="month-task-card"
+      data-task-id={task.id}
+      data-tone={tone}
+      className={`flex w-full min-w-0 items-center gap-1 rounded border border-border border-l-4 ${TASK_VIEW.barClassName[tone]} ${TASK_VIEW.bgClassName} px-1 py-0.5 text-left text-[11px] leading-tight text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${COARSE_TARGET} ${tone === 'cancelled' ? 'line-through' : ''}`}
+    >
+      <TASK_VIEW.icon className={`h-3 w-3 shrink-0 ${TASK_VIEW.className}`} aria-hidden="true" />
+      {time && <span className="shrink-0 tabular-nums text-muted-foreground">{time}</span>}
+      <span className="min-w-0 flex-1 truncate font-medium">{task.title}</span>
+    </button>
+  );
+});
+
 export function CalendarMonthView({
   yearMonth,
   monthSlots,
@@ -141,6 +198,9 @@ export function CalendarMonthView({
   onDayClick,
   onOpenSlot,
   onNewOnDate,
+  tasksByDay = NO_TASKS_BY_DAY,
+  onOpenTask,
+  onNewTaskOnDate,
 }: CalendarMonthViewProps) {
   const { t } = useTranslation('calendar');
   const [y, m] = yearMonth ? yearMonth.split('-').map(Number) : [0, 0];
@@ -215,7 +275,8 @@ export function CalendarMonthView({
                   busy === 0 ? 0 : Math.max(0.08, load * 0.5) * (isPast ? PAST_DIM : 1);
                 const dayNum = parseInt(dayStr.slice(8), 10);
                 const entries = info?.entries ?? [];
-                const { cards, more } = monthCards(entries);
+                const dayTasks = tasksByDay[dayStr] ?? NO_TASKS;
+                const { cards, more } = monthCellCards(entries, dayTasks, dayStr);
                 const date = dmy(dayStr);
                 return (
                   // Клітинка — `div`, а не кнопка: усередині кнопки карток і дій (BR-CAL-009).
@@ -256,6 +317,21 @@ export function CalendarMonthView({
                         <Eye className="h-3 w-3" aria-hidden="true" />
                       </button>
                       {/* Минулий день: новий запис у минуле форма однаково не збереже. */}
+                      {!isPast && onNewTaskOnDate && (
+                        <button
+                          type="button"
+                          className={CELL_ACTION}
+                          aria-label={t('tasks.newOnDate', { date })}
+                          title={t('tasks.newOnDate', { date })}
+                          data-testid="month-new-task"
+                          onClick={e => {
+                            e.stopPropagation();
+                            onNewTaskOnDate(dayStr);
+                          }}
+                        >
+                          <ListPlus className="h-3 w-3" aria-hidden="true" />
+                        </button>
+                      )}
                       {!isPast && onNewOnDate && (
                         <button
                           type="button"
@@ -278,14 +354,23 @@ export function CalendarMonthView({
                     />
                     {cards.length > 0 && (
                       <div className="flex min-w-0 flex-col gap-0.5">
-                        {cards.map(e => (
-                          <MonthSlotCard
-                            key={e.slot.id}
-                            entry={e}
-                            nowMs={nowMs}
-                            onOpen={onOpenSlot}
-                          />
-                        ))}
+                        {cards.map(c =>
+                          c.kind === 'slot' ? (
+                            <MonthSlotCard
+                              key={c.entry.slot.id}
+                              entry={c.entry}
+                              nowMs={nowMs}
+                              onOpen={onOpenSlot}
+                            />
+                          ) : (
+                            <MonthTaskCard
+                              key={`task-${c.task.id}`}
+                              task={c.task}
+                              date={dayStr}
+                              onOpen={onOpenTask ?? noop}
+                            />
+                          ),
+                        )}
                       </div>
                     )}
                     {more > 0 && (

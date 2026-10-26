@@ -48,6 +48,14 @@ const NAV_COMMANDS: CommandDef[] = [
     keywords: ['розклад', 'запис', 'слот'],
   },
   {
+    id: 'nav:tasks',
+    label: 'Задачі',
+    group: 'navigation',
+    href: '/tasks',
+    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT'],
+    keywords: ['задача', 'доручення', 'task'],
+  },
+  {
     id: 'nav:crm',
     label: 'Контрагенти',
     group: 'navigation',

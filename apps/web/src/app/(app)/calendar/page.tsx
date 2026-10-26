@@ -1,6 +1,7 @@
 'use client';
 
-import { Suspense, useMemo } from 'react';
+import { Suspense, useCallback, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useTranslation } from 'react-i18next';
 import {
   Plus,
@@ -9,18 +10,22 @@ import {
   CalendarDays,
   BarChart2,
   CalendarRange,
+  ListPlus,
 } from 'lucide-react';
+import { isTaskManagerRole } from '@sto/shared';
 
 import { useRequireAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import type { TaskPrefill } from '@/components/ui/TaskEditModal';
 
 import {
   toDateString,
   formatKyivDate,
   fmtKyivMonthYear,
   canManageCalendarSlots,
+  pad,
 } from './calendar.utils';
 import { CalendarMonthView } from './CalendarMonthView';
 import { CalendarLegend } from './CalendarLegend';
@@ -29,6 +34,14 @@ import { CalendarStatsTab } from './CalendarStatsTab';
 import { CalendarSlotModal } from './CalendarSlotModal';
 import { CalendarDayGrid } from './CalendarDayGrid';
 import { useCalendarState, EMPTY_FORM } from './useCalendarState';
+import { useCalendarTasks } from './useCalendarTasks';
+
+// Картка задачі — окремим чанком: відкривається лише кліком по задачі чи «+ Задача».
+const TaskEditModal = dynamic(
+  () => import('@/components/ui/TaskEditModal').then(m => m.TaskEditModal),
+  { ssr: false },
+);
+import type { CalendarTask } from './calendar-tasks';
 
 // Module-level — stable tuple-array avoids re-creation on every CalendarPageClient
 // render (and re-allocation of inner tuples). The icon refs are pure component
@@ -49,6 +62,19 @@ function CalendarPageClient() {
   const canManageSlots = canManageCalendarSlots(employee?.role);
 
   const cs = useCalendarState({ canManageSlots });
+  // Задачі співробітникам — окремий тип (BR-TASK-007): свій запит на видимий день чи місяць.
+  const canManageTasks = isTaskManagerRole(employee?.role);
+  const ct = useCalendarTasks(cs.calView, cs.date);
+  const [taskCard, setTaskCard] = useState<{ taskId: string | null; prefill?: TaskPrefill } | null>(
+    null,
+  );
+  const openTask = useCallback((task: CalendarTask) => setTaskCard({ taskId: task.id }), []);
+  // Нова задача на дату — термін на кінець робочого дня.
+  const newTaskOn = useCallback(
+    (d: string) =>
+      setTaskCard({ taskId: null, prefill: { dueAt: `${d}T${pad(cs.windowEnd)}:00` } }),
+    [cs.windowEnd],
+  );
 
   // sto-optimize: пара дублює `new Date(cs.nowMs)` + `toDateString()` двічі у render path
   // (один раз для className tinting, другий — для текст-suffix "минулий день").
@@ -134,9 +160,20 @@ function CalendarPageClient() {
                 >
                   {t('nav.thisMonth')}
                 </Button>
+                {canManageTasks && (
+                  <Button
+                    variant="outline"
+                    className="ml-auto"
+                    onClick={() => newTaskOn(cs.date)}
+                    data-testid="calendar-new-task"
+                  >
+                    <ListPlus className="h-4 w-4" aria-hidden="true" />
+                    {t('tasks.new')}
+                  </Button>
+                )}
                 {canManageSlots && (
                   <Button
-                    className="ml-auto"
+                    className={canManageTasks ? '' : 'ml-auto'}
                     onClick={() => {
                       cs.setPendingSlot(null);
                       cs.setEditingSlotId(null);
@@ -190,9 +227,20 @@ function CalendarPageClient() {
                   testId="day-categories"
                   size="md"
                 />
+                {canManageTasks && (
+                  <Button
+                    variant="outline"
+                    className="ml-auto"
+                    onClick={() => newTaskOn(cs.date)}
+                    data-testid="calendar-new-task"
+                  >
+                    <ListPlus className="h-4 w-4" aria-hidden="true" />
+                    {t('tasks.new')}
+                  </Button>
+                )}
                 {canManageSlots && (
                   <Button
-                    className="ml-auto"
+                    className={canManageTasks ? '' : 'ml-auto'}
                     onClick={() => {
                       cs.setPendingSlot(null);
                       cs.setEditingSlotId(null);
@@ -260,6 +308,9 @@ function CalendarPageClient() {
               onDayClick={cs.openDay}
               onOpenSlot={cs.openMonthSlot}
               onNewOnDate={canManageSlots ? cs.openNewOnDate : undefined}
+              tasksByDay={ct.byDay}
+              onOpenTask={openTask}
+              onNewTaskOnDate={canManageTasks ? newTaskOn : undefined}
             />
           )}
 
@@ -284,9 +335,17 @@ function CalendarPageClient() {
             />
           )}
 
-          {cs.calView === 'day' && <CalendarDayGrid state={cs} />}
+          {cs.calView === 'day' && (
+            <CalendarDayGrid state={cs} tasks={ct.dayTasks} onOpenTask={openTask} />
+          )}
 
           <ConfirmDialog {...cs.dialogProps} />
+          <TaskEditModal
+            open={!!taskCard}
+            taskId={taskCard?.taskId ?? null}
+            prefill={taskCard?.prefill}
+            onClose={() => setTaskCard(null)}
+          />
         </div>
         {/* end scrollable grid */}
       </div>

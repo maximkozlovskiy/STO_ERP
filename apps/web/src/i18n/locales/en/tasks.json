@@ -1,0 +1,87 @@
+{
+  "title": "Tasks",
+  "newTask": "Task",
+  "newTaskTitle": "New task",
+  "myTasks": "My tasks",
+  "overdueOnly": "Overdue",
+  "all": "All",
+  "statusLabel": "Status",
+  "searchPlaceholder": "Search by title…",
+  "assigneeAll": "All assignees",
+  "priorityAll": "All priorities",
+  "periodFrom": "From",
+  "periodTo": "To",
+  "columns": {
+    "title": "Task",
+    "status": "Status",
+    "priority": "Priority",
+    "assignee": "Assignee",
+    "startAt": "Start",
+    "dueAt": "Due",
+    "links": "Linked to",
+    "createdAt": "Assigned"
+  },
+  "overdue": "Overdue",
+  "workOrderDeleted": "{{number}} (deleted)",
+  "empty": {
+    "title": "No tasks",
+    "desc": "Tasks assigned by managers will appear here",
+    "descFilter": "No tasks match the selected filters"
+  },
+  "action": {
+    "start": "Start",
+    "reopen": "Reopen",
+    "done": "Done",
+    "cancel": "Cancel task",
+    "aria": "{{action}}: {{title}}"
+  },
+  "cancelConfirm": {
+    "title": "Cancel the task?",
+    "message": "Task “{{title}}” will be cancelled. A cancelled task cannot be restored."
+  },
+  "deleteConfirm": {
+    "title": "Delete the task?",
+    "message": "Task “{{title}}” will be deleted."
+  },
+  "toast": {
+    "created": "Task assigned",
+    "saved": "Task saved",
+    "deleted": "Task deleted",
+    "status": "Task status: {{status}}"
+  },
+  "form": {
+    "title": "What to do",
+    "titlePlaceholder": "E.g.: check the brakes after the repair",
+    "description": "Description",
+    "assignee": "Assignee",
+    "assigneePlaceholder": "Select an employee",
+    "assigneeUnavailable": "{{name}} (unavailable)",
+    "priority": "Priority",
+    "startAt": "Start",
+    "dueAt": "Due",
+    "links": "Linked to",
+    "workOrder": "Work order",
+    "workOrderPlaceholder": "Work order number…",
+    "counterparty": "Client",
+    "counterpartyPlaceholder": "Name or phone…",
+    "vehicle": "Vehicle",
+    "vehicleSelectClientFirst": "Select a client first",
+    "vehicleNone": "No vehicle",
+    "noVehicles": "The client has no vehicles",
+    "createdBy": "Assigned by",
+    "completedAt": "Completed",
+    "save": "Save",
+    "create": "Assign task",
+    "cancel": "Cancel",
+    "close": "Close",
+    "delete": "Delete",
+    "readOnlyHint": "Only a manager can edit the task. You can change its status and leave a comment.",
+    "loadError": "Failed to load the task",
+    "notTimeBlocking": "A task does not occupy a lift or the mechanic’s time in the calendar."
+  },
+  "workOrderSection": {
+    "title": "Work order tasks",
+    "create": "Create task",
+    "empty": "No tasks for this work order"
+  }
+}

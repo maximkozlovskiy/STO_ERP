@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import type { ApiSchema } from '@sto/shared';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -114,6 +115,14 @@ import {
   LinkedDocumentsPanel,
   type LinkedDocumentsCounts,
 } from '@/components/ui/LinkedDocumentsPanel';
+
+// «Задачі наряду» з карткою задачі — окремим чанком: вкладка «Документи» відкривається рідко, а
+// картка задачі (форма, пошук наряду й клієнта) не має ставати частиною first load «Нарядів».
+const WorkOrderTasksSection = dynamic(
+  () =>
+    import('@/components/ui/work-order/WorkOrderTasksSection').then(m => m.WorkOrderTasksSection),
+  { ssr: false },
+);
 import { workOrderLinkedConfig } from '@/lib/linked-configs';
 import { canViewWarranties } from '@/lib/warranty-roles';
 import { useLinkedNav } from '@/lib/linked-nav';
@@ -2356,12 +2365,29 @@ export function CreateWorkOrderModal({
 
         {/* Вкладка "Документи" */}
         {activeTab === 'documents' && workOrderId && (
-          <LinkedDocumentsPanel
-            config={linkedConfig}
-            entityId={workOrderId}
-            refreshKey={linkedDocsRefreshKey}
-            onLoad={setLinkedDocsCounts}
-          />
+          <>
+            <LinkedDocumentsPanel
+              config={linkedConfig}
+              entityId={workOrderId}
+              refreshKey={linkedDocsRefreshKey}
+              onLoad={setLinkedDocsCounts}
+            />
+            {/* Задачі наряду (docs/objects/task.md) — окремим запитом `GET /tasks?workOrderId=`:
+                видимість задач тримає API задач (BR-TASK-002), а не linked-documents наряду. */}
+            <WorkOrderTasksSection
+              workOrderId={workOrderId}
+              workOrderNumber={woNumber}
+              counterpartyId={form.counterpartyId || null}
+              counterpartyName={counterpartyDisplayName}
+              vehicleId={form.vehicleId || null}
+              vehicleSummary={(() => {
+                const v = form.vehicleId ? vehiclesById.get(form.vehicleId) : null;
+                return v
+                  ? `${v.make} ${v.model}${v.licensePlate ? ` (${v.licensePlate})` : ''}`
+                  : null;
+              })()}
+            />
+          </>
         )}
 
         {/* Вкладка "Основне" */}

@@ -1,0 +1,87 @@
+{
+  "title": "Задачі",
+  "newTask": "Задача",
+  "newTaskTitle": "Нова задача",
+  "myTasks": "Мої задачі",
+  "overdueOnly": "Прострочені",
+  "all": "Всі",
+  "statusLabel": "Статус",
+  "searchPlaceholder": "Пошук за назвою…",
+  "assigneeAll": "Усі виконавці",
+  "priorityAll": "Усі пріоритети",
+  "periodFrom": "З",
+  "periodTo": "По",
+  "columns": {
+    "title": "Задача",
+    "status": "Статус",
+    "priority": "Пріоритет",
+    "assignee": "Виконавець",
+    "startAt": "Початок",
+    "dueAt": "Термін",
+    "links": "Прив'язка",
+    "createdAt": "Поставлено"
+  },
+  "overdue": "Прострочена",
+  "workOrderDeleted": "{{number}} (видалений)",
+  "empty": {
+    "title": "Задач немає",
+    "desc": "Тут з'являться задачі, які ставлять керівники",
+    "descFilter": "За обраними фільтрами задач немає"
+  },
+  "action": {
+    "start": "Взяти в роботу",
+    "reopen": "Повернути в роботу",
+    "done": "Виконано",
+    "cancel": "Скасувати задачу",
+    "aria": "{{action}}: {{title}}"
+  },
+  "cancelConfirm": {
+    "title": "Скасувати задачу?",
+    "message": "Задачу «{{title}}» буде скасовано. Повернути скасовану задачу не можна."
+  },
+  "deleteConfirm": {
+    "title": "Видалити задачу?",
+    "message": "Задачу «{{title}}» буде видалено."
+  },
+  "toast": {
+    "created": "Задачу поставлено",
+    "saved": "Задачу збережено",
+    "deleted": "Задачу видалено",
+    "status": "Статус задачі: {{status}}"
+  },
+  "form": {
+    "title": "Що зробити",
+    "titlePlaceholder": "Напр.: перевірити гальма після ремонту",
+    "description": "Опис",
+    "assignee": "Виконавець",
+    "assigneePlaceholder": "Оберіть працівника",
+    "assigneeUnavailable": "{{name}} (недоступний)",
+    "priority": "Пріоритет",
+    "startAt": "Початок",
+    "dueAt": "Термін",
+    "links": "Прив'язка",
+    "workOrder": "Наряд",
+    "workOrderPlaceholder": "Номер наряду…",
+    "counterparty": "Клієнт",
+    "counterpartyPlaceholder": "Ім'я або телефон…",
+    "vehicle": "Авто",
+    "vehicleSelectClientFirst": "Спочатку оберіть клієнта",
+    "vehicleNone": "Без авто",
+    "noVehicles": "У клієнта немає авто",
+    "createdBy": "Поставив",
+    "completedAt": "Виконано",
+    "save": "Зберегти",
+    "create": "Поставити задачу",
+    "cancel": "Скасувати",
+    "close": "Закрити",
+    "delete": "Видалити",
+    "readOnlyHint": "Змінювати задачу може лише керівник. Ви можете змінити статус і написати коментар.",
+    "loadError": "Не вдалося завантажити задачу",
+    "notTimeBlocking": "Задача не займає підйомник і час механіка в календарі."
+  },
+  "workOrderSection": {
+    "title": "Задачі наряду",
+    "create": "Створити задачу",
+    "empty": "До наряду задач немає"
+  }
+}

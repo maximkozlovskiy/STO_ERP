@@ -19,7 +19,7 @@ import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
 import { Spinner } from '@/components/ui/spinner';
 import { CreditCard, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { fmtMoney, fmtInt, fmtDate, fmtDateTime, fmtShortDateTime } from '@/lib/format';
+import { fmtMoney, fmtInt, fmtDate, fmtDateTime } from '@/lib/format';
 import { useBaseCurrency } from '@/hooks/api/useCash';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { toast } from '@/lib/toast';
@@ -47,6 +47,7 @@ import { WorkOrderMediaSection } from './WorkOrderMediaSection';
 import { WarrantySection } from './WarrantySection';
 import { WorkOrderTotals } from './WorkOrderTotals';
 import { SectionErrorBoundary } from '@/components/ui/SectionErrorBoundary';
+import { CommentsSection } from '@/components/ui/CommentsSection';
 import { WorkOrderAuditSection, useWorkOrderAudit } from './WorkOrderAuditSection';
 import { InvoiceSection, type InvoiceRef } from './InvoiceSection';
 import {
@@ -148,17 +149,6 @@ interface WorkOrderDetail {
   updatedAt?: string;
   lines: WorkOrderLine[];
   parts: WorkOrderPart[];
-}
-
-interface Comment {
-  id: string;
-  orgId: string;
-  entityType: string;
-  entityId: string;
-  body: string;
-  authorId: string;
-  authorName: string;
-  createdAt: string;
 }
 
 interface CompletionActSummary {
@@ -297,10 +287,6 @@ export default function WorkOrderCardPage() {
   // MECHANIC не перевибирав один і той самий склад на кожному додаванні.
   const [initialPartWarehouseId, setInitialPartWarehouseId] = useState('');
 
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [commentBody, setCommentBody] = useState('');
-  const [commentSaving, setCommentSaving] = useState(false);
-
   // Inspection state
   const [inspection, setInspection] = useState<InspectionReport | null>(null);
   const [inspectionPoints, setInspectionPoints] = useState<InspectionPoint[]>([]);
@@ -356,23 +342,16 @@ export default function WorkOrderCardPage() {
     });
   }, [id, t]);
 
-  // Load secondary data (comments, media) in parallel — single effect, single mount.
+  // Вторинні дані — медіа (коментарі читає сам `CommentsSection`).
   // «Журнал змін» — useWorkOrderAudit нижче, лише для ролей із доступом (AUDIT_VIEW_ROLES).
   const loadSecondary = useCallback(() => {
-    // void: кожен запит має .catch з порожнім fallback — вторинні блоки (коментарі,
-    // медіа) просто лишаються порожніми, Promise.all не реджектиться.
-    void Promise.all([
-      apiFetch<{ items: Comment[] }>(`/comments?entityType=WorkOrder&entityId=${id}`).catch(() => ({
-        items: [] as Comment[],
-      })),
-      apiFetch<{ items: WorkOrderMedia[] }>(`/work-orders/${id}/media`).catch(() => ({
-        items: [] as WorkOrderMedia[],
-      })),
-    ]).then(([comments, media]) => {
-      if (!mountedRef.current) return;
-      setComments(comments.items ?? []);
-      setMedia(media.items ?? []);
-    });
+    // void: запит має .catch з порожнім fallback — блок медіа просто лишається порожнім.
+    void apiFetch<{ items: WorkOrderMedia[] }>(`/work-orders/${id}/media`)
+      .catch(() => ({ items: [] as WorkOrderMedia[] }))
+      .then(media => {
+        if (!mountedRef.current) return;
+        setMedia(media.items ?? []);
+      });
   }, [id]);
 
   useEffect(() => {
@@ -381,18 +360,6 @@ export default function WorkOrderCardPage() {
   useEffect(() => {
     loadSecondary();
   }, [loadSecondary]);
-
-  const loadComments = useCallback(() => {
-    apiFetch<{ items: Comment[] }>(`/comments?entityType=WorkOrder&entityId=${id}`)
-      .then(r => {
-        if (mountedRef.current) setComments(r.items ?? []);
-      })
-      .catch((e: unknown) => {
-        // silent .catch ховало помилки завантаження коментарів — діагностика
-        // неможлива. Тепер логуємо у console.warn (тісно з review patten 88d2c8d).
-        console.warn('Помилка завантаження коментарів:', e);
-      });
-  }, [id]);
 
   const loadMedia = useCallback(() => {
     apiFetch<{ items: WorkOrderMedia[] }>(`/work-orders/${id}/media`)
@@ -432,25 +399,6 @@ export default function WorkOrderCardPage() {
       if (features.toastEnabled) toast.error(msg);
     } finally {
       setSavingTemplate(false);
-    }
-  };
-
-  const submitComment = async () => {
-    if (!commentBody.trim()) return;
-    setCommentSaving(true);
-    try {
-      await apiFetch(`/comments`, {
-        method: 'POST',
-        body: JSON.stringify({ entityType: 'WorkOrder', entityId: id, body: commentBody.trim() }),
-      });
-      setCommentBody('');
-      loadComments();
-      if (features.toastEnabled) toast.success(t('detail.comments.added'));
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : t('detail.comments.error');
-      if (features.toastEnabled) toast.error(msg);
-    } finally {
-      setCommentSaving(false);
     }
   };
 
@@ -1226,64 +1174,7 @@ export default function WorkOrderCardPage() {
         )}
       </div>
 
-      {/* Comments */}
-      <div className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="font-semibold text-foreground mb-4">{t('detail.comments.title')}</h2>
-        {comments.length > 0 && (
-          <div className="space-y-3 mb-4">
-            {comments.map(c => (
-              <div key={c.id} className="flex gap-3">
-                <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                  <span className="text-[11px] font-semibold text-primary">
-                    {c.authorName ? c.authorName[0] : '?'}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-[12px] font-medium text-foreground">
-                      {c.authorName ?? t('detail.comments.unknownAuthor')}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground">
-                      {fmtShortDateTime(c.createdAt)}
-                    </span>
-                  </div>
-                  <p className="text-[13px] text-foreground whitespace-pre-wrap wrap-break-word">
-                    {c.body}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {comments.length === 0 && (
-          <p className="text-sm text-muted-foreground mb-4">{t('detail.comments.empty')}</p>
-        )}
-        {employee && !isDeleted && (
-          <div className="flex gap-2">
-            <textarea
-              value={commentBody}
-              onChange={e => setCommentBody(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                  void submitComment();
-                }
-              }}
-              placeholder={t('detail.comments.placeholder')}
-              rows={2}
-              className="flex-1 rounded-lg border border-border bg-transparent px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-            />
-            <Button
-              size="sm"
-              onClick={() => void submitComment()}
-              loading={commentSaving}
-              disabled={!commentBody.trim()}
-              className="self-end"
-            >
-              {t('detail.comments.send')}
-            </Button>
-          </div>
-        )}
-      </div>
+      <CommentsSection entityType="WorkOrder" entityId={id} readOnly={!employee || isDeleted} />
 
       {/* E3: медіа-секція під error-boundary — краш рендеру медіа не валить картку наряду. */}
       <SectionErrorBoundary label={t('detail.sectionMedia')}>
