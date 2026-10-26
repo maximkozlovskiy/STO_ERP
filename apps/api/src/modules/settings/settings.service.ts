@@ -74,6 +74,23 @@ function workHoursCacheKey(orgId: string, branchId?: string): string {
   return branchId ? `settings:work-hours:${orgId}:${branchId}` : `settings:work-hours:${orgId}`;
 }
 
+/**
+ * Ключ кешу ставок ПДВ організації. Список читають картки документів при кожному відкритті;
+ * скидається в createTaxRate / updateTaxRate / deleteTaxRate, TTL — запасний механізм.
+ */
+function taxRatesCacheKey(orgId: string): string {
+  return `settings:tax-rates:${orgId}`;
+}
+
+/** Ставка ПДВ у відповіді `GET /settings/tax-rates` (і в кеші). */
+interface TaxRateResponse {
+  id: string;
+  name: string;
+  rate: number;
+  isDefault: boolean;
+  isActive: boolean;
+}
+
 /** Значення, що заміняє секрет у сліді аудиту: видно, що ключ змінили, але не який він. */
 export const AUDIT_SECRET_MASK = '***';
 
@@ -702,19 +719,42 @@ export class SettingsService {
     return { vatMode: settings.vatMode, vatRate: Number(taxRate?.rate ?? 0) };
   }
 
-  async getTaxRates(orgId: string) {
+  async getTaxRates(orgId: string): Promise<TaxRateResponse[]> {
+    const cacheKey = taxRatesCacheKey(orgId);
+    try {
+      const cached = await this.redis.get(cacheKey);
+      if (cached) return JSON.parse(cached) as TaxRateResponse[];
+    } catch {
+      // Redis unavailable — continue without cache (offline-first)
+    }
+
     const rates = await this.prisma.taxRate.findMany({
       where: { orgId },
       orderBy: { rate: 'asc' },
       take: 100,
     });
-    return rates.map(r => ({
+    const result = rates.map(r => ({
       id: r.id,
       name: r.name,
       rate: Number(r.rate),
       isDefault: r.isDefault,
       isActive: r.isActive,
     }));
+
+    try {
+      await this.redis.set(cacheKey, JSON.stringify(result), 'EX', TTL_SECONDS);
+    } catch {
+      // ignore
+    }
+    return result;
+  }
+
+  async invalidateTaxRatesCache(orgId: string): Promise<void> {
+    try {
+      await this.redis.del(taxRatesCacheKey(orgId));
+    } catch {
+      // ignore
+    }
   }
 
   async createTaxRate(
@@ -753,6 +793,7 @@ export class SettingsService {
             isActive: dto.isActive ?? true,
           },
         });
+    await this.invalidateTaxRatesCache(orgId);
     this.auditSettings(orgId, 'TaxRate', rate.id, 'CREATE', userId, undefined, {
       name: dto.name,
       rate: dto.rate,
@@ -812,6 +853,7 @@ export class SettingsService {
       if (result.count === 0)
         throw new NotFoundException(translateError('err.settings.taxRateNotFound', getLocale()));
     }
+    await this.invalidateTaxRatesCache(orgId);
     const updated = await this.prisma.taxRate.findFirstOrThrow({ where: { id, orgId } });
     this.auditSettings(orgId, 'TaxRate', id, 'UPDATE', userId, undefined, { ...dto });
     return {
@@ -840,6 +882,7 @@ export class SettingsService {
     });
     if (result.count === 0)
       throw new NotFoundException(translateError('err.settings.taxRateNotFound', getLocale()));
+    await this.invalidateTaxRatesCache(orgId);
     this.auditSettings(orgId, 'TaxRate', id, 'DELETE', userId, { name: existing.name }, undefined);
   }
 

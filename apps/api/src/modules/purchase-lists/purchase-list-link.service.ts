@@ -8,7 +8,11 @@ import {
   stockKey,
 } from '../work-orders/work-order-stock-requirements';
 import { PROCUREMENT_ACTIVE_STATUSES } from '../work-orders/work-orders.fsm';
-import { CLEAR_OFFER_SNAPSHOT, itemPartData } from './purchase-list-offer-snapshot';
+import {
+  CLEAR_OFFER_SNAPSHOT,
+  itemPartData,
+  setItemQuantity,
+} from './purchase-list-offer-snapshot';
 import { conflict } from './purchase-lists.helpers';
 
 type Tx = Prisma.TransactionClient;
@@ -149,8 +153,12 @@ export class PurchaseListLinkService {
           await this.casItem(tx, orgId, item, { status: 'CANCELLED' });
           excess -= item.quantity;
         } else {
-          await this.casItem(tx, orgId, item, { quantity: item.quantity - excess });
-          excess = 0;
+          // Обрана пропозиція лишається — урізане округлюється до її кратності вгору (BR-SOFR-006);
+          // неурізаний через кратність надлишок переходить на старіші позиції.
+          const { quantity } = setItemQuantity(item, item.quantity - excess);
+          if (quantity >= item.quantity - QTY_EPSILON) continue;
+          await this.casItem(tx, orgId, item, { quantity });
+          excess -= item.quantity - quantity;
         }
       }
     }

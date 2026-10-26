@@ -4,8 +4,11 @@ import {
   ORG,
   SUPPLIER,
   SUPPLIER_2,
+  WO_A,
   itemRow,
+  partRow,
   procurementHarness,
+  woRow,
 } from './purchase-lists.spec-fixture';
 
 /**
@@ -183,5 +186,90 @@ describe('BR-PL-019 ручна зміна позиції й пропозиція
     expect(h.item('i1')).toMatchObject({ supplierId: SUPPLIER_2, offerKey: null });
     expect(h.item('i2')).toMatchObject({ supplierId: SUPPLIER_2, offerKey: '45000|15' });
     expect(h.item('i3')).toMatchObject({ supplierId: SUPPLIER_2 });
+  });
+});
+
+/** Позиція з обраною пропозицією кратністю 4 (BR-SOFR-006). */
+const BY_FOUR: MemRow = { ...SNAPSHOT, offerMultiplicity: 4 };
+
+describe('BR-SOFR-006 кратність обраної пропозиції тримається після вибору', () => {
+  // guards: BR-SOFR-006, BR-PL-019
+  it('зміна кількості — до кратності вгору, пропозиція лишається; інший постачальник — як є', async () => {
+    const h = procurementHarness({
+      items: [
+        itemRow('i1', { quantity: 4, ...BY_FOUR }),
+        itemRow('i2', { quantity: 4, ...BY_FOUR }),
+      ],
+    });
+    h.addTable('supplierOffer', []);
+
+    expect(await h.items.update(ORG, 'i1', { quantity: 5 })).toMatchObject({
+      quantity: 8,
+      offerKey: '45000|15',
+    });
+    expect(await h.items.update(ORG, 'i1', { quantity: 4 })).toMatchObject({ quantity: 4 });
+    expect(await h.items.update(ORG, 'i2', { quantity: 5, supplierId: SUPPLIER_2 })).toMatchObject({
+      quantity: 5,
+      offerKey: null,
+    });
+  });
+
+  // guards: BR-SOFR-006, BR-PL-017
+  it('остача при скасуванні замовлення — відкрита частина зі знімком кратна пропозиції', async () => {
+    const h = procurementHarness({
+      items: [
+        itemRow('i1', {
+          quantity: 8,
+          receivedQty: 1,
+          status: 'ORDERED',
+          purchaseOrderId: 'po-1',
+          ...BY_FOUR,
+        }),
+      ],
+    });
+
+    await h.links.onOrderClosed(h.prisma as never, ORG, 'po-1');
+
+    expect(h.item('i1')).toMatchObject({ status: 'RECEIVED', quantity: 1 });
+    expect(h.liveItems().find(r => r.id !== 'i1')).toMatchObject({
+      status: 'OPEN',
+      quantity: 8, // недоотримано 7 → до кратності 4 вгору
+      offerKey: '45000|15',
+    });
+  });
+
+  // guards: BR-SOFR-006, BR-PL-013
+  it('урізання за зміною наряду — до кратності вгору; неурізаний надлишок переходить на старіші', async () => {
+    const h = procurementHarness({
+      workOrders: [woRow(WO_A, { status: 'APPROVED' })],
+      parts: [partRow('p1', WO_A, { quantity: 10 })],
+      items: [
+        itemRow('i-old', { quantity: 2, workOrderId: WO_A, workOrderPartId: 'p1' }),
+        itemRow('i-new', { quantity: 8, workOrderId: WO_A, workOrderPartId: 'p1', ...BY_FOUR }),
+      ],
+    });
+
+    await h.workOrders.updatePart(ORG, WO_A, 'p1', { quantity: 3 } as never);
+
+    // Надлишок 7: новіша 8 → 1 → до кратності 4; решта надлишку (3) скасовує старішу (2).
+    expect(h.item('i-new')).toMatchObject({ status: 'OPEN', quantity: 4, offerKey: '45000|15' });
+    expect(h.item('i-old')!.status).toBe('CANCELLED');
+  });
+
+  // guards: BR-SOFR-006, BR-PL-003
+  it('збільшення з наряду — сума до кратності пропозиції вгору', async () => {
+    const h = procurementHarness({
+      workOrders: [woRow(WO_A, { status: 'APPROVED' })],
+      parts: [partRow('p1', WO_A, { quantity: 9 })],
+      items: [itemRow('i1', { quantity: 4, workOrderId: WO_A, workOrderPartId: 'p1', ...BY_FOUR })],
+    });
+
+    await h.lists.fromWorkOrder(ORG, {
+      workOrderId: WO_A,
+      listId: 'list-1',
+      parts: [{ workOrderPartId: 'p1', quantity: 1 }],
+    } as never);
+
+    expect(h.item('i1')).toMatchObject({ quantity: 8, offerKey: '45000|15' });
   });
 });

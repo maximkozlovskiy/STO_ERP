@@ -161,6 +161,26 @@ describe('PdfService — шапка з логотипом і реквізита�
     expect(warn).toHaveBeenCalledTimes(1);
   }, 15_000);
 
+  // TECH-DEBT §11 п.6: OrgPrintInfoService кешує логотип лише після цієї проби — інакше
+  // пошкоджений файл на добу подвоював збірку кожного документа (тест вище).
+  it('probeImage: справжній PNG pdfmake приймає, пошкоджений (сигнатура PNG і сміття) — ні', async () => {
+    expect(await service.probeImage(PNG_DATA_URL)).toBe(true);
+    expect(await service.probeImage(BROKEN_PNG_DATA_URL)).toBe(false);
+  }, 15_000);
+
+  it('probeImage будує один документ лише з цим зображенням під ключем логотипа', async () => {
+    const docs = capture();
+
+    await service.probeImage(PNG_DATA_URL);
+
+    const [doc] = docs();
+    expect(docs()).toHaveLength(1);
+    expect(Object.values(doc!.images ?? {})).toEqual([PNG_DATA_URL]);
+    // pdfmake дописує у вузли службові поля розмітки — порівнюємо лише задане.
+    expect(doc!.content).toHaveLength(1);
+    expect(doc!.content[0]).toMatchObject({ image: Object.keys(doc!.images ?? {})[0] });
+  }, 15_000);
+
   it('шапка несе назву, ЄДРПОУ, ІПН, адресу, телефон, e-mail, IBAN, банк і МФО', async () => {
     const docs = capture();
 

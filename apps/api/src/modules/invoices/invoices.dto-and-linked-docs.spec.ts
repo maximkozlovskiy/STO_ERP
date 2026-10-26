@@ -229,6 +229,35 @@ describe('InvoicesService — linked-documents edge cases', () => {
     expect(prisma.payment.findMany).not.toHaveBeenCalled();
   });
 
+  // guards: BR-WO-012
+  it('getLinkedDocuments: видалений рахунок (перегляд) → секції заповнені, orgId у пошуку', async () => {
+    // Таблиця, що поважає фільтр: з `deletedAt: null` видаленого рахунку не знайти.
+    prisma.invoice.findFirst.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
+      Promise.resolve(
+        where.deletedAt === null || where.orgId !== ORG
+          ? null
+          : { workOrderId: WO, counterpartyId: CP },
+      ),
+    );
+    prisma.workOrder.findFirst.mockResolvedValue({ id: WO, number: 'WO-1', status: 'DONE' });
+    prisma.counterparty.findFirst.mockResolvedValue({ id: CP });
+    prisma.payment.findMany.mockResolvedValue([]);
+
+    const res = await service.getLinkedDocuments(ORG, A);
+
+    expect(res.workOrder.map(w => w.id)).toEqual([WO]);
+    expect(res.counterparty).toEqual([{ id: CP }]);
+    // Цілі зв'язків — як і раніше лише живі.
+    expect(prisma.workOrder.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ deletedAt: null }) }),
+    );
+    expect(await service.getLinkedDocuments(OTHER_ORG, A)).toEqual({
+      workOrder: [],
+      payments: [],
+      counterparty: [],
+    });
+  });
+
   it('getLinkedDocuments: рядок оплати віддає fiscalStatus (select + мапінг), Decimal → number', async () => {
     prisma.invoice.findFirst.mockResolvedValue({ workOrderId: null, counterpartyId: CP });
     prisma.payment.findMany.mockResolvedValue([

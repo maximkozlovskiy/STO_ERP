@@ -16,6 +16,7 @@ import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff } from '../../common/utils/math';
 import { fetchPartCoefficients } from '../work-orders/work-order-stock-requirements';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
+import { confirmTxTimeoutMs } from '../../common/utils/confirm-tx-timeout';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -39,22 +40,6 @@ const MOVEMENT_TYPES: Partial<Record<StockDocumentType, StockMovementType>> = {
   OPENING_BALANCE: StockMovementType.OPENING_BALANCE,
   RECEIPT: StockMovementType.RECEIPT,
 };
-
-/**
- * BR-SDOC-008 (Bug #801): бюджет транзакції проведення росте з кількістю рядків.
- *
- * Рядки проводяться послідовно (BR-SDOC-004), кожен — кілька запитів у createMovement, а TRANSFER
- * робить два рухи на рядок. Заміряно на dev-БД 2026-10-08 (127.0.0.1): TRANSFER ≈ 28 мс/рядок на
- * чистому товарі й більше, коли в товару накопичились партії. Фіксовані 15 с документ на 500 рядків
- * (стільки пропускає DTO) проходив із запасом 5% (14,3 с), а вдруге на тих самих товарах падав:
- * 500 «Внутрішня помилка сервера» через 15,1 с, усі рухи відкочено. 120 мс/рядок — це ×4 від
- * заміряного: 500 рядків → 60 с. Малі документи лишаються на 15 с.
- */
-export const CONFIRM_TX_BASE_TIMEOUT_MS = 15_000;
-export const CONFIRM_TX_PER_LINE_MS = 120;
-export function confirmTxTimeoutMs(lineCount: number): number {
-  return Math.max(CONFIRM_TX_BASE_TIMEOUT_MS, lineCount * CONFIRM_TX_PER_LINE_MS);
-}
 
 // sto-optimize (cycle 3/3): sort-field whitelist hoisted from findAll body — static string-map,
 // re-allocated on every list request under polling. Sibling to SP_SORT_FIELDS/INV_SORT_FIELDS/WO_SORT/PO_SORT.
@@ -580,8 +565,9 @@ export class StockDocumentsService {
   // (orgId + deletedAt:null, Decimal→Number, zero-init counts — Bug #641 lesson: count == detail).
 
   async getLinkedDocuments(orgId: string, id: string) {
+    // BR-WO-012: видалений документ відкривається на перегляд — без фільтра `deletedAt`.
     const doc = await this.prisma.stockDocument.findFirst({
-      where: { id, orgId, deletedAt: null },
+      where: { id, orgId },
       select: { purchaseOrderId: true, warehouseId: true, targetWarehouseId: true },
     });
     if (!doc) {

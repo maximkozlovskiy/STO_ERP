@@ -65,6 +65,21 @@ describe("Зв'язки списку купівлі", () => {
     expect(docs.purchaseLists.map(l => l.id)).toEqual(['list-old']);
   });
 
+  // guards: BR-WO-012
+  it('видалений список (перегляд) → наряди позицій, видалених разом із ним; чужа org — порожньо', async () => {
+    const h = harness();
+    await h.lists.remove(ORG, 'list-2');
+
+    const docs = await h.lists.getLinkedDocuments(ORG, 'list-2');
+
+    expect(docs.workOrders.map(w => w.id)).toEqual([WO_A]);
+    expect(await h.lists.getLinkedDocuments('org-other', 'list-2')).toEqual({
+      workOrders: [],
+      purchaseOrders: [],
+      purchaseLists: [],
+    });
+  });
+
   it('лічильники списків збігаються з деталями; чужий список — нулі', async () => {
     const h = harness();
 

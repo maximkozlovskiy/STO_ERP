@@ -13,7 +13,7 @@ import {
   BankTransactionSource,
   CounterpartyType,
 } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
+import { kyivTodayYmd, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { dateOnlyRangeFilter, isCalendarDate } from '../../common/utils/kyiv-date';
 import { searchContains } from '../../common/utils/like-pattern';
@@ -919,6 +919,13 @@ export class BankReconciliationService {
         }),
       );
     }
+    // BR-BANK-021: операція ще не відбулась — «сьогодні» київське, не UTC (о 01:30 за Києвом UTC
+    // ще вчора, і завтрашня дата пройшла б). Рядки однакового формату `YYYY-MM-DD` порівнюються як дати.
+    if (dto.operationDate > kyivTodayYmd()) {
+      throw new BadRequestException(
+        translateError('err.bankStatement.operationDateInFuture', getLocale()),
+      );
+    }
     // BR-BANK-041: усі перевірки рознесення — ДО вставки рядка: відмова тут не лишає нічого.
     const allocation = dto.allocation
       ? await this.planAllocation(orgId, dto.allocation, {
@@ -1007,7 +1014,13 @@ export class BankReconciliationService {
       transferBankAccountId: alloc.transferBankAccountId,
       cashRegisterId: alloc.cashRegisterId,
     };
-    const plan = await resolveOutgoingPlan(this.prisma, orgId, row, reconcile);
+    const plan = await resolveOutgoingPlan(
+      this.prisma,
+      orgId,
+      row,
+      reconcile,
+      async () => (await this.exchangeRates.getBaseCurrency(orgId)).id,
+    );
     return { kind: 'OUTGOING', type: alloc.type, plan };
   }
 
@@ -1200,7 +1213,13 @@ export class BankReconciliationService {
       throw new NotFoundException(translateError('err.bankStatement.txNotFound', getLocale()));
     }
     assertOutgoingDirection(row.direction, dto.type);
-    const plan = await resolveOutgoingPlan(this.prisma, orgId, row, dto);
+    const plan = await resolveOutgoingPlan(
+      this.prisma,
+      orgId,
+      row,
+      dto,
+      async () => (await this.exchangeRates.getBaseCurrency(orgId)).id,
+    );
 
     if (plan.kind === 'NEW_SUPPLIER_PAYMENT') {
       await this.reconcileNewSupplierPayment(orgId, row, plan, userId);

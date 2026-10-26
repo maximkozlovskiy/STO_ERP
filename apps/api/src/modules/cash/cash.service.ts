@@ -5,7 +5,13 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
-import { assertMoneyFits, type Money, money, moneyFromDecimal } from '../../common/utils/money';
+import {
+  assertMoneyFits,
+  formatMoneyForMessage,
+  type Money,
+  money,
+  moneyFromDecimal,
+} from '../../common/utils/money';
 import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { searchContains } from '../../common/utils/like-pattern';
 import { uniqueDefinedIds } from '../../common/utils/linked-counts';
@@ -110,7 +116,13 @@ export class CashService {
 
     const register = await db.cashRegister.findFirst({
       where: { id: input.cashRegisterId, orgId, deletedAt: null },
-      select: { id: true, isFiscal: true, branchId: true, currencyId: true },
+      select: {
+        id: true,
+        isFiscal: true,
+        branchId: true,
+        currencyId: true,
+        currency: { select: { code: true } },
+      },
     });
     if (!register)
       throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
@@ -167,11 +179,13 @@ export class CashService {
         await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cash-register:${register.id}`}))`;
         const balance = await this.getBalance(orgId, register.id, client);
         if (balance - amount < -0.001) {
+          // Суми — у валюті каси (каса моно-валютна): код валюти каси, а не хардкод ₴ (§10 п.25).
+          const locale = getLocale();
           throw new BadRequestException(
-            // Суми — у валюті каси (каса моно-валютна), тож без хардкоду ₴ (каса може бути USD/EUR).
-            translateError('err.cash.insufficientCash', getLocale(), {
-              available: balance,
-              required: amount,
+            translateError('err.cash.insufficientCash', locale, {
+              available: formatMoneyForMessage(balance, locale),
+              required: formatMoneyForMessage(amount, locale),
+              currency: register.currency.code,
             }),
           );
         }

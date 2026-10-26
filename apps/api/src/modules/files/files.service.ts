@@ -11,6 +11,12 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 
+/**
+ * Типовий тайм-аут `getObject`: сховище, що зависло (не впало), не тримає друк документа —
+ * за цей час читання обривається помилкою, і той, хто кличе, працює без файла.
+ */
+export const GET_OBJECT_TIMEOUT_MS = 5_000;
+
 const ALLOWED_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'pdf']);
 
 interface UploadFile {
@@ -178,24 +184,57 @@ export class FilesService implements OnModuleInit {
   /**
    * Прочитати об'єкт сховища в пам'ять — для серверного використання (логотип у шапці PDF).
    * Читає не більше `maxBytes`: більший об'єкт перериває читання й кидає помилку, щоб
-   * випадково завеликий файл не тягнувся в пам'ять цілком. Помилки — звичайні `Error`
-   * (внутрішній виклик, не HTTP): той, хто кличе, сам вирішує, що робити без файла.
+   * випадково завеликий файл не тягнувся в пам'ять цілком. Усе читання (запит і потік) — не
+   * довше за `timeoutMs`: зависле сховище дає помилку, а потік закривається. Помилки — звичайні
+   * `Error` (внутрішній виклик, не HTTP): той, хто кличе, сам вирішує, що робити без файла.
    */
-  async getObject(objectName: string, maxBytes: number): Promise<Buffer> {
-    if (!this.client) throw new Error('MinIO client is not configured');
-    const stream = await this.client.getObject(this.bucket, objectName);
-    const chunks: Buffer[] = [];
-    let size = 0;
-    for await (const chunk of stream) {
-      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      size += buf.length;
-      if (size > maxBytes) {
-        (stream as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
-        throw new Error(`Object ${objectName} exceeds ${maxBytes} bytes`);
+  async getObject(
+    objectName: string,
+    maxBytes: number,
+    timeoutMs: number = GET_OBJECT_TIMEOUT_MS,
+  ): Promise<Buffer> {
+    const client = this.client;
+    if (!client) throw new Error('MinIO client is not configured');
+    type Destroyable = NodeJS.ReadableStream & { destroy?: () => void };
+    let stream: Destroyable | null = null;
+    let timedOut = false;
+    let timer: NodeJS.Timeout | undefined;
+
+    const read = async (): Promise<Buffer> => {
+      const opened: Destroyable = await client.getObject(this.bucket, objectName);
+      stream = opened;
+      // Потік відкрився вже після тайм-ауту — закрити, щоб не лишати з'єднання сховища.
+      if (timedOut) {
+        opened.destroy?.();
+        throw new Error(`Object ${objectName} read timed out after ${timeoutMs} ms`);
       }
-      chunks.push(buf);
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of opened) {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        size += buf.length;
+        if (size > maxBytes) {
+          opened.destroy?.();
+          throw new Error(`Object ${objectName} exceeds ${maxBytes} bytes`);
+        }
+        chunks.push(buf);
+      }
+      return Buffer.concat(chunks);
+    };
+
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        (stream)?.destroy?.();
+        reject(new Error(`Object ${objectName} read timed out after ${timeoutMs} ms`));
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([read(), timeout]);
+    } finally {
+      clearTimeout(timer);
     }
-    return Buffer.concat(chunks);
   }
 
   async deleteObject(objectName: string): Promise<void> {

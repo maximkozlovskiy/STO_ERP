@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEmployees, employeesKeys } from '@/hooks/api/useEmployees';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
 import { Plus, Pencil, Users, Trash2, Eye, EyeOff, Search } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -124,50 +125,6 @@ const ROLE_FILTER_CODES = [
   'XLSX_MANAGER',
 ] as const;
 
-function CheckboxList({
-  label,
-  items,
-  selected,
-  onChange,
-}: {
-  label: string;
-  items: { id: string; name: string }[];
-  selected: string[];
-  onChange: (ids: string[]) => void;
-}) {
-  const { t } = useTranslation('employees');
-  const toggle = (id: string) =>
-    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
-  return (
-    <div className="mb-3">
-      <label className="block text-[13px] font-medium text-foreground mb-2">{label}</label>
-      <div className="border border-border rounded-lg max-h-36 overflow-y-auto divide-y divide-border">
-        {items.length === 0 && (
-          <p className="px-3 py-2 text-[12px] text-muted-foreground">{t('empty.noRecords')}</p>
-        )}
-        {items.map(item => (
-          <label
-            key={item.id}
-            className="flex items-center gap-2 px-3 py-2 hover:bg-secondary cursor-pointer"
-          >
-            <input
-              type="checkbox"
-              checked={selected.includes(item.id)}
-              onChange={() => toggle(item.id)}
-              className="rounded border-border"
-            />
-            <span className="text-[13px] text-foreground">{item.name}</span>
-          </label>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function flattenTree(cats: WorkCategory[]): { id: string; name: string }[] {
-  return cats.flatMap(c => [{ id: c.id, name: c.name }, ...flattenTree(c.children)]);
-}
-
 // Module-level — статичні колонки (label = i18n-ключ, резолвиться у компоненті) +
 // прекомпьютений JSON для hasCustomization.
 const COLUMN_DEFS: Array<{ key: string; labelKey: string; defaultVisible?: boolean }> = [
@@ -247,13 +204,17 @@ export default function EmployeesPage() {
   // Токен останнього відкриття: картку тепер відкриває ще й клік по рядку (панель вимкнена), і
   // два швидкі кліки по різних рядках інакше показали б того, чия відповідь прийшла останньою.
   const openEditReqRef = useRef(0);
+  // Видалений співробітник (BR-EMP-002): GET /employees/:id для нього — 404, тож картку лише на
+  // перегляд відкриваємо з рядка списку без запиту.
   const openEditModal = useCallback(async (emp: Employee) => {
     const reqId = ++openEditReqRef.current;
     let full = emp;
-    try {
-      full = await apiFetch<Employee>(`/employees/${emp.id}`);
-    } catch {
-      /* лишаємо рядок зі списку */
+    if (!emp.deletedAt) {
+      try {
+        full = await apiFetch<Employee>(`/employees/${emp.id}`);
+      } catch {
+        /* лишаємо рядок зі списку */
+      }
     }
     if (reqId === openEditReqRef.current) setModalEmp(full);
   }, []);
@@ -287,6 +248,9 @@ export default function EmployeesPage() {
     if (selectedEmp && !loading && !employees.some(i => i.id === selectedEmp.id))
       setSelectedEmp(null);
   }, [selectedEmp, employees, loading]);
+  // Панель тримає копію рядка: після збереження картки список перечитується, а панель
+  // показувала б старі дані, доки рядок не вибрати знову.
+  useSelectedRowRefresh(employees, selectedEmp?.id, setSelectedEmp);
   const qc = useQueryClient();
 
   const applyFilter = useCallback(
@@ -312,24 +276,34 @@ export default function EmployeesPage() {
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(employees);
 
   // Звіт про результат bulk-операції. Promise.allSettled не кидає — без цього
-  // виклику відмови лишались би невидимими для користувача.
+  // виклику відмови лишались би невидимими для користувача. До підсумку «n з m» додаємо
+  // унікальні тексти сервера: інакше «Не можна звільнити самого себе» губилось за лічильником.
   const reportBulkResult = useCallback(
-    (op: 'delete' | 'fire', succeeded: number, failed: number, total: number) => {
-      if (features.toastEnabled) {
-        if (failed === 0) {
-          toast.success(t(`toast.bulk.${op}Ok`, { count: succeeded }));
-        } else if (succeeded > 0) {
-          toast.warning(t(`toast.bulk.${op}Partial`, { succeeded, total, failed }));
-        } else {
-          toast.error(t(`toast.bulk.${op}None`, { count: total }));
-        }
-      } else if (failed > 0) {
-        setError(
-          succeeded > 0
-            ? t(`toast.bulk.${op}Partial`, { succeeded, total, failed })
-            : t(`toast.bulk.${op}None`, { count: total }),
-        );
+    (op: 'delete' | 'fire', results: PromiseSettledResult<unknown>[]) => {
+      const total = results.length;
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = total - succeeded;
+      if (failed === 0) {
+        if (features.toastEnabled) toast.success(t(`toast.bulk.${op}Ok`, { count: succeeded }));
+        return;
       }
+      const reasons = [
+        ...new Set(
+          results.flatMap(r =>
+            r.status === 'rejected' && r.reason instanceof Error && r.reason.message
+              ? [r.reason.message]
+              : [],
+          ),
+        ),
+      ];
+      const summary =
+        succeeded > 0
+          ? t(`toast.bulk.${op}Partial`, { succeeded, total, failed })
+          : t(`toast.bulk.${op}None`, { count: total });
+      const message = reasons.length > 0 ? `${summary}: ${reasons.join('; ')}` : summary;
+      if (!features.toastEnabled) setError(message);
+      else if (succeeded > 0) toast.warning(message);
+      else toast.error(message);
     },
     [features.toastEnabled, t],
   );
@@ -361,11 +335,9 @@ export default function EmployeesPage() {
             const results = await Promise.allSettled(
               ids.map(id => apiFetch<void>(`/employees/${id}`, { method: 'DELETE' })),
             );
-            const succeeded = results.filter(r => r.status === 'fulfilled').length;
-            const failed = results.length - succeeded;
             bulkSelect.clear();
             load();
-            reportBulkResult('delete', succeeded, failed, results.length);
+            reportBulkResult('delete', results);
           })();
         },
       },
@@ -390,11 +362,9 @@ export default function EmployeesPage() {
                 }),
               ),
             );
-            const succeeded = results.filter(r => r.status === 'fulfilled').length;
-            const failed = results.length - succeeded;
             bulkSelect.clear();
             load();
-            reportBulkResult('fire', succeeded, failed, results.length);
+            reportBulkResult('fire', results);
           })();
         },
       },
@@ -826,16 +796,19 @@ export default function EmployeesPage() {
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                            title={t('actions.markForDeletion')}
-                            disabled={isMarking || !!markingId || isDeleted}
-                            onClick={() => void markForDeletion(emp.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          {/* BR-EMP-002: видалений — лише перегляд, дії видалення немає */}
+                          {!isDeleted && (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                              title={t('actions.markForDeletion')}
+                              disabled={isMarking || !!markingId}
+                              onClick={() => void markForDeletion(emp.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

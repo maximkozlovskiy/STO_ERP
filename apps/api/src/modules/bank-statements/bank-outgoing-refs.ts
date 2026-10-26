@@ -208,12 +208,17 @@ async function planPayroll(
   };
 }
 
-/** BR-BANK-033: інший власний рахунок — не видалений і не той самий, що в рядку. */
+/**
+ * BR-BANK-033: інший власний рахунок — не видалений і не той самий, що в рядку. Рядок у іноземній
+ * валюті переказується лише на рахунок тієї самої валюти (рішення власника №9, 2026-10-26); рядок
+ * у базовій валюті — на будь-який (купівля валюти).
+ */
 async function planTransfer(
   prisma: PrismaService,
   orgId: string,
   row: OutgoingRow,
   dto: ReconcileTransactionDto,
+  baseCurrencyId: () => Promise<string | null>,
 ): Promise<OutgoingPlan> {
   const transferBankAccountId = required(dto.transferBankAccountId);
   const account =
@@ -221,9 +226,12 @@ async function planTransfer(
       ? null
       : await prisma.bankAccount.findFirst({
           where: { id: transferBankAccountId, orgId, deletedAt: null },
-          select: { id: true },
+          select: { id: true, currencyId: true },
         });
   if (!account) throw badRequest('err.bankStatement.transferAccountInvalid');
+  if (account.currencyId !== row.currencyId && row.currencyId !== (await baseCurrencyId())) {
+    throw badRequest('err.bankStatement.transferCurrencyMismatch');
+  }
   return { kind: 'LINK', links: { ...NO_OUTGOING_LINKS, transferBankAccountId } };
 }
 
@@ -249,13 +257,15 @@ async function planCashWithdrawal(
 
 /**
  * Перевіряє посилання виду рознесення й повертає план дії. Кидає 400 / 404 / 409 — рядок при
- * цьому не чіпається (перевірка стоїть до CAS-захоплення).
+ * цьому не чіпається (перевірка стоїть до CAS-захоплення). `baseCurrencyId` — лінивий: id базової
+ * валюти потрібен лише переказу між рахунками різних валют.
  */
 export async function resolveOutgoingPlan(
   prisma: PrismaService,
   orgId: string,
   row: OutgoingRow,
   dto: ReconcileTransactionDto,
+  baseCurrencyId: () => Promise<string | null>,
 ): Promise<OutgoingPlan> {
   switch (dto.type) {
     case 'SUPPLIER_PAYMENT':
@@ -276,7 +286,7 @@ export async function resolveOutgoingPlan(
     case 'PAYROLL':
       return planPayroll(prisma, orgId, dto);
     case 'TRANSFER':
-      return planTransfer(prisma, orgId, row, dto);
+      return planTransfer(prisma, orgId, row, dto, baseCurrencyId);
     case 'CASH_WITHDRAWAL':
       return planCashWithdrawal(prisma, orgId, row, dto);
     default: {

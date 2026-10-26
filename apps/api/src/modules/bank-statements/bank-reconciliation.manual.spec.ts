@@ -1,5 +1,5 @@
 import { translateError } from '@sto/shared';
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import type { CreateBankTransactionDto } from './bank-statement.dto';
 import {
   ID,
@@ -134,6 +134,44 @@ describe('BankReconciliationService.createManual — ручне внесення
       expect(stored.toISOString()).toBe(`${operationDate}T00:00:00.000Z`);
     },
   );
+
+  // TECH-DEBT §8 «Вихідні банківські платежі» п. 10: майбутня дата операції приймалась.
+  // «Сьогодні» — київське: 14.07 о 21:30 UTC у Києві вже 15.07 (UTC+3).
+  // Мутації: прибрати перевірку → кейс «завтра» червоніє (рядок створено); брати «сьогодні» за UTC
+  // (`new Date().toISOString().slice(0, 10)`) → кейс «сьогодні за Києвом» червоніє (400).
+  describe('майбутня дата операції', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-07-14T21:30:00.000Z'));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    // guards: BR-BANK-021, BR-BANK-023
+    it('завтра за Києвом → 400 operationDateInFuture, рядок не створено', async () => {
+      const w = await makeWorld();
+
+      await expect(
+        w.service.createManual(ORG, dto({ operationDate: '2026-07-16' }), USER),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: translateError('err.bankStatement.operationDateInFuture', 'uk'),
+      });
+
+      expect(w.db.rows('bankTransaction')).toEqual([]);
+      expect(w.exchange.resolveBaseConversion).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-BANK-021, BR-BANK-023
+    it('сьогодні за Києвом (в UTC ще вчора) → рядок створено', async () => {
+      const w = await makeWorld();
+
+      await w.service.createManual(ORG, dto({ operationDate: '2026-07-15' }), USER);
+
+      expect((created(w).operationDate as Date).toISOString()).toBe('2026-07-15T00:00:00.000Z');
+    });
+  });
 
   // guards: BR-BANK-016, BR-BANK-038
   it.each([

@@ -95,6 +95,34 @@ describe('StockDocumentsService — linked documents (Phase D3)', () => {
     ]);
   });
 
+  // guards: BR-WO-012
+  it('getLinkedDocuments: видалений документ (перегляд) → секції заповнені, orgId у пошуку', async () => {
+    // Таблиця, що поважає фільтр: з `deletedAt: null` видаленого документа не знайти.
+    prisma.stockDocument.findFirst.mockImplementation(
+      ({ where }: { where: Record<string, unknown> }) =>
+        Promise.resolve(
+          where.deletedAt === null || where.orgId !== ORG
+            ? null
+            : { purchaseOrderId: PO_ID, warehouseId: WAREHOUSE_ID, targetWarehouseId: null },
+        ),
+    );
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ id: PO_ID, totalAmount: 500 });
+    prisma.warehouse.findFirst.mockResolvedValueOnce({ id: WAREHOUSE_ID, name: 'Джерело' });
+
+    const res = await service.getLinkedDocuments(ORG, DOC_ID);
+
+    expect(res.purchaseOrder).toEqual([{ id: PO_ID, totalAmount: 500 }]);
+    expect(res.warehouses).toEqual([{ id: WAREHOUSE_ID, name: 'Джерело' }]);
+    // Цілі зв'язків — як і раніше лише живі.
+    expect(prisma.warehouse.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ deletedAt: null }) }),
+    );
+    expect(await service.getLinkedDocuments('org-2', DOC_ID)).toEqual({
+      purchaseOrder: [],
+      warehouses: [],
+    });
+  });
+
   it('getLinkedCounts: zero-init для КОЖНОГО id + порожній вхід → {}', async () => {
     expect(await service.getLinkedCounts(ORG, [])).toEqual({});
     const res = await service.getLinkedCounts(ORG, [DOC_ID, 'doc-2']);

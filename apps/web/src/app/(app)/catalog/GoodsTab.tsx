@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { activateRow } from '@/lib/row-activation';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
 import {
   Plus,
   Pencil,
@@ -260,6 +261,10 @@ export default function GoodsTab() {
       return (a.name ?? '').localeCompare(b.name ?? '', 'uk') * dir;
     });
   }, [rawGoodsItems, goodsSort]);
+  // Панель тримає копію рядка: після збереження картки список перечитується, а панель
+  // показувала б старі дані. `setSelectedGood`, не `selectGood`: той скинув би вкладку панелі
+  // й заново тягнув штрихкоди.
+  useSelectedRowRefresh(rawGoodsItems, selectedGood?.id, setSelectedGood);
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(goodsItems);
 
   const goodsLoadRef = useRef<(() => void) | null>(null);

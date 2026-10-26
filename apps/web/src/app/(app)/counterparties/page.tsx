@@ -5,6 +5,7 @@ import { TabDivider } from '@/components/ui/tab-divider';
 import { useTranslation } from 'react-i18next';
 import { activateRow } from '@/lib/row-activation';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -242,6 +243,9 @@ function CrmPageInner() {
     if (selectedCp && !loading && !counterparties.some(i => i.id === selectedCp.id))
       setSelectedCp(null);
   }, [selectedCp, counterparties, loading]);
+  // Панель тримає копію рядка: після збереження картки список перечитується, а панель
+  // показувала б старі дані, доки рядок не вибрати знову.
+  useSelectedRowRefresh(counterparties, selectedCp?.id, setSelectedCp);
 
   // підтримка `?action=new` query: Command Palette + N shortcut
   // навігують сюди замість неіснуючого /counterparties/new маршруту.

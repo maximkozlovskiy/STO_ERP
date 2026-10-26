@@ -3,7 +3,7 @@
 // Рядки, позначені на видалення, і далі не клікабельні — це довідники, картки лише на перегляд
 // для них немає.
 
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
@@ -30,10 +30,20 @@ vi.mock('@/lib/api-client', () => ({
 }));
 vi.mock('@/lib/ref-cache', () => ({ getCached: () => null, setCache: vi.fn() }));
 vi.mock('@/components/ui/xlsx-import-button', () => ({ XlsxImportButton: () => null }));
-// Картка товару — маркер із id товару, з яким її відкрили.
+// Картка товару — маркер із id товару, з яким її відкрили; «mock-save» — збереження картки
+// (onSaved), щоб перевірити оновлення панелі.
 vi.mock('@/components/ui/GoodEditModal', () => ({
-  GoodEditModal: (p: { open: boolean; good?: { id: string } | null }) =>
-    p.open && p.good ? <div data-testid="good-card">{p.good.id}</div> : null,
+  GoodEditModal: (p: {
+    open: boolean;
+    good?: { id: string } | null;
+    onSaved: (g: unknown) => void;
+  }) =>
+    p.open && p.good ? (
+      <>
+        <div data-testid="good-card">{p.good.id}</div>
+        <button onClick={() => p.onSaved(p.good)}>mock-save</button>
+      </>
+    ) : null,
 }));
 
 import WorksTab from '../WorksTab';
@@ -184,6 +194,34 @@ describe('Каталог → Товари — стандарт кліку по �
     expect(screen.queryByTestId('good-card')).not.toBeInTheDocument();
     expect(panelShows('Фільтр масляний')).toBe(false);
     expect(tableRow('Фільтр масляний')).not.toHaveClass('cursor-pointer');
+  });
+
+  // TECH-DEBT §8: панель тримала копію рядка і після збереження картки показувала старі дані.
+  // Мутації: прибрати `useSelectedRowRefresh` у GoodsTab → падає заголовок; передати в хук
+  // `selectGood` замість `setSelectedGood` → падає «штрихкоди не перечитуються».
+  it('після збереження картки панель показує перечитаний рядок, вкладку «Штрихкоди» не скидає', async () => {
+    renderTab(<GoodsTab />);
+    await screen.findByText('Фільтр масляний');
+    await screen.findByRole('button', { name: 'Сховати бокову панель' });
+
+    fireEvent.click(tableRow('Фільтр масляний'));
+    await waitFor(() => expect(panelShows('Фільтр масляний')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Штрихкоди' }));
+    await screen.findByPlaceholderText('Штрихкод');
+    const barcodeCalls = () =>
+      apiFetchMock.mock.calls.filter(c => c[0] === '/goods/good-a/barcodes').length;
+    const before = barcodeCalls();
+    // Олівець рядка відкриває картку, вибір рядка й вкладка панелі лишаються.
+    fireEvent.click(pencil(tableRow('Фільтр масляний')));
+    await screen.findByTestId('good-card');
+
+    goods = [{ ...GOOD_A, name: 'Фільтр масляний MANN' }, GOOD_B];
+    fireEvent.click(screen.getByRole('button', { name: 'mock-save' }));
+
+    await waitFor(() => expect(panelShows('Фільтр масляний MANN')).toBe(true));
+    expect(panelShows('Фільтр масляний')).toBe(false);
+    expect(screen.getByPlaceholderText('Штрихкод')).toBeInTheDocument();
+    expect(barcodeCalls()).toBe(before);
   });
 });
 

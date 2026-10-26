@@ -574,18 +574,28 @@ export class PayrollService {
     return this.findOne(orgId, id);
   }
 
-  /** Soft-delete періоду (лише DRAFT/CANCELLED — розрахований/виплачений не видаляємо). */
+  /** Soft-delete періоду (не PAID і без рознесених на нього рядків виписки — BR-PAYR-012). */
   async remove(orgId: string, id: string, userId?: string): Promise<void> {
-    const period = await this.prisma.payrollPeriod.findFirst({
-      where: { id, orgId, deletedAt: null },
-      select: { status: true },
-    });
+    const [period, reconciledLine] = await Promise.all([
+      this.prisma.payrollPeriod.findFirst({
+        where: { id, orgId, deletedAt: null },
+        select: { status: true },
+      }),
+      this.prisma.bankTransaction.findFirst({
+        where: { orgId, payrollPeriodId: id, status: 'MATCHED', deletedAt: null },
+        select: { id: true },
+      }),
+    ]);
     if (!period)
       throw new NotFoundException(translateError('err.payroll.periodNotFound', getLocale()));
     // Виплачений період — фінансовий факт, не видаляємо. DRAFT/COMPUTED/CANCELLED можна відкинути
     // (COMPUTED — це ще не проведена виплата, користувач може перерахувати після виправлення даних).
     if (period.status === 'PAID')
       throw new BadRequestException(translateError('err.payroll.paidNotDeletable', getLocale()));
+    // Рядок виписки, рознесений як зарплата цього періоду (BR-BANK-032), посилався б на видалений
+    // період (рішення власника №9, 2026-10-26): спершу скасувати рознесення.
+    if (reconciledLine)
+      throw new BadRequestException(translateError('err.payroll.hasReconciledLines', getLocale()));
     // Умова «не PAID» — у самому записі: виплата, що пройшла між читанням і видаленням, інакше
     // лишилась би на видаленому періоді разом із касовими операціями (гонка «виплата ‖ видалення»).
     const deleted = await this.prisma.payrollPeriod.updateMany({

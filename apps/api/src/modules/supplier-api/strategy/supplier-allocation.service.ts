@@ -14,9 +14,9 @@ import { SettingsService } from '../../settings/settings.service';
 import { canSeeItemCost } from '../../purchase-lists/purchase-lists.mapper';
 import { conflict, isItemOpen, OPEN_ITEM_WHERE } from '../../purchase-lists/purchase-lists.helpers';
 import {
+  applyOfferData,
   goodSwap,
   itemPartData,
-  offerSnapshot,
 } from '../../purchase-lists/purchase-list-offer-snapshot';
 import { SupplierPriceConverter } from '../offers/supplier-price-converter';
 import { offerSelectability } from '../offers/offer-selectability';
@@ -234,20 +234,21 @@ export class SupplierAllocationService {
 
   private async applyItem(tx: Prisma.TransactionClient, orgId: string, p: ItemPlan): Promise<void> {
     const { item, result } = p;
-    const dataFor = (offerId: string) => {
+    const dataFor = (offerId: string, qty: number) => {
       const o = p.offers.get(offerId) as SupplierOffer;
       // Товар частини: аналог — його товар із каталогу; не аналог — товар, на який шукали
       // (після попередньої заміни аналогом це оригінал позиції — повертаємо його).
       const target = o.isAnalog ? o.matchedGoodId : (p.goodByOffer.get(offerId) ?? null);
       return {
-        expectedPrice: p.priceById.get(offerId) ?? null,
-        ...offerSnapshot(o, 'AUTO'),
+        ...applyOfferData(o, {
+          supplierId: (p.connections.get(o.connectionId) as ConnectionInfo).counterpartyId,
+          expectedPrice: p.priceById.get(offerId) ?? null,
+          quantity: qty,
+          chosenBy: 'AUTO',
+        }),
         ...(target && target !== item.goodId ? goodSwap(item, target) : {}),
       };
     };
-    const supplierOf = (offerId: string) =>
-      (p.connections.get((p.offers.get(offerId) as SupplierOffer).connectionId) as ConnectionInfo)
-        .counterpartyId;
 
     const [first, ...rest] = result.parts;
     const res = await tx.purchaseListItem.updateMany({
@@ -259,19 +260,14 @@ export class SupplierAllocationService {
         goodId: item.goodId,
         offerKey: item.offerKey,
       },
-      data: {
-        ...dataFor(first.offerId),
-        supplierId: supplierOf(first.offerId),
-        quantity: first.qty,
-      },
+      data: dataFor(first.offerId, first.qty),
     });
     if (res.count !== 1) throw conflict();
     for (const part of rest) {
       await tx.purchaseListItem.create({
         data: {
           ...itemPartData(item, part.qty, { status: 'OPEN', snapshot: 'none' }),
-          ...dataFor(part.offerId),
-          supplierId: supplierOf(part.offerId),
+          ...dataFor(part.offerId, part.qty),
         },
       });
     }

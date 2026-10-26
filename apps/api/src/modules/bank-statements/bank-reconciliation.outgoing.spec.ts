@@ -648,5 +648,56 @@ describe('BankReconciliationService.reconcile — вихідні платежі'
       expect(w.row()).toMatchObject(FREE_ROW);
       expect(effectCalls(w)).toEqual(NO_EFFECTS);
     });
+
+    // Рішення власника №9 (2026-10-26). Мутації: прибрати перевірку валюти в planTransfer → кейс
+    // «валютний рядок на гривневий рахунок» червоніє; порівнювати лише валюти рахунків (без винятку
+    // базової) → кейс «гривневий рядок на валютний рахунок» червоніє.
+    // guards: BR-BANK-033
+    it.each(['OUT', 'IN'] as const)(
+      'валютний рядок (%s) на рахунок іншої валюти → 400 transferCurrencyMismatch, рядок UNMATCHED',
+      async direction => {
+        const w = await makeWorld();
+        w.addRow({ direction, bankAccountId: ID.accountUsd, currencyId: ID.usd });
+
+        await expect(reconcile(w, VALID.TRANSFER)).rejects.toMatchObject({
+          status: 400,
+          message: translateError('err.bankStatement.transferCurrencyMismatch', 'uk'),
+        });
+
+        expect(w.row()).toMatchObject(FREE_ROW);
+        expect(effectCalls(w)).toEqual(NO_EFFECTS);
+      },
+    );
+
+    // guards: BR-BANK-033
+    it('валютний рядок на рахунок тієї самої валюти → MATCHED', async () => {
+      const w = await makeWorld();
+      const usd2 = '00000000-0000-4000-8000-000000000025';
+      w.db.seed('bankAccount', {
+        id: usd2,
+        orgId: ORG,
+        name: 'Рахунок USD 2',
+        ibanUA: 'UA000000000025000000000000000',
+        currencyId: ID.usd,
+        branchId: null,
+      });
+      w.addRow({ bankAccountId: ID.accountUsd, currencyId: ID.usd });
+
+      await reconcile(w, { type: 'TRANSFER', transferBankAccountId: usd2 });
+
+      expect(w.row()).toMatchObject({ status: 'MATCHED', transferBankAccountId: usd2 });
+    });
+
+    // Рядок у базовій валюті — купівля валюти: переказ на валютний рахунок дозволено.
+    // guards: BR-BANK-033
+    it('рядок у базовій валюті на валютний рахунок → MATCHED', async () => {
+      const w = await makeWorld();
+      w.addRow();
+
+      await reconcile(w, { type: 'TRANSFER', transferBankAccountId: ID.accountUsd });
+
+      expect(w.row()).toMatchObject({ status: 'MATCHED', transferBankAccountId: ID.accountUsd });
+      expect(w.exchange.getBaseCurrency).toHaveBeenCalledWith(ORG);
+    });
   });
 });

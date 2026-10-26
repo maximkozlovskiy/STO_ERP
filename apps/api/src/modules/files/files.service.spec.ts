@@ -1,11 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Readable } from 'stream';
 import {
   BadRequestException,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { FilesService } from './files.service';
+import { FilesService, GET_OBJECT_TIMEOUT_MS } from './files.service';
 import { modelMock, type PrismaModelMock } from '../../common/testing/prisma-mock';
 
 /**
@@ -223,6 +223,70 @@ describe('FilesService', () => {
     it('клієнт не сконфігурований → помилка (не тихий порожній буфер)', async () => {
       (svc as unknown as { client: null }).client = null;
       await expect(svc.getObject('org/x/public/a.png', 10)).rejects.toThrow(/not configured/);
+    });
+  });
+
+  // TECH-DEBT §11 п.3: сховище, що зависло (не впало), тримало кожен перший друк PDF без межі.
+  describe('getObject — тайм-аут сховища, що зависло', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** Потік, що відкрився, але не віддає жодного байта. */
+    const hangingStream = () => new Readable({ read() {} });
+
+    it('потік завис → за timeoutMs помилка «timed out», потік закрито', async () => {
+      const stream = hangingStream();
+      client.getObject.mockResolvedValue(stream);
+
+      const result = svc.getObject('org/x/public/a.png', 10, 1_000);
+      const settled = expect(result).rejects.toThrow(/timed out after 1000 ms/);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      await settled;
+      expect(stream.destroyed).toBe(true);
+    });
+
+    it('типовий тайм-аут — 5 с: до нього читання ще чекає, на 5-й секунді — помилка', async () => {
+      expect(GET_OBJECT_TIMEOUT_MS).toBe(5_000);
+      client.getObject.mockResolvedValue(hangingStream());
+      let outcome: 'pending' | 'rejected' = 'pending';
+      const result = svc.getObject('org/x/public/a.png', 10).catch(() => {
+        outcome = 'rejected';
+      });
+
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(outcome).toBe('pending');
+      await vi.advanceTimersByTimeAsync(1);
+      await result;
+      expect(outcome).toBe('rejected');
+    });
+
+    it('сам запит до сховища не відповідає → та сама помилка; потік, що прийшов пізніше, закривається', async () => {
+      let open!: (s: Readable) => void;
+      client.getObject.mockReturnValue(new Promise<Readable>(r => (open = r)));
+
+      const result = svc.getObject('org/x/public/a.png', 10, 1_000);
+      const settled = expect(result).rejects.toThrow(/timed out/);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await settled;
+
+      const late = hangingStream();
+      open(late);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(late.destroyed).toBe(true);
+    });
+
+    it('сховище встигло → дані без помилки, таймер не лишається', async () => {
+      client.getObject.mockResolvedValue(Readable.from([Buffer.from('ok')]));
+      await expect(svc.getObject('org/x/public/a.png', 10, 1_000)).resolves.toEqual(
+        Buffer.from('ok'),
+      );
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 });

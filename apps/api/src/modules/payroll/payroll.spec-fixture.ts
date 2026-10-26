@@ -41,6 +41,8 @@ export function makePayrollFixture() {
     },
     payrollLine: { findMany: vi.fn().mockResolvedValue([]) },
     garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: BRANCH }) },
+    // Рядки виписки, рознесені на період (BR-PAYR-012): за замовчуванням немає.
+    bankTransaction: { findFirst: vi.fn().mockResolvedValue(null) },
     $queryRaw,
     employee,
     $transaction: vi.fn().mockImplementation((fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),

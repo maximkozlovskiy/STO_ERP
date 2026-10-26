@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
@@ -137,6 +137,21 @@ export class BankAccountsService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
+    // BR-BANK-043 (рішення власника №9, 2026-10-26): рознесений рядок виписки цього рахунку або
+    // переказ на нього посилався б на видалений рахунок — спершу скасувати рознесення.
+    const reconciledLine = await this.prisma.bankTransaction.findFirst({
+      where: {
+        orgId,
+        status: 'MATCHED',
+        deletedAt: null,
+        OR: [{ bankAccountId: id }, { transferBankAccountId: id }],
+      },
+      select: { id: true },
+    });
+    if (reconciledLine)
+      throw new BadRequestException(
+        translateError('err.bankAccount.hasReconciledLines', getLocale()),
+      );
     // Defense-in-depth: atomic soft-delete via updateMany with orgId guard
     // (sto-review pattern 2026-05-30). Eliminates the race-window between findFirst
     // and update that could otherwise allow cross-tenant soft-delete.

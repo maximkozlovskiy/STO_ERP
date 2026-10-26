@@ -30,7 +30,11 @@ import {
   OPEN_ITEM_WHERE,
 } from './purchase-lists.helpers';
 import { ITEM_INCLUDE, maskItemCost, toItemDto } from './purchase-lists.mapper';
-import { CLEAR_OFFER_SNAPSHOT, itemPartData } from './purchase-list-offer-snapshot';
+import {
+  CLEAR_OFFER_SNAPSHOT,
+  itemPartData,
+  setItemQuantity,
+} from './purchase-list-offer-snapshot';
 import type {
   BulkResultDto,
   PaginatedPurchaseListItemsDto,
@@ -150,6 +154,12 @@ export class PurchaseListItemsService {
     if (dto.supplierId) await assertSupplier(this.prisma, orgId, dto.supplierId);
     const supplierChanged = dto.supplierId !== undefined && dto.supplierId !== item.supplierId;
     const prevQty = item.quantity;
+    // BR-SOFR-006: пропозиція лишається — кількість до її кратності вгору; інший постачальник
+    // знімає знімок (BR-PL-019), і кількість іде як є.
+    const quantity =
+      dto.quantity === undefined || supplierChanged
+        ? dto.quantity
+        : setItemQuantity(item, dto.quantity).quantity;
     const res = await this.prisma.purchaseListItem.updateMany({
       where: {
         id,
@@ -160,7 +170,7 @@ export class PurchaseListItemsService {
         offerKey: item.offerKey,
       },
       data: {
-        ...(dto.quantity !== undefined ? { quantity: dto.quantity } : {}),
+        ...(quantity !== undefined ? { quantity } : {}),
         ...(dto.supplierId !== undefined ? { supplierId: dto.supplierId } : {}),
         ...(dto.expectedPrice !== undefined ? { expectedPrice: dto.expectedPrice } : {}),
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
@@ -169,10 +179,10 @@ export class PurchaseListItemsService {
     });
     if (res.count !== 1) throw conflict();
     const [dtoOut] = await loadItemDtos(this.prisma, orgId, [id]);
-    if (!supplierChanged && dto.quantity !== undefined && dto.quantity > prevQty + QTY_EPSILON) {
+    if (!supplierChanged && quantity !== undefined && quantity > prevQty + QTY_EPSILON) {
       const offer = await this.offerQty(orgId, item);
       // «≥10» (`qtyIsLowerBound`) — нижня межа: більша кількість не означає перевищення.
-      if (offer && !offer.qtyIsLowerBound && dto.quantity > offer.qty + QTY_EPSILON) {
+      if (offer && !offer.qtyIsLowerBound && quantity > offer.qty + QTY_EPSILON) {
         return { ...dtoOut, offerQtyExceeded: true };
       }
     }
@@ -212,10 +222,10 @@ export class PurchaseListItemsService {
       async tx => {
         const res = await tx.purchaseListItem.updateMany({
           where: { id, orgId, ...OPEN_ITEM_WHERE, quantity: item.quantity },
-          data: { quantity: item.quantity - dto.quantity },
+          data: setItemQuantity(item, item.quantity - dto.quantity),
         });
         if (res.count !== 1) throw conflict();
-        // BR-PL-017: обидві частини лишаються з тією самою пропозицією.
+        // BR-PL-017: обидві частини лишаються з тією самою пропозицією й кратні їй.
         const created = await tx.purchaseListItem.create({
           data: itemPartData(item, dto.quantity),
           select: { id: true },

@@ -173,3 +173,74 @@ describe('EmployeeEditModal — валідація zod + react-hook-form', () =>
     });
   });
 });
+
+// guards: BR-EMP-002
+// Картка видаленого співробітника — лише перегляд (рішення власника №28, TECH-DEBT §8): до
+// цього форма редагувалась, а «Зберегти» давало 404 «Співробітника не знайдено».
+// Мутація: `const readOnly = false` у EmployeeEditModal → падають усі кейси блоку.
+describe('EmployeeEditModal — видалений співробітник лише на перегляд (BR-EMP-002)', () => {
+  const EMP = {
+    id: 'e-del',
+    firstName: 'Іван',
+    lastName: 'Коваль',
+    role: 'MECHANIC',
+    phone: null,
+    status: 'ACTIVE' as const,
+    zoneIds: [] as string[],
+    liftIds: [] as string[],
+    workCategoryIds: [] as string[],
+    branchIds: [] as string[],
+    allBranches: false,
+  };
+
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/zones') return Promise.resolve([{ id: 'z1', name: 'Зона 1', type: 'BAY' }]);
+      if (['/lifts', '/work-categories', '/branches'].includes(path)) return Promise.resolve([]);
+      return Promise.resolve({});
+    });
+  });
+
+  it('видалений: смуга, поля недоступні, «Зберегти» немає, «Закрити» закриває', async () => {
+    const onClose = vi.fn();
+    render(
+      <EmployeeEditModal
+        open
+        employee={{ ...EMP, deletedAt: '2026-10-20T09:00:00.000Z' }}
+        onClose={onClose}
+        onSaved={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId('employee-deleted-banner')).toHaveTextContent(
+      'Співробітника видалено — лише перегляд',
+    );
+    expect(screen.getByPlaceholderText('Іван')).toBeDisabled();
+    expect(screen.getByPlaceholderText('Коваль')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Зберегти' })).not.toBeInTheDocument();
+    // Схему ставки видаленого взяти нізвідки — вигаданої за замовчуванням не показуємо.
+    expect(screen.queryByLabelText(/Відсоток/)).not.toBeInTheDocument();
+    // Призначення (вкладка «Зони») теж лише на перегляд.
+    expect(await screen.findByRole('checkbox', { name: 'Зона 1' })).toBeDisabled();
+
+    // Кнопка футера (у шапці вікна ще є «×» з тією самою назвою).
+    const footerClose = screen
+      .getAllByRole('button', { name: 'Закрити' })
+      .find(b => b.textContent === 'Закрити')!;
+    fireEvent.click(footerClose);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(apiFetchMock.mock.calls.some(c => (c[1] as RequestInit | undefined)?.method)).toBe(
+      false,
+    );
+  });
+
+  it('невидалений: смуги немає, поля доступні, «Зберегти» є', async () => {
+    render(<EmployeeEditModal open employee={EMP} onClose={() => {}} onSaved={() => {}} />);
+
+    expect(screen.queryByTestId('employee-deleted-banner')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Іван')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Зберегти' })).toBeInTheDocument();
+    expect(await screen.findByRole('checkbox', { name: 'Зона 1' })).toBeEnabled();
+  });
+});

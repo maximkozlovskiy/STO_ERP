@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CashService } from './cash.service';
+import { runWithTenant } from '../../common/tenant/tenant-context';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../audit/audit.service';
 
@@ -374,12 +375,18 @@ describe('CashService.createOperation — єдина точка руху', () =>
 describe('CashService.createOperation — overdraft-guard (OUT не нижче 0)', () => {
   // Каса з залишком = initialBalance + Σ(IN) − Σ(OUT). Хелпер стаббить register (двічі: guard + getBalance)
   // + агрегати IN/OUT так, щоб поточний баланс = `balance`.
-  const armBalance = (m: ReturnType<typeof makeMocks>, balance: number, isFiscal = false) => {
+  const armBalance = (
+    m: ReturnType<typeof makeMocks>,
+    balance: number,
+    isFiscal = false,
+    currencyCode = 'UAH',
+  ) => {
     m.prisma.cashRegister.findFirst.mockResolvedValue({
       id: REG,
       isFiscal,
       branchId: 'b1',
       initialBalance: balance,
+      currency: { code: currencyCode },
     });
     // getBalance: initialBalance=balance, нульові агрегати → поточний баланс = balance.
     m.prisma.cashOperation.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
@@ -413,9 +420,36 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
         amount: 150,
         reason: 'MANUAL_OUT',
       }),
-    ).rejects.toThrow(/Недостатньо готівки/);
+    ).rejects.toThrow('Недостатньо готівки в касі: доступно 100,00 UAH, потрібно 150,00 UAH');
     expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
   });
+
+  // §10 п.25: «доступно 5680.49, потрібно 9999999» — без розрядів, копійок і валюти каси.
+  // Мутація: повернути сирі числа в translateError → кейс червоніє; брати не код валюти каси
+  // (хардкод UAH / ₴) → кейс із USD-касою червоніє; форматувати за 'uk' завжди → кейс 'en'.
+  // guards: BR-CASH-006
+  it.each([
+    ['uk', 'Недостатньо готівки в касі: доступно 5 680,49 USD, потрібно 9 999 999,00 USD'],
+    ['en', 'Insufficient cash in the register: available 5,680.49 USD, required 9,999,999.00 USD'],
+  ] as const)(
+    'текст нестачі (%s): суми з розрядами й копійками та код валюти каси',
+    async (locale, text) => {
+      const m = makeMocks();
+      const service = makeService(m);
+      armBalance(m, 5680.49, false, 'USD');
+      await expect(
+        runWithTenant({ orgId: ORG, locale }, () =>
+          service.createOperation(ORG, {
+            cashRegisterId: REG,
+            direction: 'OUT',
+            amount: 9999999,
+            reason: 'MANUAL_OUT',
+          }),
+        ),
+      ).rejects.toMatchObject({ status: 400, message: text });
+      expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
+    },
+  );
 
   // guards: BR-CASH-006
   it('OUT рівно на залишок → проходить (баланс → 0)', async () => {
@@ -443,7 +477,7 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
         amount: 100.01,
         reason: 'MANUAL_OUT',
       }),
-    ).rejects.toThrow(/Недостатньо готівки/);
+    ).rejects.toThrow('Недостатньо готівки в касі: доступно 100,00 UAH, потрібно 100,01 UAH');
     expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
   });
 
@@ -485,6 +519,7 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
       isFiscal: false,
       branchId: 'b1',
       initialBalance: 100,
+      currency: { code: 'UAH' },
     });
     // Перший OUT (60) пройшов → у t-aware агрегації OUT-сума стала 60. Другий OUT (60) читає
     // баланс 100 − 60 = 40 < 60 → блок. Емулюємо це через послідовні OUT-агрегати.
@@ -534,7 +569,7 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
         { cashRegisterId: REG, direction: 'OUT', amount: 60, reason: 'PAYROLL' },
         tx,
       ),
-    ).rejects.toThrow(/Недостатньо готівки/);
+    ).rejects.toThrow('Недостатньо готівки в касі: доступно 40,00 UAH, потрібно 60,00 UAH');
   });
 
   // Дві одночасні видачі в ЗОВНІШНІХ транзакціях (оплати різним постачальникам з однієї каси):

@@ -155,7 +155,7 @@ describe; 2026-10-05 розбито за аспектами — 54 кейси м
 | пошук у списку: номер або примітка, tenant-фільтр                            | `stock-documents.search.spec.ts`                 | 8      | —                                                                   |
 | Нумерація: кожен тип → свій лічильник, номер лише з лічильника               | `stock-documents.numbering.spec.ts`              | 5      | BR-SDOC-001                                                         |
 | Tenant-guard goodId рядків на update                                         | `stock-documents.line-goods-tenant.spec.ts`      | 2      | BR-SDOC-002                                                         |
-| Пов'язані документи (Phase D3)                                               | `stock-documents.linked-docs.spec.ts`            | 8      | —                                                                   |
+| Пов'язані документи (Phase D3)                                               | `stock-documents.linked-docs.spec.ts`            | 9      | —                                                                   |
 | `purchaseOrderId` на create і update (Phase D2)                              | `stock-documents.purchase-order-link.spec.ts`    | 4      | BR-SDOC-006                                                         |
 | HTTP-контракт (DTO, статуси, валідація)                                      | `stock-documents.contract.spec.ts`               | 42     | —                                                                   |
 | документ, позначений на видалення, — лише перегляд (BR-WO-012)               | `stock-documents.with-deleted.spec.ts`           | 9      | —                                                                   |

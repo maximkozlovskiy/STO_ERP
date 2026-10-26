@@ -94,16 +94,23 @@ function makeWorld(brands: BrandRow[], synonyms: SynRow[]) {
     if (or && !or.some(c => eq(r.name, c.name))) return false;
     return true;
   };
-  /** Запит `syncSynonyms` по «вільних» рядках: знятий синонім або синонім видаленого бренду. */
-  const freeRows = (where: Where): Array<{ id: string; synonym: string }> => {
-    const wanted = (where.synonym as { in: string[] }).in;
-    const or = (where.OR ?? []) as Array<Record<string, unknown>>;
-    const seesTombstones = or.some(c => 'deletedAt' in c);
-    const seesDeletedBrands = or.some(c => 'brand' in c);
+  /**
+   * Запит `syncSynonyms` по «вільних» рядках: написання (без регістру) І (знятий синонім або
+   * синонім видаленого бренду).
+   */
+  const freeRows = (
+    where: Where,
+  ): Array<{ id: string; synonym: string; deletedAt: Date | null }> => {
+    const [byWriting, byFree] = where.AND as [
+      { OR: Array<{ synonym: unknown }> },
+      { OR: Array<Record<string, unknown>> },
+    ];
+    const seesTombstones = byFree.OR.some(c => 'deletedAt' in c);
+    const seesDeletedBrands = byFree.OR.some(c => 'brand' in c);
     return synonyms
-      .filter(r => r.orgId === where.orgId && wanted.includes(r.synonym))
+      .filter(r => r.orgId === where.orgId && byWriting.OR.some(c => eq(r.synonym, c.synonym)))
       .filter(r => (seesTombstones && r.deleted) || (seesDeletedBrands && r.brandDeleted))
-      .map(r => ({ id: r.synonym, synonym: r.synonym }));
+      .map(r => ({ id: r.synonym, synonym: r.synonym, deletedAt: r.deleted ? NOW : null }));
   };
   const prisma = {
     $transaction: vi.fn((fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
@@ -150,8 +157,7 @@ function makeWorld(brands: BrandRow[], synonyms: SynRow[]) {
         order.push('read');
         // Запити syncSynonyms: активні рядки цього бренду (порожньо) і вільні рядки організації.
         if (typeof where.brandId === 'string') return Promise.resolve([]);
-        if ((where.synonym as { in?: string[] } | undefined)?.in)
-          return Promise.resolve(freeRows(where));
+        if (where.AND) return Promise.resolve(freeRows(where));
         return Promise.resolve(
           synonyms
             .filter(s => synMatches(s, where))
@@ -331,5 +337,138 @@ describe('BrandsService — синонім не може належати дво
       await expect(w.service.restore(ORG, 'b-old')).resolves.toBeTruthy();
       expect(w.writes).toEqual(['brand.updateMany']);
     });
+  });
+});
+
+// ─── Індекс `lower(synonym)` серед активних (міграція 20261026130000) ─────────────────────────
+//
+// Підробка тримає обидва унікальні індекси бази: повний `(orgId, synonym)` і частковий
+// `(orgId, lower(synonym)) WHERE deletedAt IS NULL`. `createMany skipDuplicates` мовчки пропускає
+// рядок, що впирається в будь-який із них (як `ON CONFLICT DO NOTHING`), `updateMany` — кидає.
+// Запис `updateMany` застосовується лише після паузи: паралельний йому `createMany` не бачить
+// зняття, як і в базі, поки попередній запит не виконано.
+//
+// Mutation-verify:
+//  · зняття знову в `Promise.all` разом із `createMany` → «Bosch → BOSCH» (синонім зникає);
+//  · пошук вільних рядків точним `synonym: { in }` замість без регістру → «рядок видаленого бренду
+//    в іншому регістрі» (новий синонім мовчки пропущено);
+//  · прибрати `toRemove.push(...)` для іншого активного рядка того самого ключа → «знятий точний +
+//    активний видаленого бренду» (відродження впирається в індекс).
+interface IdxRow {
+  id: string;
+  brandId: string;
+  synonym: string;
+  deletedAt: Date | null;
+  brandDeleted?: boolean;
+}
+
+function makeIndexedDb(rows: IdxRow[]) {
+  const lower = (s: string) => s.toLocaleLowerCase('uk');
+  const lowerTaken = (syn: string, exceptId?: string) =>
+    rows.some(r => r.deletedAt === null && r.id !== exceptId && lower(r.synonym) === lower(syn));
+  const exactTaken = (syn: string, exceptId?: string) =>
+    rows.some(r => r.id !== exceptId && r.synonym === syn);
+  const pause = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+  const db = {
+    brandSynonym: {
+      findMany: vi.fn(async ({ where }: { where: Where }) => {
+        if (typeof where.brandId === 'string') {
+          return rows
+            .filter(r => r.brandId === where.brandId && r.deletedAt === null)
+            .map(r => ({ id: r.id, synonym: r.synonym }));
+        }
+        const [byWriting] = where.AND as [{ OR: Array<{ synonym: unknown }> }];
+        return rows
+          .filter(r => byWriting.OR.some(c => eq(r.synonym, c.synonym)))
+          .filter(r => r.deletedAt !== null || r.brandDeleted)
+          .map(r => ({ id: r.id, synonym: r.synonym, deletedAt: r.deletedAt }));
+      }),
+      updateMany: vi.fn(
+        async ({ where, data }: { where: { id: string | { in: string[] } }; data: Where }) => {
+          await pause();
+          const ids = typeof where.id === 'string' ? [where.id] : where.id.in;
+          for (const r of rows.filter(x => ids.includes(x.id))) {
+            const synonym = (data.synonym as string | undefined) ?? r.synonym;
+            const deletedAt = 'deletedAt' in data ? (data.deletedAt as Date | null) : r.deletedAt;
+            if (deletedAt === null && lowerTaken(synonym, r.id))
+              throw new Error(`P2002 lower(synonym): ${synonym}`);
+            if (exactTaken(synonym, r.id)) throw new Error(`P2002 (orgId, synonym): ${synonym}`);
+            Object.assign(r, { synonym, deletedAt });
+            if (typeof data.brandId === 'string') r.brandId = data.brandId;
+          }
+          return { count: ids.length };
+        },
+      ),
+      createMany: vi.fn(async ({ data }: { data: Array<{ brandId: string; synonym: string }> }) => {
+        let count = 0;
+        for (const d of data) {
+          if (exactTaken(d.synonym) || lowerTaken(d.synonym)) continue; // skipDuplicates
+          rows.push({
+            id: `new-${d.synonym}`,
+            brandId: d.brandId,
+            synonym: d.synonym,
+            deletedAt: null,
+          });
+          count++;
+        }
+        return { count };
+      }),
+    },
+  };
+  const service = new BrandsService(
+    db as unknown as PrismaService,
+    { get: vi.fn(), set: vi.fn(), del: vi.fn() } as unknown as CacheService,
+  );
+  const sync = (brandId: string, incoming: string[]): Promise<void> =>
+    (
+      service as unknown as {
+        syncSynonyms(d: unknown, o: string, b: string, i: string[]): Promise<void>;
+      }
+    ).syncSynonyms(db, ORG, brandId, incoming);
+  const activeOf = (brandId: string) =>
+    rows.filter(r => r.brandId === brandId && r.deletedAt === null).map(r => r.synonym);
+  return { db, sync, activeOf, rows };
+}
+
+// guards: BR-GOOD-007
+describe('BrandsService.syncSynonyms — індекс lower(synonym) серед активних', () => {
+  it('Bosch → BOSCH у тому самому бренді: старе написання знято, нове активне', async () => {
+    const w = makeIndexedDb([
+      { id: 's-bosch', brandId: BRAND_A, synonym: 'Bosch', deletedAt: null },
+      { id: 's-keep', brandId: BRAND_A, synonym: 'abas', deletedAt: null },
+    ]);
+
+    await w.sync(BRAND_A, ['BOSCH', 'abas']);
+
+    expect(w.activeOf(BRAND_A).sort()).toEqual(['BOSCH', 'abas']);
+    expect(w.rows.find(r => r.id === 's-bosch')?.deletedAt).toBeInstanceOf(Date);
+  });
+
+  it('активний рядок видаленого бренду в іншому регістрі переїжджає з новим написанням', async () => {
+    const w = makeIndexedDb([
+      { id: 's-old', brandId: 'b-old', synonym: 'BOSCH', deletedAt: null, brandDeleted: true },
+    ]);
+
+    await w.sync(BRAND_A, ['bosch']);
+
+    expect(w.activeOf(BRAND_A)).toEqual(['bosch']);
+    expect(w.rows).toHaveLength(1);
+    expect(w.rows[0]).toMatchObject({ id: 's-old', brandId: BRAND_A, synonym: 'bosch' });
+  });
+
+  it('знятий точний рядок + активний рядок видаленого бренду того самого ключа → відроджено точний', async () => {
+    const w = makeIndexedDb([
+      { id: 's-tomb', brandId: 'b-x', synonym: 'bosch', deletedAt: NOW },
+      { id: 's-old', brandId: 'b-old', synonym: 'BOSCH', deletedAt: null, brandDeleted: true },
+    ]);
+
+    await w.sync(BRAND_A, ['bosch']);
+
+    expect(w.activeOf(BRAND_A)).toEqual(['bosch']);
+    expect(w.rows.find(r => r.id === 's-tomb')).toMatchObject({
+      brandId: BRAND_A,
+      deletedAt: null,
+    });
+    expect(w.rows.find(r => r.id === 's-old')?.deletedAt).toBeInstanceOf(Date);
   });
 });

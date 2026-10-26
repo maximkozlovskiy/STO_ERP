@@ -67,6 +67,7 @@
   },
   "editModal": {
     "titleCreate": "New employee",
+    "deletedReadOnly": "The employee is deleted — view only",
     "saveError": "Save error",
     "rate": {
       "percent_normo": "% of standard hours",

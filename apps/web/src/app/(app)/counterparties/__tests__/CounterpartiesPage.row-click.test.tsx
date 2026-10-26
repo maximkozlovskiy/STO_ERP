@@ -26,10 +26,20 @@ vi.mock('@/lib/api-client', () => ({
   apiBlobFetch: vi.fn(),
 }));
 vi.mock('@/lib/ref-cache', () => ({ getCached: () => null, setCache: vi.fn() }));
-// Картка контрагента — маркер із id контрагента, з яким її відкрили.
+// Картка контрагента — маркер із id контрагента, з яким її відкрили; «mock-save» — збереження
+// картки (onSaved), щоб перевірити оновлення панелі.
 vi.mock('@/components/ui/CounterpartyEditModal', () => ({
-  CounterpartyEditModal: (p: { open: boolean; counterparty?: { id: string } | null }) =>
-    p.open && p.counterparty ? <div data-testid="edit-card">{p.counterparty.id}</div> : null,
+  CounterpartyEditModal: (p: {
+    open: boolean;
+    counterparty?: { id: string } | null;
+    onSaved: (cp: unknown, isNew: boolean) => void;
+  }) =>
+    p.open && p.counterparty ? (
+      <>
+        <div data-testid="edit-card">{p.counterparty.id}</div>
+        <button onClick={() => p.onSaved(p.counterparty, false)}>mock-save</button>
+      </>
+    ) : null,
 }));
 
 const CP_A = {
@@ -113,5 +123,24 @@ describe('Контрагенти — стандарт кліку по рядку
     fireEvent.click(tableRow('ТОВ Перший'));
     await waitFor(() => expect(panelShows('ТОВ Перший')).toBe(true));
     expect(screen.queryByText('Відкрити картку')).not.toBeInTheDocument();
+  });
+
+  // TECH-DEBT §8: панель тримала копію рядка і після збереження картки показувала старі дані.
+  // Мутація: прибрати `useSelectedRowRefresh` у page.tsx → кейс падає.
+  it('після збереження картки з панелі панель показує перечитаний рядок, а не стару копію', async () => {
+    renderPage();
+    await screen.findByText('ТОВ Перший');
+    await screen.findByRole('button', { name: 'Сховати бокову панель' });
+
+    fireEvent.click(tableRow('ТОВ Перший'));
+    await waitFor(() => expect(panelShows('ТОВ Перший')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Відкрити картку' }));
+    await screen.findByTestId('edit-card');
+
+    listItems = [{ ...CP_A, companyName: 'ТОВ Перший Плюс' }, CP_B];
+    fireEvent.click(screen.getByRole('button', { name: 'mock-save' }));
+
+    await waitFor(() => expect(panelShows('ТОВ Перший Плюс')).toBe(true));
+    expect(panelShows('ТОВ Перший')).toBe(false);
   });
 });

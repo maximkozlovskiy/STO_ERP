@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { MONEY_AMOUNT_MAX, translateError } from '@sto/shared';
 import { roundMoney } from './math';
-import { getLocale } from '../tenant/tenant-context';
+import { getLocale, type Locale } from '../tenant/tenant-context';
 
 /**
  * Брендований тип для грошових сум.
@@ -135,4 +135,17 @@ export function moneyFromDecimal(
   }
   // `Number(obj)` використає valueOf/toString — той самий шлях, що й до міграції.
   return money(Number(value));
+}
+
+const MESSAGE_MONEY_FMT: Record<Locale, Intl.NumberFormat> = {
+  uk: new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  en: new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+};
+
+/**
+ * Сума для тексту помилки: розряди й рівно дві копійки за мовою запиту («5 680,49» / «5,680.49»),
+ * а не сирий `number` («5680.49», «9999999»). Валюту викликач підставляє окремо (`{{currency}}`).
+ */
+export function formatMoneyForMessage(amount: number, locale: Locale): string {
+  return MESSAGE_MONEY_FMT[locale].format(amount);
 }

@@ -1592,8 +1592,9 @@ export class InvoicesService {
     // Один preload щоб дістати workOrderId/counterpartyId (потрібні для двох з трьох
     // секцій). Якщо рахунку немає (або чужий orgId) — повертаємо порожні секції без throw
     // (дзеркало WorkOrdersService.getLinkedDocuments — семантика "нема зв'язків").
+    // BR-WO-012: видалений рахунок відкривається на перегляд — без фільтра `deletedAt`.
     const invoice = await this.prisma.invoice.findFirst({
-      where: { id: invoiceId, orgId, deletedAt: null },
+      where: { id: invoiceId, orgId },
       select: { workOrderId: true, counterpartyId: true },
     });
     if (!invoice) {

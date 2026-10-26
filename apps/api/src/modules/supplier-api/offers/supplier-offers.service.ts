@@ -22,14 +22,13 @@ import {
 } from '../../purchase-lists/purchase-lists.helpers';
 import { canSeeItemCost, maskItemCost } from '../../purchase-lists/purchase-lists.mapper';
 import {
+  applyOfferData,
   CLEAR_OFFER_SNAPSHOT,
   goodSwap,
-  offerSnapshot,
 } from '../../purchase-lists/purchase-list-offer-snapshot';
 import type { PurchaseListItemResponseDto } from '../../purchase-lists/purchase-lists.dto';
 import { SupplierPriceConverter } from './supplier-price-converter';
 import { offerSelectability } from './offer-selectability';
-import { roundUpToStep } from '../strategy/offer-allocation';
 import type {
   SupplierOfferBatchDto,
   SupplierOfferBatchStatusDto,
@@ -442,9 +441,7 @@ export class SupplierOffersService {
     if (!sel.selectable) throw new BadRequestException(err('err.supplierApi.analogNotSelectable'));
 
     // Кратність постачальника (BR-SOFR-006, як автопідбір BR-SOFR-007): кількість позиції —
-    // до кратності вгору, інакше в API піде некратна кількість (Bug #890). Надлишок допускається.
-    const step = offer.multiplicity && offer.multiplicity > 1 ? offer.multiplicity : 1;
-    const quantity = step > 1 ? roundUpToStep(item.quantity, step) : item.quantity;
+    // до кратності вгору (`applyOfferData`), інакше в API піде некратна кількість (Bug #890).
     const write = async (targetGoodId: string | null) => {
       const res = await this.prisma.purchaseListItem.updateMany({
         where: {
@@ -455,10 +452,12 @@ export class SupplierOffersService {
           goodId: item.goodId,
         },
         data: {
-          supplierId: offer.connection.counterpartyId,
-          expectedPrice: priceUah as number,
-          ...(quantity !== item.quantity ? { quantity } : {}),
-          ...offerSnapshot(offer, 'MANUAL'),
+          ...applyOfferData(offer, {
+            supplierId: offer.connection.counterpartyId,
+            expectedPrice: priceUah,
+            quantity: item.quantity,
+            chosenBy: 'MANUAL',
+          }),
           ...(targetGoodId && targetGoodId !== item.goodId ? goodSwap(item, targetGoodId) : {}),
         },
       });

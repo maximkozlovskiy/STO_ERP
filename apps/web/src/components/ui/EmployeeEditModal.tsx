@@ -115,11 +115,13 @@ const CheckboxList = memo(function CheckboxList({
   items,
   selected,
   onChange,
+  disabled = false,
 }: {
   label: string;
   items: { id: string; name: string }[];
   selected: string[];
   onChange: (ids: string[]) => void;
+  disabled?: boolean;
 }) {
   const { t } = useTranslation('employees');
   const toggle = (id: string) =>
@@ -142,6 +144,7 @@ const CheckboxList = memo(function CheckboxList({
               type="checkbox"
               checked={selected.includes(item.id)}
               onChange={() => toggle(item.id)}
+              disabled={disabled}
               className="rounded border-border"
             />
             <span className="text-[13px] text-foreground">{item.name}</span>
@@ -157,6 +160,9 @@ const CheckboxList = memo(function CheckboxList({
 export function EmployeeEditModal({ open, employee, onClose, onSaved }: EmployeeEditModalProps) {
   const { t } = useTranslation('employees');
   const isEdit = !!employee;
+  // BR-EMP-002: картка видаленого співробітника — лише перегляд (рішення власника №28):
+  // поля недоступні, «Зберегти» немає, зверху смуга «Співробітника видалено».
+  const readOnly = !!employee?.deletedAt;
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
@@ -327,7 +333,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
   // Валідація через zodResolver (per-field + крос-польові superRefine). onValid отримує
   // коерснуті значення (числа — number); nested rateScheme будуємо спільним buildRateScheme.
   const save = handleSubmit(async values => {
-    if (savingRef.current) return;
+    if (savingRef.current || readOnly) return;
     setError('');
     const rateScheme = buildRateScheme({
       rateType: values.rateType,
@@ -397,6 +403,9 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
   });
 
   const flatCats = useMemo(() => flattenTree(workCategories), [workCategories]);
+  // Схему ставки видаленого показати нічим: список її не віддає, а GET /employees/:id для
+  // видаленого — 404. Без цього форма показала б вигадану схему за замовчуванням (40%).
+  const showRate = !readOnly || !!employee?.rateScheme;
 
   return (
     <>
@@ -415,21 +424,32 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
           <>
             {/* (А) save — це handleSubmit() з try/catch + setError, handleClose лише
                 очікує confirmClose() (ніколи не реджектиться): проміси не потрібні. */}
-            <Button onClick={() => void save()} loading={saving}>
-              {t('common:save')}
-            </Button>
+            {!readOnly && (
+              <Button onClick={() => void save()} loading={saving}>
+                {t('common:save')}
+              </Button>
+            )}
             <Button variant="outline" onClick={() => void handleClose()}>
-              {t('common:cancel')}
+              {readOnly ? t('common:close') : t('common:cancel')}
             </Button>
           </>
         }
       >
+        {readOnly && (
+          <div
+            role="status"
+            data-testid="employee-deleted-banner"
+            className="mb-4 rounded-lg border border-warning/40 bg-warning-subtle px-3 py-2 text-[13px] font-medium text-foreground"
+          >
+            {t('editModal.deletedReadOnly')}
+          </div>
+        )}
         {error && (
           <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">
             {error}
           </div>
         )}
-        <div className="space-y-4">
+        <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-4 border-0 p-0">
           <div className="grid grid-cols-2 gap-3">
             <Input
               label={t('editModal.firstName')}
@@ -516,19 +536,21 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
               />
             )}
           </div>
-          <Select
-            label={t('columns.rate')}
-            required
-            {...register('rateType')}
-            errorMessage={errors.rateType?.message}
-          >
-            {RATE_TYPES.map(k => (
-              <option key={k} value={k}>
-                {t(`editModal.rate.${k}`)}
-              </option>
-            ))}
-          </Select>
-          {rateType === 'percent_normo' && (
+          {showRate && (
+            <Select
+              label={t('columns.rate')}
+              required
+              {...register('rateType')}
+              errorMessage={errors.rateType?.message}
+            >
+              {RATE_TYPES.map(k => (
+                <option key={k} value={k}>
+                  {t(`editModal.rate.${k}`)}
+                </option>
+              ))}
+            </Select>
+          )}
+          {showRate && rateType === 'percent_normo' && (
             <Input
               label={t('editModal.percent')}
               type="number"
@@ -537,7 +559,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
               errorMessage={errors.percent?.message}
             />
           )}
-          {rateType === 'per_normo_hour' && (
+          {showRate && rateType === 'per_normo_hour' && (
             <Input
               label={t('editModal.ratePerHour')}
               type="number"
@@ -546,7 +568,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
               errorMessage={errors.ratePerHour?.message}
             />
           )}
-          {rateType === 'fixed_plus_bonus' && (
+          {showRate && rateType === 'fixed_plus_bonus' && (
             <div className="grid grid-cols-2 gap-3">
               <Input
                 label={t('editModal.fixedMonthly')}
@@ -564,7 +586,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
               />
             </div>
           )}
-        </div>
+        </fieldset>
 
         {/* Доступ до системи — тільки при створенні */}
         {!isEdit && (
@@ -617,12 +639,14 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                       items={zones}
                       selected={zoneIds}
                       onChange={handleZoneChange}
+                      disabled={readOnly}
                     />
                     <CheckboxList
                       label={t('columns.lifts')}
                       items={lifts}
                       selected={liftIds}
                       onChange={handleLiftChange}
+                      disabled={readOnly}
                     />
                   </div>
                 ),
@@ -637,6 +661,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                     items={flatCats}
                     selected={workCatIds}
                     onChange={handleWorkCatChange}
+                    disabled={readOnly}
                   />
                 ),
               },
@@ -651,6 +676,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                             <input
                               type="checkbox"
                               checked={allBranches}
+                              disabled={readOnly}
                               onChange={e => {
                                 setAllBranches(e.target.checked);
                                 dirty.markDirty();
@@ -667,6 +693,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                               items={branches}
                               selected={branchIds}
                               onChange={handleBranchChange}
+                              disabled={readOnly}
                             />
                           )}
                           <p className="text-[12px] text-muted-foreground">

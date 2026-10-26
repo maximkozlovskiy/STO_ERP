@@ -533,6 +533,21 @@ describe('createManual з allocation — перевірка до вставки 
     await rejectsBeforeInsert(w, dto({ ...allocation }), { status });
   });
 
+  // Рішення власника №9: валюта рядка — валюта рахунку платежу; валютний платіж переказом на
+  // гривневий рахунок не вноситься. Мутація: прибрати перевірку валюти в planTransfer → кейс червоніє.
+  // guards: BR-BANK-041, BR-BANK-033
+  it('вихідний: валютний платіж переказом на рахунок іншої валюти → 400, рядка не вставлено', async () => {
+    const w = await world();
+    await rejectsBeforeInsert(
+      w,
+      dto(
+        { type: 'TRANSFER', transferBankAccountId: ID.account2 },
+        { bankAccountId: ID.accountUsd },
+      ),
+      { status: 400, key: 'err.bankStatement.transferCurrencyMismatch' },
+    );
+  });
+
   // guards: BR-BANK-041, BR-BANK-016
   it('рахунок платежу чужої організації → 404 ще до перевірок рознесення', async () => {
     const w = await world();

@@ -129,6 +129,37 @@ describe('SupplierPaymentsService — linked-documents edge cases', () => {
     expect(res).toEqual({ purchaseOrder: [], counterparty: [], account: [] });
   });
 
+  // guards: BR-WO-012
+  it('getLinkedDocuments: видалена оплата (перегляд) → секції заповнені, orgId у пошуку', async () => {
+    // Таблиця, що поважає фільтр: з `deletedAt: null` видаленої оплати не знайти.
+    prisma.supplierPayment.findFirst.mockImplementation(
+      ({ where }: { where: Record<string, unknown> }) =>
+        Promise.resolve(
+          where.deletedAt === null || where.orgId !== ORG
+            ? null
+            : { purchaseOrderId: PO, supplierId: SUP, bankAccountId: BANK, cashRegisterId: null },
+        ),
+    );
+    prisma.purchaseOrder.findFirst.mockResolvedValue({ id: PO, totalAmount: '100.00' });
+    prisma.counterparty.findFirst.mockResolvedValue({ id: SUP });
+    prisma.bankAccount.findFirst.mockResolvedValue({ id: BANK, name: 'Рахунок' });
+
+    const res = await service.getLinkedDocuments(ORG, SP);
+
+    expect(res.purchaseOrder).toEqual([{ id: PO, totalAmount: 100 }]);
+    expect(res.counterparty).toEqual([{ id: SUP }]);
+    expect(res.account).toEqual([{ id: BANK, name: 'Рахунок', kind: 'bank' }]);
+    // Цілі зв'язків — як і раніше лише живі.
+    expect(prisma.bankAccount.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ deletedAt: null }) }),
+    );
+    expect(await service.getLinkedDocuments(OTHER, SP)).toEqual({
+      purchaseOrder: [],
+      counterparty: [],
+      account: [],
+    });
+  });
+
   it('getLinkedDocuments: bank account soft-deleted → account:[] (не crash)', async () => {
     prisma.supplierPayment.findFirst.mockResolvedValue({
       purchaseOrderId: null,

@@ -375,6 +375,24 @@ export class PdfService {
   }
 
   /**
+   * Чи прийме pdfmake зображення (data URL): будує крихітний документ лише з ним. Кличе
+   * `OrgPrintInfoService` перед тим, як покласти логотип у кеш на добу — пошкоджений файл із
+   * правильною сигнатурою інакше змушував би кожен друк будувати PDF двічі (`render`).
+   */
+  async probeImage(dataUrl: string): Promise<boolean> {
+    try {
+      await this.buildBuffer({
+        defaultStyle: { font: 'Roboto' },
+        images: { [LOGO_IMAGE_KEY]: dataUrl },
+        content: [{ image: LOGO_IMAGE_KEY, fit: [16, 16] }],
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Будує документ; якщо pdfmake не прийняв логотип (пошкоджене зображення з правильною
    * сигнатурою) — будує ще раз без логотипа. Документ друкується завжди.
    */

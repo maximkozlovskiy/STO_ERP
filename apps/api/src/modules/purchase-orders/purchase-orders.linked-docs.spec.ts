@@ -109,6 +109,33 @@ describe('PurchaseOrdersService — linked-documents edge cases', () => {
     expect(prisma.supplierPayment.findMany).not.toHaveBeenCalled();
   });
 
+  // guards: BR-WO-012
+  it('getLinkedDocuments: видалене замовлення (перегляд) → секції заповнені, orgId у пошуку', async () => {
+    // Таблиця, що поважає фільтр: з `deletedAt: null` видаленого замовлення не знайти.
+    prisma.purchaseOrder.findFirst.mockImplementation(
+      ({ where }: { where: Record<string, unknown> }) =>
+        Promise.resolve(
+          where.deletedAt === null || where.orgId !== ORG ? null : { supplierId: SUP },
+        ),
+    );
+    prisma.supplierPayment.findMany.mockResolvedValue([{ id: 'sp-1', amount: '10.00' }]);
+    prisma.counterparty.findFirst.mockResolvedValue({ id: SUP });
+
+    const res = await service.getLinkedDocuments(ORG, P);
+
+    expect(res.supplierPayments).toEqual([{ id: 'sp-1', amount: 10 }]);
+    expect(res.counterparty).toEqual([{ id: SUP }]);
+    // Цілі зв'язків — як і раніше лише живі.
+    expect(prisma.counterparty.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ deletedAt: null }) }),
+    );
+    expect(await service.getLinkedDocuments(OTHER, P)).toEqual({
+      supplierPayments: [],
+      counterparty: [],
+      purchaseLists: [],
+    });
+  });
+
   it('списки купівлі замовлення: різні списки рахуються один раз, лише в своїй org', async () => {
     prisma.supplierPayment.groupBy.mockResolvedValue([]);
     prisma.purchaseOrder.findMany.mockResolvedValue([{ id: P, supplierId: SUP }]);

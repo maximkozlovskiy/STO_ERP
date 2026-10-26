@@ -1318,8 +1318,9 @@ export class SupplierPaymentsService {
   async getLinkedDocuments(orgId: string, spId: string) {
     // Preload щоб дістати FK (purchaseOrderId/supplierId/bankAccountId/cashRegisterId).
     // Не знайдено / чужий orgId → порожні секції без throw (дзеркало WorkOrdersService).
+    // BR-WO-012: видалена оплата відкривається на перегляд — без фільтра `deletedAt`.
     const sp = await this.prisma.supplierPayment.findFirst({
-      where: { id: spId, orgId, deletedAt: null },
+      where: { id: spId, orgId },
       select: {
         purchaseOrderId: true,
         supplierId: true,

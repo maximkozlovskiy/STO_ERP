@@ -169,6 +169,26 @@ describe('BR-PL-007 перенесення й розділення', () => {
     });
   });
 
+  // guards: BR-PL-007, BR-PL-017, BR-SOFR-006
+  it('розділення позиції з пропозицією кратністю 4: 8 → 5 + 3 округлюються до 8 + 4', async () => {
+    const h = procurementHarness({
+      items: [
+        itemRow('i1', {
+          quantity: 8,
+          supplierId: SUPPLIER,
+          offerConnectionId: '71111111-1111-4111-8111-111111111111',
+          offerKey: '45000|15',
+          offerMultiplicity: 4,
+        }),
+      ],
+    });
+
+    const [orig, part] = await h.items.split(ORG, 'i1', { quantity: 3 });
+
+    expect(orig).toMatchObject({ quantity: 8, offerKey: '45000|15' });
+    expect(part).toMatchObject({ quantity: 4, offerKey: '45000|15', status: 'OPEN' });
+  });
+
   // guards: BR-PL-007
   it.each([0, 5, 7])('розділення на %s із 5 → 400', async qty => {
     const h = procurementHarness({ items: [itemRow('i1', { quantity: 5 })] });

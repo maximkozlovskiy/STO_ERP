@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PayrollService } from './payroll.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../audit/audit.service';
@@ -36,6 +37,8 @@ function makeMocks() {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       payrollLine: { findMany: vi.fn().mockResolvedValue([]) },
+      // Рядки виписки, рознесені на період (BR-PAYR-012): за замовчуванням немає.
+      bankTransaction: { findFirst: vi.fn().mockResolvedValue(null) },
       garageBranch: { findFirst: vi.fn() },
       $queryRaw,
       employee,
@@ -616,6 +619,31 @@ describe('PayrollService.remove — guard', () => {
       where: { id: PID, orgId: ORG, deletedAt: null, status: { not: 'PAID' } },
       data: { deletedAt: expect.any(Date) },
     });
+  });
+
+  // Рішення власника №9 (2026-10-26). Мутація: прибрати перевірку `reconciledLine` у remove →
+  // перший кейс червоніє (період видалено); прибрати `status: 'MATCHED'` / `deletedAt: null` /
+  // `orgId` / `payrollPeriodId` з пошуку → другий кейс червоніє.
+  // guards: BR-PAYR-012
+  it('на період рознесено рядок виписки → 400 hasReconciledLines, період не видалено', async () => {
+    m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ status: 'COMPUTED' });
+    m.prisma.bankTransaction.findFirst.mockResolvedValueOnce({ id: 'bt-1' });
+    await expect(service.remove(ORG, PID, 'user-1')).rejects.toThrow(
+      translateError('err.payroll.hasReconciledLines', 'uk'),
+    );
+    expect(m.prisma.payrollPeriod.updateMany).not.toHaveBeenCalled();
+    expect(m.audit.record).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PAYR-012
+  it('рознесені рядки шукаються лише живі MATCHED цього періоду своєї організації', async () => {
+    m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ status: 'DRAFT' });
+    await service.remove(ORG, PID, 'user-1');
+    expect(m.prisma.bankTransaction.findFirst).toHaveBeenCalledWith({
+      where: { orgId: ORG, payrollPeriodId: PID, status: 'MATCHED', deletedAt: null },
+      select: { id: true },
+    });
+    expect(m.prisma.payrollPeriod.updateMany).toHaveBeenCalled();
   });
 
   // guards: BR-PAYR-012

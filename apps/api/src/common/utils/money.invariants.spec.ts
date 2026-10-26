@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { money, sumMoney, moneyFromDecimal, ZERO_MONEY } from './money';
+import { formatMoneyForMessage, money, sumMoney, moneyFromDecimal, ZERO_MONEY } from './money';
 import { roundMoney } from './math';
 
 /**
@@ -201,5 +201,23 @@ describe('money — інваріанти', () => {
       valueOf: () => 12.5,
     };
     expect(moneyFromDecimal(throwingValueOf as unknown as { toNumber(): number })).toBe(12.5);
+  });
+});
+
+// §10 п.25 (2026-10-26): суми в тексті помилок — з розрядами й рівно двома копійками за мовою.
+// Мутація: прибрати `minimumFractionDigits` → «9999999» без «,00»; один форматер на обидві мови → кейс 'en'.
+describe('formatMoneyForMessage — сума для тексту помилки', () => {
+  it.each([
+    ['uk', 5680.49, '5 680,49'],
+    ['uk', 9999999, '9 999 999,00'],
+    ['uk', 0.5, '0,50'],
+    ['en', 5680.49, '5,680.49'],
+    ['en', 9999999, '9,999,999.00'],
+  ] as const)('%s: %d → «%s»', (locale, value, text) => {
+    expect(formatMoneyForMessage(value, locale)).toBe(text);
+  });
+
+  it('копійки округлюються до двох знаків: суми з балансу не показують float-хвіст', () => {
+    expect(formatMoneyForMessage(0.1 + 0.2, 'uk')).toBe('0,30');
   });
 });

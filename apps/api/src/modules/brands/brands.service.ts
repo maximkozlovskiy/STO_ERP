@@ -307,6 +307,9 @@ export class BrandsService {
   ): Promise<void> {
     // Read active rows for THIS brand + any free rows ACROSS the org
     // (unique is per-org, so resurrection must consider other brands' tombstones).
+    // Вільні рядки — без урахування регістру: активний рядок видаленого бренду «BOSCH» займає слот
+    // унікального індексу `lower(synonym)` серед активних, і новий «bosch» `createMany` мовчки
+    // пропустив би (`skipDuplicates`). Такий рядок переїжджає з новим написанням.
     const [activeOfBrand, freeInOrg] = await Promise.all([
       db.brandSynonym.findMany({
         where: { brandId, orgId, deletedAt: null },
@@ -316,15 +319,16 @@ export class BrandsService {
         ? db.brandSynonym.findMany({
             where: {
               orgId,
-              synonym: { in: incoming },
-              OR: [{ deletedAt: { not: null } }, { brand: { deletedAt: { not: null } } }],
+              AND: [
+                { OR: incoming.map(s => ({ synonym: insensitive(s) })) },
+                { OR: [{ deletedAt: { not: null } }, { brand: { deletedAt: { not: null } } }] },
+              ],
             },
-            select: { id: true, synonym: true },
+            select: { id: true, synonym: true, deletedAt: true },
           })
-        : Promise.resolve([] as { id: string; synonym: string }[]),
+        : Promise.resolve([] as { id: string; synonym: string; deletedAt: Date | null }[]),
     ]);
     const activeBySyn = new Map(activeOfBrand.map(s => [s.synonym, s.id]));
-    const deletedBySyn = new Map(freeInOrg.map(s => [s.synonym, s.id]));
     const incomingSet = new Set(incoming);
 
     // Active rows of THIS brand that are no longer in incoming → soft-delete.
@@ -333,26 +337,44 @@ export class BrandsService {
       .map(([, id]) => id);
     // Incoming entries not yet active for this brand.
     const notActive = incoming.filter(s => !activeBySyn.has(s));
-    // Among those, ones whose free row exists somewhere in the org → resurrect+rebind.
-    const toResurrect = notActive
-      .filter(s => deletedBySyn.has(s))
-      .map(s => ({ id: deletedBySyn.get(s)!, synonym: s }));
+    // Among those, ones whose free row exists somewhere in the org → resurrect+rebind. Один рядок
+    // на ключ написання: точне написання, інакше активний рядок видаленого бренду (він займає слот
+    // індексу), інакше знятий в іншому регістрі — його написання стає вхідним. Інший активний
+    // рядок того самого ключа знімається (`toRemove`), інакше база не дасть відродити обраний.
+    const toResurrect: { id: string; synonym: string; renamed: boolean }[] = [];
+    for (const s of notActive) {
+      const same = freeInOrg.filter(r => synonymKey(r.synonym) === synonymKey(s));
+      const target =
+        same.find(r => r.synonym === s) ?? same.find(r => r.deletedAt === null) ?? same[0];
+      if (!target) continue;
+      toResurrect.push({ id: target.id, synonym: s, renamed: target.synonym !== s });
+      toRemove.push(...same.filter(r => r !== target && r.deletedAt === null).map(r => r.id));
+    }
+    const resurrected = new Set(toResurrect.map(r => r.synonym));
     // The rest → truly new rows.
-    const toCreate = notActive.filter(s => !deletedBySyn.has(s));
+    const toCreate = notActive.filter(s => !resurrected.has(s));
 
+    // Зняття — ПЕРШИМ і окремо: зміна регістру в межах бренду («Bosch» → «BOSCH») — це зняття
+    // старого рядка й новий рядок того самого ключа; поки старий активний, новий упирається в
+    // `lower(synonym)`-індекс, а `createMany skipDuplicates` мовчки його пропускає.
+    if (toRemove.length) {
+      await db.brandSynonym.updateMany({
+        where: { id: { in: toRemove }, orgId },
+        data: { deletedAt: new Date() },
+      });
+    }
     await Promise.all([
-      toRemove.length
-        ? db.brandSynonym.updateMany({
-            where: { id: { in: toRemove }, orgId },
-            data: { deletedAt: new Date() },
-          })
-        : Promise.resolve(),
       // Resurrect: воскрешаємо по одному updateMany на synonym, щоб заповнити normalizedSynonym
       // (старі tombstone-рядки могли мати null) — набір малий (≤20 синонімів на бренд).
-      ...toResurrect.map(({ id, synonym }) =>
+      ...toResurrect.map(({ id, synonym, renamed }) =>
         db.brandSynonym.updateMany({
           where: { id, orgId },
-          data: { deletedAt: null, brandId, normalizedSynonym: normalizeArticle(synonym) },
+          data: {
+            deletedAt: null,
+            brandId,
+            normalizedSynonym: normalizeArticle(synonym),
+            ...(renamed ? { synonym } : {}),
+          },
         }),
       ),
       toCreate.length

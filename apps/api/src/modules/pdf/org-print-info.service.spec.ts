@@ -4,19 +4,26 @@
  *
  * Аспект: що потрапляє в шапку і що буває, коли з логотипом щось не так. Логотип читається зі
  * сховища за ключем `org/<orgId>/public/...` (не HTTP-запитом на URL), лише PNG/JPEG за
- * першими байтами, не більше 1 МБ, з кешем за `logoUrl`. Будь-яка проблема з логотипом —
+ * першими байтами, не більше 1 МБ, читання з тайм-аутом, з кешем за `logoUrl` — лише після
+ * пробного рендеру pdfmake (не прийнятий кешується позначкою). Будь-яка проблема з логотипом —
  * шапка без нього, реквізити на місці, документ друкується.
  *
  * Сховище, кеш і Prisma — заглушки-об'єкти в конструкторі (без vi.mock модулів).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Logger } from '@nestjs/common';
+import { Readable } from 'stream';
 import {
   OrgPrintInfoService,
+  LOGO_CACHE_TTL_SECONDS,
   LOGO_MAX_BYTES,
+  LOGO_READ_TIMEOUT_MS,
+  LOGO_REJECTED,
   detectImageMime,
   logoObjectName,
 } from './org-print-info.service';
+import { FilesService } from '../files/files.service';
+import { PdfService } from './pdf.service';
 
 const ORG = '11111111-1111-4111-8111-111111111111';
 const OTHER_ORG = '99999999-9999-4999-8999-999999999999';
@@ -72,19 +79,29 @@ function orgRow(over: Partial<OrgRow> = {}): OrgRow {
   };
 }
 
-function setup(row: OrgRow | null, cached: string | null = null) {
+/**
+ * `files` і `pdf` можна підмінити справжніми сервісами (тайм-аут сховища, пробний рендер);
+ * типово — заглушки: сховище віддає PNG, пробний рендер його приймає.
+ */
+function setup(
+  row: OrgRow | null,
+  cached: string | null = null,
+  deps: { files?: unknown; pdf?: unknown } = {},
+) {
   const findFirst = vi.fn().mockResolvedValue(row);
   const getObject = vi.fn().mockResolvedValue(PNG);
+  const probeImage = vi.fn().mockResolvedValue(true);
   const cache = {
     get: vi.fn().mockResolvedValue(cached),
     set: vi.fn().mockResolvedValue(undefined),
   };
   const service = new OrgPrintInfoService(
     { organisation: { findFirst } } as never,
-    { getObject } as never,
+    (deps.files ?? { getObject }) as never,
     cache as never,
+    (deps.pdf ?? { probeImage }) as never,
   );
-  return { service, findFirst, getObject, cache };
+  return { service, findFirst, getObject, probeImage, cache };
 }
 
 describe('OrgPrintInfoService — реквізити для шапки документа', () => {
@@ -160,14 +177,16 @@ describe('OrgPrintInfoService — логотип у шапці', () => {
     vi.restoreAllMocks();
   });
 
-  it('PNG зі сховища → data URL, читання за ключем об’єкта з лімітом 1 МБ, результат у кеші', async () => {
-    const { service, getObject, cache } = setup(orgRow({ logoUrl: LOGO_URL }));
+  it('PNG зі сховища → data URL, читання за ключем об’єкта з лімітом 1 МБ і тайм-аутом, результат у кеші', async () => {
+    const { service, getObject, probeImage, cache } = setup(orgRow({ logoUrl: LOGO_URL }));
 
     const info = await service.get(ORG);
 
-    expect(getObject).toHaveBeenCalledWith(LOGO_KEY, LOGO_MAX_BYTES);
+    expect(getObject).toHaveBeenCalledWith(LOGO_KEY, LOGO_MAX_BYTES, LOGO_READ_TIMEOUT_MS);
     expect(LOGO_MAX_BYTES).toBe(1024 * 1024);
     expect(info.logo).toBe(`data:image/png;base64,${PNG.toString('base64')}`);
+    // У кеш іде лише те, що pdfmake прийняв у пробному рендері.
+    expect(probeImage).toHaveBeenCalledWith(info.logo);
     expect(cache.set).toHaveBeenCalledTimes(1);
     expect(cache.set.mock.calls[0]?.[1]).toBe(info.logo);
     expect(warn).not.toHaveBeenCalled();
@@ -240,6 +259,76 @@ describe('OrgPrintInfoService — логотип у шапці', () => {
 
     expect((await service.get(ORG)).logo).toBeNull();
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  // TECH-DEBT §11 п.3: сховище, що зависло, тримало перший друк без межі.
+  it('сховище зависло → через LOGO_READ_TIMEOUT_MS шапка без логотипа, у кеш нічого', async () => {
+    vi.useFakeTimers();
+    try {
+      // Справжнє читання FilesService (тайм-аут — у ньому) над клієнтом, чий потік мовчить.
+      const files = Object.create(FilesService.prototype) as FilesService;
+      const hanging = new Readable({ read() {} });
+      Object.assign(files, {
+        bucket: 'sto-files',
+        client: { getObject: vi.fn().mockResolvedValue(hanging) },
+      });
+      const { service, cache } = setup(orgRow({ logoUrl: LOGO_URL }), null, { files });
+
+      const info = service.get(ORG);
+      await vi.advanceTimersByTimeAsync(LOGO_READ_TIMEOUT_MS);
+
+      expect((await info).logo).toBeNull();
+      expect((await info).name).toBe('СТО Альфа');
+      expect(hanging.destroyed).toBe(true);
+      expect(cache.set).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // TECH-DEBT §11 п.6: пошкоджений PNG із правильною сигнатурою кешувався на добу як придатний —
+  // і кожен друк будував PDF двічі.
+  it('pdfmake не прийняв логотип → шапка без нього, у кеші на добу позначка «не друкувати»', async () => {
+    const { service, getObject, probeImage, cache } = setup(orgRow({ logoUrl: LOGO_URL }));
+    probeImage.mockResolvedValue(false);
+
+    expect((await service.get(ORG)).logo).toBeNull();
+    expect(getObject).toHaveBeenCalledTimes(1);
+    expect(cache.set).toHaveBeenCalledWith(
+      expect.stringContaining(ORG),
+      LOGO_REJECTED,
+      LOGO_CACHE_TTL_SECONDS,
+    );
+    expect(LOGO_CACHE_TTL_SECONDS).toBe(24 * 60 * 60);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('справжній пробний рендер: PNG із правильною сигнатурою і сміттям далі → позначка, не логотип', async () => {
+    const { service, getObject, cache } = setup(orgRow({ logoUrl: LOGO_URL }), null, {
+      pdf: new PdfService(),
+    });
+    getObject.mockResolvedValue(Buffer.concat([PNG.subarray(0, 8), Buffer.from('not a png')]));
+
+    expect((await service.get(ORG)).logo).toBeNull();
+    expect(cache.set).toHaveBeenCalledTimes(1);
+    expect(cache.set.mock.calls[0]?.[1]).toBe(LOGO_REJECTED);
+  }, 15_000);
+
+  it('у кеші позначка «не друкувати» → шапка без логотипа, ні сховища, ні пробного рендеру', async () => {
+    const { service, getObject, probeImage, cache } = setup(
+      orgRow({ logoUrl: LOGO_URL }),
+      LOGO_REJECTED,
+    );
+
+    const info = await service.get(ORG);
+
+    expect(info.logo).toBeNull();
+    expect(info.bank?.iban).toBe('UA213223130000026007233566001');
+    expect(getObject).not.toHaveBeenCalled();
+    expect(probeImage).not.toHaveBeenCalled();
+    expect(cache.set).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('logoUrl веде на об’єкт ЧУЖОЇ організації → сховище не читається, шапка без логотипа', async () => {

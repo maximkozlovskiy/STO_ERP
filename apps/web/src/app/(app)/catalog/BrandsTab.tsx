@@ -111,13 +111,17 @@ export default function BrandsTab() {
     setModal(true);
   };
 
+  // Будь-яка правка форми знімає текст попередньої помилки (напр. 409 «синонім уже зайнятий»):
+  // інакше банер висів над уже виправленим полем до наступного «Зберегти».
   const addSynonym = () => {
     setForm(f => ({ ...f, synonyms: withSynonym(f.synonyms, synonymInput) }));
     setSynonymInput('');
+    setError('');
   };
 
   const removeSynonym = (s: string) => {
     setForm(f => ({ ...f, synonyms: f.synonyms.filter(x => x !== s) }));
+    setError('');
   };
 
   // `void` в onClick: обробник сам ловить помилку у catch і показує її користувачу
@@ -381,7 +385,10 @@ export default function BrandsTab() {
             label={t('brands.fieldName')}
             required
             value={form.name}
-            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            onChange={e => {
+              setForm(f => ({ ...f, name: e.target.value }));
+              setError('');
+            }}
             placeholder={t('brands.fieldNamePlaceholder')}
             autoFocus
             className="h-8 text-[13px]"
@@ -423,7 +430,10 @@ export default function BrandsTab() {
               <input
                 type="text"
                 value={synonymInput}
-                onChange={e => setSynonymInput(e.target.value)}
+                onChange={e => {
+                  setSynonymInput(e.target.value);
+                  setError('');
+                }}
                 onKeyDown={e => {
                   if (e.key === 'Enter') {
                     e.preventDefault();

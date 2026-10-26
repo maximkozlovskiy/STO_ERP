@@ -6,6 +6,7 @@ import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calculatePagination } from '../../common/utils/pagination';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
+import { confirmTxTimeoutMs } from '../../common/utils/confirm-tx-timeout';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -459,7 +460,8 @@ export class SupplierReturnsService {
         }
         // Статус уже CONFIRMED через CAS вище — окремий update не потрібен.
       },
-      { timeout: TRANSACTION_TIMEOUT_MS },
+      // BR-PO-008: рядки проводяться послідовно — бюджет транзакції росте з їх кількістю.
+      { timeout: confirmTxTimeoutMs(pre._count.lines) },
     );
 
     return this.findOne(orgId, id);
@@ -560,8 +562,10 @@ export class SupplierReturnsService {
   // zero-init counts — Bug #641 lesson: count має рахувати те саме, що бачить detail).
 
   async getLinkedDocuments(orgId: string, id: string) {
+    // BR-WO-012: видалене повернення відкривається на перегляд — джерело шукаємо й серед
+    // видалених (orgId лишається); цілі зв'язків нижче фільтруються як і раніше.
     const sr = await this.prisma.supplierReturn.findFirst({
-      where: { id, orgId, deletedAt: null },
+      where: { id, orgId },
       select: { purchaseOrderId: true, supplierId: true, warehouseId: true },
     });
     if (!sr) {

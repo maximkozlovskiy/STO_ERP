@@ -1314,8 +1314,9 @@ export class PurchaseOrdersService {
   async getLinkedDocuments(orgId: string, poId: string) {
     // Preload щоб дістати supplierId (для секції counterparty). Не знайдено /
     // чужий orgId → порожні секції без throw (дзеркало WorkOrdersService).
+    // BR-WO-012: видалене замовлення відкривається на перегляд — без фільтра `deletedAt`.
     const po = await this.prisma.purchaseOrder.findFirst({
-      where: { id: poId, orgId, deletedAt: null },
+      where: { id: poId, orgId },
       select: { supplierId: true },
     });
     if (!po) {

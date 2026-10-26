@@ -16,6 +16,7 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { lockWorkOrdersForUpdate, QTY_EPSILON } from '../work-orders/work-order-stock-requirements';
 import { PROCUREMENT_ACTIVE_STATUSES } from '../work-orders/work-orders.fsm';
 import { PurchaseShortageService } from './purchase-shortage.service';
+import { setItemQuantity } from './purchase-list-offer-snapshot';
 import {
   assertSupplier,
   conflict,
@@ -48,6 +49,7 @@ type Tx = Prisma.TransactionClient;
 interface OpenItemRef {
   id: string;
   quantity: number;
+  offerMultiplicity: number | null;
 }
 
 /**
@@ -287,14 +289,18 @@ export class PurchaseListsService {
         status: 'OPEN',
         deletedAt: null,
       },
-      select: { id: true, quantity: true, workOrderPartId: true },
+      select: { id: true, quantity: true, workOrderPartId: true, offerMultiplicity: true },
       orderBy: { createdAt: 'asc' },
       take: 1000,
     });
     const result = new Map<string, OpenItemRef>();
     for (const r of rows) {
       if (r.workOrderPartId && !result.has(r.workOrderPartId)) {
-        result.set(r.workOrderPartId, { id: r.id, quantity: r.quantity });
+        result.set(r.workOrderPartId, {
+          id: r.id,
+          quantity: r.quantity,
+          offerMultiplicity: r.offerMultiplicity,
+        });
       }
     }
     return result;
@@ -320,12 +326,14 @@ export class PurchaseListsService {
   ): Promise<string> {
     const existing = openByPart.get(part.id);
     if (existing) {
+      // BR-SOFR-006: обрана пропозиція лишається — сума до її кратності вгору.
+      const next = { ...existing, ...setItemQuantity(existing, existing.quantity + quantity) };
       const res = await tx.purchaseListItem.updateMany({
         where: { id: existing.id, orgId, ...OPEN_ITEM_WHERE, quantity: existing.quantity },
-        data: { quantity: existing.quantity + quantity },
+        data: { quantity: next.quantity },
       });
       if (res.count !== 1) throw conflict();
-      openByPart.set(part.id, { id: existing.id, quantity: existing.quantity + quantity });
+      openByPart.set(part.id, next);
       return existing.id;
     }
     const created = await tx.purchaseListItem.create({
@@ -342,7 +350,7 @@ export class PurchaseListsService {
       },
       select: { id: true },
     });
-    openByPart.set(part.id, { id: created.id, quantity });
+    openByPart.set(part.id, { id: created.id, quantity, offerMultiplicity: null });
     return created.id;
   }
 
@@ -450,15 +458,17 @@ export class PurchaseListsService {
 
   /** Наряди й замовлення постачальникам позицій списку, списки, злиті в нього. */
   async getLinkedDocuments(orgId: string, id: string) {
+    // BR-WO-012: джерело шукаємо й серед видалених (orgId лишається). Позиції видаляються разом
+    // зі списком тією ж міткою `deletedAt` (`remove`) — у видаленого списку беремо саме їх.
     const list = await this.prisma.purchaseList.findFirst({
-      where: { id, orgId, deletedAt: null },
-      select: { id: true },
+      where: { id, orgId },
+      select: { id: true, deletedAt: true },
     });
     if (!list) return { workOrders: [], purchaseOrders: [], purchaseLists: [] };
     const TAKE = 500;
     const [items, merged] = await Promise.all([
       this.prisma.purchaseListItem.findMany({
-        where: { orgId, listId: id, deletedAt: null },
+        where: { orgId, listId: id, deletedAt: list.deletedAt },
         select: {
           workOrder: { select: { id: true, number: true, status: true, deletedAt: true } },
           purchaseOrder: { select: { id: true, number: true, status: true, deletedAt: true } },

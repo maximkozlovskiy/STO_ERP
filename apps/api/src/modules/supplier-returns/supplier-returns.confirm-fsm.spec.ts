@@ -171,6 +171,34 @@ describe('SupplierReturnsService — regression guards', () => {
     expect(dtoArg.quantity).toBeLessThan(0);
   });
 
+  // Рядки проводяться послідовно — фіксовані 15 с не вистачало б великому поверненню.
+  // guards: BR-PO-008
+  it.each([
+    [1, 15_000],
+    [125, 15_000],
+    [126, 15_120],
+    [500, 60_000],
+  ])(
+    'confirm(): тайм-аут транзакції за %i рядків = %i мс (max(15 с, 120 мс × рядок))',
+    async (lines, timeout) => {
+      prisma.supplierReturn.findFirst.mockResolvedValueOnce({
+        status: SupplierReturnStatus.DRAFT,
+        _count: { lines },
+      });
+      prisma.supplierReturn.findFirstOrThrow.mockResolvedValueOnce({
+        supplierId: SUPPLIER_ID,
+        warehouseId: WAREHOUSE_ID,
+        totalAmount: 0,
+        lines: [],
+      });
+      vi.spyOn(service, 'findOne').mockResolvedValueOnce({} as never);
+
+      await service.confirm(ORG, SR_ID, USER_ID);
+
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { timeout });
+    },
+  );
+
   it('confirm(): settlement transaction створюється з type=REFUND (НЕ PAYMENT, НЕ CHARGE)', async () => {
     prisma.supplierReturn.findFirst
       .mockResolvedValueOnce({ status: SupplierReturnStatus.DRAFT, _count: { lines: 1 } })

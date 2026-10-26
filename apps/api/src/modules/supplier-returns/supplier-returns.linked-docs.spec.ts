@@ -110,6 +110,46 @@ describe('SupplierReturnsService — linked documents (Phase D3)', () => {
     expect(res.purchaseOrder[0].totalAmount).toBe(300); // Number, не Decimal/об'єкт
   });
 
+  // guards: BR-WO-012
+  it('getLinkedDocuments: видалене повернення (перегляд) → секції заповнені, orgId у пошуку', async () => {
+    // Таблиця, що поважає фільтр: з `deletedAt: null` видаленого повернення не знайти.
+    prisma.supplierReturn.findFirst.mockImplementation(
+      ({ where }: { where: Record<string, unknown> }) =>
+        Promise.resolve(
+          where.deletedAt === null || where.orgId !== ORG
+            ? null
+            : {
+                purchaseOrderId: PO_ID,
+                supplierId: SUPPLIER_ID_LOCAL,
+                warehouseId: WAREHOUSE_ID_LOCAL,
+              },
+        ),
+    );
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      number: 'PO-1',
+      status: 'RECEIVED',
+      totalAmount: 300,
+    });
+    prisma.counterparty.findFirst.mockResolvedValueOnce({ id: SUPPLIER_ID_LOCAL });
+    prisma.warehouse.findFirst.mockResolvedValueOnce({ id: WAREHOUSE_ID_LOCAL, name: 'Склад' });
+
+    const res = await service.getLinkedDocuments(ORG, SR_ID);
+
+    expect(res.purchaseOrder.map(p => p.id)).toEqual([PO_ID]);
+    expect(res.counterparty).toEqual([{ id: SUPPLIER_ID_LOCAL }]);
+    expect(res.warehouse).toEqual([{ id: WAREHOUSE_ID_LOCAL, name: 'Склад' }]);
+    // Цілі зв'язків — як і раніше лише живі.
+    expect(prisma.warehouse.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ deletedAt: null }) }),
+    );
+    expect(await service.getLinkedDocuments('org-2', SR_ID)).toEqual({
+      purchaseOrder: [],
+      counterparty: [],
+      warehouse: [],
+    });
+  });
+
   it('getLinkedCounts: zero-init для КОЖНОГО id + порожній вхід → {}', async () => {
     expect(await service.getLinkedCounts(ORG, [])).toEqual({});
     const res = await service.getLinkedCounts(ORG, [SR_ID, 'sr-2']);

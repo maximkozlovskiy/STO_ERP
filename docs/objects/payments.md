@@ -339,6 +339,9 @@ BR-INV-018), рахунок без наряду — PAID/PARTIALLY_PAID → PART
 PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(checkbox) і PAYMENT(monobank).
 - **BR-PAY-015**: `credentials` — JSON-рядок, шифрується at-rest (`prisma.service ENCRYPTED_FIELDS`); write-only у API
   (GET-и повертають лише `hasCredentials`). `BranchProviderConfig` виключено з PULL_TABLES (містить секрети).
+  Так само write-only legacy-секрети `BranchSettings` (BR-PAY-014: `monobankToken`, `checkboxLicenseKey`,
+  `checkboxPinCode`, а також `smsApiKey`): `GET` і `PATCH /settings/branch/:branchId` — і з бази, і з кешу
+  Redis — не віддають їх ні ключем, ні значенням, лише `hasMonobankToken` (`SettingsService.mapBranchSettings`).
 - **BR-PAY-016**: Рахунок закриває лише його платник: платіж із `invoiceId` приймається, тільки якщо
   контрагент платежу — контрагент цього рахунку, інакше 400 «Рахунок виписано на іншого
   контрагента…», рахунок і баланс не чіпаються. Перевірка стоїть у `PaymentsService.create`, тож діє
@@ -487,6 +490,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | HTTP-контракт сторно (BR-PAY-024)                                  | `payments.reverse-route.contract.spec.ts`                | 15     |
 | HTTP-контракт списку: query DTO, NUL (BR-PAY-025)                  | `payments.list-query.contract.spec.ts`                   | 8      |
 | NUL у query/param/тілі → 400, глоб. труби (BR-PAY-025, BR-SEC-NUL) | `../../common/pipes/reject-nul-character.pipe.spec.ts`   | 7      |
+| секрети філії не у відповіді й кеші (BR-PAY-015)                   | `../settings/settings.branch-secrets.contract.spec.ts`   | 6      |
 
 Разом: **563** кейси — 493 у модулі + 34 у двох спеках шифрування + 36 у довіднику способів оплати
 (`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з

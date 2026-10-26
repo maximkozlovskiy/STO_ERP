@@ -67,6 +67,7 @@
   },
   "editModal": {
     "titleCreate": "Новий співробітник",
+    "deletedReadOnly": "Співробітника видалено — лише перегляд",
     "saveError": "Помилка збереження",
     "rate": {
       "percent_normo": "% від норма-год",
