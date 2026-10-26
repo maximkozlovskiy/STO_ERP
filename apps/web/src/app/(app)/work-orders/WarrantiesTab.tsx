@@ -9,7 +9,7 @@ import { WARRANTY_EXPIRING_DAYS, WARRANTY_STATES, type WarrantyState } from '@st
 import { useDebounce } from '@/hooks/useDebounce';
 import { useListPage } from '@/hooks/useListPage';
 import { useSortState } from '@/hooks/useSortState';
-import { type SavedFilter } from '@/hooks/useSavedFilters';
+import { applySavedView, savedViewOf, type SavedFilter } from '@/hooks/useSavedFilters';
 import {
   useWarrantyList,
   type WarrantyListFilters,
@@ -34,7 +34,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pagination } from '@/components/ui/pagination';
 import { ListLoadError } from '@/components/ui/list-load-error';
-import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
+import { TableColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
@@ -104,18 +104,7 @@ export default function WarrantiesTab({ canClaim }: Props) {
     resetPage,
     activeSavedFilterId,
     setActiveSavedFilterId,
-    tableColumns: {
-      visibleKeys,
-      visibleColumns,
-      orderedColumns,
-      order,
-      customLabels,
-      toggle,
-      setVisible,
-      reorder,
-      renameColumn,
-      resetConfig,
-    },
+    tableColumns,
     dragProps,
     detailPanel,
     panelConfig,
@@ -123,6 +112,7 @@ export default function WarrantiesTab({ canClaim }: Props) {
     features,
     limit,
   } = useListPage<WarrantyFilters>('work-orders-warranties', columns, { defaultLimit: 20 });
+  const { visibleKeys, visibleColumns, order, toggle, setVisible, reorder } = tableColumns;
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
@@ -201,9 +191,7 @@ export default function WarrantiesTab({ canClaim }: Props) {
       setSearch(preset.filters.search ?? '');
       const st = preset.filters.state;
       setStateFilter(WARRANTY_STATES.includes(st as WarrantyState) ? (st as WarrantyState) : '');
-      if (preset.order && preset.order.length > 0) reorder(preset.order);
-      if (preset.columns && preset.columns.length > 0) setVisible(preset.columns);
-      if (preset.sort) setSort(preset.sort.field, preset.sort.dir);
+      applySavedView(preset, { reorder, setVisible, setSort });
       resetPage();
       setActiveSavedFilterId(preset.id);
     },
@@ -214,7 +202,7 @@ export default function WarrantiesTab({ canClaim }: Props) {
       const preset = save(
         name,
         { search, state: stateFilter },
-        { columns: [...visibleKeys], order, sort: { field: sort.sortBy, dir: sort.sortDir } },
+        savedViewOf(visibleKeys, order, sort),
       );
       setActiveSavedFilterId(preset.id);
       if (features.toastEnabled) toast.success(t('warrantiesTab.savePresetSuccess', { name }));
@@ -331,17 +319,7 @@ export default function WarrantiesTab({ canClaim }: Props) {
         actions={
           <>
             {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-            <ColumnsDropdown
-              columns={orderedColumns}
-              visibleKeys={visibleKeys}
-              onToggle={toggle}
-              onReorder={reorder}
-              onRename={renameColumn}
-              onReset={resetConfig}
-              hasCustomization={
-                JSON.stringify(order) !== DEFAULT_KEYS_JSON || Object.keys(customLabels).length > 0
-              }
-            />
+            <TableColumnsDropdown table={tableColumns} defaultKeysJson={DEFAULT_KEYS_JSON} />
             <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
           </>
         }

@@ -28,7 +28,7 @@ import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { fmtDateTime, isoToKyivLocalDateTime, localDateTimeToISO } from '@/lib/format';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
-import { taskActions, type TaskAction } from '@/lib/task-actions';
+import { runTaskTransition, taskActions, type TaskAction } from '@/lib/task-actions';
 import { toast } from '@/lib/toast';
 import { displayCounterpartyName } from '@/lib/utils';
 import { taskStatusLabel, woPriorityLabel } from '@/i18n/enumLabel';
@@ -359,12 +359,7 @@ export function TaskEditModal({ open, taskId, prefill, onClose, onSaved }: Props
       });
       if (!ok) return;
     }
-    try {
-      const next = await transition.mutateAsync({ id: task.id, status: action.to });
-      toast.success(t('toast.status', { status: taskStatusLabel(next.status) }));
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('form.loadError'));
-    }
+    await runTaskTransition(transition.mutateAsync, task.id, action.to, t);
   };
 
   const remove = async () => {

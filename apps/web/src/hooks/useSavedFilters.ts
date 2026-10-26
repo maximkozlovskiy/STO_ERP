@@ -34,6 +34,29 @@ export interface SavedViewExtra {
   sort?: SavedSortState | null;
 }
 
+/** Вигляд таблиці з шаблону: порядок і видимість колонок, сортування (старі шаблони без них — без змін). */
+export function applySavedView(
+  preset: SavedViewExtra,
+  view: {
+    reorder: (order: string[]) => void;
+    setVisible: (keys: string[]) => void;
+    setSort: (field: string, dir: 'asc' | 'desc') => void;
+  },
+): void {
+  if (preset.order && preset.order.length > 0) view.reorder(preset.order);
+  if (preset.columns && preset.columns.length > 0) view.setVisible(preset.columns);
+  if (preset.sort) view.setSort(preset.sort.field, preset.sort.dir);
+}
+
+/** Знімок вигляду таблиці для збереження в шаблон. */
+export function savedViewOf(
+  visibleKeys: Iterable<string>,
+  order: string[],
+  sort: { sortBy: string; sortDir: 'asc' | 'desc' },
+): SavedViewExtra {
+  return { columns: [...visibleKeys], order, sort: { field: sort.sortBy, dir: sort.sortDir } };
+}
+
 /**
  * Persists named filter presets to localStorage for a given page key.
  *

@@ -1,5 +1,7 @@
 import { TASK_STATUS_TRANSITIONS, canTransitionTask, isTaskManagerRole } from '@sto/shared';
 import type { TaskStatus } from '@/hooks/api/useTasks';
+import { taskStatusLabel } from '@/i18n/enumLabel';
+import { toast } from '@/lib/toast';
 
 /** Дія переходу статусу задачі — кнопка в картці, рядку списку й планшеті (BR-TASK-003). */
 export interface TaskAction {
@@ -35,4 +37,24 @@ export function taskActions(
               ? 'action.reopen'
               : 'action.start',
     }));
+}
+
+/**
+ * Перехід статусу з тостом результату — кнопки рядка списку й картки задачі. Мутацію (і її
+ * `isPending` для кнопок) тримає компонент; тут — лише виклик і повідомлення.
+ */
+export async function runTaskTransition(
+  mutateAsync: (v: { id: string; status: TaskStatus }) => Promise<{ status: string }>,
+  id: string,
+  to: TaskStatus,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): Promise<boolean> {
+  try {
+    const next = await mutateAsync({ id, status: to });
+    toast.success(t('toast.status', { status: taskStatusLabel(next.status) }));
+    return true;
+  } catch (e: unknown) {
+    toast.error(e instanceof Error ? e.message : t('form.loadError'));
+    return false;
+  }
 }

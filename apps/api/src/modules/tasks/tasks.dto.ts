@@ -6,18 +6,16 @@ import {
   IsDateString,
   IsEnum,
   IsIn,
-  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
-  Max,
   MaxLength,
-  Min,
 } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
+import { Transform } from 'class-transformer';
 import { TaskStatus, WorkOrderPriority } from '@prisma/client';
 import { TASK_DESCRIPTION_MAX, TASK_TITLE_MAX } from '@sto/shared';
+import { LimitParam, PageParam, SortDirParam } from '../../common/dto/list-query.decorators';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 import { LIST_SEARCH_MAX_LENGTH } from '../../common/utils/like-pattern';
@@ -152,24 +150,13 @@ export class TaskListQueryDto {
   @IsIn(TASK_SORT_FIELDS)
   sortBy?: TaskSortField;
 
-  @ApiPropertyOptional({ enum: ['asc', 'desc'], description: 'Типово — asc' })
-  @IsOptional()
-  @IsIn(['asc', 'desc'])
+  @SortDirParam('Типово — asc')
   sortDir?: 'asc' | 'desc';
 
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
+  @PageParam()
   page: number = 1;
 
-  @ApiPropertyOptional({ default: 20 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
-  @Max(200)
+  @LimitParam(20)
   limit: number = 20;
 }
 

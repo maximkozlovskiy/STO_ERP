@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Columns3, GripVertical, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { ColumnDef } from '@/hooks/useTableColumns';
+import type { ColumnDef, useTableColumns } from '@/hooks/useTableColumns';
 
 interface ColumnsDropdownProps {
   columns: ColumnDef[]; // orderedColumns from useTableColumns (already sorted + labelled)
@@ -188,5 +188,32 @@ export function ColumnsDropdown({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * `ColumnsDropdown`, підключений до стану `useTableColumns` списку: «налаштовано», коли порядок
+ * відрізняється від типового (`defaultKeysJson`) або є власні назви колонок.
+ */
+export function TableColumnsDropdown({
+  table,
+  defaultKeysJson,
+}: {
+  table: ReturnType<typeof useTableColumns>;
+  defaultKeysJson: string;
+}) {
+  return (
+    <ColumnsDropdown
+      columns={table.orderedColumns}
+      visibleKeys={table.visibleKeys}
+      onToggle={table.toggle}
+      onReorder={table.reorder}
+      onRename={table.renameColumn}
+      onReset={table.resetConfig}
+      hasCustomization={
+        JSON.stringify(table.order) !== defaultKeysJson ||
+        Object.keys(table.customLabels).length > 0
+      }
+    />
   );
 }

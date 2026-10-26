@@ -87,6 +87,39 @@ function CalendarPageClient() {
     [cs.nowMs, cs.date],
   );
 
+  // Кнопки «+ Задача» / «+ Слот» — однакові в шапці місяця й дня.
+  const headerActions = (
+    <>
+      {canManageTasks && (
+        <Button
+          variant="outline"
+          className="ml-auto"
+          onClick={() => newTaskOn(cs.date)}
+          data-testid="calendar-new-task"
+        >
+          <ListPlus className="h-4 w-4" aria-hidden="true" />
+          {t('tasks.new')}
+        </Button>
+      )}
+      {canManageSlots && (
+        <Button
+          className={canManageTasks ? '' : 'ml-auto'}
+          onClick={() => {
+            cs.setPendingSlot(null);
+            cs.setEditingSlotId(null);
+            cs.setError('');
+            cs.setCpDisplay('');
+            cs.setForm(EMPTY_FORM);
+            cs.setShowAdd(v => !v);
+          }}
+        >
+          <Plus className="h-4 w-4" />
+          {t('nav.slot')}
+        </Button>
+      )}
+    </>
+  );
+
   return (
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
@@ -163,33 +196,7 @@ function CalendarPageClient() {
                 >
                   {t('nav.thisMonth')}
                 </Button>
-                {canManageTasks && (
-                  <Button
-                    variant="outline"
-                    className="ml-auto"
-                    onClick={() => newTaskOn(cs.date)}
-                    data-testid="calendar-new-task"
-                  >
-                    <ListPlus className="h-4 w-4" aria-hidden="true" />
-                    {t('tasks.new')}
-                  </Button>
-                )}
-                {canManageSlots && (
-                  <Button
-                    className={canManageTasks ? '' : 'ml-auto'}
-                    onClick={() => {
-                      cs.setPendingSlot(null);
-                      cs.setEditingSlotId(null);
-                      cs.setError('');
-                      cs.setCpDisplay('');
-                      cs.setForm(EMPTY_FORM);
-                      cs.setShowAdd(v => !v);
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                    {t('nav.slot')}
-                  </Button>
-                )}
+                {headerActions}
               </>
             ) : (
               <>
@@ -230,33 +237,7 @@ function CalendarPageClient() {
                   testId="day-categories"
                   size="md"
                 />
-                {canManageTasks && (
-                  <Button
-                    variant="outline"
-                    className="ml-auto"
-                    onClick={() => newTaskOn(cs.date)}
-                    data-testid="calendar-new-task"
-                  >
-                    <ListPlus className="h-4 w-4" aria-hidden="true" />
-                    {t('tasks.new')}
-                  </Button>
-                )}
-                {canManageSlots && (
-                  <Button
-                    className={canManageTasks ? '' : 'ml-auto'}
-                    onClick={() => {
-                      cs.setPendingSlot(null);
-                      cs.setEditingSlotId(null);
-                      cs.setError('');
-                      cs.setCpDisplay('');
-                      cs.setForm(EMPTY_FORM);
-                      cs.setShowAdd(v => !v);
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                    {t('nav.slot')}
-                  </Button>
-                )}
+                {headerActions}
               </>
             )}
           </div>

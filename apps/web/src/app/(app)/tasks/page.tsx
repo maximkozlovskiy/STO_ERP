@@ -7,14 +7,14 @@ import { AlertTriangle, CheckCircle2, ListTodo, Play, Plus, Search, User } from 
 import { TASK_STATUS_BADGE, isTaskManagerRole } from '@sto/shared';
 import { useRequireAuth } from '@/lib/auth';
 import { fmtDate, fmtDateTime } from '@/lib/format';
-import { taskActions, type TaskAction } from '@/lib/task-actions';
+import { runTaskTransition, taskActions, type TaskAction } from '@/lib/task-actions';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { taskStatusLabel, woPriorityLabel } from '@/i18n/enumLabel';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useListPage } from '@/hooks/useListPage';
 import { useSortState } from '@/hooks/useSortState';
-import { type SavedFilter } from '@/hooks/useSavedFilters';
+import { applySavedView, savedViewOf, type SavedFilter } from '@/hooks/useSavedFilters';
 import {
   TASK_PRIORITIES,
   TASK_STATUSES,
@@ -37,7 +37,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pagination } from '@/components/ui/pagination';
 import { ListLoadError } from '@/components/ui/list-load-error';
-import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
+import { TableColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { TableContainer } from '@/components/ui/table-container';
 import { TaskEditModal } from '@/components/ui/TaskEditModal';
@@ -115,23 +115,13 @@ function TasksPageClient() {
     resetPage,
     activeSavedFilterId,
     setActiveSavedFilterId,
-    tableColumns: {
-      visibleKeys,
-      visibleColumns,
-      orderedColumns,
-      order,
-      customLabels,
-      toggle,
-      setVisible,
-      reorder,
-      renameColumn,
-      resetConfig,
-    },
+    tableColumns,
     dragProps,
     savedFilters: { saved, save, remove },
     features,
     limit,
   } = useListPage<TaskFilters>('tasks', columns, { defaultLimit: 20 });
+  const { visibleKeys, visibleColumns, order, toggle, setVisible, reorder } = tableColumns;
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
@@ -206,9 +196,7 @@ function TasksPageClient() {
       setOverdue(!!f.overdue);
       setFrom(typeof f.from === 'string' ? f.from : '');
       setTo(typeof f.to === 'string' ? f.to : '');
-      if (preset.order && preset.order.length > 0) reorder(preset.order);
-      if (preset.columns && preset.columns.length > 0) setVisible(preset.columns);
-      if (preset.sort) setSort(preset.sort.field, preset.sort.dir);
+      applySavedView(preset, { reorder, setVisible, setSort });
       resetPage();
       setActiveSavedFilterId(preset.id);
     },
@@ -220,7 +208,7 @@ function TasksPageClient() {
       const preset = save(
         name,
         { search, status, priority, assigneeId, mine, overdue, from, to },
-        { columns: [...visibleKeys], order, sort: { field: sort.sortBy, dir: sort.sortDir } },
+        savedViewOf(visibleKeys, order, sort),
       );
       setActiveSavedFilterId(preset.id);
     },
@@ -248,10 +236,7 @@ function TasksPageClient() {
     if (busyId) return;
     setBusyId(task.id);
     try {
-      const next = await transition.mutateAsync({ id: task.id, status: action.to });
-      toast.success(t('toast.status', { status: taskStatusLabel(next.status) }));
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('form.loadError'));
+      await runTaskTransition(transition.mutateAsync, task.id, action.to, t);
     } finally {
       setBusyId(null);
     }
@@ -343,17 +328,7 @@ function TasksPageClient() {
         actions={
           <>
             {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-            <ColumnsDropdown
-              columns={orderedColumns}
-              visibleKeys={visibleKeys}
-              onToggle={toggle}
-              onReorder={reorder}
-              onRename={renameColumn}
-              onReset={resetConfig}
-              hasCustomization={
-                JSON.stringify(order) !== DEFAULT_KEYS_JSON || Object.keys(customLabels).length > 0
-              }
-            />
+            <TableColumnsDropdown table={tableColumns} defaultKeysJson={DEFAULT_KEYS_JSON} />
             {isManager && (
               <Button onClick={() => setCard({ taskId: null })}>
                 <Plus className="h-4 w-4" aria-hidden="true" />
