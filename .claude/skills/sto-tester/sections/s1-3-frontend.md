@@ -87,18 +87,7 @@ grep -rnE "const can(Share|Edit|Delete|Reserve|Transition)\s*=" apps/web/src --i
 grep -rnE "(SHAREABLE|EDITABLE|DELETABLE|RESERVATION_ACTIVE)_STATUSES\s*[:=]" apps/api/src/modules --include="*.ts"
 # Звірити масиви: BE — single source of truth, FE має бути дзеркальним підмножиною (або тотожним).
 
-# Bug #728: новий тип discriminated-union / enum доданий у backend Zod + read-модель + labels,
-# але WRITE-форма (create/edit модалка) його НЕ підтримує → значення недоступне користувачу.
-# Сигнал: backend `z.discriminatedUnion('type', [...])` / enum має N варіантів, а форма-білдер
-# (buildRateScheme / buildX / EMPTY_FORM / <Select> опції) — менше.
-# Крок 1: порахувати варіанти у backend union/enum:
-grep -rnE "z\.literal\('|z\.enum\(\[" apps/api/src/modules --include="*.dto.ts" | grep -iE "type|scheme|kind|mode" | head -20
-# Крок 2: для КОЖНОГО union/enum знайти write-форму (модалку) що його будує:
-grep -rnE "build[A-Z][A-Za-z]*Scheme|EMPTY_FORM|rateType|===\s*'(percent_normo|per_normo_hour|fixed_plus_bonus)'" apps/web/src/components --include="*.tsx" | head -20
-# Звірити: чи форма має гілку + input + label + edit-гідрацію для ВСІХ backend-варіантів?
-# Пропущений варіант = HIGH (нова можливість фічі недоступна з UI; edit наявного губить тип).
-# 4 місця мають бути оновлені разом: LABELS-мапа, EMPTY_FORM поле, edit-гідрація (читання rs.params.*),
-# build-функція (гілка+валідація), JSX-input. Пропуск будь-якого = мовчазний write-path gap.
+# Bug #728: новий варіант union/enum у бекенді, а write-форма його не будує — детектор `T1.3-086`
 
 # Bug #729: query-хук фаєрить роль-обмежений GET, бо `enabled` не гейтиться роллю
 # (UI-видимість кнопки/вкладки/модалки гейтнули, а сам data-fetch — ні → фонове 403 × retry).
@@ -325,3 +314,5 @@ done
 - [ ] `onError` ховає `<img>` правкою DOM-стилів — після заміни `src` нова картинка невидима (Bug #952) — `T1.3-082`
 - [ ] Ctrl+Enter модалки повз disabled «Зберегти» (Bug #954) — `T1.3-083`
 - [ ] Вкладка керування довідником ділить ключ кешу з формою (довгий `staleTime`), а лічильник залежних записів міняють записи в інших місцях (Bug #957) — `T1.3-085`
+- [ ] Проміжок задачі/запису розкладається по днях із запобіжником ВІД ПОЧАТКУ, а не обрізається видимим періодом: довгий запис зникає з дня/місяця (Bug #983) — `T1.3-087`
+- [ ] Select через `register` + опція, що з'являється лише за `watch()`-значенням («недоступний»): після `reset` поле порожнє (Bug #985) — `T1.3-088`
