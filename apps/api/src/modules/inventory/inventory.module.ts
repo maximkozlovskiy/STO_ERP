@@ -12,7 +12,7 @@ import { AuditModule } from '../audit/audit.module';
 @Module({
   // SettingsModule — для costMethod (Метод списання партій) у createMovement.
   // Settings не залежить від Inventory → без circular DI.
-  // AuditModule — C1b: аудит pricing-rules CRUD (прямо в контролері).
+  // AuditModule — C1b: аудит pricing-rules CRUD (PricingRulesService).
   imports: [SettingsModule, AuditModule],
   controllers: [StockItemsController, BatchesController, PricingRulesController],
   providers: [InventoryService, BatchService, PricingService, PricingRulesService],
