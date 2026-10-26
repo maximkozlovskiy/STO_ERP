@@ -153,9 +153,13 @@ def _():
 
 @case("api-модуль без однойменної сторінки → маршрут через URL контролера")
 def _():
-    r = run("apps/api/src/modules/comments/comments.service.ts")
-    assert r["routes"] == ["work-orders"], r
-    assert "work-orders.spec.ts" in r["e2e"]
+    # Сторінки /warranties немає: маршрути — ті, що звертаються до /warranties (вкладка нарядів,
+    # картка контрагента). Раніше прикладом був comments, але з 2026-10-26 коментарі — спільний
+    # `CommentsSection`, досяжний з оболонки (картка задачі в картці наряду), тож для нього
+    # селектор чесно вимагає весь E2E.
+    r = run("apps/api/src/modules/warranties/warranties.service.ts")
+    assert "work-orders" in r["routes"] and "warranties" not in r["routes"], r
+    assert "work-order-warranties.spec.ts" in r["e2e"], r["e2e"]
 
 
 @case("api-модуль, до якого web не звертається → «не визначено», а не тиша")
