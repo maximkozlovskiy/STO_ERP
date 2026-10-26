@@ -1,7 +1,7 @@
 import type { Task } from '@/hooks/api/useTasks';
 import type { MonthEntry } from './calendar-categories';
 import { MONTH_CARD_LIMIT } from './calendar-month';
-import { kyivHours, nextDateString, toDateString } from './calendar.utils';
+import { fmtTime, kyivHours, nextDateString, toDateString } from './calendar.utils';
 
 /**
  * Задачі співробітникам у календарі (docs/objects/task.md, BR-TASK-004 / 007): окремий тип —
@@ -36,12 +36,43 @@ export function taskSpan(t: Pick<CalendarTask, 'startAt' | 'dueAt'>): {
   return { start, end };
 }
 
-/** Київські дні `YYYY-MM-DD`, які займає задача (включно); без дат — жодного. */
-export function taskDays(t: Pick<CalendarTask, 'startAt' | 'dueAt'>): string[] {
+/**
+ * Підпис часу задачі: лише термін — «15:00»; у межах доби — «10:00–12:00»; на кілька днів — з
+ * датами «26.10 09:00 – 29.10 17:00», інакше блок дня, що тягнеться на всю ширину, підписаний
+ * «09:00–17:00» читається як задача на цей день (Bug #984).
+ */
+export function taskTimeLabel(t: Pick<CalendarTask, 'startAt' | 'dueAt'>): string {
+  const span = taskSpan(t);
+  if (!span) return '';
+  if (span.start === span.end) return fmtTime(span.end);
+  const startDay = toDateString(new Date(span.start));
+  const endDay = toDateString(new Date(span.end));
+  if (startDay === endDay) return `${fmtTime(span.start)}–${fmtTime(span.end)}`;
+  const dm = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
+  return `${dm(startDay)} ${fmtTime(span.start)} – ${dm(endDay)} ${fmtTime(span.end)}`;
+}
+
+/** Межі видимого періоду — дні `YYYY-MM-DD` за Києвом включно. */
+export interface DayRange {
+  from: string;
+  to: string;
+}
+
+/**
+ * Київські дні `YYYY-MM-DD`, які займає задача (включно); без дат — жодного. `range` обрізає
+ * перелік видимим періодом: задача, що почалась за місяці до нього (ремонт «на квартал»), має
+ * свої дні в цьому періоді, а не лише перші `MAX_TASK_DAYS` від початку (Bug #983).
+ */
+export function taskDays(t: Pick<CalendarTask, 'startAt' | 'dueAt'>, range?: DayRange): string[] {
   const span = taskSpan(t);
   if (!span) return [];
-  const first = toDateString(new Date(span.start));
-  const last = toDateString(new Date(span.end));
+  let first = toDateString(new Date(span.start));
+  let last = toDateString(new Date(span.end));
+  if (range) {
+    if (first < range.from) first = range.from;
+    if (last > range.to) last = range.to;
+    if (first > last) return [];
+  }
   const days = [first];
   for (let d = first; d < last && days.length < MAX_TASK_DAYS;) {
     d = nextDateString(d);
@@ -50,14 +81,25 @@ export function taskDays(t: Pick<CalendarTask, 'startAt' | 'dueAt'>): string[] {
   return days;
 }
 
-/** Задачі за днями — для клітинок «Місяця» (лише дні з `days`, якщо передано). */
+/**
+ * Задачі за днями — для клітинок «Місяця». `visible` — видимі дні (набір) або межі періоду:
+ * дні поза ними не повертаються, а довга задача розкладається саме по видимих днях.
+ */
 export function tasksByDay<T extends CalendarTask>(
   tasks: readonly T[],
-  days?: ReadonlySet<string>,
+  visible?: ReadonlySet<string> | DayRange,
 ): Record<string, T[]> {
+  const days = visible && !('from' in visible) ? visible : undefined;
+  let range: DayRange | undefined;
+  if (days) {
+    const sorted = [...days].sort();
+    if (sorted.length > 0) range = { from: sorted[0], to: sorted[sorted.length - 1] };
+  } else if (visible && 'from' in visible) {
+    range = visible;
+  }
   const out: Record<string, T[]> = {};
   for (const t of tasks) {
-    for (const d of taskDays(t)) {
+    for (const d of taskDays(t, range)) {
       if (days && !days.has(d)) continue;
       (out[d] ??= []).push(t);
     }
@@ -67,7 +109,7 @@ export function tasksByDay<T extends CalendarTask>(
 
 /** Задачі одного дня (вид «День»). */
 export function tasksOfDay<T extends CalendarTask>(tasks: readonly T[], date: string): T[] {
-  return tasks.filter(t => taskDays(t).includes(date));
+  return tasks.filter(t => taskDays(t, { from: date, to: date }).length > 0);
 }
 
 /**

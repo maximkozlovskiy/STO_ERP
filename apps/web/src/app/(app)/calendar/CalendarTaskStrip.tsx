@@ -3,12 +3,12 @@
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { taskStatusLabel } from '@/i18n/enumLabel';
-import { SIDEBAR_W, fmtTime } from './calendar.utils';
+import { SIDEBAR_W } from './calendar.utils';
 import { TASK_VIEW } from './calendar-categories';
 import {
   layoutTaskLanes,
   taskDayBlock,
-  taskSpan,
+  taskTimeLabel,
   taskTone,
   type CalendarTask,
 } from './calendar-tasks';
@@ -50,7 +50,7 @@ export const CalendarTaskStrip = memo(function CalendarTaskStrip({
           if (!b) return null;
           // Позначка на самому закритті зсувається ліворуч, щоб не вийти за сітку.
           const startH = Math.min(b.startH, windowEnd - MIN_TASK_H);
-          return { task, startH, endH: Math.max(b.endH, startH + MIN_TASK_H), point: b.point };
+          return { task, startH, endH: Math.max(b.endH, startH + MIN_TASK_H) };
         })
         .filter((b): b is NonNullable<typeof b> => b !== null),
     [tasks, date, windowStart, windowEnd],
@@ -85,15 +85,10 @@ export const CalendarTaskStrip = memo(function CalendarTaskStrip({
         </span>
       </div>
       <div className="relative py-1" style={{ height: count * LANE_PX + 8 }}>
-        {blocks.map(({ task, startH, endH, point }) => {
+        {blocks.map(({ task, startH, endH }) => {
           const lane = lanes.get(task.id) ?? 0;
           const tone = taskTone(task);
-          const span = taskSpan(task);
-          const time = span
-            ? point
-              ? fmtTime(span.end)
-              : `${fmtTime(span.start)}–${fmtTime(span.end)}`
-            : '';
+          const time = taskTimeLabel(task);
           const status = taskStatusLabel(task.status);
           return (
             <button

@@ -8,8 +8,10 @@ import {
   monthCellCards,
   taskDayBlock,
   taskDays,
+  taskTimeLabel,
   taskTone,
   tasksByDay,
+  tasksOfDay,
   type CalendarTask,
 } from '../calendar-tasks';
 import { loadAllTaskPages, TASKS_MAX_PAGES } from '../useCalendarTasks';
@@ -63,6 +65,35 @@ describe('дні задачі за Києвом (BR-TASK-004)', () => {
     const t = task({ startAt: '2026-05-30T08:00:00.000Z', dueAt: '2026-06-01T08:00:00.000Z' });
     const byDay = tasksByDay([t], new Set(['2026-05-30', '2026-05-31']));
     expect(Object.keys(byDay).sort()).toEqual(['2026-05-30', '2026-05-31']);
+  });
+
+  // guards: BR-TASK-004
+  it('довга задача (почалась за 3 місяці) — на кожному дні видимого місяця і в дні (Bug #983)', () => {
+    // 01.08 → 30.11: жовтень — 87-й…117-й день задачі, далеко за першими 62 днями від початку.
+    const t = task({ startAt: '2026-08-01T07:00:00.000Z', dueAt: '2026-11-30T15:00:00.000Z' });
+    const byDay = tasksByDay([t], { from: '2026-10-01', to: '2026-10-31' });
+    expect(Object.keys(byDay)).toHaveLength(31);
+    expect(byDay['2026-10-26']).toEqual([t]);
+    expect(tasksOfDay([t], '2026-10-26')).toEqual([t]);
+    expect(tasksOfDay([t], '2026-12-01')).toEqual([]);
+  });
+});
+
+describe('підпис часу задачі', () => {
+  // guards: BR-TASK-004
+  it('лише термін — час; у межах доби — проміжок; на кілька днів — з датами (Bug #984)', () => {
+    // 26.10.2026 — уже зимовий час (+02:00).
+    expect(taskTimeLabel(task({ dueAt: '2026-10-26T13:00:00.000Z' }))).toBe('15:00');
+    expect(
+      taskTimeLabel(
+        task({ startAt: '2026-10-26T08:00:00.000Z', dueAt: '2026-10-26T10:00:00.000Z' }),
+      ),
+    ).toBe('10:00–12:00');
+    expect(
+      taskTimeLabel(
+        task({ startAt: '2026-10-26T07:00:00.000Z', dueAt: '2026-10-29T15:00:00.000Z' }),
+      ),
+    ).toBe('26.10 09:00 – 29.10 17:00');
   });
 });
 

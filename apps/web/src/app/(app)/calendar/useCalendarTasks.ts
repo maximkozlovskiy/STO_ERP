@@ -90,7 +90,11 @@ export function useCalendarTasks(view: CalView, date: string) {
     () => (view === 'day' && date ? tasksOfDay(tasks, date) : []),
     [tasks, view, date],
   );
-  const byDay = useMemo(() => (view === 'month' ? tasksByDay(tasks) : {}), [tasks, view]);
+  // Дні — у межах видимого місяця: довга задача, що почалась раніше, лягає на його дні.
+  const byDay = useMemo(
+    () => (view === 'month' && from && to ? tasksByDay(tasks, { from, to }) : {}),
+    [tasks, view, from, to],
+  );
 
   return { tasks, dayTasks, byDay, reload: load };
 }
