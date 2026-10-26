@@ -51,6 +51,16 @@ const kyivHHMM = (iso: string) =>
     hour12: false,
   }).format(new Date(iso));
 
+/**
+ * Список задач типово показує лише сьогодні («З» = «По» = сьогодні); задача спеку — на 19-те
+ * наступного місяця, тож межі знімаються кнопками «×», як це зробив би користувач.
+ */
+async function clearPeriod(page: Page) {
+  for (const label of ['З', 'По']) {
+    await page.getByRole('button', { name: `Очистити дату: ${label}`, exact: true }).click();
+  }
+}
+
 interface TaskDto {
   id: string;
   title: string;
@@ -197,6 +207,7 @@ test.describe('Задачі співробітникам — керівник с
     expect(task).toMatchObject({ assigneeId: state.mechId, status: 'NEW' });
     expect([kyivHHMM(task.startAt!), kyivHHMM(task.dueAt!)]).toEqual(['14:00', '15:00']);
 
+    await clearPeriod(page);
     const row = page.locator(`tr[data-task-id="${task.id}"]`);
     await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(row).toContainText(MECH_NAME);
@@ -213,6 +224,7 @@ test.describe('Задачі співробітникам — керівник с
       await page.goto('/tasks');
       const mine = page.getByRole('button', { name: 'Мої задачі' });
       await expect(mine).toHaveAttribute('aria-pressed', 'true', { timeout: 30_000 });
+      await clearPeriod(page);
       await expect(page.locator(`tr[data-task-id="${state.taskId}"]`)).toBeVisible({
         timeout: 15_000,
       });
@@ -269,6 +281,7 @@ test.describe('Задачі співробітникам — керівник с
     test.setTimeout(120_000);
     test.skip(!state.taskId, 'задачу не створено');
     await page.goto('/tasks');
+    await clearPeriod(page);
     const row = page.locator(`tr[data-task-id="${state.taskId}"]`);
     await expect(row).toBeVisible({ timeout: 30_000 });
     await expect(row).toContainText('Виконана');
