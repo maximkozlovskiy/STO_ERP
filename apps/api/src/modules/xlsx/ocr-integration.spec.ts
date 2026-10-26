@@ -8,6 +8,9 @@ import {
   resolveTessdataDir,
 } from './ocr-text-layer.provider';
 import { fragmentsToGrid } from './pdf-grid.extractor';
+// Статично, а не `await import` у тесті: важкий OCR-модуль під навантаженням повного прогону
+// вантажився довше за 5 с тайм-ауту кейсу (падіння 2026-10-26, двічі).
+import { DocumentGridParserService } from './document-grid-parser.service';
 
 /**
  * Інтеграційні сценарії OCR проти СПРАВЖНЬОГО стеку (tesseract + @napi-rs/canvas + pdfjs) —
@@ -242,7 +245,6 @@ describe('BUG HUNT: відсутні моделі', () => {
 
   it('OcrModelsMissingError → DocumentGridParserService.toHttpError дає 400 ocrModelsMissing', async () => {
     // Напряму перевіряємо мапінг технічної помилки у дружній 400 (клас, що відрізняє 400 від 500).
-    const { DocumentGridParserService } = await import('./document-grid-parser.service');
     const svc = new DocumentGridParserService();
     const toHttp = (
       svc as unknown as {
