@@ -576,6 +576,10 @@ export function TaskEditModal({ open, taskId, prefill, onClose, onSaved }: Props
                     required
                     errorMessage={errors.assigneeId?.message}
                     {...register('assigneeId')}
+                    // Кероване значення: позначка «(недоступний)» з'являється в переліку ПІСЛЯ
+                    // `reset` (значення форми ще порожнє на першому рендері), і некерований select
+                    // лишався без вибору — поле виглядало порожнім (Bug #985).
+                    value={form.assigneeId ?? ''}
                   >
                     <option value="">{t('form.assigneePlaceholder')}</option>
                     {savedAssigneeMissing && task && (

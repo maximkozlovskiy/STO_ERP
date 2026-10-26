@@ -172,6 +172,33 @@ describe('Картка задачі — керівник', () => {
     );
   });
 
+  // guards: BR-TASK-001
+  it('виконавець у відпустці — поле показує його «(недоступний)» обраним, а не порожнім (Bug #985)', async () => {
+    task = { ...TASK, assigneeId: 'leave', assigneeName: 'Відпустка Петро' };
+    // Перелік працівників уже є (кеш сторінки «Задачі»), картка задачі приходить після нього.
+    const base = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string, init?: { method?: string }) =>
+      path === `/tasks/${TASK_ID}`
+        ? new Promise(resolve => setTimeout(() => resolve(task), 30))
+        : base(path, init),
+    );
+    renderCard(TASK_ID);
+    const select = (await within(dialog()).findByLabelText(/Виконавець/)) as HTMLSelectElement;
+    await waitFor(() =>
+      expect(within(select).getByText('Відпустка Петро (недоступний)')).toBeInTheDocument(),
+    );
+    // Позначка в переліку є, але й обрана: інакше поле виглядає порожнім, ніби виконавця немає.
+    await waitFor(() => expect(select.value).toBe('leave'));
+    // Браузер губить вибір, коли значення поставлено ДО появи позначки (jsdom цього не відтворює):
+    // зсуваємо DOM руками — поле має повернути значення форми на наступному рендері.
+    select.value = 'zzz';
+    fireEvent.change(within(dialog()).getByLabelText(/Що зробити/), {
+      target: { value: 'Перевірити гальма ще раз' },
+    });
+    await waitFor(() => expect(select.value).toBe('leave'));
+    expect(select.options[select.selectedIndex]?.text).toBe('Відпустка Петро (недоступний)');
+  });
+
   // guards: BR-TASK-003
   it('виконану задачу керівник може повернути в роботу, скасованої — без дій', async () => {
     task = { ...TASK, status: 'DONE' };
