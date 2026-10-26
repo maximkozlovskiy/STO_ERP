@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, CheckCircle2, ListTodo, Play, Plus, Search, User } from 'lucide-react';
 import { TASK_STATUS_BADGE, isTaskManagerRole } from '@sto/shared';
 import { useRequireAuth } from '@/lib/auth';
-import { fmtDate, fmtDateTime } from '@/lib/format';
+import { fmtDate, fmtDateTime, kyivToday } from '@/lib/format';
 import { runTaskTransition, taskActions, type TaskAction } from '@/lib/task-actions';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
@@ -130,8 +130,9 @@ function TasksPageClient() {
   const [assigneeId, setAssigneeId] = useState('');
   const [mine, setMine] = useState(false);
   const [overdue, setOverdue] = useState(false);
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  // Типово — сьогоднішні задачі, як у нарядах; «×» у полі знімає межу.
+  const [from, setFrom] = useState(() => kyivToday());
+  const [to, setTo] = useState(() => kyivToday());
   const { sort, toggle: toggleSort, set: setSort } = useSortState('dueAt', 'asc');
   const [card, setCard] = useState<CardState>(null);
 
@@ -291,6 +292,12 @@ function TasksPageClient() {
               {chip(
                 overdue,
                 () => {
+                  // Прострочені — це терміни ДО сьогодні: з типовим періодом «сьогодні» чип не показав
+                  // би жодної давньої, тож увімкнення знімає межі періоду.
+                  if (!overdue) {
+                    setFrom('');
+                    setTo('');
+                  }
                   setOverdue(v => !v);
                   changed();
                 },

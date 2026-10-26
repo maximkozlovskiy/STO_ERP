@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
+import { SearchPickerModal } from '@/components/ui/search-picker-modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { CommentsSection } from '@/components/ui/CommentsSection';
@@ -244,9 +245,10 @@ export function TaskEditModal({ open, taskId, prefill, onClose, onSaved }: Props
     return () => ac.abort();
   }, [open, isManager, counterpartyId]);
 
-  const fetchWorkOrders = useCallback(async (q: string): Promise<WoItem[]> => {
+  const searchWorkOrders = useCallback(async (q: string, clientId?: string): Promise<WoItem[]> => {
     const params = new URLSearchParams({ limit: '20' });
     if (q.trim()) params.set('q', q.trim());
+    if (clientId) params.set('counterpartyId', clientId);
     const data = await apiFetch<{
       items: Array<{
         id: string;
@@ -267,6 +269,13 @@ export function TaskEditModal({ open, taskId, prefill, onClose, onSaved }: Props
       vehicleSummary: wo.vehicleSummary,
     }));
   }, []);
+  const fetchWorkOrders = useCallback((q: string) => searchWorkOrders(q), [searchWorkOrders]);
+  // Список «…» — як у календарі: з обраним клієнтом лише його наряди.
+  const fetchWoPickerItems = useCallback(
+    (q: string) => searchWorkOrders(q, counterpartyId || undefined),
+    [searchWorkOrders, counterpartyId],
+  );
+  const [woPickerOpen, setWoPickerOpen] = useState(false);
 
   const fetchCounterparties = useCallback(async (q: string): Promise<SearchItem[]> => {
     const params = new URLSearchParams({ limit: '20' });
@@ -294,6 +303,21 @@ export function TaskEditModal({ open, taskId, prefill, onClose, onSaved }: Props
     // «Термін раніше початку» (BR-TASK-004) стоїть на полі терміну, а залежить від обох: зміна
     // будь-якого з них перевіряє термін наново, інакше стара помилка лишалась би після виправлення.
     if (name === 'dueAt' || name === 'startAt') void trigger('dueAt');
+  };
+
+  /** Наряд з пошуку чи зі списку: підставляє його клієнта й авто. */
+  const selectWorkOrder = (item: WoItem) => {
+    setField('workOrderId', item.id);
+    const next: Displays = { ...displays, workOrder: item.primary };
+    if (item.counterpartyId) {
+      setField('counterpartyId', item.counterpartyId);
+      next.counterparty = item.counterpartyName ?? '';
+    }
+    if (item.vehicleId) {
+      setField('vehicleId', item.vehicleId);
+      next.vehicle = item.vehicleSummary ?? '';
+    }
+    setDisplays(next);
   };
 
   // ── Виконавці: активні працівники; збережений недоступний — окремою позначкою, лише коли
@@ -633,22 +657,10 @@ export function TaskEditModal({ open, taskId, prefill, onClose, onSaved }: Props
                     display={displays.workOrder}
                     placeholder={t('form.workOrderPlaceholder')}
                     ariaLabel={t('form.workOrder')}
-                    hidePick
                     hideDetail
                     onSearch={fetchWorkOrders}
-                    onSearchSelect={item => {
-                      setField('workOrderId', item.id);
-                      const next: Displays = { ...displays, workOrder: item.primary };
-                      if (item.counterpartyId) {
-                        setField('counterpartyId', item.counterpartyId);
-                        next.counterparty = item.counterpartyName ?? '';
-                      }
-                      if (item.vehicleId) {
-                        setField('vehicleId', item.vehicleId);
-                        next.vehicle = item.vehicleSummary ?? '';
-                      }
-                      setDisplays(next);
-                    }}
+                    onSearchSelect={selectWorkOrder}
+                    onPick={() => setWoPickerOpen(true)}
                     onClear={() => {
                       setField('workOrderId', '');
                       setDisplays(d => ({ ...d, workOrder: '' }));
@@ -719,6 +731,19 @@ export function TaskEditModal({ open, taskId, prefill, onClose, onSaved }: Props
           </div>
         )}
       </Modal>
+      <SearchPickerModal<WoItem>
+        open={woPickerOpen}
+        onClose={() => setWoPickerOpen(false)}
+        title={counterpartyId ? t('form.woPickerTitleForClient') : t('form.woPickerTitle')}
+        selectedId={form.workOrderId}
+        fetchItems={fetchWoPickerItems}
+        searchPlaceholder={t('form.workOrderPlaceholder')}
+        emptyText={t('form.woPickerEmpty')}
+        onSelect={item => {
+          selectWorkOrder(item);
+          setWoPickerOpen(false);
+        }}
+      />
       <ConfirmDialog {...dialogProps} />
       <DirtyConfirmDialog {...dirty.dialogProps} />
     </>

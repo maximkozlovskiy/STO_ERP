@@ -24,6 +24,7 @@ vi.mock('@/lib/api-client', () => ({
 }));
 
 import TasksPage from '../page';
+import { kyivToday } from '@/lib/format';
 
 const MECH = '11111111-1111-4111-8111-00000000000a';
 const ROW = {
@@ -109,6 +110,24 @@ describe('Сторінка «Задачі»', () => {
     expect(row).toHaveAttribute('data-overdue', 'true');
     expect(within(row).getByText('Прострочена')).toBeInTheDocument();
     expect(within(row).getByText('НРД-7 (видалений)')).toBeInTheDocument();
+  });
+
+  it('період типово — сьогодні за Києвом (from = to = сьогодні), як у нарядах', async () => {
+    renderPage();
+    await screen.findByText('Перевірити гальма');
+    const today = kyivToday();
+    expect(lastListParams().get('from')).toBe(today);
+    expect(lastListParams().get('to')).toBe(today);
+  });
+
+  // guards: BR-TASK-005
+  it('чип «Прострочені» знімає типовий період: давні прострочені не відсікаються датою', async () => {
+    renderPage();
+    await screen.findByText('Перевірити гальма');
+    fireEvent.click(screen.getByRole('button', { name: 'Прострочені' }));
+    await waitFor(() => expect(lastListParams().get('overdue')).toBe('true'));
+    expect(lastListParams().get('from')).toBeNull();
+    expect(lastListParams().get('to')).toBeNull();
   });
 
   // guards: BR-TASK-005

@@ -150,6 +150,57 @@ describe('Картка задачі — керівник', () => {
     expect(body.startAt).toBeUndefined();
   });
 
+  it('«Обрати» біля наряду — список нарядів обраного клієнта; вибір підставляє наряд і авто', async () => {
+    const CP = '33333333-3333-4333-8333-000000000001';
+    const WO = {
+      id: '22222222-2222-4222-8222-000000000009',
+      number: 'НРД-9',
+      counterpartyId: CP,
+      counterpartyName: 'ТОВ Клієнт',
+      vehicleId: '44444444-4444-4444-8444-000000000001',
+      vehicleSummary: 'Toyota Corolla (АА1234АА)',
+    };
+    const base = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string, init?: { method?: string }) =>
+      String(path).startsWith('/work-orders?')
+        ? Promise.resolve({ items: [WO], total: 1 })
+        : String(path).startsWith('/vehicles?')
+          ? Promise.resolve([])
+          : base(path, init),
+    );
+    renderCard(null, { counterpartyId: CP, counterpartyDisplay: 'ТОВ Клієнт' });
+    const card = within(dialog());
+    fireEvent.click(card.getByRole('button', { name: 'Обрати' }));
+
+    const picker = await screen.findByRole('dialog', { name: 'Наряди клієнта' });
+    const woCall = apiFetchMock.mock.calls
+      .map(c => String(c[0]))
+      .find(p => p.startsWith('/work-orders?'))!;
+    expect(new URLSearchParams(woCall.split('?')[1]).get('counterpartyId')).toBe(CP);
+    fireEvent.click(await within(picker).findByText('НРД-9'));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Наряди клієнта' })).toBeNull(),
+    );
+    expect(card.getAllByText('НРД-9').length).toBeGreaterThan(0);
+
+    // Обраний зі списку наряд іде в запит разом зі своїм клієнтом і авто.
+    fireEvent.change(card.getByLabelText(/Що зробити/), { target: { value: 'Перевірити гальма' } });
+    await waitFor(() => expect(card.getByText('Коваль Іван')).toBeInTheDocument());
+    fireEvent.change(card.getByLabelText(/Виконавець/), { target: { value: MECH } });
+    fireEvent.click(card.getByRole('button', { name: 'Поставити задачу' }));
+    await waitFor(() => expect(calls('POST', '/tasks')).toHaveLength(1));
+    const body = JSON.parse((calls('POST', '/tasks')[0][1] as { body: string }).body) as Record<
+      string,
+      unknown
+    >;
+    expect(body).toMatchObject({
+      workOrderId: WO.id,
+      counterpartyId: CP,
+      vehicleId: WO.vehicleId,
+    });
+  });
+
   // guards: BR-TASK-004
   it('помилка «термін раніше початку» знімається, коли виправили ПОЧАТОК (а не термін)', async () => {
     renderCard(null, { startAt: '2026-11-12T19:00', dueAt: '2026-11-12T18:00' });
