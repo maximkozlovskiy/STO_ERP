@@ -84,12 +84,6 @@ describe('InventoryService.createMovement guards', () => {
     );
   });
 
-  it('кидає при RESERVATION_RELEASE з positive quantity', async () => {
-    await expect(
-      service.createMovement('org-1', dto({ type: 'RESERVATION_RELEASE', quantity: 5 })),
-    ).rejects.toThrow(BadRequestException);
-  });
-
   // guards: BR-INVT-003
   it('кидає при WRITEOFF якщо available < |quantity|', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 5, reserved: 0 });
@@ -445,9 +439,9 @@ describe('InventoryService.createMovement guards', () => {
     );
   });
 
-  // Сусідній кейс «RESERVATION_RELEASE з positive quantity» не задає залишку, тож його 400 дає
-  // сусідній guard «знімаєш більше, ніж зарезервовано». Тут резерву достатньо: без перевірки
-  // знака додатний RELEASE збільшив би reserved в обхід перевірки available.
+  // Резерву свідомо достатньо: без залишку 400 дав би сусідній guard «знімаєш більше, ніж
+  // зарезервовано», і кейс був би зеленим і без перевірки знака. Без неї додатний RELEASE
+  // збільшив би reserved в обхід перевірки available.
   // guards: BR-INVT-005
   it('RESERVATION_RELEASE з додатною кількістю → 400 навіть коли резерву достатньо', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 20, reserved: 10 });
@@ -666,14 +660,8 @@ describe('InventoryService.createMovement guards', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it("RETURN з від'ємною к-стю → BadRequest", async () => {
-      await expect(service.createMovement('org-1', retDto({ quantity: -3 }))).rejects.toThrow(
-        BadRequestException,
-      );
-    });
-
-    // Кейс вище не задає залишку — без перевірки знака його 400 дав би guard «недостатньо товару».
-    // Тут товару достатньо: без перевірки знака від'ємний RETURN став би звичайним списанням.
+    // Товару свідомо достатньо: без залишку 400 дав би guard «недостатньо товару», і кейс був би
+    // зеленим і без перевірки знака. Без неї від'ємний RETURN став би звичайним списанням.
     // guards: BR-INVT-014
     it("RETURN з від'ємною к-стю → 400 навіть за достатнього залишку (не стає списанням)", async () => {
       prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 0 });

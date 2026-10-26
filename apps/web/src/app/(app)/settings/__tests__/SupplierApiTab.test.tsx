@@ -172,6 +172,15 @@ describe('SupplierConnectionModal', () => {
     expect(await screen.findByRole('option', { name: 'Інший ТОВ' })).toBeInTheDocument();
     expect(screen.getByLabelText(/Контрагент-постачальник/)).toHaveValue('cp-1');
     expect(screen.getByRole('option', { name: 'AVD ТОВ' })).toBeInTheDocument();
+    // Поле — спільний SupplierOptionsSelect; id картки лишились (на них спираються селектори).
+    expect(screen.getByLabelText(/Контрагент-постачальник/)).toHaveAttribute(
+      'id',
+      'scon-counterparty',
+    );
+    expect(screen.getByLabelText('Пошук постачальника')).toHaveAttribute(
+      'id',
+      'scon-counterparty-search',
+    );
 
     fireEvent.change(screen.getByLabelText('Пошук постачальника'), { target: { value: 'Знай' } });
     expect(await screen.findByRole('option', { name: 'Знайдений ТОВ' })).toBeInTheDocument();

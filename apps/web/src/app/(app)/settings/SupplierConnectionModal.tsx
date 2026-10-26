@@ -6,7 +6,7 @@ import type { SupplierConnectionCreateValues, SupplierConnectionUpdateValues } f
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useWarehouses } from '@/hooks/api/useInfrastructure';
-import { useSupplierOptions, type SupplierOption } from '@/hooks/api/useCounterparties';
+import type { SupplierOption } from '@/hooks/api/useCounterparties';
 import {
   type SupplierConnection,
   type SupplierFieldSpec,
@@ -17,6 +17,7 @@ import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { SupplierOptionsSelect } from '@/components/ui/SupplierOptionsSelect';
 import { Switch } from '@/components/ui/switch';
 
 type OptionValue = string | boolean;
@@ -127,37 +128,19 @@ export function SupplierConnectionModal({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
-  const [supplierQuery, setSupplierQuery] = useState('');
-  const [supplierQueryDebounced, setSupplierQueryDebounced] = useState('');
-  useEffect(() => {
-    const id = setTimeout(() => setSupplierQueryDebounced(supplierQuery.trim()), 300);
-    return () => clearTimeout(id);
-  }, [supplierQuery]);
-  const { data: supplierPage, isLoading: suppliersLoading } = useSupplierOptions(
-    supplierQueryDebounced,
-    open,
-  );
   // Обраний контрагент (поточний у підключення чи обраний до пошуку) завжди серед варіантів:
   // інакше картка з контрагентом поза першими 200 відкривалась із порожнім полем (Bug #894).
   const [pickedSupplier, setPickedSupplier] = useState<SupplierOption | null>(null);
-  const suppliers = useMemo(() => {
-    const list = supplierPage?.items ?? [];
-    const keep =
-      pickedSupplier?.id === form.counterpartyId
-        ? pickedSupplier
-        : connection && connection.counterpartyId === form.counterpartyId
-          ? { id: connection.counterpartyId, name: connection.counterpartyName }
-          : null;
-    return keep && !list.some(s => s.id === keep.id) ? [keep, ...list] : list;
-  }, [supplierPage, pickedSupplier, connection, form.counterpartyId]);
-  const suppliersTruncated =
-    !!supplierQueryDebounced || (supplierPage?.total ?? 0) > (supplierPage?.items.length ?? 0);
+  const ownSupplier = useMemo<SupplierOption | null>(
+    () =>
+      connection ? { id: connection.counterpartyId, name: connection.counterpartyName } : null,
+    [connection],
+  );
   const { data: warehouses } = useWarehouses();
 
   useEffect(() => {
     if (!open) return;
     setForm(connection ? fromConnection(connection) : EMPTY);
-    setSupplierQuery('');
     setPickedSupplier(null);
     setError('');
     dirty.resetDirty();
@@ -405,42 +388,23 @@ export function SupplierConnectionModal({
                   </option>
                 ))}
               </Select>
-              <div className="space-y-1.5">
-                {suppliersTruncated && (
-                  <Input
-                    id="scon-counterparty-search"
-                    label={t('form.counterpartySearch')}
-                    value={supplierQuery}
-                    onChange={e => setSupplierQuery(e.target.value)}
-                    placeholder={t('form.counterpartySearchPlaceholder')}
-                  />
-                )}
-                <Select
-                  id="scon-counterparty"
-                  label={t('form.counterparty')}
-                  required
-                  value={form.counterpartyId}
-                  onChange={e => {
-                    const id = e.target.value;
-                    setPickedSupplier(suppliers.find(x => x.id === id) ?? null);
-                    patch({ counterpartyId: id });
-                  }}
-                  hint={
-                    !suppliersLoading && suppliers.length === 0
-                      ? supplierQueryDebounced
-                        ? t('form.noSuppliersFound')
-                        : t('form.noSuppliers')
-                      : undefined
-                  }
-                >
-                  <option value="">{t('form.counterpartyPlaceholder')}</option>
-                  {suppliers.map(x => (
-                    <option key={x.id} value={x.id}>
-                      {x.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
+              <SupplierOptionsSelect
+                // Пошук живе в компоненті: інше підключення — порожній пошук.
+                key={connection?.id ?? 'new'}
+                id="scon-counterparty"
+                label={t('form.counterparty')}
+                required
+                value={form.counterpartyId}
+                selected={pickedSupplier}
+                extraSelected={ownSupplier}
+                onChange={(id, option) => {
+                  setPickedSupplier(option);
+                  patch({ counterpartyId: id });
+                }}
+                noneHint={t('form.noSuppliers')}
+                enabled={open}
+                leading={<option value="">{t('form.counterpartyPlaceholder')}</option>}
+              />
               <Input
                 id="scon-name"
                 label={t('form.name')}

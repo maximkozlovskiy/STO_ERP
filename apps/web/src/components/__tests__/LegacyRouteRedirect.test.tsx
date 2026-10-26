@@ -1,5 +1,6 @@
 // Старі адреси прибраних сторінок оплат ведуть на нові місця (рішення власника 2026-10-14):
 //   /payments                → /cash
+//   /payments/<id>           → /cash   (старі посилання на картку оплати клієнта)
 //   /supplier-payments       → /purchase-orders?tab=schedule
 //   /supplier-payments/<id>  → /purchase-orders?tab=schedule
 //
@@ -20,6 +21,9 @@ vi.mock('next/navigation', () => ({ useRouter: () => router }));
 
 import { LegacyRouteRedirect } from '../LegacyRouteRedirect';
 import PaymentsLegacyPage from '@/app/(app)/payments/page';
+import PaymentLegacyCardPage, {
+  generateStaticParams as paymentCardStaticParams,
+} from '@/app/(app)/payments/[id]/page';
 import SupplierPaymentsLegacyPage from '@/app/(app)/supplier-payments/page';
 import SupplierPaymentLegacyCardPage, {
   generateStaticParams,
@@ -33,6 +37,7 @@ describe('перенаправлення зі старих адрес оплат
 
   it.each([
     ['/payments', PaymentsLegacyPage, '/cash'],
+    ['/payments/<id>', PaymentLegacyCardPage, '/cash'],
     ['/supplier-payments', SupplierPaymentsLegacyPage, '/purchase-orders?tab=schedule'],
     ['/supplier-payments/<id>', SupplierPaymentLegacyCardPage, '/purchase-orders?tab=schedule'],
   ] as const)('%s → %s', (_from, Page, target) => {
@@ -46,6 +51,10 @@ describe('перенаправлення зі старих адрес оплат
 
   it('картка оплати постачальнику лишає оболонку для статичного експорту', () => {
     expect(generateStaticParams()).toEqual([{ id: '_' }]);
+  });
+
+  it('картка оплати клієнта лишає оболонку для статичного експорту', () => {
+    expect(paymentCardStaticParams()).toEqual([{ id: '_' }]);
   });
 
   it('повторний рендер із тією самою адресою не перенаправляє вдруге', () => {

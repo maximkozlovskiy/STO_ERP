@@ -27,24 +27,29 @@ const TabChip = memo(function TabChip({ tab, onActivate, onClose }: TabChipProps
   // Inline arrows тут безпечні — TabChip уже memo'd, кожен chip має ВЛАСНИЙ
   // identity через `tab` prop. Нові arrow refs створюються лише коли tab
   // міняється — тобто щоразу при rerender ЦІЄЇ chip-instance (через зміну tab).
+  // Назва — окрема кнопка, закриття — сусідня (не вкладена): вкладка відкривається з клавіатури
+  // (Tab → Enter), а `<div onClick>` фокуса не отримував.
   return (
     <div
       className={cn(
-        'group relative flex items-center gap-1 px-2.5 h-full shrink-0 cursor-pointer select-none',
+        'group relative flex items-center gap-1 pr-2.5 h-full shrink-0 select-none',
         'text-[12px] max-w-40 border-r border-border transition-colors',
         'bg-amber-50 dark:bg-amber-950/30 text-foreground border-b-2 border-b-amber-400',
       )}
-      onClick={() => onActivate(tab.id)}
-      title={tab.label}
     >
-      <FileText className="h-3 w-3 shrink-0 opacity-60" />
-      <span className="truncate">{tab.label}</span>
       <button
-        className="ml-0.5 shrink-0 rounded-sm p-0.5 opacity-0 group-hover:opacity-60 focus-visible:opacity-100 hover:opacity-100! transition-opacity"
-        onClick={e => {
-          e.stopPropagation();
-          onClose(tab.id);
-        }}
+        type="button"
+        className="flex min-w-0 h-full items-center gap-1 pl-2.5 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+        onClick={() => onActivate(tab.id)}
+        title={tab.label}
+      >
+        <FileText className="h-3 w-3 shrink-0 opacity-60" />
+        <span className="truncate">{tab.label}</span>
+      </button>
+      <button
+        type="button"
+        className="ml-0.5 shrink-0 rounded-sm p-0.5 opacity-0 group-hover:opacity-60 group-focus-within:opacity-60 focus-visible:opacity-100 hover:opacity-100! transition-opacity"
+        onClick={() => onClose(tab.id)}
         title={t('close')}
         aria-label={t('tabBar.closeTab')}
       >
@@ -79,6 +84,8 @@ function TabOverflowMenu({ tabs, onActivate, onClose }: OverflowMenuProps) {
   return (
     <div ref={ref} className="relative shrink-0 flex items-center h-full border-r border-border">
       <button
+        type="button"
+        aria-expanded={open}
         className="flex items-center gap-0.5 px-2 h-full text-[11px] text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-colors"
         onClick={() => setOpen(o => !o)}
         title={t('tabBar.allOpen')}
@@ -92,21 +99,28 @@ function TabOverflowMenu({ tabs, onActivate, onClose }: OverflowMenuProps) {
           {tabs.map(tab => (
             <div
               key={tab.id}
-              className="flex items-center gap-2 px-3 py-1.5 text-[12px] cursor-pointer hover:bg-secondary/60 text-foreground"
-              onClick={() => {
-                onActivate(tab.id);
-                setOpen(false);
-              }}
+              className="flex items-center gap-1 pr-2 text-[12px] hover:bg-secondary/60 text-foreground"
             >
-              <FileText className="h-3.5 w-3.5 shrink-0 opacity-60" />
-              <span className="truncate flex-1">{tab.label}</span>
               <button
+                type="button"
+                className="flex flex-1 min-w-0 items-center gap-2 pl-3 py-1.5 text-left cursor-pointer outline-none focus-visible:bg-secondary/60"
+                onClick={() => {
+                  onActivate(tab.id);
+                  setOpen(false);
+                }}
+              >
+                <FileText className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                <span className="truncate flex-1">{tab.label}</span>
+              </button>
+              <button
+                type="button"
                 className="ml-1 p-0.5 rounded hover:bg-secondary text-muted-foreground"
-                onClick={e => {
-                  e.stopPropagation();
+                onClick={() => {
                   onClose(tab.id);
                   setOpen(false);
                 }}
+                title={t('close')}
+                aria-label={t('tabBar.closeTab')}
               >
                 <X className="h-3 w-3" />
               </button>

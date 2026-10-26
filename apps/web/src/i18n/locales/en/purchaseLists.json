@@ -22,9 +22,7 @@
     "allSuppliers": "All suppliers",
     "noSupplier": "No supplier",
     "list": "List",
-    "allLists": "All open lists",
-    "supplierSearch": "Find a supplier",
-    "supplierSearchPlaceholder": "Name — the list shows the first {{count}}"
+    "allLists": "All open lists"
   },
   "columns": {
     "workOrder": "Work order",
@@ -96,8 +94,6 @@
       "supplierTitle_few": "Supplier and price — {{count}} items",
       "supplierTitle_many": "Supplier and price — {{count}} items",
       "supplierTitle_other": "Supplier and price — {{count}} items",
-      "suppliersLoadFailed": "The supplier list failed to load — try again",
-      "suppliersNotFound": "Nothing found",
       "suppliersNone": "There are no suppliers — add a counterparty of type “Supplier”",
       "suppliersNoneAsk": "There are no suppliers — ask the owner or an administrator to add a counterparty of type “Supplier”",
       "keep": "— keep —",

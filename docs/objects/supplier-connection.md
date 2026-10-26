@@ -80,6 +80,8 @@
 - `settings/SupplierConnectionModal.tsx` — картка підключення: поля кредів, опцій і мапи «наш склад →
   параметри постачальника» з `GET /supplier-providers`; креди лише на запис (плейсхолдер «збережено»,
   порожнє не надсилається, BR-SCON-002); «Зберегти і перевірити» тримає картку, доки PENDING;
+  контрагент — спільний `components/ui/SupplierOptionsSelect.tsx` (пошук на сервері понад перші 200;
+  власний контрагент підключення лишається варіантом через `extraSelected`, Bug #894; id `scon-counterparty*`);
 - `components/ui/purchase-order/SupplierApiOrderBlock.tsx` — блок у картці замовлення
   (`PurchaseOrderCreateModal`): підсумок, зовнішні номери й статуси, «запитано / підтверджено»,
   «Відправити в API» (Idempotency-Key), «Оновити статус», «Повернути непідтверджене в список»;
@@ -127,7 +129,8 @@ cd apps/api && npx vitest run src/modules/supplier-api/<тека>/<файл>.spe
 Поза модулем: `config/env.schema.spec.ts` — відмова старту з allowlist у production (BR-SCON-005);
 `purchase-orders/purchase-orders.contract.spec.ts` — `force` у переході (BR-PO-012);
 `payments/payments.queue-retry-policy.spec.ts` — політика повторів нових черг (BR-SCON-006).
-Web: `settings/__tests__/SupplierApiTab.test.tsx` (креди лише на запис, мапа складів, змінені поля
+Web: `components/ui/__tests__/SupplierOptionsSelect.test.tsx` (спільний вибір контрагента: `extraSelected`, id,
+рядок фільтрів — 3 кейси), `settings/__tests__/SupplierApiTab.test.tsx` (креди лише на запис, мапа складів, змінені поля
 налаштувань — BR-SCON-002, 003; відповідь без полів `supplier*` (старіша збірка API) — значення за
 замовчуванням зі схеми й підказка стратегії, збіг цих значень із `@default` схеми — BR-SCON-009, BR-SOFR-007), `components/ui/purchase-order/__tests__/SupplierApiOrderBlock.test.tsx`
 (підтвердження скасування відправленого — BR-SCON-014; Idempotency-Key — BR-SCON-009; стан — BR-SCON-013),

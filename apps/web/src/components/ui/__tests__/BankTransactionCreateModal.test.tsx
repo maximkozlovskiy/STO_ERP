@@ -20,10 +20,20 @@ vi.mock('@/lib/format', async importOriginal => ({
   kyivToday: () => '2026-10-09',
 }));
 
-// Календар — не мета тесту: поле дати як звичайний input зі значенням YYYY-MM-DD.
+// Календар — не мета тесту: поле дати як звичайний input зі значенням YYYY-MM-DD (і межею `max`).
 vi.mock('@/components/ui/date-picker-input', () => ({
-  DatePickerInput: (p: { value: string; onChange: (v: string) => void; label?: string }) => (
-    <input aria-label={p.label} value={p.value} onChange={e => p.onChange(e.target.value)} />
+  DatePickerInput: (p: {
+    value: string;
+    onChange: (v: string) => void;
+    label?: string;
+    max?: string;
+  }) => (
+    <input
+      aria-label={p.label}
+      value={p.value}
+      max={p.max}
+      onChange={e => p.onChange(e.target.value)}
+    />
   ),
 }));
 
@@ -36,6 +46,7 @@ vi.mock('@/lib/api-client', () => ({
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('@/lib/toast', () => ({ toast: toastMock }));
 
+import { kyivTodayYmd } from '@sto/shared';
 import { BankTransactionCreateModal } from '../BankTransactionCreateModal';
 import { renderWithQueryClient, makeTestQueryClient } from '../../../__tests__/query-utils';
 
@@ -111,6 +122,16 @@ describe('BankTransactionCreateModal', () => {
     });
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(toastMock.success).toHaveBeenCalledWith('Платіж внесено');
+  });
+
+  // TECH-DEBT §10 п.22: майбутню дату операції відхиляють схема й сервер — пікер її не пропонує.
+  // Mutation-verify: прибрати `max={kyivTodayYmd()}` у DatePickerInput → кейс падає.
+  // guards: BR-BANK-021
+  it('поле дати операції обмежене сьогоднішнім днем за Києвом', async () => {
+    mockApi([account(ACC_UAH, 'Основний', 'UAH')]);
+    renderWithQueryClient(<BankTransactionCreateModal open onClose={() => {}} />);
+    await screen.findByRole('option', { name: 'Основний' });
+    expect(screen.getByLabelText('Дата операції')).toHaveAttribute('max', kyivTodayYmd());
   });
 
   it("необов'язкові поля порожні → у payload їх немає; дата за замовчуванням — сьогодні за Києвом", async () => {

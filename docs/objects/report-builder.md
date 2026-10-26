@@ -331,12 +331,12 @@ cd apps/api && npx vitest run src/modules/report-builder/<файл>.spec.ts
 Разом: **304** кейси — 168 конструктора і 136 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
 
 Web-тест експорту (`BR-RPT-021`) лежить поза модулем:
-`apps/web/src/lib/__tests__/report-export.test.ts` — 35 кейсів (зокрема колонки валют, порожня вибірка і рядки
+`apps/web/src/lib/__tests__/report-export.test.ts` — 37 кейсів (зокрема колонки валют, порожня вибірка і рядки
 клітинки суми у валюті документа, BR-RPT-029). Перевіряє чисту частину
 `apps/web/src/lib/report-export.ts` (винесена з `ReportBuilder.tsx`): дерево груп → плоскі рядки
 (відступ за рівнем, підсумки груп, рядок «Разом»), плоский звіт (нумерація, колонка «Склеєно»),
 значення клітинки (enum, дата, булеве), CSV (роздільник, лапки, захист від формул через
-`escapeCsvCell`, BOM), XLSX-XML (екранування, числа як `Number`, заголовок, каркас книги). Запуск:
+`escapeCsvCell`, BOM), XLSX-XML (екранування, вирізання XML-недопустимих керувальних символів, назва аркуша — `escAttr` і правила Excel `xlsxSheetName`, числа як `Number`, заголовок, каркас книги). Запуск:
 `cd apps/web && npx vitest run src/lib/__tests__/report-export.test.ts`.
 CSV фіксованих звітів (`apps/web/src/app/(app)/reports/report-csv.ts`, числа з комою, BOM у
 файлі) — `apps/web/src/app/(app)/reports/__tests__/report-csv.test.ts`, 5 кейсів.

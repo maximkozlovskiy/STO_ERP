@@ -51,6 +51,26 @@ describe('BankStatementPullProcessor', () => {
     ...over,
   });
 
+  /**
+   * Рядки staging як у базі: `findFirst` віддає рядок, лише коли збігаються ВСІ поля `where`, що є
+   * в рядку. Мок «завжди null» не дивився на `where`: прибери з нього `status: 'UNMATCHED'` — і
+   * рознесений рядок рознісся б удруге, а кейс лишився б зеленим.
+   */
+  type StoredTx = { id: string; externalId: string; direction: string; status: string };
+  const stageRows = (rows: StoredTx[]) => {
+    prisma.bankTransaction.findFirst.mockImplementation(
+      ({ where }: { where: Record<string, unknown> }) => {
+        const hit = rows.find(r =>
+          Object.entries(where).every(
+            ([k, v]) => !(k in r) || (r as Record<string, unknown>)[k] === v,
+          ),
+        );
+        return Promise.resolve(hit ? { id: hit.id } : null);
+      },
+    );
+    return rows;
+  };
+
   beforeEach(() => {
     prisma = {
       bankAccount: {
@@ -151,19 +171,29 @@ describe('BankStatementPullProcessor', () => {
     );
   });
 
-  it('авто-матч: транзакція вже рознесена (findFirst null) → matchTransaction не викликається', async () => {
-    providerImpl.fetchStatements.mockResolvedValue([rawTx('sure')]);
+  // Рознесений рядок іде в батчі ПЕРШИМ: без пропуску «не знайдено нерознесеного» обробка батчу
+  // впала б на ньому, і сусідній нерознесений рядок теж лишився б нерознесеним.
+  // guards: BR-BANK-011
+  it('авто-матч: рознесений рядок удруге не розноситься, нерознесений сусід у батчі — розноситься', async () => {
+    providerImpl.fetchStatements.mockResolvedValue([rawTx('done'), rawTx('fresh')]);
+    const sure = { status: 'matched', confidence: 1, counterpartyId: 'cp-1', matchType: 'SERVICE' };
     reconciliation.resolveBatch.mockResolvedValue(
       new Map([
-        [
-          'sure',
-          { status: 'matched', confidence: 1, counterpartyId: 'cp-1', matchType: 'SERVICE' },
-        ],
+        ['done', sure],
+        ['fresh', sure],
       ]),
     );
-    prisma.bankTransaction.findFirst.mockResolvedValue(null);
+    stageRows([
+      { id: 'tx-done', externalId: 'done', direction: 'IN', status: 'MATCHED' },
+      { id: 'tx-fresh', externalId: 'fresh', direction: 'IN', status: 'UNMATCHED' },
+    ]);
     await processor.process(makeJob({ orgId: ORG }));
-    expect(reconciliation.matchTransaction).not.toHaveBeenCalled();
+    expect(reconciliation.matchTransaction).toHaveBeenCalledTimes(1);
+    expect(reconciliation.matchTransaction).toHaveBeenCalledWith(
+      ORG,
+      'tx-fresh',
+      expect.objectContaining({ counterpartyId: 'cp-1' }),
+    );
   });
 
   // guards: BR-BANK-012
@@ -202,9 +232,18 @@ describe('BankStatementPullProcessor', () => {
     expect(prisma.bankAccount.updateMany).toHaveBeenCalled();
   });
 
+  // guards: BR-BANK-011
   it('ідемпотентність overlapping-window: повторний pull того ж externalId → 0 дубль-Payment', async () => {
     // Перший pull: транзакція UNMATCHED, авто-матч confidence===1 → matchTransaction.
     providerImpl.fetchStatements.mockResolvedValue([rawTx('dup-1')]);
+    const [staged] = stageRows([
+      { id: 'tx-dup', externalId: 'dup-1', direction: 'IN', status: 'UNMATCHED' },
+    ]);
+    // Рознесення переводить рядок у MATCHED — як CAS у ReconciliationService (BR-BANK-007).
+    reconciliation.matchTransaction.mockImplementation(() => {
+      staged!.status = 'MATCHED';
+      return Promise.resolve(undefined);
+    });
     reconciliation.resolveBatch.mockResolvedValue(
       new Map([
         [
@@ -220,7 +259,6 @@ describe('BankStatementPullProcessor', () => {
     // транзакція вже MATCHED → findFirst({status:UNMATCHED}) === null → matchTransaction НЕ повторюється.
     reconciliation.matchTransaction.mockClear();
     reconciliation.applyImport.mockResolvedValue({ created: 0, skipped: 1 });
-    prisma.bankTransaction.findFirst.mockResolvedValue(null); // вже не UNMATCHED
     await processor.process(makeJob({ orgId: ORG }));
     expect(reconciliation.matchTransaction).not.toHaveBeenCalled();
     // Гроші-безпека: жодного повторного Payment на повторному вікні.

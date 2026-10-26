@@ -268,6 +268,8 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
 
   // ── status-gate: PAID / CANCELLED (не лише DRAFT) ─────────────────────────
 
+  // Сплачений рахунок не має залишку, тож будь-яку суму відкине й перевірка «перевищує залишок»
+  // нижче — кейс був би зеленим і без перевірки статусу. Тому чекаємо САМЕ відмову за статусом.
   // guards: BR-PAY-003
   it('Bug #672: рахунок у PAID → throw (лише SENT/PARTIALLY_PAID приймають оплату)', async () => {
     prisma.invoice.findFirst.mockResolvedValue({
@@ -277,7 +279,9 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
       amount: 500,
       paidAmount: 500,
     });
-    await expect(service.create(ORG, baseDto, 'user-1')).rejects.toThrow(BadRequestException);
+    await expect(service.create(ORG, baseDto, 'user-1')).rejects.toThrow(
+      'Рахунок у статусі "PAID" — оплата неможлива',
+    );
     expect(prisma.invoice.updateMany).not.toHaveBeenCalled();
     expect(prisma.payment.create).not.toHaveBeenCalled();
     expect(settlements.createTransaction).not.toHaveBeenCalled();

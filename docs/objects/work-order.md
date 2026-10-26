@@ -192,6 +192,14 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 10. Журнал змін — лише `AUDIT_VIEW_ROLES` (OWNER, ADMIN, ACCOUNTANT)
 11. Коментарі
 
+Запити сторінки за роллю й видаленням (TECH-DEBT §11 п.8, §8 L797): акт (`GET /completion-acts`) і
+рахунок (`…/find`) — лише для `COMPLETION_ACT_READ_ROLES` / `INVOICE_READ_ROLES`, огляд і його точки —
+лише для ролей `inspection.controller` (без ACCOUNTANT); іншим ролям — порожньо без запиту (раніше —
+403 у консолі механіка). Медіа запитуються після наряду і лише для невидаленого; коментарів видалений
+наряд не показує (сервер на обидва відповідає 404). Тест —
+`app/(app)/work-orders/[id]/__tests__/PageClient.role-gate.test.tsx`. Стан закупівлі
+(`/purchase-list-items/by-work-order`) лишається в першій хвилі — для видаленого наряду він 404.
+
 ---
 
 ## Бізнес-правила (BR-WO)

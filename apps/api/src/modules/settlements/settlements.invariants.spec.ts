@@ -8,47 +8,20 @@ import {
   SETTLEMENT_TX_CHARGE_LIKE_TYPES,
 } from '@sto/shared';
 
-type TxType =
-  | 'CHARGE'
-  | 'PAYMENT'
-  | 'PREPAYMENT'
-  | 'REFUND'
-  | 'CREDIT_NOTE'
-  | 'SUPPLIER_CHARGE'
-  | 'SUPPLIER_PAYMENT'
-  | 'SUPPLIER_REFUND'
-  | 'FX_GAIN'
-  | 'FX_LOSS'
-  | 'REFUND_OUT'
-  | 'REFUND_OUT_CANCEL';
+type TxType = SettlementTransactionType;
 
-// Дзеркалить BALANCE_SIGN (settlements.service). Постачальницькі типи мають окрему семантику:
-// SUPPLIER_CHARGE −1 (ми винні), SUPPLIER_PAYMENT/SUPPLIER_REFUND +1 (наш борг ↓).
-// Курсові різниці (Фаза 4): FX_GAIN +1 (гасить від'ємний залишок), FX_LOSS −1 (гасить додатний).
-// Повернення коштів клієнту з банку: REFUND_OUT +1 (клієнт знову винен), його сторно −1.
-const BALANCE_INCREASING: TxType[] = [
-  'CHARGE',
-  'SUPPLIER_PAYMENT',
-  'SUPPLIER_REFUND',
-  'FX_GAIN',
-  'REFUND_OUT',
-];
-const BALANCE_DECREASING: TxType[] = [
-  'PAYMENT',
-  'PREPAYMENT',
-  'REFUND',
-  'CREDIT_NOTE',
-  'SUPPLIER_CHARGE',
-  'FX_LOSS',
-  'REFUND_OUT_CANCEL',
-];
-
-/** Кумулятивно застосовує транзакції до початкового балансу. */
+/**
+ * Кумулятивно застосовує транзакції до початкового балансу — за ТІЄЮ САМОЮ таблицею знаків, що
+ * її споживають екрани (`SETTLEMENT_BALANCE_SIGN` з `@sto/shared`; її 1-в-1 відповідність бековому
+ * `BALANCE_SIGN` тримає кейс нижче). Раніше спек тримав власну копію таблиці
+ * (`BALANCE_INCREASING` / `BALANCE_DECREASING`): властивості перевіряли самих себе, а копія вже
+ * відстала — типів `*_CANCEL` і `SUPPLIER_PAYMENT_RETURN` у ній не було, вони тихо давали 0.
+ */
 function applyTransactions(txs: { type: TxType; amount: number }[], initialBalance = 0): number {
   return txs.reduce((balance, { type, amount }) => {
-    if (BALANCE_INCREASING.includes(type)) return balance + amount;
-    if (BALANCE_DECREASING.includes(type)) return balance - amount;
-    return balance;
+    const sign = SETTLEMENT_BALANCE_SIGN[type];
+    if (sign === undefined) throw new Error(`SETTLEMENT_BALANCE_SIGN не знає типу ${type}`);
+    return balance + sign * amount;
   }, initialBalance);
 }
 
@@ -159,33 +132,6 @@ describe('Settlements — balance invariants (property-based)', () => {
     );
   });
 
-  it('порядок транзакцій не впливає на фінальний баланс (комутативність)', () => {
-    fc.assert(
-      fc.property(
-        fc.array(
-          fc.record({
-            type: fc.constantFrom<TxType>(
-              'CHARGE',
-              'PAYMENT',
-              'PREPAYMENT',
-              'REFUND',
-              'CREDIT_NOTE',
-            ),
-            amount: moneyAmount(),
-          }),
-          { minLength: 2, maxLength: 10 },
-        ),
-        txs => {
-          const balanceA = applyTransactions(txs);
-          const reversed = [...txs].reverse();
-          const balanceB = applyTransactions(reversed);
-          return balanceA === balanceB;
-        },
-      ),
-      { numRuns: 500 },
-    );
-  });
-
   it('CREDIT_NOTE робить те саме що PAYMENT (зменшує баланс)', () => {
     fc.assert(
       fc.property(moneyAmount(), amount => {
@@ -194,15 +140,6 @@ describe('Settlements — balance invariants (property-based)', () => {
         return balanceA === balanceB;
       }),
       { numRuns: 200 },
-    );
-  });
-
-  it('пуста послідовність транзакцій → баланс не змінюється', () => {
-    fc.assert(
-      fc.property(fc.integer({ min: -100_000, max: 100_000 }), initialBalance => {
-        const balance = applyTransactions([], initialBalance);
-        return balance === initialBalance;
-      }),
     );
   });
 

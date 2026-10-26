@@ -373,6 +373,9 @@ describe('report-aggregator', () => {
   });
 
   // ── Bug #619: signedByType — RESERVATION/RESERVATION_RELEASE виключені з нетто ──
+  // Резерв і зняття резерву свідомо НЕ рівні (активний резерв 2): рівні пари взаємно гасились
+  // би в сумі, і кейс був би зеленим і без виключення.
+  // guards: BR-RPT-014
   it('Bug #619: signedByType SUM(quantity) виключає RESERVATION/RESERVATION_RELEASE', () => {
     const sm = getEntity('stockMovement');
     // raw stored values (як у БД): RECEIPT >0, WRITEOFF <0, RESERVATION >0,
@@ -383,6 +386,7 @@ describe('report-aggregator', () => {
       { type: 'WRITEOFF', quantity: -3 },
       { type: 'WRITEOFF', quantity: -2 },
       { type: 'RESERVATION', quantity: 4 }, // не фізичне → у нетто не входить
+      { type: 'RESERVATION', quantity: 2 }, // не фізичне → у нетто не входить
       { type: 'RESERVATION_RELEASE', quantity: -4 }, // не фізичне → у нетто не входить
     ];
     const r = aggregate(
@@ -391,7 +395,7 @@ describe('report-aggregator', () => {
       sm,
     );
     // Фізичне нетто: RECEIPT(+15) + WRITEOFF(-5) = +10.
-    // Якби RESERVATION/RESERVATION_RELEASE потрапляли — було б інше.
+    // Якби RESERVATION/RESERVATION_RELEASE потрапляли — було б 12 (+4 +2 −4).
     expect(r.grandTotals.SUM_quantity).toBe(10);
   });
 

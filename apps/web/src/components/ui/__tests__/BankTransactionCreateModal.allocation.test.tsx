@@ -280,6 +280,21 @@ describe('BankTransactionCreateModal — скидання несумісного
     expect(screen.getByText('ТОВ Клієнт')).toBeInTheDocument();
   });
 
+  // TECH-DEBT §10 п.22: власна копія розбору суми не знала пробілів тисяч — «1 000,00» давало NaN,
+  // і рахунок із залишком 600 лишався обраним. Тепер — спільний `normalizeDecimalInput`.
+  // Mutation-verify: `amountOf` → `Number(asText(v).trim().replace(',', '.') || NaN)` → кейс падає.
+  it('сума з пробілом тисяч («1 000,00») теж скидає рахунок із меншим залишком', async () => {
+    mockApi();
+    await openReady({}, '500');
+    choose('Рознести як', 'INVOICE');
+    await pickVia('Пошук контрагента…');
+    await pickVia('Оберіть рахунок…');
+    expect(screen.getByText('INV-0042')).toBeInTheDocument();
+
+    choose(/^Сума/, '1 000,00'); // залишок 600
+    expect(screen.queryByText('INV-0042')).not.toBeInTheDocument();
+  });
+
   // Bug #863: правило діяло лише на зміні суми — рахунок, обраний ПІСЛЯ більшої суми, проходив
   // до підтвердження й відмови сервера.
   // Mutation-verify: прибрати перевірку `amount > incoming.invoiceRemaining` у incomingAllocation

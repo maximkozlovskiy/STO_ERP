@@ -12,6 +12,8 @@ import {
   bankTransactionCreateOutgoingAllocationFormSchema,
   bankTransactionIncomingAllocationSchema,
   isBankTxInMatchType,
+  kyivTodayYmd,
+  normalizeDecimalInput,
   translateValidation,
   type BankTransactionCreateFormValues,
   type BankTransactionCreatePayload,
@@ -89,8 +91,8 @@ const emptyDefaults = (direction: BankTxDirection): BankTransactionCreateFormVal
 });
 
 const asText = (v: unknown): string => (typeof v === 'string' ? v : '');
-/** Сума з поля (UA-кома) — як `moneyString` у схемі; нерозбірна → NaN. */
-const amountOf = (v: unknown): number => Number(asText(v).trim().replace(',', '.') || NaN);
+/** Сума з поля (UA-кома, пробіли тисяч) — та сама нормалізація, що в `moneyString`; нерозбірна → NaN. */
+const amountOf = (v: unknown): number => Number(normalizeDecimalInput(asText(v)) || NaN);
 
 const allowedTypes = (direction: BankTxDirectionValue): readonly BankTxAllocationTypeValue[] =>
   BANK_TX_ALLOCATION_TYPES_BY_DIRECTION[direction];
@@ -509,6 +511,8 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
                     required
                     value={asText(field.value)}
                     onChange={field.onChange}
+                    // Майбутню дату відхиляють схема й сервер — пікер її й не пропонує.
+                    max={kyivTodayYmd()}
                     errorMessage={errors.operationDate?.message}
                   />
                 )}

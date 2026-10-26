@@ -135,7 +135,7 @@ cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
 | ------------------------------------------------------------------------------- | ---------------------------------------- | ------ |
 | ролі доступу на маршрутах                                                       | `settlements.access.spec.ts`             | 5      |
 | читання балансу і журналу                                                       | `settlements.account-read.spec.ts`       | 8      |
-| інваріанти (property-based)                                                     | `settlements.invariants.spec.ts`         | 18     |
+| інваріанти (property-based)                                                     | `settlements.invariants.spec.ts`         | 16     |
 | акт звірки                                                                      | `settlements.reconciliation-act.spec.ts` | 20     |
 | `createTransaction` (сервісна логіка; межа Decimal(12,2) суми й балансу)        | `settlements.service.spec.ts`            | 33     |
 | єдиний писар балансу (статичний сторож)                                         | `settlements.single-writer.spec.ts`      | 3      |
@@ -160,7 +160,7 @@ cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
   `apps/api/src` (зараз 17, серед них каса: `cash-desk.service.ts#moveCashWithSettlement` і сторно: `PaymentsService.reverse`, `SupplierPaymentsService.reverse`, `CashDeskService.reverseRefundSettlement`) із механізмом захисту від повтору; нове місце без запису, зникле місце
   або зниклий із коду захист (CAS статусу, перевірка наявної проводки) валять тест. Там само для
   кожного місця названо тест гонки в модулі викликача.
-- `settlements.invariants.spec.ts` — BR-SETL-003 (лише два кейси, що читають справжній `BALANCE_SIGN`).
+- `settlements.invariants.spec.ts` — BR-SETL-003 (два кейси звіряють `BALANCE_SIGN` і його 1-в-1 відповідність `SETTLEMENT_BALANCE_SIGN` з `@sto/shared`; властивості рахують баланс за `SETTLEMENT_BALANCE_SIGN`).
 - `settlements.reconciliation-act.spec.ts` — BR-SETL-006, 011, 012.
 - `settlements.account-read.spec.ts` — BR-SETL-006, 013.
 - `settlements.access.spec.ts` — BR-SETL-014.
@@ -170,7 +170,7 @@ cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
 Прогалини, що не є окремим правилом:
 
 - Подвійне нарахування: сторож місць виклику бачить, що захист СТОЇТЬ у коді перед викликом, але не доводить, що його досить. Двох справді одночасних проведень проти БД не ганяє ніхто (потрібен integration-спек), унікального індексу на документ у журналі немає. Окремого кейсу «CAS програв» немає для дзеркального PAYMENT рахунку (→PAID) і для CREDIT_NOTE наряду (COMPLETED→CANCELLED) — у обох спільний CAS перевірено лише на сусідньому переході. Послідовний повтор часткового прийому замовлення постачальнику від справжнього другого прийому не відрізняється.
-- 15 із 18 кейсів `settlements.invariants.spec.ts` перевіряють **локальну модель** (`applyTransactions` із власними списками `BALANCE_INCREASING`/`BALANCE_DECREASING`), а не код продукту: якщо в `BALANCE_SIGN` перевернути знак, вони лишаться зеленими. Справжній знак стережуть два кейси цього файла й знакові кейси `settlements.service.spec.ts`.
+- Властивості `settlements.invariants.spec.ts` з 2026-10-26 рахують баланс за `SETTLEMENT_BALANCE_SIGN` з `@sto/shared` (раніше — за власною копією `BALANCE_INCREASING`/`BALANCE_DECREASING`, у якій уже не було типів `*_CANCEL` і `SUPPLIER_PAYMENT_RETURN`). Перевернутий знак у shared валить і властивості, і кейс відповідності беку; перевернутий лише в бековому `BALANCE_SIGN` — кейс відповідності й знакові кейси `settlements.service.spec.ts`. Застосування знаку в самому `createTransaction` властивості не бачать — це знакові кейси сервісу. Кейси «порядок транзакцій не впливає на баланс» і «пуста послідовність не змінює баланс» видалено 2026-10-26: вони істинні для будь-якої таблиці знаків і нічого в продукті не стерегли.
 - Атомарність пари «рядок журналу + зміна балансу» перевірено на моках: «обидва записи пішли в один tx-клієнт». Що відкат транзакції справді прибирає і рядок журналу, і зміну балансу, проти БД не ганяє ніхто — потрібен integration-спек.
 - Append-only: відсутність `deletedAt` у схемі й заборону UPDATE/DELETE на рівні БД (тригер, права) не стереже ніщо; статичний сторож бачить лише код `apps/api/src` (не `seed.ts`, не міграції) і не бачить вкладений запис через зв'язок, крім прямого `settlementAccount: { … }`.
 - Акт звірки: успішна побудова PDF акта (`generateReconciliationPdf` → `PdfService`) тестами не покриті; у PDF перевірено лише «акт не знайдено».

@@ -32,6 +32,8 @@ import {
   WO_PAYABLE_STATUSES,
   WO_PREPAYMENT_STATUSES,
   PAYMENT_CREATE_ROLES,
+  COMPLETION_ACT_READ_ROLES,
+  INVOICE_READ_ROLES,
 } from '@sto/shared';
 import { ClientPaymentModal } from '@/components/ui/ClientPaymentModal';
 import { invoiceRemaining } from '@/lib/invoice-payment';
@@ -239,6 +241,10 @@ const TRANSITION_VARIANTS: Record<string, 'default' | 'destructive' | 'outline'>
   IN_PROGRESS: 'default',
 };
 
+// Ролі `GET /work-orders/:id/inspection` і `…/inspection/default-points` (inspection.controller):
+// бухгалтер картку наряду відкриває, а огляду не бачить — без перевірки він отримував 403 у консолі.
+const INSPECTION_READ_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC'];
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function WorkOrderCardPage() {
@@ -308,7 +314,13 @@ export default function WorkOrderCardPage() {
     };
   }, []);
 
+  const role = employee?.role ?? '';
   const load = useCallback(() => {
+    // Акти й рахунок — лише для ролей, яким сервер їх віддає (механік отримував 403 у консолі на
+    // кожне відкриття картки); решті — те саме, що дала б відмова: порожньо / «рахунку немає».
+    const canReadActs = COMPLETION_ACT_READ_ROLES.includes(role);
+    const canReadInvoice = INVOICE_READ_ROLES.includes(role);
+    const canReadInspection = INSPECTION_READ_ROLES.includes(role);
     // Parallel fetch — work-order detail, completion-acts list and inspection report
     // are independent endpoints; previous fire-and-forget pattern coalesced their
     // browser-level scheduling but failed to surface the inspection-load error
@@ -320,14 +332,20 @@ export default function WorkOrderCardPage() {
         data => ({ kind: 'wo' as const, data }),
         (e: unknown) => ({ kind: 'wo-error' as const, error: e }),
       ),
-      apiFetch<{ items: CompletionActSummary[] }>(`/completion-acts?workOrderId=${id}`).catch(
-        (e: unknown) => {
-          console.warn('[CompletionAct] load failed:', e);
-          return { items: [] as CompletionActSummary[] };
-        },
-      ),
-      apiFetch<InspectionReport | null>(`/work-orders/${id}/inspection`).catch(() => null),
-      apiFetch<InvoiceRef | null>(`/invoices/from-work-order/${id}/find`).catch(() => null),
+      canReadActs
+        ? apiFetch<{ items: CompletionActSummary[] }>(`/completion-acts?workOrderId=${id}`).catch(
+            (e: unknown) => {
+              console.warn('[CompletionAct] load failed:', e);
+              return { items: [] as CompletionActSummary[] };
+            },
+          )
+        : Promise.resolve({ items: [] as CompletionActSummary[] }),
+      canReadInspection
+        ? apiFetch<InspectionReport | null>(`/work-orders/${id}/inspection`).catch(() => null)
+        : Promise.resolve(null),
+      canReadInvoice
+        ? apiFetch<InvoiceRef | null>(`/invoices/from-work-order/${id}/find`).catch(() => null)
+        : Promise.resolve(null),
     ]).then(([woResult, acts, inspectionData, invoiceData]) => {
       if (!mountedRef.current) return;
       setWoLoading(false);
@@ -340,7 +358,7 @@ export default function WorkOrderCardPage() {
       setInspection(inspectionData);
       setInvoiceRef(invoiceData);
     });
-  }, [id, t]);
+  }, [id, t, role]);
 
   // Вторинні дані — медіа (коментарі читає сам `CommentsSection`).
   // «Журнал змін» — useWorkOrderAudit нижче, лише для ролей із доступом (AUDIT_VIEW_ROLES).
@@ -357,9 +375,13 @@ export default function WorkOrderCardPage() {
   useEffect(() => {
     load();
   }, [load]);
+  // Медіа — після наряду і лише для невидаленого: сервер віддає медіа видаленого наряду 404.
+  const woId = wo?.id;
+  const woDeleted = !!wo?.deletedAt;
   useEffect(() => {
+    if (!woId || woDeleted) return;
     loadSecondary();
-  }, [loadSecondary]);
+  }, [loadSecondary, woId, woDeleted]);
 
   const loadMedia = useCallback(() => {
     apiFetch<{ items: WorkOrderMedia[] }>(`/work-orders/${id}/media`)
@@ -443,16 +465,17 @@ export default function WorkOrderCardPage() {
         if (mountedRef.current && !cachedWarehouses)
           setRefsError(e instanceof Error ? e.message : t('detail.refsLoadError'));
       });
-    apiFetch<InspectionPoint[]>(`/work-orders/${id}/inspection/default-points`)
-      .then(d => {
-        if (mountedRef.current) setInspectionPoints(d);
-      })
-      .catch((e: unknown) => {
-        // silent .catch ховало помилки завантаження inspection-points —
-        // debug-ability fix (тісно з review patten 88d2c8d).
-        console.warn('Помилка завантаження точок огляду:', e);
-      });
-  }, [id, t]);
+    if (INSPECTION_READ_ROLES.includes(role))
+      apiFetch<InspectionPoint[]>(`/work-orders/${id}/inspection/default-points`)
+        .then(d => {
+          if (mountedRef.current) setInspectionPoints(d);
+        })
+        .catch((e: unknown) => {
+          // silent .catch ховало помилки завантаження inspection-points —
+          // debug-ability fix (тісно з review patten 88d2c8d).
+          console.warn('Помилка завантаження точок огляду:', e);
+        });
+  }, [id, t, role]);
 
   // Усі дії користувача на цій сторінці (transition, saveEdit, handleClone, друк наряду в
   // WorkOrderPrintButtons, generateAct, signAct, downloadActPdf, cancelAct) мають власний catch, який кладе текст
@@ -1174,7 +1197,8 @@ export default function WorkOrderCardPage() {
         )}
       </div>
 
-      <CommentsSection entityType="WorkOrder" entityId={id} readOnly={!employee || isDeleted} />
+      {/* Коментарі видаленого наряду сервер не віддає (404 — «не вдалося завантажити»). */}
+      {!isDeleted && <CommentsSection entityType="WorkOrder" entityId={id} readOnly={!employee} />}
 
       {/* E3: медіа-секція під error-boundary — краш рендеру медіа не валить картку наряду. */}
       <SectionErrorBoundary label={t('detail.sectionMedia')}>

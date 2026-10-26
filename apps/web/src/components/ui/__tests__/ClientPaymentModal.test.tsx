@@ -353,6 +353,30 @@ describe('ClientPaymentModal — QR лише для рахунку (Bug #859)', 
     expect(paymentBody()).toBeNull();
   });
 
+  // Сума для QR розбирається так само, як для оплати: «1 000,50» — число, нерозбірне — помилка,
+  // а не QR на весь залишок. Mutation-verify: гілку QR повернути на `parseFloat(form.amount)` з
+  // `undefined` для нерозбірного → обидва кейси падають.
+  it.each([
+    ['1 000,50', 'рахунок 2 000', 1000.5],
+    ['abc', 'нерозбірне', null],
+  ])('QR: сума «%s» (%s) → %s', async (value, _why, expected) => {
+    withQr();
+    const { dialog, onShowQr } = await openDialog({ ...INVOICE, amount: 2000 });
+    fireEvent.change(methodSelect(dialog), { target: { value: 'monobank_qr' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Сума,/), { target: { value } });
+    fireEvent.click(
+      within(dialog.closest('[role="dialog"]') ?? dialog).getByRole('button', {
+        name: 'Показати QR',
+      }),
+    );
+    if (expected === null) {
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent(/не більшою за залишок/);
+      expect(onShowQr).not.toHaveBeenCalled();
+    } else {
+      expect(onShowQr).toHaveBeenCalledWith(expected);
+    }
+  });
+
   it('наряд: способу monobank QR у переліку немає (QR-оплату сервер створює лише за рахунком)', async () => {
     withQr();
     const { dialog } = await openDialog(WORK_ORDER);
@@ -502,7 +526,6 @@ describe('ClientPaymentModal — оплата наряду (BR-PAY-020, BR-PAY-0
     expect(within(dialog).getByText('Сума наряду:')).toBeInTheDocument();
     const amount = within(dialog).getByLabelText(/^Сума,/) as HTMLInputElement;
     expect(amount.placeholder).toBe('1140');
-    expect(amount.max).toBe('1140');
     fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
     await waitFor(() => expect(bankSelect(dialog)?.value).toBe('ba-main'));
     fireEvent.click(payButton(dialog));
@@ -537,6 +560,40 @@ describe('ClientPaymentModal — оплата наряду (BR-PAY-020, BR-PAY-0
   );
 
   // guards: BR-PAY-017
+  // Поле було `type="number"`: вставлене «1 000,50» браузер віддавав порожнім рядком, а порожнє —
+  // «весь залишок», тож оплата мовчки йшла на 1 140 замість 1 000,50 (TECH-DEBT §12 п.13).
+  // Mutation-verify: `normalizeDecimalInput(form.amount)` → `form.amount` → «1 000,50» падає;
+  // `raw ? Number(raw) : remaining` → `Number.isFinite(Number(raw)) ? … : remaining` → «abc» падає.
+  it.each([
+    ['1 000,50', 1000.5],
+    ['1 000,50', 1000.5],
+    ['250,5', 250.5],
+  ])('сума «%s» з UA-комою й пробілами тисяч → %s, а не весь залишок', async (value, expected) => {
+    const { dialog } = await openDialog(WORK_ORDER);
+    const field = within(dialog).getByLabelText(/^Сума,/) as HTMLInputElement;
+    expect(field.type).toBe('text');
+    expect(field.inputMode).toBe('decimal');
+    fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    await waitFor(() => expect(bankSelect(dialog)?.value).toBe('ba-main'));
+    fireEvent.change(field, { target: { value } });
+    fireEvent.click(payButton(dialog));
+    await waitFor(() => expect(paymentBody()?.amount).toBe(expected));
+  });
+
+  // guards: BR-PAY-017
+  it('нерозбірна сума («abc») — помилка у вікні, а не оплата всього залишку', async () => {
+    const { dialog, onPaid } = await openDialog(WORK_ORDER);
+    fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    await waitFor(() => expect(bankSelect(dialog)?.value).toBe('ba-main'));
+    fireEvent.change(within(dialog).getByLabelText(/^Сума,/), { target: { value: 'abc' } });
+    fireEvent.click(payButton(dialog));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/не більшою за залишок/);
+    expect(paymentCalls()).toHaveLength(0);
+    expect(onPaid).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PAY-017
   it('сплачено повністю — оплатити нічого: кнопка неактивна', async () => {
     const { dialog } = await openDialog({ ...WORK_ORDER, paidAmount: 1440 });
     fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
@@ -568,5 +625,65 @@ describe('ClientPaymentModal — ключ ідемпотентності на в
     await waitFor(() => expect(paymentCalls()).toHaveLength(3));
     expect(paymentHeaders(2)['Idempotency-Key']).toBeTruthy();
     expect(paymentHeaders(2)['Idempotency-Key']).not.toBe(first);
+  });
+});
+
+// TECH-DEBT §12 п.13: Escape закривав «Оплатити» з уже введеною сумою без питання. Тепер — як
+// `PaymentReversalModal`: уведене (сума, примітка, обраний спосіб / каса / рахунок) → «Є незбережені
+// зміни»; другий Escape закриває лише діалог.
+// Mutation-verify: `if (touched) dirty.markDirty()` → прибрати → «сума»/«примітка»/«спосіб» падають;
+// `onClose={() => void close()}` → `onClose={onClose}` → кейси з питанням падають;
+// прибрати `setMethodChosen(false)` з ефекту відкриття → «нове відкриття стартує чистим» падає.
+describe('ClientPaymentModal — закриття з уведеним питає (Escape)', () => {
+  const escape = () => fireEvent.keyDown(document, { key: 'Escape' });
+  const DIRTY = 'Є незбережені зміни';
+
+  it('нічого не введено — Escape закриває без питання', async () => {
+    const { onClose } = await openDialog(WORK_ORDER);
+    escape();
+    // Закриття проходить через `await confirmClose()` — onClose приходить мікрозадачею.
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(DIRTY)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['сума', (d: HTMLElement) => within(d).getByLabelText(/^Сума,/), '500'],
+    ['примітка', (d: HTMLElement) => within(d).getByLabelText(/^Примітки/), 'аванс'],
+  ])('уведена %s: Escape питає; «Скасувати» лишає вікно з уведеним', async (_n, field, value) => {
+    const { dialog, onClose } = await openDialog(WORK_ORDER);
+    fireEvent.change(field(dialog), { target: { value } });
+    escape();
+
+    expect(await screen.findByText(DIRTY)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    // Другий Escape — лише діалог підтвердження (верхній шар), вікно оплати лишається.
+    escape();
+    await waitFor(() => expect(screen.queryByText(DIRTY)).not.toBeInTheDocument());
+    expect(onClose).not.toHaveBeenCalled();
+    expect((field(dialog) as HTMLInputElement).value).toBe(value);
+  });
+
+  it('обраний касиром спосіб оплати теж питає; «Покинути» закриває вікно', async () => {
+    const { dialog, onClose } = await openDialog(WORK_ORDER);
+    fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    escape();
+
+    expect(await screen.findByText(DIRTY)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Покинути' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('нове відкриття стартує чистим: уведене минулого разу не питає при Escape', async () => {
+    const { dialog, onClose, rerender } = await openDialog(WORK_ORDER);
+    fireEvent.change(methodSelect(dialog), { target: { value: 'card_terminal' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Сума,/), { target: { value: '500' } });
+    // Викликач закриває вікно через `open` (напр. після onPaid) — без питання.
+    rerender(WORK_ORDER, false);
+    rerender(WORK_ORDER, true);
+    await screen.findByRole('dialog');
+    escape();
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(DIRTY)).not.toBeInTheDocument();
   });
 });

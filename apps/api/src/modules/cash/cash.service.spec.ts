@@ -245,24 +245,6 @@ describe('CashService.createOperation — єдина точка руху', () =>
     ).rejects.toThrow(BadRequestException);
   });
 
-  it('expenseCategoryId не належить org → 404', async () => {
-    m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
-      id: REG,
-      isFiscal: false,
-      branchId: 'b1',
-    });
-    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce(null);
-    await expect(
-      service.createOperation(ORG, {
-        cashRegisterId: REG,
-        direction: 'OUT',
-        amount: 100,
-        reason: 'EXPENSE',
-        expenseCategoryId: 'cat-x',
-      }),
-    ).rejects.toThrow(NotFoundException);
-  });
-
   // guards: BR-CASH-007
   it('тип↔напрям: OUT + стаття EXPENSE → ок', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValue({

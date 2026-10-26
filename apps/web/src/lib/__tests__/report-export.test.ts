@@ -420,6 +420,40 @@ describe('report-export › XLSX (SpreadsheetML)', () => {
     expect(file.mime).toBe('application/vnd.ms-excel');
     expect(file.filename).toBe('report-workOrder.xls');
   });
+
+  /** Чи розбирається XML без помилки (jsdom кладе `<parsererror>` у документ). */
+  const wellFormed = (xml: string) =>
+    new DOMParser().parseFromString(xml, 'application/xml').getElementsByTagName('parsererror')
+      .length === 0;
+
+  // guards: BR-RPT-021
+  it('назва аркуша з `"` і `&` — екранований атрибут; `[]:*?/\\` прибрано, не довша за 31 символ', () => {
+    const name = 'Звіт "Альфа" & Ко [2026/10]: *?\\ — продажі запчастин за жовтень';
+    const tName = ((k: string, o?: unknown) =>
+      k === 'export.sheetName'
+        ? name
+        : (t as unknown as (k: string, o?: unknown) => string)(
+            k,
+            o,
+          )) as unknown as TFunction<'reports'>;
+    const xml = buildXlsxXml([['a']], tName);
+
+    expect(xml).toContain('<Worksheet ss:Name="Звіт &quot;Альфа&quot; &amp; Ко 202610  — про">');
+    expect(wellFormed(xml)).toBe(true);
+    const sheet = new DOMParser()
+      .parseFromString(xml, 'application/xml')
+      .getElementsByTagName('Worksheet')[0]!;
+    expect(sheet.getAttribute('ss:Name')).toBe('Звіт "Альфа" & Ко 202610  — про');
+    expect(sheet.getAttribute('ss:Name')).toHaveLength(31);
+  });
+
+  // guards: BR-RPT-021
+  it('керувальний символ у даних не ламає XML: \\x00-\\x08, \\x0B, \\x0C, \\x0E-\\x1F вирізано, таб і перенос лишаються', () => {
+    const xml = buildXlsxXml([['А\u0001Б\u000BВ\u001FГ\tД\nЕ']], t);
+
+    expect(xml).toContain('<Row><Cell><Data ss:Type="String">АБВГ\tД\nЕ</Data></Cell></Row>');
+    expect(wellFormed(xml)).toBe(true);
+  });
 });
 
 // До 2026-10-25 файл розходився з екраном: група enum ішла кодом (`PAID`), MIN/MAX дати — міткою

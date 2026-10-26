@@ -180,6 +180,12 @@
   "error": "Error",
   "clear": "Clear",
   "loadingDots": "Loading...",
+  "supplierSelect": {
+    "search": "Find a supplier",
+    "searchPlaceholder": "Name — the list shows the first {{count}}",
+    "notFound": "Nothing found",
+    "loadFailed": "The supplier list failed to load — try again"
+  },
   "tabBar": {
     "closeTab": "Close tab",
     "allOpen": "All open tabs"

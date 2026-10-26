@@ -396,13 +396,33 @@ export function exportReport(
   downloadBlob(new Blob([file.content], { type: file.mime }), file.filename);
 }
 
+/** Керувальні символи, недопустимі в XML 1.0 (таб, перенос рядка й повернення каретки — допустимі). */
+// eslint-disable-next-line no-control-regex
+const XML_INVALID_CHARS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F]/g;
+
+/** Назва аркуша за правилами Excel: без `[ ] : * ? / \`, не довша за 31 символ, не порожня. */
+export function xlsxSheetName(name: string): string {
+  const clean = name
+    .replace(/[[\]:*?/\\]/g, '')
+    .trim()
+    .slice(0, 31);
+  return clean || 'Sheet1';
+}
+
 /** `numericColumns` — числові колонки за типом (`buildExportNumericColumns`); без нього — за вмістом. */
 export function buildXlsxXml(
   rows: string[][],
   t: TFunction<'reports'>,
   numericColumns?: boolean[],
 ): string {
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const esc = (s: string) =>
+    s
+      .replace(XML_INVALID_CHARS_RE, '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  // Атрибут у подвійних лапках: ще й `"`, інакше назва з лапкою обриває атрибут.
+  const escAttr = (s: string) => esc(s).replace(/"/g, '&quot;');
   const cells = (r: string[], isHeader: boolean) =>
     r
       .map((c, i) => {
@@ -417,5 +437,5 @@ export function buildXlsxXml(
   return `<?xml version="1.0"?>
 <?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
-<Worksheet ss:Name="${t('export.sheetName')}"><Table>${body}</Table></Worksheet></Workbook>`;
+<Worksheet ss:Name="${escAttr(xlsxSheetName(t('export.sheetName')))}"><Table>${body}</Table></Worksheet></Workbook>`;
 }

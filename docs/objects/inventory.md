@@ -133,7 +133,7 @@ cd apps/api && npx vitest run src/modules/inventory/<файл>.spec.ts
 | HTTP-контракт (DTO, статуси, валідація)               | `batches.contract.spec.ts`            | 4      | —                                   |
 | by batch                                              | `inventory.by-batch.spec.ts`          | 7      | —                                   |
 | by document                                           | `inventory.by-document.spec.ts`       | 9      | —                                   |
-| create movement                                       | `inventory.create-movement.spec.ts`   | 50     | BR-INVT-002…010, 014, 016, 017, 019 |
+| create movement                                       | `inventory.create-movement.spec.ts`   | 48     | BR-INVT-002…010, 014, 016, 017, 019 |
 | find movements                                        | `inventory.find-movements.spec.ts`    | 10     | —                                   |
 | інваріанти балансу на моделі у спеку (property-based) | `inventory.invariants.spec.ts`        | 8      | —                                   |
 | єдина точка запису залишків (статичний сторож коду)   | `inventory.single-writer.spec.ts`     | 4      | BR-INVT-001, 016                    |
