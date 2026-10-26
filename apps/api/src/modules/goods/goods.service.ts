@@ -20,6 +20,7 @@ import {
   CreateGoodUoMDto,
   UpdateGoodUoMDto,
   GoodUoMResponseDto,
+  PaginatedGoodPriceHistoryDto,
 } from './goods.dto';
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 import { GoodStatusesService } from '../good-statuses/good-statuses.service';
@@ -878,6 +879,32 @@ export class GoodsService {
             .map(l => ({ id: l.status.id, name: l.status.name, color: l.status.color }))
         : undefined,
     };
+  }
+
+  /** Цінова історія товару `{ items, total }`; 404, якщо товару немає в org. */
+  async getPriceHistory(orgId: string, goodId: string): Promise<PaginatedGoodPriceHistoryDto> {
+    const good = await this.prisma.good.findFirst({
+      where: { id: goodId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.priceHistory.findMany({
+        where: { orgId, goodId },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      this.prisma.priceHistory.count({ where: { orgId, goodId } }),
+    ]);
+    const items = rows.map(h => ({
+      id: h.id,
+      oldPrice: h.oldPrice != null ? Number(h.oldPrice) : null,
+      newPrice: Number(h.newPrice),
+      costPrice: h.costPrice != null ? Number(h.costPrice) : null,
+      reason: h.reason,
+      createdAt: h.createdAt,
+    }));
+    return { items, total };
   }
 
   async stockTotals(

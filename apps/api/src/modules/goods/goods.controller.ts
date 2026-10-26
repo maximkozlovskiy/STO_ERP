@@ -11,7 +11,6 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiOkResponse } from '@nestjs/swagger';
@@ -45,7 +44,6 @@ import {
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 import { AssignGoodStatusDto } from '../good-statuses/good-statuses.dto';
 import { BatchService } from '../inventory/batch.service';
-import { PrismaService } from '../../prisma/prisma.service';
 
 @ApiTags('Goods')
 @Controller('goods')
@@ -55,7 +53,6 @@ export class GoodsController {
   constructor(
     private readonly service: GoodsService,
     private readonly batchService: BatchService,
-    private readonly prisma: PrismaService,
   ) {}
 
   @Get()
@@ -268,60 +265,24 @@ export class GoodsController {
   //
   // list-style sub-resources повертають `{ items, total }` shape для відповідності
   // API-контракту STO ERP (frontend всюди очікує `data.items.length`).
-  // Перед запитом валідуємо існування Good у поточній org → 404 інакше
-  // силует "Немає партій" приховує помилковий goodId.
-  // `total` повинен бути реальним COUNT з БД, а не `items.length`
-  // (яке cap-ується `take` у service/query).
 
   @Get(':id/batches')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Партії товару' })
   @ApiOkResponse({ type: PaginatedGoodBatchesDto })
-  async getBatches(
+  getBatches(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId?: string,
   ) {
-    const good = await this.prisma.good.findFirst({
-      where: { id, orgId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
-    const [items, total] = await Promise.all([
-      this.batchService.getBatchesForGood(orgId, id, warehouseId),
-      this.prisma.stockBatch.count({
-        where: { orgId, goodId: id, ...(warehouseId ? { warehouseId } : {}) },
-      }),
-    ]);
-    return { items, total };
+    return this.batchService.getGoodBatchesPage(orgId, id, warehouseId);
   }
 
   @Get(':id/price-history')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Цінова історія товару' })
   @ApiOkResponse({ type: PaginatedGoodPriceHistoryDto })
-  async getPriceHistory(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    const good = await this.prisma.good.findFirst({
-      where: { id, orgId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
-    const [rows, total] = await this.prisma.$transaction([
-      this.prisma.priceHistory.findMany({
-        where: { orgId, goodId: id },
-        orderBy: { createdAt: 'desc' },
-        take: 100,
-      }),
-      this.prisma.priceHistory.count({ where: { orgId, goodId: id } }),
-    ]);
-    const items = rows.map(h => ({
-      id: h.id,
-      oldPrice: h.oldPrice != null ? Number(h.oldPrice) : null,
-      newPrice: Number(h.newPrice),
-      costPrice: h.costPrice != null ? Number(h.costPrice) : null,
-      reason: h.reason,
-      createdAt: h.createdAt,
-    }));
-    return { items, total };
+  getPriceHistory(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getPriceHistory(orgId, id);
   }
 }

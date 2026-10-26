@@ -7,7 +7,6 @@ import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vites
 import { GoodsController } from './goods.controller';
 import { GoodsService } from './goods.service';
 import { BatchService } from '../inventory/batch.service';
-import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 
@@ -21,7 +20,6 @@ const serviceMock = {
   stockTotals: vi.fn(),
 };
 const batchServiceMock = {};
-const prismaMock = {};
 
 const mockJwtGuard = {
   canActivate: vi.fn().mockImplementation(ctx => {
@@ -45,7 +43,6 @@ describe('GET /goods/stock-totals — HTTP Contract', () => {
       providers: [
         { provide: GoodsService, useValue: serviceMock },
         { provide: BatchService, useValue: batchServiceMock },
-        { provide: PrismaService, useValue: prismaMock },
       ],
     })
       .overrideGuard(JwtAuthGuard)

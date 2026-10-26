@@ -6,7 +6,7 @@ import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { BatchesController } from './batches.controller';
 import { BatchService } from './batch.service';
-import { PrismaService } from '../../prisma/prisma.service';
+import type { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 
@@ -46,8 +46,15 @@ describe('Batches — HTTP Contract', () => {
     const module = await Test.createTestingModule({
       controllers: [BatchesController],
       providers: [
-        { provide: BatchService, useValue: batchServiceMock },
-        { provide: PrismaService, useValue: prismaMock },
+        // Справжній BatchService.lookup над моком Prisma; його залежні методи — моки.
+        {
+          provide: BatchService,
+          useFactory: () =>
+            Object.assign(
+              new BatchService(prismaMock as unknown as PrismaService, {} as never),
+              batchServiceMock,
+            ),
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)

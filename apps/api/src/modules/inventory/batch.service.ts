@@ -1,10 +1,11 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ApiProperty } from '@nestjs/swagger';
 import { Prisma, BatchCostMethod, StockBatch } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from './pricing.service';
+import type { PaginatedGoodBatchesDto } from '../goods/goods.dto';
 
 /**
  * remainingQty/receivedQty — Float у схемі (підтримує дробові одиниці: літри мастила тощо).
@@ -65,6 +66,63 @@ export class BatchService {
     private readonly prisma: PrismaService,
     private readonly pricing: PricingService,
   ) {}
+
+  /** Batch viewer: товар + його партії + цінова історія + середня собівартість. */
+  async lookup(orgId: string, goodId: string, warehouseId?: string) {
+    const [good, batches, priceHistory, avgCost] = await Promise.all([
+      this.prisma.good.findFirst({
+        where: { id: goodId, orgId, deletedAt: null },
+        select: { id: true, name: true, sku: true, unit: true, salePrice: true },
+      }),
+      this.getBatchesForGood(orgId, goodId, warehouseId),
+      this.prisma.priceHistory.findMany({
+        where: { orgId, goodId },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      this.getAvgCost(orgId, goodId, warehouseId),
+    ]);
+
+    if (!good)
+      throw new NotFoundException(translateError('err.inventory.goodNotFound', getLocale()));
+
+    return {
+      good: { ...good, salePrice: Number(good.salePrice) },
+      avgCostPrice: avgCost,
+      batches,
+      priceHistory: priceHistory.map(h => ({
+        id: h.id,
+        oldPrice: h.oldPrice != null ? Number(h.oldPrice) : null,
+        newPrice: Number(h.newPrice),
+        costPrice: h.costPrice != null ? Number(h.costPrice) : null,
+        reason: h.reason,
+        createdAt: h.createdAt,
+      })),
+    };
+  }
+
+  /**
+   * Партії товару `{ items, total }`. Товар перевіряємо в org ПЕРЕД запитом: інакше помилковий
+   * goodId ховається за «Немає партій». `total` — справжній COUNT, а не `items.length`.
+   */
+  async getGoodBatchesPage(
+    orgId: string,
+    goodId: string,
+    warehouseId?: string,
+  ): Promise<PaginatedGoodBatchesDto> {
+    const good = await this.prisma.good.findFirst({
+      where: { id: goodId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
+    const [items, total] = await Promise.all([
+      this.getBatchesForGood(orgId, goodId, warehouseId),
+      this.prisma.stockBatch.count({
+        where: { orgId, goodId, ...(warehouseId ? { warehouseId } : {}) },
+      }),
+    ]);
+    return { items, total };
+  }
 
   async createFromReceipt(
     orgId: string,

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { BatchService } from './batch.service';
 import { PricingService } from './pricing.service';
+import { PricingRulesService } from './pricing-rules.service';
 import { StockItemsController } from './stock-items.controller';
 import { BatchesController } from './batches.controller';
 import { PricingRulesController } from './pricing-rules.controller';
@@ -14,7 +15,7 @@ import { AuditModule } from '../audit/audit.module';
   // AuditModule — C1b: аудит pricing-rules CRUD (прямо в контролері).
   imports: [SettingsModule, AuditModule],
   controllers: [StockItemsController, BatchesController, PricingRulesController],
-  providers: [InventoryService, BatchService, PricingService],
+  providers: [InventoryService, BatchService, PricingService, PricingRulesService],
   exports: [InventoryService, BatchService, PricingService],
 })
 export class InventoryModule {}

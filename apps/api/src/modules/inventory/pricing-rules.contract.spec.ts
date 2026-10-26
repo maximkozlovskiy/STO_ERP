@@ -5,6 +5,7 @@ import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { PricingRulesController } from './pricing-rules.controller';
+import { PricingRulesService } from './pricing-rules.service';
 import { PricingService } from './pricing.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -132,6 +133,7 @@ describe('PricingRules — HTTP Contract', () => {
     const module = await Test.createTestingModule({
       controllers: [PricingRulesController],
       providers: [
+        PricingRulesService,
         { provide: PricingService, useValue: pricingServiceMock },
         { provide: PrismaService, useValue: prismaMock },
         { provide: AuditService, useValue: auditMock },
