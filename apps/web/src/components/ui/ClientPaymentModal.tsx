@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CASH_METHOD_CODE, type ApiSchema } from '@sto/shared';
+import { CASH_METHOD_CODE, normalizeDecimalInput, type ApiSchema } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { fmtMoney } from '@/lib/format';
@@ -16,6 +16,9 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { newIdempotencyKey } from '@/lib/idempotency-key';
 import { useAuth } from '@/lib/auth';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 
 /** Спосіб оплати у вікні: код, назва і куди за замовчуванням надходять кошти. */
 type PaymentMethodDto = ApiSchema<'PaymentMethodResponseDto'>;
@@ -80,7 +83,9 @@ export interface ClientPaymentModalProps {
  *  - безготівковий спосіб без каси за замовчуванням вимагає банківський рахунок (BR-PAY-023): поле
  *    «Рахунок» заповнене рахунком способу оплати, доки касир не обрав інший; QR — без поля;
  *  - каси — лише у валюті документа (Bug #857); порожній перелік пояснено (Bug #858);
- *  - сума за замовчуванням — залишок (порожнє поле);
+ *  - сума за замовчуванням — залишок (порожнє поле); поле текстове з UA-комою й пробілами
+ *    («1 000,50»), нерозбірне — помилка у вікні, а не «весь залишок»;
+ *  - закриття з уведеним (сума, примітка, обраний спосіб / каса / рахунок) питає підтвердження;
  *  - один ключ ідемпотентності на відкриття вікна;
  *  - помилка сервера — у самому вікні, вікно лишається.
  */
@@ -98,6 +103,8 @@ export function ClientPaymentModal({
   const baseSymbol = baseCurrency?.symbol ?? '₴';
   const createPayment = useCreatePayment();
   const { employee } = useAuth();
+  const features = useUiFeatures();
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   const [payMethods, setPayMethods] = useState<PayMethodOption[]>([]);
   const [form, setForm] = useState({ method: CASH_METHOD_CODE, amount: '', notes: '' });
@@ -105,6 +112,8 @@ export function ClientPaymentModal({
   const [cashChoice, setCashChoice] = useState<string | null>(null);
   // Банківський рахунок, який касир обрав сам; null — поле йде за рахунком способу оплати.
   const [bankChoice, setBankChoice] = useState<string | null>(null);
+  // Спосіб, який касир обрав сам (а не синхронізація з першим активним) — для питання при закритті.
+  const [methodChosen, setMethodChosen] = useState(false);
   const [error, setError] = useState('');
   const idempotencyKeyRef = useRef('');
 
@@ -114,8 +123,11 @@ export function ClientPaymentModal({
     setForm({ method: CASH_METHOD_CODE, amount: '', notes: '' });
     setCashChoice(null);
     setBankChoice(null);
+    setMethodChosen(false);
     setError('');
     idempotencyKeyRef.current = newIdempotencyKey();
+    dirty.resetDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, target?.id]);
 
   // Каси — лише коли вікно відкрите (сервер віддає невидалені, перші 200 за назвою).
@@ -274,10 +286,23 @@ export function ClientPaymentModal({
   const sym = isBase ? baseSymbol : (target?.currencyCode ?? '');
   const fmt = (n: number) => `${fmtMoney(n)} ${sym}`;
 
-  // Порожнє поле = оплата залишку (сума − сплачене), не всієї суми документа.
+  // Порожнє поле = оплата залишку (сума − сплачене), не всієї суми документа. UA-кома й пробіли
+  // тисяч («1 000,50») — як `moneyString` у спільних схемах; нерозбірне → NaN → помилка у вікні.
+  // Раніше поле `type="number"` віддавало на вставлене «1 000,50» порожній рядок, і оплата мовчки
+  // йшла на весь залишок.
   const parsedAmount = (): number => {
-    const raw = parseFloat(form.amount);
-    return !form.amount || !Number.isFinite(raw) ? remaining : raw;
+    const raw = normalizeDecimalInput(form.amount);
+    return raw ? Number(raw) : remaining;
+  };
+
+  // BR-PAY-017: сума — від копійки до залишку; інакше помилка у вікні й null.
+  const checkedAmount = (): number | null => {
+    const amount = parsedAmount();
+    if (!(amount > 0) || amount > remaining + 1e-9) {
+      setError(t('payment.amountOutOfRange', { remaining: fmt(remaining) }));
+      return null;
+    }
+    return amount;
   };
 
   // Повторний клік / Enter під час запиту не шле другу оплату; той самий прапорець тримає вікно
@@ -286,13 +311,9 @@ export function ClientPaymentModal({
 
   const handlePay = async () => {
     if (!target || blocked || savingRef.current) return;
-    const amount = parsedAmount();
-    // BR-PAY-017: сума — від копійки до залишку. `min`/`max` поля кнопку не блокують (форми немає),
-    // тож без цієї перевірки «0» чи сума понад залишок ішли на сервер.
-    if (!(amount > 0) || amount > remaining + 1e-9) {
-      setError(t('payment.amountOutOfRange', { remaining: fmt(remaining) }));
-      return;
-    }
+    // BR-PAY-017: без цієї перевірки «0» чи сума понад залишок ішли на сервер.
+    const amount = checkedAmount();
+    if (amount === null) return;
     savingRef.current = true;
     setError('');
     try {
@@ -307,6 +328,7 @@ export function ClientPaymentModal({
         ...(showsCash && cashId ? { sourceType: 'CASH_REGISTER', cashRegisterId: cashId } : {}),
         ...(showsBank && bankId ? { sourceType: 'BANK_ACCOUNT', bankAccountId: bankId } : {}),
       });
+      dirty.resetDirty();
       onPaid(amount, fmt(amount));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('errors.payment'));
@@ -315,141 +337,161 @@ export function ClientPaymentModal({
     }
   };
 
-  // Стабільний onClose: Modal перевішує keydown-listener на кожну нову ідентичність колбека.
-  const handleClose = useCallback(() => {
-    if (savingRef.current) return;
+  // Закриття з уведеним питає підтвердження (як `PaymentReversalModal`): сума, примітка чи обраний
+  // касиром спосіб / каса / рахунок. Escape тут же: Modal — шар `useEscapeLayer`, а відкритий
+  // діалог підтвердження — шар над ним, тож другий Escape закриває лише діалог.
+  const close = async () => {
+    if (savingRef.current || dirty.dialogProps.open) return;
+    const touched =
+      !!form.amount.trim() ||
+      !!form.notes.trim() ||
+      methodChosen ||
+      cashChoice !== null ||
+      bankChoice !== null;
+    if (touched) dirty.markDirty();
+    else dirty.resetDirty();
+    if (!(await dirty.confirmClose())) return;
     onClose();
-  }, [onClose]);
+  };
 
   return (
-    <Modal
-      open={open && !!target}
-      onClose={handleClose}
-      title={title}
-      footer={
-        isQr && allowQr ? (
-          <Button
-            onClick={() => {
-              const raw = parseFloat(form.amount);
-              onShowQr?.(form.amount && Number.isFinite(raw) ? raw : undefined);
-            }}
-            className="w-full"
-          >
-            {t('payment.showQr')}
-          </Button>
-        ) : (
-          <Button
-            onClick={() => void handlePay()}
-            loading={createPayment.isPending}
-            disabled={blocked || remaining <= 0}
-            className="w-full"
-          >
-            {t('payment.confirmPayment')}
-          </Button>
-        )
-      }
-    >
-      {target && (
-        <div className="space-y-4">
-          {error && (
-            <div
-              role="alert"
-              className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3"
+    <>
+      <Modal
+        open={open && !!target}
+        onClose={() => void close()}
+        title={title}
+        footer={
+          isQr && allowQr ? (
+            <Button
+              onClick={() => {
+                // Порожнє поле — сервер бере залишок; введена сума — та сама перевірка, що й оплата.
+                if (!form.amount.trim()) {
+                  onShowQr?.(undefined);
+                  return;
+                }
+                const amount = checkedAmount();
+                if (amount !== null) onShowQr?.(amount);
+              }}
+              className="w-full"
             >
-              {error}
-            </div>
-          )}
-          <div className="p-3 bg-info-subtle rounded-lg text-sm text-info-text space-y-0.5">
-            <div>
-              {target.kind === 'invoice'
-                ? t('payment.invoiceAmount')
-                : t('payment.workOrderAmount')}{' '}
-              <strong className="tabular-nums">{fmt(target.amount)}</strong>
-            </div>
-            {paid > 0 && (
-              <div>
-                {t('payment.alreadyPaid')} <strong className="tabular-nums">{fmt(paid)}</strong>
+              {t('payment.showQr')}
+            </Button>
+          ) : (
+            <Button
+              onClick={() => void handlePay()}
+              loading={createPayment.isPending}
+              disabled={blocked || remaining <= 0}
+              className="w-full"
+            >
+              {t('payment.confirmPayment')}
+            </Button>
+          )
+        }
+      >
+        {target && (
+          <div className="space-y-4">
+            {error && (
+              <div
+                role="alert"
+                className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3"
+              >
+                {error}
               </div>
             )}
-            <div>
-              {t('payment.remaining')} <strong className="tabular-nums">{fmt(remaining)}</strong>
+            <div className="p-3 bg-info-subtle rounded-lg text-sm text-info-text space-y-0.5">
+              <div>
+                {target.kind === 'invoice'
+                  ? t('payment.invoiceAmount')
+                  : t('payment.workOrderAmount')}{' '}
+                <strong className="tabular-nums">{fmt(target.amount)}</strong>
+              </div>
+              {paid > 0 && (
+                <div>
+                  {t('payment.alreadyPaid')} <strong className="tabular-nums">{fmt(paid)}</strong>
+                </div>
+              )}
+              <div>
+                {t('payment.remaining')} <strong className="tabular-nums">{fmt(remaining)}</strong>
+              </div>
             </div>
-          </div>
-          <Select
-            label={t('payment.method')}
-            required
-            value={form.method}
-            onChange={e => setForm(f => ({ ...f, method: e.target.value }))}
-            className="h-8 text-[13px] py-0.5 px-2 pr-7"
-          >
-            {payMethods.length > 0 ? (
-              payMethods.map(m => (
-                <option key={m.code} value={m.code}>
-                  {m.name}
-                </option>
-              ))
-            ) : (
-              <>
-                <option value="cash">{t('payment.methodCash')}</option>
-                <option value="card_terminal">{t('payment.methodTerminal')}</option>
-                <option value="bank_transfer">{t('payment.methodBankTransfer')}</option>
-              </>
-            )}
-          </Select>
-          {showsCash && (
             <Select
-              label={t('payment.cashRegister')}
-              required={needsCash}
-              value={cashId}
-              onChange={e => setCashChoice(e.target.value)}
-              placeholder={t('payment.cashRegisterPlaceholder')}
-              errorMessage={cashHint}
-              className="h-8 text-[13px] py-0.5 px-2 pr-7"
-            >
-              {cashOptions.map(r => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </Select>
-          )}
-          {showsBank && (
-            <Select
-              label={t('payment.bankAccount')}
+              label={t('payment.method')}
               required
-              value={bankId}
-              onChange={e => setBankChoice(e.target.value)}
-              placeholder={t('payment.bankAccountPlaceholder')}
-              errorMessage={bankHint}
+              value={form.method}
+              onChange={e => {
+                setMethodChosen(true);
+                setForm(f => ({ ...f, method: e.target.value }));
+              }}
               className="h-8 text-[13px] py-0.5 px-2 pr-7"
             >
-              {bankOptions.map(a => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
+              {payMethods.length > 0 ? (
+                payMethods.map(m => (
+                  <option key={m.code} value={m.code}>
+                    {m.name}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="cash">{t('payment.methodCash')}</option>
+                  <option value="card_terminal">{t('payment.methodTerminal')}</option>
+                  <option value="bank_transfer">{t('payment.methodBankTransfer')}</option>
+                </>
+              )}
             </Select>
-          )}
-          <Input
-            label={t('payment.amount', { sym })}
-            type="number"
-            value={form.amount}
-            onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-            placeholder={String(remaining)}
-            min="0.01"
-            max={String(remaining)}
-            step="0.01"
-            hint={t('payment.amountHint')}
-            className="h-8 text-[13px]"
-          />
-          <Input
-            label={t('payment.notes')}
-            value={form.notes}
-            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-            className="h-8 text-[13px]"
-          />
-        </div>
-      )}
-    </Modal>
+            {showsCash && (
+              <Select
+                label={t('payment.cashRegister')}
+                required={needsCash}
+                value={cashId}
+                onChange={e => setCashChoice(e.target.value)}
+                placeholder={t('payment.cashRegisterPlaceholder')}
+                errorMessage={cashHint}
+                className="h-8 text-[13px] py-0.5 px-2 pr-7"
+              >
+                {cashOptions.map(r => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+            {showsBank && (
+              <Select
+                label={t('payment.bankAccount')}
+                required
+                value={bankId}
+                onChange={e => setBankChoice(e.target.value)}
+                placeholder={t('payment.bankAccountPlaceholder')}
+                errorMessage={bankHint}
+                className="h-8 text-[13px] py-0.5 px-2 pr-7"
+              >
+                {bankOptions.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+            <Input
+              label={t('payment.amount', { sym })}
+              type="text"
+              inputMode="decimal"
+              value={form.amount}
+              onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+              placeholder={String(remaining)}
+              hint={t('payment.amountHint')}
+              className="h-8 text-[13px]"
+            />
+            <Input
+              label={t('payment.notes')}
+              value={form.notes}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              className="h-8 text-[13px]"
+            />
+          </div>
+        )}
+      </Modal>
+      <DirtyConfirmDialog {...dirty.dialogProps} />
+    </>
   );
 }

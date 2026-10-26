@@ -584,7 +584,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -19987,10 +19997,6 @@
             "type": "boolean",
             "description": "Перераховувати фактичні нормогодини по сумі рядків робіт"
           },
-          "syncCalendarSlotWithPlannedHours": {
-            "type": "boolean",
-            "description": "Синхронізувати слот календаря при зміні планових годин наряду"
-          },
           "supplierOrderSendMode": {
             "enum": [
               "MANUAL",
@@ -20069,7 +20075,6 @@
           "loyaltyRedeemRate",
           "recalcPlannedHoursFromLines",
           "recalcActualHoursFromLines",
-          "syncCalendarSlotWithPlannedHours",
           "supplierOrderSendMode",
           "supplierAnalogPolicy",
           "supplierDefaultStrategy",
@@ -20240,10 +20245,6 @@
           "recalcActualHoursFromLines": {
             "type": "boolean",
             "description": "Перераховувати фактичні нормогодини по сумі рядків робіт"
-          },
-          "syncCalendarSlotWithPlannedHours": {
-            "type": "boolean",
-            "description": "Синхронізувати слот календаря при зміні планових годин наряду"
           },
           "supplierOrderSendMode": {
             "enum": [

@@ -606,7 +606,6 @@ describe('SettingsService — кеш налаштувань організаці
     uiFeatures: {},
     recalcPlannedHoursFromLines: true,
     recalcActualHoursFromLines: true,
-    syncCalendarSlotWithPlannedHours: true,
     supplierOrderSendMode: 'MANUAL',
     supplierAnalogPolicy: 'CATALOG_ONLY',
     supplierDefaultStrategy: 'OPTIMAL',

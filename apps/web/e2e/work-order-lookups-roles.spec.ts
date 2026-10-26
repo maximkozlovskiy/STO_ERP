@@ -412,7 +412,6 @@ test.describe('Картка наряду — довідники за ролям�
       'language',
       'recalcActualHoursFromLines',
       'recalcPlannedHoursFromLines',
-      'syncCalendarSlotWithPlannedHours',
       'vatMode',
     ]);
     expect(orgBodies[0].vatMode).toBe(org.body.vatMode);

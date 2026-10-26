@@ -93,7 +93,6 @@ const ORG_SETTINGS_ROW = {
   loyaltyRedeemRate: 1,
   recalcPlannedHoursFromLines: true,
   recalcActualHoursFromLines: false,
-  syncCalendarSlotWithPlannedHours: true,
   syncVersion: 1n,
   updatedAt: new Date('2026-10-01'),
 };
@@ -104,7 +103,6 @@ const CARD_FIELDS = [
   'language',
   'recalcActualHoursFromLines',
   'recalcPlannedHoursFromLines',
-  'syncCalendarSlotWithPlannedHours',
   'vatMode',
 ];
 

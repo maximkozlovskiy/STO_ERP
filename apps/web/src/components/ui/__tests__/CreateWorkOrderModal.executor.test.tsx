@@ -69,7 +69,6 @@ const CARD_SETTINGS = {
   language: 'uk',
   recalcPlannedHoursFromLines: true,
   recalcActualHoursFromLines: true,
-  syncCalendarSlotWithPlannedHours: true,
 };
 
 function mockApi(opts: {

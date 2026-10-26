@@ -204,7 +204,6 @@ export class SettingsService {
       language: s.language,
       recalcPlannedHoursFromLines: s.recalcPlannedHoursFromLines,
       recalcActualHoursFromLines: s.recalcActualHoursFromLines,
-      syncCalendarSlotWithPlannedHours: s.syncCalendarSlotWithPlannedHours,
     };
   }
 
@@ -531,7 +530,6 @@ export class SettingsService {
     loyaltyRedeemRate: { toNumber(): number } | number;
     recalcPlannedHoursFromLines: boolean;
     recalcActualHoursFromLines: boolean;
-    syncCalendarSlotWithPlannedHours: boolean;
     supplierOrderSendMode: SupplierOrderSendMode;
     supplierAnalogPolicy: SupplierAnalogPolicy;
     supplierDefaultStrategy: SupplierStrategy;
@@ -575,7 +573,6 @@ export class SettingsService {
       loyaltyRedeemRate: toNum(s.loyaltyRedeemRate),
       recalcPlannedHoursFromLines: s.recalcPlannedHoursFromLines,
       recalcActualHoursFromLines: s.recalcActualHoursFromLines,
-      syncCalendarSlotWithPlannedHours: s.syncCalendarSlotWithPlannedHours,
       supplierOrderSendMode: s.supplierOrderSendMode,
       supplierAnalogPolicy: s.supplierAnalogPolicy,
       supplierDefaultStrategy: s.supplierDefaultStrategy,

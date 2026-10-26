@@ -44,7 +44,6 @@ let orgRow: {
   // Той самий патерн що й Bug #446 — без нього contract test silently повертає
   // undefined у GET /settings/organisation для нового поля.
   recalcActualHoursFromLines: boolean;
-  syncCalendarSlotWithPlannedHours: boolean;
   supplierOrderSendMode: string;
   supplierAnalogPolicy: string;
   supplierDefaultStrategy: string;
@@ -77,7 +76,6 @@ function freshOrgRow() {
     uiFeatures: { ...UI_FEATURES_DEFAULTS },
     recalcPlannedHoursFromLines: true,
     recalcActualHoursFromLines: true,
-    syncCalendarSlotWithPlannedHours: true,
     supplierOrderSendMode: 'MANUAL',
     supplierAnalogPolicy: 'CATALOG_ONLY',
     supplierDefaultStrategy: 'OPTIMAL',
@@ -495,38 +493,21 @@ describe('Settings — HTTP Contract', () => {
     });
   });
 
-  // Bug #446 regression-guard: syncCalendarSlotWithPlannedHours (commit 307d1e39)
-  // — нове boolean-поле у DTO + service mapping. Без contract-тестів refactor
-  // що видалить його з DTO/whitelist пройде CI зеленим, а frontend (CreateWorkOrderModal
-  // зчитує цей флаг з /settings/organisation) silently повернеться на default true.
-  describe('Bug #446: syncCalendarSlotWithPlannedHours end-to-end', () => {
-    it('PATCH /settings/organisation з syncCalendarSlotWithPlannedHours=false → 200 + body.syncCalendarSlotWithPlannedHours=false', async () => {
-      redisMock.get.mockResolvedValue(null);
-      const res = await app.inject({
+  // Рішення власника 2026-10-26 (TECH-DEBT №63): прапорець «синхронізувати запис календаря з
+  // плановими годинами» ні на що не впливав і прибраний (колонка — міграція 20261026140000).
+  // Мутація: повернути поле в DTO → PATCH дає 200, GET — поле.
+  describe('прибране налаштування syncCalendarSlotWithPlannedHours', () => {
+    it('PATCH /settings/organisation з полем → 400 (білий список), GET його не віддає', async () => {
+      const patch = await app.inject({
         method: 'PATCH',
         url: '/settings/organisation',
         payload: { syncCalendarSlotWithPlannedHours: false },
       });
-      expect(res.statusCode).toBe(200);
-      const body = res.json() as { syncCalendarSlotWithPlannedHours: boolean };
-      expect(body.syncCalendarSlotWithPlannedHours).toBe(false);
-    });
-
-    it('PATCH /settings/organisation з syncCalendarSlotWithPlannedHours="not-boolean" → 400', async () => {
-      const res = await app.inject({
-        method: 'PATCH',
-        url: '/settings/organisation',
-        payload: { syncCalendarSlotWithPlannedHours: 'yes' },
-      });
-      expect(res.statusCode).toBe(400);
-    });
-
-    it('GET /settings/organisation повертає syncCalendarSlotWithPlannedHours boolean', async () => {
+      expect(patch.statusCode).toBe(400);
+      redisMock.get.mockResolvedValue(null);
       const res = await app.inject({ method: 'GET', url: '/settings/organisation' });
       expect(res.statusCode).toBe(200);
-      const body = res.json() as Record<string, unknown>;
-      expect(body).toHaveProperty('syncCalendarSlotWithPlannedHours');
-      expect(typeof body.syncCalendarSlotWithPlannedHours).toBe('boolean');
+      expect(res.json()).not.toHaveProperty('syncCalendarSlotWithPlannedHours');
     });
   });
 

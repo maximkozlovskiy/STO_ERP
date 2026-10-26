@@ -231,12 +231,12 @@ const config = useDetailPanelConfig('crm');
 
 ```tsx
 // Snapshot при завантаженні
-const initialRef = useRef({ recalc: false, sync: false });
+const initialRef = useRef({ recalc: false, actual: false });
 
 // PATCH тільки змінені поля
 const patch = {};
 if (form.recalc !== initialRef.current.recalc) patch.recalcPlannedHoursFromLines = form.recalc;
-if (form.sync !== initialRef.current.sync) patch.syncCalendarSlotWithPlannedHours = form.sync;
+if (form.actual !== initialRef.current.actual) patch.recalcActualHoursFromLines = form.actual;
 if (Object.keys(patch).length === 0) {
   toast.info('Змін немає');
   return;

@@ -265,13 +265,6 @@ export class UpdateOrganisationSettingsDto {
   @IsBoolean()
   recalcActualHoursFromLines?: boolean;
 
-  @ApiPropertyOptional({
-    description: 'Синхронізувати слот календаря при зміні планових годин наряду',
-  })
-  @IsOptional()
-  @IsBoolean()
-  syncCalendarSlotWithPlannedHours?: boolean;
-
   // ── Закупівля через API постачальників (BR-SCON-009, BR-SOFR-005…008; межі — CHECK міграції) ──
   @ApiPropertyOptional({
     enum: SupplierOrderSendMode,
@@ -493,7 +486,6 @@ export class OrganisationCardSettingsDto {
   @ApiProperty() language!: string;
   @ApiProperty() recalcPlannedHoursFromLines!: boolean;
   @ApiProperty() recalcActualHoursFromLines!: boolean;
-  @ApiProperty() syncCalendarSlotWithPlannedHours!: boolean;
 }
 
 export class OrganisationSettingsResponseDto {
@@ -538,10 +530,6 @@ export class OrganisationSettingsResponseDto {
     description: 'Перераховувати фактичні нормогодини по сумі рядків робіт',
   })
   recalcActualHoursFromLines!: boolean;
-  @ApiProperty({
-    description: 'Синхронізувати слот календаря при зміні планових годин наряду',
-  })
-  syncCalendarSlotWithPlannedHours!: boolean;
   @ApiProperty({ enum: SupplierOrderSendMode }) supplierOrderSendMode!: SupplierOrderSendMode;
   @ApiProperty({ enum: SupplierAnalogPolicy }) supplierAnalogPolicy!: SupplierAnalogPolicy;
   @ApiProperty({ enum: SupplierStrategy }) supplierDefaultStrategy!: SupplierStrategy;

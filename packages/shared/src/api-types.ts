@@ -6232,8 +6232,6 @@ export interface components {
             recalcPlannedHoursFromLines: boolean;
             /** @description Перераховувати фактичні нормогодини по сумі рядків робіт */
             recalcActualHoursFromLines: boolean;
-            /** @description Синхронізувати слот календаря при зміні планових годин наряду */
-            syncCalendarSlotWithPlannedHours: boolean;
             /** @enum {string} */
             supplierOrderSendMode: "MANUAL" | "ON_ORDERED";
             /** @enum {string} */
@@ -6305,8 +6303,6 @@ export interface components {
             recalcPlannedHoursFromLines?: boolean;
             /** @description Перераховувати фактичні нормогодини по сумі рядків робіт */
             recalcActualHoursFromLines?: boolean;
-            /** @description Синхронізувати слот календаря при зміні планових годин наряду */
-            syncCalendarSlotWithPlannedHours?: boolean;
             /**
              * @description Передача замовлення в API: кнопкою чи при «Замовлено»
              * @enum {string}
@@ -11169,7 +11165,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": Record<string, never>[];
+                };
             };
         };
     };
