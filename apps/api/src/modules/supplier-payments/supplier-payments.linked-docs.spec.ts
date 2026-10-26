@@ -73,6 +73,21 @@ describe('SupplierPaymentsService — linked-documents edge cases', () => {
     expect(res[SP]).toEqual({ purchaseOrder: 1, counterparty: 1, account: 1 });
   });
 
+  // guards: BR-WO-012
+  // Мутація: повернути `deletedAt: null` у пошук оплат getLinkedCounts → нулі у видаленої.
+  it('getLinkedCounts: видалена оплата (список із видаленими) → лічильники як у панелі', async () => {
+    const ROWS = [
+      { id: SP, purchaseOrderId: PO, supplierId: SUP, bankAccountId: BANK, cashRegisterId: null },
+    ];
+    prisma.supplierPayment.findMany.mockImplementation(
+      ({ where }: { where: Record<string, unknown> }) =>
+        Promise.resolve(where.deletedAt === null || where.orgId !== ORG ? [] : ROWS),
+    );
+    setLive();
+    const res = await service.getLinkedCounts(ORG, [SP]);
+    expect(res[SP]).toEqual({ purchaseOrder: 1, counterparty: 1, account: 1 });
+  });
+
   it('getLinkedCounts: без bank і cash → account=0 (не crash)', async () => {
     prisma.supplierPayment.findMany.mockResolvedValue([
       { id: SP, purchaseOrderId: null, supplierId: SUP, bankAccountId: null, cashRegisterId: null },

@@ -39,7 +39,8 @@ describe('TabBar — клавіатура', () => {
   it('закриття — сусідня кнопка, не вкладена: Enter на ній закриває, а не відкриває', async () => {
     const user = userEvent.setup();
     render(<TabBar />);
-    const close = screen.getAllByRole('button', { name: 'Закрити вкладку' })[0]!;
+    // Назва кнопки закриття містить назву вкладки — кілька кнопок не звучать однаково.
+    const close = screen.getByRole('button', { name: 'Закрити вкладку: Наряд НР-1' });
     expect(close.closest('button')).toBe(close);
     expect(close.parentElement?.closest('button')).toBeNull();
     await user.tab();
@@ -54,16 +55,18 @@ describe('TabBar — клавіатура', () => {
     tabs = Array.from({ length: 11 }, (_, i) => tab(i + 1));
     const user = userEvent.setup();
     render(<TabBar />);
-    await user.click(screen.getByRole('button', { name: '1' }));
+    // Кнопка меню показує лише число схованих вкладок; назва — «Всі відкриті: N».
+    await user.click(screen.getByRole('button', { name: 'Всі відкриті: 1' }));
     const hidden = screen.getByRole('button', { name: 'Наряд НР-11' });
     hidden.focus();
     await user.keyboard('{Enter}');
     expect(activateTab).toHaveBeenCalledWith('t-11');
 
-    await user.click(screen.getByRole('button', { name: '1' }));
-    const closes = screen.getAllByRole('button', { name: 'Закрити вкладку' });
+    await user.click(screen.getByRole('button', { name: 'Всі відкриті: 1' }));
+    const closes = screen.getAllByRole('button', { name: /^Закрити вкладку: / });
     // 10 видимих + 1 у меню (кнопка меню показує, скільки вкладок сховано).
     expect(closes).toHaveLength(11);
+    expect(closes[10]).toHaveAccessibleName('Закрити вкладку: Наряд НР-11');
     await user.click(closes[10]!);
     expect(closeTab).toHaveBeenCalledWith('t-11');
   });

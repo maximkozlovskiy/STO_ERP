@@ -596,19 +596,36 @@ export class PayrollService {
     // період (рішення власника №9, 2026-10-26): спершу скасувати рознесення.
     if (reconciledLine)
       throw new BadRequestException(translateError('err.payroll.hasReconciledLines', getLocale()));
-    // Умова «не PAID» — у самому записі: виплата, що пройшла між читанням і видаленням, інакше
-    // лишилась би на видаленому періоді разом із касовими операціями (гонка «виплата ‖ видалення»).
+    // Умови «не PAID» і «без рознесених рядків» — у самому записі: виплата чи рознесення, що
+    // пройшли між читанням і видаленням, інакше лишились би на видаленому періоді (гонка
+    // «виплата / рознесення ‖ видалення»).
     const deleted = await this.prisma.payrollPeriod.updateMany({
-      where: { id, orgId, deletedAt: null, status: { not: 'PAID' } },
+      where: {
+        id,
+        orgId,
+        deletedAt: null,
+        status: { not: 'PAID' },
+        bankTransactions: { none: { status: 'MATCHED', deletedAt: null } },
+      },
       data: { deletedAt: new Date() },
     });
     if (deleted.count === 0) {
-      const now = await this.prisma.payrollPeriod.findFirst({
-        where: { id, orgId, deletedAt: null },
-        select: { status: true },
-      });
+      const [now, lineNow] = await Promise.all([
+        this.prisma.payrollPeriod.findFirst({
+          where: { id, orgId, deletedAt: null },
+          select: { status: true },
+        }),
+        this.prisma.bankTransaction.findFirst({
+          where: { orgId, payrollPeriodId: id, status: 'MATCHED', deletedAt: null },
+          select: { id: true },
+        }),
+      ]);
       if (!now)
         throw new NotFoundException(translateError('err.payroll.periodNotFound', getLocale()));
+      if (now.status !== 'PAID' && lineNow)
+        throw new BadRequestException(
+          translateError('err.payroll.hasReconciledLines', getLocale()),
+        );
       throw new BadRequestException(translateError('err.payroll.paidNotDeletable', getLocale()));
     }
     if (userId) {

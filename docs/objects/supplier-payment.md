@@ -168,7 +168,7 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 | HTTP-контракт (DTO, статуси, валідація)                        | `supplier-payments.contract.spec.ts`          | 29     |
 | документ, позначений на видалення, — лише перегляд (BR-WO-012) | `supplier-payments.with-deleted.spec.ts`      | 9      |
 | create                                                         | `supplier-payments.create.spec.ts`            | 8      |
-| пов'язані документи                                            | `supplier-payments.linked-docs.spec.ts`       | 9      |
+| пов'язані документи                                            | `supplier-payments.linked-docs.spec.ts`       | 10     |
 | без ПРРО і лояльності (статичний сторож)                       | `supplier-payments.no-fiscal-loyalty.spec.ts` | 14     |
 | payables fx                                                    | `supplier-payments.payables-fx.spec.ts`       | 10     |
 | schedule                                                       | `supplier-payments.schedule.spec.ts`          | 26     |

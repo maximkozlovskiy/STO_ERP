@@ -182,6 +182,20 @@ describe('InvoicesService — linked-documents edge cases', () => {
     expect(res[A]).toEqual({ workOrder: 0, payments: 0, counterparty: 0 });
   });
 
+  // guards: BR-WO-012
+  // Мутація: повернути `deletedAt: null` у пошук рахунків getLinkedCounts → нулі у видаленого.
+  it('getLinkedCounts: видалений рахунок (список із видаленими) → лічильники як у панелі', async () => {
+    const ROWS = [{ id: A, workOrderId: WO, counterpartyId: CP }];
+    prisma.invoice.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
+      Promise.resolve(where.deletedAt === null || where.orgId !== ORG ? [] : ROWS),
+    );
+    prisma.payment.groupBy.mockResolvedValue([]);
+    prisma.workOrder.findMany.mockResolvedValue([{ id: WO }]);
+    prisma.counterparty.findMany.mockResolvedValue([{ id: CP }]);
+    const res = await service.getLinkedCounts(ORG, [A]);
+    expect(res[A]).toEqual({ workOrder: 1, payments: 0, counterparty: 1 });
+  });
+
   it('getLinkedCounts: duplicate ids у запиті не ламають мапу (keyed by id)', async () => {
     prisma.invoice.findMany.mockResolvedValue([{ id: A, workOrderId: WO, counterpartyId: CP }]);
     prisma.payment.groupBy.mockResolvedValue([{ invoiceId: A, _count: { id: 3 } }]);

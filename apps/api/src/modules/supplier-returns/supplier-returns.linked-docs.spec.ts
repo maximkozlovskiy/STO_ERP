@@ -173,10 +173,11 @@ describe('SupplierReturnsService — linked documents (Phase D3)', () => {
     const res = await service.getLinkedCounts(ORG, [SR_ID]);
     expect(res[SR_ID]).toEqual({ purchaseOrder: 1, counterparty: 1, warehouse: 1 });
     expect(prisma.supplierReturn.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ orgId: ORG, deletedAt: null }),
-      }),
+      expect.objectContaining({ where: expect.objectContaining({ orgId: ORG }) }),
     );
+    // guards: BR-WO-012 — джерело шукається й серед видалених (список із «Показати видалені»):
+    // лічильник збігається з панеллю видаленого документа.
+    expect(prisma.supplierReturn.findMany.mock.lastCall![0].where).not.toHaveProperty('deletedAt');
   });
 
   it('getLinkedCounts: soft-deleted PO/постачальник/склад → count=0 (count == detail, Bug #A/#641)', async () => {

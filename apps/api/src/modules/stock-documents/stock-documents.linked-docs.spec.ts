@@ -148,10 +148,11 @@ describe('StockDocumentsService — linked documents (Phase D3)', () => {
     const res = await service.getLinkedCounts(ORG, [DOC_ID]);
     expect(res[DOC_ID]).toEqual({ purchaseOrder: 1, warehouses: 2 });
     expect(prisma.stockDocument.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ orgId: ORG, deletedAt: null }),
-      }),
+      expect.objectContaining({ where: expect.objectContaining({ orgId: ORG }) }),
     );
+    // guards: BR-WO-012 — джерело шукається й серед видалених (список із «Показати видалені»):
+    // лічильник збігається з панеллю видаленого документа.
+    expect(prisma.stockDocument.findMany.mock.lastCall![0].where).not.toHaveProperty('deletedAt');
   });
 
   it('getLinkedCounts: soft-deleted PO/склад → count=0 (count == detail, Bug #A/#641)', async () => {

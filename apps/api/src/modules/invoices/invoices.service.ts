@@ -1655,8 +1655,9 @@ export class InvoicesService {
 
     const [invoices, payments] = await Promise.all([
       // workOrder + counterparty присутність: 1 findMany на всі id.
+      // BR-WO-012: видалений рахунок (список із «Показати видалені») — лічильник як у панелі.
       this.prisma.invoice.findMany({
-        where: { id: { in: ids }, orgId, deletedAt: null },
+        where: { id: { in: ids }, orgId },
         select: { id: true, workOrderId: true, counterpartyId: true },
       }),
       // payments — groupBy по invoiceId (Payment без deletedAt).

@@ -247,7 +247,7 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 | `update()` — резолв контракту контрагента                         | `purchase-orders.contract-resolution.spec.ts`                    | 9      |
 | `transition()` — карта `PO_TRANSITIONS`                           | `purchase-orders.fsm.spec.ts`                                    | 15     |
 | `findAll` — `sortBy=paymentDate`, nulls-last                      | `purchase-orders.sort.spec.ts`                                   | 7      |
-| linked-documents — межові випадки, списки купівлі замовлення      | `purchase-orders.linked-docs.spec.ts`                            | 7      |
+| linked-documents — межові випадки, списки купівлі замовлення      | `purchase-orders.linked-docs.spec.ts`                            | 8      |
 | `create` — Σ(lines.amount) === totalAmount                        | `purchase-orders.totals.spec.ts`                                 | 1      |
 | швидкий імпорт рядків XLSX: виклик перерахунку                    | `../xlsx/xlsx.po-lines-import-totals.spec.ts`                    | 3      |
 | імпорт рядків: ПДВ рядків і тотали, звірка списків (адаптер)      | `../xlsx/document-line-import.adapter.spec.ts`                   | 14     |

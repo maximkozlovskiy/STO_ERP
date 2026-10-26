@@ -251,7 +251,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | документ, позначений на видалення, — лише перегляд (BR-WO-012)     | `invoices.with-deleted.spec.ts`            | 13     |
 | create defaults (номер, invoiceType)                               | `invoices.create-defaults.spec.ts`         | 5      |
 | create from work order                                             | `invoices.create-from-work-order.spec.ts`  | 14     |
-| dto and linked docs                                                | `invoices.dto-and-linked-docs.spec.ts`     | 12     |
+| dto and linked docs                                                | `invoices.dto-and-linked-docs.spec.ts`     | 13     |
 | due date                                                           | `invoices.due-date.spec.ts`                | 7      |
 | find by work order                                                 | `invoices.find-by-work-order.spec.ts`      | 5      |
 | line totals (recalcTotals на бекенді)                              | `invoices.line-totals.spec.ts`             | 19     |

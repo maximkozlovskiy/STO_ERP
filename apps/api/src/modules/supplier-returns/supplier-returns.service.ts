@@ -605,8 +605,9 @@ export class SupplierReturnsService {
     if (ids.length === 0) return {};
     const result = initCountsMap(ids, ['purchaseOrder', 'counterparty', 'warehouse'] as const);
 
+    // BR-WO-012: видалене повернення (список із видаленими) — лічильник як у панелі.
     const returns = await this.prisma.supplierReturn.findMany({
-      where: { id: { in: ids }, orgId, deletedAt: null },
+      where: { id: { in: ids }, orgId },
       select: { id: true, purchaseOrderId: true, supplierId: true, warehouseId: true },
     });
 

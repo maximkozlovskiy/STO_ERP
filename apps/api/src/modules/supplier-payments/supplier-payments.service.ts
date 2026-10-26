@@ -1383,8 +1383,9 @@ export class SupplierPaymentsService {
     if (!ids.length) return {};
 
     // supplier завжди присутній (NOT NULL), account присутній якщо bank або cash заданий.
+    // BR-WO-012: видалена оплата (список із видаленими) — лічильник як у панелі.
     const payments = await this.prisma.supplierPayment.findMany({
-      where: { id: { in: ids }, orgId, deletedAt: null },
+      where: { id: { in: ids }, orgId },
       select: {
         id: true,
         purchaseOrderId: true,

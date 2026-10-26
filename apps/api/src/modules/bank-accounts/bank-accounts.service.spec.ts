@@ -75,8 +75,15 @@ describe('BankAccountsService.remove — рахунок із рознесени�
       },
       select: { id: true },
     });
+    const MATCHED_LINE = { status: 'MATCHED', deletedAt: null };
     expect(m.prisma.bankAccount.updateMany).toHaveBeenCalledWith({
-      where: { id: ACC, orgId: ORG, deletedAt: null },
+      where: {
+        id: ACC,
+        orgId: ORG,
+        deletedAt: null,
+        bankTransactions: { none: MATCHED_LINE },
+        transfersIn: { none: MATCHED_LINE },
+      },
       data: { deletedAt: expect.any(Date) },
     });
     expect(m.cache.del).toHaveBeenCalledWith(`ref:bank-accounts:${ORG}`);
@@ -85,5 +92,16 @@ describe('BankAccountsService.remove — рахунок із рознесени�
   it('рахунку немає → 404', async () => {
     m.prisma.bankAccount.updateMany.mockResolvedValueOnce({ count: 0 });
     await expect(service.remove(ORG, ACC)).rejects.toThrow(NotFoundException);
+  });
+
+  // guards: BR-BANK-043
+  // Мутація: прибрати повторну перевірку після count = 0 → 404 замість 400.
+  it('рядок рознесли між перевіркою і видаленням (запис не пройшов умову) → 400, не 404', async () => {
+    m.prisma.bankTransaction.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'bt-1' });
+    m.prisma.bankAccount.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(service.remove(ORG, ACC)).rejects.toThrow(HAS_LINES);
+    expect(m.cache.del).not.toHaveBeenCalled();
   });
 });

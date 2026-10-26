@@ -139,28 +139,39 @@ export class BankAccountsService {
   async remove(orgId: string, id: string): Promise<void> {
     // BR-BANK-043 (рішення власника №9, 2026-10-26): рознесений рядок виписки цього рахунку або
     // переказ на нього посилався б на видалений рахунок — спершу скасувати рознесення.
-    const reconciledLine = await this.prisma.bankTransaction.findFirst({
-      where: {
-        orgId,
-        status: 'MATCHED',
-        deletedAt: null,
-        OR: [{ bankAccountId: id }, { transferBankAccountId: id }],
-      },
-      select: { id: true },
-    });
-    if (reconciledLine)
-      throw new BadRequestException(
-        translateError('err.bankAccount.hasReconciledLines', getLocale()),
-      );
+    const findReconciledLine = () =>
+      this.prisma.bankTransaction.findFirst({
+        where: {
+          orgId,
+          status: 'MATCHED',
+          deletedAt: null,
+          OR: [{ bankAccountId: id }, { transferBankAccountId: id }],
+        },
+        select: { id: true },
+      });
+    const hasLines = () =>
+      new BadRequestException(translateError('err.bankAccount.hasReconciledLines', getLocale()));
+    if (await findReconciledLine()) throw hasLines();
     // Defense-in-depth: atomic soft-delete via updateMany with orgId guard
     // (sto-review pattern 2026-05-30). Eliminates the race-window between findFirst
-    // and update that could otherwise allow cross-tenant soft-delete.
+    // and update that could otherwise allow cross-tenant soft-delete. Умова «без рознесених
+    // рядків» — теж у записі: рознесення, що пройшло між перевіркою і видаленням, інакше
+    // лишилось би на видаленому рахунку.
+    const MATCHED_LINE = { status: 'MATCHED' as const, deletedAt: null };
     const result = await this.prisma.bankAccount.updateMany({
-      where: { id, orgId, deletedAt: null },
+      where: {
+        id,
+        orgId,
+        deletedAt: null,
+        bankTransactions: { none: MATCHED_LINE },
+        transfersIn: { none: MATCHED_LINE },
+      },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0)
+    if (result.count === 0) {
+      if (await findReconciledLine()) throw hasLines();
       throw new NotFoundException(translateError('err.bankAccount.notFound', getLocale()));
+    }
     await this.cache.del(cacheKey(orgId));
   }
 

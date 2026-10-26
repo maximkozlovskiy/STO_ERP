@@ -254,7 +254,8 @@ cd apps/api && npx vitest run src/modules/payroll/<файл>.spec.ts
 | Аспект                                       | Тест                                  | Кейсів |
 | -------------------------------------------- | ------------------------------------- | ------ |
 | calculator (формули схем, округлення)        | `payroll.calculator.spec.ts`          | 16     |
-| сервісна логіка (розшифровка, список)        | `payroll.service.spec.ts`             | 35     |
+| сервісна логіка (розшифровка, список)        | `payroll.service.spec.ts`             | 30     |
+| видалення періоду (BR-PAYR-012)              | `payroll.remove.spec.ts`              | 6      |
 | межі періоду за Києвом, філія                | `payroll.period-bounds.spec.ts`       | 13     |
 | дати періоду у DTO (лише календарна дата)    | `payroll.dto.spec.ts`                 | 45     |
 | життєвий цикл: створення → розрахунок → каса | `payroll.fsm.spec.ts`                 | 26     |

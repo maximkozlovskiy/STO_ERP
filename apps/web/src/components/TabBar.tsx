@@ -51,7 +51,8 @@ const TabChip = memo(function TabChip({ tab, onActivate, onClose }: TabChipProps
         className="ml-0.5 shrink-0 rounded-sm p-0.5 opacity-0 group-hover:opacity-60 group-focus-within:opacity-60 focus-visible:opacity-100 hover:opacity-100! transition-opacity"
         onClick={() => onClose(tab.id)}
         title={t('close')}
-        aria-label={t('tabBar.closeTab')}
+        // З назвою вкладки: кілька кнопок закриття інакше звучать однаково.
+        aria-label={`${t('tabBar.closeTab')}: ${tab.label}`}
       >
         <X className="h-3 w-3" />
       </button>
@@ -89,6 +90,8 @@ function TabOverflowMenu({ tabs, onActivate, onClose }: OverflowMenuProps) {
         className="flex items-center gap-0.5 px-2 h-full text-[11px] text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-colors"
         onClick={() => setOpen(o => !o)}
         title={t('tabBar.allOpen')}
+        // Видимий текст — лише число вкладок; назва кнопки — «Всі відкриті: N».
+        aria-label={`${t('tabBar.allOpen')}: ${tabs.length}`}
       >
         <ChevronDown className="h-3.5 w-3.5" />
         <span>{tabs.length}</span>
@@ -120,7 +123,7 @@ function TabOverflowMenu({ tabs, onActivate, onClose }: OverflowMenuProps) {
                   setOpen(false);
                 }}
                 title={t('close')}
-                aria-label={t('tabBar.closeTab')}
+                aria-label={`${t('tabBar.closeTab')}: ${tab.label}`}
               >
                 <X className="h-3 w-3" />
               </button>

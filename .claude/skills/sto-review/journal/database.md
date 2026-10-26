@@ -87,3 +87,16 @@ EXCLUDE `calendar_slots_no_overlap` (`WHERE "deletedAt" IS NULL`), `BookingServi
 `20261016120000_…deleted_work_orders`, з `syncVersion + 1`); `createSlot`/`updateSlot` — 400
 `err.calendar.workOrderCancelled`; тести в `calendar.deleted-work-order.spec.ts`.
 **Severity:** IMPORTANT
+
+### 2026-10-26 — Деталь відкриває видалене джерело, лічильник — ні — §6
+
+**Сигнал:** техборг (а) L750: `getLinkedDocuments` шести сервісів (рахунок, замовлення, складський
+документ, оплата й повернення постачальнику, список купівлі) перестав фільтрувати джерело за
+`deletedAt` — картку видаленого документа відкривають на перегляд. `getLinkedCounts` тих самих
+сервісів далі шукав джерело з `deletedAt: null`: у списку з «Показати видалені» значки зв'язків
+видаленого рядка — нулі, а панель — заповнена (розрив count ≠ detail, клас Bug #A/#641).
+**Grep:** `grep -n "async getLinkedCounts" -A12 apps/api/src/modules/*/*.service.ts | grep "id: { in: ids }, orgId, deletedAt: null"`
+**Фікс:** пошук джерела в `getLinkedCounts` без `deletedAt` (цілі зв'язків лишаються живими) у п'яти
+сервісах; тести з фільтрувальною підробкою в `*.linked-docs.spec.ts`. Список купівлі — окремо: його
+позиції видаляються міткою списку, лічильник лишився на живих (кандидат).
+**Severity:** SUGGESTION

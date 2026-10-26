@@ -73,6 +73,20 @@ describe('PurchaseOrdersService — linked-documents edge cases', () => {
     expect(res[P]).toEqual({ supplierPayments: 0, counterparty: 1, purchaseLists: 0 });
   });
 
+  // guards: BR-WO-012
+  // Мутація: повернути `deletedAt: null` у пошук замовлень getLinkedCounts → counterparty 0.
+  it('getLinkedCounts: видалене замовлення (список із видаленими) → лічильники як у панелі', async () => {
+    const ROWS = [{ id: P, supplierId: SUP }];
+    prisma.supplierPayment.groupBy.mockResolvedValue([]);
+    prisma.purchaseOrder.findMany.mockImplementation(
+      ({ where }: { where: Record<string, unknown> }) =>
+        Promise.resolve(where.deletedAt === null || where.orgId !== ORG ? [] : ROWS),
+    );
+    prisma.counterparty.findMany.mockResolvedValue([{ id: SUP }]);
+    const res = await service.getLinkedCounts(ORG, [P]);
+    expect(res[P]).toEqual({ supplierPayments: 0, counterparty: 1, purchaseLists: 0 });
+  });
+
   it('getLinkedCounts: duplicate ids keyed by id, лічильник коректний', async () => {
     prisma.supplierPayment.groupBy.mockResolvedValue([{ purchaseOrderId: P, _count: { id: 2 } }]);
     prisma.purchaseOrder.findMany.mockResolvedValue([{ id: P, supplierId: SUP }]);

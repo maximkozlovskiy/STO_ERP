@@ -1376,8 +1376,9 @@ export class PurchaseOrdersService {
         _count: { id: true },
       }),
       // supplier присутність: 1 findMany на всі id (PO завжди має supplierId → 1).
+      // BR-WO-012: видалене замовлення (список із видаленими) — лічильник як у панелі.
       this.prisma.purchaseOrder.findMany({
-        where: { id: { in: ids }, orgId, deletedAt: null },
+        where: { id: { in: ids }, orgId },
         select: { id: true, supplierId: true },
       }),
       this.prisma.purchaseListItem.groupBy({

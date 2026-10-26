@@ -611,8 +611,9 @@ export class StockDocumentsService {
     if (ids.length === 0) return {};
     const result = initCountsMap(ids, ['purchaseOrder', 'warehouses'] as const);
 
+    // BR-WO-012: видалений документ (список із видаленими) — лічильник як у панелі.
     const docs = await this.prisma.stockDocument.findMany({
-      where: { id: { in: ids }, orgId, deletedAt: null },
+      where: { id: { in: ids }, orgId },
       select: { id: true, purchaseOrderId: true, warehouseId: true, targetWarehouseId: true },
     });
 
