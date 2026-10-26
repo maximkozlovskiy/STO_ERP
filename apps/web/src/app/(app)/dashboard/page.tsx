@@ -225,6 +225,14 @@ export default function DashboardPage() {
     const allInvoices: InvoiceSummary[] = (
       (invoicesData as { items?: InvoiceSummary[] } | undefined)?.items ?? []
     ).filter(i => (i.paidAmount ?? 0) < i.amount);
+    // Списки беруть перші 200 (`limit=200`). Коли сервер має більше (`total`), лічильник і сума з
+    // них — лише частина: показувати її як точне число не можна (Bug #987), тож «—».
+    const truncated = (d: unknown): boolean => {
+      const p = d as { items?: unknown[]; total?: number } | undefined;
+      return typeof p?.total === 'number' && p.total > (p.items?.length ?? 0);
+    };
+    const ordersPartial = truncated(ordersData);
+    const invoicesPartial = truncated(invoicesData);
     const kyivStr = KYIV_YEAR_MONTH_DAY_FMT.format(new Date());
     const [kyivYear, kyivMonth] = kyivStr.split('-').map(Number);
     const monthStart = `${kyivYear}-${String(kyivMonth).padStart(2, '0')}-01`;
@@ -237,16 +245,20 @@ export default function DashboardPage() {
       openOrders: access.orders
         ? allOrders.filter(o => WO_EDITABLE_STATUSES.includes(o.status)).length
         : null,
-      inProgressOrders: access.orders
-        ? allOrders.filter(o => o.status === 'IN_PROGRESS').length
-        : null,
+      // Ті самі статуси, що `activeWo` сервера (IN_PROGRESS + ON_HOLD): це запасне значення його
+      // ж картки, і при збої підзапиту число не має мінятися від іншого правила (Bug #987).
+      inProgressOrders:
+        access.orders && !ordersPartial
+          ? allOrders.filter(o => o.status === 'IN_PROGRESS' || o.status === 'ON_HOLD').length
+          : null,
       completedToday: access.orders ? todayOrders.length : null,
       revenueMonth: access.revenue ? monthRevenue : null,
       lowStockCount: access.lowStock ? lowArr.length : null,
-      unpaidInvoices: access.invoices ? allInvoices.length : null,
-      unpaidAmount: access.invoices
-        ? roundMoney(allInvoices.reduce((s, i) => s + i.amount - (i.paidAmount ?? 0), 0))
-        : null,
+      unpaidInvoices: access.invoices && !invoicesPartial ? allInvoices.length : null,
+      unpaidAmount:
+        access.invoices && !invoicesPartial
+          ? roundMoney(allInvoices.reduce((s, i) => s + i.amount - (i.paidAmount ?? 0), 0))
+          : null,
     };
   }, [
     enabled,

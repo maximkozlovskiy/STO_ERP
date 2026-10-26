@@ -33,15 +33,18 @@ const ALLOWED: [RegExp, string[]][] = [
 
 let orders: unknown[] = [];
 let invoices: unknown[] = [];
+/** `total` відповіді списку, коли сервер має більше за віддані `items` (null — `items.length`). */
+let ordersTotal: number | null = null;
+let invoicesTotal: number | null = null;
 
 function fakeApi(path: string) {
   const rule = ALLOWED.find(([re]) => re.test(path));
   if (rule && !rule[1].includes(role)) return Promise.reject(new Error('403 Forbidden'));
   if (path.startsWith('/work-orders')) {
-    return Promise.resolve({ items: orders, total: orders.length });
+    return Promise.resolve({ items: orders, total: ordersTotal ?? orders.length });
   }
   if (path.startsWith('/invoices'))
-    return Promise.resolve({ items: invoices, total: invoices.length });
+    return Promise.resolve({ items: invoices, total: invoicesTotal ?? invoices.length });
   if (path.startsWith('/reports/revenue')) return Promise.resolve({ rows: [] });
   if (path.startsWith('/warranties')) return Promise.resolve({ items: [], total: 0 });
   return Promise.resolve([]);
@@ -69,6 +72,8 @@ function kpi(label: string) {
 
 function resetData() {
   streamData = null;
+  ordersTotal = null;
+  invoicesTotal = null;
   orders = [{ status: 'IN_PROGRESS', completedAt: null }];
   invoices = [{ amount: 100 }];
 }
@@ -170,5 +175,49 @@ describe('Дашборд — показники (TECH-DEBT §8, §10 п. 26)', (
     expect(await screen.findByText('Несплачені рахунки')).toBeInTheDocument();
     expect(requested()).toContain('/invoices?statuses=DRAFT,SENT,PARTIALLY_PAID,OVERDUE&limit=200');
     expect(kpi('Несплачені рахунки')).toEqual({ value: '2', trend: '↓ 229,50 ₴' });
+  });
+
+  // Bug #987: запасне «В роботі» — ті самі статуси, що `activeWo` сервера (IN_PROGRESS + ON_HOLD);
+  // список, урізаний `limit=200` (total > items), — не точне число, а «—».
+  // Mutation-verify: фільтр лише `IN_PROGRESS` → перший кейс «1» замість «2»; прибрати
+  // `!ordersPartial` / `!invoicesPartial` → другий кейс показує «2» / «1» і суму.
+  it('запасне «В роботі»: у роботі й на паузі, як лічильник сервера', async () => {
+    orders = [
+      { status: 'IN_PROGRESS', completedAt: null },
+      { status: 'ON_HOLD', completedAt: null },
+      { status: 'DRAFT', completedAt: null },
+    ];
+    streamData = {
+      activeWo: null,
+      todayRevenue: 0,
+      pendingInvoices: null,
+      lowStockCount: 0,
+      timestamp: 'x',
+    };
+    renderPage();
+    expect(await screen.findByText('В роботі')).toBeInTheDocument();
+    expect(kpi('В роботі').value).toBe('2');
+  });
+
+  it('запасні лічильники з урізаного списку (total > items) — «—», не часткове число', async () => {
+    orders = [
+      { status: 'IN_PROGRESS', completedAt: null },
+      { status: 'ON_HOLD', completedAt: null },
+    ];
+    ordersTotal = 878;
+    invoices = [{ amount: 100 }];
+    invoicesTotal = 878;
+    streamData = {
+      activeWo: null,
+      todayRevenue: 0,
+      pendingInvoices: null,
+      lowStockCount: 0,
+      timestamp: 'x',
+    };
+    renderPage();
+    expect(await screen.findByText('Несплачені рахунки')).toBeInTheDocument();
+    await waitFor(() => expect(requested()).toHaveLength(6));
+    expect(kpi('В роботі').value).toBe('—');
+    expect(kpi('Несплачені рахунки')).toEqual({ value: '—', trend: '' });
   });
 });
