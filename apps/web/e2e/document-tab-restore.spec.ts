@@ -127,7 +127,8 @@ const CASES: CardCase[] = [
   },
 ];
 
-const tabChip = (page: Page, label: string) => page.locator(`div.h-9 > div[title="${label}"]`);
+// Назва вкладки — окрема кнопка всередині чипа (відкривається з клавіатури, §9 п.2).
+const tabChip = (page: Page, label: string) => page.locator(`div.h-9 button[title="${label}"]`);
 
 test.describe('Картка документа, згорнута у вкладку', () => {
   for (const c of CASES) {
