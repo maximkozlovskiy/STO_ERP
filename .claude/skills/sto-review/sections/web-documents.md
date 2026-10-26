@@ -20,6 +20,11 @@ grep -rn "type=\"date\"\|<DatePickerInput" apps/web/src/app --include="*.tsx" | 
 - [ ] Картка документа вантажить його з `?withDeleted=true` і для `deletedAt` показує
       `DeletedDocumentBanner` без збереження й переходів (BR-WO-012).
 - [ ] Фільтр дат списку — `DateRangeFilter`, не власні поля: інакше немає кнопки очищення.
+- [ ] Типовий період списку (`useState(() => kyivToday())`) → звірити серверний відбір за датою:
+      записи з порожньою датою (задача без початку й терміну) він відкидає, тож типовий вигляд
+      їх ховає, і новостворений без дати «зникає» після збереження. Grep:
+      `git diff <base> -- apps/web/src/app | grep -n "useState(() => kyivToday())"` → для кожного
+      списку — `*RangeWhere`/`from`-гілка сервісу і чи поле дати nullable (`journal/web.md`, 2026-10-26)
 - [ ] E2E не відкриває картку кліком по рядку: олівець або вимкнена панель
       (`sto_detail_panel_<ключ>` у localStorage).
 - [ ] Картка «лише перегляд» (`deletedAt`): пройти КОЖНУ кнопку й поле, а не лише `canEdit` —
