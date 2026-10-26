@@ -16,6 +16,8 @@ import {
 import { flattenCategoryTree, type CategoryNode } from '@/components/ui/category-tree';
 import { apiFetch } from '@/lib/api-client';
 import { usePendingOpen } from '@/hooks/usePendingOpen';
+import { useConfirm } from '@/hooks/useConfirm';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from '@/lib/toast';
 import { displayCounterpartyName } from '@/lib/utils';
 import { fmtDate, kyivToday } from '@/lib/format';
@@ -47,6 +49,7 @@ export default function RuleFormModal({
   brands: Brand[];
 }) {
   const { t } = useTranslation('pricingRules');
+  const { confirm, dialogProps } = useConfirm();
   const [form, setForm] = useState<RuleForm>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -249,6 +252,24 @@ export default function RuleFormModal({
           return;
         }
       }
+    }
+    // Прибрали зі списку останній товар — порожня область означає «весь асортимент». Для правила
+    // з великою націнкою це різка зміна цін при наступному надходженні: питаємо явно.
+    const hadGoods = goodsState.status === 'ready' && goodsState.items.length > 0;
+    if (
+      ruleId &&
+      hadGoods &&
+      form.goodsTouched &&
+      form.goods.length === 0 &&
+      scopeDimension(form) === 'all'
+    ) {
+      const ok = await confirm({
+        title: t('form.allAssortmentConfirmTitle'),
+        message: t('form.allAssortmentConfirmMessage'),
+        confirmLabel: t('form.allAssortmentConfirmLabel'),
+        variant: 'destructive',
+      });
+      if (!ok) return;
     }
     setSaving(true);
     setError('');
@@ -625,6 +646,7 @@ export default function RuleFormModal({
           });
         }}
       />
+      <ConfirmDialog {...dialogProps} />
     </>
   );
 }

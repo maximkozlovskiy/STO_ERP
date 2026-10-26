@@ -127,22 +127,6 @@
     "selectDateRange": "Оберіть діапазон дат"
   },
   "slot": {
-    "wo": {
-      "title": "Наряд",
-      "loading": "Завантаження…",
-      "loadError": "Помилка завантаження",
-      "client": "Клієнт",
-      "vehicle": "Автомобіль",
-      "documentDate": "Дата документа",
-      "planned": "Заплановано",
-      "description": "Опис",
-      "labor": "Роботи",
-      "parts": "Запчастини",
-      "total": "Разом",
-      "vatIncluded": "У тому числі ПДВ",
-      "close": "Закрити",
-      "openFull": "Відкрити повністю"
-    },
     "titleViewPast": "Перегляд слоту",
     "titleEdit": "Редагування слоту",
     "titleNewRange": "Новий слот {{start}} – {{end}}",

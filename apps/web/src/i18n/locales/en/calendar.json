@@ -127,22 +127,6 @@
     "selectDateRange": "Select a date range"
   },
   "slot": {
-    "wo": {
-      "title": "Work order",
-      "loading": "Loading…",
-      "loadError": "Loading error",
-      "client": "Client",
-      "vehicle": "Vehicle",
-      "documentDate": "Document date",
-      "planned": "Planned",
-      "description": "Description",
-      "labor": "Labor",
-      "parts": "Parts",
-      "total": "Total",
-      "vatIncluded": "Including VAT",
-      "close": "Close",
-      "openFull": "Open in full"
-    },
     "titleViewPast": "View slot",
     "titleEdit": "Edit slot",
     "titleNewRange": "New slot {{start}} – {{end}}",

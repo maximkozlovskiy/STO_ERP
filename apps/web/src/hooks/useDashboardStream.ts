@@ -4,11 +4,12 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 
+/** `null` у полі — підзапит сервера не встиг або впав: показника немає (картка — запасне або «—»). */
 export interface DashboardSummary {
-  activeWo: number;
-  todayRevenue: number;
-  pendingInvoices: number;
-  lowStockCount: number;
+  activeWo: number | null;
+  todayRevenue: number | null;
+  pendingInvoices: number | null;
+  lowStockCount: number | null;
   timestamp: string;
 }
 

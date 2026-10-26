@@ -23962,6 +23962,10 @@
             "type": "number",
             "description": "Скільки (невидалених) товарів у списку правила"
           },
+          "hasGoodsList": {
+            "type": "boolean",
+            "description": "Чи має правило список товарів. true при goodsCount = 0 — у списку лишились самі видалені товари: правило ні на що не діє (не «весь асортимент»)"
+          },
           "goodsPreview": {
             "description": "Перші товари списку — для показу в таблиці; повний список — GET :id/goods",
             "type": "array",
@@ -24039,6 +24043,7 @@
           "type",
           "priority",
           "goodsCount",
+          "hasGoodsList",
           "goodsPreview",
           "goodCategoryId",
           "goodCategoryName",

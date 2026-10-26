@@ -150,8 +150,9 @@ export class PricingRulesController {
         orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
       }),
     );
+    const deadLists = await this.listsOfDeletedGoods(this.prisma, orgId, rules);
     return {
-      items: rules.map(r => this.toDto(r)),
+      items: rules.map(r => this.toDto(r, deadLists.has(r.id))),
       total: rules.length,
       page: 1,
       limit: rules.length,
@@ -248,7 +249,8 @@ export class PricingRulesController {
       name: values.name,
       priority: values.priority ?? 10,
     });
-    return this.toDto(rule);
+    // Новий список складається лише з живих товарів (assertRefs) — «мертвим» він бути не може.
+    return this.toDto(rule, false);
   }
 
   @Patch(':id')
@@ -369,10 +371,12 @@ export class PricingRulesController {
           where: { id, orgId, deletedAt: null },
           data: updateData,
         });
-        return tx.pricingRule.findFirstOrThrow({
+        const saved = await tx.pricingRule.findFirstOrThrow({
           where: { id, orgId },
           include: PRICING_RULE_INCLUDE,
         });
+        const deadLists = await this.listsOfDeletedGoods(tx, orgId, [saved]);
+        return { saved, deadList: deadLists.has(id) };
       },
       { timeout: 20_000 },
     );
@@ -382,7 +386,7 @@ export class PricingRulesController {
       ...audited,
       ...(goodIds !== undefined ? { goodsCount: goodIds.length } : {}),
     });
-    return this.toDto(rule);
+    return this.toDto(rule.saved, rule.deadList);
   }
 
   @Delete(':id')
@@ -481,6 +485,28 @@ export class PricingRulesController {
       throw new NotFoundException(translateError('err.pricingRule.supplierNotFound', locale));
   }
 
+  /**
+   * Правила, чий список складається ЛИШЕ з видалених товарів: лічильник живих 0, але рядки-зв'язки
+   * є. Резолвер вважає таке правило правилом зі списком (ні на що не діє), тож таблиця не має
+   * показувати його як бренд / категорію / «весь асортимент».
+   */
+  private async listsOfDeletedGoods(
+    db: Prisma.TransactionClient,
+    orgId: string,
+    rules: Array<{ id: string; _count: { goods: number } }>,
+  ): Promise<Set<string>> {
+    const ids = rules.filter(r => r._count.goods === 0).map(r => r.id);
+    const out = new Set<string>();
+    for (let i = 0; i < ids.length; i += IN_CHUNK) {
+      const groups = await db.pricingRuleGood.groupBy({
+        by: ['pricingRuleId'],
+        where: { orgId, pricingRuleId: { in: ids.slice(i, i + IN_CHUNK) } },
+      });
+      for (const g of groups) out.add(g.pricingRuleId);
+    }
+    return out;
+  }
+
   private async countGoods(
     db: Prisma.TransactionClient,
     orgId: string,
@@ -551,7 +577,8 @@ export class PricingRulesController {
     };
   }
 
-  private toDto(rule: PricingRuleWithRelations): PricingRuleResponseDto {
+  /** `deadList` — список правила є, але всі його товари видалені (`listsOfDeletedGoods`). */
+  private toDto(rule: PricingRuleWithRelations, deadList: boolean): PricingRuleResponseDto {
     const s = rule.supplier;
     const supplierName = s
       ? (s.companyName ?? [s.firstName, s.lastName].filter(Boolean).join(' ') ?? null)
@@ -562,6 +589,7 @@ export class PricingRulesController {
       type: rule.type,
       priority: rule.priority,
       goodsCount: rule._count.goods,
+      hasGoodsList: rule._count.goods > 0 || deadList,
       goodsPreview: rule.goods.map(l => this.toGoodRef(l.good)),
       goodCategoryId: rule.goodCategoryId,
       goodCategoryName: rule.category?.name ?? null,

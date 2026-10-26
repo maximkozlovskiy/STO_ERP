@@ -15,20 +15,30 @@ test.describe.configure({ mode: 'serial' });
  * потім у формі змінюються час запису й механік. Механік створюється сторінкою «Співробітники» й
  * закріплюється за підйомником через картку співробітника (BR-CAL-012). Клієнт і авто — лише
  * передумови, їх створює API.
- * Дата — 10-те число наступного місяця: завжди в майбутньому, тож запис редагується.
+ * Дата — день наступного місяця (10…28): завжди в майбутньому, тож запис редагується. Клітинка
+ * «Місяця» показує до 3 карток за часом (`MONTH_CARD_LIMIT`, задачі теж займають місця) — день
+ * обирає `beforeAll` так, щоб до 15:00 там було менше 3 чужих записів і задач, інакше картка
+ * тесту пішла б під «ще N» (у dev-базі; TECH-DEBT §13 п.2).
  */
 
 const uid = Date.now().toString().slice(-6);
 const CLIENT = `000 E2E Календар місяць ${uid}`;
 
+/** Карток у клітинці «Місяця» — як `MONTH_CARD_LIMIT` у `calendar-month.ts` (BR-CAL-009). */
+const MONTH_CARD_LIMIT = 3;
 const pad = (n: number) => String(n).padStart(2, '0');
 const kyivToday = () =>
   new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date());
-function targetDate(): string {
+/** Дні наступного місяця, серед яких `beforeAll` шукає вільну клітинку «Місяця». */
+function candidateDates(): string[] {
   const [y, m] = kyivToday().split('-').map(Number);
-  const next = new Date(Date.UTC(y, m, 10)); // m — 1-based, тож це наступний місяць
-  return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-10`;
+  const next = new Date(Date.UTC(y, m, 1)); // m — 1-based, тож це наступний місяць
+  const ym = `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}`;
+  return Array.from({ length: 19 }, (_, i) => `${ym}-${pad(10 + i)}`);
 }
+/** Київська дата (YYYY-MM-DD) моменту ISO. */
+const kyivDate = (iso: string) =>
+  new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(new Date(iso));
 const dmy = (iso: string) => iso.split('-').reverse().join('.');
 /** Київське «date HH:00» як мітка часу: зсув — з Intl (з переведенням годинника), не +03:00. */
 function kyivMs(date: string, hour: number): number {
@@ -65,6 +75,8 @@ interface SlotDto {
 }
 
 const state: {
+  /** День запису — обирає `beforeAll` (`candidateDates`). */
+  date?: string;
   token?: string;
   cpId?: string;
   woId?: string;
@@ -101,19 +113,56 @@ async function daySlots(page: Page, token: string, date: string): Promise<SlotDt
   return res.body;
 }
 
+/** Картка тесту стоїть о 15:00 — скільки чужих карток дня (записи й задачі) стануть перед нею. */
+async function cardsBefore3pm(page: Page, token: string, date: string): Promise<number> {
+  const limit = kyivMs(date, 15);
+  const slots = (await daySlots(page, token, date)).filter(
+    s => new Date(s.startAt).getTime() <= limit,
+  ).length;
+  // Задача лягає на всі дні свого проміжку: на день продовження — на початок доби (раніше за все).
+  const res = await apiCall<{ items: { startAt?: string | null; dueAt?: string | null }[] }>(
+    page,
+    token,
+    'GET',
+    `/tasks?page=1&limit=200&from=${date}&to=${date}`,
+  );
+  expect(res.status, `задачі ${date}`).toBe(200);
+  const tasks = res.body.items.filter(t => {
+    const start = t.startAt ?? t.dueAt;
+    if (!start) return false;
+    return kyivDate(start) < date || new Date(start).getTime() <= limit;
+  }).length;
+  return slots + tasks;
+}
+
 test.describe('Календар «Місяць» — картки записів із нарядом (BR-CAL-009)', () => {
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+    const page = await ctx.newPage();
+    await page.goto('/calendar');
+    const token = await getToken(page);
+    for (const date of candidateDates()) {
+      if ((await cardsBefore3pm(page, token, date)) < MONTH_CARD_LIMIT) {
+        state.date = date;
+        break;
+      }
+    }
+    await ctx.close();
+    expect(state.date, 'день 10…28 наступного місяця з місцем для картки о 15:00').toBeTruthy();
+  });
+
   test.afterAll(async ({ browser }) => {
     if (!state.token) return;
     const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
     const page = await ctx.newPage();
     await page.goto('/calendar');
     // Записи наряду шукаються й за датою: тест міг упасти між збереженням форми і збором id.
-    if (state.woId) {
+    if (state.woId && state.date) {
       const day = await apiCall<SlotDto[]>(
         page,
         state.token,
         'GET',
-        `/calendar/slots?date=${targetDate()}`,
+        `/calendar/slots?date=${state.date}`,
       );
       for (const s of Array.isArray(day.body) ? day.body : []) {
         if (s.workOrderId === state.woId && !state.slotIds.includes(s.id)) state.slotIds.push(s.id);
@@ -152,7 +201,7 @@ test.describe('Календар «Місяць» — картки записів
     page,
   }) => {
     test.setTimeout(180_000);
-    const date = targetDate();
+    const date = state.date!;
 
     // ── Передумови через API: клієнт і його авто ──────────────────────────────
     await page.goto('/work-orders');

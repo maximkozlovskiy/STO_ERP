@@ -8,7 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { keepPreviousData } from '@tanstack/react-query';
 import { pricingRulesKeys } from '@/hooks/api/usePricingRules';
 import { Plus, Pencil, Trash2, Upload, Tag, RefreshCw, Search } from 'lucide-react';
-import { useRequireAuth } from '@/lib/auth';
+import { useAuth, useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { downloadBlob } from '@/lib/download';
@@ -71,6 +71,8 @@ function valueLabel(rule: PricingRule, t: TFunction): string {
 /** Колонка «Область»: список товарів > категорія (нова / стара текстова) > тип > усе. */
 function scopeLabel(rule: PricingRule, t: TFunction): string {
   if (rule.goodsCount > 0) return t('row.goods', { n: rule.goodsCount });
+  // Список є, але всі його товари видалені: правило ні на що не діє — це не «весь асортимент».
+  if (rule.hasGoodsList) return t('row.goodsAllDeleted');
   if (rule.goodCategoryId) return t('row.category', { name: rule.goodCategoryName ?? '—' });
   if (rule.goodCategory) return t('row.categoryLegacy', { name: rule.goodCategory });
   if (rule.goodType) {
@@ -79,6 +81,13 @@ function scopeLabel(rule: PricingRule, t: TFunction): string {
   }
   return t('row.allAssortment');
 }
+
+/**
+ * Хто керує правилами: створює, змінює, видаляє, перераховує, бере шаблон списку розцінки.
+ * Сервер на ці дії пускає лише OWNER / ADMIN (шаблон — ще XLSX_MANAGER, але сторінка йому
+ * закрита). Комірник бачить правила й розцінює список — кнопки, що дали б 403, йому не показуємо.
+ */
+const RULE_MANAGER_ROLES = ['OWNER', 'ADMIN'];
 
 /** Підказка до «Товари: N»: назви, якщо всі вони вмістились у `goodsPreview` (N ≤ 3). */
 function scopeTitle(rule: PricingRule): string | undefined {
@@ -90,6 +99,8 @@ function scopeTitle(rule: PricingRule): string | undefined {
 
 export default function PricingRulesClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
+  const { employee } = useAuth();
+  const canManage = RULE_MANAGER_ROLES.includes(employee?.role ?? '');
 
   const { t } = useTranslation('pricingRules');
   const { confirm, dialogProps } = useConfirm();
@@ -280,15 +291,17 @@ export default function PricingRulesClient() {
             >
               {t('actions.priceList')}
             </Button>
-            <Button
-              leftIcon={<Plus className="h-4 w-4" />}
-              onClick={() => {
-                setError('');
-                setModal(true);
-              }}
-            >
-              {t('actions.rule')}
-            </Button>
+            {canManage && (
+              <Button
+                leftIcon={<Plus className="h-4 w-4" />}
+                onClick={() => {
+                  setError('');
+                  setModal(true);
+                }}
+              >
+                {t('actions.rule')}
+              </Button>
+            )}
           </>
         }
       >
@@ -305,28 +318,30 @@ export default function PricingRulesClient() {
         <AnimatedBody className="mb-6 rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-[13px] font-medium text-foreground">{t('import.heading')}</span>
-            <button
-              type="button"
-              className="text-[12px] text-primary hover:underline"
-              onClick={() => {
-                // (А) Увесь async-блок має власний try/catch із setError —
-                // відмова видна користувачу в банері помилки вище.
-                void (async () => {
-                  try {
-                    const data = await apiFetch<{ file: string; filename: string }>(
-                      '/xlsx/templates/pricing-list',
-                    );
-                    const bytes = Uint8Array.from(atob(data.file), c => c.charCodeAt(0));
-                    const blob = new Blob([bytes], { type: 'text/csv; charset=utf-8' });
-                    downloadBlob(blob, data.filename);
-                  } catch (e: unknown) {
-                    setError(e instanceof Error ? e.message : t('errors.template'));
-                  }
-                })();
-              }}
-            >
-              {t('import.downloadTemplate')}
-            </button>
+            {canManage && (
+              <button
+                type="button"
+                className="text-[12px] text-primary hover:underline"
+                onClick={() => {
+                  // (А) Увесь async-блок має власний try/catch із setError —
+                  // відмова видна користувачу в банері помилки вище.
+                  void (async () => {
+                    try {
+                      const data = await apiFetch<{ file: string; filename: string }>(
+                        '/xlsx/templates/pricing-list',
+                      );
+                      const bytes = Uint8Array.from(atob(data.file), c => c.charCodeAt(0));
+                      const blob = new Blob([bytes], { type: 'text/csv; charset=utf-8' });
+                      downloadBlob(blob, data.filename);
+                    } catch (e: unknown) {
+                      setError(e instanceof Error ? e.message : t('errors.template'));
+                    }
+                  })();
+                }}
+              >
+                {t('import.downloadTemplate')}
+              </button>
+            )}
           </div>
           <p className="text-[12px] text-muted-foreground">
             {t('import.hint')} <code>code</code>, <code>sku</code>, <code>brand</code>,{' '}
@@ -556,39 +571,44 @@ export default function PricingRulesClient() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => void applyRule(rule)}
-                        disabled={applyingId === rule.id}
-                        title={t('rowActions.apply')}
-                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                      >
-                        <RefreshCw
-                          className={cn('h-3.5 w-3.5', applyingId === rule.id && 'animate-spin')}
-                        />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => setEditRule(rule)}
-                        title={t('rowActions.edit')}
-                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => void deleteRule(rule.id)}
-                        disabled={deletingId === rule.id}
-                        title={t('rowActions.delete')}
-                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                    {canManage && (
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => void applyRule(rule)}
+                          disabled={applyingId === rule.id}
+                          title={t('rowActions.apply')}
+                          aria-label={`${t('rowActions.apply')}: ${rule.name}`}
+                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                        >
+                          <RefreshCw
+                            className={cn('h-3.5 w-3.5', applyingId === rule.id && 'animate-spin')}
+                          />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setEditRule(rule)}
+                          title={t('rowActions.edit')}
+                          aria-label={`${t('rowActions.edit')}: ${rule.name}`}
+                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => void deleteRule(rule.id)}
+                          disabled={deletingId === rule.id}
+                          title={t('rowActions.delete')}
+                          aria-label={`${t('rowActions.delete')}: ${rule.name}`}
+                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

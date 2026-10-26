@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { GoodType, Prisma } from '@prisma/client';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { findAllInPages } from '../../common/utils/pagination';
+import { getLocale } from '../../common/tenant/tenant-context';
 
 export type RuleEntry = {
   id: string;
@@ -58,6 +60,17 @@ const RULE_INCLUDE = {
 const IN_CHUNK = 5000;
 /** Стеля на розмір довідника категорій однієї організації. */
 const MAX_CATEGORIES = 5000;
+/** Сторінка товарів «Застосувати до всіх» (BR-GOOD-011): усі товари області, без стелі. */
+export const APPLY_PAGE = 1000;
+
+/** Нова ціна товару і правило, що її дало (null — жодне не підійшло, ціна = собівартість). */
+type PriceUpdate = {
+  goodId: string;
+  oldPrice: number;
+  newPrice: number;
+  costPrice: number;
+  rule: RuleEntry | null;
+};
 
 @Injectable()
 export class PricingService {
@@ -160,12 +173,21 @@ export class PricingService {
     return out;
   }
 
+  /**
+   * «Застосувати до всіх» (BR-GOOD-011): перераховує ціни ВСІХ товарів області правила —
+   * сторінками, без стелі. Кожен товар розцінюється правилом-переможцем (`pickRule`), тож у
+   * історію цін іде те правило, яке дало ціну, а не обов'язково застосоване. Вимкнене правило → 400.
+   */
   async applyRuleToGoods(orgId: string, ruleId: string): Promise<number> {
     const rule = await this.prisma.pricingRule.findFirst({
       where: { id: ruleId, orgId, deletedAt: null },
       include: { _count: { select: { goods: true } } },
     });
     if (!rule) return 0;
+    // Вимкнене правило в розцінці не бере участі (контекст — лише активні): «застосувати» його
+    // означало б розцінити товари області ІНШИМИ правилами під його назвою.
+    if (!rule.isActive)
+      throw new BadRequestException(translateError('err.pricingRule.inactive', getLocale()));
 
     // Область правила — ОДИН, найточніший вимір (як у resolveRule): список товарів > бренд >
     // категорія > тип > усе. Bug #178: раніше AND-ились категорія й тип, і комбіноване правило
@@ -186,41 +208,66 @@ export class PricingService {
       scope = {};
     }
 
-    const goods = await this.prisma.good.findMany({
-      where: { orgId, deletedAt: null, ...scope },
-      select: {
-        id: true,
-        purchasePrice: true,
-        salePrice: true,
-        category: true,
-        goodCategoryId: true,
-        goodType: true,
-        brandId: true,
-      },
-      take: 5000,
-    });
-    const ctx = await this.getPricingContext(
-      orgId,
-      goods.map(g => g.id),
-    );
+    // Правила й дерево категорій — один раз; зв'язки списків — для кожної сторінки товарів.
+    const base = await this.getPricingContext(orgId, []);
 
-    // Compute new prices in memory, then batch-update via $transaction chunks
-    type PriceUpdate = {
-      goodId: string;
-      oldPrice: number;
-      newPrice: number;
-      costPrice: number;
-    };
+    // Товари області — сторінками за курсором `id`: колишня стеля `take: 5000` мовчки лишала
+    // решту товарів зі старою ціною, а відповідь звітувала «перераховано» без попередження.
+    let updated = 0;
+    let cursor: string | undefined;
+    for (;;) {
+      const goods = await this.prisma.good.findMany({
+        where: { orgId, deletedAt: null, ...scope },
+        select: {
+          id: true,
+          purchasePrice: true,
+          salePrice: true,
+          category: true,
+          goodCategoryId: true,
+          goodType: true,
+          brandId: true,
+        },
+        orderBy: { id: 'asc' },
+        take: APPLY_PAGE,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      });
+      if (goods.length === 0) break;
+      const ctx: PricingContext = {
+        ...base,
+        ruleIdsByGood: await this.loadGoodLinks(
+          orgId,
+          base.rules,
+          goods.map(g => g.id),
+        ),
+      };
+      updated += await this.writePrices(orgId, this.planPrices(ctx, goods));
+      if (goods.length < APPLY_PAGE) break;
+      cursor = goods[goods.length - 1].id;
+    }
+    return updated;
+  }
+
+  /** Нові ціни сторінки товарів: лише ті, що змінились, з правилом-переможцем для історії. */
+  private planPrices(
+    ctx: PricingContext,
+    goods: Array<PricingGood & { purchasePrice: unknown; salePrice: unknown }>,
+  ): PriceUpdate[] {
     const updates: PriceUpdate[] = [];
     for (const good of goods) {
       const costPrice = Number(good.purchasePrice ?? good.salePrice);
-      const newPrice = this.computePriceFromRules(ctx, good, costPrice);
+      // Те саме, що computePriceFromRules, але з правилом-переможцем: ціну товару могло дати
+      // точніше правило (список, бренд, ближча категорія), і в історії має стояти саме воно.
+      const winner = this.pickRule(ctx, good);
+      const newPrice = winner ? this._applyRule(winner, costPrice) : costPrice;
       const oldPrice = Number(good.salePrice);
       if (Math.abs(newPrice - oldPrice) > 0.001) {
-        updates.push({ goodId: good.id, oldPrice, newPrice, costPrice });
+        updates.push({ goodId: good.id, oldPrice, newPrice, costPrice, rule: winner });
       }
     }
+    return updates;
+  }
 
+  private async writePrices(orgId: string, updates: PriceUpdate[]): Promise<number> {
     // Batch in chunks of 100 to keep transactions short (< 5s)
     // Array-form $transaction doesn't accept a timeout; use callback form for explicit { timeout }.
     // Тому перетворюємо array на callback, щоб мати explicit { timeout } і не покладатись на default 5s.
@@ -250,8 +297,10 @@ export class PricingService {
               oldPrice: u.oldPrice,
               newPrice: u.newPrice,
               costPrice: u.costPrice,
-              reason: `PricingRule: ${rule.name}`,
-              pricingRuleId: rule.id,
+              // Жодне правило не підійшло (застосоване — правило постачальника, без
+              // постачальника воно не діє) → ціна = собівартість, правила в історії немає.
+              reason: u.rule ? `PricingRule: ${u.rule.name}` : 'PricingRule: no matching rule',
+              pricingRuleId: u.rule?.id ?? null,
             })),
           });
         },

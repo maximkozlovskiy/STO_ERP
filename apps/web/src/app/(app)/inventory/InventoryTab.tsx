@@ -49,7 +49,7 @@ import {
   schemaToPanelConfigFields,
 } from '@/lib/panel-schema';
 import { cn } from '@/lib/utils';
-import { fmtMoney, fmtDate, fmtDateTime } from '@/lib/format';
+import { fmtMoney, fmtDate, fmtDateTime, fmtQty } from '@/lib/format';
 
 type PanelConfigHook = ReturnType<typeof useDetailPanelConfig>;
 
@@ -471,10 +471,10 @@ export function InventoryTab() {
                     </TableCell>
                     <TableCell className="text-foreground-muted">{item.warehouseName}</TableCell>
                     <TableCell className="text-right font-medium tabular-nums">
-                      {item.quantity} {item.unit}
+                      {fmtQty(item.quantity)} {item.unit}
                     </TableCell>
                     <TableCell className="text-right text-warning-text tabular-nums">
-                      {item.reserved > 0 ? item.reserved : '—'}
+                      {item.reserved > 0 ? fmtQty(item.reserved) : '—'}
                     </TableCell>
                     <TableCell
                       className={cn(
@@ -482,7 +482,7 @@ export function InventoryTab() {
                         item.available <= 0 ? 'text-destructive' : 'text-success',
                       )}
                     >
-                      {item.available} {item.unit}
+                      {fmtQty(item.available)} {item.unit}
                     </TableCell>
                     <TableCell className="text-right text-foreground-muted tabular-nums">
                       {fmt(item.salePrice)}
@@ -490,7 +490,7 @@ export function InventoryTab() {
                     <TableCell>
                       {item.minStock != null ? (
                         <Badge variant={item.isLow ? 'warning' : 'secondary'}>
-                          ≥ {item.minStock} {item.unit}
+                          ≥ {fmtQty(item.minStock)} {item.unit}
                         </Badge>
                       ) : (
                         '—'
@@ -561,10 +561,10 @@ export function InventoryTab() {
                 </div>
                 <div className="text-right text-sm">
                   <div className="font-semibold text-destructive">
-                    {item.quantity} {item.unit}
+                    {fmtQty(item.quantity)} {item.unit}
                   </div>
                   <div className="text-foreground-faint">
-                    {t('lowStock.min', { value: item.minStock })}
+                    {t('lowStock.min', { value: fmtQty(item.minStock) })}
                   </div>
                 </div>
               </div>
@@ -654,7 +654,7 @@ const ByDocumentsView = memo(function ByDocumentsView({
                   {good.goodBrand ?? '—'}
                 </TableCell>
                 <TableCell className="text-right tabular-nums font-semibold">
-                  {good.totalQuantity} {good.goodUnit}
+                  {fmtQty(good.totalQuantity)} {good.goodUnit}
                 </TableCell>
                 <TableCell colSpan={4} className="text-muted-foreground text-[12px]">
                   {good.documents.length > 0
@@ -699,7 +699,7 @@ const ByDocumentsView = memo(function ByDocumentsView({
                           )}
                         >
                           {mv.quantity > 0 ? '+' : ''}
-                          {mv.quantity} {good.goodUnit}
+                          {fmtQty(mv.quantity)} {good.goodUnit}
                         </TableCell>
                         <TableCell className="text-[12px] text-muted-foreground">
                           {fmtDateTime(mv.createdAt)}
@@ -827,10 +827,10 @@ const ByBatchesView = memo(function ByBatchesView({
                         </TableCell>
                         <TableCell />
                         <TableCell className="text-right tabular-nums text-[13px]">
-                          {g.receivedQty}
+                          {fmtQty(g.receivedQty)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums text-[13px] font-semibold text-foreground">
-                          {g.remainingQty}
+                          {fmtQty(g.remainingQty)}
                         </TableCell>
                         <TableCell colSpan={3} className="text-muted-foreground text-[12px]">
                           {g.consumptions.length > 0
@@ -854,7 +854,7 @@ const ByBatchesView = memo(function ByBatchesView({
                               )}
                             >
                               {c.quantity > 0 ? '+' : ''}
-                              {c.quantity}
+                              {fmtQty(c.quantity)}
                             </TableCell>
                             <TableCell className="text-[12px] text-muted-foreground">
                               {fmtDateTime(c.createdAt)}
@@ -920,11 +920,11 @@ const InventoryDetailPanel = memo(function InventoryDetailPanel({
             )}
             <div className="space-y-3">
               {buildPanelFields(item, STOCK_ITEM_PANEL_SCHEMA, panelConfig.config, {
-                quantity: v => `${String(v)} ${item.unit}`,
+                quantity: v => `${fmtQty(Number(v))} ${item.unit}`,
                 reserved: v =>
                   Number(v) > 0 ? (
                     <span className="text-warning-text tabular-nums">
-                      {String(v)} {item.unit}
+                      {fmtQty(Number(v))} {item.unit}
                     </span>
                   ) : undefined,
                 available: v => (
@@ -934,7 +934,7 @@ const InventoryDetailPanel = memo(function InventoryDetailPanel({
                       Number(v) <= 0 ? 'text-destructive' : 'text-success',
                     )}
                   >
-                    {String(v)} {item.unit}
+                    {fmtQty(Number(v))} {item.unit}
                   </span>
                 ),
                 minStock: () => undefined,
@@ -997,7 +997,7 @@ const InventoryDetailPanel = memo(function InventoryDetailPanel({
                   <div className="mt-1">
                     {item.minStock != null ? (
                       <Badge variant={item.isLow ? 'warning' : 'secondary'}>
-                        ≥ {item.minStock} {item.unit}
+                        ≥ {fmtQty(item.minStock)} {item.unit}
                       </Badge>
                     ) : (
                       <span className="text-muted-foreground text-[12px]">{t('panel.notSet')}</span>

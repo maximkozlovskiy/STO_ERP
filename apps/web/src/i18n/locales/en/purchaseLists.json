@@ -194,6 +194,7 @@
   "card": {
     "addToList": "To purchase list",
     "saveFirst": "Save the work order to send goods to a purchase list",
-    "noShortage": "All goods of the work order are covered — nothing to send"
+    "noShortage": "All goods of the work order are covered — nothing to send",
+    "unsavedWarning": "Unsaved goods of the work order (new lines, changed quantities) will not be sent to the list — save changes first"
   }
 }

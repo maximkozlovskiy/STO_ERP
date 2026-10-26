@@ -190,8 +190,10 @@ describe('Згорнута у вкладку картка документа в�
     const found: { file: string; key: string; idProp: string | undefined }[] = [];
     for (const [file, source] of Object.entries(UI_SOURCES)) {
       if (file.includes('__tests__')) continue;
+      // Картки документів передають вкладку пропом `minimize={…}` спільної шапки
+      // (`DocumentCardHeaderActions`), інші — викликають `minimizeModal({…})` самі.
       for (const m of source.matchAll(
-        /minimizeModal\(\{[\s\S]*?modalKey:\s*'([^']+)'[\s\S]*?restoreProps:\s*\{\s*(\w+)/g,
+        /(?:minimizeModal\(\{|minimize=\{)[\s\S]*?modalKey:\s*'([^']+)'[\s\S]*?restoreProps:\s*\{\s*(\w+)/g,
       )) {
         found.push({ file, key: m[1]!, idProp: m[2] });
       }

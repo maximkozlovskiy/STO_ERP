@@ -163,6 +163,19 @@ describe('Вид «День» — видалення запису наряду �
     expect(btn.parentElement).toHaveAttribute('title', 'Видалити слот');
   });
 
+  // Рішення власника №68: і в минулому дні — як у формі запису (CalendarSlotModal.read-only).
+  // guards: BR-WO-026
+  it('скасований наряд у минулому дні: кнопка «Видалити слот» доступна без підказки блокування', async () => {
+    vi.setSystemTime(new Date('2026-10-17T12:00:00+03:00'));
+    daySlots = [slot('pc', '14:00', { liftId: null, workOrderStatus: 'CANCELLED' })];
+    await renderDay();
+
+    const btn = await screen.findByRole('button', { name: /^Видалити слот 14:00/ });
+    expect(btn).not.toBeDisabled();
+    expect(btn).not.toHaveAccessibleDescription();
+    expect(btn.parentElement).toHaveAttribute('title', 'Видалити слот');
+  });
+
   // guards: BR-WO-026
   it('контроль: наряд «Затверджено» і запис без наряду — кнопка «Видалити слот» доступна', async () => {
     daySlots = [

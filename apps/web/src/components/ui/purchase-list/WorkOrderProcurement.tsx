@@ -73,6 +73,12 @@ interface SendToListButtonProps {
   status: string;
   /** Збережені рядки товарів наряду (з `id`). Одиниця — базова з `procurement.unitByPart`. */
   parts: Array<{ id: string; goodName: string }>;
+  /**
+   * Скільки товарів у картці не збережено (нові рядки, змінені кількості). Нестачу рахує сервер
+   * за збереженими рядками, тож вони в діалог не потрапляють — при відкритті попереджаємо
+   * (TECH-DEBT §14, рішення: попередження, не блокування).
+   */
+  unsavedParts?: number;
   procurement: WorkOrderProcurementState | undefined;
   disabled?: boolean;
   /** `link` (типово) — посилання над таблицею; `section` — кнопка в заголовку `DocumentSection`. */
@@ -88,6 +94,7 @@ export function SendToListButton({
   workOrderId,
   status,
   parts,
+  unsavedParts = 0,
   procurement,
   disabled,
   appearance = 'link',
@@ -102,6 +109,7 @@ export function SendToListButton({
   if (!WO_PROCUREMENT_ACTIVE_STATUSES.includes(status)) return null;
 
   const openDialog = () => {
+    if (unsavedParts > 0) toast.warning(t('card.unsavedWarning'));
     const missing = parts
       .map(p => ({ part: p, shortage: procurement?.shortageByPart.get(p.id) ?? 0 }))
       .filter(x => x.shortage > 0);

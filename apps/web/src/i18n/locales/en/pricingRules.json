@@ -46,7 +46,8 @@
     "active": "Active",
     "inactive": "Disabled",
     "goods": "Products: {{n}}",
-    "categoryLegacy": "Category: {{name}} (text)"
+    "categoryLegacy": "Category: {{name}} (text)",
+    "goodsAllDeleted": "List: deleted goods only (inactive)"
   },
   "rowActions": {
     "apply": "Recalculate prices of all matching goods now",
@@ -127,7 +128,10 @@
     "categoriesError": "Failed to load the category directory.",
     "retry": "Retry",
     "overriddenByBrand": "Ignored: the rule applies by brand",
-    "overriddenByCategory": "Ignored: the rule applies by category"
+    "overriddenByCategory": "Ignored: the rule applies by category",
+    "allAssortmentConfirmTitle": "The rule will apply to the entire assortment",
+    "allAssortmentConfirmMessage": "The rule’s product list is now empty. After saving, the rule will price ALL goods: no brand, category or type is selected either. Save?",
+    "allAssortmentConfirmLabel": "Save for entire assortment"
   },
   "formErrors": {
     "name": "Enter the rule name",

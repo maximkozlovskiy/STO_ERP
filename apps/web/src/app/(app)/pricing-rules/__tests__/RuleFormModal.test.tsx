@@ -134,6 +134,7 @@ const RULE: PricingRule = {
   type: 'PERCENT',
   priority: 10,
   goodsCount: 0,
+  hasGoodsList: false,
   goodsPreview: [],
   goodCategoryId: null,
   goodCategoryName: null,
@@ -545,6 +546,49 @@ describe('RuleFormModal — список товарів правила', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Очистити' }));
     expect(await screen.findByText('Товари (0)')).toBeInTheDocument();
+  });
+
+  // TECH-DEBT §8 L671: порожня область = весь асортимент — без попередження правило з
+  // націнкою мовчки ставало правилом на всі товари.
+  it('прибрали останній товар → «Зберегти» спершу попереджає про весь асортимент', async () => {
+    mockApi(() => Promise.resolve({ items: [good(1)], total: 1 }));
+    const onSave = renderEdit({ ...RULE, goodsCount: 1, goodsPreview: [good(1)] });
+    expect(await screen.findByText('Товари (1)')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Прибрати «Товар 1» зі списку' }));
+
+    fireEvent.click(saveButton());
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Правило діятиме на весь асортимент',
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Скасувати' }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Правило діятиме на весь асортимент' }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(onSave).not.toHaveBeenCalled();
+
+    fireEvent.click(saveButton());
+    const again = await screen.findByRole('dialog', {
+      name: 'Правило діятиме на весь асортимент',
+    });
+    fireEvent.click(within(again).getByRole('button', { name: 'Зберегти для всього асортименту' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(buildUpdatePayload(onSave.mock.calls[0]![0]).goodIds).toEqual([]);
+  });
+
+  it('прибрали останній товар, але обрано бренд → зберігається без попередження', async () => {
+    mockApi(() => Promise.resolve({ items: [good(1)], total: 1 }));
+    const onSave = renderEdit({ ...RULE, goodsCount: 1, goodsPreview: [good(1)] });
+    expect(await screen.findByText('Товари (1)')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Прибрати «Товар 1» зі списку' }));
+    fireEvent.change(brandSelect(), { target: { value: 'b-1' } });
+
+    const form = await saveAndGetForm(onSave);
+    expect(form.brandId).toBe('b-1');
+    expect(
+      screen.queryByRole('dialog', { name: 'Правило діятиме на весь асортимент' }),
+    ).not.toBeInTheDocument();
   });
 });
 

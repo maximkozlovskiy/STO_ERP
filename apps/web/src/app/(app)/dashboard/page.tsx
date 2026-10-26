@@ -40,7 +40,7 @@ const RevenueChart = dynamic(() => import('./RevenueChart'), {
 import { KpiCard, Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageSpinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import { cn } from '@/lib/utils';
+import { cn, roundMoney } from '@/lib/utils';
 import { fmtInt, fmtMoney, fmtDate, kyivToday, kyivDateOf, memoByLocale } from '@/lib/format';
 
 interface MaintenanceSchedule {
@@ -78,6 +78,7 @@ interface WorkOrderSummary {
 }
 interface InvoiceSummary {
   amount: number;
+  paidAmount?: number;
 }
 interface PaginatedWorkOrders {
   items: WorkOrderSummary[];
@@ -215,10 +216,15 @@ export default function DashboardPage() {
     const todayOrders = allOrders.filter(
       // Київська дата завершення, не UTC-зріз ISO-рядка: наряд, закритий о 00:30 за Києвом,
       // в UTC ще «вчора» і в лічильник «завершено сьогодні» не потрапляв (Bug #812).
-      o => kyivDateOf(o.completedAt) === today,
+      // Скасований після завершення наряд зберігає completedAt, але завершеним уже не є.
+      o => o.status !== 'CANCELLED' && kyivDateOf(o.completedAt) === today,
     );
-    const allInvoices: InvoiceSummary[] =
-      (invoicesData as { items?: InvoiceSummary[] } | undefined)?.items ?? [];
+    // До сплати — лише залишок: чернетка, повністю віддзеркалена з оплаченого наряду
+    // (paidAmount = amount), боргу не має, частково оплачений рахунок — на суму залишку
+    // (TECH-DEBT §10 п. 26, як лічильник сервера).
+    const allInvoices: InvoiceSummary[] = (
+      (invoicesData as { items?: InvoiceSummary[] } | undefined)?.items ?? []
+    ).filter(i => (i.paidAmount ?? 0) < i.amount);
     const kyivStr = KYIV_YEAR_MONTH_DAY_FMT.format(new Date());
     const [kyivYear, kyivMonth] = kyivStr.split('-').map(Number);
     const monthStart = `${kyivYear}-${String(kyivMonth).padStart(2, '0')}-01`;
@@ -238,7 +244,9 @@ export default function DashboardPage() {
       revenueMonth: access.revenue ? monthRevenue : null,
       lowStockCount: access.lowStock ? lowArr.length : null,
       unpaidInvoices: access.invoices ? allInvoices.length : null,
-      unpaidAmount: access.invoices ? allInvoices.reduce((s, i) => s + i.amount, 0) : null,
+      unpaidAmount: access.invoices
+        ? roundMoney(allInvoices.reduce((s, i) => s + i.amount - (i.paidAmount ?? 0), 0))
+        : null,
     };
   }, [
     enabled,
@@ -363,8 +371,8 @@ export default function DashboardPage() {
                 label={t('kpi.revenueToday')}
                 // «Оплати сьогодні» — гроші, що надійшли за день (живий потік). Запасного
                 // значення немає свідомо: сума завершених нарядів — інша величина, і під
-                // цим підписом вона вводила б в оману.
-                value={streamData ? fmt(streamData.todayRevenue) : '—'}
+                // цим підписом вона вводила б в оману. `null` — підзапит сервера не встиг: «—», не 0.
+                value={streamData?.todayRevenue != null ? fmt(streamData.todayRevenue) : '—'}
                 icon={<TrendingUp />}
                 colorClass="kpi-card-green"
                 className="w-full"

@@ -278,6 +278,37 @@ describe('Закупівлі — бокова панель повернень і
     expect(summary.compareDocumentPosition(open) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  // TECH-DEBT §8 (клас Bug #811, BR-WO-007): рядок без `amount` — сума округлена до копійки, як
+  // її пише сервер. Мутація: сирий `line.quantity * line.price` у page.tsx → «30,01», кейс падає.
+  it('замовлення: вкладка «Позиції» — рядок без amount, 0,3 × 100,05 = 30,02', async () => {
+    search = 'tab=orders';
+    const base = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string, ...rest: unknown[]) => {
+      if (path === '/purchase-orders/po-1') {
+        return Promise.resolve({
+          ...PO,
+          lines: [
+            {
+              id: 'l1',
+              goodId: 'g1',
+              goodName: 'Фільтр',
+              quantity: 0.3,
+              price: 100.05,
+              unit: 'шт',
+            },
+          ] as unknown as PurchaseOrder['lines'],
+        });
+      }
+      return base(path, ...rest);
+    });
+    renderPage();
+    await screen.findByText('ЗП-0001');
+    fireEvent.click(row('ЗП-0001'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Позиції' }));
+    const line = (await screen.findByText('Фільтр')).closest('div') as HTMLElement;
+    expect(line).toHaveTextContent('= 30,02');
+  });
+
   it('перемикання вкладки скидає вибір в обох списках', async () => {
     const { rerenderPage } = renderPage();
     await screen.findByText('ПП-0001');

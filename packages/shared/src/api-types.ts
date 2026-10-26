@@ -7386,6 +7386,8 @@ export interface components {
             priority: number;
             /** @description Скільки (невидалених) товарів у списку правила */
             goodsCount: number;
+            /** @description Чи має правило список товарів. true при goodsCount = 0 — у списку лишились самі видалені товари: правило ні на що не діє (не «весь асортимент») */
+            hasGoodsList: boolean;
             /** @description Перші товари списку — для показу в таблиці; повний список — GET :id/goods */
             goodsPreview: components["schemas"]["PricingRuleGoodRefDto"][];
             goodCategoryId: string | null;

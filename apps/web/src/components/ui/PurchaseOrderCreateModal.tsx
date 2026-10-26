@@ -10,25 +10,7 @@ import {
   type PurchaseOrderFormInput,
   type PurchaseOrderFormValues,
 } from '@sto/shared';
-import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  Minus,
-  Printer,
-  Download,
-  Share2,
-  MessageSquare,
-  Plus,
-  Trash2,
-  Pencil,
-  Check,
-  X,
-  Zap,
-  PackageCheck,
-  Wallet,
-  Upload,
-} from 'lucide-react';
+import { Plus, Trash2, Pencil, Check, X, Zap, PackageCheck, Wallet, Upload } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { toast } from '@/lib/toast';
@@ -37,9 +19,8 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { usePendingOpen } from '@/hooks/usePendingOpen';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
-import { useTabBarContext } from '@/contexts/TabBarContext';
 import { getCached, setCache } from '@/lib/ref-cache';
-import { displayCounterpartyName, cn } from '@/lib/utils';
+import { displayCounterpartyName, lineAmount, sumLineAmounts } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
 import { pickScannedGood } from '@/lib/barcode';
 import { PO_STATUS_TRANSITIONS, PO_STATUS_ACTION_LABELS } from '@sto/shared';
@@ -50,10 +31,20 @@ import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-head
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { CollapsibleHeader } from '@/components/ui/collapsible-header';
+import {
+  DocumentCancelAction,
+  DocumentCardHeaderActions,
+  DocumentEditActions,
+} from '@/components/ui/document-card-actions';
+import {
+  DocumentHeaderField,
+  DocumentNumberField,
+  DocumentStatusStepper,
+  FormDateInput,
+} from '@/components/ui/document-card-header';
 import { CurrencySelect } from '@/components/ui/CurrencySelect';
 import { useBaseCurrency } from '@/hooks/api/useCash';
 import {
@@ -170,7 +161,6 @@ export function PurchaseOrderCreateModal({
   const canPaySupplier = SUPPLIER_PAYMENT_ROLES.includes(employee?.role ?? '');
   const canOpenSupplierCard = COUNTERPARTY_CARD_ROLES.includes(employee?.role ?? '');
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
-  const { minimizeModal } = useTabBarContext();
 
   // react-hook-form + спільна zod-схема (шапка + line-items через useFieldArray).
   const {
@@ -677,13 +667,18 @@ export function PurchaseOrderCreateModal({
 
   // ── Lines ─────────────────────────────────────────────────────────────────
 
+  // BR-WO-007 (те саме правило, що в наряді): «Разом» — сума округлених до копійки рядків, як
+  // сервер складає `totalAmount` (`money(quantity * price)` на рядок). Сирий добуток давав
+  // 0,3 × 100,05 = «30.01» замість 30.02 і три рядки 0,3 × 111,11 = «100.00» замість 99.99
+  // (клас Bug #811).
   const total = useMemo(
     () =>
-      (watchedLines ?? []).reduce((sum, l) => {
-        const qty = parseFloat(String(l.quantity)) || 0;
-        const price = parseFloat(String(l.price)) || 0;
-        return sum + qty * price;
-      }, 0),
+      sumLineAmounts(
+        (watchedLines ?? []).map(l => ({
+          qty: parseFloat(String(l.quantity)) || 0,
+          price: parseFloat(String(l.price)) || 0,
+        })),
+      ),
     [watchedLines],
   );
 
@@ -721,7 +716,7 @@ export function PurchaseOrderCreateModal({
   }, [activePOId, total, getValues, supplierDisplay, poNumber]);
 
   const lineSubtotal = (qty: string, price: string) =>
-    (parseFloat(qty) || 0) * (parseFloat(price) || 0);
+    lineAmount(parseFloat(qty) || 0, parseFloat(price) || 0);
 
   const numericInputCls =
     'w-full rounded border border-input bg-background px-1.5 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring';
@@ -1074,177 +1069,81 @@ export function PurchaseOrderCreateModal({
           // flex-wrap: п'ять полів шапки на вікні 1280 px не вміщались в один рядок — «Статус»
           // виходив за край картки й був недосяжний; тепер він переноситься на другий рядок.
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            <div className="flex items-center gap-2 text-[13px] text-muted-foreground shrink-0">
-              <span className="font-medium">{t('card.number')}</span>
-              <span className="text-foreground">
-                {isEditMode && poNumber ? poNumber : t('card.autoNumber')}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">
-                {t('card.documentDate')}
-              </span>
-              <div className="w-36">
-                <Controller
-                  control={control}
-                  name="documentDate"
-                  render={({ field }) => (
-                    <DatePickerInput
-                      value={typeof field.value === 'string' ? field.value : ''}
-                      onChange={field.onChange}
-                      disabled={!canEdit}
-                    />
-                  )}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">
-                {t('card.paymentDate')}
-              </span>
-              <div className="w-36">
-                {/* Задається на DRAFT; після ORDERED — авто-заповнюється при повному отриманні
+            <DocumentNumberField
+              label={t('card.number')}
+              value={isEditMode && poNumber ? poNumber : t('card.autoNumber')}
+            />
+            <DocumentHeaderField label={t('card.documentDate')}>
+              <FormDateInput control={control} name="documentDate" disabled={!canEdit} />
+            </DocumentHeaderField>
+            <DocumentHeaderField label={t('card.paymentDate')}>
+              {/* Задається на DRAFT; після ORDERED — авто-заповнюється при повному отриманні
                     (RECEIVED) = сьогодні + CounterpartyContract.paymentDeferDays.
                     Backend PATCH /purchase-orders/:id блокує зміни поза DRAFT (тому disabled). */}
-                <Controller
-                  control={control}
-                  name="paymentDate"
-                  render={({ field }) => (
-                    <DatePickerInput
-                      value={typeof field.value === 'string' ? field.value : ''}
-                      onChange={field.onChange}
-                      disabled={!canEdit}
-                    />
-                  )}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">
-                {t('card.trackingNumber')}
-              </span>
-              <div className="w-44">
-                <Input
-                  {...register('trackingNumber')}
-                  placeholder={t('card.trackingPlaceholder')}
-                  disabled={!canEdit}
-                  autoComplete="off"
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">
-                {t('card.status')}
-              </span>
-              <div ref={statusMenuRef} className="relative flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={transitioning || !statusPrevStep || !isEditMode}
-                  onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
-                  className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-                  <span className="max-w-20 truncate">
-                    {statusPrevStep ? poStatusLabel(statusPrevStep) : '—'}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  disabled={transitioning || !isEditMode || viewOnly}
-                  onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
-                  title={t(`card.statusDescription.${currentStatus}`, {
-                    defaultValue: STATUS_DESCRIPTIONS[currentStatus],
-                  })}
-                  className={cn(
-                    'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
-                    STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
-                    isEditMode && !transitioning && 'cursor-pointer hover:opacity-80',
-                    !isEditMode && 'cursor-default',
-                  )}
-                >
-                  {poStatusLabel(currentStatus)}
-                </button>
-                <button
-                  type="button"
-                  disabled={transitioning || !statusNextStep || !isEditMode}
-                  onClick={() => statusNextStep && void doTransition(statusNextStep)}
-                  className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <span className="max-w-20 truncate">
-                    {statusNextStep ? poStatusLabel(statusNextStep) : '—'}
-                  </span>
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                </button>
-                {statusMenuShown && (
-                  <div className="absolute top-full left-0 mt-1 z-50 min-w-40 rounded-lg border border-border bg-surface shadow-lg py-1">
-                    {allowedTransitions.map(s => (
-                      <button
-                        key={s}
-                        type="button"
-                        disabled={transitioning}
-                        onClick={() => {
-                          setStatusMenuOpen(false);
-                          void doTransition(s);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
-                      >
-                        {t(`card.transition.${s}`, {
-                          defaultValue: PO_STATUS_ACTION_LABELS[s] ?? poStatusLabel(s),
-                        })}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+              <FormDateInput control={control} name="paymentDate" disabled={!canEdit} />
+            </DocumentHeaderField>
+            <DocumentHeaderField label={t('card.trackingNumber')} width="w-44">
+              <Input
+                {...register('trackingNumber')}
+                placeholder={t('card.trackingPlaceholder')}
+                disabled={!canEdit}
+                autoComplete="off"
+              />
+            </DocumentHeaderField>
+            <DocumentStatusStepper
+              stepLabel={poStatusLabel}
+              label={t('card.status')}
+              menuRef={statusMenuRef}
+              active={isEditMode}
+              busy={transitioning}
+              locked={viewOnly}
+              prev={statusPrevStep}
+              statusLabel={poStatusLabel(currentStatus)}
+              next={statusNextStep}
+              onStep={s => void doTransition(s)}
+              menuShown={statusMenuShown}
+              setMenuOpen={setStatusMenuOpen}
+              transitions={allowedTransitions}
+              transitionLabel={s =>
+                t(`card.transition.${s}`, {
+                  defaultValue: PO_STATUS_ACTION_LABELS[s] ?? poStatusLabel(s),
+                })
+              }
+              statusColor={STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground'}
+              statusTitle={t(`card.statusDescription.${currentStatus}`, {
+                defaultValue: STATUS_DESCRIPTIONS[currentStatus],
+              })}
+            />
           </div>
         }
         extraHeaderActions={
-          <div className="flex items-center gap-1">
-            {isEditMode && (
-              <button
-                onClick={() => {
-                  minimizeModal({
-                    kind: 'modal',
+          <DocumentCardHeaderActions
+            minimizeLabel={t('card.minimize')}
+            onMinimize={onMinimize}
+            closeCard={onClose}
+            onClose={() => void handleModalClose()}
+            disabled={saving || transitioning}
+            minimize={
+              isEditMode && !notLoaded
+                ? {
                     label: poNumber || t('counters.purchaseOrder'),
                     modalKey: 'purchase-order',
                     restoreProps: { purchaseOrderId },
-                  });
-                  onMinimize?.();
-                  onClose();
-                }}
-                className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-                title={t('card.minimize')}
-                aria-label={t('card.minimize')}
-                disabled={saving || transitioning}
-              >
-                <Minus className="h-4 w-4" />
-              </button>
-            )}
-            <button
-              onClick={() => void handleModalClose()}
-              className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-              title={t('common:close')}
-              disabled={saving || transitioning}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+                  }
+                : null
+            }
+          />
         }
         footer={
           <div className="flex items-center justify-between w-full gap-2">
             <div>
-              {isEditMode && allowedTransitions.includes('CANCELLED') && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => void doTransition('CANCELLED')}
-                  loading={transitioning}
-                  disabled={transitioning || saving}
-                >
-                  {t('common:cancel')}
-                </Button>
-              )}
+              <DocumentCancelAction
+                label={t('common:cancel')}
+                transitions={allowedTransitions}
+                onTransition={doTransition}
+                busy={transitioning}
+                saving={saving}
+              />
             </div>
             <div className="flex gap-2 items-center flex-wrap">
               {isEditMode && currentStatus !== 'CANCELLED' && !viewOnly && canPaySupplier && (
@@ -1259,86 +1158,25 @@ export function PurchaseOrderCreateModal({
                   {t('card.pay')}
                 </Button>
               )}
-              {isEditMode && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.print()}
-                    disabled={saving || transitioning}
-                    title={t('card.print')}
-                  >
-                    <Printer size={15} className="mr-1" />
-                    {t('card.print')}
-                  </Button>
-                  <div className="relative">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSaveAsOpen(v => !v)}
-                      disabled={saving || transitioning}
-                    >
-                      <Download size={15} className="mr-1" />
-                      {t('card.saveAs')}
-                      <ChevronDown size={13} className="ml-1" />
-                    </Button>
-                    {saveAsOpen && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setSaveAsOpen(false)} />
-                        <div className="absolute bottom-full mb-1 right-0 z-50 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-35">
-                          {(['pdf', 'xlsx', 'docx'] as const).map(fmt => (
-                            <button
-                              key={fmt}
-                              type="button"
-                              onClick={() => setSaveAsOpen(false)}
-                              className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors"
-                            >
-                              {fmt === 'pdf'
-                                ? 'PDF'
-                                : fmt === 'xlsx'
-                                  ? 'Excel (.xlsx)'
-                                  : 'Word (.docx)'}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  {!viewOnly && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={saving || transitioning}
-                        title={t('card.share')}
-                      >
-                        <Share2 size={15} className="mr-1" />
-                        {t('card.share')}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={saving || transitioning}
-                        title={t('card.sendSms')}
-                      >
-                        <MessageSquare size={15} className="mr-1" />
-                        SMS
-                      </Button>
-                    </>
-                  )}
-                </>
-              )}
+              {/* Незнайдений документ (notLoaded) друкувати й зберігати нічого (TECH-DEBT §9 п.4);
+                  видалений — друкується, як і досі. */}
               {isEditMode ? (
-                canEdit && (
-                  <Button
-                    onClick={() => void handleSave()}
-                    loading={saving}
-                    disabled={saving || transitioning}
-                    size="sm"
-                  >
-                    {t('card.saveChanges')}
-                  </Button>
-                )
+                <DocumentEditActions
+                  save={canEdit ? { label: t('card.saveChanges'), onSave: handleSave } : null}
+                  showFile={!notLoaded}
+                  showShare={!viewOnly}
+                  labels={{
+                    print: t('card.print'),
+                    saveAs: t('card.saveAs'),
+                    share: t('card.share'),
+                    shareTitle: t('card.share'),
+                    smsTitle: t('card.sendSms'),
+                  }}
+                  saveAsOpen={saveAsOpen}
+                  setSaveAsOpen={setSaveAsOpen}
+                  saving={saving}
+                  busy={transitioning}
+                />
               ) : (
                 <Button
                   onClick={() => void handleCreate()}

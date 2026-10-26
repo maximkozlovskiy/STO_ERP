@@ -11,6 +11,12 @@
 //
 // Мутація (перевірено для кожної картки): `const viewOnly = isDeleted;` без `|| notLoaded` →
 // падають обидва її кейси.
+//
+// TECH-DEBT §9 п.4: незнайдений документ не лишає «Друк», «Зберегти як» і «Згорнути у вкладку»
+// (друкувати й згортати нічого) — `viewActions` нижче; після завантаження вони на місці. §9 п.1:
+// «Згорнути у вкладку» лише від `lg` (`hidden lg:inline-flex`) — нижче смуги вкладок немає.
+// Мутації: прибрати `!notLoaded` з умови друку / згортання картки → падають її кейси; прибрати
+// `hidden lg:inline-flex` → падає перший кейс.
 
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
@@ -121,6 +127,8 @@ interface CardCase {
   render: () => void;
   /** Дії, що змінюють документ у статусі «чернетка» (або йдуть на сервер по цей документ). */
   actions: (string | RegExp)[];
+  /** Дії над уже показаним документом (друк, збереження у файл, згортання) — лише після завантаження. */
+  viewActions: string[];
   doc: Doc;
   /** Текст рядка документа — ознака, що успішна відповідь дійшла до форми. */
   lineText: string;
@@ -134,6 +142,7 @@ const CASES: CardCase[] = [
       render(<StockDocumentCreateModal open stockDocumentId="sd-1" onClose={vi.fn()} />);
     },
     actions: ['Зберегти зміни', 'Підтвердити', 'Скасувати', 'Додати', 'тест-імпорт-xlsx'],
+    viewActions: ['Друк', 'Зберегти як', 'Згорнути у вкладку'],
     doc: {
       id: 'sd-1',
       number: 'ПРХ-000001',
@@ -156,6 +165,7 @@ const CASES: CardCase[] = [
       );
     },
     actions: ['Зберегти зміни', 'Скасувати', /Оплатити/, 'Додати', 'тест-імпорт-xlsx'],
+    viewActions: ['Друк', 'Зберегти як', 'Згорнути у вкладку'],
     doc: {
       id: 'po-1',
       number: 'ЗАМ-000001',
@@ -179,6 +189,7 @@ const CASES: CardCase[] = [
       render(<InvoiceCreateModal open invoiceId="inv-1" onClose={vi.fn()} />);
     },
     actions: ['Зберегти зміни', 'Скасувати', /Додати/],
+    viewActions: ['Друк', 'Зберегти як', 'Згорнути у вкладку'],
     doc: {
       id: 'inv-1',
       number: 'РАХ-0001',
@@ -212,6 +223,7 @@ const CASES: CardCase[] = [
       renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId="wo-1" />);
     },
     actions: ['Зберегти зміни', 'Скасувати', /Поділитись/, 'Друк'],
+    viewActions: ['Друк', 'Зберегти як', 'Згорнути у вкладку'],
     doc: {
       id: 'wo-1',
       number: 'WO-001',
@@ -258,7 +270,7 @@ describe.each(CASES)('Картка до завантаження докумен�
       await Promise.resolve();
     });
 
-    expectNoActions(c.actions, 'до відповіді сервера');
+    expectNoActions([...c.actions, ...c.viewActions], 'до відповіді сервера');
 
     await act(async () => {
       deferred.resolve(c.doc);
@@ -266,6 +278,11 @@ describe.each(CASES)('Картка до завантаження докумен�
     expect(await screen.findByText(c.lineText, undefined, { timeout: 2000 })).toBeInTheDocument();
     // Контроль: у завантаженій чернетці збереження на місці.
     await waitFor(() => expect(button('Зберегти зміни')).toBeInTheDocument());
+    for (const name of c.viewActions) {
+      expect(button(name), `після відповіді: «${name}»`).toBeInTheDocument();
+    }
+    // §9 п.1: смуга вкладок — `hidden lg:flex`, тож і кнопка згортання лише від lg.
+    expect(button('Згорнути у вкладку')).toHaveClass('hidden', 'lg:inline-flex');
   });
 
   it('завантаження не вдалось — помилку видно, дій немає, запитів на зміну немає', async () => {
@@ -278,7 +295,7 @@ describe.each(CASES)('Картка до завантаження докумен�
     });
 
     expect(await screen.findByText('Сервер недоступний')).toBeInTheDocument();
-    expectNoActions(c.actions, 'після помилки завантаження');
+    expectNoActions([...c.actions, ...c.viewActions], 'після помилки завантаження');
     // Закрити картку можна.
     expect(screen.getAllByRole('button', { name: 'Закрити' }).length).toBeGreaterThan(0);
     expect(writes()).toEqual([]);

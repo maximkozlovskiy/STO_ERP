@@ -86,6 +86,13 @@ const PULL_TABLES = [
 //  - vehicle_makes / vehicle_models (довідник марок, BR-VEH-006…): мобільний клієнт авто не створює,
 //    а показує знімок назви `vehicles.make` / `model`. Клієнт, що створюватиме авто через push
 //    (`makeId` / `modelId`, BR-VEH-008), потребуватиме довідника — тоді додати обидві в PULL_TABLES.
+//  - pricing_rule_goods / pricing_rule_tiers (перелік товарів і грейди правила ціноутворення,
+//    BR-GOOD-009): мобільний клієнт ціну не рахує — розцінка йде лише на сервері (прийом,
+//    «Застосувати до всіх», «Розцінити список»); `pricing_rules` у pull є, але код apps/mobile
+//    правил не читає (перевірено 2026-10-26).
+//    Без цих двох таблиць правило на пристрої виглядало б як «весь асортимент» і без грейдів, тож
+//    якщо ціноутворення колись рахуватиметься на пристрої — додати обидві в PULL_TABLES. Обидві
+//    без syncVersion (дочірні рядки правила).
 
 // Tables safe for push — excludes append-only logs and FSM-controlled models
 const PUSH_SAFE_TABLES = new Set([

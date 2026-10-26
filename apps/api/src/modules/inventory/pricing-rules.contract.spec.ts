@@ -34,6 +34,8 @@ const prismaMock = {
     createMany: vi.fn().mockResolvedValue({ count: 0 }),
     findMany: vi.fn().mockResolvedValue([]),
     count: vi.fn().mockResolvedValue(0),
+    // Які з правил без живих товарів мають список із самих видалених (hasGoodsList).
+    groupBy: vi.fn().mockResolvedValue([]),
   },
   goodCategory: {
     findFirst: vi.fn(),
@@ -235,6 +237,39 @@ describe('PricingRules — HTTP Contract', () => {
       const body = res.json();
       expect(body.items).toHaveLength(501);
       expect(body.total).toBe(501);
+    });
+
+    // guards: BR-GOOD-009
+    it('hasGoodsList: правило зі списком лише з видалених товарів відрізняється від «усього асортименту»', async () => {
+      const DEAD = '00000000-0000-4000-8000-0000000000d1';
+      const ALL = '00000000-0000-4000-8000-0000000000a1';
+      const LIST = '00000000-0000-4000-8000-0000000000b1';
+      const row = (id: string, goods: number) =>
+        existingRule({ id, tiers: [], goods: [], _count: { goods } });
+      prismaMock.pricingRule.findMany.mockResolvedValueOnce([
+        row(DEAD, 0),
+        row(ALL, 0),
+        row(LIST, 2),
+      ]);
+      prismaMock.pricingRuleGood.groupBy.mockResolvedValueOnce([{ pricingRuleId: DEAD }]);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/pricing-rules',
+      });
+      expect(res.statusCode).toBe(200);
+      const byId = new Map(
+        (res.json().items as Array<{ id: string; hasGoodsList: boolean; goodsCount: number }>).map(
+          r => [r.id, r],
+        ),
+      );
+      expect(byId.get(DEAD)).toMatchObject({ hasGoodsList: true, goodsCount: 0 });
+      expect(byId.get(ALL)).toMatchObject({ hasGoodsList: false, goodsCount: 0 });
+      expect(byId.get(LIST)).toMatchObject({ hasGoodsList: true, goodsCount: 2 });
+      // Перевіряються лише правила без живих товарів, у межах організації.
+      expect(prismaMock.pricingRuleGood.groupBy).toHaveBeenCalledWith({
+        by: ['pricingRuleId'],
+        where: { orgId: 'org-1', pricingRuleId: { in: [DEAD, ALL] } },
+      });
     });
   });
 
@@ -945,6 +980,27 @@ describe('PricingRules — HTTP Contract', () => {
       expect(res.statusCode).toBe(200);
       expect(prismaMock.pricingRuleGood.count).not.toHaveBeenCalled();
       expect(prismaMock.pricingRuleGood.deleteMany).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-GOOD-009
+    it('PATCH правила зі списком лише з видалених товарів: відповідь каже hasGoodsList, не «весь асортимент»', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(
+        existingRule({ _count: { goods: 2 } }),
+      );
+      prismaMock.pricingRule.findFirstOrThrow.mockResolvedValueOnce(
+        savedRow({
+          category: null,
+          brand: null,
+          supplier: null,
+          tiers: [],
+          goods: [],
+          _count: { goods: 0 },
+        }),
+      );
+      prismaMock.pricingRuleGood.groupBy.mockResolvedValueOnce([{ pricingRuleId: RULE_ID }]);
+      const res = await inject('PATCH', `/pricing-rules/${RULE_ID}`, { name: 'Перейменоване' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ goodsCount: 0, hasGoodsList: true });
     });
 
     // guards: BR-GOOD-010

@@ -4,20 +4,18 @@ import { useEffect, useId, useRef, useCallback, useMemo, useState } from 'react'
 import type { Dispatch, SetStateAction, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import dynamic from 'next/dynamic';
-import { UserPlus, FilePlus, Trash2, ExternalLink } from 'lucide-react';
+import { UserPlus, FilePlus, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { usePendingOpen } from '@/hooks/usePendingOpen';
-import { WO_STATUS_BADGE } from '@sto/shared';
+import { normalizeDecimalInput } from '@sto/shared';
 import { woStatusLabel } from '@/i18n/enumLabel';
-import { addDaysISO, fmtMoney, fmtDate, kyivDateTimeToISO } from '@/lib/format';
-import { workOrderVatSplit } from '@/lib/utils';
+import { addDaysISO, fmtDate, kyivDateTimeToISO } from '@/lib/format';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import {
   CounterpartyEditModal,
   type CounterpartyForModal,
 } from '@/components/ui/CounterpartyEditModal';
 import { toast } from '@/lib/toast';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
@@ -59,6 +57,7 @@ import {
   slotDeleteLockHint,
 } from './calendar-day';
 import type { CreatedWorkOrder } from '@/components/ui/CreateWorkOrderModal';
+import { calcEndFromHours } from '@/components/ui/work-order/planned-dates';
 
 /**
  * Кінець запису для поля «Кінець» за початком + тривалістю (хвилини від півночі). Межі дня —
@@ -86,142 +85,6 @@ const CreateWorkOrderModal = dynamic(
   () => import('@/components/ui/CreateWorkOrderModal').then(m => m.CreateWorkOrderModal),
   { ssr: false },
 );
-
-// ─── WorkOrderPreviewModal ────────────────────────────────────────────────────
-
-interface WOPreview {
-  id: string;
-  number: string;
-  status: string;
-  counterpartyName?: string;
-  vehicleSummary?: string;
-  description?: string | null;
-  /** BR-WO-007: сума до сплати, з ПДВ. */
-  totalAmount: number;
-  /** Сума без ПДВ; ПДВ у сумі = totalAmount − totalNet. */
-  totalNet?: number;
-  totalLabor: number;
-  totalParts: number;
-  plannedAt?: string | null;
-  documentDate?: string | null;
-}
-
-function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const { t } = useTranslation('calendar');
-  const [wo, setWo] = useState<WOPreview | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError('');
-    apiFetch<WOPreview>(`/work-orders/${id}`)
-      .then(data => {
-        if (!cancelled) setWo(data);
-      })
-      .catch(e => {
-        if (!cancelled) setError(e instanceof Error ? e.message : t('slot.wo.loadError'));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id, t]);
-
-  const statusLabel = wo ? woStatusLabel(wo.status) : '';
-  const statusVariant = wo ? (WO_STATUS_BADGE[wo.status] ?? 'secondary') : 'secondary';
-  const vatInTotal = wo ? workOrderVatSplit(wo).vat : 0;
-
-  return (
-    <Modal open onClose={onClose} title={t('slot.wo.title')} size="md">
-      {loading ? (
-        <div className="flex justify-center py-8">
-          <span className="text-muted-foreground text-sm">{t('slot.wo.loading')}</span>
-        </div>
-      ) : error ? (
-        <p className="text-sm text-destructive-text">{error}</p>
-      ) : wo ? (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-lg font-semibold text-foreground">{wo.number}</span>
-            <Badge variant={statusVariant} dot>
-              {statusLabel}
-            </Badge>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-[13px]">
-            {wo.counterpartyName && (
-              <div>
-                <div className="text-muted-foreground mb-0.5">{t('slot.wo.client')}</div>
-                <div className="text-foreground font-medium">{wo.counterpartyName}</div>
-              </div>
-            )}
-            {wo.vehicleSummary && (
-              <div>
-                <div className="text-muted-foreground mb-0.5">{t('slot.wo.vehicle')}</div>
-                <div className="text-foreground font-medium">{wo.vehicleSummary}</div>
-              </div>
-            )}
-            {wo.documentDate && (
-              <div>
-                <div className="text-muted-foreground mb-0.5">{t('slot.wo.documentDate')}</div>
-                <div className="text-foreground">{fmtDate(wo.documentDate)}</div>
-              </div>
-            )}
-            {wo.plannedAt && (
-              <div>
-                <div className="text-muted-foreground mb-0.5">{t('slot.wo.planned')}</div>
-                <div className="text-foreground">{fmtDate(wo.plannedAt)}</div>
-              </div>
-            )}
-          </div>
-
-          {wo.description && (
-            <div className="text-[13px]">
-              <div className="text-muted-foreground mb-0.5">{t('slot.wo.description')}</div>
-              <div className="text-foreground">{wo.description}</div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-3 gap-2 bg-secondary rounded-lg p-3 text-[13px]">
-            <div>
-              <div className="text-muted-foreground mb-0.5">{t('slot.wo.labor')}</div>
-              <div className="font-semibold text-foreground">{fmtMoney(wo.totalLabor)} ₴</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground mb-0.5">{t('slot.wo.parts')}</div>
-              <div className="font-semibold text-foreground">{fmtMoney(wo.totalParts)} ₴</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground mb-0.5">{t('slot.wo.total')}</div>
-              <div className="font-semibold text-primary">{fmtMoney(wo.totalAmount)} ₴</div>
-            </div>
-          </div>
-          {/* «Роботи + запчастини» ≠ «Разом», коли ПДВ зверху: пояснюємо різницю окремим рядком */}
-          {vatInTotal > 0 && (
-            <div className="flex justify-between text-[13px] text-muted-foreground">
-              <span>{t('slot.wo.vatIncluded')}</span>
-              <span className="tabular-nums">{fmtMoney(vatInTotal)} ₴</span>
-            </div>
-          )}
-
-          <div className="flex justify-between items-center pt-1">
-            <Button variant="outline" onClick={onClose}>
-              {t('slot.wo.close')}
-            </Button>
-            <Button variant="ghost" onClick={() => window.open(`/work-orders/${wo.id}`, '_blank')}>
-              <ExternalLink className="h-4 w-4 mr-1.5" />
-              {t('slot.wo.openFull')}
-            </Button>
-          </div>
-        </div>
-      ) : null}
-    </Modal>
-  );
-}
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -330,6 +193,10 @@ export function CalendarSlotModal({
   // Виняток — скасований наряд (рішення власника 2026-10-19): запис видаляється, дати наряду ті самі.
   const deleteLockHint = slotDeleteLockHint(t, woLockedStatus);
   const cancelledWorkOrder = isCancelledWorkOrderSlot(editingWorkOrder?.lockedStatus ?? null);
+  // Рішення власника №68 (BR-WO-026): запис скасованого наряду видаляється й у минулому дні —
+  // форма, як і перелік «Без підйомника»; решта полів минулого запису лишається для перегляду.
+  // Без права змінювати записи (механік) — ні: сервер відповів би 403.
+  const canDelete = !!editingSlotId && (!isEditingPast || (!readOnly && cancelledWorkOrder));
   const deleteHintId = useId();
   const {
     conflict: calConflict,
@@ -343,6 +210,8 @@ export function CalendarSlotModal({
   const typeHintId = useId();
   // BR-CAL-003: службовий запис (обслуговування, перерва, нарада) — без клієнта, авто й наряду.
   const serviceType = isServiceSlotType(form.type);
+  // Перечитати механіків підйомника після відмови збереження (TECH-DEBT §13 п.9).
+  const [mechanicsReloadKey, setMechanicsReloadKey] = useState(0);
   const setMechanic = useCallback(
     (employeeId: string) => setForm(f => ({ ...f, employeeId })),
     [setForm],
@@ -843,6 +712,9 @@ export function CalendarSlotModal({
       const msg = e instanceof Error ? e.message : t('slot.errSaveFallback');
       setError(msg);
       toast.error(msg);
+      // 400 «Механік не закріплений за цим підйомником» (BR-CAL-012): механіка відкріпили після
+      // відкриття форми — перелік підйомника застарів, перечитати (відкріпленого поле скине).
+      if (form.employeeId && form.liftId) setMechanicsReloadKey(k => k + 1);
     } finally {
       setSaving(false);
     }
@@ -1014,6 +886,7 @@ export function CalendarSlotModal({
               onChange={setMechanic}
               saved={savedMechanic}
               disabled={isEditingPast}
+              reloadKey={mechanicsReloadKey}
             />
             <div>
               <DateTimePickerInput
@@ -1659,7 +1532,7 @@ export function CalendarSlotModal({
             <Button variant="outline" onClick={onClose}>
               {isEditingPast ? t('slot.close') : t('slot.cancel')}
             </Button>
-            {editingSlotId && !isEditingPast && (
+            {canDelete && (
               // BR-WO-026 (рішення власника 2026-10-19): запис наряду не в редагованому статусі не
               // видаляється — кнопка недоступна, підказка в `title` обгортки (вимкнена кнопка
               // подій миші не отримує) і для читача екрана.
@@ -1737,7 +1610,18 @@ export function CalendarSlotModal({
           setCreateWoEditId(undefined);
         }}
         prefill={(() => {
-          const nh = Number(form.normoHours);
+          // Нормогодини з комою («1,5») — як у картці наряду, а не NaN від `Number`.
+          const nh = Number(normalizeDecimalInput(String(form.normoHours)));
+          const plannedStartAt =
+            !editingSlotId && form.startAt && date ? `${date}T${form.startAt}` : undefined;
+          // Рішення власника №64 (BR-WO-019): кінець наряду — автокінець картки наряду в робочих
+          // годинах філії на скільки завгодно днів (`calcEndFromHours`); переповнення самого запису
+          // форми ділиться лише на два дні (BR-CAL-007), і 16:00 + 12 год при 9–18 давало б завтра
+          // 19:00 — поза робочими годинами, 400 при збереженні наряду.
+          const endFromHours =
+            plannedStartAt && nh > 0
+              ? calcEndFromHours(plannedStartAt, nh, { startHour: windowStart, endHour: windowEnd })
+              : '';
           return {
             counterpartyId: form.counterpartyId || undefined,
             counterpartyDisplay: form.counterpartyDisplay || undefined,
@@ -1749,10 +1633,10 @@ export function CalendarSlotModal({
             // Наряд для ІСНУЮЧОГО запису — без планових дат: інакше сервер створив би наряду
             // власний запис (BR-WO-020) поверх цього ж («Підйомник зайнятий»); наряд
             // прив'язується до запису кнопкою «Оновити», як і раніше.
-            plannedStartAt:
-              !editingSlotId && form.startAt && date ? `${date}T${form.startAt}` : undefined,
+            plannedStartAt,
             plannedEndAt:
-              !editingSlotId && form.endAt && endDate ? `${endDate}T${form.endAt}` : undefined,
+              endFromHours ||
+              (!editingSlotId && form.endAt && endDate ? `${endDate}T${form.endAt}` : undefined),
             plannedHours: nh > 0 ? String(nh) : undefined,
             // BR-WO-030: механік запису — виконавець нових робіт наряду.
             employeeId: form.employeeId || undefined,

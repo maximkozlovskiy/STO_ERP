@@ -76,10 +76,18 @@ export function useDashboardLowStock(enabled: boolean) {
   });
 }
 
+/**
+ * Неоплачені рахунки для запасного шляху дашборда — ті самі статуси, що рахує сервер
+ * (`GET /dashboard/summary`, Bug #854): лише `SENT` губив частково оплачені й прострочені
+ * (TECH-DEBT §10 п. 26). Одна адреса для хука й prefetch у `TopShell` — ключ кешу спільний.
+ */
+export const DASHBOARD_INVOICES_URL =
+  '/invoices?statuses=DRAFT,SENT,PARTIALLY_PAID,OVERDUE&limit=200';
+
 export function useDashboardInvoices(enabled: boolean) {
   return useQuery({
     queryKey: dashboardKeys.invoices(),
-    queryFn: ({ signal }) => apiFetch('/invoices?status=SENT&limit=200', { signal }),
+    queryFn: ({ signal }) => apiFetch(DASHBOARD_INVOICES_URL, { signal }),
     enabled,
     ...OPTS,
   });

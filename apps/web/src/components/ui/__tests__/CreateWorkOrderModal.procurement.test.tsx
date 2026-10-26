@@ -11,6 +11,12 @@ import { CreateWorkOrderModal } from '../CreateWorkOrderModal';
  *
  * Mutation-verify: прибрати `<ProcurementBadge>` у PartsTable → падає кейс «бейдж»; дати
  * механіку SEND_ROLES → падає кейс «механік».
+ *
+ * TECH-DEBT §14: нестачу рахує сервер за ЗБЕРЕЖЕНИМИ рядками — незбережені зміни товарів у діалог
+ * не потрапляють, тож при відкритті діалогу картка попереджає (діалог при цьому відкривається).
+ * Mutation-verify: `unsavedParts={0}` у CreateWorkOrderModal або прибрати `toast.warning` з
+ * `SendToListButton` → падає кейс «змінена кількість»; рахувати всі рядки без порівняння з базою
+ * → падає контроль «змінено лише шапку».
  */
 
 const apiFetchMock = vi.fn();
@@ -29,6 +35,16 @@ vi.mock('@/lib/ref-cache', () => ({ getCached: () => null, setCache: vi.fn() }))
 vi.mock('@/hooks/api/useCash', () => ({
   useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
 }));
+const toastWarning = vi.fn();
+vi.mock('@/lib/toast', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/lib/toast')>();
+  return {
+    ...actual,
+    toast: { ...actual.toast, warning: (...a: unknown[]) => toastWarning(...a) },
+  };
+});
+const UNSAVED_WARNING =
+  'Незбережені товари наряду (нові рядки, змінені кількості) до списку не потраплять — спершу натисніть «Зберегти зміни»';
 
 const WO = '10000000-0000-4000-8000-000000000001';
 const B1 = '10000000-0000-4000-8000-000000000002';
@@ -110,6 +126,7 @@ describe('CreateWorkOrderModal — закупівля товарів наряд�
     apiFetchMock.mockReset();
     mockApi();
     role = 'RECEPTIONIST';
+    toastWarning.mockReset();
   });
 
   // guards: BR-PL-015
@@ -128,6 +145,33 @@ describe('CreateWorkOrderModal — закупівля товарів наряд�
     await screen.findByTestId('procurement-badge');
     await user.click(screen.getByRole('button', { name: 'До списку купівлі' }));
     expect(await screen.findByLabelText('Кількість для Колодки гальмівні')).toHaveValue(1);
+  });
+
+  it('змінена кількість без «Зберегти зміни»: діалог відкривається з попередженням', async () => {
+    const user = userEvent.setup();
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId={WO} />);
+    await screen.findByTestId('procurement-badge');
+    await user.click(screen.getByRole('button', { name: 'Редагувати товар' }));
+    const row = screen.getByTitle('Зберегти').closest('tr')!;
+    const qty = within(row).getByDisplayValue('3');
+    await user.clear(qty);
+    await user.type(qty, '5');
+    await user.click(within(row).getByTitle('Зберегти'));
+
+    await user.click(screen.getByRole('button', { name: 'До списку купівлі' }));
+    expect(toastWarning).toHaveBeenCalledWith(UNSAVED_WARNING);
+    // Попередження, не блокування: діалог зі збереженою нестачею відкрито.
+    expect(await screen.findByLabelText('Кількість для Колодки гальмівні')).toHaveValue(1);
+  });
+
+  it('контроль: змінено лише шапку (форма «брудна»), товари збережені — попередження немає', async () => {
+    const user = userEvent.setup();
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={vi.fn()} workOrderId={WO} />);
+    await screen.findByTestId('procurement-badge');
+    await user.type(screen.getByPlaceholderText('Заміна масла, колодок...'), 'Шум у гальмах');
+    await user.click(screen.getByRole('button', { name: 'До списку купівлі' }));
+    await screen.findByLabelText('Кількість для Колодки гальмівні');
+    expect(toastWarning).not.toHaveBeenCalled();
   });
 
   // guards: BR-PL-002

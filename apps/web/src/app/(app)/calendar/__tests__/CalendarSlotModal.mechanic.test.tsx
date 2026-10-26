@@ -303,6 +303,48 @@ describe('CalendarSlotModal — поле «Механік» (BR-CAL-012)', () =>
     expect(JSON.parse(post[1].body)).toMatchObject({ liftId: L1, employeeId: SHEVCHUK });
   });
 
+  // guards: BR-CAL-012
+  it('400 «Механік не закріплений…» → перелік підйомника перечитано, відкріпленого механіка скинуто', async () => {
+    const free = apiFetch.getMockImplementation()!;
+    // Коваля відкріпили від П1 між відкриттям форми і збереженням.
+    let unpinned = false;
+    apiFetch.mockImplementation((url: string, init?: unknown) => {
+      if (url === '/calendar/slots') {
+        unpinned = true;
+        return Promise.reject(new Error('Механік не закріплений за цим підйомником'));
+      }
+      if (unpinned && url.startsWith('/employees?'))
+        return Promise.resolve({ items: [MECHANICS[L1][1]], total: 1 });
+      return free(url, init);
+    });
+    render(<Harness initial={{ liftId: L1 }} />);
+    await waitFor(() => expect(optionTexts()).toContain('Коваль Петро'));
+    fireEvent.change(mechanicSelect(), { target: { value: KOVAL } });
+    expect(employeesCalls()).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+    await waitFor(() => expect(employeesCalls()).toHaveLength(2));
+    expect(new URLSearchParams(employeesCalls()[1].split('?')[1]).get('liftId')).toBe(L1);
+    await waitFor(() => expect(optionTexts()).toEqual(['— без механіка —', 'Шевчук Олена']));
+    expect(employeeId()).toBe('');
+  });
+
+  // guards: BR-CAL-012
+  it('контроль: відмова без механіка у формі — перелік не перечитується', async () => {
+    const free = apiFetch.getMockImplementation()!;
+    apiFetch.mockImplementation((url: string, init?: unknown) =>
+      url === '/calendar/slots' ? Promise.reject(new Error('Підйомник зайнятий')) : free(url, init),
+    );
+    render(<Harness initial={{ liftId: L1 }} />);
+    await waitFor(() => expect(optionTexts()).toContain('Коваль Петро'));
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith('/calendar/slots', expect.anything()),
+    );
+    await new Promise(r => setTimeout(r, 0));
+    expect(employeesCalls()).toHaveLength(1);
+  });
+
   // guards: BR-CAL-010
   it('лише перегляд (механік): ім’я збереженого механіка, поле недоступне, без запиту працівників', () => {
     render(

@@ -21,6 +21,11 @@ interface CalendarMechanicFieldProps {
   saved: SavedMechanic | null;
   /** Минулий запис або користувач без права змінювати (механік): лише показ, без запитів. */
   disabled: boolean;
+  /**
+   * Зміна значення перечитує перелік підйомника: сервер відхилив механіка (400 «не закріплений»),
+   * тож відкріпленого після відкриття форми більше не пропонуємо (TECH-DEBT §13 п.9).
+   */
+  reloadKey?: number;
 }
 
 type Loaded = { liftId: string; items: MechanicOption[] } | { liftId: string; error: true };
@@ -38,6 +43,7 @@ export function CalendarMechanicField({
   onChange,
   saved,
   disabled,
+  reloadKey = 0,
 }: CalendarMechanicFieldProps) {
   const { t } = useTranslation('calendar');
   const id = useId();
@@ -58,7 +64,7 @@ export function CalendarMechanicField({
       },
     );
     return () => ac.abort();
-  }, [liftId, disabled]);
+  }, [liftId, disabled, reloadKey]);
 
   // Відповідь для іншого підйомника (щойно змінили) — ще не список цього.
   const current = loaded?.liftId === liftId ? loaded : null;

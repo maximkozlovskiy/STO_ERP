@@ -3,11 +3,15 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import { normalizeKyivDateRange, kyivYmd } from '../../common/utils/kyiv-date';
 
+/**
+ * `null` у полі — підзапит не встиг (тайм-аут) або впав: показника немає, а не «0». Web тоді бере
+ * запасне значення зі своїх списків або показує «—» (TECH-DEBT §8 «Оплата наряду й рахунку» п. 5).
+ */
 interface DashboardSummary {
-  activeWo: number;
-  todayRevenue: number;
-  pendingInvoices: number;
-  lowStockCount: number;
+  activeWo: number | null;
+  todayRevenue: number | null;
+  pendingInvoices: number | null;
+  lowStockCount: number | null;
   timestamp: string;
 }
 
@@ -17,7 +21,7 @@ const DASHBOARD_TTL = 25;
 
 // Each sub-query has 8s hard ceiling — на повільному Postgres або при connection
 // pool starvation один запит не повинен блокувати SSE tick. Timeout повертає null,
-// поле сумарно стає 0; основний контракт getSummary() ніколи не кидає exception.
+// поле у відповіді теж null (не 0); основний контракт getSummary() ніколи не кидає exception.
 const SUBQUERY_TIMEOUT_MS = 8_000;
 
 @Injectable()
@@ -62,7 +66,7 @@ export class DashboardService {
 
     // Кожен sub-query обгорнутий у withTimeout: 8s ceiling — slow Postgres або
     // connection-pool starvation не повинен зривати SSE tick. Timeout → null,
-    // поле стане 0. Promise.allSettled поверх — додатковий захист від exceptions.
+    // поле стане null. Promise.allSettled поверх — додатковий захист від exceptions.
     const [activeWoCount, todayRevenueData, pendingInvoiceCount, lowStockCount] =
       await Promise.allSettled([
         this.withTimeout(
@@ -96,6 +100,9 @@ export class DashboardService {
               deletedAt: null,
               // PARTIALLY_PAID — теж «до сплати»: залишок рахунку ще не погашено (Bug #854).
               status: { in: ['DRAFT', 'SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
+              // До сплати лишається щось: чернетка, повністю віддзеркалена з оплаченого наряду
+              // (paidAmount = amount), боргу не має (TECH-DEBT §10 п. 18).
+              paidAmount: { lt: this.prisma.invoice.fields.amount },
             },
           }),
           SUBQUERY_TIMEOUT_MS,
@@ -142,30 +149,29 @@ export class DashboardService {
     const activeWo =
       activeWoCount.status === 'fulfilled' && activeWoCount.value !== null
         ? activeWoCount.value
-        : 0;
+        : null;
 
     // `amount` у SettlementTransaction — Prisma.Decimal. Через Number() безпечно
-    // перетворюємо у JS-число (no `as any`). `_sum.amount` буде null коли немає рядків.
+    // перетворюємо у JS-число (no `as any`). `_sum.amount` буде null коли немає рядків — це 0
+    // (оплат не було), а не відмова підзапиту.
     const todayRevenue =
-      todayRevenueData.status === 'fulfilled' &&
-      todayRevenueData.value !== null &&
-      todayRevenueData.value._sum.amount != null
-        ? Number(todayRevenueData.value._sum.amount)
-        : 0;
+      todayRevenueData.status === 'fulfilled' && todayRevenueData.value !== null
+        ? Number(todayRevenueData.value._sum.amount ?? 0)
+        : null;
 
     const pendingInvoices =
       pendingInvoiceCount.status === 'fulfilled' && pendingInvoiceCount.value !== null
         ? pendingInvoiceCount.value
-        : 0;
+        : null;
 
     // `$queryRaw` returns Array<{ count: bigint }>; extract the single row.
     // `Number(bigint)` is safe — low-stock counts are far below 2^53.
     const lowStock =
-      lowStockCount.status === 'fulfilled' &&
-      lowStockCount.value !== null &&
-      lowStockCount.value.length > 0
-        ? Number(lowStockCount.value[0].count)
-        : 0;
+      lowStockCount.status === 'fulfilled' && lowStockCount.value !== null
+        ? lowStockCount.value.length > 0
+          ? Number(lowStockCount.value[0].count)
+          : 0
+        : null;
 
     const result: DashboardSummary = {
       activeWo,
@@ -174,7 +180,11 @@ export class DashboardService {
       lowStockCount: lowStock,
       timestamp: now.toISOString(),
     };
-    await this.cache.set(cacheKey, result, DASHBOARD_TTL);
+    // Деградований знімок (хоч одне поле null) не кешуємо: інакше «—» трималось би весь TTL, хоча
+    // наступне опитування могло б уже дати число.
+    const degraded =
+      activeWo === null || todayRevenue === null || pendingInvoices === null || lowStock === null;
+    if (!degraded) await this.cache.set(cacheKey, result, DASHBOARD_TTL);
     return result;
   }
 }

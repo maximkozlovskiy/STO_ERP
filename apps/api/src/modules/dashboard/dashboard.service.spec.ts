@@ -10,27 +10,30 @@ import { modelMock, type PrismaModelMock } from '../../common/testing/prisma-moc
  *    передається параметром; пропуск orgId у будь-якому = виток чисел іншої org на дашборд;
  *  - **deletedAt-фільтр** на workOrder/invoice (SettlementTransaction append-only — свідомо без);
  *  - **cache-hit короткозамикає** — при попаданні в кеш жоден підзапит не йде в БД;
- *  - **timeout/reject одного поля → це поле стає 0**, а getSummary() НІКОЛИ не кидає
- *    (Promise.allSettled + withTimeout): повільний Postgres не має рвати SSE tick;
+ *  - **timeout/reject одного поля → це поле стає null** (не 0: web показує запасне значення
+ *    або «—»), а getSummary() НІКОЛИ не кидає (Promise.allSettled + withTimeout): повільний
+ *    Postgres не має рвати SSE tick; деградований знімок не кешується;
  *  - **«сьогодні» = київська доба**, не server-local: виручка рахується від київської півночі.
  */
 describe('DashboardService', () => {
   let prisma: {
     workOrder: PrismaModelMock;
     settlementTransaction: PrismaModelMock;
-    invoice: PrismaModelMock;
+    invoice: PrismaModelMock & { fields: { amount: unknown } };
     $queryRaw: ReturnType<typeof vi.fn>;
   };
   let cache: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
   let svc: DashboardService;
 
   const ORG = 'org-1';
+  /** Field reference `prisma.invoice.fields.amount` — у моку маркер, з яким порівнюємо where. */
+  const AMOUNT_FIELD = { modelName: 'Invoice', name: 'amount' };
 
   beforeEach(() => {
     prisma = {
       workOrder: modelMock('count'),
       settlementTransaction: modelMock('aggregate'),
-      invoice: modelMock('count'),
+      invoice: Object.assign(modelMock('count'), { fields: { amount: AMOUNT_FIELD } }),
       $queryRaw: vi.fn(),
     };
     prisma.workOrder.count.mockResolvedValue(3);
@@ -113,6 +116,15 @@ describe('DashboardService', () => {
       expect(where.status.in).toEqual(['DRAFT', 'SENT', 'PARTIALLY_PAID', 'OVERDUE']);
     });
 
+    it('invoice.count рахує лише рахунки із залишком: paidAmount < amount (TECH-DEBT §10 п. 18)', async () => {
+      // Чернетка, повністю віддзеркалена з оплаченого наряду (paidAmount = amount), до сплати 0 —
+      // у лічильник «рахунки до сплати» не потрапляє. Порівняння з колонкою — field reference.
+      await svc.getSummary(ORG);
+      const where = prisma.invoice.count.mock.calls[0][0].where;
+      expect(where.paidAmount).toEqual({ lt: AMOUNT_FIELD });
+      expect(where.paidAmount.lt).toBe(prisma.invoice.fields.amount);
+    });
+
     it('raw low-stock запит отримує orgId параметром (tagged-template values)', async () => {
       await svc.getSummary(ORG);
       // $queryRaw`...${orgId}::uuid...` → orgId приходить як перший інтерпольований value.
@@ -133,36 +145,51 @@ describe('DashboardService', () => {
   });
 
   describe('стійкість: timeout / reject не валять дашборд', () => {
-    it('reject одного підзапиту → його поле стає 0, решта лишаються', async () => {
+    it('reject одного підзапиту → його поле null (не 0), решта лишаються', async () => {
       prisma.workOrder.count.mockRejectedValue(new Error('pool exhausted'));
       const r = await svc.getSummary(ORG);
-      expect(r.activeWo).toBe(0);
+      expect(r.activeWo).toBeNull();
       expect(r.pendingInvoices).toBe(2); // інші не постраждали
       expect(r.lowStockCount).toBe(7);
     });
 
-    it('усі підзапити reject → всі поля 0, метод НЕ кидає', async () => {
+    it('усі підзапити reject → всі поля null, метод НЕ кидає', async () => {
       prisma.workOrder.count.mockRejectedValue(new Error('x'));
       prisma.settlementTransaction.aggregate.mockRejectedValue(new Error('x'));
       prisma.invoice.count.mockRejectedValue(new Error('x'));
       prisma.$queryRaw.mockRejectedValue(new Error('x'));
       const r = await svc.getSummary(ORG);
       expect(r).toMatchObject({
-        activeWo: 0,
-        todayRevenue: 0,
-        pendingInvoices: 0,
-        lowStockCount: 0,
+        activeWo: null,
+        todayRevenue: null,
+        pendingInvoices: null,
+        lowStockCount: null,
       });
     });
 
-    it('timeout підзапиту (резолвиться null за ceiling) → поле 0', async () => {
+    it('«Оплати сьогодні» не встигли → todayRevenue null, а не 0 (TECH-DEBT §8 п. 5)', async () => {
+      prisma.settlementTransaction.aggregate.mockRejectedValue(new Error('statement timeout'));
+      const r = await svc.getSummary(ORG);
+      expect(r.todayRevenue).toBeNull();
+      expect(r.activeWo).toBe(3);
+    });
+
+    it('деградований знімок (хоч одне поле null) не кешується', async () => {
+      prisma.$queryRaw.mockRejectedValue(new Error('x'));
+      const r = await svc.getSummary(ORG);
+      expect(r.lowStockCount).toBeNull();
+      expect(cache.set).not.toHaveBeenCalled();
+    });
+
+    it('timeout підзапиту (резолвиться null за ceiling) → поле null', async () => {
       vi.useFakeTimers();
       // workOrder.count «ніколи» не резолвиться → спрацьовує withTimeout(8s)→null.
       prisma.workOrder.count.mockReturnValue(new Promise(() => {}));
       const p = svc.getSummary(ORG);
       await vi.advanceTimersByTimeAsync(8_000);
       const r = await p;
-      expect(r.activeWo).toBe(0);
+      expect(r.activeWo).toBeNull();
+      expect(cache.set).not.toHaveBeenCalled();
       vi.useRealTimers();
     });
   });

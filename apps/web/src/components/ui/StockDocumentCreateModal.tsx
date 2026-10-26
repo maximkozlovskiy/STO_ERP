@@ -9,21 +9,7 @@ import {
   type StockDocumentFormInput,
   type StockDocumentFormValues,
 } from '@sto/shared';
-import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  ChevronUp,
-  Minus,
-  Printer,
-  Download,
-  Share2,
-  MessageSquare,
-  Plus,
-  Trash2,
-  X,
-  Upload,
-} from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, Trash2, Upload } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -33,10 +19,9 @@ import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
-import { useTabBarContext } from '@/contexts/TabBarContext';
 import { getCached, setCache } from '@/lib/ref-cache';
-import { cn } from '@/lib/utils';
-import { fmtMoney, kyivToday } from '@/lib/format';
+import { lineAmount, sumLineAmounts } from '@/lib/utils';
+import { fmtDateTime, fmtMoney, fmtQty, kyivToday } from '@/lib/format';
 import { pickScannedGood } from '@/lib/barcode';
 import {
   STOCK_DOC_STATUS_LABELS,
@@ -50,11 +35,21 @@ import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-head
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { ExcelImportWizard } from '@/components/ui/ExcelImportWizard';
+import {
+  DocumentCancelAction,
+  DocumentCardHeaderActions,
+  DocumentEditActions,
+} from '@/components/ui/document-card-actions';
+import {
+  DocumentHeaderField,
+  DocumentNumberField,
+  DocumentStatusStepper,
+  FormDateInput,
+} from '@/components/ui/document-card-header';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,6 +92,8 @@ interface StockDocDetail {
   purchaseOrderNumber?: string | null;
   notes?: string | null;
   documentDate?: string | null;
+  /** Мітка часу проведення (ISO); лише для CONFIRMED. */
+  confirmedAt?: string | null;
   /** Заповнене — документ позначено на видалення (приходить лише з `?withDeleted=true`). */
   deletedAt?: string | null;
   lines?: StockDocLine[];
@@ -106,16 +103,18 @@ interface StockDocLine {
   id: string;
   goodId: string;
   goodName?: string | null;
+  goodSku?: string | null;
   unit?: string | null;
   quantity: number;
   price?: number;
 }
 
-// Локальний елемент рядка форми (useFieldArray). goodName/unit — лише для відображення
+// Локальний елемент рядка форми (useFieldArray). goodName/goodSku/unit — лише для відображення
 // (не валідуються схемою). quantity/price — рядки web-стану; схема коерсить у числа.
 interface LocalLine {
   goodId: string;
   goodName: string;
+  goodSku: string;
   unit: string;
   quantity: string;
   price: string;
@@ -145,6 +144,7 @@ const EMPTY_TRANSITIONS: readonly string[] = Object.freeze([]);
 const EMPTY_LINE: LocalLine = {
   goodId: '',
   goodName: '',
+  goodSku: '',
   unit: 'шт',
   quantity: '1',
   price: '',
@@ -191,7 +191,6 @@ export function StockDocumentCreateModal({
   const isEditMode = !!stockDocumentId;
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
-  const { minimizeModal } = useTabBarContext();
 
   // react-hook-form + спільна zod-схема (шапка + line-items через useFieldArray).
   const {
@@ -237,6 +236,8 @@ export function StockDocumentCreateModal({
   const [error, setError] = useState('');
   // Документ позначено на видалення → картка лише на перегляд (вантажиться з withDeleted).
   const [isDeleted, setIsDeleted] = useState(false);
+  // Коли документ проведено (рішення власника №29: дата й час під таблицею проведеного документа).
+  const [confirmedAt, setConfirmedAt] = useState<string | null>(null);
   // Id документа, який справді завантажено у форму (Bug #844).
   const [loadedDocId, setLoadedDocId] = useState<string | null>(null);
   // Документ ще не завантажено (або завантаження не вдалось): у формі стоять типові значення
@@ -326,6 +327,7 @@ export function StockDocumentCreateModal({
     setDocNumber('');
     setCurrentStatus('DRAFT');
     setIsDeleted(false);
+    setConfirmedAt(null);
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
     setPurchaseOrderNumber('');
@@ -373,6 +375,7 @@ export function StockDocumentCreateModal({
           setDocNumber(doc.number);
           setCurrentStatus(doc.status);
           setIsDeleted(!!doc.deletedAt);
+          setConfirmedAt(doc.confirmedAt ?? null);
           setLoadedDocId(docId);
           reset({
             type: (doc.type ?? 'WRITEOFF') as StockDocumentFormInput['type'],
@@ -385,6 +388,7 @@ export function StockDocumentCreateModal({
             lines: (doc.lines ?? []).map(l => ({
               goodId: l.goodId,
               goodName: l.goodName ?? '',
+              goodSku: l.goodSku ?? '',
               unit: l.unit ?? 'шт',
               quantity: String(l.quantity),
               price: String(l.price ?? ''),
@@ -517,11 +521,16 @@ export function StockDocumentCreateModal({
     setTransitioningBoth(true);
     setError('');
     try {
-      await apiFetch(`/stock-documents/${stockDocumentId}/transition`, {
-        method: 'POST',
-        body: JSON.stringify({ status: newStatus }),
-      });
+      const updated = await apiFetch<{ confirmedAt?: string | null } | undefined>(
+        `/stock-documents/${stockDocumentId}/transition`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ status: newStatus }),
+        },
+      );
       setCurrentStatus(newStatus);
+      // Мітку проведення ставить сервер; відповідь переходу — повний документ.
+      if (updated && 'confirmedAt' in updated) setConfirmedAt(updated.confirmedAt ?? null);
       onSaved?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('card.transitionError'));
@@ -532,13 +541,17 @@ export function StockDocumentCreateModal({
 
   // ── Lines ─────────────────────────────────────────────────────────────────
 
+  // BR-WO-007 (те саме правило, що в наряді): «Разом» — сума округлених до копійки рядків
+  // (`lineAmount`), як сервер пише суму рядка. Сирий добуток давав 0,3 × 100,05 = «30.01» замість
+  // 30.02 і три рядки 0,3 × 111,11 = «100,00» замість 99,99 (клас Bug #811).
   const total = useMemo(
     () =>
-      (watchedLines ?? []).reduce((sum, l) => {
-        const qty = parseFloat(String(l.quantity)) || 0;
-        const price = parseFloat(String(l.price ?? '')) || 0;
-        return sum + qty * price;
-      }, 0),
+      sumLineAmounts(
+        (watchedLines ?? []).map(l => ({
+          qty: parseFloat(String(l.quantity)) || 0,
+          price: parseFloat(String(l.price ?? '')) || 0,
+        })),
+      ),
     [watchedLines],
   );
 
@@ -660,212 +673,90 @@ export function StockDocumentCreateModal({
         hideClose
         headerContent={
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2 text-[13px] text-muted-foreground shrink-0">
-              <span className="font-medium">{t('card.number')}</span>
-              <span className="text-foreground">
-                {isEditMode && docNumber ? docNumber : t('card.autoNumber')}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">
-                {t('card.documentDate')}
-              </span>
-              <div className="w-36">
-                <Controller
-                  control={control}
-                  name="documentDate"
-                  render={({ field }) => (
-                    <DatePickerInput
-                      value={typeof field.value === 'string' ? field.value : ''}
-                      onChange={field.onChange}
-                      disabled={!canEdit}
-                    />
-                  )}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">
-                {t('card.status')}
-              </span>
-              <div ref={statusMenuRef} className="relative flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={transitioning || !statusPrevStep || !isEditMode}
-                  onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
-                  className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-                  <span className="max-w-20 truncate">
-                    {statusPrevStep ? stockDocStatusLabel(statusPrevStep) : '—'}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  disabled={transitioning || !isEditMode || viewOnly}
-                  onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
-                  title={
-                    DESCRIBED_STATUSES.includes(currentStatus)
-                      ? t(`card.statusDescription.${currentStatus}`)
-                      : undefined
-                  }
-                  className={cn(
-                    'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
-                    STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
-                    isEditMode && !transitioning && 'cursor-pointer hover:opacity-80',
-                    !isEditMode && 'cursor-default',
-                  )}
-                >
-                  {isEditMode ? stockDocStatusLabel(currentStatus) : stockDocStatusLabel('DRAFT')}
-                </button>
-                <button
-                  type="button"
-                  disabled={transitioning || !statusNextStep || !isEditMode}
-                  onClick={() => statusNextStep && void doTransition(statusNextStep)}
-                  className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <span className="max-w-20 truncate">
-                    {statusNextStep ? stockDocStatusLabel(statusNextStep) : '—'}
-                  </span>
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                </button>
-                {statusMenuShown && (
-                  <div className="absolute top-full left-0 mt-1 z-50 min-w-40 rounded-lg border border-border bg-surface shadow-lg py-1">
-                    {allowedTransitions.map(s => (
-                      <button
-                        key={s}
-                        type="button"
-                        disabled={transitioning}
-                        onClick={() => {
-                          setStatusMenuOpen(false);
-                          void doTransition(s);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
-                      >
-                        {t(`card.transition.${s}`, { defaultValue: stockDocStatusLabel(s) })}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+            <DocumentNumberField
+              label={t('card.number')}
+              value={isEditMode && docNumber ? docNumber : t('card.autoNumber')}
+            />
+            <DocumentHeaderField label={t('card.documentDate')}>
+              <FormDateInput control={control} name="documentDate" disabled={!canEdit} />
+            </DocumentHeaderField>
+            <DocumentStatusStepper
+              stepLabel={stockDocStatusLabel}
+              label={t('card.status')}
+              menuRef={statusMenuRef}
+              active={isEditMode}
+              busy={transitioning}
+              locked={viewOnly}
+              prev={statusPrevStep}
+              statusLabel={
+                isEditMode ? stockDocStatusLabel(currentStatus) : stockDocStatusLabel('DRAFT')
+              }
+              next={statusNextStep}
+              onStep={s => void doTransition(s)}
+              menuShown={statusMenuShown}
+              setMenuOpen={setStatusMenuOpen}
+              transitions={allowedTransitions}
+              transitionLabel={s =>
+                t(`card.transition.${s}`, { defaultValue: stockDocStatusLabel(s) })
+              }
+              statusColor={STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground'}
+              statusTitle={
+                DESCRIBED_STATUSES.includes(currentStatus)
+                  ? t(`card.statusDescription.${currentStatus}`)
+                  : undefined
+              }
+            />
           </div>
         }
         extraHeaderActions={
-          <div className="flex items-center gap-1">
-            {isEditMode && (
-              <button
-                onClick={() => {
-                  minimizeModal({
-                    kind: 'modal',
+          <DocumentCardHeaderActions
+            minimizeLabel={t('card.minimize')}
+            onMinimize={onMinimize}
+            closeCard={onClose}
+            onClose={() => void handleModalClose()}
+            disabled={saving || transitioning}
+            minimize={
+              isEditMode && !notLoaded
+                ? {
                     label: docNumber || t('card.minimizedLabel'),
                     modalKey: 'stock-document',
                     restoreProps: { stockDocumentId },
-                  });
-                  onMinimize?.();
-                  onClose();
-                }}
-                className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-                title={t('card.minimize')}
-                aria-label={t('card.minimize')}
-                disabled={saving || transitioning}
-              >
-                <Minus className="h-4 w-4" />
-              </button>
-            )}
-            <button
-              onClick={() => void handleModalClose()}
-              className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-              title={t('common:close')}
-              disabled={saving || transitioning}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+                  }
+                : null
+            }
+          />
         }
         footer={
           <div className="flex items-center justify-between w-full gap-2">
             <div>
-              {isEditMode && allowedTransitions.includes('CANCELLED') && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => void doTransition('CANCELLED')}
-                  loading={transitioning}
-                  disabled={transitioning || saving}
-                >
-                  {t('card.transition.CANCELLED')}
-                </Button>
-              )}
+              <DocumentCancelAction
+                label={t('card.transition.CANCELLED')}
+                transitions={allowedTransitions}
+                onTransition={doTransition}
+                busy={transitioning}
+                saving={saving}
+              />
             </div>
             <div className="flex gap-2 items-center flex-wrap">
-              {isEditMode && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.print()}
-                    disabled={saving || transitioning}
-                    title={t('card.print')}
-                  >
-                    <Printer size={15} className="mr-1" />
-                    {t('card.print')}
-                  </Button>
-                  <div className="relative">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSaveAsOpen(v => !v)}
-                      disabled={saving || transitioning}
-                    >
-                      <Download size={15} className="mr-1" />
-                      {t('card.saveAs')}
-                      <ChevronDown size={13} className="ml-1" />
-                    </Button>
-                    {saveAsOpen && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setSaveAsOpen(false)} />
-                        <div className="absolute bottom-full mb-1 right-0 z-50 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-35">
-                          {(['pdf', 'xlsx', 'docx'] as const).map(fmt => (
-                            <button
-                              key={fmt}
-                              type="button"
-                              onClick={() => setSaveAsOpen(false)}
-                              className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors"
-                            >
-                              {fmt === 'pdf'
-                                ? 'PDF'
-                                : fmt === 'xlsx'
-                                  ? 'Excel (.xlsx)'
-                                  : 'Word (.docx)'}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  {!viewOnly && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={saving || transitioning}
-                        title={t('card.share')}
-                      >
-                        <Share2 size={15} className="mr-1" />
-                        {t('card.share')}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={saving || transitioning}
-                        title={t('card.smsTitle')}
-                      >
-                        <MessageSquare size={15} className="mr-1" />
-                        SMS
-                      </Button>
-                    </>
-                  )}
+              {/* Незнайдений документ (notLoaded) друкувати й зберігати нічого (TECH-DEBT §9 п.4);
+                  видалений — друкується, як і досі. */}
+              {isEditMode ? (
+                <DocumentEditActions
+                  save={canEdit ? { label: t('card.saveChanges'), onSave: onValid } : null}
+                  showFile={!notLoaded}
+                  showShare={!viewOnly}
+                  labels={{
+                    print: t('card.print'),
+                    saveAs: t('card.saveAs'),
+                    share: t('card.share'),
+                    shareTitle: t('card.share'),
+                    smsTitle: t('card.smsTitle'),
+                  }}
+                  saveAsOpen={saveAsOpen}
+                  setSaveAsOpen={setSaveAsOpen}
+                  saving={saving}
+                  busy={transitioning}
+                >
                   {/* FSM "Підтвердити" shortcut */}
                   {allowedTransitions.includes('CONFIRMED') && (
                     <Button
@@ -878,19 +769,7 @@ export function StockDocumentCreateModal({
                       {t('card.transition.CONFIRMED')}
                     </Button>
                   )}
-                </>
-              )}
-              {isEditMode ? (
-                canEdit && (
-                  <Button
-                    onClick={() => void onValid()}
-                    loading={saving}
-                    disabled={saving || transitioning}
-                    size="sm"
-                  >
-                    {t('card.saveChanges')}
-                  </Button>
-                )
+                </DocumentEditActions>
               ) : (
                 <Button
                   onClick={() => void onValid()}
@@ -1124,17 +1003,21 @@ export function StockDocumentCreateModal({
             </DocLinesHeader>
             <table className="w-full table-fixed text-[12px]">
               <colgroup>
-                <col className="w-[42%]" />
-                <col className="w-[10%]" />
-                <col className="w-[13%]" />
-                <col className="w-[16%]" />
+                <col className="w-[32%]" />
                 <col className="w-[14%]" />
+                <col className="w-[8%]" />
+                <col className="w-[11%]" />
+                <col className="w-[15%]" />
+                <col className="w-[15%]" />
                 <col className="w-[5%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-border bg-secondary/40">
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">
                     {t('card.colGood')}
+                  </th>
+                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                    {t('card.colSku')}
                   </th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">
                     {t('card.colUnit')}
@@ -1154,7 +1037,7 @@ export function StockDocumentCreateModal({
               <tbody className="divide-y divide-border">
                 {/* Незавантажений документ (notLoaded) підказки не має: рядків ми ще не знаємо. */}
                 {fields.length === 0 && !showLineInput && !notLoaded && (
-                  <DocLinesEmptyRow colSpan={6} canEdit={canEdit} />
+                  <DocLinesEmptyRow colSpan={7} canEdit={canEdit} />
                 )}
                 {fields.map((line, index) => {
                   const qtyRaw = watchedLines?.[index]?.quantity;
@@ -1163,17 +1046,27 @@ export function StockDocumentCreateModal({
                   const price = parseFloat(String(priceRaw ?? line.price ?? ''));
                   // goodName/unit — display-only поля, збережені у field-array при append/load,
                   // але поза zod-схемою (payload їх не містить) → читаємо через cast.
-                  const display = line as unknown as { goodName?: string; unit?: string };
+                  const display = line as unknown as {
+                    goodName?: string;
+                    goodSku?: string;
+                    unit?: string;
+                  };
                   return (
                     <tr key={line.id} className="hover:bg-secondary/20 group">
                       <td className="px-3 py-2">{display.goodName}</td>
+                      <td
+                        className="px-3 py-2 truncate text-muted-foreground"
+                        title={display.goodSku}
+                      >
+                        {display.goodSku || '—'}
+                      </td>
                       <td className="px-3 py-2 text-right text-muted-foreground">{display.unit}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{String(line.quantity)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{fmtQty(qty)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         {Number.isFinite(price) && price ? String(line.price) : '—'}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {Number.isFinite(price) && price ? (qty * price).toFixed(2) : '—'}
+                        {Number.isFinite(price) && price ? lineAmount(qty, price).toFixed(2) : '—'}
                       </td>
                       <td className="px-2 py-2">
                         {canEdit && (
@@ -1206,6 +1099,9 @@ export function StockDocumentCreateModal({
                         )}
                       </button>
                     </td>
+                    <td className="px-2 py-1.5 truncate text-[11px] text-muted-foreground">
+                      {newLine.goodSku}
+                    </td>
                     <td className="px-2 py-1.5 text-right text-[11px] text-muted-foreground">
                       {newLine.unit}
                     </td>
@@ -1231,8 +1127,9 @@ export function StockDocumentCreateModal({
                       />
                     </td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
-                      {(
-                        (parseFloat(newLine.quantity) || 0) * (parseFloat(newLine.price) || 0)
+                      {lineAmount(
+                        parseFloat(newLine.quantity) || 0,
+                        parseFloat(newLine.price) || 0,
                       ).toFixed(2)}
                     </td>
                     <td className="px-2 py-1.5">
@@ -1263,7 +1160,7 @@ export function StockDocumentCreateModal({
               <tfoot>
                 <tr className="border-t-2 border-border bg-secondary/20">
                   <td
-                    colSpan={4}
+                    colSpan={5}
                     className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground"
                   >
                     {t('card.total')}
@@ -1275,6 +1172,11 @@ export function StockDocumentCreateModal({
                 </tr>
               </tfoot>
             </table>
+            {currentStatus === 'CONFIRMED' && confirmedAt && (
+              <p className="px-3 py-2 text-[12px] text-muted-foreground tabular-nums">
+                {t('card.confirmedAt', { date: fmtDateTime(confirmedAt) })}
+              </p>
+            )}
           </div>
         </div>
       </Modal>
@@ -1293,6 +1195,7 @@ export function StockDocumentCreateModal({
             ...l,
             goodId: item.id,
             goodName: item.primary,
+            goodSku: item.secondary ?? '',
             unit: item.unit ?? 'шт',
           }));
           setGoodSearchOpen(false);

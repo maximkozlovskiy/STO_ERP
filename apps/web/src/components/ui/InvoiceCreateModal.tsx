@@ -10,20 +10,7 @@ import {
   type InvoiceFormInput,
   type InvoiceFormValues,
 } from '@sto/shared';
-import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  ChevronUp,
-  Minus,
-  Printer,
-  Download,
-  Share2,
-  MessageSquare,
-  Plus,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
 import { toast } from '@/lib/toast';
@@ -31,8 +18,7 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
-import { useTabBarContext } from '@/contexts/TabBarContext';
-import { displayCounterpartyName, cn } from '@/lib/utils';
+import { displayCounterpartyName, lineAmount, roundMoney } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
 import {
   INVOICE_STATUS_LABELS,
@@ -43,6 +29,17 @@ import {
 import { invoiceStatusLabel, invoiceTypeLabel } from '@/i18n/enumLabel';
 import i18n from '@/i18n/config';
 import { Modal } from '@/components/ui/modal';
+import {
+  DocumentCancelAction,
+  DocumentCardHeaderActions,
+  DocumentEditActions,
+} from '@/components/ui/document-card-actions';
+import {
+  DocumentHeaderField,
+  DocumentNumberField,
+  DocumentStatusStepper,
+  FormDateInput,
+} from '@/components/ui/document-card-header';
 import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -144,7 +141,6 @@ export function InvoiceCreateModal({
   const isEditMode = !!invoiceId;
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
-  const { minimizeModal } = useTabBarContext();
 
   // react-hook-form + спільна zod-схема (шапка + line-items через useFieldArray).
   const {
@@ -440,15 +436,21 @@ export function InvoiceCreateModal({
   // WEB-R3-4: прев'ю «Разом» бере авторитетну суму рядка з ПДВ (lineTotalWithVat) якщо вона відома
   // (завантажений рахунок) — усуває заниження для EXCLUSIVE та подвоєння для INCLUSIVE. Нові ручні
   // рядки (ще без backend-розрахунку) → qty×unitPrice без ПДВ; backend додасть ПДВ при збереженні.
+  // BR-INV-017: сума рядка округлена до копійки (`lineAmount`), як її пише сервер, а «Разом» —
+  // сума округлених рядків: сирий добуток давав 0,3 × 100,05 = «30.01» замість 30.02 і три рядки
+  // 0,3 × 111,11 = «100.00» замість 99.99 (клас Bug #811).
   const total = useMemo(
     () =>
-      (watchedLines ?? []).reduce((sum, l) => {
-        const withVat = (l as { lineTotalWithVat?: number }).lineTotalWithVat;
-        if (withVat != null) return sum + withVat;
-        const qty = parseFloat(String(l.quantity)) || 0;
-        const price = parseFloat(String(l.unitPrice)) || 0;
-        return sum + qty * price;
-      }, 0),
+      roundMoney(
+        (watchedLines ?? []).reduce((sum, l) => {
+          const withVat = (l as { lineTotalWithVat?: number }).lineTotalWithVat;
+          if (withVat != null) return sum + withVat;
+          return (
+            sum +
+            lineAmount(parseFloat(String(l.quantity)) || 0, parseFloat(String(l.unitPrice)) || 0)
+          );
+        }, 0),
+      ),
     [watchedLines],
   );
 
@@ -497,11 +499,14 @@ export function InvoiceCreateModal({
       const linesToPost = collectLines();
       // total з рядків → передаємо у POST замість 0.01 placeholder (щоб при обриві між
       // POST /invoices і POST /lines invoice не лишався з нерелевантним amount=0.01).
-      const computedTotal = linesToPost.reduce((s, l) => {
-        const qty = parseFloat(String(l.quantity)) || 0;
-        const price = parseFloat(String(l.unitPrice)) || 0;
-        return s + qty * price;
-      }, 0);
+      const computedTotal = roundMoney(
+        linesToPost.reduce(
+          (s, l) =>
+            s +
+            lineAmount(parseFloat(String(l.quantity)) || 0, parseFloat(String(l.unitPrice)) || 0),
+          0,
+        ),
+      );
       // Перевикористовуємо вже створений рахунок на retry, щоб не плодити дублі.
       let inv = createdInvoiceRef.current;
       if (!inv) {
@@ -658,225 +663,87 @@ export function InvoiceCreateModal({
         hideClose
         headerContent={
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2 text-[13px] text-muted-foreground shrink-0">
-              <span className="font-medium">{t('card.number')}</span>
-              <span className="text-foreground">
-                {isEditMode && invoiceNumber ? invoiceNumber : t('card.autoNumber')}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">
-                {t('card.documentDate')}
-              </span>
-              <div className="w-36">
-                <Controller
-                  control={control}
-                  name="documentDate"
-                  render={({ field }) => (
-                    <DatePickerInput
-                      value={typeof field.value === 'string' ? field.value : ''}
-                      onChange={field.onChange}
-                      disabled={!canEdit}
-                    />
-                  )}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">
-                {t('card.status')}
-              </span>
-              <div ref={statusMenuRef} className="relative flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={transitioning || !statusPrevStep || !isEditMode}
-                  onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
-                  title={statusPrevStep ? invoiceStatusLabel(statusPrevStep) : undefined}
-                  className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-                  <span className="max-w-20 truncate">
-                    {statusPrevStep ? invoiceStatusLabel(statusPrevStep) : '—'}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  disabled={transitioning || !isEditMode || viewOnly}
-                  onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
-                  title={t(`card.statusDescription.${currentStatus}`, {
-                    defaultValue: INVOICE_STATUS_DESCRIPTIONS[currentStatus],
-                  })}
-                  className={cn(
-                    'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
-                    STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground',
-                    isEditMode && !transitioning && 'cursor-pointer hover:opacity-80',
-                    !isEditMode && 'cursor-default',
-                  )}
-                >
-                  {isEditMode ? invoiceStatusLabel(currentStatus) : invoiceStatusLabel('DRAFT')}
-                </button>
-                <button
-                  type="button"
-                  disabled={transitioning || !statusNextStep || !isEditMode}
-                  onClick={() => statusNextStep && void doTransition(statusNextStep)}
-                  title={statusNextStep ? invoiceStatusLabel(statusNextStep) : undefined}
-                  className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <span className="max-w-20 truncate">
-                    {statusNextStep ? invoiceStatusLabel(statusNextStep) : '—'}
-                  </span>
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                </button>
-                {statusMenuShown && (
-                  <div className="absolute top-full left-0 mt-1 z-50 min-w-40 rounded-lg border border-border bg-surface shadow-lg py-1">
-                    {allowedTransitions.map(s => (
-                      <button
-                        key={s}
-                        type="button"
-                        disabled={transitioning}
-                        onClick={() => {
-                          setStatusMenuOpen(false);
-                          void doTransition(s);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
-                      >
-                        {t(`card.transition.${s}`, { defaultValue: s })}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+            <DocumentNumberField
+              label={t('card.number')}
+              value={isEditMode && invoiceNumber ? invoiceNumber : t('card.autoNumber')}
+            />
+            <DocumentHeaderField label={t('card.documentDate')}>
+              <FormDateInput control={control} name="documentDate" disabled={!canEdit} />
+            </DocumentHeaderField>
+            <DocumentStatusStepper
+              stepLabel={invoiceStatusLabel}
+              label={t('card.status')}
+              menuRef={statusMenuRef}
+              active={isEditMode}
+              busy={transitioning}
+              locked={viewOnly}
+              prev={statusPrevStep}
+              statusLabel={
+                isEditMode ? invoiceStatusLabel(currentStatus) : invoiceStatusLabel('DRAFT')
+              }
+              next={statusNextStep}
+              onStep={s => void doTransition(s)}
+              menuShown={statusMenuShown}
+              setMenuOpen={setStatusMenuOpen}
+              transitions={allowedTransitions}
+              transitionLabel={s => t(`card.transition.${s}`, { defaultValue: s })}
+              statusColor={STATUS_COLORS[currentStatus] ?? 'bg-secondary text-muted-foreground'}
+              statusTitle={t(`card.statusDescription.${currentStatus}`, {
+                defaultValue: INVOICE_STATUS_DESCRIPTIONS[currentStatus],
+              })}
+              stepTitles
+            />
           </div>
         }
         extraHeaderActions={
-          <div className="flex items-center gap-1">
-            {isEditMode && (
-              <button
-                onClick={() => {
-                  minimizeModal({
-                    kind: 'modal',
+          <DocumentCardHeaderActions
+            minimizeLabel={t('card.minimize')}
+            onMinimize={onMinimize}
+            closeCard={onClose}
+            onClose={() => void handleModalClose()}
+            disabled={saving || transitioning}
+            minimize={
+              isEditMode && !notLoaded
+                ? {
                     label: invoiceNumber || t('card.minimizedLabel'),
                     modalKey: 'invoice',
                     restoreProps: { invoiceId },
-                  });
-                  onMinimize?.();
-                  onClose();
-                }}
-                className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-                title={t('card.minimize')}
-                aria-label={t('card.minimize')}
-                disabled={saving || transitioning}
-              >
-                <Minus className="h-4 w-4" />
-              </button>
-            )}
-            <button
-              onClick={() => void handleModalClose()}
-              className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-              title={t('common:close')}
-              disabled={saving || transitioning}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+                  }
+                : null
+            }
+          />
         }
         footer={
           <div className="flex items-center justify-between w-full gap-2">
             <div>
-              {isEditMode && allowedTransitions.includes('CANCELLED') && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => void doTransition('CANCELLED')}
-                  loading={transitioning}
-                  disabled={transitioning || saving}
-                >
-                  {t('actions.cancel')}
-                </Button>
-              )}
+              <DocumentCancelAction
+                label={t('actions.cancel')}
+                transitions={allowedTransitions}
+                onTransition={doTransition}
+                busy={transitioning}
+                saving={saving}
+              />
             </div>
             <div className="flex gap-2 items-center flex-wrap">
-              {isEditMode && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.print()}
-                    disabled={saving || transitioning}
-                    title={t('actions.print')}
-                  >
-                    <Printer size={15} className="mr-1" />
-                    {t('actions.print')}
-                  </Button>
-                  <div className="relative">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSaveAsOpen(v => !v)}
-                      disabled={saving || transitioning}
-                    >
-                      <Download size={15} className="mr-1" />
-                      {t('card.saveAs')}
-                      <ChevronDown size={13} className="ml-1" />
-                    </Button>
-                    {saveAsOpen && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setSaveAsOpen(false)} />
-                        <div className="absolute bottom-full mb-1 right-0 z-50 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-35">
-                          {(['pdf', 'xlsx', 'docx'] as const).map(fmt => (
-                            <button
-                              key={fmt}
-                              type="button"
-                              onClick={() => setSaveAsOpen(false)}
-                              className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors"
-                            >
-                              {fmt === 'pdf'
-                                ? 'PDF'
-                                : fmt === 'xlsx'
-                                  ? 'Excel (.xlsx)'
-                                  : 'Word (.docx)'}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  {!viewOnly && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={saving || transitioning}
-                        title={t('card.shareTitle')}
-                      >
-                        <Share2 size={15} className="mr-1" />
-                        {t('card.share')}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={saving || transitioning}
-                        title={t('card.smsTitle')}
-                      >
-                        <MessageSquare size={15} className="mr-1" />
-                        SMS
-                      </Button>
-                    </>
-                  )}
-                </>
-              )}
+              {/* Незнайдений документ (notLoaded) друкувати й зберігати нічого (TECH-DEBT §9 п.4);
+                  видалений — друкується, як і досі. */}
               {isEditMode ? (
-                canEdit && (
-                  <Button
-                    onClick={() => void handleSave()}
-                    loading={saving}
-                    disabled={saving || transitioning}
-                    size="sm"
-                  >
-                    {t('card.saveChanges')}
-                  </Button>
-                )
+                <DocumentEditActions
+                  save={canEdit ? { label: t('card.saveChanges'), onSave: handleSave } : null}
+                  showFile={!notLoaded}
+                  showShare={!viewOnly}
+                  labels={{
+                    print: t('actions.print'),
+                    saveAs: t('card.saveAs'),
+                    share: t('card.share'),
+                    shareTitle: t('card.shareTitle'),
+                    smsTitle: t('card.smsTitle'),
+                  }}
+                  saveAsOpen={saveAsOpen}
+                  setSaveAsOpen={setSaveAsOpen}
+                  saving={saving}
+                  busy={transitioning}
+                />
               ) : (
                 <Button
                   onClick={() => void handleCreate()}
@@ -1092,10 +959,12 @@ export function InvoiceCreateModal({
                           <span>
                             {/* WEB-R3-4: рядкова СУМА збігається з логікою «Разом» — завантажений
                                 рядок бере авторитетний lineTotalWithVat (з ПДВ), інакше qty×unitPrice. */}
-                            {(line.lineTotalWithVat != null
-                              ? line.lineTotalWithVat
-                              : (parseFloat(String(line.quantity)) || 0) *
-                                (parseFloat(String(line.unitPrice)) || 0)
+                            {(
+                              line.lineTotalWithVat ??
+                              lineAmount(
+                                parseFloat(String(line.quantity)) || 0,
+                                parseFloat(String(line.unitPrice)) || 0,
+                              )
                             ).toFixed(2)}
                           </span>
                           {canEdit && (
@@ -1154,9 +1023,9 @@ export function InvoiceCreateModal({
                     <td className="px-2 py-1.5 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <span className="tabular-nums text-muted-foreground">
-                          {(
-                            (parseFloat(newLine.quantity) || 0) *
-                            (parseFloat(newLine.unitPrice) || 0)
+                          {lineAmount(
+                            parseFloat(newLine.quantity) || 0,
+                            parseFloat(newLine.unitPrice) || 0,
                           ).toFixed(2)}
                         </span>
                         <button

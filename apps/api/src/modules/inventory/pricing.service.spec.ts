@@ -14,10 +14,17 @@
  *  · текстову категорію перевіряти перед довідниковою → кейс про порядок падає;
  *  · `loadGoodLinks` без `goodId: { in }` → кейс «зв'язки лише для запитаних товарів» падає;
  *  · `withDescendants` без нащадків → кейс «Застосувати до всіх: категорія з підкатегоріями» падає.
+ *
+ * BR-GOOD-011 — «Застосувати до всіх» (mutation-verify 2026-10-26):
+ *  · прибрати перевірку `isActive` → кейс «вимкнене правило → 400» падає;
+ *  · в історію — перше правило контексту замість переможця → кейс «правило-переможець» падає;
+ *  · `break` після першої сторінки товарів (як колишня стеля) → кейс «ВСІ товари області» падає.
  */
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { BadRequestException } from '@nestjs/common';
 import {
+  APPLY_PAGE,
   PricingService,
   type PricingContext,
   type PricingGood,
@@ -407,6 +414,7 @@ describe('PricingService.applyRuleToGoods', () => {
     goodCategoryId: null,
     goodType: null,
     brandId: null,
+    isActive: true,
     _count: { goods: 0 },
     ...patch,
   });
@@ -546,5 +554,72 @@ describe('PricingService.applyRuleToGoods', () => {
       data: { salePrice: 135 },
     });
     expect(prisma.priceHistory.createMany).toHaveBeenCalledTimes(1);
+  });
+
+  // guards: BR-GOOD-011
+  it('вимкнене правило → 400 «правило вимкнене», жоден товар не читається й не пишеться', async () => {
+    prisma.pricingRule.findFirst.mockResolvedValue(targetRule({ isActive: false }));
+    const run = service.applyRuleToGoods('org', 'r1');
+    await expect(run).rejects.toBeInstanceOf(BadRequestException);
+    await expect(run).rejects.toThrow('Правило вимкнене');
+    expect(prisma.good.findMany).not.toHaveBeenCalled();
+    expect(prisma.good.updateMany).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-GOOD-011
+  it('в історію цін іде правило-переможець, а не застосоване', async () => {
+    // Застосовують «весь асортимент +50%», але товар g1 є у списку правила «Список +35%» —
+    // ціну дає саме воно, і в історії має стояти воно.
+    prisma.pricingRule.findFirst.mockResolvedValue(targetRule({ id: 'all', name: 'Усе +50%' }));
+    prisma.pricingRule.findMany.mockResolvedValue([
+      activeRule({ id: 'all', name: 'Усе +50%', percentValue: 50 }),
+      activeRule({ id: 'list', name: 'Список +35%', percentValue: 35, _count: { goods: 1 } }),
+    ]);
+    prisma.good.findMany.mockResolvedValue([goodRow('g1', 100), goodRow('g2', 100)]);
+    prisma.pricingRuleGood.findMany.mockResolvedValue([{ pricingRuleId: 'list', goodId: 'g1' }]);
+
+    expect(await service.applyRuleToGoods('org', 'all')).toBe(2);
+    const history = prisma.priceHistory.createMany.mock.calls[0]![0].data as Array<{
+      goodId: string;
+      newPrice: number;
+      pricingRuleId: string | null;
+      reason: string;
+    }>;
+    expect(history).toEqual([
+      expect.objectContaining({
+        goodId: 'g1',
+        newPrice: 135,
+        pricingRuleId: 'list',
+        reason: 'PricingRule: Список +35%',
+      }),
+      expect.objectContaining({
+        goodId: 'g2',
+        newPrice: 150,
+        pricingRuleId: 'all',
+        reason: 'PricingRule: Усе +50%',
+      }),
+    ]);
+  });
+
+  // guards: BR-GOOD-011
+  it('перераховує ВСІ товари області — сторінками за курсором, без стелі', async () => {
+    prisma.pricingRule.findFirst.mockResolvedValue(targetRule());
+    prisma.pricingRule.findMany.mockResolvedValue([activeRule()]);
+    const firstPage = Array.from({ length: APPLY_PAGE }, (_, i) =>
+      goodRow(`g${String(i).padStart(5, '0')}`, 100),
+    );
+    prisma.good.findMany
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce([goodRow('g-last', 100)]);
+
+    expect(await service.applyRuleToGoods('org', 'r1')).toBe(APPLY_PAGE + 1);
+    expect(prisma.good.findMany).toHaveBeenCalledTimes(2);
+    const second = prisma.good.findMany.mock.calls[1]![0] as Record<string, unknown>;
+    expect(second.cursor).toEqual({ id: firstPage[APPLY_PAGE - 1]!.id });
+    expect(second.skip).toBe(1);
+    expect(prisma.good.updateMany).toHaveBeenCalledWith({
+      where: { id: 'g-last', orgId: 'org', deletedAt: null },
+      data: { salePrice: 135 },
+    });
   });
 });

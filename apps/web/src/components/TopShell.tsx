@@ -44,7 +44,11 @@ import { pricingRulesKeys } from '@/hooks/api/usePricingRules';
 import { stockDocsKeys } from '@/hooks/api/useStockDocuments';
 import { payrollKeys } from '@/hooks/api/usePayroll';
 import { infraKeys } from '@/hooks/api/useInfrastructure';
-import { dashboardAccess, dashboardKeys } from '@/hooks/api/useDashboardData';
+import {
+  dashboardAccess,
+  dashboardKeys,
+  DASHBOARD_INVOICES_URL,
+} from '@/hooks/api/useDashboardData';
 import { syncKeys } from '@/hooks/api/useSyncStatus';
 import { worksKeys } from '@/hooks/api/useWorks';
 import { reportsKeys } from '@/hooks/api/useReports';
@@ -308,7 +312,7 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
     if (access.invoices)
       void qc.prefetchQuery({
         queryKey: dashboardKeys.invoices(),
-        queryFn: ({ signal }) => apiFetch('/invoices?status=SENT&limit=200', { signal }),
+        queryFn: ({ signal }) => apiFetch(DASHBOARD_INVOICES_URL, { signal }),
         staleTime: 60_000,
       });
     if (access.revenue)

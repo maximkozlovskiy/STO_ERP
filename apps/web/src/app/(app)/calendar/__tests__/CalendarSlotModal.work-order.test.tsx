@@ -239,6 +239,46 @@ describe('CalendarSlotModal — наряд, створений із форми �
     expect(prefill().plannedStartAt).toBe('2026-10-20T17:00');
     expect(prefill().plannedEndAt).toBe('2026-10-21T09:00');
   });
+
+  // guards: BR-WO-019, BR-CAL-007
+  it('prefill: наряд довший за два робочі дні — кінець як у картці наряду (рішення №64), не «завтра 19:00»', () => {
+    // 16:00 + 12 год при 9–18: 2 год сьогодні, 9 год завтра, 1 год післязавтра → 10:00. Поле
+    // «Кінець» самого запису ділить лише на два дні (BR-CAL-007) і показує завтра 19:00 — поза
+    // робочими годинами; з ним сервер відхилив би наряд (400).
+    render(
+      <Harness
+        initial={{ startAt: '16:00', endAt: '19:00', normoHours: '12' }}
+        onSaved={vi.fn()}
+        windowStart={9}
+        windowEnd={18}
+      />,
+    );
+    expect(prefill().plannedStartAt).toBe('2026-10-20T16:00');
+    expect(prefill().plannedEndAt).toBe('2026-10-22T10:00');
+    expect(prefill().plannedHours).toBe('12');
+  });
+
+  // guards: BR-WO-019
+  it('prefill: нормогодини з комою («1,5») — кінець і години рахуються, а не губляться в NaN', () => {
+    render(
+      <Harness
+        initial={{ startAt: '17:00', endAt: '11:00', normoHours: '1,5' }}
+        onSaved={vi.fn()}
+        windowEnd={18}
+      />,
+    );
+    expect(prefill().plannedEndAt).toBe('2026-10-21T08:30');
+    expect(prefill().plannedHours).toBe('1.5');
+  });
+
+  // guards: BR-WO-019
+  it('prefill: без нормогодин — кінець із поля «Кінець» запису', () => {
+    render(
+      <Harness initial={{ startAt: '10:00', endAt: '12:30', normoHours: '' }} onSaved={vi.fn()} />,
+    );
+    expect(prefill().plannedEndAt).toBe('2026-10-20T12:30');
+    expect(prefill().plannedHours).toBeUndefined();
+  });
 });
 
 describe('CalendarSlotModal — попередження про зайнятість (BR-CAL-006)', () => {

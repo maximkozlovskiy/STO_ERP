@@ -113,7 +113,7 @@ import {
 import { SUPPLIER_RETURN_STATUS_BADGE, type BadgeVariant } from '@sto/shared';
 import { toast } from '@/lib/toast';
 import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
-import { cn, daysUntil } from '@/lib/utils';
+import { cn, daysUntil, lineAmount } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
 import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
@@ -507,7 +507,7 @@ function PurchaseOrdersPageClient() {
                       {fmtMoney(line.price)} {sym}
                       {' = '}
                       <span className="text-foreground font-medium">
-                        {fmtMoney(line.amount ?? line.quantity * line.price)} {sym}
+                        {fmtMoney(line.amount ?? lineAmount(line.quantity, line.price))} {sym}
                       </span>
                     </p>
                   </div>

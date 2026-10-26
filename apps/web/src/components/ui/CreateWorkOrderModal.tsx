@@ -14,10 +14,6 @@ import {
   type WorkOrderFormValues,
 } from '@sto/shared';
 import {
-  X,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
   Printer,
   Share2,
   MessageSquare,
@@ -25,13 +21,11 @@ import {
   CreditCard,
   Calendar,
   Shield,
-  Minus,
   Download,
   ChevronUp,
   UserRound,
   CalendarClock,
 } from 'lucide-react';
-import { useTabBarContext } from '@/contexts/TabBarContext';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
@@ -77,6 +71,15 @@ import {
   contractTypeLabel,
 } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
+import {
+  DocumentCardHeaderActions,
+  DocumentFileActions,
+} from '@/components/ui/document-card-actions';
+import {
+  DocumentHeaderField,
+  DocumentNumberField,
+  DocumentStatusStepper,
+} from '@/components/ui/document-card-header';
 import { ClientPaymentModal } from '@/components/ui/ClientPaymentModal';
 import { invoiceRemaining } from '@/lib/invoice-payment';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -432,7 +435,7 @@ export function CreateWorkOrderModal({
     watch,
     setValue,
     getValues,
-    formState: { isDirty: rhfDirty },
+    formState: { isDirty: rhfDirty, defaultValues: rhfDefaults },
   } = useForm<WorkOrderFormInput, unknown, WorkOrderFormValues>({
     resolver: i18nZodResolver(workOrderFormSchema),
     defaultValues: emptyDefaults(),
@@ -649,7 +652,6 @@ export function CreateWorkOrderModal({
     choose: chooseOverCard,
     dialogProps: confirmDialogProps,
   } = useConfirm();
-  const { minimizeModal } = useTabBarContext();
   const deletedLineIds = useRef<string[]>([]);
   const deletedPartIds = useRef<string[]>([]);
   const statusMenuRef = useRef<HTMLDivElement>(null);
@@ -1007,6 +1009,17 @@ export function CreateWorkOrderModal({
         .map(p => ({ id: p.id, goodName: p.goodName })),
     [parts],
   );
+  // Незбережені товари (TECH-DEBT §14): нестачу рахує сервер за ЗБЕРЕЖЕНИМИ рядками, тож доданий
+  // без «Зберегти зміни» товар чи змінена кількість у діалог «До списку купівлі» не потрапляють.
+  // Рахуємо їх відносно бази останнього reset() (завантажений наряд) — для попередження в діалозі.
+  const unsavedParts = useMemo(() => {
+    if (!rhfDirty) return 0;
+    const savedQty = new Map<string, string>();
+    for (const p of (rhfDefaults?.parts ?? []) as unknown as Partial<LocalPart>[]) {
+      if (p?.id) savedQty.set(p.id, String(p.quantity));
+    }
+    return parts.filter(p => !p.id || savedQty.get(p.id) !== String(p.quantity)).length;
+  }, [rhfDirty, rhfDefaults, parts]);
 
   // A3-modal: stock-totals кеш винесено у useStockTotals (Bug #452-454 збережено ДОСЛІВНО).
   const { stockTotalsMap, stockWarehouseMap, stockFreeByGood } = useStockTotals(
@@ -1978,40 +1991,26 @@ export function CreateWorkOrderModal({
         hideClose
         headerContent={
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2 text-[13px] text-muted-foreground shrink-0">
-              <span className="font-medium">{t('card.number')}</span>
-              <span className="text-foreground">
-                {isEditMode && woNumber ? woNumber : t('card.autoNumber')}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">
-                {t('card.documentDate')}
-              </span>
-              <div className="w-36">
-                <DatePickerInput
-                  value={form.documentDate}
-                  onChange={v => setForm(f => ({ ...f, documentDate: v }))}
-                  disabled={!canEdit}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[13px] font-medium text-muted-foreground">
-                {t('card.status')}
-              </span>
-              <div ref={statusMenuRef} className="relative flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={transitioning || !statusPrevStep || !isEditMode}
-                  onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
-                  className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
-                  <span className="max-w-[80px] truncate">
-                    {statusPrevStep ? woStatusLabel(statusPrevStep) : '—'}
-                  </span>
-                </button>
+            <DocumentNumberField
+              label={t('card.number')}
+              value={isEditMode && woNumber ? woNumber : t('card.autoNumber')}
+            />
+            <DocumentHeaderField label={t('card.documentDate')}>
+              <DatePickerInput
+                value={form.documentDate}
+                onChange={v => setForm(f => ({ ...f, documentDate: v }))}
+                disabled={!canEdit}
+              />
+            </DocumentHeaderField>
+            <DocumentStatusStepper
+              stepLabel={woStatusLabel}
+              label={t('card.status')}
+              menuRef={statusMenuRef}
+              active={isEditMode}
+              busy={transitioning}
+              locked={viewOnly}
+              prev={statusPrevStep}
+              pill={
                 <Tooltip content={WO_STATUS_DESCRIPTIONS[currentStatus] ?? currentStatus}>
                   <button
                     type="button"
@@ -2028,72 +2027,36 @@ export function CreateWorkOrderModal({
                     {isEditMode ? woStatusLabel(currentStatus) : woStatusLabel('DRAFT')}
                   </button>
                 </Tooltip>
-                <button
-                  type="button"
-                  disabled={transitioning || !statusNextStep || !isEditMode}
-                  onClick={() => statusNextStep && void doTransition(statusNextStep)}
-                  className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <span className="max-w-[80px] truncate">
-                    {statusNextStep ? woStatusLabel(statusNextStep) : '—'}
-                  </span>
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                </button>
-                {statusMenuShown && (
-                  <div className="absolute top-full left-0 mt-1 z-50 min-w-[160px] rounded-lg border border-border bg-surface shadow-lg py-1">
-                    {allowedTransitions.map(s => (
-                      <button
-                        key={s}
-                        type="button"
-                        disabled={transitioning}
-                        onClick={() => {
-                          setStatusMenuOpen(false);
-                          void doTransition(s);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
-                      >
-                        {t(`card.transition.${s}`, { defaultValue: s })}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+              }
+              next={statusNextStep}
+              onStep={s => void doTransition(s)}
+              menuShown={statusMenuShown}
+              setMenuOpen={setStatusMenuOpen}
+              transitions={allowedTransitions}
+              transitionLabel={s => t(`card.transition.${s}`, { defaultValue: s })}
+            />
           </div>
         }
         extraHeaderActions={
-          <div className="flex items-center gap-1">
-            {isEditMode && workOrderId && (
-              <button
-                onClick={() => {
-                  minimizeModal({
-                    kind: 'modal',
+          <DocumentCardHeaderActions
+            minimizeLabel={t('card.minimize')}
+            onMinimize={onMinimize}
+            closeCard={() => {
+              setActiveTab('main');
+              onClose();
+            }}
+            onClose={() => void handleModalClose()}
+            disabled={saving || transitioning}
+            minimize={
+              isEditMode && workOrderId && !notLoaded
+                ? {
                     label: woNumber || t('card.minimizedLabel'),
                     modalKey: 'work-order',
                     restoreProps: { workOrderId },
-                  });
-                  onMinimize?.();
-                  setActiveTab('main');
-                  onClose();
-                }}
-                className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-                title={t('card.minimize')}
-                aria-label={t('card.minimize')}
-                disabled={saving || transitioning}
-              >
-                <Minus className="h-4 w-4" />
-              </button>
-            )}
-            <button
-              onClick={() => void handleModalClose()}
-              className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
-              title={t('common:close')}
-              aria-label={t('common:close')}
-              disabled={saving || transitioning}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+                  }
+                : null
+            }
+          />
         }
         footer={
           isEditMode ? (
@@ -2116,56 +2079,18 @@ export function CreateWorkOrderModal({
                     у картці перегляду весь блок сховано. */}
                 {canShare && !viewOnly && (
                   <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void handlePrint()}
-                      loading={shareLoading}
+                    <DocumentFileActions
+                      printLabel={t('detail.print')}
+                      printTitle={t('card.printTitle')}
+                      onPrint={() => void handlePrint()}
+                      printLoading={shareLoading}
+                      saveAsLabel={t('card.saveAs')}
+                      saveAsTitle={t('card.saveAsTitle')}
+                      saveAsOpen={saveAsOpen}
+                      setSaveAsOpen={setSaveAsOpen}
+                      onSaveAs={fmt => void handleSaveAs(fmt)}
                       disabled={shareLoading || smsLoading || saving || transitioning}
-                      title={t('card.printTitle')}
-                    >
-                      <Printer size={15} className="mr-1" />
-                      {t('detail.print')}
-                    </Button>
-                    <div className="relative">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSaveAsOpen(v => !v)}
-                        disabled={shareLoading || smsLoading || saving || transitioning}
-                        title={t('card.saveAsTitle')}
-                      >
-                        <Download size={15} className="mr-1" />
-                        {t('card.saveAs')}
-                        <ChevronDown size={13} className="ml-1" />
-                      </Button>
-                      {saveAsOpen && (
-                        <>
-                          <div
-                            className="fixed inset-0 z-40"
-                            onClick={() => setSaveAsOpen(false)}
-                          />
-                          <div className="absolute bottom-full mb-1 right-0 z-50 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
-                            {(
-                              [
-                                { fmt: 'pdf', label: 'PDF' },
-                                { fmt: 'xlsx', label: 'Excel (.xlsx)' },
-                                { fmt: 'docx', label: 'Word (.docx)' },
-                              ] as const
-                            ).map(({ fmt, label }) => (
-                              <button
-                                key={fmt}
-                                type="button"
-                                onClick={() => void handleSaveAs(fmt)}
-                                className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors"
-                              >
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                    />
                     {!viewOnly && (
                       <>
                         <div className="relative">
@@ -2739,6 +2664,7 @@ export function CreateWorkOrderModal({
                         workOrderId={workOrderId}
                         status={currentStatus}
                         parts={savedPartsForProcurement}
+                        unsavedParts={unsavedParts}
                         procurement={procurement}
                         disabled={saving}
                       />
