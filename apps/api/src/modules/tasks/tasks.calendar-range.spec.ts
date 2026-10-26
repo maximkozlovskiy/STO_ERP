@@ -97,15 +97,18 @@ describe('Задачі — прострочення (BR-TASK-005)', () => {
     vi.useRealTimers();
   });
 
+  // Термін у назві кейсу — рядком ISO: `Date` друкувався в поясі машини (GMT+0300 локально,
+  // GMT+0000 у CI), і назви кейсів не збігались із baseline.
   // guards: BR-TASK-005
   it.each([
-    ['NEW', past, true],
-    ['IN_PROGRESS', past, true],
-    ['DONE', past, false],
-    ['CANCELLED', past, false],
-    ['NEW', future, false],
+    ['NEW', '2026-05-22T08:59:00Z', true],
+    ['IN_PROGRESS', '2026-05-22T08:59:00Z', true],
+    ['DONE', '2026-05-22T08:59:00Z', false],
+    ['CANCELLED', '2026-05-22T08:59:00Z', false],
+    ['NEW', '2026-05-22T09:01:00Z', false],
     ['NEW', null, false],
-  ] as const)('статус %s, термін %s → overdue=%s', (status, dueAt, expected) => {
+  ] as const)('статус %s, термін %s → overdue=%s', (status, dueIso, expected) => {
+    const dueAt = dueIso === null ? null : new Date(dueIso);
     expect(isTaskOverdue({ status, dueAt }, NOW)).toBe(expected);
   });
 

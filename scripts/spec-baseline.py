@@ -24,12 +24,17 @@ supplier-returns.service.spec.ts дав 31 «тест» замість 26 (се�
 import io
 import json
 import os
+import re
 import sys
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+# «Fri May 22 2026 11:59:00 GMT+0300 (…)» — String(Date) у назві кейсу.
+TZ_IN_NAME = re.compile(r"GMT[+-]\d{4}")
 
 
 def rel(path):
@@ -62,6 +67,16 @@ def main():
         return 1
 
     files = distil(report)
+    # Назва кейсу з `Date` у поясі машини (`%s` у it.each → «… GMT+0300 (…)»): локальний baseline
+    # і CI (UTC) дають різні назви, і гейт A падає на «ЗНИК / НОВИЙ КЕЙС» (CI 160, 2026-10-26).
+    tz_bound = [(f, n) for f, ns in files.items() for n in ns if TZ_IN_NAME.search(n)]
+    if tz_bound:
+        print("ВІДМОВА: %d назв кейсів залежать від часового поясу машини — у it.each "
+              "передавайте рядок ISO, а не Date:" % len(tz_bound))
+        for f, n in tz_bound[:10]:
+            print("  %s :: %s" % (f, n[:120]))
+        return 1
+
     total = sum(len(v) for v in files.values())
     if total != report.get("numTotalTests"):
         print("ВІДМОВА: сума кейсів %d != numTotalTests %d" % (total, report["numTotalTests"]))
