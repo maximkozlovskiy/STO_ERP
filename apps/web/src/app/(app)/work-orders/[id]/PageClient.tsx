@@ -244,6 +244,10 @@ const TRANSITION_VARIANTS: Record<string, 'default' | 'destructive' | 'outline'>
 // Ролі `GET /work-orders/:id/inspection` і `…/inspection/default-points` (inspection.controller):
 // бухгалтер картку наряду відкриває, а огляду не бачить — без перевірки він отримував 403 у консолі.
 const INSPECTION_READ_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC'];
+// Ролі `GET /warranties/by-work-order/:id` і `POST /warranties`, `POST /warranties/:id/claim`
+// (warranties.controller): бухгалтер гарантій наряду не читає, механік — лише читає.
+const WARRANTY_BY_WO_READ_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC'];
+const WARRANTY_MANAGE_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'RECEPTIONIST'];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -1059,15 +1063,19 @@ export default function WorkOrderCardPage() {
         />
       </SectionErrorBoundary>
 
-      {/* Гарантії наряду (by-work-order + claim + ручний create). Гейт за статусом усередині секції. */}
-      <SectionErrorBoundary label={t('detail.sectionWarranty')}>
-        <WarrantySection
-          workOrderId={id}
-          counterpartyId={wo.counterpartyId}
-          workOrderStatus={wo.status}
-          readOnly={isDeleted}
-        />
-      </SectionErrorBoundary>
+      {/* Гарантії наряду (by-work-order + claim + ручний create). Гейт за статусом усередині секції.
+          Ролі — як у warranties.controller: бухгалтер гарантій наряду не читає (403 у консолі),
+          механік читає, але «Додати» й «Пред'явити» йому сервер не дозволяє. */}
+      {WARRANTY_BY_WO_READ_ROLES.includes(role) && (
+        <SectionErrorBoundary label={t('detail.sectionWarranty')}>
+          <WarrantySection
+            workOrderId={id}
+            counterpartyId={wo.counterpartyId}
+            workOrderStatus={wo.status}
+            readOnly={isDeleted || !WARRANTY_MANAGE_ROLES.includes(role)}
+          />
+        </SectionErrorBoundary>
+      )}
 
       <WorkOrderLinesSection
         woId={id}

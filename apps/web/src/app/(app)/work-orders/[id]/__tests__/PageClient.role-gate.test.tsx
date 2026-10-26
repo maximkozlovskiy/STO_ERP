@@ -144,6 +144,63 @@ describe('сторінка наряду — запити за роллю (TECH-D
   });
 });
 
+// Bug #986: гарантії наряду (`GET /warranties/by-work-order/:id`) сервер не віддає бухгалтеру —
+// на виконаному наряді він отримував 403 у консолі; механіку віддає, але «+ Гарантія» і
+// «Пред’явити» (POST) — ні.
+// Mutation-verify: прибрати гейт `WARRANTY_BY_WO_READ_ROLES` → «ACCOUNTANT: гарантій…» падає;
+// `readOnly={isDeleted}` без ролі → «MECHANIC: гарантії видно…» падає.
+describe('сторінка наряду — гарантії за роллю (Bug #986)', () => {
+  const activeWarranty = {
+    id: 'w1',
+    workOrderId: WO_ID,
+    counterpartyId: 'c1',
+    expiresAt: '2099-01-01T00:00:00.000Z',
+    description: 'Гарантія тесту',
+    claimedAt: null,
+    isActive: true,
+  };
+  const withWarranty = () => {
+    const base = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string, ...rest: unknown[]) =>
+      path.startsWith('/warranties/by-work-order/')
+        ? Promise.resolve({ items: [activeWarranty] })
+        : base(path, ...rest),
+    );
+  };
+
+  it('ACCOUNTANT: гарантій виконаного наряду не запитує (сервер дав би 403)', async () => {
+    role = 'ACCOUNTANT';
+    wo = workOrder({ status: 'COMPLETED' });
+    renderPage();
+    await woShown();
+    await waitFor(() => expect(paths()).toContain(`/invoices/from-work-order/${WO_ID}/find`));
+    await new Promise(r => setTimeout(r, 50));
+    expect(requested('/warranties/by-work-order/')).toBe(false);
+  });
+
+  it('MECHANIC: гарантії видно, але без «+ Гарантія» і «Пред’явити»', async () => {
+    role = 'MECHANIC';
+    wo = workOrder({ status: 'COMPLETED' });
+    withWarranty();
+    renderPage();
+    await woShown();
+    expect(await screen.findByText('Гарантія тесту')).toBeInTheDocument();
+    expect(screen.queryByText('Пред’явити')).toBeNull();
+    expect(screen.queryByText('+ Гарантія')).toBeNull();
+  });
+
+  it('RECEPTIONIST (контроль): гарантії з «+ Гарантія» і «Пред’явити»', async () => {
+    role = 'RECEPTIONIST';
+    wo = workOrder({ status: 'COMPLETED' });
+    withWarranty();
+    renderPage();
+    await woShown();
+    expect(await screen.findByText('Гарантія тесту')).toBeInTheDocument();
+    expect(screen.getByText('Пред’явити')).toBeInTheDocument();
+    expect(screen.getByText('+ Гарантія')).toBeInTheDocument();
+  });
+});
+
 describe('сторінка наряду — видалений наряд (TECH-DEBT §8 L797)', () => {
   it('звичайний наряд: медіа й коментарі запитуються після наряду', async () => {
     renderPage();
