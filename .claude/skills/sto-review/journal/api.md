@@ -396,3 +396,14 @@ Swagger/`openapi.json` — сторонній клієнт дізнавався 
 create) → 400 `err.vehicle.makeModelDeletedRestoreFirst` (BR-VEH-014); `cache.del` після запису пари в sync.
 Мутації «без перевірки», «лише марка», «блокування після гаража», «без скидання», «скидання завжди» падають.
 **Severity:** IMPORTANT
+
+### 2026-10-26 — CAS переходу задачі звіряв статус, але не видимість виконавця — §5
+
+**Сигнал:** `TasksService.transition` читав задачу з `taskVisibilityWhere(actor)` (виконавець — лише своя), а
+`updateMany` CAS-запису мав лише `{ id, orgId, deletedAt: null, status }`: задачу, переназначену між читанням і
+записом, колишній виконавець усе одно переводив у DONE. Пункт `sections/api.md` «умова відмови теж іде в `where`
+CAS» — той самий клас: умова доступу, з якої рахувалась відмова, теж має бути в `where`.
+**Grep:** `grep -n -A12 "VisibilityWhere(actor)" apps/api/src/modules/*/*.service.ts | grep -A3 "updateMany"` →
+звірити, що `where` CAS містить ту саму умову видимості.
+**Фікс:** `where: { id, orgId, deletedAt: null, status: task.status, ...taskVisibilityWhere(actor) }` + тест гонки
+з переназначенням (`tasks.fsm.spec.ts`). **Severity:** IMPORTANT

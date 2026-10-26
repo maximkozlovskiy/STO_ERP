@@ -3,7 +3,7 @@ import { SyncService } from '../sync/sync.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { WorkOrdersService } from '../work-orders/work-orders.service';
 import type { CacheService } from '../../redis/cache.service';
-import { fakeTask } from './tasks.spec-fixture';
+import { fakeTask, mechA, taskHarness } from './tasks.spec-fixture';
 
 /**
  * Задачі в синхронізації (`/sync/pull` — ролі керування): таблиця `tasks` віддається дельтою за
@@ -69,5 +69,26 @@ describe('Задачі в синхронізації', () => {
     expect(res).toEqual({ accepted: 0, conflicts: 1 });
     expect(prisma.task.updateMany).not.toHaveBeenCalled();
     expect(prisma.task.upsert).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-TASK-003
+  it('планшет: виконані за completedAt desc, порожні в кінці; далі createdAt і id — стабільні сторінки', async () => {
+    const { service, prisma } = taskHarness();
+
+    await service.findAll('org-1', mechA, {
+      mine: '1',
+      status: ['DONE'],
+      sortBy: 'completedAt',
+      sortDir: 'desc',
+      page: 1,
+      limit: 50,
+    });
+
+    const args = prisma.task.findMany.mock.calls[0][0] as unknown as { orderBy: unknown };
+    expect(args.orderBy).toEqual([
+      { completedAt: { sort: 'desc', nulls: 'last' } },
+      { createdAt: 'desc' },
+      { id: 'asc' },
+    ]);
   });
 });

@@ -158,7 +158,7 @@ export class TasksService {
     const dir = query.sortDir ?? 'asc';
     const sortBy = query.sortBy ?? 'dueAt';
     const primary: Prisma.TaskOrderByWithRelationInput =
-      sortBy === 'dueAt' || sortBy === 'startAt'
+      sortBy === 'dueAt' || sortBy === 'startAt' || sortBy === 'completedAt'
         ? { [sortBy]: { sort: dir, nulls: 'last' } }
         : { [sortBy]: dir };
     const [rows, total] = await Promise.all([
@@ -249,8 +249,10 @@ export class TasksService {
     if (!allowed) throw new BadRequestException(err('err.task.transitionForbidden'));
 
     const completedAt = to === 'DONE' ? new Date() : task.status === 'DONE' ? null : undefined;
+    // CAS за статусом І видимістю: задачу, переназначену між читанням і записом, колишній
+    // виконавець уже не рухає (BR-TASK-002 / 003).
     const res = await this.prisma.task.updateMany({
-      where: { id, orgId, deletedAt: null, status: task.status },
+      where: { id, orgId, deletedAt: null, status: task.status, ...taskVisibilityWhere(actor) },
       data: { status: to, ...(completedAt !== undefined && { completedAt }) },
     });
     if (res.count === 0) {

@@ -102,6 +102,18 @@ describe('Tasks — HTTP контракт', () => {
       expect(serviceMock.findAll.mock.calls[0][2]).toMatchObject({ mine: '1' });
     });
 
+    // guards: BR-TASK-002
+    it('мобільний запит «останні виконані» (?status=DONE&sortBy=completedAt&sortDir=desc) приймається', async () => {
+      const res = await inject('GET', '/tasks?mine=1&status=DONE&sortBy=completedAt&sortDir=desc');
+
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.findAll.mock.calls[0][2]).toMatchObject({
+        status: ['DONE'],
+        sortBy: 'completedAt',
+        sortDir: 'desc',
+      });
+    });
+
     // guards: BR-TASK-004
     it.each([
       ['неіснуюча дата', '/tasks?from=2026-02-31'],

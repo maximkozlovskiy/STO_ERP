@@ -20796,8 +20796,8 @@ export interface operations {
                 workOrderId?: string;
                 /** @description Лише ця задача (посилання) */
                 id?: string;
-                /** @description Типово — dueAt */
-                sortBy?: "dueAt" | "startAt" | "priority" | "createdAt";
+                /** @description Типово — dueAt; dueAt / startAt / completedAt — порожні в кінці */
+                sortBy?: "dueAt" | "startAt" | "priority" | "createdAt" | "completedAt";
                 /** @description Типово — asc */
                 sortDir?: "asc" | "desc";
                 page?: number;

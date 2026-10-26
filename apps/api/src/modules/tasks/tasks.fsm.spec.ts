@@ -1,7 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { TASK_STATUS_TRANSITIONS, translateError } from '@sto/shared';
-import { MECH_A, fakeTask, managerActor, mechA, mechB, taskHarness } from './tasks.spec-fixture';
+import {
+  MECH_A,
+  MECH_B,
+  fakeTask,
+  managerActor,
+  mechA,
+  mechB,
+  taskHarness,
+} from './tasks.spec-fixture';
 
 /**
  * Аспект «статуси задачі» (BR-TASK-003): переходи за `TASK_STATUS_TRANSITIONS`; виконавець рухає
@@ -154,6 +162,24 @@ describe('Задачі — статуси (BR-TASK-003)', () => {
 
     expect(e).toBeInstanceOf(BadRequestException);
     expect(tasks[0].status).toBe('CANCELLED');
+    expect(tasks[0].completedAt).toBeNull();
+  });
+
+  // guards: BR-TASK-002, BR-TASK-003
+  it('гонка: задачу переназначили між читанням і записом → колишній виконавець її не рухає', async () => {
+    const task = fakeTask({ status: 'NEW', assigneeId: MECH_A });
+    const { service, tasks, prisma } = taskHarness({ tasks: [task] });
+    const realFindFirst = prisma.task.findFirst.getMockImplementation()!;
+    prisma.task.findFirst.mockImplementationOnce(async args => {
+      const row = await realFindFirst(args);
+      tasks[0].assigneeId = MECH_B;
+      return row;
+    });
+
+    const e = await rejection(service.transition('org-1', mechA, task.id as string, 'DONE'));
+
+    expect(e).toBeInstanceOf(BadRequestException);
+    expect(tasks[0].status).toBe('NEW');
     expect(tasks[0].completedAt).toBeNull();
   });
 });

@@ -69,10 +69,13 @@ function CalendarPageClient() {
     null,
   );
   const openTask = useCallback((task: CalendarTask) => setTaskCard({ taskId: task.id }), []);
-  // Нова задача на дату — термін на кінець робочого дня.
+  // Нова задача на дату — термін на кінець робочого дня. Філія, що працює до 24:00, дала б
+  // «T24:00» — такого часу у полі немає, тож кінець доби — 23:59.
   const newTaskOn = useCallback(
-    (d: string) =>
-      setTaskCard({ taskId: null, prefill: { dueAt: `${d}T${pad(cs.windowEnd)}:00` } }),
+    (d: string) => {
+      const end = cs.windowEnd >= 24 ? '23:59' : `${pad(cs.windowEnd)}:00`;
+      setTaskCard({ taskId: null, prefill: { dueAt: `${d}T${end}` } });
+    },
     [cs.windowEnd],
   );
 

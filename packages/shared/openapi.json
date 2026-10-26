@@ -18043,14 +18043,15 @@
             "name": "sortBy",
             "required": false,
             "in": "query",
-            "description": "Типово — dueAt",
+            "description": "Типово — dueAt; dueAt / startAt / completedAt — порожні в кінці",
             "schema": {
               "type": "string",
               "enum": [
                 "dueAt",
                 "startAt",
                 "priority",
-                "createdAt"
+                "createdAt",
+                "completedAt"
               ]
             }
           },

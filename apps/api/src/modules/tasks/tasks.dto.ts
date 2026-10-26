@@ -46,7 +46,14 @@ export class TaskTransitionDto {
   status!: TaskStatus;
 }
 
-export const TASK_SORT_FIELDS = ['dueAt', 'startAt', 'priority', 'createdAt'] as const;
+/** `completedAt` — щойно виконані першими (`desc`): планшет механіка тримає останні виконані. */
+export const TASK_SORT_FIELDS = [
+  'dueAt',
+  'startAt',
+  'priority',
+  'createdAt',
+  'completedAt',
+] as const;
 export type TaskSortField = (typeof TASK_SORT_FIELDS)[number];
 
 /** Повторений параметр (`?status=A&status=B`) Fastify віддає масивом; `A,B` — розбираємо теж. */
@@ -137,7 +144,10 @@ export class TaskListQueryDto {
   @IsUUID()
   id?: string;
 
-  @ApiPropertyOptional({ enum: TASK_SORT_FIELDS, description: 'Типово — dueAt' })
+  @ApiPropertyOptional({
+    enum: TASK_SORT_FIELDS,
+    description: 'Типово — dueAt; dueAt / startAt / completedAt — порожні в кінці',
+  })
   @IsOptional()
   @IsIn(TASK_SORT_FIELDS)
   sortBy?: TaskSortField;

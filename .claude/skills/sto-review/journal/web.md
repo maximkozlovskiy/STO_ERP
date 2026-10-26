@@ -566,3 +566,11 @@ RECEPTIONIST (`POST /payments`). Для нього перелік — 403: «Н�
 колбеку пошуку = підозра. **Фікс:** опції запиту в хуку (`queryOptions`) +
 `useCallback(() => qc.ensureQueryData(opts), [qc, …ключ])`: приєднується до запиту, що йде, кидає
 збій, стабільний (review 6691b865..cf2f8332). **Severity:** IMPORTANT
+
+### 2026-10-26 — Підставлений час «кінець робочого дня» давав `T24:00` — §8
+
+**Сигнал:** «+ Задача» в календарі підставляла термін `${date}T${pad(windowEnd)}:00`; `workEndHour` філії може
+бути 24 (`useBranchWorkHours` пропускає `<= 24`) → `T24:00`, якого поле дати й часу не має.
+**Grep:** `grep -rnE "pad\((cs\.)?(windowEnd|workEndHour)\)" apps/web/src` → кожне місце, де година закриття
+стає настінним часом, обмежити `23:59` для 24.
+**Фікс:** `windowEnd >= 24 ? '23:59' : \`${pad(windowEnd)}:00\``. **Severity:** SUGGESTION

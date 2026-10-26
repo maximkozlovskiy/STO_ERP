@@ -208,8 +208,8 @@ const TASK_PAGE_LIMIT = 200;
 /** Запобіжник від нескінченного циклу сторінок: 10 × 200 відкритих задач одного механіка. */
 const TASK_MAX_PAGES = 10;
 /**
- * Виконаних тримаємо лише останні: API не має відбору за датою виконання, тож беремо
- * щойно поставлені (`createdAt desc`) — решта виконаних з планшета прибирається.
+ * Виконаних тримаємо лише останні — щойно виконані (`sortBy=completedAt&sortDir=desc`);
+ * решта виконаних з планшета прибирається.
  */
 const DONE_TASKS_KEEP = 50;
 
@@ -268,7 +268,7 @@ export async function pullTasks(): Promise<TaskPullResult> {
     [open, done] = await Promise.all([
       fetchMyOpenTasks(),
       apiFetch<ApiTaskPage>(
-        `/tasks?mine=1&status=DONE&sortBy=createdAt&sortDir=desc&limit=${DONE_TASKS_KEEP}`,
+        `/tasks?mine=1&status=DONE&sortBy=completedAt&sortDir=desc&limit=${DONE_TASKS_KEEP}`,
       ).then(res => res.items ?? []),
     ]);
   } catch (e: unknown) {

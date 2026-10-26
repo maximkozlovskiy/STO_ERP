@@ -28,7 +28,7 @@ export interface TaskListFilters {
   from?: string;
   to?: string;
   workOrderId?: string;
-  sortBy?: 'dueAt' | 'startAt' | 'priority' | 'createdAt';
+  sortBy?: 'dueAt' | 'startAt' | 'priority' | 'createdAt' | 'completedAt';
   sortDir?: 'asc' | 'desc';
 }
 
