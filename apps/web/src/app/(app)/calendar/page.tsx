@@ -160,7 +160,6 @@ function CalendarPageClient() {
               <>
                 <Button
                   variant="outline"
-                  size="sm"
                   onClick={() => {
                     const [y, m] = cs.yearMonth.split('-').map(Number);
                     const d = new Date(y, m - 2, 1);
@@ -177,7 +176,6 @@ function CalendarPageClient() {
                 </span>
                 <Button
                   variant="outline"
-                  size="sm"
                   onClick={() => {
                     const [y, m] = cs.yearMonth.split('-').map(Number);
                     const d = new Date(y, m, 1);
@@ -189,18 +187,14 @@ function CalendarPageClient() {
                   {t('nav.next')}
                   <ChevronRight className="h-4 w-4" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => cs.setDate(toDateString(new Date()))}
-                >
+                <Button variant="ghost" onClick={() => cs.setDate(toDateString(new Date()))}>
                   {t('nav.thisMonth')}
                 </Button>
                 {headerActions}
               </>
             ) : (
               <>
-                <Button variant="outline" size="sm" onClick={cs.prevDay}>
+                <Button variant="outline" onClick={cs.prevDay}>
                   <ChevronLeft className="h-4 w-4" />
                   {t('nav.prev')}
                 </Button>
@@ -218,15 +212,11 @@ function CalendarPageClient() {
                     {isPastDay ? t('nav.pastDaySuffix') : ''}
                   </span>
                 </div>
-                <Button variant="outline" size="sm" onClick={cs.nextDay}>
+                <Button variant="outline" onClick={cs.nextDay}>
                   {t('nav.next')}
                   <ChevronRight className="h-4 w-4" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => cs.setDate(toDateString(new Date()))}
-                >
+                <Button variant="ghost" onClick={() => cs.setDate(toDateString(new Date()))}>
                   {t('nav.today')}
                 </Button>
                 {/* Підсумок дня за категоріями — той самий рядок, що в клітинці місяця
