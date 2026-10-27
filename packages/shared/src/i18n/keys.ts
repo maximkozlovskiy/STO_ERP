@@ -789,6 +789,7 @@ export const VALIDATION_KEYS = [
   'err.workOrder.unitNotConfiguredForGood',
   // Exception-повідомлення: calendar-модуль
   'err.calendar.invalidDateFormatExpected',
+  'err.calendar.rangeTooLong',
   'err.calendar.endBeforeStart',
   'err.calendar.employeeOnLeave',
   'err.calendar.employeeNotOnLift',

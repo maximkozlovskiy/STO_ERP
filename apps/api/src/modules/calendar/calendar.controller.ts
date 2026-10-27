@@ -43,18 +43,31 @@ export class CalendarController {
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
-  @ApiOperation({ summary: 'Слоти на дату' })
-  @ApiQuery({ name: 'date', required: true, example: '2026-05-22' })
+  @ApiOperation({ summary: 'Слоти на дату (`date`) або діапазон діб (`from` + `to`)' })
+  @ApiQuery({ name: 'date', required: false, example: '2026-05-22' })
+  @ApiQuery({ name: 'from', required: false, example: '2026-05-01' })
+  @ApiQuery({ name: 'to', required: false, example: '2026-05-31' })
   @ApiQuery({ name: 'branchId', required: false })
   @ApiQuery({ name: 'employeeId', required: false })
   findSlots(
     @OrgContext() orgId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Query('date') date: string,
+    @Query('date') date?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
     @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string,
     @Query('employeeId', new ParseUUIDPipe({ optional: true })) employeeId?: string,
   ) {
-    return this.service.findSlots(orgId, date, user.role, branchId, employeeId);
+    if (!date && (from || to))
+      return this.service.findSlotsInRange(
+        orgId,
+        from ?? '',
+        to ?? '',
+        user.role,
+        branchId,
+        employeeId,
+      );
+    return this.service.findSlots(orgId, date ?? '', user.role, branchId, employeeId);
   }
 
   @Post('check-conflicts')

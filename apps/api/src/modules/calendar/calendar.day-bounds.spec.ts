@@ -163,3 +163,61 @@ describe('CalendarService.findSlots — перевірка дати', () => {
     expect(end).toBe('2024-02-29T21:59:59.999Z');
   });
 });
+
+/**
+ * Діапазон `from..to` — один запит для «Місяця» й «Статистики» замість запиту на кожен день
+ * (32 за відкриття місяця впирались у ліміт 200/хв → 429, TECH-DEBT календар п. 5).
+ *
+ * Mutation-verify: `end = kyivDayEnd(from)` замість `to` → падає «межі»; прибрати перевірку
+ * `from > to` → падає «from пізніше за to»; прибрати RANGE_MAX_DAYS → падає «94 доби».
+ */
+describe('CalendarService.findSlotsInRange — діапазон діб', () => {
+  it('межі: від початку київської доби from до кінця доби to (крізь перехід годинника 25.10)', async () => {
+    const { service, findMany } = makeSpyService();
+    await service.findSlotsInRange(FAKE_ORG_ID, '2026-10-01', '2026-11-01', 'ADMIN');
+    expect(findMany).toHaveBeenCalledTimes(1);
+    const args = findMany.mock.calls[0][0] as {
+      where: { orgId: string; startAt: { lt: Date }; endAt: { gt: Date } };
+      take: number;
+    };
+    expect(args.where.orgId).toBe(FAKE_ORG_ID);
+    expect(args.where.endAt.gt.toISOString()).toBe('2026-09-30T21:00:00.000Z');
+    expect(args.where.startAt.lt.toISOString()).toBe('2026-11-01T21:59:59.999Z');
+    // Стеля — як 32 запити одного дня, не 500 на весь місяць.
+    expect(args.take).toBe(500 * 32);
+  });
+
+  it('запис через північ повертається один раз, а не в кожній добі', async () => {
+    const night = fakeSlot({
+      startAt: new Date('2026-06-15T19:00:00.000Z'), // 22:00 Київ
+      endAt: new Date('2026-06-15T23:00:00.000Z'), // 02:00 наступної доби
+    });
+    const service = makeStoreService([night]);
+    const out = await service.findSlotsInRange(FAKE_ORG_ID, '2026-06-15', '2026-06-16', 'ADMIN');
+    expect(out.map(s => s.id)).toEqual([night.id]);
+  });
+
+  it('квартал «Статистики» (92 доби) проходить, 94 доби — 400 з українським текстом', async () => {
+    const { service, findMany } = makeSpyService();
+    await expect(
+      service.findSlotsInRange(FAKE_ORG_ID, '2026-01-01', '2026-04-02', 'ADMIN'),
+    ).resolves.toEqual([]);
+    findMany.mockClear();
+    await expect(
+      service.findSlotsInRange(FAKE_ORG_ID, '2026-01-01', '2026-04-04', 'ADMIN'),
+    ).rejects.toThrow(/Період задовгий — не більше 93 днів/);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['from пізніше за to', '2026-06-16', '2026-06-15'],
+    ['неіснуюча дата', '2026-02-31', '2026-03-01'],
+    ['порожній to', '2026-06-15', ''],
+  ])('%s → 400, запит до бази не йде', async (_name, from, to) => {
+    const { service, findMany } = makeSpyService();
+    await expect(service.findSlotsInRange(FAKE_ORG_ID, from, to, 'ADMIN')).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(findMany).not.toHaveBeenCalled();
+  });
+});

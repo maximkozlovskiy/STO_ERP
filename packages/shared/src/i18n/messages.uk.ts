@@ -705,6 +705,7 @@ export const uk: Record<string, string> = {
 
   // ── Exception-повідомлення: calendar-модуль ──
   'err.calendar.invalidDateFormatExpected': 'Невірний формат дати. Очікується YYYY-MM-DD',
+  'err.calendar.rangeTooLong': 'Період задовгий — не більше {{max}} днів',
   'err.calendar.endBeforeStart': 'Час завершення має бути після початку',
   'err.calendar.employeeOnLeave': 'Механік у відпустці',
   'err.calendar.employeeNotOnLift': 'Механік не закріплений за цим підйомником',

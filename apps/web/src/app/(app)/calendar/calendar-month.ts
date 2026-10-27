@@ -1,5 +1,6 @@
 import type { CalendarSlot, MonthSlots } from './calendar.types';
 import type { MonthEntry } from './calendar-categories';
+import { toDateString } from './calendar.utils';
 
 /** Скільки карток записів вміщує клітинка дня; решта — «ще N» (BR-CAL-009). */
 export const MONTH_CARD_LIMIT = 3;
@@ -10,6 +11,26 @@ export const MONTH_CARD_LIMIT = 3;
  */
 export function chainKey(slot: Pick<CalendarSlot, 'id' | 'parentSlotId'>): string {
   return slot.parentSlotId ?? slot.id;
+}
+
+/**
+ * Записи діапазону (`GET /calendar/slots?from&to`) по київських добах `days`: запис належить добі,
+ * яку перетинає `[startAt, endAt)` — те саме правило, що в запиті одного дня (CAL-C2). Запис через
+ * північ потрапляє в обидві доби.
+ */
+export function slotsByKyivDay(
+  slots: readonly CalendarSlot[],
+  days: readonly string[],
+): { d: string; slots: CalendarSlot[] }[] {
+  const spans = slots.map(s => ({
+    s,
+    first: toDateString(new Date(s.startAt)),
+    last: toDateString(new Date(new Date(s.endAt).getTime() - 1)),
+  }));
+  return days.map(d => ({
+    d,
+    slots: spans.filter(x => x.first <= d && x.last >= d).map(x => x.s),
+  }));
 }
 
 /**

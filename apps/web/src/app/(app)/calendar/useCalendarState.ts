@@ -46,7 +46,7 @@ import {
   nextDateString,
   toDateString,
 } from './calendar.utils';
-import { buildMonthSlots, chainEnds, liveSlots } from './calendar-month';
+import { buildMonthSlots, chainEnds, liveSlots, slotsByKyivDay } from './calendar-month';
 import { slotType } from './calendar-categories';
 import {
   nowLinePercent,
@@ -409,22 +409,24 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       // на ньому — кінець ланцюжка для «прострочено» останнього дня (BR-CAL-008).
       const next = new Date(y, m, 1);
       const nextDay = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
-      let failures = 0;
-      const results = await Promise.all(
-        [...days, nextDay].map(d =>
-          apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`, { signal: ac.signal })
-            .then(s => ({ d, slots: liveSlots(s) }))
-            .catch(() => {
-              // Збій лише довантаженого дня не робить місяць «не завантаженим».
-              if (d !== nextDay) failures++;
-              return { d, slots: [] as CalendarSlot[] };
-            }),
-        ),
-      );
+      // Один запит на весь місяць: запит на кожен день (32 за відкриття) впирався в ліміт API
+      // 200/хв — 429 і порожні дні без жодного знаку (TECH-DEBT, календар п. 5).
+      let slots: CalendarSlot[] | null = null;
+      try {
+        slots = liveSlots(
+          await apiFetch<CalendarSlot[]>(`/calendar/slots?from=${days[0]}&to=${nextDay}`, {
+            signal: ac.signal,
+          }),
+        );
+      } catch {
+        slots = null;
+      }
       if (ac.signal.aborted) return;
       if (mountedRef.current) {
-        setMonthSlots(buildMonthSlots(results, days));
-        setMonthError(days.length > 0 && failures === days.length);
+        setMonthSlots(
+          slots ? buildMonthSlots(slotsByKyivDay(slots, [...days, nextDay]), days) : {},
+        );
+        setMonthError(slots === null);
       }
     } finally {
       if (mountedRef.current && !ac.signal.aborted) setMonthLoading(false);
@@ -470,19 +472,23 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         days.push(toDateString(cur));
         cur.setDate(cur.getDate() + 1);
       }
-      let failures = 0;
-      const results = await Promise.all(
-        days.map(d =>
-          apiFetch<CalendarSlot[]>(`/calendar/slots?date=${d}`, { signal: ac.signal }).catch(() => {
-            failures++;
-            return [] as CalendarSlot[];
-          }),
-        ),
-      );
+      // Один запит на період (як «Місяць»): ще й без дублів — запис через північ раніше
+      // приходив у відповідях обох днів і рахувався двічі.
+      let slots: CalendarSlot[] | null = null;
+      if (days.length > 0) {
+        try {
+          slots = await apiFetch<CalendarSlot[]>(
+            `/calendar/slots?from=${days[0]}&to=${days[days.length - 1]}`,
+            { signal: ac.signal },
+          );
+        } catch {
+          slots = null;
+        }
+      }
       if (ac.signal.aborted) return;
       if (mountedRef.current) {
-        setStatsSlots(liveSlots(results.flat()));
-        setStatsError(days.length > 0 && failures === days.length);
+        setStatsSlots(liveSlots(slots ?? []));
+        setStatsError(days.length > 0 && slots === null);
       }
     } finally {
       if (mountedRef.current && !ac.signal.aborted) setStatsLoading(false);

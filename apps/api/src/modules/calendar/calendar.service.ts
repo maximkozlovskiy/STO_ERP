@@ -159,6 +159,11 @@ function nameOf(employeeId: string | null, names: ReadonlyMap<string, string>): 
   return employeeId ? names.get(employeeId) || null : null;
 }
 
+/** Стеля записів на добу у видачі (як було для запиту одного дня). */
+const DAY_SLOTS_TAKE = 500;
+/** Найдовший діапазон `from..to`, діб: квартал «Статистики» (`STATS_MAX_DAYS` вебу) з запасом. */
+const RANGE_MAX_DAYS = 93;
+
 @Injectable()
 export class CalendarService {
   constructor(private readonly prisma: PrismaService) {}
@@ -197,9 +202,50 @@ export class CalendarService {
       throw new BadRequestException(err('err.calendar.invalidDateFormatExpected'));
     // Межі київської доби. Раніше обидві рахувались зсувом ПОЛУДНЯ: у день переведення
     // годинника (29.03, 25.10) північ мала інший зсув, і початок дня з'їжджав на годину.
-    const start = kyivDayStart(date);
-    const end = kyivDayEnd(date);
+    return this.querySlots(
+      orgId,
+      kyivDayStart(date),
+      kyivDayEnd(date),
+      DAY_SLOTS_TAKE,
+      role,
+      branchId,
+      employeeId,
+    );
+  }
 
+  /**
+   * Записи, що перетинають київські доби `from..to` включно, — ОДНИМ запитом. «Місяць» і
+   * «Статистика» раніше слали запит на кожен день (32 за відкриття місяця) і впирались у ліміт
+   * 200 запитів/хв (429, порожні дні без жодного знаку). Розкладає по днях клієнт.
+   */
+  async findSlotsInRange(
+    orgId: string,
+    from: string,
+    to: string,
+    role: string,
+    branchId?: string,
+    employeeId?: string,
+  ): Promise<CalendarSlotResponseDto[]> {
+    if (!isCalendarDate(from) || !isCalendarDate(to) || from > to)
+      throw new BadRequestException(err('err.calendar.invalidDateFormatExpected'));
+    const start = kyivDayStart(from);
+    const end = kyivDayEnd(to);
+    // Доби різної довжини (перехід годинника) — округлення до цілих діб.
+    const days = Math.round((end.getTime() - start.getTime()) / 86_400_000);
+    if (days > RANGE_MAX_DAYS)
+      throw new BadRequestException(err('err.calendar.rangeTooLong', { max: RANGE_MAX_DAYS }));
+    return this.querySlots(orgId, start, end, DAY_SLOTS_TAKE * days, role, branchId, employeeId);
+  }
+
+  private async querySlots(
+    orgId: string,
+    start: Date,
+    end: Date,
+    take: number,
+    role: string,
+    branchId?: string,
+    employeeId?: string,
+  ): Promise<CalendarSlotResponseDto[]> {
     // CAL-C2: half-open OVERLAP, not CONTAINMENT. Containment (`startAt>=start AND endAt<=end`)
     // silently DROPS slots that cross the day boundary: a split-day continuation that starts the
     // previous evening, or any slot straddling midnight, is invisible in the day view → the calendar
@@ -246,7 +292,7 @@ export class CalendarService {
           type: true,
           workOrder: { select: { number: true, status: true, deletedAt: true } },
         },
-        take: 500,
+        take,
       });
       // Ім'я механіка — не PII клієнта: механік бачить, хто на якому записі (BR-CAL-011).
       const names = await this.employeeNames(orgId, slots);
@@ -276,7 +322,7 @@ export class CalendarService {
           },
         },
       },
-      take: 500,
+      take,
     });
 
     const names = await this.employeeNames(orgId, slots);

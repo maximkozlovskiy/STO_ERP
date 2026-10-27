@@ -52,6 +52,14 @@ beforeEach(() => {
       return Promise.resolve(daySlots);
     const m = /\/calendar\/slots\?date=(\d{4}-\d{2}-\d{2})/.exec(url);
     if (m) return Promise.resolve(monthDays[m[1]!] ?? []);
+    // «Місяць» — один запит діапазону: записи всіх діб from..to.
+    const r = /\/calendar\/slots\?from=(\d{4}-\d{2}-\d{2})&to=(\d{4}-\d{2}-\d{2})/.exec(url);
+    if (r)
+      return Promise.resolve(
+        Object.entries(monthDays)
+          .filter(([d]) => d >= r[1]! && d <= r[2]!)
+          .flatMap(([, list]) => list),
+      );
     if (url.startsWith('/lifts'))
       return Promise.resolve([
         { id: 'lift-1', name: 'Пост 1' },

@@ -47,6 +47,14 @@ beforeEach(() => {
   apiFetch.mockImplementation((url: string) => {
     const m = /\/calendar\/slots\?date=(\d{4}-\d{2}-\d{2})/.exec(url);
     if (m) return Promise.resolve(byDay[m[1]] ?? []);
+    // Діапазон: записи всіх діб from..to, кожен один раз (як API).
+    const r = /\/calendar\/slots\?from=(\d{4}-\d{2}-\d{2})&to=(\d{4}-\d{2}-\d{2})/.exec(url);
+    if (r) {
+      const seen = new Map<string, CalendarSlot>();
+      for (const [d, list] of Object.entries(byDay))
+        if (d >= r[1] && d <= r[2]) for (const x of list) seen.set(x.id, x);
+      return Promise.resolve([...seen.values()]);
+    }
     if (url.startsWith('/lifts')) return Promise.resolve([{ id: 'lift-1', name: 'П1' }]);
     if (url.startsWith('/settings/work-hours'))
       return Promise.resolve({ workStartHour: 8, workEndHour: 20 });
@@ -60,6 +68,8 @@ afterEach(() => {
 
 const slotCalls = () =>
   apiFetch.mock.calls.map(c => String(c[0])).filter(u => u.startsWith('/calendar/slots?date='));
+const rangeCalls = () =>
+  apiFetch.mock.calls.map(c => String(c[0])).filter(u => u.startsWith('/calendar/slots?from='));
 
 async function renderMonth() {
   const hook = renderHook(() => useCalendarState(), { wrapper: createQueryWrapper() });
@@ -77,21 +87,35 @@ describe('useCalendarState — вид «Місяць»', () => {
     ];
     const { result } = await renderMonth();
 
-    expect(slotCalls()).toContain('/calendar/slots?date=2026-11-01');
-    expect(slotCalls()).toHaveLength(32); // 31 день жовтня + 1 листопада
+    // Один запит на місяць + 1-ше число наступного; запитів по днях немає (було 32 → 429).
+    expect(rangeCalls()).toEqual(['/calendar/slots?from=2026-10-01&to=2026-11-01']);
+    expect(slotCalls()).toHaveLength(0);
     expect(result.current.monthSlots['2026-11-01']).toBeUndefined();
     const [last] = result.current.monthSlots['2026-10-31'].entries;
     expect(last.endMs).toBe(new Date('2026-11-01T14:00:00+02:00').getTime());
   });
 
-  it('збій лише довантаженого дня не робить місяць незавантаженим', async () => {
+  it('збій запиту місяця (зокрема 429) — помилка, а не мовчки порожні дні', async () => {
     apiFetch.mockImplementation((url: string) =>
-      url.includes('date=2026-11-01')
-        ? Promise.reject(new Error('offline'))
+      url.startsWith('/calendar/slots?from=')
+        ? Promise.reject(new Error('429'))
         : Promise.resolve(url.startsWith('/calendar') ? [] : { items: [] }),
     );
     const { result } = await renderMonth();
-    expect(result.current.monthError).toBe(false);
+    expect(result.current.monthError).toBe(true);
+    expect(result.current.monthSlots).toEqual({});
+  });
+
+  // guards: BR-CAL-008
+  it('запис через північ — у клітинках обох діб, один раз у кожній', async () => {
+    const night = slot('n', '2026-10-20T22:00:00+03:00', '2026-10-21T02:00:00+03:00');
+    byDay['2026-10-20'] = [night];
+    byDay['2026-10-21'] = [night];
+    const { result } = await renderMonth();
+    expect(result.current.monthSlots['2026-10-20'].entries.map(e => e.slot.id)).toEqual(['n']);
+    expect(result.current.monthSlots['2026-10-21'].entries.map(e => e.slot.id)).toEqual(['n']);
+    // Кінець рівно о півночі — наступна доба запис не містить.
+    expect(result.current.monthSlots['2026-10-22'].total).toBe(0);
   });
 
   // guards: BR-CAL-009
@@ -146,11 +170,11 @@ describe('useCalendarState — вид «Місяць»', () => {
         slot('a', '2026-10-20T09:00:00+03:00', '2026-10-20T10:00:00+03:00'),
       ),
     );
-    const before = slotCalls().length;
+    const before = rangeCalls().length;
     byDay['2026-10-20'] = [slot('a', '2026-10-20T12:00:00+03:00', '2026-10-20T13:00:00+03:00')];
     act(() => result.current.handleModalSaved());
 
-    await waitFor(() => expect(slotCalls().length).toBe(before + 32));
+    await waitFor(() => expect(rangeCalls().length).toBe(before + 1));
     expect(result.current.showAdd).toBe(false);
     expect(result.current.editingSlotId).toBeNull();
     await waitFor(() =>
