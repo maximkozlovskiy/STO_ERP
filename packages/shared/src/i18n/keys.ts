@@ -1187,6 +1187,7 @@ export const VALIDATION_KEYS = [
   'err.dto.reportBuilder.groupBy.max',
   'err.dto.search.query.min',
   'err.dto.settings.currencyCode.max',
+  'err.dto.settings.pnlExpenseRequired',
   'err.dto.settings.time.format',
   'err.dto.settings.workingDays.max',
   'err.dto.organisation.phone.format',

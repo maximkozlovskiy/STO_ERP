@@ -6239,6 +6239,12 @@ export interface components {
             integrationLogRetentionDays: number;
             /** @description Частка ФОП механіків у виручці з робіт (звіт рентабельності) */
             laborCostRatio: number;
+            /** @description P&L: приводи касових надходжень, що є «іншим доходом» (BR-RPT-030) */
+            pnlIncomeCashReasons: ("MANUAL_IN" | "SALE_PAYMENT" | "OWNER_IN" | "SUPPLIER_REFUND_IN")[];
+            /** @description P&L: приводи касових видач, що є витратою (BR-RPT-030) */
+            pnlExpenseCashReasons: ("EXPENSE" | "MANUAL_OUT" | "ADVANCE_ISSUE" | "OWNER_OUT")[];
+            /** @description P&L: попереджати про нерозраховану зарплату майбутніх місяців */
+            pnlWarnFuturePayroll: boolean;
             /** @description UI feature flags */
             uiFeatures: Record<string, never>;
             loyaltyEnabled: boolean;
@@ -6306,6 +6312,12 @@ export interface components {
             integrationLogRetentionDays?: number;
             /** @description Частка ФОП механіків у виручці з робіт (звіт рентабельності). clamp [0,1]. */
             laborCostRatio?: number;
+            /** @description P&L: приводи касових надходжень зі статтею типу INCOME, що є «іншим доходом» */
+            pnlIncomeCashReasons?: ("MANUAL_IN" | "SALE_PAYMENT" | "OWNER_IN" | "SUPPLIER_REFUND_IN")[];
+            /** @description P&L: приводи касових видач зі статтею типу EXPENSE, що є витратою (EXPENSE — завжди) */
+            pnlExpenseCashReasons?: ("EXPENSE" | "MANUAL_OUT" | "ADVANCE_ISSUE" | "OWNER_OUT")[];
+            /** @description P&L: попереджати «зарплату не розраховано» і про місяці, що ще не почалися */
+            pnlWarnFuturePayroll?: boolean;
             /** @description UI feature flags (partial update supported) */
             uiFeatures?: Record<string, never>;
             /** @description Увімкнути програму лояльності */
@@ -9931,6 +9943,14 @@ export interface components {
             /** @description Разом за період */
             total: number;
         };
+        PnlSettingsDto: {
+            /** @description Приводи касових надходжень зі статтею INCOME, що увійшли в «інші доходи» */
+            incomeCashReasons: ("MANUAL_IN" | "SALE_PAYMENT" | "OWNER_IN" | "SUPPLIER_REFUND_IN")[];
+            /** @description Приводи касових видач, що увійшли у витрати (EXPENSE — завжди) */
+            expenseCashReasons: ("EXPENSE" | "MANUAL_OUT" | "ADVANCE_ISSUE" | "OWNER_OUT")[];
+            /** @description Попередження про зарплату — і для місяців, що ще не почалися */
+            warnFuturePayroll: boolean;
+        };
         PnlReportDto: {
             /**
              * @description Місяці YYYY-MM
@@ -9945,6 +9965,7 @@ export interface components {
             unknownCostPartsCount: number;
             /** @description Місяці (YYYY-MM), за які зарплату не розраховано — прибуток там завищений */
             payrollMissingMonths: string[];
+            settings: components["schemas"]["PnlSettingsDto"];
             from: string;
             to: string;
         };

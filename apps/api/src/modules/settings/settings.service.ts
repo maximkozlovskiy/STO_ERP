@@ -7,6 +7,7 @@ import {
   BatchCostMethod,
   DocumentType,
   ResetPeriod,
+  type CashOperationReason,
   type SupplierAnalogPolicy,
   type SupplierOrderSendMode,
   type SupplierStrategy,
@@ -24,7 +25,7 @@ import {
 import { HOST_LOOKUP } from '../../common/utils/host-lookup.token';
 import { sameApiUrl, trimTrailingSlashes } from '../../common/utils/trim-trailing-slashes';
 import { workHoursOf } from '../../common/utils/work-hours';
-import { translateError } from '@sto/shared';
+import { PNL_SETTINGS_DEFAULTS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import {
   BranchSettingsResponseDto,
@@ -523,6 +524,9 @@ export class SettingsService {
     bankStatementPollIntervalMinutes: number;
     integrationLogRetentionDays: number;
     laborCostRatio: { toNumber(): number } | number;
+    pnlIncomeCashReasons?: CashOperationReason[];
+    pnlExpenseCashReasons?: CashOperationReason[];
+    pnlWarnFuturePayroll?: boolean;
     uiFeatures: unknown;
     loyaltyEnabled: boolean;
     loyaltyEarnPer: { toNumber(): number } | number;
@@ -566,6 +570,13 @@ export class SettingsService {
       bankStatementPollIntervalMinutes: s.bankStatementPollIntervalMinutes,
       integrationLogRetentionDays: s.integrationLogRetentionDays,
       laborCostRatio: toNum(s.laborCostRatio),
+      pnlIncomeCashReasons: s.pnlIncomeCashReasons ?? [
+        ...PNL_SETTINGS_DEFAULTS.pnlIncomeCashReasons,
+      ],
+      pnlExpenseCashReasons: s.pnlExpenseCashReasons ?? [
+        ...PNL_SETTINGS_DEFAULTS.pnlExpenseCashReasons,
+      ],
+      pnlWarnFuturePayroll: s.pnlWarnFuturePayroll ?? PNL_SETTINGS_DEFAULTS.pnlWarnFuturePayroll,
       uiFeatures: this.parseUiFeatures(s.uiFeatures),
       loyaltyEnabled: s.loyaltyEnabled,
       loyaltyEarnPer: toNum(s.loyaltyEarnPer),

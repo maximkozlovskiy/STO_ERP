@@ -1,3 +1,10 @@
+import {
+  PNL_EXPENSE_CASH_REASON_OPTIONS,
+  PNL_EXPENSE_CASH_REASON_REQUIRED,
+  PNL_INCOME_CASH_REASON_OPTIONS,
+  PNL_SETTINGS_DEFAULTS,
+  type CashReasonValue,
+} from '@sto/shared';
 import { money, sumMoney } from '../../common/utils/money';
 
 /**
@@ -14,12 +21,44 @@ export const PNL_MAX_MONTHS = 24;
 export const PNL_PAYROLL_STATUSES: readonly string[] = ['COMPUTED', 'PAID'];
 
 /**
- * Приводи касового надходження, що є «іншим доходом» (п. 6), — лише ручне внесення. Стаття типу
- * INCOME буває закріплена й за іншими приводами (BR-CASH-022: оплата клієнта, внесок власника…),
- * але оплата клієнта вже є виручкою за методом нарахування (п. 1), а внесок власника, повернення
- * підзвіту, повернення від постачальника й зняття з банку — не дохід.
+ * Налаштування звіту, за якими рахуються пп. 4–6 (рішення власника 2026-10-29: «винеси в
+ * налаштування звіту»). Зберігаються в `OrganisationSettings`, тут — уже нормалізовані.
  */
-export const PNL_INCOME_CASH_REASONS = ['MANUAL_IN'] as const;
+export interface PnlSettings {
+  /** Приводи каси IN зі статтею типу INCOME, що є «іншим доходом» (п. 6). */
+  incomeCashReasons: CashReasonValue[];
+  /** Приводи каси OUT, що є витратою (п. 5); `EXPENSE` — завжди. */
+  expenseCashReasons: CashReasonValue[];
+  /** Попереджати «зарплату не розраховано» і про місяці, що ще не почалися (п. 4). */
+  warnFuturePayroll: boolean;
+}
+
+export interface PnlSettingsSource {
+  pnlIncomeCashReasons?: readonly string[] | null;
+  pnlExpenseCashReasons?: readonly string[] | null;
+  pnlWarnFuturePayroll?: boolean | null;
+}
+
+/**
+ * Нормалізує налаштування організації для P&L: лише дозволені приводи (`PNL_*_OPTIONS`, у їхньому
+ * порядку, без повторів), «Витрата» — завжди серед витрат; відсутнє поле (старий кеш налаштувань,
+ * налаштування недоступні) — типове значення, тобто поведінка до появи налаштувань.
+ */
+export function resolvePnlSettings(src: PnlSettingsSource | null | undefined): PnlSettings {
+  const pick = <T extends CashReasonValue>(options: readonly T[], chosen: readonly string[]): T[] =>
+    options.filter(o => chosen.includes(o));
+  return {
+    incomeCashReasons: pick(
+      PNL_INCOME_CASH_REASON_OPTIONS,
+      src?.pnlIncomeCashReasons ?? PNL_SETTINGS_DEFAULTS.pnlIncomeCashReasons,
+    ),
+    expenseCashReasons: pick(PNL_EXPENSE_CASH_REASON_OPTIONS, [
+      ...(src?.pnlExpenseCashReasons ?? PNL_SETTINGS_DEFAULTS.pnlExpenseCashReasons),
+      PNL_EXPENSE_CASH_REASON_REQUIRED,
+    ]),
+    warnFuturePayroll: src?.pnlWarnFuturePayroll ?? PNL_SETTINGS_DEFAULTS.pnlWarnFuturePayroll,
+  };
+}
 
 const DAY_MS = 86_400_000;
 
@@ -74,8 +113,9 @@ export interface PnlPayrollPeriod {
  * сум, тож частки всього періоду в сумі дають рівно total.
  *
  * `missingMonths` — місяці звіту, жоден день яких (у межах `from..to`) не покритий урахованим
- * періодом. Місяці, що починаються після `today`, не позначаються: зарплату за майбутнє ще не
- * розраховують, і попередження там було б шумом.
+ * періодом. Місяці, що починаються після `today`, позначаються лише з `warnFuture`
+ * (налаштування `pnlWarnFuturePayroll`, типово ні): зарплату за майбутнє ще не розраховують, і
+ * попередження там зазвичай шум.
  */
 export function allocatePayrollByMonth(
   periods: readonly PnlPayrollPeriod[],
@@ -83,6 +123,7 @@ export function allocatePayrollByMonth(
   from: string,
   to: string,
   today: string,
+  warnFuture = false,
 ): { amounts: number[]; missingMonths: string[] } {
   const cents = months.map(() => 0);
   const covered = months.map(() => false);
@@ -110,7 +151,7 @@ export function allocatePayrollByMonth(
     });
   }
 
-  const missingMonths = months.filter((m, i) => !covered[i] && `${m}-01` <= today);
+  const missingMonths = months.filter((m, i) => !covered[i] && (warnFuture || `${m}-01` <= today));
   return { amounts: cents.map(c => money(c / 100)), missingMonths };
 }
 

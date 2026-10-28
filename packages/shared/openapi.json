@@ -20046,6 +20046,36 @@
             "type": "number",
             "description": "Частка ФОП механіків у виручці з робіт (звіт рентабельності)"
           },
+          "pnlIncomeCashReasons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "MANUAL_IN",
+                "SALE_PAYMENT",
+                "OWNER_IN",
+                "SUPPLIER_REFUND_IN"
+              ]
+            },
+            "description": "P&L: приводи касових надходжень, що є «іншим доходом» (BR-RPT-030)"
+          },
+          "pnlExpenseCashReasons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "EXPENSE",
+                "MANUAL_OUT",
+                "ADVANCE_ISSUE",
+                "OWNER_OUT"
+              ]
+            },
+            "description": "P&L: приводи касових видач, що є витратою (BR-RPT-030)"
+          },
+          "pnlWarnFuturePayroll": {
+            "type": "boolean",
+            "description": "P&L: попереджати про нерозраховану зарплату майбутніх місяців"
+          },
           "uiFeatures": {
             "type": "object",
             "description": "UI feature flags"
@@ -20141,6 +20171,9 @@
           "bankStatementPollIntervalMinutes",
           "integrationLogRetentionDays",
           "laborCostRatio",
+          "pnlIncomeCashReasons",
+          "pnlExpenseCashReasons",
+          "pnlWarnFuturePayroll",
           "uiFeatures",
           "loyaltyEnabled",
           "loyaltyEarnPer",
@@ -20287,6 +20320,38 @@
             "minimum": 0,
             "maximum": 1,
             "description": "Частка ФОП механіків у виручці з робіт (звіт рентабельності). clamp [0,1]."
+          },
+          "pnlIncomeCashReasons": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "MANUAL_IN",
+                "SALE_PAYMENT",
+                "OWNER_IN",
+                "SUPPLIER_REFUND_IN"
+              ]
+            },
+            "description": "P&L: приводи касових надходжень зі статтею типу INCOME, що є «іншим доходом»"
+          },
+          "pnlExpenseCashReasons": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "EXPENSE",
+                "MANUAL_OUT",
+                "ADVANCE_ISSUE",
+                "OWNER_OUT"
+              ]
+            },
+            "description": "P&L: приводи касових видач зі статтею типу EXPENSE, що є витратою (EXPENSE — завжди)"
+          },
+          "pnlWarnFuturePayroll": {
+            "type": "boolean",
+            "description": "P&L: попереджати «зарплату не розраховано» і про місяці, що ще не почалися"
           },
           "uiFeatures": {
             "type": "object",
@@ -33138,6 +33203,46 @@
           "total"
         ]
       },
+      "PnlSettingsDto": {
+        "type": "object",
+        "properties": {
+          "incomeCashReasons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "MANUAL_IN",
+                "SALE_PAYMENT",
+                "OWNER_IN",
+                "SUPPLIER_REFUND_IN"
+              ]
+            },
+            "description": "Приводи касових надходжень зі статтею INCOME, що увійшли в «інші доходи»"
+          },
+          "expenseCashReasons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "EXPENSE",
+                "MANUAL_OUT",
+                "ADVANCE_ISSUE",
+                "OWNER_OUT"
+              ]
+            },
+            "description": "Приводи касових видач, що увійшли у витрати (EXPENSE — завжди)"
+          },
+          "warnFuturePayroll": {
+            "type": "boolean",
+            "description": "Попередження про зарплату — і для місяців, що ще не почалися"
+          }
+        },
+        "required": [
+          "incomeCashReasons",
+          "expenseCashReasons",
+          "warnFuturePayroll"
+        ]
+      },
       "PnlReportDto": {
         "type": "object",
         "properties": {
@@ -33169,6 +33274,9 @@
               "type": "string"
             }
           },
+          "settings": {
+            "$ref": "#/components/schemas/PnlSettingsDto"
+          },
           "from": {
             "type": "string"
           },
@@ -33181,6 +33289,7 @@
           "rows",
           "unknownCostPartsCount",
           "payrollMissingMonths",
+          "settings",
           "from",
           "to"
         ]

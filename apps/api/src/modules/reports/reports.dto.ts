@@ -1,4 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  PNL_EXPENSE_CASH_REASON_OPTIONS,
+  PNL_INCOME_CASH_REASON_OPTIONS,
+  type CashReasonValue,
+} from '@sto/shared';
 
 /**
  * Response-DTO звітів.
@@ -153,6 +158,24 @@ export class PnlRowDto {
   @ApiProperty({ description: 'Разом за період' }) total!: number;
 }
 
+/** Налаштування організації, за якими пораховано P&L (BR-RPT-030, пп. 4–6). */
+export class PnlSettingsDto {
+  @ApiProperty({
+    enum: PNL_INCOME_CASH_REASON_OPTIONS,
+    isArray: true,
+    description: 'Приводи касових надходжень зі статтею INCOME, що увійшли в «інші доходи»',
+  })
+  incomeCashReasons!: CashReasonValue[];
+  @ApiProperty({
+    enum: PNL_EXPENSE_CASH_REASON_OPTIONS,
+    isArray: true,
+    description: 'Приводи касових видач, що увійшли у витрати (EXPENSE — завжди)',
+  })
+  expenseCashReasons!: CashReasonValue[];
+  @ApiProperty({ description: 'Попередження про зарплату — і для місяців, що ще не почалися' })
+  warnFuturePayroll!: boolean;
+}
+
 export class PnlReportDto {
   @ApiProperty({ type: [String], example: ['2026-09', '2026-10'], description: 'Місяці YYYY-MM' })
   months!: string[];
@@ -164,6 +187,7 @@ export class PnlReportDto {
     description: 'Місяці (YYYY-MM), за які зарплату не розраховано — прибуток там завищений',
   })
   payrollMissingMonths!: string[];
+  @ApiProperty({ type: PnlSettingsDto }) settings!: PnlSettingsDto;
   @ApiProperty() from!: string;
   @ApiProperty() to!: string;
 }

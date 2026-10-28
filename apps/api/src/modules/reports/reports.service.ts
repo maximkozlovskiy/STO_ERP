@@ -13,14 +13,15 @@ import {
 } from '../../common/utils/kyiv-date';
 import type { PnlReportDto, PnlRowDto, PnlRowKey } from './reports.dto';
 import {
-  PNL_INCOME_CASH_REASONS,
   PNL_MAX_MONTHS,
   addToMonth,
   allocatePayrollByMonth,
   buildCategoryRows,
   monthsBetween,
   sumRootRows,
+  resolvePnlSettings,
   type PnlCategoryRow,
+  type PnlSettings,
 } from './pnl.calc';
 
 // BR-RPT-023: частка «без ПДВ» наряду k = totalNet / сума рядків (1 для «без ПДВ» і «ПДВ зверху»,
@@ -382,6 +383,26 @@ export class ReportsService {
     type MonthRevenue = { month: string; revenue: number };
     type MonthParts = { month: string; costParts: number; unknownCount: bigint };
 
+    // пп. 4–6 — за налаштуваннями організації (рішення власника 2026-10-29); недоступні — типові.
+    const settings = await this.pnlSettings(orgId);
+    const extraExpenseReasons = settings.expenseCashReasons.filter(r => r !== 'EXPENSE');
+    const cashFilter: Prisma.CashOperationWhereInput[] = [
+      // «Витрата» — завжди, як до появи налаштувань (стаття не перевіряється).
+      { direction: 'OUT', reason: 'EXPENSE' },
+    ];
+    if (extraExpenseReasons.length)
+      cashFilter.push({
+        direction: 'OUT',
+        reason: { in: extraExpenseReasons },
+        expenseCategory: { is: { type: 'EXPENSE' } },
+      });
+    if (settings.incomeCashReasons.length)
+      cashFilter.push({
+        direction: 'IN',
+        reason: { in: settings.incomeCashReasons },
+        expenseCategory: { is: { type: 'INCOME' } },
+      });
+
     const [revenueRows, partRows, periods, cashOps, bankTxs, fxTxs, categories] = await Promise.all(
       [
         // п. 1 — той самий відбір нарядів, що profitability(), групування за київським місяцем.
@@ -430,21 +451,14 @@ export class ReportsService {
             lines: { select: { accruedAmount: true } },
           },
         }),
-        // пп. 5–6 — каса: витрати (OUT EXPENSE) та інші доходи (IN ручне внесення зі статтею INCOME).
-        // Рядок-сторно (reversalOfId) — не P&L; його оригінал відсіюється нижче.
+        // пп. 5–6 — каса: витрати (OUT за налаштуванням) та інші доходи (IN за налаштуванням зі
+        // статтею INCOME). Рядок-сторно (reversalOfId) — не P&L; його оригінал відсіюється нижче.
         this.prisma.cashOperation.findMany({
           where: {
             orgId,
             createdAt: { gte: fromDate, lte: toDate },
             reversalOfId: null,
-            OR: [
-              { direction: 'OUT', reason: 'EXPENSE' },
-              {
-                direction: 'IN',
-                reason: { in: [...PNL_INCOME_CASH_REASONS] },
-                expenseCategory: { is: { type: 'INCOME' } },
-              },
-            ],
+            OR: cashFilter,
           },
           select: {
             id: true,
@@ -519,6 +533,7 @@ export class ReportsService {
       from,
       to,
       kyivYmd(new Date()),
+      settings.warnFuturePayroll,
     );
 
     const expenseOwn = new Map<string | null, number[]>();
@@ -581,9 +596,19 @@ export class ReportsService {
       ],
       unknownCostPartsCount,
       payrollMissingMonths: payroll.missingMonths,
+      settings,
       from,
       to,
     };
+  }
+
+  /** Налаштування P&L організації; недоступні (Redis/БД) — типові, звіт не блокуємо. */
+  private async pnlSettings(orgId: string): Promise<PnlSettings> {
+    try {
+      return resolvePnlSettings(await this.settings.getOrganisationSettings(orgId));
+    } catch {
+      return resolvePnlSettings(null);
+    }
   }
 
   async settlements(orgId: string, counterpartyId?: string) {

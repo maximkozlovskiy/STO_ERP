@@ -1217,6 +1217,8 @@ export const en: Record<string, string> = {
   'err.dto.reportBuilder.groupBy.max': 'No more than 5 grouping levels',
   'err.dto.search.query.min': 'The query must contain at least 2 characters',
   'err.dto.settings.currencyCode.max': 'Currency code cannot exceed 10 characters',
+  'err.dto.settings.pnlExpenseRequired':
+    'P&L report: the «Expense» reason must always count as an expense',
   'err.dto.settings.time.format': 'Format “HH:MM” (00:00–23:59)',
   'err.dto.settings.workingDays.max': 'No more than 7 working days',
   'err.dto.organisation.phone.format': 'Phone must be in the format +380XXXXXXXXX',

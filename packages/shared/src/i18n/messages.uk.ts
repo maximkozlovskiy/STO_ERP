@@ -1192,6 +1192,7 @@ export const uk: Record<string, string> = {
   'err.dto.reportBuilder.groupBy.max': 'Не більше 5 рівнів групування',
   'err.dto.search.query.min': 'Запит має містити мінімум 2 символи',
   'err.dto.settings.currencyCode.max': 'Код валюти не може перевищувати 10 символів',
+  'err.dto.settings.pnlExpenseRequired': 'Звіт P&L: привід «Витрата» має завжди входити у витрати',
   'err.dto.settings.time.format': 'Формат “ГГ:ХХ” (00:00–23:59)',
   'err.dto.settings.workingDays.max': 'Не більше 7 робочих днів',
   'err.dto.organisation.phone.format': 'Телефон має бути у форматі +380XXXXXXXXX',

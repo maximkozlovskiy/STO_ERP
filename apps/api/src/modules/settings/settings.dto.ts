@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayContains,
   ArrayMaxSize,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -22,8 +24,14 @@ import {
   type ValidationOptions,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { PHONE_UA_REGEX } from '@sto/shared';
 import {
+  PHONE_UA_REGEX,
+  PNL_EXPENSE_CASH_REASON_OPTIONS,
+  PNL_EXPENSE_CASH_REASON_REQUIRED,
+  PNL_INCOME_CASH_REASON_OPTIONS,
+} from '@sto/shared';
+import {
+  CashOperationReason,
   VatMode,
   BatchCostMethod,
   ShiftMode,
@@ -218,6 +226,42 @@ export class UpdateOrganisationSettingsDto {
   @Min(0)
   @Max(1)
   laborCostRatio?: number;
+
+  // ── Звіт P&L (BR-RPT-030, рішення власника 2026-10-29): які приводи каси рахувати ──
+  @ApiPropertyOptional({
+    enum: PNL_INCOME_CASH_REASON_OPTIONS,
+    isArray: true,
+    description: 'P&L: приводи касових надходжень зі статтею типу INCOME, що є «іншим доходом»',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(PNL_INCOME_CASH_REASON_OPTIONS.length)
+  @ArrayUnique()
+  @IsIn(PNL_INCOME_CASH_REASON_OPTIONS, { each: true })
+  pnlIncomeCashReasons?: CashOperationReason[];
+
+  @ApiPropertyOptional({
+    enum: PNL_EXPENSE_CASH_REASON_OPTIONS,
+    isArray: true,
+    description:
+      'P&L: приводи касових видач зі статтею типу EXPENSE, що є витратою (EXPENSE — завжди)',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(PNL_EXPENSE_CASH_REASON_OPTIONS.length)
+  @ArrayUnique()
+  @IsIn(PNL_EXPENSE_CASH_REASON_OPTIONS, { each: true })
+  @ArrayContains([PNL_EXPENSE_CASH_REASON_REQUIRED], {
+    message: 'err.dto.settings.pnlExpenseRequired',
+  })
+  pnlExpenseCashReasons?: CashOperationReason[];
+
+  @ApiPropertyOptional({
+    description: 'P&L: попереджати «зарплату не розраховано» і про місяці, що ще не почалися',
+  })
+  @IsOptional()
+  @IsBoolean()
+  pnlWarnFuturePayroll?: boolean;
 
   @ApiPropertyOptional({ description: 'UI feature flags (partial update supported)' })
   @IsOptional()
@@ -516,6 +560,20 @@ export class OrganisationSettingsResponseDto {
   integrationLogRetentionDays!: number;
   @ApiProperty({ description: 'Частка ФОП механіків у виручці з робіт (звіт рентабельності)' })
   laborCostRatio!: number;
+  @ApiProperty({
+    enum: PNL_INCOME_CASH_REASON_OPTIONS,
+    isArray: true,
+    description: 'P&L: приводи касових надходжень, що є «іншим доходом» (BR-RPT-030)',
+  })
+  pnlIncomeCashReasons!: CashOperationReason[];
+  @ApiProperty({
+    enum: PNL_EXPENSE_CASH_REASON_OPTIONS,
+    isArray: true,
+    description: 'P&L: приводи касових видач, що є витратою (BR-RPT-030)',
+  })
+  pnlExpenseCashReasons!: CashOperationReason[];
+  @ApiProperty({ description: 'P&L: попереджати про нерозраховану зарплату майбутніх місяців' })
+  pnlWarnFuturePayroll!: boolean;
   @ApiProperty({ description: 'UI feature flags' }) uiFeatures!: UiFeatures;
   // B4: Loyalty
   @ApiProperty() loyaltyEnabled!: boolean;
