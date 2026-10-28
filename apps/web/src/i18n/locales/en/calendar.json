@@ -34,7 +34,27 @@
     "mechanic": "Mechanic: {{name}}",
     "mechanicSr": "Mechanic:",
     "liftLoad": "{{booked}} h of {{total}}",
-    "liftLoadTitle": "Booked within the working hours of the day"
+    "liftLoadTitle": "Booked within the working hours of the day",
+    "layout": {
+      "label": "Day layout",
+      "lifts": "Scheduler",
+      "hours": "Hours × lifts",
+      "list": "List"
+    },
+    "list": {
+      "tasksTitle": "Tasks of the day",
+      "empty": "No records for this day.",
+      "colTime": "Time",
+      "colLift": "Lift",
+      "colType": "Type",
+      "colClient": "Client",
+      "colVehicle": "Vehicle",
+      "colWorkOrder": "Work order",
+      "colMechanic": "Mechanic",
+      "colNotes": "Notes",
+      "noLift": "No lift",
+      "openAria": "Open record {{time}}"
+    }
   },
   "booking": {
     "onlineTooltip": "Online booking: {{name}} {{phone}}"

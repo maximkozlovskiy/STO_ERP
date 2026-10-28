@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
 import type {
   BookingSlot,
   CalView,
+  DayLayout,
   CalendarSlot,
   GhostSlot,
   Lift,
@@ -60,6 +61,20 @@ import { mechanicDroppedText, type MechanicDropResponse } from './calendar-mecha
 // Shared drag-id for the pending-slot block (used both by the draggable in JSX
 // and by handleDragEnd to dispatch logic). Exported so sub-components can use it.
 export const PENDING_DRAG_ID = '__pending__';
+
+/** Ключ останнього режиму «Дня» у `localStorage` (BR-CAL-014). */
+export const DAY_LAYOUT_KEY = 'sto_calendar_day_layout';
+const DAY_LAYOUTS: ReadonlySet<string> = new Set<DayLayout>(['lifts', 'hours', 'list']);
+const isDayLayout = (v: string | null): v is DayLayout => v !== null && DAY_LAYOUTS.has(v);
+
+function readStoredDayLayout(): DayLayout | null {
+  try {
+    const v = localStorage.getItem(DAY_LAYOUT_KEY);
+    return isDayLayout(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
 
 // Module-level constant — stable ref avoids re-creation on every render.
 export const EMPTY_FORM: SlotForm = {
@@ -165,6 +180,26 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       const params = new URLSearchParams(searchParams.toString());
       params.set('view', v);
       router.replace(`?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
+
+  // Режим «Дня» (BR-CAL-014): адреса `?layout=` > останній вибір у браузері > планувальник.
+  const urlLayout = searchParams.get('layout');
+  const [storedLayout, setStoredLayout] = useState<DayLayout | null>(readStoredDayLayout);
+  const dayLayout: DayLayout = isDayLayout(urlLayout) ? urlLayout : (storedLayout ?? 'lifts');
+  const setDayLayout = useCallback(
+    (l: DayLayout) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (l === 'lifts') params.delete('layout');
+      else params.set('layout', l);
+      router.replace(`?${params.toString()}`, { scroll: false });
+      setStoredLayout(l);
+      try {
+        localStorage.setItem(DAY_LAYOUT_KEY, l);
+      } catch {
+        // Приватне вікно чи заблоковане сховище — режим лишається в адресі.
+      }
     },
     [router, searchParams],
   );
@@ -1333,6 +1368,8 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     // URL / view
     calView,
     setCalView,
+    dayLayout,
+    setDayLayout,
     date,
     setDate,
     openDay,

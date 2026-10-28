@@ -113,6 +113,12 @@ export interface BookingSlot {
 }
 
 export type CalView = 'day' | 'month' | 'stats';
+
+/**
+ * Режим виду «День» (BR-CAL-014): `lifts` — планувальник (рядки — підйомники, колонки — години,
+ * типовий), `hours` — повернута сітка (рядки — години, колонки — підйомники), `list` — список записів.
+ */
+export type DayLayout = 'lifts' | 'hours' | 'list';
 export type StatsPeriod = 'day' | 'month' | 'custom';
 /** Мінімум даних запису, потрібний для категорії (BR-CAL-008). */
 export interface CategoryInput {

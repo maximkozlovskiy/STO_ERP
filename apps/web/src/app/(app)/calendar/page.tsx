@@ -11,6 +11,8 @@ import {
   BarChart2,
   CalendarRange,
   ListPlus,
+  Rows3,
+  List,
 } from 'lucide-react';
 import { isTaskManagerRole } from '@sto/shared';
 
@@ -34,6 +36,8 @@ import { CalendarStatsTab } from './CalendarStatsTab';
 import { CalendarSlotModal } from './CalendarSlotModal';
 import { CalendarDayGrid } from './CalendarDayGrid';
 import { CalendarMonthSummary } from './CalendarMonthSummary';
+import { CalendarDayList } from './CalendarDayList';
+import type { DayLayout } from './calendar.types';
 import { useCalendarState, EMPTY_FORM } from './useCalendarState';
 import { useCalendarTasks } from './useCalendarTasks';
 
@@ -53,6 +57,12 @@ const VIEW_SWITCHER: ReadonlyArray<
   ['day', 'views.day', CalendarDays],
   ['month', 'views.month', CalendarRange],
   ['stats', 'views.stats', BarChart2],
+] as const;
+
+// Режими виду «День» (BR-CAL-014): планувальник — типовий.
+const DAY_LAYOUTS: ReadonlyArray<readonly [DayLayout, string, typeof CalendarDays]> = [
+  ['lifts', 'day.layout.lifts', Rows3],
+  ['list', 'day.layout.list', List],
 ] as const;
 
 function CalendarPageClient() {
@@ -228,6 +238,26 @@ function CalendarPageClient() {
                   testId="day-categories"
                   size="md"
                 />
+                <div
+                  role="group"
+                  aria-label={t('day.layout.label')}
+                  className="flex rounded-lg border border-border overflow-hidden text-sm"
+                  data-testid="day-layout-switcher"
+                >
+                  {DAY_LAYOUTS.map(([l, labelKey, Icon]) => (
+                    <button
+                      key={l}
+                      type="button"
+                      aria-pressed={cs.dayLayout === l}
+                      title={t(labelKey)}
+                      onClick={() => cs.setDayLayout(l)}
+                      className={`flex items-center gap-1.5 h-9 px-3 transition-colors ${cs.dayLayout === l ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted-foreground hover:bg-secondary'}`}
+                    >
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                      <span className="hidden 2xl:inline">{t(labelKey)}</span>
+                    </button>
+                  ))}
+                </div>
                 {headerActions}
               </>
             )}
@@ -322,7 +352,19 @@ function CalendarPageClient() {
             />
           )}
 
-          {cs.calView === 'day' && (
+          {cs.calView === 'day' && cs.dayLayout === 'list' && (
+            <CalendarDayList
+              slots={cs.slots}
+              lifts={cs.lifts}
+              tasks={ct.dayTasks}
+              loading={cs.loading}
+              chainEnds={cs.dayChainEnds}
+              nowMs={cs.nowMs}
+              onOpenSlot={cs.handleEditSlot}
+              onOpenTask={openTask}
+            />
+          )}
+          {cs.calView === 'day' && cs.dayLayout !== 'list' && (
             <CalendarDayGrid state={cs} tasks={ct.dayTasks} onOpenTask={openTask} />
           )}
 
