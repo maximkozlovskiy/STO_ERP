@@ -94,6 +94,36 @@
       "done": "Done",
       "cancelled": "Cancelled",
       "other": "No work order"
+    },
+    "summary": {
+      "empty": "No records or tasks this month.",
+      "none": "None",
+      "records": "Records",
+      "busyHours": "Hours on lifts",
+      "workOrders": "Work orders",
+      "avgLoad": "Average load",
+      "liftsTitle": "Lifts by record type",
+      "mechanicsTitle": "Mechanics",
+      "categoriesTitle": "Record status",
+      "tasksTitle": "Tasks this month",
+      "colLift": "Lift",
+      "colMechanic": "Mechanic",
+      "colTotal": "Total",
+      "colRecords": "Records",
+      "colHours": "Hrs",
+      "colLoad": "Load",
+      "colWorkOrders": "WOs",
+      "total": "Total",
+      "noLift": "No lift",
+      "noMechanic": "No mechanic",
+      "taskTone": {
+        "open": "Open",
+        "overdue": "Overdue",
+        "done": "Done",
+        "cancelled": "Cancelled"
+      },
+      "idleLifts_one": "{{count}} more lift with no records this month",
+      "idleLifts_other": "{{count}} more lifts with no records this month"
     }
   },
   "stats": {

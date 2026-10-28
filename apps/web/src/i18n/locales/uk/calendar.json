@@ -94,6 +94,38 @@
       "done": "Виконано",
       "cancelled": "Скасовано",
       "other": "Без наряду"
+    },
+    "summary": {
+      "empty": "За місяць записів і задач немає.",
+      "none": "Немає",
+      "records": "Записів",
+      "busyHours": "Годин на постах",
+      "workOrders": "Нарядів",
+      "avgLoad": "Середнє завантаження",
+      "liftsTitle": "Підйомники за типами записів",
+      "mechanicsTitle": "Механіки",
+      "categoriesTitle": "Стан записів",
+      "tasksTitle": "Задачі місяця",
+      "colLift": "Підйомник",
+      "colMechanic": "Механік",
+      "colTotal": "Разом",
+      "colRecords": "Записів",
+      "colHours": "Год",
+      "colLoad": "Завант.",
+      "colWorkOrders": "Нарядів",
+      "total": "Разом",
+      "noLift": "Без підйомника",
+      "noMechanic": "Без механіка",
+      "taskTone": {
+        "open": "Відкриті",
+        "overdue": "Прострочені",
+        "done": "Виконані",
+        "cancelled": "Скасовані"
+      },
+      "idleLifts_one": "Ще {{count}} підйомник без записів за місяць",
+      "idleLifts_few": "Ще {{count}} підйомники без записів за місяць",
+      "idleLifts_many": "Ще {{count}} підйомників без записів за місяць",
+      "idleLifts_other": "Ще {{count}} підйомника без записів за місяць"
     }
   },
   "stats": {

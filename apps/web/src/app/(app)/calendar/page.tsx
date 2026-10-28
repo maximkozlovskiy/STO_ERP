@@ -33,6 +33,7 @@ import { CalendarCategoryCounters } from './CalendarCategoryCounters';
 import { CalendarStatsTab } from './CalendarStatsTab';
 import { CalendarSlotModal } from './CalendarSlotModal';
 import { CalendarDayGrid } from './CalendarDayGrid';
+import { CalendarMonthSummary } from './CalendarMonthSummary';
 import { useCalendarState, EMPTY_FORM } from './useCalendarState';
 import { useCalendarTasks } from './useCalendarTasks';
 
@@ -285,6 +286,18 @@ function CalendarPageClient() {
               tasksByDay={ct.byDay}
               onOpenTask={openTask}
               onNewTaskOnDate={canManageTasks ? newTaskOn : undefined}
+            />
+          )}
+          {/* Підсумки місяця під сіткою (BR-CAL-013) — з уже завантажених записів і задач */}
+          {cs.calView === 'month' && !cs.monthLoading && !cs.monthError && (
+            <CalendarMonthSummary
+              yearMonth={cs.yearMonth}
+              monthSlots={cs.monthSlots}
+              lifts={cs.lifts}
+              tasks={ct.tasks}
+              windowStart={cs.windowStart}
+              windowEnd={cs.windowEnd}
+              nowMs={cs.nowMs}
             />
           )}
 
