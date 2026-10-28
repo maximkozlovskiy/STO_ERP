@@ -21,7 +21,10 @@ import {
 } from './CalendarDayBlocks';
 import { taskDayBlock, type CalendarTask } from './calendar-tasks';
 
-/** Висота години в повернутій сітці, px: 15 хв — 14 px, блок у 30 хв ще читається. */
+/**
+ * Найменша висота години в повернутій сітці, px: 15 хв — 14 px, блок у 30 хв ще читається.
+ * Вільну висоту екрана години ділять між собою (рядок тіла — `minmax(…, 1fr)`).
+ */
 const HOUR_PX = 56;
 /** Колонка підписів годин, px. */
 const TIME_COL_PX = 64;
@@ -291,7 +294,14 @@ export function CalendarDayGridHours({ state, tasks = NO_TASKS, onOpenTask = noo
             className="bg-surface border border-border rounded-xl flex-1 min-h-0 overflow-auto"
             data-testid="day-grid-hours"
           >
-            <div className="grid min-w-max" style={{ gridTemplateColumns: columns }}>
+            {/* Рядок тіла — не нижче HOUR_PX на годину, а вільну висоту екрана ділять години */}
+            <div
+              className="grid min-w-max min-h-full"
+              style={{
+                gridTemplateColumns: columns,
+                gridTemplateRows: `auto minmax(${bodyHeight}px, 1fr)`,
+              }}
+            >
               {/* Шапка — липка у прокрутці; та сама сітка колонок, що й тіло */}
               {/* Кут: липкий і вгору, і вліво — над шапкою підйомників і колонкою годин */}
               <div className="sticky top-0 left-0 z-30 px-2 py-2 text-xs font-medium text-muted-foreground bg-secondary border-b border-r border-border">
@@ -343,20 +353,19 @@ export function CalendarDayGridHours({ state, tasks = NO_TASKS, onOpenTask = noo
               <div
                 ref={hoursTrackRef}
                 className="sticky left-0 z-16 border-r border-border bg-secondary"
-                style={{ height: bodyHeight }}
               >
                 {hours.map((h, i) => (
                   <div
                     key={h}
                     className="absolute inset-x-0 px-2 text-xs text-muted-foreground tabular-nums -translate-y-px"
-                    style={{ top: i * HOUR_PX + 2 }}
+                    style={{ top: `calc(${(i / totalHours) * 100}% + 2px)` }}
                   >
                     {pad(h)}:00
                   </div>
                 ))}
               </div>
               {hasTasks && (
-                <div className="relative border-r border-border" style={{ height: bodyHeight }}>
+                <div className="relative border-r border-border">
                   <CalendarTaskStrip
                     tasks={tasks}
                     date={date}

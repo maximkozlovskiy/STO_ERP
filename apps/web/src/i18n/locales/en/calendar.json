@@ -145,6 +145,8 @@
         "cancelled": "Cancelled"
       },
       "idleLifts_one": "{{count}} more lift with no records this month",
+      "idleLifts_few": "{{count}} more lifts with no records this month",
+      "idleLifts_many": "{{count}} more lifts with no records this month",
       "idleLifts_other": "{{count}} more lifts with no records this month"
     }
   },
