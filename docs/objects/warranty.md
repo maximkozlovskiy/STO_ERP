@@ -16,14 +16,14 @@ soft delete (`deletedAt`), `syncVersion`. Авто гарантії — авто
 
 ## API Endpoints (`/api/warranties`)
 
-| Метод | URL                                   | Дія                                      | Ролі                                   |
-| ----- | ------------------------------------- | ---------------------------------------- | -------------------------------------- |
-| GET   | `/api/warranties`                     | Список гарантій вкладки (BR-WAR-001…003) | OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT |
-| POST  | `/api/warranties`                     | Створити гарантію вручну                 | OWNER, ADMIN, RECEPTIONIST             |
-| GET   | `/api/warranties/expiring?days=`      | Гарантії, що закінчуються (дашборд)      | OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT |
-| GET   | `/api/warranties/by-counterparty/:id` | Гарантії контрагента                     | OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT |
-| GET   | `/api/warranties/by-work-order/:id`   | Гарантії наряду                          | OWNER, ADMIN, RECEPTIONIST, MECHANIC   |
-| POST  | `/api/warranties/:id/claim`           | Звернення: `{ claimWoId }` (BR-WAR-004)  | OWNER, ADMIN, RECEPTIONIST             |
+| Метод | URL                                   | Дія                                                                                      | Ролі                                   |
+| ----- | ------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------- |
+| GET   | `/api/warranties`                     | Список гарантій вкладки (BR-WAR-001…003)                                                 | OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT |
+| POST  | `/api/warranties`                     | Створити гарантію вручну                                                                 | OWNER, ADMIN, RECEPTIONIST             |
+| GET   | `/api/warranties/expiring?days=`      | Гарантії, що закінчуються (`useExpiringWarranties`; віджет дашборду прибрано 2026-10-29) | OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT |
+| GET   | `/api/warranties/by-counterparty/:id` | Гарантії контрагента                                                                     | OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT |
+| GET   | `/api/warranties/by-work-order/:id`   | Гарантії наряду                                                                          | OWNER, ADMIN, RECEPTIONIST, MECHANIC   |
+| POST  | `/api/warranties/:id/claim`           | Звернення: `{ claimWoId }` (BR-WAR-004)                                                  | OWNER, ADMIN, RECEPTIONIST             |
 
 Параметри `GET /api/warranties`: `page`, `limit` (≤ 200), `q` (≤ 100 символів), `state` (через кому
 або повтором параметра), `sortBy` (`expiresAt` | `createdAt`), `sortDir`, `id` — лише ця гарантія
@@ -43,12 +43,11 @@ soft delete (`deletedAt`), `syncVersion`. Авто гарантії — авто
   користувач її вимкнув; параметр прибирається з адреси, а запит за `id` лишається активним, доки
   гарантія в панелі, — після звернення панель бере новий стан).
 - `WarrantyClaimModal.tsx` — «Звернення»: наряди клієнта (`/work-orders?counterpartyId=`, найновіші 100) без скасованих; відмова сервера — у вікні. Після звернення `useClaimWarranty` скидає
-  `warrantiesKeys.all` і віджет дашборду.
+  `warrantiesKeys.all` (віджета гарантій на дашборді з 2026-10-29 немає — там підсумки календаря, BR-CAL-013).
 - `lib/warranty-roles.ts` — ролі перегляду й звернення (дзеркало `@Roles`, стереже
   `warranty-roles.test.ts`). «Пов'язані документи» наряду (`workOrderLinkedConfig`) ведуть до
   гарантії (`useLinkedNav().toWarranty`) лише ролям із вкладкою.
-- Поріг «закінчується» дашборду (`useDashboardExpiringWarranties`, `useExpiringWarranties`) —
-  `WARRANTY_EXPIRING_DAYS`.
+- Поріг «закінчується» (`useExpiringWarranties`) — `WARRANTY_EXPIRING_DAYS`.
 
 ## Бізнес-правила (BR-WAR)
 
@@ -61,7 +60,7 @@ total, page, limit }` за стандартом списків (`page`, `limit` 
 - **BR-WAR-002**: **Стан гарантії** обчислюється на сервері, одним правилом для списку й фільтра:
   `CLAIMED` — є звернення (`claimedAt`); інакше `EXPIRED` — `expiresAt ≤ зараз`; інакше `EXPIRING` —
   `expiresAt ≤ зараз + WARRANTY_EXPIRING_DAYS` (14; рішення власника 2026-10-22 — з порогом 30 при гарантії 30 днів стан «Діє» не з'являвся) календарних днів за Києвом (`addDaysKyiv`, той самий
-  поріг, що віджет дашборду — одна константа в `@sto/shared`, дашборд бере її ж); інакше `ACTIVE`.
+  поріг, що `useExpiringWarranties` — одна константа в `@sto/shared`); інакше `ACTIVE`.
   Фільтр `?state=ACTIVE|EXPIRING|EXPIRED|CLAIMED` (кілька — через кому) відбирає в базі тими самими
   межами, що й обчислення; невідоме значення — 400.
 - **BR-WAR-003**: **Пошук** `?q=` — без урахування регістру за номером наряду, назвою / прізвищем /
@@ -104,7 +103,7 @@ total, page, limit }` за стандартом списків (`page`, `limit` 
 | вкладки сторінки: URL, ролі (механік без вкладки, бухгалтер без «Звернення»)                                                                                                                             | `WorkOrdersPage.tabs.test.tsx`          | 5      |
 | вкладка «Гарантії»: рядок, запит (порядок, стан, пошук), стани — кнопками над пошуком, «Звернення» за станом і роллю, вікно звернення, відмова, `?open=` (і новий стан після звернення), клік без панелі | `WarrantiesTab.test.tsx`                | 12     |
 | ролі вкладки = `@Roles` контролера                                                                                                                                                                       | `lib/__tests__/warranty-roles.test.ts`  | 2      |
-| `warrantyListPath`, поріг дашборду = `WARRANTY_EXPIRING_DAYS`, інвалідація після звернення (Bug #718)                                                                                                    | `hooks/api/useWarranties.test.tsx`      | 5      |
+| `warrantyListPath`, поріг `useExpiringWarranties` = `WARRANTY_EXPIRING_DAYS`, інвалідація після звернення (Bug #718)                                                                                     | `hooks/api/useWarranties.test.tsx`      | 5      |
 | «Пов'язані документи»: перехід до гарантії лише ролям із вкладкою                                                                                                                                        | `lib/__tests__/linked-configs.test.tsx` | 29     |
 | `toWarranty` → `/work-orders?tab=warranties&open=<id>`                                                                                                                                                   | `lib/__tests__/linked-nav.test.tsx`     | 12     |
 
