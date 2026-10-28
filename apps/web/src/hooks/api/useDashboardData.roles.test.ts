@@ -35,21 +35,21 @@ describe('DASHBOARD_READ_ROLES — дзеркало @Roles ендпоінтів 
     ['invoices', 'invoices/invoices.controller.ts', ''],
     ['revenue', 'reports/reports.controller.ts', 'revenue'],
     ['maintenance', 'maintenance-schedules/maintenance-schedules.controller.ts', 'upcoming'],
-    ['expiringWarranties', 'warranties/warranties.controller.ts', 'expiring'],
+    ['calendar', 'calendar/calendar.controller.ts', ''],
   ] as const)('%s ↔ %s', (key, controller, route) => {
     expect([...DASHBOARD_READ_ROLES[key]].sort()).toEqual(rolesOf(controller, route));
   });
 });
 
 describe('dashboardAccess', () => {
-  it('механік читає лише наряди; склад, рахунки, ТО, гарантії й виручка — ні', () => {
+  it('механік читає наряди й календар; склад, рахунки, ТО й виручка — ні', () => {
     expect(dashboardAccess('MECHANIC')).toEqual({
       orders: true,
       lowStock: false,
       invoices: false,
       revenue: false,
       maintenance: false,
-      expiringWarranties: false,
+      calendar: true,
     });
   });
 
@@ -57,7 +57,7 @@ describe('dashboardAccess', () => {
     const a = dashboardAccess('RECEPTIONIST');
     expect(a.lowStock).toBe(false);
     expect(a.revenue).toBe(false);
-    expect(a.orders && a.invoices && a.maintenance && a.expiringWarranties).toBe(true);
+    expect(a.orders && a.invoices && a.maintenance && a.calendar).toBe(true);
   });
 
   it('власник читає все; без ролі — нічого', () => {

@@ -91,15 +91,12 @@ export function invalidateWorkOrderSideEffects(qc: QueryClient): void {
 }
 
 /**
- * Гарантія (create / claim): рухає списки гарантій ПЛЮС дашборд-віджет «Гарантії, що
- * закінчуються». Віджет читає окремий ключ `dashboardKeys.expiringWarranties()`, а не
- * `warrantiesKeys` — тому інвалідація лише `warrantiesKeys.all` лишала його застарілим до
- * staleTime (claimed/нова гарантія не зникала/не з'являлась на дашборді). Один хелпер — щоб
- * КОЖНА точка мутації гарантії чіпала обидва дерева ключів (WEB-Bug #718).
+ * Гарантія (create / claim): списки гарантій наряду й контрагента. Дашборд-віджета «Гарантії, що
+ * закінчуються» більше немає (2026-10-29, його місце — підсумки місяця календаря); один хелпер —
+ * щоб кожна точка мутації гарантії скидала той самий набір ключів (WEB-Bug #718).
  */
 export function invalidateWarrantyAffected(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: warrantiesKeys.all });
-  void qc.invalidateQueries({ queryKey: dashboardKeys.expiringWarranties() });
 }
 
 /**

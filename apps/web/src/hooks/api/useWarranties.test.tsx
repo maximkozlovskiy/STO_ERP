@@ -1,7 +1,6 @@
-// useWarranties — гарантії наряду/контрагента + expiring-віджет дашборда.
-// Bug #718 regression: create/claim мутації МУСЯТЬ інвалідувати НЕ лише `warrantiesKeys.all`,
-// а й `dashboardKeys.expiringWarranties()` — окремий ключ дашборд-віджета. Без цього
-// нова/claimed гарантія висіла у віджеті «Гарантії, що закінчуються» до staleTime.
+// useWarranties — гарантії наряду/контрагента.
+// Bug #718 regression: create/claim мутації інвалідують `warrantiesKeys.all` (списки наряду й
+// контрагента). Дашборд-віджета «Гарантії, що закінчуються» з 2026-10-29 немає.
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { WARRANTY_EXPIRING_DAYS } from '@sto/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -20,7 +19,6 @@ import {
   useExpiringWarranties,
   warrantyListPath,
 } from './useWarranties';
-import { dashboardKeys, useDashboardExpiringWarranties } from './useDashboardData';
 
 function createWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -42,7 +40,7 @@ describe('useWarranties mutations — cache invalidation (Bug #718)', () => {
     expect(warrantiesKeys.expiring(30)).not.toEqual(warrantiesKeys.expiring(60));
   });
 
-  it('useCreateWarranty → POST /warranties + інвалідує warranties.all ТА dashboard.expiringWarranties', async () => {
+  it('useCreateWarranty → POST /warranties + інвалідує warranties.all', async () => {
     const { client, wrapper } = createWrapper();
     const spy = vi.spyOn(client, 'invalidateQueries');
     apiFetchMock.mockResolvedValueOnce({ id: 'w1', isActive: true });
@@ -62,12 +60,9 @@ describe('useWarranties mutations — cache invalidation (Bug #718)', () => {
     );
     const calls = spy.mock.calls.map(c => JSON.stringify(c[0]?.queryKey ?? c[0]));
     expect(calls).toContain(JSON.stringify(warrantiesKeys.all));
-    // MUTATION-VERIFY: якщо повернути onSuccess лише на warrantiesKeys.all (стан до фіксу
-    // Bug #718) — цей assert впаде, бо дашборд-віджет не інвалідовано.
-    expect(calls).toContain(JSON.stringify(dashboardKeys.expiringWarranties()));
   });
 
-  it('useClaimWarranty → POST /:id/claim + інвалідує warranties.all ТА dashboard.expiringWarranties', async () => {
+  it('useClaimWarranty → POST /:id/claim + інвалідує warranties.all', async () => {
     const { client, wrapper } = createWrapper();
     const spy = vi.spyOn(client, 'invalidateQueries');
     apiFetchMock.mockResolvedValueOnce({ id: 'w1', isActive: false, claimedAt: 'x' });
@@ -83,8 +78,6 @@ describe('useWarranties mutations — cache invalidation (Bug #718)', () => {
     );
     const calls = spy.mock.calls.map(c => JSON.stringify(c[0]?.queryKey ?? c[0]));
     expect(calls).toContain(JSON.stringify(warrantiesKeys.all));
-    // Claim знімає гарантію з expiring-вибірки (claimedAt=null фільтр) → віджет мусить оновитись.
-    expect(calls).toContain(JSON.stringify(dashboardKeys.expiringWarranties()));
   });
 });
 
@@ -113,16 +106,13 @@ describe('Список вкладки «Гарантії» і поріг «за�
   });
 
   // guards: BR-WAR-002
-  it('віджет дашборду і useExpiringWarranties беруть поріг WARRANTY_EXPIRING_DAYS', async () => {
+  it('useExpiringWarranties бере поріг WARRANTY_EXPIRING_DAYS', async () => {
     const { wrapper } = createWrapper();
-    renderHook(() => useDashboardExpiringWarranties(true), { wrapper });
     renderHook(() => useExpiringWarranties(), { wrapper });
 
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
-    const paths = apiFetchMock.mock.calls.map(c => String(c[0]));
-    expect(paths).toEqual([
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(1));
+    expect(String(apiFetchMock.mock.calls[0][0])).toBe(
       `/warranties/expiring?days=${WARRANTY_EXPIRING_DAYS}`,
-      `/warranties/expiring?days=${WARRANTY_EXPIRING_DAYS}`,
-    ]);
+    );
   });
 });

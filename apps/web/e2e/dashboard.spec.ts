@@ -70,4 +70,23 @@ test.describe('Дашборд', () => {
     await expect(woLink).toBeVisible({ timeout: 10_000 });
     await Promise.all([page.waitForURL(/\/work-orders/, { timeout: 15_000 }), woLink.click()]);
   });
+
+  // BR-CAL-013: підсумки календаря за поточний місяць — на дашборді, на місці колишнього віджета
+  // «Гарантії, що закінчуються»; посилання веде у вид «Місяць».
+  test('картка «Календар» із підсумками місяця; гарантій немає', async ({ page }) => {
+    await page.goto('/dashboard');
+    const card = page.getByTestId('dashboard-calendar-summary');
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card.getByText(/^Календар — /)).toBeVisible();
+    await expect(
+      card.getByTestId('month-summary').or(card.getByTestId('month-summary-empty')),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByText(/Гарантії, що закінчуються/)).toHaveCount(0);
+    await Promise.all([
+      page.waitForURL(/\/calendar\/?\?view=month/, { timeout: 15_000 }),
+      card.getByRole('link', { name: 'Відкрити календар' }).click(),
+    ]);
+  });
 });

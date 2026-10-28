@@ -28,7 +28,8 @@ const ALLOWED: [RegExp, string[]][] = [
   [/^\/invoices\?/, ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']],
   [/^\/reports\/revenue/, ['OWNER', 'ADMIN', 'ACCOUNTANT']],
   [/^\/maintenance-schedules\/upcoming/, ['OWNER', 'ADMIN', 'RECEPTIONIST']],
-  [/^\/warranties\/expiring/, ['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT']],
+  [/^\/calendar\/slots/, ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']],
+  [/^\/lifts/, ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']],
 ];
 
 let orders: unknown[] = [];
@@ -46,7 +47,7 @@ function fakeApi(path: string) {
   if (path.startsWith('/invoices'))
     return Promise.resolve({ items: invoices, total: invoicesTotal ?? invoices.length });
   if (path.startsWith('/reports/revenue')) return Promise.resolve({ rows: [] });
-  if (path.startsWith('/warranties')) return Promise.resolve({ items: [], total: 0 });
+  if (path.startsWith('/tasks')) return Promise.resolve({ items: [], total: 0 });
   return Promise.resolve([]);
 }
 
@@ -89,7 +90,10 @@ describe('Дашборд — запити лише дозволені ролі (
     role = 'MECHANIC';
     renderPage();
     expect(await screen.findByText('В роботі')).toBeInTheDocument();
-    expect(requested().filter(p => !p.startsWith('/work-orders'))).toEqual([]);
+    // Наряди й календар (підсумки місяця, BR-CAL-013) — більше нічого.
+    await waitFor(() => expect(requested().some(p => p.startsWith('/calendar/slots'))).toBe(true));
+    const calendarOnly = /^\/(work-orders|calendar\/slots|lifts|tasks|settings\/work-hours)/;
+    expect(requested().filter(p => !calendarOnly.test(p))).toEqual([]);
     expect(screen.queryByText(/Не вдалося завантажити/)).not.toBeInTheDocument();
     expect(screen.queryByText('Немає даних')).not.toBeInTheDocument();
     // Рахунки, склад і виручка механіку не віддаються — не «0», а «—».
@@ -100,7 +104,7 @@ describe('Дашборд — запити лише дозволені ролі (
     role = 'RECEPTIONIST';
     renderPage();
     expect(await screen.findByText('В роботі')).toBeInTheDocument();
-    await waitFor(() => expect(requested().some(p => p.startsWith('/warranties'))).toBe(true));
+    await waitFor(() => expect(requested().some(p => p.startsWith('/calendar/slots'))).toBe(true));
     const paths = requested();
     expect(paths.some(p => p.startsWith('/stock-items'))).toBe(false);
     expect(paths.some(p => p.startsWith('/reports'))).toBe(false);
@@ -109,11 +113,36 @@ describe('Дашборд — запити лише дозволені ролі (
     expect(screen.queryByText(/Не вдалося завантажити/)).not.toBeInTheDocument();
   });
 
-  it('власник: усі шість списків', async () => {
+  it('власник: усі пʼять списків і календар; запиту гарантій немає', async () => {
     role = 'OWNER';
     renderPage();
     expect(await screen.findByText('В роботі')).toBeInTheDocument();
-    await waitFor(() => expect(requested()).toHaveLength(6));
+    const prefixes = [
+      '/work-orders',
+      '/stock-items/low',
+      '/invoices',
+      '/reports/revenue',
+      '/maintenance-schedules/upcoming',
+      '/calendar/slots?from=',
+      '/lifts',
+      '/tasks',
+    ];
+    await waitFor(() =>
+      expect(prefixes.filter(pre => !requested().some(p => p.startsWith(pre)))).toEqual([]),
+    );
+    expect(requested().some(p => p.startsWith('/warranties'))).toBe(false);
+    expect(await screen.findByTestId('dashboard-calendar-summary')).toBeInTheDocument();
+  });
+
+  // guards: BR-CAL-013
+  it('бухгалтер: без календаря — ні запитів записів і підйомників, ні картки', async () => {
+    role = 'ACCOUNTANT';
+    renderPage();
+    expect(await screen.findByText('В роботі')).toBeInTheDocument();
+    await waitFor(() => expect(requested().some(p => p.startsWith('/invoices'))).toBe(true));
+    expect(requested().some(p => /^\/(calendar|lifts)/.test(p))).toBe(false);
+    expect(screen.queryByTestId('dashboard-calendar-summary')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Не вдалося завантажити/)).not.toBeInTheDocument();
   });
 });
 
@@ -216,7 +245,12 @@ describe('Дашборд — показники (TECH-DEBT §8, §10 п. 26)', (
     };
     renderPage();
     expect(await screen.findByText('Несплачені рахунки')).toBeInTheDocument();
-    await waitFor(() => expect(requested()).toHaveLength(6));
+    // Показникам потрібні наряди й рахунки (календар дашборду шле свої запити окремо).
+    await waitFor(() =>
+      expect(
+        ['/work-orders', '/invoices'].every(pre => requested().some(p => p.startsWith(pre))),
+      ).toBe(true),
+    );
     expect(kpi('В роботі').value).toBe('—');
     expect(kpi('Несплачені рахунки')).toEqual({ value: '—', trend: '' });
   });

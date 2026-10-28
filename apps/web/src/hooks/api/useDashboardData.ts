@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
-import { WARRANTY_EXPIRING_DAYS } from '@sto/shared';
 import { kyivToday } from '@/lib/format';
 
 // kyivWeekStart needs its own formatter; kyivToday is from lib/format
@@ -17,7 +16,6 @@ export const dashboardKeys = {
   revenue: (weekStart: string, today: string) =>
     ['dashboard-data', 'revenue', weekStart, today] as const,
   maintenance: () => ['dashboard-data', 'maintenance'] as const,
-  expiringWarranties: () => ['dashboard-data', 'expiring-warranties'] as const,
 };
 
 const OPTS = { staleTime: 60_000, gcTime: 5 * 60_000 } as const;
@@ -39,8 +37,8 @@ export const DASHBOARD_READ_ROLES = {
   revenue: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
   /** `GET /maintenance-schedules/upcoming` */
   maintenance: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
-  /** `GET /warranties/expiring` */
-  expiringWarranties: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT'],
+  /** `GET /calendar/slots` (і `GET /lifts`) — підсумки місяця календаря (BR-CAL-013) */
+  calendar: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type DashboardAccess = Record<keyof typeof DASHBOARD_READ_ROLES, boolean>;
@@ -54,7 +52,7 @@ export function dashboardAccess(role: string | null | undefined): DashboardAcces
     invoices: can(DASHBOARD_READ_ROLES.invoices),
     revenue: can(DASHBOARD_READ_ROLES.revenue),
     maintenance: can(DASHBOARD_READ_ROLES.maintenance),
-    expiringWarranties: can(DASHBOARD_READ_ROLES.expiringWarranties),
+    calendar: can(DASHBOARD_READ_ROLES.calendar),
   };
 }
 
@@ -108,16 +106,6 @@ export function useDashboardMaintenance(enabled: boolean) {
   return useQuery({
     queryKey: dashboardKeys.maintenance(),
     queryFn: ({ signal }) => apiFetch('/maintenance-schedules/upcoming?days=30', { signal }),
-    enabled,
-    ...OPTS,
-  });
-}
-
-export function useDashboardExpiringWarranties(enabled: boolean) {
-  return useQuery({
-    queryKey: dashboardKeys.expiringWarranties(),
-    queryFn: ({ signal }) =>
-      apiFetch(`/warranties/expiring?days=${WARRANTY_EXPIRING_DAYS}`, { signal }),
     enabled,
     ...OPTS,
   });

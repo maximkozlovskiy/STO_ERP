@@ -38,11 +38,6 @@
     "seasonal": "Seasonal service",
     "overdue": "Overdue"
   },
-  "warranties": {
-    "title": "Expiring warranties ({{n}})",
-    "client": "Client",
-    "workOrder": "Work order #{{number}}"
-  },
   "quickActionsCard": {
     "title": "Quick actions",
     "configure": "Configure",
@@ -51,5 +46,10 @@
   },
   "chart": {
     "revenue": "Revenue (excl. VAT)"
+  },
+  "calendar": {
+    "title": "Calendar — {{month}}",
+    "open": "Open calendar",
+    "loadError": "Could not load the calendar for this month."
   }
 }

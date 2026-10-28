@@ -10,10 +10,11 @@ import {
   useDashboardInvoices,
   useDashboardRevenue,
   useDashboardMaintenance,
-  useDashboardExpiringWarranties,
   dashboardAccess,
 } from '@/hooks/api/useDashboardData';
-import { type Warranty as ExpiringWarranty } from '@/hooks/api/useWarranties';
+import { CalendarMonthSummary } from '../calendar/CalendarMonthSummary';
+import { useMonthSummaryData } from '../calendar/useMonthSummaryData';
+import { fmtKyivMonthYear } from '../calendar/calendar.utils';
 import { useDashboardStream } from '@/hooks/useDashboardStream';
 import Link from 'next/link';
 import {
@@ -28,7 +29,7 @@ import {
   ShoppingCart,
   Receipt,
   CalendarClock,
-  ShieldCheck,
+  CalendarDays,
   Settings2,
   Check,
 } from 'lucide-react';
@@ -186,9 +187,9 @@ export default function DashboardPage() {
     isError: revenueError,
   } = useDashboardRevenue(enabled && canViewRevenue);
   const { data: maintenanceData } = useDashboardMaintenance(enabled && access.maintenance);
-  const { data: expiringWarrantiesData } = useDashboardExpiringWarranties(
-    enabled && access.expiringWarranties,
-  );
+  // Підсумки календаря за поточний місяць (BR-CAL-013) — на місці колишнього віджета гарантій.
+  const calendarMonth = kyivToday().slice(0, 7);
+  const monthSummary = useMonthSummaryData(calendarMonth, enabled && access.calendar);
   const loading = ordersLoading || lowStockLoading || invoicesLoading || revenueLoading;
 
   // T9: раніше error ніколи не виставлявся → помилка запиту тихо показувала 0/«нема даних»
@@ -278,8 +279,6 @@ export default function DashboardPage() {
     ? (maintenanceData as MaintenanceSchedule[])
     : (EMPTY_MAINTENANCE as MaintenanceSchedule[]);
   // Гарантії, що закінчуються (поріг WARRANTY_EXPIRING_DAYS) — endpoint повертає {items,total}.
-  const expiringWarranties: ExpiringWarranty[] =
-    (expiringWarrantiesData as { items?: ExpiringWarranty[] } | undefined)?.items ?? [];
   // sto-optimize: kyivToday() обчислюється раз для всього компонента (mount-stable).
   // Раніше викликалась всередині .map() для upcomingTO → kyivToday() inside hot-path
   // (new Date() + Intl.format() per row). Empty deps — поточна дата на mount достатня
@@ -514,45 +513,39 @@ export default function DashboardPage() {
             </Card>
           )}
 
-          {/* Гарантії, що закінчуються (поріг WARRANTY_EXPIRING_DAYS) — клон «Наближається ТО» */}
-          {expiringWarranties.length > 0 && (
-            <Card className="mb-6">
+          {/* Календар — підсумки поточного місяця (BR-CAL-013); ролям без календаря картки немає */}
+          {access.calendar && (
+            <Card className="mb-6" data-testid="dashboard-calendar-summary">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-warning" />
-                  {t('warranties.title', { n: expiringWarranties.length })}
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <CalendarDays className="h-4 w-4 text-primary" />
+                    {t('calendar.title', { month: fmtKyivMonthYear(`${calendarMonth}-01`) })}
+                  </CardTitle>
+                  <Link
+                    href="/calendar/?view=month"
+                    className="text-[12px] text-primary hover:underline font-medium"
+                  >
+                    {t('calendar.open')}
+                  </Link>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="divide-y divide-border">
-                  {expiringWarranties.slice(0, 8).map(w => {
-                    const dateStr = w.expiresAt ? fmtDate(w.expiresAt) : null;
-                    const daysLeft = Math.ceil(
-                      (new Date(w.expiresAt).getTime() - Date.now()) / 86_400_000,
-                    );
-                    const soon = daysLeft <= 7;
-                    return (
-                      <div key={w.id} className="flex items-center justify-between py-2">
-                        <div className="min-w-0">
-                          <p className="text-[13px] font-medium text-foreground truncate">
-                            {w.counterpartyName ?? t('warranties.client')}
-                          </p>
-                          <p className="text-[12px] text-muted-foreground truncate">
-                            {w.description ||
-                              t('warranties.workOrder', { number: w.workOrderNumber ?? '' })}
-                          </p>
-                        </div>
-                        {dateStr && (
-                          <span
-                            className={`text-[12px] font-medium px-2 py-0.5 rounded-md whitespace-nowrap ${soon ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning'}`}
-                          >
-                            {dateStr}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                {monthSummary.loading ? (
+                  <PageSpinner />
+                ) : monthSummary.error ? (
+                  <p className="text-sm text-destructive-text">{t('calendar.loadError')}</p>
+                ) : (
+                  <CalendarMonthSummary
+                    yearMonth={calendarMonth}
+                    monthSlots={monthSummary.monthSlots}
+                    lifts={monthSummary.lifts}
+                    tasks={monthSummary.tasks}
+                    windowStart={monthSummary.windowStart}
+                    windowEnd={monthSummary.windowEnd}
+                    nowMs={monthSummary.nowMs}
+                  />
+                )}
               </CardContent>
             </Card>
           )}
