@@ -117,4 +117,12 @@ describe('CalendarDayList (BR-CAL-014)', () => {
     expect(onOpenTask).toHaveBeenCalledWith(task);
     expect(screen.getByText('На цей день записів немає.')).toBeInTheDocument();
   });
+
+  // Bug #989 (клас #855): ширини jsdom не міряє — стережемо класи, що тримають таблицю в екрані.
+  it('довга примітка переноситься будь-де, час — в один рядок', () => {
+    const long = 'Ж'.repeat(300);
+    renderList([slot('a', '11:00', '13:00', { notes: long })]);
+    expect(screen.getByText(long).closest('td')).toHaveClass('wrap-anywhere');
+    expect(screen.getByRole('button', { name: /11:00–13:00/ })).toHaveClass('whitespace-nowrap');
+  });
 });

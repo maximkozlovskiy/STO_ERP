@@ -144,7 +144,7 @@ export const CalendarDayList = memo(function CalendarDayList({
                             e.stopPropagation();
                             onOpenSlot(s);
                           }}
-                          className="tabular-nums font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                          className="whitespace-nowrap tabular-nums font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                           aria-label={t('day.list.openAria', { time })}
                         >
                           {time}
@@ -191,7 +191,10 @@ export const CalendarDayList = memo(function CalendarDayList({
                       <td className={`${TD} text-foreground`}>
                         {s.employeeName || <span className="text-muted-foreground">—</span>}
                       </td>
-                      <td className={`${TD} text-muted-foreground`}>{s.notes || '—'}</td>
+                      {/* wrap-anywhere: «слово» без пробілів не розтягує таблицю (Bug #989, #855) */}
+                      <td className={`${TD} text-muted-foreground wrap-anywhere`}>
+                        {s.notes || '—'}
+                      </td>
                     </tr>
                   );
                 })}
