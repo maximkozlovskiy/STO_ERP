@@ -304,24 +304,7 @@ export class CalendarService {
     const slots = await this.prisma.calendarSlot.findMany({
       where,
       orderBy: { startAt: 'asc' },
-      include: {
-        counterparty: {
-          select: { firstName: true, lastName: true, companyName: true, phone: true },
-        },
-        vehicle: { select: { make: true, model: true, licensePlate: true } },
-        workOrder: {
-          select: {
-            number: true,
-            status: true,
-            deletedAt: true,
-            counterpartyId: true,
-            counterparty: {
-              select: { firstName: true, lastName: true, companyName: true, phone: true },
-            },
-            vehicle: { select: { make: true, model: true, licensePlate: true } },
-          },
-        },
-      },
+      include: SLOT_INCLUDE,
       take,
     });
 
@@ -624,24 +607,7 @@ export class CalendarService {
               endAt,
               ...(dto.notes !== undefined && { notes: dto.notes }),
             },
-            include: {
-              counterparty: {
-                select: { firstName: true, lastName: true, companyName: true, phone: true },
-              },
-              vehicle: { select: { make: true, model: true, licensePlate: true } },
-              workOrder: {
-                select: {
-                  number: true,
-                  status: true,
-                  deletedAt: true,
-                  counterpartyId: true,
-                  counterparty: {
-                    select: { firstName: true, lastName: true, companyName: true, phone: true },
-                  },
-                  vehicle: { select: { make: true, model: true, licensePlate: true } },
-                },
-              },
-            },
+            include: SLOT_INCLUDE,
           });
         },
         { timeout: TRANSACTION_TIMEOUT_MS },

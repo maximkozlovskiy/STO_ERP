@@ -5,7 +5,7 @@ import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from './pricing.service';
-import type { PaginatedGoodBatchesDto } from '../goods/goods.dto';
+import { toPriceHistoryRow } from './price-history.mapper';
 
 /**
  * remainingQty/receivedQty — Float у схемі (підтримує дробові одиниці: літри мастила тощо).
@@ -90,26 +90,20 @@ export class BatchService {
       good: { ...good, salePrice: Number(good.salePrice) },
       avgCostPrice: avgCost,
       batches,
-      priceHistory: priceHistory.map(h => ({
-        id: h.id,
-        oldPrice: h.oldPrice != null ? Number(h.oldPrice) : null,
-        newPrice: Number(h.newPrice),
-        costPrice: h.costPrice != null ? Number(h.costPrice) : null,
-        reason: h.reason,
-        createdAt: h.createdAt,
-      })),
+      priceHistory: priceHistory.map(toPriceHistoryRow),
     };
   }
 
   /**
-   * Партії товару `{ items, total }`. Товар перевіряємо в org ПЕРЕД запитом: інакше помилковий
+   * Партії товару `{ items, total }` (форма `PaginatedGoodBatchesDto` — без імпорту з goods.dto:
+   * той імпортує `StockBatchDto` звідси, і імпорт дав би цикл). Товар перевіряємо в org ПЕРЕД запитом: інакше помилковий
    * goodId ховається за «Немає партій». `total` — справжній COUNT, а не `items.length`.
    */
   async getGoodBatchesPage(
     orgId: string,
     goodId: string,
     warehouseId?: string,
-  ): Promise<PaginatedGoodBatchesDto> {
+  ): Promise<{ items: StockBatchDto[]; total: number }> {
     const good = await this.prisma.good.findFirst({
       where: { id: goodId, orgId, deletedAt: null },
       select: { id: true },

@@ -24,6 +24,7 @@ import {
 } from './goods.dto';
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 import { GoodStatusesService } from '../good-statuses/good-statuses.service';
+import { toPriceHistoryRow } from '../inventory/price-history.mapper';
 
 // §2.1 Auth: purchasePrice (закупівельна ціна) — фінансово чутливе поле.
 // MECHANIC/RECEPTIONIST бачать каталог запчастин (Roles на @Get/findAll/findOne),
@@ -896,15 +897,7 @@ export class GoodsService {
       }),
       this.prisma.priceHistory.count({ where: { orgId, goodId } }),
     ]);
-    const items = rows.map(h => ({
-      id: h.id,
-      oldPrice: h.oldPrice != null ? Number(h.oldPrice) : null,
-      newPrice: Number(h.newPrice),
-      costPrice: h.costPrice != null ? Number(h.costPrice) : null,
-      reason: h.reason,
-      createdAt: h.createdAt,
-    }));
-    return { items, total };
+    return { items: rows.map(toPriceHistoryRow), total };
   }
 
   async stockTotals(
