@@ -421,12 +421,17 @@ describe('Вид «День» — чернетка запису', () => {
       );
     }
     renderWithQueryClient(<PendingHarness />);
-    const text = await screen.findByText('10:00–12:00');
-    expect(text).toHaveAttribute('role', 'button');
-    fireEvent.keyDown(text, { key: 'a' });
+    await screen.findByText('10:00–12:00');
+    // Сітка перемонтовується, коли довантаження дня завершується: у повному прогоні знайдений
+    // елемент уже від'єднаний, і подія на ньому нікуди не доходить. Тому — дочекатися оновлень і
+    // шукати елемент заново перед кожною подією.
+    await act(async () => {});
+    const text = () => screen.getByText('10:00–12:00');
+    expect(text()).toHaveAttribute('role', 'button');
+    fireEvent.keyDown(text(), { key: 'a' });
     expect(open).not.toHaveBeenCalled();
-    fireEvent.keyDown(text, { key: 'Enter' });
-    fireEvent.keyDown(text, { key: ' ' });
+    fireEvent.keyDown(text(), { key: 'Enter' });
+    fireEvent.keyDown(text(), { key: ' ' });
     expect(open).toHaveBeenCalledTimes(2);
   });
 });
