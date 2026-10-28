@@ -195,5 +195,22 @@ describe('легенда і дані задач календаря', () => {
       await waitFor(() => expect(result.current.dayTasks).toHaveLength(0));
       expect(apiFetchMock).toHaveBeenCalledTimes(2);
     });
+
+    // guards: BR-CAL-013 — Bug #988: підсумки «Місяця» рахують увесь `tasks`
+    it('до відповіді нового періоду задач попереднього не віддає', async () => {
+      const { result, rerender } = renderHook(({ date }) => useCalendarTasks('month', date), {
+        initialProps: { date: '2026-10-05' },
+      });
+      await waitFor(() => expect(result.current.tasks).toHaveLength(1));
+
+      let resolveNext: (v: unknown) => void = () => {};
+      apiFetchMock.mockReturnValue(new Promise(r => (resolveNext = r)));
+      rerender({ date: '2026-11-05' });
+      expect(result.current.tasks).toHaveLength(0);
+
+      const nov = task({ id: 't-nov', dueAt: '2026-11-10T10:00:00.000Z' });
+      await act(async () => resolveNext({ items: [nov], total: 1, page: 1, limit: 200 }));
+      expect(result.current.tasks.map(x => x.id)).toEqual(['t-nov']);
+    });
   });
 });

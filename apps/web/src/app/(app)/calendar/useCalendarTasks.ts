@@ -7,6 +7,8 @@ import { taskListPath, type PaginatedTasks } from '@/hooks/api/useTasks';
 import type { CalView } from './calendar.types';
 import { tasksByDay, tasksOfDay, type CalendarTask } from './calendar-tasks';
 
+const NO_TASKS: CalendarTask[] = [];
+
 /** Найбільша сторінка `GET /tasks` (`@Max(200)` у DTO). */
 const TASKS_PER_PAGE = 200;
 /** Запобіжник: більше сторінок за один період не читаємо (25 × 200 = 5000 задач). */
@@ -48,15 +50,24 @@ export function calendarTaskRange(
  * отримує подію змін (`notifyCalendarChanged` — після будь-якої дії із задачею).
  */
 export function useCalendarTasks(view: CalView, date: string) {
-  const [tasks, setTasks] = useState<CalendarTask[]>([]);
   const range = calendarTaskRange(view, date);
   const from = range?.from ?? '';
   const to = range?.to ?? '';
+  // Задачі разом із періодом, для якого їх завантажено: до відповіді нового періоду віддаємо
+  // порожньо, а не задачі попереднього — підсумки «Місяця» рахують увесь масив (Bug #988).
+  const periodKey = `${from}|${to}`;
+  const [loaded, setLoaded] = useState<{ key: string; items: CalendarTask[] }>({
+    key: '',
+    items: [],
+  });
+  const tasks = loaded.key === periodKey ? loaded.items : NO_TASKS;
   // Номер останнього запиту: пізня відповідь попереднього дня не перезаписує новий.
   const reqRef = useRef(0);
 
   const load = useCallback(() => {
     const req = ++reqRef.current;
+    const key = `${from}|${to}`;
+    const setTasks = (items: CalendarTask[]) => setLoaded({ key, items });
     if (!from || !to) {
       setTasks([]);
       return;
