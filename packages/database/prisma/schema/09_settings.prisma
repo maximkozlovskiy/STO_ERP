@@ -47,6 +47,13 @@ model OrganisationSettings {
   // Частка ФОП механіків у виручці з робіт (для звіту рентабельності). 0.4=40% — типово для UA SMB.
   // Читається reports.profitability per-org (НЕ hardcoded). clamp [0,1].
   laborCostRatio                   Decimal         @default(0.4) @db.Decimal(4, 3)
+  // Звіт P&L (BR-RPT-030): які операції каси зі статтею рахуються. Дозволені значення —
+  // PNL_INCOME_CASH_REASON_OPTIONS / PNL_EXPENSE_CASH_REASON_OPTIONS у @sto/shared; типові =
+  // поведінка до налаштувань (лише ручне внесення / лише «Витрата»).
+  pnlIncomeCashReasons             CashOperationReason[] @default([MANUAL_IN])
+  pnlExpenseCashReasons            CashOperationReason[] @default([EXPENSE])
+  // Попереджати «зарплату не розраховано» й про місяці періоду, що ще не почалися.
+  pnlWarnFuturePayroll             Boolean         @default(false)
   // Скільки днів зберігати логи зовнішніх обмінів (IntegrationLog). Читається purge-scheduler
   // (НЕ hardcoded). Append-only таблиця → щоденне очищення старших за N днів. clamp [1,365].
   integrationLogRetentionDays      Int             @default(30)

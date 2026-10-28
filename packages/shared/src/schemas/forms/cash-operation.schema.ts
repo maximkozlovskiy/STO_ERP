@@ -222,3 +222,35 @@ export type CashReversalFormValues = z.output<typeof cashReversalSchema>;
 export const paymentReversalSchema = cashReversalSchema;
 export type PaymentReversalFormInput = CashReversalFormInput;
 export type PaymentReversalFormValues = CashReversalFormValues;
+
+/**
+ * Звіт P&L (BR-RPT-030): приводи каси, операції яких зі статтею можна рахувати «іншим доходом»
+ * (стаття типу INCOME) і витратою (стаття типу EXPENSE) — налаштування організації
+ * `pnlIncomeCashReasons` / `pnlExpenseCashReasons` (рішення власника 2026-10-29). Виплата
+ * зарплати, оплата постачальнику й повернення клієнту не пропонуються: вони вже в P&L як
+ * зарплата, собівартість запчастин і виручка.
+ */
+export const PNL_INCOME_CASH_REASON_OPTIONS = [
+  'MANUAL_IN',
+  'SALE_PAYMENT',
+  'OWNER_IN',
+  'SUPPLIER_REFUND_IN',
+] as const satisfies readonly CashReasonValue[];
+export const PNL_EXPENSE_CASH_REASON_OPTIONS = [
+  'EXPENSE',
+  'MANUAL_OUT',
+  'ADVANCE_ISSUE',
+  'OWNER_OUT',
+] as const satisfies readonly CashReasonValue[];
+/** «Витрата» рахується завжди — у налаштуваннях її не зняти. */
+export const PNL_EXPENSE_CASH_REASON_REQUIRED = 'EXPENSE' satisfies CashReasonValue;
+/** Оплата клієнта вже є у виручці нарядів: увімкнена як «інший дохід» — порахується двічі. */
+export const PNL_DOUBLE_COUNT_INCOME_REASONS = [
+  'SALE_PAYMENT',
+] as const satisfies readonly CashReasonValue[];
+/** Типові значення налаштувань — як у схемі (`@default`). */
+export const PNL_SETTINGS_DEFAULTS = {
+  pnlIncomeCashReasons: ['MANUAL_IN'] as CashReasonValue[],
+  pnlExpenseCashReasons: ['EXPENSE'] as CashReasonValue[],
+  pnlWarnFuturePayroll: false,
+};
