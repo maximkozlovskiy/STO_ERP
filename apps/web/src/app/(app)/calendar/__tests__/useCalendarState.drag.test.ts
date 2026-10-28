@@ -327,3 +327,42 @@ describe('useCalendarState — відмова перетягування без 
     expect(toast.error).toHaveBeenCalledWith('Failed to move the record');
   });
 });
+
+describe('useCalendarState — повернута сітка «Години» (BR-CAL-014)', () => {
+  // Вісь часу — вертикальна: тіло сітки 08–20 заввишки 12 × 56 px, година = 56 px.
+  async function renderHours() {
+    params = new URLSearchParams('view=day&date=2026-10-20&layout=hours');
+    const hook = await renderDay();
+    (hook.result.current.hoursTrackRef as { current: unknown }).current = {
+      getBoundingClientRect: () => ({ top: 0, height: 12 * 56 }),
+    };
+    return hook;
+  }
+  const drop = (dx: number, dy: number, liftId = 'lift-1') =>
+    ({
+      active: { id: 's-1' },
+      delta: { x: dx, y: dy },
+      over: { data: { current: { liftId } } },
+    }) as unknown as DragEndEvent;
+
+  // guards: BR-CAL-014
+  it('перетягування вниз на 56 px зсуває запис на годину пізніше', async () => {
+    daySlots = [SLOT];
+    const { result } = await renderHours();
+    await act(() => result.current.handleDragEnd(drop(0, 56)));
+    expect(patchCall()?.[0]).toBe('/calendar/slots/s-1');
+    expect(patchBody()?.startAt).toBe(new Date('2026-10-20T11:00:00+03:00').toISOString());
+  });
+
+  // guards: BR-CAL-014
+  it('вбік — лише зміна підйомника: горизонтальний зсув час не змінює', async () => {
+    daySlots = [SLOT];
+    const { result } = await renderHours();
+    await act(() => result.current.handleDragEnd(drop(500, 0)));
+    expect(patchCall()).toBeUndefined();
+    await act(() => result.current.handleDragEnd(drop(500, 0, 'lift-2')));
+    const body = patchBody()!;
+    expect(body.liftId).toBe('lift-2');
+    expect(body.startAt ?? SLOT.startAt).toBe(SLOT.startAt);
+  });
+});

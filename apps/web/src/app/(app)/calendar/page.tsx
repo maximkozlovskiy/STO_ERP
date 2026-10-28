@@ -12,6 +12,7 @@ import {
   CalendarRange,
   ListPlus,
   Rows3,
+  Columns3,
   List,
 } from 'lucide-react';
 import { isTaskManagerRole } from '@sto/shared';
@@ -37,6 +38,7 @@ import { CalendarSlotModal } from './CalendarSlotModal';
 import { CalendarDayGrid } from './CalendarDayGrid';
 import { CalendarMonthSummary } from './CalendarMonthSummary';
 import { CalendarDayList } from './CalendarDayList';
+import { CalendarDayGridHours } from './CalendarDayGridHours';
 import type { DayLayout } from './calendar.types';
 import { useCalendarState, EMPTY_FORM } from './useCalendarState';
 import { useCalendarTasks } from './useCalendarTasks';
@@ -62,6 +64,7 @@ const VIEW_SWITCHER: ReadonlyArray<
 // Режими виду «День» (BR-CAL-014): планувальник — типовий.
 const DAY_LAYOUTS: ReadonlyArray<readonly [DayLayout, string, typeof CalendarDays]> = [
   ['lifts', 'day.layout.lifts', Rows3],
+  ['hours', 'day.layout.hours', Columns3],
   ['list', 'day.layout.list', List],
 ] as const;
 
@@ -251,10 +254,11 @@ function CalendarPageClient() {
                       aria-pressed={cs.dayLayout === l}
                       title={t(labelKey)}
                       onClick={() => cs.setDayLayout(l)}
-                      className={`flex items-center gap-1.5 h-9 px-3 transition-colors ${cs.dayLayout === l ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted-foreground hover:bg-secondary'}`}
+                      aria-label={t(labelKey)}
+                      className={`flex items-center gap-1.5 h-9 px-3 whitespace-nowrap transition-colors ${cs.dayLayout === l ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted-foreground hover:bg-secondary'}`}
                     >
                       <Icon className="h-4 w-4" aria-hidden="true" />
-                      <span className="hidden 2xl:inline">{t(labelKey)}</span>
+                      <span className="hidden min-[1800px]:inline">{t(labelKey)}</span>
                     </button>
                   ))}
                 </div>
@@ -364,7 +368,10 @@ function CalendarPageClient() {
               onOpenTask={openTask}
             />
           )}
-          {cs.calView === 'day' && cs.dayLayout !== 'list' && (
+          {cs.calView === 'day' && cs.dayLayout === 'hours' && (
+            <CalendarDayGridHours state={cs} tasks={ct.dayTasks} onOpenTask={openTask} />
+          )}
+          {cs.calView === 'day' && cs.dayLayout === 'lifts' && (
             <CalendarDayGrid state={cs} tasks={ct.dayTasks} onOpenTask={openTask} />
           )}
 

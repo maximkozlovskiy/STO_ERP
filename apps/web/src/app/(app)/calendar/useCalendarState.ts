@@ -324,6 +324,10 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   pendingResizingRef.current = pendingResizing;
 
   const timelineRef = useRef<HTMLDivElement>(null);
+  // Тіло повернутої сітки (BR-CAL-014): уздовж нього йде час, прокрутка — у `getBoundingClientRect`.
+  const hoursTrackRef = useRef<HTMLDivElement>(null);
+  const axisRef = useRef<'x' | 'y'>('x');
+  axisRef.current = dayLayout === 'hours' ? 'y' : 'x';
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -672,14 +676,35 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
   const dynWindowStartRef = useRef(dynWindowStart);
   dynWindowStartRef.current = dynWindowStart;
 
-  const pxToDecimalHours = useCallback((clientX: number): number => {
-    const rect = timelineRef.current?.getBoundingClientRect();
-    if (!rect) return workStartHourRef.current;
-    const timelineX = clientX - rect.left - SIDEBAR_W;
-    const timelineW = rect.width - SIDEBAR_W;
-    const raw = workStartHourRef.current + (timelineX / timelineW) * dynTotalHoursRef.current;
-    return Math.max(workStartHourRef.current, Math.min(dynWindowEndRef.current - 1, raw));
+  /**
+   * Вісь часу в клієнтських px: у планувальнику — ширина сітки без колонки підйомників, у
+   * повернутій сітці — висота тіла з годинами (BR-CAL-014). null — сітки ще немає.
+   */
+  const axisGeom = useCallback((): { start: number; len: number } | null => {
+    if (axisRef.current === 'y') {
+      const r = hoursTrackRef.current?.getBoundingClientRect();
+      return r && r.height > 0 ? { start: r.top, len: r.height } : null;
+    }
+    const r = timelineRef.current?.getBoundingClientRect();
+    return r && r.width > SIDEBAR_W
+      ? { start: r.left + SIDEBAR_W, len: r.width - SIDEBAR_W }
+      : null;
   }, []);
+  const pointerPos = useCallback(
+    (e: { clientX: number; clientY: number }) => (axisRef.current === 'y' ? e.clientY : e.clientX),
+    [],
+  );
+
+  const pxToDecimalHours = useCallback(
+    (pos: number): number => {
+      const geom = axisGeom();
+      if (!geom) return workStartHourRef.current;
+      const raw =
+        workStartHourRef.current + ((pos - geom.start) / geom.len) * dynTotalHoursRef.current;
+      return Math.max(workStartHourRef.current, Math.min(dynWindowEndRef.current - 1, raw));
+    },
+    [axisGeom],
+  );
 
   const showAddRef = useRef(showAdd);
   showAddRef.current = showAdd;
@@ -740,7 +765,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         edge,
         origStartH: kyivHours(slot.startAt),
         origEndH: kyivHours(slot.endAt),
-        pointerStartX: e.clientX,
+        pointerStart: pointerPos(e),
         liftId: slot.liftId ?? null,
         workOrderId: slot.workOrderId ?? null,
       });
@@ -750,7 +775,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         endH: kyivHours(slot.endAt),
       });
     },
-    [slots, canManageSlots],
+    [slots, canManageSlots, pointerPos],
   );
 
   // ── Resize pending slot ───────────────────────────────────────────────────
@@ -764,10 +789,10 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         edge,
         origStartH: p.startH,
         origEndH: p.endH,
-        pointerStartX: e.clientX,
+        pointerStart: pointerPos(e),
       });
     },
-    [],
+    [pointerPos],
   );
 
   const resizingRef = useRef(resizing);
@@ -801,14 +826,14 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       if (dateRef.current < todayKyiv) return;
       const pastClamp =
         dateRef.current === todayKyiv ? minHourRef.current : dynWindowStartRef.current;
-      const startH = Math.max(snapTo15(pxToDecimalHours(e.clientX)), pastClamp);
+      const startH = Math.max(snapTo15(pxToDecimalHours(pointerPos(e))), pastClamp);
       drawingRef.current = { liftId, startH };
       setGhost({ liftId, startH, endH: startH + 1 });
     };
 
     const onMove = (e: PointerEvent) => {
       if (drawingRef.current) {
-        const curH = pxToDecimalHours(e.clientX);
+        const curH = pxToDecimalHours(pointerPos(e));
         const { startH } = drawingRef.current;
         const endH = snapTo15(Math.max(curH, startH + 0.25));
         setGhost(g => (g ? { ...g, endH } : null));
@@ -816,11 +841,9 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       }
       const pr = pendingResizingRef.current;
       if (pr) {
-        const rect = timelineRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        // Inline px→decimal-hours: pxToHours helper removed because it used hardcoded TOTAL_HOURS=12.
-        const deltaH =
-          ((e.clientX - pr.pointerStartX) / (rect.width - SIDEBAR_W)) * dynTotalHoursRef.current;
+        const geom = axisGeom();
+        if (!geom) return;
+        const deltaH = ((pointerPos(e) - pr.pointerStart) / geom.len) * dynTotalHoursRef.current;
         const todayKyiv2 = toDateString(new Date());
         const pastFloor =
           dateRef.current === todayKyiv2 ? minHourRef.current : dynWindowStartRef.current;
@@ -839,11 +862,9 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       }
       const res = resizingRef.current;
       if (res) {
-        const rect = timelineRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        // Inline px→decimal-hours (see above — pxToHours used hardcoded TOTAL_HOURS=12).
-        const deltaH =
-          ((e.clientX - res.pointerStartX) / (rect.width - SIDEBAR_W)) * dynTotalHoursRef.current;
+        const geom = axisGeom();
+        if (!geom) return;
+        const deltaH = ((pointerPos(e) - res.pointerStart) / geom.len) * dynTotalHoursRef.current;
         if (res.edge === 'start') {
           const newStartH = snapTo15(
             Math.max(
@@ -867,7 +888,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     const onUp = async (e: PointerEvent) => {
       if (drawingRef.current) {
         const { liftId, startH } = drawingRef.current;
-        const rawEndH = pxToDecimalHours(e.clientX);
+        const rawEndH = pxToDecimalHours(pointerPos(e));
         const endH = rawEndH - startH >= 0.25 ? snapTo15(rawEndH) : startH + 1;
         const clampedEnd = Math.min(endH, dynWindowEndRef.current);
         drawingRef.current = null;
@@ -969,7 +990,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       window.removeEventListener('pointerup', onUpListener);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [pxToDecimalHours, load, t, invalidateWorkOrders]);
+  }, [pxToDecimalHours, axisGeom, pointerPos, load, t, invalidateWorkOrders]);
 
   // ── Drag-and-drop ─────────────────────────────────────────────────────────
 
@@ -981,10 +1002,10 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       if (active.id === PENDING_DRAG_ID) {
         const p = pendingSlotRef.current;
         if (!p) return;
-        const containerWidth = timelineRef.current?.getBoundingClientRect().width ?? 0;
-        if (!containerWidth) return;
-        const timelineWidth = containerWidth - SIDEBAR_W;
-        const shiftH = snapTo15((delta.x / timelineWidth) * dynTotalHoursRef.current);
+        const geom = axisGeom();
+        if (!geom) return;
+        const along = axisRef.current === 'y' ? delta.y : delta.x;
+        const shiftH = snapTo15((along / geom.len) * dynTotalHoursRef.current);
         const newLiftId = over?.data?.current?.liftId ?? p.liftId;
         const newStartH = Math.max(
           dynWindowStartRef.current,
@@ -1006,10 +1027,11 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
       // BR-WO-027: запис наряду не в редагованому статусі не перетягується (сервер відповів би 400).
       if (!slot || !canManageSlots || workOrderTimeLock(slot)) return;
       const newLiftId: string | null = over?.data?.current?.liftId ?? slot.liftId ?? null;
-      const containerWidth = timelineRef.current?.getBoundingClientRect().width ?? 0;
-      if (!containerWidth) return;
-      const timelineWidth = containerWidth - SIDEBAR_W;
-      const shiftHours = (delta.x / timelineWidth) * dynTotalHoursRef.current;
+      const geom = axisGeom();
+      if (!geom) return;
+      // Уздовж осі часу: у повернутій сітці — по вертикалі, поперек — зміна підйомника (BR-CAL-014).
+      const along = axisRef.current === 'y' ? delta.y : delta.x;
+      const shiftHours = (along / geom.len) * dynTotalHoursRef.current;
       if (Math.abs(shiftHours) < 0.08 && newLiftId === slot.liftId) return;
       const origStart = new Date(slot.startAt);
       const origEnd = new Date(slot.endAt);
@@ -1081,7 +1103,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
         toast.error(e instanceof Error ? e.message : t('slot.errMoveFallback'));
       }
     },
-    [slots, load, nowMs, minHour, t, canManageSlots, invalidateWorkOrders],
+    [slots, load, nowMs, minHour, t, canManageSlots, invalidateWorkOrders, axisGeom],
   );
 
   // ── Remove slot ───────────────────────────────────────────────────────────
@@ -1448,6 +1470,7 @@ export function useCalendarState({ canManageSlots = true }: UseCalendarStateOpti
     // DnD + handlers
     sensors,
     timelineRef,
+    hoursTrackRef,
     handleDragEnd,
     handleResizeStart,
     handlePendingResizeStart,

@@ -27,7 +27,31 @@ import {
 import { isCancelledWorkOrderSlot, slotDeleteLockHint, workOrderTimeLock } from './calendar-day';
 import { PENDING_DRAG_ID } from './useCalendarState';
 
+/** Найменша видима довжина блоку запису, год — крок сітки 15 хв. */
 const MIN_BLOCK_H = 0.25;
+
+/**
+ * Вісь часу блоку (BR-CAL-014): у планувальнику час іде вздовж рядка (`left`/`width`), у повернутій
+ * сітці — вздовж колонки (`top`/`height`). Решта розмітки блоку однакова.
+ */
+export function axisPos(vertical: boolean, startPct: number, sizePct: number): CSSProperties {
+  return vertical
+    ? { top: `${startPct}%`, height: `${sizePct}%` }
+    : { left: `${startPct}%`, width: `${sizePct}%` };
+}
+
+/** Відступ блоку поперек осі часу: у рядку — зверху й знизу, у колонці — ліворуч і праворуч. */
+const crossInset = (vertical: boolean) => (vertical ? 'left-1 right-1' : 'top-1 bottom-1');
+
+/** Ручка зміни межі запису: початок — зліва / зверху, кінець — справа / знизу. */
+function handleClass(vertical: boolean, edge: 'start' | 'end', hover: string): string {
+  const pos = vertical
+    ? `left-0 right-0 h-2 cursor-row-resize ${edge === 'start' ? 'top-0 rounded-t' : 'bottom-0 rounded-b'}`
+    : `top-0 bottom-0 w-2 cursor-col-resize ${edge === 'start' ? 'left-0 rounded-l' : 'right-0 rounded-r'}`;
+  return `absolute ${pos} z-20 ${hover} flex items-center justify-center`;
+}
+
+const gripClass = (vertical: boolean) => (vertical ? 'h-0.5 w-4' : 'w-0.5 h-4');
 
 // ─── DraggableSlot ───────────────────────────────────────────────────────────
 
@@ -43,6 +67,8 @@ interface DraggableSlotProps {
   canManage: boolean;
   windowStart: number;
   totalHours: number;
+  /** Повернута сітка: час — по вертикалі (BR-CAL-014). */
+  vertical?: boolean;
   onEdit: (slot: CalendarSlot) => void;
   onResizeStart: (
     e: ReactPointerEvent<HTMLDivElement>,
@@ -58,6 +84,7 @@ export const DraggableSlot = memo(function DraggableSlot({
   canManage,
   windowStart,
   totalHours,
+  vertical = false,
   onEdit,
   onResizeStart,
 }: DraggableSlotProps) {
@@ -102,8 +129,7 @@ export const DraggableSlot = memo(function DraggableSlot({
     ? { ...listeners, ...attributes, onKeyDown }
     : { role: 'button', tabIndex: 0, onKeyDown };
   const style: CSSProperties = {
-    left: `${left}%`,
-    width: `${width}%`,
+    ...axisPos(vertical, left, width),
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 50 : 10,
@@ -149,12 +175,12 @@ export const DraggableSlot = memo(function DraggableSlot({
       data-editing={isEditing || undefined}
       // Світлий фон і смуга категорії, темний текст (BR-CAL-011). Блок, що редагується, —
       // бурштинова рамка: amber-600 — 3,2:1 до білого, 5,6:1 до темного фону (WCAG 1.4.11).
-      className={`absolute top-1 bottom-1 rounded border border-border border-l-4 ${barClassName} ${bgClassName} text-foreground text-xs overflow-hidden group select-none ring-offset-1 ring-offset-surface flex flex-col ${isEditing ? 'ring-2 ring-amber-600 shadow-md' : ''}`}
+      className={`absolute ${crossInset(vertical)} rounded border border-border border-l-4 ${barClassName} ${bgClassName} text-foreground text-xs overflow-hidden group select-none ring-offset-1 ring-offset-surface flex flex-col ${isEditing ? 'ring-2 ring-amber-600 shadow-md' : ''}`}
       title={titleTooltip}
     >
       {movable && (
         <div
-          className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-foreground/10 rounded-l flex items-center justify-center"
+          className={handleClass(vertical, 'start', 'hover:bg-foreground/10')}
           onPointerDown={e => {
             e.stopPropagation();
             onResizeStart(e, slot.id, 'start');
@@ -162,7 +188,7 @@ export const DraggableSlot = memo(function DraggableSlot({
           aria-label={t('day.editStart')}
           data-part="resize-start"
         >
-          <div className="w-0.5 h-4 bg-foreground/30 rounded" />
+          <div className={`${gripClass(vertical)} bg-foreground/30 rounded`} />
         </div>
       )}
 
@@ -244,7 +270,7 @@ export const DraggableSlot = memo(function DraggableSlot({
 
       {movable && (
         <div
-          className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-foreground/10 rounded-r flex items-center justify-center"
+          className={handleClass(vertical, 'end', 'hover:bg-foreground/10')}
           onPointerDown={e => {
             e.stopPropagation();
             onResizeStart(e, slot.id, 'end');
@@ -252,7 +278,7 @@ export const DraggableSlot = memo(function DraggableSlot({
           aria-label={t('day.editEnd')}
           data-part="resize-end"
         >
-          <div className="w-0.5 h-4 bg-foreground/30 rounded" />
+          <div className={`${gripClass(vertical)} bg-foreground/30 rounded`} />
         </div>
       )}
     </div>
@@ -265,6 +291,7 @@ interface PendingSlotBlockProps {
   pending: PendingSlot;
   windowStart: number;
   totalHours: number;
+  vertical?: boolean;
   onOpen: () => void;
   onCancel: () => void;
   onPendingResizeStart: (e: ReactPointerEvent<HTMLDivElement>, edge: 'start' | 'end') => void;
@@ -274,6 +301,7 @@ export const PendingSlotBlock = memo(function PendingSlotBlock({
   pending,
   windowStart,
   totalHours,
+  vertical = false,
   onOpen,
   onCancel,
   onPendingResizeStart,
@@ -288,8 +316,7 @@ export const PendingSlotBlock = memo(function PendingSlotBlock({
   });
 
   const style: CSSProperties = {
-    left: `${left}%`,
-    width: `${width}%`,
+    ...axisPos(vertical, left, width),
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.4 : 1,
     zIndex: isDragging ? 50 : 10,
@@ -299,7 +326,7 @@ export const PendingSlotBlock = memo(function PendingSlotBlock({
     <div
       ref={setNodeRef}
       data-pending-slot
-      className="absolute top-1 bottom-1 bg-primary/20 border-2 border-primary rounded flex items-center overflow-hidden group select-none z-10 cursor-grab active:cursor-grabbing"
+      className={`absolute ${crossInset(vertical)} bg-primary/20 border-2 border-primary rounded flex ${vertical ? 'items-start pt-2' : 'items-center'} overflow-hidden group select-none z-10 cursor-grab active:cursor-grabbing`}
       style={style}
       title={t('day.pendingTooltip')}
       // Тягнути за будь-яку точку картки, а не лише за текст часу. Ручки й «скасувати» зупиняють
@@ -308,14 +335,14 @@ export const PendingSlotBlock = memo(function PendingSlotBlock({
       {...listeners}
     >
       <div
-        className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-primary/20 rounded-l flex items-center justify-center"
+        className={handleClass(vertical, 'start', 'hover:bg-primary/20')}
         onPointerDown={e => {
           e.stopPropagation();
           onPendingResizeStart(e, 'start');
         }}
         aria-label={t('day.editStart')}
       >
-        <div className="w-0.5 h-4 bg-primary/60 rounded" />
+        <div className={`${gripClass(vertical)} bg-primary/60 rounded`} />
       </div>
 
       <span
@@ -347,14 +374,14 @@ export const PendingSlotBlock = memo(function PendingSlotBlock({
       </button>
 
       <div
-        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-primary/20 rounded-r flex items-center justify-center"
+        className={handleClass(vertical, 'end', 'hover:bg-primary/20')}
         onPointerDown={e => {
           e.stopPropagation();
           onPendingResizeStart(e, 'end');
         }}
         aria-label={t('day.editEnd')}
       >
-        <div className="w-0.5 h-4 bg-primary/60 rounded" />
+        <div className={`${gripClass(vertical)} bg-primary/60 rounded`} />
       </div>
     </div>
   );
@@ -367,11 +394,13 @@ export const BookingSlotBlock = memo(function BookingSlotBlock({
   windowStart,
   windowEnd,
   totalHours,
+  vertical = false,
 }: {
   slot: BookingSlot;
   windowStart: number;
   windowEnd: number;
   totalHours: number;
+  vertical?: boolean;
 }) {
   const { t } = useTranslation('calendar');
   const startH = kyivHours(slot.startAt);
@@ -387,8 +416,8 @@ export const BookingSlotBlock = memo(function BookingSlotBlock({
     <a
       href="/bookings"
       title={`${t('booking.onlineTooltip', { name: slot.clientName, phone: slot.clientPhone })}\n${timeLabel}`}
-      className="absolute top-1 bottom-1 rounded border-2 border-dashed border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-xs overflow-hidden flex flex-col px-2 py-1 z-10 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
-      style={{ left: `${left}%`, width: `${width}%` }}
+      className={`absolute ${crossInset(vertical)} rounded border-2 border-dashed border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-xs overflow-hidden flex flex-col px-2 py-1 z-10 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors`}
+      style={axisPos(vertical, left, width)}
     >
       <span className="text-[10px] leading-none opacity-75 mb-0.5">{timeLabel}</span>
       <span className="font-medium truncate leading-tight">{slot.clientName}</span>

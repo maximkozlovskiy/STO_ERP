@@ -24,7 +24,6 @@ import type { CalendarTask } from './calendar-tasks';
 // створює новий [] на КОЖНОМУ mount, але reference стабільна між render-ами.
 // Перенесення на module-level зберігає ту саму семантику + 0 alloc per mount.
 const EMPTY_BOOKINGS: BookingSlot[] = [];
-/** Найменша видима ширина блоку запису, год — крок сітки 15 хв. */
 
 // ─── DroppableLiftRow ────────────────────────────────────────────────────────
 

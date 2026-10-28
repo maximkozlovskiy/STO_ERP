@@ -70,4 +70,41 @@ test.describe('Календар — навігація та views', () => {
       await expect(page.locator('h1:has-text("Календар")')).toBeVisible();
     }
   });
+
+  // BR-CAL-014: режими «Дня» — планувальник (типовий), «Години» (рядки — години, колонки —
+  // підйомники), «Список»; вибір пам'ятає браузер — новий захід без ?layout відкриває той самий.
+  test('режими «Дня»: Години і Список, вибір зберігається після нового заходу', async ({
+    page,
+  }) => {
+    await page.goto('/calendar/?view=day');
+    const sw = page.getByTestId('day-layout-switcher');
+    await expect(sw).toBeVisible({ timeout: 20_000 });
+    await expect(sw.getByRole('button', { name: 'Планувальник' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    await sw.getByRole('button', { name: 'Години' }).click();
+    const hours = page.getByTestId('day-grid-hours');
+    await expect(hours).toBeVisible();
+    await expect(hours.getByText('08:00').first()).toBeVisible();
+    await expect(page).toHaveURL(/layout=hours/);
+
+    await sw.getByRole('button', { name: 'Список' }).click();
+    await expect(page.getByTestId('day-list')).toBeVisible();
+    await expect(page).toHaveURL(/layout=list/);
+
+    await page.goto('/calendar/?view=day');
+    await expect(page.getByTestId('day-list')).toBeVisible({ timeout: 20_000 });
+    await expect(
+      page.getByTestId('day-layout-switcher').getByRole('button', { name: 'Список' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+
+    // Повернути типовий — щоб наступні тести бачили планувальник.
+    await page
+      .getByTestId('day-layout-switcher')
+      .getByRole('button', { name: 'Планувальник' })
+      .click();
+    await expect(page).not.toHaveURL(/layout=/);
+  });
 });

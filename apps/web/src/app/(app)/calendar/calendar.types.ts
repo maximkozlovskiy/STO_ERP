@@ -88,7 +88,8 @@ export interface ResizeState {
   edge: 'start' | 'end';
   origStartH: number;
   origEndH: number;
-  pointerStartX: number;
+  /** Координата вказівника вздовж осі часу на початку (X — планувальник, Y — повернута сітка). */
+  pointerStart: number;
   liftId: string | null;
   /** Наряд запису: нові межі запису наряду змінюють його дати (BR-WO-024). */
   workOrderId: string | null;
@@ -99,7 +100,8 @@ export interface PendingResizeState {
   edge: 'start' | 'end';
   origStartH: number;
   origEndH: number;
-  pointerStartX: number;
+  /** Координата вказівника вздовж осі часу на початку (X — планувальник, Y — повернута сітка). */
+  pointerStart: number;
 }
 
 /** Pending online booking displayed on the calendar grid (read-only) */

@@ -38,7 +38,7 @@
     "layout": {
       "label": "Day layout",
       "lifts": "Scheduler",
-      "hours": "Hours × lifts",
+      "hours": "Hours",
       "list": "List"
     },
     "list": {
@@ -54,7 +54,9 @@
       "colNotes": "Notes",
       "noLift": "No lift",
       "openAria": "Open record {{time}}"
-    }
+    },
+    "colTime": "Time",
+    "hintDrawHours": "Press and drag along a lift column to create a slot. Drag the edges to change duration. Click the range to save."
   },
   "booking": {
     "onlineTooltip": "Online booking: {{name}} {{phone}}"
