@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { kyivToday } from '@/lib/format';
+import type { ApiSchema } from '@sto/shared';
 
 // kyivWeekStart needs its own formatter; kyivToday is from lib/format
 const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
@@ -16,6 +17,7 @@ export const dashboardKeys = {
   revenue: (weekStart: string, today: string) =>
     ['dashboard-data', 'revenue', weekStart, today] as const,
   maintenance: () => ['dashboard-data', 'maintenance'] as const,
+  pnl: (monthStart: string, today: string) => ['dashboard-data', 'pnl', monthStart, today] as const,
 };
 
 const OPTS = { staleTime: 60_000, gcTime: 5 * 60_000 } as const;
@@ -33,7 +35,7 @@ export const DASHBOARD_READ_ROLES = {
   lowStock: ['OWNER', 'ADMIN', 'STOREKEEPER'],
   /** `GET /invoices` */
   invoices: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
-  /** `GET /reports/revenue` */
+  /** `GET /reports/revenue` і `GET /reports/pnl` (KPI місяця, BR-RPT-030) — ті самі ролі */
   revenue: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
   /** `GET /maintenance-schedules/upcoming` */
   maintenance: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
@@ -97,6 +99,21 @@ export function useDashboardRevenue(enabled: boolean) {
   return useQuery({
     queryKey: dashboardKeys.revenue(weekStart, today),
     queryFn: ({ signal }) => apiFetch(`/reports/revenue?from=${weekStart}&to=${today}`, { signal }),
+    enabled,
+    ...OPTS,
+  });
+}
+
+/**
+ * P&L поточного київського місяця (BR-RPT-030): KPI «Виручка за місяць (без ПДВ)» і «Чистий прибуток
+ * за місяць». Доступ — `access.revenue` (ті самі ролі, що `GET /reports/pnl`).
+ */
+export function useDashboardPnl(enabled: boolean) {
+  const today = kyivToday();
+  const monthStart = `${today.slice(0, 7)}-01`;
+  return useQuery<ApiSchema<'PnlReportDto'>>({
+    queryKey: dashboardKeys.pnl(monthStart, today),
+    queryFn: ({ signal }) => apiFetch(`/reports/pnl?from=${monthStart}&to=${today}`, { signal }),
     enabled,
     ...OPTS,
   });

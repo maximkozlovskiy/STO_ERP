@@ -9,6 +9,7 @@ import {
   useDashboardLowStock,
   useDashboardInvoices,
   useDashboardRevenue,
+  useDashboardPnl,
   useDashboardMaintenance,
   dashboardAccess,
 } from '@/hooks/api/useDashboardData';
@@ -32,6 +33,7 @@ import {
   CalendarDays,
   Settings2,
   Check,
+  Wallet,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 const RevenueChart = dynamic(() => import('./RevenueChart'), {
@@ -63,6 +65,10 @@ interface KPI {
   inProgressOrders: number | null;
   completedToday: number | null;
   revenueMonth: number | null;
+  /** Чистий прибуток місяця з P&L (BR-RPT-030); `null` — роль без доступу або дані ще йдуть. */
+  netProfitMonth: number | null;
+  /** За поточний місяць зарплату не розраховано — чистий прибуток завищений. */
+  payrollMissing: boolean;
   lowStockCount: number | null;
   unpaidInvoices: number | null;
   unpaidAmount: number | null;
@@ -117,16 +123,7 @@ function fmt(n: number) {
 const EMPTY_REVENUE: readonly RevenueDay[] = Object.freeze([]);
 const EMPTY_MAINTENANCE: readonly MaintenanceSchedule[] = Object.freeze([]);
 
-// Module-level Intl singletons — раніше створювались inline у useEffect (loadData kyivDate
-// callback + monthStart kyivStr + setTodayStr + greeting hour) = 4 формати на кожен mount.
-// Hoist робить кожен виклик дешевим .format() без locale-data init.
 // Sv-SE формат сьогоднішньої дати в Kyiv — централізовано у lib/format.kyivToday().
-const KYIV_YEAR_MONTH_DAY_FMT = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Europe/Kyiv',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
 // Дата в привітанні — мовою інтерфейсу (назви дня й місяця).
 const getFullDateFmt = memoByLocale(
   loc =>
@@ -186,6 +183,9 @@ export default function DashboardPage() {
     isLoading: revenueLoading,
     isError: revenueError,
   } = useDashboardRevenue(enabled && canViewRevenue);
+  // KPI місяця — з P&L поточного місяця (BR-RPT-030). Раніше «виручка за місяць» сумувала рядки
+  // графіка тижня, тобто лише останні 7 днів.
+  const { data: pnlData, isError: pnlError } = useDashboardPnl(enabled && canViewRevenue);
   const { data: maintenanceData } = useDashboardMaintenance(enabled && access.maintenance);
   // Підсумки календаря за поточний місяць (BR-CAL-013) — на місці колишнього віджета гарантій.
   const calendarMonth = kyivToday().slice(0, 7);
@@ -196,7 +196,8 @@ export default function DashboardPage() {
   // (silent wrong number). Тепер піднімаємо реальний стан помилки з хуків: будь-який fail із
   // core-показників → банер помилки замість оманливих нулів. revenueError окремо не блокує KPI,
   // але додає банер (щоб revenueMonth=0 не читалось як «виторгу немає»).
-  const error = ordersError || lowStockError || invoicesError || revenueError ? t('loadError') : '';
+  const error =
+    ordersError || lowStockError || invoicesError || revenueError || pnlError ? t('loadError') : '';
   const [todayStr, setTodayStr] = useState('');
   const [greeting, setGreeting] = useState(() => t('greeting.default'));
   const [enabledQA, setEnabledQA] = useState<string[]>(DEFAULT_QUICK_ACTIONS);
@@ -234,13 +235,8 @@ export default function DashboardPage() {
     };
     const ordersPartial = truncated(ordersData);
     const invoicesPartial = truncated(invoicesData);
-    const kyivStr = KYIV_YEAR_MONTH_DAY_FMT.format(new Date());
-    const [kyivYear, kyivMonth] = kyivStr.split('-').map(Number);
-    const monthStart = `${kyivYear}-${String(kyivMonth).padStart(2, '0')}-01`;
-    const revRows = (revenueData as { rows?: RevenueDay[] } | undefined)?.rows ?? [];
-    const monthRevenue = revRows
-      .filter(r => r.date >= monthStart)
-      .reduce((s, r) => s + r.revenue, 0);
+    const pnlTotal = (key: 'revenue' | 'netProfit'): number | null =>
+      access.revenue && pnlData ? (pnlData.rows.find(r => r.key === key)?.total ?? 0) : null;
     const lowArr = Array.isArray(lowStockData) ? lowStockData : [];
     return {
       openOrders: access.orders
@@ -253,7 +249,9 @@ export default function DashboardPage() {
           ? allOrders.filter(o => o.status === 'IN_PROGRESS' || o.status === 'ON_HOLD').length
           : null,
       completedToday: access.orders ? todayOrders.length : null,
-      revenueMonth: access.revenue ? monthRevenue : null,
+      revenueMonth: pnlTotal('revenue'),
+      netProfitMonth: pnlTotal('netProfit'),
+      payrollMissing: !!pnlData && pnlData.payrollMissingMonths.length > 0,
       lowStockCount: access.lowStock ? lowArr.length : null,
       unpaidInvoices: access.invoices && !invoicesPartial ? allInvoices.length : null,
       unpaidAmount:
@@ -270,7 +268,7 @@ export default function DashboardPage() {
     ordersData,
     lowStockData,
     invoicesData,
-    revenueData,
+    pnlData,
   ]);
 
   const revenue: RevenueDay[] =
@@ -349,7 +347,12 @@ export default function DashboardPage() {
           )}
 
           {/* KPI grid — 6 рівних карток */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+          <div
+            className={cn(
+              'grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6',
+              canViewRevenue ? 'lg:grid-cols-4 2xl:grid-cols-7' : 'lg:grid-cols-6',
+            )}
+          >
             <Link href="/work-orders" className="flex">
               <KpiCard
                 label={t('kpi.inProgress')}
@@ -397,6 +400,26 @@ export default function DashboardPage() {
                 className="w-full"
               />
             </Link>
+            {canViewRevenue && (
+              <Link href="/reports?tab=pnl" className="flex" data-testid="kpi-net-profit-month">
+                <KpiCard
+                  label={t('kpi.netProfitMonth')}
+                  value={kpi.netProfitMonth !== null ? fmt(kpi.netProfitMonth) : '—'}
+                  icon={<Wallet />}
+                  colorClass={
+                    kpi.netProfitMonth !== null && kpi.netProfitMonth < 0
+                      ? 'kpi-card-red'
+                      : 'kpi-card-green'
+                  }
+                  trend={
+                    kpi.payrollMissing
+                      ? { value: t('kpi.payrollNotComputed'), up: false }
+                      : undefined
+                  }
+                  className="w-full"
+                />
+              </Link>
+            )}
             <Link href="/invoices" className="flex">
               <KpiCard
                 label={t('kpi.unpaidInvoices')}

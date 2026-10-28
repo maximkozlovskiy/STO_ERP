@@ -11,6 +11,7 @@ export type ReportTab =
   | 'settlements-detail'
   | 'load'
   | 'profitability'
+  | 'pnl'
   | 'vat';
 
 export const reportsKeys = {
@@ -36,6 +37,7 @@ export type ReportResponseByTab = {
   'settlements-detail': never;
   load: ApiSchema<'LoadReportDto'>;
   profitability: ApiSchema<'ProfitabilityReportDto'>;
+  pnl: ApiSchema<'PnlReportDto'>;
   vat: ApiSchema<'VatReportDto'>;
 };
 

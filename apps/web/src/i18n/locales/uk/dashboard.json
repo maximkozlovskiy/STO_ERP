@@ -24,6 +24,8 @@
     "open": "Очікують",
     "revenueToday": "Оплати сьогодні",
     "revenueMonth": "Виручка за місяць (без ПДВ)",
+    "netProfitMonth": "Чистий прибуток за місяць",
+    "payrollNotComputed": "зарплату не розраховано",
     "unpaidInvoices": "Несплачені рахунки",
     "lowStock": "Низький залишок"
   },

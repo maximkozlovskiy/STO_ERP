@@ -10,6 +10,7 @@
       "settlementsDetail": "Accounts",
       "load": "Utilization",
       "profitability": "Profitability",
+      "pnl": "P&L",
       "vat": "VAT",
       "builder": "Builder"
     },
@@ -83,6 +84,29 @@
       "rowVat": "VAT",
       "rowRevenueWithVat": "Revenue incl. VAT",
       "vatNote": "VAT is not part of profit or margin"
+    },
+    "pnl": {
+      "colIndicator": "Line",
+      "colTotal": "Total",
+      "rows": {
+        "revenue": "Revenue (excl. VAT)",
+        "partsCost": "Cost of parts",
+        "grossProfit": "Gross profit",
+        "payroll": "Payroll (accrued)",
+        "expenses": "Operating expenses",
+        "expenseCategory": "Expense item",
+        "otherIncome": "Other income",
+        "incomeCategory": "Income item",
+        "fx": "Exchange differences",
+        "netProfit": "Net profit"
+      },
+      "noCategory": "No item",
+      "unnamedCategory": "Unnamed item",
+      "loss": "Loss for the period",
+      "payrollMissing": "Payroll not computed: {{months}} — net profit for these months is overstated",
+      "unknownCost_one": "{{count}} part has no known purchase price — cost is understated",
+      "unknownCost_other": "{{count}} parts have no known purchase price — cost is understated",
+      "note": "Accrual basis: revenue and parts — from completed work orders, payroll — accruals of computed periods (pro rata by days), expenses and other income — cash and bank by item. All excluding VAT, in the base currency."
     },
     "load": {
       "colLift": "Lift",

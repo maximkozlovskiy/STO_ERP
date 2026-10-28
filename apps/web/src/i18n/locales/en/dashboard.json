@@ -24,6 +24,8 @@
     "open": "Pending",
     "revenueToday": "Payments today",
     "revenueMonth": "Revenue this month (excl. VAT)",
+    "netProfitMonth": "Net profit this month",
+    "payrollNotComputed": "payroll not computed",
     "unpaidInvoices": "Unpaid invoices",
     "lowStock": "Low stock"
   },

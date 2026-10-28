@@ -26,6 +26,7 @@ import dynamic from 'next/dynamic';
 import { SettlementsTabContent } from '../settlements/SettlementsTabContent';
 import { ReportBuilder } from './ReportBuilder';
 import { RevenueReport } from './RevenueReport';
+import { PnlReport } from './PnlReport';
 import { buildCsv, type ReportData } from './report-csv';
 import { CSV_BOM } from '@/lib/report-export';
 import { StatCard } from './StatCard';
@@ -111,14 +112,21 @@ function ReportsPageClient() {
     { id: 'settlements-detail', label: t('page.tabs.settlementsDetail') },
     { id: 'load', label: t('page.tabs.load') },
     { id: 'profitability', label: t('page.tabs.profitability') },
+    { id: 'pnl', label: t('page.tabs.pnl') },
     { id: 'vat', label: t('page.tabs.vat') },
     { id: 'builder', label: t('page.tabs.builder') },
   ];
   const tabs = canSeeFinance ? allTabs : allTabs.filter(x => x.id === 'inventory');
 
-  const needsDates = ['revenue', 'work-orders', 'load', 'stock', 'profitability', 'vat'].includes(
-    tab,
-  );
+  const needsDates = [
+    'revenue',
+    'work-orders',
+    'load',
+    'stock',
+    'profitability',
+    'pnl',
+    'vat',
+  ].includes(tab);
   const isSettlementsDetail = tab === 'settlements-detail';
 
   return (
@@ -489,6 +497,9 @@ function ReportsPageClient() {
               </div>
             </div>
           )}
+
+          {/* P&L (BR-RPT-030) */}
+          {data && data._tab === 'pnl' && <PnlReport data={data} />}
 
           {/* Load report */}
           {data && data._tab === 'load' && (
