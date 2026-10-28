@@ -278,7 +278,6 @@ export default function DashboardPage() {
   const upcomingTO: MaintenanceSchedule[] = Array.isArray(maintenanceData)
     ? (maintenanceData as MaintenanceSchedule[])
     : (EMPTY_MAINTENANCE as MaintenanceSchedule[]);
-  // Гарантії, що закінчуються (поріг WARRANTY_EXPIRING_DAYS) — endpoint повертає {items,total}.
   // sto-optimize: kyivToday() обчислюється раз для всього компонента (mount-stable).
   // Раніше викликалась всередині .map() для upcomingTO → kyivToday() inside hot-path
   // (new Date() + Intl.format() per row). Empty deps — поточна дата на mount достатня

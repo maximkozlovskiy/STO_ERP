@@ -70,8 +70,7 @@ describe('useMonthSummaryData (BR-CAL-013)', () => {
   it('без доступу — ні записів, ні підйомників, ні задач', async () => {
     renderHook(() => useMonthSummaryData('2026-10', false), { wrapper: createQueryWrapper() });
     await new Promise(r => setTimeout(r, 50));
-    expect(
-      apiFetch.mock.calls.map(c => String(c[0])).filter(u => !u.startsWith('/settings')),
-    ).toEqual([]);
+    // Разом із `/settings/work-hours`: XLSX_MANAGER на нього отримує 403 (Bug #879).
+    expect(apiFetch.mock.calls.map(c => String(c[0]))).toEqual([]);
   });
 });

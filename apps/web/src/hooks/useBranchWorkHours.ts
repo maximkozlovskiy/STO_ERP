@@ -54,13 +54,14 @@ async function fetchWorkHours(
  */
 export function useBranchWorkHours(
   branchId: string | null | undefined,
-  { mainBranch = false }: { mainBranch?: boolean } = {},
+  { mainBranch = false, enabled = true }: { mainBranch?: boolean; enabled?: boolean } = {},
 ): WorkHoursWindow {
   const key = branchId || null;
   const { data } = useQuery({
     queryKey: workHoursKeys.branch(key),
     queryFn: ({ signal }) => fetchWorkHours(key, signal),
-    enabled: key !== null || mainBranch,
+    // `enabled: false` — роль без доступу до сторінки, що показує години (дашборд, Bug #879).
+    enabled: enabled && (key !== null || mainBranch),
     staleTime: 60_000,
   });
   return data ?? DEFAULT_WORK_HOURS_WINDOW;

@@ -4,9 +4,9 @@ import { useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { onCalendarChanged } from '@/lib/calendar-events';
-import { infraKeys } from '@/hooks/api/useInfrastructure';
+import { useLifts } from '@/hooks/api/useInfrastructure';
 import { useBranchWorkHours } from '@/hooks/useBranchWorkHours';
-import type { CalendarSlot, Lift } from './calendar.types';
+import type { CalendarSlot } from './calendar.types';
 import { buildMonthSlots, liveSlots, slotsByKyivDay } from './calendar-month';
 import { useCalendarTasks } from './useCalendarTasks';
 
@@ -59,16 +59,10 @@ export function useMonthSummaryData(yearMonth: string, enabled: boolean) {
         : {},
     [slotsQuery.data, days, next],
   );
-  // Не `useLifts()`: той вмикається для будь-якої ролі, а дашборд ролі без календаря не має
-  // слати запитів, які їй не віддадуть (Bug #879). Ключ кешу той самий.
-  const { data: lifts } = useQuery({
-    queryKey: infraKeys.lifts,
-    queryFn: ({ signal }) => apiFetch<Lift[]>('/lifts', { signal }),
-    enabled,
-    staleTime: 5 * 60_000,
-  });
+  // Ролі без календаря дашборд не шле запитів, які їй не віддадуть або не потрібні (Bug #879).
+  const { data: lifts } = useLifts(enabled);
   const { tasks } = useCalendarTasks(enabled ? 'month' : 'day', enabled ? `${yearMonth}-01` : '');
-  const { startHour, endHour } = useBranchWorkHours(null, { mainBranch: true });
+  const { startHour, endHour } = useBranchWorkHours(null, { mainBranch: true, enabled });
   // «Прострочено» й завантаження рахуються на момент відкриття — дашборд і так оновлюється живо.
   const nowMs = useMemo(
     () => (slotsQuery.dataUpdatedAt ? Date.now() : 0),

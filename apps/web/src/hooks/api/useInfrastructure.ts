@@ -75,7 +75,8 @@ export function useZones() {
   });
 }
 
-export function useLifts() {
+/** `enabled: false` — для екранів, де роль може не мати `GET /lifts` (дашборд, Bug #879). */
+export function useLifts(enabled = true) {
   const { employee } = useAuth();
   return useQuery<Lift[]>({
     queryKey: infraKeys.lifts,
@@ -84,7 +85,7 @@ export function useLifts() {
         setCache('cache:lifts', d);
         return d;
       }),
-    enabled: !!employee,
+    enabled: !!employee && enabled,
     staleTime: 5 * 60_000,
     placeholderData: keepPreviousData,
   });
