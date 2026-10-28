@@ -19,7 +19,7 @@ import {
   UnassignedSlots,
   axisPos,
 } from './CalendarDayBlocks';
-import type { CalendarTask } from './calendar-tasks';
+import { taskDayBlock, type CalendarTask } from './calendar-tasks';
 
 /** Висота години в повернутій сітці, px: 15 хв — 14 px, блок у 30 хв ще читається. */
 const HOUR_PX = 56;
@@ -245,7 +245,12 @@ export function CalendarDayGridHours({ state, tasks = NO_TASKS, onOpenTask = noo
     return map;
   }, [lifts, slots, date, windowStart, windowEnd]);
 
-  const hasTasks = tasks.length > 0;
+  // Колонка «Задачі» — лише коли хоч одна задача лягає на шкалу годин: інакше смуга порожня
+  // (`CalendarTaskStrip` повертає null), а шапка «Задачі» стояла б над пустою колонкою.
+  const hasTasks = useMemo(
+    () => tasks.some(task => taskDayBlock(task, date, windowStart, windowEnd) !== null),
+    [tasks, date, windowStart, windowEnd],
+  );
   const columns = `${TIME_COL_PX}px ${hasTasks ? 'auto ' : ''}repeat(${lifts.length}, minmax(9rem, 1fr))`;
   const bodyHeight = totalHours * HOUR_PX;
 
@@ -288,7 +293,8 @@ export function CalendarDayGridHours({ state, tasks = NO_TASKS, onOpenTask = noo
           >
             <div className="grid min-w-max" style={{ gridTemplateColumns: columns }}>
               {/* Шапка — липка у прокрутці; та сама сітка колонок, що й тіло */}
-              <div className="sticky top-0 z-20 px-2 py-2 text-xs font-medium text-muted-foreground bg-secondary border-b border-r border-border">
+              {/* Кут: липкий і вгору, і вліво — над шапкою підйомників і колонкою годин */}
+              <div className="sticky top-0 left-0 z-30 px-2 py-2 text-xs font-medium text-muted-foreground bg-secondary border-b border-r border-border">
                 {t('day.colTime')}
               </div>
               {hasTasks && (
@@ -299,10 +305,12 @@ export function CalendarDayGridHours({ state, tasks = NO_TASKS, onOpenTask = noo
                   {t('tasks.strip')}
                 </div>
               )}
-              {lifts.map((lift: Lift) => (
+              {lifts.map((lift: Lift, i) => (
                 <div
                   key={lift.id}
-                  className="sticky top-0 z-20 px-3 py-2 bg-secondary border-b border-r border-border last:border-r-0 flex flex-col gap-0.5"
+                  // `last:` тут не діє — за шапкою в тій самій сітці йде тіло; межу прибирає індекс,
+                  // інакше остання колонка шапки на 1 px ширша за колонку тіла.
+                  className={`sticky top-0 z-20 px-3 py-2 bg-secondary border-b border-border flex flex-col gap-0.5 ${i < lifts.length - 1 ? 'border-r' : ''}`}
                 >
                   <span className="text-sm font-medium text-foreground leading-tight truncate">
                     {lift.name}
@@ -329,10 +337,12 @@ export function CalendarDayGridHours({ state, tasks = NO_TASKS, onOpenTask = noo
                 </div>
               ))}
 
-              {/* Тіло: колонка годин — вісь часу для перетягування й малювання */}
+              {/* Тіло: колонка годин — вісь часу для перетягування й малювання. Липка вліво: при
+                  багатьох підйомниках сітка прокручується вбік, а підписи годин лишаються видно.
+                  z-16 — над блоками записів (z-10) і лінією «зараз» (z-15), під шапкою (z-20). */}
               <div
                 ref={hoursTrackRef}
-                className="relative border-r border-border bg-secondary"
+                className="sticky left-0 z-16 border-r border-border bg-secondary"
                 style={{ height: bodyHeight }}
               >
                 {hours.map((h, i) => (
