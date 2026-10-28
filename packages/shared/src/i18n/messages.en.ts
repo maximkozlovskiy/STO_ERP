@@ -1079,6 +1079,7 @@ export const en: Record<string, string> = {
   // ── Exception messages: reports module ──
   'err.report.startAfterEnd': 'The start date must not be later than the end date',
   'err.report.warehouseNotFound': 'Warehouse not found',
+  'err.report.periodTooLong': 'The report period must not exceed {{max}} months',
 
   // ── Exception messages: settings module ──
   'err.settings.currencyNotFound': 'Currency with code "{{code}}" not found',

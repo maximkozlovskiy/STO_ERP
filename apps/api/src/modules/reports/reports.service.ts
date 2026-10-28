@@ -8,8 +8,20 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import {
   dateOnlyRangeFilter,
   kyivDayRangeFilter,
+  kyivYmd,
   normalizeKyivDateRange,
 } from '../../common/utils/kyiv-date';
+import type { PnlReportDto, PnlRowDto, PnlRowKey } from './reports.dto';
+import {
+  PNL_INCOME_CASH_REASONS,
+  PNL_MAX_MONTHS,
+  addToMonth,
+  allocatePayrollByMonth,
+  buildCategoryRows,
+  monthsBetween,
+  sumRootRows,
+  type PnlCategoryRow,
+} from './pnl.calc';
 
 // BR-RPT-023: частка «без ПДВ» наряду k = totalNet / сума рядків (1 для «без ПДВ» і «ПДВ зверху»,
 // < 1 для «ПДВ у ціні»; наряд без рядків → 1). Множник для робіт і запчастин у звітах.
@@ -342,6 +354,233 @@ export class ReportsService {
       margin: Math.round(margin * 100) / 100,
       ordersCount,
       unknownCostPartsCount,
+      from,
+      to,
+    };
+  }
+
+  /**
+   * BR-RPT-030 — звіт P&L (прибутки й збитки) по київських місяцях, метод нарахування, усе в
+   * базовій валюті без ПДВ. Виручка й запчастини — той самий відбір нарядів, що «Рентабельність»;
+   * зарплата — нарахування періодів COMPUTED / PAID з розподілом за днями; витрати й інші доходи —
+   * каса й банк за статтями; курсові різниці — FX_GAIN − FX_LOSS.
+   */
+  async pnl(orgId: string, from: string, to: string): Promise<PnlReportDto> {
+    const { fromDate, toDate } = normalizeDateRange(from, to);
+    const months = monthsBetween(from, to);
+    if (months.length > PNL_MAX_MONTHS)
+      throw new BadRequestException(
+        translateError('err.report.periodTooLong', getLocale(), { max: PNL_MAX_MONTHS }),
+      );
+    const n = months.length;
+    const monthIndex = new Map(months.map((m, i) => [m, i]));
+    const kyivMonthOf = (d: Date) => monthIndex.get(kyivYmd(d).slice(0, 7)) ?? -1;
+    const dateMonthOf = (d: Date) => monthIndex.get(d.toISOString().slice(0, 7)) ?? -1;
+    const base = (amountBase: Prisma.Decimal | null, amount: Prisma.Decimal) =>
+      moneyFromDecimal(amountBase ?? amount);
+
+    type MonthRevenue = { month: string; revenue: number };
+    type MonthParts = { month: string; costParts: number; unknownCount: bigint };
+
+    const [revenueRows, partRows, periods, cashOps, bankTxs, fxTxs, categories] = await Promise.all(
+      [
+        // п. 1 — той самий відбір нарядів, що profitability(), групування за київським місяцем.
+        this.prisma.$queryRaw<MonthRevenue[]>`
+          SELECT
+            to_char("completedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv', 'YYYY-MM') AS month,
+            COALESCE(SUM("totalNet"), 0)::float AS revenue
+          FROM work_orders
+          WHERE "orgId"       = ${orgId}::uuid
+            AND "deletedAt"   IS NULL
+            AND "status"      = ANY(ARRAY['COMPLETED','INVOICED','PAID','ARCHIVED']::"WorkOrderStatus"[])
+            AND "completedAt" BETWEEN ${fromDate} AND ${toDate}
+          GROUP BY 1
+        `,
+        // п. 2 — собівартість запчастин тих самих нарядів (Bug #74: batchCostPrice → purchasePrice).
+        this.prisma.$queryRaw<MonthParts[]>`
+          SELECT
+            to_char(wo."completedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv', 'YYYY-MM') AS month,
+            COALESCE(SUM(
+              wop."quantity" * COALESCE(wop."batchCostPrice", g."purchasePrice")
+            ), 0)::float AS "costParts",
+            COUNT(*) FILTER (WHERE wop."batchCostPrice" IS NULL AND g."purchasePrice" IS NULL) AS "unknownCount"
+          FROM work_order_parts wop
+          JOIN work_orders wo ON wo.id = wop."workOrderId"
+          JOIN goods g        ON g.id  = wop."goodId"
+          WHERE wop."orgId"    = ${orgId}::uuid
+            AND wop."deletedAt" IS NULL
+            AND wo."orgId"      = ${orgId}::uuid
+            AND wo."deletedAt"  IS NULL
+            AND wo."status"     = ANY(ARRAY['COMPLETED','INVOICED','PAID','ARCHIVED']::"WorkOrderStatus"[])
+            AND wo."completedAt" BETWEEN ${fromDate} AND ${toDate}
+          GROUP BY 1
+        `,
+        // п. 4 — періоди, що перетинають звіт; статус і видалення відсіює allocatePayrollByMonth.
+        this.prisma.payrollPeriod.findMany({
+          where: {
+            orgId,
+            periodStart: { lte: new Date(`${to}T00:00:00.000Z`) },
+            periodEnd: { gte: new Date(`${from}T00:00:00.000Z`) },
+          },
+          select: {
+            periodStart: true,
+            periodEnd: true,
+            status: true,
+            deletedAt: true,
+            lines: { select: { accruedAmount: true } },
+          },
+        }),
+        // пп. 5–6 — каса: витрати (OUT EXPENSE) та інші доходи (IN ручне внесення зі статтею INCOME).
+        // Рядок-сторно (reversalOfId) — не P&L; його оригінал відсіюється нижче.
+        this.prisma.cashOperation.findMany({
+          where: {
+            orgId,
+            createdAt: { gte: fromDate, lte: toDate },
+            reversalOfId: null,
+            OR: [
+              { direction: 'OUT', reason: 'EXPENSE' },
+              {
+                direction: 'IN',
+                reason: { in: [...PNL_INCOME_CASH_REASONS] },
+                expenseCategory: { is: { type: 'INCOME' } },
+              },
+            ],
+          },
+          select: {
+            id: true,
+            direction: true,
+            amount: true,
+            amountBase: true,
+            expenseCategoryId: true,
+            createdAt: true,
+          },
+        }),
+        // п. 5 — банк: рознесені вихідні витрати за статтею, за датою операції (@db.Date).
+        this.prisma.bankTransaction.findMany({
+          where: {
+            orgId,
+            deletedAt: null,
+            direction: 'OUT',
+            status: 'MATCHED',
+            matchedType: 'EXPENSE',
+            operationDate: dateOnlyRangeFilter(from, to),
+          },
+          select: { amount: true, amountBase: true, expenseCategoryId: true, operationDate: true },
+        }),
+        // п. 7 — курсові різниці. І клієнтська, і постачальницька сторона пишуть FX_GAIN, коли
+        // різниця на користь СТО (payments.service / supplier-payments.service) — знак один.
+        this.prisma.settlementTransaction.findMany({
+          where: {
+            orgId,
+            type: { in: ['FX_GAIN', 'FX_LOSS'] },
+            createdAt: { gte: fromDate, lte: toDate },
+          },
+          select: { type: true, amount: true, amountBase: true, createdAt: true },
+        }),
+        // Довідник статей ВКЛЮЧНО з видаленими: минулі операції могли йти за статтею, яку прибрали.
+        this.prisma.expenseCategory.findMany({
+          where: { orgId },
+          select: { id: true, name: true, parentId: true, sortOrder: true },
+        }),
+      ],
+    );
+
+    // Сторнована пара каси не входить: оригінал, на який посилається сторно (навіть пізніше періоду).
+    const reversed = cashOps.length
+      ? await this.prisma.cashOperation.findMany({
+          where: { orgId, reversalOfId: { in: cashOps.map(o => o.id) } },
+          select: { reversalOfId: true },
+        })
+      : [];
+    const reversedIds = new Set(reversed.map(r => r.reversalOfId));
+
+    const revenue = Array<number>(n).fill(0);
+    for (const r of revenueRows) {
+      const i = monthIndex.get(r.month);
+      if (i !== undefined) revenue[i] = moneyFromDecimal(r.revenue);
+    }
+    const partsCost = Array<number>(n).fill(0);
+    let unknownCostPartsCount = 0;
+    for (const r of partRows) {
+      unknownCostPartsCount += Number(r.unknownCount ?? 0);
+      const i = monthIndex.get(r.month);
+      if (i !== undefined) partsCost[i] = moneyFromDecimal(r.costParts);
+    }
+
+    const payroll = allocatePayrollByMonth(
+      periods.map(p => ({
+        periodStart: p.periodStart,
+        periodEnd: p.periodEnd,
+        status: p.status,
+        deletedAt: p.deletedAt,
+        accrued: sumMoney(p.lines.map(l => moneyFromDecimal(l.accruedAmount))),
+      })),
+      months,
+      from,
+      to,
+      kyivYmd(new Date()),
+    );
+
+    const expenseOwn = new Map<string | null, number[]>();
+    const incomeOwn = new Map<string | null, number[]>();
+    for (const op of cashOps) {
+      if (reversedIds.has(op.id)) continue;
+      const target = op.direction === 'OUT' ? expenseOwn : incomeOwn;
+      const i = kyivMonthOf(op.createdAt);
+      addToMonth(target, op.expenseCategoryId, i, n, base(op.amountBase, op.amount));
+    }
+    for (const tx of bankTxs) {
+      const i = dateMonthOf(tx.operationDate);
+      addToMonth(expenseOwn, tx.expenseCategoryId, i, n, base(tx.amountBase, tx.amount));
+    }
+    const fx = Array<number>(n).fill(0);
+    for (const tx of fxTxs) {
+      const i = kyivMonthOf(tx.createdAt);
+      if (i < 0) continue;
+      const sign = tx.type === 'FX_GAIN' ? 1 : -1;
+      fx[i] = (fx[i] ?? 0) + sign * base(tx.amountBase, tx.amount);
+    }
+
+    const expenseRows = buildCategoryRows(expenseOwn, categories, n);
+    const incomeRows = buildCategoryRows(incomeOwn, categories, n);
+    const expenses = sumRootRows(expenseRows, n);
+    const otherIncome = sumRootRows(incomeRows, n);
+    const fxMoney = fx.map(v => money(v));
+    const grossProfit = months.map((_, i) => money((revenue[i] ?? 0) - (partsCost[i] ?? 0)));
+    // п. 8: чистий = валовий − зарплата − витрати + інші доходи + курсові різниці.
+    const netProfit = months.map((_, i) =>
+      money(
+        (grossProfit[i] ?? 0) -
+          (payroll.amounts[i] ?? 0) -
+          (expenses[i] ?? 0) +
+          (otherIncome[i] ?? 0) +
+          (fxMoney[i] ?? 0),
+      ),
+    );
+
+    const row = (key: PnlRowKey, amounts: number[]): PnlRowDto => ({
+      key,
+      amounts,
+      total: sumMoney(amounts),
+    });
+    const categoryRow = (key: PnlRowKey, r: PnlCategoryRow): PnlRowDto => ({ key, ...r });
+
+    return {
+      months,
+      rows: [
+        row('revenue', revenue),
+        row('partsCost', partsCost),
+        row('grossProfit', grossProfit),
+        row('payroll', payroll.amounts),
+        row('expenses', expenses),
+        ...expenseRows.map(r => categoryRow('expenseCategory', r)),
+        row('otherIncome', otherIncome),
+        ...incomeRows.map(r => categoryRow('incomeCategory', r)),
+        row('fx', fxMoney),
+        row('netProfit', netProfit),
+      ],
+      unknownCostPartsCount,
+      payrollMissingMonths: payroll.missingMonths,
       from,
       to,
     };

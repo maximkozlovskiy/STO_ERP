@@ -1058,6 +1058,7 @@ export const uk: Record<string, string> = {
   // ── Exception-повідомлення: reports-модуль ──
   'err.report.startAfterEnd': 'Дата початку має бути не пізніше дати закінчення',
   'err.report.warehouseNotFound': 'Склад не знайдено',
+  'err.report.periodTooLong': 'Період звіту — не більше {{max}} місяців',
 
   // ── Exception-повідомлення: settings-модуль ──
   'err.settings.currencyNotFound': 'Валюта з кодом "{{code}}" не знайдена',

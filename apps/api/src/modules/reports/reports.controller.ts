@@ -11,6 +11,7 @@ import {
 import { ReportsService } from './reports.service';
 import {
   LoadReportDto,
+  PnlReportDto,
   ProfitabilityReportDto,
   RevenueReportDto,
   SettlementsReportDto,
@@ -90,6 +91,21 @@ export class ReportsController {
   ): Promise<ProfitabilityReportDto> {
     assertRequiredCalendarDateQuery(from, to);
     return this.service.profitability(orgId, from, to);
+  }
+
+  @Get('pnl')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'P&L: прибутки й збитки по місяцях (BR-RPT-030), період ≤ 24 місяців' })
+  @ApiQuery({ name: 'from', required: true, example: '2026-01-01' })
+  @ApiQuery({ name: 'to', required: true, example: '2026-12-31' })
+  @ApiOkResponse({ type: PnlReportDto })
+  pnl(
+    @OrgContext() orgId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ): Promise<PnlReportDto> {
+    assertRequiredCalendarDateQuery(from, to);
+    return this.service.pnl(orgId, from, to);
   }
 
   @Get('settlements')

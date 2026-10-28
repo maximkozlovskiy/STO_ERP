@@ -111,6 +111,63 @@ export class ProfitabilityReportDto {
   @ApiProperty() to!: string;
 }
 
+// ─── /reports/pnl (BR-RPT-030) ───────────────────────────────────────────────
+
+export const PNL_ROW_KEYS = [
+  'revenue',
+  'partsCost',
+  'grossProfit',
+  'payroll',
+  'expenses',
+  'expenseCategory',
+  'otherIncome',
+  'incomeCategory',
+  'fx',
+  'netProfit',
+] as const;
+export type PnlRowKey = (typeof PNL_ROW_KEYS)[number];
+
+export class PnlRowDto {
+  @ApiProperty({
+    enum: PNL_ROW_KEYS,
+    enumName: 'PnlRowKey',
+    description:
+      'Рядок звіту: виручка, запчастини, валовий прибуток, зарплата, операційні витрати (і рядки ' +
+      'статей expenseCategory), інші доходи (incomeCategory), курсові різниці, чистий прибуток',
+  })
+  key!: PnlRowKey;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: 'Назва статті (лише рядки статей); null — «без статті»',
+  })
+  label?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Стаття; null — без статті' })
+  categoryId?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Батьківська стаття' })
+  parentId?: string | null;
+  @ApiPropertyOptional({ description: 'Рівень статті в дереві (0 — корінь)' })
+  depth?: number;
+  @ApiProperty({ type: [Number], description: 'Суми по місяцях (порядок — months)' })
+  amounts!: number[];
+  @ApiProperty({ description: 'Разом за період' }) total!: number;
+}
+
+export class PnlReportDto {
+  @ApiProperty({ type: [String], example: ['2026-09', '2026-10'], description: 'Місяці YYYY-MM' })
+  months!: string[];
+  @ApiProperty({ type: [PnlRowDto] }) rows!: PnlRowDto[];
+  @ApiProperty({ description: 'Скільки запчастин без відомої закупівельної ціни' })
+  unknownCostPartsCount!: number;
+  @ApiProperty({
+    type: [String],
+    description: 'Місяці (YYYY-MM), за які зарплату не розраховано — прибуток там завищений',
+  })
+  payrollMissingMonths!: string[];
+  @ApiProperty() from!: string;
+  @ApiProperty() to!: string;
+}
+
 // ─── /reports/settlements ────────────────────────────────────────────────────
 
 export class SettlementsReportRowDto {

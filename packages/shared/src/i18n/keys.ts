@@ -1074,6 +1074,7 @@ export const VALIDATION_KEYS = [
   // Exception-повідомлення: reports-модуль
   'err.report.startAfterEnd',
   'err.report.warehouseNotFound',
+  'err.report.periodTooLong',
   // Exception-повідомлення: settings-модуль
   'err.settings.currencyNotFound',
   'err.settings.workEndAfterStart',

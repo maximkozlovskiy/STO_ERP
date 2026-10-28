@@ -5258,6 +5258,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/pnl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** P&L: прибутки й збитки по місяцях (BR-RPT-030), період ≤ 24 місяців */
+        get: operations["ReportsController_pnl_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reports/settlements": {
         parameters: {
             query?: never;
@@ -9890,6 +9907,44 @@ export interface components {
             ordersCount: number;
             /** @description Скільки запчастин без відомої закупівельної ціни */
             unknownCostPartsCount: number;
+            from: string;
+            to: string;
+        };
+        /**
+         * @description Рядок звіту: виручка, запчастини, валовий прибуток, зарплата, операційні витрати (і рядки статей expenseCategory), інші доходи (incomeCategory), курсові різниці, чистий прибуток
+         * @enum {string}
+         */
+        PnlRowKey: "revenue" | "partsCost" | "grossProfit" | "payroll" | "expenses" | "expenseCategory" | "otherIncome" | "incomeCategory" | "fx" | "netProfit";
+        PnlRowDto: {
+            /** @description Рядок звіту: виручка, запчастини, валовий прибуток, зарплата, операційні витрати (і рядки статей expenseCategory), інші доходи (incomeCategory), курсові різниці, чистий прибуток */
+            key: components["schemas"]["PnlRowKey"];
+            /** @description Назва статті (лише рядки статей); null — «без статті» */
+            label?: string | null;
+            /** @description Стаття; null — без статті */
+            categoryId?: string | null;
+            /** @description Батьківська стаття */
+            parentId?: string | null;
+            /** @description Рівень статті в дереві (0 — корінь) */
+            depth?: number;
+            /** @description Суми по місяцях (порядок — months) */
+            amounts: number[];
+            /** @description Разом за період */
+            total: number;
+        };
+        PnlReportDto: {
+            /**
+             * @description Місяці YYYY-MM
+             * @example [
+             *       "2026-09",
+             *       "2026-10"
+             *     ]
+             */
+            months: string[];
+            rows: components["schemas"]["PnlRowDto"][];
+            /** @description Скільки запчастин без відомої закупівельної ціни */
+            unknownCostPartsCount: number;
+            /** @description Місяці (YYYY-MM), за які зарплату не розраховано — прибуток там завищений */
+            payrollMissingMonths: string[];
             from: string;
             to: string;
         };
@@ -20075,6 +20130,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfitabilityReportDto"];
+                };
+            };
+        };
+    };
+    ReportsController_pnl_v1: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PnlReportDto"];
                 };
             };
         };
