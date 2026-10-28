@@ -9,8 +9,8 @@
 ## Поточний стан
 
 ```
-Дата:         2026-10-26
-Latest review: 2026-10-26 (технічний борг, S-пункти розділу (а) TECH-DEBT).
+Дата:         2026-10-29
+Latest review: 2026-10-28 (календар: «Місяць» одним запитом, підсумки місяця, режими «Дня»).
 HEAD:       див. `git log --oneline -1` (хеш тут НЕ дублюється — старіє щокоміту)
 Фаза:       PHASES.md 229/231 закрито. Хвости: EAS Build (mobile) + smoke на чистій
             Windows VM — обидва потребують фізичного оточення, не коду.
@@ -39,11 +39,12 @@ python scripts/check-doc-links.py; python scripts/check-mojibake.py   # поси
 ## Останній commit
 
 ```
+Календар 2026-10-27/28 (CHANGELOG): ?from&to для «Місяця», підсумки (BR-CAL-013), режими «Дня»
+  (BR-CAL-014); вісь часу useCalendarState — axisGeom/pointerPos (X/Y), блоки — CalendarDayBlocks.tsx.
 Технічний борг, S-пункти (а) — 2026-10-26 (CHANGELOG): хвилі 0–3 + прибрано
   syncCalendarSlotWithPlannedHours. Відповіді власника №9/19/28/29/63/64/68 і §15 п.6 — у TECH-DEBT (б);
   нові питання №70–73 там само. Спільне з хвиль: CALENDAR_DATE_RE / kyivTodayYmd / normalizeDecimalInput
   у @sto/shared; confirm-tx-timeout.ts (api); SupplierOptionsSelect, document-card-{header,actions} (web).
-  Безпековий блок 2026-10-24 (SSRF, закрито за замовчуванням, межі сум, тип файлу) — у CHANGELOG.
 
   Схема Prisma — БАГАТОФАЙЛОВА: packages/database/prisma/schema/*.prisma.
   Шляху .../prisma/schema.prisma не існує.

@@ -1802,7 +1802,13 @@
    "CalendarService.findSlots — перевірка дати неіснуюча дата 0000-01-01 → 400, запит до бази не йде",
    "CalendarService.findSlots — перевірка дати неіснуюча дата 2025-02-29 → 400, запит до бази не йде",
    "CalendarService.findSlots — перевірка дати неіснуюча дата 2026-02-31 → 400, запит до бази не йде",
-   "CalendarService.findSlots — перевірка дати неіснуюча дата 2026-13-01 → 400, запит до бази не йде"
+   "CalendarService.findSlots — перевірка дати неіснуюча дата 2026-13-01 → 400, запит до бази не йде",
+   "CalendarService.findSlotsInRange — діапазон діб from пізніше за to → 400, запит до бази не йде",
+   "CalendarService.findSlotsInRange — діапазон діб запис через північ повертається один раз, а не в кожній добі",
+   "CalendarService.findSlotsInRange — діапазон діб квартал «Статистики» (92 доби) проходить, 94 доби — 400 з українським текстом",
+   "CalendarService.findSlotsInRange — діапазон діб межі: від початку київської доби from до кінця доби to (крізь перехід годинника 25.10)",
+   "CalendarService.findSlotsInRange — діапазон діб неіснуюча дата → 400, запит до бази не йде",
+   "CalendarService.findSlotsInRange — діапазон діб порожній to → 400, запит до бази не йде"
   ],
   "apps/api/src/modules/calendar/calendar.deleted-work-order.spec.ts": [
    "CalendarService — записи видаленого наряду (BR-CAL-011, BR-WO-017) ADMIN: findSlots не повертає запис видаленого наряду; живий наряд і запис без наряду — так",

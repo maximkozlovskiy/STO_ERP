@@ -194,7 +194,7 @@ cd apps/api && npx vitest run src/modules/calendar/<файл>.spec.ts
 | записи видаленого наряду: не в `findSlots`, не займають підйомник і механіка (BR-CAL-011); перев'язка запису (`updateSlot`) на скасований наряд — 400 (BR-WO-022)                                                                                                          | `calendar.deleted-work-order.spec.ts` | 8      |
 | синхронізація з планшета: механік за підйомником і ролі календаря, причина в `lastError`; запис не прив'язується до скасованого наряду (BR-CAL-012, BR-CAL-010, BR-WO-022)                                                                                                 | `../sync/sync.calendar-slots.spec.ts` | 19     |
 
-Разом: **181** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **191** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Web:** вид «Місяць» (BR-CAL-008, BR-CAL-009) і «День» (BR-CAL-011), тека `apps/web/src/app/(app)/calendar/__tests__/`:
 
@@ -225,7 +225,7 @@ cd apps/api && npx vitest run src/modules/calendar/<файл>.spec.ts
 | форма запису наряду «В роботі»: час, тривалість, підйомник, клієнт і наряд недоступні з підказкою, механік і нотатки — ні (BR-WO-027); «Видалити» попереджає про стерті дати, у нередагованому статусі недоступна з підказкою, у скасованого — доступна (BR-WO-026)                                                                                                                                                                                                                                                                                                                                                                                                                            | `CalendarSlotModal.wo-lock.test.tsx`         | 7      |
 | заголовки дня й місяця за мовою інтерфейсу — uk / en без кирилиці (Bug #915)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `calendar-utils.locale.test.ts`              | 2      |
 
-Разом web: **247** кейсів (цифри з `vitest --reporter=json`).
+Разом web: **258** кейсів (цифри з `vitest --reporter=json`).
 
 E2E: `apps/web/e2e/calendar-month-cards.spec.ts` — наряд створюється через інтерфейс, запис
 календаря з ним — через «+ Слот», час редагується у формі; у виді «Місяць» — картка з номером
