@@ -129,6 +129,10 @@ export function buildMonthSummary(
   }
 
   const capacity = Math.max(0, windowEnd - windowStart) * days.length;
+  // Сума й середнє — із сирих годин: сума округлених рядків розходилась би з KPI «Годин на постах».
+  const liftHours = [...liftRows.values()]
+    .filter(r => r.liftId)
+    .reduce((acc, r) => acc + r.hours, 0);
   const liftList = [...liftRows.values()].map(r => ({
     ...r,
     hours: round1(r.hours),
@@ -141,11 +145,9 @@ export function buildMonthSummary(
   for (const r of liftList) {
     for (const t of SLOT_TYPES) liftsTotal.byType[t] += r.byType[t];
     liftsTotal.total += r.total;
-    liftsTotal.hours += r.hours;
   }
-  liftsTotal.hours = round1(liftsTotal.hours);
+  liftsTotal.hours = round1(busyHours);
 
-  const liftHours = liftList.filter(r => r.liftId).reduce((sum, r) => sum + r.hours, 0);
   const avgLoadPct =
     lifts.length > 0 && capacity > 0
       ? Math.round((liftHours / (capacity * lifts.length)) * 100)

@@ -3103,7 +3103,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Слоти на дату */
+        /** Слоти на дату (`date`) або діапазон діб (`from` + `to`) */
         get: operations["CalendarController_findSlots_v1"];
         put?: never;
         /**
@@ -16635,8 +16635,10 @@ export interface operations {
     };
     CalendarController_findSlots_v1: {
         parameters: {
-            query: {
-                date: string;
+            query?: {
+                date?: string;
+                from?: string;
+                to?: string;
                 branchId?: string;
                 employeeId?: string;
             };

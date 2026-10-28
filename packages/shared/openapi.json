@@ -10318,10 +10318,28 @@
         "parameters": [
           {
             "name": "date",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "example": "2026-05-22",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "2026-05-01",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "2026-05-31",
               "type": "string"
             }
           },
@@ -10362,7 +10380,7 @@
             "bearer": []
           }
         ],
-        "summary": "Слоти на дату",
+        "summary": "Слоти на дату (`date`) або діапазон діб (`from` + `to`)",
         "tags": [
           "Calendar"
         ]

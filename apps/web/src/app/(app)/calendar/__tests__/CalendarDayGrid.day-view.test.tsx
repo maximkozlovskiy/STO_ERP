@@ -401,3 +401,32 @@ describe('Вид «День» — завантаження підйомника 
     );
   });
 });
+
+describe('Вид «День» — чернетка запису', () => {
+  // Текст часу чернетки — «кнопка» (`attributes` useDraggable), а сенсор лише вказівний: без
+  // власного onKeyDown Enter і пробіл форму не відкривали (клас Bug #877).
+  // Mutation-verify: прибрати onKeyDown зі span чернетки → Enter не кличе openFormFromPending.
+  it('чернетка відкривається з клавіатури — Enter і пробіл, інші клавіші ні', async () => {
+    const open = vi.fn();
+    function PendingHarness() {
+      const state = useCalendarState({ canManageSlots: true });
+      return (
+        <CalendarDayGrid
+          state={{
+            ...state,
+            pendingSlot: { liftId: 'lift-1', startH: 10, endH: 12 },
+            openFormFromPending: open,
+          }}
+        />
+      );
+    }
+    renderWithQueryClient(<PendingHarness />);
+    const text = await screen.findByText('10:00–12:00');
+    expect(text).toHaveAttribute('role', 'button');
+    fireEvent.keyDown(text, { key: 'a' });
+    expect(open).not.toHaveBeenCalled();
+    fireEvent.keyDown(text, { key: 'Enter' });
+    fireEvent.keyDown(text, { key: ' ' });
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+});

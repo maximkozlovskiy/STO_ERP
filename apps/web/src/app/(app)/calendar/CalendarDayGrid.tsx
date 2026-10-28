@@ -337,6 +337,13 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
       <span
         className="flex-1 text-xs text-primary font-medium px-3 truncate"
         onClick={onOpen}
+        // `attributes` роблять текст «кнопкою» (role="button", tabIndex 0), а сенсор лише
+        // вказівний — без власного onKeyDown Enter і пробіл нічого не відкривали (клас Bug #877).
+        onKeyDown={(e: ReactKeyboardEvent<HTMLSpanElement>) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          onOpen();
+        }}
         {...attributes}
       >
         {decimalHoursToHHMM(pending.startH)}–{decimalHoursToHHMM(pending.endH)}

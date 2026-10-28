@@ -66,6 +66,23 @@ describe('buildMonthSummary', () => {
     expect(s.avgLoadPct).toBe(1);
   });
 
+  // Mutation-verify: сумувати в «Разом» округлені години рядків → 0,9 замість 1.
+  it('«Разом» годин у таблиці підйомників збігається з KPI, а не сумою округлених рядків', () => {
+    const s = buildMonthSummary(
+      month([
+        slot('2026-10-05T09:00:00+03:00', '2026-10-05T09:20:00+03:00'),
+        slot('2026-10-05T09:00:00+03:00', '2026-10-05T09:20:00+03:00', { liftId: 'lift-2' }),
+        slot('2026-10-05T09:00:00+03:00', '2026-10-05T09:20:00+03:00', { liftId: null }),
+      ]),
+      LIFTS,
+      [],
+      opts,
+    );
+    expect(s.lifts.map(r => r.hours)).toEqual([0.3, 0.3, 0.3]);
+    expect(s.busyHours).toBe(1);
+    expect(s.liftsTotal.hours).toBe(s.busyHours);
+  });
+
   // guards: BR-CAL-013
   it('запис через північ рахується один раз, не в кожній із двох діб', () => {
     const s = buildMonthSummary(
