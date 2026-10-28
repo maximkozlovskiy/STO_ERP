@@ -105,6 +105,8 @@
       "loss": "Loss for the period",
       "payrollMissing": "Payroll not computed: {{months}} — net profit for these months is overstated",
       "unknownCost_one": "{{count}} part has no known purchase price — cost is understated",
+      "unknownCost_few": "{{count}} parts have no known purchase price — cost is understated",
+      "unknownCost_many": "{{count}} parts have no known purchase price — cost is understated",
       "unknownCost_other": "{{count}} parts have no known purchase price — cost is understated",
       "note": "Accrual basis: revenue and parts — from completed work orders, payroll — accruals of computed periods (pro rata by days), expenses and other income — cash and bank by item. All excluding VAT, in the base currency."
     },

@@ -82,8 +82,28 @@ describe('Звіти — вкладка «Залишки» і ролі', () => {
       expect(tabs).toContain('Звіт по складу');
       expect(tabs).toContain('Виручка');
       expect(tabs).toContain('Конструктор');
+      // guards: BR-RPT-030
+      expect(tabs).toContain('P&L');
     },
   );
+
+  // guards: BR-RPT-030
+  it.each(['STOREKEEPER', 'RECEPTIONIST'])(
+    '%s за посиланням ?tab=pnl не бачить вкладки P&L і запиту P&L не шле',
+    r => {
+      role = r;
+      currentSearch = 'tab=pnl';
+      render(<ReportsPage />);
+      expect(tabButtons()).not.toContain('P&L');
+      for (const call of useReportMock.mock.calls) expect(call[0]).not.toBe('pnl');
+    },
+  );
+
+  it('фінансова роль: ?tab=pnl — запит P&L за період фільтра', () => {
+    currentSearch = 'tab=pnl';
+    render(<ReportsPage />);
+    expect(useReportMock.mock.calls.some(c => c[0] === 'pnl')).toBe(true);
+  });
 
   it.each(['STOREKEEPER', 'RECEPTIONIST'])(
     '%s бачить лише одну вкладку — «Залишки», і одразу її вміст',

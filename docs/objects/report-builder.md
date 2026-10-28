@@ -86,6 +86,15 @@
 
 Ролі: `OWNER`, `ADMIN`, `ACCOUNTANT`. Route ordering: специфічні перед `:id`.
 
+Фіксований звіт P&L (сусідній модуль `reports`, BR-RPT-030):
+
+| Метод | URL                      | Дія                                                                        |
+| ----- | ------------------------ | -------------------------------------------------------------------------- |
+| GET   | `/reports/pnl?from=&to=` | P&L по київських місяцях (`PnlReportDto`), період ≤ 24 місяців, інакше 400 |
+
+Ролі — як «Рентабельність»: `OWNER`, `ADMIN`, `ACCOUNTANT`. Розрахунок — `ReportsService.pnl`,
+чисті функції (місяці, розподіл зарплати за днями, дерево статей) — `reports/pnl.calc.ts`.
+
 ## UI (Web)
 
 | Компонент             | Файл                                                                                       |
@@ -93,6 +102,8 @@
 | Вкладка «Конструктор» | `app/(app)/reports/ReportBuilder.tsx` (палітра+3 зони+таблиця)                             |
 | Хуки                  | `hooks/api/useReportBuilder.ts`                                                            |
 | Експорт CSV / XLSX    | `lib/report-export.ts` (рядки, CSV-текст, SpreadsheetML; завантаження — `lib/download.ts`) |
+| Вкладка «P&L»         | `app/(app)/reports/PnlReport.tsx` (місяці × рядки, статті деревом, CSV — `buildPnlCsv`)    |
+| KPI дашборда          | `app/(app)/dashboard/page.tsx` + `useDashboardPnl` (`hooks/api/useDashboardData.ts`)       |
 
 Native HTML5 drag (палітра→зона); ієрархічна таблиця з розгортанням + tfoot-підсумки; експорт
 CSV/XLSX клієнтський (SpreadsheetML).
@@ -302,7 +313,9 @@ CSV/XLSX клієнтський (SpreadsheetML).
      каси (оригінал і операція з `reversalOfId`) не входить. НЕ витрати: виплата зарплати (вже в п. 4),
      оплата постачальникам (запчастини — у п. 2), повернення клієнтам, внесок/вилучення власника,
      підзвіт, інкасація, переміщення між касою й банком.
-  6. **Інші доходи** — каса IN зі статтею типу INCOME (за статтями), без сторнованих пар.
+  6. **Інші доходи** — каса IN зі статтею типу INCOME (за статтями), без сторнованих пар. Привід —
+     лише ручне внесення (`MANUAL_IN`, `PNL_INCOME_CASH_REASONS`): стаття INCOME буває закріплена й
+     за оплатою клієнта чи внеском власника (BR-CASH-022), а оплата клієнта вже є виручкою (п. 1).
   7. **Курсові різниці** — `SettlementTransaction` FX_GAIN − FX_LOSS за `createdAt`, з тим самим
      знаком для постачальника, що в `supplier-payments.service.ts` (звіт — у бік прибутку СТО).
   8. **Чистий прибуток** = 3 − 4 − 5 + 6 + 7.
@@ -351,10 +364,12 @@ cd apps/api && npx vitest run src/modules/report-builder/<файл>.spec.ts
 | ролі доступу                                                                                     | `report-builder.access.spec.ts`             | 9      |
 | межі config (DTO)                                                                                | `report-builder.dto.spec.ts`                | 1      |
 | фіксовані звіти (сусідній модуль `reports`)                                                      | `reports.service.spec.ts`                   | 20     |
-| фіксовані звіти: дати періоду в запиті (400)                                                     | `reports.contract.spec.ts`                  | 74     |
+| фіксовані звіти: дати періоду в запиті (400), ролі P&L (030)                                     | `reports.contract.spec.ts`                  | 88     |
+| P&L: каса, банк, сторно, зарплата, курсові, формула, межа 24 місяців (030)                       | `reports.pnl.spec.ts`                       | 10     |
+| P&L: місяці, розподіл зарплати за днями, дерево статей (030)                                     | `pnl.calc.spec.ts`                          | 10     |
 | фіксовані звіти: межі періоду за Києвом, ПДВ                                                     | `reports.period-bounds.spec.ts`             | 42     |
 
-Разом: **304** кейси — 168 конструктора і 136 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **338** кейсів — 168 конструктора і 170 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
 
 Web-тест експорту (`BR-RPT-021`) лежить поза модулем:
 `apps/web/src/lib/__tests__/report-export.test.ts` — 37 кейсів (зокрема колонки валют, порожня вибірка і рядки
@@ -365,7 +380,12 @@ Web-тест експорту (`BR-RPT-021`) лежить поза модуле�
 `escapeCsvCell`, BOM), XLSX-XML (екранування, вирізання XML-недопустимих керувальних символів, назва аркуша — `escAttr` і правила Excel `xlsxSheetName`, числа як `Number`, заголовок, каркас книги). Запуск:
 `cd apps/web && npx vitest run src/lib/__tests__/report-export.test.ts`.
 CSV фіксованих звітів (`apps/web/src/app/(app)/reports/report-csv.ts`, числа з комою, BOM у
-файлі) — `apps/web/src/app/(app)/reports/__tests__/report-csv.test.ts`, 5 кейсів.
+файлі) — `apps/web/src/app/(app)/reports/__tests__/report-csv.test.ts`, 6 кейсів.
+Вкладка «P&L» (BR-RPT-030) — `apps/web/src/app/(app)/reports/__tests__/PnlReport.test.tsx`, 4 кейси;
+доступ до вкладки — `ReportsInventoryTab.test.tsx` (14); KPI дашборда з P&L і ролі —
+`apps/web/src/app/(app)/dashboard/__tests__/DashboardPage.roles.test.tsx` (12) і
+`apps/web/src/hooks/api/useDashboardData.roles.test.ts` (11). E2E — `apps/web/e2e/reports-pnl.spec.ts`
+(витрата з каси за статтею → рядок статті в P&L місяця, чистий прибуток меншає на її суму).
 
 **Чого тут НЕМА.**
 

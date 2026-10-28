@@ -20,6 +20,7 @@ import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 
 const serviceMock = {
   revenue: vi.fn(),
@@ -29,6 +30,7 @@ const serviceMock = {
   settlements: vi.fn(),
   load: vi.fn(),
   vatReport: vi.fn(),
+  pnl: vi.fn(),
 };
 
 const mockJwtGuard = {
@@ -47,6 +49,8 @@ const REQUIRED_ROUTES = [
   ['profitability', 'profitability'],
   ['load', 'load'],
   ['vat', 'vatReport'],
+  // guards: BR-RPT-030
+  ['pnl', 'pnl'],
 ] as const;
 
 const BAD_PERIODS = [
@@ -166,5 +170,18 @@ describe('Reports — HTTP-контракт дат періоду', () => {
     const res = await get('/reports/settlements');
     expect(res.statusCode).toBe(200);
     expect(serviceMock.settlements).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Reports — ролі звіту P&L', () => {
+  // guards: BR-RPT-030
+  it('GET /reports/pnl — лише OWNER, ADMIN, ACCOUNTANT (як «Рентабельність»)', () => {
+    const roles = Reflect.getMetadata(ROLES_KEY, ReportsController.prototype.pnl) as string[];
+    const profitability = Reflect.getMetadata(
+      ROLES_KEY,
+      ReportsController.prototype.profitability,
+    ) as string[];
+    expect([...roles].sort()).toEqual(['ACCOUNTANT', 'ADMIN', 'OWNER']);
+    expect([...roles].sort()).toEqual([...profitability].sort());
   });
 });

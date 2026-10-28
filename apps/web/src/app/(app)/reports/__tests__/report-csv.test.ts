@@ -99,10 +99,65 @@ describe('report-csv › buildCsv', () => {
     ]);
   });
 
+  // guards: BR-RPT-030
+  it("«P&L»: рядки × місяці + «Разом», статті з відступом, від'ємне — числом з комою", () => {
+    const data = {
+      _tab: 'pnl',
+      months: ['2026-09', '2026-10'],
+      rows: [
+        { key: 'revenue', amounts: [1000, 2000.5], total: 3000.5 },
+        { key: 'expenses', amounts: [100, 0], total: 100 },
+        {
+          key: 'expenseCategory',
+          categoryId: 'c1',
+          parentId: null,
+          label: 'Оренда',
+          depth: 0,
+          amounts: [100, 0],
+          total: 100,
+        },
+        {
+          key: 'expenseCategory',
+          categoryId: null,
+          parentId: null,
+          label: null,
+          depth: 0,
+          amounts: [0, 0],
+          total: 0,
+        },
+        { key: 'netProfit', amounts: [-50.25, 2000.5], total: 1950.25 },
+      ],
+      unknownCostPartsCount: 0,
+      payrollMissingMonths: [],
+      from: '2026-09-01',
+      to: '2026-10-31',
+    } as ReportData;
+    const csv = buildCsv('pnl', data, t);
+    expect(csv.split('\n')[0]).toBe(
+      `${t('page.pnl.colIndicator')};09.2026;10.2026;${t('page.pnl.colTotal')}`,
+    );
+    expect(lines(csv)).toEqual([
+      `${t('page.pnl.rows.revenue')};1000;2000,5;3000,5`,
+      `${t('page.pnl.rows.expenses')};100;0;100`,
+      '· Оренда;100;0;100',
+      `· ${t('page.pnl.noCategory')};0;0;0`,
+      `${t('page.pnl.rows.netProfit')};-50,25;2000,5;1950,25`,
+    ]);
+  });
+
   // guards: BR-RPT-021
   it('кожна вкладка з даними дає непорожній CSV', () => {
     // Вкладка без гілки в buildCsv мовчки віддавала '' — порожній файл замість помилки.
-    const tabs = ['revenue', 'work-orders', 'stock', 'settlements', 'load', 'profitability', 'vat'];
+    const tabs = [
+      'revenue',
+      'work-orders',
+      'stock',
+      'settlements',
+      'load',
+      'profitability',
+      'pnl',
+      'vat',
+    ];
     const minimal: Record<string, ReportData> = {
       revenue: { _tab: 'revenue', rows: [], from: '', to: '' } as unknown as ReportData,
       'work-orders': { _tab: 'work-orders', rows: [] } as unknown as ReportData,
@@ -111,6 +166,7 @@ describe('report-csv › buildCsv', () => {
       load: { _tab: 'load', rows: [] } as unknown as ReportData,
       profitability: { _tab: 'profitability', totalRevenue: 0 } as unknown as ReportData,
       vat: { _tab: 'vat', invoiced: 0, purchases: 0, net: 0 } as unknown as ReportData,
+      pnl: { _tab: 'pnl', months: [], rows: [] } as unknown as ReportData,
     };
     for (const tab of tabs) expect(buildCsv(tab, minimal[tab], t), tab).not.toBe('');
   });

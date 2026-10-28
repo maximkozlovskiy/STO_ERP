@@ -34,6 +34,8 @@ describe('DASHBOARD_READ_ROLES — дзеркало @Roles ендпоінтів 
     ['lowStock', 'inventory/stock-items.controller.ts', 'low'],
     ['invoices', 'invoices/invoices.controller.ts', ''],
     ['revenue', 'reports/reports.controller.ts', 'revenue'],
+    // guards: BR-RPT-030 — KPI місяця з P&L під тим самим доступом
+    ['revenue', 'reports/reports.controller.ts', 'pnl'],
     ['maintenance', 'maintenance-schedules/maintenance-schedules.controller.ts', 'upcoming'],
     ['calendar', 'calendar/calendar.controller.ts', ''],
   ] as const)('%s ↔ %s', (key, controller, route) => {

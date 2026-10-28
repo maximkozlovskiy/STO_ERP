@@ -4,6 +4,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { kyivToday } from '@/lib/format';
 
 let role = 'MECHANIC';
 vi.mock('@/lib/auth', () => ({
@@ -27,6 +28,7 @@ const ALLOWED: [RegExp, string[]][] = [
   [/^\/stock-items\/low/, ['OWNER', 'ADMIN', 'STOREKEEPER']],
   [/^\/invoices\?/, ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']],
   [/^\/reports\/revenue/, ['OWNER', 'ADMIN', 'ACCOUNTANT']],
+  [/^\/reports\/pnl/, ['OWNER', 'ADMIN', 'ACCOUNTANT']],
   [/^\/maintenance-schedules\/upcoming/, ['OWNER', 'ADMIN', 'RECEPTIONIST']],
   [/^\/calendar\/slots/, ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']],
   [/^\/lifts/, ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']],
@@ -37,6 +39,20 @@ let invoices: unknown[] = [];
 /** `total` відповіді списку, коли сервер має більше за віддані `items` (null — `items.length`). */
 let ordersTotal: number | null = null;
 let invoicesTotal: number | null = null;
+/** Рядки графіка тижня (`/reports/revenue`) і P&L місяця (`/reports/pnl`, BR-RPT-030). */
+let weekRows: unknown[] = [];
+let pnl: Record<string, unknown> = {};
+const pnlOf = (revenue: number, net: number, payrollMissingMonths: string[] = []) => ({
+  months: ['2026-10'],
+  rows: [
+    { key: 'revenue', amounts: [revenue], total: revenue },
+    { key: 'netProfit', amounts: [net], total: net },
+  ],
+  unknownCostPartsCount: 0,
+  payrollMissingMonths,
+  from: '2026-10-01',
+  to: '2026-10-29',
+});
 
 function fakeApi(path: string) {
   const rule = ALLOWED.find(([re]) => re.test(path));
@@ -46,7 +62,8 @@ function fakeApi(path: string) {
   }
   if (path.startsWith('/invoices'))
     return Promise.resolve({ items: invoices, total: invoicesTotal ?? invoices.length });
-  if (path.startsWith('/reports/revenue')) return Promise.resolve({ rows: [] });
+  if (path.startsWith('/reports/revenue')) return Promise.resolve({ rows: weekRows });
+  if (path.startsWith('/reports/pnl')) return Promise.resolve(pnl);
   if (path.startsWith('/tasks')) return Promise.resolve({ items: [], total: 0 });
   return Promise.resolve([]);
 }
@@ -77,6 +94,8 @@ function resetData() {
   invoicesTotal = null;
   orders = [{ status: 'IN_PROGRESS', completedAt: null }];
   invoices = [{ amount: 100 }];
+  weekRows = [];
+  pnl = pnlOf(0, 0);
 }
 
 describe('Дашборд — запити лише дозволені ролі (Bug #879)', () => {
@@ -98,6 +117,8 @@ describe('Дашборд — запити лише дозволені ролі (
     expect(screen.queryByText('Немає даних')).not.toBeInTheDocument();
     // Рахунки, склад і виручка механіку не віддаються — не «0», а «—».
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(3);
+    // guards: BR-RPT-030 — чистого прибутку механік не бачить і запиту P&L не шле.
+    expect(screen.queryByText('Чистий прибуток за місяць')).not.toBeInTheDocument();
   });
 
   it('приймальня: без складу й виручки, решта — запитується', async () => {
@@ -122,6 +143,7 @@ describe('Дашборд — запити лише дозволені ролі (
       '/stock-items/low',
       '/invoices',
       '/reports/revenue',
+      '/reports/pnl?from=',
       '/maintenance-schedules/upcoming',
       '/calendar/slots?from=',
       '/lifts',
@@ -253,5 +275,35 @@ describe('Дашборд — показники (TECH-DEBT §8, §10 п. 26)', (
     );
     expect(kpi('В роботі').value).toBe('—');
     expect(kpi('Несплачені рахунки')).toEqual({ value: '—', trend: '' });
+  });
+
+  // guards: BR-RPT-030
+  it('виручка й чистий прибуток місяця — з P&L поточного місяця, не з графіка тижня', async () => {
+    weekRows = [{ date: kyivToday(), revenue: 111, count: 1 }];
+    pnl = pnlOf(25_000, 7_500.5);
+    renderPage();
+    expect(await screen.findByText('Чистий прибуток за місяць')).toBeInTheDocument();
+    const month = kyivToday().slice(0, 7);
+    await waitFor(() =>
+      expect(requested()).toContain(`/reports/pnl?from=${month}-01&to=${kyivToday()}`),
+    );
+    await waitFor(() => expect(kpi('Виручка за місяць (без ПДВ)').value).toBe('25 000,00 ₴'));
+    expect(kpi('Чистий прибуток за місяць')).toEqual({ value: '7 500,50 ₴', trend: '' });
+  });
+
+  // guards: BR-RPT-030
+  it('збиток — червона картка; місяць без зарплати — підказка під чистим прибутком', async () => {
+    pnl = pnlOf(1000, -250, [kyivToday().slice(0, 7)]);
+    renderPage();
+    expect(await screen.findByText('Чистий прибуток за місяць')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(kpi('Чистий прибуток за місяць')).toEqual({
+        value: '-250,00 ₴',
+        trend: '↓ зарплату не розраховано',
+      }),
+    );
+    expect(screen.getByTestId('kpi-net-profit-month').firstElementChild?.className).toContain(
+      'kpi-card-red',
+    );
   });
 });
