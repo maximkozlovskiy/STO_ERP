@@ -921,6 +921,37 @@
    "Auth — HTTP Contract POST /auth/refresh повертає 200 з оновленим accessToken",
    "Auth — HTTP Contract POST /auth/refresh повертає 401 коли refresh token відсутній або невалідний"
   ],
+  "apps/api/src/modules/automation/automation-events.processor.spec.ts": [
+   "AutomationEventsProcessor — обробка outbox (BR-AUT-061) process(job) — той самий прохід",
+   "AutomationEventsProcessor — обробка outbox (BR-AUT-061) retryDelayMs: 0 до першого збою, далі подвоюється від 10 с, стеля — година",
+   "AutomationEventsProcessor — обробка outbox (BR-AUT-061) збій обробника → attempts+1, lastError, processedAt лишається null; інші події обробляються",
+   "AutomationEventsProcessor — обробка outbox (BR-AUT-061) необроблені події → processedAt; оброблені й видалені не чіпаються",
+   "AutomationEventsProcessor — обробка outbox (BR-AUT-061) пачка подій, що падають, не відсуває свіжі: нові вибираються окремо",
+   "AutomationEventsProcessor — обробка outbox (BR-AUT-061) повтор — після експоненційної паузи від останньої спроби (updatedAt)",
+   "AutomationEventsProcessor — обробка outbox (BR-AUT-061) позначка обробки — CAS за id + orgId + processedAt:null (не перезаписує чужу обробку)",
+   "AutomationEventsProcessor — обробка outbox (BR-AUT-061) порядок — за occurredAt; обробник отримує подію в tenant-scope її організації"
+  ],
+  "apps/api/src/modules/automation/record-document-event.census.spec.ts": [
+   "перепис точок запису документів — подія outbox поруч (BR-AUT-060) виклик-подія — лише в транзакції: `recordDocumentEvent(this.prisma` ніде немає",
+   "перепис точок запису документів — подія outbox поруч (BR-AUT-060) кожне створення документа й запис його статусу мають recordDocumentEvent поруч",
+   "перепис точок запису документів — подія outbox поруч (BR-AUT-060) одна подія — на один запис: новий запис статусу поруч із ЧУЖОЮ подією не проходить",
+   "перепис точок запису документів — подія outbox поруч (BR-AUT-060) перелік винятків живий: кожен рядок відповідає рівно одному виклику без події",
+   "перепис точок запису документів — подія outbox поруч (BR-AUT-060) перепис не порожній: знайдено записи кожного типу документа"
+  ],
+  "apps/api/src/modules/automation/record-document-event.integration.spec.ts": [
+   "recordDocumentEvent — integration (жива БД) відкат транзакції документа → події немає",
+   "recordDocumentEvent — integration (жива БД) коміт → рівно одна подія з полями; той самий статус — без події"
+  ],
+  "apps/api/src/modules/automation/record-document-event.spec.ts": [
+   "recordDocumentEvent — подія документа в outbox (BR-AUT-060) recordDocumentEvents: одна вставка, події без зміни статусу відкинуто; порожньо — без запиту",
+   "recordDocumentEvent — подія документа в outbox (BR-AUT-060) «статус змінено» без зміни (обидва порожні) → події немає",
+   "recordDocumentEvent — подія документа в outbox (BR-AUT-060) «статус змінено» без зміни (той самий статус) → події немає",
+   "recordDocumentEvent — подія документа в outbox (BR-AUT-060) «створено»: без попереднього статусу, ініціатор не заданий → null (система)",
+   "recordDocumentEvent — подія документа в outbox (BR-AUT-060) пише подію в ПЕРЕДАНИЙ клієнт транзакції з усіма полями",
+   "recordDocumentEvent — подія документа в outbox (BR-AUT-060) сторно оплати: псевдостатуси ACTIVE → REVERSED — це подія",
+   "паритет переліків автоматизації: @sto/shared ↔ Prisma-enum AUTOMATION_DOCUMENT_TYPES == AutomationDocumentType",
+   "паритет переліків автоматизації: @sto/shared ↔ Prisma-enum AUTOMATION_EVENT_KINDS == AutomationEventKind"
+  ],
   "apps/api/src/modules/bank-accounts/bank-accounts.contract.spec.ts": [
    "BankAccounts — HTTP Contract GET /bank-accounts повертає 200 + { items, total } (не голий масив)",
    "BankAccounts — HTTP Contract GET /bank-accounts повертає 403 коли guard не пропустив",
@@ -1591,7 +1622,9 @@
   "apps/api/src/modules/booking/booking.service.spec.ts": [
    "BookingService cancel Bug #699: cancel підтвердженої заявки → звільняє матеріалізований CalendarSlot (по id + parentSlotId)",
    "BookingService cancel Bug #699: слот і заявка звільняються атомарно ($transaction)",
+   "BookingService cancel CAS за прочитаними статусом і слотом; подія з правдивим fromStatus і автором",
    "BookingService cancel soft-delete + status=CANCELLED у одному updateMany (без ліфта — слот не чіпаємо)",
+   "BookingService cancel гонка «підтвердити ↔ скасувати»: CAS програв, заявка жива → 400 у транзакції, події немає",
    "BookingService cancel повторний cancel (вже soft-deleted) → NotFoundException",
    "BookingService confirm Bug #249 pattern: updateMany з { id, orgId, deletedAt: null }, не голий update",
    "BookingService confirm Bug #700: повторний confirm (confirmedSlotId вже є) → createSlot НЕ викликається (ідемпотентно)",
@@ -3442,10 +3475,12 @@
    "StockItems — HTTP Contract розрізи залишків: дати відбору GET /stock-items/by-document?to=2026-02-31 → 400, сервіс не викликається"
   ],
   "apps/api/src/modules/invoices/invoice-overdue.processor.spec.ts": [
-   "InvoiceOverdueProcessor null-dueDate виключено (рахунок без терміну не прострочується)",
-   "InvoiceOverdueProcessor tenant: інша org → інший orgId у where",
-   "InvoiceOverdueProcessor updateMany: SENT/PARTIALLY_PAID + dueDate<сьогодні + orgId + deletedAt:null → OVERDUE",
-   "InvoiceOverdueProcessor НЕ чіпає PAID/CANCELLED/OVERDUE (status-фільтр лише SENT/PARTIALLY_PAID)"
+   "InvoiceOverdueProcessor SENT і PARTIALLY_PAID з терміном до сьогодні своєї організації → OVERDUE; решта не змінюється",
+   "InvoiceOverdueProcessor збій запису події відкочує і статус рахунку (одна транзакція)",
+   "InvoiceOverdueProcessor повторний прогін нічого не змінює і нових подій не пише (ідемпотентність)",
+   "InvoiceOverdueProcessor подія на КОЖЕН прострочений рахунок: з якого статусу, у OVERDUE, ініціатор — система",
+   "InvoiceOverdueProcessor рахунок, що змінився між вибіркою і записом (оплата), не позначається і події не має",
+   "InvoiceOverdueProcessor термін перенесли між вибіркою і записом → рахунок не прострочується і події не має"
   ],
   "apps/api/src/modules/invoices/invoices.contract.spec.ts": [
    "Invoices — HTTP Contract GET /invoices Bug #339: dateFrom + dateTo → service.findAll отримує дати",
@@ -3718,6 +3753,8 @@
    "mirroredInvoiceStatus — статус рахунку наряду за сплаченим (BR-INV-018) SENT, сума 1000, сплачено 400 → PARTIALLY_PAID",
    "mirroredInvoiceStatus — статус рахунку наряду за сплаченим (BR-INV-018) рахунок на 0 при сплаченому 0 — не «Оплачено»",
    "syncWorkOrderInvoicePaid — дзеркало сплаченого наряду (BR-INV-018) CAS програв один раз → перечитує рахунок і пише за свіжим станом",
+   "syncWorkOrderInvoicePaid — дзеркало сплаченого наряду (BR-INV-018) зміна статусу рахунку дзеркалом — подія з попереднім статусом і ініціатором",
+   "syncWorkOrderInvoicePaid — дзеркало сплаченого наряду (BR-INV-018) змінилось лише «сплачено», статус той самий → події немає",
    "syncWorkOrderInvoicePaid — дзеркало сплаченого наряду (BR-INV-018) рахунку наряду немає → нічого не робить",
    "syncWorkOrderInvoicePaid — дзеркало сплаченого наряду (BR-INV-018) рахунок змінюють безперервно → після кількох спроб 400 «повторіть», не нескінченний цикл",
    "syncWorkOrderInvoicePaid — дзеркало сплаченого наряду (BR-INV-018) рахунок уже збігається з нарядом → жодного запису",
@@ -4548,6 +4585,9 @@
    "PaymentsService.reverse — оплата сторнується один раз оплата отримує reversedAt і reversalCashOperationId = рядок сторно",
    "PaymentsService.reverse — оплата сторнується один раз оплата іншої організації не сторнується: помилка, рядок оплати не змінено",
    "PaymentsService.reverse — оплата сторнується один раз повторне сторно тієї самої оплати → 400; другої проводки немає",
+   "PaymentsService.reverse — події outbox (BR-AUT-060) повторне сторно → 400 і другої події немає",
+   "PaymentsService.reverse — події outbox (BR-AUT-060) рахунок без наряду: PAID → SENT — подія рахунку; лише «сплачено» без зміни статусу — без події",
+   "PaymentsService.reverse — події outbox (BR-AUT-060) сторно → подія оплати STATUS_CHANGED «ACTIVE» → «REVERSED» з автором сторно; наряд PAID → INVOICED — своя подія",
    "PaymentsService.reverse — проводка сторно оригінал PAYMENT → PAYMENT_CANCEL на ту саму суму, з контрагентом, курсом оригіналу і в tx каси",
    "PaymentsService.reverse — проводка сторно оригінал PREPAYMENT (аванс без рахунку й наряду) → PREPAYMENT_CANCEL",
    "PaymentsService.reverse — стан змінився між читанням і записом (review 2026-10-14) наряд «Оплачено»: між читанням і записом «сплачено» змінилось → 400, статус не чіпано",
@@ -5316,7 +5356,8 @@
    "PurchaseOrdersService.transition — FSM map Bug #481: PO не знайдено → NotFoundException + ніяких write",
    "PurchaseOrdersService.transition — FSM map Bug #481: RECEIVED → DRAFT заборонено (термінальний статус)",
    "PurchaseOrdersService.transition — FSM map Bug #481: tenant isolation — findFirst отримує orgId+deletedAt у where",
-   "PurchaseOrdersService.transition — FSM map Bug #541: PO line DTO містить goodInternalCode / goodSku / goodBrandName"
+   "PurchaseOrdersService.transition — FSM map Bug #541: PO line DTO містить goodInternalCode / goodSku / goodBrandName",
+   "PurchaseOrdersService.transition — FSM map паралельний перехід з того самого статусу: CAS програв → 400 «статус змінився», події немає"
   ],
   "apps/api/src/modules/purchase-orders/purchase-orders.line-goods.spec.ts": [
    "PurchaseOrdersService.create/update — tenant-guard goodId рядків create: goodId рядка з іншої організації → NotFoundException ДО будь-якого запису",
@@ -5349,6 +5390,7 @@
    "PurchaseOrdersService.applyPricing ціна не змінилась (різниця < 0.001) → skip: не пише ні good.updateMany ні priceHistory"
   ],
   "apps/api/src/modules/purchase-orders/purchase-orders.receive-ledger.spec.ts": [
+   "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE Bug #995: статус замовлення змінився до запису → CAS за прочитаним статусом, 400 і відкат прийому",
    "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE CAS ДРУГОГО рядка не зійшовся → throw; жодного RECEIPT-руху (і для першого рядка теж) і без SUPPLIER_CHARGE",
    "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE lineId, якого немає серед рядків замовлення (з receivedQty=0) → 400 receiveLineNotFound до транзакції; нічого не прийнято",
    "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE lineId, якого немає серед рядків замовлення (з receivedQty>0) → 400 receiveLineNotFound до транзакції; нічого не прийнято",
@@ -6464,6 +6506,7 @@
    "BR-SCON-013 підсумок supplierApiStatus [{\"status\":\"UNKNOWN\",\"lines\":[{\"qtyRequested\":2,\"qtyConfirmed\":null}]},{\"status\":\"FAILED\",\"lines\":[{\"qtyRequested\":1,\"qtyConfirmed\":null}]}] → NEEDS_ATTENTION"
   ],
   "apps/api/src/modules/supplier-api/orders/supplier-orders.send.spec.ts": [
+   "BR-AUT-060 «Відправити в API» з «Чернетки» — подія з автором подія DRAFT → ORDERED несе працівника, що натиснув «Відправити»",
    "BR-SCON-009 «Відправити в API» sweep: відправки кількох замовлень — одним addBulk з тими самими опціями задачі",
    "BR-SCON-009 «Відправити в API» вже відправлене → 400 alreadySent; частково отримане / отримане / скасоване → 400 orderClosed",
    "BR-SCON-009 «Відправити в API» з «Чернетки»: спершу «Замовлено», потім план і задача place; supplierApiStatus = QUEUED",
@@ -7008,6 +7051,8 @@
    "Tasks — HTTP контракт Запис (BR-TASK-001) id не UUID → 400"
   ],
   "apps/api/src/modules/tasks/tasks.fsm.spec.ts": [
+   "Задачі — події outbox (BR-AUT-060) CAS програв (статус змінився паралельно) → 400 і події немає",
+   "Задачі — події outbox (BR-AUT-060) створення і перехід → події «створено» і «статус змінено» з ініціатором",
    "Задачі — статуси (BR-TASK-003) CANCELLED → CANCELLED поза картою → 400, статус не змінено",
    "Задачі — статуси (BR-TASK-003) CANCELLED → DONE поза картою → 400, статус не змінено",
    "Задачі — статуси (BR-TASK-003) CANCELLED → IN_PROGRESS поза картою → 400, статус не змінено",
@@ -7717,13 +7762,13 @@
    "WorkOrdersService — запис календаря наряду (BR-WO-020) зміна наряду у наряду було кілька записів → після перенесення рівно один (без дубля)",
    "WorkOrdersService — запис календаря наряду (BR-WO-020) зміна наряду форма шле ті самі дати й підйомник → записи не чіпаються, транзакції немає",
    "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду tenant: запис іншої організації на тому ж підйомнику й часі не заважає і не зачіпається",
-   "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду без дат → запису немає і транзакції немає",
+   "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду без дат → запису немає; наряд і подія «створено» — однією транзакцією",
    "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду без підйомника → запис «Без підйомника» (liftId = null)",
    "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду другий день зайнятий → 400 «…наступного дня»",
    "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду з плановими початком, завершенням і підйомником → рівно один запис у транзакції",
    "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду зайнятий підйомник → 400 «Підйомник зайнятий», наряд не створено",
-   "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду лише завершення → запису немає і транзакції немає",
-   "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду лише початок → запису немає і транзакції немає",
+   "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду лише завершення → запису немає; наряд і подія «створено» — однією транзакцією",
+   "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду лише початок → запису немає; наряд і подія «створено» — однією транзакцією",
    "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду на два дні (16:00 → завтра 11:00, філія 08–18) → 16:00–18:00 і продовження 08:00–11:00",
    "WorkOrdersService — запис календаря наряду (BR-WO-020) створення наряду новий наряд: власні записи календаря не читаються — їх ще не може бути"
   ],
@@ -7803,6 +7848,13 @@
    "WorkOrders — HTTP Contract POST /work-orders/linked-counts повертає 400 для array >500 (ArrayMaxSize — anti-DoS)",
    "WorkOrders — HTTP Contract POST /work-orders/linked-counts повертає 400 для empty array (ArrayMinSize)",
    "WorkOrders — HTTP Contract POST /work-orders/linked-counts повертає 400 для не-UUID у array"
+  ],
+  "apps/api/src/modules/work-orders/work-orders.domain-events.spec.ts": [
+   "WorkOrdersService.transition — подія outbox (BR-AUT-060) перехід упав після запису статусу → відкат: ні нового статусу, ні події",
+   "WorkOrdersService.transition — подія outbox (BR-AUT-060) перехід → одна подія наряду: з якого, в який статус, ініціатор",
+   "WorkOrdersService.transition — подія outbox (BR-AUT-060) рахунок між читанням і записом став «Прострочено» → усе одно скасовується, подія з OVERDUE",
+   "WorkOrdersService.transition — подія outbox (BR-AUT-060) скасування наряду: подія наряду + подія КОЖНОГО живого рахунку з його попереднім статусом",
+   "WorkOrdersService.transition — подія outbox (BR-AUT-060) створення наряду → подія «створено» з ініціатором"
   ],
   "apps/api/src/modules/work-orders/work-orders.fsm.contract.spec.ts": [
    "FSM contract backend ↔ @sto/shared (A5) FSM-transition-мапа backend = shared (жодного drift)",
