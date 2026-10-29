@@ -2,6 +2,7 @@
   "list": {
     "title": "Наряди",
     "myOrders": "Мої наряди",
+    "changePriority": "Змінити пріоритет наряду {{number}}",
     "statusGroupFilter": "Статус: {{names}}",
     "statusGroupFilterClear": "Зняти фільтр «Статус: {{names}}»",
     "executorFilter": "Виконавець: {{name}}",

@@ -149,12 +149,15 @@ const GOODS_COLUMN_DEFS: Array<{ key: string; labelKey: string; defaultVisible?:
   { key: 'code', labelKey: 'goods.columns.code', defaultVisible: true },
   { key: 'sku', labelKey: 'goods.columns.sku', defaultVisible: true },
   { key: 'name', labelKey: 'goods.columns.name', defaultVisible: true },
-  { key: 'statuses', labelKey: 'goods.columns.statuses', defaultVisible: true },
+  // Статуси, категорія й тип здебільшого порожні («—») і забирали ширину в назви — типово
+  // сховані, повертаються в «Колонках» (UX-огляд 2026-10-29).
+  { key: 'statuses', labelKey: 'goods.columns.statuses', defaultVisible: false },
   { key: 'brand', labelKey: 'goods.columns.brand', defaultVisible: true },
-  { key: 'category', labelKey: 'goods.columns.category', defaultVisible: true },
+  { key: 'category', labelKey: 'goods.columns.category', defaultVisible: false },
   { key: 'unit', labelKey: 'goods.columns.unit', defaultVisible: false },
   { key: 'purchase', labelKey: 'goods.columns.purchase', defaultVisible: true },
   { key: 'sale', labelKey: 'goods.columns.sale', defaultVisible: true },
+  { key: 'type', labelKey: 'goods.columns.type', defaultVisible: false },
 ];
 const GOODS_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(GOODS_COLUMN_DEFS.map(c => c.key));
 
@@ -630,7 +633,7 @@ export default function GoodsTab() {
                       sortKey={col.key}
                       currentSort={goodsSort}
                       onSort={toggleGoodsSort}
-                      className={col.key === 'name' ? undefined : MONEY_HEAD_CLASS}
+                      className={col.key === 'name' ? 'min-w-64' : MONEY_HEAD_CLASS}
                       {...goodsDragProps(col.key)}
                     >
                       {col.label}
@@ -641,7 +644,6 @@ export default function GoodsTab() {
                     </TableHead>
                   ),
                 )}
-                <TableHead>{t('goods.columns.type')}</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -649,7 +651,7 @@ export default function GoodsTab() {
               {loading && (
                 <TableRow>
                   <TableCell
-                    colSpan={goodsVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)}
+                    colSpan={goodsVisibleColumns.length + (features.bulkActionsEnabled ? 3 : 2)}
                     className="py-10 text-center"
                   >
                     <div className="flex justify-center">
@@ -661,7 +663,7 @@ export default function GoodsTab() {
               {!loading && goods?.items.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={goodsVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)}
+                    colSpan={goodsVisibleColumns.length + (features.bulkActionsEnabled ? 3 : 2)}
                     className="p-0"
                   >
                     <EmptyState icon={Package} title={t('goods.empty')} />
@@ -704,7 +706,7 @@ export default function GoodsTab() {
                       {goodsVisibleColumns.map(col => {
                         if (col.key === 'name')
                           return (
-                            <TableCell key="name">
+                            <TableCell key="name" className="min-w-64">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p
                                   className={`font-medium ${isDeleted ? 'line-through text-muted-foreground' : ''}`}
@@ -741,14 +743,17 @@ export default function GoodsTab() {
                           return (
                             <TableCell
                               key="code"
-                              className="text-[13px] font-mono text-muted-foreground"
+                              className="text-[13px] font-mono text-muted-foreground whitespace-nowrap"
                             >
                               {g.internalCode ?? '—'}
                             </TableCell>
                           );
                         if (col.key === 'sku')
                           return (
-                            <TableCell key="sku" className="text-[13px] text-muted-foreground">
+                            <TableCell
+                              key="sku"
+                              className="text-[13px] text-muted-foreground whitespace-nowrap"
+                            >
                               {g.sku ?? '—'}
                             </TableCell>
                           );
@@ -782,20 +787,23 @@ export default function GoodsTab() {
                               {fmtMoney(g.salePrice)} ₴
                             </MoneyCell>
                           );
+                        if (col.key === 'type')
+                          return (
+                            <TableCell key="type">
+                              {g.goodType ? (
+                                <Badge
+                                  variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}
+                                  tooltip={GOOD_TYPE_DESCRIPTIONS[g.goodType]}
+                                >
+                                  {goodTypeLabel(g.goodType)}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                          );
                         return null;
                       })}
-                      <TableCell>
-                        {g.goodType ? (
-                          <Badge
-                            variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}
-                            tooltip={GOOD_TYPE_DESCRIPTIONS[g.goodType]}
-                          >
-                            {goodTypeLabel(g.goodType)}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           {isDeleted ? (

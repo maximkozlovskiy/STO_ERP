@@ -29,6 +29,7 @@ import { fmtMoney, fmtDateTime, kyivToday } from '@/lib/format';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { ListSearchInput } from '@/components/ui/list-search-input';
 import { useDebounce } from '@/hooks/useDebounce';
+import { RowActionsMenu } from '@/components/ui/row-actions-menu';
 import { cn } from '@/lib/utils';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { fiscalStatusLabel } from '@/i18n/enumLabel';
@@ -648,23 +649,20 @@ export default function CashOperationsTab({
                           : 'bg-surface group-hover:bg-secondary',
                       )}
                     >
+                      {/* Сторно — рідкісна незворотна дія: у меню «⋯», підтвердження — картка сторно
+                          з причиною (UX-огляд 2026-10-29). */}
                       {isReversible(op) && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          leftIcon={<Undo2 className="h-3.5 w-3.5" />}
-                          title={t('reversal.actionAria', {
-                            date: fmtDateTime(op.createdAt),
-                            amount: amountText,
-                          })}
-                          onClick={e => {
-                            e.stopPropagation();
-                            openReverse(op);
-                          }}
-                        >
-                          {t('reversal.action')}
-                        </Button>
+                        <RowActionsMenu
+                          actions={[
+                            {
+                              key: 'reverse',
+                              label: t('reversal.action'),
+                              icon: <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />,
+                              destructive: true,
+                              onSelect: () => openReverse(op),
+                            },
+                          ]}
+                        />
                       )}
                     </TableCell>
                   )}

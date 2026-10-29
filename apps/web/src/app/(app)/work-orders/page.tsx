@@ -21,6 +21,7 @@ import {
   Calendar,
   Shield,
   X,
+  ChevronDown,
 } from 'lucide-react';
 import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
 import { LinesSummarySection } from '@/components/ui/LinesSummarySection';
@@ -47,6 +48,7 @@ import {
   WO_PRIORITY_LABELS,
   WO_PRIORITY_BADGE,
   WO_CATEGORY_LABELS,
+  WO_CLOSED_STATUSES,
 } from '@sto/shared';
 import { woStatusLabel, woPriorityLabel, woCategoryLabel } from '@/i18n/enumLabel';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -86,7 +88,6 @@ import {
 } from '@/lib/panel-schema';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { type SavedFilter } from '@/hooks/useSavedFilters';
-import { InlineViewCell } from '@/components/ui/inline-edit-cell';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useListPage } from '@/hooks/useListPage';
@@ -179,16 +180,18 @@ const WO_INACTIVE_STATUSES = new Set(['CANCELLED', 'ARCHIVED', 'PAID']);
 // Module-level constants — стабільні референси між рендерами, замість per-render
 // allocate у useMemo. WO_COLUMNS_DEFAULT_KEYS_JSON знімає `JSON.stringify(map())`
 // з кожного render (hasCustomization comparison у toolbar).
-const WO_COLUMN_DEFS: Array<{ key: string; labelKey: string }> = [
+// Підйомник, «Заплановано» й «Дедлайн» здебільшого порожні й виштовхували дії рядка за прокрутку —
+// типово сховані, повертаються в «Колонках» (UX-огляд 2026-10-29).
+const WO_COLUMN_DEFS: Array<{ key: string; labelKey: string; defaultVisible?: boolean }> = [
   { key: 'number', labelKey: 'list.columns.number' },
   { key: 'client', labelKey: 'list.columns.client' },
   { key: 'status', labelKey: 'list.columns.status' },
-  { key: 'lift', labelKey: 'list.columns.lift' },
+  { key: 'lift', labelKey: 'list.columns.lift', defaultVisible: false },
   { key: 'priority', labelKey: 'list.columns.priority' },
   { key: 'amount', labelKey: 'list.columns.amount' },
   { key: 'documentDate', labelKey: 'list.columns.documentDate' },
-  { key: 'plannedAt', labelKey: 'list.columns.plannedAt' },
-  { key: 'dueDate', labelKey: 'list.columns.dueDate' },
+  { key: 'plannedAt', labelKey: 'list.columns.plannedAt', defaultVisible: false },
+  { key: 'dueDate', labelKey: 'list.columns.dueDate', defaultVisible: false },
   { key: 'linkedDocs', labelKey: 'list.columns.linkedDocs' },
 ];
 const WO_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(WO_COLUMN_DEFS.map(c => c.key));
@@ -1026,7 +1029,10 @@ function WorkOrdersListTab() {
                     </TableHead>
                   );
                 })}
-                <TableHead />
+                {/* Дії рядка — липка колонка: видно й тоді, коли таблиця ширша за екран. */}
+                <TableHead className="sticky right-0 bg-secondary">
+                  <span className="sr-only">{t('common:actions')}</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1144,7 +1150,7 @@ function WorkOrdersListTab() {
                           );
                         if (col.key === 'client')
                           return (
-                            <TableCell key="client">
+                            <TableCell key="client" className="min-w-52">
                               <p className="text-[13px] font-medium text-foreground">
                                 {wo.counterpartyName ?? '—'}
                               </p>
@@ -1171,47 +1177,67 @@ function WorkOrdersListTab() {
                               {wo.liftName ?? '—'}
                             </TableCell>
                           );
-                        if (col.key === 'priority')
+                        // Пріоритет змінюється лише явною кнопкою поруч із бейджем і не в закритих
+                        // статусах (сервер їх не приймає); клік по самому бейджу — клік по рядку.
+                        if (col.key === 'priority') {
+                          const canEditPriority =
+                            features.inlineEditEnabled &&
+                            !wo.deletedAt &&
+                            !!wo.priority &&
+                            !WO_CLOSED_STATUSES.includes(wo.status);
                           return (
-                            <TableCell key="priority" onClick={e => e.stopPropagation()}>
+                            <TableCell key="priority" className="whitespace-nowrap">
                               {inlineEdit.isEditing(wo.id, 'priority') ? (
-                                <select
-                                  defaultValue={inlineEdit.editing?.value ?? wo.priority ?? ''}
-                                  onChange={e => {
-                                    void inlineEdit.commitEdit(e.target.value).catch(() => {});
-                                  }}
-                                  onBlur={() => inlineEdit.cancelEdit()}
-                                  onKeyDown={e => {
-                                    if (e.key === 'Escape') inlineEdit.cancelEdit();
-                                  }}
-                                  disabled={inlineEdit.saving}
-                                  autoFocus
-                                  className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
-                                >
-                                  {Object.keys(WO_PRIORITY_LABELS).map(v => (
-                                    <option key={v} value={v}>
-                                      {woPriorityLabel(v)}
-                                    </option>
-                                  ))}
-                                </select>
+                                <span onClick={e => e.stopPropagation()}>
+                                  <select
+                                    aria-label={t('list.changePriority', { number: wo.number })}
+                                    defaultValue={inlineEdit.editing?.value ?? wo.priority ?? ''}
+                                    onChange={e => {
+                                      void inlineEdit.commitEdit(e.target.value).catch(() => {});
+                                    }}
+                                    onBlur={() => inlineEdit.cancelEdit()}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Escape') inlineEdit.cancelEdit();
+                                    }}
+                                    disabled={inlineEdit.saving}
+                                    autoFocus
+                                    className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
+                                  >
+                                    {Object.keys(WO_PRIORITY_LABELS).map(v => (
+                                      <option key={v} value={v}>
+                                        {woPriorityLabel(v)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </span>
                               ) : (
-                                <InlineViewCell
-                                  value={wo.priority ?? ''}
-                                  enabled={features.inlineEditEnabled && !wo.deletedAt}
-                                  onClick={() =>
-                                    wo.priority &&
-                                    inlineEdit.startEdit(wo.id, 'priority', wo.priority)
-                                  }
-                                >
+                                <span className="inline-flex items-center gap-0.5">
                                   {wo.priority && (
                                     <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
                                       {woPriorityLabel(wo.priority)}
                                     </Badge>
                                   )}
-                                </InlineViewCell>
+                                  {canEditPriority && (
+                                    <button
+                                      type="button"
+                                      data-testid="wo-priority-edit"
+                                      aria-label={t('list.changePriority', { number: wo.number })}
+                                      title={t('list.changePriority', { number: wo.number })}
+                                      className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-secondary hover:text-foreground"
+                                      onClick={e => {
+                                        e.stopPropagation();
+                                        if (wo.priority)
+                                          inlineEdit.startEdit(wo.id, 'priority', wo.priority);
+                                      }}
+                                    >
+                                      <ChevronDown className="h-3 w-3" aria-hidden="true" />
+                                    </button>
+                                  )}
+                                </span>
                               )}
                             </TableCell>
                           );
+                        }
                         if (col.key === 'amount') {
                           // Plannedness check: actualHours рівні normoHours → suma нічого не «прокинула».
                           // totalParts однакові для actual та planned, тож порівнюємо лише labor-частку.
@@ -1242,7 +1268,7 @@ function WorkOrdersListTab() {
                           return (
                             <TableCell
                               key="documentDate"
-                              className="text-[13px] text-muted-foreground"
+                              className="text-[13px] text-muted-foreground whitespace-nowrap"
                             >
                               {wo.documentDate ? fmtDate(wo.documentDate) : '—'}
                             </TableCell>
@@ -1251,7 +1277,7 @@ function WorkOrdersListTab() {
                           return (
                             <TableCell
                               key="plannedAt"
-                              className="text-muted-foreground text-[12px]"
+                              className="text-muted-foreground text-[12px] whitespace-nowrap"
                             >
                               {wo.plannedAt ? fmtShortDateTime(wo.plannedAt) : '—'}
                             </TableCell>
@@ -1261,7 +1287,7 @@ function WorkOrdersListTab() {
                         // запис календаря). Інлайн-поле дати без часу ставило б північ.
                         if (col.key === 'dueDate')
                           return (
-                            <TableCell key="dueDate" className="text-[12px]">
+                            <TableCell key="dueDate" className="text-[12px] whitespace-nowrap">
                               {wo.dueDate ? (
                                 <span
                                   className={cn(
@@ -1304,7 +1330,15 @@ function WorkOrdersListTab() {
                         }
                         return null;
                       })}
-                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                      <TableCell
+                        className={cn(
+                          'sticky right-0 text-right',
+                          selectedWO?.id === wo.id && detailPanel.enabled
+                            ? 'bg-primary-subtle'
+                            : 'bg-surface group-hover:bg-secondary',
+                        )}
+                        onClick={e => e.stopPropagation()}
+                      >
                         <div className="flex items-center justify-end gap-1">
                           <Button
                             variant="ghost"

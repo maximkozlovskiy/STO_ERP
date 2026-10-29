@@ -8,6 +8,7 @@ import { fmtMoney, fmtDate, fmtBankCurrencySuffix } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { Button } from '@/components/ui/button';
+import { RowActionsMenu } from '@/components/ui/row-actions-menu';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Pagination } from '@/components/ui/pagination';
 import { Spinner } from '@/components/ui/spinner';
@@ -375,26 +376,31 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
                       )}
                     </TableCell>
                     <TableCell className="sticky right-0 bg-surface group-hover:bg-secondary text-right whitespace-nowrap">
-                      {canUnreconcile(tx) && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setUnreconcileTx(tx)}
-                        >
-                          {t('page.row.unreconcile')}
-                        </Button>
-                      )}
-                      {canReversePayment(tx) && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openReversal(tx)}
-                        >
-                          {t('page.row.reversePayment')}
-                        </Button>
-                      )}
+                      {/* Зняти рознесення й сторно оплати — рідкісні незворотні дії: у меню «⋯» рядка,
+                          підтвердження — вікно самої дії (UX-огляд 2026-10-29). */}
+                      <RowActionsMenu
+                        actions={[
+                          ...(canUnreconcile(tx)
+                            ? [
+                                {
+                                  key: 'unreconcile',
+                                  label: t('page.row.unreconcile'),
+                                  onSelect: () => setUnreconcileTx(tx),
+                                },
+                              ]
+                            : []),
+                          ...(canReversePayment(tx)
+                            ? [
+                                {
+                                  key: 'reversePayment',
+                                  label: t('page.row.reversePayment'),
+                                  destructive: true,
+                                  onSelect: () => openReversal(tx),
+                                },
+                              ]
+                            : []),
+                        ]}
+                      />
                       {tx.status === 'UNMATCHED' && (
                         <div className="flex items-center justify-end gap-1">
                           <Button

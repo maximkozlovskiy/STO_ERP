@@ -2,6 +2,7 @@
   "list": {
     "title": "Work orders",
     "myOrders": "My orders",
+    "changePriority": "Change priority of {{number}}",
     "statusGroupFilter": "Status: {{names}}",
     "statusGroupFilterClear": "Clear filter “Status: {{names}}”",
     "executorFilter": "Assignee: {{name}}",
