@@ -203,6 +203,7 @@ describe('InvoicesService — create-from-work-order', () => {
           // Блокування рядка наряду першим записом (BR-INV-020).
           updateMany: step('lock-wo', woInTx ? { count: 1 } : { count: 0 }),
         },
+        domainEvent: { create: step('event', {}) },
       };
       // pre-check поза транзакцією: статус і валюта наряду.
       prisma.workOrder.findFirst.mockResolvedValue({
@@ -238,11 +239,13 @@ describe('InvoicesService — create-from-work-order', () => {
 
       await service.createFromWorkOrder(ORG, WO_ID);
 
-      // Рядок наряду блокується першим записом (BR-INV-020), далі — рахунок.
+      // Рядок наряду блокується першим записом (BR-INV-020), далі — рахунок і його подія
+      // «створено» в тій самій транзакції (BR-AUT-060).
       expect(order).toEqual([
         'tx-begin',
         'lock-wo',
         'create',
+        'event',
         'createMany',
         'update',
         'reread',
@@ -357,7 +360,7 @@ describe('InvoicesService — create-from-work-order', () => {
       await expect(service.createFromWorkOrder(ORG, WO_ID)).rejects.toThrow(BadRequestException);
 
       // create уже відбувся в tx — тож помилка мусить вийти з колбека, щоб Prisma його відкотила.
-      expect(order).toEqual(['tx-begin', 'lock-wo', 'create', 'tx-rollback']);
+      expect(order).toEqual(['tx-begin', 'lock-wo', 'create', 'event', 'tx-rollback']);
       expect(tx.invoiceLine.createMany).not.toHaveBeenCalled();
       expect(tx.invoice.update).not.toHaveBeenCalled();
     });

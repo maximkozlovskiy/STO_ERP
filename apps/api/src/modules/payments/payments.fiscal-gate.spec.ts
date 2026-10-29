@@ -21,6 +21,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { exchangeRatesMock } from './payments.spec-fixture';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 describe('PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .catch()', () => {
   let service: PaymentsService;
@@ -88,6 +89,7 @@ describe('PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .c
       // Безготівкова оплата йде на банківський рахунок (BR-PAY-023), у базовій валюті.
       bankAccount: { findFirst: vi.fn().mockResolvedValue({ id: 'bank-1', currencyId: null }) },
       cashRegister: { findFirst: vi.fn() },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation(async (arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return undefined;

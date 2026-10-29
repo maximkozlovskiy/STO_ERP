@@ -14,6 +14,7 @@ import { StockDocumentsService } from './stock-documents.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 describe('StockDocumentsService — create() з purchaseOrderId (Phase D2)', () => {
   let service: StockDocumentsService;
@@ -65,6 +66,7 @@ describe('StockDocumentsService — create() з purchaseOrderId (Phase D2)', () 
       garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: BRANCH_ID }) },
       warehouse: { findFirst: vi.fn().mockResolvedValue({ id: WAREHOUSE_ID }) },
       purchaseOrder: { findFirst: vi.fn() },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return Promise.resolve(arg);
@@ -202,6 +204,7 @@ describe('StockDocumentsService — update() зберігає purchaseOrderId (P
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         createMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return Promise.resolve(arg);

@@ -15,10 +15,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 describe('SupplierReturnsService — create() з purchaseOrderId (Phase D2)', () => {
   let service: SupplierReturnsService;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
+    $transaction: ReturnType<typeof vi.fn>;
     supplierReturn: { create: ReturnType<typeof vi.fn> };
     counterparty: { findFirst: ReturnType<typeof vi.fn> };
     warehouse: { findFirst: ReturnType<typeof vi.fn> };
@@ -55,6 +58,8 @@ describe('SupplierReturnsService — create() з purchaseOrderId (Phase D2)', ()
 
   beforeEach(async () => {
     prisma = {
+      domainEvent: domainEventMock(),
+      $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
       supplierReturn: { create: vi.fn() },
       counterparty: { findFirst: vi.fn().mockResolvedValue({ id: SUPPLIER_ID }) },
       warehouse: { findFirst: vi.fn().mockResolvedValue({ id: WAREHOUSE_ID }) },
@@ -207,6 +212,7 @@ describe('SupplierReturnsService — update() зберігає purchaseOrderId (
       warehouse: { findFirst: vi.fn() },
       good: { findMany: vi.fn().mockResolvedValue([]) },
       unitOfMeasure: { findMany: vi.fn().mockResolvedValue([]) },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return Promise.resolve(arg);

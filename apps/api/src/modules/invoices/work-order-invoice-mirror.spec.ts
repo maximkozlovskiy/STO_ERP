@@ -35,6 +35,8 @@ function tables(wo: MemRow, invoices: MemRow[]) {
         ...i,
       })),
     ),
+    // BR-AUT-060: зміна статусу рахунку дзеркалом — подія outbox у тій самій транзакції.
+    domainEvent: memoryTable([]),
   };
 }
 
@@ -64,6 +66,37 @@ describe('mirroredInvoiceStatus — статус рахунку наряду з�
 });
 
 describe('syncWorkOrderInvoicePaid — дзеркало сплаченого наряду (BR-INV-018)', () => {
+  // guards: BR-AUT-060
+  it('зміна статусу рахунку дзеркалом — подія з попереднім статусом і ініціатором', async () => {
+    const t = tables({ paidAmount: 400 }, [{ status: 'SENT', amount: 1000, paidAmount: 0 }]);
+
+    await syncWorkOrderInvoicePaid(t as never, ORG, WO, 'emp-1');
+
+    expect(t.domainEvent.rows).toEqual([
+      expect.objectContaining({
+        orgId: ORG,
+        documentType: 'INVOICE',
+        documentId: INV,
+        kind: 'STATUS_CHANGED',
+        fromStatus: 'SENT',
+        toStatus: 'PARTIALLY_PAID',
+        actorId: 'emp-1',
+      }),
+    ]);
+  });
+
+  // guards: BR-AUT-060
+  it('змінилось лише «сплачено», статус той самий → події немає', async () => {
+    const t = tables({ paidAmount: 500 }, [
+      { status: 'PARTIALLY_PAID', amount: 1000, paidAmount: 400 },
+    ]);
+
+    await syncWorkOrderInvoicePaid(t as never, ORG, WO);
+
+    expect(t.invoice.rows[0]).toMatchObject({ paidAmount: 500, status: 'PARTIALLY_PAID' });
+    expect(t.domainEvent.rows).toEqual([]);
+  });
+
   // guards: BR-INV-018
   it('сплачено наряду 400 з 1000 → рахунок 400, «Частково оплачено»', async () => {
     const t = tables({ paidAmount: 400 }, [{ status: 'SENT', amount: 1000, paidAmount: 0 }]);
@@ -189,6 +222,7 @@ function makeService(opts: { wo: MemRow; invoices?: MemRow[]; lines?: MemRow[] }
   };
   const prisma: Record<string, unknown> = {
     workOrder: t.workOrder,
+    domainEvent: t.domainEvent,
     invoice,
     invoiceLine,
     good: memoryTable([]),

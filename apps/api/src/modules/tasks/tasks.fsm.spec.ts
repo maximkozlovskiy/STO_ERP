@@ -183,3 +183,43 @@ describe('Задачі — статуси (BR-TASK-003)', () => {
     expect(tasks[0].completedAt).toBeNull();
   });
 });
+
+describe('Задачі — події outbox (BR-AUT-060)', () => {
+  // guards: BR-AUT-060
+  it('створення і перехід → події «створено» і «статус змінено» з ініціатором', async () => {
+    const h = taskHarness();
+    const created = await h.service.create('org-1', managerActor, {
+      title: 'Перевірити гальма',
+      assigneeId: MECH_A,
+    } as never);
+    await h.service.transition('org-1', managerActor, created.id, 'IN_PROGRESS');
+
+    const events = h.prisma.domainEvent.rows.map(e => [e.kind, e.fromStatus, e.toStatus]);
+    expect(events).toEqual([
+      ['CREATED', null, 'NEW'],
+      ['STATUS_CHANGED', 'NEW', 'IN_PROGRESS'],
+    ]);
+    for (const e of h.prisma.domainEvent.rows) {
+      expect(e).toMatchObject({
+        orgId: 'org-1',
+        documentType: 'TASK',
+        documentId: created.id,
+        actorId: managerActor.id,
+      });
+    }
+  });
+
+  // guards: BR-AUT-060
+  it('CAS програв (статус змінився паралельно) → 400 і події немає', async () => {
+    const task = fakeTask({ assigneeId: MECH_A, status: 'NEW' });
+    const h = taskHarness({ tasks: [task] });
+    // Між читанням і записом задачу вже перевели в роботу.
+    h.prisma.task.findFirst.mockResolvedValueOnce({ status: 'NEW', assigneeId: MECH_A });
+    task.status = 'IN_PROGRESS';
+
+    await expect(
+      h.service.transition('org-1', managerActor, task.id as string, 'CANCELLED'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(h.prisma.domainEvent.rows).toEqual([]);
+  });
+});

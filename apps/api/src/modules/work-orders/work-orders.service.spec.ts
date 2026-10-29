@@ -8,6 +8,7 @@ import type { WorkOrderQueryDto } from './work-orders.dto';
 import { CLOSED_STATUSES, WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
 import type { WorkOrderStatus } from '@prisma/client';
 import { makeService } from './work-orders.service.spec-fixture';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 // ─── Query-shape regression spec (Bug #163 / #171 pattern) ────────────────────
 //
@@ -29,6 +30,7 @@ function makePrismaSpy() {
   const prisma = {
     workOrder: { findMany, count },
     // findAll wraps the two reads in `$transaction([...])` (array form) — execute the array.
+    domainEvent: domainEventMock(),
     $transaction: vi.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
   } as unknown as PrismaService;
   return { prisma, findMany, count };
@@ -138,6 +140,7 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
     const prisma = {
       workOrder: { findFirst, updateMany, findFirstOrThrow },
       workOrderPart,
+      domainEvent: domainEventMock(),
       $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
     } as unknown as PrismaService;
     const service = makeService(prisma);
@@ -177,6 +180,7 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
       workOrderPart: { findMany: partsFindMany },
       // Скасування знімає net-резерв наряду за картою рухів (BR-WO-021) — тут резерву немає.
       stockMovement: { findMany: vi.fn().mockResolvedValue([]) },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
     } as unknown as PrismaService;
     return { prisma, partsFindMany };
@@ -189,7 +193,7 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
     const updateMany = vi.fn().mockResolvedValue({ count: 0 }); // рахунок наряду — BR-WO-031
     Object.assign(prisma, {
       completionAct: { updateMany: actsUpdateMany },
-      invoice: { updateMany },
+      invoice: { updateMany, findMany: vi.fn().mockResolvedValue([]) },
       warranty: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // Bug #945
     });
 

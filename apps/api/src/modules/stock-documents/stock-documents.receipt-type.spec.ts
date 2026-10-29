@@ -16,6 +16,7 @@ import { confirmTxTimeoutMs } from '../../common/utils/confirm-tx-timeout';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 // Bug #480: regression-guards для нового StockDocumentType.RECEIPT (commits d059b9a9 + a067ec21).
 // Перевіряє три інваріанти що легко силенто зламати при refactor MOVEMENT_TYPES / docTypeMap:
@@ -91,6 +92,7 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
       // F4 (BR-INVT-UOMBASE): CONFIRM читає GoodUoM-коефіцієнти. [] → coeff=1 (рядки цих кейсів у
       // базовій одиниці, line.unitOfMeasureId відсутній), тож рухи складу — raw quantity незмінно.
       goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);

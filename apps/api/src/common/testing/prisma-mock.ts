@@ -29,3 +29,14 @@ export function modelMock(...methods: string[]): PrismaModelMock {
   for (const m of methods) out[m] = vi.fn();
   return out;
 }
+
+/**
+ * Делегат outbox `DomainEvent` (BR-AUT-060): сервіси документів пишуть подію в транзакції
+ * документа (`recordDocumentEvent`). Спеку, що перевіряє саму подію, — `.mock.calls` цього мока.
+ */
+export function domainEventMock(): { create: PrismaMockFn; createMany: PrismaMockFn } {
+  return {
+    create: vi.fn().mockResolvedValue({}),
+    createMany: vi.fn().mockResolvedValue({ count: 0 }),
+  };
+}

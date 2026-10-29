@@ -15,6 +15,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 const ORG = '00000000-0000-4000-8000-000000000001';
 const SR_ID = '11111111-1111-4111-8111-111111111111';
@@ -101,6 +102,7 @@ describe('SupplierReturnsService — повтори товару окремим�
       warehouse: { findFirst: vi.fn() },
       good: { findMany: vi.fn().mockResolvedValue([{ id: GOOD_ID }]) },
       unitOfMeasure: { findMany: vi.fn().mockResolvedValue([]) },
+      domainEvent: domainEventMock(),
       $transaction: vi
         .fn()
         .mockImplementation((cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),

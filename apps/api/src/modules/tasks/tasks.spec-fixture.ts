@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import { matchesWhere } from '../calendar/calendar.spec-fixture';
+import { memoryTable } from '../cash/cash.spec-fixture';
 import { TasksService } from './tasks.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 
@@ -155,10 +156,10 @@ export function buildTaskStore(tables: Tables = {}) {
     count: vi.fn(({ where }: Args) =>
       Promise.resolve(tasks.filter(r => matchesWhere(r, where)).length),
     ),
-    create: vi.fn(({ data }: { data: Row }) => {
+    create: vi.fn(({ data, select }: { data: Row; select?: Record<string, unknown> }) => {
       const row = fakeTask(data);
       tasks.push(row);
-      return Promise.resolve({ id: row.id });
+      return Promise.resolve(project(row, select ?? { id: true }));
     }),
     updateMany: vi.fn(({ where, data }: { where: Row; data: Row }) => {
       const hit = tasks.filter(r => matchesWhere(r, where));
@@ -173,14 +174,28 @@ export function buildTaskStore(tables: Tables = {}) {
     }),
   });
 
-  return {
+  // BR-AUT-060: outbox подій; `$transaction` відкочує задачі й події разом.
+  const domainEvent = memoryTable([]);
+  const store = {
     task,
+    domainEvent,
     employee: lookup(employees),
     workOrder: lookup(workOrders),
     vehicle: lookup(vehicles),
     counterparty: lookup(counterparties),
     _tasks: tasks,
+    $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => {
+      const snapshot = [tasks.map(r => structuredClone(r)), domainEvent.rows.map(r => ({ ...r }))];
+      try {
+        return await cb(store);
+      } catch (e) {
+        tasks.splice(0, tasks.length, ...snapshot[0]);
+        domainEvent.rows.splice(0, domainEvent.rows.length, ...snapshot[1]);
+        throw e;
+      }
+    }),
   };
+  return store;
 }
 
 export function taskHarness(tables: Tables = {}) {

@@ -78,6 +78,7 @@ function makeHarness(seed: Seed = {}) {
         };
 
   const tables = {
+    domainEvent: memoryTable([]),
     supplierPayment: memoryTable([sp]),
     purchaseOrder: memoryTable(po ? [po] : []),
     settlementTransaction: memoryTable([

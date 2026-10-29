@@ -180,6 +180,8 @@ export function memoryDb(opts: StockHarnessOptions = {}) {
   add('purchaseOrder');
   add('purchaseOrderLine');
   add('calendarSlot');
+  // BR-AUT-060: outbox подій документів (наряд, замовлення) — у тій самій транзакції.
+  add('domainEvent', [], () => ({ occurredAt: tick(), processedAt: null, attempts: 0 }));
 
   /** Журнал подій у порядку виклику: `lock:<woId>`, `<тип руху>:<goodId>`. */
   const events: string[] = [];

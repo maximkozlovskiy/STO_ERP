@@ -21,6 +21,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { exchangeRatesMock } from './payments.spec-fixture';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 const ORG = 'org-1';
 const CP_ID = '22222222-2222-4222-8222-222222222222';
@@ -102,6 +103,7 @@ describe('PaymentsService — готівка лише через касу (BR-PA
       bankAccount: {
         findFirst: vi.fn().mockResolvedValue({ id: BANK_ID, currencyId: null }),
       },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return Promise.resolve(undefined);

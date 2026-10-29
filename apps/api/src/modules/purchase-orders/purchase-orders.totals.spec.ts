@@ -20,6 +20,7 @@ import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
 import { exchangeRatesProvider, purchaseListProviders } from './purchase-orders.spec-fixture';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 describe('PurchaseOrdersService.create — Bug #777: Σ(lines.amount) === totalAmount', () => {
   let service: PurchaseOrdersService;
@@ -104,6 +105,7 @@ describe('PurchaseOrdersService.create — Bug #777: Σ(lines.amount) === totalA
           return Promise.resolve({ count: data.length });
         }),
       },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return Promise.resolve(arg);

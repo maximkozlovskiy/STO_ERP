@@ -173,8 +173,16 @@ export function planningHarness(
   const invoice = memoryTable(opts.invoices ?? []);
   // BR-WO-031 (Bug #945): гарантія наряду без звернення гасне разом із нарядом.
   const warranty = memoryTable(opts.warranties ?? []);
+  // BR-AUT-060: outbox подій — таблиця в пам'яті, відкочується разом з іншими.
+  const domainEvent = memoryTable([]);
 
-  const tables: MemRow[][] = [workOrder.rows, calendarSlot.rows, invoice.rows, warranty.rows];
+  const tables: MemRow[][] = [
+    workOrder.rows,
+    calendarSlot.rows,
+    invoice.rows,
+    warranty.rows,
+    domainEvent.rows,
+  ];
   const $transaction = vi.fn(async (cb: (tx: unknown) => unknown) => {
     const snapshot = tables.map(rows => rows.map(r => structuredClone(r)));
     try {
@@ -197,6 +205,7 @@ export function planningHarness(
     completionAct,
     invoice,
     warranty,
+    domainEvent,
     $transaction,
     // `lockWorkOrdersForUpdate` (`SELECT … FOR UPDATE`): блокувань у пам'яті немає — лише виклик,
     // за яким спек бачить, які наряди й у якому порядку заблоковано.

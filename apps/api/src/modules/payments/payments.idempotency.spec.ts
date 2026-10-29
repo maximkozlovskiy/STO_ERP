@@ -22,6 +22,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { exchangeRatesMock } from './payments.spec-fixture';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 /**
  * FIN-C1: ідемпотентність оплати рахунку. Перехід SENT→PAID виконується ПЕРШИМ у tx через
@@ -76,6 +77,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
       bankAccount: { findFirst: vi.fn().mockResolvedValue({ id: 'bank-base', currencyId: null }) },
       cashRegister: { findFirst: vi.fn() },
       // Виконує callback з prisma як tx — CAS updateMany/payment.create реально викликаються.
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation(async (arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return undefined;

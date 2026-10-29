@@ -22,6 +22,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { exchangeRatesMock } from './payments.spec-fixture';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)', () => {
   let service: PaymentsService;
@@ -100,6 +101,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
         findFirst: vi.fn().mockResolvedValue({ id: 'bank-default', currencyId: null }),
       },
       cashRegister: { findFirst: vi.fn() },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation(async (arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return undefined;

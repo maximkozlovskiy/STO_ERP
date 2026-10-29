@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { WorkOrdersService } from './work-orders.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { CreateWorkOrderDto } from './work-orders.dto';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 /**
  * Нумерація наряду — аспект «номер дає DocumentNumberService, а не клієнт і не літерал у коді».
@@ -67,9 +68,12 @@ function setup(originalForClone?: Record<string, unknown>) {
       .fn()
       .mockImplementation(() => Promise.resolve(createdRow(create.mock.calls[0]?.[0].data.number))),
   };
+  const domainEvent = domainEventMock();
   const prisma = {
     workOrder,
-    $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb({ workOrder })),
+    $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
+      cb({ workOrder, domainEvent }),
+    ),
     garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: BRANCH }) },
     vehicle: { findFirst: vi.fn().mockResolvedValue({ id: VEHICLE }) },
     counterparty: { findFirst: vi.fn().mockResolvedValue({ id: CP }) },

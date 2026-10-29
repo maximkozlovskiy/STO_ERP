@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { fakeSlot, matchesWhere, type FakeSlot } from '../calendar/calendar.spec-fixture';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 /**
  * Bug #254: unit-покриття `BookingService.create` + `confirm` + `cancel`.
@@ -56,6 +57,7 @@ describe('BookingService', () => {
       lift: { findMany: vi.fn(), findFirst: vi.fn() },
       calendarSlot: { findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
       // $transaction(cb) → викликає cb з тим самим prisma-моком як tx (in-memory).
+      domainEvent: domainEventMock(),
       $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
     };
     notifications = { send: vi.fn().mockResolvedValue(undefined) };

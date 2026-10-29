@@ -19,6 +19,7 @@ import { StockDocumentsService } from './stock-documents.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 const ORG = 'org-1';
 const DOC_ID = '11111111-1111-4111-8111-111111111111';
@@ -84,6 +85,7 @@ describe('StockDocumentsService — нумерація документа (BR-SD
         ),
       },
       stockDocumentLine: { createMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn(),
     };
     prisma.$transaction.mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(prisma));

@@ -31,6 +31,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 export const ORG = 'org-1';
 export const WO_ID = '11111111-1111-4111-8111-111111111111';
@@ -47,6 +48,7 @@ export interface InvoicesHarness {
     counterparty: { findFirst: Fn };
     settlementTransaction: { count: Fn; aggregate: Fn; findFirst: Fn };
     payment: { aggregate: Fn };
+    domainEvent: { create: Fn; createMany: Fn };
     $transaction: Fn;
   };
   docNumbers: { next: Fn };
@@ -110,6 +112,7 @@ export async function makeInvoicesHarness(): Promise<InvoicesHarness> {
       findFirst: vi.fn().mockResolvedValue(null),
     },
     payment: { aggregate: vi.fn().mockResolvedValue({ _sum: { amountBase: 0 } }) },
+    domainEvent: domainEventMock(),
     $transaction: vi.fn().mockImplementation((arg: unknown) => {
       if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
       return Promise.resolve(undefined);

@@ -26,6 +26,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { CashService } from '../cash/cash.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 export const ORG = '00000000-0000-4000-8000-000000000001';
 export const SP_ID = '11111111-1111-4111-8111-111111111111';
@@ -105,6 +106,7 @@ export async function makeSpHarness() {
       aggregate: vi.fn().mockResolvedValue({ _sum: { amountBase: 0 } }),
       count: vi.fn().mockResolvedValue(0),
     },
+    domainEvent: domainEventMock(),
     $transaction: vi.fn().mockImplementation((arg: unknown) => {
       if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
       if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);

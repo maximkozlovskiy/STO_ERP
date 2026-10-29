@@ -11,6 +11,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { WorkOrdersService } from './work-orders.service';
 import type { PrismaService } from '../../prisma/prisma.service';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 const ORG = '11111111-1111-4111-8111-111111111111';
 const WO_ID = '22222222-2222-4222-8222-222222222222';
@@ -62,6 +63,7 @@ function setup(preStatus: string) {
     },
     workOrderPart: { findMany: vi.fn().mockResolvedValue([]) },
     completionAct: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+    domainEvent: domainEventMock(),
   };
   const prisma = {
     workOrder: {

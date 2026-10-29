@@ -132,6 +132,9 @@ function makeHarness(seed: Seed = {}) {
         };
 
   const tables = {
+    // BR-AUT-060: outbox подій — таблиця, що відкочується разом з іншими.
+
+    domainEvent: memoryTable([]),
     payment: memoryTable([payment]),
     invoice: memoryTable(invoice ? [invoice] : []),
     workOrder: memoryTable(workOrder ? [workOrder] : []),

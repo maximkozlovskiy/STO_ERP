@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { WorkOrdersService } from './work-orders.service';
 import { WorkOrderTotalsService } from './work-order-totals.service';
 import type { PrismaService } from '../../prisma/prisma.service';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 // ─── Regression spec for totalActualLabor (commits 0665024c, ca5aef48) ───────
 //
@@ -533,6 +534,7 @@ describe('WorkOrdersService.clone — тотали клона через recalc 
           return Promise.resolve(clonedRow(840));
         }),
       },
+      domainEvent: domainEventMock(),
     };
     const outerCreate = vi.fn();
     const prisma = {

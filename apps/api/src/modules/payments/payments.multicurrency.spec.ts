@@ -24,6 +24,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { memoryTable } from '../cash/cash.spec-fixture';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 describe('PaymentsService — мультивалюта Фаза 2 (Payment currencyId/amountBase + fiscal-UAH guard)', () => {
   let service: PaymentsService;
@@ -99,6 +100,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
       paymentMethodConfig: { findFirst: vi.fn().mockResolvedValue({ requiresFiscal: false }) },
       bankAccount: { findFirst: vi.fn() },
       cashRegister: { findFirst: vi.fn() },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation(async (arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return undefined;
@@ -553,6 +555,7 @@ describe('PaymentsService.create — курсова різниця наряду 
     existingFx?: { documentType: string; documentId: string };
   }) {
     const tables = {
+      domainEvent: memoryTable([]),
       counterparty: memoryTable([
         { id: CP, orgId: ORG, deletedAt: null, phone: null, email: null, companyName: 'ТОВ' },
       ]),

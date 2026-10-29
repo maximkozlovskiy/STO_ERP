@@ -130,16 +130,25 @@ describe('WorkOrdersService — запис календаря наряду (BR-W
       expect(h.liveSlots(wo.id)).toEqual([expect.objectContaining({ liftId: null })]);
     });
 
-    // guards: BR-WO-020
+    // guards: BR-WO-020, BR-AUT-060
     it.each([
       ['лише початок', { plannedAt: kyiv(D, '10:00').toISOString() }],
       ['лише завершення', { dueDate: kyiv(D, '12:00').toISOString() }],
       ['без дат', {}],
-    ])('%s → запису немає і транзакції немає', async (_l, dates) => {
+    ])('%s → запису немає; наряд і подія «створено» — однією транзакцією', async (_l, dates) => {
       const h = planningHarness({ workOrders: [] });
-      await h.service.create(ORG, createDto({ liftId: LIFT_1, ...dates }));
+      const wo = await h.service.create(ORG, createDto({ liftId: LIFT_1, ...dates }));
       expect(h.calendarSlot.rows).toHaveLength(0);
-      expect(h.prisma.$transaction).not.toHaveBeenCalled();
+      expect(h.prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(h.prisma.domainEvent.rows).toEqual([
+        expect.objectContaining({
+          orgId: ORG,
+          documentType: 'WORK_ORDER',
+          documentId: wo.id,
+          kind: 'CREATED',
+          toStatus: 'DRAFT',
+        }),
+      ]);
     });
 
     // guards: BR-WO-020

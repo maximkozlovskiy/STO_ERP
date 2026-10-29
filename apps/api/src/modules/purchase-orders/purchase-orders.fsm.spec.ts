@@ -21,6 +21,7 @@ import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
 import { exchangeRatesProvider, purchaseListProviders } from './purchase-orders.spec-fixture';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 describe('PurchaseOrdersService.transition — FSM map', () => {
   let service: PurchaseOrdersService;
@@ -60,6 +61,7 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
         findFirst: vi.fn(),
         update: vi.fn().mockResolvedValue({}),
       },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return Promise.resolve(arg);

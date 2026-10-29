@@ -240,6 +240,25 @@ push-сповіщення працівникам у мобільному зас�
 
 ## Аспекти і тести, що їх стережуть
 
-**Чого тут НЕМА.** Реалізації етапу 1 ще немає (вимоги 2026-10-29, план — далі): жодне правило не
-стережеться тестом. Список правил без тестів — BR-AUT-001, BR-AUT-002, BR-AUT-003, BR-AUT-004, BR-AUT-005, BR-AUT-006, BR-AUT-007, BR-AUT-010, BR-AUT-011, BR-AUT-012, BR-AUT-013, BR-AUT-014, BR-AUT-015, BR-AUT-020, BR-AUT-021, BR-AUT-022, BR-AUT-023, BR-AUT-030, BR-AUT-031, BR-AUT-032, BR-AUT-040, BR-AUT-041, BR-AUT-042, BR-AUT-050, BR-AUT-051, BR-AUT-052, BR-AUT-060, BR-AUT-061. Тести з мітками `// guards:`
+**Модуль:** `apps/api/src/modules/automation/`, `apps/api/src/modules/work-orders/`
+
+| Аспект                                                                                                                                                                                        | Файл                                        | Кейсів |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------ |
+| `recordDocumentEvent`: пише в переданий `tx`, «створено» без попереднього статусу, той самий статус — без події, сторно `REVERSED`, пакетна вставка; паритет переліків із Prisma (BR-AUT-060) | `record-document-event.spec.ts`             | 8      |
+| тест-перепис: кожне створення документа й запис статусу в сервісах має `recordDocumentEvent` поруч, винятки живі, подія не через `this.prisma` (BR-AUT-060)                                   | `record-document-event.census.spec.ts`      | 4      |
+| жива БД: відкат транзакції — події немає, коміт — рівно одна (BR-AUT-060)                                                                                                                     | `record-document-event.integration.spec.ts` | 2      |
+| обробник outbox: `processedAt`, порядок за `occurredAt`, tenant-scope обробника, збій → `attempts`+1 і `lastError`, пауза повтору, свіжі не відсуваються (BR-AUT-061)                         | `automation-events.processor.spec.ts`       | 8      |
+| наряд: подія переходу з ініціатором, скасування — подія наряду й кожного живого рахунку, відкат — ні статусу, ні події, «створено» (BR-AUT-060)                                               | `work-orders.domain-events.spec.ts`         | 4      |
+
+Разом: **26** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+Події в інших агрегатах стережуть їхні спеки з міткою `BR-AUT-060` (реєстри своїх дос'є):
+нічне OVERDUE — подія на кожен рахунок (`invoice-overdue.processor.spec.ts`, `invoice.md`), дзеркало
+рахунку наряду (`work-order-invoice-mirror.spec.ts`), рахунок наряду з подією в транзакції
+(`invoices.create-from-work-order.spec.ts`), сторно оплати → `REVERSED` (`payments.reverse.spec.ts`,
+`cash.md`), задачі (`tasks.fsm.spec.ts`), наряд без планових дат теж створюється в транзакції з подією
+(`work-orders.calendar-slot.spec.ts`).
+
+**Чого тут НЕМА.** Двигуна правил, дій, Telegram і інтерфейсу ще немає (етап 1, блоки 2–4): правила
+без тестів — BR-AUT-001, BR-AUT-002, BR-AUT-003, BR-AUT-004, BR-AUT-005, BR-AUT-006, BR-AUT-007, BR-AUT-010, BR-AUT-011, BR-AUT-012, BR-AUT-013, BR-AUT-014, BR-AUT-015, BR-AUT-020, BR-AUT-021, BR-AUT-022, BR-AUT-023, BR-AUT-030, BR-AUT-031, BR-AUT-032, BR-AUT-040, BR-AUT-041, BR-AUT-042, BR-AUT-050, BR-AUT-051, BR-AUT-052. Тести з мітками `// guards:`
 з'являться разом із кодом; тоді правило переходить із цього переліку в реєстр.

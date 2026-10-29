@@ -16,6 +16,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 // Regression-guards для feature "Повернення постачальнику" (commits 28edc08c + 9e656cd4).
 // Перевіряє ключові business invariants на confirm()/cancel() FSM-step:
@@ -88,6 +89,7 @@ describe('SupplierReturnsService — regression guards', () => {
       warehouse: { findFirst: vi.fn() },
       good: { findMany: vi.fn().mockResolvedValue([]) },
       unitOfMeasure: { findMany: vi.fn().mockResolvedValue([]) },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
@@ -361,12 +363,11 @@ describe('SupplierReturnsService — regression guards', () => {
 
     await service.cancel(ORG, SR_ID);
 
-    expect(prisma.supplierReturn.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: SR_ID, orgId: ORG },
-        data: { status: SupplierReturnStatus.CANCELLED },
-      }),
-    );
+    // CAS за прочитаним статусом (паралельне проведення не перезаписується на «Скасовано»).
+    expect(prisma.supplierReturn.updateMany).toHaveBeenCalledWith({
+      where: { id: SR_ID, orgId: ORG, deletedAt: null, status: SupplierReturnStatus.DRAFT },
+      data: { status: SupplierReturnStatus.CANCELLED },
+    });
     // cancel НЕ створює інвентарних рухів (товари ще не списані).
     expect(inventory.createMovement).not.toHaveBeenCalled();
     expect(settlements.createTransaction).not.toHaveBeenCalled();

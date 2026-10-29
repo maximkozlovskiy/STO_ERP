@@ -50,6 +50,9 @@ const INTERNAL_QUEUES = new Set([
   'dead-letter-purge',
   // Перепостановка завислих задач постачальників і очищення пропозицій — лише БД і Redis.
   'supplier-maintenance',
+  // Outbox подій документів (BR-AUT-061): обробник лише позначає події в БД; зовнішні дії
+  // правил ідуть окремими чергами з повторами (BR-AUT-015).
+  'automation-events',
 ]);
 
 const MIN_ATTEMPTS = 10;

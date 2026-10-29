@@ -421,6 +421,7 @@ describe('PurchaseOrders — HTTP Contract', () => {
       expect(res.statusCode).toBe(201);
       expect(serviceMock.transition).toHaveBeenCalledWith('org-1', VALID_UUID, 'ORDERED', {
         force: false,
+        actorId: 'emp-1',
       });
     });
 
@@ -434,6 +435,7 @@ describe('PurchaseOrders — HTTP Contract', () => {
       expect(res.statusCode).toBe(201);
       expect(serviceMock.transition).toHaveBeenCalledWith('org-1', VALID_UUID, 'CANCELLED', {
         force: false,
+        actorId: 'emp-1',
       });
     });
 
@@ -448,6 +450,7 @@ describe('PurchaseOrders — HTTP Contract', () => {
       expect(ok.statusCode).toBe(201);
       expect(serviceMock.transition).toHaveBeenLastCalledWith('org-1', VALID_UUID, 'CANCELLED', {
         force: true,
+        actorId: 'emp-1',
       });
       const bad = await (app as NestFastifyApplication).inject({
         method: 'POST',
@@ -467,6 +470,7 @@ describe('PurchaseOrders — HTTP Contract', () => {
       expect(res.statusCode).toBe(201);
       expect(serviceMock.transition).toHaveBeenCalledWith('org-1', VALID_UUID, 'RECEIVED', {
         force: false,
+        actorId: 'emp-1',
       });
     });
 

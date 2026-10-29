@@ -14,6 +14,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bug #778 — ІНВАРІАНТ Σ(рядки) === total на сервісному шляху create (Money).
@@ -23,6 +24,8 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 describe('SupplierReturnsService.create — Bug #778: Σ(lines.amount) === totalAmount', () => {
   let service: SupplierReturnsService;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
+    $transaction: ReturnType<typeof vi.fn>;
     supplierReturn: { create: ReturnType<typeof vi.fn> };
     counterparty: { findFirst: ReturnType<typeof vi.fn> };
     warehouse: { findFirst: ReturnType<typeof vi.fn> };
@@ -48,6 +51,8 @@ describe('SupplierReturnsService.create — Bug #778: Σ(lines.amount) === total
 
   beforeEach(async () => {
     prisma = {
+      domainEvent: domainEventMock(),
+      $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
       supplierReturn: {
         create: vi.fn().mockImplementation(
           ({

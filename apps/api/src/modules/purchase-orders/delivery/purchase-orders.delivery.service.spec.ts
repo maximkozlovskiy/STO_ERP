@@ -11,6 +11,7 @@ import { PricingService } from '../../inventory/pricing.service';
 import { SettingsService } from '../../settings/settings.service';
 import { DeliveryTrackingService } from './delivery-tracking.service';
 import { ExchangeRatesService } from '../../exchange-rates/exchange-rates.service';
+import { domainEventMock } from '../../../common/testing/prisma-mock';
 
 /**
  * Bug #696 (test-gap): PurchaseOrdersService create/update + trackingNumber enqueue-on-ttn.
@@ -87,6 +88,7 @@ describe('PurchaseOrdersService — delivery tracking enqueue-on-ttn', () => {
       counterparty: { findFirst: vi.fn().mockResolvedValue({ id: SUPPLIER }) },
       warehouse: { findFirst: vi.fn().mockResolvedValue({ id: WAREHOUSE }) },
       counterpartyContract: { findFirst: vi.fn().mockResolvedValue(null) },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return Promise.resolve(arg);

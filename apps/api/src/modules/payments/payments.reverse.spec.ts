@@ -34,6 +34,7 @@ import type { LoyaltyService } from '../loyalty/loyalty.service';
 import type { AuditService } from '../audit/audit.service';
 import type { CashService } from '../cash/cash.service';
 import type { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 const ORG = '11111111-1111-4111-8111-111111111111';
 const OTHER_ORG = '99999999-9999-4999-8999-999999999999';
@@ -106,6 +107,9 @@ function makeHarness(seed: Seed = {}) {
         };
 
   const tables = {
+    // BR-AUT-060: outbox подій — таблиця, що відкочується разом з іншими.
+
+    domainEvent: memoryTable([]),
     payment: memoryTable([payment]),
     invoice: memoryTable(invoice ? [invoice] : []),
     workOrder: memoryTable(workOrder ? [workOrder] : []),
@@ -137,6 +141,7 @@ function makeHarness(seed: Seed = {}) {
     );
   };
   const root: Record<string, unknown> = {
+    domainEvent: domainEventMock(),
     $transaction: vi.fn(() => {
       throw new Error('PaymentsService.reverse не відкриває власної транзакції — працює в tx каси');
     }),
@@ -599,6 +604,72 @@ describe('PaymentsService.reverse — інші оплати й далі покр
     await h.reverse();
     expect(h.invoice).toMatchObject({ status: 'PAID' });
     expect(Number(h.invoice?.paidAmount)).toBe(1000);
+  });
+});
+
+describe('PaymentsService.reverse — події outbox (BR-AUT-060)', () => {
+  const events = (h: ReturnType<typeof makeHarness>) =>
+    h.tables.domainEvent.rows.map(e => ({
+      documentType: e.documentType,
+      documentId: e.documentId,
+      fromStatus: e.fromStatus,
+      toStatus: e.toStatus,
+      actorId: e.actorId,
+    }));
+
+  // guards: BR-AUT-060
+  it('сторно → подія оплати STATUS_CHANGED у «REVERSED» з автором сторно; наряд PAID → INVOICED — своя подія', async () => {
+    const h = makeHarness({
+      payment: { invoiceId: null, amount: 1000, amountBase: 1000 },
+      invoice: null,
+      workOrder: { status: 'PAID', totalAmount: 1000, paidAmount: 1000 },
+    });
+    await h.reverse();
+    expect(events(h)).toEqual([
+      {
+        documentType: 'PAYMENT',
+        documentId: PAY,
+        fromStatus: null,
+        toStatus: 'REVERSED',
+        actorId: USER,
+      },
+      {
+        documentType: 'WORK_ORDER',
+        documentId: WO,
+        fromStatus: 'PAID',
+        toStatus: 'INVOICED',
+        actorId: USER,
+      },
+    ]);
+    expect(h.tables.domainEvent.rows.every(e => e.kind === 'STATUS_CHANGED')).toBe(true);
+  });
+
+  // guards: BR-AUT-060
+  it('рахунок без наряду: PAID → SENT — подія рахунку; лише «сплачено» без зміни статусу — без події', async () => {
+    const h = makeHarness({
+      payment: { amount: 1000, amountBase: 1000, workOrderId: null },
+      invoice: { status: 'PAID', paidAmount: 1000 },
+    });
+    await h.reverse();
+    expect(events(h)).toContainEqual(
+      expect.objectContaining({ documentType: 'INVOICE', fromStatus: 'PAID', toStatus: 'SENT' }),
+    );
+
+    const partial = makeHarness({
+      payment: { amount: 0.01, amountBase: 0.01, workOrderId: null },
+      invoice: { status: 'PARTIALLY_PAID', paidAmount: 700 },
+    });
+    await partial.reverse();
+    expect(events(partial).filter(e => e.documentType === 'INVOICE')).toEqual([]);
+  });
+
+  // guards: BR-AUT-060
+  it('повторне сторно → 400 і другої події немає', async () => {
+    const h = makeHarness();
+    await h.reverse();
+    const before = h.tables.domainEvent.rows.length;
+    await expect(h.reverse()).rejects.toThrow(BadRequestException);
+    expect(h.tables.domainEvent.rows).toHaveLength(before);
   });
 });
 

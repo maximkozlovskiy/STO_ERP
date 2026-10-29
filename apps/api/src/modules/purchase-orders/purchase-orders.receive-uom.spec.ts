@@ -22,6 +22,7 @@ import { SettingsService } from '../settings/settings.service';
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
 import { exchangeRatesProvider, purchaseListProviders } from './purchase-orders.spec-fixture';
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug #239)', () => {
   let service: PurchaseOrdersService;
@@ -65,6 +66,7 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
       // F4 (BR-INVT-UOMBASE): receive тепер читає GoodUoM-коефіцієнти. [] → coeff=1 (товари цих
       // кейсів без альт-одиниць), тож оприбуткування raw receivedQty незмінне.
       goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return Promise.resolve(arg);

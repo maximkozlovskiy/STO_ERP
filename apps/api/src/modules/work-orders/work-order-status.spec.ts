@@ -5,13 +5,16 @@ import { join, relative, sep } from 'node:path';
 import type { Prisma, WorkOrderStatus } from '@prisma/client';
 import { transitionWorkOrderStatusInTx } from './work-order-status';
 import { WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 const ORG = 'org-1';
 const WO_ID = '22222222-2222-4222-8222-222222222222';
 
 function makeTx(count = 1) {
   const updateMany = vi.fn().mockResolvedValue({ count });
-  return { tx: { workOrder: { updateMany } } as unknown as Prisma.TransactionClient, updateMany };
+  const domainEvent = domainEventMock();
+  const tx = { workOrder: { updateMany }, domainEvent } as unknown as Prisma.TransactionClient;
+  return { tx, updateMany, domainEvent };
 }
 
 describe('transitionWorkOrderStatusInTx — статус наряду в чужій транзакції', () => {

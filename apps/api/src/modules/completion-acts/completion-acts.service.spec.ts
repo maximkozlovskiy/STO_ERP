@@ -12,6 +12,7 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { InvoicesService } from '../invoices/invoices.service';
 import { PdfService } from '../pdf/pdf.service';
 import { OrgPrintInfoService } from '../pdf/org-print-info.service';
+import { domainEventMock } from '../../common/testing/prisma-mock';
 
 // Регресійні гарди для sign(): ідемпотентність CONFIRM-еквіваленту (CAS DRAFT→SIGNED) та
 // поведінка auto-invoice ПОЗА транзакцією (best-effort, не роллбечить підписання).
@@ -79,6 +80,7 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
         update: vi.fn().mockResolvedValue({}),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
+      domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
@@ -126,7 +128,7 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
     });
     expect(prisma.workOrder.update).not.toHaveBeenCalled();
     // auto-invoice викликається ПІСЛЯ tx (не всередині)
-    expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID);
+    expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID, undefined);
   });
 
   it('sign() (concurrent/retry): CAS count=0 → BadRequestException, WO не оновлено, auto-invoice не викликано', async () => {
@@ -190,7 +192,7 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
     expect(prisma.completionAct.updateMany).toHaveBeenCalled();
     expect(prisma.workOrder.update).not.toHaveBeenCalled();
     // auto-invoice усе одно намагається (WO існує) — best-effort
-    expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID);
+    expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID, undefined);
   });
 
   // ── BR-WO-001: статус наряду змінюється лише через FSM ──────────────────────────────
@@ -343,7 +345,7 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
       ['INVOICED', 'PAID'],
     ]);
     // BR-INV-020: рахунок створюється й для вже оплаченого наряду.
-    expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID);
+    expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID, 'user-1');
   });
 
   // guards: BR-WO-016
@@ -378,7 +380,7 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
     await service.sign(ORG, ACT_ID, { signedBy: 'Іван' } as never, 'user-1');
 
     expect(prisma.workOrder.updateMany).not.toHaveBeenCalled();
-    expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID);
+    expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID, 'user-1');
   });
 
   // Bug #795 (рішення власника 2026-10-07): акт скасованого наряду не підписується. Раніше підпис
