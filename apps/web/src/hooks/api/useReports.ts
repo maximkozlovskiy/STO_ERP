@@ -1,7 +1,8 @@
-import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import type { ApiSchema } from '@sto/shared';
+import { dashboardKeys } from './useDashboardData';
 
 export type ReportTab =
   | 'revenue'
@@ -62,4 +63,29 @@ export function useReport<T extends ReportTab>(tab: T, from: string, to: string)
 export function useInvalidateReports() {
   const qc = useQueryClient();
   return () => qc.invalidateQueries({ queryKey: reportsKeys.all });
+}
+
+/** Налаштування звіту P&L організації (BR-RPT-030) — поля `PATCH /settings/organisation`. */
+export type PnlSettingsPatch = Pick<
+  ApiSchema<'UpdateOrganisationSettingsDto'>,
+  'pnlIncomeCashReasons' | 'pnlExpenseCashReasons' | 'pnlWarnFuturePayroll'
+>;
+
+/**
+ * Зберегти налаштування P&L (OWNER / ADMIN). Після збереження скидаються звіт P&L (усі періоди) і
+ * KPI «Чистий прибуток за місяць» дашборду — обидва рахуються за цими налаштуваннями.
+ */
+export function useUpdatePnlSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: PnlSettingsPatch) =>
+      apiFetch<ApiSchema<'OrganisationSettingsResponseDto'>>('/settings/organisation', {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [...reportsKeys.all, 'pnl'] });
+      void qc.invalidateQueries({ queryKey: [...dashboardKeys.all, 'pnl'] });
+    },
+  });
 }

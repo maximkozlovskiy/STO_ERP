@@ -13,10 +13,11 @@ import {
   Pie,
   Cell,
   Legend,
+  LabelList,
 } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import type { ApiSchema } from '@sto/shared';
-import { fmtMoney } from '@/lib/format';
+import { fmtDate, fmtMoney, fmtPercent } from '@/lib/format';
 
 type RevenueRow = ApiSchema<'RevenueRowDto'>;
 type SettlementRow = { counterpartyId: string; counterpartyName: string; balance: number };
@@ -30,11 +31,16 @@ type LoadRow = {
 };
 type ProfitabilityData = ApiSchema<'ProfitabilityReportDto'>;
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
-
 function fmt(n: number) {
   return fmtMoney(n) + ' ₴';
 }
+
+/** Підпис осі днів: `YYYY-MM-DD` → «ДД.ММ» (рядком, без часового поясу браузера). */
+export function axisDayLabel(ymd: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? `${ymd.slice(8, 10)}.${ymd.slice(5, 7)}` : ymd;
+}
+/** Підказка дня — повна дата «ДД.ММ.РРРР». */
+const tooltipDay = (label: unknown) => (typeof label === 'string' ? fmtDate(label) : String(label));
 
 // Масштабований форматер для YAxis: уникає дублів при малих значеннях
 function yFmt(v: number): string {
@@ -52,7 +58,7 @@ export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={rows}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+            <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={axisDayLabel} />
             <YAxis
               tick={{ fontSize: 11 }}
               tickFormatter={yFmt}
@@ -60,7 +66,7 @@ export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
               domain={[0, 'auto']}
               width={52}
             />
-            <Tooltip formatter={v => fmt(Number(v ?? 0))} />
+            <Tooltip formatter={v => fmt(Number(v ?? 0))} labelFormatter={tooltipDay} />
             <Bar
               dataKey="revenue"
               fill="#3b82f6"
@@ -75,7 +81,7 @@ export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
         <ResponsiveContainer width="100%" height={200}>
           <LineChart data={rows}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+            <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={axisDayLabel} />
             <YAxis
               tick={{ fontSize: 11 }}
               tickFormatter={yFmt}
@@ -83,7 +89,7 @@ export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
               domain={[0, 'auto']}
               width={52}
             />
-            <Tooltip formatter={v => fmt(Number(v ?? 0))} />
+            <Tooltip formatter={v => fmt(Number(v ?? 0))} labelFormatter={tooltipDay} />
             <Line
               type="monotone"
               dataKey="labor"
@@ -168,28 +174,41 @@ export function ProfitabilityChart({ data }: { data: ProfitabilityData }) {
   );
 }
 
+/**
+ * «Завантаженість»: рядки вже відсортовані (більші зверху) й без підйомників без записів
+ * (`splitLoadRows`). Біля стовпчика — підпис відсотка, вісь — до 100 % або до найбільшого.
+ */
 export function LoadChart({ rows }: { rows: LoadRow[] }) {
   const { t } = useTranslation('reports');
   return (
     <div className="bg-surface rounded-xl border border-border p-5">
       <h3 className="font-medium text-foreground mb-4">{t('charts.liftLoad')}</h3>
-      <ResponsiveContainer width="100%" height={Math.max(200, rows.length * 48 + 40)}>
-        <BarChart data={rows} layout="vertical">
+      <ResponsiveContainer width="100%" height={Math.max(120, rows.length * 40 + 40)}>
+        <BarChart data={rows} layout="vertical" margin={{ right: 48 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
           <XAxis
             type="number"
-            domain={[0, 100]}
-            tickFormatter={v => v + '%'}
+            domain={[0, (max: number) => Math.max(100, Math.ceil(max / 10) * 10)]}
+            tickFormatter={v => fmtPercent(Number(v))}
             tick={{ fontSize: 11 }}
             allowDecimals={false}
             tickCount={6}
           />
           <YAxis type="category" dataKey="liftName" tick={{ fontSize: 11 }} width={120} />
-          <Tooltip formatter={v => Number(v ?? 0).toFixed(1) + '%'} />
-          <Bar dataKey="loadPercent" fill="#3b82f6" radius={[0, 4, 4, 0]} name={t('charts.load')}>
-            {rows.map((_, idx: number) => (
-              <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
-            ))}
+          <Tooltip formatter={v => fmtPercent(Number(v ?? 0))} />
+          <Bar
+            dataKey="loadPercent"
+            fill="#3b82f6"
+            radius={[0, 4, 4, 0]}
+            minPointSize={2}
+            name={t('charts.load')}
+          >
+            <LabelList
+              dataKey="loadPercent"
+              position="right"
+              formatter={(v: unknown) => fmtPercent(Number(v ?? 0))}
+              style={{ fontSize: 11, fill: 'var(--color-foreground)' }}
+            />
           </Bar>
         </BarChart>
       </ResponsiveContainer>

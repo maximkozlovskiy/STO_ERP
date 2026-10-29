@@ -19,7 +19,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { fmtMoney, kyivToday, memoByLocale } from '@/lib/format';
+import { fmtMoney, fmtPercent, kyivToday } from '@/lib/format';
 import { InventoryTab } from '../inventory/InventoryTab';
 import { downloadBlob } from '@/lib/download';
 import dynamic from 'next/dynamic';
@@ -27,6 +27,14 @@ import { SettlementsTabContent } from '../settlements/SettlementsTabContent';
 import { ReportBuilder } from './ReportBuilder';
 import { RevenueReport } from './RevenueReport';
 import { PnlReport } from './PnlReport';
+import { QuickPeriods } from './QuickPeriods';
+import {
+  LoadReportView,
+  SettlementsReportView,
+  StockReportView,
+  WorkOrdersReportView,
+} from './ReportTables';
+import { useReportGoodCard } from './ReportGoodCard';
 import { buildCsv, type ReportData } from './report-csv';
 import { CSV_BOM } from '@/lib/report-export';
 import { StatCard } from './StatCard';
@@ -35,18 +43,10 @@ const RevenueCharts = dynamic(() => import('./ReportsCharts').then(m => m.Revenu
   ssr: false,
   loading: () => <div className="h-96 bg-surface-hover animate-pulse rounded-xl" />,
 });
-const SettlementsChart = dynamic(() => import('./ReportsCharts').then(m => m.SettlementsChart), {
-  ssr: false,
-  loading: () => <div className="h-52 bg-surface-hover animate-pulse rounded-xl" />,
-});
 const ProfitabilityChart = dynamic(
   () => import('./ReportsCharts').then(m => m.ProfitabilityChart),
   { ssr: false, loading: () => <div className="h-56 bg-surface-hover animate-pulse rounded-xl" /> },
 );
-const LoadChart = dynamic(() => import('./ReportsCharts').then(m => m.LoadChart), {
-  ssr: false,
-  loading: () => <div className="h-72 bg-surface-hover animate-pulse rounded-xl" />,
-});
 
 type Tab = ReportTab | 'builder' | 'inventory';
 
@@ -54,17 +54,13 @@ type Tab = ReportTab | 'builder' | 'inventory';
 // заходять на сторінку заради вкладки «Залишки» (переїхала сюди зі «Складу») і бачать лише її.
 const FINANCE_ROLES = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
 const INVENTORY_ONLY_ROLES = ['STOREKEEPER', 'RECEPTIONIST'];
+// Налаштування P&L (`PATCH /settings/organisation`) і картка товару (`GET /goods/:id`) — лише цим.
+const MANAGE_ROLES = ['OWNER', 'ADMIN'];
 
 // Thin proxy to lib/format singleton (Intl.NumberFormat module-level). Replaces
 // per-render `n.toLocaleString('uk-UA', {...})` × every cell у table-heavy reports.
 function fmt(n: number) {
   return fmtMoney(n) + ' ₴';
-}
-
-// Один десятковий знак — такого форматера в lib/format немає; мовою інтерфейсу, один на мову.
-const getNumFmt1 = memoByLocale(loc => new Intl.NumberFormat(loc, { maximumFractionDigits: 1 }));
-function fmtNum(n: number) {
-  return getNumFmt1().format(n);
 }
 
 // Sv-SE формат сьогоднішньої дати в Kyiv (YYYY-MM-DD) — централізовано у lib/format.kyivToday().
@@ -77,6 +73,8 @@ function ReportsPageClient() {
   // Поки роль невідома (auth ще вантажиться) — вважаємо доступ вузьким: фінансовий запит не
   // має піти раніше, ніж з'ясується, що користувач має на нього право.
   const canSeeFinance = !!employee && FINANCE_ROLES.includes(employee.role);
+  const canManage = !!employee && MANAGE_ROLES.includes(employee.role);
+  const goodCard = useReportGoodCard();
   const requestedTab = (searchParams.get('tab') ?? 'revenue') as Tab;
   const tab: Tab = canSeeFinance ? requestedTab : 'inventory';
   const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
@@ -190,6 +188,14 @@ function ReportsPageClient() {
                   className="w-36"
                 />
               </div>
+              <QuickPeriods
+                from={from}
+                to={to}
+                onChange={r => {
+                  setFrom(r.from);
+                  setTo(r.to);
+                }}
+              />
             </>
           )}
           {loading && (
@@ -237,151 +243,21 @@ function ReportsPageClient() {
             <RevenueReport data={data} charts={<RevenueCharts rows={data.rows} />} />
           )}
 
-          {/* Work orders report */}
+          {/* Work orders report — рядок веде до нарядів механіка за період */}
           {data && data._tab === 'work-orders' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-3 gap-4">
-                <StatCard
-                  label={t('page.workOrders.totalNormoHours')}
-                  value={fmtNum(data.totalNormoHours)}
-                />
-                <StatCard label={t('page.workOrders.totalAmount')} value={fmt(data.totalAmount)} />
-                <StatCard label={t('page.workOrders.mechanics')} value={String(data.rows.length)} />
-              </div>
-              <div className="bg-surface rounded-xl border border-border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('page.workOrders.colMechanic')}</TableHead>
-                      <TableHead className="text-right">
-                        {t('page.workOrders.colNormoHours')}
-                      </TableHead>
-                      <TableHead className="text-right">{t('page.workOrders.colLines')}</TableHead>
-                      <TableHead className="text-right">{t('page.workOrders.colAmount')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.rows.map(r => (
-                      <TableRow key={r.employeeId}>
-                        <TableCell className="font-medium text-foreground">
-                          {r.employeeName}
-                        </TableCell>
-                        <TableCell className="text-right">{fmtNum(r.totalNormoHours)}</TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {r.linesCount}
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {fmt(r.totalAmount)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
+            <WorkOrdersReportView data={data} from={from} to={to} />
           )}
 
-          {/* Stock report */}
+          {/* Stock report — рядок відкриває картку товару (OWNER / ADMIN) */}
           {data && data._tab === 'stock' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <StatCard
-                  label={t('page.stock.itemsCount')}
-                  value={String(data.stockItems.length)}
-                />
-                <StatCard label={t('page.stock.totalValue')} value={fmt(data.totalValue)} />
-              </div>
-              <div className="bg-surface rounded-xl border border-border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('page.stock.colGood')}</TableHead>
-                      <TableHead>{t('page.stock.colWarehouse')}</TableHead>
-                      <TableHead className="text-right">{t('page.stock.colQuantity')}</TableHead>
-                      <TableHead className="text-right">{t('page.stock.colAvailable')}</TableHead>
-                      <TableHead className="text-right">{t('page.stock.colValue')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.stockItems.map((i, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell>
-                          <div className="font-medium text-foreground">{i.goodName}</div>
-                          <div className="text-xs text-foreground-faint font-mono">
-                            {i.goodSku ?? '—'}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{i.warehouseName}</TableCell>
-                        <TableCell className="text-right">
-                          {fmtNum(i.quantity)} {i.unit}
-                        </TableCell>
-                        <TableCell
-                          className={cn(
-                            'text-right font-medium',
-                            i.available <= 0 ? 'text-destructive' : 'text-success',
-                          )}
-                        >
-                          {fmtNum(i.available)}
-                        </TableCell>
-                        <TableCell className="text-right">{fmt(i.value)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
+            <StockReportView
+              data={data}
+              onOpenGood={canManage ? id => void goodCard.open(id) : undefined}
+            />
           )}
 
-          {/* Settlements report */}
-          {data && data._tab === 'settlements' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <StatCard
-                  label={t('page.settlements.totalDebit')}
-                  value={fmt(data.totalDebit)}
-                  sub={t('page.settlements.totalDebitSub')}
-                />
-                <StatCard
-                  label={t('page.settlements.totalCredit')}
-                  value={fmt(data.totalCredit)}
-                  sub={t('page.settlements.totalCreditSub')}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-6">
-                <SettlementsChart rows={data.rows} />
-                <div className="bg-surface rounded-xl border border-border overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{t('page.settlements.colCounterparty')}</TableHead>
-                        <TableHead className="text-right">
-                          {t('page.settlements.colBalance')}
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {data.rows
-                        .filter(r => r.balance !== 0)
-                        .map(r => (
-                          <TableRow key={r.counterpartyId}>
-                            <TableCell className="text-foreground">{r.counterpartyName}</TableCell>
-                            <TableCell
-                              className={cn(
-                                'text-right font-semibold',
-                                r.balance > 0 ? 'text-destructive' : 'text-success',
-                              )}
-                            >
-                              {r.balance > 0 ? '+' : ''}
-                              {fmt(r.balance)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Settlements report — рядок веде до картки контрагента */}
+          {data && data._tab === 'settlements' && <SettlementsReportView data={data} />}
 
           {/* Profitability report */}
           {data && data._tab === 'profitability' && (
@@ -403,7 +279,7 @@ function ReportsPageClient() {
                 />
                 <StatCard
                   label={t('page.profitability.margin')}
-                  value={`${data.margin.toFixed(1)}%`}
+                  value={fmtPercent(data.margin)}
                   sub={
                     data.margin >= 30
                       ? t('page.profitability.marginOk')
@@ -485,7 +361,7 @@ function ReportsPageClient() {
                           {fmt(row.value)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums text-muted-foreground">
-                          {row.pct == null ? '—' : `${row.pct.toFixed(1)}%`}
+                          {fmtPercent(row.pct)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -499,62 +375,10 @@ function ReportsPageClient() {
           )}
 
           {/* P&L (BR-RPT-030) */}
-          {data && data._tab === 'pnl' && <PnlReport data={data} />}
+          {data && data._tab === 'pnl' && <PnlReport data={data} canEditSettings={canManage} />}
 
           {/* Load report */}
-          {data && data._tab === 'load' && (
-            <div className="space-y-6">
-              <LoadChart rows={data.rows} />
-              <div className="bg-surface rounded-xl border border-border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('page.load.colLift')}</TableHead>
-                      <TableHead>{t('page.load.colZone')}</TableHead>
-                      <TableHead className="text-right">{t('page.load.colSlots')}</TableHead>
-                      <TableHead className="text-right">{t('page.load.colHours')}</TableHead>
-                      <TableHead className="text-right">{t('page.load.colLoad')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.rows.map(r => (
-                      <TableRow key={r.liftId}>
-                        <TableCell className="font-medium text-foreground">{r.liftName}</TableCell>
-                        <TableCell className="text-muted-foreground">{r.zoneName}</TableCell>
-                        <TableCell className="text-right">{r.totalSlots}</TableCell>
-                        <TableCell className="text-right">
-                          {fmtNum(r.totalHours)}
-                          {t('page.load.hoursSuffix')}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <div className="w-24 bg-secondary rounded-full h-2">
-                              <div
-                                className="bg-primary h-2 rounded-full"
-                                style={{ width: `${Math.min(r.loadPercent, 100)}%` }}
-                              />
-                            </div>
-                            <span
-                              className={cn(
-                                'text-xs font-medium',
-                                r.loadPercent >= 80
-                                  ? 'text-destructive'
-                                  : r.loadPercent >= 50
-                                    ? 'text-warning'
-                                    : 'text-success',
-                              )}
-                            >
-                              {r.loadPercent}%
-                            </span>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          )}
+          {data && data._tab === 'load' && <LoadReportView data={data} />}
           {/* VAT report */}
           {data && data._tab === 'vat' && (
             <div className="space-y-4">
@@ -579,6 +403,7 @@ function ReportsPageClient() {
           )}
         </div>
       )}
+      {goodCard.element}
     </div>
   );
 }

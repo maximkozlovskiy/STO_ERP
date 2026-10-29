@@ -1,13 +1,16 @@
 'use client';
 
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import type { ApiSchema } from '@sto/shared';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Settings2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Table, TableHeader, TableBody, TableRow, TableHead } from '@/components/ui/table';
 import { cn, escapeCsvCell } from '@/lib/utils';
 import { fmtMoney } from '@/lib/format';
 import { StatCard } from './StatCard';
+import { PnlSettingsModal } from './PnlSettingsModal';
 
 type PnlData = ApiSchema<'PnlReportDto'>;
 type PnlRow = PnlData['rows'][number];
@@ -52,13 +55,32 @@ export function buildPnlCsv(data: PnlData, t: TFunction<'reports'>): string {
 
 const DEPTH_PAD = ['pl-8', 'pl-12', 'pl-16', 'pl-20'] as const;
 
-function MoneyCell({ value, strong }: { value: number; strong?: boolean }) {
+/**
+ * Закріплені колонки на 12+ місяцях: показник — ліворуч, «Разом» — праворуч. Фон комірки
+ * обов'язковий (інакше місяці просвічують під закріпленою); рядок-підсумок має свій фон.
+ */
+const STICKY_LEFT = 'sticky left-0 z-10 shadow-[1px_0_0_var(--color-border)]';
+const STICKY_RIGHT = 'sticky right-0 z-10 shadow-[-1px_0_0_var(--color-border)]';
+
+function MoneyCell({
+  value,
+  strong,
+  sticky,
+  bg = 'bg-surface',
+}: {
+  value: number;
+  strong?: boolean;
+  /** Колонка «Разом» — закріплена праворуч. */
+  sticky?: boolean;
+  bg?: string;
+}) {
   return (
     <td
       className={cn(
         'px-4 py-2 text-right tabular-nums whitespace-nowrap',
         strong && 'font-semibold',
         value < 0 && 'text-destructive',
+        sticky && cn(STICKY_RIGHT, bg),
       )}
     >
       {fmt(value)}
@@ -66,12 +88,33 @@ function MoneyCell({ value, strong }: { value: number; strong?: boolean }) {
   );
 }
 
+/** «Пораховано: інші доходи — …; витрати — …» — за якими налаштуваннями зібрано звіт. */
+export function pnlSettingsSummary(
+  settings: PnlData['settings'],
+  t: TFunction<['reports', 'cash']>,
+): string {
+  const names = (list: readonly string[]) =>
+    list.length ? list.map(r => t(`cash:reasons.${r}`, { defaultValue: r })).join(', ') : '—';
+  return t('page.pnl.settings.summary', {
+    income: names(settings.incomeCashReasons),
+    expense: names(settings.expenseCashReasons),
+  });
+}
+
 /**
  * Звіт P&L (BR-RPT-030): прибутки й збитки по київських місяцях, метод нарахування, без ПДВ.
  * Чистий прибуток — підсумок таблиці (tfoot); від'ємні суми — червоним.
  */
-export function PnlReport({ data }: { data: PnlData }) {
-  const { t } = useTranslation('reports');
+export function PnlReport({
+  data,
+  canEditSettings = false,
+}: {
+  data: PnlData;
+  /** OWNER / ADMIN — кнопка «Налаштування звіту» (`PATCH /settings/organisation`). */
+  canEditSettings?: boolean;
+}) {
+  const { t } = useTranslation(['reports', 'cash']);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const totalOf = (key: PnlRow['key']) => data.rows.find(r => r.key === key)?.total ?? 0;
   const net = data.rows.find(r => r.key === 'netProfit');
   const body = data.rows.filter(r => r.key !== 'netProfit');
@@ -108,6 +151,22 @@ export function PnlReport({ data }: { data: PnlData }) {
         </div>
       )}
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[13px] text-muted-foreground" data-testid="pnl-settings-summary">
+          {pnlSettingsSummary(data.settings, t)}
+        </p>
+        {canEditSettings && (
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<Settings2 className="h-4 w-4" aria-hidden="true" />}
+            onClick={() => setSettingsOpen(true)}
+          >
+            {t('page.pnl.settings.open')}
+          </Button>
+        )}
+      </div>
+
       <div className="bg-surface rounded-xl border border-border overflow-x-auto">
         <Table>
           <colgroup>
@@ -119,28 +178,36 @@ export function PnlReport({ data }: { data: PnlData }) {
           </colgroup>
           <TableHeader>
             <TableRow>
-              <TableHead>{t('page.pnl.colIndicator')}</TableHead>
+              <TableHead className={cn(STICKY_LEFT, 'bg-secondary')}>
+                {t('page.pnl.colIndicator')}
+              </TableHead>
               {data.months.map(m => (
                 <TableHead key={m} className="text-right">
                   {pnlMonthLabel(m)}
                 </TableHead>
               ))}
-              <TableHead className="text-right">{t('page.pnl.colTotal')}</TableHead>
+              <TableHead className={cn('text-right', STICKY_RIGHT, 'bg-secondary')}>
+                {t('page.pnl.colTotal')}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {body.map(r => {
               const strong = STRONG_KEYS.has(r.key);
               const category = isCategory(r);
+              // Закріплена комірка не прозора: підсумковий рядок — непрозорий «secondary».
+              const bg = strong ? 'bg-secondary' : 'bg-surface';
               return (
                 <tr
                   key={`${r.key}:${r.categoryId ?? ''}`}
                   data-testid={`pnl-row-${r.key}`}
-                  className={cn('border-b border-border', strong && 'bg-secondary/50')}
+                  className={cn('border-b border-border', strong && 'bg-secondary')}
                 >
                   <td
                     className={cn(
                       'px-4 py-2',
+                      STICKY_LEFT,
+                      bg,
                       category
                         ? cn('text-muted-foreground', DEPTH_PAD[Math.min(r.depth ?? 0, 3)])
                         : 'text-foreground',
@@ -152,30 +219,41 @@ export function PnlReport({ data }: { data: PnlData }) {
                   {r.amounts.map((v, i) => (
                     <MoneyCell key={data.months[i] ?? i} value={v} strong={strong} />
                   ))}
-                  <MoneyCell value={r.total} strong />
+                  <MoneyCell value={r.total} strong sticky bg={bg} />
                 </tr>
               );
             })}
           </TableBody>
           {net && (
             <tfoot>
-              <tr
-                className="border-t border-border bg-secondary/50"
-                data-testid="pnl-row-netProfit"
-              >
-                <td className="px-4 py-2 font-semibold text-foreground">
+              <tr className="border-t border-border bg-secondary" data-testid="pnl-row-netProfit">
+                <td
+                  className={cn(
+                    'px-4 py-2 font-semibold text-foreground',
+                    STICKY_LEFT,
+                    'bg-secondary',
+                  )}
+                >
                   {t('page.pnl.rows.netProfit')}
                 </td>
                 {net.amounts.map((v, i) => (
                   <MoneyCell key={data.months[i] ?? i} value={v} strong />
                 ))}
-                <MoneyCell value={net.total} strong />
+                <MoneyCell value={net.total} strong sticky bg="bg-secondary" />
               </tr>
             </tfoot>
           )}
         </Table>
         <p className="px-4 py-2 text-[12px] text-muted-foreground">{t('page.pnl.note')}</p>
       </div>
+
+      {canEditSettings && (
+        <PnlSettingsModal
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          settings={data.settings}
+        />
+      )}
     </div>
   );
 }

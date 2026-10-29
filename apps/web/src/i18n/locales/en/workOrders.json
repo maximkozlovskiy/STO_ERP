@@ -2,6 +2,9 @@
   "list": {
     "title": "Work orders",
     "myOrders": "My orders",
+    "executorFilter": "Assignee: {{name}}",
+    "executorFilterClear": "Clear filter “Assignee: {{name}}”",
+    "executorFilterNoName": "selected mechanic",
     "selectAll": "Select all",
     "selectRow": "Select work order {{number}}",
     "searchPlaceholder": "Search by number or client...",

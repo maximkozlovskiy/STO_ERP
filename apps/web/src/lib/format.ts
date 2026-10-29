@@ -79,6 +79,21 @@ export function fmtMoney(n: number | null | undefined): string {
   return getMoneyFmt().format(n);
 }
 
+const getPercentFmt = memoByLocale(
+  loc => new Intl.NumberFormat(loc, { style: 'percent', maximumFractionDigits: 1 }),
+);
+
+/**
+ * Відсоток мовою інтерфейсу: десяткова кома й знак за правилами локалі (uk — «59,3%», en —
+ * «59.3%»), до одного знака після коми. Приймає саме відсоток (59.3), а не частку (0.593).
+ *
+ * @example fmtPercent(59.25) → '59,3%'; fmtPercent(12) → '12%'
+ */
+export function fmtPercent(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—';
+  return getPercentFmt().format(n / 100);
+}
+
 /**
  * Суфікс валюти суми з рахунку банку (multi-bank: рахунок може бути USD/EUR). Не хардкодимо ₴:
  * для UAH/невідомого коду показуємо ₴, для інших — код валюти рахунку.

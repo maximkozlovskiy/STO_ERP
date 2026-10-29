@@ -21,6 +21,13 @@
       "loading": "Loading…",
       "exportCsv": "Export CSV"
     },
+    "periods": {
+      "label": "Quick period",
+      "month": "This month",
+      "prevMonth": "Last month",
+      "quarter": "Quarter",
+      "year": "Year"
+    },
     "empty": "Select parameters and click “Generate”",
     "revenue": {
       "totalRevenue": "Amount (excl. VAT)",
@@ -46,7 +53,8 @@
       "colMechanic": "Mechanic",
       "colNormoHours": "Std. hrs",
       "colLines": "Lines",
-      "colAmount": "Amount"
+      "colAmount": "Amount",
+      "openOrders": "Open the mechanic's work orders for the period"
     },
     "stock": {
       "itemsCount": "Items in warehouses",
@@ -55,7 +63,8 @@
       "colWarehouse": "Warehouse",
       "colQuantity": "Quantity",
       "colAvailable": "Available",
-      "colValue": "Value"
+      "colValue": "Value",
+      "goodLoadError": "Could not open the product card"
     },
     "settlements": {
       "totalDebit": "Accounts receivable",
@@ -108,7 +117,24 @@
       "unknownCost_few": "{{count}} parts have no known purchase price — cost is understated",
       "unknownCost_many": "{{count}} parts have no known purchase price — cost is understated",
       "unknownCost_other": "{{count}} parts have no known purchase price — cost is understated",
-      "note": "Accrual basis: revenue and parts — from completed work orders, payroll — accruals of computed periods (pro rata by days), expenses and other income — cash and bank by item. All excluding VAT, in the base currency."
+      "note": "Accrual basis: revenue and parts — from completed work orders, payroll — accruals of computed periods (pro rata by days), expenses and other income — cash and bank by item. All excluding VAT, in the base currency.",
+      "settings": {
+        "open": "Report settings",
+        "title": "P&L report settings",
+        "summary": "Computed with: other income — {{income}}; cash expenses — {{expense}}",
+        "incomeTitle": "Other income",
+        "incomeHint": "Cash receipts with an income item that the report counts as other income.",
+        "doubleCount": "Counterparty payments are already in work order revenue — enabled here, they will be counted in profit twice.",
+        "expenseTitle": "Cash expenses",
+        "expenseHint": "Cash payouts with an expense item that the report counts as operating expenses. Payroll payouts, supplier payments and customer refunds are already in payroll, cost of parts and revenue.",
+        "always": "(always)",
+        "payrollTitle": "Payroll",
+        "warnFuturePayroll": "Warn “payroll not computed” for months that have not started yet as well",
+        "save": "Save",
+        "cancel": "Cancel",
+        "saved": "Report settings saved",
+        "saveError": "Could not save the settings"
+      }
     },
     "load": {
       "colLift": "Lift",
@@ -116,7 +142,11 @@
       "colSlots": "Slots",
       "colHours": "Hours",
       "colLoad": "Utilization",
-      "hoursSuffix": "h"
+      "hoursSuffix": "h",
+      "idleLifts_one": "{{count}} more lift with no records in the period",
+      "idleLifts_few": "{{count}} more lifts with no records in the period",
+      "idleLifts_many": "{{count}} more lifts with no records in the period",
+      "idleLifts_other": "{{count}} more lifts with no records in the period"
     },
     "vat": {
       "invoiced": "VAT charged (from invoices)",

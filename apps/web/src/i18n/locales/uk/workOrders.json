@@ -2,6 +2,9 @@
   "list": {
     "title": "Наряди",
     "myOrders": "Мої наряди",
+    "executorFilter": "Виконавець: {{name}}",
+    "executorFilterClear": "Зняти фільтр «Виконавець: {{name}}»",
+    "executorFilterNoName": "обраний механік",
     "selectAll": "Вибрати всі",
     "selectRow": "Вибрати наряд {{number}}",
     "searchPlaceholder": "Пошук за номером або клієнтом...",

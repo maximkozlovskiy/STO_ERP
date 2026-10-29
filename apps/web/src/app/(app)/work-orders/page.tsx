@@ -20,6 +20,7 @@ import {
   CreditCard,
   Calendar,
   Shield,
+  X,
 } from 'lucide-react';
 import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
 import { LinesSummarySection } from '@/components/ui/LinesSummarySection';
@@ -93,6 +94,7 @@ import { invalidateWorkOrderSideEffects } from '@/lib/cache-invalidation';
 import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
 import { cn, plannedWorkOrderAmount } from '@/lib/utils';
 import { fmtMoney, fmtDate, fmtShortDateTime, kyivToday } from '@/lib/format';
+import { WORK_ORDERS_FILTER_PARAMS, parseWorkOrdersUrlFilter } from './url-filter';
 
 // sto-optimize: CreateWorkOrderModal — 1823 LOC + EntityPickerField + усі form sub-components.
 // Список нарядів відкривається в 80% сесій без створення нового → modal lazy-loaded
@@ -331,6 +333,8 @@ function WorkOrdersListTab() {
   // Default to "my orders" for MECHANICs — initialized lazily after employee loads
   const [myOrders, setMyOrders] = useState(false);
   const myOrdersInitRef = useRef(false);
+  // Виконавець із адреси (перехід із рядка механіка у звіті «Наряди»); «Мої наряди» його знімає.
+  const [executorFilter, setExecutorFilter] = useState<{ id: string; name: string } | null>(null);
   const [selectedWO, setSelectedWO] = useState<WorkOrder | null>(null);
 
   // Auto-activate "my orders" chip once for MECHANIC role (run only once after employee loads).
@@ -355,7 +359,7 @@ function WorkOrdersListTab() {
     repairCategory: categoryFilter || undefined,
     q: debouncedSearch,
     showDeleted,
-    employeeId: myOrders ? employee?.id : undefined,
+    employeeId: executorFilter?.id ?? (myOrders ? employee?.id : undefined),
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     sortBy: woSort.sortBy,
@@ -421,6 +425,7 @@ function WorkOrdersListTab() {
       setSearch(preset.filters.search ?? '');
       setShowDeleted(preset.filters.showDeleted ?? false);
       setMyOrders(preset.filters.myOrders ?? false);
+      setExecutorFilter(null);
       setDateFrom(preset.filters.dateFrom ?? '');
       setDateTo(preset.filters.dateTo ?? '');
       // View-частина подання: колонки + порядок + сортування (back-compat —
@@ -615,6 +620,36 @@ function WorkOrdersListTab() {
     router.replace('/work-orders', { scroll: false });
   }, [searchParams, router]);
 
+  // `?employeeId&employeeName&dateFrom&dateTo` — фільтр зі звіту «Наряди»: ставимо раз і прибираємо
+  // з адреси (решта параметрів лишається).
+  // Залежність — рядок параметрів фільтра, а не об'єкт `searchParams`: ефект спрацьовує раз на
+  // нову адресу, а не на кожен рендер.
+  const urlFilterKey =
+    searchParams?.get('action') === 'new'
+      ? ''
+      : WORK_ORDERS_FILTER_PARAMS.map(k => searchParams?.get(k) ?? '').join('|');
+  useEffect(() => {
+    if (!urlFilterKey || !searchParams) return;
+    const f = parseWorkOrdersUrlFilter(k => searchParams.get(k));
+    if (!f) return;
+    if (f.executor) {
+      setExecutorFilter(f.executor);
+      setMyOrders(false);
+      // Механіку «Мої наряди» не вмикаємо поверх фільтра з адреси.
+      myOrdersInitRef.current = true;
+    }
+    if (f.dateFrom) setDateFrom(f.dateFrom);
+    if (f.dateTo) setDateTo(f.dateTo);
+    resetPage();
+    setActiveSavedFilterId(null);
+    const rest = new URLSearchParams(searchParams.toString());
+    for (const k of WORK_ORDERS_FILTER_PARAMS) rest.delete(k);
+    const qs = rest.toString();
+    router.replace(qs ? `/work-orders?${qs}` : '/work-orders', { scroll: false });
+    // searchParams читається лише разом зі зміною urlFilterKey.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlFilterKey, router, resetPage, setActiveSavedFilterId]);
+
   const markDeleted = async (wo: WorkOrder) => {
     if (
       !(await confirm({
@@ -763,24 +798,48 @@ function WorkOrdersListTab() {
         label={t('list.columns.status')}
         right={
           employee && (
-            <button
-              type="button"
-              aria-pressed={myOrders}
-              onClick={() => {
-                setMyOrders(v => !v);
-                resetPage();
-                setActiveSavedFilterId(null);
-              }}
-              className={cn(
-                'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border transition-colors',
-                myOrders
-                  ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                  : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
+            <>
+              {executorFilter && (
+                <button
+                  type="button"
+                  data-testid="wo-executor-filter"
+                  aria-label={t('list.executorFilterClear', {
+                    name: executorFilter.name || t('list.executorFilterNoName'),
+                  })}
+                  onClick={() => {
+                    setExecutorFilter(null);
+                    resetPage();
+                    setActiveSavedFilterId(null);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border bg-primary text-primary-foreground border-primary shadow-sm"
+                >
+                  <User className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  {t('list.executorFilter', {
+                    name: executorFilter.name || t('list.executorFilterNoName'),
+                  })}
+                  <X className="h-3 w-3 shrink-0" aria-hidden="true" />
+                </button>
               )}
-            >
-              <User className="h-3 w-3 shrink-0" />
-              {t('list.myOrders')}
-            </button>
+              <button
+                type="button"
+                aria-pressed={myOrders}
+                onClick={() => {
+                  setExecutorFilter(null);
+                  setMyOrders(v => !v);
+                  resetPage();
+                  setActiveSavedFilterId(null);
+                }}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border transition-colors',
+                  myOrders
+                    ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                    : 'border-border text-muted-foreground bg-surface hover:bg-secondary hover:text-foreground',
+                )}
+              >
+                <User className="h-3 w-3 shrink-0" />
+                {t('list.myOrders')}
+              </button>
+            </>
           )
         }
       >
