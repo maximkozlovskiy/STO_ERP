@@ -507,16 +507,18 @@ export class UpdateBranchSettingsDto {
   smsSenderName?: string;
 
   @ApiPropertyOptional({
-    description: 'Робочі дні тижня (0=нд, 1=пн, ..., 6=сб)',
+    description: 'Робочі дні тижня, ISO (1=пн, ..., 7=нд)',
     type: [Number],
   })
   @IsOptional()
   @IsArray()
-  // Робочих днів максимум 7 (0-6); anti-DoS cap проти мільйон-дублікатних payload.
+  // ISO 1…7 (неділя = 7), як «Робочі дні» web, онлайн-запис і «Завантаженість» (work-hours.ts).
+  // До 2026-10-29 тут стояло 0…6 («0=нд»): збереження філії з неділею давало 400 (TECH-DEBT F4).
+  // Робочих днів максимум 7; anti-DoS cap проти мільйон-дублікатних payload.
   @ArrayMaxSize(7, { message: 'err.dto.settings.workingDays.max' })
   @IsInt({ each: true })
-  @Min(0, { each: true })
-  @Max(6, { each: true })
+  @Min(1, { each: true })
+  @Max(7, { each: true })
   workDays?: number[];
 }
 

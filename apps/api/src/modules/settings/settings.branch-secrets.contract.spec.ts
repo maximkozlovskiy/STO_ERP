@@ -215,4 +215,26 @@ describe('Налаштування філії — секрети провайд�
     expectNoSecrets(res.body);
     expect(res.json()).toMatchObject({ hasMonobankToken: true });
   });
+
+  // TECH-DEBT F4 (2026-10-29): «Робочі дні» web, онлайн-запис і «Завантаженість» читають ISO 1…7
+  // (неділя = 7), а DTO приймав 0…6 — збереження філії з неділею давало 400.
+  it('PATCH workDays з неділею (7) → 200; 0 і 8 — 400', async () => {
+    const ok = await app.inject({
+      method: 'PATCH',
+      url: `/settings/branch/${BRANCH}`,
+      payload: { workDays: [1, 2, 3, 4, 5, 6, 7] },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(prismaMock.branchSettings.upsert.mock.calls[0]?.[0]).toMatchObject({
+      update: { workDays: [1, 2, 3, 4, 5, 6, 7] },
+    });
+    for (const bad of [0, 8]) {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/settings/branch/${BRANCH}`,
+        payload: { workDays: [1, bad] },
+      });
+      expect(res.statusCode).toBe(400);
+    }
+  });
 });

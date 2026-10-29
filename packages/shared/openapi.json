@@ -20679,12 +20679,12 @@
           },
           "workDays": {
             "maxItems": 7,
-            "description": "Робочі дні тижня (0=нд, 1=пн, ..., 6=сб)",
+            "description": "Робочі дні тижня, ISO (1=пн, ..., 7=нд)",
             "type": "array",
             "items": {
               "type": "number",
-              "maximum": 6,
-              "minimum": 0
+              "maximum": 7,
+              "minimum": 1
             }
           }
         }

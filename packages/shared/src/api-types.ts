@@ -6441,7 +6441,7 @@ export interface components {
             smsProvider?: string;
             smsApiKey?: string;
             smsSenderName?: string;
-            /** @description Робочі дні тижня (0=нд, 1=пн, ..., 6=сб) */
+            /** @description Робочі дні тижня, ISO (1=пн, ..., 7=нд) */
             workDays?: number[];
         };
         VerifyFiscalDto: {
