@@ -253,4 +253,6 @@ export const PNL_SETTINGS_DEFAULTS = {
   pnlIncomeCashReasons: ['MANUAL_IN'] as CashReasonValue[],
   pnlExpenseCashReasons: ['EXPENSE'] as CashReasonValue[],
   pnlWarnFuturePayroll: false,
+  /** Повернення підзвіту зменшує витрату (діє, коли «Під звіт» у витратах). */
+  pnlNetAdvanceReturns: true,
 };

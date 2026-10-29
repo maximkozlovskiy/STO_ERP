@@ -54,6 +54,9 @@ model OrganisationSettings {
   pnlExpenseCashReasons            CashOperationReason[] @default([EXPENSE])
   // Попереджати «зарплату не розраховано» й про місяці періоду, що ще не почалися.
   pnlWarnFuturePayroll             Boolean         @default(false)
+  // Повернення підзвітних коштів (ADVANCE_RETURN) зменшує витрату — лише коли ADVANCE_ISSUE
+  // увімкнено в pnlExpenseCashReasons (BR-RPT-030 п. 5; рішення власника 2026-10-29).
+  pnlNetAdvanceReturns             Boolean         @default(true)
   // Скільки днів зберігати логи зовнішніх обмінів (IntegrationLog). Читається purge-scheduler
   // (НЕ hardcoded). Append-only таблиця → щоденне очищення старших за N днів. clamp [1,365].
   integrationLogRetentionDays      Int             @default(30)
