@@ -297,6 +297,48 @@ describe('Payroll — сторінка на весь екран: статуси 
       expect(screen.queryByRole('dialog', { name: 'Розрахунок за період' })).toBeNull(),
     );
   });
+
+  // guards: BR-PAYR-016
+  it('колонка «Схема» вікна розрахунку — ті самі умови, що й у відомості; без умов — назва схеми', async () => {
+    const line = (over: Partial<PayrollPreview['lines'][number]>) =>
+      ({
+        employeeName: 'Працівник',
+        normoHours: 0,
+        baseAmount: 0,
+        accruedAmount: 0,
+        linesCount: 0,
+        rateParams: null,
+        rateDerived: false,
+        ...over,
+      }) as PayrollPreview['lines'][number];
+    previewData = {
+      lines: [
+        line({
+          employeeId: 'e-1',
+          rateSchemeType: 'percent_normo',
+          rateParams: { percent: 40 },
+        }),
+        line({
+          employeeId: 'e-2',
+          rateSchemeType: 'fixed_plus_bonus',
+          rateParams: { fixedMonthly: 20000, bonusPercent: 5 },
+        }),
+        line({ employeeId: 'e-3', rateSchemeType: 'unknown' }),
+      ],
+      totalAccrued: 0,
+      from: '2026-10-01',
+      to: '2026-10-22',
+    };
+    render(<PayrollPage />);
+    const dialog = await openPreview();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Розрахувати' }));
+
+    expect(within(dialog).getByText('% від суми робіт · 40 %')).toBeInTheDocument();
+    expect(within(dialog).getByText(/^оклад 20\s000,00 ₴ \+ бонус 5 %$/)).toBeInTheDocument();
+    expect(within(dialog).getByText('Не вказано')).toBeInTheDocument();
+    // Живий розрахунок бере умови з поточної схеми — «≈» тут немає.
+    expect(within(dialog).queryByText(/≈/)).toBeNull();
+  });
 });
 
 describe('Payroll — розрахунок за період шле лише календарні дати', () => {

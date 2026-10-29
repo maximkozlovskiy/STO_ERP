@@ -156,6 +156,81 @@ describe('allocateAccruedByWorkOrder — нараховане по наряда�
     });
     expect(res).toEqual({ fixedPart: null, amounts: null });
   });
+
+  // guards: BR-PAYR-016
+  it('від’ємна сума робіт наряду (повернення) — вага 0: від’ємного «нараховано» по наряду немає', () => {
+    // База рядка 2000 (3000 − 1000), 40 % → 800; уся сума — наряду з додатною базою.
+    const res = allocateAccruedByWorkOrder({
+      rateSchemeType: 'percent_normo',
+      accruedAmount: 800,
+      scheme: parseRateScheme({ type: 'percent_normo', params: { percent: 40 } }),
+      periodStart: '2026-10-01',
+      periodEnd: '2026-10-31',
+      workOrders: [
+        { baseAmount: -1000, normoHours: 0 },
+        { baseAmount: 3000, normoHours: 0 },
+      ],
+    });
+    expect(res.amounts).toEqual([0, 800]);
+  });
+
+  // guards: BR-PAYR-016
+  it('бази немає зовсім, а нараховане є (розбіжні дані) — порівну, Σ = нараховане', () => {
+    const res = allocateAccruedByWorkOrder({
+      rateSchemeType: 'percent_normo',
+      accruedAmount: 1,
+      scheme: null,
+      periodStart: '2026-10-01',
+      periodEnd: '2026-10-31',
+      workOrders: [
+        { baseAmount: 0, normoHours: 0 },
+        { baseAmount: 0, normoHours: 0 },
+        { baseAmount: 0, normoHours: 0 },
+      ],
+    });
+    expect(res.amounts).toEqual([0.34, 0.33, 0.33]);
+  });
+
+  // guards: BR-PAYR-016, BR-PAYR-006
+  it('оклад + бонус: оклад за період + Σ по нарядах = нараховане до копійки на неповних місяцях', () => {
+    let seed = 7;
+    const rnd = () => {
+      seed = (seed * 1103515245 + 12345) % 2 ** 31;
+      return seed / 2 ** 31;
+    };
+    for (let n = 0; n < 300; n++) {
+      const day = 1 + Math.floor(rnd() * 28);
+      const periodStart = `2026-10-${String(day).padStart(2, '0')}`;
+      const periodEnd = `2026-10-${String(day + Math.floor(rnd() * (31 - day))).padStart(2, '0')}`;
+      const scheme = parseRateScheme({
+        type: 'fixed_plus_bonus',
+        params: {
+          fixedMonthly: Math.round(rnd() * 5_000_000) / 100,
+          bonusPercent: Math.round(rnd() * 3000) / 100,
+        },
+      });
+      const workOrders = Array.from({ length: 1 + Math.floor(rnd() * 6) }, () => ({
+        baseAmount: Math.round(rnd() * 2_000_000) / 100,
+        normoHours: 0,
+      }));
+      const baseAmount = workOrders.reduce((s, w) => s + w.baseAmount, 0);
+      const accrued = computeAccrued(
+        scheme,
+        { baseAmount, normoHours: 0 },
+        monthShareOfPeriod(periodStart, periodEnd),
+      );
+      const res = allocateAccruedByWorkOrder({
+        rateSchemeType: 'fixed_plus_bonus',
+        accruedAmount: accrued,
+        scheme,
+        periodStart,
+        periodEnd,
+        workOrders,
+      });
+      expect(cents(res.fixedPart!) + sumCents(res.amounts!)).toBe(cents(accrued));
+      expect(res.amounts!.every(a => a >= 0)).toBe(true);
+    }
+  });
 });
 
 describe('deriveRateParams — ставка з підсумку рядка без знімка', () => {

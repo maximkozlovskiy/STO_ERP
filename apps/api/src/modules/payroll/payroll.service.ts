@@ -100,7 +100,6 @@ interface WorkOrderAggRow {
   baseAmount: number;
 }
 
-// «Toyota Camry · AA1234BB» / «Toyota Camry» / «AA1234BB» / null — snapshot назви авто.
 /**
  * BR-PAYR-016: умови схеми в рядку живого розрахунку — параметри поточної схеми працівника (їх
  * compute() і запише знімком) та оклад за період для «оклад + бонус».
@@ -118,6 +117,7 @@ function liveRateTerms(
   };
 }
 
+// «Toyota Camry · AA1234BB» / «Toyota Camry» / «AA1234BB» / null — snapshot назви авто.
 function formatVehicleName(
   make: string | null,
   model: string | null,

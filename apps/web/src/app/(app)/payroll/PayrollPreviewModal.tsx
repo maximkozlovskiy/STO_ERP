@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Calculator } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import {
 import { toast } from '@/lib/toast';
 import { CALENDAR_DATE_RE, fmtMoney, fmtQty, kyivToday } from '@/lib/format';
 import { usePayrollPreview, useCreatePayrollPeriod } from '@/hooks/api/usePayroll';
+import { PayrollSchemeTerms } from './PayrollSchemeTerms';
 
 interface PayrollPreviewModalProps {
   open: boolean;
@@ -37,16 +38,6 @@ export function PayrollPreviewModal({ open, onClose }: PayrollPreviewModalProps)
   const [to, setTo] = useState(() => kyivToday());
   const [previewEnabled, setPreviewEnabled] = useState(false);
   const createMut = useCreatePayrollPeriod();
-
-  const RATE_LABELS = useMemo<Record<string, string>>(
-    () => ({
-      percent_normo: t('rateScheme.percent_normo'),
-      per_normo_hour: t('rateScheme.per_normo_hour'),
-      fixed_plus_bonus: t('rateScheme.fixed_plus_bonus'),
-      unknown: t('rateScheme.unknown'),
-    }),
-    [t],
-  );
 
   // API приймає лише `YYYY-MM-DD`; порожню межу («×» у полі дати) не шлемо — інакше 400.
   const datesValid = CALENDAR_DATE_RE.test(from) && CALENDAR_DATE_RE.test(to);
@@ -145,7 +136,8 @@ export function PayrollPreviewModal({ open, onClose }: PayrollPreviewModalProps)
                   <TableRow key={l.employeeId}>
                     <TableCell className="font-medium">{l.employeeName}</TableCell>
                     <TableCell className="text-[13px] text-muted-foreground">
-                      {RATE_LABELS[l.rateSchemeType] ?? l.rateSchemeType}
+                      {/* BR-PAYR-016: ті самі умови, що в колонці «Схема» відомості */}
+                      <PayrollSchemeTerms line={l} />
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {fmtQty(l.normoHours)}

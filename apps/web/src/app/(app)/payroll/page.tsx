@@ -37,13 +37,12 @@ import {
   useComputePayrollPeriod,
   usePayPayrollPeriod,
   useDeletePayrollPeriod,
-  type PayrollLine,
   type PayrollPeriod,
 } from '@/hooks/api/usePayroll';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
-import { ListLoadError } from '@/components/ui/list-load-error';
 import { useCashRegisters } from '@/hooks/api/useCash';
 import { CatalogHelp } from '@/components/ui/help-popover';
+import { PayrollSchemeTerms } from './PayrollSchemeTerms';
 
 // Вікно розрахунку відкривається лише кнопкою — його код (поля дат із календарем) не входить у
 // first-load сторінки (бюджет сторінок, check-page-budget.mjs).
@@ -95,39 +94,6 @@ export default function PayrollPage() {
       CANCELLED: t('status.CANCELLED'),
     }),
     [t],
-  );
-  const RATE_LABELS = useMemo<Record<string, string>>(
-    () => ({
-      percent_normo: t('rateScheme.percent_normo'),
-      per_normo_hour: t('rateScheme.per_normo_hour'),
-      fixed_plus_bonus: t('rateScheme.fixed_plus_bonus'),
-      unknown: t('rateScheme.unknown'),
-    }),
-    [t],
-  );
-  // BR-PAYR-016: умови схеми рядка («% від суми робіт · 40 %»). Виведені з нарахування (рядок
-  // розраховано до знімка умов) — з «≈»; невідомі умови — лише назва схеми.
-  const schemeTerms = useCallback(
-    (l: PayrollLine): string => {
-      const p = l.rateParams;
-      const approx = l.rateDerived ? t('rateTerms.approx') : '';
-      if (l.rateSchemeType === 'percent_normo' && p?.percent != null)
-        return t('rateTerms.percent_normo', { approx, percent: fmtQty(p.percent) });
-      if (l.rateSchemeType === 'per_normo_hour' && p?.ratePerHour != null)
-        return t('rateTerms.per_normo_hour', { approx, rate: fmtMoney(p.ratePerHour) });
-      if (
-        l.rateSchemeType === 'fixed_plus_bonus' &&
-        p?.fixedMonthly != null &&
-        p.bonusPercent != null
-      )
-        return t('rateTerms.fixed_plus_bonus', {
-          approx,
-          fixed: fmtMoney(p.fixedMonthly),
-          bonus: fmtQty(p.bonusPercent),
-        });
-      return RATE_LABELS[l.rateSchemeType] ?? l.rateSchemeType;
-    },
-    [t, RATE_LABELS],
   );
   const PERIOD_COLUMNS = useMemo(
     () => PERIOD_COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })),
@@ -563,13 +529,8 @@ export default function PayrollPage() {
                                     </td>
                                     <td className="font-medium px-4 py-1.5">{l.employeeName}</td>
                                     <td className="py-1.5 text-muted-foreground">
-                                      <span
-                                        title={
-                                          l.rateDerived ? t('rateTerms.derivedTitle') : undefined
-                                        }
-                                      >
-                                        {schemeTerms(l)}
-                                      </span>
+                                      {/* BR-PAYR-016 */}
+                                      <PayrollSchemeTerms line={l} />
                                     </td>
                                     <td className="py-1.5 text-right tabular-nums">
                                       {fmtQty(l.normoHours)}

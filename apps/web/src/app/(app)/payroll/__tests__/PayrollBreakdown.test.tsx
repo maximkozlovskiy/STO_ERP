@@ -280,6 +280,7 @@ describe('Payroll — розшифровка по нарядах (drill-down)', 
     const terms = screen.getByText('% від суми робіт · 40 %');
     expect(terms).not.toHaveAttribute('title');
     expect(screen.queryByText(/≈/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/обчислено з нарахування/)).not.toBeInTheDocument();
   });
 
   // guards: BR-PAYR-016
@@ -288,6 +289,10 @@ describe('Payroll — розшифровка по нарядах (drill-down)', 
 
     const terms = screen.getByText('% від суми робіт · ≈ 40 %');
     expect(terms).toHaveAttribute('title', 'обчислено з нарахування');
+    // title не чує читач екрана — та сама причина прихованим текстом у клітинці.
+    const srOnly = screen.getByText('(обчислено з нарахування)');
+    expect(srOnly).toHaveClass('sr-only');
+    expect(terms.closest('td')).toContainElement(srOnly);
   });
 
   // guards: BR-PAYR-016
