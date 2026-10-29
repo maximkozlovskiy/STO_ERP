@@ -197,7 +197,8 @@ test.describe('Зарплата — життєвий цикл періоду (FS
     expect(verify.totalPaid).toBe(verify.totalAccrued);
   });
 
-  test('drill-down: розкриття співробітника показує розшифровку по нарядах + tfoot «Разом база»', async ({
+  // guards: BR-PAYR-016
+  test('drill-down: розшифровка по нарядах з «Нараховано, ₴»; умови свіжої відомості — без «≈»', async ({
     page,
   }) => {
     await page.goto('/payroll');
@@ -221,7 +222,7 @@ test.describe('Зарплата — життєвий цикл періоду (FS
           get('vehicles?limit=1').then(first),
           get('counterparties?type=CLIENT&limit=1').then(first),
           get('works?limit=1').then(first),
-          get('employees?limit=1').then(first),
+          get('employees?role=MECHANIC&sortBy=createdAt&sortDir=asc&limit=1').then(first),
         ]);
         if (!branch || !vehicle || !client || !work || !employee) return { error: 'seed' };
         const post = async (path: string, body: unknown) => {
@@ -295,9 +296,15 @@ test.describe('Зарплата — життєвий цикл періоду (FS
       await expect(showWo).toBeVisible({ timeout: 15_000 });
       await showWo.click();
 
-      // Розшифровка розкрита: заголовок таблиці + tfoot «Разом база».
+      // Розшифровка розкрита: заголовок, колонка «Нараховано, ₴» і tfoot «Разом».
       await expect(periodRow.getByText('Розшифровка по нарядах')).toBeVisible({ timeout: 15_000 });
-      await expect(periodRow.getByText('Разом база')).toBeVisible();
+      const breakdown = periodRow
+        .getByText('Розшифровка по нарядах')
+        .locator('xpath=following-sibling::table');
+      await expect(breakdown.getByRole('columnheader', { name: 'Нараховано, ₴' })).toBeVisible();
+      await expect(breakdown.getByText('Разом', { exact: true })).toBeVisible();
+      // Свіжа відомість має знімок умов (BR-PAYR-016) — ставка не виведена, «≈» немає.
+      await expect(periodRow.getByText(/≈/)).toHaveCount(0);
       // Хоча б один клікабельний № наряду веде на картку наряду.
       const woLink = periodRow.locator('a[href^="/work-orders/"]').first();
       await expect(woLink).toBeVisible();

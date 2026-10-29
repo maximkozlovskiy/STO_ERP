@@ -23,6 +23,7 @@ model PayrollPeriod {
 model PayrollLine {              // нарахування співробітнику (snapshot на COMPUTED)
   id, orgId, periodId, employeeId
   rateSchemeType String          // snapshot типу схеми
+  rateParams Json?               // snapshot параметрів схеми (BR-PAYR-016); null — до 2026-10-29
   baseAmount Decimal(12,2)       // Σ amount завершених робіт (база %)
   normoHours Float               // Σ normoHours
   linesCount Int
@@ -118,9 +119,12 @@ tenant-isolation: orgId у WHERE на wol/wo.
 `PayrollLineWorkOrder[]` разом із рядками — **розшифровка фіксується як snapshot**, тому ЗАВЖДИ
 сходиться з `PayrollLine.baseAmount`, навіть якщо наряди згодом змінили/видалили.
 
-- **Показуємо БАЗУ, не розкидане нарахування.** Схема оплати застосовується до СУМИ бази, а не до
-  кожного наряду окремо → по-нарядно `accruedAmount` не розкидається (уникаємо штучного розподілу
-  фіксованої частини `fixed_plus_bonus` і копійчаних розбіжностей). Підсумок `tfoot` = `baseAmount`.
+- **Нараховано по наряду (BR-PAYR-016)** не зберігається — `toDto()` рахує його при читанні
+  (`allocateAccruedByWorkOrder` у `payroll.calculator.ts`): схема застосовується до СУМИ бази, а
+  змінна частина рядка ділиться між нарядами пропорційно базі (нормо-годинам для
+  `per_normo_hour`), копійки — найбільшим залишком, тож Σ = нараховане рядка до копійки. Оклад
+  `fixed_plus_bonus` — окремо (`fixedPart`, рядок «Оклад за період»). Без знімка умов
+  `fixed_plus_bonus` нарахованого по нарядах не має (`accruedAmount: null`) — оклад невідомий.
 - Σ дочірніх `baseAmount` == `PayrollLine.baseAmount` гарантовано: `WorkOrderLine.amount` — вже
   `Decimal(12,2)`, тож `roundMoney` на кожному наряді — no-op (розбіжність округлення неможлива).
 - `compute()` створює рядки **по одному** (`create`, не `createMany`) — потрібен `lineId` для дітей.
@@ -146,8 +150,11 @@ tenant-isolation: orgId у WHERE на wol/wo.
 
 **Drill-down розшифровки:** розкриття періоду → `usePayrollPeriod(id)` (детальний запит); розкриття
 рядка співробітника (стан `expandedEmployee = \`${periodId}:${employeeId}\``) → вкладена таблиця
-нарядів: № (Link на картку) · авто · робіт · нормо-год · сума робіт, `tfoot`«Разом база».
-i18n-ключі`breakdown.*` (uk/en parity).
+нарядів: № (Link на картку) · авто · робіт · нормо-год · сума робіт · нараховано (BR-PAYR-016;
+колонки немає, якщо `accruedAmount` null), рядок «Оклад за період» (`fixedPart`), `tfoot` «Разом»
+(база й «Нараховано» рядка). Колонка «Схема» рядка — умови (`rateTerms._`: «% від суми робіт · 40 %»,
+«за нормо-годину · 250,00 ₴/год», «оклад 20 000,00 ₴ + бонус 5 %»); виведені — «≈» і підказка
+«обчислено з нарахування». i18n-ключі `breakdown._`, `rateTerms.*` (uk/en parity).
 
 **Панель списку** (2026-10-22, `docs/PATTERNS.md` «Панель списку»): сторінка на весь екран
 (`page-fill`), статуси періодів — кнопками `ListStatusRow` над рядком фільтрів; праворуч у рядку —
@@ -171,8 +178,9 @@ drill-down на один `getByTestId`. Декілька `<tbody>` в одній
 preview у вікні, створення періоду через вікно (окладник-передумова в межах 2099-03), повний
 FSM через UI (create→compute→pay через модалку виплати), drill-down, FSM-guard. Cleanup-хелпер
 читає `?page=1&limit=200` (список paginated).
-**Component-тести:** `__tests__/PayrollBreakdown.test.tsx` (6 — drill-down, окладник без робіт) +
-`__tests__/PayrollListPage.test.tsx` (14 — пагінація/статуси кнопками/колонки/testid, сторінка на весь
+**Component-тести:** `__tests__/PayrollBreakdown.test.tsx` (13 — drill-down, окладник без робіт, умови
+схеми й «Нараховано» по нарядах) +
+`__tests__/PayrollListPage.test.tsx` (15 — пагінація/статуси кнопками/колонки/testid, сторінка на весь
 екран, вікно розрахунку: дати, «Створити період», межі дат, «Повторити»).
 
 ---
@@ -279,9 +287,10 @@ cd apps/api && npx vitest run src/modules/payroll/<файл>.spec.ts
 | ізоляція організацій                         | `payroll.tenant.spec.ts`              | 13     |
 | ролі доступу                                 | `payroll.access.spec.ts`              | 8      |
 | хто у відомості й частка окладу              | `payroll.accrual.spec.ts`             | 24     |
+| умови схеми й нараховане по наряду (016)     | `payroll.rate-terms.spec.ts`          | 20     |
 | нарахування на живій БД (integration)        | `payroll.accrual.integration.spec.ts` | 7      |
 
-Разом: **187** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **208** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Спільна фікстура нових аспектних спеків — `payroll.spec-fixture.ts` (factory `makePayrollFixture()`);
 `payroll.service.spec.ts` лишився на власному `makeMocks()`.
@@ -293,9 +302,6 @@ HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси �
 Джерело виробітку й умову «наряд уже в іншій відомості» виконує сирий
 SQL: unit-спеки бачать лише його параметри, результат стереже integration-спек на живій БД
 (без БД він пропускається; у CI з `REQUIRE_DB=1` — падає, якщо БД немає).
-
-BR-PAYR-016 — контракт 2026-10-29, тести — наступним кроком (рядок прибрати разом із міткою
-`// guards:`).
 
 Прогалини, що не є окремим правилом:
 
