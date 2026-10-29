@@ -15,3 +15,4 @@ export * from './task.schema';
 export * from './work-order.schema';
 export * from './bank-transaction.schema';
 export * from './cash-operation.schema';
+export * from './automation-rule.schema';
