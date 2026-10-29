@@ -2,6 +2,8 @@
   "list": {
     "title": "Work orders",
     "myOrders": "My orders",
+    "statusGroupFilter": "Status: {{names}}",
+    "statusGroupFilterClear": "Clear filter “Status: {{names}}”",
     "executorFilter": "Assignee: {{name}}",
     "executorFilterClear": "Clear filter “Assignee: {{name}}”",
     "executorFilterNoName": "selected mechanic",

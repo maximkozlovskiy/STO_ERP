@@ -583,7 +583,8 @@ export function TopShell({ children }: { children: ReactNode }) {
         href={item.href}
         prefetch={true}
         onMouseEnter={() => employee && PREFETCH_MAP[item.href]?.(queryClient, employee.role)}
-        title={collapsed ? navLabel : undefined}
+        // Повний підпис і для розгорнутого меню: довгий («Банківські платежі») обрізається.
+        title={navLabel}
         className={cn(
           'group relative flex items-center gap-3 rounded-lg text-[13px] font-medium transition-colors duration-100 mb-0.5',
           collapsed ? 'justify-center px-0 py-2.5 mx-1.5' : 'px-2.5 py-2',

@@ -2,6 +2,8 @@
   "list": {
     "title": "Наряди",
     "myOrders": "Мої наряди",
+    "statusGroupFilter": "Статус: {{names}}",
+    "statusGroupFilterClear": "Зняти фільтр «Статус: {{names}}»",
     "executorFilter": "Виконавець: {{name}}",
     "executorFilterClear": "Зняти фільтр «Виконавець: {{name}}»",
     "executorFilterNoName": "обраний механік",

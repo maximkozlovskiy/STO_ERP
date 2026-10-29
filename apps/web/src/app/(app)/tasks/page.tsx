@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useUrlCard } from '@/lib/url-card';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, CheckCircle2, ListTodo, Play, Plus, Search, User } from 'lucide-react';
 import { TASK_STATUS_BADGE, isTaskManagerRole } from '@sto/shared';
@@ -75,7 +75,6 @@ const COLUMN_DEFS: Array<{ key: string; labelKey: string }> = [
 const DEFAULT_KEYS_JSON = JSON.stringify(COLUMN_DEFS.map(c => c.key));
 const SORTABLE = new Set(['dueAt', 'startAt', 'priority', 'createdAt']);
 const NO_ITEMS: readonly Task[] = Object.freeze([]);
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const ROW_ACTION_ICON: Partial<Record<TaskAction['labelKey'], typeof Play>> = {
   'action.start': Play,
@@ -104,8 +103,6 @@ function TasksPageClient() {
     'ACCOUNTANT',
   ]);
   const { t } = useTranslation('tasks');
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const isManager = isTaskManagerRole(employee?.role);
 
   const columns = useMemo(() => COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })), [t]);
@@ -135,7 +132,27 @@ function TasksPageClient() {
   const [from, setFrom] = useState(() => kyivToday());
   const [to, setTo] = useState(() => kyivToday());
   const { sort, toggle: toggleSort, set: setSort } = useSortState('dueAt', 'asc');
-  const [card, setCard] = useState<CardState>(null);
+  // Картка задачі — в адресі (`?open=<id>`, посилання з календаря / наряду): «Назад» закриває її.
+  // Нова задача адреси не має — лише стан сторінки.
+  const taskCard = useUrlCard();
+  const { open: openTaskCard, close: closeTaskCard } = taskCard;
+  const [creating, setCreating] = useState(false);
+  const card: CardState = taskCard.id
+    ? { taskId: taskCard.id }
+    : creating
+      ? { taskId: null }
+      : null;
+  const setCard = useCallback(
+    (next: CardState) => {
+      if (next?.taskId) openTaskCard(next.taskId);
+      else if (next) setCreating(true);
+      else {
+        setCreating(false);
+        closeTaskCard();
+      }
+    },
+    [openTaskCard, closeTaskCard],
+  );
 
   // «Мої задачі» типово увімкнено для ролей поза керуванням — один раз, коли відомий працівник
   // (як «Мої наряди» механіка). Сервер і без чипа віддає їм лише свої задачі.
@@ -174,14 +191,6 @@ function TasksPageClient() {
         .map(e => ({ id: e.id, name: `${e.lastName} ${e.firstName}`.trim() })),
     [assignees.data],
   );
-
-  // ── `?open=<id>` — посилання з календаря / наряду відкриває картку задачі ──
-  const openParam = searchParams.get('open');
-  useEffect(() => {
-    if (!openParam || !UUID_RE.test(openParam)) return;
-    setCard({ taskId: openParam });
-    router.replace('/tasks', { scroll: false });
-  }, [openParam, router]);
 
   const changed = () => {
     resetPage();

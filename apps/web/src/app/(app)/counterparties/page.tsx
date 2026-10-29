@@ -6,7 +6,8 @@ import { useTranslation } from 'react-i18next';
 import { activateRow } from '@/lib/row-activation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useUrlCard } from '@/lib/url-card';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil, X } from 'lucide-react';
@@ -36,6 +37,7 @@ import {
   TableCell,
   MoneyCell,
   MONEY_HEAD_CLASS,
+  DocLink,
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
@@ -229,9 +231,29 @@ function CrmPageInner() {
   const counterparties = queryData?.items ?? (EMPTY_ITEMS as unknown as Counterparty[]);
   const total = queryData?.total ?? 0;
 
-  // Modal state
-  const [modal, setModal] = useState(false);
-  const [editingCp, setEditingCp] = useState<Counterparty | null>(null);
+  // Картка контрагента — в адресі (`?open=<id>`): посилання відкриває її, «Назад» закриває.
+  // Рядок береться зі списку; контрагента поза поточною сторінкою (посилання) — запитом за id.
+  // Нова картка (створення) адреси не має — `creating`.
+  const cpCard = useUrlCard();
+  const { open: openCpCard, close: closeCpCard } = cpCard;
+  const [creating, setCreating] = useState(false);
+  const listCp = cpCard.id ? counterparties.find(c => c.id === cpCard.id) : undefined;
+  const { data: fetchedCp } = useQuery({
+    queryKey: counterpartiesKeys.detail(cpCard.id ?? ''),
+    queryFn: () => apiFetch<Counterparty>(`/counterparties/${cpCard.id}`),
+    enabled: !!cpCard.id && !listCp && !loading,
+  });
+  const editingCp: Counterparty | null = cpCard.id ? (listCp ?? fetchedCp ?? null) : null;
+  const modal = creating || !!editingCp;
+  // «Створення» знімаємо, лише коли в адресі вже картка створеного: інакше між збереженням і
+  // оновленням адреси вікно на мить закрилося б.
+  useEffect(() => {
+    if (cpCard.id) setCreating(false);
+  }, [cpCard.id]);
+  const closeCard = useCallback(() => {
+    setCreating(false);
+    closeCpCard();
+  }, [closeCpCard]);
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
 
   // Вимкнули панель → вибір скидаємо: інакше після повторного вмикання клік по тому самому
@@ -253,8 +275,7 @@ function CrmPageInner() {
   // навігують сюди замість неіснуючого /counterparties/new маршруту.
   useEffect(() => {
     if (searchParams?.get('action') === 'new') {
-      setEditingCp(null);
-      setModal(true);
+      setCreating(true);
       router.replace('/counterparties', { scroll: false });
     }
   }, [searchParams, router]);
@@ -367,10 +388,7 @@ function CrmPageInner() {
     };
   }, [selectedCp?.id, detailPanel.enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const openEdit = (cp: Counterparty) => {
-    setEditingCp(cp);
-    setModal(true);
-  };
+  const openEdit = (cp: Counterparty) => openCpCard(cp.id);
 
   const markDeleted = async (id: string) => {
     if (!(await confirm({ title: t('confirm.markForDeletion'), variant: 'destructive' }))) return;
@@ -544,13 +562,7 @@ function CrmPageInner() {
               }
             />
             <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-            <Button
-              leftIcon={<Plus className="h-4 w-4" />}
-              onClick={() => {
-                setEditingCp(null);
-                setModal(true);
-              }}
-            >
+            <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>
               {t('actions.addCounterparty')}
             </Button>
           </>
@@ -703,9 +715,19 @@ function CrmPageInner() {
                           return (
                             <TableCell key="name">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <p className="text-[13px] font-medium text-primary">
-                                  {displayName(cp)}
-                                </p>
+                                {isDeleted ? (
+                                  <p className="text-[13px] font-medium text-muted-foreground">
+                                    {displayName(cp)}
+                                  </p>
+                                ) : (
+                                  <DocLink
+                                    href={cpCard.hrefFor(cp.id)}
+                                    onOpen={() => openEdit(cp)}
+                                    className="whitespace-normal"
+                                  >
+                                    {displayName(cp)}
+                                  </DocLink>
+                                )}
                                 {isDeleted && (
                                   <Badge variant="secondary">{t('badges.deleted')}</Badge>
                                 )}
@@ -826,20 +848,20 @@ function CrmPageInner() {
       <CounterpartyEditModal
         open={modal}
         counterparty={editingCp}
-        onClose={() => {
-          setModal(false);
-          setEditingCp(null);
-        }}
+        onClose={closeCard}
         onSaved={(cp, isNew) => {
           void queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
           if (isNew) {
-            // Після створення — лишаємо модалку відкритою в edit-режимі (передаємо
-            // створеного як editingCp → з'являються вкладки Авто/Договори). Новий
-            // контрагент має нульовий баланс (модалка balance не читає, лише тип потребує).
-            setEditingCp({ balance: 0, ...cp } as Counterparty);
+            // Після створення — лишаємо модалку відкритою в edit-режимі (картка створеного
+            // в адресі → з'являються вкладки Авто/Договори). Новий контрагент має нульовий
+            // баланс (модалка balance не читає, лише тип потребує).
+            queryClient.setQueryData(counterpartiesKeys.detail(cp.id), {
+              balance: 0,
+              ...cp,
+            });
+            openCpCard(cp.id);
           } else {
-            setModal(false);
-            setEditingCp(null);
+            closeCard();
           }
         }}
       />

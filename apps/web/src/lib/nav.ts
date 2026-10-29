@@ -30,6 +30,7 @@ import {
   Banknote,
   Landmark,
   ListTodo,
+  Boxes,
 } from 'lucide-react';
 
 export type NavSection = 'top' | 'documents' | 'settlements' | 'reports' | 'refs' | 'settings';
@@ -128,6 +129,24 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     // Документи складу й рухи містять ціни й собівартість (backend @Roles).
     roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
   },
+  {
+    // «Залишки» — вкладка «Звітів», але шукають її поруч зі складом (UX-огляд 2026-10-29).
+    href: '/reports?tab=inventory',
+    labelKey: 'inventory',
+    label: 'Залишки',
+    icon: Boxes,
+    section: 'documents',
+    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'STOREKEEPER', 'RECEPTIONIST'],
+  },
+  // Онлайн-запис — заявки клієнтів на візит, робочий документ приймальника, а не звіт.
+  {
+    href: '/bookings',
+    labelKey: 'bookings',
+    label: 'Онлайн-запис',
+    icon: ClipboardList,
+    section: 'documents',
+    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
+  },
 
   // ─── Взаєморозрахунки ─────────────────────────────────────────────
   {
@@ -146,6 +165,15 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     section: 'settlements',
     roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
   },
+  // Зарплата — розрахунки з працівниками, а не звіт (UX-огляд 2026-10-29).
+  {
+    href: '/payroll',
+    labelKey: 'payroll',
+    label: 'Зарплата',
+    icon: Banknote,
+    section: 'settlements',
+    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
+  },
   // «Каса» — остання у Взаєморозрахунках за замовчуванням (кастомний порядок може перекрити).
   {
     href: '/cash',
@@ -158,22 +186,6 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
 
   // ─── Звіти ────────────────────────────────────────────────────────
   // /settlements — вкладка всередині /reports (не окремий пункт меню)
-  {
-    href: '/bookings',
-    labelKey: 'bookings',
-    label: 'Онлайн-запис',
-    icon: ClipboardList,
-    section: 'reports',
-    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
-  },
-  {
-    href: '/payroll',
-    labelKey: 'payroll',
-    label: 'Зарплата',
-    icon: Banknote,
-    section: 'reports',
-    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
-  },
   {
     href: '/reports',
     labelKey: 'reports',

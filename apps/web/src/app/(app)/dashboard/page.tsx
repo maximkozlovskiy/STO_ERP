@@ -4,6 +4,7 @@ import { fillRevenueWeek } from './revenue-week';
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { WO_EDITABLE_STATUSES } from '@sto/shared';
+import { WO_IN_WORK_STATUSES, workOrdersStatusHref } from '../work-orders/url-filter';
 import { useRequireAuth } from '@/lib/auth';
 import {
   useDashboardOrders,
@@ -142,9 +143,21 @@ const KYIV_HOUR_FMT = new Intl.DateTimeFormat('uk-UA', {
   hour12: false,
 });
 
-const ALL_QUICK_ACTIONS = [
-  { href: '/work-orders', labelKey: 'workOrders', icon: Wrench },
-  { href: '/counterparties', labelKey: 'counterparties', icon: Users },
+// `href` — ідентифікатор дії у збереженому виборі (`sto_quick_actions`), тому не змінюється; куди
+// веде кнопка — `to`. «Новий наряд» / «Новий клієнт» відкривають форму створення (`?action=new`).
+const ALL_QUICK_ACTIONS: Array<{
+  href: string;
+  to?: string;
+  labelKey: string;
+  icon: typeof Wrench;
+}> = [
+  { href: '/work-orders', to: '/work-orders?action=new', labelKey: 'workOrders', icon: Wrench },
+  {
+    href: '/counterparties',
+    to: '/counterparties?action=new',
+    labelKey: 'counterparties',
+    icon: Users,
+  },
   { href: '/purchase-orders', labelKey: 'purchaseOrders', icon: ShoppingCart },
   { href: '/invoices', labelKey: 'invoices', icon: Receipt },
   { href: '/calendar', labelKey: 'calendar', icon: CalendarClock },
@@ -247,7 +260,7 @@ export default function DashboardPage() {
       // ж картки, і при збої підзапиту число не має мінятися від іншого правила (Bug #987).
       inProgressOrders:
         access.orders && !ordersPartial
-          ? allOrders.filter(o => o.status === 'IN_PROGRESS' || o.status === 'ON_HOLD').length
+          ? allOrders.filter(o => WO_IN_WORK_STATUSES.includes(o.status)).length
           : null,
       completedToday: access.orders ? todayOrders.length : null,
       revenueMonth: pnlTotal('revenue'),
@@ -357,7 +370,7 @@ export default function DashboardPage() {
               canViewRevenue ? 'lg:grid-cols-4 2xl:grid-cols-7' : 'lg:grid-cols-6',
             )}
           >
-            <Link href="/work-orders" className="flex">
+            <Link href={workOrdersStatusHref(WO_IN_WORK_STATUSES)} className="flex">
               <KpiCard
                 label={t('kpi.inProgress')}
                 value={streamData?.activeWo ?? kpi.inProgressOrders ?? '—'}
@@ -375,7 +388,7 @@ export default function DashboardPage() {
                 className="w-full"
               />
             </Link>
-            <Link href="/work-orders" className="flex">
+            <Link href={workOrdersStatusHref(WO_EDITABLE_STATUSES)} className="flex">
               <KpiCard
                 label={t('kpi.open')}
                 value={kpi.openOrders ?? '—'}
@@ -622,10 +635,10 @@ export default function DashboardPage() {
               )}
               <div className="flex flex-wrap gap-2.5">
                 {ALL_QUICK_ACTIONS.filter(a => enabledQA.includes(a.href)).map(
-                  ({ href, labelKey, icon: Icon }) => (
+                  ({ href, to, labelKey, icon: Icon }) => (
                     <Link
                       key={href}
-                      href={href}
+                      href={to ?? href}
                       className="inline-flex items-center gap-1.5 h-8 px-3 text-[13px] font-medium rounded-lg border border-border bg-surface text-foreground hover:bg-secondary hover:border-border-hover transition-all duration-150"
                     >
                       <Plus className="h-3.5 w-3.5" />

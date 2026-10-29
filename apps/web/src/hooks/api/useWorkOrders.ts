@@ -27,6 +27,8 @@ export interface WorkOrdersFilter extends Record<string, unknown> {
   page?: number;
   limit?: number;
   status?: string;
+  /** Кілька статусів через кому (`IN_PROGRESS,ON_HOLD`). */
+  statuses?: string;
   priority?: string;
   branchId?: string;
   counterpartyId?: string;

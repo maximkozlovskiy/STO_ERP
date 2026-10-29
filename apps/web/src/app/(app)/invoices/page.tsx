@@ -4,7 +4,6 @@ import { Suspense, useEffect, useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import type { ElementType } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useRouter, useSearchParams } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import {
@@ -62,7 +61,9 @@ import {
   SortableHead,
   TableCell,
   MoneyCell,
+  DocLink,
 } from '@/components/ui/table';
+import { useUrlCard } from '@/lib/url-card';
 import { useSortState } from '@/hooks/useSortState';
 import {
   DetailPanel,
@@ -83,7 +84,7 @@ import { useListPage } from '@/hooks/useListPage';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
-import { cn, UUID_RE } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { optimisticInvoiceStatus } from '@/lib/invoice-payment';
 import { invalidatePaymentSideEffects, invalidateBalanceAffected } from '@/lib/cache-invalidation';
@@ -181,8 +182,6 @@ function InvoicesPageInner() {
 
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
-  const router = useRouter();
-  const searchParams = useSearchParams();
 
   // useListPage: shared table/panel/filter infrastructure
   const {
@@ -294,21 +293,15 @@ function InvoicesPageInner() {
   }, [selectedInv, invoices, loading]);
 
   const [showCreate, setShowCreate] = useState(false);
-  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
-
-  // Deep-link `?open=<invoiceId>` — відкриває edit-modal конкретного рахунку (напр. з
-  // панелі «пов'язані документи» наряду). Читаємо ОДНОРАЗОВО на mount, валідуємо UUID,
-  // чистимо param щоб refresh не спамив модалку. Дзеркалить PO (Bug #596).
-  useEffect(() => {
-    const openId = searchParams.get('open');
-    if (openId && UUID_RE.test(openId)) {
-      setEditingInvoiceId(openId);
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete('open');
-      router.replace(params.toString() ? `?${params.toString()}` : '?', { scroll: false });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Картка рахунку — в адресі (`?open=<id>`, також посилання з «Пов'язаних документів» наряду):
+  // відкриття пише запис в історію, «Назад» закриває картку.
+  const card = useUrlCard();
+  const editingInvoiceId = card.id;
+  const { open: openCard, close: closeCard } = card;
+  const setEditingInvoiceId = useCallback(
+    (id: string | null) => (id ? openCard(id) : closeCard()),
+    [openCard, closeCard],
+  );
   const [showPayment, setShowPayment] = useState<InvoiceWithOptionals | null>(null);
   // QR-оплата (monobank): {invoiceId, amount} коли касир обрав QR-метод.
   const [qrPay, setQrPay] = useState<{ invoiceId: string; amount?: number } | null>(null);
@@ -989,8 +982,13 @@ function InvoicesPageInner() {
                       {visibleColumns.map(col => {
                         if (col.key === 'number')
                           return (
-                            <TableCell key="number" className="font-medium text-[13px]">
-                              {inv.number}
+                            <TableCell key="number">
+                              <DocLink
+                                href={card.hrefFor(inv.id)}
+                                onOpen={() => setEditingInvoiceId(inv.id)}
+                              >
+                                {inv.number}
+                              </DocLink>
                             </TableCell>
                           );
                         if (col.key === 'counterparty')

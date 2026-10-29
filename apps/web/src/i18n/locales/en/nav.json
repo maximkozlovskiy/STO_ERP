@@ -10,6 +10,7 @@
   "workOrders": "Work orders",
   "purchaseOrders": "Purchases",
   "stockDocuments": "Inventory",
+  "inventory": "Stock levels",
   "invoices": "Customer invoices",
   "bankStatements": "Bank payments",
   "cash": "Cash register",

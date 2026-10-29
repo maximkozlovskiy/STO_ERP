@@ -68,7 +68,9 @@ import {
   SortableHead,
   TableCell,
   MoneyCell,
+  DocLink,
 } from '@/components/ui/table';
+import { useUrlCard } from '@/lib/url-card';
 import { useSortState } from '@/hooks/useSortState';
 import { useSubmitGuard } from '@/hooks/useSubmitGuard';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
@@ -356,7 +358,8 @@ function WorkOrdersListTab() {
   } = useWorkOrders({
     page,
     limit,
-    status: statusFilter,
+    // Кілька статусів (`IN_PROGRESS,ON_HOLD` — перехід із дашборду) — окремим параметром API.
+    ...(statusFilter.includes(',') ? { statuses: statusFilter } : { status: statusFilter }),
     repairCategory: categoryFilter || undefined,
     q: debouncedSearch,
     showDeleted,
@@ -394,7 +397,14 @@ function WorkOrdersListTab() {
   const [modalPrefill, setModalPrefill] = useState<
     import('@/components/ui/CreateWorkOrderModal').CreateWOPrefill | undefined
   >();
-  const [editWoId, setEditWoId] = useState<string | null>(null);
+  // Картка наряду — в адресі (`?open=<id>`): посилання відкриває її, «Назад» закриває.
+  const card = useUrlCard();
+  const editWoId = card.id;
+  const { open: openCard, close: closeCard } = card;
+  const setEditWoId = useCallback(
+    (id: string | null) => (id ? openCard(id) : closeCard()),
+    [openCard, closeCard],
+  );
   const [linkedDocPopupId, setLinkedDocPopupId] = useState<string | null>(null);
 
   // Stable sorted ID list — prevents useQuery from refiring when React Query returns a
@@ -595,6 +605,12 @@ function WorkOrdersListTab() {
 
   // sto-optimize: stable onClick для 11 StatusPill, інакше memo() не може пропустити
   // re-render бо inline arrow міняється кожного render.
+  const statusGroupNames = statusFilter.includes(',')
+    ? statusFilter
+        .split(',')
+        .map(v => woStatusLabel(v))
+        .join(', ')
+    : '';
   const handleSelectStatus = useCallback(
     (v: string) => {
       setStatusFilter(v);
@@ -639,8 +655,9 @@ function WorkOrdersListTab() {
       // Механіку «Мої наряди» не вмикаємо поверх фільтра з адреси.
       myOrdersInitRef.current = true;
     }
-    if (f.dateFrom) setDateFrom(f.dateFrom);
-    if (f.dateTo) setDateTo(f.dateTo);
+    if (f.dateFrom !== null) setDateFrom(f.dateFrom);
+    if (f.dateTo !== null) setDateTo(f.dateTo);
+    if (f.statuses) setStatusFilter(f.statuses.join(','));
     resetPage();
     setActiveSavedFilterId(null);
     const rest = new URLSearchParams(searchParams.toString());
@@ -703,7 +720,7 @@ function WorkOrdersListTab() {
   // `() => setSelectedWO(null)` створювалось щоразу, що нівелює useMemo deps
   // для tabs/configFields/etc.
   const handleDetailPanelClose = useCallback(() => setSelectedWO(null), []);
-  const handleOpenEdit = useCallback((id: string) => setEditWoId(id), []);
+  const handleOpenEdit = useCallback((id: string) => setEditWoId(id), [setEditWoId]);
 
   // sto-optimize: extract IIFE → useMemo. Раніше блок `(() => { const buildWOTabs = ...; return <DetailPanel tabs={buildWOTabs(...)} ... /> })()`
   // виконувався на кожен render — `buildWOTabs` створювалась наново, потім
@@ -800,6 +817,18 @@ function WorkOrdersListTab() {
         right={
           employee && (
             <>
+              {statusFilter.includes(',') && (
+                <button
+                  type="button"
+                  data-testid="wo-status-group-filter"
+                  aria-label={t('list.statusGroupFilterClear', { names: statusGroupNames })}
+                  onClick={() => handleSelectStatus('')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border bg-primary text-primary-foreground border-primary shadow-sm"
+                >
+                  {t('list.statusGroupFilter', { names: statusGroupNames })}
+                  <X className="h-3 w-3 shrink-0" aria-hidden="true" />
+                </button>
+              )}
               {executorFilter && (
                 <button
                   type="button"
@@ -1098,9 +1127,12 @@ function WorkOrdersListTab() {
                             <TableCell key="number">
                               <div className="space-y-1">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-[13px] font-semibold text-primary">
+                                  <DocLink
+                                    href={card.hrefFor(wo.id)}
+                                    onOpen={() => setEditWoId(wo.id)}
+                                  >
                                     {wo.number}
-                                  </span>
+                                  </DocLink>
                                 </div>
                                 {wo.repairCategory && (
                                   <p className="text-[11px] text-muted-foreground">

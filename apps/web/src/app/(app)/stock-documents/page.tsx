@@ -61,7 +61,9 @@ import {
   TableHead,
   SortableHead,
   TableCell,
+  DocLink,
 } from '@/components/ui/table';
+import { useUrlCard } from '@/lib/url-card';
 import { useSortState } from '@/hooks/useSortState';
 import { useDebounce } from '@/hooks/useDebounce';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
@@ -71,7 +73,7 @@ import { useListPage } from '@/hooks/useListPage';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { invalidateStockDocumentSideEffects } from '@/lib/cache-invalidation';
-import { cn, UUID_RE } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { PAGE_TAB_ACTIVE, PAGE_TAB_CLASS, PAGE_TAB_IDLE } from '@/lib/page-tabs';
 import { fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
@@ -236,7 +238,14 @@ function StockDocumentsPageClient() {
   const [error, setError] = useState('');
 
   const [showCreate, setShowCreate] = useState(false);
-  const [editingDocId, setEditingDocId] = useState<string | null>(null);
+  // Картка документа — в адресі (`?open=<id>`): посилання відкриває її, «Назад» закриває.
+  const card = useUrlCard();
+  const editingDocId = card.id;
+  const { open: openCard, close: closeCard } = card;
+  const setEditingDocId = useCallback(
+    (id: string | null) => (id ? openCard(id) : closeCard()),
+    [openCard, closeCard],
+  );
 
   // Бокова панель. Зберігаємо лише id: рядок беремо зі свіжого списку, тож після
   // збереження / проведення документа панель не показує застарілу шапку, а рядок, що зник зі
@@ -262,20 +271,6 @@ function StockDocumentsPageClient() {
     () => schemaToPanelConfigFields(STOCK_DOC_PANEL_SCHEMA, panelConfig.config),
     [panelConfig.config],
   );
-
-  // Deep-link `?open=<docId>` — відкриває edit-modal конкретного складського документа
-  // (напр. з панелі «пов'язані документи» іншого документа). Читаємо ОДНОРАЗОВО на mount,
-  // валідуємо UUID, чистимо param щоб refresh не спамив модалку. Дзеркалить PO (Bug #596).
-  useEffect(() => {
-    const openId = searchParams.get('open');
-    if (openId && UUID_RE.test(openId)) {
-      setEditingDocId(openId);
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete('open');
-      router.replace(params.toString() ? `?${params.toString()}` : '?', { scroll: false });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const changeFilter = (fn: () => void) => {
     fn();
@@ -620,8 +615,13 @@ function StockDocumentsPageClient() {
                     {visibleColumns.map(col => {
                       if (col.key === 'number')
                         return (
-                          <TableCell key="number" className="font-medium text-[13px]">
-                            {doc.number}
+                          <TableCell key="number" className="whitespace-nowrap">
+                            <DocLink
+                              href={card.hrefFor(doc.id)}
+                              onOpen={() => setEditingDocId(doc.id)}
+                            >
+                              {doc.number}
+                            </DocLink>
                             {doc.deletedAt && (
                               <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
                                 {t('badges.deleted')}

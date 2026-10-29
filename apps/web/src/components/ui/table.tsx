@@ -1,6 +1,12 @@
 'use client';
 
-import type { HTMLAttributes, ThHTMLAttributes, TdHTMLAttributes } from 'react';
+import type {
+  HTMLAttributes,
+  MouseEvent,
+  ReactNode,
+  ThHTMLAttributes,
+  TdHTMLAttributes,
+} from 'react';
 import { ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SortState } from '@/hooks/useSortState';
@@ -148,6 +154,46 @@ function MoneyCell({ className, children, ...props }: TdHTMLAttributes<HTMLTable
 /** Заголовок колонки сум — вирівняний праворуч, як `MoneyCell`. */
 const MONEY_HEAD_CLASS = 'text-right';
 
+/** Вигляд номера документа / імені контрагента у списках — один для всіх списків. */
+const DOC_LINK_CLASS =
+  'text-[13px] font-semibold text-primary whitespace-nowrap hover:underline underline-offset-2 ' +
+  'focus-visible:outline-none focus-visible:underline';
+
+interface DocLinkProps {
+  /** Адреса картки (`?open=<id>`) — для середньої кнопки миші й «Відкрити в новій вкладці». */
+  href: string;
+  /** Відкрити картку на цій сторінці. */
+  onOpen: () => void;
+  children: ReactNode;
+  className?: string;
+  title?: string;
+}
+
+/**
+ * Номер документа чи ім'я контрагента в рядку списку: клік відкриває КАРТКУ, а клік по решті рядка
+ * — як і раніше бічну панель (UX-огляд 2026-10-29). Справжнє посилання: Ctrl/⌘/Shift-клік і
+ * середня кнопка лишаються браузеру (нова вкладка відкриє ту саму картку за адресою).
+ */
+function DocLink({ href, onOpen, children, className, title }: DocLinkProps) {
+  const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
+    e.stopPropagation();
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    onOpen();
+  };
+  return (
+    <a
+      href={href}
+      data-doc-link=""
+      title={title}
+      className={cn(DOC_LINK_CLASS, className)}
+      onClick={onClick}
+    >
+      {children}
+    </a>
+  );
+}
+
 function TableCaption({ className, children, ...props }: HTMLAttributes<HTMLTableCaptionElement>) {
   return (
     <caption className={cn('mt-2 text-[12px] text-muted-foreground', className)} {...props}>
@@ -166,5 +212,7 @@ export {
   TableCell,
   MoneyCell,
   MONEY_HEAD_CLASS,
+  DocLink,
+  DOC_LINK_CLASS,
   TableCaption,
 };

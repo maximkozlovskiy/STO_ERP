@@ -10,6 +10,7 @@
   "workOrders": "Наряди",
   "purchaseOrders": "Купівля",
   "stockDocuments": "Склад",
+  "inventory": "Залишки",
   "invoices": "Рахунки клієнтам",
   "bankStatements": "Банківські платежі",
   "cash": "Каса",

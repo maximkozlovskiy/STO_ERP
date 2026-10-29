@@ -69,7 +69,9 @@ import {
   TableHead,
   SortableHead,
   TableCell,
+  DocLink,
 } from '@/components/ui/table';
+import { useUrlCard, urlCardHref } from '@/lib/url-card';
 import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
@@ -413,7 +415,15 @@ function PurchaseOrdersPageClient() {
 
   // Modal & form state
   const [showCreate, setShowCreate] = useState(false);
-  const [editingPOId, setEditingPOId] = useState<string | null>(null);
+  // Картка замовлення — в адресі (`?open=<id>`): посилання з «Пов'язаних документів», каси чи
+  // «Управління купівлями» відкриває її й на вже відкритій сторінці (Bug #889), «Назад» закриває.
+  const poCard = useUrlCard();
+  const editingPOId = poCard.id;
+  const { open: openPoCard, close: closePoCard } = poCard;
+  const setEditingPOId = useCallback(
+    (id: string | null) => (id ? openPoCard(id) : closePoCard()),
+    [openPoCard, closePoCard],
+  );
   const [showReceive, setShowReceive] = useState<PurchaseOrder | null>(null);
 
   // DetailPanel selection (orders tab only) — відновлено, selection-state підключено (Bug #496).
@@ -588,21 +598,15 @@ function PurchaseOrdersPageClient() {
       });
   });
 
-  // Bug #596: deep-link `?open=<poId>` — відкриває edit-modal для конкретного PO
-  // (напр. з «Пов'язаних документів» чи з каси). Читаємо ОДНОРАЗОВО з URL,
-  // очищуємо параметр щоб refresh не спамив модалку, і на mount якщо UUID валідний —
-  // виставляємо editingPOId. Дзеркалить URL-driven pattern активної вкладки (line 134).
-  // Bug #889: ефект слідкує за САМИМИ параметрами `open`/`openReturn`, а не лише за монтуванням:
-  // «Управління купівлями» живе на цій же сторінці, і номер замовлення в позиції чи списку
-  // (`nav.toPurchaseOrder` → `?open=`) змінював URL без перемонтування — картка не відкривалась.
-  // Оброблений параметр одразу прибирається з URL, тож повторного відкриття немає.
-  const deepLinkOpen = searchParams.get('open');
+  // Посилання `?openReturn=<id>` на повернення постачальнику (картка замовлення — `poCard` вище).
+  // Ефект слідкує за САМИМ параметром, а не лише за монтуванням: посилання на цій же сторінці
+  // змінює URL без перемонтування (Bug #889). Оброблений параметр одразу прибирається з URL.
   const deepLinkOpenReturn = searchParams.get('openReturn');
   useEffect(() => {
-    const { openPurchaseOrderId, openSupplierReturnId, srModalShouldOpen } =
-      resolvePurchaseOrdersDeepLink(k => searchParams.get(k));
-    if (openPurchaseOrderId || openSupplierReturnId) {
-      if (openPurchaseOrderId) setEditingPOId(openPurchaseOrderId);
+    const { openSupplierReturnId, srModalShouldOpen } = resolvePurchaseOrdersDeepLink(k =>
+      searchParams.get(k),
+    );
+    if (openSupplierReturnId) {
       // openReturn=<id> — deep-link до повернення постачальнику (окремий param, бо
       // supplier-return не має власного списку — живе на цій сторінці).
       // Модалка SR — ОДИН інстанс з open={srCreateOpen} + editId={srEditId}; тож треба
@@ -614,14 +618,13 @@ function PurchaseOrdersPageClient() {
         if (srModalShouldOpen) setSrCreateOpen(true);
       }
       const params = new URLSearchParams(searchParams.toString());
-      params.delete('open');
       params.delete('openReturn');
       router.replace(params.toString() ? `?${params.toString()}` : '?', { scroll: false });
     }
     // Без залежності від усього searchParams: зміна вкладки чи фільтра (інші параметри) не
-    // повторює deep-link — лише новий `open`/`openReturn` у URL.
+    // повторює deep-link — лише новий `openReturn` у URL.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deepLinkOpen, deepLinkOpenReturn]);
+  }, [deepLinkOpenReturn]);
 
   // Supplier returns — useListPage (columns, detail-panel, saved-filters)
   const {
@@ -1126,8 +1129,13 @@ function PurchaseOrdersPageClient() {
                         {srVisibleColumns.map(col => {
                           if (col.key === 'number')
                             return (
-                              <TableCell key="number" className="font-medium text-[13px]">
-                                {sr.number}
+                              <TableCell key="number">
+                                <DocLink
+                                  href={urlCardHref('/purchase-orders', '', sr.id, 'openReturn')}
+                                  onOpen={() => openSr(sr.id)}
+                                >
+                                  {sr.number}
+                                </DocLink>
                               </TableCell>
                             );
                           if (col.key === 'supplier')
@@ -1545,8 +1553,13 @@ function PurchaseOrdersPageClient() {
                           {visibleColumns.map(col => {
                             if (col.key === 'number')
                               return (
-                                <TableCell key="number" className="font-medium text-[13px]">
-                                  {po.number}
+                                <TableCell key="number" className="whitespace-nowrap">
+                                  <DocLink
+                                    href={poCard.hrefFor(po.id)}
+                                    onOpen={() => setEditingPOId(po.id)}
+                                  >
+                                    {po.number}
+                                  </DocLink>
                                   {po.deletedAt && (
                                     <Badge
                                       variant="destructive"
