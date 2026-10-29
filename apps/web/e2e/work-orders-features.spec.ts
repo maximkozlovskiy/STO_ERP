@@ -150,8 +150,11 @@ async function clearDateFilters(page: import('@playwright/test').Page) {
   await page.waitForTimeout(500);
 }
 
+// Справжній рядок наряду — з номером-посиланням (`DocLink`, з 2026-10-29 номер відкриває картку);
+// до того номер був <span class="text-primary">, і селектор за ним після переходу на посилання
+// не знаходив жодного рядка.
 const realRowLocator = (page: import('@playwright/test').Page) =>
-  page.locator('table tbody tr:has(td span.text-primary)');
+  page.locator('table tbody tr:has(a[data-doc-link])');
 
 test.describe('Наряд — кнопка "Виставити рахунок" у модалці', () => {
   test('кнопка "Виставити рахунок" відсутня для DRAFT нарядів', async ({ page }) => {

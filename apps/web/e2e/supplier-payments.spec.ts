@@ -115,7 +115,8 @@ test.describe('Оплати постачальникам', () => {
     await page.goto('/supplier-payments');
     await expect(page).toHaveURL(/\/purchase-orders\/?\?tab=schedule$/, { timeout: 20_000 });
     await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole('button', { name: 'Графік оплат' })).toBeVisible();
+    // exact: поруч кнопка «?» з поясненням графіка — її назва теж містить «Графік оплат».
+    await expect(page.getByRole('button', { name: 'Графік оплат', exact: true })).toBeVisible();
   });
 
   test('стара адреса картки оплати веде туди ж', async ({ page }) => {
@@ -128,7 +129,7 @@ test.describe('Оплати постачальникам', () => {
   test('«Купівля» → вкладка «Графік оплат»: шахматка або порожній стан', async ({ page }) => {
     await page.goto('/purchase-orders');
     await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
-    await page.getByRole('button', { name: 'Графік оплат' }).click();
+    await page.getByRole('button', { name: 'Графік оплат', exact: true }).click();
     await expect(page).toHaveURL(/tab=schedule/);
 
     // Після завантаження — або шахматка з колонками, або порожній стан (боргів немає).
