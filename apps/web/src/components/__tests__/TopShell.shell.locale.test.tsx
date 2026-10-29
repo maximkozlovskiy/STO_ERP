@@ -66,7 +66,10 @@ describe('TopShell — тексти оболонки за мовою інтер�
 
   it('uk — підпис, пошук, меню, роль і кнопки виходу без змін', () => {
     renderShell();
-    expect(screen.getAllByText('Автосервіс').length).toBeGreaterThan(0);
+    // Шапка меню: назва організації (без картки організації — OneService) і підпис бренду, однаковий
+    // для обох мов (рішення власника 2026-10-29; раніше — перекладний «Автосервіс»).
+    expect(screen.getAllByText('OneService').length).toBeGreaterThan(0);
+    expect(screen.getByText('SERVICE PLATFORM')).toBeInTheDocument();
     expect(screen.getByText('Пошук...')).toBeInTheDocument();
     expect(screen.getByText('Налаштувати меню')).toBeInTheDocument();
     expect(screen.getByText('Адміністратор')).toBeInTheDocument();
@@ -91,7 +94,7 @@ describe('TopShell — тексти оболонки за мовою інтер�
   it('en — оболонка без жодного українського тексту', async () => {
     await i18n.changeLanguage('en');
     renderShell();
-    expect(screen.getByText('Car service')).toBeInTheDocument();
+    expect(screen.getByText('SERVICE PLATFORM')).toBeInTheDocument();
     expect(screen.getByText('Customize menu')).toBeInTheDocument();
     expect(screen.getByText('Administrator')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open menu' })).toBeInTheDocument();

@@ -52,6 +52,14 @@ describe('useBrandTheme — назва організації', () => {
     expect(localStorage.getItem('sto_org_name')).toBeNull();
   });
 
+  it('вихід (sto:logout) — кеш назви прибирається', async () => {
+    apiFetchMock.mockResolvedValue({ brandTheme: 'blue', orgName: 'СТО «Мотор»' });
+    const { result } = renderHook(() => useBrandTheme(true), { wrapper });
+    await waitFor(() => expect(result.current.orgName).toBe('СТО «Мотор»'));
+    window.dispatchEvent(new Event('sto:logout'));
+    expect(localStorage.getItem('sto_org_name')).toBeNull();
+  });
+
   it('вимкнено (сторінка входу) — без запиту й без назви з кешу', () => {
     localStorage.setItem('sto_org_name', 'СТО «Мотор»');
     const { result } = renderHook(() => useBrandTheme(false), { wrapper });

@@ -51,6 +51,22 @@ export function useBrandTheme(enabled: boolean): { orgName: string | null } {
     }
   }, [data]);
 
+  // Вихід: назва організації — дані попередньої сесії. Без цього наступний користувач на спільному
+  // ПК бачив у першому кадрі назву чужої організації (кеш) і стару відповідь branding (tester 2026-10-29).
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const onLogout = () => {
+      try {
+        localStorage.removeItem(ORG_NAME_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      queryClient.removeQueries({ queryKey: brandingQueryKey });
+    };
+    window.addEventListener('sto:logout', onLogout);
+    return () => window.removeEventListener('sto:logout', onLogout);
+  }, [queryClient]);
+
   return { orgName: data ? data.orgName : enabled ? cachedOrgName() : null };
 }
 

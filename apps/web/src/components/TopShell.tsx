@@ -29,7 +29,7 @@ import { resolveNav } from '@/lib/nav-layout';
 import { useNavConfig } from '@/hooks/useNavConfig';
 import { useBrandTheme } from '@/hooks/useBrandTheme';
 import { NavEditor } from '@/components/ui/NavEditor';
-import { APP_NAME, BrandLogo, BrandLogoHorizontal } from '@/components/ui/brand-logo';
+import { APP_NAME, APP_TAGLINE, BRAND_FONT, BrandAppIcon } from '@/components/ui/brand-logo';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth, isPublicRoute } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -680,33 +680,40 @@ export function TopShell({ children }: { children: ReactNode }) {
       {/* Logo */}
       <div
         className={cn(
-          'flex items-center border-b border-sidebar-border shrink-0',
-          collapsed ? 'h-16 justify-center px-0' : 'justify-between gap-1 px-2 py-2',
+          'flex items-center h-16 border-b border-sidebar-border shrink-0',
+          collapsed ? 'justify-center px-0' : 'justify-between gap-1 px-3',
         )}
       >
         {collapsed ? (
           <button
             onClick={toggleCollapsed}
-            className="flex h-12 w-12 items-center justify-center rounded-[10px] transition-opacity hover:opacity-85"
+            className="flex h-11 w-11 items-center justify-center rounded-[10px] transition-opacity hover:opacity-85"
             title={t('common:expand')}
           >
-            <BrandLogo size={48} />
+            <BrandAppIcon size={44} />
           </button>
         ) : (
           <>
-            {/* Горизонтальний логотип на всю ширину шапки (брендбук), під ним — назва організації */}
+            {/* Іконка OneService у кольорі палітри, поруч назва організації, під нею підпис бренду
+                (рішення власника 2026-10-29) */}
             <Link
               href="/dashboard"
               prefetch={false}
-              className="flex flex-col min-w-0"
-              title={orgName ?? APP_NAME}
+              className="flex items-center gap-2.5 min-w-0"
+              title={shellTitle}
             >
-              <BrandLogoHorizontal height={48} className="max-w-full h-auto" />
-              {orgName && (
-                <span className="pl-1.5 text-[12px] font-semibold text-white leading-tight truncate">
-                  {orgName}
+              <BrandAppIcon size={44} className="shrink-0" />
+              <div className="flex flex-col min-w-0">
+                <span className="text-[15px] font-bold text-white leading-tight tracking-tight truncate">
+                  {shellTitle}
                 </span>
-              )}
+                <span
+                  className="mt-1 text-[9px] font-bold uppercase tracking-[0.05em] text-sidebar-muted leading-none truncate"
+                  style={{ fontFamily: BRAND_FONT }}
+                >
+                  {APP_TAGLINE}
+                </span>
+              </div>
             </Link>
             <button
               onClick={toggleCollapsed}
@@ -859,7 +866,7 @@ export function TopShell({ children }: { children: ReactNode }) {
             <Menu className="h-5 w-5" />
           </button>
           <Link href="/dashboard" prefetch={false} className="flex items-center gap-2">
-            <BrandLogo size={32} />
+            <BrandAppIcon size={32} />
             <span className="text-[14px] font-bold text-foreground truncate max-w-48">
               {shellTitle}
             </span>

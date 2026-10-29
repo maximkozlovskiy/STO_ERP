@@ -24,8 +24,8 @@ export const metadata: Metadata = {
   title: APP_NAME,
   description: 'Система управління автосервісом',
   manifest: '/manifest.json',
-  // Логотип OneService (Images/Logo/logo-blue.svg); іконка вкладки статична — палітра організації
-  // на неї не діє (браузер кешує favicon), у застосунку логотип — BrandLogo з кольором палітри.
+  // Іконка OneService «OS» (брендбук, синя); іконка вкладки статична — палітра організації
+  // на неї не діє (браузер кешує favicon), у застосунку — BrandAppIcon з кольором палітри.
   icons: { icon: '/logo.svg' },
 };
 

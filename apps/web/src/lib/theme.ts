@@ -88,9 +88,10 @@ export const THEMES: Record<
 };
 
 /**
- * Акцент логотипу OneService для кожної палітри — кольори з `Images/Logo/logo-<палітра>.svg`
+ * Акцент іконки OneService («O») для кожної палітри — кольори з брендбука
+ * (`02_app-icon/app/oneservice-app-icon-os-<палітра>.svg`)
  * (вони не збігаються з одним кроком шкали brand: синій і фіолетовий — 500, зелений і
- * помаранчевий — 600, сірий — gray-500). Синій — запасне значення в `BrandLogo`.
+ * помаранчевий — 600, сірий — gray-500). Синій — запасне значення в `BrandAppIcon`.
  */
 export const LOGO_ACCENT: Record<ThemeName, string> = {
   blue: '#3B82F6',

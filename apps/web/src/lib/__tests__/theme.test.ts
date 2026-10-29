@@ -48,7 +48,7 @@ describe('applyTheme', () => {
     expect(localStorage.getItem(BRAND_THEME_STORAGE_KEY)).toBe('blue');
   });
 
-  it('акцент логотипу — колір файла логотипу палітри; синя — запасне значення BrandLogo', () => {
+  it('акцент логотипу — колір файла логотипу палітри; синя — запасне значення BrandAppIcon', () => {
     applyTheme('orange');
     expect(document.documentElement.style.getPropertyValue('--color-logo-accent')).toBe(
       LOGO_ACCENT.orange,

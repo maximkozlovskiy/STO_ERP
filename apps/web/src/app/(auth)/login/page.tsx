@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Wifi } from 'lucide-react';
-import { APP_NAME, BrandLogo } from '@/components/ui/brand-logo';
+import { APP_NAME, BrandAppIcon } from '@/components/ui/brand-logo';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,7 +37,7 @@ export default function LoginPage() {
       {/* Left panel — brand */}
       <div className="hidden lg:flex lg:w-105 flex-col justify-between p-10 bg-sidebar-bg text-white shrink-0">
         <div className="flex items-center gap-3">
-          <BrandLogo size={48} />
+          <BrandAppIcon size={48} />
           <span className="text-[18px] font-bold tracking-tight">{APP_NAME}</span>
         </div>
 
@@ -80,7 +80,7 @@ export default function LoginPage() {
         <div className="w-full max-w-90">
           {/* Mobile logo */}
           <div className="flex lg:hidden items-center gap-2.5 mb-8 justify-center">
-            <BrandLogo size={44} />
+            <BrandAppIcon size={44} />
             <span className="text-[18px] font-bold text-foreground">{APP_NAME}</span>
           </div>
 
