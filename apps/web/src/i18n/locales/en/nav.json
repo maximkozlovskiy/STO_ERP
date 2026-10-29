@@ -1,6 +1,6 @@
 {
   "section.documents": "Documents",
-  "section.stock": "Inventory",
+  "section.crm": "CRM",
   "section.settlements": "Settlements",
   "section.reports": "Reports",
   "section.refs": "References",
@@ -10,7 +10,7 @@
   "tasks": "Tasks",
   "workOrders": "Work orders",
   "purchaseOrders": "Purchases",
-  "stockDocuments": "Stock documents",
+  "stockDocuments": "Inventory",
   "invoices": "Customer invoices",
   "bankStatements": "Bank payments",
   "cash": "Cash register",

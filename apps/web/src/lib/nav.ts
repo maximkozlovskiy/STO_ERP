@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 
 export type NavSection =
-  'top' | 'documents' | 'stock' | 'settlements' | 'reports' | 'refs' | 'settings';
+  'top' | 'documents' | 'crm' | 'settlements' | 'reports' | 'refs' | 'settings';
 
 export interface NavItem {
   href: string;
@@ -49,7 +49,7 @@ export interface NavItem {
 export const NAV_SECTION_KEYS: Record<NavSection, string> = {
   top: '',
   documents: 'section.documents',
-  stock: 'section.stock',
+  crm: 'section.crm',
   settlements: 'section.settlements',
   reports: 'section.reports',
   refs: 'section.refs',
@@ -64,7 +64,7 @@ export interface NavGroup {
 export const NAV_SECTION_LABELS: Record<NavSection, string> = {
   top: '',
   documents: 'Документи',
-  stock: 'Склад',
+  crm: 'CRM',
   settlements: 'Взаєморозрахунки',
   reports: 'Звіти',
   refs: 'Довідники',
@@ -105,16 +105,6 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     roles: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT'],
   },
   {
-    // Задачі співробітникам (docs/objects/task.md): бачать усі ролі персоналу — виконавець лише
-    // свої (BR-TASK-002), ставлять ролі керування (BR-TASK-001).
-    href: '/tasks',
-    labelKey: 'tasks',
-    label: 'Задачі',
-    icon: ListTodo,
-    section: 'documents',
-    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT'],
-  },
-  {
     href: '/purchase-orders',
     labelKey: 'purchaseOrders',
     label: 'Купівля',
@@ -123,14 +113,29 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     roles: ['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'ACCOUNTANT'],
   },
   {
-    // Окрема група «Склад» (рішення власника 2026-10-29). «Залишки» — лише вкладка «Звітів».
+    // «Склад» — у «Документах»; окремої групи й пункту «Залишки» (вкладка «Звітів») немає
+    // (рішення власника 2026-10-29).
     href: '/stock-documents',
     labelKey: 'stockDocuments',
-    label: 'Складські документи',
+    label: 'Склад',
     icon: FileText,
-    section: 'stock',
+    section: 'documents',
     // Документи складу й рухи містять ціни й собівартість (backend @Roles).
     roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
+  },
+
+  // ─── CRM ──────────────────────────────────────────────────────────
+  // Задачі й онлайн-запис — робота з клієнтами й командою, окремою групою (рішення власника
+  // 2026-10-29).
+  {
+    // Задачі співробітникам (docs/objects/task.md): бачать усі ролі персоналу — виконавець лише
+    // свої (BR-TASK-002), ставлять ролі керування (BR-TASK-001).
+    href: '/tasks',
+    labelKey: 'tasks',
+    label: 'Задачі',
+    icon: ListTodo,
+    section: 'crm',
+    roles: ['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT'],
   },
   // Онлайн-запис — заявки клієнтів на візит, робочий документ приймальника, а не звіт.
   {
@@ -138,7 +143,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     labelKey: 'bookings',
     label: 'Онлайн-запис',
     icon: ClipboardList,
-    section: 'documents',
+    section: 'crm',
     roles: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
   },
 
@@ -159,16 +164,6 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     section: 'settlements',
     roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
   },
-  // Зарплата — розрахунки з працівниками, а не звіт (UX-огляд 2026-10-29).
-  {
-    href: '/payroll',
-    labelKey: 'payroll',
-    label: 'Зарплата',
-    icon: Banknote,
-    section: 'settlements',
-    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
-  },
-  // «Каса» — остання у Взаєморозрахунках за замовчуванням (кастомний порядок може перекрити).
   {
     href: '/cash',
     labelKey: 'cash',
@@ -176,6 +171,16 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     icon: DoorOpen,
     section: 'settlements',
     roles: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
+  },
+  // Зарплата — розрахунки з працівниками, а не звіт (UX-огляд 2026-10-29); під «Касою» (рішення
+  // власника 2026-10-29; кастомний порядок може перекрити).
+  {
+    href: '/payroll',
+    labelKey: 'payroll',
+    label: 'Зарплата',
+    icon: Banknote,
+    section: 'settlements',
+    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
   },
 
   // ─── Звіти ────────────────────────────────────────────────────────
@@ -268,7 +273,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
 export const NAV_SECTION_ORDER: NavSection[] = [
   'top',
   'documents',
-  'stock',
+  'crm',
   'settlements',
   'reports',
   'refs',

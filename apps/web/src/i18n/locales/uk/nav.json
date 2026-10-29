@@ -1,6 +1,6 @@
 {
   "section.documents": "Документи",
-  "section.stock": "Склад",
+  "section.crm": "CRM",
   "section.settlements": "Взаєморозрахунки",
   "section.reports": "Звіти",
   "section.refs": "Довідники",
@@ -10,7 +10,7 @@
   "tasks": "Задачі",
   "workOrders": "Наряди",
   "purchaseOrders": "Купівля",
-  "stockDocuments": "Складські документи",
+  "stockDocuments": "Склад",
   "invoices": "Рахунки клієнтам",
   "bankStatements": "Банківські платежі",
   "cash": "Каса",
