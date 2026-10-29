@@ -41,6 +41,7 @@ export function PnlSettingsModal({ open, onClose, settings }: Props) {
   const [income, setIncome] = useState<CashReasonValue[]>([]);
   const [expense, setExpense] = useState<CashReasonValue[]>([]);
   const [warnFuture, setWarnFuture] = useState(false);
+  const [netReturns, setNetReturns] = useState(true);
   const [error, setError] = useState('');
   // `mut.isPending` — знімок рендера: два кліки в одному кадрі обидва бачать `false`.
   const submittingRef = useRef(false);
@@ -50,6 +51,7 @@ export function PnlSettingsModal({ open, onClose, settings }: Props) {
     setIncome([...settings.incomeCashReasons]);
     setExpense([...settings.expenseCashReasons]);
     setWarnFuture(settings.warnFuturePayroll);
+    setNetReturns(settings.netAdvanceReturns);
     setError('');
     submittingRef.current = false;
   }, [open, settings]);
@@ -58,6 +60,8 @@ export function PnlSettingsModal({ open, onClose, settings }: Props) {
     on ? (list.includes(value) ? list : [...list, value]) : list.filter(v => v !== value);
 
   const doubleCount = income.some(r => DOUBLE_COUNT.includes(r));
+  // Повернення підзвіту віднімається лише від видач «Під звіт», що рахуються витратою (п. 5).
+  const advanceOn = expense.includes('ADVANCE_ISSUE');
 
   const handleSubmit = async () => {
     if (mut.isPending || submittingRef.current) return;
@@ -71,6 +75,7 @@ export function PnlSettingsModal({ open, onClose, settings }: Props) {
           r => r === PNL_EXPENSE_CASH_REASON_REQUIRED || expense.includes(r),
         ),
         pnlWarnFuturePayroll: warnFuture,
+        pnlNetAdvanceReturns: netReturns,
       });
       toast.success(t('page.pnl.settings.saved'));
       onClose();
@@ -144,24 +149,46 @@ export function PnlSettingsModal({ open, onClose, settings }: Props) {
           {PNL_EXPENSE_CASH_REASON_OPTIONS.map(r => {
             const required = r === PNL_EXPENSE_CASH_REASON_REQUIRED;
             return (
-              <label
-                key={r}
-                className={
-                  required ? 'flex items-center gap-2' : 'flex items-center gap-2 cursor-pointer'
-                }
-              >
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-border cursor-pointer disabled:cursor-default"
-                  checked={required || expense.includes(r)}
-                  disabled={required}
-                  onChange={e => setExpense(list => toggle(list, r, e.target.checked))}
-                />
-                <span className="text-foreground">{reason(r)}</span>
-                {required && (
-                  <span className="text-muted-foreground">{t('page.pnl.settings.always')}</span>
+              <div key={r} className="space-y-2">
+                <label
+                  className={
+                    required ? 'flex items-center gap-2' : 'flex items-center gap-2 cursor-pointer'
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-border cursor-pointer disabled:cursor-default"
+                    checked={required || expense.includes(r)}
+                    disabled={required}
+                    onChange={e => setExpense(list => toggle(list, r, e.target.checked))}
+                  />
+                  <span className="text-foreground">{reason(r)}</span>
+                  {required && (
+                    <span className="text-muted-foreground">{t('page.pnl.settings.always')}</span>
+                  )}
+                </label>
+                {r === 'ADVANCE_ISSUE' && (
+                  <label
+                    className={
+                      advanceOn
+                        ? 'flex items-center gap-2 pl-6 cursor-pointer'
+                        : 'flex items-center gap-2 pl-6 text-muted-foreground'
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      data-testid="pnl-settings-net-advance-returns"
+                      className="h-4 w-4 rounded border-border cursor-pointer disabled:cursor-default"
+                      checked={netReturns}
+                      disabled={!advanceOn}
+                      onChange={e => setNetReturns(e.target.checked)}
+                    />
+                    <span className={advanceOn ? 'text-foreground' : undefined}>
+                      {t('page.pnl.settings.netAdvanceReturns')}
+                    </span>
+                  </label>
                 )}
-              </label>
+              </div>
             );
           })}
         </fieldset>

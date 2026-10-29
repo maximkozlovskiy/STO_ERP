@@ -68,7 +68,7 @@ export function useInvalidateReports() {
 /** Налаштування звіту P&L організації (BR-RPT-030) — поля `PATCH /settings/organisation`. */
 export type PnlSettingsPatch = Pick<
   ApiSchema<'UpdateOrganisationSettingsDto'>,
-  'pnlIncomeCashReasons' | 'pnlExpenseCashReasons' | 'pnlWarnFuturePayroll'
+  'pnlIncomeCashReasons' | 'pnlExpenseCashReasons' | 'pnlWarnFuturePayroll' | 'pnlNetAdvanceReturns'
 >;
 
 /**

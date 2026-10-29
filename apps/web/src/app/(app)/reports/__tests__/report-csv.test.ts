@@ -107,6 +107,7 @@ describe('report-csv › buildCsv', () => {
         incomeCashReasons: ['MANUAL_IN'],
         expenseCashReasons: ['EXPENSE'],
         warnFuturePayroll: false,
+        netAdvanceReturns: true,
       },
       months: ['2026-09', '2026-10'],
       rows: [

@@ -64,7 +64,9 @@
       "colQuantity": "Quantity",
       "colAvailable": "Available",
       "colValue": "Value",
-      "goodLoadError": "Could not open the product card"
+      "goodLoadError": "Could not open the product card",
+      "deleted": "deleted",
+      "deletedTitle": "The product was deleted from the catalogue — its stock stays in the report, there is no card"
     },
     "settlements": {
       "totalDebit": "Accounts receivable",
@@ -122,6 +124,7 @@
         "open": "Report settings",
         "title": "P&L report settings",
         "summary": "Computed with: other income — {{income}}; cash expenses — {{expense}}",
+        "summaryAdvanceReturns": "; advance returns are deducted",
         "incomeTitle": "Other income",
         "incomeHint": "Cash receipts with an income item that the report counts as other income.",
         "doubleCount": "Counterparty payments are already in work order revenue — enabled here, they will be counted in profit twice.",
@@ -130,6 +133,7 @@
         "always": "(always)",
         "payrollTitle": "Payroll",
         "warnFuturePayroll": "Warn “payroll not computed” for months that have not started yet as well",
+        "netAdvanceReturns": "Advance returns reduce the expense",
         "save": "Save",
         "cancel": "Cancel",
         "saved": "Report settings saved",

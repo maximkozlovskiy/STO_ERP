@@ -48,6 +48,7 @@ const base: ApiSchema<'PnlReportDto'> = {
     incomeCashReasons: ['MANUAL_IN'],
     expenseCashReasons: ['EXPENSE'],
     warnFuturePayroll: false,
+    netAdvanceReturns: true,
   },
   from: '2026-09-01',
   to: '2026-10-31',

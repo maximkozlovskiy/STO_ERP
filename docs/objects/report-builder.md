@@ -95,8 +95,12 @@
 Ролі — як «Рентабельність»: `OWNER`, `ADMIN`, `ACCOUNTANT`. Розрахунок — `ReportsService.pnl`,
 чисті функції (місяці, розподіл зарплати за днями, дерево статей, `resolvePnlSettings`) —
 `reports/pnl.calc.ts`. Налаштування звіту — поля `pnlIncomeCashReasons` / `pnlExpenseCashReasons` /
-`pnlWarnFuturePayroll` у `PATCH /settings/organisation` (OWNER, ADMIN); відповідь звіту несе
-застосовані значення в `settings`.
+`pnlWarnFuturePayroll` / `pnlNetAdvanceReturns` у `PATCH /settings/organisation` (OWNER, ADMIN);
+відповідь звіту несе застосовані значення в `settings` (`netAdvanceReturns` — збережене значення;
+віднімається, лише коли й «Під звіт» серед витрат, `nettsAdvanceReturns`).
+
+«Звіт по складу» (`GET /reports/stock`) віддає й залишки видалених товарів з `goodDeleted: true`
+(BR-RPT-032); «Наряди» (`GET /reports/work-orders`) відбирає за `documentDate` (BR-RPT-031).
 
 «Завантаженість» (`GET /reports/load`) повертає й підйомники без жодного запису за період
 (`totalSlots = 0`), `loadPercent` — з одним знаком після коми.
@@ -382,27 +386,28 @@ cd apps/api && npx vitest run src/modules/report-builder/<файл>.spec.ts
 
 **Маршрути UI:** `/reports`
 
-| Аспект                                                                                           | Тест                                        | Кейсів |
-| ------------------------------------------------------------------------------------------------ | ------------------------------------------- | ------ |
-| цілісність реєстру, tenant-умова, enum-и, @db.Date, nullable, FK, optional, валюта (029)         | `report-registry.spec.ts`                   | 16     |
-| побудова запиту: білі списки, ліміт, період, фільтр за типом (024), порожня валюта (029)         | `report-query.builder.spec.ts`              | 60     |
-| SQL-агрегати: orgId, з'єднання, київський день, ROLLUP, знакова кількість (027), валюта (029)    | `report-sql.builder.spec.ts`                | 15     |
-| рядки SQL → дерево груп, «Разом», склеєні рядки, ліміти (027), розбивка за валютами (029)        | `report-sql-result.spec.ts`                 | 9      |
-| паритет SQL = Prisma + JS (зокрема розбивка за валютами) і група = фільтр, 9 сутностей (027–029) | `report-builder.parity.integration.spec.ts` | 18     |
-| групування, агрегації, підсумки, JS-еталон валюти (029)                                          | `report-aggregator.spec.ts`                 | 24     |
-| авто-SUM і збагачення агрегацій                                                                  | `report-builder.service.spec.ts`            | 3      |
-| збережені звіти, tenant-межа запуску                                                             | `report-builder.saved-reports.spec.ts`      | 13     |
-| ролі доступу                                                                                     | `report-builder.access.spec.ts`             | 9      |
-| межі config (DTO)                                                                                | `report-builder.dto.spec.ts`                | 1      |
-| фіксовані звіти (сусідній модуль `reports`)                                                      | `reports.service.spec.ts`                   | 20     |
-| фіксовані звіти: дати періоду в запиті (400), ролі P&L (030)                                     | `reports.contract.spec.ts`                  | 88     |
-| P&L: каса, банк, сторно, зарплата, курсові, формула, межа 24 місяців, налаштування (030)         | `reports.pnl.spec.ts`                       | 14     |
-| P&L: місяці, розподіл зарплати за днями, дерево статей, нормалізація налаштувань (030)           | `pnl.calc.spec.ts`                          | 15     |
-| P&L: налаштування в `PATCH /settings/organisation` — дозволені приводи, «Витрата», ролі (030)    | `../settings/settings.pnl.contract.spec.ts` | 14     |
-| «Завантаженість»: підйомники без записів, філія, відсоток з одним знаком                         | `reports.load.spec.ts`                      | 3      |
-| фіксовані звіти: межі періоду за Києвом, ПДВ                                                     | `reports.period-bounds.spec.ts`             | 42     |
+| Аспект                                                                                            | Тест                                        | Кейсів |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------ |
+| цілісність реєстру, tenant-умова, enum-и, @db.Date, nullable, FK, optional, валюта (029)          | `report-registry.spec.ts`                   | 16     |
+| побудова запиту: білі списки, ліміт, період, фільтр за типом (024), порожня валюта (029)          | `report-query.builder.spec.ts`              | 60     |
+| SQL-агрегати: orgId, з'єднання, київський день, ROLLUP, знакова кількість (027), валюта (029)     | `report-sql.builder.spec.ts`                | 15     |
+| рядки SQL → дерево груп, «Разом», склеєні рядки, ліміти (027), розбивка за валютами (029)         | `report-sql-result.spec.ts`                 | 9      |
+| паритет SQL = Prisma + JS (зокрема розбивка за валютами) і група = фільтр, 9 сутностей (027–029)  | `report-builder.parity.integration.spec.ts` | 18     |
+| групування, агрегації, підсумки, JS-еталон валюти (029)                                           | `report-aggregator.spec.ts`                 | 24     |
+| авто-SUM і збагачення агрегацій                                                                   | `report-builder.service.spec.ts`            | 3      |
+| збережені звіти, tenant-межа запуску                                                              | `report-builder.saved-reports.spec.ts`      | 13     |
+| ролі доступу                                                                                      | `report-builder.access.spec.ts`             | 9      |
+| межі config (DTO)                                                                                 | `report-builder.dto.spec.ts`                | 1      |
+| фіксовані звіти (сусідній модуль `reports`)                                                       | `reports.service.spec.ts`                   | 20     |
+| фіксовані звіти: дати періоду в запиті (400), ролі P&L (030)                                      | `reports.contract.spec.ts`                  | 88     |
+| P&L: каса, банк, сторно, зарплата, курсові, формула, межа 24 місяців, налаштування, підзвіт (030) | `reports.pnl.spec.ts`                       | 15     |
+| P&L: місяці, розподіл зарплати за днями, дерево статей, нормалізація налаштувань (030)            | `pnl.calc.spec.ts`                          | 16     |
+| P&L: налаштування в `PATCH /settings/organisation` — дозволені приводи, «Витрата», ролі (030)     | `../settings/settings.pnl.contract.spec.ts` | 15     |
+| «Завантаженість»: підйомники без записів, філія, відсоток з одним знаком                          | `reports.load.spec.ts`                      | 3      |
+| фіксовані звіти: межі періоду за Києвом, ПДВ, «Наряди» за датою документа (031)                   | `reports.period-bounds.spec.ts`             | 42     |
+| «Звіт по складу»: видалені товари із залишком — у звіті й підсумку, `goodDeleted` (032)           | `reports.stock.spec.ts`                     | 2      |
 
-Разом: **364** кейси — 168 конструктора і 196 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **369** кейсів — 168 конструктора і 201 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
 
 Web-тест експорту (`BR-RPT-021`) лежить поза модулем:
 `apps/web/src/lib/__tests__/report-export.test.ts` — 37 кейсів (зокрема колонки валют, порожня вибірка і рядки
@@ -416,8 +421,8 @@ CSV фіксованих звітів (`apps/web/src/app/(app)/reports/report-cs
 файлі) — `apps/web/src/app/(app)/reports/__tests__/report-csv.test.ts`, 6 кейсів.
 Вкладка «P&L» (BR-RPT-030) — `apps/web/src/app/(app)/reports/__tests__/PnlReport.test.tsx`, 4 кейси;
 вікно «Налаштування звіту», рядок «Пораховано», кнопка лише OWNER/ADMIN, закріплені колонки —
-`PnlSettingsModal.test.tsx` (8); швидкі періоди — `QuickPeriods.test.tsx` (7); «Завантаженість»,
-переходи з рядків і вісь графіка виручки — `ReportTables.test.tsx` (7); фільтр нарядів механіка з
+`PnlSettingsModal.test.tsx` (9, зокрема прапорець повернення підзвіту); швидкі періоди — `QuickPeriods.test.tsx` (7); «Завантаженість»,
+переходи з рядків і вісь графіка виручки — `ReportTables.test.tsx` (8, зокрема видалений товар у «Звіті по складу», BR-RPT-032); фільтр нарядів механіка з
 адреси — `apps/web/src/app/(app)/work-orders/__tests__/WorkOrdersPage.url-filter.test.tsx` (5);
 `fmtPercent` — `apps/web/src/lib/format.i18n.test.ts`;
 доступ до вкладки — `ReportsInventoryTab.test.tsx` (14); KPI дашборда з P&L і ролі —

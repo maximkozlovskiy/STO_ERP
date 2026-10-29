@@ -146,6 +146,7 @@ describe('переходи з рядків звітів', () => {
           goodId: 'g-1',
           goodName: 'Фільтр масляний',
           goodSku: 'OF-1',
+          goodDeleted: false,
           unit: 'шт',
           warehouseName: 'Основний',
           quantity: 4,
@@ -167,6 +168,38 @@ describe('переходи з рядків звітів', () => {
     render(<StockReportView data={data} />);
     expect(screen.queryByRole('button', { name: 'Фільтр масляний' })).toBeNull();
     expect(screen.getByText('Фільтр масляний')).toBeInTheDocument();
+  });
+
+  // guards: BR-RPT-032
+  it('«Звіт по складу»: видалений товар — у таблиці й підсумку, з позначкою «видалено», без переходу', () => {
+    const item = {
+      goodSku: null,
+      unit: 'шт',
+      warehouseName: 'Основний',
+      quantity: 3,
+      reserved: 0,
+      available: 3,
+      value: 200,
+    };
+    const data = {
+      stockItems: [
+        { ...item, goodId: 'g-live', goodName: 'Свічка', goodDeleted: false },
+        { ...item, goodId: 'g-gone', goodName: 'Старий фільтр', goodDeleted: true },
+      ],
+      movements: [],
+      totalValue: 400,
+    };
+    const onOpenGood = vi.fn();
+    render(<StockReportView data={data} onOpenGood={onOpenGood} />);
+    const rows = screen.getAllByTestId('report-stock-row');
+    expect(rows).toHaveLength(2);
+    expect(screen.getByText('2')).toBeInTheDocument(); // позицій — обидві
+    expect(screen.getByText('400,00 ₴')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Свічка' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Старий фільтр/ })).toBeNull();
+    expect(screen.getByTestId('report-stock-deleted')).toHaveTextContent('видалено');
+    fireEvent.click(rows[1]!);
+    expect(onOpenGood).not.toHaveBeenCalled();
   });
 });
 

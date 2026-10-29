@@ -154,35 +154,58 @@ export function StockReportView({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.stockItems.map(i => (
-              <TableRow
-                key={`${i.goodId}::${i.warehouseName}`}
-                data-testid="report-stock-row"
-                onClick={onOpenGood ? () => onOpenGood(i.goodId) : undefined}
-              >
-                <TableCell>
-                  {onOpenGood ? (
-                    <RowLink>{i.goodName}</RowLink>
-                  ) : (
-                    <div className="font-medium text-foreground">{i.goodName}</div>
-                  )}
-                  <div className="text-xs text-foreground-faint font-mono">{i.goodSku ?? '—'}</div>
-                </TableCell>
-                <TableCell className="text-muted-foreground">{i.warehouseName}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {fmtNum(i.quantity)} {i.unit}
-                </TableCell>
-                <TableCell
-                  className={cn(
-                    'text-right tabular-nums font-medium',
-                    i.available <= 0 ? 'text-destructive' : 'text-success',
-                  )}
+            {data.stockItems.map(i => {
+              // BR-RPT-032: видалений товар — у звіті й підсумках, але без переходу (картка — 404).
+              const open = onOpenGood && !i.goodDeleted ? () => onOpenGood(i.goodId) : undefined;
+              return (
+                <TableRow
+                  key={`${i.goodId}::${i.warehouseName}`}
+                  data-testid="report-stock-row"
+                  onClick={open}
+                  className={i.goodDeleted ? 'text-muted-foreground' : undefined}
                 >
-                  {fmtNum(i.available)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">{fmt(i.value)}</TableCell>
-              </TableRow>
-            ))}
+                  <TableCell>
+                    {open ? (
+                      <RowLink>{i.goodName}</RowLink>
+                    ) : (
+                      <div
+                        className={cn(
+                          'font-medium',
+                          i.goodDeleted ? 'text-muted-foreground' : 'text-foreground',
+                        )}
+                      >
+                        {i.goodName}
+                        {i.goodDeleted && (
+                          <span
+                            data-testid="report-stock-deleted"
+                            title={t('page.stock.deletedTitle')}
+                            className="ml-2 inline-flex items-center rounded-full border border-border bg-surface-hover px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground"
+                          >
+                            {t('page.stock.deleted')}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="text-xs text-foreground-faint font-mono">
+                      {i.goodSku ?? '—'}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{i.warehouseName}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {fmtNum(i.quantity)} {i.unit}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      'text-right tabular-nums font-medium',
+                      i.available <= 0 ? 'text-destructive' : 'text-success',
+                    )}
+                  >
+                    {fmtNum(i.available)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{fmt(i.value)}</TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>

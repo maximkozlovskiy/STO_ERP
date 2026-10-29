@@ -27,6 +27,7 @@ const settings: ApiSchema<'PnlSettingsDto'> = {
   incomeCashReasons: ['MANUAL_IN'],
   expenseCashReasons: ['EXPENSE'],
   warnFuturePayroll: false,
+  netAdvanceReturns: true,
 };
 
 let client: QueryClient;
@@ -88,11 +89,35 @@ describe('PnlSettingsModal — BR-RPT-030', () => {
       pnlIncomeCashReasons: ['MANUAL_IN', 'OWNER_IN'],
       pnlExpenseCashReasons: ['EXPENSE', 'ADVANCE_ISSUE'],
       pnlWarnFuturePayroll: true,
+      pnlNetAdvanceReturns: true,
     });
     const keys = invalidate.mock.calls.map(c => JSON.stringify(c[0]?.queryKey));
     expect(keys).toContain(JSON.stringify(['reports', 'pnl']));
     expect(keys).toContain(JSON.stringify(['dashboard-data', 'pnl']));
     expect(toastMock.success).toHaveBeenCalledWith('Налаштування звіту збережено');
+  });
+
+  // guards: BR-RPT-030
+  it('«Повернення підзвіту зменшує витрату» — під «Під звіт», неактивний без нього; іде в PATCH', async () => {
+    apiFetchMock.mockResolvedValue({});
+    const onClose = vi.fn();
+    renderWithClient(<PnlSettingsModal open onClose={onClose} settings={settings} />);
+    const net = screen.getByTestId('pnl-settings-net-advance-returns');
+    expect(net).toBeChecked();
+    expect(net).toBeDisabled();
+
+    fireEvent.click(box('Під звіт'));
+    expect(net).toBeEnabled();
+    fireEvent.click(net);
+    expect(net).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const [, init] = apiFetchMock.mock.calls[0] as [string, { body: string }];
+    expect(JSON.parse(init.body)).toMatchObject({
+      pnlExpenseCashReasons: ['EXPENSE', 'ADVANCE_ISSUE'],
+      pnlNetAdvanceReturns: false,
+    });
   });
 
   // guards: BR-RPT-030
@@ -131,6 +156,7 @@ describe('PnlReport — рядок «Пораховано» і кнопка на
       incomeCashReasons: ['MANUAL_IN', 'SALE_PAYMENT'],
       expenseCashReasons: ['EXPENSE', 'ADVANCE_ISSUE'],
       warnFuturePayroll: false,
+      netAdvanceReturns: true,
     },
     from: '2026-10-01',
     to: '2026-10-31',
@@ -140,7 +166,7 @@ describe('PnlReport — рядок «Пораховано» і кнопка на
   it('«Пораховано: …» — назви приводів, за якими зібрано звіт', () => {
     renderWithClient(<PnlReport data={data} />);
     expect(screen.getByTestId('pnl-settings-summary')).toHaveTextContent(
-      'Пораховано: інші доходи — Внесення, Оплата контрагента; витрати з каси — Витрата, Під звіт',
+      'Пораховано: інші доходи — Внесення, Оплата контрагента; витрати з каси — Витрата, Під звіт; повернення підзвіту віднімаються',
     );
   });
 

@@ -95,10 +95,16 @@ export function pnlSettingsSummary(
 ): string {
   const names = (list: readonly string[]) =>
     list.length ? list.map(r => t(`cash:reasons.${r}`, { defaultValue: r })).join(', ') : '—';
-  return t('page.pnl.settings.summary', {
-    income: names(settings.incomeCashReasons),
-    expense: names(settings.expenseCashReasons),
-  });
+  const advanceReturns =
+    settings.netAdvanceReturns && settings.expenseCashReasons.includes('ADVANCE_ISSUE')
+      ? t('page.pnl.settings.summaryAdvanceReturns')
+      : '';
+  return (
+    t('page.pnl.settings.summary', {
+      income: names(settings.incomeCashReasons),
+      expense: names(settings.expenseCashReasons),
+    }) + advanceReturns
+  );
 }
 
 /**
