@@ -4,6 +4,7 @@
  * відкритої задачі.
  */
 import { describe, it, expect, vi } from 'vitest';
+import { TASK_DESCRIPTION_MAX, TASK_TITLE_MAX } from '@sto/shared';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { TasksService } from '../tasks/tasks.service';
 import {
@@ -81,6 +82,26 @@ describe('Дія «створити задачу»', () => {
         actorId: null,
       }),
     ]);
+  });
+
+  // guards: BR-AUT-030
+  it('назва й опис задачі з підставленими змінними не перевищують ліміт задачі (інакше її не зберегти з форми)', async () => {
+    const longName = 'Т'.repeat(TASK_TITLE_MAX);
+    const { tasks } = await fire(
+      taskAction({ title: 'Клієнт {{clientName}}', description: '{{clientName}} '.repeat(10) }),
+      {
+        ctx: fakeCtx({
+          vars: { ...fakeCtx().vars, clientName: longName },
+        }),
+      },
+    );
+    const task = tasks[0]!;
+    expect((task.title as string).length).toBeLessThanOrEqual(TASK_TITLE_MAX);
+    expect(task.title as string).toMatch(/^Клієнт Т+…$/);
+    expect((task.description as string).length).toBeLessThanOrEqual(TASK_DESCRIPTION_MAX);
+    // Контроль: короткий текст не чіпається.
+    const short = await fire(taskAction());
+    expect(short.tasks[0]?.title).toBe('Підготувати пост: НРД-7');
   });
 
   // guards: BR-AUT-030

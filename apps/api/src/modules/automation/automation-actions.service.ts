@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import type { AutomationMessageKind, NotificationChannel, Prisma } from '@prisma/client';
 import {
   renderAutomationTemplate,
+  TASK_DESCRIPTION_MAX,
+  TASK_TITLE_MAX,
   type AutomationActionTypeValue,
   type AutomationClientMessageAction,
   type AutomationCreateTaskAction,
@@ -60,6 +62,10 @@ const HOUR_MS = 3_600_000;
 const MAX_RECIPIENTS = 500;
 
 type Template = { subject?: string | undefined; body: string };
+
+/** Обрізає текст до `max` символів з «…» у кінці (поле задачі з лімітом схеми). */
+const clip = (text: string, max: number): string =>
+  text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 
 /** Канали філії за набором каналів — один запит на дію, а не на кожного працівника. */
 type ChannelCache = Map<string, Promise<ResolvedChannel[]>>;
@@ -288,11 +294,13 @@ export class AutomationActionsService {
     });
     if (existing) return { ...base, status: 'SKIPPED', reason: 'TASK_EXISTS', taskId: existing.id };
 
-    const title = renderAutomationTemplate(action.title, run.vars);
+    // Ліміт задачі — на ВІДРЕНДЕРЕНИЙ текст: шаблон у межах, а підставлені змінні (назва
+    // компанії, авто) розтягують його понад TASK_TITLE_MAX — таку задачу форма вже не збереже.
+    const title = clip(renderAutomationTemplate(action.title, run.vars), TASK_TITLE_MAX);
     const task = await this.tasks.createByAutomation(run.orgId, {
       title,
       description: action.description
-        ? renderAutomationTemplate(action.description, run.vars)
+        ? clip(renderAutomationTemplate(action.description, run.vars), TASK_DESCRIPTION_MAX)
         : undefined,
       assigneeId,
       priority: action.priority,
