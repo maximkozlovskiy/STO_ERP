@@ -5561,6 +5561,23 @@
    "report-sql.builder склеєні плоскі рядки: GROUP BY непідсумовуваних колонок, SUM підсумовуваних, ліміт 5000+1",
    "report-sql.builder фільтр по зв’язку — без умов на хоп: видалений пов’язаний запис — звичайне значення"
   ],
+  "apps/api/src/modules/reports/pnl.calc.spec.ts": [
+   "allocatePayrollByMonth — BR-RPT-030 п. 4 DRAFT і CANCELLED не враховуються; COMPUTED і PAID — так",
+   "allocatePayrollByMonth — BR-RPT-030 п. 4 видалений період не враховується і місяць не покриває",
+   "allocatePayrollByMonth — BR-RPT-030 п. 4 майбутні місяці без періоду — у missingMonths лише з налаштуванням warnFuture",
+   "allocatePayrollByMonth — BR-RPT-030 п. 4 місяць без урахованого періоду — у missingMonths; майбутній місяць — ні",
+   "allocatePayrollByMonth — BR-RPT-030 п. 4 період в одному місяці — уся сума в цей місяць",
+   "allocatePayrollByMonth — BR-RPT-030 п. 4 період через межу місяців ділиться пропорційно календарним дням, копійки без втрат",
+   "allocatePayrollByMonth — BR-RPT-030 п. 4 розрахований період із нульовим нарахуванням місяць покриває",
+   "allocatePayrollByMonth — BR-RPT-030 п. 4 частковий місяць звіту — лише дні в межах from..to",
+   "buildCategoryRows — дерево статей BR-RPT-030 пп. 5–6 корінь — підсумок своїх і підстатей; порядок дерева; статті без сум не показуються",
+   "monthsBetween місяці від from до to включно, через межу року",
+   "monthsBetween один день — один місяць",
+   "resolvePnlSettings — налаштування P&L організації (BR-RPT-030 пп. 4–6) «Витрата» завжди серед витрат, навіть якщо в налаштуваннях її немає",
+   "resolvePnlSettings — налаштування P&L організації (BR-RPT-030 пп. 4–6) недозволені приводи (зарплата, оплата постачальнику, повернення) відкидаються, повтори — теж",
+   "resolvePnlSettings — налаштування P&L організації (BR-RPT-030 пп. 4–6) немає налаштувань або полів — типові значення (поведінка до налаштувань)",
+   "resolvePnlSettings — налаштування P&L організації (BR-RPT-030 пп. 4–6) порожні «інші доходи» лишаються порожніми"
+  ],
   "apps/api/src/modules/reports/reports.contract.spec.ts": [
    "Reports — HTTP-контракт дат періоду GET /reports/load — період обовʼязковий без from → 400, сервіс не викликається",
    "Reports — HTTP-контракт дат періоду GET /reports/load — період обовʼязковий без to → 400, сервіс не викликається",
@@ -5575,6 +5592,19 @@
    "Reports — HTTP-контракт дат періоду GET /reports/load — період обовʼязковий порожній from → 400, сервіс не викликається",
    "Reports — HTTP-контракт дат періоду GET /reports/load — період обовʼязковий порожній to → 400, сервіс не викликається",
    "Reports — HTTP-контракт дат періоду GET /reports/load — період обовʼязковий рік 0000 → 400, сервіс не викликається",
+   "Reports — HTTP-контракт дат періоду GET /reports/pnl — період обовʼязковий без from → 400, сервіс не викликається",
+   "Reports — HTTP-контракт дат періоду GET /reports/pnl — період обовʼязковий без to → 400, сервіс не викликається",
+   "Reports — HTTP-контракт дат періоду GET /reports/pnl — період обовʼязковий без обох дат → 400, сервіс не викликається",
+   "Reports — HTTP-контракт дат періоду GET /reports/pnl — період обовʼязковий дата з часом → 400, сервіс не викликається",
+   "Reports — HTTP-контракт дат періоду GET /reports/pnl — період обовʼязковий коректний період → 200, сервіс отримує обидві дати як є",
+   "Reports — HTTP-контракт дат періоду GET /reports/pnl — період обовʼязковий неіснуюча дата 2026-02-31 → 400, сервіс не викликається",
+   "Reports — HTTP-контракт дат періоду GET /reports/pnl — період обовʼязковий неіснуюча дата в to → 400, сервіс не викликається",
+   "Reports — HTTP-контракт дат періоду GET /reports/pnl — період обовʼязковий один день (from = to) і 29 лютого високосного року → 200",
+   "Reports — HTTP-контракт дат періоду GET /reports/pnl — період обовʼязковий повторений from → 400, сервіс не викликається",
+   "Reports — HTTP-контракт дат періоду GET /reports/pnl — період обовʼязковий повторений to → 400, сервіс не викликається",
+   "Reports — HTTP-контракт дат періоду GET /reports/pnl — період обовʼязковий порожній from → 400, сервіс не викликається",
+   "Reports — HTTP-контракт дат періоду GET /reports/pnl — період обовʼязковий порожній to → 400, сервіс не викликається",
+   "Reports — HTTP-контракт дат періоду GET /reports/pnl — період обовʼязковий рік 0000 → 400, сервіс не викликається",
    "Reports — HTTP-контракт дат періоду GET /reports/profitability — період обовʼязковий без from → 400, сервіс не викликається",
    "Reports — HTTP-контракт дат періоду GET /reports/profitability — період обовʼязковий без to → 400, сервіс не викликається",
    "Reports — HTTP-контракт дат періоду GET /reports/profitability — період обовʼязковий без обох дат → 400, сервіс не викликається",
@@ -5635,7 +5665,13 @@
    "Reports — HTTP-контракт дат періоду GET /reports/work-orders — період обовʼязковий повторений to → 400, сервіс не викликається",
    "Reports — HTTP-контракт дат періоду GET /reports/work-orders — період обовʼязковий порожній from → 400, сервіс не викликається",
    "Reports — HTTP-контракт дат періоду GET /reports/work-orders — період обовʼязковий порожній to → 400, сервіс не викликається",
-   "Reports — HTTP-контракт дат періоду GET /reports/work-orders — період обовʼязковий рік 0000 → 400, сервіс не викликається"
+   "Reports — HTTP-контракт дат періоду GET /reports/work-orders — період обовʼязковий рік 0000 → 400, сервіс не викликається",
+   "Reports — ролі звіту P&L GET /reports/pnl — лише OWNER, ADMIN, ACCOUNTANT (як «Рентабельність»)"
+  ],
+  "apps/api/src/modules/reports/reports.load.spec.ts": [
+   "ReportsService.load — завантаженість підйомників відсоток — з одним знаком після коми (3 години за рік — 0,1 %, не 0 %)",
+   "ReportsService.load — завантаженість підйомників з філією — лише підйомники зон цієї філії",
+   "ReportsService.load — завантаженість підйомників підйомник без записів за період — у звіті з нулями; видалений і чужий — ні"
   ],
   "apps/api/src/modules/reports/reports.period-bounds.spec.ts": [
    "ReportsService — межі періоду за Києвом ПДВ: documentDate — дата без часу, межі календарні зима: рахунки й замовлення від 2026-01-01 до 2026-01-31 без зсуву на пояс",
@@ -5680,6 +5716,22 @@
    "ReportsService — межі періоду за Києвом склад: кожна межа необовʼязкова без дат — умови на createdAt немає",
    "ReportsService — межі періоду за Києвом склад: кожна межа необовʼязкова лише «з» — тільки нижня межа, київська північ",
    "ReportsService — межі періоду за Києвом склад: кожна межа необовʼязкова лише «по» — тільки верхня межа, кінець київської доби"
+  ],
+  "apps/api/src/modules/reports/reports.pnl.spec.ts": [
+   "ReportsService.pnl — BR-RPT-030 PAYROLL і SUPPLIER_PAYMENT зі статтею — не витрати; оплата клієнта й внесок власника — не інший дохід",
+   "ReportsService.pnl — BR-RPT-030 банк — лише MATCHED EXPENSE OUT, не видалені; місяць — за датою операції",
+   "ReportsService.pnl — BR-RPT-030 гроші квантовані до копійки (0.1 + 0.2)",
+   "ReportsService.pnl — BR-RPT-030 мультивалюта: сума в базовій валюті (amountBase), без неї — amount",
+   "ReportsService.pnl — BR-RPT-030 місяць без розрахованої зарплати — у payrollMissingMonths",
+   "ReportsService.pnl — BR-RPT-030 місяць каси — київський: 31.10 22:30 UTC — це вже 01.11 за Києвом",
+   "ReportsService.pnl — BR-RPT-030 налаштування звіту (OrganisationSettings.pnl*) видача під звіт зі статтею витрат — витрата лише коли увімкнено; без статті витрат — ні",
+   "ReportsService.pnl — BR-RPT-030 налаштування звіту (OrganisationSettings.pnl*) відповідь несе застосовані налаштування; недоступні налаштування — типові, звіт будується",
+   "ReportsService.pnl — BR-RPT-030 налаштування звіту (OrganisationSettings.pnl*) майбутні місяці без зарплати — у попередженні лише з pnlWarnFuturePayroll",
+   "ReportsService.pnl — BR-RPT-030 налаштування звіту (OrganisationSettings.pnl*) оплата клієнта зі статтею доходу — інший дохід лише коли увімкнено в налаштуваннях",
+   "ReportsService.pnl — BR-RPT-030 період довший за 24 місяці → 400; рівно 24 — можна",
+   "ReportsService.pnl — BR-RPT-030 початок пізніше кінця → 400",
+   "ReportsService.pnl — BR-RPT-030 сторнована пара каси не входить — навіть коли сторно пізніше за період",
+   "ReportsService.pnl — BR-RPT-030 формула: валовий = виручка − запчастини; чистий = валовий − зарплата − витрати + інші доходи + курсові"
   ],
   "apps/api/src/modules/reports/reports.service.spec.ts": [
    "ReportsService — Bug #629 квантування грошей у звітах profitability — laborCostRatio per-org (§13) boundary 0 → жодних labor-витрат (totalCostLabor=0)",
@@ -5817,6 +5869,22 @@
    "PATCH /settings/org-info — реквізити для друку телефон із пробілами → 400 з українським повідомленням, організація не змінюється",
    "PATCH /settings/org-info — реквізити для друку телефон, e-mail, ІПН і основний рахунок зберігаються й повертаються",
    "PATCH /settings/org-info — реквізити для друку чужий або видалений банківський рахунок → 404, організація не змінюється"
+  ],
+  "apps/api/src/modules/settings/settings.pnl.contract.spec.ts": [
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) PATCH /settings/organisation — лише OWNER і ADMIN",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) «Витрата» не знімається: витрати без EXPENSE — 400 з поясненням українською",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) дозволені приводи й прапорець зберігаються; відповідь і GET несуть значення",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (PAYROLL у витратах)",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (PAYROLL у доходах)",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (видача у доходах)",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (не масив)",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (оплата постачальнику у витратах)",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (повернення клієнту у витратах)",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (повтор приводу)",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (прапорець — не boolean)",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (інкасація у доходах)",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) порожні «інші доходи» дозволені (жодне надходження не є доходом)",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) рядок без полів P&L (до міграції / старий кеш) — типові значення"
   ],
   "apps/api/src/modules/settings/settings.service.spec.ts": [
    "SettingsService — C1b audit TaxRate best-effort: record() reject НЕ ламає основну мутацію (createTaxRate повертає результат)",
