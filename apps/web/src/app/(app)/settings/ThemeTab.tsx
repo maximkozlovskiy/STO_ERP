@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Sun, Moon, Monitor, Languages } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -9,6 +9,7 @@ import { setColorMode, getColorMode, type ColorMode } from '@/lib/color-mode';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useRefreshBranding } from '@/hooks/useBrandTheme';
 import { type Locale } from '@/i18n/locale';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -26,6 +27,9 @@ export default function ThemeTab() {
   const [navMode, setNavModeState] = useState<NavMode>('sections');
   const [colorMode, setColorModeState] = useState<ColorMode>('system');
   const [error, setError] = useState('');
+  // Палітра, збережена в організації (не перегляд кліком), і перечитування її для оболонки.
+  const savedThemeRef = useRef<string | null>(null);
+  const refreshBranding = useRefreshBranding();
 
   useEffect(() => {
     try {
@@ -40,11 +44,21 @@ export default function ThemeTab() {
   useEffect(() => {
     apiFetch<OrgSettings>('/settings/organisation')
       .then(s => {
+        savedThemeRef.current = s.brandTheme;
         setOrgSettings(s);
         applyTheme(s.brandTheme);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : t('theme.loadError')));
   }, [t]);
+
+  // Клік по палітрі — лише перегляд до «Зберегти». Пішли з вкладки без збереження — повертаємо
+  // збережену: інакше неприйнята палітра лишалась на весь застосунок і в кеші `<head>`-скрипта.
+  useEffect(
+    () => () => {
+      if (savedThemeRef.current) applyTheme(savedThemeRef.current);
+    },
+    [],
+  );
 
   const changeNavMode = (mode: NavMode) => {
     setNavModeState(mode);
@@ -64,8 +78,10 @@ export default function ThemeTab() {
         method: 'PATCH',
         body: JSON.stringify({ brandTheme: orgSettings.brandTheme }),
       });
+      savedThemeRef.current = updated.brandTheme;
       applyTheme(updated.brandTheme);
       setOrgSettings(updated);
+      refreshBranding();
       if (currentFeatures.toastEnabled) toast.success(t('theme.themeSaved'));
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : t('common.saveError');

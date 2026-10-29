@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { applyTheme } from '@/lib/theme';
 
@@ -52,4 +52,17 @@ export function useBrandTheme(enabled: boolean): { orgName: string | null } {
   }, [data]);
 
   return { orgName: data ? data.orgName : enabled ? cachedOrgName() : null };
+}
+
+/**
+ * Перечитати палітру й назву організації для оболонки — після збереження реквізитів чи палітри.
+ * Без цього шапка меню показувала стару назву до перезавантаження сторінки (`staleTime` 30 хв,
+ * TopShell не перемонтовується).
+ */
+export function useRefreshBranding(): () => void {
+  const queryClient = useQueryClient();
+  return useCallback(
+    () => void queryClient.invalidateQueries({ queryKey: brandingQueryKey }),
+    [queryClient],
+  );
 }

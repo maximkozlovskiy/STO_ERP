@@ -17,6 +17,11 @@ vi.mock('@/hooks/api/useBankStatements', () => ({
   useBankAccountOptions: () => ({ data: bankAccounts }),
 }));
 
+const refreshBrandingMock = vi.fn();
+vi.mock('@/hooks/useBrandTheme', () => ({
+  useRefreshBranding: () => refreshBrandingMock,
+}));
+
 import OrgInfoTab from '../OrgInfoTab';
 
 const ACC_1 = '33333333-3333-4333-8333-333333333333';
@@ -131,6 +136,33 @@ describe('OrgInfoTab — реквізити для друку', () => {
 
     await waitFor(() => expect(patchBody()).toBeDefined());
     expect(patchBody()).toMatchObject({ phone: null, email: null, ipn: null, bankAccountId: null });
+  });
+
+  // Назва організації стоїть у шапці меню (`GET /settings/branding`, staleTime 30 хв): без
+  // перечитування після «Зберегти» шапка показувала стару назву до перезавантаження сторінки.
+  it('після збереження шапка меню перечитує назву організації', async () => {
+    refreshBrandingMock.mockReset();
+    mockApi(orgInfo());
+    render(<OrgInfoTab />);
+    await screen.findByDisplayValue('+380501112233');
+
+    fireEvent.change(screen.getByDisplayValue('СТО Альфа'), { target: { value: 'СТО Бета' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    await waitFor(() => expect(refreshBrandingMock).toHaveBeenCalledTimes(1));
+    expect(patchBody()).toMatchObject({ name: 'СТО Бета' });
+  });
+
+  it('збій збереження — назву в шапці не перечитуємо', async () => {
+    refreshBrandingMock.mockReset();
+    mockApi(orgInfo(), () => Promise.reject(new Error('Збій')));
+    render(<OrgInfoTab />);
+    await screen.findByDisplayValue('+380501112233');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+    expect(await screen.findByText('Збій')).toBeInTheDocument();
+    expect(refreshBrandingMock).not.toHaveBeenCalled();
   });
 
   it('помилка валідації сервера показується текстом', async () => {

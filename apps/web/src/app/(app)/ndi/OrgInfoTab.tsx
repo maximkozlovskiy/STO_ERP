@@ -12,6 +12,7 @@ import { Select } from '@/components/ui/select';
 import { useBankAccountOptions } from '@/hooks/api/useBankStatements';
 import type { ApiSchema } from '@sto/shared';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
+import { useRefreshBranding } from '@/hooks/useBrandTheme';
 import { safeImageSrc } from '@/lib/safe-image-src';
 
 type OrgInfo = ApiSchema<'OrganisationResponseDto'>;
@@ -19,6 +20,8 @@ type OrgInfo = ApiSchema<'OrganisationResponseDto'>;
 export default function OrgInfoTab() {
   const { t } = useTranslation('ndi');
   const currentFeatures = useUiFeatures();
+  // Назва організації — у шапці меню (`GET /settings/branding`): після збереження перечитати.
+  const refreshBranding = useRefreshBranding();
   const [orgInfo, setOrgInfo] = useState<OrgInfo | null>(null);
   const [orgInfoForm, setOrgInfoForm] = useState({
     name: '',
@@ -95,6 +98,7 @@ export default function OrgInfoTab() {
       });
       setOrgInfo(updated);
       setError('');
+      refreshBranding();
       if (currentFeatures.toastEnabled) toast.success(t('common.saved'));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('common.error'));
