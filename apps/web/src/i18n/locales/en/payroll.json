@@ -98,9 +98,9 @@
   },
   "rateTerms": {
     "percent_normo": "% of labor total · {{approx}}{{percent}}%",
-    "per_normo_hour": "per norm-hour · {{approx}}{{rate}} ₴/h",
-    "fixed_plus_bonus": "salary {{approx}}{{fixed}} ₴ + bonus {{bonus}}%",
-    "approx": "≈ ",
+    "per_normo_hour": "per norm-hour · {{approx}}{{rate}} ₴/h",
+    "fixed_plus_bonus": "salary {{approx}}{{fixed}} ₴ + bonus {{bonus}}%",
+    "approx": "≈ ",
     "derivedTitle": "calculated from the accrual"
   },
   "help": {

@@ -318,6 +318,11 @@ describe('Payroll — розшифровка по нарядах (drill-down)', 
     const texts = screen.getAllByRole('row').map(norm);
     expect(texts.some(r => r?.includes('за нормо-годину · 250,00 ₴/год'))).toBe(true);
     expect(texts.some(r => r?.includes('оклад 20 000,00 ₴ + бонус 5 %'))).toBe(true);
+    // Bug #994: на вузькій клітинці «₴» і «%» не переносяться окремо від числа — пробіл
+    // перед ними нерозривний (сирий textContent, без нормалізації).
+    const raw = screen.getAllByRole('row').map(el => el.textContent ?? '');
+    expect(raw.some(r => r.includes('250,00 ₴/год'))).toBe(true);
+    expect(raw.some(r => r.includes('000,00 ₴ + бонус 5 %'))).toBe(true);
   });
 
   // guards: BR-PAYR-016

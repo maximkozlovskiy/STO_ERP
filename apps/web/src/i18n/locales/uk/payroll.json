@@ -97,10 +97,10 @@
     "unknown": "Не вказано"
   },
   "rateTerms": {
-    "percent_normo": "% від суми робіт · {{approx}}{{percent}} %",
-    "per_normo_hour": "за нормо-годину · {{approx}}{{rate}} ₴/год",
-    "fixed_plus_bonus": "оклад {{approx}}{{fixed}} ₴ + бонус {{bonus}} %",
-    "approx": "≈ ",
+    "percent_normo": "% від суми робіт · {{approx}}{{percent}} %",
+    "per_normo_hour": "за нормо-годину · {{approx}}{{rate}} ₴/год",
+    "fixed_plus_bonus": "оклад {{approx}}{{fixed}} ₴ + бонус {{bonus}} %",
+    "approx": "≈ ",
     "derivedTitle": "обчислено з нарахування"
   },
   "help": {
