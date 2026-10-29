@@ -95,6 +95,18 @@ export function fmtPercent(n: number | null | undefined): string {
 }
 
 /**
+ * Стислий підпис осі грошових графіків: тисячі — «к», мільйони — «м», без зайвого «.0».
+ * Спільний для графіка дашборду й графіків звітів.
+ *
+ * @example fmtAxisCompact(12_500) → '12.5к'; fmtAxisCompact(2_000_000) → '2м'; fmtAxisCompact(800) → '800'
+ */
+export function fmtAxisCompact(v: number): string {
+  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'м';
+  if (v >= 1_000) return (v / 1_000).toFixed(1).replace(/\.0$/, '') + 'к';
+  return String(v);
+}
+
+/**
  * Суфікс валюти суми з рахунку банку (multi-bank: рахунок може бути USD/EUR). Не хардкодимо ₴:
  * для UAH/невідомого коду показуємо ₴, для інших — код валюти рахунку.
  *

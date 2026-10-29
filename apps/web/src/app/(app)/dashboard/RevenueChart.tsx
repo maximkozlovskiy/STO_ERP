@@ -2,7 +2,7 @@
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { fmtMoney, fmtDate, memoByLocale } from '@/lib/format';
+import { fmtAxisCompact, fmtMoney, fmtDate, memoByLocale } from '@/lib/format';
 
 interface RevenuePoint {
   date: string;
@@ -19,12 +19,6 @@ const getTickDateFmt = memoByLocale(
 // T19: суфікс валюти уніфіковано на ₴ (домінантна конвенція у застосунку, 46 файлів проти прозового «грн»).
 function fmt(v: number) {
   return fmtMoney(v) + ' ₴';
-}
-
-function yFmt(v: number): string {
-  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'м';
-  if (v >= 1_000) return (v / 1_000).toFixed(1).replace(/\.0$/, '') + 'к';
-  return String(v);
 }
 
 // memo: єдиний проп `data` має стабільну ідентичність (frozen EMPTY_REVENUE fallback +
@@ -51,7 +45,7 @@ function RevenueChart({ data }: { data: RevenuePoint[] }) {
           tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
           axisLine={false}
           tickLine={false}
-          tickFormatter={yFmt}
+          tickFormatter={fmtAxisCompact}
           allowDecimals={false}
           domain={[0, 'auto']}
           width={48}

@@ -17,7 +17,7 @@ import {
 } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import type { ApiSchema } from '@sto/shared';
-import { fmtDate, fmtMoney, fmtPercent } from '@/lib/format';
+import { fmtAxisCompact, fmtDate, fmtMoney, fmtPercent } from '@/lib/format';
 
 type RevenueRow = ApiSchema<'RevenueRowDto'>;
 type SettlementRow = { counterpartyId: string; counterpartyName: string; balance: number };
@@ -42,11 +42,24 @@ export function axisDayLabel(ymd: string): string {
 /** Підказка дня — повна дата «ДД.ММ.РРРР». */
 const tooltipDay = (label: unknown) => (typeof label === 'string' ? fmtDate(label) : String(label));
 
-// Масштабований форматер для YAxis: уникає дублів при малих значеннях
-function yFmt(v: number): string {
-  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'м';
-  if (v >= 1_000) return (v / 1_000).toFixed(1).replace(/\.0$/, '') + 'к';
-  return String(v);
+/**
+ * Сітка, осі днів і грошей та підказка — однакові в обох графіках виручки. Масив, а не фрагмент:
+ * Recharts шукає дочірні елементи за типом і фрагментів не розгортає.
+ */
+function dayMoneyAxes() {
+  return [
+    <CartesianGrid key="grid" strokeDasharray="3 3" vertical={false} />,
+    <XAxis key="x" dataKey="date" tick={{ fontSize: 11 }} tickFormatter={axisDayLabel} />,
+    <YAxis
+      key="y"
+      tick={{ fontSize: 11 }}
+      tickFormatter={fmtAxisCompact}
+      allowDecimals={false}
+      domain={[0, 'auto']}
+      width={52}
+    />,
+    <Tooltip key="tip" formatter={v => fmt(Number(v ?? 0))} labelFormatter={tooltipDay} />,
+  ];
 }
 
 export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
@@ -57,16 +70,7 @@ export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
         <h3 className="font-medium text-foreground mb-4">{t('charts.revenueByDay')}</h3>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={rows}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={axisDayLabel} />
-            <YAxis
-              tick={{ fontSize: 11 }}
-              tickFormatter={yFmt}
-              allowDecimals={false}
-              domain={[0, 'auto']}
-              width={52}
-            />
-            <Tooltip formatter={v => fmt(Number(v ?? 0))} labelFormatter={tooltipDay} />
+            {dayMoneyAxes()}
             <Bar
               dataKey="revenue"
               fill="#3b82f6"
@@ -80,16 +84,7 @@ export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
         <h3 className="font-medium text-foreground mb-4">{t('charts.laborVsParts')}</h3>
         <ResponsiveContainer width="100%" height={200}>
           <LineChart data={rows}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={axisDayLabel} />
-            <YAxis
-              tick={{ fontSize: 11 }}
-              tickFormatter={yFmt}
-              allowDecimals={false}
-              domain={[0, 'auto']}
-              width={52}
-            />
-            <Tooltip formatter={v => fmt(Number(v ?? 0))} labelFormatter={tooltipDay} />
+            {dayMoneyAxes()}
             <Line
               type="monotone"
               dataKey="labor"
