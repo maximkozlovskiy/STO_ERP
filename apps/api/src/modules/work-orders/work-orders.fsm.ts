@@ -4,11 +4,12 @@ import {
   WO_SHAREABLE_STATUSES,
   WO_INVOICEABLE_STATUSES,
   WO_PROCUREMENT_ACTIVE_STATUSES,
+  WO_CLOSED_STATUSES,
 } from '@sto/shared';
 
 // A5: gate-множини мають ЄДИНЕ джерело у @sto/shared (browser-safe string[]) — backend і frontend
 // читають ті самі значення. Тут лише звужуємо тип до WorkOrderStatus[] (значення ідентичні) —
-// жодного ручного дзеркалення коментарем «Must mirror». Backend-специфічні множини (CLOSED/DELETABLE/
+// жодного ручного дзеркалення коментарем «Must mirror». Backend-специфічні множини (DELETABLE/
 // RESERVATION_ACTIVE/LINE_ACTUAL) лишаються локальними — вони не потрібні фронту.
 const asWoStatuses = (arr: readonly string[]): readonly WorkOrderStatus[] =>
   Object.freeze(arr as readonly WorkOrderStatus[]);
@@ -30,13 +31,8 @@ export const WORK_ORDER_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> 
   CANCELLED: [],
 };
 
-export const CLOSED_STATUSES: readonly WorkOrderStatus[] = Object.freeze([
-  'COMPLETED',
-  'INVOICED',
-  'PAID',
-  'ARCHIVED',
-  'CANCELLED',
-]);
+// Єдине джерело — WO_CLOSED_STATUSES у @sto/shared (inline-зміна пріоритету в списку його читає).
+export const CLOSED_STATUSES: readonly WorkOrderStatus[] = asWoStatuses(WO_CLOSED_STATUSES);
 export const DELETABLE_STATUSES: readonly WorkOrderStatus[] = Object.freeze(['DRAFT', 'CANCELLED']);
 export const RESERVATION_ACTIVE_STATUSES: readonly WorkOrderStatus[] = Object.freeze([
   'IN_PROGRESS',

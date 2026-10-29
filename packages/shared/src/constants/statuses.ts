@@ -56,6 +56,15 @@ export const WO_EDITABLE_STATUSES: readonly string[] = Object.freeze([
   'ESTIMATE',
   'APPROVED',
 ]);
+// Закритий наряд: сервер не приймає зміну реквізитів (PATCH), тож і список не пропонує inline-зміну
+// (пріоритет у рядку, UX-огляд 2026-10-29). Backend звужує тип у work-orders.fsm.ts.
+export const WO_CLOSED_STATUSES: readonly string[] = Object.freeze([
+  'COMPLETED',
+  'INVOICED',
+  'PAID',
+  'ARCHIVED',
+  'CANCELLED',
+]);
 // Наряд, під який ще закуповують товар і резервують отримане (BR-PL-011, BR-WO-021): не
 // завершений і не скасований. Поза цими статусами позиції списку купівлі не створюються, а
 // отримане від постачальника під наряд не резервується.
