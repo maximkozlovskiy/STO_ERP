@@ -84,19 +84,20 @@ describe('«Купівля» — ?open= на вже відкритій стор�
     search = 'tab=procurement&view=items';
   });
 
-  it('при монтуванні ?open= відкриває картку замовлення', () => {
+  // Картка — next/dynamic (бюджет first-load сторінки): з'являється після завантаження чанка.
+  it('при монтуванні ?open= відкриває картку замовлення', async () => {
     search = `open=${PO_ID}`;
     render(page());
-    expect(screen.getByTestId('po-card')).toHaveTextContent(PO_ID);
+    expect(await screen.findByTestId('po-card')).toHaveTextContent(PO_ID);
   });
 
-  it('той самий екземпляр сторінки: перехід із «Управління купівлями» на ?open= відкриває картку', () => {
+  it('той самий екземпляр сторінки: перехід із «Управління купівлями» на ?open= відкриває картку', async () => {
     const view = render(page());
     expect(screen.queryByTestId('po-card')).not.toBeInTheDocument();
 
     search = `open=${PO_ID}`;
     view.rerender(page());
 
-    expect(screen.getByTestId('po-card')).toHaveTextContent(PO_ID);
+    expect(await screen.findByTestId('po-card')).toHaveTextContent(PO_ID);
   });
 });

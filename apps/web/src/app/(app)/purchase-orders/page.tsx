@@ -89,10 +89,16 @@ import { useListPage } from '@/hooks/useListPage';
 import { ListTableLayout } from '@/components/ui/list-table-layout';
 import { ListToolbar } from '@/components/ui/list-view-actions';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
-import { PurchaseOrderCreateModal } from '@/components/ui/PurchaseOrderCreateModal';
+// Картка замовлення відкривається лише за кліком — її код і через `i18nZodResolver` повні каталоги
+// повідомлень `@sto/shared` (51 КБ gzip) не входять у first-load сторінки: 574 КБ при ліміті 560
+// (`check-page-budget.mjs`, CI 2026-10-29), як картка рахунку на сторінці рахунків.
+const PurchaseOrderCreateModal = dynamic(
+  () => import('@/components/ui/PurchaseOrderCreateModal').then(m => m.PurchaseOrderCreateModal),
+  { ssr: false },
+);
 // sto-optimize: SupplierReturnCreateModal — 856 LOC secondary action на сторінці
 // /purchase-orders. Завантажується тільки при відкритті модального вікна
-// (Створити SR / Редагувати SR). PO modal лишається eager — це primary action.
+// (Створити SR / Редагувати SR).
 // Вкладки «Управління купівлями» й «Графік оплат» — не типові: окремими чанками, а не в first load
 // сторінки (563 КБ при ліміті 560, `check-page-budget.mjs`, 2026-10-23).
 const ProcurementTab = dynamic(() => import('./ProcurementTab').then(m => m.ProcurementTab), {

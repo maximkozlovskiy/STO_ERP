@@ -463,7 +463,8 @@ test.describe('Запис наряду в календарі — BR-WO-024; ск
     await page.screenshot({ path: test.info().outputPath('wo25_card_after_escape.png') });
 
     // «Так, скасувати» — наряд скасовано, запис календаря звільнено (BR-WO-022).
-    await card.getByRole('button', { name: 'Скасувати', exact: true }).last().click();
+    // Кнопка в підвалі картки — «Скасувати наряд» (UX-огляд 2026-10-29: окремо від «Закрити»).
+    await card.getByRole('button', { name: 'Скасувати наряд', exact: true }).click();
     await expect(cardDialog).toBeVisible({ timeout: 10_000 });
     await cardDialog.getByRole('button', { name: 'Так, скасувати' }).click();
     await expect
