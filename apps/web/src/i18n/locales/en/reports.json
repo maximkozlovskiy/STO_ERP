@@ -58,15 +58,17 @@
     },
     "stock": {
       "itemsCount": "Items in warehouses",
-      "totalValue": "Total value",
       "colGood": "Good",
       "colWarehouse": "Warehouse",
       "colQuantity": "Quantity",
       "colAvailable": "Available",
-      "colValue": "Value",
       "goodLoadError": "Could not open the product card",
       "deleted": "deleted",
-      "deletedTitle": "The product was deleted from the catalogue — its stock stays in the report, there is no card"
+      "deletedTitle": "The product was deleted from the catalogue — its stock stays in the report, there is no card",
+      "totalCostValue": "Stock at cost",
+      "totalSaleValue": "Stock at sale prices",
+      "colCostValue": "At cost",
+      "colSaleValue": "At sale prices"
     },
     "settlements": {
       "totalDebit": "Accounts receivable",
@@ -90,11 +92,22 @@
       "colPctOfRevenue": "% of revenue",
       "rowRevenue": "Revenue (excl. VAT)",
       "rowParts": "— Parts (cost)",
-      "rowLabor": "— Labor (40% estimate)",
+      "rowLabor": "— Labor ({{pct}} estimate)",
       "rowGrossProfit": "Gross profit",
       "rowVat": "VAT",
       "rowRevenueWithVat": "Revenue incl. VAT",
-      "vatNote": "VAT is not part of profit or margin"
+      "vatNote": "VAT is not part of profit or margin",
+      "settings": {
+        "open": "Report settings",
+        "title": "Profitability report settings",
+        "laborRatio": "Labor share, %",
+        "laborRatioHint": "Which part of labor revenue (excl. VAT) the report treats as labor cost — mechanics' pay. From 0 to 100.",
+        "range": "Enter a whole number from 0 to 100",
+        "save": "Save",
+        "cancel": "Cancel",
+        "saved": "Report settings saved",
+        "saveError": "Could not save the settings"
+      }
     },
     "pnl": {
       "colIndicator": "Line",
@@ -146,17 +159,17 @@
       "colSlots": "Slots",
       "colHours": "Hours",
       "colLoad": "Utilization",
-      "hoursSuffix": "h",
       "idleLifts_one": "{{count}} more lift with no records in the period",
       "idleLifts_few": "{{count}} more lifts with no records in the period",
       "idleLifts_many": "{{count}} more lifts with no records in the period",
-      "idleLifts_other": "{{count}} more lifts with no records in the period"
+      "idleLifts_other": "{{count}} more lifts with no records in the period",
+      "hoursOf": "{{hours}} h of {{capacity}}"
     },
     "vat": {
       "invoiced": "VAT charged (from invoices)",
       "invoicedSub": "Invoices issued to customers",
       "purchases": "VAT paid (purchases)",
-      "purchasesSub": "Purchase orders to suppliers",
+      "purchasesSub": "Received purchases",
       "net": "Net liability to the tax authority",
       "netToPay": "Payable",
       "netRefund": "Refund"
@@ -175,7 +188,6 @@
       "warehouse": "Warehouse",
       "quantity": "Quantity",
       "available": "Available",
-      "value": "Value",
       "counterparty": "Counterparty",
       "balance": "Balance",
       "lift": "Lift",
@@ -192,7 +204,10 @@
       "revenueWithVat": "Amount incl. VAT",
       "profRevenue": "Revenue (excl. VAT)",
       "profVat": "VAT",
-      "profRevenueWithVat": "Revenue incl. VAT"
+      "profRevenueWithVat": "Revenue incl. VAT",
+      "costValue": "At cost",
+      "saleValue": "At sale prices",
+      "capacityHours": "Working hours"
     }
   },
   "charts": {
@@ -206,7 +221,7 @@
     "credit": "Payable",
     "costStructure": "Cost structure",
     "profParts": "Parts",
-    "profLabor": "Labor (40%)",
+    "profLabor": "Labor ({{pct}})",
     "profProfit": "Profit",
     "liftLoad": "Lift utilization (%)",
     "load": "Utilization"

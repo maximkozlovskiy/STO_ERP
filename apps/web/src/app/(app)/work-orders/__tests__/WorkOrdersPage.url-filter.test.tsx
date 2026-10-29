@@ -10,11 +10,16 @@
 // типовий період «сьогодні» знімається) і картка наряду в адресі `?open=<id>` (номер у рядку —
 // посилання на картку). Mutation-verify: не ставити статуси з адреси → падає «В роботі»; не знімати
 // дати → падає «без дат»; номер без DocLink (span) → падає «клік по номеру».
+//
+// BR-RPT-031 (2026-10-29): перехід зі звіту несе й статуси звіту (усі, крім скасованих); чип —
+// «Статус: усі, крім скасованих», а не 9 назв. Mutation-verify: без `status` у href → падає «href і
+// розбір»; без `isReportStatusSet` → падає «зі звіту «Наряди»».
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 import {
   WO_IN_WORK_STATUSES,
+  WO_REPORT_STATUSES,
   parseWorkOrdersUrlFilter,
   workOrdersFilterHref,
   workOrdersStatusHref,
@@ -95,12 +100,15 @@ describe('url-filter — розбір і побудова адреси', () => {
       '2026-10-29',
     );
     const q = new URLSearchParams(href.split('?')[1]);
+    // guards: BR-RPT-031 — дати звіту лишаються, статуси — усі, крім скасованих.
     expect(parseWorkOrdersUrlFilter(k => q.get(k))).toEqual({
       executor: { id: MECH, name: 'Петренко Іван' },
       dateFrom: '2026-10-01',
       dateTo: '2026-10-29',
-      statuses: null,
+      statuses: [...WO_REPORT_STATUSES],
     });
+    expect(WO_REPORT_STATUSES).not.toContain('CANCELLED');
+    expect(WO_REPORT_STATUSES).toContain('DRAFT');
     const bad = new URLSearchParams('employeeId=abc&dateFrom=20261-10-01&dateTo=2026-10-29');
     expect(parseWorkOrdersUrlFilter(k => bad.get(k))).toEqual({
       executor: null,
@@ -157,6 +165,22 @@ describe('Наряди — статуси з адреси (картки дашб
     await waitFor(() => expect(lastListQuery().get('statuses')).toBe('DRAFT,ESTIMATE,APPROVED'));
     expect(lastListQuery().get('dateFrom')).toBeNull();
     expect(lastListQuery().get('dateTo')).toBeNull();
+  });
+
+  // guards: BR-RPT-031
+  it('зі звіту «Наряди»: statuses без скасованих, дати лишаються, чип — «усі, крім скасованих»', async () => {
+    search = workOrdersFilterHref(
+      { id: MECH, name: 'Петренко Іван' },
+      '2026-10-01',
+      '2026-10-29',
+    ).split('?')[1]!;
+    renderPage();
+    await waitFor(() => expect(lastListQuery().get('statuses')).toBe(WO_REPORT_STATUSES.join(',')));
+    expect(lastListQuery().get('dateFrom')).toBe('2026-10-01');
+    expect(lastListQuery().get('employeeId')).toBe(MECH);
+    expect(screen.getByTestId('wo-status-group-filter')).toHaveTextContent(
+      'Статус: усі, крім скасованих',
+    );
   });
 
   it('«×» на фільтрі статусів — усі статуси', async () => {

@@ -24,6 +24,19 @@ export interface WorkOrdersUrlFilter {
 /** «В роботі» на дашборді — ті самі статуси, що `activeWo` сервера. */
 export const WO_IN_WORK_STATUSES: readonly string[] = Object.freeze(['IN_PROGRESS', 'ON_HOLD']);
 
+/** Наряди звіту «Наряди» — усі статуси, крім скасованого (BR-RPT-031; чернетки — рахуються). */
+export const WO_REPORT_STATUSES: readonly string[] = Object.freeze(
+  Object.keys(WO_STATUS_LABELS).filter(s => s !== 'CANCELLED'),
+);
+
+/** Набір статусів фільтра — саме «усі, крім скасованих» (підпис чипа — коротко, не 9 назв). */
+export function isReportStatusSet(statuses: readonly string[]): boolean {
+  return (
+    statuses.length === WO_REPORT_STATUSES.length &&
+    WO_REPORT_STATUSES.every(s => statuses.includes(s))
+  );
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const WORK_ORDERS_FILTER_PARAMS = [
   'employeeId',
@@ -38,6 +51,10 @@ export function workOrdersStatusHref(statuses: readonly string[]): string {
   return `/work-orders?${new URLSearchParams({ status: statuses.join(',') })}`;
 }
 
+/**
+ * Наряди механіка за період звіту «Наряди»: виконавець, дата документа і той самий відбір статусів,
+ * що рахує звіт (без скасованих, BR-RPT-031) — список збігається зі звітом.
+ */
 export function workOrdersFilterHref(
   employee: { id: string; name: string },
   dateFrom: string,
@@ -48,6 +65,7 @@ export function workOrdersFilterHref(
     employeeName: employee.name,
     dateFrom,
     dateTo,
+    status: WO_REPORT_STATUSES.join(','),
   });
   return `/work-orders?${q}`;
 }

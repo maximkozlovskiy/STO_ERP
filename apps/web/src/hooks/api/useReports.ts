@@ -71,6 +71,14 @@ export type PnlSettingsPatch = Pick<
   'pnlIncomeCashReasons' | 'pnlExpenseCashReasons' | 'pnlWarnFuturePayroll' | 'pnlNetAdvanceReturns'
 >;
 
+/** `PATCH /settings/organisation` — спільний для вікон «Налаштування звіту» (OWNER / ADMIN). */
+function patchOrganisationSettings(patch: Partial<ApiSchema<'UpdateOrganisationSettingsDto'>>) {
+  return apiFetch<ApiSchema<'OrganisationSettingsResponseDto'>>('/settings/organisation', {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
 /**
  * Зберегти налаштування P&L (OWNER / ADMIN). Після збереження скидаються звіт P&L (усі періоди) і
  * KPI «Чистий прибуток за місяць» дашборду — обидва рахуються за цими налаштуваннями.
@@ -78,14 +86,25 @@ export type PnlSettingsPatch = Pick<
 export function useUpdatePnlSettings() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (patch: PnlSettingsPatch) =>
-      apiFetch<ApiSchema<'OrganisationSettingsResponseDto'>>('/settings/organisation', {
-        method: 'PATCH',
-        body: JSON.stringify(patch),
-      }),
+    mutationFn: (patch: PnlSettingsPatch) => patchOrganisationSettings(patch),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: [...reportsKeys.all, 'pnl'] });
       void qc.invalidateQueries({ queryKey: [...dashboardKeys.all, 'pnl'] });
+    },
+  });
+}
+
+/**
+ * Частка праці «Рентабельності» (BR-RPT-035, `laborCostRatio` 0…1; OWNER / ADMIN). Після
+ * збереження скидається звіт «Рентабельність» усіх періодів — підпис «Праця (оцінка N%)» і
+ * собівартість робіт рахуються з неї. У P&L частка не йде (BR-RPT-030 п. 4).
+ */
+export function useUpdateLaborCostRatio() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (laborCostRatio: number) => patchOrganisationSettings({ laborCostRatio }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [...reportsKeys.all, 'profitability'] });
     },
   });
 }

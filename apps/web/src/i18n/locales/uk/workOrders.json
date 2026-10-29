@@ -81,7 +81,8 @@
       "partialError": "{{succeeded}} з {{total}} нарядів змінено, {{failed}} не вдалось"
     },
     "nounOne": "наряд",
-    "nounMany": "нарядів"
+    "nounMany": "нарядів",
+    "statusGroupNotCancelled": "усі, крім скасованих"
   },
   "detail": {
     "loadError": "Помилка завантаження наряду",

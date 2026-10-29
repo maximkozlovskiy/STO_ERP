@@ -53,9 +53,17 @@ export function buildCsv(tab: string, data: ReportData, t: TFunction<'reports'>)
         t('page.csv.warehouse'),
         t('page.csv.quantity'),
         t('page.csv.available'),
-        t('page.csv.value'),
+        t('page.csv.costValue'),
+        t('page.csv.saleValue'),
       ],
-      ...data.stockItems.map(i => [i.goodName, i.warehouseName, i.quantity, i.available, i.value]),
+      ...data.stockItems.map(i => [
+        i.goodName,
+        i.warehouseName,
+        i.quantity,
+        i.available,
+        i.costValue,
+        i.saleValue,
+      ]),
     ];
     return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }
@@ -73,6 +81,7 @@ export function buildCsv(tab: string, data: ReportData, t: TFunction<'reports'>)
         t('page.csv.zone'),
         t('page.csv.slots'),
         t('page.csv.hours'),
+        t('page.csv.capacityHours'),
         t('page.csv.loadPercent'),
       ],
       ...data.rows.map(r => [
@@ -80,6 +89,7 @@ export function buildCsv(tab: string, data: ReportData, t: TFunction<'reports'>)
         r.zoneName,
         r.totalSlots,
         round1(r.totalHours),
+        round1(r.capacityHours),
         r.loadPercent,
       ]),
     ];

@@ -18,6 +18,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import type { ApiSchema } from '@sto/shared';
 import { fmtAxisCompact, fmtDate, fmtMoney, fmtPercent } from '@/lib/format';
+import { laborPctLabel } from './ProfitabilityReport';
 
 type RevenueRow = ApiSchema<'RevenueRowDto'>;
 type SettlementRow = { counterpartyId: string; counterpartyName: string; balance: number };
@@ -149,7 +150,10 @@ export function ProfitabilityChart({ data }: { data: ProfitabilityData }) {
           <Pie
             data={[
               { name: t('charts.profParts'), value: data.totalCostParts },
-              { name: t('charts.profLabor'), value: data.totalCostLabor },
+              {
+                name: t('charts.profLabor', { pct: laborPctLabel(data.laborCostRatio) }),
+                value: data.totalCostLabor,
+              },
               { name: t('charts.profProfit'), value: Math.max(0, data.grossProfit) },
             ]}
             cx="50%"

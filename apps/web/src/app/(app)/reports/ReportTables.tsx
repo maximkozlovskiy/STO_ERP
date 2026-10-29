@@ -138,9 +138,10 @@ export function StockReportView({
   const { t } = useTranslation('reports');
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard label={t('page.stock.itemsCount')} value={String(data.stockItems.length)} />
-        <StatCard label={t('page.stock.totalValue')} value={fmt(data.totalValue)} />
+        <StatCard label={t('page.stock.totalCostValue')} value={fmt(data.totalCostValue)} />
+        <StatCard label={t('page.stock.totalSaleValue')} value={fmt(data.totalSaleValue)} />
       </div>
       <div className="bg-surface rounded-xl border border-border overflow-hidden">
         <Table>
@@ -150,7 +151,8 @@ export function StockReportView({
               <TableHead>{t('page.stock.colWarehouse')}</TableHead>
               <TableHead className="text-right">{t('page.stock.colQuantity')}</TableHead>
               <TableHead className="text-right">{t('page.stock.colAvailable')}</TableHead>
-              <TableHead className="text-right">{t('page.stock.colValue')}</TableHead>
+              <TableHead className="text-right">{t('page.stock.colCostValue')}</TableHead>
+              <TableHead className="text-right">{t('page.stock.colSaleValue')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -202,7 +204,15 @@ export function StockReportView({
                   >
                     {fmtNum(i.available)}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">{fmt(i.value)}</TableCell>
+                  <TableCell className="text-right tabular-nums" data-testid="report-stock-cost">
+                    {fmt(i.costValue)}
+                  </TableCell>
+                  <TableCell
+                    className="text-right tabular-nums text-muted-foreground"
+                    data-testid="report-stock-sale"
+                  >
+                    {fmt(i.saleValue)}
+                  </TableCell>
                 </TableRow>
               );
             })}
@@ -306,9 +316,12 @@ export function LoadReportView({ data }: { data: LoadData }) {
                 <TableCell className="font-medium text-foreground">{r.liftName}</TableCell>
                 <TableCell className="text-muted-foreground">{r.zoneName}</TableCell>
                 <TableCell className="text-right tabular-nums">{r.totalSlots}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {fmtNum(r.totalHours)}
-                  {t('page.load.hoursSuffix')}
+                <TableCell className="text-right tabular-nums whitespace-nowrap">
+                  {/* BR-RPT-033: зайнято з робочого часу філії за період. */}
+                  {t('page.load.hoursOf', {
+                    hours: fmtNum(r.totalHours),
+                    capacity: fmtNum(r.capacityHours),
+                  })}
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-2">

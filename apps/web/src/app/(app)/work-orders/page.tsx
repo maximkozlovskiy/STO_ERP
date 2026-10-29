@@ -98,7 +98,11 @@ import { invalidateWorkOrderSideEffects } from '@/lib/cache-invalidation';
 import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
 import { cn, plannedWorkOrderAmount } from '@/lib/utils';
 import { fmtMoney, fmtDate, fmtShortDateTime, kyivToday } from '@/lib/format';
-import { WORK_ORDERS_FILTER_PARAMS, parseWorkOrdersUrlFilter } from './url-filter';
+import {
+  WORK_ORDERS_FILTER_PARAMS,
+  isReportStatusSet,
+  parseWorkOrdersUrlFilter,
+} from './url-filter';
 
 // sto-optimize: CreateWorkOrderModal — 1823 LOC + EntityPickerField + усі form sub-components.
 // Список нарядів відкривається в 80% сесій без створення нового → modal lazy-loaded
@@ -608,12 +612,11 @@ function WorkOrdersListTab() {
 
   // sto-optimize: stable onClick для 11 StatusPill, інакше memo() не може пропустити
   // re-render бо inline arrow міняється кожного render.
-  const statusGroupNames = statusFilter.includes(',')
-    ? statusFilter
-        .split(',')
-        .map(v => woStatusLabel(v))
-        .join(', ')
-    : '';
+  const statusGroup = statusFilter.includes(',') ? statusFilter.split(',') : [];
+  // «Усі, крім скасованих» — перехід зі звіту «Наряди» (BR-RPT-031): 9 назв у чипі не читаються.
+  const statusGroupNames = isReportStatusSet(statusGroup)
+    ? t('list.statusGroupNotCancelled')
+    : statusGroup.map(v => woStatusLabel(v)).join(', ');
   const handleSelectStatus = useCallback(
     (v: string) => {
       setStatusFilter(v);

@@ -46,6 +46,7 @@ describe('report-csv › buildCsv', () => {
           zoneName: 'Зона А',
           totalSlots: 4,
           totalHours: 12.46,
+          capacityHours: 20,
           loadPercent: 62.5,
         },
       ],
@@ -53,7 +54,36 @@ describe('report-csv › buildCsv', () => {
       to: '2026-10-25',
       totalDays: 25,
     } as ReportData;
-    expect(lines(buildCsv('load', data, t))).toEqual(['Підйомник 1;Зона А;4;12,5;62,5']);
+    // BR-RPT-033: колонка робочих годин філії за період — база відсотка.
+    expect(lines(buildCsv('load', data, t))).toEqual(['Підйомник 1;Зона А;4;12,5;20;62,5']);
+  });
+
+  // guards: BR-RPT-034
+  it('«Звіт по складу»: дві вартості — собівартість і за цінами продажу', () => {
+    const data = {
+      _tab: 'stock',
+      stockItems: [
+        {
+          goodId: 'g1',
+          goodName: 'Фільтр',
+          goodSku: null,
+          goodDeleted: false,
+          unit: 'шт',
+          warehouseName: 'Основний',
+          quantity: 2,
+          reserved: 0,
+          available: 2,
+          costValue: 150.5,
+          saleValue: 260,
+        },
+      ],
+      movements: [],
+      totalCostValue: 150.5,
+      totalSaleValue: 260,
+    } as ReportData;
+    const csv = buildCsv('stock', data, t).split('\n');
+    expect(csv[0]).toMatch(/;Собівартість;За цінами продажу$/);
+    expect(csv[1]).toBe('Фільтр;Основний;2;2;150,5;260');
   });
 
   // guards: BR-RPT-021
@@ -70,6 +100,7 @@ describe('report-csv › buildCsv', () => {
       margin: 59.3,
       ordersCount: 2,
       unknownCostPartsCount: 0,
+      laborCostRatio: 0.4,
       from: '2026-10-01',
       to: '2026-10-25',
     } as ReportData;

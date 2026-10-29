@@ -81,7 +81,8 @@
       "partialError": "{{succeeded}} of {{total}} work orders changed, {{failed}} failed"
     },
     "nounOne": "work order",
-    "nounMany": "work orders"
+    "nounMany": "work orders",
+    "statusGroupNotCancelled": "all except cancelled"
   },
   "detail": {
     "loadError": "Failed to load work order",

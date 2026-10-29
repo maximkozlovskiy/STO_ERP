@@ -7,19 +7,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useRequireAuth } from '@/lib/auth';
 import { useReport, type ReportTab } from '@/hooks/api/useReports';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { fmtMoney, fmtPercent, kyivToday } from '@/lib/format';
+import { fmtMoney, kyivToday } from '@/lib/format';
 import { InventoryTab } from '../inventory/InventoryTab';
 import { downloadBlob } from '@/lib/download';
 import dynamic from 'next/dynamic';
@@ -27,6 +18,7 @@ import { SettlementsTabContent } from '../settlements/SettlementsTabContent';
 import { ReportBuilder } from './ReportBuilder';
 import { RevenueReport } from './RevenueReport';
 import { PnlReport } from './PnlReport';
+import { ProfitabilityReport } from './ProfitabilityReport';
 import { QuickPeriods } from './QuickPeriods';
 import {
   LoadReportView,
@@ -259,119 +251,13 @@ function ReportsPageClient() {
           {/* Settlements report — рядок веде до картки контрагента */}
           {data && data._tab === 'settlements' && <SettlementsReportView data={data} />}
 
-          {/* Profitability report */}
+          {/* Profitability report (BR-RPT-023, BR-RPT-035) */}
           {data && data._tab === 'profitability' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <StatCard
-                  label={t('page.profitability.revenue')}
-                  value={fmt(data.totalRevenue)}
-                  sub={t('page.profitability.revenueSub', { count: data.ordersCount })}
-                />
-                <StatCard
-                  label={t('page.profitability.cost')}
-                  value={fmt(data.totalCost)}
-                  sub={t('page.profitability.costSub', { parts: fmt(data.totalCostParts) })}
-                />
-                <StatCard
-                  label={t('page.profitability.grossProfit')}
-                  value={fmt(data.grossProfit)}
-                />
-                <StatCard
-                  label={t('page.profitability.margin')}
-                  value={fmtPercent(data.margin)}
-                  sub={
-                    data.margin >= 30
-                      ? t('page.profitability.marginOk')
-                      : t('page.profitability.marginLow')
-                  }
-                />
-              </div>
-              <ProfitabilityChart data={data} />
-              <div className="bg-surface rounded-xl border border-border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('page.profitability.colIndicator')}</TableHead>
-                      <TableHead className="text-right">
-                        {t('page.profitability.colAmount')}
-                      </TableHead>
-                      <TableHead className="text-right">
-                        {t('page.profitability.colPctOfRevenue')}
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {[
-                      {
-                        id: 'revenue',
-                        label: t('page.profitability.rowRevenue'),
-                        value: data.totalRevenue,
-                        pct: 100,
-                      },
-                      {
-                        id: 'parts',
-                        label: t('page.profitability.rowParts'),
-                        value: data.totalCostParts,
-                        pct:
-                          data.totalRevenue > 0
-                            ? (data.totalCostParts / data.totalRevenue) * 100
-                            : 0,
-                      },
-                      {
-                        id: 'labor',
-                        label: t('page.profitability.rowLabor'),
-                        value: data.totalCostLabor,
-                        pct:
-                          data.totalRevenue > 0
-                            ? (data.totalCostLabor / data.totalRevenue) * 100
-                            : 0,
-                      },
-                      {
-                        id: 'grossProfit',
-                        label: t('page.profitability.rowGrossProfit'),
-                        value: data.grossProfit,
-                        pct: data.margin,
-                      },
-                      {
-                        id: 'vat',
-                        label: t('page.profitability.rowVat'),
-                        value: data.totalVat,
-                        pct: null,
-                      },
-                      {
-                        id: 'revenueWithVat',
-                        label: t('page.profitability.rowRevenueWithVat'),
-                        value: data.totalRevenueWithVat,
-                        pct: null,
-                      },
-                    ].map(row => (
-                      <TableRow key={row.id}>
-                        <TableCell className="text-foreground">{row.label}</TableCell>
-                        <TableCell
-                          className={cn(
-                            'text-right font-semibold tabular-nums',
-                            row.id === 'grossProfit'
-                              ? row.value >= 0
-                                ? 'text-success'
-                                : 'text-destructive'
-                              : '',
-                          )}
-                        >
-                          {fmt(row.value)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-muted-foreground">
-                          {fmtPercent(row.pct)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                <p className="px-4 py-2 text-[12px] text-muted-foreground">
-                  {t('page.profitability.vatNote')}
-                </p>
-              </div>
-            </div>
+            <ProfitabilityReport
+              data={data}
+              chart={<ProfitabilityChart data={data} />}
+              canEditSettings={canManage}
+            />
           )}
 
           {/* P&L (BR-RPT-030) */}
