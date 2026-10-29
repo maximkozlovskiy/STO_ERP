@@ -36,6 +36,10 @@ grep -rn "ALTER TYPE.*ADD VALUE" packages/database/prisma/migrations/ | tail -5
 - [ ] Кожне нове FK поле → `@@index([orgId, fkId])`
 - [ ] `@@index([orgId, syncVersion])` для sync-ready таблиць
 - [ ] `prisma.$transaction` при зміні ≥ 2 таблиць
+- [ ] **`updateMany` за ПЕРЕЛІКОМ статусів, замінений на «вибірка → CAS за прочитаним статусом» у циклі
+      (щоб записати `fromStatus`), не губить рядок, що перейшов в ІНШИЙ статус того самого переліку:
+      `count = 0` → перечитати й повторити, а не `continue`; CAS несе й решту умов вибірки (`dueDate`)
+      (`journal/api.md`, 2026-10-29)
 - [ ] **Новий `EXISTS`/`NOT EXISTS`/JOIN у `$queryRaw` → `EXPLAIN` на dev-БД (лише читання) і індекс під колонку пошуку.** Таблиця-знімок, що росте з кожним документом, без індексу дає `Seq Scan` на кожен зовнішній рядок; план видно одразу, тести (навіть integration) його не бачать (`journal/database.md`, 2026-10-08)
 - [ ] **`getLinkedCounts` liveness == detail** (Bug #A/#641): count пов'язаних сутностей мусить gate FK на живості (`findMany` живих реф-id + `Set`-membership), бо парний `getLinkedDocuments` фільтрує `deletedAt:null`; безумовне `? 1 : 0` / `= 1` розсинхронить badge з панеллю коли реф soft-deleted (FK `ON DELETE SET NULL` не спрацьовує на soft-delete). Grep: `grep -rn "getLinkedCounts" apps/api/src/modules --include="*.service.ts"`
       **Те саме для ДЖЕРЕЛА:** `getLinkedDocuments` зняв `deletedAt: null` з пошуку самого документа (видалений відкривається на перегляд, BR-WO-012) → `getLinkedCounts` того ж сервісу теж шукає джерело без нього, інакше рядок списку з «Показати видалені» має нулі, а панель — зв'язки (`journal/database.md`, 2026-10-26)

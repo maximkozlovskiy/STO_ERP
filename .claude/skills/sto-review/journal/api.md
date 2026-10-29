@@ -407,3 +407,28 @@ CAS» — той самий клас: умова доступу, з якої р�
 звірити, що `where` CAS містить ту саму умову видимості.
 **Фікс:** `where: { id, orgId, deletedAt: null, status: task.status, ...taskVisibilityWhere(actor) }` + тест гонки
 з переназначенням (`tasks.fsm.spec.ts`). **Severity:** IMPORTANT
+
+### 2026-10-29 — Нові `$transaction(async tx => …)` без timeout, які детектор «на файл» не бачив — §5
+
+**Сигнал:** outbox подій (BR-AUT-060) обгорнув у транзакцію 11 записів, що раніше йшли без неї
+(рахунок, клон, оплата й повернення постачальнику, онлайн-запис, задачі, нічне OVERDUE пачками), —
+усі без `{ timeout }`. Старий детектор рахував `$transaction(async` проти `timeout:` у файлі й мовчав
+там, де у файлі вже були інші транзакції з timeout (`invoices.service.ts`). Пачка OVERDUE — до 200
+окремих CAS у типових 5 с.
+**Grep:** `grep -rnE '\$transaction\((async )?[a-z]+ => \{' apps/api/src --include="*.ts" | grep -v spec`
+(prettier тримає колбек на рядку виклику лише тоді, коли він — єдиний аргумент).
+**Фікс:** `{ timeout: TRANSACTION_TIMEOUT_MS }`; для пачки — власна стеля (`OVERDUE_TX_TIMEOUT_MS`).
+Попутно — `brands.service.ts` `underWritingsLock`. **Severity:** IMPORTANT
+
+### 2026-10-29 — Подія з `fromStatus` поверх запису без CAS за статусом — §5
+
+**Сигнал:** подія outbox бере `fromStatus` із прочитаного рядка; там, де запис статусу не був CAS-ом
+(`purchaseOrder.update({ where: { id, orgId } })` у `transition`, `bookingRequest.updateMany` без
+`status` у `cancel`, CAS оплати рахунку лише за `paidAmount`), паралельна зміна давала подію з
+неправдивим «з якого статусу», а заразом — FSM-обхід (DRAFT → ORDERED і DRAFT → CANCELLED обидва
+проходили) і слот, підтверджений паралельно, лишався не звільненим після скасування запису.
+**Grep:** `grep -rn -B25 "recordDocumentEvent" apps/api/src/modules --include="*.ts" | grep -E "\.update\(\{ where: \{ id(, orgId)? \}|updateMany\(\{ where: \{ id, orgId, deletedAt: null \}"`
+→ для кожного запису статусу поруч із подією в `where` є прочитаний статус.
+**Фікс:** CAS `where: { …, status: <прочитаний> }` + решта полів, з яких будується ефект
+(`confirmedSlotId`); `count = 0` → 400 «статус змінився» з кидком УСЕРЕДИНІ транзакції (інакше
+звільнення слота вище комітиться без скасування). **Severity:** IMPORTANT

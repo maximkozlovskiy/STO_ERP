@@ -142,6 +142,15 @@ catch (e) { await prisma.cashShift.updateMany({ where: { id, orgId, status: 'CLO
 await tx.purchaseOrderLine.updateMany({ where: { id, receivedQty: line.receivedQty }, data: { receivedQty: { increment: recv.qty } } });
 // ✅ fail-fast стеля ПЕРЕД tx (Float → EPSILON проти IEEE-754-дрейфу), потім CAS
 if (line.receivedQty + recv.qty > line.quantity + 1e-6) throw new BadRequestException('Кількість прийому перевищує залишок');
+
+// 10. Запис статусу з подією outbox (BR-AUT-060) — CAS за ПРОЧИТАНИМ статусом, інакше fromStatus бреше
+// ❌ await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: to } }); // два переходи з DRAFT проходять обидва
+// ✅ CAS; count===0 → 400 «статус змінився» КИНУТИ в tx (відкотить і побічні записи вище); timeout обов'язковий
+const moved = await tx.purchaseOrder.updateMany({ where: { id, orgId, deletedAt: null, status: from }, data: { status: to } });
+if (moved.count === 0) throw new BadRequestException(err('err.purchaseOrder.statusChanged'));
+await recordDocumentEvent(tx, { orgId, documentType: 'PURCHASE_ORDER', documentId: id, kind: 'STATUS_CHANGED', fromStatus: from, toStatus: to });
+// ❌ цикл «вибірка → CAS → continue при count 0» замість updateMany за переліком: рядок, що перейшов у ІНШИЙ
+//    статус того самого переліку, губиться — перечитати й повторити CAS (див. cancelWorkOrderInvoicesInTx)
 ```
 
 ### Пошук `q` у списку — текст користувача через `escapeLike()`

@@ -89,11 +89,9 @@ grep -rn "prisma\.[a-zA-Z]*\.delete(" apps/api/src/modules/ --include="*.service
 # findFirst/findMany без deletedAt: null
 grep -rn "findFirst\|findMany" apps/api/src/modules/ --include="*.service.ts" \
   | grep -v "deletedAt\|spec\|StockMovement\|SettlementTransaction\|Payment\|WorkOrderLineEmployee\|BatchConsumption\|PriceHistory\|Comment\|EmployeeBranch" | head -20
-# $transaction без timeout
-for f in $(grep -rl "\$transaction(async" apps/api/src --include="*.ts" | grep -v spec); do
-  tx=$(grep -c "\$transaction(async" "$f"); to=$(grep -c "timeout:" "$f")
-  [ "$tx" -gt "$to" ] && echo "MISMATCH $f: $tx tx, $to timeouts"
-done
+# $transaction без timeout: prettier лишає колбек на рядку виклику, лише коли він ЄДИНИЙ аргумент
+# (лічильник «tx проти timeout: на файл» пропускав нові виклики у файлах зі старими timeout-ами)
+grep -rnE '\$transaction\((async )?[a-z]+ => \{' apps/api/src --include="*.ts" | grep -v spec
 # Sentinel empty-string у UUID FK write (AVG_COST/aggregate branch → '' → Postgres invalid uuid)
 grep -rnE "consumed\[0\]\.batchId|allocations\[0\]\.[a-zA-Z]+Id|results?\[0\]\.[a-zA-Z]+Id" apps/api/src/modules --include="*.ts" | grep -v spec | head
 # Fix: if (results[0].id) db.X.update({...}) або truthy ternary: results[0].id ? results[0].id : null

@@ -100,3 +100,17 @@ EXCLUDE `calendar_slots_no_overlap` (`WHERE "deletedAt" IS NULL`), `BookingServi
 сервісах; тести з фільтрувальною підробкою в `*.linked-docs.spec.ts`. Список купівлі — окремо: його
 позиції видаляються міткою списку, лічильник лишився на живих (кандидат).
 **Severity:** SUGGESTION
+
+### 2026-10-29 — `updateMany` за переліком статусів → цикл CAS за прочитаним статусом губить рядки — §6
+
+**Сигнал:** щоб записати `fromStatus` кожного рахунку (BR-AUT-060), каскад скасування наряду замінив
+`updateMany({ status: { in: LIVE } })` на «вибірка → CAS `status: from` → `continue` при `count = 0`».
+Рахунок, що між вибіркою і CAS перейшов SENT → OVERDUE (нічний job), лишався живим у скасованого
+наряду — раніше один `updateMany` під блокуванням рядка перечитував умову й скасовував його. Нічний
+OVERDUE так само взяв у CAS лише статус: термін, перенесений між вибіркою і записом, не перевірявся.
+**Grep:** `grep -rn -A8 "for (const { id, status: from }" apps/api/src --include="*.ts" | grep -B6 "continue"`
+**Фікс:** `count = 0` → перечитати; статус і далі з переліку → повторити CAS з ним (обмежено), інакше
+пропустити; CAS несе всі умови вибірки (`dueDate: { not: null, lt: today }`); вибірка `orderBy: { id }`
+— той самий порядок блокувань, що в іншого писача пачкою. Тести — таблиця в пам'яті зі зміною рядка
+між вибіркою і CAS (`work-orders.domain-events.spec.ts`, `invoice-overdue.processor.spec.ts`).
+**Severity:** IMPORTANT
