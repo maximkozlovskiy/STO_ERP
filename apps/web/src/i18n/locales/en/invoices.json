@@ -156,6 +156,7 @@
     "pickCounterpartyEmpty": "No counterparties found",
     "loadError": "Failed to load invoice",
     "transitionError": "Failed to change status",
+    "noLinesToIssue": "Add at least one line and save the invoice — an invoice without lines cannot be issued",
     "createError": "Failed to create invoice",
     "saveError": "Failed to save",
     "dueChip": "due {{date}}",

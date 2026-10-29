@@ -66,7 +66,7 @@ export function FormDateInput<T extends FieldValues>({
 }
 
 const stepBtn =
-  'flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors';
+  'flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed aria-disabled:opacity-30 aria-disabled:cursor-not-allowed transition-colors';
 
 export interface DocumentStatusStepperProps {
   /** Назва статусу для стрілок ◀ / ▶. */
@@ -97,6 +97,12 @@ export interface DocumentStatusStepperProps {
   statusTitle?: string;
   /** Власна пігулка статусу (наряд — з підказкою й крапкою); інакше — типова кнопка. */
   pill?: ReactNode;
+  /**
+   * Переходи, яких документ зараз не пройде (рахунок без рядків — BR-INV-023): статус → причина.
+   * Стрілка й пункт меню лишаються у фокусі (`aria-disabled`, не `disabled`), причина — підказкою,
+   * клік нічого не робить.
+   */
+  blocked?: Readonly<Partial<Record<string, string>>>;
 }
 
 /** «Статус: ◀ попередній · [поточний ▾] · наступний ▶» з меню переходів у шапці картки. */
@@ -119,7 +125,14 @@ export function DocumentStatusStepper({
   statusLabel,
   statusTitle,
   pill,
+  blocked,
 }: DocumentStatusStepperProps) {
+  const reason = (status: string | undefined) => (status ? blocked?.[status] : undefined);
+  const step = (status: string | undefined) => {
+    if (status && !reason(status)) onStep(status);
+  };
+  const prevBlocked = reason(prev);
+  const nextBlocked = reason(next);
   return (
     <div className="flex items-center gap-2 shrink-0">
       <span className="text-[13px] font-medium text-muted-foreground">{label}</span>
@@ -127,8 +140,9 @@ export function DocumentStatusStepper({
         <button
           type="button"
           disabled={busy || !prev || !active}
-          onClick={() => prev && onStep(prev)}
-          title={stepTitles && prev ? stepLabel(prev) : undefined}
+          aria-disabled={prevBlocked ? true : undefined}
+          onClick={() => step(prev)}
+          title={prevBlocked ?? (stepTitles && prev ? stepLabel(prev) : undefined)}
           className={stepBtn}
         >
           <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
@@ -153,8 +167,9 @@ export function DocumentStatusStepper({
         <button
           type="button"
           disabled={busy || !next || !active}
-          onClick={() => next && onStep(next)}
-          title={stepTitles && next ? stepLabel(next) : undefined}
+          aria-disabled={nextBlocked ? true : undefined}
+          onClick={() => step(next)}
+          title={nextBlocked ?? (stepTitles && next ? stepLabel(next) : undefined)}
           className={stepBtn}
         >
           <span className="max-w-20 truncate">{next ? stepLabel(next) : '—'}</span>
@@ -167,8 +182,10 @@ export function DocumentStatusStepper({
                 key={st}
                 type="button"
                 disabled={busy}
-                onClick={() => onStep(st)}
-                className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
+                aria-disabled={reason(st) ? true : undefined}
+                title={reason(st)}
+                onClick={() => step(st)}
+                className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
               >
                 {transitionLabel(st)}
               </button>

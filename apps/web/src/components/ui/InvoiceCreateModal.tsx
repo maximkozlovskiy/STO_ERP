@@ -186,6 +186,9 @@ export function InvoiceCreateModal({
   // Збережена сума рахунку (`amount`) — її показує список. Рахунок без рядків (створений сумою через
   // API, РАХ-2026-004310) у картці показував «Разом: 0.00», а в списку — 100,00 ₴.
   const [savedAmount, setSavedAmount] = useState<number | null>(null);
+  // Рядки, збережені на сервері (BR-INV-023): без них рахунок не виставляється. Рядки, додані у
+  // формі, рахуються лише після «Зберегти» — перехід статусу форму не зберігає.
+  const [savedLineCount, setSavedLineCount] = useState(0);
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
   const [showLineInput, setShowLineInput] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
@@ -254,6 +257,7 @@ export function InvoiceCreateModal({
     setWorkOrderLinked(false);
     setPaidAmount(null);
     setSavedAmount(null);
+    setSavedLineCount(0);
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
     initialLineIdsRef.current = new Set();
@@ -319,6 +323,7 @@ export function InvoiceCreateModal({
         setWorkOrderLinked(!!inv.workOrderId);
         setPaidAmount(inv.paidAmount ?? null);
         setSavedAmount(inv.amount ?? null);
+        setSavedLineCount(inv.lines?.length ?? 0);
         const loadedLines = (inv.lines ?? []).map(l => ({
           _key: nextKey(),
           id: l.id,
@@ -398,6 +403,15 @@ export function InvoiceCreateModal({
     const all = INVOICE_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS;
     return workOrderLinked ? all.filter(s => s !== 'PAID') : all;
   }, [isEditMode, viewOnly, currentStatus, workOrderLinked]);
+
+  // BR-INV-023: чернетку без рядків не виставити — сервер відповість 400 err.invoice.noLinesToIssue.
+  const blockedTransitions = useMemo(
+    () =>
+      currentStatus === 'DRAFT' && savedLineCount === 0
+        ? { SENT: t('card.noLinesToIssue') }
+        : undefined,
+    [currentStatus, savedLineCount, t],
+  );
 
   const { statusPrevStep, statusNextStep } = useMemo(() => {
     const curIdx = INVOICE_STATUS_ORDER.indexOf(currentStatus);
@@ -700,6 +714,7 @@ export function InvoiceCreateModal({
                 defaultValue: INVOICE_STATUS_DESCRIPTIONS[currentStatus],
               })}
               stepTitles
+              blocked={blockedTransitions}
             />
           </div>
         }
