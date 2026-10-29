@@ -125,3 +125,32 @@ grep -rln "page-container max-w" apps/web/src/app --include=page.tsx
       і для розрізу (залишки: «Розріз залишків»). Grep: `grep -rn "<ListStatusRow>" apps/web/src`
 - [ ] Кнопка статусу з тією ж назвою, що дія рядка («Звернення» — стан гарантії і дія): тести
       шукають дію поза групою статусів, інакше `getByRole('button', { name })` бачить дві
+
+## Палітра інтерфейсу: колір — лише через токени (2026-10-29)
+
+Палітру організації («Налаштування → Оформлення») застосовує `applyTheme` (`lib/theme.ts`): він
+підміняє всю шкалу `--color-brand-50…900`, а `primary`, `sidebar-active`, `ring`, `primary-subtle`
+у `globals.css` — похідні від неї. Колір, зашитий повз шкалу, при зміні палітри лишається синім
+(journal/web.md 2026-10-29).
+
+```bash
+# Фіксований відтінок Tailwind на місці кольору бренду (має бути primary / brand-*)
+grep -rnE "\b(bg|text|border|ring|outline|fill|stroke|from|to|via|accent|decoration|divide|shadow)-(blue|indigo|sky)-[0-9]{2,3}" apps/web/src --include=*.tsx --include=*.ts | grep -v __tests__
+# Hex у fill/stroke/style (графіки, SVG, inline-style); палітри статусів, які обирає користувач, — дані, не підсвітка
+grep -rnE "(fill|stroke|stopColor|color)=\"#[0-9a-fA-F]{3,8}\"|(backgroundColor|color|borderColor|fill|stroke|outlineColor): ?['\"]#[0-9a-fA-F]{3,8}['\"]" apps/web/src --include=*.tsx | grep -v __tests__
+# Інлайн-змінна теми поза lib/theme.ts (лише primary — меню й фокус лишаються старими)
+grep -rnE "setProperty\('--color-(primary|brand)" apps/web/src --include=*.ts --include=*.tsx | grep -v __tests__ | grep -v lib/theme.ts
+```
+
+- [ ] Акцентний колір (кнопка, активний пункт, підкреслення вкладки, головна серія графіка) —
+      `primary` / `brand-*` / `var(--color-primary)`, а не `blue-600` чи `#2563eb`. Recharts
+      приймає `fill="var(--color-primary)"` (`dashboard/RevenueChart.tsx`)
+- [ ] Новий семантичний токен у `globals.css` для акценту — `var(--color-brand-N)`, не власний
+      `hsl(...)` синього відтінку; у темному режимі — так само похідний
+- [ ] Нова палітра в `THEMES` — повна шкала з 10 кроків (`scale`), крок 600 = `primary`, 700 =
+      `dark`; сторож `lib/__tests__/theme.test.ts`
+- [ ] Налаштування, яке змінює вигляд усього застосунку (палітра, тема, мова), застосовується при
+      СТАРТІ (оболонка після входу + скрипт `<head>` з кешу), а не лише на сторінці налаштувань —
+      інакше Ctrl+Shift+R скидає його (`hooks/useBrandTheme.ts`, `brandThemeBootScript`)
+- [ ] Ендпойнт, який оболонка читає в кожної ролі, відкритий усім ролям (`/settings/branding`,
+      `/settings/base-currency`), а не повні `/settings/organisation` (бухгалтер → 403, Bug #847)

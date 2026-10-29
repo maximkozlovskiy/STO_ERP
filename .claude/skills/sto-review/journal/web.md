@@ -3,6 +3,18 @@
 > Архів реальних випадків (дата — назва — §N + Сигнал / Grep / Фікс / Severity).
 > Не читати цілком — шукати за ключовим словом. Чекліст секції: `../sections/web.md`.
 
+### 2026-10-29 — палітра скидалась після Ctrl+Shift+R, меню лишалось синім — §8 (web-documents «Палітра»)
+
+**Сигнал:** у «Налаштуваннях» обрано «Зелений», після жорсткого оновлення — синій; навіть без
+оновлення активний пункт меню й логотип — сині. Дві причини: (1) `applyTheme` викликали лише
+`settings/ThemeTab` і `ndi/OrgTab` — стан не відновлювався при старті (theme flicker / не
+rehydrated); (2) `applyTheme` міняв лише `--color-primary`, а `--color-sidebar-active`, `ring`,
+`primary-hover/subtle` посилались на примітивний `--color-brand-600` напряму (design token bypass).
+**Grep:** секція «Палітра інтерфейсу» у `../sections/web-documents.md`.
+**Фікс:** `applyTheme` ставить усю шкалу `brand-50…900`; `GET /settings/branding` (усі ролі) +
+`useBrandTheme` у `TopShell`; кеш `sto_brand_theme` + `brandThemeBootScript()` у `<head>`.
+**Severity:** WARNING — видимий дефект налаштування, даних не зачіпає.
+
 ### 2026-05-28 — memo() з fresh array/object prop — §3.1/§7
 
 **Сигнал:** `memo(Component)` де батько передає inline `.filter()/.map()/{}` → нова референція кожен рендер → memo не спрацьовує.

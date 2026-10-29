@@ -463,3 +463,24 @@ export default function XxxTab() {
 6. Новий або існуючий `XxxTab.tsx` → Toggle
 
 ---
+
+## §27 Колір акценту — лише через токени палітри
+
+Палітра організації підміняє шкалу `--color-brand-50…900` (`lib/theme.ts` → `applyTheme`); усе
+акцентне — похідне від неї (journal sto-review/web.md 2026-10-29).
+
+```tsx
+❌ <button className="bg-blue-600 text-white">        // при зеленій палітрі лишиться синьою
+❌ <Bar dataKey="revenue" fill="#3b82f6" />
+❌ document.documentElement.style.setProperty('--color-primary', c)  // меню й фокус — старі
+
+✅ <button className="bg-primary text-primary-foreground">
+✅ <Bar dataKey="revenue" fill="var(--color-primary)" />
+✅ applyTheme(name)   // уся шкала brand + кеш для скрипта <head>
+```
+
+- Палітри статусів, які обирає користувач (`GoodStatusesTab`, `CounterpartyStatusesTab`), і
+  семантичні кольори (успіх / попередження / помилка, KPI-картки дашборду) — не акцент, їх
+  палітра не міняє.
+- Налаштування вигляду всього застосунку застосовується при старті (оболонка + `<head>`), а не
+  лише на сторінці налаштувань.
