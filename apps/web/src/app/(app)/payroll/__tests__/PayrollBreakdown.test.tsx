@@ -61,6 +61,8 @@ function makeLine(over: Partial<PayrollLine> = {}): PayrollLine {
     linesCount: 85,
     accruedAmount: 3620,
     paidAmount: 0,
+    rateParams: { percent: 40 },
+    rateDerived: false,
     ...over,
   };
 }
@@ -73,6 +75,7 @@ function makeWo(over: Partial<PayrollLineWorkOrder> = {}): PayrollLineWorkOrder 
     worksCount: 1,
     normoHours: 1,
     baseAmount: 500,
+    accruedAmount: 200,
     ...over,
   };
 }
@@ -106,7 +109,7 @@ describe('Payroll — розшифровка по нарядах (drill-down)', 
     detailLoading = false;
   });
 
-  it('розкриття співробітника показує таблицю нарядів; tfoot «Разом база» = line.baseAmount', () => {
+  it('розкриття співробітника показує таблицю нарядів; tfoot «Разом» = line.baseAmount', () => {
     const wos = [
       makeWo({
         workOrderId: 'wo-1',
@@ -143,8 +146,8 @@ describe('Payroll — розшифровка по нарядах (drill-down)', 
       '/work-orders/wo-2',
     );
 
-    // tfoot «Разом база» присутній і показує суму бази рядка (800), яка = Σ рядків розшифровки.
-    const totalCell = screen.getByText('Разом база');
+    // tfoot «Разом» присутній і показує суму бази рядка (800), яка = Σ рядків розшифровки.
+    const totalCell = screen.getByText('Разом');
     const tfootRow = totalCell.closest('tr')!;
     // fmtMoney(800) → «800,00» (uk-UA). Перевіряємо, що сумарна база у tfoot = base рядка.
     expect(within(tfootRow).getByText(/800/)).toBeInTheDocument();
@@ -259,5 +262,142 @@ describe('Payroll — розшифровка по нарядах (drill-down)', 
     // Видно лише наряд Олега (НРД-A), не Богдана (НРД-B).
     expect(screen.getByRole('link', { name: 'НРД-A' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'НРД-B' })).not.toBeInTheDocument();
+  });
+
+  // --- BR-PAYR-016: умови схеми й нараховане по наряду ---
+
+  const openBreakdown = (line: PayrollLine) => {
+    listData.push(makePeriod([{ ...line, workOrders: undefined }]));
+    detailData = makePeriod([line]);
+    render(<PayrollPage />);
+    fireEvent.click(screen.getByLabelText('Розгорнути'));
+  };
+
+  // guards: BR-PAYR-016
+  it('умови схеми зі знімка: «% від суми робіт · 40 %» без «≈» і без підказки', () => {
+    openBreakdown(makeLine({ workOrders: [makeWo()] }));
+
+    const terms = screen.getByText('% від суми робіт · 40 %');
+    expect(terms).not.toHaveAttribute('title');
+    expect(screen.queryByText(/≈/)).not.toBeInTheDocument();
+  });
+
+  // guards: BR-PAYR-016
+  it('виведені умови (rateDerived): «≈ 40 %» з підказкою «обчислено з нарахування»', () => {
+    openBreakdown(makeLine({ rateDerived: true, workOrders: [makeWo()] }));
+
+    const terms = screen.getByText('% від суми робіт · ≈ 40 %');
+    expect(terms).toHaveAttribute('title', 'обчислено з нарахування');
+  });
+
+  // guards: BR-PAYR-016
+  it('нормо-година й оклад + бонус: ставка грошима з комою, бонус у відсотках', () => {
+    const hourly = makeLine({
+      employeeId: 'e1',
+      rateSchemeType: 'per_normo_hour',
+      rateParams: { ratePerHour: 250 },
+    });
+    const salaried = makeLine({
+      employeeId: 'e2',
+      employeeName: 'Бондар Олена',
+      rateSchemeType: 'fixed_plus_bonus',
+      rateParams: { fixedMonthly: 20000, bonusPercent: 5 },
+    });
+    listData.push(makePeriod([hourly, salaried]));
+    detailData = makePeriod([hourly, salaried]);
+    render(<PayrollPage />);
+    fireEvent.click(screen.getByLabelText('Розгорнути'));
+
+    // fmtMoney ставить нерозривний пробіл між тисячами — порівнюємо з нормалізованими пробілами.
+    const norm = (el: Element) => el.textContent?.replace(/\s/g, ' ');
+    const texts = screen.getAllByRole('row').map(norm);
+    expect(texts.some(r => r?.includes('за нормо-годину · 250,00 ₴/год'))).toBe(true);
+    expect(texts.some(r => r?.includes('оклад 20 000,00 ₴ + бонус 5 %'))).toBe(true);
+  });
+
+  // guards: BR-PAYR-016
+  it('умов немає (null) — лише назва схеми', () => {
+    openBreakdown(makeLine({ rateSchemeType: 'fixed_plus_bonus', rateParams: null }));
+    expect(screen.getByText('Ставка + бонус')).toBeInTheDocument();
+  });
+
+  // guards: BR-PAYR-016
+  it('колонка «Нараховано, ₴» по нарядах; підсумок = «Нараховано» працівника', () => {
+    const line = makeLine({
+      baseAmount: 800,
+      accruedAmount: 320,
+      workOrders: [
+        makeWo({
+          workOrderId: 'wo-1',
+          workOrderNumber: 'НРД-1',
+          baseAmount: 500,
+          accruedAmount: 200,
+        }),
+        makeWo({
+          workOrderId: 'wo-2',
+          workOrderNumber: 'НРД-2',
+          baseAmount: 300,
+          accruedAmount: 120,
+        }),
+      ],
+    });
+    openBreakdown(line);
+    fireEvent.click(screen.getByLabelText('Показати наряди'));
+
+    const breakdown = screen.getByRole('link', { name: 'НРД-1' }).closest('table')!;
+    expect(
+      within(breakdown).getByRole('columnheader', { name: 'Нараховано, ₴' }),
+    ).toBeInTheDocument();
+    const row1 = screen.getByRole('link', { name: 'НРД-1' }).closest('tr')!;
+    expect(within(row1).getAllByRole('cell').at(-1)).toHaveTextContent('200,00');
+    const row2 = screen.getByRole('link', { name: 'НРД-2' }).closest('tr')!;
+    expect(within(row2).getAllByRole('cell').at(-1)).toHaveTextContent('120,00');
+    const total = within(breakdown).getByText('Разом').closest('tr')!;
+    expect(within(total).getAllByRole('cell').at(-1)).toHaveTextContent('320,00');
+    expect(screen.queryByText('Оклад за період')).not.toBeInTheDocument();
+  });
+
+  // guards: BR-PAYR-016
+  it('оклад + бонус: рядок «Оклад за період» окремо від нарядів', () => {
+    const line = makeLine({
+      rateSchemeType: 'fixed_plus_bonus',
+      rateParams: { fixedMonthly: 30000, bonusPercent: 10 },
+      baseAmount: 500,
+      accruedAmount: 7050,
+      fixedPart: 7000,
+      workOrders: [makeWo({ baseAmount: 500, accruedAmount: 50 })],
+    });
+    openBreakdown(line);
+    fireEvent.click(screen.getByLabelText('Показати наряди'));
+
+    const fixedRow = screen.getByText('Оклад за період').closest('tr')!;
+    expect(within(fixedRow).getAllByRole('cell').at(-1)?.textContent?.replace(/\s/g, ' ')).toBe(
+      '7 000,00',
+    );
+    const total = screen.getByText('Разом').closest('tr')!;
+    expect(within(total).getAllByRole('cell').at(-1)?.textContent?.replace(/\s/g, ' ')).toBe(
+      '7 050,00',
+    );
+  });
+
+  // guards: BR-PAYR-016
+  it('оклад + бонус без знімка (accruedAmount null): колонки «Нараховано» немає, пояснення чому', () => {
+    const line = makeLine({
+      rateSchemeType: 'fixed_plus_bonus',
+      rateParams: null,
+      workOrders: [makeWo({ accruedAmount: null })],
+    });
+    openBreakdown(line);
+    fireEvent.click(screen.getByLabelText('Показати наряди'));
+
+    const breakdown = screen.getByRole('link', { name: 'НРД-2026-0001' }).closest('table')!;
+    expect(
+      within(breakdown).queryByRole('columnheader', { name: 'Нараховано, ₴' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Відомість розраховано до збереження умов схеми: оклад + бонус по нарядах не розкладається.',
+      ),
+    ).toBeInTheDocument();
   });
 });

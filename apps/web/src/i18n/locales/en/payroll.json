@@ -55,8 +55,10 @@
     "works": "Works",
     "noWorks": "No completed work in this period — only the salary share for the period is accrued.",
     "empty": "Breakdown unavailable (period was calculated before this feature).",
-    "total": "Base total",
-    "note": "Accrual is calculated from the base total per the pay scheme, so it is not split across work orders."
+    "total": "Total",
+    "note": "“Accrued” per work order is the employee’s accrual shared in proportion to the work order’s labor total (norm-hours for the hourly rate); together with the salary for the period it adds up to “Accrued” to the kopeck.",
+    "fixedPart": "Salary for the period",
+    "noAccruedNote": "This payroll was calculated before scheme terms were stored: salary + bonus is not split across work orders."
   },
   "payModal": {
     "title": "Process payment",
@@ -94,6 +96,13 @@
     "fixed_plus_bonus": "Rate + bonus",
     "unknown": "Not specified"
   },
+  "rateTerms": {
+    "percent_normo": "% of labor total · {{approx}}{{percent}}%",
+    "per_normo_hour": "per norm-hour · {{approx}}{{rate}} ₴/h",
+    "fixed_plus_bonus": "salary {{approx}}{{fixed}} ₴ + bonus {{bonus}}%",
+    "approx": "≈ ",
+    "derivedTitle": "calculated from the accrual"
+  },
   "help": {
     "title": "How payroll is calculated",
     "blocks": [
@@ -118,6 +127,23 @@
           {
             "term": "Rate + bonus",
             "text": "salary × share of the period + base × bonus percent; the share is period days in the month / days in the month"
+          }
+        ]
+      },
+      {
+        "title": "Work order breakdown",
+        "items": [
+          {
+            "term": "Scheme terms",
+            "text": "the rate at the time the payroll was calculated; changing the employee’s rate later does not change the payroll"
+          },
+          {
+            "term": "Accrued per work order",
+            "text": "the employee’s accrual shared in proportion to the work order’s labor total (norm-hours for the hourly rate); kopecks are distributed so the total matches “Accrued”. The salary of the “salary + bonus” scheme is a separate “Salary for the period” row"
+          },
+          {
+            "term": "≈ before the rate",
+            "text": "the rate is calculated from the accrual: the payroll was calculated before 29.10.2026, when scheme terms were not stored yet. For “salary + bonus” such payrolls have no terms and no accrual per work order"
           }
         ]
       },

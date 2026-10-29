@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ApiSchema } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 import { cashKeys } from './useCash';
 
 /**
  * Розшифровка нарахування по одному наряду — дзеркалить PayrollLineWorkOrderDto.
- * baseAmount = Σ сума робіт наряду (частка бази); нарахування рахується від СУМИ бази за схемою,
- * тому по-нарядно не розкидається.
+ * baseAmount = Σ сума робіт наряду (частка бази); accruedAmount — частка змінної частини
+ * нарахування рядка (BR-PAYR-016), null — «оклад + бонус» без знімка умов.
  */
 export interface PayrollLineWorkOrder {
   workOrderId: string;
@@ -15,7 +16,11 @@ export interface PayrollLineWorkOrder {
   worksCount: number;
   normoHours: number;
   baseAmount: number;
+  accruedAmount: number | null;
 }
+
+/** Умови схеми рядка (BR-PAYR-016) — згенерований тип із OpenAPI. */
+export type PayrollRateParams = ApiSchema<'PayrollRateParamsDto'>;
 
 export interface PayrollLine {
   employeeId: string;
@@ -25,6 +30,11 @@ export interface PayrollLine {
   normoHours: number;
   linesCount: number;
   accruedAmount: number;
+  /** Знімок умов схеми або (rateDerived) виведені з нарахування; null — невідомі. */
+  rateParams: PayrollRateParams | null;
+  rateDerived: boolean;
+  /** Оклад за період («оклад + бонус») — окремий рядок розшифровки. */
+  fixedPart?: number;
   paidAmount?: number;
   /** Розшифровка по нарядах — приходить лише з GET /payroll/periods/:id (не зі списку). */
   workOrders?: PayrollLineWorkOrder[];

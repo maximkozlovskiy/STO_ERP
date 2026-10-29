@@ -37,6 +37,7 @@ import {
   useComputePayrollPeriod,
   usePayPayrollPeriod,
   useDeletePayrollPeriod,
+  type PayrollLine,
   type PayrollPeriod,
 } from '@/hooks/api/usePayroll';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
@@ -103,6 +104,30 @@ export default function PayrollPage() {
       unknown: t('rateScheme.unknown'),
     }),
     [t],
+  );
+  // BR-PAYR-016: умови схеми рядка («% від суми робіт · 40 %»). Виведені з нарахування (рядок
+  // розраховано до знімка умов) — з «≈»; невідомі умови — лише назва схеми.
+  const schemeTerms = useCallback(
+    (l: PayrollLine): string => {
+      const p = l.rateParams;
+      const approx = l.rateDerived ? t('rateTerms.approx') : '';
+      if (l.rateSchemeType === 'percent_normo' && p?.percent != null)
+        return t('rateTerms.percent_normo', { approx, percent: fmtQty(p.percent) });
+      if (l.rateSchemeType === 'per_normo_hour' && p?.ratePerHour != null)
+        return t('rateTerms.per_normo_hour', { approx, rate: fmtMoney(p.ratePerHour) });
+      if (
+        l.rateSchemeType === 'fixed_plus_bonus' &&
+        p?.fixedMonthly != null &&
+        p.bonusPercent != null
+      )
+        return t('rateTerms.fixed_plus_bonus', {
+          approx,
+          fixed: fmtMoney(p.fixedMonthly),
+          bonus: fmtQty(p.bonusPercent),
+        });
+      return RATE_LABELS[l.rateSchemeType] ?? l.rateSchemeType;
+    },
+    [t, RATE_LABELS],
   );
   const PERIOD_COLUMNS = useMemo(
     () => PERIOD_COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })),
@@ -250,7 +275,7 @@ export default function PayrollPage() {
       <div className="page-header">
         <div className="flex items-center gap-2">
           <h1 className="page-title">{t('title')}</h1>
-          {/* BR-PAYR-001/002/004–008/015 */}
+          {/* BR-PAYR-001/002/004–008/015/016 */}
           <CatalogHelp ns="payroll" topic="help" align="start" width="lg" />
         </div>
       </div>
@@ -482,7 +507,7 @@ export default function PayrollPage() {
                           <colgroup>
                             <col className="w-8" />
                             <col />
-                            <col className="w-40" />
+                            <col className="w-64" />
                             <col className="w-24" />
                             <col className="w-28" />
                             <col className="w-28" />
@@ -512,6 +537,9 @@ export default function PayrollPage() {
                               const empKey = `${p.id}:${l.employeeId}`;
                               const empOpen = expandedEmployee === empKey;
                               const wos = l.workOrders;
+                              // BR-PAYR-016: нараховане по нарядах невідоме лише для «оклад +
+                              // бонус» без знімка умов — тоді колонку не показуємо.
+                              const showAccrued = !!wos && wos.every(w => w.accruedAmount != null);
                               return (
                                 <Fragment key={l.employeeId}>
                                   <tr className="border-b border-border/50">
@@ -535,7 +563,13 @@ export default function PayrollPage() {
                                     </td>
                                     <td className="font-medium px-4 py-1.5">{l.employeeName}</td>
                                     <td className="py-1.5 text-muted-foreground">
-                                      {RATE_LABELS[l.rateSchemeType] ?? l.rateSchemeType}
+                                      <span
+                                        title={
+                                          l.rateDerived ? t('rateTerms.derivedTitle') : undefined
+                                        }
+                                      >
+                                        {schemeTerms(l)}
+                                      </span>
                                     </td>
                                     <td className="py-1.5 text-right tabular-nums">
                                       {fmtQty(l.normoHours)}
@@ -575,6 +609,7 @@ export default function PayrollPage() {
                                                 <col className="w-20" />
                                                 <col className="w-24" />
                                                 <col className="w-28" />
+                                                {showAccrued && <col className="w-28" />}
                                               </colgroup>
                                               <thead>
                                                 <tr className="text-[12px] text-muted-foreground">
@@ -593,6 +628,11 @@ export default function PayrollPage() {
                                                   <th className="text-right font-medium py-1">
                                                     {t('columns.baseAmount')}
                                                   </th>
+                                                  {showAccrued && (
+                                                    <th className="text-right font-medium py-1">
+                                                      {t('columns.accrued')}
+                                                    </th>
+                                                  )}
                                                 </tr>
                                               </thead>
                                               <tbody>
@@ -621,8 +661,26 @@ export default function PayrollPage() {
                                                     <td className="py-1.5 text-right tabular-nums">
                                                       {fmtMoney(w.baseAmount)}
                                                     </td>
+                                                    {showAccrued && (
+                                                      <td className="py-1.5 text-right tabular-nums">
+                                                        {fmtMoney(w.accruedAmount)}
+                                                      </td>
+                                                    )}
                                                   </tr>
                                                 ))}
+                                                {showAccrued && l.fixedPart != null && (
+                                                  <tr className="border-t border-border/50">
+                                                    <td
+                                                      colSpan={5}
+                                                      className="py-1.5 text-muted-foreground"
+                                                    >
+                                                      {t('breakdown.fixedPart')}
+                                                    </td>
+                                                    <td className="py-1.5 text-right tabular-nums">
+                                                      {fmtMoney(l.fixedPart)}
+                                                    </td>
+                                                  </tr>
+                                                )}
                                               </tbody>
                                               <tfoot>
                                                 <tr className="border-t border-border font-semibold">
@@ -635,11 +693,18 @@ export default function PayrollPage() {
                                                   <td className="py-1.5 text-right tabular-nums">
                                                     {fmtMoney(l.baseAmount)}
                                                   </td>
+                                                  {showAccrued && (
+                                                    <td className="py-1.5 text-right tabular-nums">
+                                                      {fmtMoney(l.accruedAmount)}
+                                                    </td>
+                                                  )}
                                                 </tr>
                                               </tfoot>
                                             </table>
                                             <p className="text-[11px] text-muted-foreground mt-1.5">
-                                              {t('breakdown.note')}
+                                              {showAccrued
+                                                ? t('breakdown.note')
+                                                : t('breakdown.noAccruedNote')}
                                             </p>
                                           </div>
                                         )}
