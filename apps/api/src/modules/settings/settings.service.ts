@@ -911,6 +911,21 @@ export class SettingsService {
     updatedAt: true,
   } as const;
 
+  /**
+   * Вигляд оболонки для КОЖНОЇ ролі: палітра й назва організації в шапці меню. Повні налаштування
+   * й картка організації — лише власнику й адміну (Bug #847), тому окремий вузький метод.
+   */
+  async getBranding(orgId: string): Promise<{ brandTheme: string; orgName: string | null }> {
+    const [settings, org] = await Promise.all([
+      this.getOrganisationSettings(orgId),
+      this.prisma.organisation.findFirst({
+        where: { orgId, deletedAt: null },
+        select: { name: true },
+      }),
+    ]);
+    return { brandTheme: settings.brandTheme, orgName: org?.name?.trim() || null };
+  }
+
   async getOrganisation(orgId: string): Promise<OrganisationResponseDto> {
     const org = await this.prisma.organisation.findFirst({
       where: { orgId, deletedAt: null },

@@ -355,7 +355,7 @@
             "bearer": []
           }
         ],
-        "summary": "Палітра інтерфейсу організації (доступно всім авторизованим)",
+        "summary": "Палітра й назва організації для оболонки (доступно всім авторизованим)",
         "tags": [
           "Налаштування"
         ]
@@ -8536,7 +8536,6 @@
             "in": "query",
             "description": "Кілька статусів через кому (IN_PROGRESS,ON_HOLD) — перехід із карток дашборду. Разом зі `status` — перетин.",
             "schema": {
-              "maxItems": 11,
               "type": "array",
               "items": {
                 "type": "string",
@@ -14304,8 +14303,7 @@
               "type": "array",
               "items": {
                 "$ref": "#/components/schemas/Object"
-              },
-              "maxItems": 10
+              }
             }
           },
           {
@@ -20272,10 +20270,17 @@
             "type": "string",
             "example": "green",
             "description": "Кольорова палітра інтерфейсу організації"
+          },
+          "orgName": {
+            "type": "string",
+            "nullable": true,
+            "example": "СТО «Мотор»",
+            "description": "Назва організації для шапки меню (null — картку організації не заповнено)"
           }
         },
         "required": [
-          "brandTheme"
+          "brandTheme",
+          "orgName"
         ]
       },
       "UpdateOrganisationSettingsDto": {

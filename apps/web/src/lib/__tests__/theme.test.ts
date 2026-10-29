@@ -6,7 +6,13 @@
 // Mutation-verify (2026-10-29): `applyTheme` ставить лише `--color-brand-600` → падає «уся шкала»;
 // без `localStorage.setItem` → падає «кеш»; скрипт без циклу по кроках → падає «скрипт <head>».
 import { afterEach, describe, expect, it } from 'vitest';
-import { BRAND_THEME_STORAGE_KEY, THEMES, applyTheme, brandThemeBootScript } from '../theme';
+import {
+  BRAND_THEME_STORAGE_KEY,
+  LOGO_ACCENT,
+  THEMES,
+  applyTheme,
+  brandThemeBootScript,
+} from '../theme';
 
 const brand = (step: number) =>
   document.documentElement.style.getPropertyValue(`--color-brand-${step}`);
@@ -42,6 +48,15 @@ describe('applyTheme', () => {
     expect(localStorage.getItem(BRAND_THEME_STORAGE_KEY)).toBe('blue');
   });
 
+  it('акцент логотипу — колір файла логотипу палітри; синя — запасне значення BrandLogo', () => {
+    applyTheme('orange');
+    expect(document.documentElement.style.getPropertyValue('--color-logo-accent')).toBe(
+      LOGO_ACCENT.orange,
+    );
+    applyTheme('blue');
+    expect(document.documentElement.style.getPropertyValue('--color-logo-accent')).toBe('');
+  });
+
   it('кеш: обрана палітра записується для скрипта <head>', () => {
     applyTheme('purple');
     expect(localStorage.getItem(BRAND_THEME_STORAGE_KEY)).toBe('purple');
@@ -57,6 +72,9 @@ describe('скрипт <head>', () => {
     runBootScript();
     expect(brand(600)).toBe(THEMES.gray.primary);
     expect(brand(50)).toBe(THEMES.gray.scale![0]);
+    expect(document.documentElement.style.getPropertyValue('--color-logo-accent')).toBe(
+      LOGO_ACCENT.gray,
+    );
   });
 
   it('без кешу або з синьою — нічого не ставить (діє globals.css)', () => {

@@ -49,7 +49,7 @@ export class EsputnikProvider implements NotificationProvider {
       if (channel === NotificationChannel.SMS) {
         // Direct ad-hoc SMS — inline text. recipient = телефон.
         const res = await this.fetchJson('POST', '/v1/message/sendsms', creds.apiKey, {
-          from: creds.senderName ?? 'STO ERP',
+          from: creds.senderName ?? 'OneService',
           text: message,
           phoneNumbers: [recipient],
         });

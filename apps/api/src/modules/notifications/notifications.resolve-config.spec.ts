@@ -177,7 +177,7 @@ describe('NotificationsService.resolveConfig', () => {
       smsEnabled: true,
       smsApiKey: 'k',
       smsProvider: null, // → COALESCE 'turbosms'
-      smsSenderName: null, // → 'STO ERP'
+      smsSenderName: null, // → 'OneService'
     });
     templateFindFirst.mockResolvedValue({ body: 'тіло' });
 
@@ -188,7 +188,7 @@ describe('NotificationsService.resolveConfig', () => {
         channel: NotificationChannel.SMS,
         provider: 'turbosms',
         apiKey: 'k',
-        senderName: 'STO ERP',
+        senderName: 'OneService',
         templateBody: 'тіло',
       },
     ]);
@@ -226,14 +226,14 @@ describe('NotificationsService.resolveConfig', () => {
     await expect(service.resolveConfig('org-1', 'br-1', 'FOLLOWUP_REMINDER')).resolves.toBeNull();
   });
 
-  it('senderName відсутній у config-рядку → дефолт "STO ERP"', async () => {
+  it('senderName відсутній у config-рядку → дефолт "OneService"', async () => {
     channelConfigFindMany.mockResolvedValue([
       cfgRow({ channel: NotificationChannel.SMS, senderName: null }),
     ]);
     templateFindMany.mockResolvedValue([{ channel: NotificationChannel.SMS, body: 'b' }]);
 
     const cfg = await service.resolveConfig('org-1', 'br-1', 'WO_COMPLETED');
-    expect(cfg!.channels[0].senderName).toBe('STO ERP');
+    expect(cfg!.channels[0].senderName).toBe('OneService');
   });
 
   // externalTemplateId: канал без локального шаблону придатний ЛИШЕ якщо провайдер шле його

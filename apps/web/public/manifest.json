@@ -1,6 +1,6 @@
 {
-  "name": "STO ERP",
-  "short_name": "STO ERP",
+  "name": "OneService",
+  "short_name": "OneService",
   "description": "Система управління автосервісом",
   "start_url": "/dashboard",
   "display": "standalone",

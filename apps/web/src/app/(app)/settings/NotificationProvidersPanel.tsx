@@ -528,7 +528,7 @@ export default function NotificationProvidersPanel() {
               label={isSmtp ? t('providers.senderFrom') : t('providers.senderName')}
               value={senderName}
               onChange={e => setSenderName(e.target.value)}
-              placeholder={isSmtp ? t('providers.senderFromPlaceholder') : 'STO ERP'}
+              placeholder={isSmtp ? t('providers.senderFromPlaceholder') : 'OneService'}
             />
             {needsExternalTemplate(credsProvider.code, credsChannel) && (
               <div>

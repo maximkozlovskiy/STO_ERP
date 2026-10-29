@@ -9,7 +9,6 @@ import { TabBar } from '@/components/TabBar';
 import { RestoredDocumentModal } from '@/components/RestoredDocumentModal';
 
 import {
-  Wrench,
   LogOut,
   MonitorSmartphone,
   ChevronLeft,
@@ -30,6 +29,7 @@ import { resolveNav } from '@/lib/nav-layout';
 import { useNavConfig } from '@/hooks/useNavConfig';
 import { useBrandTheme } from '@/hooks/useBrandTheme';
 import { NavEditor } from '@/components/ui/NavEditor';
+import { APP_NAME, BrandLogo, BrandLogoHorizontal } from '@/components/ui/brand-logo';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth, isPublicRoute } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -418,7 +418,10 @@ export function TopShell({ children }: { children: ReactNode }) {
   const uiFeatures = useUiFeatures();
   const queryClient = useQueryClient();
   // Палітра організації — лише після входу (публічні сторінки й /login токена не мають).
-  useBrandTheme(!!employee && !isPublicRoute(pathname));
+  const { orgName } = useBrandTheme(!!employee && !isPublicRoute(pathname));
+  // Шапка меню: назва організації, під нею назва системи (рішення власника 2026-10-29). Картку
+  // організації не заповнено — назва системи й «Автосервіс», як раніше.
+  const shellTitle = orgName ?? APP_NAME;
 
   useKeyboardShortcut(
     'ctrl+k',
@@ -677,32 +680,33 @@ export function TopShell({ children }: { children: ReactNode }) {
       {/* Logo */}
       <div
         className={cn(
-          'flex items-center h-14 border-b border-sidebar-border shrink-0',
-          collapsed ? 'justify-center px-0' : 'justify-between px-3',
+          'flex items-center border-b border-sidebar-border shrink-0',
+          collapsed ? 'h-16 justify-center px-0' : 'justify-between gap-1 px-2 py-2',
         )}
       >
         {collapsed ? (
           <button
             onClick={toggleCollapsed}
-            className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary hover:bg-primary-hover transition-colors"
+            className="flex h-12 w-12 items-center justify-center rounded-[10px] transition-opacity hover:opacity-85"
             title={t('common:expand')}
           >
-            <Wrench className="h-5 w-5 text-white" />
+            <BrandLogo size={48} />
           </button>
         ) : (
           <>
-            <Link href="/dashboard" prefetch={false} className="flex items-center gap-2.5 min-w-0">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
-                <Wrench className="h-4 w-4 text-white" />
-              </div>
-              <div className="flex flex-col min-w-0">
-                <span className="text-[14px] font-bold text-white leading-none tracking-tight">
-                  STO ERP
+            {/* Горизонтальний логотип на всю ширину шапки (брендбук), під ним — назва організації */}
+            <Link
+              href="/dashboard"
+              prefetch={false}
+              className="flex flex-col min-w-0"
+              title={orgName ?? APP_NAME}
+            >
+              <BrandLogoHorizontal height={48} className="max-w-full h-auto" />
+              {orgName && (
+                <span className="pl-1.5 text-[12px] font-semibold text-white leading-tight truncate">
+                  {orgName}
                 </span>
-                <span className="text-[10px] text-sidebar-muted leading-none mt-0.5 truncate">
-                  {t('shell.appSubtitle')}
-                </span>
-              </div>
+              )}
             </Link>
             <button
               onClick={toggleCollapsed}
@@ -855,10 +859,10 @@ export function TopShell({ children }: { children: ReactNode }) {
             <Menu className="h-5 w-5" />
           </button>
           <Link href="/dashboard" prefetch={false} className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
-              <Wrench className="h-3.5 w-3.5 text-white" />
-            </div>
-            <span className="text-[14px] font-bold text-foreground">STO ERP</span>
+            <BrandLogo size={32} />
+            <span className="text-[14px] font-bold text-foreground truncate max-w-48">
+              {shellTitle}
+            </span>
           </Link>
           {uiFeatures.commandPaletteEnabled && (
             <button

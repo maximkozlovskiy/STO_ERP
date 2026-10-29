@@ -124,7 +124,7 @@ export default function SetupPage() {
         <div className="bg-surface rounded-2xl shadow border border-border p-10 max-w-md w-full text-center space-y-4">
           <div className="text-5xl">✓</div>
           <h1 className="text-2xl font-bold text-foreground">Систему налаштовано!</h1>
-          <p className="text-muted-foreground">Ласкаво просимо до STO ERP</p>
+          <p className="text-muted-foreground">Ласкаво просимо до OneService</p>
           <button
             onClick={() => router.replace('/dashboard')}
             className="w-full py-2 px-4 bg-primary text-white rounded-lg font-medium hover:opacity-90"
@@ -150,7 +150,7 @@ export default function SetupPage() {
       <div className="bg-surface rounded-2xl shadow-lg border border-border w-full max-w-lg">
         {/* Header */}
         <div className="p-6 border-b border-border">
-          <h1 className="text-xl font-bold text-foreground">Перший запуск STO ERP</h1>
+          <h1 className="text-xl font-bold text-foreground">Перший запуск OneService</h1>
           <div className="mt-3 flex gap-1">
             {STEPS.filter(s => s !== 'done' && s !== 'checking').map((s, i) => (
               <div

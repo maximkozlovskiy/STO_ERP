@@ -28,7 +28,7 @@ export class TurboSmsProvider implements NotificationProvider {
 
   async send(params: SendParams): Promise<SendResult> {
     const { channel, recipient, message, creds } = params;
-    const sender = creds.senderName ?? 'STO ERP';
+    const sender = creds.senderName ?? 'OneService';
 
     // Наш бекенд керує fallback-ланцюгом, тож шлемо кожен канал ОКРЕМО (без вбудованого
     // viber-to-sms провайдера). SMS → {sms:{...}}, Viber → {viber:{...}}. recipient = телефон.

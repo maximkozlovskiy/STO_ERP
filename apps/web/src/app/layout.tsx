@@ -2,17 +2,31 @@ import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
+import { Montserrat } from 'next/font/google';
 import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
 import { ColorModeProvider } from '@/components/ColorModeProvider';
 import { I18nProvider } from '@/components/I18nProvider';
 import { QueryProvider } from '@/components/QueryProvider';
 import { brandThemeBootScript } from '@/lib/theme';
+import { APP_NAME } from '@/components/ui/brand-logo';
 import './globals.css';
 
+// Шрифт логотипу OneService (брендбук: Montserrat 400/700/800). next/font завантажує його під час
+// збірки й роздає локально — без запитів до Google Fonts, система працює офлайн.
+const montserrat = Montserrat({
+  subsets: ['latin'],
+  weight: ['400', '700', '800'],
+  variable: '--font-montserrat',
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
-  title: 'STO ERP',
+  title: APP_NAME,
   description: 'Система управління автосервісом',
   manifest: '/manifest.json',
+  // Логотип OneService (Images/Logo/logo-blue.svg); іконка вкладки статична — палітра організації
+  // на неї не діє (браузер кешує favicon), у застосунку логотип — BrandLogo з кольором палітри.
+  icons: { icon: '/logo.svg' },
 };
 
 export const viewport: Viewport = {
@@ -36,7 +50,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           }}
         />
       </head>
-      <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
+      <body
+        className={`${GeistSans.variable} ${GeistMono.variable} ${montserrat.variable} antialiased`}
+      >
         <ServiceWorkerRegistrar />
         <QueryProvider>
           <I18nProvider>

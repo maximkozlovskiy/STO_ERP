@@ -139,15 +139,16 @@ export class SettingsController {
     return { currency: settings.currency };
   }
 
-  // Палітра інтерфейсу застосовується при кожному завантаженні застосунку, у КОЖНОЇ ролі; повні
-  // налаштування організації бухгалтеру закриті (як base-currency, Bug #847). Віддаємо ЛИШЕ палітру.
+  // Палітра інтерфейсу й назва організації в шапці меню — при кожному завантаженні застосунку, у
+  // КОЖНОЇ ролі; повні налаштування бухгалтеру закриті (як base-currency, Bug #847). Віддаємо ЛИШЕ їх.
   @Get('branding')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT', 'XLSX_MANAGER')
-  @ApiOperation({ summary: 'Палітра інтерфейсу організації (доступно всім авторизованим)' })
+  @ApiOperation({
+    summary: 'Палітра й назва організації для оболонки (доступно всім авторизованим)',
+  })
   @ApiResponse({ status: 200, type: BrandingResponseDto })
   async getBranding(@OrgContext() orgId: string): Promise<BrandingResponseDto> {
-    const settings = await this.service.getOrganisationSettings(orgId);
-    return { brandTheme: settings.brandTheme };
+    return this.service.getBranding(orgId);
   }
 
   @Patch('organisation')

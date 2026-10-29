@@ -399,7 +399,7 @@ export class EstimateExportService {
     const d = await this.getEstimateData(token);
 
     const wb = new ExcelJS.Workbook();
-    wb.creator = 'STO ERP';
+    wb.creator = 'OneService';
 
     const ws = wb.addWorksheet('Кошторис');
 
@@ -780,7 +780,7 @@ export class EstimateExportService {
   private appXml(): string {
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
-  <Application>STO ERP</Application>
+  <Application>OneService</Application>
 </Properties>`;
   }
 
@@ -790,7 +790,7 @@ export class EstimateExportService {
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
   xmlns:dc="http://purl.org/dc/elements/1.1/">
   <dc:title>Кошторис ${this.esc(number)}</dc:title>
-  <dc:creator>STO ERP</dc:creator>
+  <dc:creator>OneService</dc:creator>
   <cp:created>${now}</cp:created>
 </cp:coreProperties>`;
   }

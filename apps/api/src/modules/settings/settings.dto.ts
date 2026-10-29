@@ -531,6 +531,14 @@ export class BaseCurrencyResponseDto {
 export class BrandingResponseDto {
   @ApiProperty({ example: 'green', description: 'Кольорова палітра інтерфейсу організації' })
   brandTheme!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'СТО «Мотор»',
+    description: 'Назва організації для шапки меню (null — картку організації не заповнено)',
+  })
+  orgName!: string | null;
 }
 
 /**

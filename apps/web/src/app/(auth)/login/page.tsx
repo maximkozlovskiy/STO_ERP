@@ -2,7 +2,8 @@
 
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { Wrench, Wifi } from 'lucide-react';
+import { Wifi } from 'lucide-react';
+import { APP_NAME, BrandLogo } from '@/components/ui/brand-logo';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,10 +37,8 @@ export default function LoginPage() {
       {/* Left panel — brand */}
       <div className="hidden lg:flex lg:w-105 flex-col justify-between p-10 bg-sidebar-bg text-white shrink-0">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
-            <Wrench className="h-5 w-5 text-white" />
-          </div>
-          <span className="text-[16px] font-bold tracking-tight">STO ERP</span>
+          <BrandLogo size={48} />
+          <span className="text-[18px] font-bold tracking-tight">{APP_NAME}</span>
         </div>
 
         <div className="space-y-6">
@@ -81,10 +80,8 @@ export default function LoginPage() {
         <div className="w-full max-w-90">
           {/* Mobile logo */}
           <div className="flex lg:hidden items-center gap-2.5 mb-8 justify-center">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
-              <Wrench className="h-5 w-5 text-white" />
-            </div>
-            <span className="text-[18px] font-bold text-foreground">STO ERP</span>
+            <BrandLogo size={44} />
+            <span className="text-[18px] font-bold text-foreground">{APP_NAME}</span>
           </div>
 
           <div className="mb-7">

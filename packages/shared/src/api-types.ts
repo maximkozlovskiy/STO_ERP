@@ -233,7 +233,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Палітра інтерфейсу організації (доступно всім авторизованим) */
+        /** Палітра й назва організації для оболонки (доступно всім авторизованим) */
         get: operations["SettingsController_getBranding_v1"];
         put?: never;
         post?: never;
@@ -6303,6 +6303,11 @@ export interface components {
              * @example green
              */
             brandTheme: string;
+            /**
+             * @description Назва організації для шапки меню (null — картку організації не заповнено)
+             * @example СТО «Мотор»
+             */
+            orgName: string | null;
         };
         UpdateOrganisationSettingsDto: {
             /** @description ISO код валюти обліку (UAH, USD, EUR) */

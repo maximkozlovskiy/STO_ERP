@@ -105,6 +105,8 @@ const prismaMock = {
     }),
   },
   garageBranch: { findFirst: vi.fn() },
+  // Назва організації для шапки меню (GET /settings/branding).
+  organisation: { findFirst: vi.fn().mockResolvedValue({ name: 'СТО «Мотор»' }) },
   branchSettings: { findUnique: vi.fn(), upsert: vi.fn(), findFirst: vi.fn() },
   // Bug #359/#361: SettingsService.updateOrganisationSettings перевіряє існування
   // currency code у Currency таблиці перед збереженням. Mock повертає row для
@@ -305,10 +307,19 @@ describe('Settings — HTTP Contract', () => {
   // Палітра скидалась до синьої після жорсткого оновлення: її застосовували лише сторінки
   // налаштувань. Тепер її читає оболонка застосунку в кожної ролі.
   describe('GET /settings/branding', () => {
-    it('повертає 200 і лише палітру — без решти налаштувань організації', async () => {
+    it('повертає 200 і лише палітру й назву організації — без решти налаштувань', async () => {
       const res = await app.inject({ method: 'GET', url: '/settings/branding' });
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ brandTheme: 'blue' });
+      expect(res.json()).toEqual({ brandTheme: 'blue', orgName: 'СТО «Мотор»' });
+      expect(prismaMock.organisation.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { orgId: 'org-1', deletedAt: null } }),
+      );
+    });
+
+    it('картку організації не заповнено (назва порожня) → orgName null', async () => {
+      prismaMock.organisation.findFirst.mockResolvedValueOnce({ name: '  ' });
+      const res = await app.inject({ method: 'GET', url: '/settings/branding' });
+      expect(res.json()).toEqual({ brandTheme: 'blue', orgName: null });
     });
 
     it('маршрут відкритий усім ролям персоналу, зокрема бухгалтеру', () => {

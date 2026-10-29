@@ -87,6 +87,20 @@ export const THEMES: Record<
   },
 };
 
+/**
+ * Акцент логотипу OneService для кожної палітри — кольори з `Images/Logo/logo-<палітра>.svg`
+ * (вони не збігаються з одним кроком шкали brand: синій і фіолетовий — 500, зелений і
+ * помаранчевий — 600, сірий — gray-500). Синій — запасне значення в `BrandLogo`.
+ */
+export const LOGO_ACCENT: Record<ThemeName, string> = {
+  blue: '#3B82F6',
+  green: '#16A34A',
+  purple: '#8B5CF6',
+  orange: '#EA580C',
+  gray: '#6B7280',
+};
+const LOGO_ACCENT_PROP = '--color-logo-accent';
+
 /** Кеш палітри організації: скрипт у <head> ставить її до першого кадру (без спалаху синього). */
 export const BRAND_THEME_STORAGE_KEY = 'sto_brand_theme';
 
@@ -103,6 +117,8 @@ export function applyTheme(theme: string) {
     if (scale) root.style.setProperty(prop, scale[i]);
     else root.style.removeProperty(prop);
   });
+  if (name === 'blue') root.style.removeProperty(LOGO_ACCENT_PROP);
+  else root.style.setProperty(LOGO_ACCENT_PROP, LOGO_ACCENT[name]);
   try {
     localStorage.setItem(BRAND_THEME_STORAGE_KEY, name);
   } catch {
@@ -117,5 +133,5 @@ export function applyTheme(theme: string) {
 export function brandThemeBootScript(): string {
   const scales: Record<string, readonly string[]> = {};
   for (const [name, t] of Object.entries(THEMES)) if (t.scale) scales[name] = t.scale;
-  return `(function(){try{var s=${JSON.stringify(scales)};var t=localStorage.getItem('${BRAND_THEME_STORAGE_KEY}');var c=t&&s[t];if(!c)return;var st=${JSON.stringify(BRAND_STEPS)};for(var i=0;i<st.length;i++){document.documentElement.style.setProperty('--color-brand-'+st[i],c[i]);}}catch(e){}})();`;
+  return `(function(){try{var s=${JSON.stringify(scales)};var lg=${JSON.stringify(LOGO_ACCENT)};var t=localStorage.getItem('${BRAND_THEME_STORAGE_KEY}');var c=t&&s[t];if(!c)return;var r=document.documentElement.style;var st=${JSON.stringify(BRAND_STEPS)};for(var i=0;i<st.length;i++){r.setProperty('--color-brand-'+st[i],c[i]);}r.setProperty('${LOGO_ACCENT_PROP}',lg[t]);}catch(e){}})();`;
 }

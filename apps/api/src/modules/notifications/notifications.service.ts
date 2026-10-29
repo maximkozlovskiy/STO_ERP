@@ -136,7 +136,7 @@ export class NotificationsService {
           channel: c.channel,
           provider: c.provider,
           apiKey: c.apiKey as string, // гарантовано not-null через where
-          senderName: c.senderName ?? 'STO ERP',
+          senderName: c.senderName ?? 'OneService',
           templateBody: byChannel.get(c.channel)?.body ?? '', // порожній для external-template
           templateSubject: byChannel.get(c.channel)?.subject ?? undefined,
           externalTemplateId: c.externalTemplateId ?? undefined,
@@ -176,7 +176,7 @@ export class NotificationsService {
           channel: NotificationChannel.SMS,
           provider: branchSettings.smsProvider ?? 'turbosms',
           apiKey: branchSettings.smsApiKey,
-          senderName: branchSettings.smsSenderName ?? 'STO ERP',
+          senderName: branchSettings.smsSenderName ?? 'OneService',
           templateBody: template.body,
         },
       ],
