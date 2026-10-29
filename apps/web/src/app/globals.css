@@ -225,9 +225,17 @@ body {
    this gutter shows the container background. Setting bg-secondary on the container
    fills that gutter to match the sticky thead. The tbody class bg-surface (applied
    directly on the element) has higher specificity (0-1-1) than this rule (0-1-0)
-   so tbody rows keep their white background. */
+   so tbody rows keep their white background.
+   Під шапкою — колір поверхні: короткий список (порожній стан за фільтрами, кілька рядків) не
+   лишає сіру смугу під останнім рядком. Сірий — лише смуга висотою шапки (фон-зображення від
+   border-box, щоб зайти й під смугу прокрутки). Утиліта `bg-surface` на контейнері цього не
+   зробить: правило поза @layer сильніше за утиліти Tailwind 4 (UX-огляд 2026-10-29). */
 .table-scroll-container {
-  background-color: var(--color-secondary);  /* fills scrollbar gutter at thead level */
+  background-color: var(--color-surface);
+  background-image: linear-gradient(var(--color-secondary), var(--color-secondary));
+  background-size: 100% var(--table-thead-h);
+  background-repeat: no-repeat;
+  background-origin: border-box;
 }
 .table-scroll-container tbody {
   background-color: var(--color-surface);    /* rows stay white */
