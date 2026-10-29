@@ -57,7 +57,6 @@
     "openWorkOrderButton": "Open work order",
     "empty": {
       "title": "No work orders found",
-      "descFilter": "Try changing the status filter",
       "descCreate": "Create your first work order using the button above"
     },
     "confirmMarkDeletion": "Mark work order {{number}} for deletion?",

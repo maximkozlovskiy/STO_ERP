@@ -25,8 +25,7 @@
   "workOrderDeleted": "{{number}} (deleted)",
   "empty": {
     "title": "No tasks",
-    "desc": "Tasks assigned by managers will appear here",
-    "descFilter": "No tasks match the selected filters"
+    "desc": "Tasks assigned by managers will appear here"
   },
   "action": {
     "start": "Start",
