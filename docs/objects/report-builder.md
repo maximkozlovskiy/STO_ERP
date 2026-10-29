@@ -423,7 +423,7 @@ CSV фіксованих звітів (`apps/web/src/app/(app)/reports/report-cs
 вікно «Налаштування звіту», рядок «Пораховано», кнопка лише OWNER/ADMIN, закріплені колонки —
 `PnlSettingsModal.test.tsx` (9, зокрема прапорець повернення підзвіту); швидкі періоди — `QuickPeriods.test.tsx` (7); «Завантаженість»,
 переходи з рядків і вісь графіка виручки — `ReportTables.test.tsx` (8, зокрема видалений товар у «Звіті по складу», BR-RPT-032); фільтр нарядів механіка з
-адреси — `apps/web/src/app/(app)/work-orders/__tests__/WorkOrdersPage.url-filter.test.tsx` (5);
+адреси — `apps/web/src/app/(app)/work-orders/__tests__/WorkOrdersPage.url-filter.test.tsx` (11, разом зі статусами з дашборду й карткою `?open=`);
 `fmtPercent` — `apps/web/src/lib/format.i18n.test.ts`;
 доступ до вкладки — `ReportsInventoryTab.test.tsx` (14); KPI дашборда з P&L і ролі —
 `apps/web/src/app/(app)/dashboard/__tests__/DashboardPage.roles.test.tsx` (12) і

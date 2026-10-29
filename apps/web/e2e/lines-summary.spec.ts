@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { rowBodyCell } from './row-click';
 import { API } from './api-url';
 import { clearDateFilter } from './fixtures';
 
@@ -225,7 +226,7 @@ test.describe('Зведення в боковій панелі — складс�
     const row = await gotoDocs(page, true);
     await expect(page.getByRole('button', { name: 'Сховати бокову панель' })).toBeVisible();
 
-    await row.locator('td').nth(1).click();
+    await rowBodyCell(row).click();
 
     await expect(summary(page)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('lines-summary-goods')).toContainText(
@@ -264,7 +265,7 @@ test.describe('Зведення в боковій панелі — складс�
     const row = await gotoDocs(page, false);
     await expect(page.getByRole('button', { name: 'Показати бокову панель' })).toBeVisible();
 
-    await row.locator('td').nth(1).click();
+    await rowBodyCell(row).click();
 
     await expect(dialog(page).first()).toBeVisible({ timeout: 10_000 });
     await expect(dialog(page).first()).toContainText(doc!.number);

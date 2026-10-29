@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { rowBodyCell } from './row-click';
 import { API } from './api-url';
 import { clearDateFilter } from './fixtures';
 
@@ -105,13 +106,13 @@ test.describe('Рахунки — стандарт кліку по рядку', 
     expect(inv, 'beforeAll має створити рахунок').toBeTruthy();
     const row = await gotoInvoices(page, true);
 
-    await row.getByText(inv!.number).first().click();
+    await rowBodyCell(row).click();
     await expect(panelTitle(page)).toBeVisible({ timeout: 10_000 });
     await expect(panelOpenBtn(page)).toBeVisible();
     await expect(row).toHaveClass(/bg-primary\/5/);
     await expect(dialogs(page)).toHaveCount(0);
 
-    await row.getByText(inv!.number).first().click();
+    await rowBodyCell(row).click();
     await expect(panelOpenBtn(page)).toHaveCount(0, { timeout: 5_000 });
     await expect(row).not.toHaveClass(/bg-primary\/5/);
     await expect(dialogs(page)).toHaveCount(0);
@@ -121,7 +122,7 @@ test.describe('Рахунки — стандарт кліку по рядку', 
     expect(inv, 'beforeAll має створити рахунок').toBeTruthy();
     const row = await gotoInvoices(page, true);
 
-    await row.getByText(inv!.number).first().click();
+    await rowBodyCell(row).click();
     await panelOpenBtn(page).click();
 
     const card = dialogs(page).first();
@@ -148,7 +149,7 @@ test.describe('Рахунки — стандарт кліку по рядку', 
     expect(inv, 'beforeAll має створити рахунок').toBeTruthy();
     const row = await gotoInvoices(page, false);
 
-    await row.getByText(inv!.number).first().click();
+    await rowBodyCell(row).click();
 
     const card = dialogs(page).first();
     await expect(card).toBeVisible({ timeout: 10_000 });
@@ -291,7 +292,7 @@ test.describe('Складський документ, позначений на 
     const row = page.locator(`table tbody tr:has-text("${doc!.number}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
 
-    await row.locator('td').nth(1).click();
+    await rowBodyCell(row).click();
     await page.getByText('Відкрити документ', { exact: true }).click();
 
     const card = dialogs(page).first();

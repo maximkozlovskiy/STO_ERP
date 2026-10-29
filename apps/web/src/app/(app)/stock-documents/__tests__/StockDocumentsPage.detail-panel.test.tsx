@@ -14,13 +14,13 @@
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { urlStore } from '@/__tests__/url-store';
 import type { StockDoc } from '@/hooks/api/useStockDocuments';
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(''),
-  usePathname: () => '/stock-documents',
-}));
+// Картка — в адресі (`?open=<id>`): адреса мусить реагувати на push / replace / back.
+vi.mock('next/navigation', async () =>
+  (await import('@/__tests__/url-store')).navigationMock('/stock-documents'),
+);
 vi.mock('@/lib/auth', () => ({
   useRequireAuth: () => ({ employee: { id: 'e1', role: 'OWNER' } }),
   useAuth: () => ({ employee: { id: 'e1', role: 'OWNER' } }),
@@ -32,7 +32,7 @@ vi.mock('@/lib/api-client', () => ({
 }));
 
 const DOC: StockDoc = {
-  id: 'doc-1',
+  id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
   orgId: 'org-1',
   number: 'СП-0001',
   type: 'WRITEOFF',
@@ -52,7 +52,12 @@ const DOC: StockDoc = {
   updatedAt: '2026-10-13T08:00:00.000Z',
   deletedAt: null,
 };
-const DOC_2: StockDoc = { ...DOC, id: 'doc-2', number: 'СП-0002', notes: null };
+const DOC_2: StockDoc = {
+  ...DOC,
+  id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+  number: 'СП-0002',
+  notes: null,
+};
 // Що зараз віддає список: тест «рядок зник зі списку» міняє сторінку / фільтр через цю змінну.
 let listItems: StockDoc[] = [DOC, DOC_2];
 
@@ -102,6 +107,7 @@ const summaryCalls = () =>
 
 describe('Складські документи — бокова панель', () => {
   beforeEach(() => {
+    urlStore.reset();
     localStorage.clear();
     listItems = [DOC, DOC_2];
     apiFetchMock.mockReset();
@@ -114,7 +120,8 @@ describe('Складські документи — бокова панель', 
           executors: [],
         });
       }
-      if (path === '/stock-documents/doc-1') return Promise.resolve({ ...DOC });
+      if (path === '/stock-documents/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee')
+        return Promise.resolve({ ...DOC });
       return Promise.resolve({});
     });
   });
@@ -130,7 +137,9 @@ describe('Складські документи — бокова панель', 
     expect(await within(summary).findByTestId('lines-summary-goods')).toHaveTextContent(
       '2 найменування · 7,5 од. · 3 рядки',
     );
-    expect(summaryCalls()).toEqual(['/stock-documents/doc-1/lines-summary']);
+    expect(summaryCalls()).toEqual([
+      '/stock-documents/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee/lines-summary',
+    ]);
     expect(screen.queryByTestId('edit-card')).not.toBeInTheDocument();
     expect(row('СП-0001')).toHaveClass('bg-primary/5');
     expect(row('СП-0002')).not.toHaveClass('bg-primary/5');
@@ -165,8 +174,8 @@ describe('Складські документи — бокова панель', 
     fireEvent.click(row('СП-0002'));
     await waitFor(() =>
       expect(summaryCalls()).toEqual([
-        '/stock-documents/doc-1/lines-summary',
-        '/stock-documents/doc-2/lines-summary',
+        '/stock-documents/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee/lines-summary',
+        '/stock-documents/ffffffff-ffff-4fff-8fff-ffffffffffff/lines-summary',
       ]),
     );
     expect(row('СП-0002')).toHaveClass('bg-primary/5');
@@ -185,7 +194,9 @@ describe('Складські документи — бокова панель', 
 
     // Та сама назва в олівця рядка (title) — беремо кнопку з текстом, вона в панелі.
     fireEvent.click(screen.getByText('Відкрити документ'));
-    expect(screen.getByTestId('edit-card')).toHaveTextContent('doc-1');
+    expect(screen.getByTestId('edit-card')).toHaveTextContent(
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    );
   });
 
   it('панель вимкнена: клік по рядку відкриває картку, панель і зведення не з’являються', async () => {
@@ -198,7 +209,9 @@ describe('Складські документи — бокова панель', 
 
     fireEvent.click(row('СП-0001'));
 
-    expect(screen.getByTestId('edit-card')).toHaveTextContent('doc-1');
+    expect(screen.getByTestId('edit-card')).toHaveTextContent(
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    );
     expect(screen.queryByTestId('lines-summary')).not.toBeInTheDocument();
     expect(summaryCalls()).toEqual([]);
   });
@@ -214,10 +227,14 @@ describe('Складські документи — бокова панель', 
 
     fireEvent.click(within(row('СП-0001')).getByTitle('Відкрити документ'));
 
-    expect(screen.getByTestId('edit-card')).toHaveTextContent('doc-1');
+    expect(screen.getByTestId('edit-card')).toHaveTextContent(
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    );
     // Окремого вікна перегляду більше немає: олівець не вантажить документ сам і не вибирає рядок.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(apiFetchMock.mock.calls.map(c => c[0])).not.toContain('/stock-documents/doc-1');
+    expect(apiFetchMock.mock.calls.map(c => c[0])).not.toContain(
+      '/stock-documents/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    );
     expect(screen.queryByTestId('lines-summary')).not.toBeInTheDocument();
     expect(row('СП-0001')).not.toHaveClass('bg-primary/5');
   });
@@ -229,7 +246,9 @@ describe('Складські документи — бокова панель', 
 
     fireEvent.click(within(row('СП-0001')).getByTitle('Відкрити документ'));
 
-    expect(screen.getByTestId('edit-card')).toHaveTextContent('doc-1');
+    expect(screen.getByTestId('edit-card')).toHaveTextContent(
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    );
   });
 
   it('вимкнули панель тоглом → вибір скинуто: після вмикання клік по тому ж рядку ВІДКРИВАЄ панель', async () => {

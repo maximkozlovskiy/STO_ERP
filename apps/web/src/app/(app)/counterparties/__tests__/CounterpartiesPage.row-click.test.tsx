@@ -4,17 +4,17 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { urlStore } from '@/__tests__/url-store';
 import {
   itFollowsRowClickStandard,
   tableRow,
   panelShows,
 } from '../../../../__tests__/row-click-standard';
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(''),
-  usePathname: () => '/counterparties',
-}));
+// Картка — в адресі (`?open=<id>`): адреса мусить реагувати на push / replace / back.
+vi.mock('next/navigation', async () =>
+  (await import('@/__tests__/url-store')).navigationMock('/counterparties'),
+);
 vi.mock('@/lib/auth', () => ({
   useRequireAuth: () => ({ employee: { id: 'e1', role: 'OWNER' } }),
   useAuth: () => ({ employee: { id: 'e1', role: 'OWNER' } }),
@@ -43,7 +43,7 @@ vi.mock('@/components/ui/CounterpartyEditModal', () => ({
 }));
 
 const CP_A = {
-  id: 'cp-a',
+  id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   orgId: 'org-1',
   type: 'CLIENT',
   companyName: 'ТОВ Перший',
@@ -57,7 +57,7 @@ const CP_A = {
   updatedAt: '2026-10-13T08:00:00.000Z',
   deletedAt: null as string | null,
 };
-const CP_B = { ...CP_A, id: 'cp-b', companyName: 'ТОВ Другий' };
+const CP_B = { ...CP_A, id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', companyName: 'ТОВ Другий' };
 let listItems = [CP_A, CP_B];
 
 import CounterpartiesPage from '../page';
@@ -75,6 +75,7 @@ const card = () => screen.queryByTestId('edit-card');
 
 describe('Контрагенти — стандарт кліку по рядку', () => {
   beforeEach(() => {
+    urlStore.reset();
     localStorage.clear();
     listItems = [CP_A, CP_B];
     apiFetchMock.mockReset();
@@ -94,7 +95,7 @@ describe('Контрагенти — стандарт кліку по рядку
     panelTitle: 'ТОВ Перший',
     pencil: row => within(row).getByTitle('Редагувати'),
     panelButton: 'Відкрити картку',
-    isCardOpen: () => card()?.textContent === 'cp-a',
+    isCardOpen: () => card()?.textContent === 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   });
 
   it('чекбокс рядка рядок не вибирає і картку не відкриває', async () => {

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { rowBodyCell } from './row-click';
 import { API } from './api-url';
 import { clearDateFilter } from './fixtures';
 
@@ -324,7 +325,7 @@ test.describe('Складські документи — Detail Panel', () => {
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.locator('td').nth(1).click();
+    await rowBodyCell(row).click();
     const summary = page.getByTestId('lines-summary');
     await expect(summary).toBeVisible({ timeout: 8_000 });
     // Вміст вкладки панелі: поля шапки + зведення + кнопка «Відкрити документ».
@@ -362,7 +363,7 @@ test.describe('Складські документи — Detail Panel', () => {
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: 'Показати бокову панель' })).toBeVisible();
-    await row.locator('td').nth(1).click();
+    await rowBodyCell(row).click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
     await expect(modal).toContainText(docNumber);

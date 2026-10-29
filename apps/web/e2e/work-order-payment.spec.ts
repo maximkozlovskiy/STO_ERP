@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { rowBodyCell } from './row-click';
 import { apiCall } from './api-helpers';
 import { ensureVehicleModel } from './vehicle-directory';
 
@@ -345,7 +346,7 @@ test.describe('Оплата наряду з документа наряду', ()
     await page.locator('input[placeholder*="Пошук"]').first().fill(created.body.number);
     const row = page.locator(`table tbody tr:has-text("${created.body.number}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.getByText(created.body.number).first().click();
+    await rowBodyCell(row).click();
     await page.getByRole('button', { name: 'Оплатити' }).first().click();
     const dialog = page.getByRole('dialog', {
       name: `Реєстрація оплати по рахунку ${created.body.number}`,

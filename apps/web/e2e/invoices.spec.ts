@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { rowBodyCell } from './row-click';
 import { API } from './api-url';
 import { clearDateFilter } from './fixtures';
 import {
@@ -448,7 +449,7 @@ test.describe('Рахунки — реєстрація оплати', () => {
     await expect(row).toBeVisible({ timeout: 15_000 });
     // Кнопка "Оплатити" живе у боковій панелі; панель показує клік по рядку
     // (стандарт списків 2026-10-13: клік → панель, олівець → картка).
-    await row.getByText(invNumber).first().click();
+    await rowBodyCell(row).click();
 
     const payBtn = page.locator('button:has-text("Оплатити")').first();
     await expect(payBtn).toBeVisible({ timeout: 8_000 });
@@ -524,7 +525,7 @@ test.describe('Рахунки — клонування', () => {
     await expect(row).toBeVisible({ timeout: 15_000 });
     // Кнопка "Дублювати" живе у боковій панелі; панель показує клік по рядку
     // (стандарт списків 2026-10-13: клік → панель, олівець → картка).
-    await row.getByText(invNumber).first().click();
+    await rowBodyCell(row).click();
 
     const cloneBtn = page.locator('button:has-text("Дублювати")').first();
     await expect(cloneBtn).toBeVisible({ timeout: 8_000 });
@@ -767,7 +768,7 @@ test.describe('Рахунки — PDF', () => {
     await expect(row).toBeVisible({ timeout: 15_000 });
     // Кнопка "Завантажити PDF" живе у боковій панелі; панель показує клік по рядку
     // (стандарт списків 2026-10-13: клік → панель, олівець → картка).
-    await row.getByText(invNumber).first().click();
+    await rowBodyCell(row).click();
 
     const pdfBtn = page.locator('button:has-text("Завантажити PDF")').first();
     await expect(pdfBtn).toBeVisible({ timeout: 8_000 });

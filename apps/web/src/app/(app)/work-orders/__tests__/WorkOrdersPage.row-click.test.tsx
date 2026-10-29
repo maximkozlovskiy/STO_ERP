@@ -4,17 +4,17 @@
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { urlStore } from '@/__tests__/url-store';
 import {
   itFollowsRowClickStandard,
   tableRow,
   panelShows,
 } from '../../../../__tests__/row-click-standard';
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(''),
-  usePathname: () => '/work-orders',
-}));
+// Картка — в адресі (`?open=<id>`): адреса мусить реагувати на push / replace / back.
+vi.mock('next/navigation', async () =>
+  (await import('@/__tests__/url-store')).navigationMock('/work-orders'),
+);
 vi.mock('@/lib/auth', () => ({
   useRequireAuth: () => ({ employee: { id: 'e1', role: 'OWNER' } }),
   useAuth: () => ({ employee: { id: 'e1', role: 'OWNER' } }),
@@ -37,7 +37,7 @@ vi.mock('@/hooks/api/useCash', () => ({
 vi.mock('@/components/ui/date-picker-input', () => ({ DatePickerInput: () => null }));
 
 const WO_A = {
-  id: 'wo-a',
+  id: '11111111-1111-4111-8111-111111111111',
   orgId: 'org-1',
   number: 'НЗ-0001',
   status: 'DRAFT',
@@ -59,7 +59,12 @@ const WO_A = {
   updatedAt: '2026-10-13T08:00:00.000Z',
   deletedAt: null as string | null,
 };
-const WO_B = { ...WO_A, id: 'wo-b', number: 'НЗ-0002', counterpartyName: 'Клієнт Другий' };
+const WO_B = {
+  ...WO_A,
+  id: '22222222-2222-4222-8222-222222222222',
+  number: 'НЗ-0002',
+  counterpartyName: 'Клієнт Другий',
+};
 let listItems = [WO_A, WO_B];
 
 import WorkOrdersPage from '../page';
@@ -77,6 +82,7 @@ const card = () => screen.queryByTestId('edit-card');
 
 describe('Наряди — стандарт кліку по рядку', () => {
   beforeEach(() => {
+    urlStore.reset();
     localStorage.clear();
     listItems = [WO_A, WO_B];
     apiFetchMock.mockReset();
@@ -96,7 +102,7 @@ describe('Наряди — стандарт кліку по рядку', () => {
     panelTitle: 'НЗ-0001',
     pencil: row => within(row).getByTitle('Відкрити наряд'),
     panelButton: 'Відкрити наряд',
-    isCardOpen: () => card()?.textContent === 'wo-a',
+    isCardOpen: () => card()?.textContent === '11111111-1111-4111-8111-111111111111',
   });
 
   it('чекбокс рядка рядок не вибирає і наряд не відкриває', async () => {
@@ -116,6 +122,6 @@ describe('Наряди — стандарт кліку по рядку', () => {
 
     fireEvent.click(within(tableRow('НЗ-0001')).getByTitle('Відкрити наряд'));
 
-    expect(card()).toHaveTextContent('wo-a');
+    expect(card()).toHaveTextContent('11111111-1111-4111-8111-111111111111');
   });
 });

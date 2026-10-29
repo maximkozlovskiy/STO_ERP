@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { rowBodyCell } from './row-click';
 import { API } from './api-url';
 import { clearDateFilter } from './fixtures';
 
@@ -128,15 +129,15 @@ test.describe('Наряди — картка', () => {
     const firstRow = await gotoWorkOrders(page, true);
     await expect(page.getByRole('button', { name: 'Сховати бокову панель' })).toBeVisible();
 
-    await firstRow.locator('td').nth(1).click();
+    await rowBodyCell(firstRow).click();
     await expect(panelOpenBtn(page)).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('[role="dialog"]')).toHaveCount(0);
     await expect(page).toHaveURL(/\/work-orders\/?(\?.*)?$/);
 
-    await firstRow.locator('td').nth(1).click();
+    await rowBodyCell(firstRow).click();
     await expect(panelOpenBtn(page)).toHaveCount(0, { timeout: 5_000 });
 
-    await firstRow.locator('td').nth(1).click();
+    await rowBodyCell(firstRow).click();
     await panelOpenBtn(page).click();
     await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 15_000 });
   });
@@ -155,7 +156,7 @@ test.describe('Наряди — картка', () => {
     const firstRow = await gotoWorkOrders(page, false);
     await expect(page.getByRole('button', { name: 'Показати бокову панель' })).toBeVisible();
 
-    await firstRow.locator('td').nth(1).click();
+    await rowBodyCell(firstRow).click();
 
     await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 15_000 });
     await expect(panelOpenBtn(page)).toHaveCount(0);

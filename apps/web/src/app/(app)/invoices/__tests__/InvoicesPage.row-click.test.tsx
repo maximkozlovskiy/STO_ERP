@@ -4,17 +4,17 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { urlStore } from '@/__tests__/url-store';
 import {
   itFollowsRowClickStandard,
   tableRow,
   panelShows,
 } from '../../../../__tests__/row-click-standard';
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(''),
-  usePathname: () => '/invoices',
-}));
+// Картка — в адресі (`?open=<id>`): адреса мусить реагувати на push / replace / back.
+vi.mock('next/navigation', async () =>
+  (await import('@/__tests__/url-store')).navigationMock('/invoices'),
+);
 vi.mock('@/lib/auth', () => ({
   useRequireAuth: () => ({ employee: { id: 'e1', role: 'OWNER' } }),
   useAuth: () => ({ employee: { id: 'e1', role: 'OWNER' } }),
@@ -28,7 +28,7 @@ vi.mock('@/lib/api-client', () => ({
 vi.mock('@/lib/ref-cache', () => ({ getCached: () => null, setCache: vi.fn() }));
 
 const INV_A = {
-  id: 'inv-a',
+  id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
   orgId: 'org-1',
   number: 'РАХ-0001',
   status: 'DRAFT',
@@ -45,7 +45,12 @@ const INV_A = {
   updatedAt: '2026-10-13T08:00:00.000Z',
   deletedAt: null as string | null,
 };
-const INV_B = { ...INV_A, id: 'inv-b', number: 'РАХ-0002', counterpartyName: 'Клієнт Другий' };
+const INV_B = {
+  ...INV_A,
+  id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  number: 'РАХ-0002',
+  counterpartyName: 'Клієнт Другий',
+};
 let listItems = [INV_A, INV_B];
 
 vi.mock('@/hooks/api/useInvoices', async importOriginal => {
@@ -88,12 +93,15 @@ const card = () => screen.queryByTestId('edit-card');
 
 describe('Рахунки — стандарт кліку по рядку', () => {
   beforeEach(() => {
+    urlStore.reset();
     localStorage.clear();
     listItems = [INV_A, INV_B];
     apiFetchMock.mockReset();
     apiFetchMock.mockImplementation((path: string) => {
-      if (path === '/invoices/inv-a') return Promise.resolve({ ...INV_A, lines: [] });
-      if (path === '/invoices/inv-b') return Promise.resolve({ ...INV_B, lines: [] });
+      if (path === '/invoices/cccccccc-cccc-4ccc-8ccc-cccccccccccc')
+        return Promise.resolve({ ...INV_A, lines: [] });
+      if (path === '/invoices/dddddddd-dddd-4ddd-8ddd-dddddddddddd')
+        return Promise.resolve({ ...INV_B, lines: [] });
       if (path.endsWith('/lines-summary')) return Promise.resolve({ tables: [], executors: [] });
       return Promise.resolve({});
     });
@@ -106,7 +114,7 @@ describe('Рахунки — стандарт кліку по рядку', () =>
     panelTitle: 'РАХ-0001',
     pencil: row => within(row).getByTitle('Відкрити документ'),
     panelButton: 'Відкрити документ',
-    isCardOpen: () => card()?.textContent === 'inv-a',
+    isCardOpen: () => card()?.textContent === 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
   });
 
   it('чекбокс рядка і колонка «Документи» рядок не вибирають і картку не відкривають', async () => {
@@ -128,11 +136,13 @@ describe('Рахунки — стандарт кліку по рядку', () =>
     fireEvent.click(tableRow('РАХ-0001'));
     await waitFor(() => expect(panelShows('РАХ-0001')).toBe(true));
     await waitFor(() =>
-      expect(apiFetchMock).toHaveBeenCalledWith('/invoices/inv-a?withDeleted=true'),
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/invoices/cccccccc-cccc-4ccc-8ccc-cccccccccccc?withDeleted=true',
+      ),
     );
 
     fireEvent.click(within(tableRow('РАХ-0001')).getByTitle('Відкрити документ'));
-    expect(card()).toHaveTextContent('inv-a');
+    expect(card()).toHaveTextContent('cccccccc-cccc-4ccc-8ccc-cccccccccccc');
   });
 
   // BR-WO-012: панель видаленого рахунку — лише перегляд. Сервер на переходи, PDF і дублювання
@@ -158,7 +168,7 @@ describe('Рахунки — стандарт кліку по рядку', () =>
     const deleted = { ...INV_A, deletedAt: '2026-10-13T09:00:00.000Z' };
     listItems = [deleted, INV_B];
     apiFetchMock.mockImplementation((path: string) => {
-      if (path === '/invoices/inv-a?withDeleted=true') {
+      if (path === '/invoices/cccccccc-cccc-4ccc-8ccc-cccccccccccc?withDeleted=true') {
         return Promise.resolve({ ...deleted, lines: [] });
       }
       if (path.endsWith('/lines-summary')) return Promise.resolve({ tables: [], executors: [] });
@@ -170,7 +180,9 @@ describe('Рахунки — стандарт кліку по рядку', () =>
     fireEvent.click(tableRow('РАХ-0001'));
     await waitFor(() => expect(panelShows('РАХ-0001')).toBe(true));
     await waitFor(() =>
-      expect(apiFetchMock).toHaveBeenCalledWith('/invoices/inv-a?withDeleted=true'),
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/invoices/cccccccc-cccc-4ccc-8ccc-cccccccccccc?withDeleted=true',
+      ),
     );
 
     await waitFor(() => expect(panelActions()).toEqual(['Друк', 'Відкрити документ']));

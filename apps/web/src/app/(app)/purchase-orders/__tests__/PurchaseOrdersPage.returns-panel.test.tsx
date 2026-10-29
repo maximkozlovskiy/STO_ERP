@@ -16,19 +16,14 @@
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { urlStore } from '@/__tests__/url-store';
 import type { SupplierReturn } from '@/hooks/api/useSupplierReturns';
 import type { PurchaseOrder } from '@/hooks/api/usePurchaseOrders';
 
-// Рядок запиту сторінки — змінний: вкладку перемикає router.replace('?tab=…').
-let search = 'tab=returns';
-const replaceMock = vi.fn((url: string) => {
-  search = url.replace(/^\?/, '');
-});
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: replaceMock, push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(search),
-  usePathname: () => '/purchase-orders',
-}));
+// Адреса реактивна: вкладку перемикає router.replace('?tab=…'), картку замовлення — `?open=<id>`.
+vi.mock('next/navigation', async () =>
+  (await import('@/__tests__/url-store')).navigationMock('/purchase-orders'),
+);
 vi.mock('@/lib/auth', () => ({
   useRequireAuth: () => ({ employee: { id: 'e1', role: 'OWNER' } }),
   useAuth: () => ({ employee: { id: 'e1', role: 'OWNER' } }),
@@ -64,7 +59,7 @@ const SR_2: SupplierReturn = { ...SR, id: 'sr-2', number: 'ПП-0002', notes: nu
 let srListItems: SupplierReturn[] = [SR, SR_2];
 
 const PO: PurchaseOrder = {
-  id: 'po-1',
+  id: '99999999-9999-4999-8999-999999999999',
   orgId: 'org-1',
   number: 'ЗП-0001',
   status: 'DRAFT',
@@ -149,10 +144,9 @@ const summaryCalls = () =>
 describe('Закупівлі — бокова панель повернень і зведення', () => {
   beforeEach(() => {
     localStorage.clear();
-    search = 'tab=returns';
+    urlStore.reset('tab=returns');
     srListItems = [SR, SR_2];
     poListItems = [PO];
-    replaceMock.mockClear();
     apiFetchMock.mockReset();
     apiFetchMock.mockImplementation((path: string) => {
       if (path.endsWith('/lines-summary')) {
@@ -161,7 +155,8 @@ describe('Закупівлі — бокова панель повернень і
           executors: [],
         });
       }
-      if (path === '/purchase-orders/po-1') return Promise.resolve({ ...PO });
+      if (path === '/purchase-orders/99999999-9999-4999-8999-999999999999')
+        return Promise.resolve({ ...PO });
       return Promise.resolve({});
     });
   });
@@ -261,7 +256,7 @@ describe('Закупівлі — бокова панель повернень і
   });
 
   it('замовлення: панель показує зведення з /purchase-orders/:id/lines-summary', async () => {
-    search = 'tab=orders';
+    urlStore.reset('tab=orders');
     renderPage();
     await screen.findByText('ЗП-0001');
 
@@ -271,7 +266,9 @@ describe('Закупівлі — бокова панель повернень і
     expect(await within(summary).findByTestId('lines-summary-goods')).toHaveTextContent(
       '2 найменування · 5 од.',
     );
-    expect(summaryCalls()).toEqual(['/purchase-orders/po-1/lines-summary']);
+    expect(summaryCalls()).toEqual([
+      '/purchase-orders/99999999-9999-4999-8999-999999999999/lines-summary',
+    ]);
     expect(screen.queryByTestId('po-card')).not.toBeInTheDocument();
     // Зведення — нижче полів шапки, вище кнопки «Відкрити замовлення».
     const open = screen.getByRole('button', { name: 'Відкрити замовлення' });
@@ -281,10 +278,10 @@ describe('Закупівлі — бокова панель повернень і
   // TECH-DEBT §8 (клас Bug #811, BR-WO-007): рядок без `amount` — сума округлена до копійки, як
   // її пише сервер. Мутація: сирий `line.quantity * line.price` у page.tsx → «30,01», кейс падає.
   it('замовлення: вкладка «Позиції» — рядок без amount, 0,3 × 100,05 = 30,02', async () => {
-    search = 'tab=orders';
+    urlStore.reset('tab=orders');
     const base = apiFetchMock.getMockImplementation()!;
     apiFetchMock.mockImplementation((path: string, ...rest: unknown[]) => {
-      if (path === '/purchase-orders/po-1') {
+      if (path === '/purchase-orders/99999999-9999-4999-8999-999999999999') {
         return Promise.resolve({
           ...PO,
           lines: [
@@ -316,7 +313,7 @@ describe('Закупівлі — бокова панель повернень і
     await screen.findByTestId('lines-summary');
 
     fireEvent.click(screen.getByRole('button', { name: 'Замовлення постачальникам' }));
-    expect(search).toContain('tab=orders');
+    expect(urlStore.search).toContain('tab=orders');
     rerenderPage();
     await screen.findByText('ЗП-0001');
     expect(screen.queryByTestId('lines-summary')).not.toBeInTheDocument();
@@ -367,7 +364,7 @@ describe('Закупівлі — бокова панель повернень і
   const poPanelOpen = () => screen.queryByRole('button', { name: 'Відкрити замовлення' }) !== null;
 
   it('замовлення, панель увімкнена: клік показує панель, повторний клік ховає; картка не відкривається', async () => {
-    search = 'tab=orders';
+    urlStore.reset('tab=orders');
     renderPage();
     await screen.findByText('ЗП-0001');
 
@@ -381,7 +378,7 @@ describe('Закупівлі — бокова панель повернень і
   });
 
   it('замовлення, панель вимкнена: клік по рядку відкриває картку', async () => {
-    search = 'tab=orders';
+    urlStore.reset('tab=orders');
     localStorage.setItem(PO_PANEL_KEY, 'false');
     renderPage();
     await screen.findByText('ЗП-0001');
@@ -389,24 +386,28 @@ describe('Закупівлі — бокова панель повернень і
 
     fireEvent.click(row('ЗП-0001'));
 
-    expect(await screen.findByTestId('po-card')).toHaveTextContent('po-1');
+    expect(await screen.findByTestId('po-card')).toHaveTextContent(
+      '99999999-9999-4999-8999-999999999999',
+    );
     expect(poPanelOpen()).toBe(false);
   });
 
   it('замовлення: олівець відкриває картку і рядок не вибирає; так само для позначеного на видалення', async () => {
-    search = 'tab=orders';
+    urlStore.reset('tab=orders');
     poListItems = [{ ...PO, deletedAt: '2026-10-13T09:00:00.000Z' }];
     renderPage();
     await screen.findByText('ЗП-0001');
 
     fireEvent.click(within(row('ЗП-0001')).getByTitle('Редагувати'));
 
-    expect(await screen.findByTestId('po-card')).toHaveTextContent('po-1');
+    expect(await screen.findByTestId('po-card')).toHaveTextContent(
+      '99999999-9999-4999-8999-999999999999',
+    );
     expect(poPanelOpen()).toBe(false);
   });
 
   it('замовлення зникло зі списку (сторінка / фільтр) → панель закрита й сама не відкривається', async () => {
-    search = 'tab=orders';
+    urlStore.reset('tab=orders');
     const { rerenderPage } = renderPage();
     await screen.findByText('ЗП-0001');
     fireEvent.click(row('ЗП-0001'));

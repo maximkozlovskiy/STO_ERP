@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { rowBodyCell } from './row-click';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 
@@ -121,14 +122,14 @@ test.describe('CRM — картка контрагента', () => {
   }) => {
     const firstRow = await gotoList(page, true);
 
-    await firstRow.locator('td').nth(1).click();
+    await rowBodyCell(firstRow).click();
     // Панель показує рядок: кнопка «Відкрити картку» і поле «Баланс» зі схеми панелі.
     await expect(openCardBtn(page)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Баланс', { exact: true }).first()).toBeVisible();
     await expect(page.locator('[role="dialog"]')).toHaveCount(0);
     await expect(page).toHaveURL(/\/counterparties\/?(\?.*)?$/);
 
-    await firstRow.locator('td').nth(1).click();
+    await rowBodyCell(firstRow).click();
     await expect(openCardBtn(page)).toHaveCount(0, { timeout: 5_000 });
     await expect(page.locator('[role="dialog"]')).toHaveCount(0);
   });
@@ -145,7 +146,7 @@ test.describe('CRM — картка контрагента', () => {
     await expect(page.locator('[role="dialog"]')).toHaveCount(0, { timeout: 5_000 });
 
     // Кнопка панелі: клік по рядку → панель → «Відкрити картку».
-    await firstRow.locator('td').nth(1).click();
+    await rowBodyCell(firstRow).click();
     await openCardBtn(page).click();
     await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 10_000 });
   });
@@ -153,7 +154,7 @@ test.describe('CRM — картка контрагента', () => {
   test('панель вимкнена: клік по рядку одразу відкриває картку', async ({ page }) => {
     const firstRow = await gotoList(page, false);
 
-    await firstRow.locator('td').nth(1).click();
+    await rowBodyCell(firstRow).click();
 
     await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 10_000 });
     await expect(openCardBtn(page)).toHaveCount(0);

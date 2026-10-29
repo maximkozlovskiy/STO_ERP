@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { rowBodyCell } from './row-click';
 import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
@@ -132,7 +133,7 @@ test.describe('Документи складу — TRANSFER (Переміщен�
     // могла мовчки не виконатись. Документ створено сьогодні — типовий фільтр дат його показує.
     try {
       await expect(row).toBeVisible({ timeout: 15_000 });
-      await row.locator('td').nth(1).click();
+      await rowBodyCell(row).click();
       // Панель вимкнена → клік по рядку відкриває картку, у якій для TRANSFER показується
       // лейбл "Склад призначення" (без дефіса) + Select зі складами.
       const modal = page.locator('[role="dialog"]').first();

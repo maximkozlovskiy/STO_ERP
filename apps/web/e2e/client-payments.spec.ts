@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { rowBodyCell } from './row-click';
 import {
   API,
   apiCall,
@@ -114,7 +115,7 @@ async function openInvoicePayModal(page: Page, invoiceNumber: string) {
   const row = page.locator(`table tbody tr:has-text("${invoiceNumber}")`).first();
   await expect(row).toBeVisible({ timeout: 15_000 });
   // «Оплатити» живе у боковій панелі; панель показує клік по рядку.
-  await row.getByText(invoiceNumber).first().click();
+  await rowBodyCell(row).click();
   const payBtn = page.getByRole('button', { name: 'Оплатити' }).first();
   await expect(payBtn).toBeVisible({ timeout: 15_000 });
   await payBtn.click();
