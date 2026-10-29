@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { clickRowMenuItem } from './row-click';
 import { API } from './api-url';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
@@ -122,7 +123,7 @@ test.describe('Банківські платежі — вихідні', () => {
     await expect(row).toContainText('Рознесено');
 
     // ── Скасування рознесення: без причини кнопка вимкнена ──
-    await row.getByRole('button', { name: 'Зняти рознесення' }).click();
+    await clickRowMenuItem(page, row, 'Зняти рознесення');
     const undoDialog = page.getByRole('dialog');
     const undoSubmit = undoDialog.getByRole('button', { name: 'Зняти рознесення' });
     await expect(undoSubmit).toBeDisabled();

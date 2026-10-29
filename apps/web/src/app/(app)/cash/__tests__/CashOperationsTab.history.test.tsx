@@ -16,6 +16,7 @@
 
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { rowMenuItemNames } from '@/__tests__/row-menu';
 import type { CashOperation } from '@/hooks/api/useCash';
 
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
@@ -137,12 +138,9 @@ describe('CashOperationsTab — історія операцій', () => {
     expect(within(rowOf('Петренко Іван')).getByText(/Під звіт/)).toBeInTheDocument();
     const plain = rowOf('Інкасація · інкасація ранкова');
     expect(within(plain).getAllByText('—')).toHaveLength(2);
-    // Без підстави — жодного посилання на документ; лишається тільки дія «Сторнувати».
-    expect(
-      within(plain)
-        .getAllByRole('button')
-        .map(b => b.textContent),
-    ).toEqual(['Сторнувати']);
+    // Без підстави — жодного посилання на документ; лишається тільки меню «⋯» з дією «Сторнувати».
+    expect(within(plain).getAllByRole('button')).toHaveLength(1);
+    expect(rowMenuItemNames(plain)).toEqual(['Сторнувати']);
   });
 
   it('підстава-наряд відкриває картку наряду, підстава-замовлення — картку замовлення', () => {

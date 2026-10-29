@@ -21,6 +21,7 @@
 
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { ROW_MENU_LABEL, rowMenuItem } from '@/__tests__/row-menu';
 import type { CashOperation } from '@/hooks/api/useCash';
 
 vi.mock('@/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -103,7 +104,8 @@ const REVERSAL = op({
 });
 
 const rowById = (id: string) => document.getElementById(`cash-op-${id}`) as HTMLElement;
-const reverseButtons = () => screen.queryAllByRole('button', { name: 'Сторнувати' });
+// Сторно — у меню «⋯» рядка (UX-огляд 2026-10-29); у касі інших дій у меню немає.
+const reverseButtons = () => screen.queryAllByRole('button', { name: ROW_MENU_LABEL });
 
 describe('CashOperationsTab — дія «Сторнувати»', () => {
   beforeEach(() => {
@@ -113,7 +115,7 @@ describe('CashOperationsTab — дія «Сторнувати»', () => {
   it('власник / адміністратор / бухгалтер: кнопка в рядку звичайної операції', () => {
     operations = [op({ id: 'plain' })];
     render(<CashOperationsTab canOperate />);
-    expect(within(rowById('plain')).getByRole('button', { name: 'Сторнувати' })).toBeVisible();
+    expect(rowMenuItem(rowById('plain'), 'Сторнувати')).toBeVisible();
   });
 
   it('приймальня й роль без операцій: ні кнопки, ні колонки дій', () => {
@@ -131,8 +133,8 @@ describe('CashOperationsTab — дія «Сторнувати»', () => {
   it('вже сторнований рядок і сам рядок сторно — без кнопки', () => {
     operations = [ORIGINAL, REVERSAL, op({ id: 'plain' })];
     render(<CashOperationsTab canOperate />);
-    expect(within(rowById('orig')).queryByRole('button', { name: 'Сторнувати' })).toBeNull();
-    expect(within(rowById('rev')).queryByRole('button', { name: 'Сторнувати' })).toBeNull();
+    expect(rowMenuItem(rowById('orig'), 'Сторнувати')).toBeNull();
+    expect(rowMenuItem(rowById('rev'), 'Сторнувати')).toBeNull();
     expect(reverseButtons()).toHaveLength(1);
   });
 
@@ -148,9 +150,9 @@ describe('CashOperationsTab — дія «Сторнувати»', () => {
       }),
     ];
     render(<CashOperationsTab canOperate />);
-    expect(within(rowById('payroll')).queryByRole('button', { name: 'Сторнувати' })).toBeNull();
-    expect(within(rowById('bank')).queryByRole('button', { name: 'Сторнувати' })).toBeNull();
-    expect(within(rowById('supplier')).getByRole('button', { name: 'Сторнувати' })).toBeVisible();
+    expect(rowMenuItem(rowById('payroll'), 'Сторнувати')).toBeNull();
+    expect(rowMenuItem(rowById('bank'), 'Сторнувати')).toBeNull();
+    expect(rowMenuItem(rowById('supplier'), 'Сторнувати')).toBeVisible();
   });
 
   it('кнопка відкриває картку сторно саме цього рядка', () => {
@@ -159,7 +161,7 @@ describe('CashOperationsTab — дія «Сторнувати»', () => {
       op({ id: 'b', amount: 222, counterpartyName: 'Клієнт Б', reason: 'SALE_PAYMENT' }),
     ];
     render(<CashOperationsTab canOperate />);
-    fireEvent.click(within(rowById('b')).getByRole('button', { name: 'Сторнувати' }));
+    fireEvent.click(rowMenuItem(rowById('b'), 'Сторнувати')!);
     const summary = screen.getByRole('region', { name: 'Що сторнується' });
     expect(within(summary).getByText('222 ₴')).toBeInTheDocument();
     expect(within(summary).getByText('Клієнт Б')).toBeInTheDocument();

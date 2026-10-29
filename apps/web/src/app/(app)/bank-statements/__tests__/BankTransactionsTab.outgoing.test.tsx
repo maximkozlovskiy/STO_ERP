@@ -14,6 +14,7 @@
 
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { rowMenuItem } from '@/__tests__/row-menu';
 
 vi.mock('@/lib/format', () => ({
   fmtMoney: (v: number) => String(v),
@@ -289,7 +290,7 @@ describe('BankTransactionsTab — дії рядка за напрямом і с�
     matchedType => {
       show(tx({ id: 'm-1', status: 'MATCHED', matchedType }));
       render(<BankTransactionsTab />);
-      fireEvent.click(screen.getByRole('button', { name: 'Зняти рознесення' }));
+      fireEvent.click(rowMenuItem(document.body, 'Зняти рознесення')!);
       expect(screen.getByTestId('unreconcile')).toHaveTextContent('m-1');
       // Рознесений рядок не розносять і не ігнорують повторно.
       expect(screen.queryByRole('button', { name: 'Рознести' })).not.toBeInTheDocument();
@@ -300,26 +301,26 @@ describe('BankTransactionsTab — дії рядка за напрямом і с�
   it('MATCHED вхідний із TRANSFER (reconcile) теж можна зняти', () => {
     show(tx({ direction: 'IN', status: 'MATCHED', matchedType: 'TRANSFER' }));
     render(<BankTransactionsTab />);
-    expect(screen.getByRole('button', { name: 'Зняти рознесення' })).toBeInTheDocument();
+    expect(rowMenuItem(document.body, 'Зняти рознесення')!).toBeInTheDocument();
   });
 
   // BR-BANK-040: сторно оплати клієнта в системі немає.
   it('MATCHED з paymentId (вхідний через match): «Зняти рознесення» немає', () => {
     show(tx({ direction: 'IN', status: 'MATCHED', matchedType: 'PREPAYMENT', paymentId: 'p1' }));
     render(<BankTransactionsTab />);
-    expect(screen.queryByRole('button', { name: 'Зняти рознесення' })).not.toBeInTheDocument();
+    expect(rowMenuItem(document.body, 'Зняти рознесення')).not.toBeInTheDocument();
   });
 
   it('MATCHED із «вихідним» видом, але з paymentId — кнопки теж немає', () => {
     show(tx({ status: 'MATCHED', matchedType: 'EXPENSE', paymentId: 'p1' }));
     render(<BankTransactionsTab />);
-    expect(screen.queryByRole('button', { name: 'Зняти рознесення' })).not.toBeInTheDocument();
+    expect(rowMenuItem(document.body, 'Зняти рознесення')).not.toBeInTheDocument();
   });
 
   it('MATCHED вхідний без paymentId, але з видом match (сирота) — кнопки немає: бек відмовить', () => {
     show(tx({ direction: 'IN', status: 'MATCHED', matchedType: 'SERVICE', paymentId: null }));
     render(<BankTransactionsTab />);
-    expect(screen.queryByRole('button', { name: 'Зняти рознесення' })).not.toBeInTheDocument();
+    expect(rowMenuItem(document.body, 'Зняти рознесення')).not.toBeInTheDocument();
   });
 
   it('IGNORED: дій немає', () => {

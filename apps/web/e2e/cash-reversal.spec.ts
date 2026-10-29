@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { clickRowMenuItem, rowMenuButton } from './row-click';
 import {
   apiCall,
   createCounterparty,
@@ -68,7 +69,7 @@ async function selectRegister(page: Page, registerId: string) {
 async function reverseViaCard(page: Page, registerId: string, operationId: string, reason: string) {
   const row = page.locator(`#cash-op-${operationId}`);
   await expect(row).toBeVisible({ timeout: 15_000 });
-  await row.getByRole('button', { name: 'Сторнувати', exact: true }).click();
+  await clickRowMenuItem(page, row, 'Сторнувати');
 
   const dialog = page.getByRole('dialog', { name: 'Сторно касової операції', exact: true });
   await expect(dialog).toBeVisible({ timeout: 10_000 });
@@ -151,7 +152,7 @@ test.describe('Сторно касової операції', () => {
     const original = page.locator(`#cash-op-${op.id}`);
     await expect(original).toHaveAttribute('data-reversed', 'true', { timeout: 15_000 });
     await expect(original).toContainText(`Сторновано: ${reason}`);
-    await expect(original.getByRole('button', { name: 'Сторнувати', exact: true })).toHaveCount(0);
+    await expect(rowMenuButton(original)).toHaveCount(0);
 
     // Рядок сторно: «Сторно: <привід>», видача тієї самої суми, посилання на оригінал.
     const reversal = page.locator('tr[data-reversal="true"]').filter({ hasText: reason });
@@ -161,7 +162,7 @@ test.describe('Сторно касової операції', () => {
     await expect(
       reversal.getByRole('button', { name: /^Показати сторновану операцію/ }),
     ).toBeVisible();
-    await expect(reversal.getByRole('button', { name: 'Сторнувати', exact: true })).toHaveCount(0);
+    await expect(rowMenuButton(reversal)).toHaveCount(0);
   });
 
   test('повторне сторно неможливе: кнопки немає, сервер відмовляє', async ({ page }) => {
@@ -169,7 +170,7 @@ test.describe('Сторно касової операції', () => {
     await selectRegister(page, registerId);
     const original = page.locator(`#cash-op-${simpleOpId}`);
     await expect(original).toHaveAttribute('data-reversed', 'true', { timeout: 15_000 });
-    await expect(original.getByRole('button', { name: 'Сторнувати', exact: true })).toHaveCount(0);
+    await expect(rowMenuButton(original)).toHaveCount(0);
 
     const token = await getToken(page);
     const history = await apiCall<CashOp[]>(
@@ -260,7 +261,7 @@ test.describe('Сторно касової операції', () => {
     await selectRegister(page, registerId);
     const row = page.locator(`#cash-op-${payment.id}`);
     await expect(row).toContainText(clientName, { timeout: 15_000 });
-    await row.getByRole('button', { name: 'Сторнувати', exact: true }).click();
+    await clickRowMenuItem(page, row, 'Сторнувати');
     const dialog = page.getByRole('dialog', { name: 'Сторно касової операції', exact: true });
     await expect(dialog.getByRole('note')).toContainText('Борг контрагента');
     await dialog.getByRole('button', { name: 'Скасувати', exact: true }).click();

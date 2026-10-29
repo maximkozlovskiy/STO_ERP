@@ -14,6 +14,7 @@
 
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { rowMenuItem } from '@/__tests__/row-menu';
 
 vi.mock('@/lib/format', () => ({
   fmtMoney: (v: number) => String(v),
@@ -113,8 +114,8 @@ describe('BankTransactionsTab — «Сторнувати оплату» (BR-PAY-
     show(tx());
     render(<BankTransactionsTab />);
     const row = dataRow(0);
-    expect(within(row).getByRole('button', { name: REVERSE })).toBeVisible();
-    expect(within(row).queryByRole('button', { name: 'Зняти рознесення' })).toBeNull();
+    expect(rowMenuItem(row, REVERSE)!).toBeVisible();
+    expect(rowMenuItem(row, 'Зняти рознесення')).toBeNull();
   });
 
   // guards: BR-PAY-024
@@ -128,7 +129,7 @@ describe('BankTransactionsTab — «Сторнувати оплату» (BR-PAY-
   ])('%s — кнопки немає', (_n, over) => {
     show(tx(over));
     render(<BankTransactionsTab />);
-    expect(within(dataRow(0)).queryByRole('button', { name: REVERSE })).toBeNull();
+    expect(rowMenuItem(dataRow(0), REVERSE)).toBeNull();
   });
 
   // guards: BR-PAY-024, BR-BANK-040
@@ -136,7 +137,7 @@ describe('BankTransactionsTab — «Сторнувати оплату» (BR-PAY-
     show(tx({ bankAccountCurrencyCode: 'USD', amount: 200 }));
     render(<BankTransactionsTab />);
     expect(screen.queryByTestId('payment-reversal')).toBeNull();
-    fireEvent.click(within(dataRow(0)).getByRole('button', { name: REVERSE }));
+    fireEvent.click(rowMenuItem(dataRow(0), REVERSE)!);
     const card = screen.getByTestId('payment-reversal');
     expect(card).toHaveAttribute('data-id', PAY);
     expect(card).toHaveAttribute('data-amount', '200 USD');

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { rowMenuButton } from './row-click';
 import { apiCall, apiRequest, getToken } from './api-helpers';
 import { ensureVehicleModel } from './vehicle-directory';
 
@@ -451,15 +452,17 @@ test.describe('Сторно безготівкової оплати (BR-PAY-024)
     await expect(row).toHaveCount(1, { timeout: 15_000 });
     await expect(row).toContainText('Рознесено');
     // Рознесення вхідного знімає лише сторно оплати.
-    await expect(row.getByRole('button', { name: 'Зняти рознесення' })).toHaveCount(0);
-    await row.getByRole('button', { name: 'Сторнувати оплату' }).click();
+    await rowMenuButton(row).click();
+    const menu = page.getByRole('menu');
+    await expect(menu.getByRole('menuitem', { name: 'Зняти рознесення' })).toHaveCount(0);
+    await menu.getByRole('menuitem', { name: 'Сторнувати оплату' }).click();
 
     const body = await reverseInCard(page, '250,00 ₴');
     expect(body.id).toBe(tx.paymentId);
 
     await expect(row).toContainText('Не рознесено', { timeout: 15_000 });
     await expect(row).toContainText(`Рознесення скасовано: ${REASON}`);
-    await expect(row.getByRole('button', { name: 'Сторнувати оплату' })).toHaveCount(0);
+    await expect(rowMenuButton(row)).toHaveCount(0);
     await expect(row.getByRole('button', { name: 'Рознести' })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('rev_bank_row.png') });
 
