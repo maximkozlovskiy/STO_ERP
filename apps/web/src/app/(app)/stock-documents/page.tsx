@@ -7,16 +7,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useStockDocuments, stockDocsKeys, type StockDoc } from '@/hooks/api/useStockDocuments';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
-import {
-  Plus,
-  FileText,
-  Eye,
-  EyeOff,
-  Trash2,
-  Pencil,
-  ClipboardList,
-  Warehouse,
-} from 'lucide-react';
+import { FileText, Trash2, Pencil, ClipboardList, Warehouse } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { StockMovementsTab } from './StockMovementsTab';
 import { apiFetch } from '@/lib/api-client';
@@ -39,45 +30,35 @@ import { stockDocTypeLabel, stockDocStatusLabel } from '@/i18n/enumLabel';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
-import { DateRangeFilter } from '@/components/ui/date-range-filter';
-import { ListSearchInput } from '@/components/ui/list-search-input';
 import { StockDocumentCreateModal } from '@/components/ui/StockDocumentCreateModal';
 import { Spinner } from '@/components/ui/spinner';
-import { EmptyState, ListEmptyState } from '@/components/ui/empty-state';
+import { ListEmptyState } from '@/components/ui/empty-state';
 // Клік по рядку: бокова панель увімкнена → рядок вибирається в панель; вимкнена → одразу
 // картка редагування (setEditingDocId). Стандарт списків — як у закупівель.
 import { DetailPanel, PanelField } from '@/components/ui/detail-panel';
-import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import {
   STOCK_DOC_PANEL_SCHEMA,
   buildPanelFields,
   schemaToPanelConfigFields,
 } from '@/lib/panel-schema';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  SortableHead,
-  TableCell,
-  DocLink,
-} from '@/components/ui/table';
+import { TableBody, TableRow, TableCell, DocLink, ListTableHeader } from '@/components/ui/table';
 import { useUrlCard } from '@/lib/url-card';
 import { useSortState } from '@/hooks/useSortState';
 import { useDebounce } from '@/hooks/useDebounce';
-import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
-import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
-import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
+import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { useListPage } from '@/hooks/useListPage';
-import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
+import { ListTableLayout } from '@/components/ui/list-table-layout';
+import { ListToolbar } from '@/components/ui/list-view-actions';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { toast } from '@/lib/toast';
 import { invalidateStockDocumentSideEffects } from '@/lib/cache-invalidation';
 import { cn } from '@/lib/utils';
 import { PAGE_TAB_ACTIVE, PAGE_TAB_CLASS, PAGE_TAB_IDLE } from '@/lib/page-tabs';
 import { fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
-import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
+import { ListStatusRow } from '@/components/ui/list-toolbar';
+import { RowDeleteButton } from '@/components/ui/row-delete-button';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 
@@ -134,6 +115,9 @@ const STATUS_FILTERS: readonly string[] = Object.freeze([
 // `Object.keys()` array on every render in `typeFromUrl` validation below).
 const VALID_TYPES: ReadonlySet<string> = new Set(Object.keys(STOCK_DOC_TYPE_LABELS));
 
+/** Колонки списку, за якими сортує сервер: ключ колонки → поле сортування. */
+const SD_SORT_KEYS: Partial<Record<string, string>> = { date: 'documentDate' };
+
 function StockDocumentsPageClient() {
   const { t } = useTranslation('stockDocuments');
   const { confirm, dialogProps } = useConfirm();
@@ -142,32 +126,25 @@ function StockDocumentsPageClient() {
   const COLUMNS = useMemo(() => COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })), [t]);
 
   // useListPage: shared table/panel/filter infrastructure
+  const listPage = useListPage<StockDocFilters>('stock-documents', COLUMNS, { defaultLimit: 20 });
   const {
     page,
     setPage,
     resetPage,
+    changeFilter,
+    filterSetter,
     showDeleted,
     setShowDeleted,
     activeSavedFilterId,
     setActiveSavedFilterId,
-    tableColumns: {
-      visibleKeys: colVisible,
-      visibleColumns,
-      orderedColumns,
-      order,
-      customLabels,
-      toggle: toggleCol,
-      reorder,
-      renameColumn,
-      resetConfig,
-    },
-    dragProps,
+    visibleColumns,
+    colSpan,
     detailPanel,
     panelConfig,
     savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
     features,
     limit,
-  } = useListPage<StockDocFilters>('stock-documents', COLUMNS, { defaultLimit: 20 });
+  } = listPage;
 
   // Local filter state (specific to stock-documents)
   const searchParams = useSearchParams();
@@ -190,7 +167,8 @@ function StockDocumentsPageClient() {
   const [dateTo, setDateTo] = useState(() => kyivToday());
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
-  const { sort: sdSort, toggle: toggleSdSort } = useSortState('createdAt', 'desc');
+  const sdSorting = useSortState('createdAt', 'desc');
+  const { sort: sdSort } = sdSorting;
 
   const qc = useQueryClient();
   const { data: docsData, isLoading: loading } = useStockDocuments({
@@ -272,12 +250,6 @@ function StockDocumentsPageClient() {
     [panelConfig.config],
   );
 
-  const changeFilter = (fn: () => void) => {
-    fn();
-    resetPage();
-    setActiveSavedFilterId(null);
-  };
-
   const applyFilter = useCallback(
     (preset: { id: string; filters: StockDocFilters }) => {
       setTypeFilter(preset.filters.typeFilter ?? '');
@@ -319,7 +291,7 @@ function StockDocumentsPageClient() {
     ],
   );
 
-  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(docs);
+  const bulkSelect = useBulkSelect(docs);
 
   // `load` is intentionally omitted from deps — it's recreated each render
   // but its input (filters from page state) is captured at click time via
@@ -410,7 +382,7 @@ function StockDocumentsPageClient() {
       <StockTypeTabs
         activeType={typeFilter}
         movementsActive={false}
-        onSelectType={t2 => changeFilter(() => setTypeFilter(t2))}
+        onSelectType={filterSetter(setTypeFilter)}
         onSelectMovements={() =>
           router.replace('/stock-documents?tab=movements', { scroll: false })
         }
@@ -437,354 +409,261 @@ function StockDocumentsPageClient() {
             label={s ? stockDocStatusLabel(s) : t('filters.all')}
             active={statusFilter === s}
             description={s ? STOCK_DOC_STATUS_DESCRIPTIONS[s] : undefined}
-            onSelect={v => changeFilter(() => setStatusFilter(v))}
+            onSelect={filterSetter(setStatusFilter)}
           />
         ))}
       </ListStatusRow>
 
       {/* Filters */}
-      <ListFiltersRow
-        actions={
-          <>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
-              onClick={() => changeFilter(() => setShowDeleted(v => !v))}
-              className={cn(showDeleted && 'border-primary text-primary')}
-            >
-              {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-            </Button>
-            {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-            <ColumnsDropdown
-              columns={orderedColumns}
-              visibleKeys={colVisible}
-              onToggle={toggleCol}
-              onReorder={reorder}
-              onRename={renameColumn}
-              onReset={resetConfig}
-              hasCustomization={
-                JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
-                Object.keys(customLabels).length > 0
-              }
-            />
-            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-            <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-              {typeFilter ? stockDocTypeLabel(typeFilter) : t('actions.addDocument')}
-            </Button>
-          </>
+      <ListToolbar
+        list={listPage}
+        defaultKeysJson={COLUMNS_DEFAULT_KEYS_JSON}
+        onSaveFilter={handleSaveFilter}
+        onAdd={() => setShowCreate(true)}
+        addLabel={typeFilter ? stockDocTypeLabel(typeFilter) : t('actions.addDocument')}
+        searchLabel={t('filters.searchPlaceholder')}
+        search={[search, setSearch]}
+        period={[dateFrom, setDateFrom, dateTo, setDateTo]}
+      />
+
+      <ListTableLayout
+        list={listPage}
+        bulk={bulkSelect}
+        bulkActions={bulkActions}
+        panel={
+          <DetailPanel
+            open={!!selectedDoc && detailPanel.enabled}
+            onClose={() => setSelectedDocId(null)}
+            title={selectedDoc?.number ?? ''}
+            subtitle={selectedDoc ? stockDocTypeLabel(selectedDoc.type) : undefined}
+            configFields={panelConfigFields}
+            onToggleField={panelConfig.toggleField}
+            onReorderFields={panelConfig.reorderFields}
+            onReset={panelConfig.reset}
+          >
+            {selectedDoc && (
+              <div className="space-y-3">
+                {buildPanelFields(selectedDoc, STOCK_DOC_PANEL_SCHEMA, panelConfig.config, {
+                  type: () => (
+                    <Badge
+                      variant={STOCK_DOC_TYPE_BADGE[selectedDoc.type] ?? 'secondary'}
+                      tooltip={STOCK_DOC_TYPE_DESCRIPTIONS[selectedDoc.type]}
+                    >
+                      {stockDocTypeLabel(selectedDoc.type)}
+                    </Badge>
+                  ),
+                  status: () => (
+                    <Badge
+                      variant={STOCK_DOC_STATUS_BADGE[selectedDoc.status] ?? 'secondary'}
+                      tooltip={STOCK_DOC_STATUS_DESCRIPTIONS[selectedDoc.status]}
+                    >
+                      {stockDocStatusLabel(selectedDoc.status)}
+                    </Badge>
+                  ),
+                }).map(f => (
+                  <PanelField
+                    key={f.key}
+                    fieldKey={f.key}
+                    label={f.label}
+                    value={f.value}
+                    hidden={f.hidden}
+                  />
+                ))}
+                <LinesSummarySection
+                  entity="stock-documents"
+                  id={selectedDoc.id}
+                  enabled={detailPanel.enabled}
+                />
+                <div className="pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setEditingDocId(selectedDoc.id)}
+                  >
+                    {t('panel.openDocument')}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DetailPanel>
         }
       >
-        <ListSearchInput
-          value={search}
-          onChange={v => changeFilter(() => setSearch(v))}
-          label={t('filters.searchPlaceholder')}
+        <ListTableHeader
+          list={listPage}
+          sorting={sdSorting}
+          sortKeys={SD_SORT_KEYS}
+          rightAligned={['lines']}
+          bulk={bulkSelect}
+          selectAllLabel={t('aria.selectAll')}
         />
-        <DateRangeFilter
-          from={dateFrom}
-          to={dateTo}
-          onFromChange={v => changeFilter(() => setDateFrom(v))}
-          onToChange={v => changeFilter(() => setDateTo(v))}
-          fromLabel={t('filters.dateFrom')}
-          toLabel={t('filters.dateTo')}
-        />
-      </ListFiltersRow>
-
-      {/* Bulk actions */}
-      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
-        <BulkActionsBar
-          count={bulkSelect.count}
-          selectedIds={Array.from(bulkSelect.selected)}
-          actions={bulkActions}
-          onClear={bulkSelect.clear}
-        />
-      )}
-
-      {/* Table + DetailPanel */}
-      <div className="flex flex-1 min-h-0">
-        <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
-          <Table>
-            <TableHeader>
-              <TableRow>
+        <TableBody>
+          {loading && (
+            <TableRow>
+              <TableCell colSpan={colSpan} className="py-10 text-center">
+                <div className="flex justify-center">
+                  <Spinner size="md" />
+                </div>
+              </TableCell>
+            </TableRow>
+          )}
+          {!loading && docs.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={colSpan} className="p-0">
+                <ListEmptyState
+                  icon={FileText}
+                  title={t('empty.documentsNotFound')}
+                  // Тип документа — вкладка, а не фільтр: її скидання не чіпає.
+                  filtered={!!(statusFilter || search || dateFrom || dateTo)}
+                  onResetFilters={() =>
+                    changeFilter(() => {
+                      setStatusFilter('');
+                      setSearch('');
+                      setDateFrom('');
+                      setDateTo('');
+                    })
+                  }
+                />
+              </TableCell>
+            </TableRow>
+          )}
+          {!loading &&
+            docs.map(doc => (
+              <TableRow
+                key={doc.id}
+                className={cn(
+                  'group transition-colors cursor-pointer',
+                  selectedDoc?.id === doc.id && detailPanel.enabled && 'bg-primary/5',
+                  bulkSelect.isSelected(doc.id) && 'bg-primary/5',
+                  doc.deletedAt && 'opacity-60',
+                )}
+                onClick={() =>
+                  activateRow({
+                    panelEnabled: detailPanel.enabled,
+                    isSelected: selectedDocId === doc.id,
+                    select: () => setSelectedDocId(doc.id),
+                    deselect: () => setSelectedDocId(null),
+                    open: () => setEditingDocId(doc.id),
+                  })
+                }
+              >
                 {features.bulkActionsEnabled && (
-                  <TableHead className="w-9 pr-0">
+                  <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
                     <input
                       type="checkbox"
-                      checked={bulkSelect.allSelected}
-                      ref={selectAllRef}
-                      onChange={bulkSelect.toggleAll}
+                      checked={bulkSelect.isSelected(doc.id)}
+                      onChange={() => bulkSelect.toggle(doc.id)}
                       className="h-3.5 w-3.5 rounded border-border"
-                      aria-label={t('aria.selectAll')}
+                      aria-label={t('aria.selectRow', { number: doc.number })}
                     />
-                  </TableHead>
+                  </TableCell>
                 )}
                 {visibleColumns.map(col => {
-                  const sortable = ['date'].includes(col.key);
-                  if (sortable)
+                  if (col.key === 'number')
                     return (
-                      <SortableHead
-                        key={col.key}
-                        sortKey="documentDate"
-                        currentSort={sdSort}
-                        onSort={toggleSdSort}
-                        {...dragProps(col.key)}
-                      >
-                        {col.label}
-                      </SortableHead>
-                    );
-                  return (
-                    <TableHead
-                      key={col.key}
-                      className={col.key === 'lines' ? 'text-right' : undefined}
-                      {...dragProps(col.key)}
-                    >
-                      {col.label}
-                    </TableHead>
-                  );
-                })}
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="py-10 text-center"
-                  >
-                    <div className="flex justify-center">
-                      <Spinner size="md" />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading && docs.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="p-0"
-                  >
-                    <ListEmptyState
-                      icon={FileText}
-                      title={t('empty.documentsNotFound')}
-                      // Тип документа — вкладка, а не фільтр: її скидання не чіпає.
-                      filtered={!!(statusFilter || search || dateFrom || dateTo)}
-                      onResetFilters={() => {
-                        setStatusFilter('');
-                        setSearch('');
-                        setDateFrom('');
-                        setDateTo('');
-                        resetPage();
-                        setActiveSavedFilterId(null);
-                      }}
-                    />
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading &&
-                docs.map(doc => (
-                  <TableRow
-                    key={doc.id}
-                    className={cn(
-                      'group transition-colors cursor-pointer',
-                      selectedDoc?.id === doc.id && detailPanel.enabled && 'bg-primary/5',
-                      bulkSelect.isSelected(doc.id) && 'bg-primary/5',
-                      doc.deletedAt && 'opacity-60',
-                    )}
-                    onClick={() =>
-                      activateRow({
-                        panelEnabled: detailPanel.enabled,
-                        isSelected: selectedDocId === doc.id,
-                        select: () => setSelectedDocId(doc.id),
-                        deselect: () => setSelectedDocId(null),
-                        open: () => setEditingDocId(doc.id),
-                      })
-                    }
-                  >
-                    {features.bulkActionsEnabled && (
-                      <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={bulkSelect.isSelected(doc.id)}
-                          onChange={() => bulkSelect.toggle(doc.id)}
-                          className="h-3.5 w-3.5 rounded border-border"
-                          aria-label={t('aria.selectRow', { number: doc.number })}
-                        />
-                      </TableCell>
-                    )}
-                    {visibleColumns.map(col => {
-                      if (col.key === 'number')
-                        return (
-                          <TableCell key="number" className="whitespace-nowrap">
-                            <DocLink
-                              href={card.hrefFor(doc.id)}
-                              onOpen={() => setEditingDocId(doc.id)}
-                            >
-                              {doc.number}
-                            </DocLink>
-                            {doc.deletedAt && (
-                              <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
-                                {t('badges.deleted')}
-                              </Badge>
-                            )}
-                          </TableCell>
-                        );
-                      if (col.key === 'type')
-                        return (
-                          <TableCell key="type">
-                            <Badge
-                              variant={STOCK_DOC_TYPE_BADGE[doc.type] ?? 'secondary'}
-                              tooltip={STOCK_DOC_TYPE_DESCRIPTIONS[doc.type]}
-                            >
-                              {stockDocTypeLabel(doc.type)}
-                            </Badge>
-                          </TableCell>
-                        );
-                      if (col.key === 'warehouse')
-                        return (
-                          <TableCell key="warehouse" className="text-[13px] text-muted-foreground">
-                            {doc.warehouseName ?? '—'}
-                          </TableCell>
-                        );
-                      if (col.key === 'status')
-                        return (
-                          <TableCell key="status">
-                            <Badge
-                              variant={STOCK_DOC_STATUS_BADGE[doc.status] ?? 'secondary'}
-                              tooltip={STOCK_DOC_STATUS_DESCRIPTIONS[doc.status]}
-                            >
-                              {stockDocStatusLabel(doc.status)}
-                            </Badge>
-                          </TableCell>
-                        );
-                      if (col.key === 'lines')
-                        return (
-                          <TableCell
-                            key="lines"
-                            className="text-right text-[13px] text-muted-foreground"
-                          >
-                            {doc.linesCount ?? doc.lines?.length ?? 0}
-                          </TableCell>
-                        );
-                      if (col.key === 'date')
-                        return (
-                          <TableCell key="date" className="text-[13px] text-muted-foreground">
-                            {doc.documentDate ? fmtDate(doc.documentDate) : fmtDate(doc.createdAt)}
-                          </TableCell>
-                        );
-                      if (col.key === 'linkedDocs') {
-                        const counts = linkedCounts[doc.id];
-                        return (
-                          <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
-                            <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
-                              {DOC_COUNTERS.map(({ field, Icon, labelKey }) => {
-                                const n = counts?.[field];
-                                if (!n) return null;
-                                return (
-                                  <button
-                                    key={field}
-                                    onClick={() => setLinkedDocPopupId(doc.id)}
-                                    className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                    title={`${t(labelKey)}: ${n}`}
-                                  >
-                                    <Icon size={13} />
-                                    <span>{n}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </TableCell>
-                        );
-                      }
-                      return null;
-                    })}
-                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          title={t('actions.openDocument')}
-                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                          onClick={() => setEditingDocId(doc.id)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        {!doc.deletedAt && (
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            title={t('actions.markForDeletion')}
-                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => void markDeleted(doc)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                      <TableCell key="number" className="whitespace-nowrap">
+                        <DocLink href={card.hrefFor(doc.id)} onOpen={() => setEditingDocId(doc.id)}>
+                          {doc.number}
+                        </DocLink>
+                        {doc.deletedAt && (
+                          <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
+                            {t('badges.deleted')}
+                          </Badge>
                         )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-            </TableBody>
-          </Table>
-        </div>
-
-        <DetailPanel
-          open={!!selectedDoc && detailPanel.enabled}
-          onClose={() => setSelectedDocId(null)}
-          title={selectedDoc?.number ?? ''}
-          subtitle={selectedDoc ? stockDocTypeLabel(selectedDoc.type) : undefined}
-          configFields={panelConfigFields}
-          onToggleField={panelConfig.toggleField}
-          onReorderFields={panelConfig.reorderFields}
-          onReset={panelConfig.reset}
-        >
-          {selectedDoc && (
-            <div className="space-y-3">
-              {buildPanelFields(selectedDoc, STOCK_DOC_PANEL_SCHEMA, panelConfig.config, {
-                type: () => (
-                  <Badge
-                    variant={STOCK_DOC_TYPE_BADGE[selectedDoc.type] ?? 'secondary'}
-                    tooltip={STOCK_DOC_TYPE_DESCRIPTIONS[selectedDoc.type]}
-                  >
-                    {stockDocTypeLabel(selectedDoc.type)}
-                  </Badge>
-                ),
-                status: () => (
-                  <Badge
-                    variant={STOCK_DOC_STATUS_BADGE[selectedDoc.status] ?? 'secondary'}
-                    tooltip={STOCK_DOC_STATUS_DESCRIPTIONS[selectedDoc.status]}
-                  >
-                    {stockDocStatusLabel(selectedDoc.status)}
-                  </Badge>
-                ),
-              }).map(f => (
-                <PanelField
-                  key={f.key}
-                  fieldKey={f.key}
-                  label={f.label}
-                  value={f.value}
-                  hidden={f.hidden}
-                />
-              ))}
-              <LinesSummarySection
-                entity="stock-documents"
-                id={selectedDoc.id}
-                enabled={detailPanel.enabled}
-              />
-              <div className="pt-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => setEditingDocId(selectedDoc.id)}
-                >
-                  {t('panel.openDocument')}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DetailPanel>
-      </div>
+                      </TableCell>
+                    );
+                  if (col.key === 'type')
+                    return (
+                      <TableCell key="type">
+                        <Badge
+                          variant={STOCK_DOC_TYPE_BADGE[doc.type] ?? 'secondary'}
+                          tooltip={STOCK_DOC_TYPE_DESCRIPTIONS[doc.type]}
+                        >
+                          {stockDocTypeLabel(doc.type)}
+                        </Badge>
+                      </TableCell>
+                    );
+                  if (col.key === 'warehouse')
+                    return (
+                      <TableCell key="warehouse" className="text-[13px] text-muted-foreground">
+                        {doc.warehouseName ?? '—'}
+                      </TableCell>
+                    );
+                  if (col.key === 'status')
+                    return (
+                      <TableCell key="status">
+                        <Badge
+                          variant={STOCK_DOC_STATUS_BADGE[doc.status] ?? 'secondary'}
+                          tooltip={STOCK_DOC_STATUS_DESCRIPTIONS[doc.status]}
+                        >
+                          {stockDocStatusLabel(doc.status)}
+                        </Badge>
+                      </TableCell>
+                    );
+                  if (col.key === 'lines')
+                    return (
+                      <TableCell
+                        key="lines"
+                        className="text-right text-[13px] text-muted-foreground"
+                      >
+                        {doc.linesCount ?? doc.lines?.length ?? 0}
+                      </TableCell>
+                    );
+                  if (col.key === 'date')
+                    return (
+                      <TableCell key="date" className="text-[13px] text-muted-foreground">
+                        {doc.documentDate ? fmtDate(doc.documentDate) : fmtDate(doc.createdAt)}
+                      </TableCell>
+                    );
+                  if (col.key === 'linkedDocs') {
+                    const counts = linkedCounts[doc.id];
+                    return (
+                      <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
+                        <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
+                          {DOC_COUNTERS.map(({ field, Icon, labelKey }) => {
+                            const n = counts?.[field];
+                            if (!n) return null;
+                            return (
+                              <button
+                                key={field}
+                                onClick={() => setLinkedDocPopupId(doc.id)}
+                                className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+                                title={`${t(labelKey)}: ${n}`}
+                              >
+                                <Icon size={13} />
+                                <span>{n}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </TableCell>
+                    );
+                  }
+                  return null;
+                })}
+                <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title={t('actions.openDocument')}
+                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                      onClick={() => setEditingDocId(doc.id)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    {!doc.deletedAt && (
+                      <RowDeleteButton
+                        title={t('actions.markForDeletion')}
+                        onClick={() => void markDeleted(doc)}
+                      />
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+        </TableBody>
+      </ListTableLayout>
 
       {/* Pagination */}
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />

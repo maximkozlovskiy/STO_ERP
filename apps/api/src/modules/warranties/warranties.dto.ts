@@ -16,6 +16,7 @@ import { Transform, Type } from 'class-transformer';
 import { WARRANTY_STATES, type WarrantyState } from '@sto/shared';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { LIST_SEARCH_MAX_LENGTH } from '../../common/utils/like-pattern';
+import { csvArray } from '../../common/transforms/csv-array';
 
 export class CreateWarrantyDto {
   @ApiProperty()
@@ -84,14 +85,8 @@ export class WarrantyListQueryDto {
     example: 'ACTIVE,EXPIRING',
   })
   @IsOptional()
-  // Повторений параметр (`?state=A&state=B`) Fastify віддає масивом — розбираємо і його.
-  @Transform(({ value }: { value: unknown }) => {
-    const parts = (Array.isArray(value) ? value : [value])
-      .flatMap(v => (typeof v === 'string' ? v.split(',') : [v]))
-      .map(v => (typeof v === 'string' ? v.trim() : v))
-      .filter(v => v !== '' && v != null);
-    return parts.length > 0 ? parts : undefined;
-  })
+  // `?state=A,B` і повторений `?state=A&state=B` (масив від Fastify).
+  @Transform(csvArray)
   @IsArray()
   @ArrayMaxSize(WARRANTY_STATES.length)
   @IsIn(WARRANTY_STATES, { each: true })

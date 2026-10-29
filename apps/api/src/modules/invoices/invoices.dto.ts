@@ -23,6 +23,7 @@ import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InvoiceStatus, PaymentSourceType, WorkOrderStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { csvArray } from '../../common/transforms/csv-array';
 
 export class CreateInvoiceDto {
   @ApiProperty()
@@ -242,17 +243,10 @@ export class InvoiceQueryDto {
       'Кілька статусів через кому (SENT,PARTIALLY_PAID,OVERDUE). Разом зі `status` — перетин.',
   })
   @IsOptional()
-  // Повторений параметр (`?statuses=SENT&statuses=OVERDUE`) Fastify віддає масивом — його теж
-  // розбираємо, інакше відбір мовчки зникав і список повертав рахунки в усіх статусах.
-  @Transform(({ value }: { value: unknown }) => {
-    const parts = (Array.isArray(value) ? value : [value])
-      .flatMap(v => (typeof v === 'string' ? v.split(',') : [v]))
-      .map(v => (typeof v === 'string' ? v.trim() : v))
-      .filter(v => v !== '' && v != null);
-    return parts.length > 0 ? parts : undefined;
-  })
+  // `?statuses=A,B` і повторений `?statuses=A&statuses=B` (масив від Fastify).
+  @Transform(csvArray)
   @IsArray()
-  @ArrayMaxSize(10)
+  @ArrayMaxSize(Object.values(InvoiceStatus).length)
   @IsEnum(InvoiceStatus, { each: true })
   statuses?: InvoiceStatus[];
 

@@ -356,5 +356,13 @@
     "added": "Comment added",
     "error": "Error",
     "loadError": "Failed to load comments"
+  },
+  "deletedToggle": {
+    "show": "Show deleted",
+    "hide": "Hide deleted"
+  },
+  "dateRange": {
+    "from": "From",
+    "to": "To"
   }
 }

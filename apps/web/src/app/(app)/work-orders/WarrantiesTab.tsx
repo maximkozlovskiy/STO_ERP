@@ -30,7 +30,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusPill } from '@/components/ui/status-pill';
 import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
-import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pagination } from '@/components/ui/pagination';
 import { ListLoadError } from '@/components/ui/list-load-error';
@@ -45,8 +44,9 @@ import {
   TableBody,
   TableRow,
   TableHead,
-  SortableHead,
   TableCell,
+  ColumnHead,
+  TableLoadingRow,
 } from '@/components/ui/table';
 import { WarrantyClaimModal } from './WarrantyClaimModal';
 
@@ -345,36 +345,22 @@ export default function WarrantiesTab({ canClaim }: Props) {
           <Table>
             <TableHeader>
               <TableRow>
-                {visibleColumns.map(col =>
-                  SORTABLE.has(col.key) ? (
-                    <SortableHead
-                      key={col.key}
-                      sortKey={col.key}
-                      currentSort={sort}
-                      onSort={toggleSort}
-                      {...dragProps(col.key)}
-                    >
-                      {col.label}
-                    </SortableHead>
-                  ) : (
-                    <TableHead key={col.key} {...dragProps(col.key)}>
-                      {col.label}
-                    </TableHead>
-                  ),
-                )}
+                {visibleColumns.map(col => (
+                  <ColumnHead
+                    key={col.key}
+                    sortKey={SORTABLE.has(col.key) ? col.key : undefined}
+                    currentSort={sort}
+                    onSort={toggleSort}
+                    {...dragProps(col.key)}
+                  >
+                    {col.label}
+                  </ColumnHead>
+                ))}
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading && (
-                <TableRow>
-                  <TableCell colSpan={colSpan} className="py-12 text-center">
-                    <div className="flex justify-center">
-                      <Spinner size="md" />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
+              {isLoading && <TableLoadingRow colSpan={colSpan} />}
               {!isLoading && !error && items.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={colSpan} className="p-0">

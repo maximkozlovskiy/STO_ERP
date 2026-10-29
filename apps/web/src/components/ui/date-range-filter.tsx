@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslation } from 'react-i18next';
 import { DatePickerInput } from './date-picker-input';
 
 interface DateRangeFilterProps {
@@ -8,9 +9,9 @@ interface DateRangeFilterProps {
   to: string;
   onFromChange: (value: string) => void;
   onToChange: (value: string) => void;
-  /** Підписи «З» / «По» — видимий текст і доступна назва поля водночас. */
-  fromLabel: string;
-  toLabel: string;
+  /** Підписи «З» / «По» — видимий текст і доступна назва поля водночас (типово — спільні). */
+  fromLabel?: string | undefined;
+  toLabel?: string | undefined;
 }
 
 /**
@@ -28,9 +29,12 @@ export function DateRangeFilter({
   to,
   onFromChange,
   onToChange,
-  fromLabel,
-  toLabel,
+  fromLabel: fromLabelProp,
+  toLabel: toLabelProp,
 }: DateRangeFilterProps) {
+  const { t } = useTranslation('common');
+  const fromLabel = fromLabelProp ?? t('dateRange.from');
+  const toLabel = toLabelProp ?? t('dateRange.to');
   return (
     <>
       <div className="flex items-center gap-2">

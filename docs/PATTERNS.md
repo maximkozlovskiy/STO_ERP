@@ -183,6 +183,13 @@ size="icon-sm"`), `SaveFilterButton`, `ColumnsDropdown`, `DetailPanelToggle`, д
 5. `BulkActionsBar` → `div.flex.flex-1.min-h-0` з `TableContainer` (прокрутка в таблиці, а не
    сторінкою) і `DetailPanel` → `Pagination`.
 
+Готові частини (2026-10-29, гейт клонів): `ListToolbar` (`list-view-actions.tsx`) — рядок фільтрів
+з пошуком (`search`), періодом (`period`) і стандартними діями та «+ Документ»; `ListTableLayout` —
+масові дії, `TableContainer`, бокова панель (`panel`); `ListTableHeader` (`table.tsx`) — прапорець
+«усі», колонки з `sortKeys` / `rightAligned`; `TableLoadingRow`, `RowDeleteButton`,
+`LinkedDocCounters`. Зміна фільтра — `changeFilter(fn)` / `filterSetter(setX)` з `useListPage`
+(перша сторінка, без активного подання), ширина рядка-заглушки — `colSpan` звідти ж.
+
 Розрахунок / створення, що не вміщується в рядок, — вікно з основної кнопки (ЗП: «Розрахувати
 період» → `PayrollPreviewModal`), а не картка над списком. Поза стандартом — довідники-вкладки
 (марки, одиниці, статуси, каси, статті) і сторінки-картки (онлайн-запис, взаєморозрахунки, НДІ).

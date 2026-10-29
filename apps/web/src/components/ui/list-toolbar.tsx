@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from './button';
 
 interface ListStatusRowProps {
   /** Кнопки статусів (`StatusPill`) — ліворуч, переносяться на вузькому екрані. */
@@ -57,5 +60,30 @@ export function ListFiltersRow({ children, actions, className }: ListFiltersRowP
         <div className="flex flex-wrap items-center justify-end gap-2 ml-auto">{actions}</div>
       )}
     </div>
+  );
+}
+
+interface ShowDeletedToggleProps {
+  /** Чи показані зараз видалені записи. */
+  shown: boolean;
+  onToggle: () => void;
+}
+
+/** Перемикач «показати видалені» в діях рядка фільтрів — перша кнопка праворуч. */
+export function ShowDeletedToggle({ shown, onToggle }: ShowDeletedToggleProps) {
+  const { t } = useTranslation('common');
+  const label = shown ? t('deletedToggle.hide') : t('deletedToggle.show');
+  return (
+    <Button
+      variant="outline"
+      size="icon-sm"
+      title={label}
+      aria-label={label}
+      aria-pressed={shown}
+      onClick={onToggle}
+      className={cn(shown && 'border-primary text-primary')}
+    >
+      {shown ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+    </Button>
   );
 }

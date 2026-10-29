@@ -10,7 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUrlCard } from '@/lib/url-card';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil, X } from 'lucide-react';
+import { Users, Pencil, X } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { useCounterparties, counterpartiesKeys, Counterparty } from '@/hooks/api/useCounterparties';
@@ -23,43 +23,38 @@ import { COUNTERPARTY_TYPE_BADGE, COUNTERPARTY_TYPE_DESCRIPTIONS } from '@sto/sh
 import { counterpartyTypeLabel } from '@/i18n/enumLabel';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
-  Table,
-  TableHeader,
   TableBody,
   TableRow,
-  TableHead,
-  SortableHead,
   TableCell,
   MoneyCell,
-  MONEY_HEAD_CLASS,
   DocLink,
+  TableLoadingRow,
+  ListTableHeader,
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
-import { TableContainer } from '@/components/ui/table-container';
 import {
   COUNTERPARTY_PANEL_SCHEMA,
   buildPanelFields,
   schemaToPanelConfigFields,
 } from '@/lib/panel-schema';
-import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
-import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
-import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
-import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
+import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { useListPage } from '@/hooks/useListPage';
-import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
+import { ListTableLayout } from '@/components/ui/list-table-layout';
+import { ListToolbar } from '@/components/ui/list-view-actions';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
-import { ListFiltersRow } from '@/components/ui/list-toolbar';
 import { cn, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
 import { fmtMoney } from '@/lib/format';
+import { RowDeleteButton } from '@/components/ui/row-delete-button';
 
 interface CrmFilters extends Record<string, unknown> {
   search: string;
@@ -89,6 +84,9 @@ const CRM_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(CRM_COLUMN_DEFS.map(c => c.
 
 // Suspense обгортка для useSearchParams — Next.js static-export вимога.
 // Верхній рівень = таб-роутер: список контрагентів + довідник статусів-міток.
+/** Колонки списку, за якими сортує сервер: ключ колонки → поле сортування. */
+const CRM_SORT_KEYS: Partial<Record<string, string>> = { name: 'lastName', balance: 'balance' };
+
 export default function CrmPage() {
   return (
     <Suspense fallback={null}>
@@ -177,32 +175,24 @@ function CrmPageInner() {
   );
 
   // useListPage: shared table/panel/filter infrastructure
+  const listPage = useListPage<CrmFilters>('crm', CRM_COLUMNS, { defaultLimit: 20 });
   const {
     page,
     setPage,
     resetPage,
+    changeFilter,
     showDeleted,
     setShowDeleted,
     activeSavedFilterId,
     setActiveSavedFilterId,
-    tableColumns: {
-      visibleKeys: colVisible,
-      visibleColumns,
-      orderedColumns,
-      order,
-      customLabels,
-      toggle: toggleCol,
-      reorder,
-      renameColumn,
-      resetConfig,
-    },
-    dragProps,
+    visibleColumns,
+    colSpan,
     detailPanel,
     panelConfig,
     savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
     features,
     limit,
-  } = useListPage<CrmFilters>('crm', CRM_COLUMNS, { defaultLimit: 20 });
+  } = listPage;
 
   // Помилка дії (delete/bulk/save-filter) для випадку коли toast вимкнено (features.toastEnabled=false):
   // без цього fallback помилки мутацій тихо зникали б (queryError покриває лише завантаження списку).
@@ -213,7 +203,8 @@ function CrmPageInner() {
   const debouncedSearch = useDebounce(search);
   const [typeFilter, setTypeFilter] = useState('');
 
-  const { sort: crmSort, toggle: toggleCrmSort } = useSortState('lastName', 'asc');
+  const crmSorting = useSortState('lastName', 'asc');
+  const { sort: crmSort } = crmSorting;
   const {
     data: queryData,
     isLoading: loading,
@@ -306,7 +297,7 @@ function CrmPageInner() {
     [saveFilter, search, typeFilter, showDeleted, setActiveSavedFilterId, features.toastEnabled, t],
   );
 
-  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(counterparties);
+  const bulkSelect = useBulkSelect(counterparties);
 
   // `void queryClient.invalidateQueries(...)` по всьому файлу — фонова інвалідація кешу:
   // TanStack сам перезапитує активні queries і сам тримає їхній error-стан (його показує
@@ -532,60 +523,18 @@ function CrmPageInner() {
       )}
 
       {/* Filters */}
-      <ListFiltersRow
-        actions={
-          <>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
-              onClick={() => {
-                setShowDeleted(d => !d);
-                resetPage();
-                setActiveSavedFilterId(null);
-              }}
-              className={showDeleted ? 'border-primary text-primary' : ''}
-            >
-              {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-            </Button>
-            {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-            <ColumnsDropdown
-              columns={orderedColumns}
-              visibleKeys={colVisible}
-              onToggle={toggleCol}
-              onReorder={reorder}
-              onRename={renameColumn}
-              onReset={resetConfig}
-              hasCustomization={
-                JSON.stringify(order) !== CRM_COLUMNS_DEFAULT_KEYS_JSON ||
-                Object.keys(customLabels).length > 0
-              }
-            />
-            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-            <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>
-              {t('actions.addCounterparty')}
-            </Button>
-          </>
-        }
+      <ListToolbar
+        list={listPage}
+        defaultKeysJson={CRM_COLUMNS_DEFAULT_KEYS_JSON}
+        onSaveFilter={handleSaveFilter}
+        onAdd={() => setCreating(true)}
+        addLabel={t('actions.addCounterparty')}
+        searchLabel={t('filters.searchPlaceholder')}
+        search={[search, setSearch]}
       >
-        <Input
-          value={search}
-          onChange={e => {
-            setSearch(e.target.value);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          placeholder={t('filters.searchPlaceholder')}
-          leftElement={<Search />}
-          className="w-72 h-8 text-[13px]"
-        />
         <Select
           value={typeFilter}
-          onChange={e => {
-            setTypeFilter(e.target.value);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
+          onChange={e => changeFilter(() => setTypeFilter(e.target.value))}
           className="w-44 h-8 text-[13px] py-0.5 px-2 pr-7"
         >
           {TYPE_FILTER_OPTIONS.map(([v, labelKey]) => (
@@ -594,254 +543,192 @@ function CrmPageInner() {
             </option>
           ))}
         </Select>
-      </ListFiltersRow>
+      </ListToolbar>
 
-      {/* Bulk actions */}
-      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
-        <BulkActionsBar
-          count={bulkSelect.count}
-          selectedIds={Array.from(bulkSelect.selected)}
-          actions={bulkActions}
-          onClear={bulkSelect.clear}
+      <ListTableLayout
+        list={listPage}
+        bulk={bulkSelect}
+        bulkActions={bulkActions}
+        panel={
+          <DetailPanel
+            open={!!selectedCp && detailPanel.enabled}
+            onClose={() => setSelectedCp(null)}
+            title={selectedCp ? displayName(selectedCp) : ''}
+            tabs={selectedCp ? buildCpTabs(selectedCp) : undefined}
+            configFields={crmPanelConfigFields}
+            onToggleField={panelConfig.toggleField}
+            onReset={panelConfig.reset}
+          />
+        }
+      >
+        <ListTableHeader
+          list={listPage}
+          sorting={crmSorting}
+          sortKeys={CRM_SORT_KEYS}
+          rightAligned={['balance']}
+          bulk={bulkSelect}
+          selectAllLabel={t('aria.selectAll')}
         />
-      )}
-
-      {/* Table + DetailPanel */}
-      <div className="flex flex-1 min-h-0">
-        <TableContainer>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {features.bulkActionsEnabled && (
-                  <TableHead className="w-9 pr-0">
-                    <input
-                      type="checkbox"
-                      checked={bulkSelect.allSelected}
-                      ref={selectAllRef}
-                      onChange={bulkSelect.toggleAll}
-                      className="h-3.5 w-3.5 rounded border-border"
-                      aria-label={t('aria.selectAll')}
-                    />
-                  </TableHead>
-                )}
-                {visibleColumns.map(col =>
-                  col.key === 'name' || col.key === 'balance' ? (
-                    <SortableHead
-                      key={col.key}
-                      sortKey={col.key === 'name' ? 'lastName' : 'balance'}
-                      currentSort={crmSort}
-                      onSort={toggleCrmSort}
-                      className={col.key === 'balance' ? MONEY_HEAD_CLASS : undefined}
-                      {...dragProps(col.key)}
-                    >
-                      {col.label}
-                    </SortableHead>
-                  ) : (
-                    <TableHead key={col.key} {...dragProps(col.key)}>
-                      {col.label}
-                    </TableHead>
-                  ),
-                )}
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="py-12 text-center"
-                  >
-                    <div className="flex justify-center">
-                      <Spinner size="md" />
+        <TableBody>
+          {loading && <TableLoadingRow colSpan={colSpan} />}
+          {!loading && counterparties.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={colSpan} className="p-0">
+                <EmptyState
+                  icon={Users}
+                  title={t('empty.title')}
+                  description={t('empty.description')}
+                  size="sm"
+                />
+              </TableCell>
+            </TableRow>
+          )}
+          {!loading &&
+            counterparties.map((cp: Counterparty) => {
+              const isDeleted = !!cp.deletedAt;
+              return (
+                <TableRow
+                  key={cp.id}
+                  className={cn(
+                    'group transition-colors',
+                    // Видалений контрагент картки не має — з вимкненою панеллю клік нічого не робить.
+                    (detailPanel.enabled || !isDeleted) && 'cursor-pointer',
+                    isDeleted && 'opacity-60',
+                    selectedCp?.id === cp.id && detailPanel.enabled && 'bg-secondary',
+                    bulkSelect.isSelected(cp.id) && 'bg-primary/5',
+                  )}
+                  // Стандарт списків: панель увімкнена → клік показує/ховає панель;
+                  // вимкнена → клік відкриває картку (те саме, що олівець).
+                  onClick={() =>
+                    activateRow({
+                      panelEnabled: detailPanel.enabled,
+                      isSelected: selectedCp?.id === cp.id,
+                      select: () => setSelectedCp(cp),
+                      deselect: () => setSelectedCp(null),
+                      open: isDeleted ? undefined : () => openEdit(cp),
+                    })
+                  }
+                >
+                  {features.bulkActionsEnabled && (
+                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(cp.id)}
+                        onChange={() => bulkSelect.toggle(cp.id)}
+                        className="h-3.5 w-3.5 rounded border-border"
+                        aria-label={t('aria.selectRow', { name: displayName(cp) })}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleColumns.map(col => {
+                    if (col.key === 'name')
+                      return (
+                        <TableCell key="name">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {isDeleted ? (
+                              <p className="text-[13px] font-medium text-muted-foreground">
+                                {displayName(cp)}
+                              </p>
+                            ) : (
+                              <DocLink
+                                href={cpCard.hrefFor(cp.id)}
+                                onOpen={() => openEdit(cp)}
+                                className="whitespace-normal"
+                              >
+                                {displayName(cp)}
+                              </DocLink>
+                            )}
+                            {isDeleted && <Badge variant="secondary">{t('badges.deleted')}</Badge>}
+                          </div>
+                          {cp.email && (
+                            <p className="text-[12px] text-muted-foreground mt-0.5">{cp.email}</p>
+                          )}
+                        </TableCell>
+                      );
+                    if (col.key === 'type')
+                      return (
+                        <TableCell key="type">
+                          <Badge
+                            variant={TYPE_BADGE[cp.type] ?? 'secondary'}
+                            tooltip={COUNTERPARTY_TYPE_DESCRIPTIONS[cp.type]}
+                          >
+                            {counterpartyTypeLabel(cp.type)}
+                          </Badge>
+                        </TableCell>
+                      );
+                    if (col.key === 'statuses')
+                      return (
+                        <TableCell key="statuses">
+                          {cp.statuses && cp.statuses.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {cp.statuses.map(s => (
+                                <span
+                                  key={s.id}
+                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium text-white"
+                                  style={{ backgroundColor: s.color }}
+                                >
+                                  {s.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-[13px]">—</span>
+                          )}
+                        </TableCell>
+                      );
+                    if (col.key === 'phone')
+                      return (
+                        <TableCell key="phone" className="text-muted-foreground text-[13px]">
+                          {cp.phone ?? '—'}
+                        </TableCell>
+                      );
+                    if (col.key === 'edrpou')
+                      return (
+                        <TableCell key="edrpou" className="text-muted-foreground text-[13px]">
+                          {cp.edrpou ?? '—'}
+                        </TableCell>
+                      );
+                    if (col.key === 'balance')
+                      return (
+                        <MoneyCell
+                          key="balance"
+                          // WEB-R3-5: тип-aware тон (CLIENT balance>0 = борг нам = destructive).
+                          className={cn(
+                            'font-semibold text-[13px]',
+                            settlementBalanceToneClass(settlementBalanceTone(cp.balance, cp.type)),
+                          )}
+                        >
+                          {fmtMoney(cp.balance)} ₴
+                        </MoneyCell>
+                      );
+                    return null;
+                  })}
+                  <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      {!isDeleted && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title={t('actions.edit')}
+                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                          onClick={() => openEdit(cp)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {!isDeleted && (
+                        <RowDeleteButton
+                          title={t('actions.markForDeletion')}
+                          onClick={() => void markDeleted(cp.id)}
+                        />
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
-              )}
-              {!loading && counterparties.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="p-0"
-                  >
-                    <EmptyState
-                      icon={Users}
-                      title={t('empty.title')}
-                      description={t('empty.description')}
-                      size="sm"
-                    />
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading &&
-                counterparties.map((cp: Counterparty) => {
-                  const isDeleted = !!cp.deletedAt;
-                  return (
-                    <TableRow
-                      key={cp.id}
-                      className={cn(
-                        'group transition-colors',
-                        // Видалений контрагент картки не має — з вимкненою панеллю клік нічого не робить.
-                        (detailPanel.enabled || !isDeleted) && 'cursor-pointer',
-                        isDeleted && 'opacity-60',
-                        selectedCp?.id === cp.id && detailPanel.enabled && 'bg-secondary',
-                        bulkSelect.isSelected(cp.id) && 'bg-primary/5',
-                      )}
-                      // Стандарт списків: панель увімкнена → клік показує/ховає панель;
-                      // вимкнена → клік відкриває картку (те саме, що олівець).
-                      onClick={() =>
-                        activateRow({
-                          panelEnabled: detailPanel.enabled,
-                          isSelected: selectedCp?.id === cp.id,
-                          select: () => setSelectedCp(cp),
-                          deselect: () => setSelectedCp(null),
-                          open: isDeleted ? undefined : () => openEdit(cp),
-                        })
-                      }
-                    >
-                      {features.bulkActionsEnabled && (
-                        <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={bulkSelect.isSelected(cp.id)}
-                            onChange={() => bulkSelect.toggle(cp.id)}
-                            className="h-3.5 w-3.5 rounded border-border"
-                            aria-label={t('aria.selectRow', { name: displayName(cp) })}
-                          />
-                        </TableCell>
-                      )}
-                      {visibleColumns.map(col => {
-                        if (col.key === 'name')
-                          return (
-                            <TableCell key="name">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                {isDeleted ? (
-                                  <p className="text-[13px] font-medium text-muted-foreground">
-                                    {displayName(cp)}
-                                  </p>
-                                ) : (
-                                  <DocLink
-                                    href={cpCard.hrefFor(cp.id)}
-                                    onOpen={() => openEdit(cp)}
-                                    className="whitespace-normal"
-                                  >
-                                    {displayName(cp)}
-                                  </DocLink>
-                                )}
-                                {isDeleted && (
-                                  <Badge variant="secondary">{t('badges.deleted')}</Badge>
-                                )}
-                              </div>
-                              {cp.email && (
-                                <p className="text-[12px] text-muted-foreground mt-0.5">
-                                  {cp.email}
-                                </p>
-                              )}
-                            </TableCell>
-                          );
-                        if (col.key === 'type')
-                          return (
-                            <TableCell key="type">
-                              <Badge
-                                variant={TYPE_BADGE[cp.type] ?? 'secondary'}
-                                tooltip={COUNTERPARTY_TYPE_DESCRIPTIONS[cp.type]}
-                              >
-                                {counterpartyTypeLabel(cp.type)}
-                              </Badge>
-                            </TableCell>
-                          );
-                        if (col.key === 'statuses')
-                          return (
-                            <TableCell key="statuses">
-                              {cp.statuses && cp.statuses.length > 0 ? (
-                                <div className="flex flex-wrap gap-1">
-                                  {cp.statuses.map(s => (
-                                    <span
-                                      key={s.id}
-                                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium text-white"
-                                      style={{ backgroundColor: s.color }}
-                                    >
-                                      {s.name}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : (
-                                <span className="text-muted-foreground text-[13px]">—</span>
-                              )}
-                            </TableCell>
-                          );
-                        if (col.key === 'phone')
-                          return (
-                            <TableCell key="phone" className="text-muted-foreground text-[13px]">
-                              {cp.phone ?? '—'}
-                            </TableCell>
-                          );
-                        if (col.key === 'edrpou')
-                          return (
-                            <TableCell key="edrpou" className="text-muted-foreground text-[13px]">
-                              {cp.edrpou ?? '—'}
-                            </TableCell>
-                          );
-                        if (col.key === 'balance')
-                          return (
-                            <MoneyCell
-                              key="balance"
-                              // WEB-R3-5: тип-aware тон (CLIENT balance>0 = борг нам = destructive).
-                              className={cn(
-                                'font-semibold text-[13px]',
-                                settlementBalanceToneClass(
-                                  settlementBalanceTone(cp.balance, cp.type),
-                                ),
-                              )}
-                            >
-                              {fmtMoney(cp.balance)} ₴
-                            </MoneyCell>
-                          );
-                        return null;
-                      })}
-                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1">
-                          {!isDeleted && (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              title={t('actions.edit')}
-                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                              onClick={() => openEdit(cp)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                          {!isDeleted && (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                              title={t('actions.markForDeletion')}
-                              onClick={() => void markDeleted(cp.id)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-
-        <DetailPanel
-          open={!!selectedCp && detailPanel.enabled}
-          onClose={() => setSelectedCp(null)}
-          title={selectedCp ? displayName(selectedCp) : ''}
-          tabs={selectedCp ? buildCpTabs(selectedCp) : undefined}
-          configFields={crmPanelConfigFields}
-          onToggleField={panelConfig.toggleField}
-          onReset={panelConfig.reset}
-        />
-      </div>
+              );
+            })}
+        </TableBody>
+      </ListTableLayout>
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 

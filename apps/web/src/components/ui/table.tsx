@@ -7,9 +7,11 @@ import type {
   ThHTMLAttributes,
   TdHTMLAttributes,
 } from 'react';
+import { useEffect, useRef } from 'react';
 import { ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SortState } from '@/hooks/useSortState';
+import { Spinner } from './spinner';
 
 /**
  * Table wrapper.
@@ -126,6 +128,25 @@ function SortableHead({
   );
 }
 
+interface ColumnHeadProps extends ThHTMLAttributes<HTMLTableCellElement> {
+  /** Ключ сортування колонки; без нього — звичайний заголовок без сортування. */
+  sortKey?: string | undefined;
+  currentSort: SortState;
+  onSort: (key: string) => void;
+}
+
+/**
+ * Заголовок колонки списку з налаштовуваними колонками: сортований, коли колонці дали `sortKey`,
+ * інакше — звичайний. Одне місце замість гілки `SortableHead : TableHead` у кожному списку.
+ */
+function ColumnHead({ sortKey, currentSort, onSort, ...props }: ColumnHeadProps) {
+  return sortKey ? (
+    <SortableHead sortKey={sortKey} currentSort={currentSort} onSort={onSort} {...props} />
+  ) : (
+    <TableHead {...props} />
+  );
+}
+
 function TableCell({ className, children, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
   return (
     <td className={cn('px-4 py-2 align-middle', className)} {...props}>
@@ -194,6 +215,105 @@ function DocLink({ href, onOpen, children, className, title }: DocLinkProps) {
   );
 }
 
+interface SelectAllHeadProps {
+  /** Стан масового вибору списку (`useBulkSelect`). */
+  bulk: { allSelected: boolean; someSelected: boolean; toggleAll: () => void };
+  /** Доступна назва прапорця («Вибрати всі»). */
+  label: string;
+}
+
+/**
+ * Заголовок колонки масового вибору: прапорець «вибрати всі на сторінці». Частковий вибір
+ * показує сам (`indeterminate` — лише властивість DOM, атрибута для нього немає).
+ */
+function SelectAllHead({ bulk, label }: SelectAllHeadProps) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = bulk.someSelected;
+  }, [bulk.someSelected]);
+  return (
+    <TableHead className="w-9 pr-0">
+      <input
+        type="checkbox"
+        checked={bulk.allSelected}
+        ref={ref}
+        onChange={bulk.toggleAll}
+        className="h-3.5 w-3.5 rounded border-border"
+        aria-label={label}
+      />
+    </TableHead>
+  );
+}
+
+interface ListTableHeaderProps {
+  /** Стан списку (`useListPage()`): видимі колонки, перетягування, увімкнені можливості. */
+  list: {
+    visibleColumns: ReadonlyArray<{ key: string; label: string }>;
+    dragProps: (key: string) => ThHTMLAttributes<HTMLTableCellElement>;
+    features: { bulkActionsEnabled: boolean };
+  };
+  /** Сортування списку (`useSortState()`). */
+  sorting: { sort: SortState; toggle: (key: string) => void };
+  /** Колонка → поле сортування на сервері; колонки поза мапою не сортуються. */
+  sortKeys: Readonly<Partial<Record<string, string>>>;
+  /** Колонки чисел/сум — підпис праворуч, над числами. */
+  rightAligned?: readonly string[];
+  /** Масовий вибір (`useBulkSelect`); прапорець є, лише коли масові дії увімкнені. */
+  bulk: SelectAllHeadProps['bulk'];
+  /** Доступна назва прапорця «вибрати всі». */
+  selectAllLabel: string;
+  /** Заголовок колонки дій рядка; типово порожній. */
+  actionsHead?: ReactNode;
+}
+
+/**
+ * Шапка таблиці списку з налаштовуваними колонками: прапорець «вибрати всі», колонки (сортовані —
+ * за `sortKeys`, перетягувані), колонка дій. Одна розмітка для всіх списків документів.
+ */
+function ListTableHeader({
+  list,
+  sorting,
+  sortKeys,
+  rightAligned,
+  bulk,
+  selectAllLabel,
+  actionsHead,
+}: ListTableHeaderProps) {
+  return (
+    <TableHeader>
+      <TableRow>
+        {list.features.bulkActionsEnabled && <SelectAllHead bulk={bulk} label={selectAllLabel} />}
+        {list.visibleColumns.map(col => (
+          <ColumnHead
+            key={col.key}
+            sortKey={sortKeys[col.key]}
+            currentSort={sorting.sort}
+            onSort={sorting.toggle}
+            className={rightAligned?.includes(col.key) ? MONEY_HEAD_CLASS : undefined}
+            {...list.dragProps(col.key)}
+          >
+            {col.label}
+          </ColumnHead>
+        ))}
+        {actionsHead ?? <TableHead />}
+      </TableRow>
+    </TableHeader>
+  );
+}
+
+/** Рядок «завантаження» списку: спінер по центру на всю ширину таблиці. */
+function TableLoadingRow({ colSpan, className }: { colSpan: number; className?: string }) {
+  return (
+    <TableRow>
+      <TableCell colSpan={colSpan} className={cn('py-12 text-center', className)}>
+        <div className="flex justify-center">
+          <Spinner size="md" />
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 function TableCaption({ className, children, ...props }: HTMLAttributes<HTMLTableCaptionElement>) {
   return (
     <caption className={cn('mt-2 text-[12px] text-muted-foreground', className)} {...props}>
@@ -209,7 +329,11 @@ export {
   TableRow,
   TableHead,
   SortableHead,
+  ColumnHead,
   TableCell,
+  TableLoadingRow,
+  SelectAllHead,
+  ListTableHeader,
   MoneyCell,
   MONEY_HEAD_CLASS,
   DocLink,

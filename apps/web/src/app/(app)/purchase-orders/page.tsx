@@ -60,16 +60,17 @@ import { activateRow } from '@/lib/row-activation';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState, ListEmptyState } from '@/components/ui/empty-state';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
-import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
+import { type BulkAction } from '@/components/ui/bulk-actions-bar';
+import { TableContainer } from '@/components/ui/table-container';
 import {
   Table,
   TableHeader,
   TableBody,
   TableRow,
   TableHead,
-  SortableHead,
   TableCell,
   DocLink,
+  ListTableHeader,
 } from '@/components/ui/table';
 import { useUrlCard, urlCardHref } from '@/lib/url-card';
 import { useSortState } from '@/hooks/useSortState';
@@ -83,8 +84,10 @@ import {
   DELIVERY_STATUS_BADGE,
 } from '@/lib/panel-schema';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
-import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { useListPage } from '@/hooks/useListPage';
+import { ListTableLayout } from '@/components/ui/list-table-layout';
+import { ListToolbar } from '@/components/ui/list-view-actions';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { PurchaseOrderCreateModal } from '@/components/ui/PurchaseOrderCreateModal';
 // sto-optimize: SupplierReturnCreateModal — 856 LOC secondary action на сторінці
@@ -120,6 +123,7 @@ import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
 import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
 import { ExpiryBadge } from '@/components/ui/expiry-badge';
+import { RowDeleteButton } from '@/components/ui/row-delete-button';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 
@@ -228,6 +232,13 @@ const SCHEDULE_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
 const TAB_BUTTON =
   'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm';
 
+/** Колонки списку, за якими сортує сервер: ключ колонки → поле сортування. */
+const PO_SORT_KEYS: Partial<Record<string, string>> = {
+  date: 'documentDate',
+  amount: 'totalAmount',
+  paymentDate: 'paymentDate',
+};
+
 function PurchaseOrdersPageClient() {
   // Літерал, а не PURCHASE_DOCUMENT_ROLES: guard сторінки читає тест меню (nav-page-roles.test).
   const { employee } = useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
@@ -284,32 +295,25 @@ function PurchaseOrdersPageClient() {
     invalidatePurchaseSideEffects(queryClient);
   }, [queryClient]);
 
+  const listPage = useListPage<PoFilters>('purchase-orders', COLUMNS, { defaultLimit: 20 });
   const {
     page,
     setPage,
     resetPage,
+    changeFilter,
+    filterSetter,
     showDeleted,
     setShowDeleted,
     activeSavedFilterId,
     setActiveSavedFilterId,
-    tableColumns: {
-      visibleKeys: colVisible,
-      visibleColumns,
-      orderedColumns,
-      order,
-      customLabels,
-      toggle: toggleCol,
-      reorder,
-      renameColumn,
-      resetConfig,
-    },
-    dragProps,
+    visibleColumns,
+    colSpan,
     detailPanel,
     panelConfig,
     savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
     features,
     limit,
-  } = useListPage<PoFilters>('purchase-orders', COLUMNS, { defaultLimit: 20 });
+  } = listPage;
 
   // Local filter state (specific to purchase-orders)
   const [status, setStatus] = useState('');
@@ -318,7 +322,8 @@ function PurchaseOrdersPageClient() {
   const [error, setError] = useState('');
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
-  const { sort: poSort, toggle: togglePoSort } = useSortState('createdAt', 'desc');
+  const poSorting = useSortState('createdAt', 'desc');
+  const { sort: poSort } = poSorting;
 
   // SSR-safe «сьогодні» для бейджа «Днів до оплати» (уникає hydration mismatch).
   const [today, setToday] = useState<Date | null>(null);
@@ -376,7 +381,7 @@ function PurchaseOrdersPageClient() {
     staleTime: 30_000,
   });
 
-  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(orders);
+  const bulkSelect = useBulkSelect(orders);
 
   const applyFilter = useCallback(
     (preset: { id: string; filters: PoFilters }) => {
@@ -1049,14 +1054,12 @@ function PurchaseOrdersPageClient() {
                 resetSrPage();
                 setSrActiveSavedFilterId(null);
               }}
-              fromLabel={t('filters.dateFrom')}
-              toLabel={t('filters.dateTo')}
             />
           </ListFiltersRow>
 
           {/* Returns table */}
           <div className="flex flex-1 min-h-0">
-            <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
+            <TableContainer>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1255,7 +1258,7 @@ function PurchaseOrdersPageClient() {
                     ))}
                 </TableBody>
               </Table>
-            </div>
+            </TableContainer>
 
             <DetailPanel
               open={!!selectedSr && srDetailPanel.enabled}
@@ -1337,401 +1340,279 @@ function PurchaseOrdersPageClient() {
                 label={l}
                 active={status === v}
                 description={v ? PO_STATUS_DESCRIPTIONS[v] : undefined}
-                onSelect={v => {
-                  setStatus(v);
-                  resetPage();
-                  setActiveSavedFilterId(null);
-                }}
+                onSelect={filterSetter(setStatus)}
               />
             ))}
           </ListStatusRow>
 
           {/* Filters row */}
-          <ListFiltersRow
-            actions={
-              <>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
-                  onClick={() => {
-                    setShowDeleted(v => !v);
-                    resetPage();
-                    setActiveSavedFilterId(null);
-                  }}
-                  className={cn(showDeleted && 'border-primary text-primary')}
-                >
-                  {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                </Button>
-                {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-                <ColumnsDropdown
-                  columns={orderedColumns}
-                  visibleKeys={colVisible}
-                  onToggle={toggleCol}
-                  onReorder={reorder}
-                  onRename={renameColumn}
-                  onReset={resetConfig}
-                  hasCustomization={
-                    JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
-                    Object.keys(customLabels).length > 0
-                  }
-                />
-                <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-                <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-                  {t('actions.addOrder')}
-                </Button>
-              </>
+          <ListToolbar
+            list={listPage}
+            defaultKeysJson={COLUMNS_DEFAULT_KEYS_JSON}
+            onSaveFilter={handleSaveFilter}
+            onAdd={() => setShowCreate(true)}
+            addLabel={t('actions.addOrder')}
+            searchLabel={t('filters.searchPlaceholder')}
+            search={[q, setQ]}
+            period={[dateFrom, setDateFrom, dateTo, setDateTo]}
+          />
+
+          <ListTableLayout
+            list={listPage}
+            bulk={bulkSelect}
+            bulkActions={bulkActions}
+            panel={
+              <DetailPanel
+                open={!!selectedPO && detailPanel.enabled}
+                onClose={() => setSelectedPO(null)}
+                title={selectedPO?.number ?? ''}
+                subtitle={selectedPO?.supplierName}
+                tabs={selectedPO ? buildPoTabs(selectedPO) : undefined}
+                configFields={panelConfigFields}
+                onToggleField={panelConfig.toggleField}
+                onReorderFields={panelConfig.reorderFields}
+                onReset={panelConfig.reset}
+              />
             }
           >
-            <Input
-              value={q}
-              onChange={e => {
-                setQ(e.target.value);
-                resetPage();
-                setActiveSavedFilterId(null);
-              }}
-              placeholder={t('filters.searchPlaceholder')}
-              leftElement={<Search />}
-              className="w-72 h-8 text-[13px]"
+            <ListTableHeader
+              list={listPage}
+              sorting={poSorting}
+              sortKeys={PO_SORT_KEYS}
+              rightAligned={['amount']}
+              bulk={bulkSelect}
+              selectAllLabel={t('aria.selectAll')}
             />
-            <DateRangeFilter
-              from={dateFrom}
-              to={dateTo}
-              onFromChange={v => {
-                setDateFrom(v);
-                resetPage();
-                setActiveSavedFilterId(null);
-              }}
-              onToChange={v => {
-                setDateTo(v);
-                resetPage();
-                setActiveSavedFilterId(null);
-              }}
-              fromLabel={t('filters.dateFrom')}
-              toLabel={t('filters.dateTo')}
-            />
-          </ListFiltersRow>
-
-          {/* Bulk actions */}
-          {features.bulkActionsEnabled && bulkSelect.count > 0 && (
-            <BulkActionsBar
-              count={bulkSelect.count}
-              selectedIds={Array.from(bulkSelect.selected)}
-              actions={bulkActions}
-              onClear={bulkSelect.clear}
-            />
-          )}
-
-          {/* Table + DetailPanel */}
-          <div className="flex flex-1 min-h-0">
-            <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {features.bulkActionsEnabled && (
-                      <TableHead className="w-9 pr-0">
-                        <input
-                          type="checkbox"
-                          checked={bulkSelect.allSelected}
-                          ref={selectAllRef}
-                          onChange={bulkSelect.toggleAll}
-                          className="h-3.5 w-3.5 rounded border-border"
-                          aria-label={t('aria.selectAll')}
-                        />
-                      </TableHead>
-                    )}
-                    {visibleColumns.map(col => {
-                      const sortable = ['date', 'amount', 'paymentDate'].includes(col.key);
-                      const sortKey =
-                        col.key === 'date'
-                          ? 'documentDate'
-                          : col.key === 'amount'
-                            ? 'totalAmount'
-                            : col.key;
-                      if (sortable)
-                        return (
-                          <SortableHead
-                            key={col.key}
-                            sortKey={sortKey}
-                            currentSort={poSort}
-                            onSort={togglePoSort}
-                            className={col.key === 'amount' ? 'text-right' : undefined}
-                            {...dragProps(col.key)}
+            <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={colSpan} className="py-10 text-center">
+                    <div className="flex justify-center">
+                      <Spinner size="md" />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && orders.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={colSpan} className="p-0">
+                    <ListEmptyState
+                      icon={ShoppingCart}
+                      title={t('empty.ordersNotFound')}
+                      filtered={!!(status || q || dateFrom || dateTo)}
+                      onResetFilters={() =>
+                        changeFilter(() => {
+                          setStatus('');
+                          setQ('');
+                          setDateFrom('');
+                          setDateTo('');
+                        })
+                      }
+                    />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading &&
+                orders.map(po => {
+                  const rowTone = rowStatusTone(
+                    {
+                      dueDate: po.paymentDate,
+                      active: !PO_INACTIVE_STATUSES.has(po.status),
+                      balanceDue: po.outstanding,
+                    },
+                    nowMs,
+                  );
+                  const toneTitle = rowStatusLabel(rowTone);
+                  return (
+                    <TableRow
+                      key={po.id}
+                      title={toneTitle}
+                      className={cn(
+                        'group transition-colors cursor-pointer',
+                        rowStatusBorderClass(rowTone),
+                        selectedPO?.id === po.id && detailPanel.enabled && 'bg-primary/5',
+                        bulkSelect.isSelected(po.id) && 'bg-primary/5',
+                        po.deletedAt && 'opacity-60',
+                      )}
+                      onClick={() =>
+                        activateRow({
+                          panelEnabled: detailPanel.enabled,
+                          isSelected: selectedPO?.id === po.id,
+                          // selectPO сам знімає вибір з уже вибраного рядка (звіряє id через
+                          // ref, а не зі стану, що міг застаріти) — тому обидві гілки його.
+                          select: () => selectPO(po),
+                          deselect: () => selectPO(po),
+                          open: () => setEditingPOId(po.id),
+                        })
+                      }
+                    >
+                      {features.bulkActionsEnabled && (
+                        <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={bulkSelect.isSelected(po.id)}
+                            onChange={() => bulkSelect.toggle(po.id)}
+                            className="h-3.5 w-3.5 rounded border-border"
+                            aria-label={t('aria.selectRow', { number: po.number })}
+                          />
+                        </TableCell>
+                      )}
+                      {visibleColumns.map(col => {
+                        if (col.key === 'number')
+                          return (
+                            <TableCell key="number" className="whitespace-nowrap">
+                              <DocLink
+                                href={poCard.hrefFor(po.id)}
+                                onOpen={() => setEditingPOId(po.id)}
+                              >
+                                {po.number}
+                              </DocLink>
+                              {po.deletedAt && (
+                                <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
+                                  {t('badges.deleted')}
+                                </Badge>
+                              )}
+                            </TableCell>
+                          );
+                        if (col.key === 'supplier')
+                          return (
+                            <TableCell key="supplier" className="text-[13px]">
+                              {po.supplierName ?? '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'warehouse')
+                          return (
+                            <TableCell
+                              key="warehouse"
+                              className="text-[13px] text-muted-foreground"
+                            >
+                              {po.warehouseName ?? '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'status')
+                          return (
+                            <TableCell key="status">
+                              <Badge
+                                variant={STATUS_BADGE[po.status] ?? 'secondary'}
+                                tooltip={PO_STATUS_DESCRIPTIONS[po.status]}
+                              >
+                                {poStatusLabel(po.status)}
+                              </Badge>
+                            </TableCell>
+                          );
+                        if (col.key === 'amount') {
+                          const isBase = !po.currencyCode || po.currencyCode === baseCode;
+                          const sym = isBase ? baseSymbol : po.currencyCode;
+                          return (
+                            <TableCell
+                              key="amount"
+                              className="text-right font-semibold text-[13px] tabular-nums"
+                            >
+                              <div>
+                                {fmtMoney(po.totalAmount)} {sym}
+                              </div>
+                              {!isBase && po.totalAmountBase != null && (
+                                <div className="text-[11px] font-normal text-muted-foreground">
+                                  {fmtMoney(po.totalAmountBase)} {baseSymbol}
+                                </div>
+                              )}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'date')
+                          return (
+                            <TableCell key="date" className="text-[13px] text-muted-foreground">
+                              {po.documentDate ? fmtDate(po.documentDate) : fmtDate(po.createdAt)}
+                            </TableCell>
+                          );
+                        if (col.key === 'paymentDate')
+                          return (
+                            <TableCell
+                              key="paymentDate"
+                              className="text-[13px] text-muted-foreground"
+                            >
+                              {po.paymentDate ? fmtDate(po.paymentDate) : '—'}
+                            </TableCell>
+                          );
+                        if (col.key === 'payDue') {
+                          // Бейдж лише де є реальний залишок боргу по PO.
+                          const dpd =
+                            (po.outstanding ?? 0) > 0 ? daysUntil(po.paymentDate, nowMs) : null;
+                          return (
+                            <TableCell key="payDue" className="text-[13px]">
+                              {dpd != null && (
+                                <ExpiryBadge
+                                  date={po.paymentDate}
+                                  nowMs={nowMs}
+                                  expiredLabel={t('payDue.overdue', { days: Math.abs(dpd) })}
+                                  soonLabel={t('payDue.soon', { days: dpd })}
+                                  soonDays={20}
+                                />
+                              )}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'priced')
+                          return (
+                            <TableCell key="priced" className="text-[13px]">
+                              {po.pricedAt ? (
+                                <span className="text-success font-medium">{t('priced.yes')}</span>
+                              ) : (
+                                <span className="text-muted-foreground">{t('priced.no')}</span>
+                              )}
+                            </TableCell>
+                          );
+                        if (col.key === 'linkedDocs') {
+                          const counts = linkedCounts[po.id];
+                          return (
+                            <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
+                              <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
+                                {DOC_COUNTERS.map(({ field, Icon, labelKey }) => {
+                                  const n = counts?.[field];
+                                  if (!n) return null;
+                                  return (
+                                    <button
+                                      key={field}
+                                      onClick={() => setLinkedDocPopupId(po.id)}
+                                      className="flex items-center gap-0.5 hover:text-foreground transition-colors"
+                                      title={`${t(labelKey)}: ${n}`}
+                                    >
+                                      <Icon size={13} />
+                                      <span>{n}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </TableCell>
+                          );
+                        }
+                        return null;
+                      })}
+                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            title={t('actions.edit')}
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                            onClick={() => setEditingPOId(po.id)}
                           >
-                            {col.label}
-                          </SortableHead>
-                        );
-                      return (
-                        <TableHead key={col.key} {...dragProps(col.key)}>
-                          {col.label}
-                        </TableHead>
-                      );
-                    })}
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                        className="py-10 text-center"
-                      >
-                        <div className="flex justify-center">
-                          <Spinner size="md" />
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          {!po.deletedAt && (
+                            <RowDeleteButton
+                              title={t('actions.markForDeletion')}
+                              onClick={() => void markDeleted(po)}
+                            />
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
-                  )}
-                  {!loading && orders.length === 0 && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                        className="p-0"
-                      >
-                        <ListEmptyState
-                          icon={ShoppingCart}
-                          title={t('empty.ordersNotFound')}
-                          filtered={!!(status || q || dateFrom || dateTo)}
-                          onResetFilters={() => {
-                            setStatus('');
-                            setQ('');
-                            setDateFrom('');
-                            setDateTo('');
-                            resetPage();
-                            setActiveSavedFilterId(null);
-                          }}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {!loading &&
-                    orders.map(po => {
-                      const rowTone = rowStatusTone(
-                        {
-                          dueDate: po.paymentDate,
-                          active: !PO_INACTIVE_STATUSES.has(po.status),
-                          balanceDue: po.outstanding,
-                        },
-                        nowMs,
-                      );
-                      const toneTitle = rowStatusLabel(rowTone);
-                      return (
-                        <TableRow
-                          key={po.id}
-                          title={toneTitle}
-                          className={cn(
-                            'group transition-colors cursor-pointer',
-                            rowStatusBorderClass(rowTone),
-                            selectedPO?.id === po.id && detailPanel.enabled && 'bg-primary/5',
-                            bulkSelect.isSelected(po.id) && 'bg-primary/5',
-                            po.deletedAt && 'opacity-60',
-                          )}
-                          onClick={() =>
-                            activateRow({
-                              panelEnabled: detailPanel.enabled,
-                              isSelected: selectedPO?.id === po.id,
-                              // selectPO сам знімає вибір з уже вибраного рядка (звіряє id через
-                              // ref, а не зі стану, що міг застаріти) — тому обидві гілки його.
-                              select: () => selectPO(po),
-                              deselect: () => selectPO(po),
-                              open: () => setEditingPOId(po.id),
-                            })
-                          }
-                        >
-                          {features.bulkActionsEnabled && (
-                            <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                checked={bulkSelect.isSelected(po.id)}
-                                onChange={() => bulkSelect.toggle(po.id)}
-                                className="h-3.5 w-3.5 rounded border-border"
-                                aria-label={t('aria.selectRow', { number: po.number })}
-                              />
-                            </TableCell>
-                          )}
-                          {visibleColumns.map(col => {
-                            if (col.key === 'number')
-                              return (
-                                <TableCell key="number" className="whitespace-nowrap">
-                                  <DocLink
-                                    href={poCard.hrefFor(po.id)}
-                                    onOpen={() => setEditingPOId(po.id)}
-                                  >
-                                    {po.number}
-                                  </DocLink>
-                                  {po.deletedAt && (
-                                    <Badge
-                                      variant="destructive"
-                                      className="ml-2 text-[10px] px-1 py-0"
-                                    >
-                                      {t('badges.deleted')}
-                                    </Badge>
-                                  )}
-                                </TableCell>
-                              );
-                            if (col.key === 'supplier')
-                              return (
-                                <TableCell key="supplier" className="text-[13px]">
-                                  {po.supplierName ?? '—'}
-                                </TableCell>
-                              );
-                            if (col.key === 'warehouse')
-                              return (
-                                <TableCell
-                                  key="warehouse"
-                                  className="text-[13px] text-muted-foreground"
-                                >
-                                  {po.warehouseName ?? '—'}
-                                </TableCell>
-                              );
-                            if (col.key === 'status')
-                              return (
-                                <TableCell key="status">
-                                  <Badge
-                                    variant={STATUS_BADGE[po.status] ?? 'secondary'}
-                                    tooltip={PO_STATUS_DESCRIPTIONS[po.status]}
-                                  >
-                                    {poStatusLabel(po.status)}
-                                  </Badge>
-                                </TableCell>
-                              );
-                            if (col.key === 'amount') {
-                              const isBase = !po.currencyCode || po.currencyCode === baseCode;
-                              const sym = isBase ? baseSymbol : po.currencyCode;
-                              return (
-                                <TableCell
-                                  key="amount"
-                                  className="text-right font-semibold text-[13px] tabular-nums"
-                                >
-                                  <div>
-                                    {fmtMoney(po.totalAmount)} {sym}
-                                  </div>
-                                  {!isBase && po.totalAmountBase != null && (
-                                    <div className="text-[11px] font-normal text-muted-foreground">
-                                      {fmtMoney(po.totalAmountBase)} {baseSymbol}
-                                    </div>
-                                  )}
-                                </TableCell>
-                              );
-                            }
-                            if (col.key === 'date')
-                              return (
-                                <TableCell key="date" className="text-[13px] text-muted-foreground">
-                                  {po.documentDate
-                                    ? fmtDate(po.documentDate)
-                                    : fmtDate(po.createdAt)}
-                                </TableCell>
-                              );
-                            if (col.key === 'paymentDate')
-                              return (
-                                <TableCell
-                                  key="paymentDate"
-                                  className="text-[13px] text-muted-foreground"
-                                >
-                                  {po.paymentDate ? fmtDate(po.paymentDate) : '—'}
-                                </TableCell>
-                              );
-                            if (col.key === 'payDue') {
-                              // Бейдж лише де є реальний залишок боргу по PO.
-                              const dpd =
-                                (po.outstanding ?? 0) > 0 ? daysUntil(po.paymentDate, nowMs) : null;
-                              return (
-                                <TableCell key="payDue" className="text-[13px]">
-                                  {dpd != null && (
-                                    <ExpiryBadge
-                                      date={po.paymentDate}
-                                      nowMs={nowMs}
-                                      expiredLabel={t('payDue.overdue', { days: Math.abs(dpd) })}
-                                      soonLabel={t('payDue.soon', { days: dpd })}
-                                      soonDays={20}
-                                    />
-                                  )}
-                                </TableCell>
-                              );
-                            }
-                            if (col.key === 'priced')
-                              return (
-                                <TableCell key="priced" className="text-[13px]">
-                                  {po.pricedAt ? (
-                                    <span className="text-success font-medium">
-                                      {t('priced.yes')}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground">{t('priced.no')}</span>
-                                  )}
-                                </TableCell>
-                              );
-                            if (col.key === 'linkedDocs') {
-                              const counts = linkedCounts[po.id];
-                              return (
-                                <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
-                                  <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
-                                    {DOC_COUNTERS.map(({ field, Icon, labelKey }) => {
-                                      const n = counts?.[field];
-                                      if (!n) return null;
-                                      return (
-                                        <button
-                                          key={field}
-                                          onClick={() => setLinkedDocPopupId(po.id)}
-                                          className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                          title={`${t(labelKey)}: ${n}`}
-                                        >
-                                          <Icon size={13} />
-                                          <span>{n}</span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </TableCell>
-                              );
-                            }
-                            return null;
-                          })}
-                          <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center justify-end gap-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                title={t('actions.edit')}
-                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                                onClick={() => setEditingPOId(po.id)}
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                              {!po.deletedAt && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  title={t('actions.markForDeletion')}
-                                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                                  onClick={() => void markDeleted(po)}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                </TableBody>
-              </Table>
-            </div>
-
-            <DetailPanel
-              open={!!selectedPO && detailPanel.enabled}
-              onClose={() => setSelectedPO(null)}
-              title={selectedPO?.number ?? ''}
-              subtitle={selectedPO?.supplierName}
-              tabs={selectedPO ? buildPoTabs(selectedPO) : undefined}
-              configFields={panelConfigFields}
-              onToggleField={panelConfig.toggleField}
-              onReorderFields={panelConfig.reorderFields}
-              onReset={panelConfig.reset}
-            />
-          </div>
+                  );
+                })}
+            </TableBody>
+          </ListTableLayout>
 
           {/* Pagination */}
           <Pagination page={page} totalPages={totalPages} onChange={setPage} />

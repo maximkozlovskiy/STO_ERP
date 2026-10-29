@@ -2,22 +2,10 @@
 
 import { Suspense, useEffect, useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import type { ElementType } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import {
-  Plus,
-  Receipt,
-  Search,
-  Eye,
-  EyeOff,
-  Pencil,
-  Trash2,
-  ClipboardList,
-  CreditCard,
-  User,
-} from 'lucide-react';
+import { Receipt, Pencil, ClipboardList, CreditCard, User } from 'lucide-react';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
 import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
 import { LinesSummarySection } from '@/components/ui/LinesSummarySection';
@@ -47,23 +35,19 @@ import { invoiceStatusLabel, invoiceTypeLabel } from '@/i18n/enumLabel';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
-import { Input } from '@/components/ui/input';
-import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { activateRow } from '@/lib/row-activation';
-import { Spinner } from '@/components/ui/spinner';
-import { EmptyState, ListEmptyState } from '@/components/ui/empty-state';
+import { ListEmptyState } from '@/components/ui/empty-state';
 import {
-  Table,
-  TableHeader,
   TableBody,
   TableRow,
-  TableHead,
-  SortableHead,
   TableCell,
   MoneyCell,
   DocLink,
+  TableLoadingRow,
+  ListTableHeader,
 } from '@/components/ui/table';
 import { useUrlCard } from '@/lib/url-card';
+import { LinkedDocCounters, type DocCounterDef } from '@/components/ui/linked-doc-counters';
 import { useSortState } from '@/hooks/useSortState';
 import {
   DetailPanel,
@@ -71,17 +55,17 @@ import {
   PanelSection,
   type DetailPanelTab,
 } from '@/components/ui/detail-panel';
-import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import {
   INVOICE_PANEL_SCHEMA,
   buildPanelFields,
   schemaToPanelConfigFields,
 } from '@/lib/panel-schema';
-import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
-import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
-import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
+import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { useListPage } from '@/hooks/useListPage';
-import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
+import { ListTableLayout } from '@/components/ui/list-table-layout';
+import { ListToolbar } from '@/components/ui/list-view-actions';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { toast } from '@/lib/toast';
 import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
 import { cn } from '@/lib/utils';
@@ -89,7 +73,8 @@ import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
 import { optimisticInvoiceStatus } from '@/lib/invoice-payment';
 import { invalidatePaymentSideEffects, invalidateBalanceAffected } from '@/lib/cache-invalidation';
 import { StatusPill } from '@/components/ui/status-pill';
-import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
+import { ListStatusRow } from '@/components/ui/list-toolbar';
+import { RowDeleteButton } from '@/components/ui/row-delete-button';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 // new Date().toISOString() returns UTC, which diverges from Kyiv date between midnight and UTC+2/+3.
@@ -160,15 +145,18 @@ type LinkedCountsMap = Record<string, LinkedCountsEntry>;
 // Stable empty fallback — module-level frozen reference avoids fresh {} per render.
 const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({});
 
-const DOC_COUNTERS: Array<{
-  field: LinkedCountsField;
-  Icon: ElementType;
-  labelKey: string;
-}> = [
+const DOC_COUNTERS: ReadonlyArray<DocCounterDef<LinkedCountsField>> = [
   { field: 'workOrder', Icon: ClipboardList, labelKey: 'counters.workOrder' },
   { field: 'payments', Icon: CreditCard, labelKey: 'counters.payments' },
   { field: 'counterparty', Icon: User, labelKey: 'counters.counterparty' },
 ];
+
+/** Колонки списку, за якими сортує сервер: ключ колонки → поле сортування. */
+const INV_SORT_KEYS: Partial<Record<string, string>> = {
+  documentDate: 'documentDate',
+  dueDate: 'dueDate',
+  amount: 'amount',
+};
 
 function InvoicesPageInner() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']);
@@ -184,32 +172,23 @@ function InvoicesPageInner() {
   const { confirm, dialogProps } = useConfirm();
 
   // useListPage: shared table/panel/filter infrastructure
+  const listPage = useListPage<InvoiceFilters>('invoices', INVOICE_COLUMNS, { defaultLimit: 20 });
   const {
     page,
     setPage,
     resetPage,
+    changeFilter,
     showDeleted,
-    setShowDeleted,
     activeSavedFilterId,
     setActiveSavedFilterId,
-    tableColumns: {
-      visibleKeys: colVisible,
-      visibleColumns,
-      orderedColumns,
-      order,
-      customLabels,
-      toggle: toggleCol,
-      reorder,
-      renameColumn,
-      resetConfig,
-    },
-    dragProps,
+    visibleColumns,
+    colSpan,
     detailPanel,
     panelConfig,
     savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
     features,
     limit,
-  } = useListPage<InvoiceFilters>('invoices', INVOICE_COLUMNS, { defaultLimit: 20 });
+  } = listPage;
 
   // Page-level filter state (specific to invoices)
   const [status, setStatus] = useState('');
@@ -223,7 +202,8 @@ function InvoicesPageInner() {
   useEffect(() => {
     setNowMs(Date.now());
   }, []);
-  const { sort: invSort, toggle: toggleInvSort } = useSortState('createdAt', 'desc');
+  const invSorting = useSortState('createdAt', 'desc');
+  const { sort: invSort } = invSorting;
 
   const { employee } = useAuth();
   const linkedNav = useLinkedNav();
@@ -277,7 +257,7 @@ function InvoicesPageInner() {
   });
 
   // Bulk select — after invoices is declared so items ref is stable
-  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(invoices);
+  const bulkSelect = useBulkSelect(invoices);
 
   const [selectedInv, setSelectedInv] = useState<InvoiceWithOptionals | null>(null);
   // Вимкнули панель → вибір скидаємо: інакше після повторного вмикання клік по тому самому
@@ -569,12 +549,8 @@ function InvoicesPageInner() {
   ];
 
   const handleSelectStatus = useCallback(
-    (s: string) => {
-      setStatus(s);
-      resetPage();
-      setActiveSavedFilterId(null);
-    },
-    [resetPage, setActiveSavedFilterId],
+    (s: string) => changeFilter(() => setStatus(s)),
+    [changeFilter],
   );
 
   const buildInvoiceTabs = (inv: InvoiceWithOptionals): DetailPanelTab[] => {
@@ -782,341 +758,211 @@ function InvoicesPageInner() {
       </ListStatusRow>
 
       {/* Search + Columns */}
-      <ListFiltersRow
-        actions={
-          <>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
-              onClick={() => {
-                setShowDeleted(d => !d);
-                resetPage();
-              }}
-              className={showDeleted ? 'border-primary text-primary' : ''}
-            >
-              {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-            </Button>
-            {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-            <ColumnsDropdown
-              columns={orderedColumns}
-              visibleKeys={colVisible}
-              onToggle={toggleCol}
-              onReorder={reorder}
-              onRename={renameColumn}
-              onReset={resetConfig}
-              hasCustomization={
-                JSON.stringify(order) !== INVOICE_COLUMNS_DEFAULT_KEYS_JSON ||
-                Object.keys(customLabels).length > 0
-              }
-            />
-            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-            <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-              {t('addButton')}
-            </Button>
-          </>
+      <ListToolbar
+        list={listPage}
+        defaultKeysJson={INVOICE_COLUMNS_DEFAULT_KEYS_JSON}
+        onSaveFilter={handleSaveFilter}
+        onAdd={() => setShowCreate(true)}
+        addLabel={t('addButton')}
+        searchLabel={t('filters.searchPlaceholder')}
+        search={[search, setSearch]}
+        period={[dateFrom, setDateFrom, dateTo, setDateTo]}
+      />
+
+      <ListTableLayout
+        list={listPage}
+        bulk={bulkSelect}
+        bulkActions={bulkActions}
+        panel={
+          <DetailPanel
+            open={!!selectedInv && detailPanel.enabled}
+            onClose={() => setSelectedInv(null)}
+            title={selectedInv?.number ?? ''}
+            subtitle={selectedInv?.counterpartyName}
+            tabs={selectedInv ? buildInvoiceTabs(selectedInv) : undefined}
+            configFields={schemaToPanelConfigFields(INVOICE_PANEL_SCHEMA, panelConfig.config)}
+            onToggleField={panelConfig.toggleField}
+            onReorderFields={panelConfig.reorderFields}
+            onReset={panelConfig.reset}
+          />
         }
       >
-        <Input
-          value={search}
-          onChange={e => {
-            setSearch(e.target.value);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          placeholder={t('filters.searchPlaceholder')}
-          leftElement={<Search />}
-          className="w-72 h-8 text-[13px]"
+        <ListTableHeader
+          list={listPage}
+          sorting={invSorting}
+          sortKeys={INV_SORT_KEYS}
+          rightAligned={['amount']}
+          bulk={bulkSelect}
+          selectAllLabel={t('aria.selectAll')}
         />
-        <DateRangeFilter
-          from={dateFrom}
-          to={dateTo}
-          onFromChange={v => {
-            setDateFrom(v);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          onToChange={v => {
-            setDateTo(v);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          fromLabel={t('filters.dateFrom')}
-          toLabel={t('filters.dateTo')}
-        />
-      </ListFiltersRow>
-
-      {/* Bulk actions */}
-      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
-        <BulkActionsBar
-          count={bulkSelect.count}
-          selectedIds={Array.from(bulkSelect.selected)}
-          actions={bulkActions}
-          onClear={bulkSelect.clear}
-        />
-      )}
-
-      {/* Table + DetailPanel */}
-      <div className="flex flex-1 min-h-0">
-        <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {features.bulkActionsEnabled && (
-                  <TableHead className="w-9 pr-0">
-                    <input
-                      type="checkbox"
-                      checked={bulkSelect.allSelected}
-                      ref={selectAllRef}
-                      onChange={bulkSelect.toggleAll}
-                      className="h-3.5 w-3.5 rounded border-border"
-                      aria-label={t('aria.selectAll')}
-                    />
-                  </TableHead>
-                )}
-                {visibleColumns.map(col => {
-                  const sortable = ['documentDate', 'dueDate', 'amount'].includes(col.key);
-                  const sortKey = col.key === 'amount' ? 'amount' : col.key;
-                  if (sortable)
-                    return (
-                      <SortableHead
-                        key={col.key}
-                        sortKey={sortKey}
-                        currentSort={invSort}
-                        onSort={toggleInvSort}
-                        className={col.key === 'amount' ? 'text-right' : undefined}
-                        {...dragProps(col.key)}
+        <TableBody>
+          {loading && <TableLoadingRow colSpan={colSpan} className="py-10" />}
+          {!loading && invoices.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={colSpan} className="p-0">
+                <ListEmptyState
+                  icon={Receipt}
+                  title={t('empty.notFound')}
+                  filtered={!!(status || search || dateFrom || dateTo)}
+                  onResetFilters={() =>
+                    changeFilter(() => {
+                      setStatus('');
+                      setSearch('');
+                      setDateFrom('');
+                      setDateTo('');
+                    })
+                  }
+                />
+              </TableCell>
+            </TableRow>
+          )}
+          {!loading &&
+            invoices.map(inv => {
+              const rowTone = rowStatusTone(
+                {
+                  dueDate: inv.dueDate,
+                  active: !INVOICE_INACTIVE_STATUSES.has(inv.status),
+                  balanceDue: (inv.amount ?? 0) - (inv.paidAmount ?? 0),
+                },
+                nowMs,
+              );
+              const toneTitle = rowStatusLabel(rowTone);
+              return (
+                <TableRow
+                  key={inv.id}
+                  title={toneTitle}
+                  // Стандарт списків: панель увімкнена → клік показує/ховає панель;
+                  // вимкнена → клік відкриває картку (те саме, що олівець).
+                  onClick={() =>
+                    activateRow({
+                      panelEnabled: detailPanel.enabled,
+                      isSelected: selectedInv?.id === inv.id,
+                      select: () => void selectInvoice(inv),
+                      deselect: () => setSelectedInv(null),
+                      open: () => setEditingInvoiceId(inv.id),
+                    })
+                  }
+                  className={cn(
+                    'group transition-colors cursor-pointer',
+                    rowStatusBorderClass(rowTone),
+                    inv.deletedAt && 'opacity-60',
+                    selectedInv?.id === inv.id && detailPanel.enabled && 'bg-primary/5',
+                    bulkSelect.isSelected(inv.id) && 'bg-primary/5',
+                  )}
+                >
+                  {features.bulkActionsEnabled && (
+                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(inv.id)}
+                        onChange={() => bulkSelect.toggle(inv.id)}
+                        className="h-3.5 w-3.5 rounded border-border"
+                        aria-label={t('aria.selectRow', { number: inv.number })}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleColumns.map(col => {
+                    if (col.key === 'number')
+                      return (
+                        <TableCell key="number">
+                          <DocLink
+                            href={card.hrefFor(inv.id)}
+                            onOpen={() => setEditingInvoiceId(inv.id)}
+                          >
+                            {inv.number}
+                          </DocLink>
+                        </TableCell>
+                      );
+                    if (col.key === 'counterparty')
+                      return (
+                        <TableCell key="counterparty" className="text-[13px]">
+                          {inv.counterpartyName ?? '—'}
+                        </TableCell>
+                      );
+                    if (col.key === 'workOrder')
+                      return (
+                        <TableCell key="workOrder" className="text-[13px] text-muted-foreground">
+                          {inv.workOrderNumber ?? '—'}
+                        </TableCell>
+                      );
+                    if (col.key === 'status')
+                      return (
+                        <TableCell key="status">
+                          <Badge
+                            variant={STATUS_BADGE[inv.status] ?? 'secondary'}
+                            tooltip={INVOICE_STATUS_DESCRIPTIONS[inv.status]}
+                          >
+                            {invoiceStatusLabel(inv.status)}
+                          </Badge>
+                        </TableCell>
+                      );
+                    if (col.key === 'amount') {
+                      const isBase = !inv.currencyCode || inv.currencyCode === baseCode;
+                      const sym = isBase ? baseSymbol : inv.currencyCode;
+                      return (
+                        <MoneyCell key="amount" className="font-semibold text-[13px]">
+                          <div>
+                            {fmtMoney(inv.amount)} {sym}
+                          </div>
+                          {!isBase && inv.totalAmountBase != null && (
+                            <div className="text-[11px] font-normal text-muted-foreground">
+                              {fmtMoney(inv.totalAmountBase)} {baseSymbol}
+                            </div>
+                          )}
+                        </MoneyCell>
+                      );
+                    }
+                    if (col.key === 'documentDate')
+                      return (
+                        <TableCell key="documentDate" className="text-[13px] text-muted-foreground">
+                          {inv.documentDate ? fmtDate(inv.documentDate) : '—'}
+                        </TableCell>
+                      );
+                    if (col.key === 'dueDate')
+                      return (
+                        <TableCell key="dueDate" className="text-[13px] text-muted-foreground">
+                          {inv.dueDate ? fmtDate(inv.dueDate) : '—'}
+                        </TableCell>
+                      );
+                    if (col.key === 'linkedDocs') {
+                      const counts = linkedCounts[inv.id];
+                      return (
+                        <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
+                          <LinkedDocCounters
+                            counters={DOC_COUNTERS}
+                            counts={counts}
+                            onOpen={() => setLinkedDocPopupId(inv.id)}
+                            label={k => t(k)}
+                          />
+                        </TableCell>
+                      );
+                    }
+                    return null;
+                  })}
+                  <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title={t('actions.openDocument')}
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                        onClick={() => setEditingInvoiceId(inv.id)}
                       >
-                        {col.label}
-                      </SortableHead>
-                    );
-                  return (
-                    <TableHead key={col.key} {...dragProps(col.key)}>
-                      {col.label}
-                    </TableHead>
-                  );
-                })}
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="py-10 text-center"
-                  >
-                    <div className="flex justify-center">
-                      <Spinner size="md" />
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      {!inv.deletedAt && (
+                        <RowDeleteButton
+                          title={t('actions.markForDeletion')}
+                          onClick={() => void markDeleted(inv)}
+                        />
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
-              )}
-              {!loading && invoices.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="p-0"
-                  >
-                    <ListEmptyState
-                      icon={Receipt}
-                      title={t('empty.notFound')}
-                      filtered={!!(status || search || dateFrom || dateTo)}
-                      onResetFilters={() => {
-                        setStatus('');
-                        setSearch('');
-                        setDateFrom('');
-                        setDateTo('');
-                        resetPage();
-                        setActiveSavedFilterId(null);
-                      }}
-                    />
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading &&
-                invoices.map(inv => {
-                  const rowTone = rowStatusTone(
-                    {
-                      dueDate: inv.dueDate,
-                      active: !INVOICE_INACTIVE_STATUSES.has(inv.status),
-                      balanceDue: (inv.amount ?? 0) - (inv.paidAmount ?? 0),
-                    },
-                    nowMs,
-                  );
-                  const toneTitle = rowStatusLabel(rowTone);
-                  return (
-                    <TableRow
-                      key={inv.id}
-                      title={toneTitle}
-                      // Стандарт списків: панель увімкнена → клік показує/ховає панель;
-                      // вимкнена → клік відкриває картку (те саме, що олівець).
-                      onClick={() =>
-                        activateRow({
-                          panelEnabled: detailPanel.enabled,
-                          isSelected: selectedInv?.id === inv.id,
-                          select: () => void selectInvoice(inv),
-                          deselect: () => setSelectedInv(null),
-                          open: () => setEditingInvoiceId(inv.id),
-                        })
-                      }
-                      className={cn(
-                        'group transition-colors cursor-pointer',
-                        rowStatusBorderClass(rowTone),
-                        inv.deletedAt && 'opacity-60',
-                        selectedInv?.id === inv.id && detailPanel.enabled && 'bg-primary/5',
-                        bulkSelect.isSelected(inv.id) && 'bg-primary/5',
-                      )}
-                    >
-                      {features.bulkActionsEnabled && (
-                        <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={bulkSelect.isSelected(inv.id)}
-                            onChange={() => bulkSelect.toggle(inv.id)}
-                            className="h-3.5 w-3.5 rounded border-border"
-                            aria-label={t('aria.selectRow', { number: inv.number })}
-                          />
-                        </TableCell>
-                      )}
-                      {visibleColumns.map(col => {
-                        if (col.key === 'number')
-                          return (
-                            <TableCell key="number">
-                              <DocLink
-                                href={card.hrefFor(inv.id)}
-                                onOpen={() => setEditingInvoiceId(inv.id)}
-                              >
-                                {inv.number}
-                              </DocLink>
-                            </TableCell>
-                          );
-                        if (col.key === 'counterparty')
-                          return (
-                            <TableCell key="counterparty" className="text-[13px]">
-                              {inv.counterpartyName ?? '—'}
-                            </TableCell>
-                          );
-                        if (col.key === 'workOrder')
-                          return (
-                            <TableCell
-                              key="workOrder"
-                              className="text-[13px] text-muted-foreground"
-                            >
-                              {inv.workOrderNumber ?? '—'}
-                            </TableCell>
-                          );
-                        if (col.key === 'status')
-                          return (
-                            <TableCell key="status">
-                              <Badge
-                                variant={STATUS_BADGE[inv.status] ?? 'secondary'}
-                                tooltip={INVOICE_STATUS_DESCRIPTIONS[inv.status]}
-                              >
-                                {invoiceStatusLabel(inv.status)}
-                              </Badge>
-                            </TableCell>
-                          );
-                        if (col.key === 'amount') {
-                          const isBase = !inv.currencyCode || inv.currencyCode === baseCode;
-                          const sym = isBase ? baseSymbol : inv.currencyCode;
-                          return (
-                            <MoneyCell key="amount" className="font-semibold text-[13px]">
-                              <div>
-                                {fmtMoney(inv.amount)} {sym}
-                              </div>
-                              {!isBase && inv.totalAmountBase != null && (
-                                <div className="text-[11px] font-normal text-muted-foreground">
-                                  {fmtMoney(inv.totalAmountBase)} {baseSymbol}
-                                </div>
-                              )}
-                            </MoneyCell>
-                          );
-                        }
-                        if (col.key === 'documentDate')
-                          return (
-                            <TableCell
-                              key="documentDate"
-                              className="text-[13px] text-muted-foreground"
-                            >
-                              {inv.documentDate ? fmtDate(inv.documentDate) : '—'}
-                            </TableCell>
-                          );
-                        if (col.key === 'dueDate')
-                          return (
-                            <TableCell key="dueDate" className="text-[13px] text-muted-foreground">
-                              {inv.dueDate ? fmtDate(inv.dueDate) : '—'}
-                            </TableCell>
-                          );
-                        if (col.key === 'linkedDocs') {
-                          const counts = linkedCounts[inv.id];
-                          return (
-                            <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
-                              <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
-                                {DOC_COUNTERS.map(({ field, Icon, labelKey }) => {
-                                  const n = counts?.[field];
-                                  if (!n) return null;
-                                  return (
-                                    <button
-                                      key={field}
-                                      onClick={() => setLinkedDocPopupId(inv.id)}
-                                      className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                      title={`${t(labelKey)}: ${n}`}
-                                    >
-                                      <Icon size={13} />
-                                      <span>{n}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </TableCell>
-                          );
-                        }
-                        return null;
-                      })}
-                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            title={t('actions.openDocument')}
-                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                            onClick={() => setEditingInvoiceId(inv.id)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          {!inv.deletedAt && (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              title={t('actions.markForDeletion')}
-                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => void markDeleted(inv)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-            </TableBody>
-          </Table>
-        </div>
-
-        <DetailPanel
-          open={!!selectedInv && detailPanel.enabled}
-          onClose={() => setSelectedInv(null)}
-          title={selectedInv?.number ?? ''}
-          subtitle={selectedInv?.counterpartyName}
-          tabs={selectedInv ? buildInvoiceTabs(selectedInv) : undefined}
-          configFields={schemaToPanelConfigFields(INVOICE_PANEL_SCHEMA, panelConfig.config)}
-          onToggleField={panelConfig.toggleField}
-          onReorderFields={panelConfig.reorderFields}
-          onReset={panelConfig.reset}
-        />
-      </div>
+              );
+            })}
+        </TableBody>
+      </ListTableLayout>
 
       {/* Pagination */}
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />

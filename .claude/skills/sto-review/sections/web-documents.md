@@ -154,3 +154,31 @@ grep -rnE "setProperty\('--color-(primary|brand)" apps/web/src --include=*.ts --
       інакше Ctrl+Shift+R скидає його (`hooks/useBrandTheme.ts`, `brandThemeBootScript`)
 - [ ] Ендпойнт, який оболонка читає в кожної ролі, відкритий усім ролям (`/settings/branding`,
       `/settings/base-currency`), а не повні `/settings/organisation` (бухгалтер → 403, Bug #847)
+
+## Списки документів: спільні компоненти замість копії розмітки (2026-10-29)
+
+Гейт `scripts/check-dupes.sh` (jscpd, `--fail-on-new-clones`) порівнює ВІДБИТКИ клонів, а
+ідентифікатори не розрізняє: два списки з тією самою послідовністю компонентів — клон, хоч змінні
+названі по-різному. Уніфікація сторінок (одна правка в шести списках) зсуває межі старих клонів, і
+гейт бачить «нові» (journal/web.md, 2026-10-29).
+
+```bash
+# Які саме клони нові (консольний звід їх не позначає): json-звіт і поле isNew
+pnpm exec jscpd -c .jscpd.json --baseline-from-ref "$(git rev-parse origin/main)" --reporters json --output "$TMP/jscpd" >/dev/null
+python -c "import json,sys;d=json.load(open(sys.argv[1],encoding='utf-8'));[print(c['firstFile']['name'],c['firstFile']['start'],'<->',c['secondFile']['name'],c['secondFile']['start'],c['tokens']) for c in d['duplicates'] if c.get('isNew')]" "$TMP/jscpd/jscpd-report.json"
+# Список, що збирає розмітку руками замість стандартних компонентів
+grep -rlnE "<BulkActionsBar|className=\"w-9 pr-0\"|showDeleted \? <Eye" apps/web/src/app --include=page.tsx
+# Стан довідника без жодного виклику сеттера (рендер читає вічно порожній масив)
+cd apps/web && npx eslint "src/app/(app)/<сторінка>/page.tsx" | grep "'set[A-Z][A-Za-z]*' is assigned a value but never used"
+```
+
+- [ ] Список документів складається зі спільних частин: `ListToolbar` (пошук, період, «видалені»,
+      подання, колонки, панель, «+ Документ»), `ListTableLayout` (масові дії, `TableContainer`,
+      бокова панель), `ListTableHeader` (прапорець «усі», `sortKeys`, `rightAligned`),
+      `TableLoadingRow`, `RowDeleteButton`, `LinkedDocCounters`; фільтр міняють `changeFilter` /
+      `filterSetter` з `useListPage`, а не `setX(); resetPage(); setActiveSavedFilterId(null)`
+- [ ] Гейт клонів упав — розібрати json-звітом (`isNew`) і винести спільне; не перейменовувати
+      змінні (jscpd їх не розрізняє) і не ставити `jscpd:ignore`
+- [ ] `const [xs, setXs] = useState<X[]>([])` без жодного виклику `setXs`, а `xs` читається в
+      рендері — довідник ніколи не завантажується (колонки «Зони»/«Підйомники» працівників
+      показували id, 2026-10-29): брати хук довідника (`useZones`, `useLifts`)

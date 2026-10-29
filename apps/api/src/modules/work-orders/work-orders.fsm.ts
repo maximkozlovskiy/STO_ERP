@@ -5,6 +5,7 @@ import {
   WO_INVOICEABLE_STATUSES,
   WO_PROCUREMENT_ACTIVE_STATUSES,
   WO_CLOSED_STATUSES,
+  WO_STATUS_TRANSITIONS,
 } from '@sto/shared';
 
 // A5: gate-множини мають ЄДИНЕ джерело у @sto/shared (browser-safe string[]) — backend і frontend
@@ -14,22 +15,12 @@ import {
 const asWoStatuses = (arr: readonly string[]): readonly WorkOrderStatus[] =>
   Object.freeze(arr as readonly WorkOrderStatus[]);
 
-export const WORK_ORDER_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
-  DRAFT: ['ESTIMATE', 'CANCELLED'],
-  ESTIMATE: ['APPROVED', 'DRAFT', 'CANCELLED'],
-  APPROVED: ['IN_PROGRESS', 'ON_HOLD', 'CANCELLED'],
-  IN_PROGRESS: ['ON_HOLD', 'COMPLETED'],
-  ON_HOLD: ['IN_PROGRESS', 'CANCELLED'],
-  // COMPLETED/INVOICED→CANCELLED (C2, BR-WO-031): скасування повертає списані запчастини
-  // на склад (RETURN-рух + returnToBatch), сторнує борг (CREDIT_NOTE) —
-  // WorkOrdersService.returnPartsAndCredit — і скасовує рахунок наряду. Лише без оплати
-  // (BR-WO-014, `paidAmount: 0` у CAS): «Виставлено» після сторно оплати (BR-PAY-024). PAID — незворотний.
-  COMPLETED: ['INVOICED', 'CANCELLED'],
-  INVOICED: ['PAID', 'CANCELLED'],
-  PAID: ['ARCHIVED'],
-  ARCHIVED: [],
-  CANCELLED: [],
-};
+// Карта переходів — теж ЄДИНЕ джерело у @sto/shared (WO_STATUS_TRANSITIONS): UI показує рівно ті
+// кнопки, які сервер прийме. Що ключі й цілі — це рівно значення Prisma-enum WorkOrderStatus,
+// стереже fsm-parity.spec.ts. Пояснення правил (C2 / BR-WO-031, BR-WO-014) — біля карти в shared.
+export const WORK_ORDER_TRANSITIONS = WO_STATUS_TRANSITIONS as unknown as Readonly<
+  Record<WorkOrderStatus, readonly WorkOrderStatus[]>
+>;
 
 // Єдине джерело — WO_CLOSED_STATUSES у @sto/shared (inline-зміна пріоритету в списку його читає).
 export const CLOSED_STATUSES: readonly WorkOrderStatus[] = asWoStatuses(WO_CLOSED_STATUSES);

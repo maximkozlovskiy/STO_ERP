@@ -305,7 +305,7 @@ export default function PayrollPage() {
       />
 
       <div className="flex flex-1 min-h-0">
-        <TableContainer className="bg-surface">
+        <TableContainer>
           <Table>
             <TableHeader>
               <TableRow>

@@ -42,6 +42,25 @@ export function useListPage<TFilters extends Record<string, unknown> = Record<st
   const savedFilters = useSavedFilters<TFilters>(pageKey);
 
   const resetPage = useCallback(() => setPage(1), []);
+  // Зміна фільтра: інший набір рядків — з першої сторінки, і подання вже не «активне».
+  const changeFilter = useCallback((apply: () => void) => {
+    apply();
+    setPage(1);
+    setActiveSavedFilterId(null);
+  }, []);
+  // Обробник поля фільтра: `onChange={filterSetter(setSearch)}` — нове значення + `changeFilter`.
+  const filterSetter = useCallback(
+    <T>(set: (value: T) => void) =>
+      (value: T) =>
+        changeFilter(() => set(value)),
+    [changeFilter],
+  );
+  // «Показати/сховати видалені»: інший набір рядків — з першої сторінки, без активного подання.
+  const toggleShowDeleted = useCallback(() => {
+    setShowDeleted(d => !d);
+    setPage(1);
+    setActiveSavedFilterId(null);
+  }, []);
 
   return {
     page,
@@ -49,9 +68,15 @@ export function useListPage<TFilters extends Record<string, unknown> = Record<st
     resetPage,
     showDeleted,
     setShowDeleted,
+    toggleShowDeleted,
+    changeFilter,
+    filterSetter,
     activeSavedFilterId,
     setActiveSavedFilterId,
     tableColumns,
+    visibleColumns,
+    // Ширина рядка «завантаження / порожньо»: колонки даних + дії рядка (+ прапорець вибору).
+    colSpan: visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1),
     dragProps,
     detailPanel,
     panelConfig,

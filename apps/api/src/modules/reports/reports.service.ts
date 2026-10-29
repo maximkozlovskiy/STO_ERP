@@ -747,11 +747,13 @@ export class ReportsService {
           ...(branchId ? { zone: { is: { branchId, orgId } } } : {}),
         },
         select: { id: true, name: true, zone: { select: { name: true, branchId: true } } },
+        take: 500,
       }),
       // BR-RPT-033: місткість підйомника — робочий час його філії (рядків — по одному на філію).
       this.prisma.branchSettings.findMany({
         where: { orgId },
         select: { branchId: true, workStartTime: true, workEndTime: true, workDays: true },
+        take: 500,
       }),
     ]);
     if (branchId && !branch)

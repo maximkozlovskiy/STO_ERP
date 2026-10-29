@@ -33,7 +33,8 @@ export function TableContainer({
         'table-scroll-container',
         'flex-1 min-h-0',
         constrainWidth && 'min-w-0',
-        'overflow-auto border border-border rounded-xl',
+        // Картка списку: фон поверхні й під останнім рядком (як у списків поза TableContainer).
+        'overflow-auto bg-surface border border-border rounded-xl',
         className,
       )}
     >

@@ -178,9 +178,10 @@ export const SUPPLIER_API_READ_ROLES: readonly string[] = Object.freeze([
 /** Налаштування підключень до API постачальників. */
 export const SUPPLIER_CONNECTION_ADMIN_ROLES: readonly string[] = Object.freeze(['OWNER', 'ADMIN']);
 
-// Single source of truth: must mirror backend `WORK_ORDER_TRANSITIONS`
-// in apps/api/src/modules/work-orders/work-orders.fsm.ts. Backend is authoritative —
-// if these diverge the UI offers transitions the API will reject with 400.
+// Єдине джерело переходів FSM наряду: backend `WORK_ORDER_TRANSITIONS`
+// (apps/api/src/modules/work-orders/work-orders.fsm.ts) — це ця сама карта, звужена до Prisma-типу,
+// тож UI пропонує рівно ті переходи, які сервер прийме. Ключі й цілі = значення enum WorkOrderStatus
+// (стереже apps/api/src/modules/work-orders/fsm-parity.spec.ts).
 export const WO_STATUS_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['ESTIMATE', 'CANCELLED'],
   ESTIMATE: ['APPROVED', 'DRAFT', 'CANCELLED'],
@@ -189,7 +190,7 @@ export const WO_STATUS_TRANSITIONS: Record<string, string[]> = {
   ON_HOLD: ['IN_PROGRESS', 'CANCELLED'],
   // COMPLETED/INVOICED→CANCELLED (C2, BR-WO-031): скасування повертає списані запчастини на склад,
   // сторнує борг (backend WorkOrdersService.returnPartsAndCredit) і скасовує рахунок наряду; лише
-  // без оплати (BR-WO-014). PAID — незворотний. Мусить збігатися з backend WORK_ORDER_TRANSITIONS.
+  // без оплати (BR-WO-014). PAID — незворотний.
   COMPLETED: ['INVOICED', 'CANCELLED'],
   INVOICED: ['PAID', 'CANCELLED'],
   PAID: ['ARCHIVED'],

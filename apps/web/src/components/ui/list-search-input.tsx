@@ -2,6 +2,7 @@
 
 import { Search } from 'lucide-react';
 import { LIST_SEARCH_MAX_LENGTH } from '@/lib/utils';
+import { DateRangeFilter } from './date-range-filter';
 import { Input } from './input';
 
 interface ListSearchInputProps {
@@ -28,5 +29,38 @@ export function ListSearchInput({ value, onChange, label }: ListSearchInputProps
       leftElement={<Search />}
       className="w-72 h-8 text-[13px]"
     />
+  );
+}
+
+/** Значення поля фільтра і його сеттер стану (`[value, setValue]`). */
+type FilterField = readonly [string, (value: string) => void];
+
+interface ListSearchPeriodProps {
+  /** Стан списку (`useListPage()`): зміна поля — через `filterSetter` (перша сторінка, без подання). */
+  list: { filterSetter: <T>(set: (value: T) => void) => (value: T) => void };
+  /** Підказка й доступна назва поля пошуку. */
+  label: string;
+  search: FilterField;
+  /** Межі періоду «З … По …», `YYYY-MM-DD`. */
+  from: FilterField;
+  to: FilterField;
+}
+
+/**
+ * Пошук і період у рядку фільтрів списку документів (рахунки, наряди, замовлення, складські
+ * документи) — у цьому порядку, як вимагає стандарт списку.
+ */
+export function ListSearchPeriod({ list, label, search, from, to }: ListSearchPeriodProps) {
+  const { filterSetter } = list;
+  return (
+    <>
+      <ListSearchInput value={search[0]} onChange={filterSetter(search[1])} label={label} />
+      <DateRangeFilter
+        from={from[0]}
+        to={to[0]}
+        onFromChange={filterSetter(from[1])}
+        onToChange={filterSetter(to[1])}
+      />
+    </>
   );
 }

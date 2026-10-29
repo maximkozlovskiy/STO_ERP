@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { WorkOrderStatus } from '@prisma/client';
 import {
   WO_STATUS_TRANSITIONS,
   INVOICE_STATUS_TRANSITIONS,
@@ -63,4 +64,22 @@ describe('FSM parity: backend ↔ @sto/shared', () => {
       expect(unknown).toEqual([]);
     });
   }
+});
+
+// WorkOrder: бек звужує ту саму shared-карту (єдине джерело), тож порівняння вище тривіальне —
+// реальний захист тут: карта охоплює рівно статуси Prisma-enum, і жодна ціль не виходить за них.
+describe('FSM WorkOrder: карта = статуси Prisma-enum', () => {
+  const enumValues = Object.values(WorkOrderStatus).sort();
+
+  it('ключі карти — рівно значення WorkOrderStatus', () => {
+    expect(Object.keys(WORK_ORDER_TRANSITIONS).sort()).toEqual(enumValues);
+  });
+
+  it('кожна ціль переходу — значення WorkOrderStatus', () => {
+    const known = new Set<string>(enumValues);
+    const unknown = Object.values(WORK_ORDER_TRANSITIONS)
+      .flat()
+      .filter(target => !known.has(target));
+    expect(unknown).toEqual([]);
+  });
 });

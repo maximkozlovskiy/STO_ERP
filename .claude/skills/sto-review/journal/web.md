@@ -597,3 +597,17 @@ RECEPTIONIST (`POST /payments`). Для нього перелік — 403: «Н�
 сутності nullable? відбір сервісу за періодом його відкидає?
 **Фікс:** рішення власника — або сервер у СПИСКУ (не календарі) додає записи без дат до періоду, або
 типовий період не ставиться для сутностей із необов'язковою датою. **Severity:** IMPORTANT
+
+### 2026-10-29 — Уніфікація списків відкриває «нові» клони jscpd — §8
+
+**Сигнал:** `check-dupes.sh` дав 8 нових клонів блоку (`useListPage`-деструктуризація, шапка таблиці,
+рядок спінера, лічильники пов'язаних документів, `@Transform` CSV у двох DTO, карта FSM наряду в api і
+shared). Кожен винесений хелпер зсував межі СТАРИХ клонів між списками — гейт показував нові пари
+(8 → 7 → 6 → … → 1), бо jscpd не розрізняє ідентифікаторів і рахує відбитки послідовностей.
+**Grep:** json-звіт jscpd з полем `isNew` (`sections/web-documents.md`, «Списки документів»).
+**Фікс:** спільні частини списку (`ListToolbar`, `ListTableLayout`, `ListTableHeader`, `SelectAllHead`,
+`TableLoadingRow`, `RowDeleteButton`, `LinkedDocCounters`), `changeFilter`/`filterSetter`/`colSpan` у
+`useListPage`; api — `common/transforms/csv-array.ts`; `WORK_ORDER_TRANSITIONS` — звуження
+`WO_STATUS_TRANSITIONS` із shared (парність із Prisma-enum стереже `fsm-parity.spec.ts`).
+Попутно: `employees/page.tsx` тримав `zones`/`lifts` без жодного `setZones` — колонки й панель
+показували id замість назв. **Severity:** IMPORTANT (гейт prepush/CI)

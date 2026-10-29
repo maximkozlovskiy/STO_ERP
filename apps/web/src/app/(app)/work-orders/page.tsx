@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense, memo } from 'react';
-import type { ElementType } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -9,13 +8,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Plus,
   ClipboardList,
-  Eye,
-  EyeOff,
-  Search,
   User,
   Pencil,
   Copy,
-  Trash2,
   Receipt,
   CreditCard,
   Calendar,
@@ -54,33 +49,30 @@ import { woStatusLabel, woPriorityLabel, woCategoryLabel } from '@/i18n/enumLabe
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
-import { Input } from '@/components/ui/input';
+import { ListSearchPeriod } from '@/components/ui/list-search-input';
 import { Select } from '@/components/ui/select';
-import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { activateRow } from '@/lib/row-activation';
 import dynamic from 'next/dynamic';
-import { Spinner } from '@/components/ui/spinner';
-import { EmptyState, ListEmptyState } from '@/components/ui/empty-state';
+import { ListEmptyState } from '@/components/ui/empty-state';
 import {
-  Table,
-  TableHeader,
   TableBody,
   TableRow,
   TableHead,
-  SortableHead,
   TableCell,
   MoneyCell,
   DocLink,
+  TableLoadingRow,
+  ListTableHeader,
 } from '@/components/ui/table';
 import { useUrlCard } from '@/lib/url-card';
+import { LinkedDocCounters, type DocCounterDef } from '@/components/ui/linked-doc-counters';
 import { useSortState } from '@/hooks/useSortState';
 import { useSubmitGuard } from '@/hooks/useSubmitGuard';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
-import { TableContainer } from '@/components/ui/table-container';
 import { Tooltip } from '@/components/ui/tooltip';
 import { StatusPill } from '@/components/ui/status-pill';
-import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
+import { ListFiltersRow, ListStatusRow, ShowDeletedToggle } from '@/components/ui/list-toolbar';
 import {
   WORK_ORDER_PANEL_SCHEMA,
   buildPanelFields,
@@ -88,11 +80,12 @@ import {
 } from '@/lib/panel-schema';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { type SavedFilter } from '@/hooks/useSavedFilters';
-import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
+import { type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { useListPage } from '@/hooks/useListPage';
+import { ListTableLayout } from '@/components/ui/list-table-layout';
 import { useInlineEdit } from '@/hooks/useInlineEdit';
-import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { toast } from '@/lib/toast';
 import { invalidateWorkOrderSideEffects } from '@/lib/cache-invalidation';
 import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
@@ -103,6 +96,7 @@ import {
   isReportStatusSet,
   parseWorkOrdersUrlFilter,
 } from './url-filter';
+import { RowDeleteButton } from '@/components/ui/row-delete-button';
 
 // sto-optimize: CreateWorkOrderModal — 1823 LOC + EntityPickerField + усі form sub-components.
 // Список нарядів відкривається в 80% сесій без створення нового → modal lazy-loaded
@@ -161,11 +155,15 @@ type LinkedCountsMap = Record<string, LinkedCountsEntry>;
 // that depends on linkedCounts identity would re-fire each render with a literal).
 const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({});
 
-const DOC_COUNTERS: Array<{
-  field: LinkedCountsField;
-  Icon: ElementType;
-  labelKey: string;
-}> = [
+/** Колонки списку, за якими сортує сервер: ключ колонки → поле сортування. */
+const WO_SORT_KEYS: Partial<Record<string, string>> = {
+  documentDate: 'documentDate',
+  plannedAt: 'plannedAt',
+  dueDate: 'dueDate',
+  amount: 'totalAmount',
+};
+
+const DOC_COUNTERS: ReadonlyArray<DocCounterDef<LinkedCountsField>> = [
   { field: 'invoices', Icon: Receipt, labelKey: 'list.docCounters.invoices' },
   { field: 'payments', Icon: CreditCard, labelKey: 'list.docCounters.payments' },
   { field: 'calendarSlots', Icon: Calendar, labelKey: 'list.docCounters.calendarSlots' },
@@ -302,12 +300,15 @@ function WorkOrdersListTab() {
   const WO_COLUMNS = useMemo(() => WO_COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })), [t]);
 
   // useListPage: shared table/panel/filter infrastructure
+  const listPage = useListPage<WOFilters>('work-orders', WO_COLUMNS, { defaultLimit: 20 });
   const {
     page,
     setPage,
     resetPage,
+    changeFilter,
     showDeleted,
     setShowDeleted,
+    toggleShowDeleted,
     activeSavedFilterId,
     setActiveSavedFilterId,
     tableColumns: {
@@ -322,13 +323,13 @@ function WorkOrdersListTab() {
       renameColumn,
       resetConfig,
     },
-    dragProps,
+    colSpan,
     detailPanel,
     panelConfig,
     savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
     features,
     limit,
-  } = useListPage<WOFilters>('work-orders', WO_COLUMNS, { defaultLimit: 20 });
+  } = listPage;
 
   // Local filter state (specific to work-orders)
   const [statusFilter, setStatusFilter] = useState('');
@@ -339,7 +340,8 @@ function WorkOrdersListTab() {
   const debouncedSearch = useDebounce(search);
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
-  const { sort: woSort, toggle: toggleWoSort, set: setWoSort } = useSortState('createdAt', 'desc');
+  const woSorting = useSortState('createdAt', 'desc');
+  const { sort: woSort, set: setWoSort } = woSorting;
   // Default to "my orders" for MECHANICs — initialized lazily after employee loads
   const [myOrders, setMyOrders] = useState(false);
   const myOrdersInitRef = useRef(false);
@@ -497,7 +499,7 @@ function WorkOrdersListTab() {
     ],
   );
 
-  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(orders);
+  const bulkSelect = useBulkSelect(orders);
 
   const inlineEdit = useInlineEdit({
     enabled: features.inlineEditEnabled,
@@ -618,12 +620,8 @@ function WorkOrdersListTab() {
     ? t('list.statusGroupNotCancelled')
     : statusGroup.map(v => woStatusLabel(v)).join(', ');
   const handleSelectStatus = useCallback(
-    (v: string) => {
-      setStatusFilter(v);
-      resetPage();
-      setActiveSavedFilterId(null);
-    },
-    [resetPage, setActiveSavedFilterId],
+    (v: string) => changeFilter(() => setStatusFilter(v)),
+    [changeFilter],
   );
 
   // підтримка `?action=new` query — Command Palette + N shortcut + calendar prefill.
@@ -842,11 +840,7 @@ function WorkOrdersListTab() {
                   aria-label={t('list.executorFilterClear', {
                     name: executorFilter.name || t('list.executorFilterNoName'),
                   })}
-                  onClick={() => {
-                    setExecutorFilter(null);
-                    resetPage();
-                    setActiveSavedFilterId(null);
-                  }}
+                  onClick={() => changeFilter(() => setExecutorFilter(null))}
                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border bg-primary text-primary-foreground border-primary shadow-sm"
                 >
                   <User className="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -859,12 +853,12 @@ function WorkOrdersListTab() {
               <button
                 type="button"
                 aria-pressed={myOrders}
-                onClick={() => {
-                  setExecutorFilter(null);
-                  setMyOrders(v => !v);
-                  resetPage();
-                  setActiveSavedFilterId(null);
-                }}
+                onClick={() =>
+                  changeFilter(() => {
+                    setExecutorFilter(null);
+                    setMyOrders(v => !v);
+                  })
+                }
                 className={cn(
                   'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border transition-colors',
                   myOrders
@@ -895,19 +889,7 @@ function WorkOrdersListTab() {
       <ListFiltersRow
         actions={
           <>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              title={showDeleted ? t('list.hideDeleted') : t('list.showDeleted')}
-              onClick={() => {
-                setShowDeleted(v => !v);
-                resetPage();
-                setActiveSavedFilterId(null);
-              }}
-              className={cn(showDeleted && 'border-primary text-primary')}
-            >
-              {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-            </Button>
+            <ShowDeletedToggle shown={showDeleted} onToggle={toggleShowDeleted} />
             {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
             <ColumnsDropdown
               columns={orderedColumns}
@@ -934,41 +916,17 @@ function WorkOrdersListTab() {
           </>
         }
       >
-        <Input
-          value={search}
-          onChange={e => {
-            setSearch(e.target.value);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          placeholder={t('list.searchPlaceholder')}
-          leftElement={<Search />}
-          className="w-72 h-8 text-[13px]"
-        />
-        <DateRangeFilter
-          from={dateFrom}
-          to={dateTo}
-          onFromChange={v => {
-            setDateFrom(v);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          onToChange={v => {
-            setDateTo(v);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          fromLabel={t('list.dateFrom')}
-          toLabel={t('list.dateTo')}
+        <ListSearchPeriod
+          list={listPage}
+          label={t('list.searchPlaceholder')}
+          search={[search, setSearch]}
+          from={[dateFrom, setDateFrom]}
+          to={[dateTo, setDateTo]}
         />
 
         <Select
           value={categoryFilter}
-          onChange={e => {
-            setCategoryFilter(e.target.value);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
+          onChange={e => changeFilter(() => setCategoryFilter(e.target.value))}
           className="w-52 h-8 text-[13px] py-0.5 px-2 pr-7"
         >
           <option value="">{t('list.allCategories')}</option>
@@ -980,421 +938,348 @@ function WorkOrdersListTab() {
         </Select>
       </ListFiltersRow>
 
-      {/* Bulk actions */}
-      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
-        <BulkActionsBar
-          count={bulkSelect.count}
-          selectedIds={Array.from(bulkSelect.selected)}
-          actions={bulkActions}
-          onClear={bulkSelect.clear}
+      <ListTableLayout
+        list={listPage}
+        bulk={bulkSelect}
+        bulkActions={bulkActions}
+        panel={
+          <DetailPanel
+            open={!!selectedWO && detailPanel.enabled}
+            onClose={handleDetailPanelClose}
+            title={selectedWO?.number ?? ''}
+            tabs={woDetailTabs}
+            configFields={panelConfigFields}
+            onToggleField={panelConfig.toggleField}
+            onReorderFields={panelConfig.reorderFields}
+            onReset={panelConfig.reset}
+          />
+        }
+      >
+        {/* Дії рядка — липка колонка: видно й тоді, коли таблиця ширша за екран. */}
+        <ListTableHeader
+          list={listPage}
+          sorting={woSorting}
+          sortKeys={WO_SORT_KEYS}
+          rightAligned={['amount']}
+          bulk={bulkSelect}
+          selectAllLabel={t('list.selectAll')}
+          actionsHead={
+            <TableHead className="sticky right-0 bg-secondary">
+              <span className="sr-only">{t('common:actions')}</span>
+            </TableHead>
+          }
         />
-      )}
+        <TableBody>
+          {loading && <TableLoadingRow colSpan={colSpan} />}
 
-      {/* Table + DetailPanel */}
-      <div className="flex flex-1 min-h-0">
-        <TableContainer>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {features.bulkActionsEnabled && (
-                  <TableHead className="w-9 pr-0">
-                    <input
-                      type="checkbox"
-                      checked={bulkSelect.allSelected}
-                      ref={selectAllRef}
-                      onChange={bulkSelect.toggleAll}
-                      className="h-3.5 w-3.5 rounded border-border"
-                      aria-label={t('list.selectAll')}
-                    />
-                  </TableHead>
-                )}
-                {visibleColumns.map(col => {
-                  const sortable = ['documentDate', 'plannedAt', 'dueDate', 'amount'].includes(
-                    col.key,
-                  );
-                  const sortKey = col.key === 'amount' ? 'totalAmount' : col.key;
-                  if (sortable)
-                    return (
-                      <SortableHead
-                        key={col.key}
-                        sortKey={sortKey}
-                        currentSort={woSort}
-                        onSort={toggleWoSort}
-                        className={col.key === 'amount' ? 'text-right' : undefined}
-                        {...dragProps(col.key)}
-                      >
-                        {col.label}
-                      </SortableHead>
-                    );
-                  return (
-                    <TableHead key={col.key} {...dragProps(col.key)}>
-                      {col.label}
-                    </TableHead>
-                  );
-                })}
-                {/* Дії рядка — липка колонка: видно й тоді, коли таблиця ширша за екран. */}
-                <TableHead className="sticky right-0 bg-secondary">
-                  <span className="sr-only">{t('common:actions')}</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
-                <TableRow>
+          {!loading && orders.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={colSpan} className="p-0">
+                <ListEmptyState
+                  icon={ClipboardList}
+                  title={t('list.empty.title')}
+                  description={t('list.empty.descCreate')}
+                  // Типовий період «сьогодні» — теж фільтр (рішення власника: лишається).
+                  filtered={
+                    !!(statusFilter || categoryFilter || search || dateFrom || dateTo) ||
+                    myOrders ||
+                    executorFilter !== null
+                  }
+                  onResetFilters={() =>
+                    changeFilter(() => {
+                      setStatusFilter('');
+                      setCategoryFilter('');
+                      setSearch('');
+                      setMyOrders(false);
+                      setExecutorFilter(null);
+                      setDateFrom('');
+                      setDateTo('');
+                    })
+                  }
+                  size="sm"
+                />
+              </TableCell>
+            </TableRow>
+          )}
+
+          {!loading &&
+            orders.map((wo: WorkOrder) => {
+              const rowTone = rowStatusTone(
+                {
+                  dueDate: wo.dueDate,
+                  active: !WO_INACTIVE_STATUSES.has(wo.status),
+                  balanceDue: (wo.totalAmount ?? 0) - (wo.paidAmount ?? 0),
+                },
+                nowMs,
+              );
+              const toneTitle = rowStatusLabel(rowTone);
+              return (
+                <TableRow
+                  key={wo.id}
+                  title={toneTitle}
+                  // Стандарт списків: панель увімкнена → клік показує/ховає панель;
+                  // вимкнена → клік відкриває наряд (те саме, що олівець).
+                  onClick={() =>
+                    activateRow({
+                      panelEnabled: detailPanel.enabled,
+                      isSelected: selectedWO?.id === wo.id,
+                      select: () => setSelectedWO(wo),
+                      deselect: () => setSelectedWO(null),
+                      open: () => setEditWoId(wo.id),
+                    })
+                  }
+                  className={cn(
+                    'group transition-colors cursor-pointer',
+                    rowStatusBorderClass(rowTone),
+                    wo.deletedAt && 'opacity-60',
+                    selectedWO?.id === wo.id && detailPanel.enabled && 'bg-primary/5',
+                    bulkSelect.isSelected(wo.id) && 'bg-primary/5',
+                  )}
+                >
+                  {features.bulkActionsEnabled && (
+                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(wo.id)}
+                        onChange={() => bulkSelect.toggle(wo.id)}
+                        className="h-3.5 w-3.5 rounded border-border"
+                        aria-label={t('list.selectRow', { number: wo.number })}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleColumns.map(col => {
+                    if (col.key === 'number')
+                      return (
+                        <TableCell key="number">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <DocLink href={card.hrefFor(wo.id)} onOpen={() => setEditWoId(wo.id)}>
+                                {wo.number}
+                              </DocLink>
+                            </div>
+                            {wo.repairCategory && (
+                              <p className="text-[11px] text-muted-foreground">
+                                {woCategoryLabel(wo.repairCategory)}
+                              </p>
+                            )}
+                          </div>
+                        </TableCell>
+                      );
+                    if (col.key === 'client')
+                      return (
+                        <TableCell key="client" className="min-w-52">
+                          <p className="text-[13px] font-medium text-foreground">
+                            {wo.counterpartyName ?? '—'}
+                          </p>
+                          <p className="text-[12px] text-muted-foreground mt-0.5">
+                            {wo.vehicleSummary ?? '—'}
+                          </p>
+                        </TableCell>
+                      );
+                    if (col.key === 'status')
+                      return (
+                        <TableCell key="status">
+                          <Badge
+                            variant={STATUS_BADGE[wo.status] ?? 'secondary'}
+                            dot
+                            tooltip={STATUS_DESCRIPTIONS[wo.status]}
+                          >
+                            {woStatusLabel(wo.status)}
+                          </Badge>
+                        </TableCell>
+                      );
+                    if (col.key === 'lift')
+                      return (
+                        <TableCell key="lift" className="text-[13px] text-muted-foreground">
+                          {wo.liftName ?? '—'}
+                        </TableCell>
+                      );
+                    // Пріоритет змінюється лише явною кнопкою поруч із бейджем і не в закритих
+                    // статусах (сервер їх не приймає); клік по самому бейджу — клік по рядку.
+                    if (col.key === 'priority') {
+                      const canEditPriority =
+                        features.inlineEditEnabled &&
+                        !wo.deletedAt &&
+                        !!wo.priority &&
+                        !WO_CLOSED_STATUSES.includes(wo.status);
+                      return (
+                        <TableCell key="priority" className="whitespace-nowrap">
+                          {inlineEdit.isEditing(wo.id, 'priority') ? (
+                            <span onClick={e => e.stopPropagation()}>
+                              <select
+                                aria-label={t('list.changePriority', { number: wo.number })}
+                                defaultValue={inlineEdit.editing?.value ?? wo.priority ?? ''}
+                                onChange={e => {
+                                  void inlineEdit.commitEdit(e.target.value).catch(() => {});
+                                }}
+                                onBlur={() => inlineEdit.cancelEdit()}
+                                onKeyDown={e => {
+                                  if (e.key === 'Escape') inlineEdit.cancelEdit();
+                                }}
+                                disabled={inlineEdit.saving}
+                                autoFocus
+                                className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
+                              >
+                                {Object.keys(WO_PRIORITY_LABELS).map(v => (
+                                  <option key={v} value={v}>
+                                    {woPriorityLabel(v)}
+                                  </option>
+                                ))}
+                              </select>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-0.5">
+                              {wo.priority && (
+                                <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
+                                  {woPriorityLabel(wo.priority)}
+                                </Badge>
+                              )}
+                              {canEditPriority && (
+                                <button
+                                  type="button"
+                                  data-testid="wo-priority-edit"
+                                  aria-label={t('list.changePriority', { number: wo.number })}
+                                  title={t('list.changePriority', { number: wo.number })}
+                                  className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-secondary hover:text-foreground"
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    if (wo.priority)
+                                      inlineEdit.startEdit(wo.id, 'priority', wo.priority);
+                                  }}
+                                >
+                                  <ChevronDown className="h-3 w-3" aria-hidden="true" />
+                                </button>
+                              )}
+                            </span>
+                          )}
+                        </TableCell>
+                      );
+                    }
+                    if (col.key === 'amount') {
+                      // Plannedness check: actualHours рівні normoHours → suma нічого не «прокинула».
+                      // totalParts однакові для actual та planned, тож порівнюємо лише labor-частку.
+                      const hasActual = Math.abs(wo.totalActualLabor - wo.totalLabor) >= 0.01;
+                      // BR-WO-007: totalAmount — з ПДВ, тож «було» теж рахуємо з ПДВ.
+                      const plannedAmount = plannedWorkOrderAmount(wo);
+                      const isBase = !wo.currencyCode || wo.currencyCode === baseCode;
+                      const sym = isBase ? baseSymbol : wo.currencyCode;
+                      return (
+                        <MoneyCell key="amount">
+                          <div className="font-medium text-foreground">
+                            {fmtMoney(wo.totalAmount)} {sym}
+                          </div>
+                          {!isBase && wo.totalAmountBase != null && (
+                            <div className="text-[11px] text-muted-foreground">
+                              {fmtMoney(wo.totalAmountBase)} {baseSymbol}
+                            </div>
+                          )}
+                          {hasActual && (
+                            <div className="text-[11px] text-muted-foreground line-through">
+                              {fmtMoney(plannedAmount)} {sym}
+                            </div>
+                          )}
+                        </MoneyCell>
+                      );
+                    }
+                    if (col.key === 'documentDate')
+                      return (
+                        <TableCell
+                          key="documentDate"
+                          className="text-[13px] text-muted-foreground whitespace-nowrap"
+                        >
+                          {wo.documentDate ? fmtDate(wo.documentDate) : '—'}
+                        </TableCell>
+                      );
+                    if (col.key === 'plannedAt')
+                      return (
+                        <TableCell
+                          key="plannedAt"
+                          className="text-muted-foreground text-[12px] whitespace-nowrap"
+                        >
+                          {wo.plannedAt ? fmtShortDateTime(wo.plannedAt) : '—'}
+                        </TableCell>
+                      );
+                    // Планове завершення — лише перегляд: міняється в картці наряду разом із
+                    // часом і плановим початком (BR-WO-019 — робочі години, BR-WO-020 —
+                    // запис календаря). Інлайн-поле дати без часу ставило б північ.
+                    if (col.key === 'dueDate')
+                      return (
+                        <TableCell key="dueDate" className="text-[12px] whitespace-nowrap">
+                          {wo.dueDate ? (
+                            <span
+                              className={cn(
+                                'font-medium',
+                                isOverdue(wo.dueDate, nowMs)
+                                  ? 'text-warning'
+                                  : 'text-muted-foreground',
+                              )}
+                            >
+                              {fmtDate(wo.dueDate)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      );
+                    if (col.key === 'linkedDocs') {
+                      const counts = linkedCounts[wo.id];
+                      return (
+                        <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
+                          <LinkedDocCounters
+                            counters={DOC_COUNTERS}
+                            counts={counts}
+                            onOpen={() => setLinkedDocPopupId(wo.id)}
+                            label={k => t(k)}
+                          />
+                        </TableCell>
+                      );
+                    }
+                    return null;
+                  })}
                   <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="py-12 text-center"
+                    className={cn(
+                      'sticky right-0 text-right',
+                      selectedWO?.id === wo.id && detailPanel.enabled
+                        ? 'bg-primary-subtle'
+                        : 'bg-surface group-hover:bg-secondary',
+                    )}
+                    onClick={e => e.stopPropagation()}
                   >
-                    <div className="flex justify-center">
-                      <Spinner size="md" />
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title={t('list.openWorkOrder')}
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                        onClick={() => setEditWoId(wo.id)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      {!wo.deletedAt && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title={t('list.cloneFromThis')}
+                          disabled={cloningId === wo.id}
+                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                          onClick={() => void handleClone(wo)}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {!wo.deletedAt && (
+                        <RowDeleteButton
+                          title={t('list.markForDeletion')}
+                          onClick={() => void markDeleted(wo)}
+                        />
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
-              )}
-
-              {!loading && orders.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="p-0"
-                  >
-                    <ListEmptyState
-                      icon={ClipboardList}
-                      title={t('list.empty.title')}
-                      description={t('list.empty.descCreate')}
-                      // Типовий період «сьогодні» — теж фільтр (рішення власника: лишається).
-                      filtered={
-                        !!(statusFilter || categoryFilter || search || dateFrom || dateTo) ||
-                        myOrders ||
-                        executorFilter !== null
-                      }
-                      onResetFilters={() => {
-                        setStatusFilter('');
-                        setCategoryFilter('');
-                        setSearch('');
-                        setMyOrders(false);
-                        setExecutorFilter(null);
-                        setDateFrom('');
-                        setDateTo('');
-                        resetPage();
-                        setActiveSavedFilterId(null);
-                      }}
-                      size="sm"
-                    />
-                  </TableCell>
-                </TableRow>
-              )}
-
-              {!loading &&
-                orders.map((wo: WorkOrder) => {
-                  const rowTone = rowStatusTone(
-                    {
-                      dueDate: wo.dueDate,
-                      active: !WO_INACTIVE_STATUSES.has(wo.status),
-                      balanceDue: (wo.totalAmount ?? 0) - (wo.paidAmount ?? 0),
-                    },
-                    nowMs,
-                  );
-                  const toneTitle = rowStatusLabel(rowTone);
-                  return (
-                    <TableRow
-                      key={wo.id}
-                      title={toneTitle}
-                      // Стандарт списків: панель увімкнена → клік показує/ховає панель;
-                      // вимкнена → клік відкриває наряд (те саме, що олівець).
-                      onClick={() =>
-                        activateRow({
-                          panelEnabled: detailPanel.enabled,
-                          isSelected: selectedWO?.id === wo.id,
-                          select: () => setSelectedWO(wo),
-                          deselect: () => setSelectedWO(null),
-                          open: () => setEditWoId(wo.id),
-                        })
-                      }
-                      className={cn(
-                        'group transition-colors cursor-pointer',
-                        rowStatusBorderClass(rowTone),
-                        wo.deletedAt && 'opacity-60',
-                        selectedWO?.id === wo.id && detailPanel.enabled && 'bg-primary/5',
-                        bulkSelect.isSelected(wo.id) && 'bg-primary/5',
-                      )}
-                    >
-                      {features.bulkActionsEnabled && (
-                        <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={bulkSelect.isSelected(wo.id)}
-                            onChange={() => bulkSelect.toggle(wo.id)}
-                            className="h-3.5 w-3.5 rounded border-border"
-                            aria-label={t('list.selectRow', { number: wo.number })}
-                          />
-                        </TableCell>
-                      )}
-                      {visibleColumns.map(col => {
-                        if (col.key === 'number')
-                          return (
-                            <TableCell key="number">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <DocLink
-                                    href={card.hrefFor(wo.id)}
-                                    onOpen={() => setEditWoId(wo.id)}
-                                  >
-                                    {wo.number}
-                                  </DocLink>
-                                </div>
-                                {wo.repairCategory && (
-                                  <p className="text-[11px] text-muted-foreground">
-                                    {woCategoryLabel(wo.repairCategory)}
-                                  </p>
-                                )}
-                              </div>
-                            </TableCell>
-                          );
-                        if (col.key === 'client')
-                          return (
-                            <TableCell key="client" className="min-w-52">
-                              <p className="text-[13px] font-medium text-foreground">
-                                {wo.counterpartyName ?? '—'}
-                              </p>
-                              <p className="text-[12px] text-muted-foreground mt-0.5">
-                                {wo.vehicleSummary ?? '—'}
-                              </p>
-                            </TableCell>
-                          );
-                        if (col.key === 'status')
-                          return (
-                            <TableCell key="status">
-                              <Badge
-                                variant={STATUS_BADGE[wo.status] ?? 'secondary'}
-                                dot
-                                tooltip={STATUS_DESCRIPTIONS[wo.status]}
-                              >
-                                {woStatusLabel(wo.status)}
-                              </Badge>
-                            </TableCell>
-                          );
-                        if (col.key === 'lift')
-                          return (
-                            <TableCell key="lift" className="text-[13px] text-muted-foreground">
-                              {wo.liftName ?? '—'}
-                            </TableCell>
-                          );
-                        // Пріоритет змінюється лише явною кнопкою поруч із бейджем і не в закритих
-                        // статусах (сервер їх не приймає); клік по самому бейджу — клік по рядку.
-                        if (col.key === 'priority') {
-                          const canEditPriority =
-                            features.inlineEditEnabled &&
-                            !wo.deletedAt &&
-                            !!wo.priority &&
-                            !WO_CLOSED_STATUSES.includes(wo.status);
-                          return (
-                            <TableCell key="priority" className="whitespace-nowrap">
-                              {inlineEdit.isEditing(wo.id, 'priority') ? (
-                                <span onClick={e => e.stopPropagation()}>
-                                  <select
-                                    aria-label={t('list.changePriority', { number: wo.number })}
-                                    defaultValue={inlineEdit.editing?.value ?? wo.priority ?? ''}
-                                    onChange={e => {
-                                      void inlineEdit.commitEdit(e.target.value).catch(() => {});
-                                    }}
-                                    onBlur={() => inlineEdit.cancelEdit()}
-                                    onKeyDown={e => {
-                                      if (e.key === 'Escape') inlineEdit.cancelEdit();
-                                    }}
-                                    disabled={inlineEdit.saving}
-                                    autoFocus
-                                    className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
-                                  >
-                                    {Object.keys(WO_PRIORITY_LABELS).map(v => (
-                                      <option key={v} value={v}>
-                                        {woPriorityLabel(v)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-0.5">
-                                  {wo.priority && (
-                                    <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
-                                      {woPriorityLabel(wo.priority)}
-                                    </Badge>
-                                  )}
-                                  {canEditPriority && (
-                                    <button
-                                      type="button"
-                                      data-testid="wo-priority-edit"
-                                      aria-label={t('list.changePriority', { number: wo.number })}
-                                      title={t('list.changePriority', { number: wo.number })}
-                                      className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-secondary hover:text-foreground"
-                                      onClick={e => {
-                                        e.stopPropagation();
-                                        if (wo.priority)
-                                          inlineEdit.startEdit(wo.id, 'priority', wo.priority);
-                                      }}
-                                    >
-                                      <ChevronDown className="h-3 w-3" aria-hidden="true" />
-                                    </button>
-                                  )}
-                                </span>
-                              )}
-                            </TableCell>
-                          );
-                        }
-                        if (col.key === 'amount') {
-                          // Plannedness check: actualHours рівні normoHours → suma нічого не «прокинула».
-                          // totalParts однакові для actual та planned, тож порівнюємо лише labor-частку.
-                          const hasActual = Math.abs(wo.totalActualLabor - wo.totalLabor) >= 0.01;
-                          // BR-WO-007: totalAmount — з ПДВ, тож «було» теж рахуємо з ПДВ.
-                          const plannedAmount = plannedWorkOrderAmount(wo);
-                          const isBase = !wo.currencyCode || wo.currencyCode === baseCode;
-                          const sym = isBase ? baseSymbol : wo.currencyCode;
-                          return (
-                            <MoneyCell key="amount">
-                              <div className="font-medium text-foreground">
-                                {fmtMoney(wo.totalAmount)} {sym}
-                              </div>
-                              {!isBase && wo.totalAmountBase != null && (
-                                <div className="text-[11px] text-muted-foreground">
-                                  {fmtMoney(wo.totalAmountBase)} {baseSymbol}
-                                </div>
-                              )}
-                              {hasActual && (
-                                <div className="text-[11px] text-muted-foreground line-through">
-                                  {fmtMoney(plannedAmount)} {sym}
-                                </div>
-                              )}
-                            </MoneyCell>
-                          );
-                        }
-                        if (col.key === 'documentDate')
-                          return (
-                            <TableCell
-                              key="documentDate"
-                              className="text-[13px] text-muted-foreground whitespace-nowrap"
-                            >
-                              {wo.documentDate ? fmtDate(wo.documentDate) : '—'}
-                            </TableCell>
-                          );
-                        if (col.key === 'plannedAt')
-                          return (
-                            <TableCell
-                              key="plannedAt"
-                              className="text-muted-foreground text-[12px] whitespace-nowrap"
-                            >
-                              {wo.plannedAt ? fmtShortDateTime(wo.plannedAt) : '—'}
-                            </TableCell>
-                          );
-                        // Планове завершення — лише перегляд: міняється в картці наряду разом із
-                        // часом і плановим початком (BR-WO-019 — робочі години, BR-WO-020 —
-                        // запис календаря). Інлайн-поле дати без часу ставило б північ.
-                        if (col.key === 'dueDate')
-                          return (
-                            <TableCell key="dueDate" className="text-[12px] whitespace-nowrap">
-                              {wo.dueDate ? (
-                                <span
-                                  className={cn(
-                                    'font-medium',
-                                    isOverdue(wo.dueDate, nowMs)
-                                      ? 'text-warning'
-                                      : 'text-muted-foreground',
-                                  )}
-                                >
-                                  {fmtDate(wo.dueDate)}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                          );
-                        if (col.key === 'linkedDocs') {
-                          const counts = linkedCounts[wo.id];
-                          return (
-                            <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
-                              <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
-                                {DOC_COUNTERS.map(({ field, Icon, labelKey }) => {
-                                  const n = counts?.[field];
-                                  if (!n) return null;
-                                  return (
-                                    <button
-                                      key={field}
-                                      onClick={() => setLinkedDocPopupId(wo.id)}
-                                      className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                      title={`${t(labelKey)}: ${n}`}
-                                    >
-                                      <Icon size={13} />
-                                      <span>{n}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </TableCell>
-                          );
-                        }
-                        return null;
-                      })}
-                      <TableCell
-                        className={cn(
-                          'sticky right-0 text-right',
-                          selectedWO?.id === wo.id && detailPanel.enabled
-                            ? 'bg-primary-subtle'
-                            : 'bg-surface group-hover:bg-secondary',
-                        )}
-                        onClick={e => e.stopPropagation()}
-                      >
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            title={t('list.openWorkOrder')}
-                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                            onClick={() => setEditWoId(wo.id)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          {!wo.deletedAt && (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              title={t('list.cloneFromThis')}
-                              disabled={cloningId === wo.id}
-                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                              onClick={() => void handleClone(wo)}
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                          {!wo.deletedAt && (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              title={t('list.markForDeletion')}
-                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => void markDeleted(wo)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-
-        <DetailPanel
-          open={!!selectedWO && detailPanel.enabled}
-          onClose={handleDetailPanelClose}
-          title={selectedWO?.number ?? ''}
-          tabs={woDetailTabs}
-          configFields={panelConfigFields}
-          onToggleField={panelConfig.toggleField}
-          onReorderFields={panelConfig.reorderFields}
-          onReset={panelConfig.reset}
-        />
-      </div>
+              );
+            })}
+        </TableBody>
+      </ListTableLayout>
 
       {/* Pagination */}
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />

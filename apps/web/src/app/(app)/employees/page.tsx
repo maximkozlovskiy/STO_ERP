@@ -5,13 +5,13 @@ import { useTranslation } from 'react-i18next';
 import { activateRow } from '@/lib/row-activation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEmployees, employeesKeys } from '@/hooks/api/useEmployees';
+import { useZones, useLifts, type Zone, type Lift } from '@/hooks/api/useInfrastructure';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
-import { Plus, Pencil, Users, Trash2, Eye, EyeOff, Search } from 'lucide-react';
+import { Pencil, Users, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
-import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -23,18 +23,14 @@ import {
 import { employeeStatusLabel, employeeRoleLabel } from '@/i18n/enumLabel';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
-import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
-  Table,
-  TableHeader,
   TableBody,
   TableRow,
-  TableHead,
-  SortableHead,
   TableCell,
+  TableLoadingRow,
+  ListTableHeader,
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
 import {
@@ -48,18 +44,17 @@ import {
   buildPanelFields,
   schemaToPanelConfigFields,
 } from '@/lib/panel-schema';
-import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
-import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
-import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
+import { SavedFiltersBar } from '@/components/ui/saved-filters-bar';
+import { type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { useListPage } from '@/hooks/useListPage';
-import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
-import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
+import { ListTableLayout } from '@/components/ui/list-table-layout';
+import { ListToolbar } from '@/components/ui/list-view-actions';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
 import { Pagination } from '@/components/ui/pagination';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtDate } from '@/lib/format';
-import { EmployeeEditModal, type EmployeeForModal } from '@/components/ui/EmployeeEditModal';
-import { ListFiltersRow } from '@/components/ui/list-toolbar';
+import { EmployeeEditModal } from '@/components/ui/EmployeeEditModal';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -81,27 +76,9 @@ interface Employee {
   dateOfHire?: string | null;
   dateOfFire?: string | null;
 }
-interface Zone {
-  id: string;
-  name: string;
-  type: string;
-}
-interface Lift {
-  id: string;
-  name: string;
-  type: string;
-}
-interface WorkCategory {
-  id: string;
-  name: string;
-  parentId: string | null;
-  children: WorkCategory[];
-}
-interface Branch {
-  id: string;
-  name: string;
-  address: string;
-}
+/** Стабільні порожні довідники до завантаження (без нового масиву щорендеру). */
+const EMPTY_ZONES: Zone[] = [];
+const EMPTY_LIFTS: Lift[] = [];
 
 interface EmployeeFilters extends Record<string, unknown> {
   search: string;
@@ -139,6 +116,9 @@ const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMN_DEFS.map(c => c.key));
 
 // ─── Main Page ───────────────────────────────────────────
 
+/** Колонки списку, за якими сортує сервер: ключ колонки → поле сортування. */
+const EMP_SORT_KEYS: Partial<Record<string, string>> = { name: 'lastName' };
+
 export default function EmployeesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST']);
   const { t } = useTranslation('employees');
@@ -157,37 +137,29 @@ export default function EmployeesPage() {
   );
 
   // useListPage: shared table/panel/filter infrastructure
+  const listPage = useListPage<EmployeeFilters>('employees', COLUMNS, { defaultLimit: 20 });
   const {
     page,
     setPage,
     resetPage,
+    changeFilter,
     showDeleted,
     setShowDeleted,
     activeSavedFilterId,
     setActiveSavedFilterId,
-    tableColumns: {
-      visibleKeys: colVisible,
-      visibleColumns,
-      orderedColumns,
-      order,
-      customLabels,
-      toggle: toggleCol,
-      reorder,
-      renameColumn,
-      resetConfig,
-    },
-    dragProps,
+    visibleColumns,
+    colSpan,
     detailPanel,
     panelConfig,
     savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
     features,
     limit: LIMIT,
-  } = useListPage<EmployeeFilters>('employees', COLUMNS, { defaultLimit: 20 });
+  } = listPage;
 
-  const [zones, setZones] = useState<Zone[]>([]);
-  const [lifts, setLifts] = useState<Lift[]>([]);
-  const [workCategories, setWorkCategories] = useState<WorkCategory[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]);
+  // Назви зон і підйомників для колонок і бокової панелі: досі стан не заповнювався жодним
+  // запитом, і замість назв показувались id.
+  const { data: zones = EMPTY_ZONES } = useZones();
+  const { data: lifts = EMPTY_LIFTS } = useLifts();
 
   // Unified modal state: 'create' = новий, Employee = редагування, null = закрито
   const [modalEmp, setModalEmp] = useState<Employee | 'create' | null>(null);
@@ -224,7 +196,8 @@ export default function EmployeesPage() {
   const debouncedSearch = useDebounce(search);
   const [roleFilter, setRoleFilter] = useState('');
 
-  const { sort: empSort, toggle: toggleEmpSort } = useSortState('lastName', 'asc');
+  const empSorting = useSortState('lastName', 'asc');
+  const { sort: empSort } = empSorting;
   const { data, isLoading: loading } = useEmployees({
     q: debouncedSearch || undefined,
     role: roleFilter || undefined,
@@ -273,7 +246,7 @@ export default function EmployeesPage() {
     [saveFilter, search, roleFilter, showDeleted, features.toastEnabled, setActiveSavedFilterId, t],
   );
 
-  const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(employees);
+  const bulkSelect = useBulkSelect(employees);
 
   // Звіт про результат bulk-операції. Promise.allSettled не кидає — без цього
   // виклику відмови лишались би невидимими для користувача. До підсумку «n з m» додаємо
@@ -479,7 +452,7 @@ export default function EmployeesPage() {
             ) : (
               emp.zoneIds.map(id => (
                 <p key={id} className="text-[13px] text-foreground">
-                  {id}
+                  {zones.find(x => x.id === id)?.name ?? id}
                 </p>
               ))
             )}
@@ -490,7 +463,7 @@ export default function EmployeesPage() {
             ) : (
               emp.liftIds.map(id => (
                 <p key={id} className="text-[13px] text-foreground">
-                  {id}
+                  {lifts.find(x => x.id === id)?.name ?? id}
                 </p>
               ))
             )}
@@ -527,60 +500,18 @@ export default function EmployeesPage() {
       )}
 
       {/* Filters */}
-      <ListFiltersRow
-        actions={
-          <>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
-              onClick={() => {
-                setShowDeleted(d => !d);
-                resetPage();
-                setActiveSavedFilterId(null);
-              }}
-              className={showDeleted ? 'border-primary text-primary' : ''}
-            >
-              {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-            </Button>
-            {features.savedFiltersEnabled && <SaveFilterButton onSave={handleSaveFilter} />}
-            <ColumnsDropdown
-              columns={orderedColumns}
-              visibleKeys={colVisible}
-              onToggle={toggleCol}
-              onReorder={reorder}
-              onRename={renameColumn}
-              onReset={resetConfig}
-              hasCustomization={
-                JSON.stringify(order) !== COLUMNS_DEFAULT_KEYS_JSON ||
-                Object.keys(customLabels).length > 0
-              }
-            />
-            <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
-            <Button onClick={() => setModalEmp('create')} leftIcon={<Plus className="h-4 w-4" />}>
-              {t('addButton')}
-            </Button>
-          </>
-        }
+      <ListToolbar
+        list={listPage}
+        defaultKeysJson={COLUMNS_DEFAULT_KEYS_JSON}
+        onSaveFilter={handleSaveFilter}
+        onAdd={() => setModalEmp('create')}
+        addLabel={t('addButton')}
+        searchLabel={t('filters.searchPlaceholder')}
+        search={[search, setSearch]}
       >
-        <Input
-          value={search}
-          onChange={e => {
-            setSearch(e.target.value);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          placeholder={t('filters.searchPlaceholder')}
-          leftElement={<Search />}
-          className="w-72 h-8 text-[13px]"
-        />
         <Select
           value={roleFilter}
-          onChange={e => {
-            setRoleFilter(e.target.value);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
+          onChange={e => changeFilter(() => setRoleFilter(e.target.value))}
           className="w-48 h-8 text-[13px] py-0.5 px-2 pr-7"
         >
           {ROLE_FILTER_CODES.map(code => (
@@ -589,246 +520,191 @@ export default function EmployeesPage() {
             </option>
           ))}
         </Select>
-      </ListFiltersRow>
+      </ListToolbar>
 
-      {/* Bulk actions */}
-      {features.bulkActionsEnabled && bulkSelect.count > 0 && (
-        <BulkActionsBar
-          count={bulkSelect.count}
-          selectedIds={Array.from(bulkSelect.selected)}
-          actions={bulkActions}
-          onClear={bulkSelect.clear}
+      <ListTableLayout
+        list={listPage}
+        bulk={bulkSelect}
+        bulkActions={bulkActions}
+        panel={
+          <DetailPanel
+            open={!!selectedEmp && detailPanel.enabled}
+            onClose={() => setSelectedEmp(null)}
+            title={selectedEmp ? `${selectedEmp.firstName} ${selectedEmp.lastName}` : ''}
+            subtitle={selectedEmp ? employeeRoleLabel(selectedEmp.role) : ''}
+            tabs={selectedEmp ? buildEmployeeTabs(selectedEmp) : undefined}
+            configFields={employeesPanelConfigFields}
+            onToggleField={panelConfig.toggleField}
+            onReset={panelConfig.reset}
+          />
+        }
+      >
+        <ListTableHeader
+          list={listPage}
+          sorting={empSorting}
+          sortKeys={EMP_SORT_KEYS}
+          bulk={bulkSelect}
+          selectAllLabel={t('aria.selectAll')}
         />
-      )}
-
-      {/* Table + DetailPanel */}
-      <div className="flex flex-1 min-h-0">
-        <div className="table-scroll-container flex-1 min-h-0 min-w-0 overflow-auto bg-surface rounded-xl border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {features.bulkActionsEnabled && (
-                  <TableHead className="w-9 pr-0">
-                    <input
-                      type="checkbox"
-                      checked={bulkSelect.allSelected}
-                      ref={selectAllRef}
-                      onChange={bulkSelect.toggleAll}
-                      className="h-3.5 w-3.5 rounded border-border"
-                      aria-label={t('aria.selectAll')}
-                    />
-                  </TableHead>
-                )}
-                {visibleColumns.map(col =>
-                  col.key === 'name' ? (
-                    <SortableHead
-                      key={col.key}
-                      sortKey="lastName"
-                      currentSort={empSort}
-                      onSort={toggleEmpSort}
-                      {...dragProps(col.key)}
-                    >
-                      {col.label}
-                    </SortableHead>
-                  ) : (
-                    <TableHead key={col.key} {...dragProps(col.key)}>
-                      {col.label}
-                    </TableHead>
-                  ),
-                )}
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="py-10 text-center"
-                  >
-                    <div className="flex justify-center">
-                      <Spinner size="md" />
+        <TableBody>
+          {loading && <TableLoadingRow colSpan={colSpan} className="py-10" />}
+          {!loading && employees.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={colSpan} className="p-0">
+                <EmptyState
+                  icon={Users}
+                  title={t('empty.title')}
+                  description={t('empty.description')}
+                />
+              </TableCell>
+            </TableRow>
+          )}
+          {!loading &&
+            employees.map(emp => {
+              const isDeleted = !!emp.deletedAt;
+              const isMarking = markingId === emp.id;
+              return (
+                <TableRow
+                  key={emp.id}
+                  className={cn(
+                    'group transition-colors',
+                    isDeleted && 'opacity-60',
+                    'cursor-pointer',
+                    selectedEmp?.id === emp.id && detailPanel.enabled && 'bg-secondary',
+                    bulkSelect.isSelected(emp.id) && 'bg-primary/5',
+                  )}
+                  // Стандарт списків: панель увімкнена → клік показує/ховає панель;
+                  // вимкнена → клік відкриває картку (те саме, що олівець).
+                  onClick={() =>
+                    activateRow({
+                      panelEnabled: detailPanel.enabled,
+                      isSelected: selectedEmp?.id === emp.id,
+                      select: () => setSelectedEmp(emp),
+                      deselect: () => setSelectedEmp(null),
+                      open: () => void openEditModal(emp),
+                    })
+                  }
+                >
+                  {features.bulkActionsEnabled && (
+                    <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelect.isSelected(emp.id)}
+                        onChange={() => bulkSelect.toggle(emp.id)}
+                        className="h-3.5 w-3.5 rounded border-border"
+                        aria-label={t('aria.selectRow', {
+                          name: `${emp.lastName} ${emp.firstName}`,
+                        })}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleColumns.map(col => {
+                    if (col.key === 'name')
+                      return (
+                        <TableCell key="name">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-medium text-foreground">
+                              {emp.lastName} {emp.firstName}
+                            </span>
+                            {isDeleted && <Badge variant="secondary">{t('badge.deleted')}</Badge>}
+                          </div>
+                          {emp.phone && (
+                            <p className="text-[12px] text-muted-foreground mt-0.5">{emp.phone}</p>
+                          )}
+                        </TableCell>
+                      );
+                    if (col.key === 'role')
+                      return (
+                        <TableCell key="role">
+                          <Badge
+                            variant={ROLE_BADGE[emp.role] ?? 'secondary'}
+                            tooltip={EMPLOYEE_ROLE_DESCRIPTIONS[emp.role]}
+                          >
+                            {employeeRoleLabel(emp.role)}
+                          </Badge>
+                        </TableCell>
+                      );
+                    if (col.key === 'status')
+                      return (
+                        <TableCell key="status">
+                          <Badge
+                            variant={STATUS_BADGE[emp.status] ?? 'secondary'}
+                            tooltip={EMPLOYEE_STATUS_DESCRIPTIONS[emp.status]}
+                          >
+                            {employeeStatusLabel(emp.status)}
+                          </Badge>
+                        </TableCell>
+                      );
+                    if (col.key === 'rate')
+                      return (
+                        <TableCell key="rate" className="text-muted-foreground">
+                          {emp.rateScheme ? (
+                            (RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type) +
+                            (emp.rateScheme.type === 'percent_normo'
+                              ? ` ${emp.rateScheme.params.percent}%`
+                              : '')
+                          ) : (
+                            <span className="text-foreground-faint">—</span>
+                          )}
+                        </TableCell>
+                      );
+                    if (col.key === 'zones')
+                      return (
+                        <TableCell key="zones" className="text-muted-foreground">
+                          {emp.zoneIds.length > 0 ? (
+                            emp.zoneIds
+                              .map(id => zones.find(z => z.id === id)?.name ?? id)
+                              .join(', ')
+                          ) : (
+                            <span className="text-foreground-faint">—</span>
+                          )}
+                        </TableCell>
+                      );
+                    if (col.key === 'lifts')
+                      return (
+                        <TableCell key="lifts" className="text-muted-foreground">
+                          {emp.liftIds.length > 0 ? (
+                            emp.liftIds
+                              .map(id => lifts.find(l => l.id === id)?.name ?? id)
+                              .join(', ')
+                          ) : (
+                            <span className="text-foreground-faint">—</span>
+                          )}
+                        </TableCell>
+                      );
+                    return null;
+                  })}
+                  <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title={t('actions.edit')}
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                        onClick={() => void openEditModal(emp)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      {/* BR-EMP-002: видалений — лише перегляд, дії видалення немає */}
+                      {!isDeleted && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                          title={t('actions.markForDeletion')}
+                          disabled={isMarking || !!markingId}
+                          onClick={() => void markForDeletion(emp.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
-              )}
-              {!loading && employees.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
-                    className="p-0"
-                  >
-                    <EmptyState
-                      icon={Users}
-                      title={t('empty.title')}
-                      description={t('empty.description')}
-                    />
-                  </TableCell>
-                </TableRow>
-              )}
-              {!loading &&
-                employees.map(emp => {
-                  const isDeleted = !!emp.deletedAt;
-                  const isMarking = markingId === emp.id;
-                  return (
-                    <TableRow
-                      key={emp.id}
-                      className={cn(
-                        'group transition-colors',
-                        isDeleted && 'opacity-60',
-                        'cursor-pointer',
-                        selectedEmp?.id === emp.id && detailPanel.enabled && 'bg-secondary',
-                        bulkSelect.isSelected(emp.id) && 'bg-primary/5',
-                      )}
-                      // Стандарт списків: панель увімкнена → клік показує/ховає панель;
-                      // вимкнена → клік відкриває картку (те саме, що олівець).
-                      onClick={() =>
-                        activateRow({
-                          panelEnabled: detailPanel.enabled,
-                          isSelected: selectedEmp?.id === emp.id,
-                          select: () => setSelectedEmp(emp),
-                          deselect: () => setSelectedEmp(null),
-                          open: () => void openEditModal(emp),
-                        })
-                      }
-                    >
-                      {features.bulkActionsEnabled && (
-                        <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={bulkSelect.isSelected(emp.id)}
-                            onChange={() => bulkSelect.toggle(emp.id)}
-                            className="h-3.5 w-3.5 rounded border-border"
-                            aria-label={t('aria.selectRow', {
-                              name: `${emp.lastName} ${emp.firstName}`,
-                            })}
-                          />
-                        </TableCell>
-                      )}
-                      {visibleColumns.map(col => {
-                        if (col.key === 'name')
-                          return (
-                            <TableCell key="name">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[13px] font-medium text-foreground">
-                                  {emp.lastName} {emp.firstName}
-                                </span>
-                                {isDeleted && (
-                                  <Badge variant="secondary">{t('badge.deleted')}</Badge>
-                                )}
-                              </div>
-                              {emp.phone && (
-                                <p className="text-[12px] text-muted-foreground mt-0.5">
-                                  {emp.phone}
-                                </p>
-                              )}
-                            </TableCell>
-                          );
-                        if (col.key === 'role')
-                          return (
-                            <TableCell key="role">
-                              <Badge
-                                variant={ROLE_BADGE[emp.role] ?? 'secondary'}
-                                tooltip={EMPLOYEE_ROLE_DESCRIPTIONS[emp.role]}
-                              >
-                                {employeeRoleLabel(emp.role)}
-                              </Badge>
-                            </TableCell>
-                          );
-                        if (col.key === 'status')
-                          return (
-                            <TableCell key="status">
-                              <Badge
-                                variant={STATUS_BADGE[emp.status] ?? 'secondary'}
-                                tooltip={EMPLOYEE_STATUS_DESCRIPTIONS[emp.status]}
-                              >
-                                {employeeStatusLabel(emp.status)}
-                              </Badge>
-                            </TableCell>
-                          );
-                        if (col.key === 'rate')
-                          return (
-                            <TableCell key="rate" className="text-muted-foreground">
-                              {emp.rateScheme ? (
-                                (RATE_LABELS[emp.rateScheme.type] ?? emp.rateScheme.type) +
-                                (emp.rateScheme.type === 'percent_normo'
-                                  ? ` ${emp.rateScheme.params.percent}%`
-                                  : '')
-                              ) : (
-                                <span className="text-foreground-faint">—</span>
-                              )}
-                            </TableCell>
-                          );
-                        if (col.key === 'zones')
-                          return (
-                            <TableCell key="zones" className="text-muted-foreground">
-                              {emp.zoneIds.length > 0 ? (
-                                emp.zoneIds
-                                  .map(id => zones.find(z => z.id === id)?.name ?? id)
-                                  .join(', ')
-                              ) : (
-                                <span className="text-foreground-faint">—</span>
-                              )}
-                            </TableCell>
-                          );
-                        if (col.key === 'lifts')
-                          return (
-                            <TableCell key="lifts" className="text-muted-foreground">
-                              {emp.liftIds.length > 0 ? (
-                                emp.liftIds
-                                  .map(id => lifts.find(l => l.id === id)?.name ?? id)
-                                  .join(', ')
-                              ) : (
-                                <span className="text-foreground-faint">—</span>
-                              )}
-                            </TableCell>
-                          );
-                        return null;
-                      })}
-                      <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            title={t('actions.edit')}
-                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                            onClick={() => void openEditModal(emp)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          {/* BR-EMP-002: видалений — лише перегляд, дії видалення немає */}
-                          {!isDeleted && (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                              title={t('actions.markForDeletion')}
-                              disabled={isMarking || !!markingId}
-                              onClick={() => void markForDeletion(emp.id)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-            </TableBody>
-          </Table>
-        </div>
-
-        <DetailPanel
-          open={!!selectedEmp && detailPanel.enabled}
-          onClose={() => setSelectedEmp(null)}
-          title={selectedEmp ? `${selectedEmp.firstName} ${selectedEmp.lastName}` : ''}
-          subtitle={selectedEmp ? employeeRoleLabel(selectedEmp.role) : ''}
-          tabs={selectedEmp ? buildEmployeeTabs(selectedEmp) : undefined}
-          configFields={employeesPanelConfigFields}
-          onToggleField={panelConfig.toggleField}
-          onReset={panelConfig.reset}
-        />
-      </div>
+              );
+            })}
+        </TableBody>
+      </ListTableLayout>
 
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 

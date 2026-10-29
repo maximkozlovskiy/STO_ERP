@@ -34,6 +34,7 @@ import {
   WorkOrderStatus,
 } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { csvArray } from '../../common/transforms/csv-array';
 
 // ─── Work Order ───────────────────────────────────────────
 
@@ -214,16 +215,10 @@ export class WorkOrderQueryDto {
       'Разом зі `status` — перетин.',
   })
   @IsOptional()
-  // Повторений параметр Fastify віддає масивом — розбираємо і його, як `statuses` рахунків.
-  @Transform(({ value }: { value: unknown }) => {
-    const parts = (Array.isArray(value) ? value : [value])
-      .flatMap(v => (typeof v === 'string' ? v.split(',') : [v]))
-      .map(v => (typeof v === 'string' ? v.trim() : v))
-      .filter(v => v !== '' && v != null);
-    return parts.length > 0 ? parts : undefined;
-  })
+  // `?statuses=A,B` і повторений `?statuses=A&statuses=B` (масив від Fastify).
+  @Transform(csvArray)
   @IsArray()
-  @ArrayMaxSize(11)
+  @ArrayMaxSize(Object.values(WorkOrderStatus).length)
   @IsEnum(WorkOrderStatus, { each: true })
   statuses?: WorkOrderStatus[];
   @ApiPropertyOptional({ enum: WorkOrderPriority })

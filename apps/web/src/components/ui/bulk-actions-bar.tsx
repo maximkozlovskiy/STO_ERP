@@ -67,3 +67,24 @@ export function BulkActionsBar({
     </div>
   );
 }
+
+interface ListBulkActionsProps {
+  /** Стан списку (`useListPage()`): чи увімкнені масові дії в налаштуваннях інтерфейсу. */
+  list: { features: { bulkActionsEnabled: boolean } };
+  /** Стан вибору списку (`useBulkSelect`). */
+  bulk: { count: number; selected: ReadonlySet<string>; clear: () => void };
+  actions: BulkAction[];
+}
+
+/** Панель масових дій списку над таблицею: лише коли дії увімкнені й щось вибрано. */
+export function ListBulkActions({ list, bulk, actions }: ListBulkActionsProps) {
+  if (!list.features.bulkActionsEnabled) return null;
+  return (
+    <BulkActionsBar
+      count={bulk.count}
+      selectedIds={Array.from(bulk.selected)}
+      actions={actions}
+      onClear={bulk.clear}
+    />
+  );
+}

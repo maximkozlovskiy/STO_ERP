@@ -34,7 +34,7 @@ import { StatusPill } from '@/components/ui/status-pill';
 import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { Spinner } from '@/components/ui/spinner';
-import { EmptyState, ListEmptyState } from '@/components/ui/empty-state';
+import { ListEmptyState } from '@/components/ui/empty-state';
 import { Pagination } from '@/components/ui/pagination';
 import { ListLoadError } from '@/components/ui/list-load-error';
 import { TableColumnsDropdown } from '@/components/ui/columns-dropdown';
