@@ -74,7 +74,7 @@ export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
             {dayMoneyAxes()}
             <Bar
               dataKey="revenue"
-              fill="#3b82f6"
+              fill="var(--color-primary)"
               name={t('charts.revenue')}
               radius={[4, 4, 0, 0]}
             />
@@ -129,7 +129,7 @@ export function SettlementsChart({ rows }: { rows: SettlementRow[] }) {
             outerRadius={80}
             dataKey="value"
           >
-            <Cell fill="#3b82f6" />
+            <Cell fill="var(--color-primary)" />
             <Cell fill="#ef4444" />
           </Pie>
           <Tooltip formatter={v => fmt(Number(v ?? 0))} />
@@ -197,7 +197,7 @@ export function LoadChart({ rows }: { rows: LoadRow[] }) {
           <Tooltip formatter={v => fmtPercent(Number(v ?? 0))} />
           <Bar
             dataKey="loadPercent"
-            fill="#3b82f6"
+            fill="var(--color-primary)"
             radius={[0, 4, 4, 0]}
             minPointSize={2}
             name={t('charts.load')}
