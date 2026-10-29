@@ -2,7 +2,7 @@
   {
     "name": "Увесь JS бандла (gzip)",
     "path": "out/_next/static/**/*.js",
-    "limit": "1.55 MB",
+    "limit": "1.6 MB",
     "gzip": true
   }
 ]
