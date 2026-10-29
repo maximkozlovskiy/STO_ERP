@@ -8504,6 +8504,31 @@
             }
           },
           {
+            "name": "statuses",
+            "required": false,
+            "in": "query",
+            "description": "Кілька статусів через кому (IN_PROGRESS,ON_HOLD) — перехід із карток дашборду. Разом зі `status` — перетин.",
+            "schema": {
+              "maxItems": 11,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "DRAFT",
+                  "ESTIMATE",
+                  "APPROVED",
+                  "IN_PROGRESS",
+                  "ON_HOLD",
+                  "COMPLETED",
+                  "INVOICED",
+                  "PAID",
+                  "ARCHIVED",
+                  "CANCELLED"
+                ]
+              }
+            }
+          },
+          {
             "name": "priority",
             "required": false,
             "in": "query",
@@ -33252,7 +33277,7 @@
           },
           "netAdvanceReturns": {
             "type": "boolean",
-            "description": "Повернення підзвіту зменшило витрати своїх статей (лише коли «Під звіт» серед витрат)"
+            "description": "Повернення підзвіту зменшує витрату статті (діє лише тоді, коли «Під звіт» серед витрат)"
           }
         },
         "required": [

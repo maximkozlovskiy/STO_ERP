@@ -206,6 +206,26 @@ export class WorkOrderQueryDto {
   @IsOptional()
   @IsEnum(WorkOrderStatus)
   status?: WorkOrderStatus;
+  @ApiPropertyOptional({
+    enum: WorkOrderStatus,
+    isArray: true,
+    description:
+      'Кілька статусів через кому (IN_PROGRESS,ON_HOLD) — перехід із карток дашборду. ' +
+      'Разом зі `status` — перетин.',
+  })
+  @IsOptional()
+  // Повторений параметр Fastify віддає масивом — розбираємо і його, як `statuses` рахунків.
+  @Transform(({ value }: { value: unknown }) => {
+    const parts = (Array.isArray(value) ? value : [value])
+      .flatMap(v => (typeof v === 'string' ? v.split(',') : [v]))
+      .map(v => (typeof v === 'string' ? v.trim() : v))
+      .filter(v => v !== '' && v != null);
+    return parts.length > 0 ? parts : undefined;
+  })
+  @IsArray()
+  @ArrayMaxSize(11)
+  @IsEnum(WorkOrderStatus, { each: true })
+  statuses?: WorkOrderStatus[];
   @ApiPropertyOptional({ enum: WorkOrderPriority })
   @IsOptional()
   @Transform(emptyToUndefined)

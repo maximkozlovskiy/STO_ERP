@@ -9956,7 +9956,7 @@ export interface components {
             expenseCashReasons: ("EXPENSE" | "MANUAL_OUT" | "ADVANCE_ISSUE" | "OWNER_OUT")[];
             /** @description Попередження про зарплату — і для місяців, що ще не почалися */
             warnFuturePayroll: boolean;
-            /** @description Повернення підзвіту зменшило витрати своїх статей (лише коли «Під звіт» серед витрат) */
+            /** @description Повернення підзвіту зменшує витрату статті (діє лише тоді, коли «Під звіт» серед витрат) */
             netAdvanceReturns: boolean;
         };
         PnlReportDto: {
@@ -15736,6 +15736,8 @@ export interface operations {
         parameters: {
             query?: {
                 status?: "DRAFT" | "ESTIMATE" | "APPROVED" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "INVOICED" | "PAID" | "ARCHIVED" | "CANCELLED";
+                /** @description Кілька статусів через кому (IN_PROGRESS,ON_HOLD) — перехід із карток дашборду. Разом зі `status` — перетин. */
+                statuses?: ("DRAFT" | "ESTIMATE" | "APPROVED" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "INVOICED" | "PAID" | "ARCHIVED" | "CANCELLED")[];
                 priority?: "LOW" | "NORMAL" | "HIGH" | "URGENT";
                 branchId?: string;
                 counterpartyId?: string;

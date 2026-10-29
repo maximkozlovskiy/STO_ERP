@@ -341,7 +341,10 @@ export class WorkOrdersService {
       orgId,
       ...(showDeleted ? {} : { deletedAt: null }),
     };
-    if (query.status) where.status = query.status;
+    if (query.status && query.statuses?.length)
+      where.status = query.statuses.includes(query.status) ? query.status : { in: [] };
+    else if (query.status) where.status = query.status;
+    else if (query.statuses?.length) where.status = { in: query.statuses };
     if (query.priority) where.priority = query.priority;
     if (query.branchId) where.branchId = query.branchId;
     if (query.counterpartyId) where.counterpartyId = query.counterpartyId;
