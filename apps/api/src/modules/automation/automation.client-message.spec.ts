@@ -4,9 +4,11 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import type { Queue } from 'bullmq';
+import { AUTOMATION_DEFAULT_RULES, defaultRuleActions } from '@sto/shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { NotificationProviderRegistry } from '../notifications/providers/provider-registry';
 import type { PrismaService } from '../../prisma/prisma.service';
+import { memoryTable } from '../cash/cash.spec-fixture';
 import type { ActionRun } from './automation-actions.service';
 import { eventVars } from './automation-engine';
 import {
@@ -42,7 +44,7 @@ async function fire(opts: {
 }
 
 describe('Дія «повідомлення клієнту»', () => {
-  // guards: BR-AUT-010, BR-AUT-014
+  // guards: BR-AUT-010, BR-AUT-014, BR-AUT-016
   it('одержувач — клієнт документа; текст — шаблон правила з підставленими змінними', async () => {
     const { h, run } = await fire({});
     expect(run?.status).toBe('DONE');
@@ -62,10 +64,27 @@ describe('Дія «повідомлення клієнту»', () => {
         ruleId: run?.ruleId,
         documentType: 'WORK_ORDER',
         documentId: 'doc-wo-1',
+        // BR-AUT-016: подія правила — для перевірки доречності на мить відправки.
+        eventKind: 'STATUS_CHANGED',
         counterpartyId: CP,
         isTest: false,
       },
     });
+  });
+
+  // Bug #998: «…Головна філія, тел. » — у організації немає телефону.
+  // guards: BR-AUT-014
+  it('типове правило: телефон організації порожній — без «, тел. »; є — з телефоном', async () => {
+    const wo = AUTOMATION_DEFAULT_RULES.find(r => r.systemKey === 'WO_COMPLETED_CLIENT')!;
+    const text = async (branchPhone: string) => {
+      const { h } = await fire({
+        rule: { actions: defaultRuleActions(wo) },
+        ctx: fakeCtx({ vars: { ...fakeCtx().vars, branchName: 'Головна філія', branchPhone } }),
+      });
+      return (h.enqueueChain.mock.calls[0]![2] as { message: string }[])[0]!.message;
+    };
+    expect(await text('')).toMatch(/\(наряд НРД-7, сума 5 000,00 грн\)\. Головна філія$/);
+    expect(await text('+380441234567')).toMatch(/Головна філія, тел\. \+380441234567$/);
   });
 
   // guards: BR-AUT-010, BR-AUT-050
@@ -121,6 +140,42 @@ describe('Дія «повідомлення клієнту»', () => {
       'SMS',
       'VIBER',
     ]);
+  });
+
+  // Рішення власника 2026-10-29: «Я налаштовую самостійно пріоритет, немає фіксованих».
+  // guards: BR-AUT-011
+  it('правило без каналів — усі налаштовані канали філії в пріоритеті власника', async () => {
+    const noChannels = { actions: [{ type: 'client_message', template: { body: 'Привіт' } }] };
+    const { h, run } = await fire({ rule: noChannels, channels: ['SMS', 'EMAIL', 'VIBER'] });
+    expect(h.resolveChannels).toHaveBeenCalledWith('org-a', fakeCtx().messageBranchId, null);
+    const chain = h.enqueueChain.mock.calls[0]![2] as { channel: string; recipient: string }[];
+    expect(chain.map(c => [c.channel, c.recipient])).toEqual([
+      ['SMS', '+380671112233'],
+      ['EMAIL', 'ivan@example.com'],
+      ['VIBER', '+380671112233'],
+    ]);
+    expect(run?.actionResults).toEqual([
+      expect.objectContaining({ status: 'DONE', channels: ['SMS', 'EMAIL', 'VIBER'] }),
+    ]);
+
+    // Канал без адреси одержувача пропускається; жодного з адресою — «немає контакту».
+    const noEmail = await fire({
+      rule: noChannels,
+      channels: ['EMAIL', 'SMS'],
+      ctx: fakeCtx({ client: client({ email: null }) }),
+    });
+    expect(
+      (noEmail.h.enqueueChain.mock.calls[0]![2] as { channel: string }[]).map(c => c.channel),
+    ).toEqual(['SMS']);
+    const onlyEmail = await fire({
+      rule: noChannels,
+      channels: ['EMAIL'],
+      ctx: fakeCtx({ client: client({ email: null }) }),
+    });
+    expect(onlyEmail.logs[0]).toMatchObject({ status: 'SKIPPED', skipReason: 'NO_CONTACT' });
+    // У філії нічого не налаштовано — «немає каналу».
+    const none = await fire({ rule: noChannels, channels: [] });
+    expect(none.logs[0]).toMatchObject({ status: 'SKIPPED', skipReason: 'NO_CHANNEL' });
   });
 
   // guards: BR-AUT-011
@@ -274,6 +329,60 @@ describe('NotificationsService — черга й канали правила', (
     expect(out).toEqual([
       { channel: 'SMS', provider: 'turbosms', senderName: 'OLD' },
       { channel: 'TELEGRAM', provider: 'esputnik', senderName: 'S', externalTemplateId: 'tpl-1' },
+    ]);
+  });
+
+  // Фейкова таблиця виконує where / orderBy: зниклий `orderBy: priority` чи фільтр філії / org
+  // ламає тест, а не проходить мовчки.
+  // guards: BR-AUT-011
+  it('resolveChannels(null) — «як у філії»: придатні канали за пріоритетом власника; немає — legacy SMS', async () => {
+    const cfg = (channel: string, priority: number, over: Record<string, unknown> = {}) => ({
+      orgId: 'org-a',
+      branchId: 'b1',
+      channel,
+      priority,
+      provider: 'turbosms',
+      enabled: true,
+      apiKey: 'k',
+      senderName: 'STO',
+      externalTemplateId: null,
+      deletedAt: null,
+      ...over,
+    });
+    const legacy = {
+      orgId: 'org-a',
+      branchId: 'b1',
+      smsEnabled: true,
+      smsApiKey: 'legacy',
+      smsProvider: 'turbosms',
+      smsSenderName: 'OLD',
+    };
+    const make = (rows: Record<string, unknown>[]) =>
+      new NotificationsService(
+        {
+          notificationChannelConfig: memoryTable(rows),
+          branchSettings: memoryTable([legacy]),
+        } as unknown as PrismaService,
+        registry,
+        { add: vi.fn() } as unknown as Queue,
+      );
+
+    const svc = make([
+      cfg('VIBER', 2),
+      cfg('EMAIL', 0, { provider: 'smtp' }),
+      cfg('SMS', 1),
+      cfg('TELEGRAM', 3, { provider: 'esputnik' }), // шаблонний без externalTemplateId
+      cfg('VIBER', 0, { branchId: 'b2' }), // інша філія
+      cfg('SMS', -1, { orgId: 'org-b' }), // інша org
+      cfg('EMAIL', -5, { deletedAt: new Date() }),
+    ]);
+    const order = (await svc.resolveChannels('org-a', 'b1', null)).map(c => c.channel);
+    expect(order).toEqual(['EMAIL', 'SMS', 'VIBER']);
+
+    // Жодного придатного конфігу — як зашиті повідомлення до автоматизації: legacy SMS філії.
+    const legacyOnly = make([cfg('VIBER', 0, { enabled: false })]);
+    expect(await legacyOnly.resolveChannels('org-a', 'b1', null)).toEqual([
+      { channel: 'SMS', provider: 'turbosms', senderName: 'OLD' },
     ]);
   });
 });

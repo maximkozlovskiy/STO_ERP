@@ -207,11 +207,12 @@ export function automationHarness(init: HarnessInit = {}) {
     $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
   } as unknown as PrismaService & typeof tables;
 
+  // Налаштовані канали філії в пріоритеті власника; `wanted = null` — «як у філії» (BR-AUT-011).
   const configured = init.channels ?? ['VIBER', 'SMS', 'EMAIL'];
   const enqueueChain = vi.fn().mockResolvedValue(undefined);
-  const resolveChannels = vi.fn((_org: string, _branch: string, wanted: readonly string[]) =>
+  const resolveChannels = vi.fn((_org: string, _branch: string, wanted: readonly string[] | null) =>
     Promise.resolve(
-      wanted
+      (wanted ?? configured)
         .filter(c => configured.includes(c))
         .map(c => ({ channel: c, provider: 'turbosms', senderName: 'STO' })),
     ),

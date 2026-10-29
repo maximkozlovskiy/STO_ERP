@@ -146,6 +146,32 @@ describe('Дія «сповіщення працівникам»', () => {
     expect(run?.status).toBe('DONE');
   });
 
+  // Та сама модель, що в повідомленні клієнту (рішення власника 2026-10-29): без переліку — канали
+  // філії в пріоритеті власника, але лише ті, що дозволені працівнику (email працівнику — ні).
+  // guards: BR-AUT-011, BR-AUT-022
+  it('зовнішній канал без переліку — канали філії за пріоритетом, лише дозволені працівнику', async () => {
+    const h = automationHarness({
+      rules: [
+        fakeRule({
+          actions: [
+            notify({
+              recipients: { employeeIds: [RECEPTION] },
+              external: { template: { body: 'Наряд {{documentNumber}}' } },
+            }),
+          ],
+        }),
+      ],
+      channels: ['EMAIL', 'SMS', 'TELEGRAM', 'VIBER'],
+    });
+    await h.engine.handle(fakeEvent());
+    expect(h.resolveChannels).toHaveBeenCalledWith('org-a', fakeCtx().messageBranchId, null);
+    const chain = h.enqueueChain.mock.calls[0]![2] as { channel: string; recipient: string }[];
+    expect(chain.map(c => [c.channel, c.recipient])).toEqual([
+      ['SMS', '+380670000004'],
+      ['VIBER', '+380670000004'],
+    ]);
+  });
+
   // Канали філії однакові для всіх одержувачів дії — один запит, а не по одному на працівника
   // (до 500 одержувачів ролі).
   // guards: BR-AUT-022
