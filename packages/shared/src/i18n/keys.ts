@@ -533,6 +533,7 @@ export const VALIDATION_KEYS = [
   'err.invoice.onlyDraftDeletable',
   'err.invoice.concurrentIssueConflict',
   'err.invoice.concurrentRefreshConflict',
+  'err.invoice.noLinesToIssue',
   // Exception-повідомлення: payments-модуль
   'err.payment.counterpartyNotFound',
   'err.payment.notFound',

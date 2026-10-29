@@ -383,6 +383,7 @@ export const en: Record<string, string> = {
     'Another user has just issued an invoice for this work order. Refresh the page.',
   'err.invoice.concurrentRefreshConflict':
     'Another user has just updated this invoice. Refresh the page and try again.',
+  'err.invoice.noLinesToIssue': 'An invoice without lines cannot be issued — add at least one line',
 
   // ── Exception messages: payments module ──
   'err.payment.counterpartyNotFound': 'Counterparty not found',

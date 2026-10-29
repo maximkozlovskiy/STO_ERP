@@ -383,6 +383,7 @@ export const uk: Record<string, string> = {
     'Інший користувач щойно виставив рахунок для цього наряду. Оновіть сторінку.',
   'err.invoice.concurrentRefreshConflict':
     'Інший користувач щойно оновив цей рахунок. Оновіть сторінку та повторіть.',
+  'err.invoice.noLinesToIssue': 'Рахунок без рядків не можна виставити — додайте хоча б один рядок',
 
   // ── Exception-повідомлення: payments-модуль ──
   'err.payment.counterpartyNotFound': 'Контрагента не знайдено',
