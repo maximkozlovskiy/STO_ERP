@@ -110,18 +110,20 @@
 
 ## UI (Web)
 
-| Компонент              | Файл                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------------ |
-| Вкладка «Конструктор»  | `app/(app)/reports/ReportBuilder.tsx` (палітра+3 зони+таблиця)                             |
-| Хуки                   | `hooks/api/useReportBuilder.ts`                                                            |
-| Експорт CSV / XLSX     | `lib/report-export.ts` (рядки, CSV-текст, SpreadsheetML; завантаження — `lib/download.ts`) |
-| Вкладка «P&L»          | `app/(app)/reports/PnlReport.tsx` (місяці × рядки, статті деревом, CSV — `buildPnlCsv`)    |
-| Налаштування P&L       | `app/(app)/reports/PnlSettingsModal.tsx` (OWNER/ADMIN; хук `useUpdatePnlSettings`)         |
-| Швидкі періоди         | `app/(app)/reports/QuickPeriods.tsx` + `report-periods.ts` (межі від `kyivToday`)          |
-| Таблиці звітів         | `app/(app)/reports/ReportTables.tsx` (переходи з рядків, «Завантаженість» за відсотком)    |
-| Картка товару зі звіту | `app/(app)/reports/ReportGoodCard.tsx` (`GoodEditModal`, OWNER/ADMIN)                      |
-| Наряди механіка        | `app/(app)/work-orders/url-filter.ts` (`?employeeId&dateFrom&dateTo` → фільтр списку)      |
-| KPI дашборда           | `app/(app)/dashboard/page.tsx` + `useDashboardPnl` (`hooks/api/useDashboardData.ts`)       |
+| Компонент                | Файл                                                                                                      |
+| ------------------------ | --------------------------------------------------------------------------------------------------------- |
+| Вкладка «Конструктор»    | `app/(app)/reports/ReportBuilder.tsx` (палітра+3 зони+таблиця)                                            |
+| Хуки                     | `hooks/api/useReportBuilder.ts`                                                                           |
+| Експорт CSV / XLSX       | `lib/report-export.ts` (рядки, CSV-текст, SpreadsheetML; завантаження — `lib/download.ts`)                |
+| Вкладка «P&L»            | `app/(app)/reports/PnlReport.tsx` (місяці × рядки, статті деревом, CSV — `buildPnlCsv`)                   |
+| Налаштування P&L         | `app/(app)/reports/PnlSettingsModal.tsx` (OWNER/ADMIN; хук `useUpdatePnlSettings`)                        |
+| Вкладка «Рентабельність» | `app/(app)/reports/ProfitabilityReport.tsx` + `ProfitabilitySettingsModal.tsx` (частка праці, BR-RPT-035) |
+| Пояснення «?»            | `components/ui/help-popover.tsx` (`CatalogHelp`, тексти `help.*` у `locales/*/reports.json`)              |
+| Швидкі періоди           | `app/(app)/reports/QuickPeriods.tsx` + `report-periods.ts` (межі від `kyivToday`)                         |
+| Таблиці звітів           | `app/(app)/reports/ReportTables.tsx` (переходи з рядків, «Завантаженість» за відсотком)                   |
+| Картка товару зі звіту   | `app/(app)/reports/ReportGoodCard.tsx` (`GoodEditModal`, OWNER/ADMIN)                                     |
+| Наряди механіка          | `app/(app)/work-orders/url-filter.ts` (`?employeeId&dateFrom&dateTo` → фільтр списку)                     |
+| KPI дашборда             | `app/(app)/dashboard/page.tsx` + `useDashboardPnl` (`hooks/api/useDashboardData.ts`)                      |
 
 Native HTML5 drag (палітра→зона); ієрархічна таблиця з розгортанням + tfoot-підсумки; експорт
 CSV/XLSX клієнтський (SpreadsheetML).
@@ -371,10 +373,12 @@ CSV/XLSX клієнтський (SpreadsheetML).
   початку (як зараз).
 - **BR-RPT-034** — «Звіт по складу» — дві вартості залишку (рішення власника 2026-10-29; до того
   «Вартість» = кількість × ціна продажу без пояснення). `costValue` — **за собівартістю**: Σ
-  `remainingQty × costPrice` невидалених партій товару на складі; кількість поза партіями (залишок
+  `remainingQty × costPrice` активних партій (`isActive`, `remainingQty > 0`; `deletedAt` у партії
+  немає) товару на складі; кількість поза партіями (залишок
   більший за Σ `remainingQty`) — за `purchasePrice` товару; `saleValue` — **за цінами продажу**:
   кількість × `salePrice` товару (колишнє `value`, поле перейменовано). Обидві — у рядку, підсумку
-  й CSV; видалені товари (BR-RPT-032) входять в обидві.
+  й CSV; видалені товари (BR-RPT-032) входять в обидві. Залишки — поточні: дати періоду вкладки
+  відбирають лише рухи відповіді (`movements`), на залишки й вартості не впливають.
 - **BR-RPT-035** — «Рентабельність»: частка праці в собівартості робіт — `OrganisationSettings.laborCostRatio`
   (0…1, типово 0,4), а не зашиті 40%. Відповідь віддає `laborCostRatio`; підпис рядка — «Праця
   (оцінка N%)» з відповіді. Поле «Частка праці, %» (0–100, крок 1) — у вікні «Налаштування звіту»
@@ -428,16 +432,19 @@ cd apps/api && npx vitest run src/modules/report-builder/<файл>.spec.ts
 | збережені звіти, tenant-межа запуску                                                              | `report-builder.saved-reports.spec.ts`      | 13     |
 | ролі доступу                                                                                      | `report-builder.access.spec.ts`             | 9      |
 | межі config (DTO)                                                                                 | `report-builder.dto.spec.ts`                | 1      |
-| фіксовані звіти (сусідній модуль `reports`)                                                       | `reports.service.spec.ts`                   | 20     |
+| фіксовані звіти (сусідній модуль `reports`), частка праці у відповіді (035)                       | `reports.service.spec.ts`                   | 23     |
 | фіксовані звіти: дати періоду в запиті (400), ролі P&L (030)                                      | `reports.contract.spec.ts`                  | 88     |
 | P&L: каса, банк, сторно, зарплата, курсові, формула, межа 24 місяців, налаштування, підзвіт (030) | `reports.pnl.spec.ts`                       | 15     |
 | P&L: місяці, розподіл зарплати за днями, дерево статей, нормалізація налаштувань (030)            | `pnl.calc.spec.ts`                          | 16     |
 | P&L: налаштування в `PATCH /settings/organisation` — дозволені приводи, «Витрата», ролі (030)     | `../settings/settings.pnl.contract.spec.ts` | 15     |
-| «Завантаженість»: підйомники без записів, філія, відсоток з одним знаком                          | `reports.load.spec.ts`                      | 3      |
-| фіксовані звіти: межі періоду за Києвом, ПДВ, «Наряди» за датою документа (031)                   | `reports.period-bounds.spec.ts`             | 42     |
-| «Звіт по складу»: видалені товари із залишком — у звіті й підсумку, `goodDeleted` (032)           | `reports.stock.spec.ts`                     | 2      |
+| «Завантаженість»: підйомники без записів, філія, відсоток, робочий час філії (033)                | `reports.load.spec.ts`                      | 9      |
+| фіксовані звіти: межі періоду за Києвом, ПДВ, «Наряди» за датою документа й без скасованих (031)  | `reports.period-bounds.spec.ts`             | 46     |
+| «Звіт по складу»: видалені товари (032), собівартість з партій і ціни продажу (034)               | `reports.stock.spec.ts`                     | 7      |
+| «ПДВ»: відбір рахунків і закупівель, знак різниці (036)                                           | `reports.vat.spec.ts`                       | 3      |
 
-Разом: **369** кейсів — 168 конструктора і 201 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **390** кейсів — 168 конструктора і 222 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
+Місткість «Завантаженості» (BR-RPT-033) стереже й `apps/api/src/common/utils/work-hours.spec.ts`
+(`workDaysOf` / `workDayHoursOf` / `workCapacityHours`, 14 кейсів разом із годинами календаря).
 
 Web-тест експорту (`BR-RPT-021`) лежить поза модулем:
 `apps/web/src/lib/__tests__/report-export.test.ts` — 37 кейсів (зокрема колонки валют, порожня вибірка і рядки
@@ -448,12 +455,17 @@ Web-тест експорту (`BR-RPT-021`) лежить поза модуле�
 `escapeCsvCell`, BOM), XLSX-XML (екранування, вирізання XML-недопустимих керувальних символів, назва аркуша — `escAttr` і правила Excel `xlsxSheetName`, числа як `Number`, заголовок, каркас книги). Запуск:
 `cd apps/web && npx vitest run src/lib/__tests__/report-export.test.ts`.
 CSV фіксованих звітів (`apps/web/src/app/(app)/reports/report-csv.ts`, числа з комою, BOM у
-файлі) — `apps/web/src/app/(app)/reports/__tests__/report-csv.test.ts`, 6 кейсів.
+файлі; робочі години «Завантаженості» — BR-RPT-033, дві вартості складу — BR-RPT-034) —
+`apps/web/src/app/(app)/reports/__tests__/report-csv.test.ts`, 7 кейсів.
+«Рентабельність» (BR-RPT-035: «Праця (оцінка N%)», «Налаштування звіту» з часткою праці) —
+`ProfitabilityReport.test.tsx` (4); «?» за вкладкою (тексти з цього дос'є) — `ReportsHelp.test.tsx`
+(10), спільна кнопка — `apps/web/src/components/ui/__tests__/help-popover.test.tsx` (9), форма тем
+пояснень у каталогах — `apps/web/src/i18n/help-topics.test.ts` (19).
 Вкладка «P&L» (BR-RPT-030) — `apps/web/src/app/(app)/reports/__tests__/PnlReport.test.tsx`, 4 кейси;
 вікно «Налаштування звіту», рядок «Пораховано», кнопка лише OWNER/ADMIN, закріплені колонки —
-`PnlSettingsModal.test.tsx` (9, зокрема прапорець повернення підзвіту); швидкі періоди — `QuickPeriods.test.tsx` (7); «Завантаженість»,
-переходи з рядків і вісь графіка виручки — `ReportTables.test.tsx` (8, зокрема видалений товар у «Звіті по складу», BR-RPT-032); фільтр нарядів механіка з
-адреси — `apps/web/src/app/(app)/work-orders/__tests__/WorkOrdersPage.url-filter.test.tsx` (11, разом зі статусами з дашборду й карткою `?open=`);
+`PnlSettingsModal.test.tsx` (9, зокрема прапорець повернення підзвіту); швидкі періоди — `QuickPeriods.test.tsx` (7); «Завантаженість» («N год з M», BR-RPT-033),
+переходи з рядків (механік — зі статусами звіту, BR-RPT-031) і вісь графіка виручки — `ReportTables.test.tsx` (9, зокрема видалений товар і дві вартості у «Звіті по складу», BR-RPT-032/034); фільтр нарядів механіка з
+адреси — `apps/web/src/app/(app)/work-orders/__tests__/WorkOrdersPage.url-filter.test.tsx` (12, разом зі статусами з дашборду, «усі, крім скасованих» зі звіту й карткою `?open=`);
 `fmtPercent` — `apps/web/src/lib/format.i18n.test.ts`;
 доступ до вкладки — `ReportsInventoryTab.test.tsx` (14); KPI дашборда з P&L і ролі —
 `apps/web/src/app/(app)/dashboard/__tests__/DashboardPage.roles.test.tsx` (12) і
@@ -461,12 +473,11 @@ CSV фіксованих звітів (`apps/web/src/app/(app)/reports/report-cs
 (витрата з каси за статтею → рядок статті в P&L місяця, чистий прибуток меншає на її суму; видача
 під звіт за статтею → у P&L лише після «Під звіт» у «Налаштуваннях звіту»),
 `apps/web/e2e/reports-navigation.spec.ts` («Минулий місяць» ставить межі; рядок механіка у звіті
-«Наряди» → його наряди з фільтром виконавця й періодом).
+«Наряди» → його наряди з фільтром виконавця, періодом і статусами «усі, крім скасованих»),
+`apps/web/e2e/reports-help.spec.ts` («?» «Завантаженості» й P&L, Escape; дві вартості «Звіту по складу»).
 
 **Чого тут НЕМА.**
 
-- BR-RPT-033, BR-RPT-034, BR-RPT-035, BR-RPT-036 — контракт 2026-10-29, тести — наступним кроком
-  (рядок прибрати разом із мітками `// guards:`).
 - Експорт: саме завантаження файла (`exportReport` → `downloadBlob`, Blob і клік по посиланню) і
   кнопки CSV / XLSX у `ReportBuilder.tsx` тестом не покриті — перевірено лише побудову вмісту файла.
   Чи відкриває Excel отриманий SpreadsheetML, не перевіряє ніщо.
