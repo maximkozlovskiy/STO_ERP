@@ -680,7 +680,18 @@ export function CalendarSlotModal({
           method: 'POST',
           body: JSON.stringify({ ...body, type: form.type }),
         });
-        if (res.slots.length === 2) {
+        // BR-WO-028 (Bug #905): запис для наряду з датами стає на дати й підйомник наряду, а не
+        // на час форми — сказати, чому запис не там, куди його ставили. Тоді ЛИШЕ це пояснення:
+        // «Слот створено» поруч читалось як «створено там, куди протягнули» (огляд 2026-10-29).
+        const first = res.slots[0];
+        const onWoDates =
+          !!form.workOrderId &&
+          !!first &&
+          (new Date(first.startAt).getTime() !== new Date(startIso).getTime() ||
+            (first.liftId ?? '') !== form.liftId);
+        if (onWoDates) {
+          toast.info(t('slot.toastWoSlotOnWoDates'));
+        } else if (res.slots.length === 2) {
           const s1 = res.slots[0];
           const s2 = res.slots[1];
           toast.success(
@@ -695,16 +706,6 @@ export function CalendarSlotModal({
         } else {
           toast.success(t('slot.toastCreated'));
         }
-        // BR-WO-028 (Bug #905): запис для наряду з датами стає на дати й підйомник наряду, а не
-        // на час форми — сказати, чому запис не там, куди його ставили.
-        const first = res.slots[0];
-        if (
-          form.workOrderId &&
-          first &&
-          (new Date(first.startAt).getTime() !== new Date(startIso).getTime() ||
-            (first.liftId ?? '') !== form.liftId)
-        )
-          toast.info(t('slot.toastWoSlotOnWoDates'));
       }
       // Запис із нарядом (новий теж — BR-WO-028 дає наряду дати) змінює картку й списки нарядів.
       onSaved({ workOrderChanged: !!form.workOrderId });

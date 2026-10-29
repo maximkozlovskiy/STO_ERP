@@ -422,6 +422,8 @@ describe('CalendarSlotModal — новий запис для наряду (BR-WO
     expect(toast.info).toHaveBeenCalledWith(
       'Наряд уже має планові дати — запис стоїть на датах і підйомнику наряду',
     );
+    // Лише пояснення: «Слот створено» поруч читалось як «створено там, куди протягнули».
+    expect(toast.success).not.toHaveBeenCalledWith('Слот створено');
   });
 
   // guards: BR-WO-028
@@ -434,6 +436,7 @@ describe('CalendarSlotModal — новий запис для наряду (BR-WO
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ workOrderChanged: true }));
     expect(toast.info).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith('Слот створено');
   });
 });
 
