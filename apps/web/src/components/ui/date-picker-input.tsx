@@ -179,6 +179,8 @@ export function DatePickerInput({
         <input
           ref={inputRef}
           type="text"
+          // Фокус відкриває календар — початковий фокус вікна сюди не ставиться (useFocusTrap).
+          data-no-autofocus=""
           value={inputText}
           onChange={handleInputChange}
           // Поле показує лише те, що справді застосовано. Недописана дата («10.03») або дата поза

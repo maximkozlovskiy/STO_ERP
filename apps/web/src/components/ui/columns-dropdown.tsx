@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { useTranslation } from 'react-i18next';
 import { Columns3, GripVertical, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -17,6 +18,9 @@ interface ColumnsDropdownProps {
   className?: string;
 }
 
+/** Ширина поповера `w-60`, px. */
+const POPOVER_WIDTH_PX = 240;
+
 export function ColumnsDropdown({
   columns,
   visibleKeys,
@@ -32,10 +36,22 @@ export function ColumnsDropdown({
   const [configMode, setConfigMode] = useState(false);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [labelValue, setLabelValue] = useState('');
+  // Кнопка ближче до лівого краю, ніж ширина поповера (390 px) — розкриваємо праворуч від неї.
+  const [alignLeft, setAlignLeft] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const dragKeyRef = useRef<string | null>(null);
 
   const configurable = !!(onReorder || onRename);
+
+  const close = () => {
+    setOpen(false);
+    setConfigMode(false);
+    setEditingKey(null);
+  };
+  // Escape знімає лише верхній шар (UX-огляд 2026-10-29: поповер Escape не закривав): спершу
+  // перейменування колонки, тоді сам поповер — картка чи сторінка під ним лишаються.
+  useEscapeLayer(open, close);
+  useEscapeLayer(open && editingKey !== null, () => setEditingKey(null));
 
   useEffect(() => {
     if (!open) return;
@@ -78,6 +94,8 @@ export function ColumnsDropdown({
     <div ref={ref} className={cn('relative', className)}>
       <button
         onClick={() => {
+          const rect = ref.current?.getBoundingClientRect();
+          setAlignLeft(!!rect && rect.right < POPOVER_WIDTH_PX + 16);
           setOpen(v => !v);
           setConfigMode(false);
           setEditingKey(null);
@@ -93,7 +111,13 @@ export function ColumnsDropdown({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 z-50 w-60 bg-surface border border-border rounded-xl shadow-lg overflow-hidden">
+        <div
+          data-testid="columns-popover"
+          className={cn(
+            'absolute top-full mt-1.5 z-50 w-60 max-w-[calc(100vw-2rem)] bg-surface border border-border rounded-xl shadow-lg overflow-hidden',
+            alignLeft ? 'left-0' : 'right-0',
+          )}
+        >
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-border">
             <span className="text-[12px] font-medium text-muted-foreground">
@@ -162,7 +186,6 @@ export function ColumnsDropdown({
                     onBlur={() => saveLabel(col.key)}
                     onKeyDown={e => {
                       if (e.key === 'Enter') saveLabel(col.key);
-                      if (e.key === 'Escape') setEditingKey(null);
                     }}
                     className="flex-1 text-[13px] bg-surface border border-primary rounded px-1.5 py-0.5 text-foreground outline-none min-w-0"
                   />

@@ -668,6 +668,16 @@ describe('CashOperationModal', () => {
       expect(screen.queryByText(UNSAVED)).toBeNull();
     });
 
+    // UX-огляд 2026-10-29: підвал «Скасувати / Внести» (була одна кнопка), сума праворуч.
+    it('підвал «Скасувати / Внести»; «Скасувати» без змін закриває одразу; сума праворуч', async () => {
+      mockApi();
+      const { onClose } = renderModal({ direction: 'IN' });
+      expect(screen.getByRole('button', { name: 'Внести' })).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Сума/)).toHaveClass('text-right');
+      fireEvent.click(screen.getByRole('button', { name: 'Скасувати' }));
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
     it('з уведеною сумою — запит; «Скасувати» лишає картку й суму', async () => {
       mockApi();
       const { onClose } = renderModal({ direction: 'IN' });
@@ -675,7 +685,9 @@ describe('CashOperationModal', () => {
       escape();
       expect(await screen.findByText(UNSAVED)).toBeVisible();
       expect(onClose).not.toHaveBeenCalled();
-      fireEvent.click(screen.getByRole('button', { name: 'Скасувати' }));
+      // «Скасувати» запиту (у підвалі картки тепер теж є «Скасувати» — UX-огляд 2026-10-29).
+      const prompt = screen.getByText(UNSAVED).closest('[role="dialog"]') as HTMLElement;
+      fireEvent.click(within(prompt).getByRole('button', { name: 'Скасувати' }));
       await waitFor(() => expect(screen.queryByText(UNSAVED)).toBeNull());
       expect(onClose).not.toHaveBeenCalled();
       expect(screen.getByLabelText(/^Сума/)).toHaveValue('777');

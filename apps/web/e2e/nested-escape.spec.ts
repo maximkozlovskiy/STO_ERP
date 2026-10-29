@@ -232,6 +232,45 @@ test.describe('Escape у вкладених вікнах закриває лиш
     await expect(dirtyPrompt(page)).toBeHidden();
   });
 
+  // UX-огляд 2026-10-29: Escape у рядку «Додати» закривав усю картку, фокус після «Додати» — на BODY.
+  test('картка наряду: рядок «Додати» роботи й товару — фокус у пошуку, Escape знімає лише рядок', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    expect(state.wo, 'наряд створено попереднім тестом').toBeTruthy();
+    const card = await openWoCard(page, state.wo!.number);
+
+    const works = card.getByTestId('wo-works-section');
+    await works.getByRole('button', { name: 'Додати' }).click();
+    const workSearch = works.getByRole('combobox', { name: 'Робота' });
+    await expect(workSearch).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(workSearch).toBeHidden();
+    await expect(card).toBeVisible();
+    await expect(dirtyPrompt(page)).toBeHidden();
+
+    // Склад нового рядка товару — основний (або єдиний), не порожній.
+    const whRes = await api<
+      { id: string; isMain?: boolean }[] | { items: { id: string; isMain?: boolean }[] }
+    >(page, 'GET', '/warehouses');
+    const whs = Array.isArray(whRes.body) ? whRes.body : whRes.body.items;
+    const expectedWh = whs.find(w => w.isMain)?.id ?? (whs.length === 1 ? whs[0]!.id : '');
+
+    const parts = card.getByTestId('wo-parts-section');
+    await parts.getByRole('button', { name: 'Додати' }).click();
+    const goodSearch = parts.getByRole('combobox', { name: 'Товар' });
+    await expect(goodSearch).toBeFocused();
+    await expect(parts.getByRole('combobox', { name: 'Склад' }).last()).toHaveValue(expectedWh);
+    await page.keyboard.press('Escape');
+    await expect(goodSearch).toBeHidden();
+    await expect(card).toBeVisible();
+
+    // Рядків більше немає — наступний Escape закриває саму картку.
+    await page.keyboard.press('Escape');
+    await expect(card).toBeHidden();
+    await expect(dirtyPrompt(page)).toBeHidden();
+  });
+
   test('сторінка наряду: «+ Запчастина» → картка товару — кожен Escape знімає один шар', async ({
     page,
   }) => {

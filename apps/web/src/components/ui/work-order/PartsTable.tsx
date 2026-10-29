@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Plus, Trash2, Pencil, Check, X, Package } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
@@ -126,6 +127,17 @@ export function PartsTable(props: PartsTableProps) {
     return `${w.name} — ${fmtQty(free.find(f => f.warehouseId === w.id)?.available ?? 0)}`;
   };
 
+  // Escape у відкритому рядку «Додати» знімає лише рядок, а не всю картку (UX-огляд 2026-10-29).
+  useEscapeLayer(canEdit && showPartInput, () => {
+    setNewPart(p => ({ ...EMPTY_PART, warehouseId: p.warehouseId }));
+    setShowPartInput(false);
+  });
+
+  // Склад нового рядка — останній обраний, інакше основний (UX-огляд 2026-10-29: був порожній).
+  // Обраний товар однаково перевибирає склад за вільним залишком (BR-WO-029).
+  const mainWarehouseId =
+    warehouses.find(w => w.isMain)?.id ?? (warehouses.length === 1 ? warehouses[0].id : '');
+
   const actions = (
     <>
       {headerAction}
@@ -133,7 +145,7 @@ export function PartsTable(props: PartsTableProps) {
         <SectionActionButton
           variant="accent"
           onClick={() => {
-            setNewPart(EMPTY_PART);
+            setNewPart(p => ({ ...EMPTY_PART, warehouseId: p.warehouseId || mainWarehouseId }));
             setShowPartInput(true);
           }}
         >
@@ -180,9 +192,15 @@ export function PartsTable(props: PartsTableProps) {
                 <th className={TH_FIRST}>{t('partsTable.colName')}</th>
                 <th className={TH}>{t('partsTable.warehouse')}</th>
                 <th className={TH}>{t('partsTable.colInStock')}</th>
-                <th className={TH}>{t('partsTable.colQty')}</th>
-                <th className={TH}>{t('partsTable.colUnit')}</th>
-                <th className={TH}>{t('partsTable.colCost')}</th>
+                <th className={TH} title={t('partsTable.colQtyTitle')}>
+                  {t('partsTable.colQty')}
+                </th>
+                <th className={TH} title={t('partsTable.colUnitTitle')}>
+                  {t('partsTable.colUnit')}
+                </th>
+                <th className={TH} title={t('partsTable.colCostTitle')}>
+                  {t('partsTable.colCost')}
+                </th>
                 <th className={TH}>{t('card.colPrice')}</th>
                 {vatMode !== 'NONE' && <th className={TH}>{t('card.colVat')}</th>}
                 <th className={TH}>{t('card.colSum')}</th>
@@ -488,6 +506,7 @@ export function PartsTable(props: PartsTableProps) {
                 <tr className="bg-primary/5 border-t-2 border-primary/20">
                   <td className="pl-4 pr-2 py-1.5">
                     <EntityPickerField<GoodPickerItem>
+                      autoFocus
                       display={newPart.goodName}
                       placeholder={t('partsTable.searchPlaceholder')}
                       ariaLabel={t('partsTable.goodAria')}
@@ -603,7 +622,7 @@ export function PartsTable(props: PartsTableProps) {
                       <button
                         type="button"
                         onClick={() => {
-                          setNewPart(EMPTY_PART);
+                          setNewPart(p => ({ ...EMPTY_PART, warehouseId: p.warehouseId }));
                           setShowPartInput(false);
                         }}
                         title={t('common:cancel')}

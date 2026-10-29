@@ -55,6 +55,8 @@ interface EntityPickerFieldProps<T extends SearchItem = SearchItem> {
   onSearch?: (q: string) => Promise<T[]>;
   onSearchSelect?: (item: T) => void;
   className?: string;
+  /** Поставити фокус у поле пошуку при появі (рядок «Додати» в картці наряду). */
+  autoFocus?: boolean;
 }
 
 /**
@@ -85,6 +87,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
   onSearch,
   onSearchSelect,
   className,
+  autoFocus,
 }: EntityPickerFieldProps<T>) {
   const { t } = useTranslation('common');
   const placeholder = placeholderProp ?? t('entityPicker.placeholder');
@@ -232,6 +235,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
         <input
           ref={inputRef}
           type="text"
+          autoFocus={autoFocus}
           value={query}
           onChange={e => {
             setQuery(e.target.value);

@@ -25,7 +25,6 @@ const ALLOWED_REACT_ESCAPE = new Set([
   ...ALLOWED_KEYDOWN_ESCAPE,
   'app/(app)/catalog/UnitsTab.tsx',
   'app/(app)/work-orders/page.tsx',
-  'components/ui/columns-dropdown.tsx',
   'components/ui/NavEditor.tsx',
   'components/ui/saved-filters-bar.tsx',
 ]);

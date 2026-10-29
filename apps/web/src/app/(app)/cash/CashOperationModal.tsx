@@ -308,15 +308,26 @@ export function CashOperationModal({
         onClose={() => void close()}
         onSubmit={() => void submit()}
         title={direction === 'IN' ? t('operations.modalTitleIn') : t('operations.modalTitleOut')}
+        // Стандартний підвал «Скасувати / Внести» (UX-огляд 2026-10-29: була одна кнопка на всю ширину).
         footer={
-          <Button
-            onClick={() => void submit()}
-            loading={createOp.isPending}
-            disabled={createOp.isPending}
-            className="w-full"
-          >
-            {direction === 'IN' ? t('operations.deposit') : t('operations.withdraw')}
-          </Button>
+          <div className="flex gap-2 items-center justify-end w-full">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void close()}
+              disabled={createOp.isPending}
+            >
+              {t('common:cancel')}
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void submit()}
+              loading={createOp.isPending}
+              disabled={createOp.isPending}
+            >
+              {direction === 'IN' ? t('operations.deposit') : t('operations.withdraw')}
+            </Button>
+          </div>
         }
       >
         {error && (
@@ -339,7 +350,7 @@ export function CashOperationModal({
             placeholder="0,00"
             autoFocus
             errorMessage={errors.amount?.message}
-            className="h-8 text-[13px] tabular-nums"
+            className="h-8 text-[13px] tabular-nums text-right"
           />
 
           <Controller

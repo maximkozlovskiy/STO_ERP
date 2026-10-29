@@ -7,9 +7,14 @@ const FOCUSABLE =
 
 const TRAP_ATTR = 'data-focus-trap';
 
+/** Поля введення, куди ставиться початковий фокус вікна (не прапорці, не лише-читання). */
+const FIELD =
+  'input:not([disabled]):not([readonly]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="button"]):not([type="submit"]),select:not([disabled]),textarea:not([disabled]):not([readonly])';
+
 /**
  * E2 — focus-trap для модалок (a11y WCAG 2.4.3 / 2.1.2). Поки модалка відкрита:
- *  1. фокус переміщується всередину панелі (перший фокусований елемент, або сама панель);
+ *  1. фокус переміщується всередину панелі (перше поле введення, інакше перший фокусований
+ *     елемент, або сама панель);
  *  2. Tab/Shift+Tab циклять У МЕЖАХ панелі (фокус не «тікає» на фон);
  *  3. при закритті фокус повертається на елемент, що був активним до відкриття.
  *
@@ -37,8 +42,20 @@ export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active
         el => el.offsetParent !== null || el === document.activeElement,
       );
 
-    // Початковий фокус — перший фокусований елемент або сама панель (робимо її фокусованою).
-    const initial = focusables()[0];
+    // Початковий фокус (UX-огляд 2026-10-29: стояв на «×» шапки): елемент з `data-autofocus`; поле,
+    // що вже взяло фокус (`autoFocus`); перше поле введення; інакше перший фокусований елемент або
+    // сама панель. Поле з попапом на фокус (дата) позначене `data-no-autofocus` — його не відкриваємо.
+    const focusedNow = document.activeElement as HTMLElement | null;
+    const visible = (el: HTMLElement) => el.offsetParent !== null;
+    const preferred =
+      container.querySelector<HTMLElement>('[data-autofocus]:not([disabled])') ??
+      (focusedNow && focusedNow !== container && container.contains(focusedNow)
+        ? focusedNow
+        : null) ??
+      Array.from(container.querySelectorAll<HTMLElement>(FIELD)).find(
+        el => visible(el) && !el.closest('[data-no-autofocus]'),
+      );
+    const initial = preferred ?? focusables()[0];
     if (initial) {
       initial.focus();
     } else {

@@ -1,5 +1,6 @@
 import { Plus, Trash2, Pencil, Check, X, Wrench } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { Input } from '@/components/ui/input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { type WorkPickerItem } from '@/components/ui/WorkPickerModal';
@@ -101,6 +102,12 @@ export function WorksTable(props: WorksTableProps) {
     setEditWorkPickerOpen,
     setServicePickerOpen,
   } = props;
+
+  // Escape у відкритому рядку «Додати» знімає лише рядок, а не всю картку (UX-огляд 2026-10-29).
+  useEscapeLayer(canEdit && showLineInput, () => {
+    setNewLine(EMPTY_LINE);
+    setShowLineInput(false);
+  });
 
   const addActions =
     canEdit && !showLineInput ? (
@@ -429,6 +436,7 @@ export function WorksTable(props: WorksTableProps) {
                 <tr className="bg-primary/5 border-t-2 border-primary/20">
                   <td className="pl-4 pr-2 py-1.5">
                     <EntityPickerField<WorkPickerItem>
+                      autoFocus
                       display={newLine.workName}
                       placeholder={t('worksTable.searchPlaceholder')}
                       ariaLabel={t('worksTable.workAria')}
