@@ -137,8 +137,9 @@ export class PurchaseOrdersController {
   create(
     @OrgContext() orgId: string,
     @Body(new ZodValidationPipe(purchaseOrderCreateSchema)) dto: PurchaseOrderCreateValues,
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.create(orgId, dto);
+    return this.service.create(orgId, dto, user?.id);
   }
 
   @Patch(':id')
@@ -179,8 +180,12 @@ export class PurchaseOrdersController {
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TransitionPurchaseOrderDto,
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.transition(orgId, id, dto.status, { force: dto.force === true });
+    return this.service.transition(orgId, id, dto.status, {
+      force: dto.force === true,
+      actorId: user?.id,
+    });
   }
 
   @Post(':id/receive')

@@ -147,8 +147,12 @@ export class SupplierPaymentsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Скасувати оплату' })
   @ApiOkResponse({ type: SupplierPaymentResponseDto })
-  cancel(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.cancel(orgId, id);
+  cancel(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.service.cancel(orgId, id, user?.id);
   }
 
   // ─── Linked Documents ─────────────────────────────────

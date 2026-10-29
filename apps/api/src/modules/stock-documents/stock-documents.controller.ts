@@ -131,8 +131,9 @@ export class StockDocumentsController {
   create(
     @OrgContext() orgId: string,
     @Body(new ZodValidationPipe(stockDocumentCreateSchema)) dto: StockDocumentCreateValues,
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.create(orgId, dto);
+    return this.service.create(orgId, dto, user?.id);
   }
 
   @Patch(':id')

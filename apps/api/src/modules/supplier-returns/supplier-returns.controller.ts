@@ -65,8 +65,9 @@ export class SupplierReturnsController {
   create(
     @OrgContext() orgId: string,
     @Body(new ZodValidationPipe(supplierReturnCreateSchema)) dto: SupplierReturnCreateValues,
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.create(orgId, dto);
+    return this.service.create(orgId, dto, user?.id);
   }
 
   @Get()
@@ -113,8 +114,12 @@ export class SupplierReturnsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Скасувати повернення' })
   @ApiOkResponse({ type: SupplierReturnResponseDto })
-  cancel(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.cancel(orgId, id);
+  cancel(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.service.cancel(orgId, id, user?.id);
   }
 
   // Оголошено ПЕРЕД @Get(':id') — інакше Fastify матчить 'linked-documents' як :id.

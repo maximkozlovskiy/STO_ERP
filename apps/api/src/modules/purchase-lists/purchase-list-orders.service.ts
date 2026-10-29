@@ -32,7 +32,11 @@ export class PurchaseListOrdersService {
     private readonly purchaseOrders: PurchaseOrdersService,
   ) {}
 
-  async createOrders(orgId: string, itemIds: string[]): Promise<CreateOrdersResultDto> {
+  async createOrders(
+    orgId: string,
+    itemIds: string[],
+    actorId?: string,
+  ): Promise<CreateOrdersResultDto> {
     const ids = Array.from(new Set(itemIds));
     const items = await this.prisma.purchaseListItem.findMany({
       where: { orgId, id: { in: ids }, deletedAt: null },
@@ -96,7 +100,7 @@ export class PurchaseListOrdersService {
       async tx => {
         const created: CreateOrdersResultDto['orders'] = [];
         for (const { group, po } of prepared) {
-          const order = await this.purchaseOrders.insertInTx(tx, orgId, po);
+          const order = await this.purchaseOrders.insertInTx(tx, orgId, po, actorId);
           const res = await tx.purchaseListItem.updateMany({
             where: { orgId, id: { in: group.itemIds }, ...OPEN_ITEM_WHERE },
             data: { status: 'ORDERED', purchaseOrderId: order.id },

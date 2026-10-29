@@ -12,6 +12,7 @@ import { err } from '../../common/utils/err';
 import { kyivDayEnd, kyivDayStart } from '../../common/utils/kyiv-date';
 import { searchContains } from '../../common/utils/like-pattern';
 import { calculatePagination } from '../../common/utils/pagination';
+import { recordDocumentEvent } from '../automation/record-document-event';
 import type { PaginatedTasksDto, TaskListQueryDto, TaskResponseDto } from './tasks.dto';
 
 /** Хто звертається: `id` — працівник із токена, `role` — його роль. */
@@ -206,9 +207,21 @@ export class TasksService {
   /** BR-TASK-001 (ролі — у контролері), 004, 006. */
   async create(orgId: string, actor: TaskActor, dto: TaskFormValues): Promise<TaskResponseDto> {
     const data = await this.validatedFields(orgId, dto);
-    const created = await this.prisma.task.create({
-      data: { ...data, orgId, createdById: actor.id },
-      select: { id: true },
+    // BR-AUT-060: подія «створено» — у тій самій транзакції, що й задача.
+    const created = await this.prisma.$transaction(async tx => {
+      const row = await tx.task.create({
+        data: { ...data, orgId, createdById: actor.id },
+        select: { id: true, status: true },
+      });
+      await recordDocumentEvent(tx, {
+        orgId,
+        documentType: 'TASK',
+        documentId: row.id,
+        kind: 'CREATED',
+        toStatus: row.status,
+        actorId: actor.id,
+      });
+      return row;
     });
     return this.findOne(orgId, actor, created.id);
   }
@@ -271,13 +284,27 @@ export class TasksService {
     const completedAt = to === 'DONE' ? new Date() : task.status === 'DONE' ? null : undefined;
     // CAS за статусом І видимістю: задачу, переназначену між читанням і записом, колишній
     // виконавець уже не рухає (BR-TASK-002 / 003).
-    const res = await this.prisma.task.updateMany({
-      where: { id, orgId, deletedAt: null, status: task.status, ...taskVisibilityWhere(actor) },
-      data: { status: to, ...(completedAt !== undefined && { completedAt }) },
+    const fromStatus = task.status;
+    await this.prisma.$transaction(async tx => {
+      const res = await tx.task.updateMany({
+        where: { id, orgId, deletedAt: null, status: task.status, ...taskVisibilityWhere(actor) },
+        data: { status: to, ...(completedAt !== undefined && { completedAt }) },
+      });
+      if (res.count === 0) {
+        throw new BadRequestException(
+          err('err.fsm.transitionNotAllowed', { from: task.status, to }),
+        );
+      }
+      await recordDocumentEvent(tx, {
+        orgId,
+        documentType: 'TASK',
+        documentId: id,
+        kind: 'STATUS_CHANGED',
+        fromStatus,
+        toStatus: to,
+        actorId: actor.id,
+      });
     });
-    if (res.count === 0) {
-      throw new BadRequestException(err('err.fsm.transitionNotAllowed', { from: task.status, to }));
-    }
     return this.findOne(orgId, actor, id);
   }
 

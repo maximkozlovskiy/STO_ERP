@@ -7,6 +7,7 @@ import { EARLIEST_DB_INSTANT_MS, kyivOffsetMs } from '../../common/utils/kyiv-da
 import { workDaysOf } from '../../common/utils/work-hours';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CalendarService } from '../calendar/calendar.service';
+import { recordDocumentEvent } from '../automation/record-document-event';
 import {
   CreateBookingRequestDto,
   BookingRequestResponseDto,
@@ -378,17 +379,29 @@ export class BookingService {
       );
     }
 
-    const req = await this.prisma.bookingRequest.create({
-      data: {
+    // BR-AUT-060: подія «створено» — у тій самій транзакції, що й заявка (ініціатор — клієнт
+    // з публічного віджета, працівника немає).
+    const req = await this.prisma.$transaction(async tx => {
+      const created = await tx.bookingRequest.create({
+        data: {
+          orgId,
+          branchId: dto.branchId,
+          clientName: dto.clientName,
+          clientPhone: dto.clientPhone,
+          requestedDate: new Date(dto.requestedDate),
+          liftId: dto.liftId ?? null,
+          serviceIds: dto.serviceIds ?? [],
+          notes: dto.notes ?? null,
+        },
+      });
+      await recordDocumentEvent(tx, {
         orgId,
-        branchId: dto.branchId,
-        clientName: dto.clientName,
-        clientPhone: dto.clientPhone,
-        requestedDate: new Date(dto.requestedDate),
-        liftId: dto.liftId ?? null,
-        serviceIds: dto.serviceIds ?? [],
-        notes: dto.notes ?? null,
-      },
+        documentType: 'BOOKING',
+        documentId: created.id,
+        kind: 'CREATED',
+        toStatus: created.status,
+      });
+      return created;
     });
 
     // SMS confirmation via NotificationsService.send() — резолвить branchSettings
@@ -447,7 +460,12 @@ export class BookingService {
     return { items: items.map(r => this.toDto(r)), total };
   }
 
-  async confirm(orgId: string, id: string, slotId?: string): Promise<BookingRequestResponseDto> {
+  async confirm(
+    orgId: string,
+    id: string,
+    slotId?: string,
+    userId?: string,
+  ): Promise<BookingRequestResponseDto> {
     // CAL-H3/H4: при confirm матеріалізуємо CalendarSlot на обраному ліфті заявки — тоді
     // зайнятим стає САМЕ цей ліфт, а не весь HH:MM на всіх ліфтах.
     const req = await this.prisma.bookingRequest.findFirst({
@@ -511,9 +529,24 @@ export class BookingService {
     }
 
     // CAS на ЛІТЕРАЛ 'PENDING' (не req.status): рівно один concurrent confirm виграє.
-    const result = await this.prisma.bookingRequest.updateMany({
-      where: { id, orgId, deletedAt: null, status: 'PENDING' },
-      data: { status: 'CONFIRMED', ...(confirmedSlotId ? { confirmedSlotId } : {}) },
+    // Подія — у тій самій транзакції, що й CAS (BR-AUT-060).
+    const result = await this.prisma.$transaction(async tx => {
+      const moved = await tx.bookingRequest.updateMany({
+        where: { id, orgId, deletedAt: null, status: 'PENDING' },
+        data: { status: 'CONFIRMED', ...(confirmedSlotId ? { confirmedSlotId } : {}) },
+      });
+      if (moved.count === 1) {
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'BOOKING',
+          documentId: id,
+          kind: 'STATUS_CHANGED',
+          fromStatus: 'PENDING',
+          toStatus: 'CONFIRMED',
+          actorId: userId ?? null,
+        });
+      }
+      return moved;
     });
     if (result.count === 0) {
       // Програли гонку (інший confirm уже забрав заявку). Прибираємо orphan-слот, створений
@@ -559,7 +592,7 @@ export class BookingService {
     return bs?.slotDurationMinutes ?? 30;
   }
 
-  async cancel(orgId: string, id: string): Promise<void> {
+  async cancel(orgId: string, id: string, userId?: string): Promise<void> {
     // Читаємо confirmedSlotId ДО скасування: якщо заявку було підтверджено з ліфтом,
     // на confirm() матеріалізувався CalendarSlot(BOOKED). Скасування заявки МУСИТЬ звільнити
     // цей слот, інакше ліфт лишається зайнятим назавжди (getAvailability бачить active-слот
@@ -567,7 +600,7 @@ export class BookingService {
     // проти якої і робили CAL-H3/H4.
     const req = await this.prisma.bookingRequest.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { confirmedSlotId: true },
+      select: { confirmedSlotId: true, status: true },
     });
 
     // Defense-in-depth: scope by orgId у where (sto-review pattern 2026-05-30
@@ -576,6 +609,7 @@ export class BookingService {
     // Слот і заявку звільняємо в одній $transaction — атомарно (не лишити слот-сироту
     // якщо cancel заявки впаде, і навпаки). deletedSlot по id АБО parentSlotId — покриває
     // split-слот (createSlot розбиває запис через межу робочого дня на parent+child).
+    const fromStatus = req?.status ?? null;
     const result = await this.prisma.$transaction(
       async tx => {
         if (req?.confirmedSlotId) {
@@ -588,10 +622,22 @@ export class BookingService {
             data: { deletedAt: new Date() },
           });
         }
-        return tx.bookingRequest.updateMany({
+        const cancelled = await tx.bookingRequest.updateMany({
           where: { id, orgId, deletedAt: null },
           data: { status: 'CANCELLED', deletedAt: new Date() },
         });
+        if (cancelled.count === 1) {
+          await recordDocumentEvent(tx, {
+            orgId,
+            documentType: 'BOOKING',
+            documentId: id,
+            kind: 'STATUS_CHANGED',
+            fromStatus,
+            toStatus: 'CANCELLED',
+            actorId: userId ?? null,
+          });
+        }
+        return cancelled;
       },
       { timeout: 10000 },
     );

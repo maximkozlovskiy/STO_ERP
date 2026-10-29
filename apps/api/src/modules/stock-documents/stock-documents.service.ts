@@ -20,6 +20,7 @@ import { confirmTxTimeoutMs } from '../../common/utils/confirm-tx-timeout';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { recordDocumentEvent } from '../automation/record-document-event';
 import {
   CreateStockDocumentDto,
   UpdateStockDocumentDto,
@@ -169,7 +170,11 @@ export class StockDocumentsService {
     }
   }
 
-  async create(orgId: string, dto: CreateStockDocumentDto): Promise<StockDocumentResponseDto> {
+  async create(
+    orgId: string,
+    dto: CreateStockDocumentDto,
+    userId?: string,
+  ): Promise<StockDocumentResponseDto> {
     // Усі 3 FK перевірки можуть йти конкурентно — кожна незалежна.
     // Conditional target warehouse: tернарка зберігає типи й уникає зайвого RTT для TRANSFER.
     // sto-optimize: narrow projection — FK guards використовуються лише для існування 404,
@@ -252,6 +257,14 @@ export class StockDocumentsService {
             notes: dto.notes,
             documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
           },
+        });
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'STOCK_DOCUMENT',
+          documentId: created.id,
+          kind: 'CREATED',
+          toStatus: created.status,
+          actorId: userId ?? null,
         });
         if (lines.length) {
           await tx.stockDocumentLine.createMany({
@@ -445,6 +458,15 @@ export class StockDocumentsService {
               translateError('err.stockDocument.statusChanged', getLocale()),
             );
           }
+          await recordDocumentEvent(tx, {
+            orgId,
+            documentType: 'STOCK_DOCUMENT',
+            documentId: id,
+            kind: 'STATUS_CHANGED',
+            fromStatus: 'DRAFT',
+            toStatus: 'CONFIRMED',
+            actorId: userId ?? null,
+          });
 
           const movType = MOVEMENT_TYPES[doc.type];
           if (doc.type !== 'TRANSFER' && !movType)
@@ -534,7 +556,28 @@ export class StockDocumentsService {
         { timeout: confirmTxTimeoutMs(doc.lines.length) },
       );
     } else {
-      await this.prisma.stockDocument.update({ where: { id, orgId }, data: { status: newStatus } });
+      const fromStatus = doc.status;
+      // CAS за прочитаним статусом і подія — однією транзакцією (BR-AUT-060).
+      await this.prisma.$transaction(async tx => {
+        const cas = await tx.stockDocument.updateMany({
+          where: { id, orgId, deletedAt: null, status: doc.status },
+          data: { status: newStatus },
+        });
+        if (cas.count === 0) {
+          throw new BadRequestException(
+            translateError('err.stockDocument.statusChanged', getLocale()),
+          );
+        }
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'STOCK_DOCUMENT',
+          documentId: id,
+          kind: 'STATUS_CHANGED',
+          fromStatus,
+          toStatus: newStatus,
+          actorId: userId ?? null,
+        });
+      });
     }
 
     return this.findOne(orgId, id);

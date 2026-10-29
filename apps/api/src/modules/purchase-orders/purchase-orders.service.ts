@@ -24,6 +24,7 @@ import { PurchaseListLinkService } from '../purchase-lists/purchase-list-link.se
 import { PurchaseListReceiptService } from '../purchase-lists/purchase-list-receipt.service';
 import { SupplierOrderOutboxService } from '../supplier-api/outbox/supplier-order-outbox.service';
 import { calcLineVat } from '../../common/utils/vat';
+import { recordDocumentEvent } from '../automation/record-document-event';
 import {
   CreatePurchaseOrderDto,
   UpdatePurchaseOrderDto,
@@ -280,9 +281,13 @@ export class PurchaseOrdersService {
     return this.toDto(po);
   }
 
-  async create(orgId: string, dto: CreatePurchaseOrderDto): Promise<PurchaseOrderResponseDto> {
+  async create(
+    orgId: string,
+    dto: CreatePurchaseOrderDto,
+    userId?: string,
+  ): Promise<PurchaseOrderResponseDto> {
     const prepared = await this.prepareCreate(orgId, dto);
-    const po = await this.prisma.$transaction(tx => this.createInTx(tx, orgId, prepared), {
+    const po = await this.prisma.$transaction(tx => this.createInTx(tx, orgId, prepared, userId), {
       timeout: TRANSACTION_TIMEOUT_MS,
     });
     // ЕН вказано при створенні → запускаємо опитування статусу доставки (offline-safe .catch усередині).
@@ -409,16 +414,26 @@ export class PurchaseOrdersService {
 
   /**
    * Запис підготовленого замовлення (`prepareCreate`) у транзакції виклику, без перечитування:
-   * виклику, якому треба лише `id`/`number` (замовлення зі списку купівлі, BR-PL-008).
+   * виклику, якому треба лише `id`/`number` (замовлення зі списку купівлі, BR-PL-008). Подія
+   * «створено» (BR-AUT-060) — тут, у транзакції виклику.
    */
   async insertInTx(
     tx: Prisma.TransactionClient,
     orgId: string,
     prepared: PreparedPurchaseOrder,
+    actorId?: string | null,
   ): Promise<{ id: string; number: string }> {
-    const created = await tx.purchaseOrder.create({
+    const { status, ...created } = await tx.purchaseOrder.create({
       data: prepared.data,
-      select: { id: true, number: true },
+      select: { id: true, number: true, status: true },
+    });
+    await recordDocumentEvent(tx, {
+      orgId,
+      documentType: 'PURCHASE_ORDER',
+      documentId: created.id,
+      kind: 'CREATED',
+      toStatus: status,
+      actorId,
     });
     if (prepared.lines.length) {
       await tx.purchaseOrderLine.createMany({
@@ -429,8 +444,13 @@ export class PurchaseOrdersService {
   }
 
   /** Запис підготовленого замовлення (`insertInTx`) і перечитування у формі відповіді. */
-  async createInTx(tx: Prisma.TransactionClient, orgId: string, prepared: PreparedPurchaseOrder) {
-    const created = await this.insertInTx(tx, orgId, prepared);
+  async createInTx(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    prepared: PreparedPurchaseOrder,
+    actorId?: string | null,
+  ) {
+    const created = await this.insertInTx(tx, orgId, prepared, actorId);
     return tx.purchaseOrder.findFirstOrThrow({
       where: { id: created.id, orgId, deletedAt: null },
       include: PO_WRITE_INCLUDE,
@@ -648,7 +668,7 @@ export class PurchaseOrdersService {
     orgId: string,
     id: string,
     newStatus: POStatus,
-    opts: { force?: boolean } = {},
+    opts: { force?: boolean; actorId?: string } = {},
   ): Promise<PurchaseOrderResponseDto> {
     const queuedForApi = await this.prisma.$transaction(
       async tx => {
@@ -659,6 +679,7 @@ export class PurchaseOrdersService {
         });
         if (!po) throw new NotFoundException(err('err.purchaseOrder.notFound'));
 
+        const fromStatus = po.status;
         assertFsmTransition(PO_TRANSITIONS, po.status, newStatus);
 
         // BR-PL-010: скасоване замовлення повертає неотримане в позиції списків купівлі. Позиції —
@@ -677,6 +698,15 @@ export class PurchaseOrdersService {
           await this.purchaseLists.onOrderClosed(tx, orgId, id);
         }
         await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'PURCHASE_ORDER',
+          documentId: id,
+          kind: 'STATUS_CHANGED',
+          fromStatus,
+          toStatus: newStatus,
+          actorId: opts.actorId ?? null,
+        });
         // BR-PO-011 / BR-SCON-009: режим «автоматично при «Замовлено»» — outbox у цій же транзакції.
         return newStatus === PurchaseOrderStatus.ORDERED
           ? this.supplierOutbox.onOrderedInTx(tx, orgId, id)
@@ -984,12 +1014,22 @@ export class PurchaseOrdersService {
           po.contract && po.contract.deletedAt == null ? po.contract.paymentDeferDays : null;
         const shouldSetPaymentDate =
           newStatus === PurchaseOrderStatus.RECEIVED && !po.paymentDate && defer != null;
+        const fromStatus = po.status;
         await tx.purchaseOrder.update({
           where: { id, orgId },
           data: {
             status: newStatus,
             ...(shouldSetPaymentDate ? { paymentDate: addDaysKyiv(kyivToday(), defer) } : {}),
           },
+        });
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'PURCHASE_ORDER',
+          documentId: id,
+          kind: 'STATUS_CHANGED',
+          fromStatus,
+          toStatus: newStatus,
+          actorId: userId ?? null,
         });
         // BR-PL-012: замовлення прийнято повністю — недоотримане за позиціями повертається в OPEN.
         if (newStatus === PurchaseOrderStatus.RECEIVED) {

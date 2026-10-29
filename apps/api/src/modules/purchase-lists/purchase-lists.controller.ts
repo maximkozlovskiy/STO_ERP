@@ -123,8 +123,9 @@ export class PurchaseListsController {
   createOrders(
     @OrgContext() orgId: string,
     @Body(new ZodValidationPipe(purchaseListItemIdsSchema)) dto: PurchaseListItemIdsValues,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.orders.createOrders(orgId, dto.itemIds);
+    return this.orders.createOrders(orgId, dto.itemIds, user.id);
   }
 
   @Post()

@@ -141,12 +141,12 @@ export class BookingController {
   @ApiOkResponse({ type: BookingRequestResponseDto })
   confirm(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: { orgId: string },
+    @CurrentUser() user: { orgId: string; id: string },
     // CAL-H3/H4: optional body — when a slotId is supplied it is validated against the org
     // before the request is confirmed. Omitting the body preserves the previous behaviour.
     @Body() dto?: ConfirmBookingDto,
   ) {
-    return this.service.confirm(user.orgId, id, dto?.slotId);
+    return this.service.confirm(user.orgId, id, dto?.slotId, user.id);
   }
 
   @Delete(':id')
@@ -156,7 +156,10 @@ export class BookingController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Скасувати заявку' })
   @ApiNoContentResponse()
-  cancel(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: { orgId: string }) {
-    return this.service.cancel(user.orgId, id);
+  cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { orgId: string; id: string },
+  ) {
+    return this.service.cancel(user.orgId, id, user.id);
   }
 }

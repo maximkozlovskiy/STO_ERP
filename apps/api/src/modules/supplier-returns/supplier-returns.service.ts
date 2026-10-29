@@ -18,6 +18,7 @@ import {
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
+import { recordDocumentEvent } from '../automation/record-document-event';
 import {
   CreateSupplierReturnDto,
   UpdateSupplierReturnDto,
@@ -155,7 +156,11 @@ export class SupplierReturnsService {
     return this.toDto(sr);
   }
 
-  async create(orgId: string, dto: CreateSupplierReturnDto): Promise<SupplierReturnResponseDto> {
+  async create(
+    orgId: string,
+    dto: CreateSupplierReturnDto,
+    userId?: string,
+  ): Promise<SupplierReturnResponseDto> {
     const [supplier, warehouse, purchaseOrder] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: dto.supplierId, orgId, deletedAt: null },
@@ -204,46 +209,58 @@ export class SupplierReturnsService {
     // round-once суми розходиться з ними на дробових кількостях → рядки не б'ються з total.
     const totalAmount = sumMoney(lines.map(l => money(l.quantity * l.price)));
 
-    const sr = await this.prisma.supplierReturn.create({
-      data: {
-        orgId,
-        supplierId: dto.supplierId,
-        warehouseId: dto.warehouseId,
-        purchaseOrderId: dto.purchaseOrderId ?? null,
-        number,
-        totalAmount,
-        notes: dto.notes,
-        documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
-        lines: {
-          create: lines.map((l, i) => ({
-            orgId,
-            goodId: l.goodId,
-            quantity: l.quantity,
-            price: l.price,
-            unitOfMeasureId: l.unitOfMeasureId ?? null,
-            createdAt: lineStamps[i],
-          })),
+    // BR-AUT-060: подія «створено» — у тій самій транзакції, що й повернення.
+    const sr = await this.prisma.$transaction(async tx => {
+      const created = await tx.supplierReturn.create({
+        data: {
+          orgId,
+          supplierId: dto.supplierId,
+          warehouseId: dto.warehouseId,
+          purchaseOrderId: dto.purchaseOrderId ?? null,
+          number,
+          totalAmount,
+          notes: dto.notes,
+          documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
+          lines: {
+            create: lines.map((l, i) => ({
+              orgId,
+              goodId: l.goodId,
+              quantity: l.quantity,
+              price: l.price,
+              unitOfMeasureId: l.unitOfMeasureId ?? null,
+              createdAt: lineStamps[i],
+            })),
+          },
         },
-      },
-      include: {
-        supplier: { select: { firstName: true, lastName: true, companyName: true } },
-        warehouse: { select: { name: true } },
-        purchaseOrder: { select: { number: true } },
-        lines: {
-          where: { deletedAt: null },
-          orderBy: SR_LINE_ORDER,
-          include: {
-            good: {
-              select: {
-                name: true,
-                sku: true,
-                unit: true,
-                unitOfMeasure: { select: { shortName: true } },
+        include: {
+          supplier: { select: { firstName: true, lastName: true, companyName: true } },
+          warehouse: { select: { name: true } },
+          purchaseOrder: { select: { number: true } },
+          lines: {
+            where: { deletedAt: null },
+            orderBy: SR_LINE_ORDER,
+            include: {
+              good: {
+                select: {
+                  name: true,
+                  sku: true,
+                  unit: true,
+                  unitOfMeasure: { select: { shortName: true } },
+                },
               },
             },
           },
         },
-      },
+      });
+      await recordDocumentEvent(tx, {
+        orgId,
+        documentType: 'SUPPLIER_RETURN',
+        documentId: created.id,
+        kind: 'CREATED',
+        toStatus: created.status,
+        actorId: userId ?? null,
+      });
+      return created;
     });
 
     return this.toDto(sr);
@@ -391,6 +408,15 @@ export class SupplierReturnsService {
             translateError('err.supplierReturn.alreadyConfirmedOrChanged', getLocale()),
           );
         }
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'SUPPLIER_RETURN',
+          documentId: id,
+          kind: 'STATUS_CHANGED',
+          fromStatus: SupplierReturnStatus.DRAFT,
+          toStatus: SupplierReturnStatus.CONFIRMED,
+          actorId: userId,
+        });
         const sr = await tx.supplierReturn.findFirstOrThrow({
           where: { id, orgId },
           select: {
@@ -467,7 +493,7 @@ export class SupplierReturnsService {
     return this.findOne(orgId, id);
   }
 
-  async cancel(orgId: string, id: string): Promise<SupplierReturnResponseDto> {
+  async cancel(orgId: string, id: string, userId?: string): Promise<SupplierReturnResponseDto> {
     const sr = await this.prisma.supplierReturn.findFirst({
       where: { id, orgId, deletedAt: null },
       select: { id: true, status: true },
@@ -484,9 +510,28 @@ export class SupplierReturnsService {
       );
     }
 
-    await this.prisma.supplierReturn.update({
-      where: { id, orgId },
-      data: { status: SupplierReturnStatus.CANCELLED },
+    const fromStatus = sr.status;
+    // CAS за прочитаним статусом і подія — однією транзакцією (BR-AUT-060): паралельне
+    // проведення між читанням і записом не перезаписується на «Скасовано».
+    await this.prisma.$transaction(async tx => {
+      const cas = await tx.supplierReturn.updateMany({
+        where: { id, orgId, deletedAt: null, status: sr.status },
+        data: { status: SupplierReturnStatus.CANCELLED },
+      });
+      if (cas.count === 0) {
+        throw new BadRequestException(
+          translateError('err.supplierReturn.alreadyConfirmedOrChanged', getLocale()),
+        );
+      }
+      await recordDocumentEvent(tx, {
+        orgId,
+        documentType: 'SUPPLIER_RETURN',
+        documentId: id,
+        kind: 'STATUS_CHANGED',
+        fromStatus,
+        toStatus: SupplierReturnStatus.CANCELLED,
+        actorId: userId ?? null,
+      });
     });
 
     return this.findOne(orgId, id);

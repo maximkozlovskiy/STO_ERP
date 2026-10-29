@@ -18,6 +18,7 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { SettlementsService } from '../settlements/settlements.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { CashService, type CashOperationExtras } from '../cash/cash.service';
+import { recordDocumentEvent } from '../automation/record-document-event';
 import {
   CreateSupplierPaymentDto,
   UpdateSupplierPaymentDto,
@@ -554,8 +555,6 @@ export class SupplierPaymentsService {
     dto: CreateSupplierPaymentDto,
     userId?: string,
   ): Promise<SupplierPaymentResponseDto> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    void userId;
     this.assertSourceConsistency(dto.sourceType, dto.bankAccountId, dto.cashRegisterId);
 
     // Паралельна валідація незалежних FK: постачальник + джерело коштів + PO.
@@ -617,29 +616,42 @@ export class SupplierPaymentsService {
       );
     }
 
-    const sp = await this.prisma.supplierPayment.create({
-      data: {
+    // BR-AUT-060: подія «створено» — у тій самій транзакції, що й оплата.
+    const sp = await this.prisma.$transaction(async tx => {
+      const created = await tx.supplierPayment.create({
+        data: {
+          orgId,
+          supplierId: dto.supplierId,
+          purchaseOrderId: dto.purchaseOrderId ?? null,
+          sourceType: dto.sourceType,
+          bankAccountId:
+            dto.sourceType === PaymentSourceType.BANK_ACCOUNT ? dto.bankAccountId : null,
+          cashRegisterId:
+            dto.sourceType === PaymentSourceType.CASH_REGISTER ? dto.cashRegisterId : null,
+          number,
+          amount: dto.amount,
+          currencyId,
+          method: dto.method,
+          notes: dto.notes ?? null,
+          documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
+        },
+        include: {
+          supplier: { select: { firstName: true, lastName: true, companyName: true } },
+          bankAccount: { select: { name: true } },
+          cashRegister: { select: { name: true } },
+          purchaseOrder: { select: { number: true } },
+          currency: { select: { code: true } },
+        },
+      });
+      await recordDocumentEvent(tx, {
         orgId,
-        supplierId: dto.supplierId,
-        purchaseOrderId: dto.purchaseOrderId ?? null,
-        sourceType: dto.sourceType,
-        bankAccountId: dto.sourceType === PaymentSourceType.BANK_ACCOUNT ? dto.bankAccountId : null,
-        cashRegisterId:
-          dto.sourceType === PaymentSourceType.CASH_REGISTER ? dto.cashRegisterId : null,
-        number,
-        amount: dto.amount,
-        currencyId,
-        method: dto.method,
-        notes: dto.notes ?? null,
-        documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
-      },
-      include: {
-        supplier: { select: { firstName: true, lastName: true, companyName: true } },
-        bankAccount: { select: { name: true } },
-        cashRegister: { select: { name: true } },
-        purchaseOrder: { select: { number: true } },
-        currency: { select: { code: true } },
-      },
+        documentType: 'SUPPLIER_PAYMENT',
+        documentId: created.id,
+        kind: 'CREATED',
+        toStatus: created.status,
+        actorId: userId ?? null,
+      });
+      return created;
     });
 
     return this.toDto(sp);
@@ -885,6 +897,15 @@ export class SupplierPaymentsService {
             translateError('err.supplierPayment.alreadyConfirmedOrChanged', getLocale()),
           );
         }
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'SUPPLIER_PAYMENT',
+          documentId: id,
+          kind: 'STATUS_CHANGED',
+          fromStatus: SupplierPaymentStatus.DRAFT,
+          toStatus: SupplierPaymentStatus.CONFIRMED,
+          actorId: userId,
+        });
 
         // Дані для settlement — з pre-tx знімка (amount/supplierId незмінні у DRAFT).
         // Оплата постачальнику: ми надсилаємо йому кошти → наш борг зменшується.
@@ -1026,7 +1047,7 @@ export class SupplierPaymentsService {
     return this.findOne(orgId, id);
   }
 
-  async cancel(orgId: string, id: string): Promise<SupplierPaymentResponseDto> {
+  async cancel(orgId: string, id: string, userId?: string): Promise<SupplierPaymentResponseDto> {
     const sp = await this.prisma.supplierPayment.findFirst({
       where: { id, orgId, deletedAt: null },
       select: { id: true, status: true },
@@ -1046,15 +1067,27 @@ export class SupplierPaymentsService {
     // CAS зі статусу, який щойно прочитали (не stale-read): паралельний confirm() між читанням і
     // записом інакше лишив би проведення у взаєморозрахунках при оплаті у статусі CANCELLED.
     // Викликається і автоматично — відкатом рознесення банківського платежу (BR-BANK-029).
-    const cas = await this.prisma.supplierPayment.updateMany({
-      where: { id, orgId, deletedAt: null, status: sp.status },
-      data: { status: SupplierPaymentStatus.CANCELLED },
+    const fromStatus = sp.status;
+    await this.prisma.$transaction(async tx => {
+      const cas = await tx.supplierPayment.updateMany({
+        where: { id, orgId, deletedAt: null, status: sp.status },
+        data: { status: SupplierPaymentStatus.CANCELLED },
+      });
+      if (cas.count === 0) {
+        throw new BadRequestException(
+          translateError('err.supplierPayment.alreadyConfirmedOrChanged', getLocale()),
+        );
+      }
+      await recordDocumentEvent(tx, {
+        orgId,
+        documentType: 'SUPPLIER_PAYMENT',
+        documentId: id,
+        kind: 'STATUS_CHANGED',
+        fromStatus,
+        toStatus: SupplierPaymentStatus.CANCELLED,
+        actorId: userId ?? null,
+      });
     });
-    if (cas.count === 0) {
-      throw new BadRequestException(
-        translateError('err.supplierPayment.alreadyConfirmedOrChanged', getLocale()),
-      );
-    }
 
     return this.findOne(orgId, id);
   }
@@ -1101,6 +1134,15 @@ export class SupplierPaymentsService {
     if (cas.count === 0) {
       throw new BadRequestException(translateError('err.cash.alreadyReversed', locale));
     }
+    await recordDocumentEvent(tx, {
+      orgId,
+      documentType: 'SUPPLIER_PAYMENT',
+      documentId: id,
+      kind: 'STATUS_CHANGED',
+      fromStatus: SupplierPaymentStatus.CONFIRMED,
+      toStatus: SupplierPaymentStatus.REVERSED,
+      actorId: ctx.userId ?? null,
+    });
 
     // Курс і сума в базовій валюті — з проводки проведення: курс, доданий після неї, не має
     // лишити різниці в боргу (як BR-BANK-039).
