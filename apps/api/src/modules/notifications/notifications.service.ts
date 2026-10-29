@@ -5,6 +5,7 @@ import {
   NotificationChannel,
   NotificationEventType,
   type AutomationDocumentType,
+  type AutomationEventKind,
 } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -40,6 +41,8 @@ export interface NotificationLogMeta {
   ruleId?: string;
   documentType?: AutomationDocumentType;
   documentId?: string;
+  /** Подія правила: «створено» оплати + сторно до відправки → не надсилати (BR-AUT-016). */
+  eventKind?: AutomationEventKind;
   counterpartyId?: string;
   isTest?: boolean;
 }
@@ -273,19 +276,30 @@ export class NotificationsService {
   }
 
   /**
-   * Налаштовані канали філії в порядку `wanted` (порядок правила, BR-AUT-011). Канал придатний:
-   * увімкнений конфіг із ключем; для провайдера-шаблону (eSputnik Viber / Telegram) — ще й з
-   * `externalTemplateId`, інакше inline-текст правила такий провайдер не надішле. SMS без рядка
-   * конфігу — legacy `BranchSettings.sms*` (як `resolveConfig` і ключ у `SmsProcessor`).
+   * Налаштовані канали філії для повідомлення правила (BR-AUT-011). Канал придатний: увімкнений
+   * конфіг із ключем; для провайдера-шаблону (eSputnik Viber / Telegram) — ще й з
+   * `externalTemplateId`, інакше inline-текст правила такий провайдер не надішле.
+   *
+   * - `wanted` — явний перелік правила: лише ці канали в їхньому порядку; SMS без рядка конфігу —
+   *   legacy `BranchSettings.sms*` (як ключ у `SmsProcessor`).
+   * - `wanted = null` — «як у налаштуваннях філії» (рішення власника 2026-10-29): усі придатні
+   *   канали за `priority`, який задав власник, — той самий ланцюжок, що `resolveConfig` давав
+   *   зашитим повідомленням: жодного придатного конфігу — legacy SMS.
    */
   async resolveChannels(
     orgId: string,
     branchId: string,
-    wanted: readonly NotificationChannel[],
+    wanted: readonly NotificationChannel[] | null,
   ): Promise<ResolvedChannel[]> {
-    if (wanted.length === 0) return [];
+    if (wanted && wanted.length === 0) return [];
     const configs = await this.prisma.notificationChannelConfig.findMany({
-      where: { orgId, branchId, channel: { in: [...wanted] }, deletedAt: null },
+      where: {
+        orgId,
+        branchId,
+        deletedAt: null,
+        ...(wanted && { channel: { in: [...wanted] } }),
+      },
+      orderBy: [{ priority: 'asc' }, { channel: 'asc' }],
       select: {
         channel: true,
         provider: true,
@@ -297,38 +311,47 @@ export class NotificationsService {
       take: 20, // bounded by @@unique([branchId, channel])
     });
     const byChannel = new Map(configs.map(c => [c.channel, c]));
-    const legacySms =
-      wanted.includes(NotificationChannel.SMS) && !byChannel.has(NotificationChannel.SMS)
-        ? await this.prisma.branchSettings.findFirst({
-            where: { branchId, orgId },
-            select: { smsEnabled: true, smsApiKey: true, smsProvider: true, smsSenderName: true },
-          })
+    const usable = (c: (typeof configs)[number]): ResolvedChannel | null => {
+      if (!c.enabled || !c.apiKey) return null;
+      const templateBased = this.registry.get(c.provider)?.templateChannels?.includes(c.channel);
+      if (templateBased && !c.externalTemplateId) return null;
+      return {
+        channel: c.channel,
+        provider: c.provider,
+        senderName: c.senderName ?? 'OneService',
+        externalTemplateId: templateBased ? (c.externalTemplateId ?? undefined) : undefined,
+      };
+    };
+    const legacySms = async (): Promise<ResolvedChannel | null> => {
+      const bs = await this.prisma.branchSettings.findFirst({
+        where: { branchId, orgId },
+        select: { smsEnabled: true, smsApiKey: true, smsProvider: true, smsSenderName: true },
+      });
+      return bs?.smsEnabled && bs.smsApiKey
+        ? {
+            channel: NotificationChannel.SMS,
+            provider: bs.smsProvider ?? 'turbosms',
+            senderName: bs.smsSenderName ?? 'OneService',
+          }
         : null;
+    };
 
+    if (!wanted) {
+      const out = configs.map(usable).filter((c): c is ResolvedChannel => c !== null);
+      if (out.length > 0) return out;
+      const sms = await legacySms();
+      return sms ? [sms] : [];
+    }
+
+    const sms =
+      wanted.includes(NotificationChannel.SMS) && !byChannel.has(NotificationChannel.SMS)
+        ? await legacySms()
+        : null;
     const out: ResolvedChannel[] = [];
     for (const channel of wanted) {
       const c = byChannel.get(channel);
-      if (c) {
-        if (!c.enabled || !c.apiKey) continue;
-        const templateBased = this.registry.get(c.provider)?.templateChannels?.includes(channel);
-        if (templateBased && !c.externalTemplateId) continue;
-        out.push({
-          channel,
-          provider: c.provider,
-          senderName: c.senderName ?? 'OneService',
-          externalTemplateId: templateBased ? (c.externalTemplateId ?? undefined) : undefined,
-        });
-      } else if (
-        channel === NotificationChannel.SMS &&
-        legacySms?.smsEnabled &&
-        legacySms.smsApiKey
-      ) {
-        out.push({
-          channel,
-          provider: legacySms.smsProvider ?? 'turbosms',
-          senderName: legacySms.smsSenderName ?? 'OneService',
-        });
-      }
+      const resolved = c ? usable(c) : channel === NotificationChannel.SMS ? sms : null;
+      if (resolved) out.push(resolved);
     }
     return out;
   }

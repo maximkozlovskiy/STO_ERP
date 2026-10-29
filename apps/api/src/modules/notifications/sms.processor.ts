@@ -2,6 +2,7 @@ import { Processor, InjectQueue, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { NotificationChannel, NotificationEventType } from '@prisma/client';
+import type { AutomationSkipReason } from '@sto/shared';
 import type { NotificationLogMeta } from './notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runWithTenant } from '../../common/tenant/tenant-context';
@@ -74,6 +75,21 @@ export class SmsProcessor extends DeadLetterWorkerHost {
       const step = chain?.[chainIndex];
       if (!step) {
         this.logger.warn(`SMS job без валідного кроку (chainIndex=${chainIndex}) — пропущено`);
+        return;
+      }
+
+      // BR-AUT-016: повідомлення правила відкладене тихими годинами (чи просто в черзі) — на мить
+      // відправки документ видалено / оплату сторновано → не надсилати, ланцюг далі не йде.
+      const stale = await this.staleReason(orgId, meta);
+      if (stale) {
+        await this.log(orgId, branchId, { event, meta }, step, 'SKIPPED', {
+          skipReason: stale,
+          attempt: job.attemptsMade + 1,
+        });
+        this.logger.log(
+          `${step.channel} на ${maskRecipient(step.recipient)} не надіслано: ${stale} ` +
+            `(${meta?.documentType} ${meta?.documentId})`,
+        );
         return;
       }
 
@@ -193,14 +209,78 @@ export class SmsProcessor extends DeadLetterWorkerHost {
     return null;
   }
 
+  /**
+   * BR-AUT-016: чи доречне ще повідомлення правила про документ. Документ видалено (чи його немає
+   * в org) — `DOCUMENT_DELETED`; повідомлення про «створено» оплати клієнта / постачальнику, а
+   * оплату вже сторновано — `PAYMENT_REVERSED`. Звичайна зміна статусу не скасовує («Виконано»
+   * лишається правдою й після «Оплачено»). Тест (`isTest`) і зашиті події — без перевірки.
+   */
+  private async staleReason(
+    orgId: string,
+    meta: NotificationLogMeta | undefined,
+  ): Promise<AutomationSkipReason | null> {
+    if (!meta?.documentType || !meta.documentId || meta.isTest) return null;
+    const where = { id: meta.documentId, orgId };
+    const live = { deletedAt: true } as const;
+    const created = meta.eventKind === 'CREATED';
+    let row: { deletedAt?: Date | null } | null;
+    switch (meta.documentType) {
+      case 'PAYMENT': {
+        // Оплата клієнта append-only: без deletedAt, сторно — reversedAt.
+        const p = await this.prisma.payment.findFirst({ where, select: { reversedAt: true } });
+        if (!p) return 'DOCUMENT_DELETED';
+        return created && p.reversedAt ? 'PAYMENT_REVERSED' : null;
+      }
+      case 'SUPPLIER_PAYMENT': {
+        const p = await this.prisma.supplierPayment.findFirst({
+          where,
+          select: { deletedAt: true, status: true },
+        });
+        if (!p || p.deletedAt) return 'DOCUMENT_DELETED';
+        return created && p.status === 'REVERSED' ? 'PAYMENT_REVERSED' : null;
+      }
+      case 'WORK_ORDER':
+        row = await this.prisma.workOrder.findFirst({ where, select: live });
+        break;
+      case 'INVOICE':
+        row = await this.prisma.invoice.findFirst({ where, select: live });
+        break;
+      case 'PURCHASE_ORDER':
+        row = await this.prisma.purchaseOrder.findFirst({ where, select: live });
+        break;
+      case 'STOCK_DOCUMENT':
+        row = await this.prisma.stockDocument.findFirst({ where, select: live });
+        break;
+      case 'SUPPLIER_RETURN':
+        row = await this.prisma.supplierReturn.findFirst({ where, select: live });
+        break;
+      case 'BOOKING':
+        row = await this.prisma.bookingRequest.findFirst({ where, select: live });
+        break;
+      case 'TASK':
+        row = await this.prisma.task.findFirst({ where, select: live });
+        break;
+      default: {
+        const _exhaustive: never = meta.documentType;
+        return _exhaustive;
+      }
+    }
+    return !row || row.deletedAt ? 'DOCUMENT_DELETED' : null;
+  }
+
   /** Append-only NotificationLog. Помилка логу не має зривати відправку. */
   private async log(
     orgId: string,
     branchId: string | undefined,
     source: { event?: NotificationEventType; meta?: NotificationLogMeta },
     step: ChannelStep,
-    status: 'SENT' | 'REJECTED' | 'FAILED',
-    extra: { providerMessageId?: string; error?: string; attempt?: number },
+    status: 'SENT' | 'REJECTED' | 'FAILED' | 'SKIPPED',
+    extra: {
+      providerMessageId?: string;
+      error?: string;
+      skipReason?: AutomationSkipReason;
+      attempt?: number;
+    },
   ): Promise<void> {
     const { event, meta } = source;
     // Без зашитої події й без правила — не наш job (старий формат): лог не пишемо.
@@ -222,6 +302,7 @@ export class SmsProcessor extends DeadLetterWorkerHost {
           providerMessageId: extra.providerMessageId,
           status,
           error: extra.error,
+          skipReason: extra.skipReason,
           attempt: extra.attempt ?? 1,
         },
       });

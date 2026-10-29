@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import type { AutomationMessageKind, NotificationChannel, Prisma } from '@prisma/client';
+import type {
+  AutomationEventKind,
+  AutomationMessageKind,
+  NotificationChannel,
+  Prisma,
+} from '@prisma/client';
 import {
+  AUTOMATION_CHANNELS,
+  AUTOMATION_EMPLOYEE_CHANNELS,
   renderAutomationTemplate,
   TASK_DESCRIPTION_MAX,
   TASK_TITLE_MAX,
@@ -51,6 +58,8 @@ export interface ActionRun {
   /** Ініціатор зміни (BR-AUT-023); null — система. */
   actorId: string | null;
   occurredAt: Date;
+  /** Подія правила — у `meta` job-а: «створено» оплати сторно скасовує до відправки (BR-AUT-016). */
+  eventKind?: AutomationEventKind;
   now: Date;
   /** «Надіслати тест» (BR-AUT-051): одержувач — той, хто тестує; без згоди й тихих годин. */
   test?: { phone: string | null; email: string | null };
@@ -69,6 +78,16 @@ const clip = (text: string, max: number): string =>
 
 /** Канали філії за набором каналів — один запит на дію, а не на кожного працівника. */
 type ChannelCache = Map<string, Promise<ResolvedChannel[]>>;
+
+/** Канали дії: явний перелік правила або «як у філії» серед дозволених для дії (BR-AUT-011). */
+interface ChannelChoice {
+  wanted: readonly NotificationChannel[] | undefined;
+  allowed: readonly NotificationChannel[];
+}
+
+/** Канал рядка «пропущено» в журналі: перший канал правила, без нього — SMS. */
+const firstChannel = (wanted: readonly NotificationChannel[] | undefined): NotificationChannel =>
+  wanted?.[0] ?? 'SMS';
 
 /**
  * Три дії правила (docs/objects/automation.md, BR-AUT-010…032). Кожна повертає результат або
@@ -98,13 +117,14 @@ export class AutomationActionsService {
       ruleId: run.rule.id,
       documentType: ctx.documentType,
       documentId: ctx.documentId,
+      eventKind: run.eventKind,
       counterpartyId: client?.counterpartyId ?? undefined,
       isTest: !!run.test,
     };
     const phone = run.test ? run.test.phone : (client?.phone ?? null);
     const email = run.test ? run.test.email : (client?.email ?? null);
     const skip = async (reason: AutomationSkipReason): Promise<ActionResult> => {
-      await this.logSkipped(run, action.channels[0] ?? 'SMS', phone ?? email ?? '', reason, meta);
+      await this.logSkipped(run, firstChannel(action.channels), phone ?? email ?? '', reason, meta);
       return { ...base, status: 'SKIPPED', reason };
     };
 
@@ -117,7 +137,13 @@ export class AutomationActionsService {
         return skip('NO_MARKETING_CONSENT');
     }
 
-    const built = await this.buildChain(run, action.channels, action.template, phone, email);
+    const built = await this.buildChain(
+      run,
+      { wanted: action.channels, allowed: AUTOMATION_CHANNELS },
+      action.template,
+      phone,
+      email,
+    );
     if ('reason' in built) return skip(built.reason);
 
     // BR-AUT-013: тихі години — лише клієнту і не для тесту.
@@ -220,6 +246,7 @@ export class AutomationActionsService {
       ruleId: run.rule.id,
       documentType: run.ctx.documentType,
       documentId: run.ctx.documentId,
+      eventKind: run.eventKind,
       isTest: !!run.test,
     };
     const channels: string[] = [];
@@ -228,7 +255,7 @@ export class AutomationActionsService {
     for (const person of to) {
       const built = await this.buildChain(
         run,
-        external.channels,
+        { wanted: external.channels, allowed: AUTOMATION_EMPLOYEE_CHANNELS },
         external.template,
         person.phone,
         null,
@@ -247,7 +274,7 @@ export class AutomationActionsService {
       if (channels.length === 0) channels.push(...built.chain.map(s => s.channel));
     }
     if (channels.length === 0) {
-      await this.logSkipped(run, external.channels[0] ?? 'SMS', '', lastReason, meta);
+      await this.logSkipped(run, firstChannel(external.channels), '', lastReason, meta);
       return { ...base, status: 'SKIPPED', reason: lastReason };
     }
     return { ...base, status: 'DONE', channels };
@@ -331,36 +358,39 @@ export class AutomationActionsService {
   // ─── Спільне ─────────────────────────────────────────────────────────────────────────────
 
   /**
-   * BR-AUT-011: канали правила в його порядку ∩ налаштовані канали філії, з адресою одержувача.
-   * Telegram-бот до блоку 3 недоступний. Причина порожнього ланцюжка — для журналу.
+   * BR-AUT-011: канали дії ∩ налаштовані канали філії, з адресою одержувача. Явний перелік правила
+   * — лише його канали в його порядку; без переліку — усі налаштовані канали філії за пріоритетом,
+   * який задав власник (серед дозволених для дії). Telegram-бот до блоку 3 недоступний. Причина
+   * порожнього ланцюжка — для журналу.
    */
   private async buildChain(
     run: ActionRun,
-    wanted: readonly NotificationChannel[],
+    choice: ChannelChoice,
     template: Template,
     phone: string | null,
     email: string | null,
     cache?: ChannelCache,
   ): Promise<{ chain: ChannelStep[] } | { reason: AutomationSkipReason }> {
     const recipientOf = (c: NotificationChannel): string | null => (c === EMAIL ? email : phone);
-    const external = wanted.filter(c => c !== TELEGRAM_BOT);
-    const addressable = external.filter(c => !!recipientOf(c));
-    if (addressable.length === 0) {
-      const onlyBot = wanted.includes(TELEGRAM_BOT) && (phone || email);
-      return { reason: onlyBot ? 'TELEGRAM_BOT_NOT_CONNECTED' : 'NO_CONTACT' };
-    }
-    const branchId = run.ctx.messageBranchId;
-    let resolved: ResolvedChannel[] = [];
-    if (branchId) {
-      const key = addressable.join(',');
-      let pending = cache?.get(key);
-      if (!pending) {
-        pending = this.notifications.resolveChannels(run.orgId, branchId, addressable);
-        cache?.set(key, pending);
+    const { wanted, allowed } = choice;
+    let resolved: ResolvedChannel[];
+    if (wanted && wanted.length > 0) {
+      const addressable = wanted.filter(c => c !== TELEGRAM_BOT && !!recipientOf(c));
+      if (addressable.length === 0) {
+        const onlyBot = wanted.includes(TELEGRAM_BOT) && (phone || email);
+        return { reason: onlyBot ? 'TELEGRAM_BOT_NOT_CONNECTED' : 'NO_CONTACT' };
       }
-      resolved = await pending;
+      resolved = await this.branchChannels(run, addressable, cache);
+      if (resolved.length === 0) return { reason: 'NO_CHANNEL' };
+    } else {
+      if (!phone && !email) return { reason: 'NO_CONTACT' };
+      const branch = (await this.branchChannels(run, null, cache)).filter(
+        r => r.channel !== TELEGRAM_BOT && allowed.includes(r.channel),
+      );
+      if (branch.length === 0) return { reason: 'NO_CHANNEL' };
+      resolved = branch.filter(r => !!recipientOf(r.channel));
+      if (resolved.length === 0) return { reason: 'NO_CONTACT' };
     }
-    if (resolved.length === 0) return { reason: 'NO_CHANNEL' };
     const message = renderAutomationTemplate(template.body, run.vars);
     const subject = template.subject
       ? renderAutomationTemplate(template.subject, run.vars)
@@ -376,6 +406,23 @@ export class AutomationActionsService {
         externalTemplateId: r.externalTemplateId,
       })),
     };
+  }
+
+  /** Канали філії документа (`null` — за пріоритетом філії); один запит на набір у межах дії. */
+  private branchChannels(
+    run: ActionRun,
+    wanted: readonly NotificationChannel[] | null,
+    cache?: ChannelCache,
+  ): Promise<ResolvedChannel[]> {
+    const branchId = run.ctx.messageBranchId;
+    if (!branchId) return Promise.resolve([]);
+    const key = wanted ? wanted.join(',') : '*';
+    let pending = cache?.get(key);
+    if (!pending) {
+      pending = this.notifications.resolveChannels(run.orgId, branchId, wanted);
+      cache?.set(key, pending);
+    }
+    return pending;
   }
 
   private async quietDelay(orgId: string, now: Date): Promise<number> {

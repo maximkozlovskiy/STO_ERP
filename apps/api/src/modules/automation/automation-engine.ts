@@ -214,6 +214,7 @@ export class AutomationEngine implements DomainEventHandler {
       vars,
       actorId: event.actorId,
       occurredAt: event.occurredAt,
+      eventKind: event.kind,
       now: new Date(),
     };
     const results: ActionResult[] = [];
