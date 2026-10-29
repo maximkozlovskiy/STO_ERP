@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type { Prisma, TaskStatus } from '@prisma/client';
+import type { Prisma, TaskStatus, WorkOrderPriority } from '@prisma/client';
 import {
   TASK_STATUS_TRANSITIONS,
   canTransitionTask,
@@ -105,7 +105,10 @@ type TaskRow = Prisma.TaskGetPayload<{ include: typeof TASK_INCLUDE }>;
 const personName = (p: { firstName: string | null; lastName: string | null } | null): string =>
   p ? [p.lastName, p.firstName].filter(Boolean).join(' ') : '';
 
-function toDto(t: TaskRow, now: Date): TaskResponseDto {
+/** Назви правил, що створили задачі (BR-AUT-031): id → назва. */
+type RuleNames = ReadonlyMap<string, string>;
+
+function toDto(t: TaskRow, now: Date, ruleNames: RuleNames): TaskResponseDto {
   const v = t.vehicle;
   const cp = t.counterparty;
   return {
@@ -117,7 +120,13 @@ function toDto(t: TaskRow, now: Date): TaskResponseDto {
     assigneeId: t.assigneeId,
     assigneeName: personName(t.assignee),
     createdById: t.createdById,
-    createdByName: personName(t.createdBy),
+    // BR-AUT-031: задачу без автора створило правило — автор «Автоматизація».
+    createdByName:
+      t.createdById === null ? err('err.automation.systemAuthor') : personName(t.createdBy),
+    automationRuleId: t.automationRuleId,
+    automationRuleName: t.automationRuleId ? (ruleNames.get(t.automationRuleId) ?? null) : null,
+    entityType: t.entityType,
+    entityId: t.entityId,
     startAt: t.startAt?.toISOString() ?? null,
     dueAt: t.dueAt?.toISOString() ?? null,
     completedAt: t.completedAt?.toISOString() ?? null,
@@ -193,7 +202,13 @@ export class TasksService {
       }),
       this.prisma.task.count({ where }),
     ]);
-    return { items: rows.map(r => toDto(r, now)), total, page: query.page, limit: take };
+    const ruleNames = await this.ruleNames(orgId, rows);
+    return {
+      items: rows.map(r => toDto(r, now, ruleNames)),
+      total,
+      page: query.page,
+      limit: take,
+    };
   }
 
   async findOne(orgId: string, actor: TaskActor, id: string): Promise<TaskResponseDto> {
@@ -202,7 +217,78 @@ export class TasksService {
       include: TASK_INCLUDE,
     });
     if (!row) throw new NotFoundException(err('err.task.notFound'));
-    return toDto(row, new Date());
+    return toDto(row, new Date(), await this.ruleNames(orgId, [row]));
+  }
+
+  /** Назви правил автоматизації для рядків одним запитом; без автозадач — без запиту. */
+  private async ruleNames(
+    orgId: string,
+    rows: readonly { automationRuleId: string | null }[],
+  ): Promise<RuleNames> {
+    const ids = [...new Set(rows.map(r => r.automationRuleId).filter((v): v is string => !!v))];
+    if (ids.length === 0) return new Map();
+    const rules = await this.prisma.automationRule.findMany({
+      where: { orgId, id: { in: ids } },
+      select: { id: true, name: true },
+      take: ids.length,
+    });
+    return new Map(rules.map(r => [r.id, r.name]));
+  }
+
+  /**
+   * Задача від правила автоматизації (BR-AUT-030…032): без автора-працівника (`createdById: null`
+   * — «Автоматизація»), з правилом і документом прив'язки. Виконавця, термін і дедуплікацію
+   * перевіряє двигун; тут — запис і подія «створено» в одній транзакції (BR-AUT-060, ініціатор —
+   * система).
+   */
+  async createByAutomation(
+    orgId: string,
+    input: {
+      title: string;
+      description?: string;
+      assigneeId: string;
+      priority: WorkOrderPriority;
+      dueAt: Date;
+      automationRuleId: string;
+      entityType: string;
+      entityId: string;
+      workOrderId?: string | null;
+      vehicleId?: string | null;
+      counterpartyId?: string | null;
+    },
+  ): Promise<{ id: string }> {
+    return this.prisma.$transaction(
+      async tx => {
+        const row = await tx.task.create({
+          data: {
+            orgId,
+            title: input.title,
+            description: input.description ?? null,
+            assigneeId: input.assigneeId,
+            priority: input.priority,
+            dueAt: input.dueAt,
+            createdById: null,
+            automationRuleId: input.automationRuleId,
+            entityType: input.entityType,
+            entityId: input.entityId,
+            workOrderId: input.workOrderId ?? null,
+            vehicleId: input.vehicleId ?? null,
+            counterpartyId: input.counterpartyId ?? null,
+          },
+          select: { id: true, status: true },
+        });
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'TASK',
+          documentId: row.id,
+          kind: 'CREATED',
+          toStatus: row.status,
+          actorId: null,
+        });
+        return { id: row.id };
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
   }
 
   /** BR-TASK-001 (ролі — у контролері), 004, 006. */

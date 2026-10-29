@@ -8,6 +8,7 @@ import { runUnscoped, getLocale } from '../../common/tenant/tenant-context';
 import { SetupInitDto, SetupInitResponseDto } from './setup.dto';
 import { DOCUMENT_NUMBER_DEFAULTS, type DocumentNumberDefault } from './document-number-defaults';
 import { DEFAULT_VEHICLE_MAKES } from '../vehicle-makes/vehicle-make-defaults';
+import { ESTIMATE_READY_SMS_BODY, defaultAutomationRuleRows } from '../automation/default-rules';
 
 @Injectable()
 export class SetupService {
@@ -101,6 +102,18 @@ export class SetupService {
                 resetPeriod: cfg.resetPeriod,
                 ...(cfg.includeDate === undefined ? {} : { includeDate: cfg.includeDate }),
               })),
+            });
+
+            // BR-AUT-007: типові правила автоматизації (повідомлення клієнту про наряд «Виконано»,
+            // оплату, онлайн-запис) і шаблон кнопки «Надіслати кошторис» — з першого дня.
+            await tx.automationRule.createMany({ data: defaultAutomationRuleRows(org.id) });
+            await tx.notificationTemplate.create({
+              data: {
+                orgId: org.id,
+                eventType: 'WO_ESTIMATE_READY',
+                channel: 'SMS',
+                body: ESTIMATE_READY_SMS_BODY,
+              },
             });
 
             const methods = [

@@ -19920,6 +19920,711 @@
           "System Templates"
         ]
       }
+    },
+    "/api/v1/automation/rules": {
+      "get": {
+        "operationId": "AutomationController_findAll_v1",
+        "parameters": [
+          {
+            "name": "documentType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "WORK_ORDER",
+                "INVOICE",
+                "PURCHASE_ORDER",
+                "STOCK_DOCUMENT",
+                "PAYMENT",
+                "SUPPLIER_PAYMENT",
+                "SUPPLIER_RETURN",
+                "BOOKING",
+                "TASK"
+              ]
+            }
+          },
+          {
+            "name": "enabled",
+            "required": false,
+            "in": "query",
+            "description": "Лише увімкнені (true) / вимкнені (false)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedAutomationRulesDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Правила автоматизації",
+        "tags": [
+          "automation"
+        ]
+      },
+      "post": {
+        "operationId": "AutomationController_create_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationRuleFormDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationRuleResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Створити правило (невідома змінна шаблону — 400, BR-AUT-014)",
+        "tags": [
+          "automation"
+        ]
+      }
+    },
+    "/api/v1/automation/runs": {
+      "get": {
+        "operationId": "AutomationController_runs_v1",
+        "parameters": [
+          {
+            "name": "ruleId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "WORK_ORDER",
+                "INVOICE",
+                "PURCHASE_ORDER",
+                "STOCK_DOCUMENT",
+                "PAYMENT",
+                "SUPPLIER_PAYMENT",
+                "SUPPLIER_RETURN",
+                "BOOKING",
+                "TASK"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "З дня (YYYY-MM-DD, Київ)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "По день (YYYY-MM-DD, включно, Київ)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DONE",
+                "PARTIAL",
+                "FAILED",
+                "SKIPPED"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedAutomationRunsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Журнал спрацювань правил (BR-AUT-050)",
+        "tags": [
+          "automation"
+        ]
+      }
+    },
+    "/api/v1/automation/messages": {
+      "get": {
+        "operationId": "AutomationController_messages_v1",
+        "parameters": [
+          {
+            "name": "ruleId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "WORK_ORDER",
+                "INVOICE",
+                "PURCHASE_ORDER",
+                "STOCK_DOCUMENT",
+                "PAYMENT",
+                "SUPPLIER_PAYMENT",
+                "SUPPLIER_RETURN",
+                "BOOKING",
+                "TASK"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "З дня (YYYY-MM-DD, Київ)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "По день (YYYY-MM-DD, включно, Київ)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "QUEUED",
+                "SENT",
+                "REJECTED",
+                "FAILED",
+                "SKIPPED"
+              ]
+            }
+          },
+          {
+            "name": "isTest",
+            "required": false,
+            "in": "query",
+            "description": "Лише тестові (true) / лише справжні (false)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedAutomationMessagesDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Журнал повідомлень правил: кому, канал, статус доставки (BR-AUT-050)",
+        "tags": [
+          "automation"
+        ]
+      }
+    },
+    "/api/v1/automation/rules/{id}/test": {
+      "post": {
+        "operationId": "AutomationController_test_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationRuleTestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationRuleTestResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Надіслати тест собі з даними документа (BR-AUT-051)",
+        "tags": [
+          "automation"
+        ]
+      }
+    },
+    "/api/v1/automation/rules/{id}/enabled": {
+      "patch": {
+        "operationId": "AutomationController_setEnabled_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationRuleEnabledDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationRuleResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Увімкнути / вимкнути правило (BR-AUT-006)",
+        "tags": [
+          "automation"
+        ]
+      }
+    },
+    "/api/v1/automation/rules/{id}": {
+      "get": {
+        "operationId": "AutomationController_findOne_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationRuleResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Правило",
+        "tags": [
+          "automation"
+        ]
+      },
+      "patch": {
+        "operationId": "AutomationController_update_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutomationRuleFormDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationRuleResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Змінити правило (повна форма; діє на наступні події, BR-AUT-006)",
+        "tags": [
+          "automation"
+        ]
+      },
+      "delete": {
+        "operationId": "AutomationController_remove_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Видалити правило (типове — лише вимкнути, BR-AUT-007)",
+        "tags": [
+          "automation"
+        ]
+      }
+    },
+    "/api/v1/notifications/me": {
+      "get": {
+        "operationId": "EmployeeNotificationsController_list_v1",
+        "parameters": [
+          {
+            "name": "unread",
+            "required": false,
+            "in": "query",
+            "description": "Лише непрочитані (true / 1)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedEmployeeNotificationsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Мої сповіщення",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/me/unread-count": {
+      "get": {
+        "operationId": "EmployeeNotificationsController_unreadCount_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnreadCountDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Кількість непрочитаних (опитування дзвіночка)",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/me/read-all": {
+      "post": {
+        "operationId": "EmployeeNotificationsController_readAll_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadAllResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Позначити всі прочитаними",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/api/v1/notifications/me/{id}/read": {
+      "post": {
+        "operationId": "EmployeeNotificationsController_read_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeeNotificationResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Позначити прочитаним",
+        "tags": [
+          "notifications"
+        ]
+      }
     }
   },
   "info": {
@@ -34736,7 +35441,26 @@
             "nullable": true
           },
           "createdByName": {
-            "type": "string"
+            "type": "string",
+            "description": "Автор; для задачі від правила — «Автоматизація» (BR-AUT-031)"
+          },
+          "automationRuleId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Правило, що створило задачу"
+          },
+          "automationRuleName": {
+            "type": "string",
+            "nullable": true
+          },
+          "entityType": {
+            "type": "string",
+            "nullable": true,
+            "description": "Тип документа прив’язки (AutomationDocumentType, BR-AUT-030)"
+          },
+          "entityId": {
+            "type": "string",
+            "nullable": true
           },
           "startAt": {
             "type": "string",
@@ -34803,6 +35527,10 @@
           "assigneeName",
           "createdById",
           "createdByName",
+          "automationRuleId",
+          "automationRuleName",
+          "entityType",
+          "entityId",
           "startAt",
           "dueAt",
           "completedAt",
@@ -36200,6 +36928,610 @@
           "name",
           "data",
           "sortOrder"
+        ]
+      },
+      "AutomationRuleResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "documentType": {
+            "enum": [
+              "WORK_ORDER",
+              "INVOICE",
+              "PURCHASE_ORDER",
+              "STOCK_DOCUMENT",
+              "PAYMENT",
+              "SUPPLIER_PAYMENT",
+              "SUPPLIER_RETURN",
+              "BOOKING",
+              "TASK"
+            ],
+            "type": "string"
+          },
+          "eventKind": {
+            "enum": [
+              "CREATED",
+              "STATUS_CHANGED"
+            ],
+            "type": "string"
+          },
+          "toStatuses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "messageKind": {
+            "enum": [
+              "SERVICE",
+              "MARKETING"
+            ],
+            "type": "string"
+          },
+          "conditions": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "systemKey": {
+            "type": "string",
+            "nullable": true,
+            "description": "Типове правило (BR-AUT-007)"
+          },
+          "lastRunAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Останнє спрацювання"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "enabled",
+          "documentType",
+          "eventKind",
+          "toStatuses",
+          "messageKind",
+          "conditions",
+          "actions",
+          "systemKey",
+          "lastRunAt",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "PaginatedAutomationRulesDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AutomationRuleResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
+      "AutomationRuleFormDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "documentType": {
+            "enum": [
+              "WORK_ORDER",
+              "INVOICE",
+              "PURCHASE_ORDER",
+              "STOCK_DOCUMENT",
+              "PAYMENT",
+              "SUPPLIER_PAYMENT",
+              "SUPPLIER_RETURN",
+              "BOOKING",
+              "TASK"
+            ],
+            "type": "string"
+          },
+          "eventKind": {
+            "enum": [
+              "CREATED",
+              "STATUS_CHANGED"
+            ],
+            "type": "string"
+          },
+          "toStatuses": {
+            "description": "У статус (порожньо — будь-який)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "messageKind": {
+            "enum": [
+              "SERVICE",
+              "MARKETING"
+            ],
+            "type": "string",
+            "default": "SERVICE"
+          },
+          "conditions": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "branchIds, fromStatuses, repairCategories, priorities, minAmount — «І»"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "description": "client_message / employee_notification / create_task"
+          }
+        },
+        "required": [
+          "name",
+          "documentType",
+          "eventKind",
+          "actions"
+        ]
+      },
+      "AutomationActionResultDto": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "client_message",
+              "employee_notification",
+              "create_task"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DONE",
+              "SKIPPED",
+              "FAILED"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Причина пропуску (AUTOMATION_SKIP_REASONS)"
+          },
+          "error": {
+            "type": "string"
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delayedUntil": {
+            "type": "string"
+          },
+          "recipients": {
+            "type": "number"
+          },
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "type",
+          "status"
+        ]
+      },
+      "AutomationRunResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "ruleName": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "documentType": {
+            "enum": [
+              "WORK_ORDER",
+              "INVOICE",
+              "PURCHASE_ORDER",
+              "STOCK_DOCUMENT",
+              "PAYMENT",
+              "SUPPLIER_PAYMENT",
+              "SUPPLIER_RETURN",
+              "BOOKING",
+              "TASK"
+            ],
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "eventKind": {
+            "enum": [
+              "CREATED",
+              "STATUS_CHANGED"
+            ],
+            "type": "string"
+          },
+          "fromStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "toStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "occurredAt": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DONE",
+              "PARTIAL",
+              "FAILED",
+              "SKIPPED"
+            ],
+            "type": "string"
+          },
+          "actionResults": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AutomationActionResultDto"
+            }
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ruleId",
+          "ruleName",
+          "eventId",
+          "documentType",
+          "documentId",
+          "eventKind",
+          "fromStatus",
+          "toStatus",
+          "occurredAt",
+          "status",
+          "actionResults",
+          "createdAt"
+        ]
+      },
+      "PaginatedAutomationRunsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AutomationRunResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
+      "AutomationMessageResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "documentType": {
+            "nullable": true,
+            "enum": [
+              "WORK_ORDER",
+              "INVOICE",
+              "PURCHASE_ORDER",
+              "STOCK_DOCUMENT",
+              "PAYMENT",
+              "SUPPLIER_PAYMENT",
+              "SUPPLIER_RETURN",
+              "BOOKING",
+              "TASK"
+            ],
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "counterpartyId": {
+            "type": "string",
+            "nullable": true
+          },
+          "channel": {
+            "enum": [
+              "SMS",
+              "VIBER",
+              "EMAIL",
+              "TELEGRAM",
+              "TELEGRAM_BOT"
+            ],
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "recipient": {
+            "type": "string",
+            "description": "Одержувач: телефон або email"
+          },
+          "status": {
+            "enum": [
+              "QUEUED",
+              "SENT",
+              "REJECTED",
+              "FAILED",
+              "SKIPPED"
+            ],
+            "type": "string"
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
+          },
+          "skipReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "isTest": {
+            "type": "boolean"
+          },
+          "attempt": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ruleId",
+          "documentType",
+          "documentId",
+          "counterpartyId",
+          "channel",
+          "provider",
+          "recipient",
+          "status",
+          "error",
+          "skipReason",
+          "isTest",
+          "attempt",
+          "createdAt"
+        ]
+      },
+      "PaginatedAutomationMessagesDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AutomationMessageResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
+      "AutomationRuleTestDto": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Документ, дані якого підставляються в шаблони"
+          }
+        },
+        "required": [
+          "documentId"
+        ]
+      },
+      "AutomationRuleTestResultDto": {
+        "type": "object",
+        "properties": {
+          "actionResults": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AutomationActionResultDto"
+            }
+          }
+        },
+        "required": [
+          "actionResults"
+        ]
+      },
+      "AutomationRuleEnabledDto": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ]
+      },
+      "EmployeeNotificationResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string",
+            "nullable": true
+          },
+          "documentType": {
+            "nullable": true,
+            "enum": [
+              "WORK_ORDER",
+              "INVOICE",
+              "PURCHASE_ORDER",
+              "STOCK_DOCUMENT",
+              "PAYMENT",
+              "SUPPLIER_PAYMENT",
+              "SUPPLIER_RETURN",
+              "BOOKING",
+              "TASK"
+            ],
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "readAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "body",
+          "documentType",
+          "documentId",
+          "readAt",
+          "createdAt"
+        ]
+      },
+      "PaginatedEmployeeNotificationsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EmployeeNotificationResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
+      "UnreadCountDto": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "count"
+        ]
+      },
+      "ReadAllResultDto": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "number",
+            "description": "Скільки позначено прочитаними"
+          }
+        },
+        "required": [
+          "updated"
         ]
       }
     }

@@ -6201,6 +6201,179 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/automation/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Правила автоматизації */
+        get: operations["AutomationController_findAll_v1"];
+        put?: never;
+        /** Створити правило (невідома змінна шаблону — 400, BR-AUT-014) */
+        post: operations["AutomationController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/automation/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Журнал спрацювань правил (BR-AUT-050) */
+        get: operations["AutomationController_runs_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/automation/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Журнал повідомлень правил: кому, канал, статус доставки (BR-AUT-050) */
+        get: operations["AutomationController_messages_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/automation/rules/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Надіслати тест собі з даними документа (BR-AUT-051) */
+        post: operations["AutomationController_test_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/automation/rules/{id}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Увімкнути / вимкнути правило (BR-AUT-006) */
+        patch: operations["AutomationController_setEnabled_v1"];
+        trace?: never;
+    };
+    "/api/v1/automation/rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Правило */
+        get: operations["AutomationController_findOne_v1"];
+        put?: never;
+        post?: never;
+        /** Видалити правило (типове — лише вимкнути, BR-AUT-007) */
+        delete: operations["AutomationController_remove_v1"];
+        options?: never;
+        head?: never;
+        /** Змінити правило (повна форма; діє на наступні події, BR-AUT-006) */
+        patch: operations["AutomationController_update_v1"];
+        trace?: never;
+    };
+    "/api/v1/notifications/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Мої сповіщення */
+        get: operations["EmployeeNotificationsController_list_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/me/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Кількість непрочитаних (опитування дзвіночка) */
+        get: operations["EmployeeNotificationsController_unreadCount_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/me/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Позначити всі прочитаними */
+        post: operations["EmployeeNotificationsController_readAll_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/me/{id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Позначити прочитаним */
+        post: operations["EmployeeNotificationsController_read_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -10399,7 +10572,14 @@ export interface components {
             assigneeId: string;
             assigneeName: string;
             createdById: string | null;
+            /** @description Автор; для задачі від правила — «Автоматизація» (BR-AUT-031) */
             createdByName: string;
+            /** @description Правило, що створило задачу */
+            automationRuleId: string | null;
+            automationRuleName: string | null;
+            /** @description Тип документа прив’язки (AutomationDocumentType, BR-AUT-030) */
+            entityType: string | null;
+            entityId: string | null;
             startAt: string | null;
             dueAt: string | null;
             completedAt: string | null;
@@ -10864,6 +11044,160 @@ export interface components {
                 [key: string]: unknown;
             };
             sortOrder: number;
+        };
+        AutomationRuleResponseDto: {
+            id: string;
+            name: string;
+            enabled: boolean;
+            /** @enum {string} */
+            documentType: "WORK_ORDER" | "INVOICE" | "PURCHASE_ORDER" | "STOCK_DOCUMENT" | "PAYMENT" | "SUPPLIER_PAYMENT" | "SUPPLIER_RETURN" | "BOOKING" | "TASK";
+            /** @enum {string} */
+            eventKind: "CREATED" | "STATUS_CHANGED";
+            toStatuses: string[];
+            /** @enum {string} */
+            messageKind: "SERVICE" | "MARKETING";
+            conditions: {
+                [key: string]: unknown;
+            };
+            actions: {
+                [key: string]: unknown;
+            }[];
+            /** @description Типове правило (BR-AUT-007) */
+            systemKey: string | null;
+            /** @description Останнє спрацювання */
+            lastRunAt: string | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+        PaginatedAutomationRulesDto: {
+            items: components["schemas"]["AutomationRuleResponseDto"][];
+            total: number;
+            page: number;
+            limit: number;
+        };
+        AutomationRuleFormDto: {
+            name: string;
+            /** @default true */
+            enabled: boolean;
+            /** @enum {string} */
+            documentType: "WORK_ORDER" | "INVOICE" | "PURCHASE_ORDER" | "STOCK_DOCUMENT" | "PAYMENT" | "SUPPLIER_PAYMENT" | "SUPPLIER_RETURN" | "BOOKING" | "TASK";
+            /** @enum {string} */
+            eventKind: "CREATED" | "STATUS_CHANGED";
+            /** @description У статус (порожньо — будь-який) */
+            toStatuses?: string[];
+            /**
+             * @default SERVICE
+             * @enum {string}
+             */
+            messageKind: "SERVICE" | "MARKETING";
+            /** @description branchIds, fromStatuses, repairCategories, priorities, minAmount — «І» */
+            conditions?: {
+                [key: string]: unknown;
+            };
+            /** @description client_message / employee_notification / create_task */
+            actions: {
+                [key: string]: unknown;
+            }[];
+        };
+        AutomationActionResultDto: {
+            index: number;
+            /** @enum {string} */
+            type: "client_message" | "employee_notification" | "create_task";
+            /** @enum {string} */
+            status: "DONE" | "SKIPPED" | "FAILED";
+            /** @description Причина пропуску (AUTOMATION_SKIP_REASONS) */
+            reason?: string;
+            error?: string;
+            channels?: string[];
+            delayedUntil?: string;
+            recipients?: number;
+            taskId?: string;
+        };
+        AutomationRunResponseDto: {
+            id: string;
+            ruleId: string;
+            ruleName: string;
+            eventId: string;
+            /** @enum {string} */
+            documentType: "WORK_ORDER" | "INVOICE" | "PURCHASE_ORDER" | "STOCK_DOCUMENT" | "PAYMENT" | "SUPPLIER_PAYMENT" | "SUPPLIER_RETURN" | "BOOKING" | "TASK";
+            documentId: string;
+            /** @enum {string} */
+            eventKind: "CREATED" | "STATUS_CHANGED";
+            fromStatus: string | null;
+            toStatus: string | null;
+            occurredAt: string;
+            /** @enum {string} */
+            status: "DONE" | "PARTIAL" | "FAILED" | "SKIPPED";
+            actionResults: components["schemas"]["AutomationActionResultDto"][];
+            createdAt: string;
+        };
+        PaginatedAutomationRunsDto: {
+            items: components["schemas"]["AutomationRunResponseDto"][];
+            total: number;
+            page: number;
+            limit: number;
+        };
+        AutomationMessageResponseDto: {
+            id: string;
+            ruleId: string | null;
+            /** @enum {string|null} */
+            documentType: "WORK_ORDER" | "INVOICE" | "PURCHASE_ORDER" | "STOCK_DOCUMENT" | "PAYMENT" | "SUPPLIER_PAYMENT" | "SUPPLIER_RETURN" | "BOOKING" | "TASK" | null;
+            documentId: string | null;
+            counterpartyId: string | null;
+            /** @enum {string} */
+            channel: "SMS" | "VIBER" | "EMAIL" | "TELEGRAM" | "TELEGRAM_BOT";
+            provider: string;
+            /** @description Одержувач: телефон або email */
+            recipient: string;
+            /** @enum {string} */
+            status: "QUEUED" | "SENT" | "REJECTED" | "FAILED" | "SKIPPED";
+            error: string | null;
+            skipReason: string | null;
+            isTest: boolean;
+            attempt: number;
+            createdAt: string;
+        };
+        PaginatedAutomationMessagesDto: {
+            items: components["schemas"]["AutomationMessageResponseDto"][];
+            total: number;
+            page: number;
+            limit: number;
+        };
+        AutomationRuleTestDto: {
+            /**
+             * Format: uuid
+             * @description Документ, дані якого підставляються в шаблони
+             */
+            documentId: string;
+        };
+        AutomationRuleTestResultDto: {
+            actionResults: components["schemas"]["AutomationActionResultDto"][];
+        };
+        AutomationRuleEnabledDto: {
+            enabled: boolean;
+        };
+        EmployeeNotificationResponseDto: {
+            id: string;
+            title: string;
+            body: string | null;
+            /** @enum {string|null} */
+            documentType: "WORK_ORDER" | "INVOICE" | "PURCHASE_ORDER" | "STOCK_DOCUMENT" | "PAYMENT" | "SUPPLIER_PAYMENT" | "SUPPLIER_RETURN" | "BOOKING" | "TASK" | null;
+            documentId: string | null;
+            readAt: string | null;
+            createdAt: string;
+        };
+        PaginatedEmployeeNotificationsDto: {
+            items: components["schemas"]["EmployeeNotificationResponseDto"][];
+            total: number;
+            page: number;
+            limit: number;
+        };
+        UnreadCountDto: {
+            count: number;
+        };
+        ReadAllResultDto: {
+            /** @description Скільки позначено прочитаними */
+            updated: number;
         };
     };
     responses: never;
@@ -21995,6 +22329,314 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemTemplateResponseDto"][];
+                };
+            };
+        };
+    };
+    AutomationController_findAll_v1: {
+        parameters: {
+            query?: {
+                documentType?: "WORK_ORDER" | "INVOICE" | "PURCHASE_ORDER" | "STOCK_DOCUMENT" | "PAYMENT" | "SUPPLIER_PAYMENT" | "SUPPLIER_RETURN" | "BOOKING" | "TASK";
+                /** @description Лише увімкнені (true) / вимкнені (false) */
+                enabled?: string;
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedAutomationRulesDto"];
+                };
+            };
+        };
+    };
+    AutomationController_create_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationRuleFormDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationRuleResponseDto"];
+                };
+            };
+        };
+    };
+    AutomationController_runs_v1: {
+        parameters: {
+            query?: {
+                ruleId?: string;
+                documentId?: string;
+                documentType?: "WORK_ORDER" | "INVOICE" | "PURCHASE_ORDER" | "STOCK_DOCUMENT" | "PAYMENT" | "SUPPLIER_PAYMENT" | "SUPPLIER_RETURN" | "BOOKING" | "TASK";
+                /** @description З дня (YYYY-MM-DD, Київ) */
+                from?: string;
+                /** @description По день (YYYY-MM-DD, включно, Київ) */
+                to?: string;
+                page?: number;
+                limit?: number;
+                status?: "DONE" | "PARTIAL" | "FAILED" | "SKIPPED";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedAutomationRunsDto"];
+                };
+            };
+        };
+    };
+    AutomationController_messages_v1: {
+        parameters: {
+            query?: {
+                ruleId?: string;
+                documentId?: string;
+                documentType?: "WORK_ORDER" | "INVOICE" | "PURCHASE_ORDER" | "STOCK_DOCUMENT" | "PAYMENT" | "SUPPLIER_PAYMENT" | "SUPPLIER_RETURN" | "BOOKING" | "TASK";
+                /** @description З дня (YYYY-MM-DD, Київ) */
+                from?: string;
+                /** @description По день (YYYY-MM-DD, включно, Київ) */
+                to?: string;
+                page?: number;
+                limit?: number;
+                status?: "QUEUED" | "SENT" | "REJECTED" | "FAILED" | "SKIPPED";
+                /** @description Лише тестові (true) / лише справжні (false) */
+                isTest?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedAutomationMessagesDto"];
+                };
+            };
+        };
+    };
+    AutomationController_test_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationRuleTestDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationRuleTestResultDto"];
+                };
+            };
+        };
+    };
+    AutomationController_setEnabled_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationRuleEnabledDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationRuleResponseDto"];
+                };
+            };
+        };
+    };
+    AutomationController_findOne_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationRuleResponseDto"];
+                };
+            };
+        };
+    };
+    AutomationController_remove_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AutomationController_update_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomationRuleFormDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationRuleResponseDto"];
+                };
+            };
+        };
+    };
+    EmployeeNotificationsController_list_v1: {
+        parameters: {
+            query?: {
+                /** @description Лише непрочитані (true / 1) */
+                unread?: string;
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedEmployeeNotificationsDto"];
+                };
+            };
+        };
+    };
+    EmployeeNotificationsController_unreadCount_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnreadCountDto"];
+                };
+            };
+        };
+    };
+    EmployeeNotificationsController_readAll_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadAllResultDto"];
+                };
+            };
+        };
+    };
+    EmployeeNotificationsController_read_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmployeeNotificationResponseDto"];
                 };
             };
         };

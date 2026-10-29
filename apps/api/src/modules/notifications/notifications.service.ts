@@ -1,7 +1,11 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { NotificationChannel, NotificationEventType } from '@prisma/client';
+import {
+  NotificationChannel,
+  NotificationEventType,
+  type AutomationDocumentType,
+} from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -25,6 +29,26 @@ export interface ChannelStep {
   /** Отримувач цього каналу: телефон (SMS/Viber/TG) або email (EMAIL). */
   recipient: string;
   /** ID шаблону провайдера (eSputnik Viber/Telegram); null для inline-каналів. */
+  externalTemplateId?: string;
+}
+
+/**
+ * Повідомлення правила автоматизації в журналі (`NotificationLog`, BR-AUT-050, 051): правило,
+ * документ, контрагент, позначка «тест». Без `eventType` — у правила немає зашитої події.
+ */
+export interface NotificationLogMeta {
+  ruleId?: string;
+  documentType?: AutomationDocumentType;
+  documentId?: string;
+  counterpartyId?: string;
+  isTest?: boolean;
+}
+
+/** Налаштований канал філії для повідомлення правила — без шаблону (текст дає правило). */
+export interface ResolvedChannel {
+  channel: NotificationChannel;
+  provider: string;
+  senderName: string;
   externalTemplateId?: string;
 }
 
@@ -215,19 +239,98 @@ export class NotificationsService {
       })
       .filter((s): s is ChannelStep => s !== null);
     if (chain.length === 0) return;
+    await this.enqueueChain(orgId, branchId, chain, { event });
+  }
 
+  /**
+   * Ставить готовий ланцюг (текст уже відрендерено) у чергу `sms`. `delayMs` — тихі години
+   * (BR-AUT-013); `meta` — правило й документ для журналу (BR-AUT-050). Processor іде ланцюгом:
+   * chain[i] прийнято → СТОП; відхилено → наступний.
+   */
+  async enqueueChain(
+    orgId: string,
+    branchId: string | undefined,
+    chain: ChannelStep[],
+    opts: { event?: NotificationEvent; meta?: NotificationLogMeta; delayMs?: number } = {},
+  ): Promise<void> {
+    if (chain.length === 0) return;
+    const delay = opts.delayMs && opts.delayMs > 0 ? Math.round(opts.delayMs) : undefined;
     await this.smsQueue.add(
       'send-sms',
-      { orgId, branchId, event, chain, chainIndex: 0 },
+      { orgId, branchId, event: opts.event, meta: opts.meta, chain, chainIndex: 0 },
       {
+        // ADR-005, BR-AUT-015: ≥ 10 спроб з експоненційною паузою; літерал — його читає статичний
+        // сторож черг (payments.queue-retry-policy.spec).
         attempts: 10,
         backoff: { type: 'exponential', delay: 60_000 },
         removeOnComplete: true,
-        // T8: apiKey у job.data ВЖЕ НЕМАЄ (резолвиться у processor). removeOnFail тримаємо як
-        // обмежене діагностичне вікно + захист від безмежного росту Redis (як webhooks queue).
+        // T8: apiKey у job.data НЕМАЄ (резолвиться у processor). removeOnFail — обмежене
+        // діагностичне вікно + захист від безмежного росту Redis (як webhooks queue).
         removeOnFail: 200,
+        ...(delay !== undefined && { delay }),
       },
     );
+  }
+
+  /**
+   * Налаштовані канали філії в порядку `wanted` (порядок правила, BR-AUT-011). Канал придатний:
+   * увімкнений конфіг із ключем; для провайдера-шаблону (eSputnik Viber / Telegram) — ще й з
+   * `externalTemplateId`, інакше inline-текст правила такий провайдер не надішле. SMS без рядка
+   * конфігу — legacy `BranchSettings.sms*` (як `resolveConfig` і ключ у `SmsProcessor`).
+   */
+  async resolveChannels(
+    orgId: string,
+    branchId: string,
+    wanted: readonly NotificationChannel[],
+  ): Promise<ResolvedChannel[]> {
+    if (wanted.length === 0) return [];
+    const configs = await this.prisma.notificationChannelConfig.findMany({
+      where: { orgId, branchId, channel: { in: [...wanted] }, deletedAt: null },
+      select: {
+        channel: true,
+        provider: true,
+        enabled: true,
+        apiKey: true,
+        senderName: true,
+        externalTemplateId: true,
+      },
+      take: 20, // bounded by @@unique([branchId, channel])
+    });
+    const byChannel = new Map(configs.map(c => [c.channel, c]));
+    const legacySms =
+      wanted.includes(NotificationChannel.SMS) && !byChannel.has(NotificationChannel.SMS)
+        ? await this.prisma.branchSettings.findFirst({
+            where: { branchId, orgId },
+            select: { smsEnabled: true, smsApiKey: true, smsProvider: true, smsSenderName: true },
+          })
+        : null;
+
+    const out: ResolvedChannel[] = [];
+    for (const channel of wanted) {
+      const c = byChannel.get(channel);
+      if (c) {
+        if (!c.enabled || !c.apiKey) continue;
+        const templateBased = this.registry.get(c.provider)?.templateChannels?.includes(channel);
+        if (templateBased && !c.externalTemplateId) continue;
+        out.push({
+          channel,
+          provider: c.provider,
+          senderName: c.senderName ?? 'OneService',
+          externalTemplateId: templateBased ? (c.externalTemplateId ?? undefined) : undefined,
+        });
+      } else if (
+        channel === NotificationChannel.SMS &&
+        legacySms?.smsEnabled &&
+        legacySms.smsApiKey
+      ) {
+        out.push({
+          channel,
+          provider: legacySms.smsProvider ?? 'turbosms',
+          senderName: legacySms.smsSenderName ?? 'OneService',
+        });
+      }
+    }
+    return out;
   }
 
   async findTemplates(orgId: string) {

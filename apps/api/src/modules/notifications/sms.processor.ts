@@ -2,6 +2,7 @@ import { Processor, InjectQueue, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { NotificationChannel, NotificationEventType } from '@prisma/client';
+import type { NotificationLogMeta } from './notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runWithTenant } from '../../common/tenant/tenant-context';
 import { NotificationProviderRegistry } from './providers/provider-registry';
@@ -24,6 +25,8 @@ interface SendSmsJob {
   orgId: string;
   branchId?: string;
   event?: NotificationEventType;
+  /** Повідомлення правила автоматизації: правило, документ, контрагент, тест (BR-AUT-050). */
+  meta?: NotificationLogMeta;
   /** Впорядкований fallback-ланцюг каналів (priority ASC); recipient — у кожному кроці. */
   chain: ChannelStep[];
   /** Позиція у ланцюзі для поточного job. Retry цього job повторює саме chain[chainIndex]. */
@@ -67,7 +70,7 @@ export class SmsProcessor extends DeadLetterWorkerHost {
    */
   async process(job: Job<SendSmsJob>): Promise<void> {
     return runWithTenant({ orgId: job.data.orgId }, async () => {
-      const { orgId, branchId, event, chain, chainIndex } = job.data;
+      const { orgId, branchId, event, meta, chain, chainIndex } = job.data;
       const step = chain?.[chainIndex];
       if (!step) {
         this.logger.warn(`SMS job без валідного кроку (chainIndex=${chainIndex}) — пропущено`);
@@ -77,7 +80,7 @@ export class SmsProcessor extends DeadLetterWorkerHost {
       const impl = this.registry.get(step.provider);
       if (!impl) {
         // Невідомий провайдер — конфіг-помилка, не транзієнт. Логуємо FAILED, пробуємо наступний.
-        await this.log(orgId, branchId, event, step, 'FAILED', {
+        await this.log(orgId, branchId, { event, meta }, step, 'FAILED', {
           error: `Невідомий провайдер "${step.provider}"`,
           attempt: job.attemptsMade + 1,
         });
@@ -88,7 +91,7 @@ export class SmsProcessor extends DeadLetterWorkerHost {
       // T8: apiKey НЕ зберігається у job.data (Redis plaintext) — резолвимо+розшифровуємо у point-of-use.
       const apiKey = await this.resolveApiKey(orgId, branchId, step.channel);
       if (!apiKey) {
-        await this.log(orgId, branchId, event, step, 'FAILED', {
+        await this.log(orgId, branchId, { event, meta }, step, 'FAILED', {
           error: `Не знайдено активний apiKey для ${step.channel}/${step.provider}`,
           attempt: job.attemptsMade + 1,
         });
@@ -106,7 +109,7 @@ export class SmsProcessor extends DeadLetterWorkerHost {
       });
 
       if (result.accepted) {
-        await this.log(orgId, branchId, event, step, 'SENT', {
+        await this.log(orgId, branchId, { event, meta }, step, 'SENT', {
           providerMessageId: result.providerMessageId,
           attempt: job.attemptsMade + 1,
         });
@@ -118,7 +121,7 @@ export class SmsProcessor extends DeadLetterWorkerHost {
       }
 
       // Відхилено провайдером — лог REJECTED і спроба наступного каналу.
-      await this.log(orgId, branchId, event, step, 'REJECTED', {
+      await this.log(orgId, branchId, { event, meta }, step, 'REJECTED', {
         error: result.error,
         attempt: job.attemptsMade + 1,
       });
@@ -194,18 +197,25 @@ export class SmsProcessor extends DeadLetterWorkerHost {
   private async log(
     orgId: string,
     branchId: string | undefined,
-    event: NotificationEventType | undefined,
+    source: { event?: NotificationEventType; meta?: NotificationLogMeta },
     step: ChannelStep,
     status: 'SENT' | 'REJECTED' | 'FAILED',
     extra: { providerMessageId?: string; error?: string; attempt?: number },
   ): Promise<void> {
-    if (!event) return; // без eventType (обовʼязкове поле) лог не пишемо
+    const { event, meta } = source;
+    // Без зашитої події й без правила — не наш job (старий формат): лог не пишемо.
+    if (!event && !meta) return;
     try {
       await this.prisma.notificationLog.create({
         data: {
           orgId,
           branchId,
-          eventType: event,
+          eventType: event ?? null,
+          ruleId: meta?.ruleId,
+          documentType: meta?.documentType,
+          documentId: meta?.documentId,
+          counterpartyId: meta?.counterpartyId,
+          isTest: meta?.isTest ?? false,
           channel: step.channel,
           provider: step.provider,
           recipient: step.recipient,

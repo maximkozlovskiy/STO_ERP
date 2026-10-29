@@ -56,7 +56,7 @@ export const kyivOffsetMs = (d: Date): number => {
 export const EARLIEST_DB_INSTANT_MS = new Date('0001-01-01T00:00:00.000Z').getTime();
 
 /** Настінний час `YYYY-MM-DDTHH:mm:ss[.sss]` київського дня → мить UTC (DST-aware). */
-const kyivWallTimeToUtc = (wallTime: string): Date => {
+export const kyivWallTimeToUtc = (wallTime: string): Date => {
   const d = new Date(`${wallTime}Z`);
   // Bug #818: the start of Kyiv day 0001-01-01 is 31.12 of year 0 in UTC, and Postgres has no
   // year 0 - the query failed with 500. Nothing is stored that early, so the floor is harmless.

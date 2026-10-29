@@ -635,7 +635,6 @@ describe('PaymentsService.create — курсова різниця наряду 
     const service = new PaymentsService(
       prisma as never,
       settlements as never,
-      { send: vi.fn().mockResolvedValue(undefined) } as never,
       { emitStatusSteps: vi.fn() } as never,
       { queueEarn: vi.fn().mockResolvedValue(undefined) } as never,
       { record: vi.fn().mockResolvedValue(undefined) } as never,

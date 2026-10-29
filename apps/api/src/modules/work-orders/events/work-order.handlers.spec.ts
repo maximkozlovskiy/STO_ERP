@@ -4,7 +4,6 @@ import { WorkOrderCompletedEvent, WorkOrderTransitionedEvent } from './work-orde
 import type { PrismaService } from '../../../prisma/prisma.service';
 import type { MaintenanceSchedulesService } from '../../maintenance-schedules/maintenance-schedules.service';
 import type { WarrantiesService } from '../../warranties/warranties.service';
-import type { NotificationsService } from '../../notifications/notifications.service';
 import type { SettingsService } from '../../settings/settings.service';
 import type { AuditService } from '../../audit/audit.service';
 
@@ -31,7 +30,6 @@ describe('WorkOrderEventHandlers', () => {
     rebuildFromHistory,
   } as unknown as MaintenanceSchedulesService;
   const warranties = { autoCreate } as unknown as WarrantiesService;
-  const notifications = { send } as unknown as NotificationsService;
   const settings = { getOrganisationSettings } as unknown as SettingsService;
   const audit = { record } as unknown as AuditService;
 
@@ -39,14 +37,7 @@ describe('WorkOrderEventHandlers', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    handlers = new WorkOrderEventHandlers(
-      prisma,
-      maintenance,
-      warranties,
-      notifications,
-      settings,
-      audit,
-    );
+    handlers = new WorkOrderEventHandlers(prisma, maintenance, warranties, settings, audit);
   });
 
   // 'k' in over — щоб явний null/0 у override НЕ підмінявся дефолтом (?? з'їв би їх).
@@ -168,21 +159,16 @@ describe('WorkOrderEventHandlers', () => {
     expect(autoCreate).not.toHaveBeenCalled();
   });
 
-  // ── нотифікація ──
-  it('notify → notifications.send WO_COMPLETED з clientName', async () => {
-    await handlers.notify(completed());
-    expect(send).toHaveBeenCalledWith(
-      'o1',
-      'WO_COMPLETED',
-      expect.objectContaining({ workOrderNumber: 'WO-1', branchId: 'br1', phone: '+380671112233' }),
-    );
+  // ── повідомлення клієнту — лише правилом ──
+  // guards: BR-AUT-007
+  it('завершення наряду не шле повідомлення клієнту напряму — це типове правило WO_COMPLETED_CLIENT', () => {
+    expect('notify' in handlers).toBe(false);
+    expect(send).not.toHaveBeenCalled();
   });
 
   // ── best-effort: помилка не прокидається ──
   it('помилка side-effect не прокидається (best-effort)', async () => {
     autoCreate.mockRejectedValueOnce(new Error('DB down'));
     await expect(handlers.createWarranty(completed())).resolves.toBeUndefined();
-    send.mockRejectedValueOnce(new Error('queue down'));
-    await expect(handlers.notify(completed())).resolves.toBeUndefined();
   });
 });

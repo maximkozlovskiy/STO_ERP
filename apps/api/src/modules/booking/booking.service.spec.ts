@@ -10,12 +10,8 @@ import { domainEventMock } from '../../common/testing/prisma-mock';
 
 /**
  * Bug #254: unit-покриття `BookingService.create` + `confirm` + `cancel`.
- * Bug #506: SMS confirmation тепер йде через `NotificationsService.send()`,
- *           а НЕ через прямий `smsQueue.add()`. Spec оновлено щоб перевіряти
- *           правильний event type + payload contract — інакше регресія яка
- *           замінить виклик назад на прямий queue.add({ templateCode, params })
- *           пройде CI зеленою (Bug #507 — попередня spec перевіряла лише
- *           `attempts: 10` у options, не shape job.data).
+ * Підтвердження клієнту — типове правило автоматизації `BOOKING_CREATED_CLIENT` (BR-AUT-007):
+ * сервіс сам повідомлень не шле, лише пише подію «створено» в outbox.
  *
  * Фокус:
  *   • Cross-tenant FK validation для `serviceIds` (Bug #252 — public endpoint
@@ -23,8 +19,6 @@ import { domainEventMock } from '../../common/testing/prisma-mock';
  *     foreign IDs).
  *   • Defense-in-depth `updateMany({ id, orgId, deletedAt: null })` у confirm/cancel.
  *   • Branch tenant guard.
- *   • Bug #506: NotificationsService.send('BOOKING_CONFIRMATION', { branchId,
- *     phone, clientName, date, branchName }) — повний payload контракт.
  *
  * Без spec regression у tenant-FK (e.g. видалення count-check під рефактор)
  * пройде CI зеленим — публічний endpoint буде приймати UUID-и з чужих org.
@@ -120,7 +114,8 @@ describe('BookingService', () => {
         workDays: [1, 2, 3, 4, 5],
       });
 
-    it('Bug #506: happy path — booking створюється + notifications.send викликано з правильним event+payload', async () => {
+    // guards: BR-AUT-007
+    it('happy path — запис створюється з подією «створено»; повідомлення клієнту напряму не шлеться (типове правило)', async () => {
       prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: branchId, name: 'Філія 1' });
       prisma.work.count.mockResolvedValueOnce(0);
       mockDefaultWorkingHours();
@@ -138,52 +133,16 @@ describe('BookingService', () => {
       const result = await service.create(orgId, validDto);
 
       expect(prisma.bookingRequest.create).toHaveBeenCalledTimes(1);
-
-      // Bug #506: КРИТИЧНИЙ guard — NotificationsService.send викликано з:
-      //   (1) правильним event type 'BOOKING_CONFIRMATION'
-      //   (2) branchId (резолвить branchSettings provider/apiKey)
-      //   (3) phone (target SMS recipient)
-      //   (4) template placeholders: clientName, date, branchName
-      // Регресія яка замінить це на прямий smsQueue.add({ templateCode, params })
-      // упаде на цей expect — попередня spec пропускала такі регресії.
-      expect(notifications.send).toHaveBeenCalledTimes(1);
-      expect(notifications.send).toHaveBeenCalledWith(
-        orgId,
-        'BOOKING_CONFIRMATION',
-        expect.objectContaining({
-          branchId,
-          phone: validDto.clientPhone,
-          clientName: validDto.clientName,
-          branchName: 'Філія 1',
-          date: expect.any(String),
+      expect(prisma.domainEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          documentType: 'BOOKING',
+          kind: 'CREATED',
+          documentId: bookingId,
         }),
-      );
-
+      });
+      expect(notifications.send).not.toHaveBeenCalled();
       expect(result.id).toBe(bookingId);
       expect(result.status).toBe('PENDING');
-    });
-
-    it('Bug #506: notifications.send падає → booking не блокується (.catch warn)', async () => {
-      prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: branchId, name: 'Філія 1' });
-      prisma.work.count.mockResolvedValueOnce(0);
-      mockDefaultWorkingHours();
-      prisma.bookingRequest.create.mockResolvedValueOnce({
-        id: bookingId,
-        status: 'PENDING',
-        clientName: validDto.clientName,
-        clientPhone: validDto.clientPhone,
-        requestedDate: new Date(validDto.requestedDate),
-        branchId,
-        notes: null,
-        createdAt: new Date(),
-      });
-      // SMS template missing or queue down — public booking widget must NOT fail.
-      notifications.send.mockRejectedValueOnce(new Error('Redis недоступний'));
-
-      const result = await service.create(orgId, validDto);
-
-      expect(result.id).toBe(bookingId);
-      // Booking створений; SMS-помилка ловиться через .catch(warn) — користувач отримує OK.
     });
 
     it('Bug #252: cross-tenant serviceIds → BadRequestException; bookingRequest НЕ створюється', async () => {

@@ -179,7 +179,18 @@ export class TaskResponseDto {
   @ApiProperty() assigneeName!: string;
   // null — задачу створило правило автоматизації (BR-AUT-031).
   @ApiProperty({ type: String, nullable: true }) createdById!: string | null;
-  @ApiProperty() createdByName!: string;
+  @ApiProperty({ description: 'Автор; для задачі від правила — «Автоматизація» (BR-AUT-031)' })
+  createdByName!: string;
+  @ApiProperty({ type: String, nullable: true, description: 'Правило, що створило задачу' })
+  automationRuleId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) automationRuleName!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Тип документа прив’язки (AutomationDocumentType, BR-AUT-030)',
+  })
+  entityType!: string | null;
+  @ApiProperty({ type: String, nullable: true }) entityId!: string | null;
   @ApiProperty({ type: String, nullable: true }) startAt!: string | null;
   @ApiProperty({ type: String, nullable: true }) dueAt!: string | null;
   @ApiProperty({ type: String, nullable: true }) completedAt!: string | null;

@@ -5,7 +5,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale, runUnscoped } from '../../common/tenant/tenant-context';
 import { EARLIEST_DB_INSTANT_MS, kyivOffsetMs } from '../../common/utils/kyiv-date';
 import { workDaysOf } from '../../common/utils/work-hours';
-import { NotificationsService } from '../notifications/notifications.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { recordDocumentEvent } from '../automation/record-document-event';
 import {
@@ -22,10 +21,6 @@ function narrowBookingStatus(raw: string): BookingRequestStatusValue {
     ? (raw as BookingRequestStatusValue)
     : 'PENDING';
 }
-
-// Module-level Intl singleton — `.toLocaleDateString('uk-UA')` allocates a new formatter
-// per call. Booking create runs on every public widget submit → hoist.
-const UA_DATE_FMT = new Intl.DateTimeFormat('uk-UA');
 
 // DST-safe formatter to produce Kyiv-local "HH:MM" key from any Date.
 // getUTCHours() gives wrong slot on DST boundary: у літо 09:00 Kyiv (06:00Z) давав ключ
@@ -62,10 +57,6 @@ export class BookingService {
 
   constructor(
     private readonly prisma: PrismaService,
-    // Route booking SMS through NotificationsService.send() — single source of truth for
-    // branchSettings provider/apiKey + NotificationTemplate body. Direct smsQueue.add() bypasses
-    // template resolve → SmsProcessor.process() sees provider=undefined → silent skip.
-    private readonly notifications: NotificationsService,
     // createSlot при confirm — конфлікт-чек + split + EXCLUDE-backstop уже там (не дублюємо).
     private readonly calendar: CalendarService,
   ) {}
@@ -407,25 +398,7 @@ export class BookingService {
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
 
-    // SMS confirmation via NotificationsService.send() — резолвить branchSettings
-    // (provider/apiKey/senderName) + NotificationTemplate.body, рендерить шаблон і кладе
-    // справжній SendSmsJob shape у queue. Non-blocking: помилка резолву (SMS не налаштовано
-    // на branch або шаблону немає) логується, але бронювання залишається.
-    // attempts=10 (offline-first) уже виставляється всередині `sendWithConfig`.
-    this.notifications
-      .send(orgId, 'BOOKING_CONFIRMATION', {
-        branchId: dto.branchId,
-        phone: dto.clientPhone,
-        clientName: dto.clientName,
-        date: UA_DATE_FMT.format(new Date(dto.requestedDate)),
-        branchName: branch.name,
-      })
-      .catch((err: unknown) =>
-        this.logger.warn(
-          `Booking SMS notification failed: ${err instanceof Error ? err.message : err}`,
-        ),
-      );
-
+    // Підтвердження клієнту — типове правило `BOOKING_CREATED_CLIENT` (BR-AUT-007).
     return this.toDto(req);
   }
 

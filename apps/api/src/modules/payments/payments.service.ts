@@ -31,7 +31,6 @@ import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { CashService, type CashOperationExtras } from '../cash/cash.service';
-import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import {
   isWorkOrderFullyPaid,
@@ -49,10 +48,6 @@ import { searchContains } from '../../common/utils/like-pattern';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 import { paymentsInCashDesk } from './payment-cash-desk';
 import { recordDocumentEvent } from '../automation/record-document-event';
-
-// Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
-// Intl.NumberFormat under the hood per call. Used on every payment.create when SMS sent.
-const UAH_AMOUNT_FMT = new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 2 });
 
 // Допустимі значення фіскального статусу для валідації query-фільтра (enum-driven — без
 // хардкоду рядків, автоматично підхоплює нові значення FiscalReceiptStatus).
@@ -106,7 +101,6 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settlements: SettlementsService,
-    private readonly notifications: NotificationsService,
     private readonly workOrders: WorkOrdersService,
     private readonly loyalty: LoyaltyService,
     private readonly audit: AuditService,
@@ -760,37 +754,7 @@ export class PaymentsService {
 
     // Події переходів наряду (аудит статусу) — ПІСЛЯ коміту, як у WorkOrdersService.transition.
     if (workOrderId) this.workOrders.emitStatusSteps(orgId, workOrderId, statusSteps, userId);
-    if (counterparty.phone || counterparty.email) {
-      // Bug fix: send() рано виходить без branchId → PAYMENT_RECEIVED раніше НІКОЛИ не слався.
-      // Беремо branchId наряду; для standalone-оплати (без наряду) — найстаріша філія org
-      // (дзеркалить followup.processor). Резолвимо лениво, лише якщо наряду немає.
-      const branchId =
-        workOrder?.branchId ??
-        (
-          await this.prisma.garageBranch.findFirst({
-            where: { orgId, deletedAt: null },
-            orderBy: { createdAt: 'asc' },
-            select: { id: true },
-          })
-        )?.id;
-      this.notifications
-        .send(orgId, 'PAYMENT_RECEIVED', {
-          branchId,
-          phone: counterparty.phone,
-          email: counterparty.email,
-          amount: UAH_AMOUNT_FMT.format(dto.amount),
-          clientName: formatPersonName(
-            counterparty.lastName,
-            counterparty.firstName,
-            counterparty.companyName,
-          ),
-        })
-        .catch((err: unknown) =>
-          this.logger.warn(
-            `Payment notification failed: ${err instanceof Error ? err.message : err}`,
-          ),
-        );
-    }
+    // Повідомлення клієнту про оплату — типове правило `PAYMENT_CREATED_CLIENT` (BR-AUT-007).
 
     // Enqueue Checkbox fiscal receipt ЛИШЕ для методів з requiresFiscal (offline-first: retry
     // 288× = 24h). Без гейта чек ставився б на КОЖЕН платіж (готівка/безнал/бартер) → зайві

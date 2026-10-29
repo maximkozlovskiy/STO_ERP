@@ -23,7 +23,6 @@ import { exchangeRatesMock } from './payments.spec-fixture';
 import { memoryTable, type MemRow } from '../cash/cash.spec-fixture';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { SettlementsService } from '../settlements/settlements.service';
-import type { NotificationsService } from '../notifications/notifications.service';
 import type { WorkOrdersService } from '../work-orders/work-orders.service';
 import type { LoyaltyService } from '../loyalty/loyalty.service';
 import type { AuditService } from '../audit/audit.service';
@@ -207,7 +206,6 @@ function makeHarness(seed: Seed = {}) {
   const service = new PaymentsService(
     root as unknown as PrismaService,
     settlements as unknown as SettlementsService,
-    { send: vi.fn().mockResolvedValue(undefined) } as unknown as NotificationsService,
     workOrders as unknown as WorkOrdersService,
     loyalty as unknown as LoyaltyService,
     audit as unknown as AuditService,

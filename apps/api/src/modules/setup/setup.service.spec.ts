@@ -7,6 +7,7 @@ import type { SetupInitDto } from './setup.dto';
 import { DocumentType } from '@prisma/client';
 import { DOCUMENT_NUMBER_DEFAULTS } from './document-number-defaults';
 import { DEFAULT_VEHICLE_MAKES } from '../vehicle-makes/vehicle-make-defaults';
+import { AUTOMATION_DEFAULT_RULES } from '@sto/shared';
 
 /**
  * Regression (audit settings/setup/reports): TOCTOU race у first-run wizard.
@@ -60,6 +61,8 @@ function makePrisma(orgCountOutsideTx: number, orgCountInsideTx: number) {
     warehouse: { create: vi.fn().mockResolvedValue({ id: 'wh-1' }) },
     employee: { create: vi.fn().mockResolvedValue({ id: 'emp-1', role: 'OWNER' }) },
     authAccount: { create: vi.fn().mockResolvedValue({ id: 'auth-1' }) },
+    automationRule: { createMany: vi.fn().mockResolvedValue({ count: 3 }) },
+    notificationTemplate: { create: vi.fn().mockResolvedValue({}) },
   };
   const prisma = {
     organisation: { count: vi.fn().mockResolvedValue(orgCountOutsideTx) },
@@ -205,6 +208,24 @@ describe('SetupService.init — стартовий довідник марок �
     expect(arg.data.map(m => m.name)).toEqual(DEFAULT_VEHICLE_MAKES.map(m => m.name));
     expect(arg.data.every(m => m.orgId === 'org-1')).toBe(true);
     expect(arg.data.find(m => m.name === 'Land Rover')?.nameKey).toBe('land rover');
+  });
+
+  // guards: BR-AUT-007
+  it('нова організація отримує типові правила автоматизації й шаблон кошторису в транзакції', async () => {
+    const { prisma, tx } = makePrisma(0, 0);
+    await new SetupService(prisma, authService).init(dto);
+    const arg = tx.automationRule.createMany.mock.calls[0]?.[0] as {
+      data: { orgId: string; systemKey: string }[];
+    };
+    expect(arg.data.map(r => r.systemKey)).toEqual(AUTOMATION_DEFAULT_RULES.map(r => r.systemKey));
+    expect(arg.data.every(r => r.orgId === 'org-1')).toBe(true);
+    expect(tx.notificationTemplate.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        orgId: 'org-1',
+        eventType: 'WO_ESTIMATE_READY',
+        channel: 'SMS',
+      }),
+    });
   });
 
   // guards: BR-VEH-012
