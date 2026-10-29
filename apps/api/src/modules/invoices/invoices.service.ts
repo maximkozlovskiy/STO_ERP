@@ -538,11 +538,22 @@ export class InvoicesService {
         // Мультивалюта (Фаза 3): валюта + дата документа для CHARGE/PAYMENT у base.
         currencyId: true,
         documentDate: true,
+        _count: { select: { lines: true } },
       },
     });
     if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
 
     assertFsmTransition(INV_TRANSITIONS, inv.status, newStatus);
+
+    // BR-INV-023: рахунок без рядків не виставляється — ні standalone, ні рахунок наряду
+    // (РАХ-2026-004310 пішов клієнту на 100,00 без жодного рядка). До CAS і до CHARGE (FIN-C2).
+    // Fail-closed: лічильника немає (зміна select) → 0 рядків, а не пропуск перевірки.
+    if (inv.status === InvoiceStatus.DRAFT && newStatus === InvoiceStatus.SENT) {
+      const lineCount = inv._count?.lines ?? 0;
+      if (!(lineCount > 0)) {
+        throw new BadRequestException(translateError('err.invoice.noLinesToIssue', getLocale()));
+      }
+    }
 
     // BR-INV-019: рахунок наряду закривається лише оплатою наряду (дзеркало, BR-INV-018) — ручне
     // «Оплачено» записало б сплачене без грошей і розвело б рахунок із нарядом.
