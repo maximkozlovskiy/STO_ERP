@@ -379,6 +379,12 @@
    "TenantContextInterceptor поза межами interceptor-а ALS порожній (scope не тече)",
    "TenantContextInterceptor усередині handler-а orgId зі scope === request.user.orgId"
   ],
+  "apps/api/src/common/transforms/csv-array.spec.ts": [
+   "csvArray нічого не лишилось → undefined (@IsOptional пропускає)",
+   "csvArray повторений параметр (масив від Fastify) теж розбирається",
+   "csvArray порожні частини відкидаються",
+   "csvArray розбиває рядок через кому й обрізає пробіли"
+  ],
   "apps/api/src/common/transforms/empty-to-null.spec.ts": [
    "emptyToNull перетворює порожній рядок на null (сигнал \"очистити поле\")",
    "emptyToNull пропускає false (НЕ trick falsy check)",
@@ -849,6 +855,9 @@
    "splitByWorkHours — запис наряду по днях робочих годин (BR-WO-020) один день у межах годин → один відрізок як є",
    "splitByWorkHours — запис наряду по днях робочих годин (BR-WO-020) перехід на зимовий час між днями: другий день відкривається о 08:00 за +02",
    "splitByWorkHours — запис наряду по днях робочих годин (BR-WO-020) три дні → по відрізку на день; середній — увесь робочий день",
+   "workDaysOf / workDayHoursOf / workCapacityHours — робочий час філії дні: рядка немає чи не масив → пн–пт; масив — як є",
+   "workDaysOf / workDayHoursOf / workCapacityHours — робочий час філії місткість: робочі дні періоду × тривалість дня; неділя — день 7; DST не впливає",
+   "workDaysOf / workDayHoursOf / workCapacityHours — робочий час філії тривалість дня — з хвилинами; невалідне чи кінець раніше початку → 9 год",
    "workHoursOf — години з BranchSettings кінець не пізніше початку → типові 09–18 (ті самі, що @default BranchSettings)",
    "workHoursOf — години з BranchSettings невалідний час → типові 09–18 (ті самі, що @default BranchSettings)",
    "workHoursOf — години з BranchSettings рядка немає → типові 09–18 (ті самі, що @default BranchSettings)",
@@ -3611,6 +3620,11 @@
    "InvoicesService — refresh-from-work-order refreshFromWorkOrder — рядки й сума з наряду, base-сума і курс (BR-INV-002) тотали наряду не відповідають рядкам → 400 ЗСЕРЕДИНИ транзакції: старі рядки не втрачаються, суми не пишуться"
   ],
   "apps/api/src/modules/invoices/invoices.transition-settlements.spec.ts": [
+   "InvoicesService — transition-settlements transition — BR-INV-023 рахунок без рядків не виставляється DRAFT→CANCELLED без рядків — дозволено",
+   "InvoicesService — transition-settlements transition — BR-INV-023 рахунок без рядків не виставляється standalone DRAFT→SENT без рядків → 400 noLinesToIssue; ні CAS-переходу, ні CHARGE",
+   "InvoicesService — transition-settlements transition — BR-INV-023 рахунок без рядків не виставляється лічильника рядків у прочитаному рахунку немає → 400, а не виставлення",
+   "InvoicesService — transition-settlements transition — BR-INV-023 рахунок без рядків не виставляється один рядок → DRAFT→SENT проходить, CHARGE створено; transition читає _count.lines",
+   "InvoicesService — transition-settlements transition — BR-INV-023 рахунок без рядків не виставляється рахунок наряду DRAFT→SENT без рядків → 400, статус не змінюється",
    "InvoicesService — transition-settlements transition — FIN-C2 CHARGE для standalone на DRAFT→SENT CAS: updateMany count=0 (статус змінився паралельно) → throw, CHARGE не створюється",
    "InvoicesService — transition-settlements transition — FIN-C2 CHARGE для standalone на DRAFT→SENT WO-рахунок DRAFT→SENT → CHARGE НЕ створюється (уникнення подвійного боргу)",
    "InvoicesService — transition-settlements transition — FIN-C2 CHARGE для standalone на DRAFT→SENT standalone DRAFT→SENT → createTransaction(CHARGE) з сумою рахунку",
@@ -3686,6 +3700,7 @@
    "InvoicesService — рахунок наряду переносить сплачене (BR-INV-020, BR-INV-018) ручна зміна суми чернетки рахунку наряду → сплачене = min(сплачено наряду, сума)",
    "InvoicesService — рахунок наряду переносить сплачене (BR-INV-020, BR-INV-018) рядок наряду блокується ПЕРШИМ записом — умовою статусу, що приймає рахунок",
    "InvoicesService — рахунок наряду переносить сплачене (BR-INV-020, BR-INV-018) рядок чернетки рахунку наряду змінив суму (300 при сплаченому наряду 1000) → сплачене рахунку 300",
+   "InvoicesService — рахунок наряду переносить сплачене (BR-INV-020, BR-INV-018) чернетка рахунку наряду без власних рядків → 400, лишається DRAFT",
    "InvoicesService — рахунок наряду переносить сплачене (BR-INV-020, BR-INV-018) чернетка → «Виставлено», наряд сплачено 0 з 1000 → статус SENT",
    "InvoicesService — рахунок наряду переносить сплачене (BR-INV-020, BR-INV-018) чернетка → «Виставлено», наряд сплачено 1000 з 1000 → статус PAID",
    "InvoicesService — рахунок наряду переносить сплачене (BR-INV-020, BR-INV-018) чернетка → «Виставлено», наряд сплачено 400 з 1000 → статус PARTIALLY_PAID",
@@ -3916,7 +3931,7 @@
    "NotificationsService.resolveConfig externalTemplateId + inline-провайдер (turbosms VIBER) без локального шаблону → канал ВИКЛЮЧЕНО (anti empty-send)",
    "NotificationsService.resolveConfig externalTemplateId + template-провайдер (eSputnik VIBER) без локального шаблону → канал включено",
    "NotificationsService.resolveConfig post-activation: enabled:true повертає канали ОДНОГО провайдера → ланцюг однопровайдерний",
-   "NotificationsService.resolveConfig senderName відсутній у config-рядку → дефолт \"STO ERP\"",
+   "NotificationsService.resolveConfig senderName відсутній у config-рядку → дефолт \"OneService\"",
    "NotificationsService.resolveConfig будує ланцюг з config-рядків (priority ASC) із per-канал шаблоном",
    "NotificationsService.resolveConfig жоден канал не має шаблону → null (batch-abort), без throw",
    "NotificationsService.resolveConfig канал без активного шаблону тихо пропускається (fallback перескочить на наступний)"
@@ -5576,6 +5591,7 @@
    "resolvePnlSettings — налаштування P&L організації (BR-RPT-030 пп. 4–6) «Витрата» завжди серед витрат, навіть якщо в налаштуваннях її немає",
    "resolvePnlSettings — налаштування P&L організації (BR-RPT-030 пп. 4–6) недозволені приводи (зарплата, оплата постачальнику, повернення) відкидаються, повтори — теж",
    "resolvePnlSettings — налаштування P&L організації (BR-RPT-030 пп. 4–6) немає налаштувань або полів — типові значення (поведінка до налаштувань)",
+   "resolvePnlSettings — налаштування P&L організації (BR-RPT-030 пп. 4–6) повернення підзвіту віднімається лише з «Під звіт» серед витрат; прапорець типово увімкнено",
    "resolvePnlSettings — налаштування P&L організації (BR-RPT-030 пп. 4–6) порожні «інші доходи» лишаються порожніми"
   ],
   "apps/api/src/modules/reports/reports.contract.spec.ts": [
@@ -5671,6 +5687,12 @@
   "apps/api/src/modules/reports/reports.load.spec.ts": [
    "ReportsService.load — завантаженість підйомників відсоток — з одним знаком після коми (3 години за рік — 0,1 %, не 0 %)",
    "ReportsService.load — завантаженість підйомників з філією — лише підйомники зон цієї філії",
+   "ReportsService.load — завантаженість підйомників місткість — робочий час філії (BR-RPT-033) видалений підйомник із записом — місткість його філії з запису",
+   "ReportsService.load — завантаженість підйомників місткість — робочий час філії (BR-RPT-033) вихідний день дає 0: неділя в робочих днях — рахується, субота поза ними — ні",
+   "ReportsService.load — завантаженість підйомників місткість — робочий час філії (BR-RPT-033) налаштування чужої організації не застосовуються",
+   "ReportsService.load — завантаженість підйомників місткість — робочий час філії (BR-RPT-033) період лише з вихідних — місткість 0 і 0 %, а не ділення на нуль",
+   "ReportsService.load — завантаженість підйомників місткість — робочий час філії (BR-RPT-033) філія без BranchSettings — типово пн–пт по 9 год: тиждень = 45 год",
+   "ReportsService.load — завантаженість підйомників місткість — робочий час філії (BR-RPT-033) філія з налаштуваннями — її дні й години (08:30–17:00, пн–сб = 6 × 8,5)",
    "ReportsService.load — завантаженість підйомників підйомник без записів за період — у звіті з нулями; видалений і чужий — ні"
   ],
   "apps/api/src/modules/reports/reports.period-bounds.spec.ts": [
@@ -5686,23 +5708,27 @@
    "ReportsService — межі періоду за Києвом завантаженість: totalDays — календарні дні періоду через межу року: 2025-12-31 … 2026-01-01 → 2",
    "ReportsService — межі періоду за Києвом зима (UTC+2): один день 2026-01-15 виручка: completedAt від київської півночі до кінця київської доби",
    "ReportsService — межі періоду за Києвом зима (UTC+2): один день 2026-01-15 завантаженість: startAt слота у межах київської доби",
-   "ReportsService — межі періоду за Києвом зима (UTC+2): один день 2026-01-15 звіт по нарядах: createdAt у тих самих межах",
+   "ReportsService — межі періоду за Києвом зима (UTC+2): один день 2026-01-15 звіт по нарядах: documentDate — календарні дати без зсуву, як список нарядів",
+   "ReportsService — межі періоду за Києвом зима (UTC+2): один день 2026-01-15 звіт по нарядах: скасовані не рахуються, чернетки — рахуються (як список)",
    "ReportsService — межі періоду за Києвом зима (UTC+2): один день 2026-01-15 рентабельність: обидва агрегати (наряди й запчастини) отримують ті самі межі",
    "ReportsService — межі періоду за Києвом зима (UTC+2): один день 2026-01-15 склад: рухи за createdAt у межах київської доби",
    "ReportsService — межі періоду за Києвом літо (UTC+3): один день 2026-07-09 виручка: completedAt від київської півночі до кінця київської доби",
    "ReportsService — межі періоду за Києвом літо (UTC+3): один день 2026-07-09 завантаженість: startAt слота у межах київської доби",
-   "ReportsService — межі періоду за Києвом літо (UTC+3): один день 2026-07-09 звіт по нарядах: createdAt у тих самих межах",
+   "ReportsService — межі періоду за Києвом літо (UTC+3): один день 2026-07-09 звіт по нарядах: documentDate — календарні дати без зсуву, як список нарядів",
+   "ReportsService — межі періоду за Києвом літо (UTC+3): один день 2026-07-09 звіт по нарядах: скасовані не рахуються, чернетки — рахуються (як список)",
    "ReportsService — межі періоду за Києвом літо (UTC+3): один день 2026-07-09 рентабельність: обидва агрегати (наряди й запчастини) отримують ті самі межі",
    "ReportsService — межі періоду за Києвом літо (UTC+3): один день 2026-07-09 склад: рухи за createdAt у межах київської доби",
    "ReportsService — межі періоду за Києвом наряд, завершений 10.10 о 00:30 за Києвом, входить у звіт за 10.10 і не входить у 09.10",
    "ReportsService — межі періоду за Києвом перехід на зимовий час 25.10.2026: один день 2026-10-25 виручка: completedAt від київської півночі до кінця київської доби",
    "ReportsService — межі періоду за Києвом перехід на зимовий час 25.10.2026: один день 2026-10-25 завантаженість: startAt слота у межах київської доби",
-   "ReportsService — межі періоду за Києвом перехід на зимовий час 25.10.2026: один день 2026-10-25 звіт по нарядах: createdAt у тих самих межах",
+   "ReportsService — межі періоду за Києвом перехід на зимовий час 25.10.2026: один день 2026-10-25 звіт по нарядах: documentDate — календарні дати без зсуву, як список нарядів",
+   "ReportsService — межі періоду за Києвом перехід на зимовий час 25.10.2026: один день 2026-10-25 звіт по нарядах: скасовані не рахуються, чернетки — рахуються (як список)",
    "ReportsService — межі періоду за Києвом перехід на зимовий час 25.10.2026: один день 2026-10-25 рентабельність: обидва агрегати (наряди й запчастини) отримують ті самі межі",
    "ReportsService — межі періоду за Києвом перехід на зимовий час 25.10.2026: один день 2026-10-25 склад: рухи за createdAt у межах київської доби",
    "ReportsService — межі періоду за Києвом перехід на літній час 29.03.2026: один день 2026-03-29 виручка: completedAt від київської півночі до кінця київської доби",
    "ReportsService — межі періоду за Києвом перехід на літній час 29.03.2026: один день 2026-03-29 завантаженість: startAt слота у межах київської доби",
-   "ReportsService — межі періоду за Києвом перехід на літній час 29.03.2026: один день 2026-03-29 звіт по нарядах: createdAt у тих самих межах",
+   "ReportsService — межі періоду за Києвом перехід на літній час 29.03.2026: один день 2026-03-29 звіт по нарядах: documentDate — календарні дати без зсуву, як список нарядів",
+   "ReportsService — межі періоду за Києвом перехід на літній час 29.03.2026: один день 2026-03-29 звіт по нарядах: скасовані не рахуються, чернетки — рахуються (як список)",
    "ReportsService — межі періоду за Києвом перехід на літній час 29.03.2026: один день 2026-03-29 рентабельність: обидва агрегати (наряди й запчастини) отримують ті самі межі",
    "ReportsService — межі періоду за Києвом перехід на літній час 29.03.2026: один день 2026-03-29 склад: рухи за createdAt у межах київської доби",
    "ReportsService — межі періоду за Києвом період через перехід на зимовий час: початок за літнім зсувом, кінець за зимовим",
@@ -5728,6 +5754,7 @@
    "ReportsService.pnl — BR-RPT-030 налаштування звіту (OrganisationSettings.pnl*) відповідь несе застосовані налаштування; недоступні налаштування — типові, звіт будується",
    "ReportsService.pnl — BR-RPT-030 налаштування звіту (OrganisationSettings.pnl*) майбутні місяці без зарплати — у попередженні лише з pnlWarnFuturePayroll",
    "ReportsService.pnl — BR-RPT-030 налаштування звіту (OrganisationSettings.pnl*) оплата клієнта зі статтею доходу — інший дохід лише коли увімкнено в налаштуваннях",
+   "ReportsService.pnl — BR-RPT-030 налаштування звіту (OrganisationSettings.pnl*) повернення підзвіту зменшує витрату своєї статті (без статті — «Без статті»), лише з «Під звіт» і pnlNetAdvanceReturns",
    "ReportsService.pnl — BR-RPT-030 період довший за 24 місяці → 400; рівно 24 — можна",
    "ReportsService.pnl — BR-RPT-030 початок пізніше кінця → 400",
    "ReportsService.pnl — BR-RPT-030 сторнована пара каси не входить — навіть коли сторно пізніше за період",
@@ -5738,6 +5765,9 @@
    "ReportsService — Bug #629 квантування грошей у звітах profitability — laborCostRatio per-org (§13) boundary 1 → totalCostLabor === totalLabor (100% ФОП)",
    "ReportsService — Bug #629 квантування грошей у звітах profitability — laborCostRatio per-org (§13) clamp: значення поза [0,1] (1.5 і -0.5) обрізаються до меж",
    "ReportsService — Bug #629 квантування грошей у звітах profitability — laborCostRatio per-org (§13) default 0.4 → totalCostLabor як раніше (регресія-guard стабільності множника)",
+   "ReportsService — Bug #629 квантування грошей у звітах profitability — laborCostRatio per-org (§13) laborCostRatio у відповіді: налаштування без частки — типові 0,4",
+   "ReportsService — Bug #629 квантування грошей у звітах profitability — laborCostRatio per-org (§13) laborCostRatio у відповіді: обрізана до меж",
+   "ReportsService — Bug #629 квантування грошей у звітах profitability — laborCostRatio per-org (§13) laborCostRatio у відповіді: частка з налаштувань",
    "ReportsService — Bug #629 квантування грошей у звітах profitability — laborCostRatio per-org (§13) non-default 0.6 → totalCostLabor масштабується (totalLabor × 0.6)",
    "ReportsService — Bug #629 квантування грошей у звітах profitability — laborCostRatio per-org (§13) non-finite laborCostRatio (NaN) → fallback default 0.4",
    "ReportsService — Bug #629 квантування грошей у звітах profitability — laborCostRatio per-org (§13) settings failure → fallback default 0.4 (звіт не блокується)",
@@ -5754,6 +5784,20 @@
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: наряд без ПДВ у сумі (totalNet = totalAmount) дає ПДВ 0, а не збережений totalVat",
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: рядок дня несе суму без ПДВ, ПДВ як різницю і суму з ПДВ",
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: сума без ПДВ береться з totalNet, сума з ПДВ — з totalAmount; totalVat у запиті не бере участі"
+  ],
+  "apps/api/src/modules/reports/reports.stock.spec.ts": [
+   "ReportsService.stock — видалені товари (BR-RPT-032) і вартості (BR-RPT-034) видалений товар із залишком лишається у звіті й підсумках вартості, з позначкою",
+   "ReportsService.stock — видалені товари (BR-RPT-032) і вартості (BR-RPT-034) дві вартості залишку (BR-RPT-034) без партій і без закупівельної ціни — собівартість 0, ціна продажу лишається",
+   "ReportsService.stock — видалені товари (BR-RPT-032) і вартості (BR-RPT-034) дві вартості залишку (BR-RPT-034) зі складом — партії лише цього складу",
+   "ReportsService.stock — видалені товари (BR-RPT-032) і вартості (BR-RPT-034) дві вартості залишку (BR-RPT-034) кількість поза партіями — за purchasePrice товару (3 з партій + 2 × 40)",
+   "ReportsService.stock — видалені товари (BR-RPT-032) і вартості (BR-RPT-034) дві вартості залишку (BR-RPT-034) неактивна, вичерпана й чужа партії не входять; партія іншого складу — у свій рядок",
+   "ReportsService.stock — видалені товари (BR-RPT-032) і вартості (BR-RPT-034) дві вартості залишку (BR-RPT-034) собівартість — з партій (2 × 50 + 1 × 60), ціна продажу — кількість × salePrice",
+   "ReportsService.stock — видалені товари (BR-RPT-032) і вартості (BR-RPT-034) живий товар — без позначки; поле є в кожному рядку (boolean, не undefined)"
+  ],
+  "apps/api/src/modules/reports/reports.vat.spec.ts": [
+   "ReportsService.vatReport — відбір і знак (BR-RPT-036) зобов'язання — виставлені рахунки періоду (SENT, PARTIALLY_PAID, PAID, OVERDUE)",
+   "ReportsService.vatReport — відбір і знак (BR-RPT-036) податковий кредит — отримані закупівлі періоду (PARTIAL, RECEIVED)",
+   "ReportsService.vatReport — відбір і знак (BR-RPT-036) різниця < 0 — до відшкодування (від’ємне net), > 0 — до сплати"
   ],
   "apps/api/src/modules/search/search.service.spec.ts": [
    "SearchController limit клемпиться у [1,50]: 999→50, 0/невалід→10",
@@ -5795,6 +5839,7 @@
   "apps/api/src/modules/settings/settings.branch-secrets.contract.spec.ts": [
    "Налаштування філії — секрети провайдерів не віддаються (BR-PAY-015) GET з бази: 200, жодного секрету, hasMonobankToken=true; у кеш теж без секретів",
    "Налаштування філії — секрети провайдерів не віддаються (BR-PAY-015) GET з кешу: бази не читає і віддає ту саму відповідь без секретів",
+   "Налаштування філії — секрети провайдерів не віддаються (BR-PAY-015) PATCH workDays з неділею (7) → 200; 0 і 8 — 400",
    "Налаштування філії — секрети провайдерів не віддаються (BR-PAY-015) PATCH без секретів у тілі, а в рядку вони є → відповідь без секретів",
    "Налаштування філії — секрети провайдерів не віддаються (BR-PAY-015) PATCH із секретами в тілі: 200, у відповіді жодного з них, hasMonobankToken=true",
    "Налаштування філії — секрети провайдерів не віддаються (BR-PAY-015) токен monobank — null → hasMonobankToken=false",
@@ -5832,6 +5877,9 @@
    "Settings — HTTP Contract Bug #84 regression: followUp fields end-to-end PATCH відхиляє followUpDays > 365",
    "Settings — HTTP Contract GET /settings/base-currency маршрут відкритий бухгалтеру й приймальні; налаштування — власнику, адміну, приймальні й механіку (дві останні — лише поля картки)",
    "Settings — HTTP Contract GET /settings/base-currency повертає 200 і лише код базової валюти — без решти налаштувань організації",
+   "Settings — HTTP Contract GET /settings/branding картку організації не заповнено (назва порожня) → orgName null",
+   "Settings — HTTP Contract GET /settings/branding маршрут відкритий усім ролям персоналу, зокрема бухгалтеру",
+   "Settings — HTTP Contract GET /settings/branding повертає 200 і лише палітру й назву організації — без решти налаштувань",
    "Settings — HTTP Contract GET /settings/organisation повертає 200 з uiFeatures всередині shape",
    "Settings — HTTP Contract GET /settings/organisation повертає costMethod зі значення Prisma enum",
    "Settings — HTTP Contract GET /settings/ui-features повертає 200 з усіма 10 boolean ключами UiFeatures",
@@ -5880,6 +5928,7 @@
    "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (не масив)",
    "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (оплата постачальнику у витратах)",
    "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (повернення клієнту у витратах)",
+   "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (повернення підзвіту — не boolean)",
    "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (повтор приводу)",
    "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (прапорець — не boolean)",
    "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) недоступне значення — 400, налаштування не змінюються (інкасація у доходах)",
@@ -7408,6 +7457,8 @@
    "WorkOrderEventHandlers помилка side-effect не прокидається (best-effort)"
   ],
   "apps/api/src/modules/work-orders/fsm-parity.spec.ts": [
+   "FSM WorkOrder: карта = статуси Prisma-enum ключі карти — рівно значення WorkOrderStatus",
+   "FSM WorkOrder: карта = статуси Prisma-enum кожна ціль переходу — значення WorkOrderStatus",
    "FSM parity: backend ↔ @sto/shared Invoice: shared-копія збігається з беком",
    "FSM parity: backend ↔ @sto/shared Invoice: кожна ціль переходу є відомим статусом",
    "FSM parity: backend ↔ @sto/shared Invoice: набір статусів однаковий",
@@ -7775,6 +7826,12 @@
    "WorkOrdersService.findAll — рядки й запчастини для планшета (?include=) без include список такий, як був: рядків і запчастин немає ні в запиті, ні у відповіді",
    "WorkOrdersService.findAll — рядки й запчастини для планшета (?include=) запчастина в альтернативній одиниці: одиниця й коефіцієнт рядка, а не базові товару",
    "WorkOrdersService.findAll — рядки й запчастини для планшета (?include=) собівартість запчастини у списку не віддається нікому"
+  ],
+  "apps/api/src/modules/work-orders/work-orders.list-status-filter.spec.ts": [
+   "WorkOrdersService.findAll — відбір за кількома статусами `status` разом зі `statuses` — перетин: статус поза набором не дає жодного рядка",
+   "WorkOrdersService.findAll — відбір за кількома статусами «В роботі»: IN_PROGRESS + ON_HOLD — два наряди організації, без видалених і чужих",
+   "WorkOrdersService.findAll — відбір за кількома статусами «Очікують»: DRAFT + ESTIMATE + APPROVED — три наряди",
+   "WorkOrdersService.findAll — відбір за кількома статусами без `statuses` поведінка як раніше: `status` — один статус, без обох — усі живі наряди"
   ],
   "apps/api/src/modules/work-orders/work-orders.numbering.spec.ts": [
    "WorkOrdersService — номер наряду з DocumentNumberService clone(): клон отримує НОВИЙ номер із DocumentNumberService, а не номер оригіналу",

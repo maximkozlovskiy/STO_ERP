@@ -10,6 +10,8 @@ interface ListSearchInputProps {
   onChange: (value: string) => void;
   /** Підказка в порожньому полі й доступна назва водночас (видимого підпису поле не має). */
   label: string;
+  /** Ширина замість типової `w-72` — лише коли рядок фільтрів інакше не вміщається (каса). */
+  widthClassName?: string;
 }
 
 /**
@@ -18,7 +20,12 @@ interface ListSearchInputProps {
  * Одна розмітка на всі списки: лупа ліворуч, ширина й висота рядка фільтрів, довжина тексту
  * обмежена тим самим `LIST_SEARCH_MAX_LENGTH`, до якого пошук обрізає або який перевіряє API.
  */
-export function ListSearchInput({ value, onChange, label }: ListSearchInputProps) {
+export function ListSearchInput({
+  value,
+  onChange,
+  label,
+  widthClassName = 'w-72',
+}: ListSearchInputProps) {
   return (
     <Input
       value={value}
@@ -27,7 +34,8 @@ export function ListSearchInput({ value, onChange, label }: ListSearchInputProps
       aria-label={label}
       maxLength={LIST_SEARCH_MAX_LENGTH}
       leftElement={<Search />}
-      className="w-72 h-8 text-[13px]"
+      title={label}
+      className={`${widthClassName} h-8 text-[13px]`}
     />
   );
 }

@@ -292,7 +292,7 @@ export default function CashOperationsTab({
           )
         }
       >
-        <Select value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-56">
+        <Select value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-48">
           {registers?.map(r => (
             <option key={r.id} value={r.id}>
               {r.name} {r.isFiscal ? t('operations.fiscalSuffix') : ''}
@@ -310,11 +310,14 @@ export default function CashOperationsTab({
           </div>
         )}
         {/* Роздільник: каса й залишок — ліворуч, фільтри списку — праворуч від нього */}
-        <span aria-hidden="true" className="mx-4 hidden h-8 w-px bg-border md:block" />
+        <span aria-hidden="true" className="mx-3 hidden h-8 w-px bg-border md:block" />
+        {/* Вужчий пошук — каса, залишок, пошук, період і «Внести / Видати» в одному рядку на
+            1440 px (рішення власника 2026-10-29); повна підказка — у title */}
         <ListSearchInput
           value={search}
           onChange={setSearch}
           label={t('operations.searchPlaceholder')}
+          widthClassName="w-36"
         />
         <DateRangeFilter
           from={dateFrom}

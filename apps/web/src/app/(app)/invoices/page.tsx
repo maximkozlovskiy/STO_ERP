@@ -9,6 +9,7 @@ import { Receipt, Pencil, ClipboardList, CreditCard, User } from 'lucide-react';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
 import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
 import { LinesSummarySection } from '@/components/ui/LinesSummarySection';
+import { useLinesSummary } from '@/hooks/api/useLinesSummary';
 import { invoiceLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { useRequireAuth } from '@/lib/auth';
@@ -260,6 +261,16 @@ function InvoicesPageInner() {
   const bulkSelect = useBulkSelect(invoices);
 
   const [selectedInv, setSelectedInv] = useState<InvoiceWithOptionals | null>(null);
+  // BR-INV-023: чернетку без рядків не виставити (сервер — 400). Кількість рядків — із того самого
+  // зведення, що блок «Рядки» панелі (спільний ключ кешу, без зайвого запиту); до відповіді кнопку
+  // не блокуємо, щоб не мигала (рішення власника 2026-10-29 — як у картці).
+  const { data: selectedLines } = useLinesSummary(
+    'invoices',
+    selectedInv?.id ?? null,
+    detailPanel.enabled,
+  );
+  const selectedHasNoLines =
+    !!selectedLines && selectedLines.tables.every(tb => tb.positions === 0);
   // Вимкнули панель → вибір скидаємо: інакше після повторного вмикання клік по тому самому
   // рядку сховав би панель замість показати (Bug #624, як у закупівель і складу).
   useEffect(() => {
@@ -608,27 +619,40 @@ function InvoicesPageInner() {
                 {(inv.deletedAt
                   ? []
                   : ((STATUS_TRANSITIONS[inv.status] as InvoiceStatusValue[] | undefined) ?? [])
-                ).map(s => (
-                  <Button
-                    key={s}
-                    variant={
-                      s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'
-                    }
-                    size="sm"
-                    className="w-full"
-                    onClick={() => {
-                      if (s === 'PAID') openPayment(inv);
-                      else void handleTransition(inv, s);
-                    }}
-                    loading={savingId === inv.id}
-                  >
-                    {s === 'SENT'
-                      ? t('actions.send')
-                      : s === 'PAID'
-                        ? t('actions.pay')
-                        : t('actions.cancel')}
-                  </Button>
-                ))}
+                ).map(s => {
+                  const noLines = s === 'SENT' && inv.id === selectedInv?.id && selectedHasNoLines;
+                  return (
+                    <div key={s} className="flex flex-col gap-1">
+                      <Button
+                        variant={
+                          s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'
+                        }
+                        size="sm"
+                        className="w-full"
+                        disabled={noLines}
+                        onClick={() => {
+                          if (s === 'PAID') openPayment(inv);
+                          else void handleTransition(inv, s);
+                        }}
+                        loading={savingId === inv.id}
+                      >
+                        {s === 'SENT'
+                          ? t('actions.send')
+                          : s === 'PAID'
+                            ? t('actions.pay')
+                            : t('actions.cancel')}
+                      </Button>
+                      {noLines && (
+                        <p
+                          className="text-[12px] text-muted-foreground"
+                          data-testid="send-no-lines"
+                        >
+                          {t('card.noLinesToIssue')}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
                 {!inv.deletedAt && (
                   <Button
                     variant="outline"
