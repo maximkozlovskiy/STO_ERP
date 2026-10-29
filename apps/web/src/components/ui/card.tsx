@@ -90,25 +90,25 @@ function KpiCard({
   return (
     <div
       className={cn(
-        'rounded-lg border p-4 flex items-start justify-between gap-3 h-full',
+        'rounded-lg border px-3.5 py-2.5 flex items-start justify-between gap-3 h-full',
         colorClass,
         'bg-(--kpi-bg) border-(--kpi-border)',
         className,
       )}
     >
-      <div className="flex flex-col gap-1 min-w-0">
-        <span className="text-[12px] font-medium text-foreground-muted uppercase tracking-wider">
+      <div className="flex flex-col gap-0.5 min-w-0">
+        <span className="text-[11px] font-medium text-foreground-muted uppercase tracking-wider">
           {label}
         </span>
         {/* Сума не переносить «₴» на новий рядок; на вузькій картці (390 px) — менший кегль. */}
-        <span className="text-[22px] sm:text-[28px] font-bold text-foreground leading-none tracking-tight whitespace-nowrap">
+        <span className="text-[20px] sm:text-[24px] font-bold text-foreground leading-none tracking-tight whitespace-nowrap">
           {value}
         </span>
         {trend && (
           <span
             data-testid="kpi-trend"
             className={cn(
-              'text-[12px] font-medium mt-0.5',
+              'text-[12px] font-medium',
               trend.up === undefined
                 ? 'text-muted-foreground'
                 : trend.up
@@ -121,7 +121,7 @@ function KpiCard({
           </span>
         )}
       </div>
-      <span className="shrink-0 rounded-md p-2.5 text-(--kpi-icon) bg-white/20 [&>svg]:h-5 [&>svg]:w-5">
+      <span className="shrink-0 rounded-md p-1.5 text-(--kpi-icon) bg-white/20 [&>svg]:h-4 [&>svg]:w-4">
         {icon}
       </span>
     </div>

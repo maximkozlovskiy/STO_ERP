@@ -28,7 +28,7 @@ function fmt(v: number) {
 function RevenueChart({ data }: { data: RevenuePoint[] }) {
   const { t } = useTranslation('dashboard');
   return (
-    <ResponsiveContainer width="100%" height={200}>
+    <ResponsiveContainer width="100%" height={160}>
       <BarChart data={data} margin={{ left: -10 }}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
         <XAxis

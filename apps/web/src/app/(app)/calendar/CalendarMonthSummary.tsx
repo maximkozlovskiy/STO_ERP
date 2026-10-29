@@ -74,7 +74,7 @@ export const CalendarMonthSummary = memo(function CalendarMonthSummary({
 
   if (sum.records === 0 && tasks.length === 0)
     return (
-      <p className="mt-4 text-sm text-muted-foreground" data-testid="month-summary-empty">
+      <p className="text-sm text-muted-foreground" data-testid="month-summary-empty">
         {t('month.summary.empty')}
       </p>
     );
@@ -91,21 +91,21 @@ export const CalendarMonthSummary = memo(function CalendarMonthSummary({
   ];
 
   return (
-    <div className="mt-4 space-y-4" data-testid="month-summary">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="space-y-3" data-testid="month-summary">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {kpis.map(k => (
           <div
             key={k.key}
-            className="bg-surface border border-border rounded-xl p-4"
+            className="bg-surface border border-border rounded-xl px-3.5 py-2"
             data-testid={`month-summary-${k.key}`}
           >
-            <div className="text-xs text-muted-foreground mb-1">{k.label}</div>
-            <div className="text-2xl font-bold text-foreground tabular-nums">{k.value}</div>
+            <div className="text-xs text-muted-foreground">{k.label}</div>
+            <div className="text-xl font-bold text-foreground tabular-nums">{k.value}</div>
           </div>
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         <Card title={t('month.summary.liftsTitle')}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="month-summary-lifts">

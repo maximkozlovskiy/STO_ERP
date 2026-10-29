@@ -366,7 +366,7 @@ export default function DashboardPage() {
           {/* KPI grid — 6 рівних карток */}
           <div
             className={cn(
-              'grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6',
+              'grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4',
               canViewRevenue ? 'lg:grid-cols-4 2xl:grid-cols-7' : 'lg:grid-cols-6',
             )}
           >
@@ -473,8 +473,8 @@ export default function DashboardPage() {
 
           {/* Revenue chart — лише для ролей з доступом до фін-звітності (RBAC /reports/revenue) */}
           {canViewRevenue && revenue.length > 0 ? (
-            <Card className="mb-6">
-              <CardHeader>
+            <Card className="mb-4">
+              <CardHeader className="px-4 pt-3 pb-2.5">
                 <div className="flex items-center justify-between">
                   <CardTitle>{t('revenue.title')}</CardTitle>
                   <Link
@@ -485,7 +485,7 @@ export default function DashboardPage() {
                   </Link>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-4 py-3">
                 <RevenueChart data={revenue} />
               </CardContent>
             </Card>
@@ -493,8 +493,8 @@ export default function DashboardPage() {
 
           {/* Upcoming maintenance ТО */}
           {upcomingTO.length > 0 && (
-            <Card className="mb-6">
-              <CardHeader>
+            <Card className="mb-4">
+              <CardHeader className="px-4 pt-3 pb-2.5">
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2">
                     <CalendarClock className="h-4 w-4 text-warning" />
@@ -508,7 +508,7 @@ export default function DashboardPage() {
                   </Link>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-4 py-3">
                 <div className="divide-y divide-border">
                   {upcomingTO.slice(0, 8).map(item => {
                     const dateStr = item.nextMaintenanceDate
@@ -555,8 +555,8 @@ export default function DashboardPage() {
 
           {/* Календар — підсумки поточного місяця (BR-CAL-013); ролям без календаря картки немає */}
           {access.calendar && (
-            <Card className="mb-6" data-testid="dashboard-calendar-summary">
-              <CardHeader>
+            <Card className="mb-4" data-testid="dashboard-calendar-summary">
+              <CardHeader className="px-4 pt-3 pb-2.5">
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2">
                     <CalendarDays className="h-4 w-4 text-primary" />
@@ -570,7 +570,7 @@ export default function DashboardPage() {
                   </Link>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-4 py-3">
                 {monthSummary.loading ? (
                   <PageSpinner />
                 ) : monthSummary.error ? (
@@ -592,7 +592,7 @@ export default function DashboardPage() {
 
           {/* Quick actions */}
           <Card>
-            <CardHeader>
+            <CardHeader className="px-4 pt-3 pb-2.5">
               <div className="flex items-center justify-between">
                 <CardTitle>{t('quickActionsCard.title')}</CardTitle>
                 <button
@@ -604,7 +604,7 @@ export default function DashboardPage() {
                 </button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-4 py-3">
               {qaConfigOpen && (
                 <div className="mb-4 p-3 bg-secondary rounded-lg border border-border">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">

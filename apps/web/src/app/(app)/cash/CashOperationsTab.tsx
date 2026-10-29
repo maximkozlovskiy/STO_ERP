@@ -266,8 +266,32 @@ export default function CashOperationsTab({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-3">
-      {/* Каса + баланс */}
-      <div className="flex flex-wrap items-center gap-3 shrink-0">
+      {/* Каса + баланс | Пошук · З · По; дії каси «Внести / Видати» — праворуч, як основна кнопка списку */}
+      <ListFiltersRow
+        actions={
+          canDeposit && (
+            <>
+              <Button
+                leftIcon={<ArrowDownCircle className="h-4 w-4" />}
+                onClick={() => openOpModal('IN')}
+                disabled={fiscalBlocked}
+              >
+                {t('operations.deposit')}
+              </Button>
+              {canOperate && (
+                <Button
+                  variant="outline"
+                  leftIcon={<ArrowUpCircle className="h-4 w-4" />}
+                  onClick={() => openOpModal('OUT')}
+                  disabled={fiscalBlocked}
+                >
+                  {t('operations.withdraw')}
+                </Button>
+              )}
+            </>
+          )
+        }
+      >
         <Select value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-56">
           {registers?.map(r => (
             <option key={r.id} value={r.id}>
@@ -285,7 +309,22 @@ export default function CashOperationsTab({
             </span>
           </div>
         )}
-      </div>
+        {/* Роздільник: каса й залишок — ліворуч, фільтри списку — праворуч від нього */}
+        <span aria-hidden="true" className="mx-4 hidden h-8 w-px bg-border md:block" />
+        <ListSearchInput
+          value={search}
+          onChange={setSearch}
+          label={t('operations.searchPlaceholder')}
+        />
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          onFromChange={setDateFrom}
+          onToChange={setDateTo}
+          fromLabel={t('operations.dateFrom')}
+          toLabel={t('operations.dateTo')}
+        />
+      </ListFiltersRow>
 
       {/* Зміна (для фіскальної каси) */}
       {selected?.isFiscal && (
@@ -349,47 +388,6 @@ export default function CashOperationsTab({
           )}
         </div>
       )}
-
-      {/* Пошук · З · По; дії каси «Внести / Видати» — праворуч, як основна кнопка списку */}
-      <ListFiltersRow
-        actions={
-          canDeposit && (
-            <>
-              <Button
-                leftIcon={<ArrowDownCircle className="h-4 w-4" />}
-                onClick={() => openOpModal('IN')}
-                disabled={fiscalBlocked}
-              >
-                {t('operations.deposit')}
-              </Button>
-              {canOperate && (
-                <Button
-                  variant="outline"
-                  leftIcon={<ArrowUpCircle className="h-4 w-4" />}
-                  onClick={() => openOpModal('OUT')}
-                  disabled={fiscalBlocked}
-                >
-                  {t('operations.withdraw')}
-                </Button>
-              )}
-            </>
-          )
-        }
-      >
-        <ListSearchInput
-          value={search}
-          onChange={setSearch}
-          label={t('operations.searchPlaceholder')}
-        />
-        <DateRangeFilter
-          from={dateFrom}
-          to={dateTo}
-          onFromChange={setDateFrom}
-          onToChange={setDateTo}
-          fromLabel={t('operations.dateFrom')}
-          toLabel={t('operations.dateTo')}
-        />
-      </ListFiltersRow>
 
       <ListLoadError error={opsError} onRetry={() => void refetchOps()} className="shrink-0" />
 
