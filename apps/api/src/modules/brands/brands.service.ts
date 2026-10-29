@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Brand, Prisma } from '@prisma/client';
-import { translateError } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { normalizeArticle } from '../../common/utils/normalize-article';
@@ -280,10 +280,13 @@ export class BrandsService {
    * Блокування транзакційне — знімається разом із commit/rollback; помилка відкочує все.
    */
   private underWritingsLock<T>(orgId: string, work: (tx: Db) => Promise<T>): Promise<T> {
-    return this.prisma.$transaction(async tx => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`brands:${orgId}`}))`;
-      return work(tx);
-    });
+    return this.prisma.$transaction(
+      async tx => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`brands:${orgId}`}))`;
+        return work(tx);
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
   }
 
   // Diff synonyms: soft-delete removed, create new (resurrection-aware).
