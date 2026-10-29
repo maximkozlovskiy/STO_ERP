@@ -17,6 +17,7 @@ import type { LocalPart, Warehouse, Unit } from './types';
 import type { WarehouseFree } from '@/lib/part-warehouse';
 import { ProcurementBadge } from '@/components/ui/purchase-list/ProcurementBadge';
 import type { WorkOrderProcurementState } from '@/components/ui/purchase-list/WorkOrderProcurement';
+import { CatalogHelp } from '@/components/ui/help-popover';
 
 /** Рядок, у якому обирають товар і склад: рядок введення або незбережений рядок у правці. */
 export type PartRow = 'new' | 'edit';
@@ -190,7 +191,19 @@ export function PartsTable(props: PartsTableProps) {
             <thead>
               <tr className="border-y border-border bg-secondary">
                 <th className={TH_FIRST}>{t('partsTable.colName')}</th>
-                <th className={TH}>{t('partsTable.warehouse')}</th>
+                <th className={TH}>
+                  <span className="inline-flex items-center gap-1">
+                    {t('partsTable.warehouse')}
+                    {/* Вільний залишок і автовибір складу — BR-WO-029 */}
+                    <CatalogHelp
+                      ns="workOrders"
+                      topic="partsTable.warehouseHelp"
+                      size="sm"
+                      align="start"
+                      testId="parts-warehouse-help"
+                    />
+                  </span>
+                </th>
                 <th className={TH}>{t('partsTable.colInStock')}</th>
                 <th className={TH} title={t('partsTable.colQtyTitle')}>
                   {t('partsTable.colQty')}

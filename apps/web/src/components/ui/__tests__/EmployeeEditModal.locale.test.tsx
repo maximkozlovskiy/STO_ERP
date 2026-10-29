@@ -68,7 +68,7 @@ describe('EmployeeEditModal — тексти за мовою інтерфейс�
     expect(screen.getByRole('dialog', { name: 'Новий співробітник' })).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Іван')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Коваль')).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: '% від норма-год' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '% від суми робіт' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Ставка × нормо-год' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Ставка + бонус' })).toBeInTheDocument();
     expect(screen.getByText('Надати доступ до системи')).toBeInTheDocument();
@@ -90,7 +90,7 @@ describe('EmployeeEditModal — тексти за мовою інтерфейс�
     const dialog = screen.getByRole('dialog', { name: 'New employee' });
     fireEvent.click(screen.getByRole('checkbox', { name: 'Grant system access' }));
     expect(screen.getByLabelText(/Login email/)).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: '% of standard hours' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '% of labor total' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
     expect(dialog.textContent).not.toMatch(CYRILLIC);
   });

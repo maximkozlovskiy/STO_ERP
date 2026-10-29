@@ -93,5 +93,42 @@
     "per_normo_hour": "Rate × norm-hour",
     "fixed_plus_bonus": "Rate + bonus",
     "unknown": "Not specified"
+  },
+  "help": {
+    "title": "How payroll is calculated",
+    "blocks": [
+      {
+        "title": "Base",
+        "items": [
+          "Labor lines of finished work orders (“Completed”, “Invoiced”, “Paid”, “Archived”) — by the line's main performer; parts are not in the base.",
+          "A work order falls into the period by completion date (Kyiv days, both included)."
+        ]
+      },
+      {
+        "title": "Schemes",
+        "items": [
+          {
+            "term": "% of labor total",
+            "text": "base × percent"
+          },
+          {
+            "term": "Rate × standard hours",
+            "text": "standard hours × rate"
+          },
+          {
+            "term": "Rate + bonus",
+            "text": "salary × share of the period + base × bonus percent; the share is period days in the month / days in the month"
+          }
+        ]
+      },
+      {
+        "title": "Important",
+        "items": [
+          "No scheme — accrued 0, the row stays.",
+          "Work order labor is accrued in one payroll only: labor already accrued in a computed or paid period is skipped.",
+          "Accrual is rounded to the kopeck once — from the total."
+        ]
+      }
+    ]
   }
 }

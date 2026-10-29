@@ -42,6 +42,7 @@ import {
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { ListLoadError } from '@/components/ui/list-load-error';
 import { useCashRegisters } from '@/hooks/api/useCash';
+import { CatalogHelp } from '@/components/ui/help-popover';
 
 // Вікно розрахунку відкривається лише кнопкою — його код (поля дат із календарем) не входить у
 // first-load сторінки (бюджет сторінок, check-page-budget.mjs).
@@ -247,8 +248,10 @@ export default function PayrollPage() {
   return (
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
-        <div>
+        <div className="flex items-center gap-2">
           <h1 className="page-title">{t('title')}</h1>
+          {/* BR-PAYR-001/002/004–008/015 */}
+          <CatalogHelp ns="payroll" topic="help" align="start" width="lg" />
         </div>
       </div>
 

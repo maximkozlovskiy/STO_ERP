@@ -13,6 +13,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { PurchaseOrderCreateModal } from '@/components/ui/PurchaseOrderCreateModal';
 import { fmtMoney, kyivToday, addDaysISO } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { CatalogHelp } from '@/components/ui/help-popover';
 
 const WINDOW_DAYS = 20;
 
@@ -116,7 +117,17 @@ export function SupplierPaymentScheduleTab() {
           <thead className="sticky top-0 z-10 bg-secondary">
             <tr className="text-muted-foreground">
               <th className="sticky left-0 z-20 bg-secondary text-left font-medium px-3 py-2 min-w-40 border-b border-r border-border">
-                {t('schedule.table.supplier')}
+                <span className="inline-flex items-center gap-1">
+                  {t('schedule.table.supplier')}
+                  {/* Борг і розподіл за датами — BR-SUPPAY-009/010 */}
+                  <CatalogHelp
+                    ns="supplierPayments"
+                    topic="schedule.help"
+                    size="sm"
+                    align="start"
+                    width="lg"
+                  />
+                </span>
               </th>
               <th className="text-right font-medium px-2 py-2 min-w-24 border-b border-border bg-destructive-subtle text-destructive-text">
                 {t('schedule.table.overdue')}

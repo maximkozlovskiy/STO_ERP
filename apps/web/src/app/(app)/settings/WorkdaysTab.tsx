@@ -13,6 +13,7 @@ import { Select } from '@/components/ui/select';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { cn } from '@/lib/utils';
 import { type BranchInfo } from './shared';
+import { CatalogHelp } from '@/components/ui/help-popover';
 
 // День тижня → номер (1=Пн … 7=Нд); підписи у settings-каталозі (workdays.days.*).
 const WORK_DAY_NUMS = [1, 2, 3, 4, 5, 6, 7];
@@ -99,6 +100,10 @@ export default function WorkdaysTab() {
 
   return (
     <div className="space-y-4">
+      {/* Що читає робочий час філії — BR-CAL-004/007, BR-WO-019, BR-RPT-033 */}
+      <div className="flex justify-end">
+        <CatalogHelp ns="settings" topic="workdays.help" width="lg" testId="workdays-help" />
+      </div>
       {error && (
         <div className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3">
           {error}

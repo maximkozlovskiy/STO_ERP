@@ -26,6 +26,7 @@ import { ModalTabs } from '@/components/ui/modal-tabs';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { CatalogHelp } from '@/components/ui/help-popover';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -537,18 +538,28 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
             )}
           </div>
           {showRate && (
-            <Select
-              label={t('columns.rate')}
-              required
-              {...register('rateType')}
-              errorMessage={errors.rateType?.message}
-            >
-              {RATE_TYPES.map(k => (
-                <option key={k} value={k}>
-                  {t(`editModal.rate.${k}`)}
-                </option>
-              ))}
-            </Select>
+            <div className="relative">
+              <Select
+                label={t('columns.rate')}
+                required
+                {...register('rateType')}
+                errorMessage={errors.rateType?.message}
+              >
+                {RATE_TYPES.map(k => (
+                  <option key={k} value={k}>
+                    {t(`editModal.rate.${k}`)}
+                  </option>
+                ))}
+              </Select>
+              {/* Схеми оплати — BR-PAYR-004..006; «?» праворуч у рядку підпису поля */}
+              <CatalogHelp
+                ns="employees"
+                topic="editModal.rateHelp"
+                size="sm"
+                className="absolute right-0 -top-1"
+                testId="rate-help"
+              />
+            </div>
           )}
           {showRate && rateType === 'percent_normo' && (
             <Input

@@ -70,7 +70,7 @@
     "deletedReadOnly": "The employee is deleted — view only",
     "saveError": "Save error",
     "rate": {
-      "percent_normo": "% of standard hours",
+      "percent_normo": "% of labor total",
       "per_normo_hour": "Rate × standard hours",
       "fixed_plus_bonus": "Rate + bonus"
     },
@@ -93,6 +93,32 @@
     "tabCategories": "Work categories",
     "tabBranches": "Branches",
     "allBranches": "Access to all branches",
-    "allBranchesHint": "OWNER and ADMIN have access to all branches automatically."
+    "allBranchesHint": "OWNER and ADMIN have access to all branches automatically.",
+    "rateHelp": {
+      "title": "How the pay scheme works",
+      "blocks": [
+        {
+          "items": [
+            {
+              "term": "% of labor total",
+              "text": "labor amount for the period × percent; does not depend on standard hours"
+            },
+            {
+              "term": "Rate × standard hours",
+              "text": "standard hours × rate; does not depend on the labor amount"
+            },
+            {
+              "term": "Rate + bonus",
+              "text": "salary for the share of the period + labor amount × bonus percent; the salary is accrued even without labor"
+            }
+          ]
+        },
+        {
+          "items": [
+            "Labor of finished work orders where the employee is the line's main performer counts; parts do not."
+          ]
+        }
+      ]
+    }
   }
 }

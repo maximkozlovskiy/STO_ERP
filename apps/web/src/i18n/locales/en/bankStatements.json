@@ -296,5 +296,68 @@
       "noAccount": "Select a bank account",
       "generic": "Statement processing error"
     }
+  },
+  "help": {
+    "title": "Allocation types",
+    "blocks": [
+      {
+        "title": "Incoming",
+        "items": [
+          {
+            "term": "Prepayment",
+            "text": "a customer's advance payment"
+          },
+          {
+            "term": "Service payment, Invoice payment, Other",
+            "text": "a customer payment; “Invoice payment” is linked to an invoice"
+          },
+          {
+            "term": "Refund",
+            "text": "posted as a refund in the customer's settlements"
+          }
+        ]
+      },
+      {
+        "title": "Outgoing",
+        "items": [
+          {
+            "term": "Supplier payment",
+            "text": "a new payment is created and posted — the debt goes down; linking an existing payment posts nothing twice"
+          },
+          {
+            "term": "Client refund",
+            "text": "the customer's advance goes down or their debt goes up"
+          },
+          {
+            "term": "Expense",
+            "text": "by expense category; settlements and cash do not change, in P&L — an expense"
+          },
+          {
+            "term": "Payroll",
+            "text": "marks the payment against a payroll period; the period state does not change"
+          },
+          {
+            "term": "Cash withdrawal",
+            "text": "a receipt into a cash desk of the same currency"
+          }
+        ]
+      },
+      {
+        "title": "Both directions",
+        "items": [
+          {
+            "term": "Transfer between accounts",
+            "text": "to another own account; from a foreign-currency line — only to an account in the same currency"
+          }
+        ]
+      },
+      {
+        "title": "Date and undo",
+        "items": [
+          "Entries are dated when the line is allocated, not by the operation date; only the rate is taken from the operation date.",
+          "An allocation can be undone with a reason; an incoming payment is removed only by reversing the payment."
+        ]
+      }
+    ]
   }
 }

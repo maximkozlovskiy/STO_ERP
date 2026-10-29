@@ -216,5 +216,48 @@
     "limitExceeded": "After applying the list would have {{total}} products, while the maximum is {{max}}. The list was not changed.",
     "apply": "Apply",
     "cancel": "Cancel"
+  },
+  "help": {
+    "title": "How pricing rules work",
+    "blocks": [
+      {
+        "title": "Which rule prices a product",
+        "items": [
+          "Of all enabled rules the most specific one wins:",
+          {
+            "term": "1. Supplier",
+            "text": "only when pricing a document of that supplier"
+          },
+          {
+            "term": "2. Product list",
+            "text": "applies only to products in the list (up to 5000, manually or from Excel/CSV)"
+          },
+          {
+            "term": "3. Brand",
+            "text": "products of the brand"
+          },
+          {
+            "term": "4. Category",
+            "text": "with all subcategories; the category closest to the product wins"
+          },
+          {
+            "term": "5. Product type",
+            "text": "products of this type"
+          },
+          {
+            "term": "6. Whole range",
+            "text": "a rule without a scope"
+          },
+          "Within one level — the lower “Priority” number."
+        ]
+      },
+      {
+        "title": "Important",
+        "items": [
+          "The price is calculated from the purchase price; a product without one is not repriced.",
+          "“Apply to all” recalculates every product in the rule's scope, but each gets the price of its own winning rule. A disabled rule cannot be applied."
+        ]
+      }
+    ]
   }
 }

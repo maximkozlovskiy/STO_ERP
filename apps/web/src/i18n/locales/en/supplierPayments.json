@@ -30,6 +30,40 @@
         "outstanding": "Outstanding"
       },
       "openOrder": "Open order {{number}}"
+    },
+    "help": {
+      "title": "How the payment schedule is calculated",
+      "blocks": [
+        {
+          "items": [
+            "The supplier debt is their settlements balance (all movements: payments, returns, adjustments), not the sum of orders."
+          ]
+        },
+        {
+          "title": "Spreading by dates",
+          "items": [
+            "The debt is spread over unpaid received orders from the oldest payment date; orders the debt does not reach count as paid.",
+            {
+              "term": "Overdue",
+              "text": "the payment date has passed or is not set; debt above the orders total goes here too"
+            },
+            {
+              "term": "Period dates",
+              "text": "orders with a payment date in the period"
+            },
+            {
+              "term": "Planned",
+              "text": "payment date after the period"
+            }
+          ]
+        },
+        {
+          "items": [
+            "The credit limit of purchase agreements is taken off the latest orders.",
+            "Click a cell to see the orders that make up the amount."
+          ]
+        }
+      ]
     }
   },
   "toast": {

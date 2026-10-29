@@ -231,6 +231,17 @@
       "message": "This work order already has an active invoice. What would you like to do?",
       "refresh": "Refresh (overwrite lines)",
       "openExisting": "Open existing"
+    },
+    "baseHelp": {
+      "title": "Amount in base currency",
+      "blocks": [
+        {
+          "items": [
+            "An invoice in another currency is converted to the base currency at the rate on the document date.",
+            "The customer's debt in settlements is kept in the base currency."
+          ]
+        }
+      ]
     }
   },
   "warranty": {
@@ -525,7 +536,19 @@
     "goodAria": "Product",
     "editAria": "Edit product",
     "deleteAria": "Delete product",
-    "total": "Products total:"
+    "total": "Products total:",
+    "warehouseHelp": {
+      "title": "Warehouse and free stock",
+      "blocks": [
+        {
+          "items": [
+            "Next to each warehouse in the list — the free quantity of the product: stock minus reserved.",
+            "After you pick a product the warehouse is set automatically: free stock in one warehouse only — that one; in several — the main one if it has free stock; otherwise you choose.",
+            "A shortage of free stock does not block adding — it only warns."
+          ]
+        }
+      ]
+    }
   },
   "addPart": {
     "title": "Add part",

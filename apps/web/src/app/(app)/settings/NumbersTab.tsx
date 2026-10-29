@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { type DocNumberConfig } from './shared';
+import { CatalogHelp } from '@/components/ui/help-popover';
 
 // Повний перелік DocumentType (schema.prisma) — усі 14 значень мають людський підпис,
 // інакше засіяні setup-ом типи (STOCK_OPENING, RECONCILIATION_ACT) показуються сирим кодом.
@@ -62,6 +63,10 @@ export default function NumbersTab() {
 
   return (
     <div className="space-y-3">
+      {/* Формат номера — docs/BUSINESS-RULES.md «Формат номера» */}
+      <div className="flex justify-end">
+        <CatalogHelp ns="settings" topic="numbers.help" width="lg" testId="numbers-help" />
+      </div>
       {error && (
         <div className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3">
           {error}

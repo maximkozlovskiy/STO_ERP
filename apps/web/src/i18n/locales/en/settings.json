@@ -62,7 +62,42 @@
       "YEARLY": "Yearly",
       "MONTHLY": "Monthly"
     },
-    "resetCounter": "Reset counter"
+    "resetCounter": "Reset counter",
+    "help": {
+      "title": "Document number format",
+      "blocks": [
+        {
+          "items": [
+            "Number = prefix, date and sequence number joined by the separator; the number is padded with leading zeros.",
+            "The date is the year, and the year and month when the counter resets monthly."
+          ]
+        },
+        {
+          "title": "Examples (prefix “WO”, separator “-”)",
+          "items": [
+            {
+              "term": "WO-2026-000123",
+              "text": "yearly reset"
+            },
+            {
+              "term": "WO-2026-10-000123",
+              "text": "monthly reset"
+            },
+            {
+              "term": "WO-000123",
+              "text": "no date"
+            }
+          ]
+        },
+        {
+          "title": "Counter",
+          "items": [
+            "Starts from 1 with the first document of a new year or month (Kyiv time); “Never” — does not reset.",
+            "“Reset counter” — the next document gets number 1."
+          ]
+        }
+      ]
+    }
   },
   "workdays": {
     "days": {
@@ -79,7 +114,35 @@
     "workDays": "Working days",
     "workStart": "Opening time",
     "workEnd": "Closing time",
-    "slotDuration": "Slot duration (min)"
+    "slotDuration": "Slot duration (min)",
+    "help": {
+      "title": "What working days and hours affect",
+      "blocks": [
+        {
+          "items": [
+            {
+              "term": "Online booking",
+              "text": "free time only on the branch's working days and hours, in “Slot duration” steps"
+            },
+            {
+              "term": "Calendar",
+              "text": "hours bound the “Day” grid; a record running past the end of the day continues the next day"
+            },
+            {
+              "term": "Work order planned dates",
+              "text": "must be within the branch working hours"
+            },
+            {
+              "term": "“Utilization” report",
+              "text": "a lift's working time is the working days × hours of its branch"
+            }
+          ]
+        },
+        {
+          "items": ["A branch without settings — 09:00–18:00, Mon–Fri."]
+        }
+      ]
+    }
   },
   "documents": {
     "workOrders": "Work orders",

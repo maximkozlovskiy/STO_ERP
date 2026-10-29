@@ -30,6 +30,7 @@ import { toast } from '@/lib/toast';
 import { printPdf } from '@/lib/download';
 import { useAuth } from '@/lib/auth';
 import { INVOICE_PRINT_ROLES } from '@/hooks/useWorkOrderActions';
+import { CatalogHelp } from '@/components/ui/help-popover';
 
 /**
  * Відповідь GET /invoices/from-work-order/:id/find — ЗГЕНЕРОВАНИЙ тип
@@ -229,10 +230,18 @@ export function InvoiceSection({
                   {fmtMoney(invoiceRef.amount)} {sym}
                 </span>
                 {!isBase && invoiceRef.totalAmountBase != null && (
-                  <span className="text-xs text-muted-foreground tabular-nums">
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
                     {fmtMoney(invoiceRef.totalAmountBase)} {baseSymbol}
                     {invoiceRef.rateUsed != null &&
                       t('invoice.rateSuffix', { rate: invoiceRef.rateUsed })}
+                    {/* Курс і базова сума — BR-SETL-007, invoice.md «Мультивалюта» */}
+                    <CatalogHelp
+                      ns="workOrders"
+                      topic="invoice.baseHelp"
+                      size="sm"
+                      align="start"
+                      testId="invoice-base-help"
+                    />
                   </span>
                 )}
               </span>

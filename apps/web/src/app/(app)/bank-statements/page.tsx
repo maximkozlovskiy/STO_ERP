@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { PAGE_TAB_ACTIVE, PAGE_TAB_CLASS, PAGE_TAB_IDLE } from '@/lib/page-tabs';
 import { TabDivider } from '@/components/ui/tab-divider';
 import type { BankTxDirection } from '@/hooks/api/useBankStatements';
+import { CatalogHelp } from '@/components/ui/help-popover';
 
 const BankTransactionsTab = dynamic(() => import('./BankTransactionsTab'), { ssr: false });
 const BankAccountsTab = dynamic(() => import('./BankAccountsTab'), { ssr: false });
@@ -38,10 +39,14 @@ function BankStatementsPageShell() {
   return (
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
-        <h1 className="page-title flex items-center gap-2">
-          <Landmark className="h-5 w-5" />
-          {t('page.title')}
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="page-title flex items-center gap-2">
+            <Landmark className="h-5 w-5" />
+            {t('page.title')}
+          </h1>
+          {/* Види рознесення — BR-BANK-025..041 */}
+          <CatalogHelp ns="bankStatements" topic="help" align="start" width="lg" />
+        </div>
       </div>
 
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">

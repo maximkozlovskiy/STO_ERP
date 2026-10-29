@@ -44,6 +44,7 @@ import {
   buildUpdatePayload,
   ruleToForm,
 } from './types';
+import { CatalogHelp } from '@/components/ui/help-popover';
 
 // Heavy form modal — лише при першому відкритті (Створити/Редагувати правило).
 // Виносимо у окремий chunk: Modal + 8+ Input/Select/Tier rows = ~350 LOC JSX, не
@@ -271,7 +272,11 @@ export default function PricingRulesClient() {
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <div>
-          <h1 className="page-title">{t('title')}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="page-title">{t('title')}</h1>
+            {/* Ієрархія правил — good.md «Ціноутворення», BR-GOOD-009..011 */}
+            <CatalogHelp ns="pricingRules" topic="help" align="start" width="lg" />
+          </div>
           <p className="page-subtitle">{t('subtitle')}</p>
         </div>
       </div>
