@@ -96,6 +96,7 @@ import {
   mapWorkOrderPartToDto,
 } from './work-order-dto.mapper';
 import { toLinkedPaymentRows } from '../payments/payment-cash-desk';
+import { recordDocumentEvent } from '../automation/record-document-event';
 
 // Shared select for GoodUoM lookups in addPart / updatePart.
 // Centralised so the type (derived via Prisma.GoodUoMGetPayload) and the select
@@ -581,31 +582,39 @@ export class WorkOrdersService {
 
     // BR-WO-020: наряд із плановими початком і завершенням сам має запис календаря — у тій самій
     // транзакції: зайнятий підйомник чи механік (400) не лишає наряду без запису.
+    // BR-AUT-060: подія «створено» — у тій самій транзакції, тож транзакція є й без планових дат.
     const { plannedAt, dueDate } = planned;
-    const wo =
-      plannedAt && dueDate
-        ? await this.prisma
-            .$transaction(
-              async tx => {
-                const created = await createWo(tx);
-                await this.calendar.upsertWorkOrderSlot(tx, {
-                  orgId,
-                  workOrderId: created.id,
-                  branchId: dto.branchId,
-                  liftId: dto.liftId ?? null,
-                  startAt: plannedAt,
-                  endAt: dueDate,
-                  vehicleId: dto.vehicleId,
-                  counterpartyId: dto.counterpartyId,
-                  ...(hours && { hours }),
-                  isNew: true,
-                });
-                return created;
-              },
-              { timeout: TRANSACTION_TIMEOUT_MS },
-            )
-            .catch((e: unknown) => throwIfExclusionConflict(e, slotExclusionMessages()))
-        : await createWo(this.prisma);
+    const wo = await this.prisma
+      .$transaction(
+        async tx => {
+          const created = await createWo(tx);
+          await recordDocumentEvent(tx, {
+            orgId,
+            documentType: 'WORK_ORDER',
+            documentId: created.id,
+            kind: 'CREATED',
+            toStatus: created.status,
+            actorId: userId ?? null,
+          });
+          if (plannedAt && dueDate) {
+            await this.calendar.upsertWorkOrderSlot(tx, {
+              orgId,
+              workOrderId: created.id,
+              branchId: dto.branchId,
+              liftId: dto.liftId ?? null,
+              startAt: plannedAt,
+              endAt: dueDate,
+              vehicleId: dto.vehicleId,
+              counterpartyId: dto.counterpartyId,
+              ...(hours && { hours }),
+              isNew: true,
+            });
+          }
+          return created;
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      )
+      .catch((e: unknown) => throwIfExclusionConflict(e, slotExclusionMessages()));
 
     if (userId) {
       this.audit
@@ -1697,6 +1706,14 @@ export class WorkOrdersService {
           },
           select: { id: true },
         });
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'WORK_ORDER',
+          documentId: created.id,
+          kind: 'CREATED',
+          toStatus: WorkOrderStatus.DRAFT,
+          actorId: userId,
+        });
         await this.recalcTotals(created.id, tx, orgId);
         return tx.workOrder.findFirstOrThrow({
           where: { id: created.id, orgId },
@@ -1756,6 +1773,7 @@ export class WorkOrdersService {
     });
     if (!wo) throw new NotFoundException(err('err.workOrder.notFound'));
 
+    const fromStatus = wo.status;
     assertFsmTransition(WORK_ORDER_TRANSITIONS, wo.status, newStatus);
 
     // BR-WO-014: сплачений наряд не скасовується — спершу сторно оплати. Тут — швидка відмова;
@@ -1811,6 +1829,15 @@ export class WorkOrdersService {
             ? await this.paidOrChangedError(orgId, id, 'err.workOrder.paidCannotCancel', tx)
             : new BadRequestException(err('err.workOrder.statusChanged'));
         }
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'WORK_ORDER',
+          documentId: id,
+          kind: 'STATUS_CHANGED',
+          fromStatus,
+          toStatus: newStatus,
+          actorId: userId ?? null,
+        });
 
         // BR-WO-006 (Bug #795): чернетки актів скасованого наряду скасовуються разом із ним, у тій
         // самій транзакції. Підписані акти не чіпаємо — це вже виданий клієнтові документ.
@@ -1834,15 +1861,7 @@ export class WorkOrdersService {
           // 2026-10-22) — інакше він лишався живим і міг стати «Простроченим». Проводки немає:
           // рахунок наряду власного CHARGE не має (борг — на наряді, сторнує returnPartsAndCredit).
           // Після CAS наряду — порядок блокувань «наряд → рахунок», як у createFromWorkOrder.
-          await tx.invoice.updateMany({
-            where: {
-              orgId,
-              workOrderId: id,
-              deletedAt: null,
-              status: { in: ['DRAFT', 'SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
-            },
-            data: { status: 'CANCELLED' },
-          });
+          await this.cancelWorkOrderInvoicesInTx(tx, orgId, id, userId);
           // BR-WO-031 (Bug #945): гарантія наряду без звернення гасне разом із ним — запчастини
           // повернулись на склад, борг сторновано; лишалась «Активною» в журналі й віджеті, і на неї
           // можна було подати звернення. Звернену не чіпаємо: звернення — уже історія.
@@ -1891,7 +1910,7 @@ export class WorkOrdersService {
         // до «Оплачено» — у цій самій транзакції. BR-PAY-022: борг щойно нараховано, тож для
         // іноземної валюти — курсова різниця (якщо наряд сплачено повністю).
         if (newStatus === 'COMPLETED' || newStatus === 'INVOICED') {
-          settleSteps = await settleIfFullyPaidInTx(tx, orgId, id);
+          settleSteps = await settleIfFullyPaidInTx(tx, orgId, id, userId);
           // Кроки є лише тоді, коли наряд сплачено повністю, — інакше курсової різниці ще немає.
           if (newStatus === 'COMPLETED' && settleSteps.length > 0) {
             await this.stockEffects.postFxIfSettled(orgId, id, userId, tx);
@@ -1975,6 +1994,46 @@ export class WorkOrdersService {
         WORK_ORDER_EVENTS.TRANSITIONED,
         new WorkOrderTransitionedEvent(orgId, workOrderId, step.from, step.to, userId),
       );
+    }
+  }
+
+  /**
+   * BR-WO-031: живі рахунки скасованого наряду → «Скасовано». Кожен рахунок окремо (CAS за
+   * прочитаним статусом), щоб записати подію з його попереднім статусом (BR-AUT-060). Рахунок,
+   * статус якого змінився між читанням і записом, не чіпаємо — так само, як раніше `updateMany`
+   * не чіпав рахунок, що встиг вийти з живих статусів.
+   */
+  private async cancelWorkOrderInvoicesInTx(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    workOrderId: string,
+    userId: string | undefined,
+  ): Promise<void> {
+    const live = await tx.invoice.findMany({
+      where: {
+        orgId,
+        workOrderId,
+        deletedAt: null,
+        status: { in: ['DRAFT', 'SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
+      },
+      select: { id: true, status: true },
+      take: 100,
+    });
+    for (const { id, status: from } of live) {
+      const res = await tx.invoice.updateMany({
+        where: { id, orgId, deletedAt: null, status: from },
+        data: { status: 'CANCELLED' },
+      });
+      if (res.count === 0) continue;
+      await recordDocumentEvent(tx, {
+        orgId,
+        documentType: 'INVOICE',
+        documentId: id,
+        kind: 'STATUS_CHANGED',
+        fromStatus: from,
+        toStatus: 'CANCELLED',
+        actorId: userId ?? null,
+      });
     }
   }
 

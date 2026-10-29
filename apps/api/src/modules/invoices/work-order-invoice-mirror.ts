@@ -3,6 +3,7 @@ import { InvoiceStatus, type Prisma } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { money, moneyFromDecimal } from '../../common/utils/money';
+import { recordDocumentEvent } from '../automation/record-document-event';
 
 // Статуси, які дзеркало перераховує за сплаченим. DRAFT показує сплачене, але лишається DRAFT;
 // CANCELLED — не активний рахунок, його дзеркало не чіпає (BR-INV-018).
@@ -43,12 +44,14 @@ export function mirroredInvoiceStatus(
  * Запис — CAS за прочитаними статусом, сумою і сплаченим (він же блокує рядок рахунку): паралельна
  * зміна рахунку → перечитати й порахувати заново. Рядок наряду викликач блокує раніше (оплата,
  * сторно, створення рахунку) — порядок блокувань «наряд → рахунок» той самий, що в оплаті.
- * Нічого не пише, якщо рахунку немає або він уже збігається з нарядом.
+ * Нічого не пише, якщо рахунку немає або він уже збігається з нарядом. Зміна статусу рахунку —
+ * подія outbox у тій самій транзакції (BR-AUT-060); зміна лише «сплачено» подією не є.
  */
 export async function syncWorkOrderInvoicePaid(
   tx: Prisma.TransactionClient,
   orgId: string,
   workOrderId: string,
+  actorId?: string | null,
 ): Promise<void> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const [wo, inv] = await Promise.all([
@@ -73,6 +76,7 @@ export async function syncWorkOrderInvoicePaid(
     const status = mirroredInvoiceStatus(inv.status, amount, paid);
     if (paid === moneyFromDecimal(inv.paidAmount) && status === inv.status) return;
 
+    const fromStatus = inv.status;
     const moved = await tx.invoice.updateMany({
       where: {
         id: inv.id,
@@ -84,7 +88,18 @@ export async function syncWorkOrderInvoicePaid(
       },
       data: { paidAmount: paid, status },
     });
-    if (moved.count === 1) return;
+    if (moved.count === 1) {
+      await recordDocumentEvent(tx, {
+        orgId,
+        documentType: 'INVOICE',
+        documentId: inv.id,
+        kind: 'STATUS_CHANGED',
+        fromStatus,
+        toStatus: status,
+        actorId,
+      });
+      return;
+    }
   }
   throw new BadRequestException(translateError('err.payment.invoiceConcurrentChange', getLocale()));
 }

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import {
+  AUTOMATION_PAYMENT_REVERSED_STATUS,
   CASH_METHOD_CODE,
   formatPersonName,
   type PaymentReversalFormValues,
@@ -46,6 +47,7 @@ import { assertMoneyFits, money, moneyFromDecimal } from '../../common/utils/mon
 import { searchContains } from '../../common/utils/like-pattern';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 import { paymentsInCashDesk } from './payment-cash-desk';
+import { recordDocumentEvent } from '../automation/record-document-event';
 
 // Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
 // Intl.NumberFormat under the hood per call. Used on every payment.create when SMS sent.
@@ -619,6 +621,7 @@ export class PaymentsService {
           const newPaid = prevPaid + dto.amount;
           const newStatus = newPaid >= invAmount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID';
           // CAS: оновлюємо лише якщо paidAmount досі == prevPaid (не змінений конкурентом).
+          const fromStatus = inv.status;
           const updated = await tx.invoice.updateMany({
             where: { id: dto.invoiceId, orgId, deletedAt: null, paidAmount: inv.paidAmount },
             data: { paidAmount: newPaid, status: newStatus },
@@ -628,6 +631,15 @@ export class PaymentsService {
               translateError('err.payment.invoiceConcurrentChange', getLocale()),
             );
           }
+          await recordDocumentEvent(tx, {
+            orgId,
+            documentType: 'INVOICE',
+            documentId: inv.id,
+            kind: 'STATUS_CHANGED',
+            fromStatus,
+            toStatus: newStatus,
+            actorId: userId ?? null,
+          });
           // Курсові різниці (Фаза 4): рахунок став PAID цим платежем + валюта НЕ базова →
           // після запису PAYMENT-settlement визнаємо realized FX проти CHARGE самого рахунку.
           if (
@@ -663,6 +675,13 @@ export class PaymentsService {
           },
           include: PAYMENT_INCLUDE,
         });
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'PAYMENT',
+          documentId: created.id,
+          kind: 'CREATED',
+          actorId: userId ?? null,
+        });
 
         await this.settlements.createTransaction(
           orgId,
@@ -692,9 +711,9 @@ export class PaymentsService {
         if (workOrderId) {
           // BR-PAY-005 / BR-WO-016: повна оплата — «Виставлено» → «Оплачено», «Виконано» →
           // «Виставлено» → «Оплачено» (без рахунку) у цій самій транзакції.
-          statusSteps = await settleIfFullyPaidInTx(tx, orgId, workOrderId);
+          statusSteps = await settleIfFullyPaidInTx(tx, orgId, workOrderId, userId);
           // BR-INV-018: рахунок наряду — дзеркало наряду (блокується після наряду).
-          await syncWorkOrderInvoicePaid(tx, orgId, workOrderId);
+          await syncWorkOrderInvoicePaid(tx, orgId, workOrderId, userId);
           // BR-PAY-022: курсова різниця — за нарядом (лише повністю сплачений з нарахованим боргом).
           await postWorkOrderFxInTx(
             tx,
@@ -971,6 +990,15 @@ export class PaymentsService {
         ),
       );
     }
+    // BR-AUT-060: у оплати немає поля статусу — сторно фіксується псевдостатусом «REVERSED».
+    await recordDocumentEvent(tx, {
+      orgId,
+      documentType: 'PAYMENT',
+      documentId: payment.id,
+      kind: 'STATUS_CHANGED',
+      toStatus: AUTOMATION_PAYMENT_REVERSED_STATUS,
+      actorId: ctx.userId ?? null,
+    });
 
     // REFUND (рознесення виписки) має той самий знак, що й PAYMENT (−1), — його сторно теж +1.
     await this.settlements.createTransaction(
@@ -1017,6 +1045,7 @@ export class PaymentsService {
           payment.workOrderId,
           workOrder.paidAmount,
           newPaid,
+          ctx.userId,
         );
         reopenedWorkOrderId = payment.workOrderId;
       } else {
@@ -1036,7 +1065,7 @@ export class PaymentsService {
           );
         }
       }
-      await syncWorkOrderInvoicePaid(tx, orgId, payment.workOrderId);
+      await syncWorkOrderInvoicePaid(tx, orgId, payment.workOrderId, ctx.userId);
     }
 
     // Оплата рахунку БЕЗ наряду: «сплачено» рахунку назад (не нижче нуля); «Оплачено» / «Частково
@@ -1053,6 +1082,7 @@ export class PaymentsService {
           : newPaid > 0
             ? InvoiceStatus.PARTIALLY_PAID
             : InvoiceStatus.SENT;
+      const fromStatus = invoice.status;
       const moved = await tx.invoice.updateMany({
         where: {
           id: payment.invoiceId,
@@ -1068,6 +1098,15 @@ export class PaymentsService {
           translateError('err.payment.invoiceConcurrentChange', locale),
         );
       }
+      await recordDocumentEvent(tx, {
+        orgId,
+        documentType: 'INVOICE',
+        documentId: payment.invoiceId,
+        kind: 'STATUS_CHANGED',
+        fromStatus,
+        toStatus: newStatus,
+        actorId: ctx.userId ?? null,
+      });
     }
 
     const loyalty = await this.loyalty.reverseEarn(orgId, payment.id, tx);

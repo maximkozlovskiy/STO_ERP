@@ -191,8 +191,9 @@ export class InvoicesController {
   createFromWorkOrder(
     @OrgContext() orgId: string,
     @Param('workOrderId', ParseUUIDPipe) workOrderId: string,
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.createFromWorkOrder(orgId, workOrderId);
+    return this.service.createFromWorkOrder(orgId, workOrderId, user?.id);
   }
 
   @Patch(':id')
@@ -227,8 +228,12 @@ export class InvoicesController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Дублювати рахунок' })
   @ApiCreatedResponse({ type: InvoiceResponseDto })
-  clone(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.clone(orgId, id);
+  clone(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.service.clone(orgId, id, user?.id);
   }
 
   @Get(':id/pdf')

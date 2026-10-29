@@ -296,10 +296,17 @@ export class CompletionActsService {
         // перехід і не мав CAS, тож наряд, скасований між читанням вище і цим записом,
         // мовчки ставав INVOICED. Тепер такий конфлікт відкочує підписання.
         if (act.workOrder?.status === 'COMPLETED') {
-          await transitionWorkOrderStatusInTx(tx, orgId, act.workOrder.id, 'COMPLETED', 'INVOICED');
+          await transitionWorkOrderStatusInTx(
+            tx,
+            orgId,
+            act.workOrder.id,
+            'COMPLETED',
+            'INVOICED',
+            userId,
+          );
           steps.push({ from: 'COMPLETED', to: 'INVOICED' });
           // BR-WO-016: наряд, сплачений повністю авансом, іде далі до «Оплачено» в цій же транзакції.
-          steps.push(...(await settleIfFullyPaidInTx(tx, orgId, act.workOrder.id)));
+          steps.push(...(await settleIfFullyPaidInTx(tx, orgId, act.workOrder.id, userId)));
         }
         workOrderId = act.workOrder?.id ?? null;
       },
@@ -320,7 +327,7 @@ export class CompletionActsService {
     // Рахунок створюється й для вже оплаченого наряду (BR-INV-020): чернетка зі сплаченим = сума.
     if (workOrderId) {
       try {
-        await this.invoices.createFromWorkOrder(orgId, workOrderId);
+        await this.invoices.createFromWorkOrder(orgId, workOrderId, userId);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         // Порівнюємо з перекладом ключа, а не з українським рядком: з локаллю en очікуване

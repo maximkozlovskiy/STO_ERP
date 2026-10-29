@@ -4,6 +4,7 @@ import { translateError } from '@sto/shared';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { moneyFromDecimal } from '../../common/utils/money';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { recordDocumentEvent } from '../automation/record-document-event';
 import { WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
 
 /**
@@ -45,7 +46,8 @@ const ALLOWED_WITHOUT_SIDE_EFFECTS: Record<WorkOrderStatus, boolean> = {
  *
  * Тут ті самі дві гарантії, що й у `transition()`: FSM-мапа і CAS по поточному статусу.
  * Подію `WORK_ORDER_EVENTS.TRANSITIONED` викликач емітить САМ після коміту своєї транзакції
- * (всередині не можна: транзакція ще може відкотитись).
+ * (всередині не можна: транзакція ще може відкотитись). Подія outbox (BR-AUT-060) — навпаки, тут,
+ * у тій самій транзакції: вона відкочується разом із переходом.
  */
 export async function transitionWorkOrderStatusInTx(
   tx: Prisma.TransactionClient,
@@ -53,6 +55,7 @@ export async function transitionWorkOrderStatusInTx(
   workOrderId: string,
   from: WorkOrderStatus,
   to: WorkOrderStatus,
+  actorId?: string | null,
 ): Promise<void> {
   if (!ALLOWED_WITHOUT_SIDE_EFFECTS[to]) {
     throw new Error(
@@ -67,6 +70,15 @@ export async function transitionWorkOrderStatusInTx(
   if (cas.count === 0) {
     throw new BadRequestException(translateError('err.workOrder.statusChanged', getLocale()));
   }
+  await recordDocumentEvent(tx, {
+    orgId,
+    documentType: 'WORK_ORDER',
+    documentId: workOrderId,
+    kind: 'STATUS_CHANGED',
+    fromStatus: from,
+    toStatus: to,
+    actorId,
+  });
 }
 
 /**
@@ -85,6 +97,7 @@ export async function reopenPaidWorkOrderInTx(
   workOrderId: string,
   paidAmountBefore: Prisma.Decimal,
   paidAmountAfter: number,
+  actorId?: string | null,
 ): Promise<void> {
   const cas = await tx.workOrder.updateMany({
     where: {
@@ -99,6 +112,15 @@ export async function reopenPaidWorkOrderInTx(
   if (cas.count === 0) {
     throw new BadRequestException(translateError('err.workOrder.statusChanged', getLocale()));
   }
+  await recordDocumentEvent(tx, {
+    orgId,
+    documentType: 'WORK_ORDER',
+    documentId: workOrderId,
+    kind: 'STATUS_CHANGED',
+    fromStatus: 'PAID',
+    toStatus: 'INVOICED',
+    actorId,
+  });
 }
 
 /** Перехід статусу, зроблений у транзакції, — викликач емітить для нього подію ПІСЛЯ коміту. */
@@ -127,6 +149,7 @@ export async function settleIfFullyPaidInTx(
   tx: Prisma.TransactionClient,
   orgId: string,
   workOrderId: string,
+  actorId?: string | null,
 ): Promise<WorkOrderStatusStep[]> {
   const wo = await tx.workOrder.findFirst({
     where: { id: workOrderId, orgId, deletedAt: null },
@@ -136,12 +159,12 @@ export async function settleIfFullyPaidInTx(
   const steps: WorkOrderStatusStep[] = [];
   let status = wo.status;
   if (status === 'COMPLETED') {
-    await transitionWorkOrderStatusInTx(tx, orgId, workOrderId, 'COMPLETED', 'INVOICED');
+    await transitionWorkOrderStatusInTx(tx, orgId, workOrderId, 'COMPLETED', 'INVOICED', actorId);
     steps.push({ from: 'COMPLETED', to: 'INVOICED' });
     status = 'INVOICED';
   }
   if (status === 'INVOICED') {
-    await transitionWorkOrderStatusInTx(tx, orgId, workOrderId, 'INVOICED', 'PAID');
+    await transitionWorkOrderStatusInTx(tx, orgId, workOrderId, 'INVOICED', 'PAID', actorId);
     steps.push({ from: 'INVOICED', to: 'PAID' });
   }
   return steps;

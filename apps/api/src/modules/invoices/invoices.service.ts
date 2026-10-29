@@ -36,6 +36,7 @@ import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
 import { syncWorkOrderInvoicePaid } from './work-order-invoice-mirror';
+import { recordDocumentEvent } from '../automation/record-document-event';
 import {
   CreateInvoiceDto,
   UpdateInvoiceDto,
@@ -217,7 +218,11 @@ export class InvoicesService {
     return this.toDto(inv, true, await this.lineUoMs(orgId, inv.lines));
   }
 
-  async createFromWorkOrder(orgId: string, workOrderId: string): Promise<InvoiceResponseDto> {
+  async createFromWorkOrder(
+    orgId: string,
+    workOrderId: string,
+    userId?: string,
+  ): Promise<InvoiceResponseDto> {
     // Pre-tx check WO existence + duplicate for fast 4xx feedback.
     // Race still possible — actual create wrapped in Serializable tx with re-check below.
     const [wo, existingPre] = await Promise.all([
@@ -327,6 +332,14 @@ export class InvoicesService {
             },
             select: { id: true },
           });
+          await recordDocumentEvent(tx, {
+            orgId,
+            documentType: 'INVOICE',
+            documentId: created.id,
+            kind: 'CREATED',
+            toStatus: InvoiceStatus.DRAFT,
+            actorId: userId ?? null,
+          });
           // BR-INV-002: рядки й суми — одразу, у тій самій транзакції. Рахунок без рядків, який
           // треба було окремо «оновити з наряду», більше не існує ні на мить.
           await this.writeLinesFromWorkOrder(tx, orgId, created.id, workOrderId, {
@@ -335,7 +348,7 @@ export class InvoicesService {
             documentDate,
           });
           // BR-INV-020: рахунок одразу переносить сплачене за нарядом (дзеркало, BR-INV-018).
-          await syncWorkOrderInvoicePaid(tx, orgId, workOrderId);
+          await syncWorkOrderInvoicePaid(tx, orgId, workOrderId, userId);
           return tx.invoice.findFirstOrThrow({
             where: { id: created.id, orgId },
             include: {
@@ -417,29 +430,41 @@ export class InvoicesService {
         )
       : { rateUsed: 1, amountBase: dto.amount };
 
-    const inv = await this.prisma.invoice.create({
-      data: {
+    // BR-AUT-060: подія «створено» — у тій самій транзакції, що й рахунок.
+    const inv = await this.prisma.$transaction(async tx => {
+      const created = await tx.invoice.create({
+        data: {
+          orgId,
+          counterpartyId: dto.counterpartyId,
+          workOrderId: dto.workOrderId ?? null,
+          number,
+          amount: dto.amount,
+          currencyId,
+          totalAmountBase: conv.amountBase,
+          rateUsed: conv.rateUsed,
+          // 'STANDARD' — узгоджено з UI-enum (INVOICE_TYPE_VALUES); 'INVOICE' (старий Prisma-дефолт)
+          // поза enum-ом і ламав zodResolver форми при редагуванні.
+          invoiceType: dto.invoiceType ?? 'STANDARD',
+          dueDate,
+          documentDate,
+          notes: dto.notes ?? null,
+          status: InvoiceStatus.DRAFT,
+        },
+        include: {
+          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+          workOrder: { select: { number: true } },
+          currency: { select: { code: true } },
+        },
+      });
+      await recordDocumentEvent(tx, {
         orgId,
-        counterpartyId: dto.counterpartyId,
-        workOrderId: dto.workOrderId ?? null,
-        number,
-        amount: dto.amount,
-        currencyId,
-        totalAmountBase: conv.amountBase,
-        rateUsed: conv.rateUsed,
-        // 'STANDARD' — узгоджено з UI-enum (INVOICE_TYPE_VALUES); 'INVOICE' (старий Prisma-дефолт)
-        // поза enum-ом і ламав zodResolver форми при редагуванні.
-        invoiceType: dto.invoiceType ?? 'STANDARD',
-        dueDate,
-        documentDate,
-        notes: dto.notes ?? null,
-        status: InvoiceStatus.DRAFT,
-      },
-      include: {
-        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-        workOrder: { select: { number: true } },
-        currency: { select: { code: true } },
-      },
+        documentType: 'INVOICE',
+        documentId: created.id,
+        kind: 'CREATED',
+        toStatus: created.status,
+        actorId: userId ?? null,
+      });
+      return created;
     });
 
     // C1: аудит створення рахунку («хто виставив»). Best-effort post-commit.
@@ -593,6 +618,8 @@ export class InvoicesService {
       inv.status !== InvoiceStatus.DRAFT &&
       paymentRemaining > 1e-9;
 
+    // Знімок статусу до запису — для події (BR-AUT-060).
+    const fromStatus = inv.status;
     await this.prisma.$transaction(
       async tx => {
         const moved = await tx.invoice.updateMany({
@@ -613,10 +640,20 @@ export class InvoicesService {
         if (moved.count === 0) {
           throw new BadRequestException(translateError('err.invoice.statusChanged', getLocale()));
         }
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'INVOICE',
+          documentId: id,
+          kind: 'STATUS_CHANGED',
+          fromStatus,
+          toStatus: newStatus,
+          actorId: userId ?? null,
+        });
         // BR-INV-018: на DRAFT → SENT статус рахунку наряду береться за сплаченим наряду
-        // (аванс уже міг покрити рахунок повністю чи частково).
+        // (аванс уже міг покрити рахунок повністю чи частково). Дзеркало пише власну подію
+        // SENT → PARTIALLY_PAID / PAID, якщо аванс уже є.
         if (inv.workOrderId !== null && newStatus === InvoiceStatus.SENT) {
-          await syncWorkOrderInvoicePaid(tx, orgId, inv.workOrderId);
+          await syncWorkOrderInvoicePaid(tx, orgId, inv.workOrderId, userId);
         }
         if (chargesStandaloneOnSend) {
           await this.settlements.createTransaction(
@@ -762,7 +799,7 @@ export class InvoicesService {
     return this.findOne(orgId, id);
   }
 
-  async clone(orgId: string, id: string): Promise<InvoiceResponseDto> {
+  async clone(orgId: string, id: string, userId?: string): Promise<InvoiceResponseDto> {
     const original = await this.prisma.invoice.findFirst({
       where: { id, orgId, deletedAt: null },
       include: {
@@ -811,47 +848,59 @@ export class InvoicesService {
 
     // Clone must NOT inherit workOrderId: the same WO would accumulate duplicate invoices
     // and the WO→Invoice 1:1 invariant breaks (auto-invoice on completion creates a 3rd).
-    const cloned = await this.prisma.invoice.create({
-      data: {
-        orgId,
-        counterpartyId: original.counterpartyId,
-        workOrderId: null,
-        number,
-        // When the invoice has line items, sync `amount` with their total to
-        // avoid mismatch between `amount` and recalculated VAT breakdown.
-        // Fall back to `original.amount` when there are no lines.
-        amount: clonedAmount,
-        currencyId: original.currencyId ?? null,
-        totalWithoutVat,
-        totalVat,
-        totalWithVat,
-        totalAmountBase: clonedConv.amountBase,
-        rateUsed: clonedConv.rateUsed,
-        dueDate: original.dueDate,
-        notes: original.notes,
-        status: InvoiceStatus.DRAFT,
-        lines: {
-          create: original.lines.map(l => ({
-            orgId,
-            goodId: l.goodId,
-            workId: l.workId,
-            description: l.description,
-            quantity: l.quantity,
-            unitPrice: l.unitPrice,
-            vatRate: l.vatRate,
-            priceWithoutVat: l.priceWithoutVat,
-            vatAmount: l.vatAmount,
-            priceWithVat: l.priceWithVat,
-            sortOrder: l.sortOrder,
-            unitOfMeasureId: l.unitOfMeasureId,
-          })),
+    // BR-AUT-060: подія «створено» — у тій самій транзакції, що й клон.
+    const cloned = await this.prisma.$transaction(async tx => {
+      const created = await tx.invoice.create({
+        data: {
+          orgId,
+          counterpartyId: original.counterpartyId,
+          workOrderId: null,
+          number,
+          // When the invoice has line items, sync `amount` with their total to
+          // avoid mismatch between `amount` and recalculated VAT breakdown.
+          // Fall back to `original.amount` when there are no lines.
+          amount: clonedAmount,
+          currencyId: original.currencyId ?? null,
+          totalWithoutVat,
+          totalVat,
+          totalWithVat,
+          totalAmountBase: clonedConv.amountBase,
+          rateUsed: clonedConv.rateUsed,
+          dueDate: original.dueDate,
+          notes: original.notes,
+          status: InvoiceStatus.DRAFT,
+          lines: {
+            create: original.lines.map(l => ({
+              orgId,
+              goodId: l.goodId,
+              workId: l.workId,
+              description: l.description,
+              quantity: l.quantity,
+              unitPrice: l.unitPrice,
+              vatRate: l.vatRate,
+              priceWithoutVat: l.priceWithoutVat,
+              vatAmount: l.vatAmount,
+              priceWithVat: l.priceWithVat,
+              sortOrder: l.sortOrder,
+              unitOfMeasureId: l.unitOfMeasureId,
+            })),
+          },
         },
-      },
-      include: {
-        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-        workOrder: { select: { number: true } },
-        currency: { select: { code: true } },
-      },
+        include: {
+          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+          workOrder: { select: { number: true } },
+          currency: { select: { code: true } },
+        },
+      });
+      await recordDocumentEvent(tx, {
+        orgId,
+        documentType: 'INVOICE',
+        documentId: created.id,
+        kind: 'CREATED',
+        toStatus: created.status,
+        actorId: userId ?? null,
+      });
+      return created;
     });
 
     return this.toDto(cloned);
