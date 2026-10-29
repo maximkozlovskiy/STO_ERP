@@ -697,7 +697,15 @@ export class PurchaseOrdersService {
         if (newStatus === PurchaseOrderStatus.RECEIVED) {
           await this.purchaseLists.onOrderClosed(tx, orgId, id);
         }
-        await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
+        // CAS за прочитаним статусом: два паралельні переходи з того самого статусу (DRAFT →
+        // ORDERED і DRAFT → CANCELLED) інакше обидва проходили FSM, а `fromStatus` події брехав.
+        const moved = await tx.purchaseOrder.updateMany({
+          where: { id, orgId, deletedAt: null, status: fromStatus },
+          data: { status: newStatus },
+        });
+        if (moved.count === 0) {
+          throw new BadRequestException(err('err.purchaseOrder.statusChanged'));
+        }
         await recordDocumentEvent(tx, {
           orgId,
           documentType: 'PURCHASE_ORDER',

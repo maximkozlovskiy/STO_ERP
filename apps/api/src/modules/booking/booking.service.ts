@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, CalendarSlotStatus } from '@prisma/client';
-import { translateError } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale, runUnscoped } from '../../common/tenant/tenant-context';
 import { EARLIEST_DB_INSTANT_MS, kyivOffsetMs } from '../../common/utils/kyiv-date';
@@ -381,28 +381,31 @@ export class BookingService {
 
     // BR-AUT-060: подія «створено» — у тій самій транзакції, що й заявка (ініціатор — клієнт
     // з публічного віджета, працівника немає).
-    const req = await this.prisma.$transaction(async tx => {
-      const created = await tx.bookingRequest.create({
-        data: {
+    const req = await this.prisma.$transaction(
+      async tx => {
+        const created = await tx.bookingRequest.create({
+          data: {
+            orgId,
+            branchId: dto.branchId,
+            clientName: dto.clientName,
+            clientPhone: dto.clientPhone,
+            requestedDate: new Date(dto.requestedDate),
+            liftId: dto.liftId ?? null,
+            serviceIds: dto.serviceIds ?? [],
+            notes: dto.notes ?? null,
+          },
+        });
+        await recordDocumentEvent(tx, {
           orgId,
-          branchId: dto.branchId,
-          clientName: dto.clientName,
-          clientPhone: dto.clientPhone,
-          requestedDate: new Date(dto.requestedDate),
-          liftId: dto.liftId ?? null,
-          serviceIds: dto.serviceIds ?? [],
-          notes: dto.notes ?? null,
-        },
-      });
-      await recordDocumentEvent(tx, {
-        orgId,
-        documentType: 'BOOKING',
-        documentId: created.id,
-        kind: 'CREATED',
-        toStatus: created.status,
-      });
-      return created;
-    });
+          documentType: 'BOOKING',
+          documentId: created.id,
+          kind: 'CREATED',
+          toStatus: created.status,
+        });
+        return created;
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
 
     // SMS confirmation via NotificationsService.send() — резолвить branchSettings
     // (provider/apiKey/senderName) + NotificationTemplate.body, рендерить шаблон і кладе
@@ -530,24 +533,27 @@ export class BookingService {
 
     // CAS на ЛІТЕРАЛ 'PENDING' (не req.status): рівно один concurrent confirm виграє.
     // Подія — у тій самій транзакції, що й CAS (BR-AUT-060).
-    const result = await this.prisma.$transaction(async tx => {
-      const moved = await tx.bookingRequest.updateMany({
-        where: { id, orgId, deletedAt: null, status: 'PENDING' },
-        data: { status: 'CONFIRMED', ...(confirmedSlotId ? { confirmedSlotId } : {}) },
-      });
-      if (moved.count === 1) {
-        await recordDocumentEvent(tx, {
-          orgId,
-          documentType: 'BOOKING',
-          documentId: id,
-          kind: 'STATUS_CHANGED',
-          fromStatus: 'PENDING',
-          toStatus: 'CONFIRMED',
-          actorId: userId ?? null,
+    const result = await this.prisma.$transaction(
+      async tx => {
+        const moved = await tx.bookingRequest.updateMany({
+          where: { id, orgId, deletedAt: null, status: 'PENDING' },
+          data: { status: 'CONFIRMED', ...(confirmedSlotId ? { confirmedSlotId } : {}) },
         });
-      }
-      return moved;
-    });
+        if (moved.count === 1) {
+          await recordDocumentEvent(tx, {
+            orgId,
+            documentType: 'BOOKING',
+            documentId: id,
+            kind: 'STATUS_CHANGED',
+            fromStatus: 'PENDING',
+            toStatus: 'CONFIRMED',
+            actorId: userId ?? null,
+          });
+        }
+        return moved;
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
     if (result.count === 0) {
       // Програли гонку (інший confirm уже забрав заявку). Прибираємо orphan-слот, створений
       // цим викликом, щоб він не тримав ліфт зайнятим без прив'язаної CONFIRMED-заявки.
@@ -603,16 +609,19 @@ export class BookingService {
       select: { confirmedSlotId: true, status: true },
     });
 
-    // Defense-in-depth: scope by orgId у where (sto-review pattern 2026-05-30
-    // soft-delete update without orgId). Cancel is idempotent — повторний DELETE
-    // на вже-скасованому записі поверне 404 (count === 0 бо deletedAt != null).
+    // Повторний DELETE на вже-скасованому записі → 404 (deletedAt != null).
+    if (!req)
+      throw new NotFoundException(translateError('err.booking.requestNotFound', getLocale()));
+
     // Слот і заявку звільняємо в одній $transaction — атомарно (не лишити слот-сироту
     // якщо cancel заявки впаде, і навпаки). deletedSlot по id АБО parentSlotId — покриває
     // split-слот (createSlot розбиває запис через межу робочого дня на parent+child).
-    const fromStatus = req?.status ?? null;
-    const result = await this.prisma.$transaction(
+    // CAS за прочитаними статусом і слотом (BR-AUT-060): паралельний confirm між читанням і
+    // записом матеріалізує слот, якого тут не звільнили б, а подія мала б неправдивий fromStatus.
+    // Програли гонку → 400 «статус змінився»; заявку вже скасовано іншим запитом → 404.
+    await this.prisma.$transaction(
       async tx => {
-        if (req?.confirmedSlotId) {
+        if (req.confirmedSlotId) {
           await tx.calendarSlot.updateMany({
             where: {
               orgId,
@@ -622,27 +631,38 @@ export class BookingService {
             data: { deletedAt: new Date() },
           });
         }
-        const cancelled = await tx.bookingRequest.updateMany({
-          where: { id, orgId, deletedAt: null },
+        const moved = await tx.bookingRequest.updateMany({
+          where: {
+            id,
+            orgId,
+            deletedAt: null,
+            status: req.status,
+            confirmedSlotId: req.confirmedSlotId,
+          },
           data: { status: 'CANCELLED', deletedAt: new Date() },
         });
-        if (cancelled.count === 1) {
-          await recordDocumentEvent(tx, {
-            orgId,
-            documentType: 'BOOKING',
-            documentId: id,
-            kind: 'STATUS_CHANGED',
-            fromStatus,
-            toStatus: 'CANCELLED',
-            actorId: userId ?? null,
+        if (moved.count === 0) {
+          // Кинути, а не повернути: звільнення слота вище має відкотитись разом зі скасуванням.
+          const now = await tx.bookingRequest.findFirst({
+            where: { id, orgId, deletedAt: null },
+            select: { id: true },
           });
+          throw now
+            ? new BadRequestException(translateError('err.booking.statusChanged', getLocale()))
+            : new NotFoundException(translateError('err.booking.requestNotFound', getLocale()));
         }
-        return cancelled;
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'BOOKING',
+          documentId: id,
+          kind: 'STATUS_CHANGED',
+          fromStatus: req.status,
+          toStatus: 'CANCELLED',
+          actorId: userId ?? null,
+        });
       },
       { timeout: 10000 },
     );
-    if (result.count === 0)
-      throw new NotFoundException(translateError('err.booking.requestNotFound', getLocale()));
   }
 
   private toDto(r: {

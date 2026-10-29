@@ -974,5 +974,43 @@ describe('BookingService', () => {
       // Обидва write у межах однієї $transaction (не лишити слот-сироту при частковому збою).
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     });
+
+    // guards: BR-AUT-060
+    it('CAS за прочитаними статусом і слотом; подія з правдивим fromStatus і автором', async () => {
+      prisma.bookingRequest.findFirst.mockResolvedValueOnce({
+        confirmedSlotId: 'slot-9',
+        status: 'CONFIRMED',
+      });
+      prisma.calendarSlot.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.bookingRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.cancel(orgId, bookingId, 'user-1');
+
+      const args = prisma.bookingRequest.updateMany.mock.calls[0][0];
+      expect(args.where).toMatchObject({ status: 'CONFIRMED', confirmedSlotId: 'slot-9' });
+      expect(prisma.domainEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          documentType: 'BOOKING',
+          kind: 'STATUS_CHANGED',
+          fromStatus: 'CONFIRMED',
+          toStatus: 'CANCELLED',
+          actorId: 'user-1',
+        }),
+      });
+    });
+
+    // guards: BR-AUT-060
+    it('гонка «підтвердити ↔ скасувати»: CAS програв, заявка жива → 400 у транзакції, події немає', async () => {
+      // Прочитали PENDING без слота; паралельний confirm встиг матеріалізувати слот і CONFIRMED.
+      prisma.bookingRequest.findFirst
+        .mockResolvedValueOnce({ confirmedSlotId: null, status: 'PENDING' })
+        .mockResolvedValueOnce({ id: bookingId });
+      prisma.bookingRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await expect(service.cancel(orgId, bookingId, 'user-1')).rejects.toThrow(
+        new BadRequestException('Статус заявки змінився — оновіть сторінку й повторіть дію'),
+      );
+      expect(prisma.domainEvent.create).not.toHaveBeenCalled();
+    });
   });
 });

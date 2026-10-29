@@ -4,6 +4,7 @@ import {
   TASK_STATUS_TRANSITIONS,
   canTransitionTask,
   isTaskManagerRole,
+  TRANSACTION_TIMEOUT_MS,
   type TaskFormValues,
 } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -208,21 +209,24 @@ export class TasksService {
   async create(orgId: string, actor: TaskActor, dto: TaskFormValues): Promise<TaskResponseDto> {
     const data = await this.validatedFields(orgId, dto);
     // BR-AUT-060: подія «створено» — у тій самій транзакції, що й задача.
-    const created = await this.prisma.$transaction(async tx => {
-      const row = await tx.task.create({
-        data: { ...data, orgId, createdById: actor.id },
-        select: { id: true, status: true },
-      });
-      await recordDocumentEvent(tx, {
-        orgId,
-        documentType: 'TASK',
-        documentId: row.id,
-        kind: 'CREATED',
-        toStatus: row.status,
-        actorId: actor.id,
-      });
-      return row;
-    });
+    const created = await this.prisma.$transaction(
+      async tx => {
+        const row = await tx.task.create({
+          data: { ...data, orgId, createdById: actor.id },
+          select: { id: true, status: true },
+        });
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'TASK',
+          documentId: row.id,
+          kind: 'CREATED',
+          toStatus: row.status,
+          actorId: actor.id,
+        });
+        return row;
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
     return this.findOne(orgId, actor, created.id);
   }
 
@@ -285,26 +289,29 @@ export class TasksService {
     // CAS за статусом І видимістю: задачу, переназначену між читанням і записом, колишній
     // виконавець уже не рухає (BR-TASK-002 / 003).
     const fromStatus = task.status;
-    await this.prisma.$transaction(async tx => {
-      const res = await tx.task.updateMany({
-        where: { id, orgId, deletedAt: null, status: task.status, ...taskVisibilityWhere(actor) },
-        data: { status: to, ...(completedAt !== undefined && { completedAt }) },
-      });
-      if (res.count === 0) {
-        throw new BadRequestException(
-          err('err.fsm.transitionNotAllowed', { from: task.status, to }),
-        );
-      }
-      await recordDocumentEvent(tx, {
-        orgId,
-        documentType: 'TASK',
-        documentId: id,
-        kind: 'STATUS_CHANGED',
-        fromStatus,
-        toStatus: to,
-        actorId: actor.id,
-      });
-    });
+    await this.prisma.$transaction(
+      async tx => {
+        const res = await tx.task.updateMany({
+          where: { id, orgId, deletedAt: null, status: task.status, ...taskVisibilityWhere(actor) },
+          data: { status: to, ...(completedAt !== undefined && { completedAt }) },
+        });
+        if (res.count === 0) {
+          throw new BadRequestException(
+            err('err.fsm.transitionNotAllowed', { from: task.status, to }),
+          );
+        }
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'TASK',
+          documentId: id,
+          kind: 'STATUS_CHANGED',
+          fromStatus,
+          toStatus: to,
+          actorId: actor.id,
+        });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
     return this.findOne(orgId, actor, id);
   }
 

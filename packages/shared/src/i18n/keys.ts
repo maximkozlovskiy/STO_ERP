@@ -623,6 +623,7 @@ export const VALIDATION_KEYS = [
   'err.purchaseOrder.receiveLineNotFound',
   'err.purchaseOrder.receiveExceedsLineRemaining',
   'err.purchaseOrder.statusChangedRetry',
+  'err.purchaseOrder.statusChanged',
   'err.purchaseOrder.receiveAlreadyProcessed',
   'err.purchaseOrder.onlyDraftDeletable',
   'err.purchaseOrder.priceOnlyReceived',
@@ -933,6 +934,7 @@ export const VALIDATION_KEYS = [
   'err.booking.nonWorkingDay',
   'err.booking.outsideWorkingHours',
   'err.booking.requestNotFound',
+  'err.booking.statusChanged',
   'err.booking.cancelledCannotConfirm',
   'err.booking.slotNotFound',
   // Exception-повідомлення: auth-модуль

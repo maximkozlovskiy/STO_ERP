@@ -132,6 +132,25 @@ describe('InvoiceOverdueProcessor', () => {
     expect(h.domainEvent.rows.map(e => e.documentId)).toEqual(['a']);
   });
 
+  // guards: BR-INV-005, BR-AUT-060
+  it('термін перенесли між вибіркою і записом → рахунок не прострочується і події не має', async () => {
+    const h = harness([inv('a'), inv('b')]);
+    // Паралельний PATCH: між findMany і CAS рахунку «b» перенесли термін на завтра.
+    const select = h.invoice.findMany.getMockImplementation()!;
+    h.invoice.findMany.mockImplementationOnce(async args => {
+      const rows = await select(args);
+      const b = h.invoice.rows.find(r => r.id === 'b')!;
+      b.dueDate = tomorrow();
+      return rows;
+    });
+
+    await h.run();
+
+    expect(h.statusOf('a')).toBe('OVERDUE');
+    expect(h.statusOf('b')).toBe('SENT');
+    expect(h.domainEvent.rows.map(e => e.documentId)).toEqual(['a']);
+  });
+
   // guards: BR-AUT-060
   it('збій запису події відкочує і статус рахунку (одна транзакція)', async () => {
     const h = harness([inv('a')]);

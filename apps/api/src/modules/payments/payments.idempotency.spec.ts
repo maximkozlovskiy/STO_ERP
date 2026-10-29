@@ -168,10 +168,11 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
 
     await service.create(ORG, baseDto, 'user-1');
 
-    // CAS по paidAmount (не по status): where містить прочитаний paidAmount; повна оплата → PAID.
+    // CAS по paidAmount І статусу (часткові оплати лишають статус, тож одного статусу мало; статус —
+    // умова відмови й fromStatus події): where містить прочитані обидва; повна оплата → PAID.
     expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: INV_ID, orgId: ORG, paidAmount: 0 }),
+        where: expect.objectContaining({ id: INV_ID, orgId: ORG, paidAmount: 0, status: 'SENT' }),
         data: expect.objectContaining({ paidAmount: 500, status: 'PAID' }),
       }),
     );

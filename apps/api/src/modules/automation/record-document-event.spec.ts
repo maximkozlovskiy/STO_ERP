@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { $Enums, type Prisma } from '@prisma/client';
-import { AUTOMATION_DOCUMENT_TYPES, AUTOMATION_EVENT_KINDS } from '@sto/shared';
+import {
+  AUTOMATION_DOCUMENT_TYPES,
+  AUTOMATION_EVENT_KINDS,
+  AUTOMATION_PAYMENT_ACTIVE_STATUS,
+  AUTOMATION_PAYMENT_REVERSED_STATUS,
+} from '@sto/shared';
 import { recordDocumentEvent, recordDocumentEvents } from './record-document-event';
 import { domainEventMock } from '../../common/testing/prisma-mock';
 
@@ -71,16 +76,19 @@ describe('recordDocumentEvent — подія документа в outbox (BR-AU
   });
 
   // guards: BR-AUT-060
-  it('сторно оплати: псевдостатус REVERSED без попереднього — це подія', async () => {
+  it('сторно оплати: псевдостатуси ACTIVE → REVERSED — це подія', async () => {
     const { tx, domainEvent } = makeTx();
     await recordDocumentEvent(tx, {
       orgId: ORG,
       documentType: 'PAYMENT',
       documentId: DOC,
       kind: 'STATUS_CHANGED',
-      toStatus: 'REVERSED',
+      fromStatus: AUTOMATION_PAYMENT_ACTIVE_STATUS,
+      toStatus: AUTOMATION_PAYMENT_REVERSED_STATUS,
     });
-    expect(domainEvent.create).toHaveBeenCalledTimes(1);
+    expect(domainEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ fromStatus: 'ACTIVE', toStatus: 'REVERSED' }),
+    });
   });
 
   // guards: BR-AUT-060

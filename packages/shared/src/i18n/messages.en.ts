@@ -503,6 +503,8 @@ export const en: Record<string, string> = {
   'err.purchaseOrder.receiveExceedsLineRemaining':
     'The received quantity exceeds the line balance (ordered {{quantity}}, ' +
     'already received {{received}}, to receive {{remaining}})',
+  'err.purchaseOrder.statusChanged':
+    'The order status has changed — refresh the page and try again',
   'err.purchaseOrder.statusChangedRetry':
     'The order status changed to "{{status}}" — repeat the receipt',
   'err.purchaseOrder.receiveAlreadyProcessed':
@@ -898,6 +900,7 @@ export const en: Record<string, string> = {
   'err.booking.nonWorkingDay': 'Request for a non-working day',
   'err.booking.outsideWorkingHours': 'Time outside working hours ({{start}}–{{end}})',
   'err.booking.requestNotFound': 'Request not found',
+  'err.booking.statusChanged': 'The request status has changed — refresh the page and try again',
   'err.booking.cancelledCannotConfirm': 'A cancelled request cannot be confirmed',
   'err.booking.slotNotFound': 'Slot not found',
 

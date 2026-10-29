@@ -173,10 +173,18 @@ function writesDocumentEvent(call: Call): boolean {
   return /(^|[^\w.])status\s*:/.test(data);
 }
 
-function hasEventNearby(call: Call): boolean {
+/** Рядок (з 1) першого виклику-події у вікні після запису; `null` — події поруч немає. */
+function eventLineAfter(call: Call): number | null {
   const lines = call.fileText.split('\n');
-  const window = lines.slice(call.endLine - 1, call.endLine - 1 + EVENT_WINDOW).join('\n');
-  return EVENT_CALL.test(window);
+  const end = Math.min(lines.length, call.endLine - 1 + EVENT_WINDOW);
+  for (let i = call.endLine - 1; i < end; i++) {
+    if (EVENT_CALL.test(lines[i])) return i + 1;
+  }
+  return null;
+}
+
+function hasEventNearby(call: Call): boolean {
+  return eventLineAfter(call) !== null;
 }
 
 function exemptionFor(call: Call): Exemption | undefined {
@@ -200,6 +208,21 @@ describe('перепис точок запису документів — под
       .filter(c => !hasEventNearby(c))
       .map(c => `${c.file}:${c.endLine} ${c.model}.${c.op}`);
     expect(offenders).toEqual([]);
+  });
+
+  // guards: BR-AUT-060
+  it('одна подія — на один запис: новий запис статусу поруч із ЧУЖОЮ подією не проходить', () => {
+    // Вікно в 40 рядків саме по собі пропустило б другий запис статусу, вставлений над уже наявною
+    // подією сусіднього переходу: обидва «мали б подію поруч», хоча подію пише лише один.
+    const byEvent = new Map<string, string[]>();
+    for (const c of calls.filter(writesDocumentEvent).filter(x => !exemptionFor(x))) {
+      const line = eventLineAfter(c);
+      if (line === null) continue;
+      const key = `${c.file}:${line}`;
+      byEvent.set(key, [...(byEvent.get(key) ?? []), `${c.model}.${c.op}@${c.endLine}`]);
+    }
+    const shared = [...byEvent].filter(([, writes]) => writes.length > 1);
+    expect(shared).toEqual([]);
   });
 
   // guards: BR-AUT-060

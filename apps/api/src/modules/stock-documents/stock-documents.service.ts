@@ -558,26 +558,29 @@ export class StockDocumentsService {
     } else {
       const fromStatus = doc.status;
       // CAS за прочитаним статусом і подія — однією транзакцією (BR-AUT-060).
-      await this.prisma.$transaction(async tx => {
-        const cas = await tx.stockDocument.updateMany({
-          where: { id, orgId, deletedAt: null, status: doc.status },
-          data: { status: newStatus },
-        });
-        if (cas.count === 0) {
-          throw new BadRequestException(
-            translateError('err.stockDocument.statusChanged', getLocale()),
-          );
-        }
-        await recordDocumentEvent(tx, {
-          orgId,
-          documentType: 'STOCK_DOCUMENT',
-          documentId: id,
-          kind: 'STATUS_CHANGED',
-          fromStatus,
-          toStatus: newStatus,
-          actorId: userId ?? null,
-        });
-      });
+      await this.prisma.$transaction(
+        async tx => {
+          const cas = await tx.stockDocument.updateMany({
+            where: { id, orgId, deletedAt: null, status: doc.status },
+            data: { status: newStatus },
+          });
+          if (cas.count === 0) {
+            throw new BadRequestException(
+              translateError('err.stockDocument.statusChanged', getLocale()),
+            );
+          }
+          await recordDocumentEvent(tx, {
+            orgId,
+            documentType: 'STOCK_DOCUMENT',
+            documentId: id,
+            kind: 'STATUS_CHANGED',
+            fromStatus,
+            toStatus: newStatus,
+            actorId: userId ?? null,
+          });
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      );
     }
 
     return this.findOne(orgId, id);

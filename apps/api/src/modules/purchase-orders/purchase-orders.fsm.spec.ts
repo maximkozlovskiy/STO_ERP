@@ -28,8 +28,9 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
   let prisma: {
     purchaseOrder: {
       findFirst: ReturnType<typeof vi.fn>;
-      update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
     };
+    domainEvent: ReturnType<typeof domainEventMock>;
     $transaction: ReturnType<typeof vi.fn>;
   };
 
@@ -59,7 +60,7 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
     prisma = {
       purchaseOrder: {
         findFirst: vi.fn(),
-        update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       domainEvent: domainEventMock(),
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
@@ -107,8 +108,8 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
 
     await service.transition(ORG, PO_ID, PurchaseOrderStatus.ORDERED);
 
-    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
-      where: { id: PO_ID, orgId: ORG },
+    expect(prisma.purchaseOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: PO_ID, orgId: ORG, deletedAt: null, status: PurchaseOrderStatus.DRAFT },
       data: { status: PurchaseOrderStatus.ORDERED },
     });
   });
@@ -120,8 +121,8 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
 
     await service.transition(ORG, PO_ID, PurchaseOrderStatus.CANCELLED);
 
-    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
-      where: { id: PO_ID, orgId: ORG },
+    expect(prisma.purchaseOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: PO_ID, orgId: ORG, deletedAt: null, status: PurchaseOrderStatus.DRAFT },
       data: { status: PurchaseOrderStatus.CANCELLED },
     });
   });
@@ -133,8 +134,8 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
 
     await service.transition(ORG, PO_ID, PurchaseOrderStatus.PARTIAL);
 
-    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
-      where: { id: PO_ID, orgId: ORG },
+    expect(prisma.purchaseOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: PO_ID, orgId: ORG, deletedAt: null, status: PurchaseOrderStatus.ORDERED },
       data: { status: PurchaseOrderStatus.PARTIAL },
     });
   });
@@ -146,8 +147,8 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
 
     await service.transition(ORG, PO_ID, PurchaseOrderStatus.RECEIVED);
 
-    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
-      where: { id: PO_ID, orgId: ORG },
+    expect(prisma.purchaseOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: PO_ID, orgId: ORG, deletedAt: null, status: PurchaseOrderStatus.ORDERED },
       data: { status: PurchaseOrderStatus.RECEIVED },
     });
   });
@@ -159,8 +160,8 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
 
     await service.transition(ORG, PO_ID, PurchaseOrderStatus.RECEIVED);
 
-    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
-      where: { id: PO_ID, orgId: ORG },
+    expect(prisma.purchaseOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: PO_ID, orgId: ORG, deletedAt: null, status: PurchaseOrderStatus.PARTIAL },
       data: { status: PurchaseOrderStatus.RECEIVED },
     });
   });
@@ -172,8 +173,8 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
 
     await service.transition(ORG, PO_ID, PurchaseOrderStatus.CANCELLED);
 
-    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
-      where: { id: PO_ID, orgId: ORG },
+    expect(prisma.purchaseOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: PO_ID, orgId: ORG, deletedAt: null, status: PurchaseOrderStatus.PARTIAL },
       data: { status: PurchaseOrderStatus.CANCELLED },
     });
   });
@@ -186,7 +187,7 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
     await expect(service.transition(ORG, PO_ID, PurchaseOrderStatus.DRAFT)).rejects.toThrow(
       BadRequestException,
     );
-    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrder.updateMany).not.toHaveBeenCalled();
   });
 
   it('Bug #481: CANCELLED → DRAFT заборонено (термінальний статус)', async () => {
@@ -195,7 +196,7 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
     await expect(service.transition(ORG, PO_ID, PurchaseOrderStatus.DRAFT)).rejects.toThrow(
       BadRequestException,
     );
-    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrder.updateMany).not.toHaveBeenCalled();
   });
 
   it('Bug #481: DRAFT → PARTIAL заборонено (FSM skip — потребує проходження ORDERED)', async () => {
@@ -204,7 +205,7 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
     await expect(service.transition(ORG, PO_ID, PurchaseOrderStatus.PARTIAL)).rejects.toThrow(
       BadRequestException,
     );
-    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrder.updateMany).not.toHaveBeenCalled();
   });
 
   it('Bug #481: DRAFT → RECEIVED заборонено (FSM skip — потребує проходження ORDERED)', async () => {
@@ -213,7 +214,7 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
     await expect(service.transition(ORG, PO_ID, PurchaseOrderStatus.RECEIVED)).rejects.toThrow(
       BadRequestException,
     );
-    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrder.updateMany).not.toHaveBeenCalled();
   });
 
   it('Bug #481: ORDERED → DRAFT заборонено (зворотний перехід)', async () => {
@@ -222,7 +223,7 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
     await expect(service.transition(ORG, PO_ID, PurchaseOrderStatus.DRAFT)).rejects.toThrow(
       BadRequestException,
     );
-    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrder.updateMany).not.toHaveBeenCalled();
   });
 
   // ── Edge cases ────────────────────────────────────────────────────────────
@@ -233,7 +234,18 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
     await expect(service.transition(ORG, PO_ID, PurchaseOrderStatus.ORDERED)).rejects.toThrow(
       NotFoundException,
     );
-    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrder.updateMany).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-AUT-060
+  it('паралельний перехід з того самого статусу: CAS програв → 400 «статус змінився», події немає', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ status: PurchaseOrderStatus.DRAFT });
+    prisma.purchaseOrder.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(service.transition(ORG, PO_ID, PurchaseOrderStatus.CANCELLED)).rejects.toThrow(
+      new BadRequestException('Статус замовлення змінився — оновіть сторінку й повторіть дію'),
+    );
+    expect(prisma.domainEvent.create).not.toHaveBeenCalled();
   });
 
   it('Bug #481: tenant isolation — findFirst отримує orgId+deletedAt у where', async () => {

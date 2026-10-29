@@ -13,6 +13,8 @@ import { recordDocumentEvents, type DocumentEventInput } from '../automation/rec
 const OVERDUE_FROM: InvoiceStatus[] = [InvoiceStatus.SENT, InvoiceStatus.PARTIALLY_PAID];
 /** Скільки рахунків в одній транзакції нічного прогону. */
 const OVERDUE_BATCH = 200;
+/** Пачка — до OVERDUE_BATCH окремих CAS-записів; типових 5 с Prisma на неї замало. */
+const OVERDUE_TX_TIMEOUT_MS = 30_000;
 
 interface OverdueJob {
   orgId: string;
@@ -59,7 +61,7 @@ export class InvoiceOverdueProcessor extends DeadLetterWorkerHost {
           take: OVERDUE_BATCH,
         });
         if (due.length === 0) break;
-        const moved = await this.markOverdueBatch(orgId, due);
+        const moved = await this.markOverdueBatch(orgId, today, due);
         total += moved;
         // Жоден не перейшов — пачка складається з рахунків, що змінились паралельно; повтор
         // взяв би ту саму пачку, тож виходимо (наступний прогін job-а підбере решту).
@@ -72,31 +74,38 @@ export class InvoiceOverdueProcessor extends DeadLetterWorkerHost {
     });
   }
 
-  /** Пачка: кожен рахунок — CAS за прочитаним статусом і подія, усе однією транзакцією. */
+  /**
+   * Пачка: кожен рахунок — CAS за прочитаними статусом і терміном (термін могли перенести між
+   * вибіркою і записом) і подія, усе однією транзакцією.
+   */
   private async markOverdueBatch(
     orgId: string,
+    today: Date,
     due: ReadonlyArray<{ id: string; status: InvoiceStatus }>,
   ): Promise<number> {
-    return this.prisma.$transaction(async tx => {
-      const events: DocumentEventInput[] = [];
-      for (const { id, status: from } of due) {
-        const res = await tx.invoice.updateMany({
-          where: { id, orgId, deletedAt: null, status: from },
-          data: { status: InvoiceStatus.OVERDUE },
-        });
-        if (res.count === 0) continue;
-        events.push({
-          orgId,
-          documentType: 'INVOICE',
-          documentId: id,
-          kind: 'STATUS_CHANGED',
-          fromStatus: from,
-          toStatus: InvoiceStatus.OVERDUE,
-        });
-      }
-      await recordDocumentEvents(tx, events);
-      return events.length;
-    });
+    return this.prisma.$transaction(
+      async tx => {
+        const events: DocumentEventInput[] = [];
+        for (const { id, status: from } of due) {
+          const res = await tx.invoice.updateMany({
+            where: { id, orgId, deletedAt: null, status: from, dueDate: { not: null, lt: today } },
+            data: { status: InvoiceStatus.OVERDUE },
+          });
+          if (res.count === 0) continue;
+          events.push({
+            orgId,
+            documentType: 'INVOICE',
+            documentId: id,
+            kind: 'STATUS_CHANGED',
+            fromStatus: from,
+            toStatus: InvoiceStatus.OVERDUE,
+          });
+        }
+        await recordDocumentEvents(tx, events);
+        return events.length;
+      },
+      { timeout: OVERDUE_TX_TIMEOUT_MS },
+    );
   }
 
   // Централізований DLQ: терминальний провал → DeadLetterJob (аудит стеку, backend #2).

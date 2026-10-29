@@ -617,42 +617,45 @@ export class SupplierPaymentsService {
     }
 
     // BR-AUT-060: подія «створено» — у тій самій транзакції, що й оплата.
-    const sp = await this.prisma.$transaction(async tx => {
-      const created = await tx.supplierPayment.create({
-        data: {
+    const sp = await this.prisma.$transaction(
+      async tx => {
+        const created = await tx.supplierPayment.create({
+          data: {
+            orgId,
+            supplierId: dto.supplierId,
+            purchaseOrderId: dto.purchaseOrderId ?? null,
+            sourceType: dto.sourceType,
+            bankAccountId:
+              dto.sourceType === PaymentSourceType.BANK_ACCOUNT ? dto.bankAccountId : null,
+            cashRegisterId:
+              dto.sourceType === PaymentSourceType.CASH_REGISTER ? dto.cashRegisterId : null,
+            number,
+            amount: dto.amount,
+            currencyId,
+            method: dto.method,
+            notes: dto.notes ?? null,
+            documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
+          },
+          include: {
+            supplier: { select: { firstName: true, lastName: true, companyName: true } },
+            bankAccount: { select: { name: true } },
+            cashRegister: { select: { name: true } },
+            purchaseOrder: { select: { number: true } },
+            currency: { select: { code: true } },
+          },
+        });
+        await recordDocumentEvent(tx, {
           orgId,
-          supplierId: dto.supplierId,
-          purchaseOrderId: dto.purchaseOrderId ?? null,
-          sourceType: dto.sourceType,
-          bankAccountId:
-            dto.sourceType === PaymentSourceType.BANK_ACCOUNT ? dto.bankAccountId : null,
-          cashRegisterId:
-            dto.sourceType === PaymentSourceType.CASH_REGISTER ? dto.cashRegisterId : null,
-          number,
-          amount: dto.amount,
-          currencyId,
-          method: dto.method,
-          notes: dto.notes ?? null,
-          documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
-        },
-        include: {
-          supplier: { select: { firstName: true, lastName: true, companyName: true } },
-          bankAccount: { select: { name: true } },
-          cashRegister: { select: { name: true } },
-          purchaseOrder: { select: { number: true } },
-          currency: { select: { code: true } },
-        },
-      });
-      await recordDocumentEvent(tx, {
-        orgId,
-        documentType: 'SUPPLIER_PAYMENT',
-        documentId: created.id,
-        kind: 'CREATED',
-        toStatus: created.status,
-        actorId: userId ?? null,
-      });
-      return created;
-    });
+          documentType: 'SUPPLIER_PAYMENT',
+          documentId: created.id,
+          kind: 'CREATED',
+          toStatus: created.status,
+          actorId: userId ?? null,
+        });
+        return created;
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
 
     return this.toDto(sp);
   }
@@ -1068,26 +1071,29 @@ export class SupplierPaymentsService {
     // записом інакше лишив би проведення у взаєморозрахунках при оплаті у статусі CANCELLED.
     // Викликається і автоматично — відкатом рознесення банківського платежу (BR-BANK-029).
     const fromStatus = sp.status;
-    await this.prisma.$transaction(async tx => {
-      const cas = await tx.supplierPayment.updateMany({
-        where: { id, orgId, deletedAt: null, status: sp.status },
-        data: { status: SupplierPaymentStatus.CANCELLED },
-      });
-      if (cas.count === 0) {
-        throw new BadRequestException(
-          translateError('err.supplierPayment.alreadyConfirmedOrChanged', getLocale()),
-        );
-      }
-      await recordDocumentEvent(tx, {
-        orgId,
-        documentType: 'SUPPLIER_PAYMENT',
-        documentId: id,
-        kind: 'STATUS_CHANGED',
-        fromStatus,
-        toStatus: SupplierPaymentStatus.CANCELLED,
-        actorId: userId ?? null,
-      });
-    });
+    await this.prisma.$transaction(
+      async tx => {
+        const cas = await tx.supplierPayment.updateMany({
+          where: { id, orgId, deletedAt: null, status: sp.status },
+          data: { status: SupplierPaymentStatus.CANCELLED },
+        });
+        if (cas.count === 0) {
+          throw new BadRequestException(
+            translateError('err.supplierPayment.alreadyConfirmedOrChanged', getLocale()),
+          );
+        }
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'SUPPLIER_PAYMENT',
+          documentId: id,
+          kind: 'STATUS_CHANGED',
+          fromStatus,
+          toStatus: SupplierPaymentStatus.CANCELLED,
+          actorId: userId ?? null,
+        });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
 
     return this.findOne(orgId, id);
   }

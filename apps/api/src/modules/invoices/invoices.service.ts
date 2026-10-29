@@ -431,41 +431,44 @@ export class InvoicesService {
       : { rateUsed: 1, amountBase: dto.amount };
 
     // BR-AUT-060: подія «створено» — у тій самій транзакції, що й рахунок.
-    const inv = await this.prisma.$transaction(async tx => {
-      const created = await tx.invoice.create({
-        data: {
+    const inv = await this.prisma.$transaction(
+      async tx => {
+        const created = await tx.invoice.create({
+          data: {
+            orgId,
+            counterpartyId: dto.counterpartyId,
+            workOrderId: dto.workOrderId ?? null,
+            number,
+            amount: dto.amount,
+            currencyId,
+            totalAmountBase: conv.amountBase,
+            rateUsed: conv.rateUsed,
+            // 'STANDARD' — узгоджено з UI-enum (INVOICE_TYPE_VALUES); 'INVOICE' (старий Prisma-дефолт)
+            // поза enum-ом і ламав zodResolver форми при редагуванні.
+            invoiceType: dto.invoiceType ?? 'STANDARD',
+            dueDate,
+            documentDate,
+            notes: dto.notes ?? null,
+            status: InvoiceStatus.DRAFT,
+          },
+          include: {
+            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+            workOrder: { select: { number: true } },
+            currency: { select: { code: true } },
+          },
+        });
+        await recordDocumentEvent(tx, {
           orgId,
-          counterpartyId: dto.counterpartyId,
-          workOrderId: dto.workOrderId ?? null,
-          number,
-          amount: dto.amount,
-          currencyId,
-          totalAmountBase: conv.amountBase,
-          rateUsed: conv.rateUsed,
-          // 'STANDARD' — узгоджено з UI-enum (INVOICE_TYPE_VALUES); 'INVOICE' (старий Prisma-дефолт)
-          // поза enum-ом і ламав zodResolver форми при редагуванні.
-          invoiceType: dto.invoiceType ?? 'STANDARD',
-          dueDate,
-          documentDate,
-          notes: dto.notes ?? null,
-          status: InvoiceStatus.DRAFT,
-        },
-        include: {
-          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-          workOrder: { select: { number: true } },
-          currency: { select: { code: true } },
-        },
-      });
-      await recordDocumentEvent(tx, {
-        orgId,
-        documentType: 'INVOICE',
-        documentId: created.id,
-        kind: 'CREATED',
-        toStatus: created.status,
-        actorId: userId ?? null,
-      });
-      return created;
-    });
+          documentType: 'INVOICE',
+          documentId: created.id,
+          kind: 'CREATED',
+          toStatus: created.status,
+          actorId: userId ?? null,
+        });
+        return created;
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
 
     // C1: аудит створення рахунку («хто виставив»). Best-effort post-commit.
     if (userId) {
@@ -849,59 +852,62 @@ export class InvoicesService {
     // Clone must NOT inherit workOrderId: the same WO would accumulate duplicate invoices
     // and the WO→Invoice 1:1 invariant breaks (auto-invoice on completion creates a 3rd).
     // BR-AUT-060: подія «створено» — у тій самій транзакції, що й клон.
-    const cloned = await this.prisma.$transaction(async tx => {
-      const created = await tx.invoice.create({
-        data: {
-          orgId,
-          counterpartyId: original.counterpartyId,
-          workOrderId: null,
-          number,
-          // When the invoice has line items, sync `amount` with their total to
-          // avoid mismatch between `amount` and recalculated VAT breakdown.
-          // Fall back to `original.amount` when there are no lines.
-          amount: clonedAmount,
-          currencyId: original.currencyId ?? null,
-          totalWithoutVat,
-          totalVat,
-          totalWithVat,
-          totalAmountBase: clonedConv.amountBase,
-          rateUsed: clonedConv.rateUsed,
-          dueDate: original.dueDate,
-          notes: original.notes,
-          status: InvoiceStatus.DRAFT,
-          lines: {
-            create: original.lines.map(l => ({
-              orgId,
-              goodId: l.goodId,
-              workId: l.workId,
-              description: l.description,
-              quantity: l.quantity,
-              unitPrice: l.unitPrice,
-              vatRate: l.vatRate,
-              priceWithoutVat: l.priceWithoutVat,
-              vatAmount: l.vatAmount,
-              priceWithVat: l.priceWithVat,
-              sortOrder: l.sortOrder,
-              unitOfMeasureId: l.unitOfMeasureId,
-            })),
+    const cloned = await this.prisma.$transaction(
+      async tx => {
+        const created = await tx.invoice.create({
+          data: {
+            orgId,
+            counterpartyId: original.counterpartyId,
+            workOrderId: null,
+            number,
+            // When the invoice has line items, sync `amount` with their total to
+            // avoid mismatch between `amount` and recalculated VAT breakdown.
+            // Fall back to `original.amount` when there are no lines.
+            amount: clonedAmount,
+            currencyId: original.currencyId ?? null,
+            totalWithoutVat,
+            totalVat,
+            totalWithVat,
+            totalAmountBase: clonedConv.amountBase,
+            rateUsed: clonedConv.rateUsed,
+            dueDate: original.dueDate,
+            notes: original.notes,
+            status: InvoiceStatus.DRAFT,
+            lines: {
+              create: original.lines.map(l => ({
+                orgId,
+                goodId: l.goodId,
+                workId: l.workId,
+                description: l.description,
+                quantity: l.quantity,
+                unitPrice: l.unitPrice,
+                vatRate: l.vatRate,
+                priceWithoutVat: l.priceWithoutVat,
+                vatAmount: l.vatAmount,
+                priceWithVat: l.priceWithVat,
+                sortOrder: l.sortOrder,
+                unitOfMeasureId: l.unitOfMeasureId,
+              })),
+            },
           },
-        },
-        include: {
-          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-          workOrder: { select: { number: true } },
-          currency: { select: { code: true } },
-        },
-      });
-      await recordDocumentEvent(tx, {
-        orgId,
-        documentType: 'INVOICE',
-        documentId: created.id,
-        kind: 'CREATED',
-        toStatus: created.status,
-        actorId: userId ?? null,
-      });
-      return created;
-    });
+          include: {
+            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+            workOrder: { select: { number: true } },
+            currency: { select: { code: true } },
+          },
+        });
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'INVOICE',
+          documentId: created.id,
+          kind: 'CREATED',
+          toStatus: created.status,
+          actorId: userId ?? null,
+        });
+        return created;
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
 
     return this.toDto(cloned);
   }

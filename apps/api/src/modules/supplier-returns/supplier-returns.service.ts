@@ -210,58 +210,61 @@ export class SupplierReturnsService {
     const totalAmount = sumMoney(lines.map(l => money(l.quantity * l.price)));
 
     // BR-AUT-060: подія «створено» — у тій самій транзакції, що й повернення.
-    const sr = await this.prisma.$transaction(async tx => {
-      const created = await tx.supplierReturn.create({
-        data: {
-          orgId,
-          supplierId: dto.supplierId,
-          warehouseId: dto.warehouseId,
-          purchaseOrderId: dto.purchaseOrderId ?? null,
-          number,
-          totalAmount,
-          notes: dto.notes,
-          documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
-          lines: {
-            create: lines.map((l, i) => ({
-              orgId,
-              goodId: l.goodId,
-              quantity: l.quantity,
-              price: l.price,
-              unitOfMeasureId: l.unitOfMeasureId ?? null,
-              createdAt: lineStamps[i],
-            })),
+    const sr = await this.prisma.$transaction(
+      async tx => {
+        const created = await tx.supplierReturn.create({
+          data: {
+            orgId,
+            supplierId: dto.supplierId,
+            warehouseId: dto.warehouseId,
+            purchaseOrderId: dto.purchaseOrderId ?? null,
+            number,
+            totalAmount,
+            notes: dto.notes,
+            documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
+            lines: {
+              create: lines.map((l, i) => ({
+                orgId,
+                goodId: l.goodId,
+                quantity: l.quantity,
+                price: l.price,
+                unitOfMeasureId: l.unitOfMeasureId ?? null,
+                createdAt: lineStamps[i],
+              })),
+            },
           },
-        },
-        include: {
-          supplier: { select: { firstName: true, lastName: true, companyName: true } },
-          warehouse: { select: { name: true } },
-          purchaseOrder: { select: { number: true } },
-          lines: {
-            where: { deletedAt: null },
-            orderBy: SR_LINE_ORDER,
-            include: {
-              good: {
-                select: {
-                  name: true,
-                  sku: true,
-                  unit: true,
-                  unitOfMeasure: { select: { shortName: true } },
+          include: {
+            supplier: { select: { firstName: true, lastName: true, companyName: true } },
+            warehouse: { select: { name: true } },
+            purchaseOrder: { select: { number: true } },
+            lines: {
+              where: { deletedAt: null },
+              orderBy: SR_LINE_ORDER,
+              include: {
+                good: {
+                  select: {
+                    name: true,
+                    sku: true,
+                    unit: true,
+                    unitOfMeasure: { select: { shortName: true } },
+                  },
                 },
               },
             },
           },
-        },
-      });
-      await recordDocumentEvent(tx, {
-        orgId,
-        documentType: 'SUPPLIER_RETURN',
-        documentId: created.id,
-        kind: 'CREATED',
-        toStatus: created.status,
-        actorId: userId ?? null,
-      });
-      return created;
-    });
+        });
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'SUPPLIER_RETURN',
+          documentId: created.id,
+          kind: 'CREATED',
+          toStatus: created.status,
+          actorId: userId ?? null,
+        });
+        return created;
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
 
     return this.toDto(sr);
   }
@@ -513,26 +516,29 @@ export class SupplierReturnsService {
     const fromStatus = sr.status;
     // CAS за прочитаним статусом і подія — однією транзакцією (BR-AUT-060): паралельне
     // проведення між читанням і записом не перезаписується на «Скасовано».
-    await this.prisma.$transaction(async tx => {
-      const cas = await tx.supplierReturn.updateMany({
-        where: { id, orgId, deletedAt: null, status: sr.status },
-        data: { status: SupplierReturnStatus.CANCELLED },
-      });
-      if (cas.count === 0) {
-        throw new BadRequestException(
-          translateError('err.supplierReturn.alreadyConfirmedOrChanged', getLocale()),
-        );
-      }
-      await recordDocumentEvent(tx, {
-        orgId,
-        documentType: 'SUPPLIER_RETURN',
-        documentId: id,
-        kind: 'STATUS_CHANGED',
-        fromStatus,
-        toStatus: SupplierReturnStatus.CANCELLED,
-        actorId: userId ?? null,
-      });
-    });
+    await this.prisma.$transaction(
+      async tx => {
+        const cas = await tx.supplierReturn.updateMany({
+          where: { id, orgId, deletedAt: null, status: sr.status },
+          data: { status: SupplierReturnStatus.CANCELLED },
+        });
+        if (cas.count === 0) {
+          throw new BadRequestException(
+            translateError('err.supplierReturn.alreadyConfirmedOrChanged', getLocale()),
+          );
+        }
+        await recordDocumentEvent(tx, {
+          orgId,
+          documentType: 'SUPPLIER_RETURN',
+          documentId: id,
+          kind: 'STATUS_CHANGED',
+          fromStatus,
+          toStatus: SupplierReturnStatus.CANCELLED,
+          actorId: userId ?? null,
+        });
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
 
     return this.findOne(orgId, id);
   }

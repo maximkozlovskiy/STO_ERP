@@ -618,7 +618,7 @@ describe('PaymentsService.reverse — події outbox (BR-AUT-060)', () => {
     }));
 
   // guards: BR-AUT-060
-  it('сторно → подія оплати STATUS_CHANGED у «REVERSED» з автором сторно; наряд PAID → INVOICED — своя подія', async () => {
+  it('сторно → подія оплати STATUS_CHANGED «ACTIVE» → «REVERSED» з автором сторно; наряд PAID → INVOICED — своя подія', async () => {
     const h = makeHarness({
       payment: { invoiceId: null, amount: 1000, amountBase: 1000 },
       invoice: null,
@@ -629,7 +629,7 @@ describe('PaymentsService.reverse — події outbox (BR-AUT-060)', () => {
       {
         documentType: 'PAYMENT',
         documentId: PAY,
-        fromStatus: null,
+        fromStatus: 'ACTIVE',
         toStatus: 'REVERSED',
         actorId: USER,
       },

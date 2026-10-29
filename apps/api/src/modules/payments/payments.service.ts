@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import {
+  AUTOMATION_PAYMENT_ACTIVE_STATUS,
   AUTOMATION_PAYMENT_REVERSED_STATUS,
   CASH_METHOD_CODE,
   formatPersonName,
@@ -620,10 +621,18 @@ export class PaymentsService {
           }
           const newPaid = prevPaid + dto.amount;
           const newStatus = newPaid >= invAmount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID';
-          // CAS: оновлюємо лише якщо paidAmount досі == prevPaid (не змінений конкурентом).
+          // CAS: оновлюємо лише якщо paidAmount і статус досі ті, що прочитали. Статус — бо з нього
+          // вище рахувалась відмова (скасований між читанням і записом рахунок не стає «Оплачено»)
+          // і з нього ж — `fromStatus` події (BR-AUT-060).
           const fromStatus = inv.status;
           const updated = await tx.invoice.updateMany({
-            where: { id: dto.invoiceId, orgId, deletedAt: null, paidAmount: inv.paidAmount },
+            where: {
+              id: dto.invoiceId,
+              orgId,
+              deletedAt: null,
+              paidAmount: inv.paidAmount,
+              status: inv.status,
+            },
             data: { paidAmount: newPaid, status: newStatus },
           });
           if (updated.count === 0) {
@@ -990,12 +999,14 @@ export class PaymentsService {
         ),
       );
     }
-    // BR-AUT-060: у оплати немає поля статусу — сторно фіксується псевдостатусом «REVERSED».
+    // BR-AUT-060: у оплати немає поля статусу — сторно фіксується псевдостатусами
+    // «ACTIVE» → «REVERSED».
     await recordDocumentEvent(tx, {
       orgId,
       documentType: 'PAYMENT',
       documentId: payment.id,
       kind: 'STATUS_CHANGED',
+      fromStatus: AUTOMATION_PAYMENT_ACTIVE_STATUS,
       toStatus: AUTOMATION_PAYMENT_REVERSED_STATUS,
       actorId: ctx.userId ?? null,
     });

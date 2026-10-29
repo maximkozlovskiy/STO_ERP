@@ -26,5 +26,12 @@ export type AutomationEventKindValue = (typeof AUTOMATION_EVENT_KINDS)[number];
  */
 export const AUTOMATION_PAYMENT_REVERSED_STATUS = 'REVERSED';
 
+/**
+ * Псевдостатус «оплата діє» — `fromStatus` події сторно оплати клієнта (BR-AUT-060). Без нього
+ * сторно мало б `fromStatus = null`, як «створено», і умова правила «зі статусу» не мала б чого
+ * обрати.
+ */
+export const AUTOMATION_PAYMENT_ACTIVE_STATUS = 'ACTIVE';
+
 /** Термін дії одноразового коду підписки на Telegram-бот (рішення власника 2026-10-29). */
 export const TELEGRAM_LINK_CODE_TTL_DAYS = 7;

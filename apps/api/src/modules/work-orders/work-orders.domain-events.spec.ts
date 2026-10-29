@@ -118,6 +118,31 @@ describe('WorkOrdersService.transition — подія outbox (BR-AUT-060)', () =
     expect(h.events()).toHaveLength(3);
   });
 
+  // guards: BR-WO-031, BR-AUT-060
+  it('рахунок між читанням і записом став «Прострочено» → усе одно скасовується, подія з OVERDUE', async () => {
+    const h = harness('COMPLETED', [inv('inv-sent', 'SENT')]);
+    // Нічний OVERDUE встиг між вибіркою живих рахунків і CAS скасування.
+    const many = h.invoice.findMany.getMockImplementation()!;
+    h.invoice.findMany.mockImplementation(async (args?: unknown) => {
+      const rows = await many(args as never);
+      const where = (args as { where?: { status?: { in?: unknown } } } | undefined)?.where;
+      if (where?.status?.in) h.invoice.rows.find(r => r.id === 'inv-sent')!.status = 'OVERDUE';
+      return rows;
+    });
+
+    await h.service.transition(ORG, WO_ID, 'CANCELLED' as never, USER);
+
+    expect(h.invoice.rows.find(r => r.id === 'inv-sent')!.status).toBe('CANCELLED');
+    expect(h.events()).toContainEqual(
+      expect.objectContaining({
+        documentType: 'INVOICE',
+        documentId: 'inv-sent',
+        fromStatus: 'OVERDUE',
+        toStatus: 'CANCELLED',
+      }),
+    );
+  });
+
   // guards: BR-AUT-060
   it('перехід упав після запису статусу → відкат: ні нового статусу, ні події', async () => {
     const h = harness('COMPLETED', [inv('inv-sent', 'SENT')]);

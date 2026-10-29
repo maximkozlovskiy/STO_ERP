@@ -492,6 +492,8 @@ export const uk: Record<string, string> = {
   'err.purchaseOrder.receiveExceedsLineRemaining':
     'Кількість прийому перевищує залишок за рядком (замовлено {{quantity}}, ' +
     'вже прийнято {{received}}, до прийому {{remaining}})',
+  'err.purchaseOrder.statusChanged':
+    'Статус замовлення змінився — оновіть сторінку й повторіть дію',
   'err.purchaseOrder.statusChangedRetry':
     'Статус замовлення змінився на "{{status}}" — повторіть прийом',
   'err.purchaseOrder.receiveAlreadyProcessed':
@@ -881,6 +883,7 @@ export const uk: Record<string, string> = {
   'err.booking.nonWorkingDay': 'Запит на неробочий день',
   'err.booking.outsideWorkingHours': 'Час поза робочими годинами ({{start}}–{{end}})',
   'err.booking.requestNotFound': 'Заявку не знайдено',
+  'err.booking.statusChanged': 'Статус заявки змінився — оновіть сторінку й повторіть дію',
   'err.booking.cancelledCannotConfirm': 'Скасовану заявку не можна підтвердити',
   'err.booking.slotNotFound': 'Слот не знайдено',
 

@@ -98,6 +98,14 @@ import {
 import { toLinkedPaymentRows } from '../payments/payment-cash-desk';
 import { recordDocumentEvent } from '../automation/record-document-event';
 
+/** Живі статуси рахунку наряду — їх скасовує скасування наряду (BR-WO-031). */
+const LIVE_INVOICE_STATUSES: readonly InvoiceStatus[] = [
+  InvoiceStatus.DRAFT,
+  InvoiceStatus.SENT,
+  InvoiceStatus.PARTIALLY_PAID,
+  InvoiceStatus.OVERDUE,
+];
+
 // Shared select for GoodUoM lookups in addPart / updatePart.
 // Centralised so the type (derived via Prisma.GoodUoMGetPayload) and the select
 // clause stay in sync automatically — adding a field here updates both.
@@ -1999,9 +2007,12 @@ export class WorkOrdersService {
 
   /**
    * BR-WO-031: живі рахунки скасованого наряду → «Скасовано». Кожен рахунок окремо (CAS за
-   * прочитаним статусом), щоб записати подію з його попереднім статусом (BR-AUT-060). Рахунок,
-   * статус якого змінився між читанням і записом, не чіпаємо — так само, як раніше `updateMany`
-   * не чіпав рахунок, що встиг вийти з живих статусів.
+   * прочитаним статусом), щоб записати подію з його попереднім статусом (BR-AUT-060). Порядок —
+   * за id, як у нічному OVERDUE: дві транзакції блокують рахунки в одному порядку.
+   *
+   * Рахунок, що між читанням і записом перейшов в інший ЖИВИЙ статус (нічне «Прострочено»),
+   * перечитується і скасовується з новим статусом — так, як його скасовував раніше один
+   * `updateMany` за переліком живих статусів. Вийшов із живих (оплачено, скасовано) — не чіпаємо.
    */
   private async cancelWorkOrderInvoicesInTx(
     tx: Prisma.TransactionClient,
@@ -2010,30 +2021,42 @@ export class WorkOrdersService {
     userId: string | undefined,
   ): Promise<void> {
     const live = await tx.invoice.findMany({
-      where: {
-        orgId,
-        workOrderId,
-        deletedAt: null,
-        status: { in: ['DRAFT', 'SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
-      },
+      where: { orgId, workOrderId, deletedAt: null, status: { in: [...LIVE_INVOICE_STATUSES] } },
       select: { id: true, status: true },
+      orderBy: { id: 'asc' },
       take: 100,
     });
-    for (const { id, status: from } of live) {
-      const res = await tx.invoice.updateMany({
-        where: { id, orgId, deletedAt: null, status: from },
-        data: { status: 'CANCELLED' },
-      });
-      if (res.count === 0) continue;
-      await recordDocumentEvent(tx, {
-        orgId,
-        documentType: 'INVOICE',
-        documentId: id,
-        kind: 'STATUS_CHANGED',
-        fromStatus: from,
-        toStatus: 'CANCELLED',
-        actorId: userId ?? null,
-      });
+    for (const inv of live) {
+      let from: InvoiceStatus | null = inv.status;
+      for (let attempt = 0; from !== null && attempt < 3; attempt++) {
+        const res = await tx.invoice.updateMany({
+          where: { id: inv.id, orgId, deletedAt: null, status: from },
+          data: { status: 'CANCELLED' },
+        });
+        if (res.count === 1) {
+          await recordDocumentEvent(tx, {
+            orgId,
+            documentType: 'INVOICE',
+            documentId: inv.id,
+            kind: 'STATUS_CHANGED',
+            fromStatus: from,
+            toStatus: 'CANCELLED',
+            actorId: userId ?? null,
+          });
+          from = null;
+          break;
+        }
+        const now = await tx.invoice.findFirst({
+          where: { id: inv.id, orgId, deletedAt: null },
+          select: { status: true },
+        });
+        from = now && LIVE_INVOICE_STATUSES.includes(now.status) ? now.status : null;
+      }
+      // Три поспіль програні CAS на тому самому рахунку — паралельна зміна триває; хай викликач
+      // повторить, а не лишить живий рахунок скасованого наряду.
+      if (from !== null) {
+        throw new BadRequestException(err('err.workOrder.statusChanged'));
+      }
     }
   }
 

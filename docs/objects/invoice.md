@@ -247,7 +247,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 
 | Аспект                                                                                   | Тест                                       | Кейсів |
 | ---------------------------------------------------------------------------------------- | ------------------------------------------ | ------ |
-| BullMQ-processor: OVERDUE за фільтром, подія на кожен рахунок (BR-INV-005, BR-AUT-060)   | `invoice-overdue.processor.spec.ts`        | 5      |
+| BullMQ-processor: OVERDUE за фільтром, подія на кожен рахунок (BR-INV-005, BR-AUT-060)   | `invoice-overdue.processor.spec.ts`        | 6      |
 | HTTP-контракт (DTO, статуси, валідація)                                                  | `invoices.contract.spec.ts`                | 45     |
 | документ, позначений на видалення, — лише перегляд (BR-WO-012)                           | `invoices.with-deleted.spec.ts`            | 13     |
 | create defaults (номер, invoiceType)                                                     | `invoices.create-defaults.spec.ts`         | 5      |
@@ -266,7 +266,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | друкований рахунок: реквізити своєї організації, дата, валюта, 404                       | `invoices.pdf.spec.ts`                     | 4      |
 | одиниця рядка як у наряді (Bug #868), робота — «год»                                     | `invoices.line-units.spec.ts`              | 8      |
 
-Разом: **249** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **253** кейси (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для правил про суму з наряду і ПДВ рядка:
 

@@ -345,7 +345,7 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 | причина сторно в zod-схемі (BR-CASH-023)                                                                                              | `../../../../../packages/shared/src/schemas/forms/cash-reversal.schema.spec.ts`  | 11     |
 | каса з відкритою зміною: не видалити й не зняти «фіскальна» (BR-CASH-028)                                                             | `../cash-registers/cash-registers.open-shift-guard.spec.ts`                      | 5      |
 
-Разом: **663** кейси (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
+Разом: **665** кейсів (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
 
 **Межі сторожів.** Мітка `// guards:` означає «порушення правила в коді валить цей тест» (кожну перевірено мутацією 2026-10-08), але не «правило стережеться повністю»:
 
