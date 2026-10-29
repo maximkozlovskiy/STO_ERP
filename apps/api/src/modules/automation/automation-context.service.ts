@@ -4,7 +4,7 @@ import type { AutomationDocumentType, Prisma } from '@prisma/client';
 import { AUTOMATION_STATUS_LABELS, type AutomationVariableKey } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { trimTrailingSlashes } from '../../common/utils/trim-trailing-slashes';
-import { formatKyivDate, formatKyivTime, formatMoneyUah } from './automation-text';
+import { formatKyivDate, formatKyivTime, formatMoney } from './automation-text';
 
 /** Клієнт-одержувач повідомлення (BR-AUT-010, 012). */
 export interface AutomationClient {
@@ -29,6 +29,7 @@ export interface DocumentContext {
   branchId: string | null;
   /** Філія для каналів повідомлень і `{{branchName}}` — документа або перша філія організації. */
   messageBranchId: string | null;
+  /** Сума для умови «сума ≥ X» — у БАЗОВІЙ валюті організації (BR-AUT-003). */
   amount: number | null;
   repairCategory: string | null;
   priority: string | null;
@@ -94,11 +95,31 @@ const clientVars = (c: AutomationClient | null): Partial<Record<AutomationVariab
 const num = (d: Prisma.Decimal | number | null | undefined): number | null =>
   d === null || d === undefined ? null : Number(d);
 
+/**
+ * Сума документа: у його валюті (`amount`, для тексту), у базовій (`base`, для умови) і код валюти
+ * (null — документ без валюти, тобто в базовій).
+ */
+interface DocMoney {
+  amount: number;
+  base: number | null;
+  currency: string | null;
+}
+
+const money = (
+  amount: Prisma.Decimal | number,
+  base: Prisma.Decimal | number | null | undefined,
+  currency: { code: string } | null | undefined,
+): DocMoney => ({ amount: Number(amount), base: num(base), currency: currency?.code ?? null });
+
 /** Відсутній документ — подію пропускаємо (видалено між зміною й обробкою). */
-type Partial0 = Omit<DocumentContext, 'documentType' | 'documentId' | 'messageBranchId'> | null;
+type Partial0 =
+  | (Omit<DocumentContext, 'documentType' | 'documentId' | 'messageBranchId' | 'amount'> & {
+      money: DocMoney | null;
+    })
+  | null;
 
 const EMPTY = {
-  amount: null,
+  money: null,
   repairCategory: null,
   priority: null,
   client: null,
@@ -123,16 +144,27 @@ export class AutomationContextService {
     documentId: string,
     now: Date = new Date(),
   ): Promise<DocumentContext | null> {
-    const doc = await this.loadDocument(orgId, documentType, documentId, now);
-    if (!doc) return null;
-    const [branch, org] = await Promise.all([
+    const loaded = await this.loadDocument(orgId, documentType, documentId, now);
+    if (!loaded) return null;
+    const { money: docMoney, ...doc } = loaded;
+    const [branch, org, settings] = await Promise.all([
       this.prisma.garageBranch.findFirst({
         where: doc.branchId ? { id: doc.branchId, orgId } : { orgId, deletedAt: null },
         orderBy: { createdAt: 'asc' },
         select: { id: true, name: true },
       }),
       this.prisma.organisation.findFirst({ where: { id: orgId }, select: { phone: true } }),
+      docMoney
+        ? this.prisma.organisationSettings.findFirst({
+            where: { orgId },
+            select: { currency: true },
+          })
+        : null,
     ]);
+    // Мультивалюта: документ у валюті, відмінній від базової, — текст у його валюті, а умова
+    // «сума ≥ X» — за базовою сумою (X задано в базовій валюті; 100 USD ≠ 100 грн).
+    const baseCode = settings?.currency ?? 'UAH';
+    const foreign = !!docMoney?.currency && docMoney.currency !== baseCode;
     const statusLabel = doc.status
       ? (AUTOMATION_STATUS_LABELS[documentType][doc.status] ?? doc.status)
       : '';
@@ -141,8 +173,12 @@ export class AutomationContextService {
       documentType,
       documentId,
       messageBranchId: branch?.id ?? null,
+      amount: docMoney ? (foreign ? (docMoney.base ?? docMoney.amount) : docMoney.amount) : null,
       vars: {
         ...doc.vars,
+        ...(docMoney && {
+          totalAmount: formatMoney(docMoney.amount, foreign ? docMoney.currency : baseCode),
+        }),
         status: statusLabel,
         branchName: branch?.name ?? '',
         branchPhone: org?.phone ?? '',
@@ -190,6 +226,8 @@ export class AutomationContextService {
             status: true,
             branchId: true,
             totalAmount: true,
+            totalAmountBase: true,
+            currency: { select: { code: true } },
             repairCategory: true,
             priority: true,
             vehicleId: true,
@@ -219,7 +257,7 @@ export class AutomationContextService {
           ...EMPTY,
           status: wo.status,
           branchId: wo.branchId,
-          amount: num(wo.totalAmount),
+          money: money(wo.totalAmount, wo.totalAmountBase, wo.currency),
           repairCategory: wo.repairCategory,
           priority: wo.priority,
           client,
@@ -230,7 +268,6 @@ export class AutomationContextService {
           counterpartyId: wo.counterpartyId,
           vars: {
             documentNumber: wo.number,
-            totalAmount: formatMoneyUah(Number(wo.totalAmount)),
             estimateLink: this.estimateLink(wo.shareToken, wo.shareTokenExpiresAt, now),
             ...clientVars(client),
             ...vehicleVars(wo.vehicle),
@@ -244,6 +281,8 @@ export class AutomationContextService {
             number: true,
             status: true,
             amount: true,
+            totalAmountBase: true,
+            currency: { select: { code: true } },
             counterpartyId: true,
             workOrderId: true,
             counterparty: { select: CP_SELECT },
@@ -258,14 +297,13 @@ export class AutomationContextService {
           ...EMPTY,
           status: inv.status,
           branchId: inv.workOrder?.branchId ?? null,
-          amount: num(inv.amount),
+          money: money(inv.amount, inv.totalAmountBase, inv.currency),
           client,
           workOrderId: inv.workOrderId,
           vehicleId: inv.workOrder?.vehicleId ?? null,
           counterpartyId: inv.counterpartyId,
           vars: {
             documentNumber: inv.number,
-            totalAmount: formatMoneyUah(Number(inv.amount)),
             ...clientVars(client),
             ...vehicleVars(inv.workOrder?.vehicle ?? null),
           },
@@ -277,6 +315,8 @@ export class AutomationContextService {
           where: { id, orgId },
           select: {
             amount: true,
+            amountBase: true,
+            currency: { select: { code: true } },
             reversedAt: true,
             counterpartyId: true,
             workOrderId: true,
@@ -290,11 +330,11 @@ export class AutomationContextService {
           ...EMPTY,
           status: p.reversedAt ? 'REVERSED' : 'ACTIVE',
           branchId: p.workOrder?.branchId ?? null,
-          amount: num(p.amount),
+          money: money(p.amount, p.amountBase, p.currency),
           client,
           workOrderId: p.workOrderId,
           counterpartyId: p.counterpartyId,
-          vars: { totalAmount: formatMoneyUah(Number(p.amount)), ...clientVars(client) },
+          vars: clientVars(client),
         };
       }
       case 'BOOKING': {
@@ -337,6 +377,8 @@ export class AutomationContextService {
             number: true,
             status: true,
             totalAmount: true,
+            totalAmountBase: true,
+            currency: { select: { code: true } },
             supplierId: true,
             supplier: { select: { firstName: true, lastName: true, companyName: true } },
             warehouse: { select: { branchId: true } },
@@ -347,12 +389,11 @@ export class AutomationContextService {
           ...EMPTY,
           status: po.status,
           branchId: po.warehouse.branchId,
-          amount: num(po.totalAmount),
+          money: money(po.totalAmount, po.totalAmountBase, po.currency),
           counterpartyId: po.supplierId,
           vars: {
             documentNumber: po.number,
             supplierName: cpName(po.supplier),
-            totalAmount: formatMoneyUah(Number(po.totalAmount)),
           },
         };
       }
@@ -376,6 +417,8 @@ export class AutomationContextService {
             number: true,
             status: true,
             amount: true,
+            totalAmountBase: true,
+            currency: { select: { code: true } },
             supplierId: true,
             supplier: { select: { firstName: true, lastName: true, companyName: true } },
           },
@@ -385,12 +428,11 @@ export class AutomationContextService {
           ...EMPTY,
           status: sp.status,
           branchId: null,
-          amount: num(sp.amount),
+          money: money(sp.amount, sp.totalAmountBase, sp.currency),
           counterpartyId: sp.supplierId,
           vars: {
             documentNumber: sp.number,
             supplierName: cpName(sp.supplier),
-            totalAmount: formatMoneyUah(Number(sp.amount)),
           },
         };
       }
@@ -411,12 +453,11 @@ export class AutomationContextService {
           ...EMPTY,
           status: sr.status,
           branchId: sr.warehouse.branchId,
-          amount: num(sr.totalAmount),
+          money: money(sr.totalAmount, null, null),
           counterpartyId: sr.supplierId,
           vars: {
             documentNumber: sr.number,
             supplierName: cpName(sr.supplier),
-            totalAmount: formatMoneyUah(Number(sr.totalAmount)),
           },
         };
       }

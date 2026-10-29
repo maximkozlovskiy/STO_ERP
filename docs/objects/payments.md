@@ -476,7 +476,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | money model                                                        | `payments.money-model.spec.ts`                           | 22     |
 | multicurrency                                                      | `payments.multicurrency.spec.ts`                         | 25     |
 | query dto                                                          | `payments.query-dto.spec.ts`                             | 46     |
-| передумови + наряд                                                 | `payments.work-order.spec.ts`                            | 52     |
+| передумови + наряд; подія «створено» оплати (BR-AUT-060)           | `payments.work-order.spec.ts`                            | 53     |
 | політика повторів черг                                             | `payments.queue-retry-policy.spec.ts`                    | 6      |
 | сервісна логіка (+SSRF upsert, BR-SEC-SSRF)                        | `provider-config.service.spec.ts`                        | 40     |
 | upsert провайдера без `enabled` (лише activate)                    | `provider-upsert-dto.contract.spec.ts`                   | 12     |

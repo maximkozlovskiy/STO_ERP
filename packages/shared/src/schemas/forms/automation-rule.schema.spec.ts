@@ -141,6 +141,31 @@ describe('automationRuleSchema', () => {
     expect(issues(ok)).toEqual([]);
   });
 
+  // guards: BR-AUT-003
+  it('«оплату створено» → у статус: лише «діє»; «Сторновано» на створенні — помилка (правило-мовчун)', () => {
+    const paymentCreated = {
+      ...base,
+      documentType: 'PAYMENT',
+      eventKind: 'CREATED',
+      actions: [
+        {
+          type: 'client_message',
+          channels: ['SMS'],
+          template: { body: 'Дякуємо, {{clientName}}' },
+        },
+      ],
+    };
+    expect(issues({ ...paymentCreated, toStatuses: ['ACTIVE'] })).toEqual([]);
+    expect(issues({ ...paymentCreated, toStatuses: [] })).toEqual([]);
+    expect(issues({ ...paymentCreated, toStatuses: ['REVERSED'] })).toEqual([
+      { message: 'v.automation.conditions.notApplicable', path: 'toStatuses.0' },
+    ]);
+    // Сторно — подія «статус змінено»: там «Сторновано» — звичайна умова.
+    expect(
+      issues({ ...paymentCreated, eventKind: 'STATUS_CHANGED', toStatuses: ['REVERSED'] }),
+    ).toEqual([]);
+  });
+
   // guards: BR-AUT-010
   it('повідомлення клієнту для документа без клієнта (замовлення постачальнику) — помилка', () => {
     const po = {

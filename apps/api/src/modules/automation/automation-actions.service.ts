@@ -14,6 +14,7 @@ import {
   NotificationsService,
   type ChannelStep,
   type NotificationLogMeta,
+  type ResolvedChannel,
 } from '../notifications/notifications.service';
 import { TasksService, OPEN_TASK_STATUSES } from '../tasks/tasks.service';
 import { AutomationContextService, type DocumentContext } from './automation-context.service';
@@ -59,6 +60,9 @@ const HOUR_MS = 3_600_000;
 const MAX_RECIPIENTS = 500;
 
 type Template = { subject?: string | undefined; body: string };
+
+/** Канали філії за набором каналів — один запит на дію, а не на кожного працівника. */
+type ChannelCache = Map<string, Promise<ResolvedChannel[]>>;
 
 /**
  * Три дії правила (docs/objects/automation.md, BR-AUT-010…032). Кожна повертає результат або
@@ -214,6 +218,7 @@ export class AutomationActionsService {
     };
     const channels: string[] = [];
     let lastReason: AutomationSkipReason = 'NO_CONTACT';
+    const cache: ChannelCache = new Map();
     for (const person of to) {
       const built = await this.buildChain(
         run,
@@ -221,6 +226,7 @@ export class AutomationActionsService {
         external.template,
         person.phone,
         null,
+        cache,
       );
       if ('reason' in built) {
         lastReason = built.reason;
@@ -326,6 +332,7 @@ export class AutomationActionsService {
     template: Template,
     phone: string | null,
     email: string | null,
+    cache?: ChannelCache,
   ): Promise<{ chain: ChannelStep[] } | { reason: AutomationSkipReason }> {
     const recipientOf = (c: NotificationChannel): string | null => (c === EMAIL ? email : phone);
     const external = wanted.filter(c => c !== TELEGRAM_BOT);
@@ -335,9 +342,16 @@ export class AutomationActionsService {
       return { reason: onlyBot ? 'TELEGRAM_BOT_NOT_CONNECTED' : 'NO_CONTACT' };
     }
     const branchId = run.ctx.messageBranchId;
-    const resolved = branchId
-      ? await this.notifications.resolveChannels(run.orgId, branchId, addressable)
-      : [];
+    let resolved: ResolvedChannel[] = [];
+    if (branchId) {
+      const key = addressable.join(',');
+      let pending = cache?.get(key);
+      if (!pending) {
+        pending = this.notifications.resolveChannels(run.orgId, branchId, addressable);
+        cache?.set(key, pending);
+      }
+      resolved = await pending;
+    }
     if (resolved.length === 0) return { reason: 'NO_CHANNEL' };
     const message = renderAutomationTemplate(template.body, run.vars);
     const subject = template.subject

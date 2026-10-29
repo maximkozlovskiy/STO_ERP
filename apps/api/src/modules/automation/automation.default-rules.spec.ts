@@ -5,13 +5,15 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   AUTOMATION_DEFAULT_RULES,
   defaultRuleActions,
   findUnknownTemplateVariables,
 } from '@sto/shared';
+import type { PrismaService } from '../../prisma/prisma.service';
 import { defaultAutomationRuleRows, ESTIMATE_READY_SMS_BODY } from './default-rules';
+import { AutomationDefaultRulesBootstrap } from './default-rules.bootstrap';
 
 const MIGRATION = join(
   __dirname,
@@ -60,5 +62,41 @@ describe('Типові правила організації', () => {
       '{{vehiclePlate}}',
       '{{woNumber}}',
     ]);
+  });
+
+  // База, засіяна seed.ts (CI, нова dev-база): міграція даних іде до seed, коли організацій ще
+  // немає, тож типові правила дописує старт api.
+  // guards: BR-AUT-007
+  it('старт api: кожній активній організації — усі типові правила; наявні не дублюються', async () => {
+    const createMany = vi.fn().mockResolvedValue({ count: 3 });
+    const prisma = {
+      organisation: { findMany: vi.fn().mockResolvedValue([{ id: 'org-a' }, { id: 'org-b' }]) },
+      automationRule: { createMany },
+    };
+    await new AutomationDefaultRulesBootstrap(
+      prisma as unknown as PrismaService,
+    ).onApplicationBootstrap();
+
+    expect(prisma.organisation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { deletedAt: null } }),
+    );
+    expect(createMany).toHaveBeenCalledTimes(1);
+    expect(createMany).toHaveBeenCalledWith({
+      data: [...defaultAutomationRuleRows('org-a'), ...defaultAutomationRuleRows('org-b')],
+      skipDuplicates: true,
+    });
+  });
+
+  // guards: BR-AUT-007
+  it('старт api: збій запису правил не зупиняє старт', async () => {
+    const prisma = {
+      organisation: { findMany: vi.fn().mockResolvedValue([{ id: 'org-a' }]) },
+      automationRule: { createMany: vi.fn().mockRejectedValue(new Error('db down')) },
+    };
+    await expect(
+      new AutomationDefaultRulesBootstrap(
+        prisma as unknown as PrismaService,
+      ).onApplicationBootstrap(),
+    ).resolves.toBeUndefined();
   });
 });

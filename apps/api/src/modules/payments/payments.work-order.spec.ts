@@ -757,3 +757,28 @@ describe('PaymentsService.create — рахунок наряду (BR-PAY-021)', 
     expect(h.invoice!.paidAmount).toBe(500);
   });
 });
+
+// ── BR-AUT-060: подія «створено» оплати ────────────────────────────────────────────────────
+
+describe('PaymentsService.create — подія outbox «створено» (BR-AUT-060)', () => {
+  // Без статусу в події правило «оплату створено → у статус «діє»» мовчки не спрацьовувало б:
+  // двигун звіряє `toStatuses` правила з `toStatus` події.
+  // guards: BR-AUT-060
+  it('оплата пише одну подію PAYMENT CREATED з псевдостатусом «ACTIVE» і автором — у транзакції', async () => {
+    const h = makeHarness();
+
+    await h.service.create(ORG, woDto, 'user-1');
+
+    const created = h.tables.domainEvent.rows.filter(
+      e => e.documentType === 'PAYMENT' && e.kind === 'CREATED',
+    );
+    expect(created).toEqual([
+      expect.objectContaining({
+        documentId: h.payments[0]!.id,
+        fromStatus: null,
+        toStatus: 'ACTIVE',
+        actorId: 'user-1',
+      }),
+    ]);
+  });
+});

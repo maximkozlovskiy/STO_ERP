@@ -9,6 +9,7 @@ import {
   AUTOMATION_AMOUNT_DOCUMENT_TYPES,
   AUTOMATION_CHANNELS,
   AUTOMATION_CLIENT_DOCUMENT_TYPES,
+  AUTOMATION_CREATED_STATUSES,
   AUTOMATION_EMPLOYEE_CHANNELS,
   AUTOMATION_LIST_MAX,
   AUTOMATION_MESSAGE_KINDS,
@@ -205,6 +206,18 @@ export const automationRuleSchema = z
           path: ['toStatuses', i],
         });
     });
+    // «Створено»: статус, з яким документ цього типу не народжується, — правило-мовчун.
+    const createdStatuses =
+      rule.eventKind === 'CREATED' ? AUTOMATION_CREATED_STATUSES[type] : undefined;
+    if (createdStatuses)
+      rule.toStatuses.forEach((s, i) => {
+        if (statuses.includes(s) && !createdStatuses.includes(s))
+          ctx.addIssue({
+            code: 'custom',
+            message: 'v.automation.conditions.notApplicable',
+            path: ['toStatuses', i],
+          });
+      });
     const c = rule.conditions;
     c.fromStatuses.forEach((s, i) => {
       if (!statuses.includes(s))

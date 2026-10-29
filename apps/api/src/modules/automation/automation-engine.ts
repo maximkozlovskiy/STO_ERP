@@ -6,6 +6,7 @@ import {
   type DomainEvent,
 } from '@prisma/client';
 import {
+  AUTOMATION_STATUS_LABELS,
   automationRuleSchema,
   type AutomationAction,
   type AutomationRuleFormValues,
@@ -85,9 +86,21 @@ export function runStatus(results: readonly ActionResult[]): AutomationRunStatus
   return failed === results.length ? 'FAILED' : 'PARTIAL';
 }
 
-/** Змінні шаблону: документ + момент події за Києвом (BR-AUT-014). */
-export function eventVars(ctx: DocumentContext, occurredAt: Date): Vars {
-  return { ...ctx.vars, date: formatKyivDate(occurredAt), time: formatKyivTime(occurredAt) };
+/**
+ * Змінні шаблону: документ + момент події за Києвом (BR-AUT-014). `{{status}}` — статус ПОДІЇ
+ * (`toStatus`), а не поточний: між зміною й обробкою документ міг піти далі (оплата одразу
+ * переводить наряд «Виконано» → «Оплачено»), і клієнт отримав би чужий статус.
+ */
+export function eventVars(ctx: DocumentContext, occurredAt: Date, toStatus?: string | null): Vars {
+  const status = toStatus
+    ? (AUTOMATION_STATUS_LABELS[ctx.documentType][toStatus] ?? toStatus)
+    : ctx.vars.status;
+  return {
+    ...ctx.vars,
+    ...(status !== undefined && { status }),
+    date: formatKyivDate(occurredAt),
+    time: formatKyivTime(occurredAt),
+  };
 }
 
 const isUniqueViolation = (e: unknown): boolean =>
@@ -141,7 +154,7 @@ export class AutomationEngine implements DomainEventHandler {
 
     const ctx = await this.context.load(orgId, event.documentType, event.documentId);
     if (!ctx) return; // документ видалено до обробки — дій немає
-    const vars = eventVars(ctx, event.occurredAt);
+    const vars = eventVars(ctx, event.occurredAt, event.toStatus);
     for (const rule of pending) await this.runRule(rule, event, ctx, vars);
   }
 
@@ -170,7 +183,15 @@ export class AutomationEngine implements DomainEventHandler {
 
     const results: ActionResult[] = rule
       ? await this.execute(rule, event, ctx, vars)
-      : [{ index: 0, type: 'client_message', status: 'FAILED', error: 'invalid rule definition' }];
+      : [
+          {
+            index: 0,
+            type: 'client_message',
+            status: 'FAILED',
+            // Журнал спрацювань читає власник (UI блоку 4) — текст українською.
+            error: 'Правило пошкоджене: не відповідає схемі правила',
+          },
+        ];
     await this.prisma.automationRun.updateMany({
       where: { id: runId, orgId },
       data: {

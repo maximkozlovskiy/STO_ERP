@@ -133,6 +133,7 @@ function service(found = true) {
     garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: 'br-1', name: 'Центральна' }) },
     organisation: { findFirst: vi.fn().mockResolvedValue({ phone: '+380441234567' }) },
     domainEvent: { findFirst: vi.fn().mockResolvedValue({ actorId: 'author-1' }) },
+    organisationSettings: { findFirst: vi.fn().mockResolvedValue({ currency: 'UAH' }) },
   };
   for (const [model, row] of Object.entries(docs))
     prisma[model] = { findFirst: vi.fn().mockResolvedValue(found ? row : null) };
@@ -170,6 +171,43 @@ describe('AutomationContextService — змінні й одержувачі', ()
       estimateLink: 'https://sto.example.com/estimate/tok',
     });
     expect(ctx!.vars.totalAmount?.replace(/\s/g, ' ')).toBe('1 250,00 грн');
+  });
+
+  // Документ у валюті, відмінній від базової: «100,00 грн» за 100 USD — неправда клієнту, а
+  // «сума ≥ 1000» за 100 USD (≈ 4100 грн) мовчки не спрацювала б.
+  // guards: BR-AUT-003, BR-AUT-014
+  it('мультивалюта: текст — у валюті документа, умова «сума ≥ X» — за базовою сумою', async () => {
+    const { svc, prisma } = service();
+    const usd = { currency: { code: 'USD' } };
+    (prisma.payment as { findFirst: ReturnType<typeof vi.fn> }).findFirst.mockResolvedValueOnce({
+      ...docs.payment,
+      amount: 100,
+      amountBase: 4100,
+      ...usd,
+    });
+    const pay = await svc.load('org-a', 'PAYMENT', 'doc-1');
+    expect(pay!.vars.totalAmount?.replace(/\s/g, ' ')).toBe('100,00 USD');
+    expect(pay!.amount).toBe(4100);
+
+    // Базова валюта: сума документа як є (базова сума могла лишитись зі старого курсу).
+    (prisma.invoice as { findFirst: ReturnType<typeof vi.fn> }).findFirst.mockResolvedValueOnce({
+      ...docs.invoice,
+      amount: 1250,
+      totalAmountBase: 999,
+      currency: { code: 'UAH' },
+    });
+    const inv = await svc.load('org-a', 'INVOICE', 'doc-1');
+    expect(inv!.vars.totalAmount?.replace(/\s/g, ' ')).toBe('1 250,00 грн');
+    expect(inv!.amount).toBe(1250);
+  });
+
+  // guards: BR-AUT-014
+  it('{{status}} — статус ПОДІЇ, а не поточний: документ міг перейти далі до обробки', async () => {
+    const { svc } = service();
+    const ctx = await svc.load('org-a', 'WORK_ORDER', 'doc-1'); // поточний — «Виконано»
+    const at = new Date('2026-10-29T10:00:00.000Z');
+    expect(eventVars(ctx!, at, 'IN_PROGRESS').status).toBe('В роботі');
+    expect(eventVars(ctx!, at).status).toBe('Виконано');
   });
 
   // guards: BR-AUT-010

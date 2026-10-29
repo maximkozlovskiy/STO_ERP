@@ -8,6 +8,7 @@ import { TasksModule } from '../tasks/tasks.module';
 import { AutomationActionsService } from './automation-actions.service';
 import { AutomationContextService } from './automation-context.service';
 import { AutomationEngine } from './automation-engine';
+import { AutomationDefaultRulesBootstrap } from './default-rules.bootstrap';
 import { AutomationRulesService } from './automation-rules.service';
 import { EmployeeNotificationsService } from './employee-notifications.service';
 import { AutomationController, EmployeeNotificationsController } from './automation.controller';
@@ -37,6 +38,7 @@ import { AutomationController, EmployeeNotificationsController } from './automat
     },
     AutomationEventsProcessor,
     AutomationEventsScheduler,
+    AutomationDefaultRulesBootstrap,
   ],
 })
 export class AutomationModule {}

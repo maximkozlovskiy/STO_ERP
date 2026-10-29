@@ -131,6 +131,18 @@ export const AUTOMATION_PRIORITY_DOCUMENT_TYPES: readonly AutomationDocumentType
 ];
 
 /**
+ * Статуси, з якими документ народжується, — для подій «створено», де перелік відомий наперед
+ * (BR-AUT-003). Оплата клієнта при створенні завжди «діє» (подія пише `toStatus: ACTIVE`): правило
+ * «оплату створено → у статус «Сторновано»» ніколи б не спрацювало, тому схема його не приймає.
+ * Тип без запису тут — без обмеження (початковий статус залежить від шляху створення).
+ */
+export const AUTOMATION_CREATED_STATUSES: Partial<
+  Record<AutomationDocumentTypeValue, readonly string[]>
+> = {
+  PAYMENT: [AUTOMATION_PAYMENT_ACTIVE_STATUS],
+};
+
+/**
  * Змінні шаблону — `{{ключ}}`. Значення підставляє двигун з даних документа й події (BR-AUT-014):
  * `date` / `time` — момент події за Києвом; `totalAmount` — «1 250,00 грн»; `branchPhone` — телефон
  * організації (у філії власного телефону немає); `status` — назва статусу документа;

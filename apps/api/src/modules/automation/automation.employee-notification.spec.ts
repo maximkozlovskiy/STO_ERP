@@ -145,4 +145,19 @@ describe('Дія «сповіщення працівникам»', () => {
     ]);
     expect(run?.status).toBe('DONE');
   });
+
+  // Канали філії однакові для всіх одержувачів дії — один запит, а не по одному на працівника
+  // (до 500 одержувачів ролі).
+  // guards: BR-AUT-022
+  it('зовнішній канал кільком працівникам — канали філії читаються один раз на дію', async () => {
+    const { h } = await fire(
+      notify({
+        recipients: { employeeIds: [RECEPTION, MECH_1], roles: ['MECHANIC'] },
+        notifyInitiator: true,
+        external: { channels: ['SMS'], template: { body: 'Наряд {{documentNumber}}' } },
+      }),
+    );
+    expect(h.enqueueChain).toHaveBeenCalledTimes(2);
+    expect(h.resolveChannels).toHaveBeenCalledTimes(1);
+  });
 });

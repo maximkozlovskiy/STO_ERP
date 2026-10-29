@@ -21,8 +21,15 @@ const TIME_FMT = new Intl.DateTimeFormat('uk-UA', {
   hourCycle: 'h23',
 });
 
-/** «1 250,00 грн» (локаль uk-UA, CLAUDE.md «Локаль та форматування»). */
-export const formatMoneyUah = (amount: number): string => `${MONEY_FMT.format(amount)} грн`;
+/**
+ * «1 250,00 грн» (локаль uk-UA, CLAUDE.md «Локаль та форматування»); документ в іншій валюті —
+ * її кодом: «100,00 USD». Без коду — гривня.
+ */
+export const formatMoney = (amount: number, currencyCode?: string | null): string =>
+  `${MONEY_FMT.format(amount)} ${!currencyCode || currencyCode === 'UAH' ? 'грн' : currencyCode}`;
+
+/** «1 250,00 грн». */
+export const formatMoneyUah = (amount: number): string => formatMoney(amount);
 
 /** «29.10.2026» — дата за Києвом. */
 export const formatKyivDate = (d: Date): string => DATE_FMT.format(d);

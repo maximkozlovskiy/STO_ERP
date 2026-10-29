@@ -683,6 +683,9 @@ export class PaymentsService {
           documentType: 'PAYMENT',
           documentId: created.id,
           kind: 'CREATED',
+          // Псевдостатус «діє» (BR-AUT-060): без нього правило «оплату створено» з умовою
+          // «у статус» мовчки не спрацьовувало б — у події не було б статусу для звірки.
+          toStatus: AUTOMATION_PAYMENT_ACTIVE_STATUS,
           actorId: userId ?? null,
         });
 
