@@ -154,6 +154,25 @@ test.describe('Рахунки — CRUD', () => {
       `POST /api/invoices має створити рахунок, отримано: ${JSON.stringify(inv)}`,
     ).toBeTruthy();
 
+    // BR-INV-023: без рядків рахунок не виставляється — рядок як передумова.
+    const lineStatus = await page.evaluate(
+      async ({ token, id, api }) => {
+        const r = await fetch(`${api}/invoices/${id}/lines`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            description: '000 E2E послуга',
+            quantity: 1,
+            unitPrice: 50,
+            vatRate: 0,
+          }),
+        });
+        return r.status;
+      },
+      { token, id: inv.id, api: API },
+    );
+    expect(lineStatus, 'рядок рахунку додається').toBe(201);
+
     // Bug #345: invoices page has kyivToday() date filter by default.
     await page.goto('/invoices');
     await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });

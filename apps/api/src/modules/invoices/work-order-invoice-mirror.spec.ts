@@ -176,12 +176,15 @@ function makeService(opts: { wo: MemRow; invoices?: MemRow[]; lines?: MemRow[] }
     counterparty: { firstName: null, lastName: null, companyName: 'ТОВ' },
     workOrder: { number: 'НРД-1' },
   });
+  const lineRows = opts.lines ?? [];
+  // `_count.lines` (BR-INV-023) рахується з таблиці рядків за invoiceId, а не задається заготовкою.
   const invoice = memoryTable(
     t.invoice.rows.map(r => ({ ...invoiceDefaults(), ...r })),
     invoiceDefaults,
+    { _count: row => ({ lines: lineRows.filter(l => l.invoiceId === row.id).length }) },
   );
   const invoiceLine = {
-    ...memoryTable(opts.lines ?? []),
+    ...memoryTable(lineRows),
     createMany: vi.fn().mockResolvedValue({ count: 0 }),
   };
   const prisma: Record<string, unknown> = {
@@ -218,6 +221,15 @@ const WO_1000 = {
   totalAmount: 1000,
   lines: [{ workId: 'w-1', price: 1000, normoHours: 1, actualHours: null, work: { name: 'Р' } }],
   parts: [],
+};
+
+// Рядок рахунку наряду (BR-INV-023: без рядків рахунок не виставляється).
+const LINE_1000 = {
+  id: 'line-1',
+  orgId: ORG,
+  invoiceId: INV,
+  description: 'Р',
+  priceWithVat: 1000,
 };
 
 describe('InvoicesService — рахунок наряду переносить сплачене (BR-INV-020, BR-INV-018)', () => {
@@ -280,12 +292,29 @@ describe('InvoicesService — рахунок наряду переносить �
     const h = makeService({
       wo: { ...WO_1000, status: 'INVOICED', paidAmount: paid },
       invoices: [{ status: 'DRAFT', amount: 1000, paidAmount: paid, currencyId: null }],
+      lines: [LINE_1000],
     });
 
     const dto = await h.service.transition(ORG, INV, 'SENT' as never, 'u');
 
     expect(dto.status).toBe(expected);
     expect(h.invoice.rows[0]).toMatchObject({ status: expected, paidAmount: paid });
+  });
+
+  // Лічильник — за рядками САМЕ цього рахунку: рядок іншого рахунку виставлення не відкриває.
+  // guards: BR-INV-023
+  it('чернетка рахунку наряду без власних рядків → 400, лишається DRAFT', async () => {
+    const h = makeService({
+      wo: { ...WO_1000, status: 'INVOICED', paidAmount: 0 },
+      invoices: [{ status: 'DRAFT', amount: 1000, paidAmount: 0, currencyId: null }],
+      lines: [{ ...LINE_1000, id: 'line-other', invoiceId: 'other-invoice' }],
+    });
+
+    await expect(h.service.transition(ORG, INV, 'SENT' as never, 'u')).rejects.toThrow(
+      'Рахунок без рядків не можна виставити',
+    );
+    expect(h.invoice.rows[0]).toMatchObject({ status: 'DRAFT' });
+    expect(h.invoice.updateMany).not.toHaveBeenCalled();
   });
 
   // guards: BR-INV-018

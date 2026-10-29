@@ -11,6 +11,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { BadRequestException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import {
   makeInvoicesHarness,
   ORG,
@@ -66,6 +68,7 @@ describe('InvoicesService — transition-settlements', () => {
       prisma.invoice.findFirst
         .mockResolvedValueOnce({
           status: 'DRAFT',
+          _count: { lines: 1 },
           workOrderId: null,
           counterpartyId: CP_ID,
           amount: 500,
@@ -92,6 +95,7 @@ describe('InvoicesService — transition-settlements', () => {
       prisma.invoice.findFirst
         .mockResolvedValueOnce({
           status: 'DRAFT',
+          _count: { lines: 1 },
           workOrderId: null,
           counterpartyId: CP_ID,
           amount: 100,
@@ -118,6 +122,7 @@ describe('InvoicesService — transition-settlements', () => {
       prisma.invoice.findFirst
         .mockResolvedValueOnce({
           status: 'DRAFT',
+          _count: { lines: 1 },
           workOrderId: WO_ID,
           counterpartyId: CP_ID,
           amount: 500,
@@ -131,6 +136,7 @@ describe('InvoicesService — transition-settlements', () => {
     it('CAS: updateMany count=0 (статус змінився паралельно) → throw, CHARGE не створюється', async () => {
       prisma.invoice.findFirst.mockResolvedValueOnce({
         status: 'DRAFT',
+        _count: { lines: 1 },
         workOrderId: null,
         counterpartyId: CP_ID,
         amount: 500,
@@ -540,6 +546,124 @@ describe('InvoicesService — transition-settlements', () => {
         /змінився/,
       );
       expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
+    });
+  });
+
+  // BR-INV-023 (рішення власника 2026-10-29): рахунок без рядків не виставляється — РАХ-2026-004310
+  // пішов клієнту на 100,00 без жодного рядка. DRAFT → SENT при 0 рядків → 400 до CAS-переходу й до
+  // CHARGE (FIN-C2), для standalone і для рахунку наряду; DRAFT → CANCELLED — дозволено.
+  // Мутація: прибрати перевірку в transition() → кейси «без рядків» червоні (updateMany і CHARGE
+  // викликаються); замінити `?? 0` на `?? 1` → червоний кейс «лічильника немає».
+  describe('transition — BR-INV-023 рахунок без рядків не виставляється', () => {
+    const CP_ID = '33333333-3333-4333-8333-333333333333';
+    const draft = (extra: Record<string, unknown>) => ({
+      status: 'DRAFT',
+      workOrderId: null,
+      counterpartyId: CP_ID,
+      amount: 100,
+      paidAmount: 0,
+      ...extra,
+    });
+    const findOneRow = {
+      id: INV_ID,
+      orgId: ORG,
+      number: 'INV-1',
+      status: 'SENT',
+      amount: 100,
+      paidAmount: 0,
+      workOrderId: null,
+      counterpartyId: CP_ID,
+      documentDate: new Date('2026-01-01'),
+      dueDate: null,
+      deletedAt: null,
+      totalWithoutVat: 0,
+      totalVat: 0,
+      totalWithVat: 100,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      counterparty: { firstName: null, lastName: null, companyName: 'ТОВ' },
+      workOrder: null,
+      lines: [],
+    };
+
+    // guards: BR-INV-023
+    it('standalone DRAFT→SENT без рядків → 400 noLinesToIssue; ні CAS-переходу, ні CHARGE', async () => {
+      prisma.invoice.findFirst.mockResolvedValueOnce(draft({ _count: { lines: 0 } }));
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+      const err: unknown = await service
+        .transition(ORG, INV_ID, 'SENT' as never, 'user-1')
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as Error).message).toBe(translateError('err.invoice.noLinesToIssue', 'uk'));
+      expect(prisma.invoice.updateMany).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-INV-023
+    it('рахунок наряду DRAFT→SENT без рядків → 400, статус не змінюється', async () => {
+      prisma.invoice.findFirst.mockResolvedValueOnce(
+        draft({ workOrderId: WO_ID, _count: { lines: 0 } }),
+      );
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+      await expect(
+        service.transition(ORG, INV_ID, 'SENT' as never, 'user-1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.invoice.updateMany).not.toHaveBeenCalled();
+      expect(prisma.workOrder.findFirst).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-INV-023
+    // Fail-closed: select без лічильника (рефакторинг прибрав `_count`) не має пропускати рахунок.
+    it('лічильника рядків у прочитаному рахунку немає → 400, а не виставлення', async () => {
+      prisma.invoice.findFirst.mockResolvedValueOnce(draft({}));
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+      await expect(
+        service.transition(ORG, INV_ID, 'SENT' as never, 'user-1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(settlementsMock.createTransaction).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-INV-023
+    // Позитивний контроль тим самим шляхом: один рядок → перехід і CHARGE; лічильник запитано.
+    it('один рядок → DRAFT→SENT проходить, CHARGE створено; transition читає _count.lines', async () => {
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce(draft({ _count: { lines: 1 } }))
+        .mockResolvedValue(findOneRow);
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.transition(ORG, INV_ID, 'SENT' as never, 'user-1');
+
+      expect(prisma.invoice.findFirst.mock.calls[0]![0]).toMatchObject({
+        where: { id: INV_ID, orgId: ORG, deletedAt: null },
+        select: { _count: { select: { lines: true } } },
+      });
+      expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'SENT' } }),
+      );
+      expect(settlementsMock.createTransaction).toHaveBeenCalledWith(
+        ORG,
+        expect.objectContaining({ type: 'CHARGE', amount: 100 }),
+        expect.anything(),
+      );
+    });
+
+    // guards: BR-INV-023
+    it('DRAFT→CANCELLED без рядків — дозволено', async () => {
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce(draft({ _count: { lines: 0 } }))
+        .mockResolvedValue({ ...findOneRow, status: 'CANCELLED' });
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.transition(ORG, INV_ID, 'CANCELLED' as never, 'user-1');
+
+      expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'CANCELLED' } }),
+      );
     });
   });
 });

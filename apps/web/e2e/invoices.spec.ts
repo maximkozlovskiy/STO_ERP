@@ -84,6 +84,19 @@ async function createInvoiceApi(
   return apiPost(page, '/invoices', { counterpartyId: cpId, amount });
 }
 
+/**
+ * Рядок рахунку — передумова виставлення (BR-INV-023: без рядків рахунок не виставляється).
+ * vatRate 0 — сума рахунку дорівнює `unitPrice` за будь-якого режиму ПДВ організації.
+ */
+async function addInvoiceLineApi(page: Page, invId: string, unitPrice: number): Promise<void> {
+  await apiPost(page, `/invoices/${invId}/lines`, {
+    description: '000 E2E послуга',
+    quantity: 1,
+    unitPrice,
+    vatRate: 0,
+  });
+}
+
 async function gotoInvoices(page: Page, withClearDateFilter = false) {
   await page.goto('/invoices');
   await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
@@ -347,7 +360,10 @@ test.describe('Рахунки — FSM переходи', () => {
     await ctx.close();
   });
 
-  test('DRAFT → SENT: клік «Надіслати» → badge «Надіслано»', async ({ page }) => {
+  // guards: BR-INV-023
+  test('DRAFT без рядків: «Надіслано» неактивна; рядок через картку → клік → badge «Надіслано»', async ({
+    page,
+  }) => {
     expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
@@ -355,11 +371,28 @@ test.describe('Рахунки — FSM переходи', () => {
     await row.getByTitle('Відкрити документ').click();
     // Modal redesign (commit e6d2e148): олівець відкриває edit modal.
     // FSM-steper: next-step кнопка показує label цільового статусу. DRAFT → SENT = "Надіслано".
-    const modal = page.locator('[role="dialog"]').first();
+    let modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
-    const sendBtn = modal.locator('button:has-text("Надіслано")').first();
-    await expect(sendBtn).toBeVisible({ timeout: 8_000 });
+    // beforeAll створює рахунок без рядків: виставити не можна, причина — у підказці.
+    let sendBtn = modal.locator('button:has-text("Надіслано")').first();
+    await expect(sendBtn).toHaveAttribute('aria-disabled', 'true', { timeout: 8_000 });
+    await expect(sendBtn).toHaveAttribute('title', /без рядків його не можна виставити/);
+
+    // Рядок — через картку: «Додати» → опис і ціна → Enter → «Зберегти зміни» (картка закривається).
+    await modal.getByRole('button', { name: 'Додати', exact: true }).click();
+    await modal.getByPlaceholder('Опис позиції…').fill('000 E2E послуга');
+    await modal.getByPlaceholder('0.00').first().fill('300');
+    await modal.getByPlaceholder('Опис позиції…').press('Enter');
+    await expect(modal.getByText('000 E2E послуга')).toBeVisible({ timeout: 5_000 });
+    await modal.getByRole('button', { name: 'Зберегти зміни' }).click();
+    await expect(modal).toBeHidden({ timeout: 10_000 });
+
+    await row.getByTitle('Відкрити документ').click();
+    modal = page.locator('[role="dialog"]').first();
+    await expect(modal.getByText('000 E2E послуга')).toBeVisible({ timeout: 8_000 });
+    sendBtn = modal.locator('button:has-text("Надіслано")').first();
+    await expect(sendBtn).not.toHaveAttribute('aria-disabled', 'true');
     await sendBtn.click();
 
     // doTransition виконує API виклик без додаткового confirm — статус оновлюється у модалці.
@@ -422,6 +455,7 @@ test.describe('Рахунки — реєстрація оплати', () => {
     const inv = await createInvoiceApi(p, cpId, 400);
     invId = inv.id;
     invNumber = inv.number;
+    await addInvoiceLineApi(p, invId, 400);
     await apiPost(p, `/invoices/${invId}/transition`, { status: 'SENT' });
     registerId = await createPlainRegister(
       p,
@@ -812,7 +846,8 @@ test.describe('Рахунки — bulk cancel', () => {
       createInvoiceApi(p, cpId, 110),
       createInvoiceApi(p, cpId, 220),
     ]);
-    // Перевести обидва в SENT щоб bulk cancel мав ефект
+    // Перевести обидва в SENT щоб bulk cancel мав ефект (виставляється лише рахунок з рядками)
+    await Promise.all([addInvoiceLineApi(p, i1.id, 110), addInvoiceLineApi(p, i2.id, 220)]);
     await Promise.all([
       apiPost(p, `/invoices/${i1.id}/transition`, { status: 'SENT' }),
       apiPost(p, `/invoices/${i2.id}/transition`, { status: 'SENT' }),

@@ -69,9 +69,19 @@ async function createSentInvoice(
     amount,
   });
   expect(created.status, `створення рахунку: ${JSON.stringify(created.body)}`).toBe(201);
-  await apiCall(page, token, 'POST', `/invoices/${created.body.id}/transition`, {
+  // BR-INV-023: без рядків рахунок не виставляється. vatRate 0 — сума лишається `amount`
+  // за будь-якого режиму ПДВ організації.
+  const line = await apiCall(page, token, 'POST', `/invoices/${created.body.id}/lines`, {
+    description: '000 E2E послуга',
+    quantity: 1,
+    unitPrice: amount,
+    vatRate: 0,
+  });
+  expect(line.status, `рядок рахунку: ${JSON.stringify(line.body)}`).toBe(201);
+  const sent = await apiCall(page, token, 'POST', `/invoices/${created.body.id}/transition`, {
     status: 'SENT',
   });
+  expect(sent.status, `виставлення рахунку: ${JSON.stringify(sent.body)}`).toBeLessThan(300);
   return { id: created.body.id, number: created.body.number };
 }
 

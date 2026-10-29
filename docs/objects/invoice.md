@@ -259,14 +259,14 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | список: відбір за датою документа                                  | `invoices.list-date-filter.spec.ts`        | 6      |
 | список: відбір за контрагентом, статусами, пошук                   | `invoices.list-filters.spec.ts`            | 7      |
 | refresh from work order                                            | `invoices.refresh-from-work-order.spec.ts` | 15     |
-| transition settlements                                             | `invoices.transition-settlements.spec.ts`  | 18     |
-| рахунок наряду — дзеркало наряду (BR-INV-018, 020)                 | `work-order-invoice-mirror.spec.ts`        | 32     |
+| transition settlements; виставлення без рядків (BR-INV-023)        | `invoices.transition-settlements.spec.ts`  | 23     |
+| рахунок наряду — дзеркало наряду (BR-INV-018, 020, 023)            | `work-order-invoice-mirror.spec.ts`        | 33     |
 | update: зміна контрагента (org, роль)                              | `invoices.update-counterparty.spec.ts`     | 5      |
 | рядки рахунку з наряду (чиста функція)                             | `invoices.work-order-lines.spec.ts`        | 23     |
 | друкований рахунок: реквізити своєї організації, дата, валюта, 404 | `invoices.pdf.spec.ts`                     | 4      |
 | одиниця рядка як у наряді (Bug #868), робота — «год»               | `invoices.line-units.spec.ts`              | 8      |
 
-Разом: **230** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **249** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для правил про суму з наряду і ПДВ рядка:
 
@@ -280,6 +280,11 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 - `invoices.refresh-from-work-order.spec.ts` — BR-INV-002: «Оновити з наряду» тим самим кодом,
   оновлення `totalAmountBase` / `rateUsed`; розбіжність → 400 після `deleteMany` у транзакції.
 - `invoices.line-totals.spec.ts` — BR-INV-017: `addLine` / `updateLine` у трьох режимах організації.
+- `invoices.transition-settlements.spec.ts` — BR-INV-023: DRAFT → SENT без рядків → 400 до CAS і
+  CHARGE (standalone і рахунок наряду), лічильника немає → 400 (fail-closed), CANCELLED дозволено;
+  `work-order-invoice-mirror.spec.ts` — лічильник за рядками саме цього рахунку. Web-половину
+  стереже `apps/web/src/components/ui/__tests__/InvoiceCreateModal.issue-without-lines.test.tsx`
+  (3 кейси), браузерну — `apps/web/e2e/invoices.spec.ts` («Рахунки — FSM переходи»).
 
 Правила оплати рахунку виконує `PaymentsService` (модуль `payments`), тому їхні сторожі живуть
 у спеках того модуля, а не тут (реєстр цих файлів — у [payments.md](payments.md)):
@@ -297,7 +302,6 @@ _Немає._
 
 Правило без unit-тесту:
 
-- BR-INV-023 (рахунок без рядків не виставляється) — контракт 2026-10-29, реалізація й тест — наступним кроком; рядок прибрати разом із міткою `// guards:`.
 - Дію `ON DELETE SET NULL` на `Payment.bankAccountId`/`cashRegisterId` стереже integration-спек
   `apps/api/src/prisma/schema-integrity.integration.spec.ts` (читає `pg_constraint` живої БД; без
   БД кейс пропускається). Сам hard-delete рахунку чи каси з наявним платежем не відтворюється.

@@ -114,6 +114,17 @@ async function clientInvoice(page: Page, invoiceAmount: number): Promise<Fixture
         body: JSON.stringify({ counterpartyId: cpId, amount: invoiceAmount }),
       });
       const invoice = inv.body as { id?: string; number?: string } | null;
+      // BR-INV-023: без рядків рахунок не виставляється. vatRate 0 — сума рахунку лишається
+      // `invoiceAmount` за будь-якого режиму ПДВ організації.
+      const line = await call(`/invoices/${invoice?.id}/lines`, {
+        method: 'POST',
+        body: JSON.stringify({
+          description: '000 E2E послуга',
+          quantity: 1,
+          unitPrice: invoiceAmount,
+          vatRate: 0,
+        }),
+      });
       const sent = await call(`/invoices/${invoice?.id}/transition`, {
         method: 'POST',
         body: JSON.stringify({ status: 'SENT' }),
@@ -122,6 +133,7 @@ async function clientInvoice(page: Page, invoiceAmount: number): Promise<Fixture
         clientName,
         cp: cp.status,
         inv: inv.status,
+        line: line.status,
         sent: sent.status,
         invoiceId: invoice?.id ?? '',
         invoiceNumber: invoice?.number ?? '',
@@ -131,6 +143,7 @@ async function clientInvoice(page: Page, invoiceAmount: number): Promise<Fixture
   );
   expect(result.cp, 'клієнт BNK10 створюється').toBeLessThan(300);
   expect(result.inv, 'рахунок клієнту створюється').toBeLessThan(300);
+  expect(result.line, 'рядок рахунку додається').toBeLessThan(300);
   expect(result.sent, 'рахунок виставляється').toBeLessThan(300);
   const { accountId } = await ownRefs(page);
   return { ...result, accountId };
