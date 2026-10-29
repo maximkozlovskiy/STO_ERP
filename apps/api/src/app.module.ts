@@ -89,6 +89,7 @@ import { UserPreferencesModule } from './modules/user-preferences/user-preferenc
 import { CounterpartyImportMappingsModule } from './modules/counterparty-import-mappings/counterparty-import-mappings.module';
 import { SystemTemplatesModule } from './modules/system-templates/system-templates.module';
 import { BullBoardModule } from './modules/bull-board/bull-board.module';
+import { AutomationModule } from './modules/automation/automation.module';
 
 @Module({
   imports: [
@@ -253,6 +254,7 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
     UserPreferencesModule,
     CounterpartyImportMappingsModule,
     SystemTemplatesModule,
+    AutomationModule,
     // D3 — bull-board admin UI для BullMQ-черг. register() повертає порожній модуль у production
     // (роут не існує на проді, як Swagger); non-prod — /api/admin/queues за auth-middleware (OWNER/ADMIN).
     BullBoardModule.register(),
