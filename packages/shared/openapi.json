@@ -334,6 +334,33 @@
         ]
       }
     },
+    "/api/v1/settings/branding": {
+      "get": {
+        "operationId": "SettingsController_getBranding_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandingResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Палітра інтерфейсу організації (доступно всім авторизованим)",
+        "tags": [
+          "Налаштування"
+        ]
+      }
+    },
     "/api/v1/settings/branch/{branchId}": {
       "get": {
         "operationId": "SettingsController_getBranch_v1",
@@ -20236,6 +20263,19 @@
         },
         "required": [
           "currency"
+        ]
+      },
+      "BrandingResponseDto": {
+        "type": "object",
+        "properties": {
+          "brandTheme": {
+            "type": "string",
+            "example": "green",
+            "description": "Кольорова палітра інтерфейсу організації"
+          }
+        },
+        "required": [
+          "brandTheme"
         ]
       },
       "UpdateOrganisationSettingsDto": {

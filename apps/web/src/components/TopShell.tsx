@@ -28,6 +28,7 @@ import {
 } from '@/lib/nav';
 import { resolveNav } from '@/lib/nav-layout';
 import { useNavConfig } from '@/hooks/useNavConfig';
+import { useBrandTheme } from '@/hooks/useBrandTheme';
 import { NavEditor } from '@/components/ui/NavEditor';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth, isPublicRoute } from '@/lib/auth';
@@ -416,6 +417,8 @@ export function TopShell({ children }: { children: ReactNode }) {
 
   const uiFeatures = useUiFeatures();
   const queryClient = useQueryClient();
+  // Палітра організації — лише після входу (публічні сторінки й /login токена не мають).
+  useBrandTheme(!!employee && !isPublicRoute(pathname));
 
   useKeyboardShortcut(
     'ctrl+k',

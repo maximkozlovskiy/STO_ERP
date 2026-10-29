@@ -302,6 +302,33 @@ describe('Settings — HTTP Contract', () => {
     });
   });
 
+  // Палітра скидалась до синьої після жорсткого оновлення: її застосовували лише сторінки
+  // налаштувань. Тепер її читає оболонка застосунку в кожної ролі.
+  describe('GET /settings/branding', () => {
+    it('повертає 200 і лише палітру — без решти налаштувань організації', async () => {
+      const res = await app.inject({ method: 'GET', url: '/settings/branding' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ brandTheme: 'blue' });
+    });
+
+    it('маршрут відкритий усім ролям персоналу, зокрема бухгалтеру', () => {
+      const roles = Reflect.getMetadata(
+        ROLES_KEY,
+        SettingsController.prototype.getBranding,
+      ) as string[];
+      expect(roles).toEqual(
+        expect.arrayContaining([
+          'OWNER',
+          'ADMIN',
+          'ACCOUNTANT',
+          'RECEPTIONIST',
+          'MECHANIC',
+          'STOREKEEPER',
+        ]),
+      );
+    });
+  });
+
   describe('GET /settings/organisation', () => {
     it('повертає 200 з uiFeatures всередині shape', async () => {
       const res = await app.inject({ method: 'GET', url: '/settings/organisation' });

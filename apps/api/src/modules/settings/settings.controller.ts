@@ -32,6 +32,7 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import {
   BaseCurrencyResponseDto,
+  BrandingResponseDto,
   BranchSettingsResponseDto,
   OrganisationCardSettingsDto,
   OrganisationResponseDto,
@@ -136,6 +137,17 @@ export class SettingsController {
   async getBaseCurrency(@OrgContext() orgId: string): Promise<BaseCurrencyResponseDto> {
     const settings = await this.service.getOrganisationSettings(orgId);
     return { currency: settings.currency };
+  }
+
+  // Палітра інтерфейсу застосовується при кожному завантаженні застосунку, у КОЖНОЇ ролі; повні
+  // налаштування організації бухгалтеру закриті (як base-currency, Bug #847). Віддаємо ЛИШЕ палітру.
+  @Get('branding')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT', 'XLSX_MANAGER')
+  @ApiOperation({ summary: 'Палітра інтерфейсу організації (доступно всім авторизованим)' })
+  @ApiResponse({ status: 200, type: BrandingResponseDto })
+  async getBranding(@OrgContext() orgId: string): Promise<BrandingResponseDto> {
+    const settings = await this.service.getOrganisationSettings(orgId);
+    return { brandTheme: settings.brandTheme };
   }
 
   @Patch('organisation')

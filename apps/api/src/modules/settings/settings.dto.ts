@@ -526,6 +526,11 @@ export class BaseCurrencyResponseDto {
   currency!: string;
 }
 
+export class BrandingResponseDto {
+  @ApiProperty({ example: 'green', description: 'Кольорова палітра інтерфейсу організації' })
+  brandTheme!: string;
+}
+
 /**
  * Налаштування організації, які читає картка наряду (рішення власника 2026-10-16, employee.md):
  * механік отримує лише їх — без частки ФОП механіків (`laborCostRatio`), лояльності, методу

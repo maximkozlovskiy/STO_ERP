@@ -6,6 +6,7 @@ import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
 import { ColorModeProvider } from '@/components/ColorModeProvider';
 import { I18nProvider } from '@/components/I18nProvider';
 import { QueryProvider } from '@/components/QueryProvider';
+import { brandThemeBootScript } from '@/lib/theme';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -27,6 +28,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             __html: `(function(){try{var m=localStorage.getItem('sto_color_mode')||'light';document.documentElement.setAttribute('data-color-mode',m);if(m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();`,
           }}
         />
+        {/* Палітра організації з кешу — до першого кадру, інакше після Ctrl+Shift+R мигає синя */}
+        <script dangerouslySetInnerHTML={{ __html: brandThemeBootScript() }} />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var l=localStorage.getItem('sto_locale');if(l==='uk'||l==='en'){document.documentElement.lang=l;}}catch(e){}})();`,

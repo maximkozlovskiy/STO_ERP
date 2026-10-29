@@ -226,6 +226,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/branding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Палітра інтерфейсу організації (доступно всім авторизованим) */
+        get: operations["SettingsController_getBranding_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/branch/{branchId}": {
         parameters: {
             query?: never;
@@ -6280,6 +6297,13 @@ export interface components {
              */
             currency: string;
         };
+        BrandingResponseDto: {
+            /**
+             * @description Кольорова палітра інтерфейсу організації
+             * @example green
+             */
+            brandTheme: string;
+        };
         UpdateOrganisationSettingsDto: {
             /** @description ISO код валюти обліку (UAH, USD, EUR) */
             currency?: string;
@@ -11093,6 +11117,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BaseCurrencyResponseDto"];
+                };
+            };
+        };
+    };
+    SettingsController_getBranding_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandingResponseDto"];
                 };
             };
         };
