@@ -655,8 +655,8 @@ export class ReportsService {
   async load(orgId: string, from: string, to: string, branchId?: string) {
     const { fromDate, toDate } = normalizeDateRange(from, to);
 
-    // Parallel: optional branch guard + slot scan (-1 RTT у happy path).
-    const [branch, slots] = await Promise.all([
+    // Parallel: optional branch guard + slot scan + довідник підйомників (-1 RTT у happy path).
+    const [branch, slots, lifts] = await Promise.all([
       branchId
         ? this.prisma.garageBranch.findFirst({
             where: { id: branchId, orgId, deletedAt: null },
@@ -674,6 +674,16 @@ export class ReportsService {
           lift: { select: { name: true, zone: { select: { name: true } } } },
         },
         take: 5000,
+      }),
+      // Підйомники без жодного запису за період теж у звіті (totalSlots = 0): web показує їх одним
+      // рядком «Ще N підйомників без записів», а не порожніми стовпчиками (огляд звітів 2026-10-29).
+      this.prisma.lift.findMany({
+        where: {
+          orgId,
+          deletedAt: null,
+          ...(branchId ? { zone: { is: { branchId, orgId } } } : {}),
+        },
+        select: { id: true, name: true, zone: { select: { name: true } } },
       }),
     ]);
     if (branchId && !branch)
@@ -700,6 +710,15 @@ export class ReportsService {
       const hours = (slot.endAt.getTime() - slot.startAt.getTime()) / 3_600_000;
       byLift[liftId].totalHours += hours;
     }
+    for (const l of lifts) {
+      byLift[l.id] ??= {
+        liftId: l.id,
+        liftName: l.name,
+        zoneName: l.zone?.name ?? '',
+        totalSlots: 0,
+        totalHours: 0,
+      };
+    }
 
     // Календарні дні періоду, обидва включно. Рахуємо з дат, а не з різниці меж: доба 25.10
     // (переведення годинника) триває 25 годин, і ceil(25 год / 24) давав зайвий день — відсоток
@@ -712,7 +731,8 @@ export class ReportsService {
     return {
       rows: Object.values(byLift).map(r => ({
         ...r,
-        loadPercent: Math.round((r.totalHours / (totalDays * WORK_HOURS_PER_DAY)) * 100),
+        // Один знак після коми: за рік 3 години давали «0%» поруч із підйомником без записів.
+        loadPercent: Math.round((r.totalHours / (totalDays * WORK_HOURS_PER_DAY)) * 1000) / 10,
       })),
       from,
       to,

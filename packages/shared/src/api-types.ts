@@ -9989,11 +9989,11 @@ export interface components {
             liftName: string;
             /** @description Порожній рядок, якщо зону не задано */
             zoneName: string;
-            /** @description Кількість слотів за період */
+            /** @description Кількість слотів за період; 0 — підйомник без жодного запису (теж у звіті) */
             totalSlots: number;
             /** @description Σ годин зайнятості */
             totalHours: number;
-            /** @description ВІДСОТОК завантаження (може перевищувати 100) */
+            /** @description ВІДСОТОК завантаження, один знак після коми (може перевищувати 100) */
             loadPercent: number;
         };
         LoadReportDto: {

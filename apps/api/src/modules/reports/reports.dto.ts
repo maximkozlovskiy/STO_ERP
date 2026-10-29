@@ -213,9 +213,14 @@ export class LoadReportRowDto {
   @ApiProperty() liftId!: string;
   @ApiProperty() liftName!: string;
   @ApiProperty({ description: 'Порожній рядок, якщо зону не задано' }) zoneName!: string;
-  @ApiProperty({ description: 'Кількість слотів за період' }) totalSlots!: number;
+  @ApiProperty({
+    description: 'Кількість слотів за період; 0 — підйомник без жодного запису (теж у звіті)',
+  })
+  totalSlots!: number;
   @ApiProperty({ description: 'Σ годин зайнятості' }) totalHours!: number;
-  @ApiProperty({ description: 'ВІДСОТОК завантаження (може перевищувати 100)' })
+  @ApiProperty({
+    description: 'ВІДСОТОК завантаження, один знак після коми (може перевищувати 100)',
+  })
   loadPercent!: number;
 }
 
