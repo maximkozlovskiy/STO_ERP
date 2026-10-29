@@ -36,6 +36,7 @@ type Fn = ReturnType<typeof vi.fn>;
 describe('PaymentsService — готівка лише через касу (BR-PAY-019)', () => {
   let service: PaymentsService;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
     counterparty: { findFirst: Fn };
     workOrder: { findFirst: Fn };
     invoice: { findFirst: Fn };

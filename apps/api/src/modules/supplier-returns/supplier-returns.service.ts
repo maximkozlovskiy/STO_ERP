@@ -42,6 +42,28 @@ function orderedLineStamps(count: number): Date[] {
   return Array.from({ length: count }, (_, i) => new Date(base + i));
 }
 
+// Поля відповіді повернення постачальнику — картка й створення (одна форма DTO).
+const SR_DETAIL_INCLUDE = {
+  supplier: { select: { firstName: true, lastName: true, companyName: true } },
+  warehouse: { select: { name: true } },
+  purchaseOrder: { select: { number: true } },
+  lines: {
+    where: { deletedAt: null },
+    orderBy: SR_LINE_ORDER,
+    include: {
+      good: {
+        select: {
+          name: true,
+          sku: true,
+          unit: true,
+          unitOfMeasure: { select: { shortName: true } },
+        },
+      },
+    },
+    take: MAX_QUERY_LIMIT,
+  },
+} as const;
+
 const SR_TRANSITIONS: Record<SRStatus, SRStatus[]> = {
   DRAFT: [SupplierReturnStatus.CONFIRMED, SupplierReturnStatus.CANCELLED],
   CONFIRMED: [],
@@ -130,26 +152,7 @@ export class SupplierReturnsService {
   ): Promise<SupplierReturnResponseDto> {
     const sr = await this.prisma.supplierReturn.findFirst({
       where: { id, orgId, ...(opts.withDeleted === true ? {} : { deletedAt: null }) },
-      include: {
-        supplier: { select: { firstName: true, lastName: true, companyName: true } },
-        warehouse: { select: { name: true } },
-        purchaseOrder: { select: { number: true } },
-        lines: {
-          where: { deletedAt: null },
-          orderBy: SR_LINE_ORDER,
-          include: {
-            good: {
-              select: {
-                name: true,
-                sku: true,
-                unit: true,
-                unitOfMeasure: { select: { shortName: true } },
-              },
-            },
-          },
-          take: MAX_QUERY_LIMIT,
-        },
-      },
+      include: SR_DETAIL_INCLUDE,
     });
     if (!sr)
       throw new NotFoundException(translateError('err.supplierReturn.notFound', getLocale()));
@@ -233,25 +236,7 @@ export class SupplierReturnsService {
               })),
             },
           },
-          include: {
-            supplier: { select: { firstName: true, lastName: true, companyName: true } },
-            warehouse: { select: { name: true } },
-            purchaseOrder: { select: { number: true } },
-            lines: {
-              where: { deletedAt: null },
-              orderBy: SR_LINE_ORDER,
-              include: {
-                good: {
-                  select: {
-                    name: true,
-                    sku: true,
-                    unit: true,
-                    unitOfMeasure: { select: { shortName: true } },
-                  },
-                },
-              },
-            },
-          },
+          include: SR_DETAIL_INCLUDE,
         });
         await recordDocumentEvent(tx, {
           orgId,

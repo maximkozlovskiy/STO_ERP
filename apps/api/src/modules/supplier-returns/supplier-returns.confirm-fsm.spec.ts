@@ -36,6 +36,7 @@ import { domainEventMock } from '../../common/testing/prisma-mock';
 describe('SupplierReturnsService — regression guards', () => {
   let service: SupplierReturnsService;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
     supplierReturn: {
       findFirst: ReturnType<typeof vi.fn>;
       findFirstOrThrow: ReturnType<typeof vi.fn>;

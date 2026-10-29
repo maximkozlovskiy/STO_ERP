@@ -19,6 +19,7 @@ import { domainEventMock } from '../../common/testing/prisma-mock';
 describe('StockDocumentsService — create() з purchaseOrderId (Phase D2)', () => {
   let service: StockDocumentsService;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
     stockDocument: {
       create: ReturnType<typeof vi.fn>;
       findFirstOrThrow: ReturnType<typeof vi.fn>;
@@ -158,6 +159,7 @@ describe('StockDocumentsService — update() зберігає purchaseOrderId (P
   let service: StockDocumentsService;
   let updateData: Record<string, unknown> | undefined;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
     stockDocument: { findFirst: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
     stockDocumentLine: {
       updateMany: ReturnType<typeof vi.fn>;

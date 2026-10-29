@@ -80,6 +80,13 @@ const INVOICE_LINE_INCLUDE = {
 
 type LineUoM = { coefficient: number; unitOfMeasure: { shortName: string } };
 
+// Поля відповіді щойно створеного рахунку (створення й дублювання — одна форма DTO).
+const INVOICE_CREATED_INCLUDE = {
+  counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+  workOrder: { select: { number: true } },
+  currency: { select: { code: true } },
+} as const;
+
 const INV_SORT_FIELDS: Record<string, string> = {
   documentDate: 'documentDate',
   createdAt: 'createdAt',
@@ -451,11 +458,7 @@ export class InvoicesService {
             notes: dto.notes ?? null,
             status: InvoiceStatus.DRAFT,
           },
-          include: {
-            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-            workOrder: { select: { number: true } },
-            currency: { select: { code: true } },
-          },
+          include: INVOICE_CREATED_INCLUDE,
         });
         await recordDocumentEvent(tx, {
           orgId,
@@ -890,11 +893,7 @@ export class InvoicesService {
               })),
             },
           },
-          include: {
-            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-            workOrder: { select: { number: true } },
-            currency: { select: { code: true } },
-          },
+          include: INVOICE_CREATED_INCLUDE,
         });
         await recordDocumentEvent(tx, {
           orgId,

@@ -19,6 +19,7 @@ import { domainEventMock } from '../../common/testing/prisma-mock';
 describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
   let service: CompletionActsService;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
     completionAct: {
       findFirst: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;

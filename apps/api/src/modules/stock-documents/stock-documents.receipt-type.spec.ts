@@ -32,6 +32,7 @@ import { domainEventMock } from '../../common/testing/prisma-mock';
 describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', () => {
   let service: StockDocumentsService;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
     stockDocument: {
       findFirst: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;

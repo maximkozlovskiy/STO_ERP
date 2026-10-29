@@ -28,6 +28,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
   let service: PaymentsService;
   let cash: CashService;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
     counterparty: { findFirst: ReturnType<typeof vi.fn> };
     workOrder: { findFirst: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
     invoice: { findFirst: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };

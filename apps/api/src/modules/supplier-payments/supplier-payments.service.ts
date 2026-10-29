@@ -29,6 +29,15 @@ import {
 
 type SPStatus = SupplierPaymentStatus;
 
+// Поля відповіді оплати постачальнику — список, картка й створення (одна форма DTO).
+const SP_DETAIL_INCLUDE = {
+  supplier: { select: { firstName: true, lastName: true, companyName: true } },
+  bankAccount: { select: { name: true } },
+  cashRegister: { select: { name: true } },
+  purchaseOrder: { select: { number: true } },
+  currency: { select: { code: true } },
+} as const;
+
 const SP_TRANSITIONS: Record<SPStatus, SPStatus[]> = {
   DRAFT: [SupplierPaymentStatus.CONFIRMED, SupplierPaymentStatus.CANCELLED],
   // CONFIRMED → REVERSED робить лише сторно касової операції (BR-CASH-024), не публічний перехід:
@@ -121,13 +130,7 @@ export class SupplierPaymentsService {
         skip,
         take,
         orderBy,
-        include: {
-          supplier: { select: { firstName: true, lastName: true, companyName: true } },
-          bankAccount: { select: { name: true } },
-          cashRegister: { select: { name: true } },
-          purchaseOrder: { select: { number: true } },
-          currency: { select: { code: true } },
-        },
+        include: SP_DETAIL_INCLUDE,
       }),
       this.prisma.supplierPayment.count({ where }),
     ]);
@@ -537,13 +540,7 @@ export class SupplierPaymentsService {
   ): Promise<SupplierPaymentResponseDto> {
     const sp = await this.prisma.supplierPayment.findFirst({
       where: { id, orgId, ...(opts.withDeleted === true ? {} : { deletedAt: null }) },
-      include: {
-        supplier: { select: { firstName: true, lastName: true, companyName: true } },
-        bankAccount: { select: { name: true } },
-        cashRegister: { select: { name: true } },
-        purchaseOrder: { select: { number: true } },
-        currency: { select: { code: true } },
-      },
+      include: SP_DETAIL_INCLUDE,
     });
     if (!sp)
       throw new NotFoundException(translateError('err.supplierPayment.notFound', getLocale()));
@@ -636,13 +633,7 @@ export class SupplierPaymentsService {
             notes: dto.notes ?? null,
             documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
           },
-          include: {
-            supplier: { select: { firstName: true, lastName: true, companyName: true } },
-            bankAccount: { select: { name: true } },
-            cashRegister: { select: { name: true } },
-            purchaseOrder: { select: { number: true } },
-            currency: { select: { code: true } },
-          },
+          include: SP_DETAIL_INCLUDE,
         });
         await recordDocumentEvent(tx, {
           orgId,

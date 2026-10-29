@@ -28,6 +28,7 @@ describe('PurchaseOrdersService — delivery tracking enqueue-on-ttn', () => {
 
   let service: PurchaseOrdersService;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
     purchaseOrder: {
       findFirst: ReturnType<typeof vi.fn>;
       findFirstOrThrow: ReturnType<typeof vi.fn>;

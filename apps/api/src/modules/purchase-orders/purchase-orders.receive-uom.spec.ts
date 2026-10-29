@@ -27,6 +27,7 @@ import { domainEventMock } from '../../common/testing/prisma-mock';
 describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug #239)', () => {
   let service: PurchaseOrdersService;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
     purchaseOrder: {
       findFirst: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;

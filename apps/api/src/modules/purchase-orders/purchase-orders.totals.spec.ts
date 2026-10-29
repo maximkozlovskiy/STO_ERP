@@ -25,6 +25,7 @@ import { domainEventMock } from '../../common/testing/prisma-mock';
 describe('PurchaseOrdersService.create — Bug #777: Σ(lines.amount) === totalAmount', () => {
   let service: PurchaseOrdersService;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
     counterparty: { findFirst: ReturnType<typeof vi.fn> };
     warehouse: { findFirst: ReturnType<typeof vi.fn> };
     counterpartyContract: { findFirst: ReturnType<typeof vi.fn> };

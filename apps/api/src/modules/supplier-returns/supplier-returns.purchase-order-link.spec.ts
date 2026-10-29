@@ -151,6 +151,7 @@ describe('SupplierReturnsService — update() зберігає purchaseOrderId (
   let service: SupplierReturnsService;
   let updateData: Record<string, unknown> | undefined;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
     supplierReturn: {
       findFirst: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;

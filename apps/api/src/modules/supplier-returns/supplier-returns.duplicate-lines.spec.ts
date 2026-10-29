@@ -53,6 +53,7 @@ describe('SupplierReturnsService — повтори товару окремим�
   let stored: LineRow[];
   let headerUpdate: Record<string, unknown> | undefined;
   let prisma: {
+    domainEvent: ReturnType<typeof domainEventMock>;
     supplierReturn: {
       findFirst: ReturnType<typeof vi.fn>;
       findFirstOrThrow: ReturnType<typeof vi.fn>;
