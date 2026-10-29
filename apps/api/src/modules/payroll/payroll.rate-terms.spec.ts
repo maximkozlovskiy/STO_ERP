@@ -337,6 +337,21 @@ describe('PayrollService.findOne — умови схеми й нарахован
   });
 
   // guards: BR-PAYR-016
+  it('наряди з рівною сумою читаються в сталому порядку — копійка залишку не «стрибає» між ними', async () => {
+    await findLine(lineRow());
+
+    const args = f.prisma.payrollPeriod.findFirst.mock.calls[0]![0] as {
+      include: { lines: { include: { workOrders: { orderBy: unknown } } } };
+    };
+    // Лише `baseAmount desc` лишає рівні суми у фізичному порядку рядків таблиці (Bug #993).
+    expect(args.include.lines.include.workOrders.orderBy).toEqual([
+      { baseAmount: 'desc' },
+      { workOrderNumber: 'asc' },
+      { id: 'asc' },
+    ]);
+  });
+
+  // guards: BR-PAYR-016
   it('знімок важить більше за підсумок: 40 % у знімку не перераховується з нарахованого', async () => {
     const line = await findLine(lineRow({ accruedAmount: 1500, rateParams: { percent: 40 } }));
     expect(line.rateParams).toEqual({ percent: 40 });

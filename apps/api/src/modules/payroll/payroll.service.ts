@@ -371,7 +371,12 @@ export class PayrollService {
         lines: {
           include: {
             employee: { select: { firstName: true, lastName: true } },
-            workOrders: { orderBy: { baseAmount: 'desc' } },
+            // Порядок нарядів визначає, кому з рівних залишків дістанеться копійка (BR-PAYR-016):
+            // без другого ключа наряди з однаковою сумою йдуть у фізичному порядку рядків
+            // таблиці, і копійка «стрибає» між ними від читання до читання.
+            workOrders: {
+              orderBy: [{ baseAmount: 'desc' }, { workOrderNumber: 'asc' }, { id: 'asc' }],
+            },
           },
         },
       },

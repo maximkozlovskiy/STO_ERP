@@ -125,6 +125,8 @@ tenant-isolation: orgId у WHERE на wol/wo.
   `per_normo_hour`), копійки — найбільшим залишком, тож Σ = нараховане рядка до копійки. Оклад
   `fixed_plus_bonus` — окремо (`fixedPart`, рядок «Оклад за період»). Без знімка умов
   `fixed_plus_bonus` нарахованого по нарядах не має (`accruedAmount: null`) — оклад невідомий.
+  Наряди читаються в сталому порядку (`baseAmount desc`, далі `workOrderNumber`, `id`): від
+  порядку залежить, кому з рівних залишків дістанеться копійка (Bug #993).
 - Σ дочірніх `baseAmount` == `PayrollLine.baseAmount` гарантовано: `WorkOrderLine.amount` — вже
   `Decimal(12,2)`, тож `roundMoney` на кожному наряді — no-op (розбіжність округлення неможлива).
 - `compute()` створює рядки **по одному** (`create`, не `createMany`) — потрібен `lineId` для дітей.
@@ -289,7 +291,7 @@ cd apps/api && npx vitest run src/modules/payroll/<файл>.spec.ts
 | ізоляція організацій                         | `payroll.tenant.spec.ts`              | 13     |
 | ролі доступу                                 | `payroll.access.spec.ts`              | 8      |
 | хто у відомості й частка окладу              | `payroll.accrual.spec.ts`             | 24     |
-| умови схеми й нараховане по наряду (016)     | `payroll.rate-terms.spec.ts`          | 23     |
+| умови схеми й нараховане по наряду (016)     | `payroll.rate-terms.spec.ts`          | 24     |
 | нарахування на живій БД (integration)        | `payroll.accrual.integration.spec.ts` | 7      |
 
 Разом: **208** кейсів (цифри з `vitest --reporter=json`, не з grep).
