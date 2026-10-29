@@ -106,3 +106,103 @@ export function computeAccrued(
       );
   }
 }
+
+/** Знімок параметрів схеми в рядку відомості (BR-PAYR-016) — те саме, що `ParsedRateScheme.params`. */
+export type RateParams = ParsedRateScheme['params'];
+
+/**
+ * Читає знімок `PayrollLine.rateParams` (Json) через ту саму перевірку, що й живу схему: невідомий
+ * тип рядка, неповні чи нечислові параметри → null (рядок поводиться як «без знімка»).
+ */
+export function parseRateParams(rateSchemeType: string, raw: unknown): ParsedRateScheme | null {
+  if (raw === null || raw === undefined) return null;
+  return parseRateScheme({ type: rateSchemeType, params: raw });
+}
+
+/** Ставка, виведена з підсумку рядка без знімка (BR-PAYR-016): 2 знаки, база 0 → null. */
+export function deriveRateParams(
+  rateSchemeType: string,
+  line: { accruedAmount: number; baseAmount: number; normoHours: number },
+): RateParams | null {
+  const round2 = (v: number) => Math.round(v * 100) / 100;
+  if (rateSchemeType === 'percent_normo') {
+    return line.baseAmount > 0
+      ? { percent: round2((line.accruedAmount / line.baseAmount) * 100) }
+      : null;
+  }
+  if (rateSchemeType === 'per_normo_hour') {
+    return line.normoHours > 0
+      ? { ratePerHour: round2(line.accruedAmount / line.normoHours) }
+      : null;
+  }
+  return null;
+}
+
+/** Оклад за період схеми «оклад + бонус» — та сама частка місяця, що в `computeAccrued`. */
+export function fixedPartOfPeriod(fixedMonthly: number, monthShare: number): Money {
+  return money(fixedMonthly * Math.max(0, monthShare));
+}
+
+/** Результат розкладу нарахування рядка по нарядах (BR-PAYR-016). */
+export interface AccruedAllocation {
+  /** Оклад за період («оклад + бонус») — окремий рядок розшифровки; для інших схем null. */
+  fixedPart: Money | null;
+  /** Нараховано по кожному наряду, у порядку вхідних нарядів; null — розклад невідомий. */
+  amounts: Money[] | null;
+}
+
+/**
+ * BR-PAYR-016: ділить змінну частину нарахування рядка між нарядами.
+ *  - `percent_normo` і невідома схема — уся сума пропорційно сумі робіт наряду;
+ *  - `per_normo_hour` — уся сума пропорційно нормо-годинам наряду;
+ *  - `fixed_plus_bonus` — спершу оклад за період (`fixedMonthly × monthShareOfPeriod`) окремо,
+ *    залишок (бонус) — пропорційно сумі робіт; без знімка параметрів оклад невідомий → розкладу
+ *    немає (`amounts: null`).
+ * Копійки — методом найбільшого залишку: Σ amounts = змінна частина до копійки. Рівні залишки
+ * отримують копійку в порядку нарядів. Від'ємна база наряду вважається нулем (як у
+ * `computeAccrued`); якщо бази немає взагалі, а сума є (розбіжні дані), — порівну.
+ */
+export function allocateAccruedByWorkOrder(input: {
+  rateSchemeType: string;
+  accruedAmount: number;
+  scheme: ParsedRateScheme | null;
+  periodStart: string;
+  periodEnd: string;
+  workOrders: readonly PayrollWork[];
+}): AccruedAllocation {
+  const { rateSchemeType, scheme, workOrders } = input;
+  let fixedPart: Money | null = null;
+  if (rateSchemeType === 'fixed_plus_bonus') {
+    if (scheme?.type !== 'fixed_plus_bonus') return { fixedPart: null, amounts: null };
+    fixedPart = fixedPartOfPeriod(
+      scheme.params.fixedMonthly,
+      monthShareOfPeriod(input.periodStart, input.periodEnd),
+    );
+  }
+  const variable = Math.max(0, input.accruedAmount - (fixedPart ?? 0));
+  const weights = workOrders.map(w =>
+    Math.max(0, (rateSchemeType === 'per_normo_hour' ? w.normoHours : w.baseAmount) || 0),
+  );
+  return { fixedPart, amounts: splitByLargestRemainder(variable, weights) };
+}
+
+/** Ділить суму на частки за вагами з точністю до копійки (метод найбільшого залишку). */
+function splitByLargestRemainder(total: number, weights: readonly number[]): Money[] {
+  if (weights.length === 0) return [];
+  const totalCents = Math.round(total * 100);
+  const weightSum = weights.reduce((s, w) => s + w, 0);
+  const effective = weightSum > 0 ? weights : weights.map(() => 1);
+  const effectiveSum = weightSum > 0 ? weightSum : weights.length;
+  const raw = effective.map(w => (totalCents * w) / effectiveSum);
+  const cents = raw.map(Math.floor);
+  let rest = totalCents - cents.reduce((s, c) => s + c, 0);
+  const order = raw
+    .map((r, i) => ({ i, frac: r - Math.floor(r) }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i);
+  for (const { i } of order) {
+    if (rest <= 0) break;
+    cents[i] += 1;
+    rest -= 1;
+  }
+  return cents.map(c => money(c / 100));
+}

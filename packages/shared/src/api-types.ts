@@ -7676,6 +7676,16 @@ export interface components {
              */
             targetId: string;
         };
+        PayrollRateParamsDto: {
+            /** @description % від суми робіт (percent_normo) */
+            percent?: number;
+            /** @description Ставка за нормо-годину, ₴ (per_normo_hour) */
+            ratePerHour?: number;
+            /** @description Місячний оклад, ₴ (fixed_plus_bonus) */
+            fixedMonthly?: number;
+            /** @description Бонус, % від суми робіт (fixed_plus_bonus) */
+            bonusPercent?: number;
+        };
         PayrollLineWorkOrderDto: {
             workOrderId: string;
             /** @example WO-2026-0001 */
@@ -7688,6 +7698,8 @@ export interface components {
             normoHours: number;
             /** @description Σ сума робіт наряду (частка бази) */
             baseAmount: number;
+            /** @description Нараховано по наряду — частка змінної частини рядка (BR-PAYR-016); null — «оклад + бонус» без знімка умов (розклад невідомий) */
+            accruedAmount: number | null;
         };
         PayrollLineDto: {
             employeeId: string;
@@ -7702,6 +7714,12 @@ export interface components {
             linesCount: number;
             /** @description Нараховано до виплати */
             accruedAmount: number;
+            /** @description Умови схеми: знімок на момент розрахунку або (rateDerived) виведені з підсумку; null — невідомі */
+            rateParams: components["schemas"]["PayrollRateParamsDto"] | null;
+            /** @description Умови виведено з нарахування (рядок розраховано до знімка умов) — «≈» у вікні */
+            rateDerived: boolean;
+            /** @description Оклад за період («оклад + бонус», BR-PAYR-016) — окремий рядок розшифровки */
+            fixedPart?: number;
             /** @description Фактично виплачено (лише у збереженому періоді) */
             paidAmount?: number;
             /** @description Розшифровка по нарядах (лише у GET /payroll/periods/:id) */

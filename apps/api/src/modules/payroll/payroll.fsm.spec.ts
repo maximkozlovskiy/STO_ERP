@@ -114,6 +114,7 @@ describe('PayrollService.compute — DRAFT → COMPUTED і знімок', () => 
         normoHours: 17.5,
         linesCount: 6,
         accruedAmount: 9234.57, // 8000 + 10% × 12345.67 = 9234.567 → 9234.57
+        rateParams: { fixedMonthly: 8000, bonusPercent: 10 },
       },
       select: { id: true },
     });

@@ -8,7 +8,16 @@ import { CashService } from '../cash/cash.service';
 import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calculatePagination } from '../../common/utils/pagination';
 import { normalizeKyivDateRange } from '../../common/utils/kyiv-date';
-import { computeAccrued, monthShareOfPeriod, parseRateScheme } from './payroll.calculator';
+import {
+  allocateAccruedByWorkOrder,
+  computeAccrued,
+  deriveRateParams,
+  fixedPartOfPeriod,
+  monthShareOfPeriod,
+  parseRateParams,
+  parseRateScheme,
+  type ParsedRateScheme,
+} from './payroll.calculator';
 import {
   CreatePayrollPeriodDto,
   PaginatedPayrollPeriodsDto,
@@ -92,6 +101,23 @@ interface WorkOrderAggRow {
 }
 
 // «Toyota Camry · AA1234BB» / «Toyota Camry» / «AA1234BB» / null — snapshot назви авто.
+/**
+ * BR-PAYR-016: умови схеми в рядку живого розрахунку — параметри поточної схеми працівника (їх
+ * compute() і запише знімком) та оклад за період для «оклад + бонус».
+ */
+function liveRateTerms(
+  scheme: ParsedRateScheme | null,
+  monthShare: number,
+): Pick<PayrollLineDto, 'rateParams' | 'rateDerived' | 'fixedPart'> {
+  return {
+    rateParams: scheme?.params ?? null,
+    rateDerived: false,
+    ...(scheme?.type === 'fixed_plus_bonus'
+      ? { fixedPart: fixedPartOfPeriod(scheme.params.fixedMonthly, monthShare) }
+      : {}),
+  };
+}
+
 function formatVehicleName(
   make: string | null,
   model: string | null,
@@ -162,6 +188,7 @@ export class PayrollService {
         normoHours,
         linesCount: Number(r.linesCount),
         accruedAmount: computeAccrued(scheme, { baseAmount, normoHours }, monthShare),
+        ...liveRateTerms(scheme, monthShare),
       };
     });
 
@@ -221,6 +248,7 @@ export class PayrollService {
         normoHours: 0,
         linesCount: 0,
         accruedAmount: computeAccrued(scheme, { baseAmount: 0, normoHours: 0 }, monthShare),
+        ...liveRateTerms(scheme, monthShare),
       });
     }
     return result;
@@ -460,6 +488,8 @@ export class PayrollService {
                 normoHours: l.normoHours,
                 linesCount: l.linesCount,
                 accruedAmount: l.accruedAmount,
+                // BR-PAYR-016: знімок умов — зміна ставки працівника потім розшифровку не міняє.
+                ...(l.rateParams ? { rateParams: l.rateParams } : {}),
               },
               select: { id: true },
             });
@@ -652,6 +682,7 @@ export class PayrollService {
       linesCount: number;
       accruedAmount: Prisma.Decimal;
       paidAmount: Prisma.Decimal;
+      rateParams?: Prisma.JsonValue;
       employee?: { firstName: string; lastName: string };
       workOrders?: {
         workOrderId: string;
@@ -663,24 +694,52 @@ export class PayrollService {
       }[];
     }[];
   }): PayrollPeriodResponseDto {
+    const periodStart = period.periodStart.toISOString().slice(0, 10);
+    const periodEnd = period.periodEnd.toISOString().slice(0, 10);
     const lines: PayrollLineDto[] | undefined = period.lines?.map(l => {
-      const workOrders: PayrollLineWorkOrderDto[] | undefined = l.workOrders?.map(w => ({
+      const baseAmount = Number(l.baseAmount);
+      const accruedAmount = Number(l.accruedAmount);
+      // BR-PAYR-016: умови — зі знімка; рядок без знімка (до 2026-10-29) — ставка з підсумку.
+      const scheme = parseRateParams(l.rateSchemeType, l.rateParams);
+      const derived = scheme
+        ? null
+        : deriveRateParams(l.rateSchemeType, {
+            accruedAmount,
+            baseAmount,
+            normoHours: l.normoHours,
+          });
+      const allocation = allocateAccruedByWorkOrder({
+        rateSchemeType: l.rateSchemeType,
+        accruedAmount,
+        scheme,
+        periodStart,
+        periodEnd,
+        workOrders: (l.workOrders ?? []).map(w => ({
+          baseAmount: Number(w.baseAmount),
+          normoHours: w.normoHours,
+        })),
+      });
+      const workOrders: PayrollLineWorkOrderDto[] | undefined = l.workOrders?.map((w, i) => ({
         workOrderId: w.workOrderId,
         workOrderNumber: w.workOrderNumber,
         vehicleName: w.vehicleName,
         worksCount: w.worksCount,
         normoHours: w.normoHours,
         baseAmount: Number(w.baseAmount),
+        accruedAmount: allocation.amounts?.[i] ?? null,
       }));
       return {
         employeeId: l.employeeId,
         employeeName: l.employee ? formatPersonName(l.employee.lastName, l.employee.firstName) : '',
         rateSchemeType: l.rateSchemeType,
-        baseAmount: Number(l.baseAmount),
+        baseAmount,
         normoHours: l.normoHours,
         linesCount: l.linesCount,
-        accruedAmount: Number(l.accruedAmount),
+        accruedAmount,
         paidAmount: Number(l.paidAmount),
+        rateParams: scheme?.params ?? derived,
+        rateDerived: derived !== null,
+        ...(allocation.fixedPart !== null ? { fixedPart: allocation.fixedPart } : {}),
         ...(workOrders ? { workOrders } : {}),
       };
     });
@@ -691,8 +750,8 @@ export class PayrollService {
       id: period.id,
       orgId: period.orgId,
       branchId: period.branchId,
-      periodStart: period.periodStart.toISOString().slice(0, 10),
-      periodEnd: period.periodEnd.toISOString().slice(0, 10),
+      periodStart,
+      periodEnd,
       status: period.status,
       note: period.note,
       totalAccrued,

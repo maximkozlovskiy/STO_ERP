@@ -189,6 +189,9 @@ describe('PayrollService — працівник на окладі без роб�
         normoHours: 0,
         linesCount: 0,
         accruedAmount: 7000,
+        rateParams: { fixedMonthly: 30000, bonusPercent: 10 },
+        rateDerived: false,
+        fixedPart: 7000,
       },
     ]);
     expect(res.totalAccrued).toBe(7000);

@@ -24994,6 +24994,27 @@
           "targetId"
         ]
       },
+      "PayrollRateParamsDto": {
+        "type": "object",
+        "properties": {
+          "percent": {
+            "type": "number",
+            "description": "% від суми робіт (percent_normo)"
+          },
+          "ratePerHour": {
+            "type": "number",
+            "description": "Ставка за нормо-годину, ₴ (per_normo_hour)"
+          },
+          "fixedMonthly": {
+            "type": "number",
+            "description": "Місячний оклад, ₴ (fixed_plus_bonus)"
+          },
+          "bonusPercent": {
+            "type": "number",
+            "description": "Бонус, % від суми робіт (fixed_plus_bonus)"
+          }
+        }
+      },
       "PayrollLineWorkOrderDto": {
         "type": "object",
         "properties": {
@@ -25020,6 +25041,11 @@
           "baseAmount": {
             "type": "number",
             "description": "Σ сума робіт наряду (частка бази)"
+          },
+          "accruedAmount": {
+            "type": "number",
+            "nullable": true,
+            "description": "Нараховано по наряду — частка змінної частини рядка (BR-PAYR-016); null — «оклад + бонус» без знімка умов (розклад невідомий)"
           }
         },
         "required": [
@@ -25027,7 +25053,8 @@
           "workOrderNumber",
           "worksCount",
           "normoHours",
-          "baseAmount"
+          "baseAmount",
+          "accruedAmount"
         ]
       },
       "PayrollLineDto": {
@@ -25059,6 +25086,24 @@
             "type": "number",
             "description": "Нараховано до виплати"
           },
+          "rateParams": {
+            "nullable": true,
+            "description": "Умови схеми: знімок на момент розрахунку або (rateDerived) виведені з підсумку; null — невідомі",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PayrollRateParamsDto"
+              }
+            ]
+          },
+          "rateDerived": {
+            "type": "boolean",
+            "description": "Умови виведено з нарахування (рядок розраховано до знімка умов) — «≈» у вікні"
+          },
+          "fixedPart": {
+            "type": "number",
+            "description": "Оклад за період («оклад + бонус», BR-PAYR-016) — окремий рядок розшифровки"
+          },
           "paidAmount": {
             "type": "number",
             "description": "Фактично виплачено (лише у збереженому періоді)"
@@ -25078,7 +25123,9 @@
           "baseAmount",
           "normoHours",
           "linesCount",
-          "accruedAmount"
+          "accruedAmount",
+          "rateParams",
+          "rateDerived"
         ]
       },
       "PayrollPreviewDto": {

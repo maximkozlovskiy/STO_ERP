@@ -14,6 +14,7 @@ import {
 } from 'class-validator';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
+import type { RateParams } from './payroll.calculator';
 
 /** Статуси зарплатного періоду — єдине місце правди для валідації фільтра. */
 export const PAYROLL_PERIOD_STATUSES = ['DRAFT', 'COMPUTED', 'PAID', 'CANCELLED'] as const;
@@ -93,8 +94,8 @@ export class CreatePayrollPeriodDto {
 
 /**
  * Розшифровка нарахування по одному наряду (snapshot на момент COMPUTED).
- * baseAmount — Σ сума робіт цього наряду (частка бази). Нарахування рахується від СУМИ бази за
- * схемою оплати, тому по-нарядно не розкидається — показуємо лише базу й нормо-години.
+ * baseAmount — Σ сума робіт цього наряду (частка бази). accruedAmount — частка змінної частини
+ * нарахування рядка (BR-PAYR-016), обчислюється при читанні з бази наряду й нарахування рядка.
  */
 export class PayrollLineWorkOrderDto {
   @ApiProperty() workOrderId!: string;
@@ -104,6 +105,28 @@ export class PayrollLineWorkOrderDto {
   @ApiProperty({ description: 'К-сть врахованих робіт наряду' }) worksCount!: number;
   @ApiProperty({ description: 'Σ нормо-годин по наряду' }) normoHours!: number;
   @ApiProperty({ description: 'Σ сума робіт наряду (частка бази)' }) baseAmount!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Нараховано по наряду — частка змінної частини рядка (BR-PAYR-016); null — «оклад + бонус» ' +
+      'без знімка умов (розклад невідомий)',
+  })
+  accruedAmount!: number | null;
+}
+
+/**
+ * Умови схеми рядка (BR-PAYR-016): `{ percent }` | `{ ratePerHour }` | `{ fixedMonthly, bonusPercent }`
+ * залежно від `rateSchemeType`.
+ */
+export class PayrollRateParamsDto {
+  @ApiPropertyOptional({ description: '% від суми робіт (percent_normo)' }) percent?: number;
+  @ApiPropertyOptional({ description: 'Ставка за нормо-годину, ₴ (per_normo_hour)' })
+  ratePerHour?: number;
+  @ApiPropertyOptional({ description: 'Місячний оклад, ₴ (fixed_plus_bonus)' })
+  fixedMonthly?: number;
+  @ApiPropertyOptional({ description: 'Бонус, % від суми робіт (fixed_plus_bonus)' })
+  bonusPercent?: number;
 }
 
 /** Рядок нарахування у preview/period (співробітник + база + нараховано). */
@@ -116,6 +139,21 @@ export class PayrollLineDto {
   @ApiProperty({ description: 'Σ нормо-годин' }) normoHours!: number;
   @ApiProperty({ description: 'К-сть врахованих ліній нарядів' }) linesCount!: number;
   @ApiProperty({ description: 'Нараховано до виплати' }) accruedAmount!: number;
+  @ApiProperty({
+    type: PayrollRateParamsDto,
+    nullable: true,
+    description:
+      'Умови схеми: знімок на момент розрахунку або (rateDerived) виведені з підсумку; null — невідомі',
+  })
+  rateParams!: RateParams | null;
+  @ApiProperty({
+    description: 'Умови виведено з нарахування (рядок розраховано до знімка умов) — «≈» у вікні',
+  })
+  rateDerived!: boolean;
+  @ApiPropertyOptional({
+    description: 'Оклад за період («оклад + бонус», BR-PAYR-016) — окремий рядок розшифровки',
+  })
+  fixedPart?: number;
   @ApiPropertyOptional({ description: 'Фактично виплачено (лише у збереженому періоді)' })
   paidAmount?: number;
   @ApiPropertyOptional({
