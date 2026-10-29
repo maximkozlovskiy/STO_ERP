@@ -1,5 +1,6 @@
 {
   "section.documents": "Документи",
+  "section.stock": "Склад",
   "section.settlements": "Взаєморозрахунки",
   "section.reports": "Звіти",
   "section.refs": "Довідники",
@@ -9,8 +10,7 @@
   "tasks": "Задачі",
   "workOrders": "Наряди",
   "purchaseOrders": "Купівля",
-  "stockDocuments": "Склад",
-  "inventory": "Залишки",
+  "stockDocuments": "Складські документи",
   "invoices": "Рахунки клієнтам",
   "bankStatements": "Банківські платежі",
   "cash": "Каса",

@@ -30,10 +30,10 @@ import {
   Banknote,
   Landmark,
   ListTodo,
-  Boxes,
 } from 'lucide-react';
 
-export type NavSection = 'top' | 'documents' | 'settlements' | 'reports' | 'refs' | 'settings';
+export type NavSection =
+  'top' | 'documents' | 'stock' | 'settlements' | 'reports' | 'refs' | 'settings';
 
 export interface NavItem {
   href: string;
@@ -49,6 +49,7 @@ export interface NavItem {
 export const NAV_SECTION_KEYS: Record<NavSection, string> = {
   top: '',
   documents: 'section.documents',
+  stock: 'section.stock',
   settlements: 'section.settlements',
   reports: 'section.reports',
   refs: 'section.refs',
@@ -63,6 +64,7 @@ export interface NavGroup {
 export const NAV_SECTION_LABELS: Record<NavSection, string> = {
   top: '',
   documents: 'Документи',
+  stock: 'Склад',
   settlements: 'Взаєморозрахунки',
   reports: 'Звіти',
   refs: 'Довідники',
@@ -121,22 +123,14 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     roles: ['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'ACCOUNTANT'],
   },
   {
+    // Окрема група «Склад» (рішення власника 2026-10-29). «Залишки» — лише вкладка «Звітів».
     href: '/stock-documents',
     labelKey: 'stockDocuments',
-    label: 'Склад',
+    label: 'Складські документи',
     icon: FileText,
-    section: 'documents',
+    section: 'stock',
     // Документи складу й рухи містять ціни й собівартість (backend @Roles).
     roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
-  },
-  {
-    // «Залишки» — вкладка «Звітів», але шукають її поруч зі складом (UX-огляд 2026-10-29).
-    href: '/reports?tab=inventory',
-    labelKey: 'inventory',
-    label: 'Залишки',
-    icon: Boxes,
-    section: 'documents',
-    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'STOREKEEPER', 'RECEPTIONIST'],
   },
   // Онлайн-запис — заявки клієнтів на візит, робочий документ приймальника, а не звіт.
   {
@@ -274,6 +268,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
 export const NAV_SECTION_ORDER: NavSection[] = [
   'top',
   'documents',
+  'stock',
   'settlements',
   'reports',
   'refs',
