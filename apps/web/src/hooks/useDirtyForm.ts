@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { registerDirtyGuard } from '@/lib/dirty-guards';
 
 interface UseDirtyFormOptions {
   enabled?: boolean;
@@ -106,6 +107,12 @@ export function useDirtyForm({ enabled = true }: UseDirtyFormOptions = {}) {
 
   // Props to spread on <DirtyConfirmDialog>
   const dialogProps = { open: dialogOpen, onConfirm: handleConfirm, onCancel: handleCancel };
+
+  // «Назад» у браузері закриває картку в адресі (`useUrlCard`) повз «×»: картка питає через реєстр.
+  useEffect(() => {
+    if (!enabled) return;
+    return registerDirtyGuard({ isDirty: () => isDirtyRef.current, confirm: confirmClose });
+  }, [enabled, confirmClose]);
 
   // Warn on browser tab close
   useEffect(() => {

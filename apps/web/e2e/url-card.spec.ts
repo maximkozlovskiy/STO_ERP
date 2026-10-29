@@ -141,6 +141,39 @@ test.describe('картка в адресі й переходи з дашбор�
     await expect(link).toBeVisible();
   });
 
+  // Рішення власника 2026-10-29: «Назад» при незбережених змінах питає, як і «×».
+  test('змінене поле → «Назад» → запит «Є незбережені зміни»; «Скасувати» лишає картку з open', async ({
+    page,
+  }) => {
+    test.skip(!state.wo, 'наряд не створено попереднім тестом');
+    await page.goto('/work-orders');
+    const link = page.getByRole('link', { name: state.wo!.number, exact: true });
+    await expect(link).toBeVisible({ timeout: 30_000 });
+    await link.click();
+    const card = woCard(page);
+    await expect(card).toBeVisible({ timeout: 30_000 });
+    const description = card.getByPlaceholder('Заміна масла, колодок...');
+    await expect(description).toBeVisible({ timeout: 20_000 });
+    await description.fill('000 E2E картка в адресі — змінено, не зберігати');
+
+    await page.goBack();
+    const prompt = page.getByRole('dialog').filter({ hasText: 'Є незбережені зміни' });
+    await expect(prompt).toBeVisible({ timeout: 10_000 });
+    await expect(card).toBeVisible();
+    await prompt.getByRole('button', { name: 'Скасувати' }).click();
+    await expect(prompt).toBeHidden();
+    await expect(card).toBeVisible();
+    await expect(description).toHaveValue('000 E2E картка в адресі — змінено, не зберігати');
+    await expect(page).toHaveURL(new RegExp(`open=${state.wo!.id}`));
+
+    // «Покинути» — картка закривається одним кроком назад, сторінка списку та сама.
+    await page.goBack();
+    await prompt.getByRole('button', { name: 'Покинути' }).click();
+    await expect(card).toBeHidden({ timeout: 10_000 });
+    await expect(page).toHaveURL(/\/work-orders\/?$/);
+    await expect(link).toBeVisible();
+  });
+
   test('посилання ?open=<id> відкриває картку; закриття лишає на списку', async ({ page }) => {
     test.skip(!state.wo, 'наряд не створено попереднім тестом');
     await page.goto(`/work-orders?open=${state.wo!.id}`);

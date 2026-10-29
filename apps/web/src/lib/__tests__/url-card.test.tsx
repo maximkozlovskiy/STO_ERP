@@ -8,8 +8,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { act, renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseUrlCardId, urlCardHref, useUrlCard } from '../url-card';
+import { registerDirtyGuard } from '../dirty-guards';
 
 let search = '';
 const history: string[] = [];
@@ -133,6 +134,70 @@ describe('useUrlCard', () => {
   it('hrefFor — адреса картки з поточними параметрами (для нової вкладки)', () => {
     const { result } = start('page=3');
     expect(result.current.hrefFor(B)).toBe(`/invoices?page=3&open=${B}`);
+  });
+});
+
+// «Назад» при незбережених змінах (рішення власника 2026-10-29): картка лишається, адреса з `open`
+// повертається, форма питає своїм вікном; «Скасувати» — лишитись, «Покинути» — один крок назад.
+// Mutation-verify (2026-10-29): без `hold` у рендері → падають обидва кейси «брудна форма»; без
+// `router.push` у відновленні → падає «адреса повертається».
+describe('useUrlCard — «Назад» при незбережених змінах', () => {
+  let dirty = false;
+  let answer: (leave: boolean) => void = () => {};
+  const confirm = vi.fn(
+    () =>
+      new Promise<boolean>(resolve => {
+        answer = resolve;
+      }),
+  );
+  let unregister: () => void = () => {};
+
+  beforeEach(() => {
+    push.mockClear();
+    replace.mockClear();
+    back.mockClear();
+    confirm.mockClear();
+    dirty = true;
+    unregister = registerDirtyGuard({ isDirty: () => dirty, confirm });
+  });
+  afterEach(() => unregister());
+
+  const openThenBack = () => {
+    const hook = start('tab=list');
+    act(() => hook.result.current.open(A));
+    hook.rerender();
+    back(); // «Назад» у браузері
+    hook.rerender();
+    return hook;
+  };
+
+  it('брудна форма: картка лишається, адреса з open повертається, питає форма; «Скасувати» — лишитись', async () => {
+    const { result, rerender } = openThenBack();
+    expect(result.current.id).toBe(A);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenLastCalledWith(`/invoices?tab=list&open=${A}`, { scroll: false });
+    await act(async () => answer(false));
+    rerender();
+    expect(result.current.id).toBe(A);
+    expect(search).toBe(`tab=list&open=${A}`);
+    expect(back).toHaveBeenCalledTimes(1); // лише браузерний «Назад»
+  });
+
+  it('брудна форма, «Покинути» — один крок назад до списку, картка закрита', async () => {
+    const { result, rerender } = openThenBack();
+    await act(async () => answer(true));
+    rerender();
+    expect(back).toHaveBeenCalledTimes(2); // браузерний + наш один
+    expect(search).toBe('tab=list');
+    expect(result.current.id).toBeNull();
+    expect(history).toEqual(['/invoices?tab=list']);
+  });
+
+  it('чиста форма — «Назад» закриває картку без запиту', () => {
+    dirty = false;
+    const { result } = openThenBack();
+    expect(result.current.id).toBeNull();
+    expect(confirm).not.toHaveBeenCalled();
   });
 });
 
