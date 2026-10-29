@@ -294,7 +294,7 @@ cd apps/api && npx vitest run src/modules/payroll/<файл>.spec.ts
 | умови схеми й нараховане по наряду (016)     | `payroll.rate-terms.spec.ts`          | 24     |
 | нарахування на живій БД (integration)        | `payroll.accrual.integration.spec.ts` | 7      |
 
-Разом: **208** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **212** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Спільна фікстура нових аспектних спеків — `payroll.spec-fixture.ts` (factory `makePayrollFixture()`);
 `payroll.service.spec.ts` лишився на власному `makeMocks()`.
