@@ -53,6 +53,7 @@ describe('ReportsService — межі періоду за Києвом', () => {
     warehouse: { findFirst: ReturnType<typeof vi.fn> };
     calendarSlot: { findMany: ReturnType<typeof vi.fn> };
     lift: { findMany: ReturnType<typeof vi.fn> };
+    branchSettings: { findMany: ReturnType<typeof vi.fn> };
     stockItem: { findMany: ReturnType<typeof vi.fn> };
     stockMovement: { findMany: ReturnType<typeof vi.fn> };
     invoice: { aggregate: ReturnType<typeof vi.fn> };
@@ -67,6 +68,7 @@ describe('ReportsService — межі періоду за Києвом', () => {
       warehouse: { findFirst: vi.fn().mockResolvedValue(null) },
       calendarSlot: { findMany: vi.fn().mockResolvedValue([]) },
       lift: { findMany: vi.fn().mockResolvedValue([]) },
+      branchSettings: { findMany: vi.fn().mockResolvedValue([]) },
       stockItem: { findMany: vi.fn().mockResolvedValue([]) },
       stockMovement: { findMany: vi.fn().mockResolvedValue([]) },
       invoice: { aggregate: vi.fn().mockResolvedValue({ _sum: { totalVat: 0 } }) },
@@ -112,6 +114,15 @@ describe('ReportsService — межі періоду за Києвом', () => {
       // Київська північ (Date) не йде в запит: межі — самі дні «з» і «по».
       expect(sqlDates()).toEqual([]);
       expect(values.filter(v => typeof v === 'string')).toEqual([ORG, ORG, day, day]);
+    });
+
+    // guards: BR-RPT-031
+    it('звіт по нарядах: скасовані не рахуються, чернетки — рахуються (як список)', async () => {
+      await service.workOrders(ORG, day, day);
+      const [strings] = prisma.$queryRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
+      const sql = strings.join('?');
+      expect(sql).toMatch(/wo\."status"\s+<> 'CANCELLED'::"WorkOrderStatus"/);
+      expect(sql).not.toMatch(/DRAFT/);
     });
 
     it('рентабельність: обидва агрегати (наряди й запчастини) отримують ті самі межі', async () => {
@@ -206,12 +217,21 @@ describe('ReportsService — межі періоду за Києвом', () => {
     });
 
     it('слот на 9 годин 25.10 — це 100% одного робочого дня, а не 50% двох', async () => {
+      // 25.10.2026 — неділя: філія працює щодня 09–18 (BR-RPT-033 — місткість за робочими днями).
+      prisma.branchSettings.findMany.mockResolvedValue([
+        {
+          branchId: 'br-1',
+          workStartTime: '09:00',
+          workEndTime: '18:00',
+          workDays: [1, 2, 3, 4, 5, 6, 7],
+        },
+      ]);
       prisma.calendarSlot.findMany.mockResolvedValue([
         {
           liftId: 'lift-1',
           startAt: new Date('2026-10-25T07:00:00.000Z'),
           endAt: new Date('2026-10-25T16:00:00.000Z'),
-          lift: { name: 'Підйомник 1', zone: { name: 'Зона' } },
+          lift: { name: 'Підйомник 1', zone: { name: 'Зона', branchId: 'br-1' } },
         },
       ]);
       const report = await service.load(ORG, '2026-10-25', '2026-10-25');

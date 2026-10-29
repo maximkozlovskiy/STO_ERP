@@ -9886,8 +9886,10 @@ export interface components {
             reserved: number;
             /** @description Доступно = quantity − reserved */
             available: number;
-            /** @description Вартість за ціною продажу */
-            value: number;
+            /** @description Вартість за собівартістю (BR-RPT-034): Σ remainingQty × costPrice активних партій; кількість поза партіями — за purchasePrice товару */
+            costValue: number;
+            /** @description Вартість за цінами продажу: кількість × salePrice товару */
+            saleValue: number;
         };
         StockReportMovementDto: {
             /** @description RECEIPT | WRITEOFF | TRANSFER | RESERVATION | … */
@@ -9903,8 +9905,10 @@ export interface components {
             stockItems: components["schemas"]["StockReportItemDto"][];
             /** @description Останні рухи (до 500) */
             movements: components["schemas"]["StockReportMovementDto"][];
-            /** @description Σ вартості залишків */
-            totalValue: number;
+            /** @description Σ costValue — залишки за собівартістю (BR-RPT-034) */
+            totalCostValue: number;
+            /** @description Σ saleValue — залишки за цінами продажу */
+            totalSaleValue: number;
         };
         ProfitabilityReportDto: {
             /** @description Виручка БЕЗ ПДВ — база прибутку й маржі */
@@ -9916,7 +9920,7 @@ export interface components {
             /** @description Собівартість = запчастини + роботи */
             totalCost: number;
             totalCostParts: number;
-            /** @description totalLabor × LABOR_COST_RATIO */
+            /** @description Роботи без ПДВ × laborCostRatio */
             totalCostLabor: number;
             /** @description Виручка − собівартість */
             grossProfit: number;
@@ -9925,6 +9929,11 @@ export interface components {
             ordersCount: number;
             /** @description Скільки запчастин без відомої закупівельної ціни */
             unknownCostPartsCount: number;
+            /**
+             * @description Частка праці в собівартості робіт, 0…1 (OrganisationSettings.laborCostRatio, BR-RPT-035)
+             * @example 0.4
+             */
+            laborCostRatio: number;
             from: string;
             to: string;
         };
@@ -10001,14 +10010,16 @@ export interface components {
             totalSlots: number;
             /** @description Σ годин зайнятості */
             totalHours: number;
-            /** @description ВІДСОТОК завантаження, один знак після коми (може перевищувати 100) */
+            /** @description Місткість, год: робочі дні філії підйомника за період × тривалість робочого дня (BranchSettings; без них — 09:00–18:00, пн–пт), BR-RPT-033 */
+            capacityHours: number;
+            /** @description ВІДСОТОК завантаження = totalHours / capacityHours, один знак після коми (може перевищувати 100); місткість 0 → 0 */
             loadPercent: number;
         };
         LoadReportDto: {
             rows: components["schemas"]["LoadReportRowDto"][];
             from: string;
             to: string;
-            /** @description Днів у періоді (мінімум 1) — база для loadPercent */
+            /** @description Календарних днів у періоді (мінімум 1) */
             totalDays: number;
         };
         VatReportDto: {

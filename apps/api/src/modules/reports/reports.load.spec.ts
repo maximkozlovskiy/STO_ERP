@@ -15,6 +15,15 @@ import { matchesWhere } from '../calendar/calendar.spec-fixture';
  *
  * Mutation-verify (2026-10-29): прибрати додавання підйомників без слотів → падає «без записів»;
  * прибрати `deletedAt: null` → падає «видалений»; `Math.round(x * 100)` → падає «один знак».
+ *
+ * BR-RPT-033 — місткість підйомника — робочий час філії його зони за період (`BranchSettings`:
+ * робочі дні × тривалість дня; без рядка — 09:00–18:00, пн–пт); вихідний — 0; період лише з
+ * вихідних → 0 %. Сховище налаштувань філій теж ВИКОНУЄ `where`.
+ * Mutation-verify (2026-10-29): `workCapacityHours(from, to, null)` для всіх → падає «філія з
+ * налаштуваннями»; рахувати всі дні (без `days.has`) → падають «вихідні» і «типово пн–пт»;
+ * прибрати `capacityHours > 0 ?` → падає «лише вихідні» (Infinity); брати філію лише з довідника
+ * підйомників → падає «видалений підйомник із записом»; прибрати `orgId` з відбору налаштувань →
+ * падає «чужі налаштування».
  */
 type Row = Record<string, unknown>;
 const ORG = 'org-1';
@@ -26,27 +35,42 @@ const lift = (id: string, over: Row = {}): Row => ({
   zone: { name: 'Зона', branchId: 'br-1', orgId: ORG },
   ...over,
 });
-const slot = (liftId: string, startIso: string, hours: number) => ({
+const slot = (liftId: string, startIso: string, hours: number, branchId = 'br-1') => ({
   liftId,
   startAt: new Date(startIso),
   endAt: new Date(new Date(startIso).getTime() + hours * 3_600_000),
-  lift: { name: `П-${liftId}`, zone: { name: 'Зона' } },
+  lift: { name: `П-${liftId}`, zone: { name: 'Зона', branchId } },
+});
+const settingsRow = (branchId: string, over: Row = {}): Row => ({
+  branchId,
+  orgId: ORG,
+  workStartTime: '09:00',
+  workEndTime: '18:00',
+  workDays: [1, 2, 3, 4, 5],
+  ...over,
 });
 
 describe('ReportsService.load — завантаженість підйомників', () => {
   let service: ReportsService;
   let lifts: Row[];
   let slots: ReturnType<typeof slot>[];
+  let branchSettings: Row[];
 
   beforeEach(async () => {
     lifts = [];
     slots = [];
+    branchSettings = [];
     const prisma = {
       garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: 'br-1' }) },
       calendarSlot: { findMany: vi.fn(() => Promise.resolve(slots)) },
       lift: {
         findMany: vi.fn(({ where }: { where: Row }) =>
           Promise.resolve(lifts.filter(l => matchesWhere(l, where))),
+        ),
+      },
+      branchSettings: {
+        findMany: vi.fn(({ where }: { where: Row }) =>
+          Promise.resolve(branchSettings.filter(b => matchesWhere(b, where))),
         ),
       },
     };
@@ -90,7 +114,74 @@ describe('ReportsService.load — завантаженість підйомни�
     lifts = [lift('a')];
     slots = [slot('a', '2026-03-03T07:00:00.000Z', 3)];
     const r = await service.load(ORG, '2026-01-01', '2026-12-31');
-    // 3 / (365 × 9) × 100 = 0.0913… → 0.1
+    // 3 / (261 робочий день × 9) × 100 = 0.1277… → 0.1
     expect(r.rows[0]?.loadPercent).toBe(0.1);
+  });
+
+  describe('місткість — робочий час філії (BR-RPT-033)', () => {
+    // 05.10.2026 — понеділок; 05–11.10 — повний тиждень, 10–11.10 — субота й неділя.
+    const MON = '2026-10-05';
+    const SUN = '2026-10-11';
+
+    // guards: BR-RPT-033
+    it('філія без BranchSettings — типово пн–пт по 9 год: тиждень = 45 год', async () => {
+      lifts = [lift('a')];
+      slots = [slot('a', '2026-10-06T06:00:00.000Z', 9)];
+      const r = await service.load(ORG, MON, SUN);
+      expect(r.rows[0]).toMatchObject({ capacityHours: 45, totalHours: 9, loadPercent: 20 });
+    });
+
+    // guards: BR-RPT-033
+    it('філія з налаштуваннями — її дні й години (08:30–17:00, пн–сб = 6 × 8,5)', async () => {
+      branchSettings = [
+        settingsRow('br-1', {
+          workStartTime: '08:30',
+          workEndTime: '17:00',
+          workDays: [1, 2, 3, 4, 5, 6],
+        }),
+      ];
+      lifts = [lift('a'), lift('b', { zone: { name: 'Інша', branchId: 'br-2', orgId: ORG } })];
+      slots = [slot('a', '2026-10-06T06:00:00.000Z', 5.1)];
+      const r = await service.load(ORG, MON, SUN);
+      const byId = Object.fromEntries(r.rows.map(x => [x.liftId, x]));
+      expect(byId.a).toMatchObject({ capacityHours: 51, loadPercent: 10 });
+      // Друга філія без рядка налаштувань — типові 45 год, а не години першої.
+      expect(byId.b).toMatchObject({ capacityHours: 45, loadPercent: 0 });
+    });
+
+    // guards: BR-RPT-033
+    it('вихідний день дає 0: неділя в робочих днях — рахується, субота поза ними — ні', async () => {
+      branchSettings = [settingsRow('br-1', { workDays: [7] })];
+      lifts = [lift('a')];
+      slots = [slot('a', '2026-10-11T06:00:00.000Z', 4.5)];
+      const r = await service.load(ORG, '2026-10-10', SUN);
+      expect(r.rows[0]).toMatchObject({ capacityHours: 9, loadPercent: 50 });
+    });
+
+    // guards: BR-RPT-033
+    it('період лише з вихідних — місткість 0 і 0 %, а не ділення на нуль', async () => {
+      lifts = [lift('a')];
+      slots = [slot('a', '2026-10-10T06:00:00.000Z', 3)];
+      const r = await service.load(ORG, '2026-10-10', SUN);
+      expect(r.rows[0]).toMatchObject({ capacityHours: 0, totalHours: 3, loadPercent: 0 });
+    });
+
+    // guards: BR-RPT-033
+    it('видалений підйомник із записом — місткість його філії з запису', async () => {
+      branchSettings = [settingsRow('br-2', { workEndTime: '13:00' })];
+      lifts = [];
+      slots = [slot('gone', '2026-10-06T06:00:00.000Z', 4, 'br-2')];
+      const r = await service.load(ORG, MON, SUN);
+      // 5 робочих днів × 4 год (09–13).
+      expect(r.rows[0]).toMatchObject({ liftId: 'gone', capacityHours: 20, loadPercent: 20 });
+    });
+
+    // guards: BR-RPT-033
+    it('налаштування чужої організації не застосовуються', async () => {
+      branchSettings = [settingsRow('br-1', { orgId: 'org-2', workDays: [1, 2, 3, 4, 5, 6, 7] })];
+      lifts = [lift('a')];
+      const r = await service.load(ORG, MON, SUN);
+      expect(r.rows[0]?.capacityHours).toBe(45);
+    });
   });
 });

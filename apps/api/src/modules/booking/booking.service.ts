@@ -4,6 +4,7 @@ import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale, runUnscoped } from '../../common/tenant/tenant-context';
 import { EARLIEST_DB_INSTANT_MS, kyivOffsetMs } from '../../common/utils/kyiv-date';
+import { workDaysOf } from '../../common/utils/work-hours';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CalendarService } from '../calendar/calendar.service';
 import {
@@ -203,10 +204,7 @@ export class BookingService {
     const stepMinutes = branchSettings?.slotDurationMinutes ?? 30;
 
     // Check if the requested date is a working day (1=Mon … 7=Sun, ISO weekday).
-    const workDaysRaw = branchSettings?.workDays;
-    const workDays: number[] = Array.isArray(workDaysRaw)
-      ? (workDaysRaw as number[])
-      : [1, 2, 3, 4, 5];
+    const workDays = workDaysOf(branchSettings);
     // Kyiv-aware ISO-weekday (НЕ .getDay() на offset-рядку — той дає server-local день і на
     // non-UTC хості класифікує робочий/вихідний день неправильно). Дзеркалить create() (KYIV_WEEKDAY_FMT).
     const isoDay =
@@ -364,10 +362,7 @@ export class BookingService {
     }
     const workStart = branchSettings?.workStartTime ?? '09:00';
     const workEnd = branchSettings?.workEndTime ?? '18:00';
-    const workDaysRaw = branchSettings?.workDays;
-    const workDays: number[] = Array.isArray(workDaysRaw)
-      ? (workDaysRaw as number[])
-      : [1, 2, 3, 4, 5];
+    const workDays = workDaysOf(branchSettings);
     const weekdayShort = KYIV_WEEKDAY_FMT.format(requestedAt);
     const isoWeekday = WEEKDAY_TO_ISO[weekdayShort] ?? 0;
     if (!workDays.includes(isoWeekday)) {

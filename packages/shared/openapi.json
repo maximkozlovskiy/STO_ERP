@@ -33041,9 +33041,13 @@
             "type": "number",
             "description": "Доступно = quantity − reserved"
           },
-          "value": {
+          "costValue": {
             "type": "number",
-            "description": "Вартість за ціною продажу"
+            "description": "Вартість за собівартістю (BR-RPT-034): Σ remainingQty × costPrice активних партій; кількість поза партіями — за purchasePrice товару"
+          },
+          "saleValue": {
+            "type": "number",
+            "description": "Вартість за цінами продажу: кількість × salePrice товару"
           }
         },
         "required": [
@@ -33055,7 +33059,8 @@
           "quantity",
           "reserved",
           "available",
-          "value"
+          "costValue",
+          "saleValue"
         ]
       },
       "StockReportMovementDto": {
@@ -33104,15 +33109,20 @@
               "$ref": "#/components/schemas/StockReportMovementDto"
             }
           },
-          "totalValue": {
+          "totalCostValue": {
             "type": "number",
-            "description": "Σ вартості залишків"
+            "description": "Σ costValue — залишки за собівартістю (BR-RPT-034)"
+          },
+          "totalSaleValue": {
+            "type": "number",
+            "description": "Σ saleValue — залишки за цінами продажу"
           }
         },
         "required": [
           "stockItems",
           "movements",
-          "totalValue"
+          "totalCostValue",
+          "totalSaleValue"
         ]
       },
       "ProfitabilityReportDto": {
@@ -33139,7 +33149,7 @@
           },
           "totalCostLabor": {
             "type": "number",
-            "description": "totalLabor × LABOR_COST_RATIO"
+            "description": "Роботи без ПДВ × laborCostRatio"
           },
           "grossProfit": {
             "type": "number",
@@ -33155,6 +33165,11 @@
           "unknownCostPartsCount": {
             "type": "number",
             "description": "Скільки запчастин без відомої закупівельної ціни"
+          },
+          "laborCostRatio": {
+            "type": "number",
+            "description": "Частка праці в собівартості робіт, 0…1 (OrganisationSettings.laborCostRatio, BR-RPT-035)",
+            "example": 0.4
           },
           "from": {
             "type": "string"
@@ -33174,6 +33189,7 @@
           "margin",
           "ordersCount",
           "unknownCostPartsCount",
+          "laborCostRatio",
           "from",
           "to"
         ]
@@ -33408,9 +33424,13 @@
             "type": "number",
             "description": "Σ годин зайнятості"
           },
+          "capacityHours": {
+            "type": "number",
+            "description": "Місткість, год: робочі дні філії підйомника за період × тривалість робочого дня (BranchSettings; без них — 09:00–18:00, пн–пт), BR-RPT-033"
+          },
           "loadPercent": {
             "type": "number",
-            "description": "ВІДСОТОК завантаження, один знак після коми (може перевищувати 100)"
+            "description": "ВІДСОТОК завантаження = totalHours / capacityHours, один знак після коми (може перевищувати 100); місткість 0 → 0"
           }
         },
         "required": [
@@ -33419,6 +33439,7 @@
           "zoneName",
           "totalSlots",
           "totalHours",
+          "capacityHours",
           "loadPercent"
         ]
       },
@@ -33439,7 +33460,7 @@
           },
           "totalDays": {
             "type": "number",
-            "description": "Днів у періоді (мінімум 1) — база для loadPercent"
+            "description": "Календарних днів у періоді (мінімум 1)"
           }
         },
         "required": [

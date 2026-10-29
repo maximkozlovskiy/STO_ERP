@@ -11,6 +11,7 @@ import {
   kyivYmd,
   normalizeKyivDateRange,
 } from '../../common/utils/kyiv-date';
+import { workCapacityHours } from '../../common/utils/work-hours';
 import type { PnlReportDto, PnlRowDto, PnlRowKey } from './reports.dto';
 import {
   PNL_MAX_MONTHS,
@@ -36,8 +37,6 @@ function normalizeDateRange(from: string, to: string) {
     throw new BadRequestException(translateError('err.report.startAfterEnd', getLocale()));
   return { fromDate, toDate };
 }
-
-const WORK_HOURS_PER_DAY = 9;
 
 // Module-level Intl singletons — locale-data init coштує найбільше у форматерах.
 // Hot path: revenue() цикл до 10 000 рядків; уникаємо створення форматера на кожен виклик.
@@ -141,7 +140,8 @@ export class ReportsService {
 
   async workOrders(orgId: string, from: string, to: string, employeeId?: string) {
     // Лише перевірка порядку меж: BR-RPT-031 — період за датою документа (@db.Date, календарні
-    // дати), як фільтр списку нарядів; київська північ тут не потрібна.
+    // дати), як фільтр списку нарядів; київська північ тут не потрібна. Скасовані не рахуються,
+    // чернетки — рахуються (перехід із рядка веде у список із тим самим відбором статусів).
     normalizeDateRange(from, to);
 
     // Use groupBy for DB-side aggregation — avoids loading up to 10 000 raw rows into memory.
@@ -178,6 +178,7 @@ export class ReportsService {
           AND wo."orgId"       = ${orgId}::uuid
           AND wo."deletedAt"   IS NULL
           AND wo."documentDate" BETWEEN ${from}::date AND ${to}::date
+          AND wo."status"      <> 'CANCELLED'::"WorkOrderStatus"
           ${employeeId ? Prisma.sql`AND wol."employeeId" = ${employeeId}::uuid` : Prisma.empty}
         GROUP BY wol."employeeId", e."firstName", e."lastName"
         ORDER BY "totalAmount" DESC
@@ -220,10 +221,10 @@ export class ReportsService {
     const createdAt = kyivDayRangeFilter(from, to);
     if (createdAt) movWhere.createdAt = createdAt;
 
-    // Parallel: warehouse guard (optional) + stockItems + stockMovements — три
-    // незалежні reads. Warehouse guard йшов послідовно ДО Promise.all, тепер усе
-    // в одній хвилі. -1 RTT у happy path для filtered stock report.
-    const [wh, stockItems, movements] = await Promise.all([
+    type BatchAgg = { goodId: string; warehouseId: string; qty: number; cost: number };
+
+    // Parallel: warehouse guard (optional) + stockItems + stockMovements + партії — незалежні reads.
+    const [wh, stockItems, movements, batches] = await Promise.all([
       warehouseId
         ? this.prisma.warehouse.findFirst({
             where: { id: warehouseId, orgId, deletedAt: null },
@@ -235,7 +236,14 @@ export class ReportsService {
         include: {
           // deletedAt — BR-RPT-032: видалений товар із залишком лишається у звіті з позначкою.
           good: {
-            select: { name: true, sku: true, unit: true, salePrice: true, deletedAt: true },
+            select: {
+              name: true,
+              sku: true,
+              unit: true,
+              salePrice: true,
+              purchasePrice: true,
+              deletedAt: true,
+            },
           },
           warehouse: { select: { name: true } },
         },
@@ -248,12 +256,33 @@ export class ReportsService {
         orderBy: { createdAt: 'desc' },
         take: 500,
       }),
+      // BR-RPT-034: собівартість залишку — партії (Σ remainingQty × costPrice) на рівні БД: один
+      // рядок на товар × склад, скільки б партій не було. Активні партії з ненульовим залишком —
+      // той самий відбір, що зважена собівартість (`BatchService.getAverageCost`).
+      this.prisma.$queryRaw<BatchAgg[]>`
+        SELECT
+          "goodId",
+          "warehouseId",
+          COALESCE(SUM("remainingQty"), 0)::float               AS qty,
+          COALESCE(SUM("remainingQty" * "costPrice"), 0)::float AS cost
+        FROM stock_batches
+        WHERE "orgId" = ${orgId}::uuid
+          AND "isActive" = true
+          AND "remainingQty" > 0
+          ${warehouseId ? Prisma.sql`AND "warehouseId" = ${warehouseId}::uuid` : Prisma.empty}
+        GROUP BY "goodId", "warehouseId"
+      `,
     ]);
     if (warehouseId && !wh)
       throw new NotFoundException(translateError('err.report.warehouseNotFound', getLocale()));
 
-    return {
-      stockItems: stockItems.map(i => ({
+    const batchBy = new Map(batches.map(b => [`${b.goodId}::${b.warehouseId}`, b]));
+    const items = stockItems.map(i => {
+      // BR-RPT-034: кількість поза партіями (залишок більший за Σ remainingQty) — за purchasePrice.
+      const batch = batchBy.get(`${i.goodId}::${i.warehouseId}`);
+      const batchQty = Number(batch?.qty ?? 0);
+      const outside = Math.max(i.quantity - batchQty, 0);
+      return {
         goodId: i.goodId,
         goodName: i.good.name,
         goodSku: i.good.sku,
@@ -263,8 +292,15 @@ export class ReportsService {
         quantity: i.quantity,
         reserved: i.reserved,
         available: i.quantity - i.reserved,
-        value: money(i.quantity * moneyFromDecimal(i.good.salePrice)),
-      })),
+        costValue: money(
+          Number(batch?.cost ?? 0) + outside * moneyFromDecimal(i.good.purchasePrice),
+        ),
+        saleValue: money(i.quantity * moneyFromDecimal(i.good.salePrice)),
+      };
+    });
+
+    return {
+      stockItems: items,
       movements: movements.map(m => ({
         type: m.type,
         goodName: m.good.name,
@@ -272,9 +308,8 @@ export class ReportsService {
         documentType: m.documentType,
         createdAt: m.createdAt,
       })),
-      totalValue: money(
-        stockItems.reduce((s, i) => s + i.quantity * moneyFromDecimal(i.good.salePrice), 0),
-      ),
+      totalCostValue: sumMoney(items.map(i => i.costValue)),
+      totalSaleValue: sumMoney(items.map(i => i.saleValue)),
     };
   }
 
@@ -362,6 +397,8 @@ export class ReportsService {
       margin: Math.round(margin * 100) / 100,
       ordersCount,
       unknownCostPartsCount,
+      // BR-RPT-035: застосована частка праці — підпис «Праця (оцінка N%)» бере її звідси.
+      laborCostRatio,
       from,
       to,
     };
@@ -680,8 +717,9 @@ export class ReportsService {
   async load(orgId: string, from: string, to: string, branchId?: string) {
     const { fromDate, toDate } = normalizeDateRange(from, to);
 
-    // Parallel: optional branch guard + slot scan + довідник підйомників (-1 RTT у happy path).
-    const [branch, slots, lifts] = await Promise.all([
+    // Parallel: optional branch guard + slot scan + довідник підйомників + робочий час філій
+    // (-1 RTT у happy path).
+    const [branch, slots, lifts, branchSettings] = await Promise.all([
       branchId
         ? this.prisma.garageBranch.findFirst({
             where: { id: branchId, orgId, deletedAt: null },
@@ -696,7 +734,7 @@ export class ReportsService {
           ...(branchId ? { lift: { zone: { branchId, orgId } } } : {}),
         },
         include: {
-          lift: { select: { name: true, zone: { select: { name: true } } } },
+          lift: { select: { name: true, zone: { select: { name: true, branchId: true } } } },
         },
         take: 5000,
       }),
@@ -708,17 +746,26 @@ export class ReportsService {
           deletedAt: null,
           ...(branchId ? { zone: { is: { branchId, orgId } } } : {}),
         },
-        select: { id: true, name: true, zone: { select: { name: true } } },
+        select: { id: true, name: true, zone: { select: { name: true, branchId: true } } },
+      }),
+      // BR-RPT-033: місткість підйомника — робочий час його філії (рядків — по одному на філію).
+      this.prisma.branchSettings.findMany({
+        where: { orgId },
+        select: { branchId: true, workStartTime: true, workEndTime: true, workDays: true },
       }),
     ]);
     if (branchId && !branch)
       throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
-    // Aggregate by lift
-    const byLift: Record<
-      string,
-      { liftId: string; liftName: string; zoneName: string; totalSlots: number; totalHours: number }
-    > = {};
+    type LiftAgg = {
+      liftId: string;
+      liftName: string;
+      zoneName: string;
+      branchId: string | null;
+      totalSlots: number;
+      totalHours: number;
+    };
+    const byLift: Record<string, LiftAgg> = {};
     for (const slot of slots) {
       const liftId = slot.liftId;
       if (!liftId) continue;
@@ -727,6 +774,7 @@ export class ReportsService {
           liftId,
           liftName: slot.lift?.name ?? 'Невідомий',
           zoneName: slot.lift?.zone?.name ?? '',
+          branchId: slot.lift?.zone?.branchId ?? null,
           totalSlots: 0,
           totalHours: 0,
         };
@@ -740,25 +788,44 @@ export class ReportsService {
         liftId: l.id,
         liftName: l.name,
         zoneName: l.zone?.name ?? '',
+        branchId: l.zone?.branchId ?? null,
         totalSlots: 0,
         totalHours: 0,
       };
     }
 
     // Календарні дні періоду, обидва включно. Рахуємо з дат, а не з різниці меж: доба 25.10
-    // (переведення годинника) триває 25 годин, і ceil(25 год / 24) давав зайвий день — відсоток
-    // завантаженості за цей день виходив удвічі меншим.
+    // (переведення годинника) триває 25 годин, і ceil(25 год / 24) давав зайвий день.
     const totalDays =
       Math.round(
         (Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / 86_400_000,
       ) + 1;
 
+    // BR-RPT-033: місткість = робочі дні філії підйомника за період × тривалість її робочого дня;
+    // філія без BranchSettings — 09:00–18:00, пн–пт. Одна на філію, не на підйомник.
+    const settingsByBranch = new Map(branchSettings.map(b => [b.branchId, b]));
+    const capacityByBranch = new Map<string | null, number>();
+    const capacityOf = (bId: string | null): number => {
+      let c = capacityByBranch.get(bId);
+      if (c === undefined) {
+        c = workCapacityHours(from, to, bId ? settingsByBranch.get(bId) : null);
+        capacityByBranch.set(bId, c);
+      }
+      return c;
+    };
+
     return {
-      rows: Object.values(byLift).map(r => ({
-        ...r,
-        // Один знак після коми: за рік 3 години давали «0%» поруч із підйомником без записів.
-        loadPercent: Math.round((r.totalHours / (totalDays * WORK_HOURS_PER_DAY)) * 1000) / 10,
-      })),
+      rows: Object.values(byLift).map(({ branchId: liftBranchId, ...r }) => {
+        const capacityHours = capacityOf(liftBranchId);
+        return {
+          ...r,
+          capacityHours,
+          // Один знак після коми: за рік 3 години давали «0%» поруч із підйомником без записів.
+          // Період лише з вихідних (місткість 0) → 0 %, а не ділення на нуль.
+          loadPercent:
+            capacityHours > 0 ? Math.round((r.totalHours / capacityHours) * 1000) / 10 : 0,
+        };
+      }),
       from,
       to,
       totalDays,

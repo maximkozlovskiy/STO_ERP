@@ -84,7 +84,14 @@ export class StockReportItemDto {
   @ApiProperty({ description: 'Залишок (може бути дробовим: літри, кг)' }) quantity!: number;
   @ApiProperty({ description: 'Зарезервовано' }) reserved!: number;
   @ApiProperty({ description: 'Доступно = quantity − reserved' }) available!: number;
-  @ApiProperty({ description: 'Вартість за ціною продажу' }) value!: number;
+  @ApiProperty({
+    description:
+      'Вартість за собівартістю (BR-RPT-034): Σ remainingQty × costPrice активних партій; кількість ' +
+      'поза партіями — за purchasePrice товару',
+  })
+  costValue!: number;
+  @ApiProperty({ description: 'Вартість за цінами продажу: кількість × salePrice товару' })
+  saleValue!: number;
 }
 
 export class StockReportMovementDto {
@@ -99,7 +106,10 @@ export class StockReportDto {
   @ApiProperty({ type: [StockReportItemDto] }) stockItems!: StockReportItemDto[];
   @ApiProperty({ type: [StockReportMovementDto], description: 'Останні рухи (до 500)' })
   movements!: StockReportMovementDto[];
-  @ApiProperty({ description: 'Σ вартості залишків' }) totalValue!: number;
+  @ApiProperty({ description: 'Σ costValue — залишки за собівартістю (BR-RPT-034)' })
+  totalCostValue!: number;
+  @ApiProperty({ description: 'Σ saleValue — залишки за цінами продажу' })
+  totalSaleValue!: number;
 }
 
 // ─── /reports/profitability ──────────────────────────────────────────────────
@@ -110,13 +120,19 @@ export class ProfitabilityReportDto {
   @ApiProperty({ description: 'Виручка З ПДВ' }) totalRevenueWithVat!: number;
   @ApiProperty({ description: 'Собівартість = запчастини + роботи' }) totalCost!: number;
   @ApiProperty() totalCostParts!: number;
-  @ApiProperty({ description: 'totalLabor × LABOR_COST_RATIO' }) totalCostLabor!: number;
+  @ApiProperty({ description: 'Роботи без ПДВ × laborCostRatio' }) totalCostLabor!: number;
   @ApiProperty({ description: 'Виручка − собівартість' }) grossProfit!: number;
   @ApiProperty({ description: 'ВІДСОТОК (не гроші): grossProfit / totalRevenue × 100' })
   margin!: number;
   @ApiProperty() ordersCount!: number;
   @ApiProperty({ description: 'Скільки запчастин без відомої закупівельної ціни' })
   unknownCostPartsCount!: number;
+  @ApiProperty({
+    description:
+      'Частка праці в собівартості робіт, 0…1 (OrganisationSettings.laborCostRatio, BR-RPT-035)',
+    example: 0.4,
+  })
+  laborCostRatio!: number;
   @ApiProperty() from!: string;
   @ApiProperty() to!: string;
 }
@@ -229,7 +245,15 @@ export class LoadReportRowDto {
   totalSlots!: number;
   @ApiProperty({ description: 'Σ годин зайнятості' }) totalHours!: number;
   @ApiProperty({
-    description: 'ВІДСОТОК завантаження, один знак після коми (може перевищувати 100)',
+    description:
+      'Місткість, год: робочі дні філії підйомника за період × тривалість робочого дня ' +
+      '(BranchSettings; без них — 09:00–18:00, пн–пт), BR-RPT-033',
+  })
+  capacityHours!: number;
+  @ApiProperty({
+    description:
+      'ВІДСОТОК завантаження = totalHours / capacityHours, один знак після коми (може ' +
+      'перевищувати 100); місткість 0 → 0',
   })
   loadPercent!: number;
 }
@@ -238,7 +262,7 @@ export class LoadReportDto {
   @ApiProperty({ type: [LoadReportRowDto] }) rows!: LoadReportRowDto[];
   @ApiProperty() from!: string;
   @ApiProperty() to!: string;
-  @ApiProperty({ description: 'Днів у періоді (мінімум 1) — база для loadPercent' })
+  @ApiProperty({ description: 'Календарних днів у періоді (мінімум 1)' })
   totalDays!: number;
 }
 

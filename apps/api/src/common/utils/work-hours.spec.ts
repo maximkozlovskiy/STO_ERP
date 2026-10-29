@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_WORK_HOURS } from '@sto/shared';
-import { kyivHourOnDay, kyivMinuteOfDay, splitByWorkHours, workHoursOf } from './work-hours';
+import {
+  kyivHourOnDay,
+  kyivMinuteOfDay,
+  splitByWorkHours,
+  workCapacityHours,
+  workDayHoursOf,
+  workDaysOf,
+  workHoursOf,
+} from './work-hours';
 
 // Робочі години філії — одне джерело для календаря, `GET /settings/work-hours` і планових дат
 // наряду (BR-WO-019, BR-WO-020). Час — київський, із переведенням годинника (25.10.2026 — на +02).
@@ -22,6 +30,40 @@ describe('workHoursOf — години з BranchSettings', () => {
   ])('%s → типові 09–18 (ті самі, що @default BranchSettings)', (_l, row) => {
     expect(workHoursOf(row)).toEqual({ startHour: 9, endHour: 18 });
     expect(DEFAULT_WORK_HOURS).toEqual({ startHour: 9, endHour: 18 });
+  });
+});
+
+// BR-RPT-033: місткість «Завантаженості» — робочий час філії; дні тижня ISO (1 = пн … 7 = нд).
+// Mutation-verify (2026-10-29): `getUTCDay()` без `|| 7` → падає «неділя»; цілі години замість
+// хвилин → падає «08:30»; крок циклу від півночі за місцевим часом не впливає — день із дати.
+describe('workDaysOf / workDayHoursOf / workCapacityHours — робочий час філії', () => {
+  // guards: BR-RPT-033
+  it('дні: рядка немає чи не масив → пн–пт; масив — як є', () => {
+    expect(workDaysOf(null)).toEqual([1, 2, 3, 4, 5]);
+    expect(workDaysOf({ workDays: 'x' })).toEqual([1, 2, 3, 4, 5]);
+    expect(workDaysOf({ workDays: [6, 7] })).toEqual([6, 7]);
+  });
+
+  // guards: BR-RPT-033
+  it('тривалість дня — з хвилинами; невалідне чи кінець раніше початку → 9 год', () => {
+    expect(workDayHoursOf({ workStartTime: '08:30', workEndTime: '17:00' })).toBe(8.5);
+    expect(workDayHoursOf(null)).toBe(9);
+    expect(workDayHoursOf({ workStartTime: '20:00', workEndTime: '09:00' })).toBe(9);
+  });
+
+  // guards: BR-RPT-033
+  it('місткість: робочі дні періоду × тривалість дня; неділя — день 7; DST не впливає', () => {
+    // 19–25.10.2026: пн–нд, 25.10 — переведення годинника.
+    expect(workCapacityHours('2026-10-19', '2026-10-25', null)).toBe(45);
+    expect(workCapacityHours('2026-10-25', '2026-10-25', { workDays: [7] })).toBe(9);
+    expect(workCapacityHours('2026-10-24', '2026-10-25', null)).toBe(0);
+    expect(
+      workCapacityHours('2026-10-19', '2026-10-25', {
+        workStartTime: '08:30',
+        workEndTime: '17:00',
+        workDays: [1, 2, 3, 4, 5, 6],
+      }),
+    ).toBe(51);
   });
 });
 

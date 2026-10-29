@@ -24,13 +24,20 @@ const DAY_MS = 86_400_000;
 /** Запобіжник `splitByWorkHours` від нескінченного циклу: не більше року днів. */
 const MAX_SPLIT_DAYS = 366;
 
+/** "HH:mm" → хвилина доби 0..1439 (хвилин може не бути: "9:" — 09:00); невалідне → `null`. */
+function parseWorkMinute(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const m = /^(\d{1,2}):(\d{2})?/.exec(value.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = m[2] === undefined ? 0 : Number(m[2]);
+  return h <= 23 && min <= 59 ? h * 60 + min : null;
+}
+
 /** "HH:mm" → ціла година 0..23; невалідне значення → `fallback`. */
 function parseWorkHour(value: string | null | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const m = /^(\d{1,2}):/.exec(value.trim());
-  if (!m) return fallback;
-  const h = Number(m[1]);
-  return Number.isInteger(h) && h >= 0 && h <= 23 ? h : fallback;
+  const minute = parseWorkMinute(value);
+  return minute === null ? fallback : Math.floor(minute / 60);
 }
 
 /**
@@ -44,6 +51,59 @@ export function workHoursOf(
   const startHour = parseWorkHour(row.workStartTime, DEFAULT_WORK_HOURS.startHour);
   const endHour = parseWorkHour(row.workEndTime, DEFAULT_WORK_HOURS.endHour);
   return endHour > startHour ? { startHour, endHour } : DEFAULT_WORK_HOURS;
+}
+
+/** Типові робочі дні — пн–пт (ISO: 1 = пн … 7 = нд), як `@default` колонки `workDays`. */
+export const DEFAULT_WORK_DAYS: readonly number[] = Object.freeze([1, 2, 3, 4, 5]);
+
+/**
+ * Робочі дні тижня з рядка `BranchSettings` (ISO: 1 = пн … 7 = нд — так їх пише вкладка
+ * «Робочі дні» і читає онлайн-запис, BR-CAL-004). Немає рядка або `workDays` не масив → пн–пт.
+ */
+export function workDaysOf(row: { workDays?: unknown } | null | undefined): readonly number[] {
+  const raw = row?.workDays;
+  return Array.isArray(raw)
+    ? raw.filter((d): d is number => typeof d === 'number' && Number.isInteger(d))
+    : DEFAULT_WORK_DAYS;
+}
+
+/**
+ * Тривалість робочого дня філії в годинах — з хвилинами (08:30–17:00 → 8,5), на відміну від
+ * `workHoursOf`, що дає цілі години сітки календаря. Розбір і типові значення ті самі: невалідний
+ * час — типовий, кінець не пізніше початку — типовий день 09–18 цілком.
+ */
+export function workDayHoursOf(
+  row: { workStartTime?: string | null; workEndTime?: string | null } | null | undefined,
+): number {
+  const defStart = DEFAULT_WORK_HOURS.startHour * 60;
+  const defEnd = DEFAULT_WORK_HOURS.endHour * 60;
+  const start = parseWorkMinute(row?.workStartTime) ?? defStart;
+  const end = parseWorkMinute(row?.workEndTime) ?? defEnd;
+  return (end > start ? end - start : defEnd - defStart) / 60;
+}
+
+/**
+ * Робочий час філії за календарні дні `fromYmd..toYmd` (обидва включно; київські дати
+ * `YYYY-MM-DD`) у годинах: робочий день — `workDayHoursOf`, вихідний — 0 (BR-RPT-033).
+ * День тижня береться з самої дати (полудень UTC), тож переведення годинника не впливає.
+ */
+export function workCapacityHours(
+  fromYmd: string,
+  toYmd: string,
+  row:
+    | { workStartTime?: string | null; workEndTime?: string | null; workDays?: unknown }
+    | null
+    | undefined,
+): number {
+  const days = new Set(workDaysOf(row));
+  const perDay = workDayHoursOf(row);
+  const last = Date.parse(`${toYmd}T12:00:00Z`);
+  let total = 0;
+  for (let t = Date.parse(`${fromYmd}T12:00:00Z`); t <= last; t += DAY_MS) {
+    const isoDay = new Date(t).getUTCDay() || 7;
+    if (days.has(isoDay)) total += perDay;
+  }
+  return Math.round(total * 100) / 100;
 }
 
 /** Хвилина київської доби миті (дробова, з секундами), DST-aware. */

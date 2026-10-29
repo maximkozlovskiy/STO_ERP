@@ -192,6 +192,26 @@ describe('ReportsService — Bug #629 квантування грошей у з�
       const r = await service.profitability(orgId, from, to);
       expect(r.totalCostLabor).toBe(400.0);
     });
+
+    // BR-RPT-035: відповідь віддає застосовану частку — з неї web пише «Праця (оцінка N%)».
+    // Mutation-verify (2026-10-29): віддати DEFAULT_LABOR_COST_RATIO замість застосованої частки →
+    // падають «0,35» і «обрізана»; прибрати поле з відповіді → падають усі три.
+    // guards: BR-RPT-035
+    it.each([
+      ['частка з налаштувань', { laborCostRatio: 0.35 }, 0.35],
+      ['обрізана до меж', { laborCostRatio: 1.5 }, 1],
+      ['налаштування без частки — типові 0,4', {}, 0.4],
+    ])('laborCostRatio у відповіді: %s', async (_name, settings, expected) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (service as any).settings.getOrganisationSettings.mockResolvedValueOnce(settings);
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ totalRevenue: 10000, totalLabor: 1000, ordersCount: 5n }])
+        .mockResolvedValueOnce([{ costParts: 0, unknownCount: 0n }]);
+
+      const r = await service.profitability(orgId, from, to);
+      expect(r.laborCostRatio).toBe(expected);
+      expect(r.totalCostLabor).toBe(Math.round(1000 * expected * 100) / 100);
+    });
   });
 
   it('revenue: totalRevenue = Σ рядків квантовано (JS-float Σ не дрейфує)', async () => {
