@@ -54,7 +54,7 @@ export class SupplierOrdersController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.send(orgId, id, user.role);
+    return this.service.send(orgId, id, user.role, user.id);
   }
 
   @Post(':id/supplier-api/poll')

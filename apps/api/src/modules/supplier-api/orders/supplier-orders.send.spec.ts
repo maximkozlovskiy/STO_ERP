@@ -147,6 +147,28 @@ describe('BR-SCON-009 «Відправити в API»', () => {
   });
 });
 
+describe('BR-AUT-060 «Відправити в API» з «Чернетки» — подія з автором', () => {
+  // guards: BR-AUT-060
+  // Bug #996: перехід DRAFT → ORDERED ішов без actorId — подія «системна», хоча кнопку натиснув
+  // працівник (BR-AUT-023). Мутація: `transition(…, 'ORDERED')` без `{ actorId }` — кейс червоний.
+  it('подія DRAFT → ORDERED несе працівника, що натиснув «Відправити»', async () => {
+    const x = ordersHarness();
+    const poId = await x.draftFromItems();
+    await x.service.send(ORG, poId, 'STOREKEEPER', 'emp-sender');
+    const events = x.h.tables.domainEvent.rows.filter(
+      e => e.documentId === poId && e.kind === 'STATUS_CHANGED',
+    );
+    expect(events).toEqual([
+      expect.objectContaining({
+        documentType: 'PURCHASE_ORDER',
+        fromStatus: 'DRAFT',
+        toStatus: 'ORDERED',
+        actorId: 'emp-sender',
+      }),
+    ]);
+  });
+});
+
 describe('BR-SCON-011 відправка по кроках без подвійного замовлення', () => {
   // guards: BR-SCON-011
   it('кроки записуються; підтверджене постачальником — у рядках; частково → PARTIALLY_CONFIRMED і PARTIAL', async () => {

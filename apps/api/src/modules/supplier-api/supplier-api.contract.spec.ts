@@ -184,7 +184,8 @@ describe('Постачальники API — HTTP-контракт', () => {
       { itemIds: [ID] },
       { userId: 'emp-1', role: 'STOREKEEPER' },
     );
-    expect(orders.send).toHaveBeenCalledWith('org-1', ID, 'STOREKEEPER');
+    // Автор переходу «Замовлено» (Bug #996) — працівник із токена.
+    expect(orders.send).toHaveBeenCalledWith('org-1', ID, 'STOREKEEPER', 'emp-1');
     // Прапорець «перезаписати ручний вибір» доходить до сервісу (BR-SOFR-009).
     expect(allocation.allocate).toHaveBeenCalledWith(
       'org-1',

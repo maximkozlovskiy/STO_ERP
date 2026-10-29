@@ -105,6 +105,7 @@ export class SupplierOrdersService {
     orgId: string,
     purchaseOrderId: string,
     role?: string,
+    actorId?: string,
   ): Promise<PurchaseOrderSupplierApiDto> {
     const po = await this.loadPo(this.prisma, orgId, purchaseOrderId);
     if (!SENDABLE_PO.has(po.status))
@@ -119,7 +120,8 @@ export class SupplierOrdersService {
     const plan =
       hasActive > 0 ? null : await this.buildPlan(this.prisma, orgId, purchaseOrderId, po);
     if (po.status === 'DRAFT') {
-      await this.purchaseOrders.transition(orgId, purchaseOrderId, 'ORDERED');
+      // Автор події DRAFT → ORDERED — працівник, що натиснув «Відправити» (Bug #996, BR-AUT-023).
+      await this.purchaseOrders.transition(orgId, purchaseOrderId, 'ORDERED', { actorId });
     }
     await this.prisma.$transaction(
       async tx => {
