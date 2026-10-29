@@ -32,7 +32,8 @@ const MENU_WIDTH_PX = 224;
  *
  * Меню рендериться в портал із `position: fixed` від кнопки: контейнер таблиці прокручується й
  * обрізав би випадний список у нижніх рядках. Підтвердження — вікно, яке відкриває сама дія.
- * Escape закриває лише меню (стек шарів), клік поза ним, прокрутка чи зміна розміру — теж.
+ * Escape закриває лише меню (стек шарів), клік поза ним, зміна розміру чи прокрутка, що зрушила
+ * кнопку «⋯», — теж (запізніла подія прокрутки, яка кнопку не зрушила, меню не закриває).
  */
 export function RowActionsMenu({ actions, label, className }: RowActionsMenuProps) {
   const { t } = useTranslation('common');
@@ -40,6 +41,8 @@ export function RowActionsMenu({ actions, label, className }: RowActionsMenuProp
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Де стояла кнопка, коли меню розмістили: прокрутка, що її не зрушила, меню не закриває.
+  const anchorRef = useRef<{ top: number; left: number } | null>(null);
 
   const close = useCallback(() => setOpen(false), []);
   useEscapeLayer(open, () => {
@@ -51,6 +54,7 @@ export function RowActionsMenu({ actions, label, className }: RowActionsMenuProp
     if (!open) return;
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
+    anchorRef.current = { top: rect.top, left: rect.left };
     const menuHeight = menuRef.current?.offsetHeight ?? 0;
     const below = rect.bottom + 4;
     const top =
@@ -70,13 +74,30 @@ export function RowActionsMenu({ actions, label, className }: RowActionsMenuProp
       if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
       close();
     };
+    // Подія `scroll` надходить асинхронно — у наступному кадрі після самої прокрутки. Прокрутка,
+    // яка підвела рядок у видиму зону перед кліком «⋯» (колесо, автопрокрутка до кнопки), приходить
+    // уже ПІСЛЯ відкриття і закривала щойно відкрите меню (E2E «Сторнувати оплату», 3 з 5 падінь).
+    // Закриває лише прокрутка, що зрушила кнопку відносно місця, де меню розмістили.
+    const onScroll = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      const anchor = anchorRef.current;
+      if (
+        rect &&
+        anchor &&
+        Math.abs(rect.top - anchor.top) < 1 &&
+        Math.abs(rect.left - anchor.left) < 1
+      ) {
+        return;
+      }
+      close();
+    };
     document.addEventListener('mousedown', onDown);
     window.addEventListener('resize', close);
-    window.addEventListener('scroll', close, true);
+    window.addEventListener('scroll', onScroll, true);
     return () => {
       document.removeEventListener('mousedown', onDown);
       window.removeEventListener('resize', close);
-      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('scroll', onScroll, true);
     };
   }, [open, close]);
 

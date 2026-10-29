@@ -291,6 +291,24 @@ test.describe('Сторно безготівкової оплати (BR-PAY-024)
       expect.soft([200, 204, 404], `DELETE наряду ${state.wo.number}`).toContain(del.status);
     }
     if (state.bankTxId) {
+      // Тест упав до сторно — рядок рознесений з оплатою, і видалити його не можна: спершу сторно.
+      const left = await apiRequest<{
+        items: { id: string; status: string; paymentId: string | null }[];
+      }>(
+        request,
+        token,
+        'GET',
+        `/bank-statements/transactions?q=${encodeURIComponent(uid)}&limit=20`,
+      );
+      const row = left.body?.items?.find(i => i.id === state.bankTxId);
+      if (row?.status === 'MATCHED' && row.paymentId) {
+        const rev = await apiRequest(request, token, 'POST', `/payments/${row.paymentId}/reverse`, {
+          reason: 'E2E: прибирання',
+        });
+        expect
+          .soft(rev.status, `сторно оплати виписки при прибиранні: ${JSON.stringify(rev.body)}`)
+          .toBeLessThan(300);
+      }
       const del = await apiRequest(
         request,
         token,
@@ -449,7 +467,10 @@ test.describe('Сторно безготівкової оплати (BR-PAY-024)
 
     await page.getByPlaceholder(/Пошук за контрагентом/).fill(purpose);
     const row = page.locator('table tbody tr').filter({ hasText: purpose });
-    await expect(row).toHaveCount(1, { timeout: 15_000 });
+    // Чекаємо саме відфільтрований список (пошук — з затримкою): рядок є й у нефільтрованому, і
+    // відповідь пошуку, що прийшла посеред роботи з меню, переставляє рядки під відкритим меню.
+    await expect(page.locator('table tbody tr')).toHaveCount(1, { timeout: 15_000 });
+    await expect(row).toHaveCount(1);
     await expect(row).toContainText('Рознесено');
     // Рознесення вхідного знімає лише сторно оплати.
     await rowMenuButton(row).click();
