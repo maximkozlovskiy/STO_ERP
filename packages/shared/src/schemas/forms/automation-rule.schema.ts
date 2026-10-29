@@ -23,6 +23,7 @@ import {
   AUTOMATION_TEMPLATE_BODY_MAX,
   AUTOMATION_TEMPLATE_SUBJECT_MAX,
   findUnknownTemplateVariables,
+  templateFragmentsValid,
 } from '../../constants/automation-rules';
 import { MONEY_AMOUNT_MAX } from '../validators';
 import { TASK_DESCRIPTION_MAX, TASK_TITLE_MAX } from './task.schema';
@@ -64,12 +65,21 @@ const messageTemplateSchema = z.object({
   ),
 });
 
+/**
+ * Канали дії (BR-AUT-011, рішення власника 2026-10-29): відсутні чи порожні — «як у налаштуваннях
+ * філії» (усі налаштовані канали в пріоритеті, який задав власник); перелік — явне перевизначення.
+ * Порожній масив нормалізується до `undefined`, щоб у правилі не було двох записів одного змісту.
+ */
+const channelList = <T extends readonly [string, ...string[]]>(values: T) =>
+  z
+    .array(z.enum(values))
+    .max(values.length, 'v.automation.channels.duplicate')
+    .optional()
+    .transform(v => (v && v.length > 0 ? v : undefined));
+
 const clientMessageActionSchema = z.object({
   type: z.literal('client_message'),
-  channels: z
-    .array(z.enum(AUTOMATION_CHANNELS))
-    .min(1, 'v.automation.channels.required')
-    .max(AUTOMATION_CHANNELS.length, 'v.automation.channels.duplicate'),
+  channels: channelList(AUTOMATION_CHANNELS),
   template: messageTemplateSchema,
 });
 
@@ -94,10 +104,7 @@ const employeeNotificationActionSchema = z.object({
   inApp: z.boolean().default(true),
   external: z
     .object({
-      channels: z
-        .array(z.enum(AUTOMATION_EMPLOYEE_CHANNELS))
-        .min(1, 'v.automation.channels.required')
-        .max(AUTOMATION_EMPLOYEE_CHANNELS.length, 'v.automation.channels.duplicate'),
+      channels: channelList(AUTOMATION_EMPLOYEE_CHANNELS),
       template: messageTemplateSchema,
     })
     .optional(),
@@ -160,13 +167,17 @@ function checkTemplate(
   path: Path,
 ): void {
   if (!text) return;
+  // Змінні фрагментів `[[…]]` — теж лише з каталогу: templateVariables бачить і їх.
   if (findUnknownTemplateVariables(text, documentType).length > 0) {
     ctx.addIssue({ code: 'custom', message: 'v.automation.template.unknownVariable', path });
   }
+  if (!templateFragmentsValid(text)) {
+    ctx.addIssue({ code: 'custom', message: 'v.automation.template.fragment', path });
+  }
 }
 
-function checkUnique(ctx: Ctx, list: readonly string[], path: Path): void {
-  if (new Set(list).size !== list.length) {
+function checkUnique(ctx: Ctx, list: readonly string[] | undefined, path: Path): void {
+  if (list && new Set(list).size !== list.length) {
     ctx.addIssue({ code: 'custom', message: 'v.automation.channels.duplicate', path });
   }
 }

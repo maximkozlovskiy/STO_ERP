@@ -12,6 +12,7 @@ import {
   defaultRuleActions,
   findUnknownTemplateVariables,
   renderAutomationTemplate,
+  templateFragmentsValid,
   templateVariables,
 } from '../../constants/automation-rules';
 
@@ -177,12 +178,78 @@ describe('automationRuleSchema', () => {
     expect(issues(po).map(i => i.message)).toContain('v.automation.action.noClient');
   });
 
+  // Рішення власника 2026-10-29: «Я налаштовую самостійно пріоритет, немає фіксованих».
   // guards: BR-AUT-011
-  it('канали: порожньо або повтор — помилка', () => {
-    const empty = { ...base, actions: [{ ...base.actions[0], channels: [] }] };
-    expect(issues(empty).map(i => i.message)).toContain('v.automation.channels.required');
+  it('канали: без переліку чи порожній — «як у філії» (undefined); перелік — як є; повтор — помилка', () => {
+    const channelsOf = (input: unknown) => {
+      const a = automationRuleSchema.parse(input).actions[0];
+      return a?.type === 'client_message' ? a.channels : 'not-client';
+    };
+    const { channels: _omit, ...noChannels } = base.actions[0]!;
+    expect(channelsOf({ ...base, actions: [noChannels] })).toBeUndefined();
+    expect(channelsOf({ ...base, actions: [{ ...noChannels, channels: [] }] })).toBeUndefined();
+    expect(
+      channelsOf({ ...base, actions: [{ ...noChannels, channels: ['SMS', 'VIBER'] }] }),
+    ).toEqual(['SMS', 'VIBER']);
     const dup = { ...base, actions: [{ ...base.actions[0], channels: ['SMS', 'SMS'] }] };
     expect(issues(dup).map(i => i.message)).toContain('v.automation.channels.duplicate');
+
+    // Зовнішнє сповіщення працівнику — та сама модель.
+    const external = automationRuleSchema.parse({
+      ...base,
+      actions: [
+        {
+          type: 'employee_notification',
+          recipients: { responsible: true },
+          title: 'Т',
+          external: { channels: [], template: { body: 'Наряд {{documentNumber}}' } },
+        },
+      ],
+    }).actions[0];
+    expect(external?.type === 'employee_notification' && external.external?.channels).toBe(
+      undefined,
+    );
+  });
+
+  // Bug #998: «Головна філія, тел. » — порожній телефон організації лишав хвіст без номера.
+  // guards: BR-AUT-014
+  it('фрагмент [[…]]: порожня змінна всередині прибирає фрагмент цілком, інакше дужки знімаються', () => {
+    const tpl = '{{branchName}}[[, тел. {{branchPhone}}]]. Дякуємо';
+    expect(renderAutomationTemplate(tpl, { branchName: 'Головна філія' })).toBe(
+      'Головна філія. Дякуємо',
+    );
+    expect(renderAutomationTemplate(tpl, { branchName: 'Головна філія', branchPhone: '  ' })).toBe(
+      'Головна філія. Дякуємо',
+    );
+    expect(
+      renderAutomationTemplate(tpl, { branchName: 'Головна філія', branchPhone: '+380441234567' }),
+    ).toBe('Головна філія, тел. +380441234567. Дякуємо');
+    // Хоч одна порожня з кількох — фрагмент випадає; фрагмент без змінних лишається текстом.
+    expect(
+      renderAutomationTemplate('А[[ {{clientName}} {{vehicle}}]][[ Б]]', { clientName: 'Іван' }),
+    ).toBe('А Б');
+    // Значення змінної не розбирається як шаблон.
+    expect(
+      renderAutomationTemplate('[[{{clientName}}]]', { clientName: '[[x]] {{vehicle}}' }),
+    ).toBe('[[x]] {{vehicle}}');
+  });
+
+  // guards: BR-AUT-014
+  it('фрагмент [[…]]: вкладений, незакритий чи зайве «]]» — помилка; змінна фрагмента — з каталогу', () => {
+    const withBody = (body: string) => ({
+      ...base,
+      actions: [{ ...base.actions[0], template: { body } }],
+    });
+    expect(issues(withBody('{{branchName}}[[, тел. {{branchPhone}}]]'))).toEqual([]);
+    for (const bad of ['[[a [[{{vehicle}}]] b]]', '[[, тел. {{branchPhone}}', 'тел.]] x', ']][['])
+      expect(issues(withBody(bad)), bad).toContainEqual({
+        message: 'v.automation.template.fragment',
+        path: 'actions.0.template.body',
+      });
+    expect(issues(withBody('[[ {{visitDate}}]]')).map(i => i.message)).toContain(
+      'v.automation.template.unknownVariable',
+    );
+    expect(templateFragmentsValid('[[a]] b [[c]]')).toBe(true);
   });
 
   // guards: BR-AUT-020, BR-AUT-023
@@ -245,9 +312,12 @@ describe('automationRuleSchema', () => {
     expect(issues(onTask).map(i => i.message)).toContain('v.automation.action.taskOnTask');
   });
 
-  // guards: BR-AUT-007
-  it('типові правила проходять схему (шаблони — лише змінні каталогу)', () => {
+  // guards: BR-AUT-007, BR-AUT-011, BR-AUT-014
+  it('типові правила проходять схему; канали — «як у філії»; телефон — у фрагменті', () => {
     for (const d of AUTOMATION_DEFAULT_RULES) {
+      expect(defaultRuleActions(d)[0]).not.toHaveProperty('channels');
+      expect(d.body, d.systemKey).toContain('[[, тел. {{branchPhone}}]]');
+      expect(renderAutomationTemplate(d.body, {}), d.systemKey).not.toMatch(/тел\.|\[\[|\]\]/);
       const r = automationRuleSchema.safeParse({
         name: d.name,
         documentType: d.documentType,

@@ -53,6 +53,9 @@ export const AUTOMATION_SKIP_REASONS = [
   'NO_RECIPIENTS',
   'NO_ASSIGNEE',
   'TASK_EXISTS',
+  // Відкладене повідомлення (тихі години) на момент відправки вже недоречне (BR-AUT-016).
+  'DOCUMENT_DELETED',
+  'PAYMENT_REVERSED',
 ] as const;
 export type AutomationSkipReason = (typeof AUTOMATION_SKIP_REASONS)[number];
 
@@ -61,8 +64,9 @@ export const AUTOMATION_MESSAGE_KINDS = ['SERVICE', 'MARKETING'] as const;
 export type AutomationMessageKindValue = (typeof AUTOMATION_MESSAGE_KINDS)[number];
 
 /**
- * Канали повідомлення правила в типовому порядку (BR-AUT-011): власний Telegram-бот, Viber, SMS,
- * email, Telegram через eSputnik. Правило задає власний порядок з цього переліку.
+ * Канали повідомлення правила (BR-AUT-011): власний Telegram-бот, Viber, SMS, email, Telegram через
+ * eSputnik. Правило без каналів бере налаштовані канали філії в пріоритеті, який задав власник;
+ * перелік у правилі — явне перевизначення (лише ці канали, у цьому порядку).
  */
 export const AUTOMATION_CHANNELS = ['TELEGRAM_BOT', 'VIBER', 'SMS', 'EMAIL', 'TELEGRAM'] as const;
 export type AutomationChannelValue = (typeof AUTOMATION_CHANNELS)[number];
@@ -210,8 +214,11 @@ export const AUTOMATION_VARIABLES: Record<
 };
 
 const TEMPLATE_VARIABLE_RE = /\{\{\s*([^{}]*?)\s*\}\}/g;
+/** Необов'язковий фрагмент `[[…]]` (BR-AUT-014): без вкладених `[[` усередині. */
+const TEMPLATE_FRAGMENT_RE = /\[\[([\s\S]*?)\]\]/g;
+const TEMPLATE_BRACKET_RE = /\[\[|\]\]/g;
 
-/** Імена змінних `{{…}}` шаблону в порядку появи, без повторів. */
+/** Імена змінних `{{…}}` шаблону в порядку появи, без повторів (і всередині фрагментів `[[…]]`). */
 export function templateVariables(template: string): string[] {
   const seen = new Set<string>();
   for (const m of template.matchAll(TEMPLATE_VARIABLE_RE)) seen.add(m[1] ?? '');
@@ -227,15 +234,35 @@ export function findUnknownTemplateVariables(
   return templateVariables(template).filter(v => !known.includes(v));
 }
 
-/** Підставляє змінні в перевірений шаблон; змінна без значення — порожній рядок. */
+/**
+ * BR-AUT-014: фрагменти `[[…]]` шаблону збалансовані — кожен `[[` закрито `]]`, без вкладених `[[`
+ * і без `]]` поза фрагментом. `false` — помилка збереження (інакше дужки пішли б клієнту текстом).
+ */
+export function templateFragmentsValid(template: string): boolean {
+  let open = false;
+  for (const m of template.matchAll(TEMPLATE_BRACKET_RE)) {
+    const opening = m[0] === '[[';
+    if (opening === open) return false; // `[[` у відкритому фрагменті або `]]` без відкриття
+    open = opening;
+  }
+  return !open;
+}
+
+/**
+ * Підставляє змінні в перевірений шаблон; змінна без значення — порожній рядок. Необов'язковий
+ * фрагмент `[[…]]` (BR-AUT-014): хоч одна змінна всередині порожня — фрагмент прибирається цілком
+ * («Головна філія[[, тел. {{branchPhone}}]]» без телефону → «Головна філія»), інакше лишається без
+ * дужок. Значення змінних не розбираються як шаблон: фрагменти знімаються до підстановки.
+ */
 export function renderAutomationTemplate(
   template: string,
   vars: Partial<Record<AutomationVariableKey, string>>,
 ): string {
-  return template.replace(
-    TEMPLATE_VARIABLE_RE,
-    (_m, key: string) => vars[key as AutomationVariableKey] ?? '',
+  const value = (key: string): string => vars[key as AutomationVariableKey] ?? '';
+  const withFragments = template.replace(TEMPLATE_FRAGMENT_RE, (_m, inner: string) =>
+    templateVariables(inner).some(k => !value(k).trim()) ? '' : inner,
   );
+  return withFragments.replace(TEMPLATE_VARIABLE_RE, (_m, key: string) => value(key));
 }
 
 export const AUTOMATION_RULE_NAME_MAX = 200;
@@ -249,6 +276,7 @@ export const AUTOMATION_TASK_DUE_HOURS_MAX = 720;
 /**
  * Типові правила організації — заміна зашитих повідомлень (BR-AUT-007): створюються міграцією
  * даних для наявних організацій і `setup.service` для нової. `systemKey` — унікальний у межах org.
+ * Телефон організації може бути порожнім — хвіст «, тел. …» у необов'язковому фрагменті `[[…]]`.
  * Кошторис лишається ручною кнопкою (шаблон `WO_ESTIMATE_READY`), нагадування ТО — етап 2.
  */
 export interface AutomationDefaultRule {
@@ -258,7 +286,7 @@ export interface AutomationDefaultRule {
   eventKind: AutomationEventKindValue;
   toStatuses: readonly string[];
   messageKind: AutomationMessageKindValue;
-  channels: readonly AutomationChannelValue[];
+  /** Шаблон; канали не задаються — «як у налаштуваннях філії» (BR-AUT-011, рішення власника). */
   body: string;
 }
 
@@ -270,10 +298,10 @@ export const AUTOMATION_DEFAULT_RULES: readonly AutomationDefaultRule[] = [
     eventKind: 'STATUS_CHANGED',
     toStatuses: ['COMPLETED'],
     messageKind: 'SERVICE',
-    channels: ['VIBER', 'SMS'],
     body:
       'Вітаємо, {{clientName}}! Ваш автомобіль {{vehicle}} готовий до видачі ' +
-      '(наряд {{documentNumber}}, сума {{totalAmount}}). {{branchName}}, тел. {{branchPhone}}',
+      '(наряд {{documentNumber}}, сума {{totalAmount}}). {{branchName}}' +
+      '[[, тел. {{branchPhone}}]]',
   },
   {
     systemKey: 'PAYMENT_CREATED_CLIENT',
@@ -282,10 +310,9 @@ export const AUTOMATION_DEFAULT_RULES: readonly AutomationDefaultRule[] = [
     eventKind: 'CREATED',
     toStatuses: [],
     messageKind: 'SERVICE',
-    channels: ['VIBER', 'SMS'],
     body:
       'Дякуємо, {{clientName}}! Оплату {{totalAmount}} отримано {{date}} о {{time}}. ' +
-      '{{branchName}}, тел. {{branchPhone}}',
+      '{{branchName}}[[, тел. {{branchPhone}}]]',
   },
   {
     systemKey: 'BOOKING_CREATED_CLIENT',
@@ -294,10 +321,9 @@ export const AUTOMATION_DEFAULT_RULES: readonly AutomationDefaultRule[] = [
     eventKind: 'CREATED',
     toStatuses: [],
     messageKind: 'SERVICE',
-    channels: ['VIBER', 'SMS'],
     body:
       'Вітаємо, {{clientName}}! Запис на {{visitDate}} о {{visitTime}} прийнято. Чекаємо на вас ' +
-      'у {{branchName}}, тел. {{branchPhone}}',
+      'у {{branchName}}[[, тел. {{branchPhone}}]]',
   },
 ];
 
@@ -306,7 +332,6 @@ export function defaultRuleActions(rule: AutomationDefaultRule) {
   return [
     {
       type: 'client_message' as const,
-      channels: [...rule.channels],
       template: { body: rule.body },
     },
   ];

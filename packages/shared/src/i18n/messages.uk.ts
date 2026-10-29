@@ -48,13 +48,13 @@ export const uk: Record<string, string> = {
   'v.automation.list.max': 'Перелік задовгий',
   'v.automation.status.invalid': 'Такого статусу в документа немає',
   'v.automation.conditions.notApplicable': 'Ця умова не застосовна до обраної події',
-  'v.automation.channels.required': 'Оберіть хоча б один канал',
   'v.automation.channels.duplicate': 'Канал обрано двічі',
   'v.automation.template.bodyRequired': 'Вкажіть текст повідомлення',
   'v.automation.template.bodyMax': 'Текст повідомлення — до 1000 символів',
   'v.automation.template.subjectMax': 'Тема — до 200 символів',
   'v.automation.template.unknownVariable':
     'Шаблон містить змінну, якої немає в переліку для цієї події',
+  'v.automation.template.fragment': "Необов'язковий фрагмент [[…]] не закрито або вкладено в інший",
   'v.automation.action.noClient':
     'У цього документа немає клієнта — повідомлення клієнту недоступне',
   'v.automation.action.taskOnTask': 'Правило на подію задачі не може створювати задачу',
