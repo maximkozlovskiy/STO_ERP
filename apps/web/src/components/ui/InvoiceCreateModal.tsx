@@ -19,7 +19,7 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { displayCounterpartyName, lineAmount, roundMoney } from '@/lib/utils';
-import { kyivToday } from '@/lib/format';
+import { fmtMoney, kyivToday } from '@/lib/format';
 import {
   INVOICE_STATUS_LABELS,
   INVOICE_STATUS_DESCRIPTIONS,
@@ -183,6 +183,9 @@ export function InvoiceCreateModal({
   // Рахунок наряду (BR-INV-019): закривається лише оплатою наряду, ручного «Оплачено» немає.
   const [workOrderLinked, setWorkOrderLinked] = useState(false);
   const [paidAmount, setPaidAmount] = useState<number | null>(null);
+  // Збережена сума рахунку (`amount`) — її показує список. Рахунок без рядків (створений сумою через
+  // API, РАХ-2026-004310) у картці показував «Разом: 0.00», а в списку — 100,00 ₴.
+  const [savedAmount, setSavedAmount] = useState<number | null>(null);
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
   const [showLineInput, setShowLineInput] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
@@ -250,6 +253,7 @@ export function InvoiceCreateModal({
     setWorkOrderNumber(null);
     setWorkOrderLinked(false);
     setPaidAmount(null);
+    setSavedAmount(null);
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
     initialLineIdsRef.current = new Set();
@@ -314,6 +318,7 @@ export function InvoiceCreateModal({
         setWorkOrderNumber(inv.workOrderNumber ?? null);
         setWorkOrderLinked(!!inv.workOrderId);
         setPaidAmount(inv.paidAmount ?? null);
+        setSavedAmount(inv.amount ?? null);
         const loadedLines = (inv.lines ?? []).map(l => ({
           _key: nextKey(),
           id: l.id,
@@ -453,6 +458,9 @@ export function InvoiceCreateModal({
       ),
     [watchedLines],
   );
+  // Без жодного рядка — збережена сума документа (те, що показує список і що оплачують);
+  // щойно рядки є, «Разом» рахується з них.
+  const shownTotal = (watchedLines?.length ?? 0) === 0 && savedAmount != null ? savedAmount : total;
 
   const addLine = () => {
     if (!newLine.description) return;
@@ -717,7 +725,7 @@ export function InvoiceCreateModal({
           <div className="flex items-center justify-between w-full gap-2">
             <div>
               <DocumentCancelAction
-                label={t('actions.cancel')}
+                label={t('actions.cancelInvoice')}
                 transitions={allowedTransitions}
                 onTransition={doTransition}
                 busy={transitioning}
@@ -959,13 +967,13 @@ export function InvoiceCreateModal({
                           <span>
                             {/* WEB-R3-4: рядкова СУМА збігається з логікою «Разом» — завантажений
                                 рядок бере авторитетний lineTotalWithVat (з ПДВ), інакше qty×unitPrice. */}
-                            {(
+                            {fmtMoney(
                               line.lineTotalWithVat ??
-                              lineAmount(
-                                parseFloat(String(line.quantity)) || 0,
-                                parseFloat(String(line.unitPrice)) || 0,
-                              )
-                            ).toFixed(2)}
+                                lineAmount(
+                                  parseFloat(String(line.quantity)) || 0,
+                                  parseFloat(String(line.unitPrice)) || 0,
+                                ),
+                            )}
                           </span>
                           {canEdit && (
                             <button
@@ -1023,10 +1031,12 @@ export function InvoiceCreateModal({
                     <td className="px-2 py-1.5 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <span className="tabular-nums text-muted-foreground">
-                          {lineAmount(
-                            parseFloat(newLine.quantity) || 0,
-                            parseFloat(newLine.unitPrice) || 0,
-                          ).toFixed(2)}
+                          {fmtMoney(
+                            lineAmount(
+                              parseFloat(newLine.quantity) || 0,
+                              parseFloat(newLine.unitPrice) || 0,
+                            ),
+                          )}
                         </span>
                         <button
                           type="button"
@@ -1050,7 +1060,7 @@ export function InvoiceCreateModal({
                     {t('card.total')}
                   </td>
                   <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums">
-                    {total.toFixed(2)} {currencySymbol}
+                    {fmtMoney(shownTotal)} {currencySymbol}
                   </td>
                 </tr>
                 {isEditMode && paidAmount != null && paidAmount > 0 && (
@@ -1062,11 +1072,11 @@ export function InvoiceCreateModal({
                       {t('card.paid')}
                     </td>
                     <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-success">
-                      {paidAmount.toFixed(2)} {currencySymbol}
+                      {fmtMoney(paidAmount)} {currencySymbol}
                     </td>
                   </tr>
                 )}
-                {isEditMode && paidAmount != null && total > 0 && paidAmount < total && (
+                {isEditMode && paidAmount != null && shownTotal > 0 && paidAmount < shownTotal && (
                   <tr className="bg-secondary/10">
                     <td
                       colSpan={3}
@@ -1075,7 +1085,7 @@ export function InvoiceCreateModal({
                       {t('card.remaining')}
                     </td>
                     <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-destructive">
-                      {(total - paidAmount).toFixed(2)} {currencySymbol}
+                      {fmtMoney(roundMoney(shownTotal - paidAmount))} {currencySymbol}
                     </td>
                   </tr>
                 )}

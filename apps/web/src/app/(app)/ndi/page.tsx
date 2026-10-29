@@ -39,7 +39,7 @@ function NdiPageClient() {
   const TABS = useMemo(() => TAB_DEFS.map(d => ({ ...d, label: t(d.labelKey) })), [t]);
 
   return (
-    <div className="page-fill p-6 overflow-y-auto">
+    <div className="page-fill page-scroll p-6">
       <h1 className="page-title mb-6">{t('title')}</h1>
 
       <div className="flex gap-1 border-b border-border mb-6 flex-wrap">

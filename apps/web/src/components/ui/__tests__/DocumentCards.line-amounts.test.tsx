@@ -123,8 +123,8 @@ describe('Картка рахунку — сума рядка округлена
       invoiceDoc([{ description: 'Діагностика', quantity: 0.3, unitPrice: 100.05 }]),
     );
     render(<InvoiceCreateModal open invoiceId="inv-1" onClose={vi.fn()} />);
-    expect(await lineCell('Діагностика', 3)).toBe('30.02');
-    expect(totalRow()).toHaveTextContent('30.02');
+    expect(await lineCell('Діагностика', 3)).toBe('30,02');
+    expect(totalRow()).toHaveTextContent('30,02');
   });
 
   // guards: BR-INV-017
@@ -141,7 +141,7 @@ describe('Картка рахунку — сума рядка округлена
     );
     render(<InvoiceCreateModal open invoiceId="inv-1" onClose={vi.fn()} />);
     await screen.findByText('Робота В', undefined, { timeout: 2000 });
-    expect(totalRow()).toHaveTextContent('99.99');
+    expect(totalRow()).toHaveTextContent('99,99');
   });
 
   it('рахунок: новий рядок 0,3 × 100,05 — прев’ю 30.02', async () => {
@@ -155,7 +155,7 @@ describe('Картка рахунку — сума рядка округлена
     await user.clear(qty);
     await user.type(qty, '0.3');
     await user.type(within(row).getByPlaceholderText('0.00'), '100.05');
-    expect(within(row).getAllByRole('cell')[3]).toHaveTextContent('30.02');
+    expect(within(row).getAllByRole('cell')[3]).toHaveTextContent('30,02');
   });
 
   it('рахунок: POST /invoices несе суму округлених рядків (три по 0,3 × 111,11 → 99.99)', async () => {

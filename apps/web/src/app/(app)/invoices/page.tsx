@@ -52,7 +52,7 @@ import { Input } from '@/components/ui/input';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { activateRow } from '@/lib/row-activation';
 import { Spinner } from '@/components/ui/spinner';
-import { EmptyState } from '@/components/ui/empty-state';
+import { EmptyState, ListEmptyState } from '@/components/ui/empty-state';
 import {
   Table,
   TableHeader,
@@ -61,6 +61,7 @@ import {
   TableHead,
   SortableHead,
   TableCell,
+  MoneyCell,
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
 import {
@@ -924,7 +925,19 @@ function InvoicesPageInner() {
                     colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
                     className="p-0"
                   >
-                    <EmptyState icon={Receipt} title={t('empty.notFound')} />
+                    <ListEmptyState
+                      icon={Receipt}
+                      title={t('empty.notFound')}
+                      filtered={!!(status || search || dateFrom || dateTo)}
+                      onResetFilters={() => {
+                        setStatus('');
+                        setSearch('');
+                        setDateFrom('');
+                        setDateTo('');
+                        resetPage();
+                        setActiveSavedFilterId(null);
+                      }}
+                    />
                   </TableCell>
                 </TableRow>
               )}
@@ -1010,10 +1023,7 @@ function InvoicesPageInner() {
                           const isBase = !inv.currencyCode || inv.currencyCode === baseCode;
                           const sym = isBase ? baseSymbol : inv.currencyCode;
                           return (
-                            <TableCell
-                              key="amount"
-                              className="text-right font-semibold text-[13px] tabular-nums"
-                            >
+                            <MoneyCell key="amount" className="font-semibold text-[13px]">
                               <div>
                                 {fmtMoney(inv.amount)} {sym}
                               </div>
@@ -1022,7 +1032,7 @@ function InvoicesPageInner() {
                                   {fmtMoney(inv.totalAmountBase)} {baseSymbol}
                                 </div>
                               )}
-                            </TableCell>
+                            </MoneyCell>
                           );
                         }
                         if (col.key === 'documentDate')

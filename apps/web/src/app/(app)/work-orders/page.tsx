@@ -58,7 +58,7 @@ import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { activateRow } from '@/lib/row-activation';
 import dynamic from 'next/dynamic';
 import { Spinner } from '@/components/ui/spinner';
-import { EmptyState } from '@/components/ui/empty-state';
+import { EmptyState, ListEmptyState } from '@/components/ui/empty-state';
 import {
   Table,
   TableHeader,
@@ -67,6 +67,7 @@ import {
   TableHead,
   SortableHead,
   TableCell,
+  MoneyCell,
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
 import { useSubmitGuard } from '@/hooks/useSubmitGuard';
@@ -1019,12 +1020,27 @@ function WorkOrdersListTab() {
                     colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
                     className="p-0"
                   >
-                    <EmptyState
+                    <ListEmptyState
                       icon={ClipboardList}
                       title={t('list.empty.title')}
-                      description={
-                        statusFilter ? t('list.empty.descFilter') : t('list.empty.descCreate')
+                      description={t('list.empty.descCreate')}
+                      // Типовий період «сьогодні» — теж фільтр (рішення власника: лишається).
+                      filtered={
+                        !!(statusFilter || categoryFilter || search || dateFrom || dateTo) ||
+                        myOrders ||
+                        executorFilter !== null
                       }
+                      onResetFilters={() => {
+                        setStatusFilter('');
+                        setCategoryFilter('');
+                        setSearch('');
+                        setMyOrders(false);
+                        setExecutorFilter(null);
+                        setDateFrom('');
+                        setDateTo('');
+                        resetPage();
+                        setActiveSavedFilterId(null);
+                      }}
                       size="sm"
                     />
                   </TableCell>
@@ -1173,7 +1189,7 @@ function WorkOrdersListTab() {
                           const isBase = !wo.currencyCode || wo.currencyCode === baseCode;
                           const sym = isBase ? baseSymbol : wo.currencyCode;
                           return (
-                            <TableCell key="amount" className="tabular-nums text-right">
+                            <MoneyCell key="amount">
                               <div className="font-medium text-foreground">
                                 {fmtMoney(wo.totalAmount)} {sym}
                               </div>
@@ -1187,7 +1203,7 @@ function WorkOrdersListTab() {
                                   {fmtMoney(plannedAmount)} {sym}
                                 </div>
                               )}
-                            </TableCell>
+                            </MoneyCell>
                           );
                         }
                         if (col.key === 'documentDate')

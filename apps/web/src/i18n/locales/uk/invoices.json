@@ -28,6 +28,7 @@
     "send": "Надіслати",
     "pay": "Оплатити",
     "cancel": "Скасувати",
+    "cancelInvoice": "Скасувати рахунок",
     "downloadPdf": "Завантажити PDF",
     "printPdf": "Друкувати PDF",
     "print": "Друк",

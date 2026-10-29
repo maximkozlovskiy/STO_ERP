@@ -1,5 +1,6 @@
 'use client';
 
+import { fillRevenueWeek } from './revenue-week';
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { WO_EDITABLE_STATUSES } from '@sto/shared';
@@ -271,8 +272,11 @@ export default function DashboardPage() {
     pnlData,
   ]);
 
-  const revenue: RevenueDay[] =
-    (revenueData as { rows?: RevenueDay[] } | undefined)?.rows ?? (EMPTY_REVENUE as RevenueDay[]);
+  // Усі 7 днів, порожні — нулем; без даних (запит не прийшов чи впав) — порожньо, не нулі.
+  const revenue: RevenueDay[] = useMemo(() => {
+    const rows = (revenueData as { rows?: RevenueDay[] } | undefined)?.rows;
+    return rows ? fillRevenueWeek(rows, kyivToday()) : (EMPTY_REVENUE as RevenueDay[]);
+  }, [revenueData]);
   const upcomingTO: MaintenanceSchedule[] = Array.isArray(maintenanceData)
     ? (maintenanceData as MaintenanceSchedule[])
     : (EMPTY_MAINTENANCE as MaintenanceSchedule[]);
@@ -312,7 +316,7 @@ export default function DashboardPage() {
   if (!employee) return null;
 
   return (
-    <div className="page-fill p-4 md:p-6 overflow-y-auto">
+    <div className="page-fill page-scroll p-4 md:p-6">
       {error && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error}
@@ -363,7 +367,8 @@ export default function DashboardPage() {
                   kpi.completedToday !== null
                     ? {
                         value: t('kpi.completedToday', { n: kpi.completedToday }),
-                        up: kpi.completedToday > 0,
+                        // Нуль — нейтрально, без червоної стрілки вниз.
+                        up: kpi.completedToday > 0 ? true : undefined,
                       }
                     : undefined
                 }

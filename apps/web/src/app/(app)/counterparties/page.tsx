@@ -34,6 +34,8 @@ import {
   TableHead,
   SortableHead,
   TableCell,
+  MoneyCell,
+  MONEY_HEAD_CLASS,
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
@@ -617,6 +619,7 @@ function CrmPageInner() {
                       sortKey={col.key === 'name' ? 'lastName' : 'balance'}
                       currentSort={crmSort}
                       onSort={toggleCrmSort}
+                      className={col.key === 'balance' ? MONEY_HEAD_CLASS : undefined}
                       {...dragProps(col.key)}
                     >
                       {col.label}
@@ -759,18 +762,18 @@ function CrmPageInner() {
                           );
                         if (col.key === 'balance')
                           return (
-                            <TableCell
+                            <MoneyCell
                               key="balance"
                               // WEB-R3-5: тип-aware тон (CLIENT balance>0 = борг нам = destructive).
                               className={cn(
-                                'font-semibold tabular-nums text-[13px]',
+                                'font-semibold text-[13px]',
                                 settlementBalanceToneClass(
                                   settlementBalanceTone(cp.balance, cp.type),
                                 ),
                               )}
                             >
                               {fmtMoney(cp.balance)} ₴
-                            </TableCell>
+                            </MoneyCell>
                           );
                         return null;
                       })}

@@ -269,6 +269,17 @@ th[data-dragover="true"] {
   gap: 0.5rem;        /* 8px між header / toolbar / table / pagination */
 }
 
+/* Сторінка, що прокручується цілком (дашборд, НДІ) — той самий каркас, але власна прокрутка.
+   `overflow-y-auto` поруч із .page-fill не діє: правило вище не в шарі й перебиває утиліти
+   Tailwind (UX-огляд 2026-10-29 — дашборд обрізався на 900 px). Діти не стискаються: інакше картка
+   з overflow:hidden у flex-колонці стиснулася б і сховала вміст (графік на 390 px). */
+.page-fill.page-scroll {
+  overflow-y: auto;
+}
+.page-fill.page-scroll > * {
+  flex-shrink: 0;
+}
+
 /* Legacy layout — pages that have not been migrated to .page-fill.
    <main> now has overflow-hidden (для list pages), тому .page-container
    повинен мати свій власний скрол, інакше довгий контент обрізається. */

@@ -34,7 +34,7 @@ import { StatusPill } from '@/components/ui/status-pill';
 import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { Spinner } from '@/components/ui/spinner';
-import { EmptyState } from '@/components/ui/empty-state';
+import { EmptyState, ListEmptyState } from '@/components/ui/empty-state';
 import { Pagination } from '@/components/ui/pagination';
 import { ListLoadError } from '@/components/ui/list-load-error';
 import { TableColumnsDropdown } from '@/components/ui/columns-dropdown';
@@ -442,10 +442,22 @@ function TasksPageClient() {
             {!isLoading && !error && items.length === 0 && (
               <TableRow>
                 <TableCell colSpan={colSpan} className="p-0">
-                  <EmptyState
+                  <ListEmptyState
                     icon={ListTodo}
                     title={t('empty.title')}
-                    description={filtered ? t('empty.descFilter') : t('empty.desc')}
+                    description={t('empty.desc')}
+                    filtered={filtered}
+                    onResetFilters={() => {
+                      setSearch('');
+                      setStatus('');
+                      setPriority('');
+                      setAssigneeId('');
+                      setOverdue(false);
+                      setFrom('');
+                      setTo('');
+                      resetPage();
+                      setActiveSavedFilterId(null);
+                    }}
                     size="sm"
                   />
                 </TableCell>

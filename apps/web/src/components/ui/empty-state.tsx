@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type LucideIcon, Inbox } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 interface EmptyStateProps {
   icon?: LucideIcon;
@@ -77,5 +78,51 @@ function EmptyState({
   );
 }
 
-export { EmptyState };
+interface ListEmptyStateProps extends Omit<EmptyStateProps, 'action'> {
+  /** Чи стоїть хоч один фільтр (зокрема період дат) — тоді порожньо «за фільтрами». */
+  filtered: boolean;
+  /** Зняти всі фільтри списку, зокрема дати. Немає — без кнопки. */
+  onResetFilters?: () => void;
+  /** Дія порожнього списку без фільтрів (наприклад, «Створити»). */
+  action?: ReactNode;
+}
+
+/**
+ * Порожній список (UX-огляд 2026-10-29): з фільтрами — «За фільтрами нічого не знайдено» і кнопка
+ * «Скинути фільтри» (типовий фільтр «сьогодні» лишається, тож порожньо буває часто); без фільтрів —
+ * власний заголовок і підказка списку («Створіть перший…»).
+ */
+function ListEmptyState({
+  filtered,
+  onResetFilters,
+  title,
+  description,
+  action,
+  ...rest
+}: ListEmptyStateProps) {
+  const { t } = useTranslation('common');
+  if (!filtered)
+    return <EmptyState {...rest} title={title} description={description} action={action} />;
+  return (
+    <EmptyState
+      {...rest}
+      title={t('emptyFiltered.title')}
+      description={t('emptyFiltered.desc')}
+      action={
+        onResetFilters ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onResetFilters}
+            data-testid="empty-reset-filters"
+          >
+            {t('emptyFiltered.reset')}
+          </Button>
+        ) : undefined
+      }
+    />
+  );
+}
+
+export { EmptyState, ListEmptyState };
 export type { EmptyStateProps };

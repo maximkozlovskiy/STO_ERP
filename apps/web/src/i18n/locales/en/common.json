@@ -166,6 +166,11 @@
     "importError": "Import failed"
   },
   "nothingFound": "Nothing found",
+  "emptyFiltered": {
+    "title": "Nothing matches the filters",
+    "desc": "Change or reset the filters, including the date range",
+    "reset": "Reset filters"
+  },
   "loadError": "Loading error",
   "tryAgain": "Try again",
   "done": "Done",

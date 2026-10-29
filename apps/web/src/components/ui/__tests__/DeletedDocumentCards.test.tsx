@@ -300,7 +300,7 @@ describe('InvoiceCreateModal — документ, позначений на в�
     await open(DELETED_AT);
 
     expect(loadCalls('/invoices/inv-1')).toEqual(['/invoices/inv-1?withDeleted=true']);
-    expectReadOnly(['Зберегти зміни', 'Скасувати', /Додати/, /Поділитись/, /SMS/]);
+    expectReadOnly(['Зберегти зміни', 'Скасувати рахунок', /Додати/, /Поділитись/, /SMS/]);
     expect(button(/Друк/)).toBeInTheDocument();
   });
 
@@ -309,7 +309,7 @@ describe('InvoiceCreateModal — документ, позначений на в�
 
     expect(banner()).not.toBeInTheDocument();
     expect(button('Зберегти зміни')).toBeInTheDocument();
-    expect(button('Скасувати')).toBeInTheDocument();
+    expect(button('Скасувати рахунок')).toBeInTheDocument();
     expect(button(/Додати/)).toBeInTheDocument();
   });
 });
@@ -459,7 +459,7 @@ describe('CreateWorkOrderModal — наряд, позначений на вид�
     expect(loadCalls('/work-orders/wo-1?')).toEqual(['/work-orders/wo-1?withDeleted=true']);
     expectReadOnly([
       'Зберегти зміни',
-      'Скасувати',
+      'Скасувати наряд',
       /Виставити рахунок/,
       /Поділитись/,
       /SMS/,
@@ -478,7 +478,7 @@ describe('CreateWorkOrderModal — наряд, позначений на вид�
 
     expect(banner()).not.toBeInTheDocument();
     expect(button('Зберегти зміни')).toBeInTheDocument();
-    expect(button('Скасувати')).toBeInTheDocument();
+    expect(button('Скасувати наряд')).toBeInTheDocument();
     expect(button(/Поділитись/)).toBeInTheDocument();
     expect(button('Друк')).toBeInTheDocument();
     expect(button(/Зберегти як/)).toBeInTheDocument();

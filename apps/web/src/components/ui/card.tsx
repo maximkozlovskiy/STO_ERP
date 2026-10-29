@@ -74,6 +74,7 @@ interface KpiCardProps {
   value: string | number;
   icon: ReactNode;
   colorClass?: string; // e.g. 'kpi-card-blue'
+  /** `up` не задано — нейтральний підпис без стрілки (наприклад, «0 завершено сьогодні»). */
   trend?: { value: string; up?: boolean };
   className?: string;
 }
@@ -99,17 +100,24 @@ function KpiCard({
         <span className="text-[12px] font-medium text-foreground-muted uppercase tracking-wider">
           {label}
         </span>
-        <span className="text-[28px] font-bold text-foreground leading-none tracking-tight">
+        {/* Сума не переносить «₴» на новий рядок; на вузькій картці (390 px) — менший кегль. */}
+        <span className="text-[22px] sm:text-[28px] font-bold text-foreground leading-none tracking-tight whitespace-nowrap">
           {value}
         </span>
         {trend && (
           <span
+            data-testid="kpi-trend"
             className={cn(
               'text-[12px] font-medium mt-0.5',
-              trend.up ? 'text-success' : 'text-destructive',
+              trend.up === undefined
+                ? 'text-muted-foreground'
+                : trend.up
+                  ? 'text-success'
+                  : 'text-destructive',
             )}
           >
-            {trend.up ? '↑' : '↓'} {trend.value}
+            {trend.up === undefined ? '' : trend.up ? '↑ ' : '↓ '}
+            {trend.value}
           </span>
         )}
       </div>

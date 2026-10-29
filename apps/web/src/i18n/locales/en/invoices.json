@@ -28,6 +28,7 @@
     "send": "Send",
     "pay": "Pay",
     "cancel": "Cancel",
+    "cancelInvoice": "Cancel invoice",
     "downloadPdf": "Download PDF",
     "printPdf": "Print PDF",
     "print": "Print",

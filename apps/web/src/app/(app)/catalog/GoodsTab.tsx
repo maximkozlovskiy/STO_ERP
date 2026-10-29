@@ -50,6 +50,8 @@ import {
   TableHead,
   SortableHead,
   TableCell,
+  MoneyCell,
+  MONEY_HEAD_CLASS,
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
@@ -628,6 +630,7 @@ export default function GoodsTab() {
                       sortKey={col.key}
                       currentSort={goodsSort}
                       onSort={toggleGoodsSort}
+                      className={col.key === 'name' ? undefined : MONEY_HEAD_CLASS}
                       {...goodsDragProps(col.key)}
                     >
                       {col.label}
@@ -769,15 +772,15 @@ export default function GoodsTab() {
                           );
                         if (col.key === 'purchase')
                           return (
-                            <TableCell key="purchase" className="text-[13px]">
+                            <MoneyCell key="purchase" className="text-[13px]">
                               {g.purchasePrice != null ? `${fmtMoney(g.purchasePrice)} ₴` : '—'}
-                            </TableCell>
+                            </MoneyCell>
                           );
                         if (col.key === 'sale')
                           return (
-                            <TableCell key="sale" className="font-medium text-[13px]">
+                            <MoneyCell key="sale" className="font-medium text-[13px]">
                               {fmtMoney(g.salePrice)} ₴
-                            </TableCell>
+                            </MoneyCell>
                           );
                         return null;
                       })}

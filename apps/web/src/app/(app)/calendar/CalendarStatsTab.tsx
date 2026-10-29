@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Spinner } from '@/components/ui/spinner';
+import { fmtQty } from '@/lib/format';
 import type { CalendarSlot, Lift, StatsPeriod } from './calendar.types';
 import { toDateString, STATS_MAX_DAYS, fmtKyivMonthYear } from './calendar.utils';
 import { formatKyivDate } from './calendar.utils';
@@ -58,6 +59,14 @@ export function CalendarStatsTab({
 }: CalendarStatsTabProps) {
   const { t } = useTranslation('calendar');
   const WINDOW_H = windowEnd - windowStart;
+  // «1 год 05 хв» — ті самі одиниці, що «N год з M» у «Дні» (UX-огляд 2026-10-29: було «1г 0хв»).
+  const fmtHoursMinutes = (minutes: number) => {
+    const total = Math.round(minutes);
+    return t('stats.hoursMinutes', {
+      h: Math.floor(total / 60),
+      m: String(total % 60).padStart(2, '0'),
+    });
+  };
 
   // sto-optimize: всі derived metrics через useMemo щоб typing у parent date-inputs
   // не тригерив повний recompute (3 derived passes по statsSlots/lifts кожен render).
@@ -161,7 +170,7 @@ export function CalendarStatsTab({
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </Button>
-                <span className="text-sm font-medium px-2 capitalize min-w-32 text-center">
+                <span className="text-sm font-medium px-2 min-w-32 text-center">
                   {fmtKyivMonthYear(date)}
                 </span>
                 <Button
@@ -234,10 +243,7 @@ export function CalendarStatsTab({
           { label: t('stats.cardTotalRecords'), value: String(statsSlots.length) },
           {
             label: t('stats.cardTotalTime'),
-            value: t('stats.hoursMinutes', {
-              h: Math.floor(totalMinAll / 60),
-              m: Math.round(totalMinAll % 60),
-            }),
+            value: fmtHoursMinutes(totalMinAll),
           },
           {
             label: t('stats.cardAvgLoad'),
@@ -267,7 +273,9 @@ export function CalendarStatsTab({
               </th>
               <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
                 {t('stats.colLoad')}
-                {days > 1 ? t('stats.colLoadRange', { days }) : t('stats.colLoadDefault')}
+                {days > 1
+                  ? t('stats.colLoadRange', { days })
+                  : t('stats.colLoadDefault', { hours: fmtQty(WINDOW_H) })}
               </th>
             </tr>
           </thead>
@@ -280,10 +288,7 @@ export function CalendarStatsTab({
                 <td className="px-4 py-3 font-medium text-foreground">{lift.name}</td>
                 <td className="px-4 py-3 text-center text-muted-foreground">{count}</td>
                 <td className="px-4 py-3 text-center text-muted-foreground">
-                  {t('stats.hoursMinutes', {
-                    h: Math.floor(totalMinutes / 60),
-                    m: Math.round(totalMinutes % 60),
-                  })}
+                  {fmtHoursMinutes(totalMinutes)}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">

@@ -39,6 +39,8 @@ import {
   TableHead,
   SortableHead,
   TableCell,
+  MoneyCell,
+  MONEY_HEAD_CLASS,
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
@@ -595,6 +597,7 @@ export default function WorksTab() {
                       sortKey={col.key}
                       currentSort={worksSort}
                       onSort={toggleWorksSort}
+                      className={col.key === 'price' ? MONEY_HEAD_CLASS : undefined}
                       {...worksDragProps(col.key)}
                     >
                       {col.label}
@@ -717,9 +720,9 @@ export default function WorksTab() {
                           );
                         if (col.key === 'price')
                           return (
-                            <TableCell key="price" className="font-medium text-[13px]">
-                              {fmtMoney(w.price)}
-                            </TableCell>
+                            <MoneyCell key="price" className="font-medium text-[13px]">
+                              {fmtMoney(w.price)} ₴
+                            </MoneyCell>
                           );
                         return null;
                       })}

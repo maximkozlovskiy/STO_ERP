@@ -128,6 +128,26 @@ function TableCell({ className, children, ...props }: TdHTMLAttributes<HTMLTable
   );
 }
 
+/**
+ * Комірка суми у списку: праворуч, цифри однакової ширини і без переносу — «₴» не падає на новий
+ * рядок (UX-огляд 2026-10-29). Заголовок такої колонки — `TableHead`/`SortableHead` з
+ * `MONEY_HEAD_CLASS`, щоб підпис стояв над числами.
+ */
+function MoneyCell({ className, children, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
+  return (
+    <td
+      data-money-cell=""
+      className={cn('px-4 py-2 align-middle text-right tabular-nums whitespace-nowrap', className)}
+      {...props}
+    >
+      {children}
+    </td>
+  );
+}
+
+/** Заголовок колонки сум — вирівняний праворуч, як `MoneyCell`. */
+const MONEY_HEAD_CLASS = 'text-right';
+
 function TableCaption({ className, children, ...props }: HTMLAttributes<HTMLTableCaptionElement>) {
   return (
     <caption className={cn('mt-2 text-[12px] text-muted-foreground', className)} {...props}>
@@ -144,5 +164,7 @@ export {
   TableHead,
   SortableHead,
   TableCell,
+  MoneyCell,
+  MONEY_HEAD_CLASS,
   TableCaption,
 };

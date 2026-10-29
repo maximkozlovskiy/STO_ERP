@@ -77,8 +77,10 @@ export function DocumentCardHeaderActions({
 }
 
 /**
- * «Скасувати» документ (перехід у CANCELLED) — ліворуч у підвалі картки. Видно, коли перехід є
- * серед дозволених: для нового, видаленого чи незнайденого документа список порожній.
+ * «Скасувати» документ (перехід у CANCELLED) — ліворуч у підвалі картки, окремо від «Закрити» й
+ * «Друк» (UX-огляд 2026-10-29: червона «Скасувати» поруч із «Закрити» скасовувала документ).
+ * Підпис називає документ («Скасувати наряд»). Видно, коли перехід є серед дозволених: для нового,
+ * видаленого чи незнайденого документа список порожній.
  */
 export function DocumentCancelAction({
   label,
@@ -99,6 +101,7 @@ export function DocumentCancelAction({
     <Button
       variant="destructive"
       size="sm"
+      data-testid="document-cancel"
       onClick={() => void onTransition('CANCELLED')}
       loading={busy}
       disabled={busy || saving}

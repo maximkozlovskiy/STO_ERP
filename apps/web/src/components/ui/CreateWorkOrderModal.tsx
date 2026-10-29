@@ -72,6 +72,7 @@ import {
 } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
 import {
+  DocumentCancelAction,
   DocumentCardHeaderActions,
   DocumentFileActions,
 } from '@/components/ui/document-card-actions';
@@ -2061,19 +2062,16 @@ export function CreateWorkOrderModal({
         footer={
           isEditMode ? (
             <div className="flex flex-wrap items-center w-full gap-x-4 gap-y-2">
+              {/* Скасування наряду — ліворуч, окремо від «Закрити» й «Друк». */}
+              <DocumentCancelAction
+                label={t('card.cancelWorkOrder')}
+                transitions={allowedTransitions}
+                onTransition={doTransition}
+                busy={transitioning}
+                saving={saving}
+              />
               {totalsSummary}
               <div className="flex gap-2 items-center flex-wrap justify-end ml-auto">
-                {allowedTransitions.includes('CANCELLED') && (
-                  <Button
-                    variant="destructive"
-                    onClick={() => void doTransition('CANCELLED')}
-                    loading={transitioning}
-                    disabled={transitioning || saving}
-                    size="sm"
-                  >
-                    {t('common:cancel')}
-                  </Button>
-                )}
                 {/* BR-WO-012: «Друк», «Зберегти як», «Поділитись» і SMS ідуть через токен поширення
                     (POST /work-orders/:id/share-token), а сервер видаленого наряду не знаходить —
                     у картці перегляду весь блок сховано. */}

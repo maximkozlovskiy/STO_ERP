@@ -34,8 +34,8 @@
       "brand": "Brand",
       "category": "Category",
       "unit": "Unit",
-      "purchase": "Purchase, ₴",
-      "sale": "Sale, ₴",
+      "purchase": "Purchase",
+      "sale": "Sale",
       "type": "Type"
     },
     "panel": {
@@ -84,7 +84,7 @@
       "name": "Name",
       "category": "Category",
       "normo": "Standard hours",
-      "price": "Price, ₴"
+      "price": "Price"
     },
     "search": "Search labor...",
     "addButton": "Labor",
@@ -122,7 +122,7 @@
   "services": {
     "columns": {
       "name": "Name",
-      "price": "Price, ₴"
+      "price": "Price"
     },
     "colWorks": "Labor",
     "colGoods": "Goods",

@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
-import { EmptyState } from '@/components/ui/empty-state';
+import { EmptyState, ListEmptyState } from '@/components/ui/empty-state';
 import { ListLoadError } from '@/components/ui/list-load-error';
 import { toast } from '@/lib/toast';
 import { fmtMoney, fmtDateTime, kyivToday } from '@/lib/format';
@@ -436,14 +436,16 @@ export default function CashOperationsTab({
             {!opsLoading && !opsError && (operations?.length ?? 0) === 0 && (
               <TableRow>
                 <TableCell colSpan={colCount} className="p-0">
-                  <EmptyState
+                  <ListEmptyState
                     icon={Wallet}
                     title={t('operations.empty')}
-                    description={t(
-                      hasOpsFilter
-                        ? 'operations.emptyFilteredDescription'
-                        : 'operations.emptyDescription',
-                    )}
+                    description={t('operations.emptyDescription')}
+                    filtered={hasOpsFilter}
+                    onResetFilters={() => {
+                      setSearch('');
+                      setDateFrom('');
+                      setDateTo('');
+                    }}
                   />
                 </TableCell>
               </TableRow>

@@ -17,7 +17,7 @@
     "statuses": "Статуси",
     "phone": "Телефон",
     "edrpou": "ЄДРПОУ",
-    "balance": "Баланс, ₴"
+    "balance": "Баланс"
   },
   "filters": {
     "searchPlaceholder": "Пошук за ім'ям, телефоном, ЄДРПОУ...",

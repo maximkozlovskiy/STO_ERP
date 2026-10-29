@@ -168,7 +168,7 @@ function CalendarPageClient() {
       <div className="flex-1 min-h-0 flex flex-col">
         {/* Date / month navigation — hidden in stats view */}
         {cs.calView !== 'stats' && (
-          <div className="flex items-center gap-4 mb-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
             {cs.calView === 'month' ? (
               <>
                 <Button
@@ -184,7 +184,7 @@ function CalendarPageClient() {
                   <ChevronLeft className="h-4 w-4" />
                   {t('nav.prev')}
                 </Button>
-                <span className="text-sm font-medium text-foreground capitalize">
+                <span className="text-sm font-medium text-foreground">
                   {cs.date ? fmtKyivMonthYear(cs.date) : ''}
                 </span>
                 <Button
@@ -200,7 +200,7 @@ function CalendarPageClient() {
                   {t('nav.next')}
                   <ChevronRight className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" onClick={() => cs.setDate(toDateString(new Date()))}>
+                <Button variant="outline" onClick={() => cs.setDate(toDateString(new Date()))}>
                   {t('nav.thisMonth')}
                 </Button>
                 {headerActions}
@@ -219,7 +219,7 @@ function CalendarPageClient() {
                     className="w-48"
                   />
                   <span
-                    className={`text-sm capitalize ${isPastDay ? 'text-destructive-text font-medium' : 'text-muted-foreground'}`}
+                    className={`text-sm whitespace-nowrap ${isPastDay ? 'text-destructive-text font-medium' : 'text-muted-foreground'}`}
                   >
                     {formatKyivDate(cs.date)}
                     {isPastDay ? t('nav.pastDaySuffix') : ''}
@@ -229,7 +229,7 @@ function CalendarPageClient() {
                   {t('nav.next')}
                   <ChevronRight className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" onClick={() => cs.setDate(toDateString(new Date()))}>
+                <Button variant="outline" onClick={() => cs.setDate(toDateString(new Date()))}>
                   {t('nav.today')}
                 </Button>
                 {/* Підсумок дня за категоріями — той самий рядок, що в клітинці місяця
@@ -243,7 +243,7 @@ function CalendarPageClient() {
                 <div
                   role="group"
                   aria-label={t('day.layout.label')}
-                  className="flex rounded-lg border border-border overflow-hidden text-sm"
+                  className="flex shrink-0 rounded-lg border border-border overflow-hidden text-sm"
                   data-testid="day-layout-switcher"
                 >
                   {DAY_LAYOUTS.map(([l, labelKey, Icon]) => (

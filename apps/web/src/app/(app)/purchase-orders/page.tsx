@@ -58,7 +58,7 @@ import { Input } from '@/components/ui/input';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { activateRow } from '@/lib/row-activation';
 import { Spinner } from '@/components/ui/spinner';
-import { EmptyState } from '@/components/ui/empty-state';
+import { EmptyState, ListEmptyState } from '@/components/ui/empty-state';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import {
@@ -1481,7 +1481,19 @@ function PurchaseOrdersPageClient() {
                         colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
                         className="p-0"
                       >
-                        <EmptyState icon={ShoppingCart} title={t('empty.ordersNotFound')} />
+                        <ListEmptyState
+                          icon={ShoppingCart}
+                          title={t('empty.ordersNotFound')}
+                          filtered={!!(status || q || dateFrom || dateTo)}
+                          onResetFilters={() => {
+                            setStatus('');
+                            setQ('');
+                            setDateFrom('');
+                            setDateTo('');
+                            resetPage();
+                            setActiveSavedFilterId(null);
+                          }}
+                        />
                       </TableCell>
                     </TableRow>
                   )}

@@ -17,7 +17,7 @@
     "statuses": "Statuses",
     "phone": "Phone",
     "edrpou": "EDRPOU",
-    "balance": "Balance, ₴"
+    "balance": "Balance"
   },
   "filters": {
     "searchPlaceholder": "Search by name, phone, EDRPOU...",

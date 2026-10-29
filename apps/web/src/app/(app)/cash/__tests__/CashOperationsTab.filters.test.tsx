@@ -147,12 +147,13 @@ describe('CashOperationsTab — пошук і дати', () => {
     expect(actions).toContainElement(screen.getByRole('button', { name: 'Видати' }));
   });
 
-  it('порожній список за фільтром не закликає «внести або видати» — каже, що за періодом порожньо', () => {
+  it('порожній список за фільтром не закликає «внести або видати» — «Скинути фільтри» знімає й період', () => {
     render(<CashOperationsTab />);
-    expect(
-      screen.getByText('За обраним періодом і пошуком операцій не знайдено'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('За фільтрами нічого не знайдено')).toBeInTheDocument();
     expect(screen.queryByText('Внесіть або видайте готівку')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Скинути фільтри' }));
+    const lastFilter = useCashOperationsMock.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(lastFilter).toMatchObject({ dateFrom: undefined, dateTo: undefined, q: undefined });
   });
 
   // Bug #816: довший за 100 символів `q` бекенд або відхиляє (400), або мовчки обрізає — поле

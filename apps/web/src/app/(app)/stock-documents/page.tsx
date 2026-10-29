@@ -43,7 +43,7 @@ import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { ListSearchInput } from '@/components/ui/list-search-input';
 import { StockDocumentCreateModal } from '@/components/ui/StockDocumentCreateModal';
 import { Spinner } from '@/components/ui/spinner';
-import { EmptyState } from '@/components/ui/empty-state';
+import { EmptyState, ListEmptyState } from '@/components/ui/empty-state';
 // Клік по рядку: бокова панель увімкнена → рядок вибирається в панель; вимкнена → одразу
 // картка редагування (setEditingDocId). Стандарт списків — як у закупівель.
 import { DetailPanel, PanelField } from '@/components/ui/detail-panel';
@@ -569,7 +569,20 @@ function StockDocumentsPageClient() {
                     colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
                     className="p-0"
                   >
-                    <EmptyState icon={FileText} title={t('empty.documentsNotFound')} />
+                    <ListEmptyState
+                      icon={FileText}
+                      title={t('empty.documentsNotFound')}
+                      // Тип документа — вкладка, а не фільтр: її скидання не чіпає.
+                      filtered={!!(statusFilter || search || dateFrom || dateTo)}
+                      onResetFilters={() => {
+                        setStatusFilter('');
+                        setSearch('');
+                        setDateFrom('');
+                        setDateTo('');
+                        resetPage();
+                        setActiveSavedFilterId(null);
+                      }}
+                    />
                   </TableCell>
                 </TableRow>
               )}

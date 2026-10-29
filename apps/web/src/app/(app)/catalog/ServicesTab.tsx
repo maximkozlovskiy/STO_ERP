@@ -27,6 +27,8 @@ import {
   TableRow,
   TableHead,
   TableCell,
+  MoneyCell,
+  MONEY_HEAD_CLASS,
 } from '@/components/ui/table';
 import { useSavedFilters } from '@/hooks/useSavedFilters';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
@@ -547,7 +549,11 @@ export default function ServicesTab() {
                   </TableHead>
                 )}
                 {servicesVisibleColumns.map(col => (
-                  <TableHead key={col.key} {...servicesDragProps(col.key)}>
+                  <TableHead
+                    key={col.key}
+                    className={col.key === 'price' ? MONEY_HEAD_CLASS : undefined}
+                    {...servicesDragProps(col.key)}
+                  >
                     {col.label}
                   </TableHead>
                 ))}
@@ -644,9 +650,9 @@ export default function ServicesTab() {
                           );
                         if (col.key === 'price')
                           return (
-                            <TableCell key="price" className="font-medium text-foreground">
+                            <MoneyCell key="price" className="font-medium text-foreground">
                               {s.price != null ? `${fmtMoney(s.price)} ₴` : t('services.priceAuto')}
-                            </TableCell>
+                            </MoneyCell>
                           );
                         return null;
                       })}
