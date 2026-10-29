@@ -1,0 +1,183 @@
+// Автоматизація (docs/objects/automation.md, BR-AUT-*): правила «подія → умови → дії».
+//
+// Події документів фіксуються outbox-таблицею DomainEvent у ТІЙ САМІЙ транзакції, що й зміна
+// документа (`recordDocumentEvent`), — подія не губиться при падінні процесу (офлайн-вимога,
+// ADR-005). Повторюваний job черги `automation-events` обробляє необроблені події двигуном правил.
+
+enum AutomationDocumentType {
+  WORK_ORDER
+  INVOICE
+  PURCHASE_ORDER
+  STOCK_DOCUMENT
+  PAYMENT
+  SUPPLIER_PAYMENT
+  SUPPLIER_RETURN
+  BOOKING
+  TASK
+}
+
+enum AutomationEventKind {
+  CREATED
+  STATUS_CHANGED
+}
+
+// Службове повідомлення не йде клієнту з «не надсилати службові»; маркетингове — лише за згодою
+// (BR-AUT-012).
+enum AutomationMessageKind {
+  SERVICE
+  MARKETING
+}
+
+enum AutomationRunStatus {
+  DONE // усі дії виконано
+  PARTIAL // частина дій з помилкою (BR-AUT-005)
+  FAILED // жодна дія не вдалась
+  SKIPPED // умови не виконано / правило вимкнено на момент обробки
+}
+
+// Outbox подій документів (BR-AUT-001, 002). Append-only за змістом: двигун лише позначає обробку
+// (`processedAt`, `attempts`, `lastError`).
+model DomainEvent {
+  id           String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String                 @db.Uuid
+  documentType AutomationDocumentType
+  documentId   String                 @db.Uuid
+  kind         AutomationEventKind
+  fromStatus   String?
+  toStatus     String?
+  actorId      String?                @db.Uuid // працівник-ініціатор (BR-AUT-023); null — система
+  occurredAt   DateTime               @default(now())
+  processedAt  DateTime?
+  attempts     Int                    @default(0)
+  lastError    String?
+  syncVersion  BigInt                 @default(0)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  deletedAt    DateTime?
+
+  runs AutomationRun[]
+
+  // Вибірка необроблених подій по черзі (worker).
+  @@index([processedAt, occurredAt])
+  @@index([orgId, documentType, documentId])
+  @@index([orgId, syncVersion])
+  @@map("domain_events")
+}
+
+// Правило автоматизації (BR-AUT-001…006). Умови й дії — Json за zod-схемою з @sto/shared
+// (`automationRuleSchema`); форма перевіряється при збереженні.
+model AutomationRule {
+  id           String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String                 @db.Uuid
+  name         String
+  enabled      Boolean                @default(true)
+  documentType AutomationDocumentType
+  eventKind    AutomationEventKind
+  toStatuses   String[]               @default([]) // порожньо — будь-який статус (лише для STATUS_CHANGED)
+  conditions   Json                   @default("{}") // філії, тип ремонту, пріоритет, сума ≥ X (BR-AUT-003)
+  actions      Json                   @default("[]") // повідомлення клієнту / працівнику / задача
+  messageKind  AutomationMessageKind  @default(SERVICE)
+  // Типове правило організації (заміна зашитих повідомлень, BR-AUT-007): код типового правила.
+  systemKey    String?
+  createdById  String?                @db.Uuid
+  syncVersion  BigInt                 @default(0)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  deletedAt    DateTime?
+
+  runs AutomationRun[]
+
+  @@unique([orgId, systemKey])
+  @@index([orgId, deletedAt])
+  @@index([orgId, documentType, eventKind, enabled])
+  @@index([orgId, syncVersion])
+  @@map("automation_rules")
+}
+
+// Спрацювання правила на подію (BR-AUT-004, 050): унікальна пара (правило, подія) — дедуплікація.
+model AutomationRun {
+  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId         String              @db.Uuid
+  ruleId        String              @db.Uuid
+  eventId       String              @db.Uuid
+  status        AutomationRunStatus
+  actionResults Json                @default("[]") // по дії: тип, результат, причина пропуску, помилка
+  isTest        Boolean             @default(false) // «Надіслати тест» (BR-AUT-051)
+  syncVersion   BigInt              @default(0)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  deletedAt     DateTime?
+
+  rule  AutomationRule @relation(fields: [ruleId], references: [id])
+  event DomainEvent    @relation(fields: [eventId], references: [id])
+
+  @@unique([ruleId, eventId])
+  @@index([orgId, createdAt])
+  @@index([orgId, ruleId, createdAt])
+  @@index([orgId, syncVersion])
+  @@map("automation_runs")
+}
+
+// Сповіщення працівнику в системі — дзвіночок (BR-AUT-021). Серверне: між пристроями однакове.
+model EmployeeNotification {
+  id           String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String                  @db.Uuid
+  employeeId   String                  @db.Uuid
+  title        String
+  body         String?
+  documentType AutomationDocumentType?
+  documentId   String?                 @db.Uuid
+  ruleId       String?                 @db.Uuid
+  readAt       DateTime?
+  syncVersion  BigInt                  @default(0)
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+  deletedAt    DateTime?
+
+  @@index([orgId, employeeId, readAt])
+  @@index([orgId, employeeId, createdAt])
+  @@index([orgId, syncVersion])
+  @@map("employee_notifications")
+}
+
+// Підписка на власного Telegram-бота організації (BR-AUT-041): клієнт АБО працівник.
+model TelegramSubscription {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String    @db.Uuid
+  counterpartyId String?   @db.Uuid
+  employeeId     String?   @db.Uuid
+  chatId         String
+  active         Boolean   @default(true)
+  subscribedAt   DateTime  @default(now())
+  unsubscribedAt DateTime?
+  syncVersion    BigInt    @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  @@index([orgId, counterpartyId, active])
+  @@index([orgId, employeeId, active])
+  @@index([orgId, chatId])
+  @@index([orgId, syncVersion])
+  @@map("telegram_subscriptions")
+}
+
+// Одноразовий код підписки (`t.me/<бот>?start=<код>`), діє 7 днів (рішення власника 2026-10-29).
+model TelegramLinkCode {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String    @db.Uuid
+  code           String    @unique
+  counterpartyId String?   @db.Uuid
+  employeeId     String?   @db.Uuid
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdById    String?   @db.Uuid
+  syncVersion    BigInt    @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  @@index([orgId, expiresAt])
+  @@index([orgId, syncVersion])
+  @@map("telegram_link_codes")
+}

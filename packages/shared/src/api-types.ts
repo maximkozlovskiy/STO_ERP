@@ -8459,7 +8459,7 @@ export interface components {
         };
         UpsertChannelDto: {
             /** @enum {string} */
-            channel: "SMS" | "VIBER" | "EMAIL" | "TELEGRAM";
+            channel: "SMS" | "VIBER" | "EMAIL" | "TELEGRAM" | "TELEGRAM_BOT";
             provider: string;
             enabled?: boolean;
             priority?: number;
@@ -10398,7 +10398,7 @@ export interface components {
             priority: "LOW" | "NORMAL" | "HIGH" | "URGENT";
             assigneeId: string;
             assigneeName: string;
-            createdById: string;
+            createdById: string | null;
             createdByName: string;
             startAt: string | null;
             dueAt: string | null;

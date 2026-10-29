@@ -57,6 +57,13 @@ model OrganisationSettings {
   // Повернення підзвітних коштів (ADVANCE_RETURN) зменшує витрату — лише коли ADVANCE_ISSUE
   // увімкнено в pnlExpenseCashReasons (BR-RPT-030 п. 5; рішення власника 2026-10-29).
   pnlNetAdvanceReturns             Boolean         @default(true)
+  // Тихі години організації (BR-AUT-013): повідомлення клієнту з цього вікна відкладається до його
+  // кінця. «ГГ:ХХ» за Києвом; вікно може переходити через північ.
+  quietHoursStart                  String          @default("21:00")
+  quietHoursEnd                    String          @default("09:00")
+  // Власний Telegram-бот (BR-AUT-040): токен зашифровано (як apiKey каналів), ім'я бота — для посилань.
+  telegramBotToken                 String?
+  telegramBotUsername              String?
   // Скільки днів зберігати логи зовнішніх обмінів (IntegrationLog). Читається purge-scheduler
   // (НЕ hardcoded). Append-only таблиця → щоденне очищення старших за N днів. clamp [1,365].
   integrationLogRetentionDays      Int             @default(30)
@@ -184,7 +191,8 @@ model NotificationLog {
   id                String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId             String                     @db.Uuid
   branchId          String?                    @db.Uuid
-  eventType         NotificationEventType
+  // null — повідомлення правила автоматизації (ruleId); зашиті події мають eventType.
+  eventType         NotificationEventType?
   channel           NotificationChannel
   provider          String
   recipient         String // отримувач: телефон (SMS/Viber/TG) або email (EMAIL)
@@ -192,10 +200,19 @@ model NotificationLog {
   status            NotificationDeliveryStatus @default(QUEUED)
   error             String?
   attempt           Int                        @default(1)
+  // Автоматизація (BR-AUT-050, 051): правило, документ, контрагент, тест, причина пропуску.
+  ruleId            String?                    @db.Uuid
+  documentType      AutomationDocumentType?
+  documentId        String?                    @db.Uuid
+  counterpartyId    String?                    @db.Uuid
+  isTest            Boolean                    @default(false)
+  skipReason        String?
   createdAt         DateTime                   @default(now())
 
   @@index([orgId, createdAt])
   @@index([orgId, eventType, channel])
+  @@index([orgId, ruleId, createdAt])
+  @@index([orgId, documentType, documentId])
   @@map("notification_logs")
 }
 

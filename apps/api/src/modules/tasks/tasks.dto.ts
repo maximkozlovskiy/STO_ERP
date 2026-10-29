@@ -177,7 +177,8 @@ export class TaskResponseDto {
   @ApiProperty({ enum: WorkOrderPriority }) priority!: WorkOrderPriority;
   @ApiProperty() assigneeId!: string;
   @ApiProperty() assigneeName!: string;
-  @ApiProperty() createdById!: string;
+  // null — задачу створило правило автоматизації (BR-AUT-031).
+  @ApiProperty({ type: String, nullable: true }) createdById!: string | null;
   @ApiProperty() createdByName!: string;
   @ApiProperty({ type: String, nullable: true }) startAt!: string | null;
   @ApiProperty({ type: String, nullable: true }) dueAt!: string | null;

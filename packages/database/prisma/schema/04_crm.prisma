@@ -9,6 +9,12 @@ model Counterparty {
   vatPayer      Boolean          @default(false)
   phone         String?
   email         String?
+  // Згода на повідомлення (BR-AUT-012, 042): службові — завжди, крім відмови; маркетинг — лише за згодою.
+  noServiceMessages    Boolean   @default(false)
+  marketingConsent     Boolean   @default(false)
+  marketingConsentAt   DateTime?
+  marketingConsentById String?   @db.Uuid
+  preferredChannel     NotificationChannel?
   notes         String?
   legalForm     LegalForm?
   legalAddress  String?

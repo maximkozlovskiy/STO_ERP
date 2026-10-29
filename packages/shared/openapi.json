@@ -27726,7 +27726,8 @@
               "SMS",
               "VIBER",
               "EMAIL",
-              "TELEGRAM"
+              "TELEGRAM",
+              "TELEGRAM_BOT"
             ]
           },
           "provider": {
@@ -34731,7 +34732,8 @@
             "type": "string"
           },
           "createdById": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "createdByName": {
             "type": "string"

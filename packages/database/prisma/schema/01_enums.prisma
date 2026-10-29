@@ -130,7 +130,8 @@ enum NotificationChannel {
   SMS
   VIBER
   EMAIL
-  TELEGRAM
+  TELEGRAM // Telegram через eSputnik (за телефоном)
+  TELEGRAM_BOT // власний бот організації (за chat id підписки, BR-AUT-040)
 }
 
 // Статус спроби доставки (per-канал). SENT = провайдер прийняв у чергу (accepted);
@@ -141,6 +142,7 @@ enum NotificationDeliveryStatus {
   SENT
   REJECTED
   FAILED
+  SKIPPED // не надіслано з причиною: немає контакту, відмова, без згоди (BR-AUT-010, 012, 050)
 }
 
 enum FiscalReceiptStatus {
