@@ -58,5 +58,35 @@
     "loadFailed": "Failed to load data",
     "createActFailed": "Failed to create act",
     "downloadPdfFailed": "Failed to download reconciliation act PDF"
+  },
+  "help": {
+    "title": "How to read settlements",
+    "blocks": [
+      {
+        "title": "Balance",
+        "items": [
+          {
+            "term": "Plus",
+            "text": "the counterparty owes us (receivable)"
+          },
+          {
+            "term": "Minus",
+            "text": "we owe the counterparty (payable)"
+          }
+        ]
+      },
+      {
+        "title": "Currency",
+        "items": [
+          "The balance is kept in the base currency. An entry in another currency shows its own amount and, below it, the base amount at the rate on its date."
+        ]
+      }
+    ],
+    "entries": {
+      "title": "Entries",
+      "note": "The entry type alone sets its sign; the amount is always positive.",
+      "up": "+ balance grows",
+      "down": "− balance falls"
+    }
   }
 }

@@ -41,6 +41,7 @@ import { useSortState } from '@/hooks/useSortState';
 import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/detail-panel';
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import { ListFiltersRow, ListStatusRow } from '@/components/ui/list-toolbar';
+import { CatalogHelp } from '@/components/ui/help-popover';
 import { useDetailPanelConfig } from '@/hooks/useDetailPanelConfig';
 import { useDetailPanel } from '@/hooks/useDetailPanel';
 import {
@@ -326,6 +327,8 @@ export function InventoryTab() {
             {viewMode === 'goods' && (
               <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
             )}
+            {/* BR-INVT-003/004/005/008/009/018: кількість, резерв, доступно, партії */}
+            <CatalogHelp ns="inventory" topic="help" testId="inventory-help" />
           </>
         }
       >

@@ -132,7 +132,6 @@
       "unknownCost_few": "{{count}} parts have no known purchase price — cost is understated",
       "unknownCost_many": "{{count}} parts have no known purchase price — cost is understated",
       "unknownCost_other": "{{count}} parts have no known purchase price — cost is understated",
-      "note": "Accrual basis: revenue and parts — from completed work orders, payroll — accruals of computed periods (pro rata by days), expenses and other income — cash and bank by item. All excluding VAT, in the base currency.",
       "settings": {
         "open": "Report settings",
         "title": "P&L report settings",
@@ -345,5 +344,242 @@
     "merged": "Merged",
     "currency": "Currency",
     "sheetName": "Report"
+  },
+  "help": {
+    "revenue": {
+      "title": "How “Revenue” is calculated",
+      "blocks": [
+        {
+          "title": "Which work orders count",
+          "items": [
+            "Finished work orders: “Completed”, “Invoiced”, “Paid”, “Archived”.",
+            "A work order's day is its completion date in Kyiv time; the period includes both days."
+          ]
+        },
+        {
+          "title": "Three amounts",
+          "items": [
+            {
+              "term": "Amount",
+              "text": "excl. VAT — the base of profit and margin"
+            },
+            {
+              "term": "VAT",
+              "text": "amount incl. VAT minus amount excl. VAT; work orders completed before 08.10.2026 in “VAT on top” mode give VAT 0"
+            },
+            {
+              "term": "Amount incl. VAT",
+              "text": "what was billed to customers"
+            }
+          ]
+        },
+        {
+          "title": "Labor and parts",
+          "items": [
+            "From the actual work order lines and also excl. VAT: “Labor” + “Parts” = “Amount” (up to rounding)."
+          ]
+        }
+      ]
+    },
+    "workOrders": {
+      "title": "How the “Work orders” report is calculated",
+      "blocks": [
+        {
+          "items": ["Standard hours and labor amounts of work orders — by mechanic."]
+        },
+        {
+          "title": "Which work orders count",
+          "items": [
+            "By the work order document date — as in the work order list filter, not by creation date.",
+            "Cancelled ones are not counted; drafts are, as in the list."
+          ]
+        },
+        {
+          "title": "Opening a row",
+          "items": [
+            "A mechanic's row opens their work orders with the same period and statuses (all except cancelled) — the list matches the report."
+          ]
+        }
+      ]
+    },
+    "stock": {
+      "title": "How the “Stock report” is calculated",
+      "blocks": [
+        {
+          "title": "Two stock values",
+          "items": [
+            {
+              "term": "At cost",
+              "text": "remaining quantity of each batch of the product in this warehouse × batch price; quantity outside batches — at the product purchase price"
+            },
+            {
+              "term": "At sale prices",
+              "text": "quantity × current product sale price"
+            }
+          ]
+        },
+        {
+          "title": "Also",
+          "items": [
+            "Stock is as of now: the period dates do not affect it.",
+            "Available = quantity − reserved.",
+            "A product deleted from the catalogue but still in stock stays in the report and totals, marked “deleted”."
+          ]
+        }
+      ]
+    },
+    "settlements": {
+      "title": "How to read “Settlements”",
+      "blocks": [
+        {
+          "title": "Balance sign",
+          "items": [
+            {
+              "term": "Receivable (+)",
+              "text": "the counterparty owes us"
+            },
+            {
+              "term": "Payable (−)",
+              "text": "we owe the counterparty"
+            }
+          ]
+        },
+        {
+          "title": "Where the balance comes from",
+          "items": [
+            "The balance is the sum of the counterparty's entries: the entry type alone sets its sign (charge, payment, refund…), the amount is always positive.",
+            "The balance is kept in the base currency: an entry in another currency is converted at the rate."
+          ]
+        }
+      ]
+    },
+    "load": {
+      "title": "How “Utilization” is calculated",
+      "blocks": [
+        {
+          "title": "Formula",
+          "items": [
+            {
+              "term": "Busy",
+              "text": "total duration of the lift's calendar records starting in the period"
+            },
+            {
+              "term": "Working time",
+              "text": "working days of the lift's branch in the period × length of its working day (“Settings” → “Working days”)"
+            },
+            {
+              "term": "Utilization",
+              "text": "busy / working time, with one decimal place"
+            }
+          ]
+        },
+        {
+          "title": "Special cases",
+          "items": [
+            "A branch without settings — 09:00–18:00, Mon–Fri.",
+            "A day off adds no working time; a period of days off only — 0 %.",
+            "Lifts with no records in the period — in one “N more…” row."
+          ]
+        }
+      ]
+    },
+    "profitability": {
+      "title": "How “Profitability” is calculated",
+      "blocks": [
+        {
+          "title": "Which work orders count",
+          "items": [
+            "Finished work orders (“Completed”, “Invoiced”, “Paid”, “Archived”) by completion date; revenue excl. VAT."
+          ]
+        },
+        {
+          "title": "Cost",
+          "items": [
+            {
+              "term": "Parts",
+              "text": "quantity × cost of the batch it was taken from; without it — the product purchase price"
+            },
+            {
+              "term": "Labor",
+              "text": "labor excl. VAT × labor share ({{pct}}) — an estimate of mechanics' pay; the owner and admins change it in “Report settings”"
+            }
+          ]
+        },
+        {
+          "title": "Profit and margin",
+          "items": [
+            "Gross profit = revenue excl. VAT − cost; margin is its share of revenue.",
+            "“Normal” — margin of {{norm}} % or more.",
+            "The labor share does not go into P&L: it uses accrued payroll."
+          ]
+        }
+      ]
+    },
+    "pnl": {
+      "title": "How P&L is calculated",
+      "blocks": [
+        {
+          "items": [
+            "Accrual method; everything excl. VAT, in the base currency; a month is a Kyiv calendar month."
+          ]
+        },
+        {
+          "title": "Rows",
+          "items": [
+            {
+              "term": "Revenue",
+              "text": "finished work orders by completion date — as in “Profitability”"
+            },
+            {
+              "term": "Cost of parts",
+              "text": "quantity × batch cost; without it — the product purchase price"
+            },
+            {
+              "term": "Payroll",
+              "text": "accrued in computed and paid payroll periods; a period spanning months is split between them by days"
+            },
+            {
+              "term": "Operating expenses",
+              "text": "by category: cash — “Expense” always, other outflows per the settings; bank — lines allocated as “Expense”"
+            },
+            {
+              "term": "Other income",
+              "text": "cash receipts with an income category — per the settings (manual deposit by default)"
+            },
+            {
+              "term": "Exchange differences",
+              "text": "exchange gain minus exchange loss"
+            }
+          ]
+        },
+        {
+          "title": "Net profit",
+          "items": [
+            "Gross profit − payroll − operating expenses + other income + exchange differences.",
+            "Salary payouts, supplier payments and customer refunds are not expenses — they are already in payroll, cost and revenue."
+          ]
+        }
+      ]
+    },
+    "vat": {
+      "title": "How “VAT” is calculated",
+      "blocks": [
+        {
+          "items": [
+            {
+              "term": "Liability",
+              "text": "VAT of “Sent”, “Partially paid”, “Paid”, “Overdue” invoices by document date; drafts and cancelled are excluded"
+            },
+            {
+              "term": "Tax credit",
+              "text": "VAT of received purchases — “Partial” and “Received” supplier orders by document date; drafts and not yet received are excluded"
+            }
+          ]
+        },
+        {
+          "items": ["A difference above 0 is payable, below 0 — refundable."]
+        }
+      ]
+    }
   }
 }

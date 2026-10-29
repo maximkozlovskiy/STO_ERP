@@ -15,9 +15,14 @@ import { downloadBlob } from '@/lib/download';
 import { CSV_BOM } from '@/lib/report-export';
 import { buildTransactionsCsv, fetchAllTransactions } from './transactions-csv';
 import { fmtMoney, fmtDate } from '@/lib/format';
-import { SETTLEMENT_BALANCE_UP_TYPES, SETTLEMENT_TX_CHARGE_LIKE_TYPES } from '@sto/shared';
+import {
+  SETTLEMENT_BALANCE_SIGN,
+  SETTLEMENT_BALANCE_UP_TYPES,
+  SETTLEMENT_TX_CHARGE_LIKE_TYPES,
+} from '@sto/shared';
 import { settlementTxTypeLabel } from '@/i18n/enumLabel';
 import { useBaseCurrency } from '@/hooks/api/useCash';
+import { HelpBlocks, HelpItem, HelpPopover, HelpSection } from '@/components/ui/help-popover';
 
 interface Counterparty {
   id: string;
@@ -217,7 +222,7 @@ export function SettlementsTabContent() {
 
       {/* Picker row */}
       <div className="flex items-center gap-3 py-4 shrink-0">
-        <div className="w-80">
+        <div className="min-w-0 flex-1 max-w-80">
           <EntityPickerField<CpItem>
             display={selectedDisplay}
             placeholder={t('picker.placeholder')}
@@ -246,6 +251,7 @@ export function SettlementsTabContent() {
               : ''}
           </span>
         )}
+        <SettlementsHelp />
       </div>
 
       {/* Details */}
@@ -516,5 +522,40 @@ export function SettlementsTabContent() {
         )}
       </Modal>
     </>
+  );
+}
+
+/**
+ * «?» розрахунків: вісь балансу, знак проведень і валюта (settlements.md «Вісь балансу»,
+ * BR-SETL-003/007). Перелік типів за знаком — з `SETTLEMENT_BALANCE_SIGN` (`@sto/shared`, копія
+ * таблиці бекенду), а не з тексту: новий тип проведення потрапить у легенду сам.
+ */
+function SettlementsHelp() {
+  const { t } = useTranslation('settlements');
+  const types = Object.keys(SETTLEMENT_BALANCE_SIGN);
+  const names = (up: boolean) =>
+    types
+      .filter(type => SETTLEMENT_BALANCE_UP_TYPES.has(type) === up)
+      .map(type => settlementTxTypeLabel(type))
+      .join(', ');
+  // «Баланс» — перший розділ каталогу, далі проведення за знаком, далі решта («Валюта»).
+  const raw: unknown = t('help.blocks', { returnObjects: true });
+  const blocks = Array.isArray(raw) ? raw : [];
+  return (
+    <HelpPopover
+      label={t('help.title')}
+      title={t('help.title')}
+      width="lg"
+      className="ml-auto"
+      testId="settlements-help"
+    >
+      <HelpBlocks blocks={blocks.slice(0, 1)} />
+      <HelpSection title={t('help.entries.title')}>
+        <HelpItem>{t('help.entries.note')}</HelpItem>
+        <HelpItem term={t('help.entries.up')}>{names(true)}</HelpItem>
+        <HelpItem term={t('help.entries.down')}>{names(false)}</HelpItem>
+      </HelpSection>
+      <HelpBlocks blocks={blocks.slice(1)} />
+    </HelpPopover>
   );
 }

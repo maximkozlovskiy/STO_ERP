@@ -18,7 +18,8 @@ import { SettlementsTabContent } from '../settlements/SettlementsTabContent';
 import { ReportBuilder } from './ReportBuilder';
 import { RevenueReport } from './RevenueReport';
 import { PnlReport } from './PnlReport';
-import { ProfitabilityReport } from './ProfitabilityReport';
+import { MARGIN_NORM_PERCENT, ProfitabilityReport, laborPctLabel } from './ProfitabilityReport';
+import { CatalogHelp } from '@/components/ui/help-popover';
 import { QuickPeriods } from './QuickPeriods';
 import {
   LoadReportView,
@@ -48,6 +49,18 @@ const FINANCE_ROLES = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
 const INVENTORY_ONLY_ROLES = ['STOREKEEPER', 'RECEPTIONIST'];
 // Налаштування P&L (`PATCH /settings/organisation`) і картка товару (`GET /goods/:id`) — лише цим.
 const MANAGE_ROLES = ['OWNER', 'ADMIN'];
+
+/** Вкладка → пояснення «?» (`help.*` у reports-каталозі); тексти — з дос'є report-builder.md. */
+const HELP_TOPIC: Partial<Record<Tab, string>> = {
+  revenue: 'help.revenue',
+  'work-orders': 'help.workOrders',
+  stock: 'help.stock',
+  settlements: 'help.settlements',
+  load: 'help.load',
+  profitability: 'help.profitability',
+  pnl: 'help.pnl',
+  vat: 'help.vat',
+};
 
 // Thin proxy to lib/format singleton (Intl.NumberFormat module-level). Replaces
 // per-render `n.toLocaleString('uk-UA', {...})` × every cell у table-heavy reports.
@@ -118,6 +131,7 @@ function ReportsPageClient() {
     'vat',
   ].includes(tab);
   const isSettlementsDetail = tab === 'settlements-detail';
+  const helpTopic = HELP_TOPIC[tab];
 
   return (
     <div className="page-fill p-4 md:p-6">
@@ -206,6 +220,21 @@ function ReportsPageClient() {
             >
               {t('page.filters.exportCsv')}
             </Button>
+          )}
+          {helpTopic && (
+            <CatalogHelp
+              key={tab}
+              ns="reports"
+              topic={helpTopic}
+              testId="report-help"
+              width="lg"
+              values={{
+                norm: MARGIN_NORM_PERCENT,
+                // Частка праці — з відповіді «Рентабельності»; до її завантаження — без числа.
+                pct:
+                  data && data._tab === 'profitability' ? laborPctLabel(data.laborCostRatio) : '…',
+              }}
+            />
           )}
         </div>
       )}

@@ -250,7 +250,6 @@ export function PnlReport({
             </tfoot>
           )}
         </Table>
-        <p className="px-4 py-2 text-[12px] text-muted-foreground">{t('page.pnl.note')}</p>
       </div>
 
       {canEditSettings && (

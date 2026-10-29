@@ -68,5 +68,33 @@
     "loadLowStock": "Failed to refresh the below-minimum list",
     "invalidMinStock": "Invalid minimum stock value",
     "save": "Failed to save"
+  },
+  "help": {
+    "title": "Quantity, reserved and available",
+    "blocks": [
+      {
+        "items": [
+          {
+            "term": "Quantity",
+            "text": "physically in the warehouse; only movements change it — receipt, write-off, transfer, return"
+          },
+          {
+            "term": "Reserved",
+            "text": "held by work orders; reserving and releasing do not change the physical quantity or batches"
+          },
+          {
+            "term": "Available",
+            "text": "quantity − reserved; you cannot write off or reserve more than is available"
+          }
+        ]
+      },
+      {
+        "title": "Batches and cost",
+        "items": [
+          "Each receipt creates a batch at the receipt price (without a price — the product purchase price).",
+          "An outflow takes batches by the organisation's method (FIFO by default — oldest first) and computes cost from the batches taken."
+        ]
+      }
+    ]
   }
 }
