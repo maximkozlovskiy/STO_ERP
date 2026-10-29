@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
-import { Montserrat } from 'next/font/google';
+import localFont from 'next/font/local';
 import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
 import { ColorModeProvider } from '@/components/ColorModeProvider';
 import { I18nProvider } from '@/components/I18nProvider';
@@ -11,11 +11,12 @@ import { brandThemeBootScript } from '@/lib/theme';
 import { APP_NAME } from '@/components/ui/brand-logo';
 import './globals.css';
 
-// Шрифт логотипу OneService (брендбук: Montserrat 400/700/800). next/font завантажує його під час
-// збірки й роздає локально — без запитів до Google Fonts, система працює офлайн.
-const montserrat = Montserrat({
-  subsets: ['latin'],
-  weight: ['400', '700', '800'],
+// Шрифт бренду OneService (брендбук: Montserrat 400/700/800) — варіативний файл латиниці в
+// репозиторії (src/fonts, ліцензія OFL поруч). Не next/font/google: та тягне шрифт із Google під час
+// збірки — офлайн-збірка й E2E-сервер на ній падали («next/font/google queries have exactly one entry»).
+const montserrat = localFont({
+  src: '../fonts/montserrat-latin-variable.woff2',
+  weight: '400 800',
   variable: '--font-montserrat',
   display: 'swap',
 });
