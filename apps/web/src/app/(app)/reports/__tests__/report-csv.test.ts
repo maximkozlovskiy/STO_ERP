@@ -103,6 +103,11 @@ describe('report-csv › buildCsv', () => {
   it("«P&L»: рядки × місяці + «Разом», статті з відступом, від'ємне — числом з комою", () => {
     const data = {
       _tab: 'pnl',
+      settings: {
+        incomeCashReasons: ['MANUAL_IN'],
+        expenseCashReasons: ['EXPENSE'],
+        warnFuturePayroll: false,
+      },
       months: ['2026-09', '2026-10'],
       rows: [
         { key: 'revenue', amounts: [1000, 2000.5], total: 3000.5 },

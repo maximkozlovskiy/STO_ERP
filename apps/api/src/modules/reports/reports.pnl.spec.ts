@@ -19,6 +19,9 @@ import type { PnlReportDto, PnlRowKey } from './reports.dto';
  * пара»; прибрати `reason: 'EXPENSE'` з відбору каси → падає «PAYROLL і SUPPLIER_PAYMENT»; прибрати
  * `status: 'MATCHED'` з банку → падає «банк лише MATCHED EXPENSE»; `amount` замість
  * `amountBase ?? amount` → падає «мультивалюта»; знак `+ expenses` у чистому прибутку → падає формула.
+ * Налаштування (2026-10-29): брати `PNL_SETTINGS_DEFAULTS` замість налаштувань → падають «оплата
+ * клієнта…», «видача під звіт…», «майбутні місяці…»; прибрати `expenseCategory: { type: 'EXPENSE' }`
+ * з додаткових приводів витрат → падає «видача під звіт… без статті витрат».
  */
 
 type Row = Record<string, unknown>;
@@ -91,6 +94,9 @@ describe('ReportsService.pnl — BR-RPT-030', () => {
   let service: ReportsService;
   let queryRaw: ReturnType<typeof vi.fn>;
   let data: Data;
+  /** Що віддає `SettingsService.getOrganisationSettings`; Error — налаштування недоступні. */
+  let orgSettings: Row | Error;
+  let getOrgSettings: ReturnType<typeof vi.fn>;
 
   async function run(from: string, to: string, d: Data): Promise<PnlReportDto> {
     data = d;
@@ -105,6 +111,10 @@ describe('ReportsService.pnl — BR-RPT-030', () => {
     vi.setSystemTime(at('2026-12-15T10:00:00Z'));
     queryRaw = vi.fn();
     data = {};
+    orgSettings = {};
+    getOrgSettings = vi.fn(() =>
+      orgSettings instanceof Error ? Promise.reject(orgSettings) : Promise.resolve(orgSettings),
+    );
     const lazy = (k: keyof Data) => ({
       findMany: vi.fn((args: { where: Row }) =>
         store((data[k] as Row[] | undefined) ?? []).findMany(args),
@@ -122,7 +132,7 @@ describe('ReportsService.pnl — BR-RPT-030', () => {
       providers: [
         ReportsService,
         { provide: PrismaService, useValue: prisma },
-        { provide: SettingsService, useValue: {} },
+        { provide: SettingsService, useValue: { getOrganisationSettings: getOrgSettings } },
       ],
     }).compile();
     service = module.get(ReportsService);
@@ -450,5 +460,118 @@ describe('ReportsService.pnl — BR-RPT-030', () => {
     });
     expect(line(r, 'expenses')).toEqual([0.3]);
     expect(line(r, 'netProfit')).toEqual([-0.3]);
+  });
+  describe('налаштування звіту (OrganisationSettings.pnl*)', () => {
+    const saleAndOwner = (): Row[] => [
+      cash({
+        direction: 'IN',
+        reason: 'SALE_PAYMENT',
+        amount: 600,
+        expenseCategoryId: 'sales',
+        createdAt: at('2026-10-10T09:00:00Z'),
+      }),
+      // Оплата клієнта зі статтею ВИТРАТ — не інший дохід за жодних налаштувань.
+      cash({
+        direction: 'IN',
+        reason: 'SALE_PAYMENT',
+        amount: 60,
+        expenseCategoryId: 'rent',
+        createdAt: at('2026-10-10T09:00:00Z'),
+      }),
+      cash({
+        direction: 'IN',
+        reason: 'OWNER_IN',
+        amount: 500,
+        expenseCategoryId: 'misc',
+        createdAt: at('2026-10-10T09:00:00Z'),
+      }),
+    ];
+
+    // guards: BR-RPT-030
+    it('оплата клієнта зі статтею доходу — інший дохід лише коли увімкнено в налаштуваннях', async () => {
+      const off = await run('2026-10-01', '2026-10-31', { cash: saleAndOwner() });
+      expect(line(off, 'otherIncome')).toEqual([0]);
+
+      orgSettings = { pnlIncomeCashReasons: ['MANUAL_IN', 'SALE_PAYMENT'] };
+      const on = await run('2026-10-01', '2026-10-31', { cash: saleAndOwner() });
+      expect(line(on, 'otherIncome')).toEqual([600]);
+      expect(on.rows.find(x => x.key === 'incomeCategory')).toMatchObject({
+        categoryId: 'sales',
+        amounts: [600],
+      });
+      expect(getOrgSettings).toHaveBeenCalledWith(ORG);
+    });
+
+    // guards: BR-RPT-030
+    it('видача під звіт зі статтею витрат — витрата лише коли увімкнено; без статті витрат — ні', async () => {
+      const ops = (): Row[] => [
+        cash({
+          direction: 'OUT',
+          reason: 'ADVANCE_ISSUE',
+          amount: 250,
+          expenseCategoryId: 'rent',
+          createdAt: at('2026-10-12T09:00:00Z'),
+        }),
+        cash({
+          direction: 'OUT',
+          reason: 'ADVANCE_ISSUE',
+          amount: 40,
+          createdAt: at('2026-10-12T09:00:00Z'),
+        }),
+        cash({
+          direction: 'OUT',
+          reason: 'ADVANCE_ISSUE',
+          amount: 7,
+          expenseCategoryId: 'misc',
+          createdAt: at('2026-10-12T09:00:00Z'),
+        }),
+        cash({
+          direction: 'OUT',
+          reason: 'PAYROLL',
+          amount: 900,
+          expenseCategoryId: 'rent',
+          createdAt: at('2026-10-12T09:00:00Z'),
+        }),
+        cash({
+          direction: 'OUT',
+          reason: 'EXPENSE',
+          amount: 10,
+          expenseCategoryId: 'rent',
+          createdAt: at('2026-10-12T09:00:00Z'),
+        }),
+      ];
+      const off = await run('2026-10-01', '2026-10-31', { cash: ops() });
+      expect(line(off, 'expenses')).toEqual([10]);
+
+      // PAYROLL у налаштуваннях — відкидається (зарплата вже в п. 4); «Витрата» — лишається.
+      orgSettings = { pnlExpenseCashReasons: ['ADVANCE_ISSUE', 'PAYROLL'] };
+      const on = await run('2026-10-01', '2026-10-31', { cash: ops() });
+      expect(line(on, 'expenses')).toEqual([260]);
+      expect(on.settings.expenseCashReasons).toEqual(['EXPENSE', 'ADVANCE_ISSUE']);
+    });
+
+    // guards: BR-RPT-030
+    it('майбутні місяці без зарплати — у попередженні лише з pnlWarnFuturePayroll', async () => {
+      // «Сьогодні» — 15.12.2026 (beforeEach): січень 2027 ще не почався.
+      const off = await run('2026-12-01', '2027-01-31', {});
+      expect(off.payrollMissingMonths).toEqual(['2026-12']);
+
+      orgSettings = { pnlWarnFuturePayroll: true };
+      const on = await run('2026-12-01', '2027-01-31', {});
+      expect(on.payrollMissingMonths).toEqual(['2026-12', '2027-01']);
+      expect(on.settings.warnFuturePayroll).toBe(true);
+    });
+
+    // guards: BR-RPT-030
+    it('відповідь несе застосовані налаштування; недоступні налаштування — типові, звіт будується', async () => {
+      orgSettings = new Error('redis down');
+      const r = await run('2026-10-01', '2026-10-31', { cash: saleAndOwner() });
+      expect(r.settings).toEqual({
+        incomeCashReasons: ['MANUAL_IN'],
+        expenseCashReasons: ['EXPENSE'],
+        warnFuturePayroll: false,
+      });
+      expect(line(r, 'otherIncome')).toEqual([0]);
+    });
   });
 });

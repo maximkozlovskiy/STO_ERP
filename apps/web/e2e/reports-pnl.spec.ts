@@ -1,5 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
-import { apiCall, createPlainRegister, deleteRegister, getToken } from './cash-desk.helpers';
+import {
+  apiCall,
+  createPlainRegister,
+  deleteRegister,
+  getToken,
+  cardField,
+  openCashCard,
+} from './cash-desk.helpers';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -11,6 +18,11 @@ test.describe.configure({ mode: 'serial' });
  * Передумови (каса, стаття витрат) — через API; саму витрату вносить людина в картці каси.
  * Касові операції append-only, тож прибирання — сторно (витрата й поповнення каси сторнуються,
  * і P&L їх більше не рахує), далі видалення каси й статті.
+ *
+ * Налаштування звіту (рішення власника 2026-10-29): видача під звіт за тією самою статтею витрат
+ * (картка каси) у P&L не входить, доки у вікні «Налаштування звіту» не увімкнено «Під звіт»; після
+ * збереження вона в рядку статті й у рядку «Пораховано». Налаштування організації повертаються
+ * в прибиранні (через API — до того, що було перед тестом).
  */
 
 const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
@@ -30,6 +42,9 @@ let token = '';
 let registerId = '';
 let categoryId = '';
 const operationIds: string[] = [];
+const ADVANCE = 45.5;
+/** Налаштування P&L організації до тесту — повертаються в прибиранні. */
+let pnlSettingsBefore: Record<string, unknown> | null = null;
 
 async function monthNet(page: Page): Promise<number> {
   const today = KYIV_YMD.format(new Date());
@@ -49,6 +64,18 @@ test.describe('Звіти — P&L (BR-RPT-030)', () => {
     const page = await browser.newPage({ storageState: 'e2e/.auth/admin.json' });
     try {
       await page.goto('/reports');
+      if (pnlSettingsBefore) {
+        const back = await apiCall(
+          page,
+          token,
+          'PATCH',
+          '/settings/organisation',
+          pnlSettingsBefore,
+        );
+        expect
+          .soft(back.status, `повернення налаштувань P&L: ${JSON.stringify(back.body)}`)
+          .toBe(200);
+      }
       // Спершу витрата (повертає готівку), потім поповнення — інакше сторно поповнення впало б
       // у мінус каси.
       for (const opId of [...operationIds].reverse()) {
@@ -136,5 +163,106 @@ test.describe('Звіти — P&L (BR-RPT-030)', () => {
     // ── Чистий прибуток місяця менший рівно на суму витрати ──
     const netAfter = await monthNet(page);
     expect(Math.round((netBefore - netAfter) * 100)).toBe(Math.round(AMOUNT * 100));
+  });
+
+  test('«Налаштування звіту»: видача під звіт за статтею витрат — у P&L лише після увімкнення', async ({
+    page,
+  }) => {
+    test.skip(!registerId || !categoryId, 'потрібні каса й стаття з попереднього тесту');
+    await page.goto('/cash');
+    await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+    token = await getToken(page);
+    const org = await apiCall<Record<string, unknown>>(
+      page,
+      token,
+      'GET',
+      '/settings/organisation',
+    );
+    expect(org.status).toBe(200);
+    pnlSettingsBefore = {
+      pnlIncomeCashReasons: org.body.pnlIncomeCashReasons,
+      pnlExpenseCashReasons: org.body.pnlExpenseCashReasons,
+      pnlWarnFuturePayroll: org.body.pnlWarnFuturePayroll,
+    };
+    // Стартова точка — типові налаштування (під звіт не рахується).
+    const reset = await apiCall(page, token, 'PATCH', '/settings/organisation', {
+      pnlExpenseCashReasons: ['EXPENSE'],
+    });
+    expect(reset.status, `типові налаштування: ${JSON.stringify(reset.body)}`).toBe(200);
+
+    // ── Видача під звіт механіку за статтею витрат — карткою каси ──
+    const mechs = await apiCall<{ items: { firstName: string; lastName: string }[] }>(
+      page,
+      token,
+      'GET',
+      '/employees?limit=1&role=MECHANIC&sortBy=createdAt&sortDir=asc',
+    );
+    const mech = mechs.body.items[0];
+    expect(mech, 'у базі є механік').toBeTruthy();
+    const mechName = `${mech!.lastName} ${mech!.firstName}`;
+    const dialog = await openCashCard(page, registerId, 'Видати');
+    await dialog.getByLabel('Привід').selectOption('ADVANCE_ISSUE');
+    // Працівник — пікером; список перечитується на кожну літеру, тож клік — після відповіді на
+    // прізвище (інакше рядок відривається від DOM під час кліку).
+    await cardField(dialog, /^Працівник/)
+      .getByRole('button', { name: 'Обрати' })
+      .click();
+    const picker = page.getByRole('dialog', { name: 'Оберіть працівника', exact: true });
+    await expect(picker).toBeVisible({ timeout: 10_000 });
+    const searched = page.waitForResponse(
+      r =>
+        r.url().includes('/employees?q=') && decodeURIComponent(r.url()).includes(mech!.lastName),
+      { timeout: 15_000 },
+    );
+    // Пошук сервера — за одним полем (прізвище), не за «прізвище ім'я».
+    await picker.locator('input').first().fill(mech!.lastName);
+    await searched;
+    await picker.getByRole('button', { name: mechName }).first().click();
+    await expect(picker).toBeHidden({ timeout: 10_000 });
+    await expect(cardField(dialog, /^Працівник/)).toContainText(mechName);
+    await dialog.getByLabel(/^Стаття витрат/).selectOption({ label: CATEGORY });
+    await dialog.getByLabel(/^Сума/).fill('45,50');
+    await dialog.getByLabel(/^Нотатка/).fill('000 E2E під звіт P&L');
+    const created = page.waitForResponse(
+      r =>
+        r.url().endsWith(`/cash-registers/${registerId}/operations`) &&
+        r.request().method() === 'POST',
+      { timeout: 15_000 },
+    );
+    await dialog.getByRole('button', { name: 'Видати', exact: true }).click();
+    const res = await created;
+    expect(res.status(), 'видача під звіт має провестись').toBe(201);
+    operationIds.push(((await res.json()) as { id: string }).id);
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+
+    // ── P&L: стаття лише з витратою, «Пораховано» — лише «Витрата» ──
+    await page.goto('/reports?tab=pnl');
+    await expect(page.getByTestId('pnl-report')).toBeVisible({ timeout: 20_000 });
+    const row = page.getByTestId('pnl-row-expenseCategory').filter({ hasText: CATEGORY });
+    const total = row.locator('td').last();
+    await expect(total).toHaveText(/321,07/, { timeout: 15_000 });
+    await expect(page.getByTestId('pnl-settings-summary')).not.toContainText('Під звіт');
+
+    // ── «Налаштування звіту» → «Під звіт» → «Зберегти» ──
+    await page.getByRole('button', { name: 'Налаштування звіту' }).click();
+    const modal = page.getByRole('dialog', { name: 'Налаштування звіту P&L' });
+    await expect(modal).toBeVisible({ timeout: 10_000 });
+    await expect(modal.getByRole('checkbox', { name: /Витрата/ })).toBeDisabled();
+    await modal.getByRole('checkbox', { name: 'Під звіт' }).check();
+    const saved = page.waitForResponse(
+      r => r.url().endsWith('/settings/organisation') && r.request().method() === 'PATCH',
+      { timeout: 15_000 },
+    );
+    await modal.getByRole('button', { name: 'Зберегти' }).click();
+    expect((await saved).status()).toBe(200);
+    await expect(modal).toBeHidden({ timeout: 10_000 });
+
+    // ── Звіт перечитано: під звіт у статті, «Пораховано» називає його ──
+    await expect(page.getByTestId('pnl-settings-summary')).toContainText('Під звіт', {
+      timeout: 15_000,
+    });
+    await expect(total).toHaveText(new RegExp(`${String(321.07 + ADVANCE).replace('.', ',')}`), {
+      timeout: 15_000,
+    });
   });
 });

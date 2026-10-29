@@ -3,6 +3,7 @@ import {
   allocatePayrollByMonth,
   buildCategoryRows,
   monthsBetween,
+  resolvePnlSettings,
   sumRootRows,
   type PnlPayrollPeriod,
 } from './pnl.calc';
@@ -13,7 +14,8 @@ import {
  * Mutation-verify (2026-10-29): прибрати фільтр статусу в allocatePayrollByMonth → падає «DRAFT і
  * CANCELLED»; прибрати перевірку deletedAt → падає «видалений період»; ділити на місяці порівну
  * замість днів → падає «через межу місяців»; не обрізати відрізок межами from..to → падає
- * «частковий місяць звіту».
+ * «частковий місяць звіту»; `warnFuture ||` прибрати → падає «майбутні місяці з налаштуванням»;
+ * не додавати EXPENSE у resolvePnlSettings → падає «Витрата завжди».
  */
 
 const d = (ymd: string) => new Date(`${ymd}T00:00:00.000Z`);
@@ -140,6 +142,20 @@ describe('allocatePayrollByMonth — BR-RPT-030 п. 4', () => {
     expect(r.missingMonths).toEqual(['2026-09', '2026-10']);
   });
 
+  // guards: BR-RPT-030
+  it('майбутні місяці без періоду — у missingMonths лише з налаштуванням warnFuture', () => {
+    const args = [
+      [period({ from: '2026-10-01', to: '2026-10-31', accrued: 10 })],
+      ['2026-10', '2026-11', '2026-12'],
+      '2026-10-01',
+      '2026-12-31',
+      '2026-10-29',
+    ] as const;
+    expect(allocatePayrollByMonth(...args).missingMonths).toEqual([]);
+    expect(allocatePayrollByMonth(...args, false).missingMonths).toEqual([]);
+    expect(allocatePayrollByMonth(...args, true).missingMonths).toEqual(['2026-11', '2026-12']);
+  });
+
   it('розрахований період із нульовим нарахуванням місяць покриває', () => {
     const r = allocatePayrollByMonth(
       [period({ from: '2026-09-10', to: '2026-09-12', accrued: 0 })],
@@ -181,5 +197,44 @@ describe('buildCategoryRows — дерево статей BR-RPT-030 пп. 5–6
     expect(rows[1]?.parentId).toBe('util');
     // Підсумок розділу — лише корені й «без статті», підстатті вдруге не додаються.
     expect(sumRootRows(rows, 2)).toEqual([1117, 1050.5]);
+  });
+});
+
+describe('resolvePnlSettings — налаштування P&L організації (BR-RPT-030 пп. 4–6)', () => {
+  // guards: BR-RPT-030
+  it('немає налаштувань або полів — типові значення (поведінка до налаштувань)', () => {
+    const defaults = {
+      incomeCashReasons: ['MANUAL_IN'],
+      expenseCashReasons: ['EXPENSE'],
+      warnFuturePayroll: false,
+    };
+    expect(resolvePnlSettings(null)).toEqual(defaults);
+    expect(resolvePnlSettings({})).toEqual(defaults);
+  });
+
+  // guards: BR-RPT-030
+  it('«Витрата» завжди серед витрат, навіть якщо в налаштуваннях її немає', () => {
+    expect(
+      resolvePnlSettings({ pnlExpenseCashReasons: ['ADVANCE_ISSUE'] }).expenseCashReasons,
+    ).toEqual(['EXPENSE', 'ADVANCE_ISSUE']);
+    expect(resolvePnlSettings({ pnlExpenseCashReasons: [] }).expenseCashReasons).toEqual([
+      'EXPENSE',
+    ]);
+  });
+
+  // guards: BR-RPT-030
+  it('недозволені приводи (зарплата, оплата постачальнику, повернення) відкидаються, повтори — теж', () => {
+    const s = resolvePnlSettings({
+      pnlIncomeCashReasons: ['SALE_PAYMENT', 'PAYROLL', 'SALE_PAYMENT', 'OWNER_IN'],
+      pnlExpenseCashReasons: ['SUPPLIER_PAYMENT', 'REFUND', 'OWNER_OUT', 'EXPENSE'],
+      pnlWarnFuturePayroll: true,
+    });
+    expect(s.incomeCashReasons).toEqual(['SALE_PAYMENT', 'OWNER_IN']);
+    expect(s.expenseCashReasons).toEqual(['EXPENSE', 'OWNER_OUT']);
+    expect(s.warnFuturePayroll).toBe(true);
+  });
+
+  it('порожні «інші доходи» лишаються порожніми', () => {
+    expect(resolvePnlSettings({ pnlIncomeCashReasons: [] }).incomeCashReasons).toEqual([]);
   });
 });

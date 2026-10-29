@@ -49,6 +49,7 @@ describe('ReportsService — межі періоду за Києвом', () => {
     employee: { findFirst: ReturnType<typeof vi.fn> };
     warehouse: { findFirst: ReturnType<typeof vi.fn> };
     calendarSlot: { findMany: ReturnType<typeof vi.fn> };
+    lift: { findMany: ReturnType<typeof vi.fn> };
     stockItem: { findMany: ReturnType<typeof vi.fn> };
     stockMovement: { findMany: ReturnType<typeof vi.fn> };
     invoice: { aggregate: ReturnType<typeof vi.fn> };
@@ -62,6 +63,7 @@ describe('ReportsService — межі періоду за Києвом', () => {
       employee: { findFirst: vi.fn().mockResolvedValue(null) },
       warehouse: { findFirst: vi.fn().mockResolvedValue(null) },
       calendarSlot: { findMany: vi.fn().mockResolvedValue([]) },
+      lift: { findMany: vi.fn().mockResolvedValue([]) },
       stockItem: { findMany: vi.fn().mockResolvedValue([]) },
       stockMovement: { findMany: vi.fn().mockResolvedValue([]) },
       invoice: { aggregate: vi.fn().mockResolvedValue({ _sum: { totalVat: 0 } }) },

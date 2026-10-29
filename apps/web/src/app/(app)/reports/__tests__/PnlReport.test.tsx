@@ -44,6 +44,11 @@ const base: ApiSchema<'PnlReportDto'> = {
   ],
   unknownCostPartsCount: 0,
   payrollMissingMonths: [],
+  settings: {
+    incomeCashReasons: ['MANUAL_IN'],
+    expenseCashReasons: ['EXPENSE'],
+    warnFuturePayroll: false,
+  },
   from: '2026-09-01',
   to: '2026-10-31',
 };

@@ -47,6 +47,10 @@ vi.mock('../../settlements/SettlementsTabContent', () => ({
   SettlementsTabContent: () => <div data-testid="settlements-detail" />,
 }));
 vi.mock('next/dynamic', () => ({ default: () => () => null }));
+// Картка товару «Звіту по складу» — окремий хук із QueryClient; тут лише ролі й вкладки.
+vi.mock('../ReportGoodCard', () => ({
+  useReportGoodCard: () => ({ open: vi.fn(), element: null }),
+}));
 
 import ReportsPage from '../page';
 

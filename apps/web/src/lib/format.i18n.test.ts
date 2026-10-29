@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { setCurrentLocale } from '@/i18n/locale';
-import { fmtMoney, fmtInt, kyivToday, kyivDateTimeToISO } from './format';
+import { fmtMoney, fmtInt, fmtPercent, kyivToday, kyivDateTimeToISO } from './format';
 
 // format.ts display-форматери locale-aware; ISO/machine-хелпери — locale-INDEPENDENT.
 describe('format.ts — locale-aware форматування', () => {
@@ -35,6 +35,18 @@ describe('format.ts — locale-aware форматування', () => {
     expect(kyivToday()).toBe(ukToday); // YYYY-MM-DD незмінний
     expect(kyivDateTimeToISO('2026-06-05', '09:00')).toBe(ukIso); // UTC ISO незмінний
     expect(ukIso).toBe('2026-06-05T06:00:00.000Z'); // літо EEST +03
+  });
+
+  // Огляд звітів 2026-10-29: «59.3%» з крапкою в українському інтерфейсі.
+  it('fmtPercent: uk — десяткова кома, en — крапка; до одного знака; відсоток, не частка', () => {
+    setCurrentLocale('uk');
+    expect(fmtPercent(59.25).replace(/\s/g, ' ')).toBe('59,3%');
+    expect(fmtPercent(12).replace(/\s/g, ' ')).toBe('12%');
+    expect(fmtPercent(140).replace(/\s/g, ' ')).toBe('140%');
+    setCurrentLocale('en');
+    expect(fmtPercent(59.25)).toBe('59.3%');
+    expect(fmtPercent(null)).toBe('—');
+    expect(fmtPercent(Number.NaN)).toBe('—');
   });
 
   it('null → «—» в обох локалях', () => {
