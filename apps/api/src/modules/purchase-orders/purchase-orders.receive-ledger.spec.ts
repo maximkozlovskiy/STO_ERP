@@ -34,7 +34,11 @@ import { exchangeRatesProvider, purchaseListProviders } from './purchase-orders.
 describe('PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE', () => {
   let service: PurchaseOrdersService;
   let prisma: {
-    purchaseOrder: { findFirst: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    purchaseOrder: {
+      findFirst: ReturnType<typeof vi.fn>;
+      update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+    };
     purchaseOrderLine: {
       updateMany: ReturnType<typeof vi.fn>;
       findMany: ReturnType<typeof vi.fn>;
@@ -118,6 +122,8 @@ describe('PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUP
           .mockResolvedValueOnce({ status: PurchaseOrderStatus.PARTIAL }) // in-tx re-read статусу
           .mockResolvedValue(poAfter), // фінальний findOne
         update: vi.fn().mockResolvedValue({}),
+        // Bug #995: статус прийому — CAS за прочитаним статусом.
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       purchaseOrderLine: {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -237,6 +243,26 @@ describe('PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUP
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(inventory.createMovement).not.toHaveBeenCalled();
     expect(settlements.createTransaction).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrder.updateMany).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-AUT-060
+  // Bug #995: паралельне «Скасувати» між перечитуванням статусу і записом. Раніше статус писав
+  // `update` без умови — скасоване замовлення мовчки ставало «Отримано», подія мала неправдивий
+  // fromStatus. Мутація: `where` без `status` (або `update` замість CAS) — кейс червоний.
+  it('Bug #995: статус замовлення змінився до запису → CAS за прочитаним статусом, 400 і відкат прийому', async () => {
+    prisma.purchaseOrder.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const err: unknown = await service.receive(ORG, PO_ID, DTO, USER_ID).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as Error).message).toMatch(/статус/i);
+    expect(prisma.purchaseOrder.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: PO_ID, orgId: ORG, deletedAt: null, status: PurchaseOrderStatus.PARTIAL },
+      }),
+    );
     expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
   });
   // ── BR-PO-001: які рядки ЗАПИТУ стають «активними» ─────────────────────────────────────────

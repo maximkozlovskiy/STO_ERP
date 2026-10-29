@@ -1023,13 +1023,19 @@ export class PurchaseOrdersService {
         const shouldSetPaymentDate =
           newStatus === PurchaseOrderStatus.RECEIVED && !po.paymentDate && defer != null;
         const fromStatus = po.status;
-        await tx.purchaseOrder.update({
-          where: { id, orgId },
+        // CAS за прочитаним статусом (Bug #995, BR-AUT-060): перечитування вище лише швидка
+        // відмова — паралельне «Скасувати» між ним і цим записом інакше мовчки перезаписувалось
+        // на «Отримано», а подія мала неправдивий `fromStatus`. Програли — відкат усього прийому.
+        const moved = await tx.purchaseOrder.updateMany({
+          where: { id, orgId, deletedAt: null, status: fromStatus },
           data: {
             status: newStatus,
             ...(shouldSetPaymentDate ? { paymentDate: addDaysKyiv(kyivToday(), defer) } : {}),
           },
         });
+        if (moved.count === 0) {
+          throw new BadRequestException(err('err.purchaseOrder.statusChanged'));
+        }
         await recordDocumentEvent(tx, {
           orgId,
           documentType: 'PURCHASE_ORDER',

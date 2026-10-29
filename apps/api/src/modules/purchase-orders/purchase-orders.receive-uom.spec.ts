@@ -27,7 +27,11 @@ import { domainEventMock } from '../../common/testing/prisma-mock';
 describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug #239)', () => {
   let service: PurchaseOrdersService;
   let prisma: {
-    purchaseOrder: { findFirst: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    purchaseOrder: {
+      findFirst: ReturnType<typeof vi.fn>;
+      update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+    };
     purchaseOrderLine: {
       update: ReturnType<typeof vi.fn>;
       updateMany: ReturnType<typeof vi.fn>;
@@ -56,6 +60,8 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
       purchaseOrder: {
         findFirst: vi.fn(),
         update: vi.fn().mockResolvedValue({}),
+        // Bug #995: статус прийому — CAS за прочитаним статусом.
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       purchaseOrderLine: {
         update: vi.fn().mockResolvedValue({}),
@@ -669,8 +675,8 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
 
     await service.receive(ORG, PO_ID, { lines: [{ lineId: LINE_ID, receivedQty: 10 }] }, USER_ID);
 
-    // Останній purchaseOrder.update у $transaction — зі статусом RECEIVED + paymentDate.
-    const updateCalls = prisma.purchaseOrder.update.mock.calls;
+    // Запис статусу в $transaction (CAS, Bug #995) — зі статусом RECEIVED + paymentDate.
+    const updateCalls = prisma.purchaseOrder.updateMany.mock.calls;
     const statusUpdate = updateCalls.find(
       c => (c[0] as { data?: { status?: string } }).data?.status === PurchaseOrderStatus.RECEIVED,
     );
@@ -734,7 +740,7 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
 
     await service.receive(ORG, PO_ID, { lines: [{ lineId: LINE_ID, receivedQty: 10 }] }, USER_ID);
 
-    const statusUpdate = prisma.purchaseOrder.update.mock.calls.find(
+    const statusUpdate = prisma.purchaseOrder.updateMany.mock.calls.find(
       c => (c[0] as { data?: { status?: string } }).data?.status === PurchaseOrderStatus.RECEIVED,
     );
     expect(statusUpdate).toBeDefined();
