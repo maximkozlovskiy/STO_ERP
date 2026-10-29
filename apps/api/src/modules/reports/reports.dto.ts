@@ -74,6 +74,11 @@ export class StockReportItemDto {
     description: 'Артикул (може бути відсутній)',
   })
   goodSku?: string | null;
+  @ApiProperty({
+    description:
+      'Товар видалено з каталогу (BR-RPT-032): залишок у звіті й підсумках, картки немає',
+  })
+  goodDeleted!: boolean;
   @ApiProperty({ example: 'шт' }) unit!: string;
   @ApiProperty() warehouseName!: string;
   @ApiProperty({ description: 'Залишок (може бути дробовим: літри, кг)' }) quantity!: number;
@@ -174,6 +179,11 @@ export class PnlSettingsDto {
   expenseCashReasons!: CashReasonValue[];
   @ApiProperty({ description: 'Попередження про зарплату — і для місяців, що ще не почалися' })
   warnFuturePayroll!: boolean;
+  @ApiProperty({
+    description:
+      'Повернення підзвіту зменшує витрату статті (діє лише тоді, коли «Під звіт» серед витрат)',
+  })
+  netAdvanceReturns!: boolean;
 }
 
 export class PnlReportDto {

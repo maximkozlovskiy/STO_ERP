@@ -22,6 +22,9 @@ import type { PnlReportDto, PnlRowKey } from './reports.dto';
  * Налаштування (2026-10-29): брати `PNL_SETTINGS_DEFAULTS` замість налаштувань → падають «оплата
  * клієнта…», «видача під звіт…», «майбутні місяці…»; прибрати `expenseCategory: { type: 'EXPENSE' }`
  * з додаткових приводів витрат → падає «видача під звіт… без статті витрат».
+ * Повернення підзвіту (2026-10-29): `+amount` замість `-amount` для ADVANCE_RETURN, прибрати
+ * умову `ADVANCE_ISSUE` у `nettsAdvanceReturns` або фільтр статті EXPENSE → падає «повернення
+ * підзвіту…».
  */
 
 type Row = Record<string, unknown>;
@@ -551,6 +554,86 @@ describe('ReportsService.pnl — BR-RPT-030', () => {
     });
 
     // guards: BR-RPT-030
+    it('повернення підзвіту зменшує витрату своєї статті (без статті — «Без статті»), лише з «Під звіт» і pnlNetAdvanceReturns', async () => {
+      const ops = (): Row[] => {
+        const reversedReturn = cash({
+          direction: 'IN',
+          reason: 'ADVANCE_RETURN',
+          amount: 30,
+          expenseCategoryId: 'rent',
+          createdAt: at('2026-10-14T09:00:00Z'),
+        });
+        return [
+          cash({
+            direction: 'OUT',
+            reason: 'ADVANCE_ISSUE',
+            amount: 250,
+            expenseCategoryId: 'rent',
+            createdAt: at('2026-10-12T09:00:00Z'),
+          }),
+          cash({
+            direction: 'OUT',
+            reason: 'EXPENSE',
+            amount: 20,
+            createdAt: at('2026-10-12T09:00:00Z'),
+          }),
+          cash({
+            direction: 'IN',
+            reason: 'ADVANCE_RETURN',
+            amount: 50,
+            expenseCategoryId: 'rent',
+            createdAt: at('2026-10-13T09:00:00Z'),
+          }),
+          cash({
+            direction: 'IN',
+            reason: 'ADVANCE_RETURN',
+            amount: 15,
+            createdAt: at('2026-10-13T09:00:00Z'),
+          }),
+          // Зі статтею ДОХОДУ — не стаття витрат: не віднімається.
+          cash({
+            direction: 'IN',
+            reason: 'ADVANCE_RETURN',
+            amount: 5,
+            expenseCategoryId: 'misc',
+            createdAt: at('2026-10-13T09:00:00Z'),
+          }),
+          // Сторнована пара: ні оригінал, ні сторно не входять.
+          reversedReturn,
+          cash({
+            direction: 'OUT',
+            reason: 'ADVANCE_RETURN',
+            amount: 30,
+            expenseCategoryId: 'rent',
+            reversalOfId: reversedReturn.id,
+            createdAt: at('2026-10-15T09:00:00Z'),
+          }),
+        ];
+      };
+      const rowOf = (r: PnlReportDto, categoryId: string | null) =>
+        r.rows.find(x => x.key === 'expenseCategory' && x.categoryId === categoryId)?.amounts;
+
+      orgSettings = { pnlExpenseCashReasons: ['ADVANCE_ISSUE'] };
+      const on = await run('2026-10-01', '2026-10-31', { cash: ops() });
+      expect(line(on, 'expenses')).toEqual([205]);
+      expect(rowOf(on, 'rent')).toEqual([200]);
+      expect(rowOf(on, null)).toEqual([5]);
+      expect(line(on, 'otherIncome')).toEqual([0]);
+      expect(on.settings.netAdvanceReturns).toBe(true);
+
+      orgSettings = { pnlExpenseCashReasons: ['ADVANCE_ISSUE'], pnlNetAdvanceReturns: false };
+      const off = await run('2026-10-01', '2026-10-31', { cash: ops() });
+      expect(line(off, 'expenses')).toEqual([270]);
+      expect(off.settings.netAdvanceReturns).toBe(false);
+
+      // «Під звіт» вимкнено — видача не витрата, повернення не віднімається навіть із прапорцем.
+      orgSettings = { pnlNetAdvanceReturns: true };
+      const noAdvance = await run('2026-10-01', '2026-10-31', { cash: ops() });
+      expect(line(noAdvance, 'expenses')).toEqual([20]);
+      expect(noAdvance.settings.netAdvanceReturns).toBe(true);
+    });
+
+    // guards: BR-RPT-030
     it('майбутні місяці без зарплати — у попередженні лише з pnlWarnFuturePayroll', async () => {
       // «Сьогодні» — 15.12.2026 (beforeEach): січень 2027 ще не почався.
       const off = await run('2026-12-01', '2027-01-31', {});
@@ -570,6 +653,7 @@ describe('ReportsService.pnl — BR-RPT-030', () => {
         incomeCashReasons: ['MANUAL_IN'],
         expenseCashReasons: ['EXPENSE'],
         warnFuturePayroll: false,
+        netAdvanceReturns: true,
       });
       expect(line(r, 'otherIncome')).toEqual([0]);
     });

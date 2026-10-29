@@ -31,12 +31,26 @@ export interface PnlSettings {
   expenseCashReasons: CashReasonValue[];
   /** Попереджати «зарплату не розраховано» і про місяці, що ще не почалися (п. 4). */
   warnFuturePayroll: boolean;
+  /**
+   * Повернення підзвіту (`ADVANCE_RETURN`) зменшує витрату тієї самої статті (п. 5) — значення
+   * налаштування. Діє лише разом із «Під звіт» серед витрат: див. `nettsAdvanceReturns`.
+   */
+  netAdvanceReturns: boolean;
+}
+
+/**
+ * Чи віднімати повернення підзвіту (BR-RPT-030 п. 5): прапорець увімкнено І «Під звіт»
+ * (`ADVANCE_ISSUE`) серед витрат — інакше видача не рахувалась і віднімати нема від чого.
+ */
+export function nettsAdvanceReturns(s: PnlSettings): boolean {
+  return s.netAdvanceReturns && s.expenseCashReasons.includes('ADVANCE_ISSUE');
 }
 
 export interface PnlSettingsSource {
   pnlIncomeCashReasons?: readonly string[] | null;
   pnlExpenseCashReasons?: readonly string[] | null;
   pnlWarnFuturePayroll?: boolean | null;
+  pnlNetAdvanceReturns?: boolean | null;
 }
 
 /**
@@ -47,16 +61,18 @@ export interface PnlSettingsSource {
 export function resolvePnlSettings(src: PnlSettingsSource | null | undefined): PnlSettings {
   const pick = <T extends CashReasonValue>(options: readonly T[], chosen: readonly string[]): T[] =>
     options.filter(o => chosen.includes(o));
+  const expenseCashReasons = pick(PNL_EXPENSE_CASH_REASON_OPTIONS, [
+    ...(src?.pnlExpenseCashReasons ?? PNL_SETTINGS_DEFAULTS.pnlExpenseCashReasons),
+    PNL_EXPENSE_CASH_REASON_REQUIRED,
+  ]);
   return {
     incomeCashReasons: pick(
       PNL_INCOME_CASH_REASON_OPTIONS,
       src?.pnlIncomeCashReasons ?? PNL_SETTINGS_DEFAULTS.pnlIncomeCashReasons,
     ),
-    expenseCashReasons: pick(PNL_EXPENSE_CASH_REASON_OPTIONS, [
-      ...(src?.pnlExpenseCashReasons ?? PNL_SETTINGS_DEFAULTS.pnlExpenseCashReasons),
-      PNL_EXPENSE_CASH_REASON_REQUIRED,
-    ]),
+    expenseCashReasons,
     warnFuturePayroll: src?.pnlWarnFuturePayroll ?? PNL_SETTINGS_DEFAULTS.pnlWarnFuturePayroll,
+    netAdvanceReturns: src?.pnlNetAdvanceReturns ?? PNL_SETTINGS_DEFAULTS.pnlNetAdvanceReturns,
   };
 }
 

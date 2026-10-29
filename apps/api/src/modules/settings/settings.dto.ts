@@ -263,6 +263,14 @@ export class UpdateOrganisationSettingsDto {
   @IsBoolean()
   pnlWarnFuturePayroll?: boolean;
 
+  @ApiPropertyOptional({
+    description:
+      'P&L: повернення підзвітних коштів зменшує витрату статті (діє, коли «Під звіт» серед витрат)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  pnlNetAdvanceReturns?: boolean;
+
   @ApiPropertyOptional({ description: 'UI feature flags (partial update supported)' })
   @IsOptional()
   @IsObject()
@@ -574,6 +582,8 @@ export class OrganisationSettingsResponseDto {
   pnlExpenseCashReasons!: CashOperationReason[];
   @ApiProperty({ description: 'P&L: попереджати про нерозраховану зарплату майбутніх місяців' })
   pnlWarnFuturePayroll!: boolean;
+  @ApiProperty({ description: 'P&L: повернення підзвіту зменшує витрату статті' })
+  pnlNetAdvanceReturns!: boolean;
   @ApiProperty({ description: 'UI feature flags' }) uiFeatures!: UiFeatures;
   // B4: Loyalty
   @ApiProperty() loyaltyEnabled!: boolean;

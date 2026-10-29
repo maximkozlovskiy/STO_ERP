@@ -124,6 +124,7 @@ describe('PATCH /settings/organisation — налаштування звіту P
       pnlIncomeCashReasons: ['MANUAL_IN', 'SALE_PAYMENT'],
       pnlExpenseCashReasons: ['EXPENSE', 'ADVANCE_ISSUE'],
       pnlWarnFuturePayroll: true,
+      pnlNetAdvanceReturns: false,
     });
 
     expect(res.statusCode).toBe(200);
@@ -133,12 +134,14 @@ describe('PATCH /settings/organisation — налаштування звіту P
         pnlIncomeCashReasons: ['MANUAL_IN', 'SALE_PAYMENT'],
         pnlExpenseCashReasons: ['EXPENSE', 'ADVANCE_ISSUE'],
         pnlWarnFuturePayroll: true,
+        pnlNetAdvanceReturns: false,
       },
     });
     expect(res.json()).toMatchObject({
       pnlIncomeCashReasons: ['MANUAL_IN', 'SALE_PAYMENT'],
       pnlExpenseCashReasons: ['EXPENSE', 'ADVANCE_ISSUE'],
       pnlWarnFuturePayroll: true,
+      pnlNetAdvanceReturns: false,
     });
     const got = await app.inject({ method: 'GET', url: '/settings/organisation' });
     expect(got.json()).toMatchObject({ pnlExpenseCashReasons: ['EXPENSE', 'ADVANCE_ISSUE'] });
@@ -162,6 +165,7 @@ describe('PATCH /settings/organisation — налаштування звіту P
     ['повтор приводу', { pnlIncomeCashReasons: ['MANUAL_IN', 'MANUAL_IN'] }],
     ['не масив', { pnlIncomeCashReasons: 'MANUAL_IN' }],
     ['прапорець — не boolean', { pnlWarnFuturePayroll: 'так' }],
+    ['повернення підзвіту — не boolean', { pnlNetAdvanceReturns: 'так' }],
   ])('недоступне значення — 400, налаштування не змінюються (%s)', async (_name, payload) => {
     const res = await patch(payload);
     expect(res.statusCode).toBe(400);
@@ -183,6 +187,7 @@ describe('PATCH /settings/organisation — налаштування звіту P
       pnlIncomeCashReasons: ['MANUAL_IN'],
       pnlExpenseCashReasons: ['EXPENSE'],
       pnlWarnFuturePayroll: false,
+      pnlNetAdvanceReturns: true,
     });
   });
 

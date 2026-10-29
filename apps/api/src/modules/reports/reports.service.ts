@@ -19,6 +19,7 @@ import {
   buildCategoryRows,
   monthsBetween,
   sumRootRows,
+  nettsAdvanceReturns,
   resolvePnlSettings,
   type PnlCategoryRow,
   type PnlSettings,
@@ -139,7 +140,9 @@ export class ReportsService {
   }
 
   async workOrders(orgId: string, from: string, to: string, employeeId?: string) {
-    const { fromDate, toDate } = normalizeDateRange(from, to);
+    // Лише перевірка порядку меж: BR-RPT-031 — період за датою документа (@db.Date, календарні
+    // дати), як фільтр списку нарядів; київська північ тут не потрібна.
+    normalizeDateRange(from, to);
 
     // Use groupBy for DB-side aggregation — avoids loading up to 10 000 raw rows into memory.
     // groupBy requires a filter on the grouped field, so we join through workOrder via raw SQL.
@@ -174,7 +177,7 @@ export class ReportsService {
           AND wol."deletedAt"  IS NULL
           AND wo."orgId"       = ${orgId}::uuid
           AND wo."deletedAt"   IS NULL
-          AND wo."createdAt"   BETWEEN ${fromDate} AND ${toDate}
+          AND wo."documentDate" BETWEEN ${from}::date AND ${to}::date
           ${employeeId ? Prisma.sql`AND wol."employeeId" = ${employeeId}::uuid` : Prisma.empty}
         GROUP BY wol."employeeId", e."firstName", e."lastName"
         ORDER BY "totalAmount" DESC
@@ -230,7 +233,10 @@ export class ReportsService {
       this.prisma.stockItem.findMany({
         where: stockWhere,
         include: {
-          good: { select: { name: true, sku: true, unit: true, salePrice: true } },
+          // deletedAt — BR-RPT-032: видалений товар із залишком лишається у звіті з позначкою.
+          good: {
+            select: { name: true, sku: true, unit: true, salePrice: true, deletedAt: true },
+          },
           warehouse: { select: { name: true } },
         },
         orderBy: [{ warehouse: { name: 'asc' } }, { good: { name: 'asc' } }],
@@ -251,6 +257,7 @@ export class ReportsService {
         goodId: i.goodId,
         goodName: i.good.name,
         goodSku: i.good.sku,
+        goodDeleted: i.good.deletedAt !== null,
         unit: i.good.unit,
         warehouseName: i.warehouse.name,
         quantity: i.quantity,
@@ -402,6 +409,13 @@ export class ReportsService {
         reason: { in: settings.incomeCashReasons },
         expenseCategory: { is: { type: 'INCOME' } },
       });
+    // п. 5 — повернення підзвіту зменшує витрату своєї статті (без статті — «Без статті»).
+    if (nettsAdvanceReturns(settings))
+      cashFilter.push({
+        direction: 'IN',
+        reason: 'ADVANCE_RETURN',
+        OR: [{ expenseCategoryId: null }, { expenseCategory: { is: { type: 'EXPENSE' } } }],
+      });
 
     const [revenueRows, partRows, periods, cashOps, bankTxs, fxTxs, categories] = await Promise.all(
       [
@@ -463,6 +477,7 @@ export class ReportsService {
           select: {
             id: true,
             direction: true,
+            reason: true,
             amount: true,
             amountBase: true,
             expenseCategoryId: true,
@@ -540,9 +555,19 @@ export class ReportsService {
     const incomeOwn = new Map<string | null, number[]>();
     for (const op of cashOps) {
       if (reversedIds.has(op.id)) continue;
-      const target = op.direction === 'OUT' ? expenseOwn : incomeOwn;
       const i = kyivMonthOf(op.createdAt);
-      addToMonth(target, op.expenseCategoryId, i, n, base(op.amountBase, op.amount));
+      const amount: number = base(op.amountBase, op.amount);
+      // Повернення підзвіту — мінус у витратах своєї статті, не «інший дохід».
+      if (op.reason === 'ADVANCE_RETURN')
+        addToMonth(expenseOwn, op.expenseCategoryId, i, n, -amount);
+      else
+        addToMonth(
+          op.direction === 'OUT' ? expenseOwn : incomeOwn,
+          op.expenseCategoryId,
+          i,
+          n,
+          amount,
+        );
     }
     for (const tx of bankTxs) {
       const i = dateMonthOf(tx.operationDate);

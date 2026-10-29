@@ -527,6 +527,7 @@ export class SettingsService {
     pnlIncomeCashReasons?: CashOperationReason[];
     pnlExpenseCashReasons?: CashOperationReason[];
     pnlWarnFuturePayroll?: boolean;
+    pnlNetAdvanceReturns?: boolean;
     uiFeatures: unknown;
     loyaltyEnabled: boolean;
     loyaltyEarnPer: { toNumber(): number } | number;
@@ -577,6 +578,7 @@ export class SettingsService {
         ...PNL_SETTINGS_DEFAULTS.pnlExpenseCashReasons,
       ],
       pnlWarnFuturePayroll: s.pnlWarnFuturePayroll ?? PNL_SETTINGS_DEFAULTS.pnlWarnFuturePayroll,
+      pnlNetAdvanceReturns: s.pnlNetAdvanceReturns ?? PNL_SETTINGS_DEFAULTS.pnlNetAdvanceReturns,
       uiFeatures: this.parseUiFeatures(s.uiFeatures),
       loyaltyEnabled: s.loyaltyEnabled,
       loyaltyEarnPer: toNum(s.loyaltyEarnPer),

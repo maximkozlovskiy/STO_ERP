@@ -3,6 +3,7 @@ import {
   allocatePayrollByMonth,
   buildCategoryRows,
   monthsBetween,
+  nettsAdvanceReturns,
   resolvePnlSettings,
   sumRootRows,
   type PnlPayrollPeriod,
@@ -207,6 +208,7 @@ describe('resolvePnlSettings — налаштування P&L організац
       incomeCashReasons: ['MANUAL_IN'],
       expenseCashReasons: ['EXPENSE'],
       warnFuturePayroll: false,
+      netAdvanceReturns: true,
     };
     expect(resolvePnlSettings(null)).toEqual(defaults);
     expect(resolvePnlSettings({})).toEqual(defaults);
@@ -232,6 +234,20 @@ describe('resolvePnlSettings — налаштування P&L організац
     expect(s.incomeCashReasons).toEqual(['SALE_PAYMENT', 'OWNER_IN']);
     expect(s.expenseCashReasons).toEqual(['EXPENSE', 'OWNER_OUT']);
     expect(s.warnFuturePayroll).toBe(true);
+  });
+
+  // guards: BR-RPT-030
+  it('повернення підзвіту віднімається лише з «Під звіт» серед витрат; прапорець типово увімкнено', () => {
+    const advance = { pnlExpenseCashReasons: ['ADVANCE_ISSUE'] };
+    expect(nettsAdvanceReturns(resolvePnlSettings(advance))).toBe(true);
+    expect(
+      nettsAdvanceReturns(resolvePnlSettings({ ...advance, pnlNetAdvanceReturns: false })),
+    ).toBe(false);
+    // Без «Під звіт» не віднімається, але збережене значення прапорця лишається у відповіді
+    // (вікно налаштувань показує його, щойно «Під звіт» увімкнуть).
+    const noAdvance = resolvePnlSettings({ pnlNetAdvanceReturns: true });
+    expect(noAdvance.netAdvanceReturns).toBe(true);
+    expect(nettsAdvanceReturns(noAdvance)).toBe(false);
   });
 
   it('порожні «інші доходи» лишаються порожніми', () => {

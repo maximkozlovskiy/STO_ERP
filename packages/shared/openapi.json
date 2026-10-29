@@ -20076,6 +20076,10 @@
             "type": "boolean",
             "description": "P&L: попереджати про нерозраховану зарплату майбутніх місяців"
           },
+          "pnlNetAdvanceReturns": {
+            "type": "boolean",
+            "description": "P&L: повернення підзвіту зменшує витрату статті"
+          },
           "uiFeatures": {
             "type": "object",
             "description": "UI feature flags"
@@ -20174,6 +20178,7 @@
           "pnlIncomeCashReasons",
           "pnlExpenseCashReasons",
           "pnlWarnFuturePayroll",
+          "pnlNetAdvanceReturns",
           "uiFeatures",
           "loyaltyEnabled",
           "loyaltyEarnPer",
@@ -20352,6 +20357,10 @@
           "pnlWarnFuturePayroll": {
             "type": "boolean",
             "description": "P&L: попереджати «зарплату не розраховано» і про місяці, що ще не почалися"
+          },
+          "pnlNetAdvanceReturns": {
+            "type": "boolean",
+            "description": "P&L: повернення підзвітних коштів зменшує витрату статті (діє, коли «Під звіт» серед витрат)"
           },
           "uiFeatures": {
             "type": "object",
@@ -32984,6 +32993,10 @@
             "nullable": true,
             "description": "Артикул (може бути відсутній)"
           },
+          "goodDeleted": {
+            "type": "boolean",
+            "description": "Товар видалено з каталогу (BR-RPT-032): залишок у звіті й підсумках, картки немає"
+          },
           "unit": {
             "type": "string",
             "example": "шт"
@@ -33011,6 +33024,7 @@
         "required": [
           "goodId",
           "goodName",
+          "goodDeleted",
           "unit",
           "warehouseName",
           "quantity",
@@ -33235,12 +33249,17 @@
           "warnFuturePayroll": {
             "type": "boolean",
             "description": "Попередження про зарплату — і для місяців, що ще не почалися"
+          },
+          "netAdvanceReturns": {
+            "type": "boolean",
+            "description": "Повернення підзвіту зменшило витрати своїх статей (лише коли «Під звіт» серед витрат)"
           }
         },
         "required": [
           "incomeCashReasons",
           "expenseCashReasons",
-          "warnFuturePayroll"
+          "warnFuturePayroll",
+          "netAdvanceReturns"
         ]
       },
       "PnlReportDto": {

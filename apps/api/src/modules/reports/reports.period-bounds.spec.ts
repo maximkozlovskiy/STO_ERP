@@ -11,6 +11,9 @@
  * таблиці меж; підмінити `kyivDayRangeFilter` у `stock` на `dateOnlyRangeFilter` → падають кейси
  * звіту по складу; прибрати перевірку порядку → падають кейси «початок пізніше кінця».
  *
+ * Звіт «Наряди» (BR-RPT-031) теж відбирає за `documentDate` — як фільтр списку нарядів.
+ * Mutation-verify: повернути `wo."createdAt" BETWEEN fromDate AND toDate` → кейси нарядів падають.
+ *
  * `vatReport` відбирає за `documentDate` (дата БЕЗ часу), тому його межі — календарні дати без
  * зсуву на пояс: київська північ (21:00Z попереднього дня) затягувала в період день перед `from`.
  * Mutation-verify: повернути `documentDate: { gte: fromDate, lte: toDate }` → кейси ПДВ падають.
@@ -96,9 +99,19 @@ describe('ReportsService — межі періоду за Києвом', () => {
       expect(sqlDates()).toEqual([start, end]);
     });
 
-    it('звіт по нарядах: createdAt у тих самих межах', async () => {
+    // guards: BR-RPT-031
+    it('звіт по нарядах: documentDate — календарні дати без зсуву, як список нарядів', async () => {
       await service.workOrders(ORG, day, day);
-      expect(sqlDates()).toEqual([start, end]);
+      const [strings, ...values] = prisma.$queryRaw.mock.calls[0] as [
+        TemplateStringsArray,
+        ...unknown[],
+      ];
+      const sql = strings.join('?');
+      expect(sql).toMatch(/wo\."documentDate"\s+BETWEEN \?::date AND \?::date/);
+      expect(sql).not.toMatch(/wo\."createdAt"/);
+      // Київська північ (Date) не йде в запит: межі — самі дні «з» і «по».
+      expect(sqlDates()).toEqual([]);
+      expect(values.filter(v => typeof v === 'string')).toEqual([ORG, ORG, day, day]);
     });
 
     it('рентабельність: обидва агрегати (наряди й запчастини) отримують ті самі межі', async () => {

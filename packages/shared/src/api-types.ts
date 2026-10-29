@@ -6245,6 +6245,8 @@ export interface components {
             pnlExpenseCashReasons: ("EXPENSE" | "MANUAL_OUT" | "ADVANCE_ISSUE" | "OWNER_OUT")[];
             /** @description P&L: попереджати про нерозраховану зарплату майбутніх місяців */
             pnlWarnFuturePayroll: boolean;
+            /** @description P&L: повернення підзвіту зменшує витрату статті */
+            pnlNetAdvanceReturns: boolean;
             /** @description UI feature flags */
             uiFeatures: Record<string, never>;
             loyaltyEnabled: boolean;
@@ -6318,6 +6320,8 @@ export interface components {
             pnlExpenseCashReasons?: ("EXPENSE" | "MANUAL_OUT" | "ADVANCE_ISSUE" | "OWNER_OUT")[];
             /** @description P&L: попереджати «зарплату не розраховано» і про місяці, що ще не почалися */
             pnlWarnFuturePayroll?: boolean;
+            /** @description P&L: повернення підзвітних коштів зменшує витрату статті (діє, коли «Під звіт» серед витрат) */
+            pnlNetAdvanceReturns?: boolean;
             /** @description UI feature flags (partial update supported) */
             uiFeatures?: Record<string, never>;
             /** @description Увімкнути програму лояльності */
@@ -9871,6 +9875,8 @@ export interface components {
             goodName: string;
             /** @description Артикул (може бути відсутній) */
             goodSku?: string | null;
+            /** @description Товар видалено з каталогу (BR-RPT-032): залишок у звіті й підсумках, картки немає */
+            goodDeleted: boolean;
             /** @example шт */
             unit: string;
             warehouseName: string;
@@ -9950,6 +9956,8 @@ export interface components {
             expenseCashReasons: ("EXPENSE" | "MANUAL_OUT" | "ADVANCE_ISSUE" | "OWNER_OUT")[];
             /** @description Попередження про зарплату — і для місяців, що ще не почалися */
             warnFuturePayroll: boolean;
+            /** @description Повернення підзвіту зменшило витрати своїх статей (лише коли «Під звіт» серед витрат) */
+            netAdvanceReturns: boolean;
         };
         PnlReportDto: {
             /**
