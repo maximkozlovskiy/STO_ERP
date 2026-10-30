@@ -243,6 +243,52 @@ describe('Крок черги `sms` каналом TELEGRAM_BOT', () => {
     );
   });
 
+  // guards: BR-AUT-041 (Bug #1002)
+  it('повідомлення правила чекало в черзі, а одержувач відписався — у чат не надсилається, FAILED, далі SMS; відповідь бота — надсилається', async () => {
+    const send = vi.fn().mockResolvedValue({ accepted: true, providerMessageId: '1' });
+    const { processor, subs, logs, queueAdd } = setup({ token: TOKEN, send });
+    const withMeta = (
+      meta: Record<string, unknown> | undefined,
+      chain: ReturnType<typeof step>[],
+    ) =>
+      ({
+        data: { orgId: ORG, branchId: 'br-1', meta, chain, chainIndex: 0 },
+        attemptsMade: 0,
+      }) as unknown as Job;
+
+    // Клієнта cp-1 відписали (з адмінки); той самий чат ще підписаний як працівник e-1.
+    subs.rows[0]!.active = false;
+    await processor.process(
+      withMeta({ ruleId: 'r-1', counterpartyId: 'cp-1' }, [
+        step('TELEGRAM_BOT', '700100'),
+        step('SMS', '+380671112233'),
+      ]),
+    );
+    expect(send).not.toHaveBeenCalled();
+    expect(logs.rows[0]).toMatchObject({ status: 'FAILED', channel: 'TELEGRAM_BOT' });
+    expect(queueAdd).toHaveBeenCalledWith(
+      'send-sms',
+      expect.objectContaining({ chainIndex: 1 }),
+      expect.anything(),
+    );
+
+    // Контроль: сповіщення працівнику (без контрагента) і тест (чат того, хто тестує) — ідуть.
+    await processor.process(withMeta({ ruleId: 'r-1' }, [step('TELEGRAM_BOT', '700100')]));
+    await processor.process(
+      withMeta({ ruleId: 'r-1', counterpartyId: 'cp-1', isTest: true }, [
+        step('TELEGRAM_BOT', '700100'),
+      ]),
+    );
+    expect(send).toHaveBeenCalledTimes(2);
+
+    // `/stop` вимкнув усі підписки чату: правило — ні; відповідь самого бота (без meta) — так.
+    subs.rows[1]!.active = false;
+    await processor.process(withMeta({ ruleId: 'r-1' }, [step('TELEGRAM_BOT', '700100')]));
+    expect(send).toHaveBeenCalledTimes(2);
+    await processor.process(withMeta(undefined, [step('TELEGRAM_BOT', '700100')]));
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+
   // guards: BR-AUT-041, BR-AUT-015
   it('остаточна відмова на останньому каналі — без повтору черги; тимчасова — повтор (throw)', async () => {
     const blocked = setup({

@@ -97,6 +97,25 @@ export class TelegramRecipientsService {
     return res.count;
   }
 
+  /**
+   * Чи чат ще підписаний на мить відправки (Bug #1002): повідомлення чекало в черзі (тихі години,
+   * повтор), а тим часом одержувач надіслав `/stop` чи його відписали з адмінки. `counterpartyId` —
+   * підписка саме цього клієнта (той самий чат може бути підписаний і як працівник).
+   */
+  async isChatSubscribed(orgId: string, chatId: string, counterpartyId?: string): Promise<boolean> {
+    const row = await this.prisma.telegramSubscription.findFirst({
+      where: {
+        orgId,
+        chatId,
+        active: true,
+        deletedAt: null,
+        ...(counterpartyId && { counterpartyId }),
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   /** Бота заблокували в цьому чаті — усі підписки чату в організації вимикаються (BR-AUT-041). */
   async deactivateChat(orgId: string, chatId: string): Promise<number> {
     const res = await this.prisma.telegramSubscription.updateMany({

@@ -111,6 +111,27 @@ export class SmsProcessor extends DeadLetterWorkerHost {
         return;
       }
 
+      // Bug #1002 (BR-AUT-041): chat id узято при постановці в чергу; повідомлення правила могло
+      // чекати (тихі години, повтор), а одержувач тим часом відписався (`/stop`, з адмінки) — у чат
+      // без активної підписки не надсилаємо, ланцюжок іде далі. Відповіді самого бота (без `meta`:
+      // «Ви відписалися…») — без перевірки. Тест іде в чат того, хто тестує, — не клієнта документа.
+      if (
+        step.channel === NotificationChannel.TELEGRAM_BOT &&
+        meta &&
+        !(await this.telegram.isChatSubscribed(
+          orgId,
+          step.recipient,
+          meta.isTest ? undefined : meta.counterpartyId,
+        ))
+      ) {
+        await this.log(orgId, branchId, { event, meta }, step, 'FAILED', {
+          error: 'Одержувач відписався від Telegram-бота — канал пропущено',
+          attempt: job.attemptsMade + 1,
+        });
+        await this.tryNext(job);
+        return;
+      }
+
       // T8: apiKey НЕ зберігається у job.data (Redis plaintext) — резолвимо+розшифровуємо у point-of-use.
       // Провайдер із кредами організації (власний Telegram-бот) — токен із налаштувань org.
       const apiKey = impl.orgCredentials
