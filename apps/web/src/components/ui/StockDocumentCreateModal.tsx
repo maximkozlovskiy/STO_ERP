@@ -8,6 +8,7 @@ import {
   stockDocumentFormSchema,
   type StockDocumentFormInput,
   type StockDocumentFormValues,
+  DEFAULT_GOOD_UNIT,
 } from '@sto/shared';
 import { ChevronDown, ChevronUp, Plus, Trash2, Upload } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -389,7 +390,7 @@ export function StockDocumentCreateModal({
               goodId: l.goodId,
               goodName: l.goodName ?? '',
               goodSku: l.goodSku ?? '',
-              unit: l.unit ?? 'шт',
+              unit: l.unit ?? DEFAULT_GOOD_UNIT,
               quantity: String(l.quantity),
               price: String(l.price ?? ''),
             })),
@@ -1198,7 +1199,7 @@ export function StockDocumentCreateModal({
             goodId: item.id,
             goodName: item.primary,
             goodSku: item.secondary ?? '',
-            unit: item.unit ?? 'шт',
+            unit: item.unit ?? DEFAULT_GOOD_UNIT,
           }));
           setGoodSearchOpen(false);
         }}

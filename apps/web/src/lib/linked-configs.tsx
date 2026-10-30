@@ -349,7 +349,7 @@ export function workOrderLinkedConfig(
           const isExpired = new Date(row.expiresAt) < new Date();
           return {
             id: row.id,
-            primary: row.description || 'Гарантія',
+            primary: row.description || i18n.t('common:linkedDocuments.warranty'),
             secondary: `Дійсна до ${fmtDate(row.expiresAt)}`,
             badge: row.claimedAt
               ? { label: 'Звернення', className: 'bg-warning-subtle text-warning' }
@@ -542,7 +542,7 @@ interface LinkedWarehouseRow {
  * supplier-return — один «Склад». mapRow однаковий. */
 function warehouseSection({
   key = 'warehouse',
-  title = 'Склад',
+  title = i18n.t('common:linkedDocuments.warehouse'),
 }: { key?: string; title?: string } = {}) {
   return {
     key,

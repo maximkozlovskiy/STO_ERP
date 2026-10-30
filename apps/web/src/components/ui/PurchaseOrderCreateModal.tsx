@@ -9,6 +9,7 @@ import {
   purchaseOrderFormSchema,
   type PurchaseOrderFormInput,
   type PurchaseOrderFormValues,
+  DEFAULT_GOOD_UNIT,
 } from '@sto/shared';
 import { Plus, Trash2, Pencil, Check, X, Zap, PackageCheck, Wallet, Upload } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -441,7 +442,7 @@ export function PurchaseOrderCreateModal({
               goodSku: l.goodSku,
               goodInternalCode: l.goodInternalCode,
               goodBrandName: l.goodBrandName,
-              unit: l.unit ?? 'шт',
+              unit: l.unit ?? DEFAULT_GOOD_UNIT,
               unitShortName: l.unitShortName,
               quantity: String(l.quantity),
               price: String(l.price),
@@ -1824,7 +1825,7 @@ export function PurchaseOrderCreateModal({
                               goodSku: g.sku ?? null,
                               goodInternalCode: g.internalCode ?? null,
                               goodBrandName: g.brandName ?? null,
-                              unit: g.unit ?? 'шт',
+                              unit: g.unit ?? DEFAULT_GOOD_UNIT,
                               price: String(g.purchasePrice ?? ''),
                             }));
                           }}
@@ -2002,7 +2003,7 @@ export function PurchaseOrderCreateModal({
             goodSku: item.sku ?? null,
             goodInternalCode: item.internalCode ?? null,
             goodBrandName: item.brandName ?? null,
-            unit: item.unit ?? 'шт',
+            unit: item.unit ?? DEFAULT_GOOD_UNIT,
             price: String(item.purchasePrice ?? ''),
           }));
           setGoodSearchOpen(false);

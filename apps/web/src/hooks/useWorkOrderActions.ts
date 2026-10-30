@@ -370,7 +370,7 @@ export function useWorkOrderActions({
         // Наряд лишається «Виставлено»: зворотного переходу в «Виконано» FSM не має (колишній
         // «відкат» сервер завжди відхиляв), рахунок можна створити повторно кнопкою.
         if (features.toastEnabled) toast.error(msg || t('invoice.createError'));
-        else setError(msg || 'Помилка');
+        else setError(msg || t('invoice.createError'));
       }
     } finally {
       setInvoiceLoading(false);

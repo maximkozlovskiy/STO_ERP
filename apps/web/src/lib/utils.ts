@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import i18n from '@/i18n/config';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -53,7 +54,7 @@ export function displayCounterpartyName(cp: {
 }): string {
   if (cp.companyName && cp.companyName.trim()) return cp.companyName.trim();
   const personName = [cp.lastName, cp.firstName].filter(Boolean).join(' ').trim();
-  return personName || '(без імені)';
+  return personName || i18n.t('common:noName');
 }
 
 const MS_PER_DAY = 86_400_000;

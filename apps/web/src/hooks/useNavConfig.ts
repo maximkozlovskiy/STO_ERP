@@ -8,6 +8,7 @@ import {
   normalizeNavLayout,
   type NavLayout,
 } from '@/lib/nav-layout';
+import i18n from '@/i18n/config';
 
 const STORAGE_KEY = 'sto_nav_layout';
 const TS_KEY = 'sto_nav_layout_ts';
@@ -194,7 +195,10 @@ export function useNavConfig() {
       const id = newCustomSectionId();
       mutate(cur => ({
         ...cur,
-        customSections: [...cur.customSections, { id, label: label.trim() || 'Новий розділ' }],
+        customSections: [
+          ...cur.customSections,
+          { id, label: label.trim() || i18n.t('common:navEditor.newSection') },
+        ],
         sectionOrder: cur.sectionOrder.length ? [...cur.sectionOrder, id] : [],
       }));
       return id;

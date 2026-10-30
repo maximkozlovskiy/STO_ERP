@@ -174,6 +174,8 @@
   },
   "loadError": "Loading error",
   "networkError": "No connection to the server — check the network and try again",
+  "loginError": "Sign-in failed",
+  "noName": "(no name)",
   "tryAgain": "Try again",
   "done": "Done",
   "reset": "Reset",
@@ -209,6 +211,8 @@
     "placeholder": "Select a currency…"
   },
   "linkedDocuments": {
+    "warehouse": "Warehouse",
+    "warranty": "Warranty",
     "title": "Linked documents",
     "goTo": "Go to document: {{name}}",
     "loadError": "Failed to load linked documents",

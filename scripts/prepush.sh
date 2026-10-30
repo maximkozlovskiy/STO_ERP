@@ -80,6 +80,9 @@ bg "skill size" $PY scripts/check-skill-size.py
 bg "doc links" $PY scripts/check-doc-links.py
 # Подвійно закодований UTF-8 (UTF-8, прочитаний як cp1251) — 2026-10-18 жив у DTO й Swagger місяцями.
 bg "mojibake" $PY scripts/check-mojibake.py
+# Кириличні запасні тексти в спільному коді web (`?? 'Помилка'`, `t('key', '…')`, типовий проп) —
+# в англійському інтерфейсі лишались українськими (TECH-DEBT §15 п. 2).
+bg "cyrillic fallbacks (web)" bash -c "$PY scripts/check-cyrillic-fallbacks.py --self-test && $PY scripts/check-cyrillic-fallbacks.py"
 # Що бачить `next build` В ОБРАЗІ: файли, виключені .dockerignore, не мають бути потрібні збиранню
 # (2026-10-16 CI docker-build упав на TS2307, хоча локальні tsc були чисті).
 bg "docker context (web)" $PY scripts/check-docker-context.py

@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type { AuthEmployee, AuthState } from './types';
 import { getCurrentLocale } from '@/i18n/locale';
+import i18n from '@/i18n/config';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 const TOKEN_KEY = 'sto_access_token';
@@ -235,12 +236,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!res.ok) {
       // NestJS class-validator повертає `message: string[]` при 400 — join з '; '.
-      const err = (await res.json().catch(() => ({ message: 'Помилка входу' }))) as {
+      const err = (await res.json().catch(() => ({ message: i18n.t('common:loginError') }))) as {
         message: string | string[];
       };
       const msg = Array.isArray(err.message)
         ? err.message.join('; ')
-        : (err.message ?? 'Помилка входу');
+        : (err.message ?? i18n.t('common:loginError'));
       throw new Error(msg);
     }
 

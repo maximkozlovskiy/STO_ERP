@@ -285,6 +285,12 @@ jobs:
       - name: No double-encoded UTF-8
         run: python3 scripts/check-mojibake.py --self-test && python3 scripts/check-mojibake.py
 
+      # Кириличні запасні тексти поза i18n у components/ui, hooks, lib web (`?? 'Помилка'`,
+      # `t('key', 'Зберегти')`, типовий проп `placeholder = 'Пошук…'`): в англійському інтерфейсі вони
+      # лишались українськими. Аудит 2026-10-23 — 13 місць; гейт тримає нуль (TECH-DEBT §15 п. 2).
+      - name: No Cyrillic fallback texts (web shared code)
+        run: python3 scripts/check-cyrillic-fallbacks.py --self-test && python3 scripts/check-cyrillic-fallbacks.py
+
       # Три гейти спец-орієнтованих тестів. Гейт A (втрата кейсів) порівнює МНОЖИНИ
       # fullName проти apps/api/test-baseline.json, а не суми: «182 -> 182» не виключає
       # «втратив один кейс і продублював інший». Привід: 2026-10-05 розбиття спеку

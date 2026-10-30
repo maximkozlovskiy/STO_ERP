@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
-import { goodFormSchema, type GoodFormInput } from '@sto/shared';
+import { goodFormSchema, type GoodFormInput, DEFAULT_GOOD_UNIT } from '@sto/shared';
 import { Barcode, Package, TrendingUp } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -273,7 +273,7 @@ export function GoodEditModal({
     try {
       const payload = {
         ...values,
-        unit: values.unit || 'шт',
+        unit: values.unit || DEFAULT_GOOD_UNIT,
         // barcode лише при створенні (edit має окремий таб штрихкодів).
         barcode: isEdit ? undefined : values.barcode,
       };

@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from './useUiFeatures';
+import i18n from '@/i18n/config';
 
 export interface UseApiMutationOptions<R> {
   onSuccess?: (result: R) => void;
@@ -41,7 +42,7 @@ export function useApiMutation<T, R = unknown>(
         opts?.onSuccess?.(result);
         return result;
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : (opts?.errorMsg ?? 'Помилка');
+        const msg = e instanceof Error ? e.message : (opts?.errorMsg ?? i18n.t('common:error'));
         setError(msg);
         if (features.toastEnabled) toast.error(msg);
         opts?.onError?.(e instanceof Error ? e : new Error(msg));
