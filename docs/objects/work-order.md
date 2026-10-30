@@ -345,7 +345,7 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | стелі сум і кількостей у спільних схемах і DTO (наряд, рахунок, склад, оплата постачальнику)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `../../common/pipes/amount-caps.spec.ts`                 | 66     |
 | зведення по табличних частинах і виконавці                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `../lines-summary/lines-summary.service.spec.ts`         | 19     |
 
-Разом: **545** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **546** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для BR-WO-007 — сума наряду з ПДВ:
 

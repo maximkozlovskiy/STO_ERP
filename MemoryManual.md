@@ -10,7 +10,7 @@
 
 ```
 Дата:         2026-10-30
-Latest review: 2026-10-30 (автоматизація блоки 2–3: review cb6f44cc, e73c4233; tester #998–#1002).
+Latest review: 2026-10-30 (автоматизація блок 4: review 02d1be5e, tester #1003–#1006).
 HEAD:       див. `git log --oneline -1` (хеш тут НЕ дублюється — старіє щокоміту)
 Фаза:       PHASES.md 229/231 закрито. Хвости: EAS Build (mobile) + smoke на чистій
             Windows VM — обидва потребують фізичного оточення, не коду.
@@ -42,7 +42,8 @@ python scripts/check-doc-links.py; python scripts/check-mojibake.py   # поси
 Блок 2026-10-29 (CHANGELOG, 3 записи): UX-огляд (картка в адресі, «Назад», щільність, меню CRM),
   BR-INV-023, звіти BR-RPT-031/033–036 і кнопки «?», палітра й бренд OneService (іконка «OS»,
   назва організації в шапці). Автоматизація (docs/objects/automation.md, план
-  ~/.claude/plans/squishy-riding-corbato.md): блоки 1–3 (outbox, двигун, дії, API, Telegram-бот) — лише api, далі 4 (UI).
+  ~/.claude/plans/squishy-riding-corbato.md): етап 1 завершено — блоки 1–4 (outbox, двигун, дії, API,
+  Telegram-бот, UI `/settings/automation`, серверний дзвіночок). Етап 2 (push, нагадування ТО) — не почато.
   Зарплата BR-PAYR-016 (умови схеми, «Нараховано» по наряду). Інсталятор досі «STO ERP» (окремий крок).
 
   Схема Prisma — БАГАТОФАЙЛОВА: packages/database/prisma/schema/*.prisma.
