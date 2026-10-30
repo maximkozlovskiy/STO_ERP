@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { renderWithQueryClient } from '@/__tests__/query-utils';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
@@ -53,6 +53,7 @@ const CP1 = '10000000-0000-4000-8000-000000000004';
 const L1 = '10000000-0000-4000-8000-000000000005';
 const WK1 = '10000000-0000-4000-8000-000000000006';
 const E1 = '10000000-0000-4000-8000-000000000007';
+const WK2 = '10000000-0000-4000-8000-000000000008';
 const LINE_URL = `/work-orders/${WO}/lines/${L1}`;
 
 const BELOW_PAID = 'Сума наряду 0.00 стала б меншою за сплачене 1100.00 — спершу сторнуйте оплату';
@@ -67,6 +68,12 @@ function mockApi(deleteLine: () => Promise<unknown>) {
       return Promise.resolve({ items: [{ id: E1, firstName: 'Іван', lastName: 'Петров' }] });
     }
     if (path.startsWith('/vehicles')) return Promise.resolve([]);
+    if (path.startsWith('/works')) {
+      return Promise.resolve({
+        items: [{ id: WK2, name: 'Заміна дисків', normoHours: 1, price: 600, categoryId: null }],
+      });
+    }
+    if (init?.method === 'POST' && path === `/work-orders/${WO}/lines`) return Promise.resolve({});
     if (path.includes('/contracts')) return Promise.resolve({ items: [] });
     if (path === '/settings/organisation') return Promise.resolve({ vatMode: 'NONE' });
     if (path === '/settings/tax-rates') return Promise.resolve([]);
@@ -154,5 +161,51 @@ describe('CreateWorkOrderModal — збереження, коли сервер �
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(deleteCalls()).toBe(1);
+  });
+
+  /**
+   * BR-WO-035 (TECH-DEBT §12 п. 10): заміна рядка одним збереженням — спершу додати, потім
+   * видалити. Навпаки проміжна сума падала до 0 < сплаченого 1100 → 400 (BR-WO-015), а збій
+   * посередині лишав наряд без рядків.
+   */
+  // guards: BR-WO-035
+  it('заміна рядка: POST нового рядка йде ДО DELETE старого; збій POST — нічого не видалено', async () => {
+    let failPost = true;
+    mockApi(() => Promise.resolve(undefined));
+    const base = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string, init?: { method?: string }) =>
+      init?.method === 'POST' && path === `/work-orders/${WO}/lines` && failPost
+        ? Promise.reject(new Error('Сервер недоступний'))
+        : base(path, init),
+    );
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    renderWithQueryClient(<CreateWorkOrderModal open onClose={onClose} workOrderId={WO} />);
+    await screen.findByText('Заміна колодок');
+
+    const works = screen.getByTestId('wo-works-section');
+    await user.click(within(works).getByRole('button', { name: 'Додати' }));
+    const row = screen.getByTitle('Зберегти рядок').closest('tr') as HTMLElement;
+    await user.type(within(row).getByRole('combobox', { name: 'Робота' }), 'Заміна');
+    await user.click(await screen.findByRole('option', { name: /Заміна дисків/ }));
+    await user.selectOptions(within(row).getByRole('combobox', { name: 'Виконавець' }), E1);
+    await user.click(screen.getByTitle('Зберегти рядок'));
+    await user.click((await screen.findAllByRole('button', { name: 'Видалити роботу' }))[0]!);
+
+    await user.click(screen.getByRole('button', { name: 'Зберегти зміни' }));
+    expect(await screen.findByText('Сервер недоступний')).toBeInTheDocument();
+    expect(deleteCalls()).toBe(0);
+
+    failPost = false;
+    await user.click(screen.getByRole('button', { name: 'Зберегти зміни' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const writes = apiFetchMock.mock.calls
+      .filter(([, init]) =>
+        ['POST', 'DELETE'].includes((init as { method?: string })?.method ?? ''),
+      )
+      .map(([path, init]) => `${(init as { method: string }).method} ${path}`);
+    expect(writes.indexOf(`DELETE ${LINE_URL}`)).toBeGreaterThan(
+      writes.lastIndexOf(`POST /work-orders/${WO}/lines`),
+    );
   });
 });
