@@ -107,7 +107,8 @@ export interface ReconciliationActPdfData {
   periodTo: Date;
   openingBalance: number;
   closingBalance: number;
-  transactions: Array<{ date: Date; type: string; amount: number; documentType?: string }>;
+  /** `document` — підпис документа рядка: вид і номер («Наряд № НЗ-000012»), готовий до друку. */
+  transactions: Array<{ date: Date; type: string; amount: number; document?: string }>;
 }
 
 export interface CompletionActPdfData {
@@ -260,7 +261,7 @@ export class PdfService {
               ...data.transactions.map((t): TableCell[] => [
                 this.fmtDate(new Date(t.date)),
                 txTypeLabel(t.type),
-                t.documentType ?? '',
+                t.document ?? '',
                 { text: this.fmtMoney(t.amount), alignment: 'right' },
               ]),
             ],

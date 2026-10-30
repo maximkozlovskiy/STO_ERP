@@ -14,6 +14,25 @@ import { kyivDayEnd, kyivDayStart } from '../../common/utils/kyiv-date';
 /** Max rows in one reconciliation act snapshot; a larger period is rejected, not truncated. */
 const ACT_MAX_TRANSACTIONS = 5000;
 
+/** Вид документа рядка акта звірки — українською (`SettlementTransaction.documentType`). */
+const RECONCILIATION_DOCUMENT_LABELS: Record<string, string> = {
+  Invoice: 'Рахунок',
+  WorkOrder: 'Наряд',
+  PurchaseOrder: 'Замовлення постачальнику',
+  SupplierPayment: 'Оплата постачальнику',
+  SupplierReturn: 'Повернення постачальнику',
+  Payment: 'Оплата',
+  CashOperation: 'Касова операція',
+  BankTransaction: 'Банківська операція',
+};
+
+/** Клітинка «Документ» акта: «Наряд № НЗ-000012»; без номера — лише вид; невідомий вид — як є. */
+function documentCell(type: string | null | undefined, number: string | undefined): string {
+  if (!type) return '';
+  const label = RECONCILIATION_DOCUMENT_LABELS[type] ?? type;
+  return number ? `${label} № ${number}` : label;
+}
+
 @Injectable()
 export class SettlementsAccountService {
   constructor(
@@ -285,9 +304,11 @@ export class SettlementsAccountService {
           type: string;
           amount: number;
           amountBase?: number;
-          documentType?: string;
+          documentType?: string | null;
+          documentId?: string | null;
         }>)
       : [];
+    const numbers = await this.documentNumbers(orgId, transactions);
 
     return this.pdf.generateReconciliationActPdf({
       org: org.name ? org : { ...org, name: 'СТО' },
@@ -302,9 +323,48 @@ export class SettlementsAccountService {
         date: new Date(t.date),
         type: t.type,
         amount: t.amountBase ?? t.amount,
-        documentType: t.documentType,
+        document: documentCell(
+          t.documentType,
+          t.documentId ? numbers.get(t.documentId) : undefined,
+        ),
       })),
     });
+  }
+
+  /**
+   * BR-SETL-016: номери документів рядків акта — за `documentType` + `documentId` знімка, одним
+   * запитом на вид документа. Видалений документ номер свій зберігає (акт підписано раніше), тож
+   * `deletedAt` не фільтрується; організація — так. Оплата й касова операція номера не мають.
+   */
+  private async documentNumbers(
+    orgId: string,
+    rows: ReadonlyArray<{ documentType?: string | null; documentId?: string | null }>,
+  ): Promise<Map<string, string>> {
+    const idsOf = (type: string) => [
+      ...new Set(
+        rows.filter(r => r.documentType === type && r.documentId).map(r => r.documentId as string),
+      ),
+    ];
+    const select = { id: true, number: true } as const;
+    const read = (
+      ids: string[],
+      find: (args: {
+        where: { id: { in: string[] }; orgId: string };
+        select: typeof select;
+        take: number;
+      }) => Promise<Array<{ id: string; number: string }>>,
+    ) =>
+      ids.length
+        ? find({ where: { id: { in: ids }, orgId }, select, take: ids.length })
+        : Promise.resolve([]);
+    const found = await Promise.all([
+      read(idsOf('Invoice'), a => this.prisma.invoice.findMany(a)),
+      read(idsOf('WorkOrder'), a => this.prisma.workOrder.findMany(a)),
+      read(idsOf('PurchaseOrder'), a => this.prisma.purchaseOrder.findMany(a)),
+      read(idsOf('SupplierPayment'), a => this.prisma.supplierPayment.findMany(a)),
+      read(idsOf('SupplierReturn'), a => this.prisma.supplierReturn.findMany(a)),
+    ]);
+    return new Map(found.flat().map(d => [d.id, d.number]));
   }
 
   async getReconciliationActs(orgId: string, counterpartyId: string) {

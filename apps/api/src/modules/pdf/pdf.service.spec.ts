@@ -125,19 +125,19 @@ describe('PdfService — pdfmake integration', () => {
           date: new Date('2026-09-05T10:00:00Z'),
           type: 'CHARGE',
           amount: 1000,
-          documentType: 'Invoice',
+          document: 'Рахунок № РФ-000001',
         },
         {
           date: new Date('2026-09-10T10:00:00Z'),
           type: 'FX_LOSS',
           amount: 15.5,
-          documentType: 'Invoice',
+          document: 'Рахунок № РФ-000001',
         },
         {
           date: new Date('2026-09-11T10:00:00Z'),
           type: 'FX_GAIN',
           amount: 3.2,
-          documentType: 'Invoice',
+          document: 'Рахунок № РФ-000001',
         },
       ],
     });

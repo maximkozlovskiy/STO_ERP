@@ -116,6 +116,7 @@ _Stub — заповнити при роботі з settlements модулем._
 - **BR-SETL-013**: Читання не падає на відсутньому рахунку: баланс контрагента без рахунку — `0`, журнал — порожня сторінка. Журнал віддається від найновіших, сторінками не більше 200 рядків; рядок несе суму у валюті транзакції, код валюти, суму в базовій валюті і курс (для рядків до мультивалюти — `null`)
 - **BR-SETL-014**: Доступ. Баланс контрагента бачать `OWNER`, `ADMIN`, `ACCOUNTANT`, `RECEPTIONIST`. Журнал транзакцій і акти звірки (створення, список, PDF) — лише `OWNER`, `ADMIN`, `ACCOUNTANT`
 - **BR-SETL-015**: **Одне нарахування боргу на документ** (техборг 2026-10-22). На один документ (`documentType` + `documentId`) в організації — не більше одного `CHARGE`: наряд нараховує борг на «Виконано», рахунок без наряду — на DRAFT → SENT. Крім claim-ів статусу в коді, це тримає частковий унікальний індекс `settlement_charge_one_per_document_uq` (міграція `20261022120000_settlement_charge_one_per_document`): друга спроба відкочує транзакцію з 409. `SUPPLIER_CHARGE` не обмежено — закупівля нараховує на кожне часткове надходження. Якщо в базі клієнта вже є дублікати, перша міграція індекс не створює (ledger незмінний — дублікати лишаються як історія); тоді наступна, `20261022180000_settlement_charge_one_per_document_cutoff`, створює той самий індекс лише для нарахувань від 2026-10-23 — нові дублікати блокуються в будь-якій базі (Bug #943). Існування й предикат стереже `schema-integrity.integration.spec.ts`
+- **BR-SETL-016**: **Колонка «Документ» акта звірки — вид і номер документа** (TECH-DEBT §11 п. 7, 2026-10-30). PDF акта друкує документ рядка як «Наряд № НЗ-000012», «Рахунок № …», «Замовлення постачальнику № …», «Оплата постачальнику № …», «Повернення постачальнику № …»; оплата клієнта, касова й банківська операції номера не мають — лише вид («Оплата»). Номер береться за `documentType` + `documentId` знімка акта, одним запитом на вид документа, у межах організації; видалений документ свій номер зберігає. Раніше друкувався сирий тип моделі (`WorkOrder`) без номера. (`SettlementsAccountService.generateReconciliationPdf`)
 
 ---
 
@@ -136,7 +137,7 @@ cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
 | ролі доступу на маршрутах                                                       | `settlements.access.spec.ts`             | 5      |
 | читання балансу і журналу                                                       | `settlements.account-read.spec.ts`       | 8      |
 | інваріанти (property-based)                                                     | `settlements.invariants.spec.ts`         | 16     |
-| акт звірки                                                                      | `settlements.reconciliation-act.spec.ts` | 20     |
+| акт звірки (+ номер документа в PDF, BR-SETL-016)                               | `settlements.reconciliation-act.spec.ts` | 22     |
 | `createTransaction` (сервісна логіка; межа Decimal(12,2) суми й балансу)        | `settlements.service.spec.ts`            | 33     |
 | єдиний писар балансу (статичний сторож)                                         | `settlements.single-writer.spec.ts`      | 3      |
 | місця виклику `createTransaction` і їхній захист від повтору (статичний сторож) | `settlements.callers.spec.ts`            | 6      |
@@ -161,7 +162,7 @@ cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
   або зниклий із коду захист (CAS статусу, перевірка наявної проводки) валять тест. Там само для
   кожного місця названо тест гонки в модулі викликача.
 - `settlements.invariants.spec.ts` — BR-SETL-003 (два кейси звіряють `BALANCE_SIGN` і його 1-в-1 відповідність `SETTLEMENT_BALANCE_SIGN` з `@sto/shared`; властивості рахують баланс за `SETTLEMENT_BALANCE_SIGN`).
-- `settlements.reconciliation-act.spec.ts` — BR-SETL-006, 011, 012.
+- `settlements.reconciliation-act.spec.ts` — BR-SETL-006, 011, 012, 016.
 - `settlements.account-read.spec.ts` — BR-SETL-006, 013.
 - `settlements.access.spec.ts` — BR-SETL-014.
 

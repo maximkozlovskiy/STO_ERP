@@ -3,7 +3,7 @@
  * Правила BR-SETL-006, BR-SETL-011, BR-SETL-012 — docs/objects/settlements.md.
  */
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { makeAccountFixture, txRow } from './settlements.spec-fixture';
 
 describe('SettlementsAccountService — акт звірки', () => {
@@ -341,5 +341,86 @@ describe('SettlementsAccountService — акт звірки', () => {
 
     expect(fx.orgPrintInfo.get).toHaveBeenCalledWith('org-1');
     expect(fx.pdf.generateReconciliationActPdf.mock.calls[0]?.[0]).toMatchObject({ org: orgInfo });
+  });
+
+  /**
+   * BR-SETL-016 (TECH-DEBT §11 п. 7): колонка «Документ» друкувала сирий тип моделі (`WorkOrder`)
+   * без номера. Тепер — вид українською і номер документа рядка. Фейкові таблиці документів нижче
+   * ВИКОНУЮТЬ `where` (id з переліку + організація) — чужий документ номера не дає.
+   */
+  describe('PDF: колонка «Документ» — вид і номер', () => {
+    type Doc = { id: string; orgId: string; number: string };
+    const table = (rows: Doc[]) => ({
+      findMany: vi.fn(({ where }: { where: { id: { in: string[] }; orgId: string } }) =>
+        Promise.resolve(
+          rows
+            .filter(r => where.id.in.includes(r.id) && r.orgId === where.orgId)
+            .map(r => ({ id: r.id, number: r.number })),
+        ),
+      ),
+    });
+
+    function printed(snapshot: Array<Record<string, unknown>>) {
+      const fx = makeAccountFixture();
+      Object.assign(fx.prisma, {
+        invoice: table([{ id: 'inv-1', orgId: 'org-1', number: 'РФ-000007' }]),
+        workOrder: table([
+          { id: 'wo-1', orgId: 'org-1', number: 'НЗ-000012' },
+          { id: 'wo-x', orgId: 'org-2', number: 'НЗ-ЧУЖИЙ' },
+        ]),
+        purchaseOrder: table([{ id: 'po-1', orgId: 'org-1', number: 'ЗП-000003' }]),
+        supplierPayment: table([]),
+        supplierReturn: table([]),
+      });
+      fx.prisma.reconciliationAct.findFirst.mockResolvedValue({
+        periodFrom: new Date('2026-07-01T00:00:00Z'),
+        periodTo: new Date('2026-07-31T00:00:00Z'),
+        openingBalance: '0',
+        closingBalance: '0',
+        snapshotJson: snapshot,
+        counterparty: { firstName: null, lastName: null, companyName: 'ТОВ Бета' },
+      });
+      return fx.service.generateReconciliationPdf('org-1', 'cp-1', 'act-1').then(() => {
+        const data = fx.pdf.generateReconciliationActPdf.mock.calls[0]![0] as {
+          transactions: Array<{ document?: string }>;
+        };
+        return data.transactions.map(t => t.document);
+      });
+    }
+
+    const row = (documentType: string | null, documentId: string | null) => ({
+      date: '2026-07-10T09:00:00.000Z',
+      type: 'CHARGE',
+      amount: 100,
+      amountBase: 100,
+      documentType,
+      documentId,
+    });
+
+    // guards: BR-SETL-016
+    it('наряд, рахунок, замовлення — «вид № номер»; оплата без номера — лише вид; без документа — порожньо', async () => {
+      expect(
+        await printed([
+          row('WorkOrder', 'wo-1'),
+          row('Invoice', 'inv-1'),
+          row('PurchaseOrder', 'po-1'),
+          row('Payment', 'pay-1'),
+          row(null, null),
+        ]),
+      ).toEqual([
+        'Наряд № НЗ-000012',
+        'Рахунок № РФ-000007',
+        'Замовлення постачальнику № ЗП-000003',
+        'Оплата',
+        '',
+      ]);
+    });
+
+    // guards: BR-SETL-016
+    it('документ чужої організації номера не дає (where несе orgId); сирого «WorkOrder» немає', async () => {
+      const docs = await printed([row('WorkOrder', 'wo-x')]);
+      expect(docs).toEqual(['Наряд']);
+      expect(docs.join()).not.toContain('WorkOrder');
+    });
   });
 });
