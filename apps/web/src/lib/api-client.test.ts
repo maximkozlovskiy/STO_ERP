@@ -6,10 +6,19 @@
 // routing-404 «Cannot GET /api/v1/public/work-orders/...» → публічний кошторис не відкривався.
 // Ці тести пінять точний URL-префікс кожного хелпера, щоб регрес не повторився без запуску E2E.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { apiFetch, publicFetch, publicNeutralFetch } from './api-client';
+import {
+  apiBlobFetch,
+  apiFetch,
+  apiMultipartFetch,
+  NetworkError,
+  publicFetch,
+  publicNeutralFetch,
+} from './api-client';
+import i18n from '@/i18n/config';
 import { TOKEN_KEY } from './auth';
 
 const fetchMock = vi.fn();
+const NETWORK_UK = "Немає зв'язку з сервером — перевірте мережу й спробуйте ще раз";
 
 describe('api-client public fetch — versioning URL contract (Bug #761)', () => {
   beforeEach(() => {
@@ -92,7 +101,7 @@ describe('apiFetch — статус зв’язку для індикатора 
 
   it('справжній обрив мережі перемикає індикатор в «офлайн», успішна відповідь — назад', async () => {
     fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
-    await expect(apiFetch('/work-orders')).rejects.toThrow('Failed to fetch');
+    await expect(apiFetch('/work-orders')).rejects.toThrow(NETWORK_UK);
     expect(statuses).toEqual(['offline']);
 
     fetchMock.mockResolvedValueOnce({
@@ -259,5 +268,57 @@ describe('apiFetch — 429 на refresh не вивалює сесію (Bug #966
     expect(sessionStorage.getItem(TOKEN_KEY)).toBe('valid-but-just-expired');
     // Форсованого виходу на /login немає.
     expect(replaceSpy).not.toHaveBeenCalled();
+  });
+});
+
+// TECH-DEBT §8 L802: обрив зв'язку — TypeError браузера з англійським текстом («Failed to fetch»,
+// «Load failed»); місця, що показують `e.message`, друкували його людині. Обгортки api-client
+// перекладають його в NetworkError мовою інтерфейсу; скасований запит (AbortError) — як є.
+// Mutation-verify: у `fetchOrNetworkError` прокинути `err` замість `new NetworkError(err)` —
+// падають кейси перекладу; прибрати перевірку `isAbortError` — падає кейс AbortError.
+describe('api-client — мережева помилка мовою інтерфейсу', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    await i18n.changeLanguage('uk');
+  });
+
+  it.each([
+    ['apiFetch', () => apiFetch('/work-orders')],
+    ['apiBlobFetch', () => apiBlobFetch('/work-orders/1/pdf')],
+    ['apiMultipartFetch', () => apiMultipartFetch('/files', new FormData())],
+    ['publicFetch', () => publicFetch('/booking/branches')],
+    ['publicNeutralFetch', () => publicNeutralFetch('/public/work-orders/abc')],
+  ])('%s: «Failed to fetch» → NetworkError українською, оригінал у cause', async (_name, call) => {
+    const original = new TypeError('Failed to fetch');
+    fetchMock.mockRejectedValue(original);
+    const err = await call().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NetworkError);
+    expect((err as Error).message).toBe(NETWORK_UK);
+    expect((err as Error).message).not.toMatch(/fetch/i);
+    expect((err as Error).cause).toBe(original);
+  });
+
+  it('мова інтерфейсу en → англійський текст ключа, не текст браузера', async () => {
+    await i18n.changeLanguage('en');
+    fetchMock.mockRejectedValue(new TypeError('Load failed'));
+    await expect(apiFetch('/work-orders')).rejects.toThrow(
+      'No connection to the server — check the network and try again',
+    );
+  });
+
+  it('скасований запит (AbortError) прокидається як є, без перекладу', async () => {
+    const ac = new AbortController();
+    fetchMock.mockImplementation(() => {
+      ac.abort();
+      return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+    });
+    const err = await apiFetch('/work-orders', { signal: ac.signal }).catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(NetworkError);
+    expect(err).toMatchObject({ name: 'AbortError' });
   });
 });

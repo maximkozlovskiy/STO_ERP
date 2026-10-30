@@ -1,4 +1,5 @@
 import { TOKEN_KEY } from './auth';
+import i18n from '@/i18n/config';
 import { getCurrentLocale } from '@/i18n/locale';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
@@ -44,6 +45,37 @@ function isAbortError(err: unknown, signal?: AbortSignal | null): boolean {
   return (
     typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError'
   );
+}
+
+/**
+ * Обрив зв'язку з сервером (fetch відхилено не через AbortController). Браузер кидає TypeError з
+ * англійським текстом («Failed to fetch», «Load failed», «NetworkError when attempting…»), і
+ * місця, що показують `e.message`, друкували його людині (TECH-DEBT §8 L802). Тут — текст мовою
+ * інтерфейсу; оригінал лишається в `cause`.
+ */
+export class NetworkError extends Error {
+  constructor(cause: unknown) {
+    super(i18n.t('common:networkError'), { cause });
+    this.name = 'NetworkError';
+  }
+}
+
+/**
+ * `fetch` з перекладом мережевої помилки. Скасований запит (AbortError) прокидається як є —
+ * викликачі розпізнають його за `name` і мовчать.
+ */
+async function fetchOrNetworkError(
+  input: string,
+  init: RequestInit | undefined,
+  onNetworkError?: () => void,
+): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (err) {
+    if (isAbortError(err, init?.signal)) throw err;
+    onNetworkError?.();
+    throw new NetworkError(err);
+  }
 }
 
 function setToken(token: string): void {
@@ -172,17 +204,15 @@ async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   // а SyncIndicator показує «Офлайн — збереження недоступне». Fake pending-ops лічильник прибрано.
   // Bug #839: скасований запит (AbortController) — це НЕ втрата зв'язку, індикатор не чіпаємо.
   const makeRequest = async (accessToken: string | null): Promise<Response> => {
-    let res: Response;
-    try {
-      res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetchOrNetworkError(
+      `${API_BASE}${path}`,
+      {
         credentials: 'include',
         ...init,
         headers: buildHeaders({ json: hasBody, auth: accessToken, extra: init?.headers }),
-      });
-    } catch (networkErr) {
-      if (!isAbortError(networkErr, init?.signal)) emitSyncStatus('offline');
-      throw networkErr;
-    }
+      },
+      () => emitSyncStatus('offline'),
+    );
     // R3: успішна відповідь від локального API → відновлення зв'язку (скидає 'offline' у indicator).
     emitSyncStatus('idle');
     return res;
@@ -222,7 +252,7 @@ export function apiPost<T>(
 export async function apiBlobFetch(path: string, init?: RequestInit): Promise<Blob> {
   const res = await fetchWithRefresh(
     accessToken =>
-      fetch(`${API_BASE}${path}`, {
+      fetchOrNetworkError(`${API_BASE}${path}`, {
         credentials: 'include',
         ...init,
         headers: buildHeaders({ auth: accessToken, extra: init?.headers }),
@@ -251,7 +281,7 @@ export async function apiMultipartFetch<T>(
 ): Promise<T> {
   const res = await fetchWithRefresh(
     accessToken =>
-      fetch(`${API_BASE}${path}`, {
+      fetchOrNetworkError(`${API_BASE}${path}`, {
         method: 'POST',
         credentials: 'include',
         ...init,
@@ -296,7 +326,7 @@ export async function publicNeutralFetch<T>(path: string, init?: RequestInit): P
 
 async function _publicFetch<T>(base: string, path: string, init?: RequestInit): Promise<T> {
   const hasBody = init?.body != null;
-  const res = await fetch(`${base}${path}`, {
+  const res = await fetchOrNetworkError(`${base}${path}`, {
     ...init,
     headers: buildHeaders({ json: hasBody, extra: init?.headers }),
   });

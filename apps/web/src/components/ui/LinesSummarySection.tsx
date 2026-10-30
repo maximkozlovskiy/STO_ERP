@@ -31,8 +31,9 @@ export function LinesSummarySection({ entity, id, enabled = true }: LinesSummary
 
   if (!id || !enabled) return null;
 
-  // Текст сервера (він український) показуємо як є. Обрив мережі — це TypeError браузера з
-  // англійським текстом («Failed to fetch», «Load failed»): замість нього — загальне повідомлення.
+  // Текст сервера (він український) і обрив мережі (api-client перекладає його в NetworkError)
+  // показуємо як є. Сирий TypeError браузера («Failed to fetch», «Load failed») — лише якщо він
+  // обійшов api-client: замість нього — загальне повідомлення.
   const errorText =
     error instanceof Error && !(error instanceof TypeError) && error.message
       ? error.message

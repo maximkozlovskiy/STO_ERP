@@ -173,6 +173,7 @@
     "reset": "Reset filters"
   },
   "loadError": "Loading error",
+  "networkError": "No connection to the server — check the network and try again",
   "tryAgain": "Try again",
   "done": "Done",
   "reset": "Reset",
