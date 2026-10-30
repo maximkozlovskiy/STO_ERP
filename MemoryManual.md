@@ -42,7 +42,7 @@ python scripts/check-doc-links.py; python scripts/check-mojibake.py   # поси
 Блок 2026-10-29 (CHANGELOG, 3 записи): UX-огляд (картка в адресі, «Назад», щільність, меню CRM),
   BR-INV-023, звіти BR-RPT-031/033–036 і кнопки «?», палітра й бренд OneService (іконка «OS»,
   назва організації в шапці). Автоматизація (docs/objects/automation.md, план
-  ~/.claude/plans/squishy-riding-corbato.md): блоки 1–2 (outbox, двигун, дії, API) — лише api, далі 3 (бот), 4 (UI).
+  ~/.claude/plans/squishy-riding-corbato.md): блоки 1–3 (outbox, двигун, дії, API, Telegram-бот) — лише api, далі 4 (UI).
   Зарплата BR-PAYR-016 (умови схеми, «Нараховано» по наряду). Інсталятор досі «STO ERP» (окремий крок).
 
   Схема Prisma — БАГАТОФАЙЛОВА: packages/database/prisma/schema/*.prisma.
