@@ -411,3 +411,19 @@ grep -rnE "build[A-Z][A-Za-z]*Scheme|EMPTY_FORM|rateType|===\s*'(percent_normo|p
 <!-- T1.3-095 -->
 
 - [ ] Сторінка з `useRequireAuth([ролі])`: запити — `enabled: isAuthorized`, не `!!employee` (редирект іде ефектом після рендеру); наживо роллю поза переліком за прямою адресою й з `?tab=` — 0 запитів ресурсу (Bug #1004). `grep -rn "useRequireAuth(\[" apps/web/src/app`
+
+<!-- T1.3-099 -->
+
+#### Фікс «переклад / формат» зроблено в спільному модулі, а сусідні шляхи йдуть повз нього (Bugs #1009, #1011)
+
+**Сигнал:** пункт боргу закрито словами «X через Y» (`NetworkError` в `api-client`, `fmtMoney` для
+сум рядків), а на екрані той самий дефект лишився поруч: вхід і публічний `/booking` ходять прямим
+`fetch` → «Failed to fetch»; колонка «Ціна» картки друкує сирий рядок форми «30.02», хоча «Сума»
+поруч уже «30,02».
+**Детектор:** після такого фіксу — grep усіх шляхів того ж класу, не лише змінених файлів:
+`grep -rn "await fetch(\|= fetch(" apps/web/src --include=*.ts* | grep -v __tests__` (кожен прямий
+fetch, що показує `e.message`, — через `fetchOrNetworkError`, `lib/network-error.ts`);
+`grep -rnE "\{(line|part)\.price( \|\| '—')?\}|String\(line\.price\)" apps/web/src/components/ui`.
+Наживо: форма входу з `route.abort` на `/auth/login`; картка наряду з ціною 30.02.
+**Фікс:** спільна функція в модулі БЕЗ циклів (`api-client → lib/auth → context` замкнув би коло),
+кожен шлях — через неї; ціна — `fmtMoney(p)`.
