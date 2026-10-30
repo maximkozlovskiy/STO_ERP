@@ -629,3 +629,11 @@ shared). Кожен винесений хелпер зсував межі СТА
 `WO_STATUS_TRANSITIONS` із shared (парність із Prisma-enum стереже `fsm-parity.spec.ts`).
 Попутно: `employees/page.tsx` тримав `zones`/`lifts` без жодного `setZones` — колонки й панель
 показували id замість назв. **Severity:** IMPORTANT (гейт prepush/CI)
+
+### 2026-10-31 — Блокування «не зняти» за кодом замикає й відновлення — §8
+
+**Сигнал:** НДІ, BR-PAY-032: `cashFlagLocked = code === 'cash'` вимикав прапорець «Готівка» і тоді,
+коли ознаку вже знято (до правила) — повернути її ніхто не міг, хоча сервер забороняє лише зняття.
+**Grep:** `grep -rnE "Locked = .*code === " apps/web/src --include="*.tsx"` → умова має містити
+збережене значення ознаки. **Фікс:** `code === CASH_METHOD_CODE && editPayment.isCash` + тест
+`PaymentsTab.destination` (PATCH несе `isCash: true`). **Severity:** SUGGESTION
