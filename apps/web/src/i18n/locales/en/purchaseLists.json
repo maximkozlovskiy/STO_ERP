@@ -43,7 +43,8 @@
     "number": "Number",
     "name": "Name",
     "itemsCount": "Items (open / ordered / received)",
-    "created": "Created"
+    "created": "Created",
+    "linkedDocs": "Documents"
   },
   "shortage": {
     "addToList": "To purchase list ({{count}})",
@@ -192,5 +193,13 @@
     "saveFirst": "Save the work order to send goods to a purchase list",
     "noShortage": "All goods of the work order are covered — nothing to send",
     "unsavedWarning": "Unsaved goods of the work order (new lines, changed quantities) will not be sent to the list — save changes first"
+  },
+  "documents": {
+    "tabMain": "Main",
+    "tabDocuments": "Documents",
+    "workOrders": "Work orders",
+    "purchaseOrders": "Supplier orders",
+    "mergedLists": "Merged lists",
+    "popupAria": "Linked documents of the list"
   }
 }

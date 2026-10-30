@@ -112,6 +112,8 @@ interface LinkedPurchaseOrderRow {
   number: string;
   status: string;
   totalAmount: string | number;
+  /** Символ валюти замовлення — віддає лише список купівлі; решта секцій — гривня. */
+  currencySymbol?: string | null;
 }
 interface LinkedPurchaseListRow {
   id: string;
@@ -121,11 +123,15 @@ interface LinkedPurchaseListRow {
 }
 // ─── Спільні section-builders (переюз між конфігами) ───────
 
-/** Секція «Списки купівлі» — списки з позиціями наряду чи замовлення (docs/objects/purchase-list.md). */
-function purchaseListSection(nav: LinkedNav) {
+/** Секція «Списки купівлі» — списки з позиціями наряду чи замовлення (docs/objects/purchase-list.md).
+ * Картка списку купівлі показує тут списки, обʼєднані в нього (`title` — свій). */
+function purchaseListSection(
+  nav: LinkedNav,
+  { title = 'Списки купівлі' }: { title?: string } = {},
+) {
   return {
     key: 'purchaseLists',
-    title: 'Списки купівлі',
+    title,
     icon: ListChecks,
     mapRow: (row: LinkedPurchaseListRow) => ({
       id: row.id,
@@ -166,11 +172,14 @@ function counterpartySection(nav: LinkedNav) {
   };
 }
 
-/** Секція «Наряд» — для рахунку. */
-function workOrderSection(nav: LinkedNav) {
+/** Секція «Наряд» — для рахунку (один наряд, `workOrder`); список купівлі — `workOrders` (кілька). */
+function workOrderSection(
+  nav: LinkedNav,
+  { key = 'workOrder', title = 'Наряд' }: { key?: string; title?: string } = {},
+) {
   return {
-    key: 'workOrder',
-    title: 'Наряд',
+    key,
+    title,
     icon: ClipboardList,
     mapRow: (row: LinkedWorkOrderRow) => ({
       id: row.id,
@@ -515,7 +524,7 @@ function purchaseOrderSourceSection(
     mapRow: (row: LinkedPurchaseOrderRow) => ({
       id: row.id,
       primary: `Замовлення ${row.number}`,
-      secondary: `${fmt(row.totalAmount)} ₴`,
+      secondary: `${fmt(row.totalAmount)} ${row.currencySymbol || '₴'}`,
       badge: {
         label: poStatusLabel(row.status),
         className: 'bg-secondary text-muted-foreground',
@@ -524,7 +533,7 @@ function purchaseOrderSourceSection(
         title: `Замовлення ${row.number}`,
         rows: [
           { label: 'Статус', value: poStatusLabel(row.status) },
-          { label: 'Сума', value: `${fmt(row.totalAmount)} ₴` },
+          { label: 'Сума', value: `${fmt(row.totalAmount)} ${row.currencySymbol || '₴'}` },
         ],
       },
       navigate: () => nav.toPurchaseOrder(row.id),
@@ -608,6 +617,24 @@ export function counterpartyLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
           navigate: () => nav.toSupplierReturn(row.id),
         }),
       },
+    ],
+  };
+}
+
+// ─── Purchase list config ──────────────────────────────────
+// Картка списку купівлі, вкладка «Документи» (BR-PL-020): наряди й замовлення постачальнику його
+// позицій, списки, обʼєднані в нього. Ключі секцій — як у `GET /purchase-lists/:id/linked-documents`.
+
+export function purchaseListLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
+  return {
+    fetchPath: id => `/purchase-lists/${id}/linked-documents`,
+    sections: [
+      workOrderSection(nav, {
+        key: 'workOrders',
+        title: i18n.t('purchaseLists:documents.workOrders'),
+      }),
+      purchaseOrderSourceSection(nav, { key: 'purchaseOrders', icon: ShoppingCart }),
+      purchaseListSection(nav, { title: i18n.t('purchaseLists:documents.mergedLists') }),
     ],
   };
 }

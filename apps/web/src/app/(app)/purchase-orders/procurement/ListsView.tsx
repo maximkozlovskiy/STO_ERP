@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { ListChecks, Merge, Plus, Search } from 'lucide-react';
+import { ClipboardList, ListChecks, Merge, Plus, Search, ShoppingCart } from 'lucide-react';
 import { PURCHASE_LIST_ITEM_STATUS_BADGE, PURCHASE_LIST_STATUS_BADGE } from '@sto/shared';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useBulkSelect } from '@/hooks/useBulkSelect';
@@ -12,9 +12,20 @@ import { useWarehouses } from '@/hooks/api/useInfrastructure';
 import {
   purchaseListsApi,
   usePurchaseListDetail,
+  usePurchaseListLinkedCounts,
   usePurchaseLists,
   type PurchaseList,
+  type PurchaseListLinkedCounts,
 } from '@/hooks/api/usePurchaseLists';
+import { purchaseListLinkedConfig } from '@/lib/linked-configs';
+import { useLinkedNav } from '@/lib/linked-nav';
+import { cn } from '@/lib/utils';
+import {
+  LinkedDocumentsPanel,
+  type LinkedDocumentsCounts,
+} from '@/components/ui/LinkedDocumentsPanel';
+import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
+import { LinkedDocCounters, type DocCounterDef } from '@/components/ui/linked-doc-counters';
 import { invalidateProcurementSideEffects } from '@/lib/cache-invalidation';
 import { FormDialog } from './FormDialog';
 import { createOrdersFromItems, useProcurementAction } from './useProcurementAction';
@@ -46,6 +57,13 @@ import {
 
 const PAGE_SIZE = 20;
 
+/** Колонка «Документи»: ключі — як у `POST /purchase-lists/linked-counts` (BR-PL-020). */
+const DOC_COUNTERS: ReadonlyArray<DocCounterDef<keyof PurchaseListLinkedCounts>> = [
+  { field: 'workOrders', Icon: ClipboardList, labelKey: 'documents.workOrders' },
+  { field: 'purchaseOrders', Icon: ShoppingCart, labelKey: 'documents.purchaseOrders' },
+  { field: 'purchaseLists', Icon: ListChecks, labelKey: 'documents.mergedLists' },
+];
+
 /**
  * «Списки»: списки купівлі, новий список, об'єднання (BR-PL-006). Картка списку — позиції,
  * «Винести в новий список» (розділення, BR-PL-007), ручна позиція (BR-PL-004), «Створити
@@ -72,6 +90,11 @@ export function ListsView({
   });
   const lists = useMemo(() => data?.items ?? [], [data]);
   const bulk = useBulkSelect(lists);
+  const listIds = useMemo(() => lists.map(l => l.id).sort(), [lists]);
+  const linkedCounts = usePurchaseListLinkedCounts(listIds);
+  const linkedNav = useLinkedNav();
+  const linkedConfig = useMemo(() => purchaseListLinkedConfig(linkedNav), [linkedNav]);
+  const [linkedPopupId, setLinkedPopupId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(openListId);
   const [createOpen, setCreateOpen] = useState(false);
   const [mergeIds, setMergeIds] = useState<string[] | null>(null);
@@ -161,6 +184,7 @@ export function ListsView({
                 <TableHead className="text-right">{t('columns.itemsCount')}</TableHead>
                 <TableHead>{t('columns.warehouse')}</TableHead>
                 <TableHead>{t('columns.created')}</TableHead>
+                <TableHead>{t('columns.linkedDocs')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -203,6 +227,14 @@ export function ListsView({
                   </TableCell>
                   <TableCell className="text-muted-foreground">{l.warehouseName ?? '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{fmtDate(l.createdAt)}</TableCell>
+                  <TableCell onClick={e => e.stopPropagation()}>
+                    <LinkedDocCounters
+                      counters={DOC_COUNTERS}
+                      counts={linkedCounts[l.id]}
+                      onOpen={() => setLinkedPopupId(l.id)}
+                      label={k => t(k)}
+                    />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -236,6 +268,14 @@ export function ListsView({
         }}
       />
       <ListDetailModal listId={detailId} canWrite={canWrite} onClose={() => setDetailId(null)} />
+      {linkedPopupId && (
+        <LinkedDocumentsPopup
+          entityId={linkedPopupId}
+          config={linkedConfig}
+          onClose={() => setLinkedPopupId(null)}
+          ariaLabel={t('documents.popupAria')}
+        />
+      )}
     </div>
   );
 }
@@ -353,6 +393,16 @@ function ListDetailModal({
   const { busy, run: act } = useProcurementAction(bulk.clear);
   const [addOpen, setAddOpen] = useState(false);
   const isOpen = list?.status === 'OPEN';
+  // Вкладки картки: «Основне» (позиції) і «Документи» (BR-PL-020). Інший список — знову «Основне».
+  const [activeTab, setActiveTab] = useState<'main' | 'documents'>('main');
+  const [docCounts, setDocCounts] = useState<LinkedDocumentsCounts | null>(null);
+  useEffect(() => {
+    setActiveTab('main');
+    setDocCounts(null);
+  }, [listId]);
+  const linkedNav = useLinkedNav();
+  const linkedConfig = useMemo(() => purchaseListLinkedConfig(linkedNav), [linkedNav]);
+  const docTotal = docCounts ? Object.values(docCounts).reduce((a, b) => a + b, 0) : 0;
 
   const ids = Array.from(bulk.selected);
   const splitOut = () =>
@@ -437,97 +487,142 @@ function ListDetailModal({
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={PURCHASE_LIST_STATUS_BADGE[list.status] ?? 'secondary'}>
-                {purchaseListStatusLabel(list.status)}
-              </Badge>
-              {canWrite && isOpen && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="ml-auto"
-                  leftIcon={<Plus className="h-3.5 w-3.5" />}
-                  onClick={() => setAddOpen(true)}
+            <div
+              role="tablist"
+              aria-label={t('lists.detailTitle', { number: list.number })}
+              className="flex border-b border-border -mt-2"
+            >
+              {(['main', 'documents'] as const).map(tab => (
+                <button
+                  key={tab}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab}
+                  className={cn(
+                    'px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5',
+                    activeTab === tab
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground',
+                  )}
+                  onClick={() => setActiveTab(tab)}
                 >
-                  {t('lists.addItem')}
-                </Button>
-              )}
+                  {tab === 'main' ? t('documents.tabMain') : t('documents.tabDocuments')}
+                  {tab === 'documents' && docTotal > 0 && (
+                    <span className="text-[11px] font-normal tabular-nums">{docTotal}</span>
+                  )}
+                </button>
+              ))}
             </div>
-            {canWrite && bulk.count > 0 && (
-              <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-primary-subtle border border-primary/20 rounded-lg">
-                <span className="text-[13px] font-medium text-primary">
-                  {t('common.selected', { count: bulk.count })}
-                </span>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  disabled={busy}
-                  onClick={() => void createOrders()}
-                >
-                  {t('items.createOrders')}
-                </Button>
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => void splitOut()}>
-                  {t('lists.splitOut')}
-                </Button>
-              </div>
-            )}
-            {items.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground py-6 text-center">
-                {t('lists.noItems')}
-              </p>
+            {activeTab === 'documents' ? (
+              <LinkedDocumentsPanel
+                config={linkedConfig}
+                entityId={list.id}
+                onLoad={setDocCounts}
+              />
             ) : (
-              <div className="rounded-lg border border-border overflow-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {canWrite && <TableHead className="w-10" />}
-                      <TableHead>{t('columns.good')}</TableHead>
-                      <TableHead>{t('columns.warehouse')}</TableHead>
-                      <TableHead className="text-right">{t('columns.quantity')}</TableHead>
-                      <TableHead>{t('columns.status')}</TableHead>
-                      <TableHead>{t('columns.supplier')}</TableHead>
-                      <TableHead>{t('columns.workOrder')}</TableHead>
-                      <TableHead>{t('columns.order')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {items.map(i => (
-                      <TableRow key={i.id} data-testid="purchase-list-detail-row">
-                        {canWrite && (
-                          <TableCell>
-                            {i.status === 'OPEN' && (
-                              <input
-                                type="checkbox"
-                                checked={bulk.isSelected(i.id)}
-                                onChange={() => bulk.toggle(i.id)}
-                                aria-label={t('items.selectRow', { good: i.goodName })}
-                              />
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={PURCHASE_LIST_STATUS_BADGE[list.status] ?? 'secondary'}>
+                    {purchaseListStatusLabel(list.status)}
+                  </Badge>
+                  {canWrite && isOpen && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="ml-auto"
+                      leftIcon={<Plus className="h-3.5 w-3.5" />}
+                      onClick={() => setAddOpen(true)}
+                    >
+                      {t('lists.addItem')}
+                    </Button>
+                  )}
+                </div>
+                {canWrite && bulk.count > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-primary-subtle border border-primary/20 rounded-lg">
+                    <span className="text-[13px] font-medium text-primary">
+                      {t('common.selected', { count: bulk.count })}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={busy}
+                      onClick={() => void createOrders()}
+                    >
+                      {t('items.createOrders')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => void splitOut()}
+                    >
+                      {t('lists.splitOut')}
+                    </Button>
+                  </div>
+                )}
+                {items.length === 0 ? (
+                  <p className="text-[13px] text-muted-foreground py-6 text-center">
+                    {t('lists.noItems')}
+                  </p>
+                ) : (
+                  <div className="rounded-lg border border-border overflow-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {canWrite && <TableHead className="w-10" />}
+                          <TableHead>{t('columns.good')}</TableHead>
+                          <TableHead>{t('columns.warehouse')}</TableHead>
+                          <TableHead className="text-right">{t('columns.quantity')}</TableHead>
+                          <TableHead>{t('columns.status')}</TableHead>
+                          <TableHead>{t('columns.supplier')}</TableHead>
+                          <TableHead>{t('columns.workOrder')}</TableHead>
+                          <TableHead>{t('columns.order')}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {items.map(i => (
+                          <TableRow key={i.id} data-testid="purchase-list-detail-row">
+                            {canWrite && (
+                              <TableCell>
+                                {i.status === 'OPEN' && (
+                                  <input
+                                    type="checkbox"
+                                    checked={bulk.isSelected(i.id)}
+                                    onChange={() => bulk.toggle(i.id)}
+                                    aria-label={t('items.selectRow', { good: i.goodName })}
+                                  />
+                                )}
+                              </TableCell>
                             )}
-                          </TableCell>
-                        )}
-                        <TableCell>{i.goodName}</TableCell>
-                        <TableCell className="text-muted-foreground">{i.warehouseName}</TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {fmtQty(i.quantity)} {i.goodUnit ?? ''}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={PURCHASE_LIST_ITEM_STATUS_BADGE[i.status] ?? 'secondary'}>
-                            {purchaseListItemStatusLabel(i.status)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {i.supplierName ?? '—'}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {i.workOrderNumber ?? t('items.manual')}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {i.purchaseOrderNumber ?? '—'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                            <TableCell>{i.goodName}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {i.warehouseName}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {fmtQty(i.quantity)} {i.goodUnit ?? ''}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={PURCHASE_LIST_ITEM_STATUS_BADGE[i.status] ?? 'secondary'}
+                              >
+                                {purchaseListItemStatusLabel(i.status)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {i.supplierName ?? '—'}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {i.workOrderNumber ?? t('items.manual')}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {i.purchaseOrderNumber ?? '—'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </div>
             )}
           </div>

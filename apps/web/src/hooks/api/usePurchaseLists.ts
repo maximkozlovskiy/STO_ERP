@@ -26,6 +26,7 @@ export type ShortageResponse = ApiSchema<'ShortageResponseDto'>;
 export type WorkOrderProcurement = ApiSchema<'WorkOrderProcurementDto'>;
 export type FromWorkOrderResult = ApiSchema<'FromWorkOrderResultDto'>;
 export type CreateOrdersResult = ApiSchema<'CreateOrdersResultDto'>;
+export type PurchaseListLinkedCounts = ApiSchema<'PurchaseListLinkedCountsEntryDto'>;
 
 export interface PurchaseListsFilter extends Record<string, unknown> {
   page?: number;
@@ -60,6 +61,8 @@ export const purchaseListsKeys = {
   items: (f: PurchaseListItemsFilter) => [...purchaseListsKeys.all, 'items', f] as const,
   shortage: (f: ShortageFilter) => [...purchaseListsKeys.all, 'shortage', f] as const,
   byWorkOrder: (id: string) => [...purchaseListsKeys.all, 'by-work-order', id] as const,
+  linkedCounts: (ids: readonly string[]) =>
+    [...purchaseListsKeys.all, 'linked-counts', ids] as const,
 };
 
 /** `enabled: false` — не читати, доки список не потрібен (діалог закритий). */
@@ -100,6 +103,28 @@ export function usePurchaseListDetail(id: string | null) {
     enabled: !!id,
     staleTime: 10_000,
   });
+}
+
+const EMPTY_LINKED_COUNTS: Readonly<Record<string, PurchaseListLinkedCounts>> = Object.freeze({});
+
+/**
+ * Лічильники пов'язаних документів рядків таблиці списків (BR-PL-020) — один запит на сторінку.
+ * Ключ під `purchaseListsKeys.all`: дії над списками (`invalidateProcurementSideEffects`) їх
+ * перечитують. `ids` — відсортовані, щоб зміна порядку рядків не дала нового запиту.
+ */
+export function usePurchaseListLinkedCounts(ids: readonly string[]) {
+  const query = useQuery<Record<string, PurchaseListLinkedCounts>>({
+    queryKey: purchaseListsKeys.linkedCounts(ids),
+    queryFn: ({ signal }) =>
+      apiFetch('/purchase-lists/linked-counts', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+        signal,
+      }),
+    enabled: ids.length > 0,
+    staleTime: 30_000,
+  });
+  return query.data ?? EMPTY_LINKED_COUNTS;
 }
 
 /** Позиції списків наряду й нестача його рядків — для картки наряду. */
