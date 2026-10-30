@@ -195,21 +195,25 @@ function ChannelListEditor({ value, onChange, options, error, testId }: ChannelL
             ))}
           </ol>
           {remaining.length > 0 && (
-            <Select
-              aria-label={t('card.addChannel')}
-              value=""
-              onChange={e => {
-                if (e.target.value) onChange([...value, e.target.value]);
-              }}
-              className="h-8 w-56 text-[13px] py-0.5 px-2 pr-7"
-            >
-              <option value="">{t('card.addChannel')}</option>
-              {remaining.map(ch => (
-                <option key={ch} value={ch}>
-                  {automationChannelLabel(ch)}
-                </option>
-              ))}
-            </Select>
+            // Ширина — на обгортці: стрілка `Select` стоїть біля краю обгортки, і з `w-56` лише на
+            // самому полі вона відривалась до правого краю картки (Bug #1006).
+            <div className="w-56 max-w-full" data-testid="add-channel">
+              <Select
+                aria-label={t('card.addChannel')}
+                value=""
+                onChange={e => {
+                  if (e.target.value) onChange([...value, e.target.value]);
+                }}
+                className="h-8 w-full text-[13px] py-0.5 px-2 pr-7"
+              >
+                <option value="">{t('card.addChannel')}</option>
+                {remaining.map(ch => (
+                  <option key={ch} value={ch}>
+                    {automationChannelLabel(ch)}
+                  </option>
+                ))}
+              </Select>
+            </div>
           )}
         </div>
       )}
@@ -268,21 +272,23 @@ function EmployeeChips({ value, onChange, employees, loaded }: EmployeeChipsProp
           })}
         </ul>
       )}
-      <Select
-        aria-label={t('card.employeesPlaceholder')}
-        value=""
-        onChange={e => {
-          if (e.target.value) onChange([...value, e.target.value]);
-        }}
-        className="h-8 w-64 text-[13px] py-0.5 px-2 pr-7"
-      >
-        <option value="">{t('card.employeesPlaceholder')}</option>
-        {options.map(e => (
-          <option key={e.id} value={e.id}>
-            {e.name}
-          </option>
-        ))}
-      </Select>
+      <div className="w-64 max-w-full" data-testid="add-employee">
+        <Select
+          aria-label={t('card.employeesPlaceholder')}
+          value=""
+          onChange={e => {
+            if (e.target.value) onChange([...value, e.target.value]);
+          }}
+          className="h-8 w-full text-[13px] py-0.5 px-2 pr-7"
+        >
+          <option value="">{t('card.employeesPlaceholder')}</option>
+          {options.map(e => (
+            <option key={e.id} value={e.id}>
+              {e.name}
+            </option>
+          ))}
+        </Select>
+      </div>
     </div>
   );
 }

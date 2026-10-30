@@ -55,6 +55,8 @@ import {
 } from '@/components/ui/table';
 
 type PageTab = 'rules' | 'journal';
+/** Хто керує правилами (BR-AUT-001). Константа: новий масив щорендеру перезапускав би редирект. */
+const MANAGER_ROLES = ['OWNER', 'ADMIN'];
 type StateFilter = '' | 'enabled' | 'disabled';
 
 const COLUMN_DEFS: Array<{ key: string; labelKey: string }> = [
@@ -90,7 +92,9 @@ function actionTypes(rule: AutomationRule): AutomationActionTypeValue[] {
  * стандартом «Панель списку» і журнал спрацювань / повідомлень. Керують OWNER і ADMIN.
  */
 function AutomationPageClient() {
-  const { employee } = useRequireAuth(['OWNER', 'ADMIN']);
+  // Інша роль (пряма адреса) — жодного запиту: редирект на /403 іде ефектом, після рендеру,
+  // і `!!employee` пускав би `GET /automation/rules` → 403 (Bug #1004).
+  const { isAuthorized } = useRequireAuth(MANAGER_ROLES);
   const { t } = useTranslation('automation');
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -114,7 +118,7 @@ function AutomationPageClient() {
     if (card.id) setCreating(false);
   }, [card.id]);
 
-  const { data, isLoading, error, refetch } = useAutomationRules(!!employee);
+  const { data, isLoading, error, refetch } = useAutomationRules(isAuthorized);
   const toggle = useToggleAutomationRule();
   const remove = useDeleteAutomationRule();
   const { confirm, dialogProps } = useConfirm();
@@ -166,6 +170,8 @@ function AutomationPageClient() {
   }, [card]);
 
   const colSpan = visibleColumns.length + 1;
+
+  if (!isAuthorized) return null;
 
   return (
     <div className="page-fill p-4 md:p-6">

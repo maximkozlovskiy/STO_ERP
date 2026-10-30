@@ -44,7 +44,11 @@ export function QuietHoursSection() {
     return () => ac.abort();
   }, [t]);
 
-  const invalid = !HH_MM.test(start) || !HH_MM.test(end);
+  // Порожнє чи недонабране поле (`21:--` у Chrome дає '') — пояснення під полем, а не лише
+  // вимкнене «Зберегти» (Bug #1005).
+  const startError = HH_MM.test(start) ? undefined : t('quietHours.invalid');
+  const endError = HH_MM.test(end) ? undefined : t('quietHours.invalid');
+  const invalid = !!startError || !!endError;
   const changed = !!saved && (saved.start !== start || saved.end !== end);
 
   const save = async () => {
@@ -87,6 +91,7 @@ export function QuietHoursSection() {
               label={t('quietHours.start')}
               value={start}
               onChange={e => setStart(e.target.value)}
+              errorMessage={startError}
               className="h-8 text-[13px]"
             />
           </div>
@@ -97,6 +102,7 @@ export function QuietHoursSection() {
               label={t('quietHours.end')}
               value={end}
               onChange={e => setEnd(e.target.value)}
+              errorMessage={endError}
               className="h-8 text-[13px]"
             />
           </div>

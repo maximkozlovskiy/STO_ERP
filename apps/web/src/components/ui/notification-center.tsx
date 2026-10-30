@@ -89,11 +89,14 @@ export function NotificationCenter({ enabled }: NotificationCenterProps) {
         )}
       </button>
 
+      {/* Ширина — від місця дзвіночка, а не від лівого краю: у меню телефону він на ~92 px (після
+          аватара й імені), і «100vw − 5rem» виводило панель за правий край (Bug #1003). */}
       {open && (
         <div
           role="dialog"
           aria-label={t('notifications.title')}
-          className="absolute left-full bottom-0 ml-2 w-80 max-w-[calc(100vw-5rem)] bg-surface border border-border rounded-xl shadow-2xl z-250 overflow-hidden"
+          data-testid="notification-panel"
+          className="absolute left-full bottom-0 ml-2 w-80 max-w-[calc(100vw-9rem)] bg-surface border border-border rounded-xl shadow-2xl z-250 overflow-hidden"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <span className="text-[13px] font-semibold text-foreground">

@@ -179,6 +179,12 @@ test.describe('Автоматизація — правила, журнал, дз
     await card.getByRole('tab', { name: /^Дії/ }).click();
     await card.locator('[data-add-action="client_message"]').click();
     await card.getByLabel(/Свій перелік/).check();
+    // Стрілка списку — всередині поля, а не біля правого краю картки (Bug #1006).
+    const addChannel = card.getByTestId('add-channel');
+    const selectBox = await addChannel.getByRole('combobox').boundingBox();
+    const chevronBox = await addChannel.locator('svg').first().boundingBox();
+    expect(selectBox && chevronBox).toBeTruthy();
+    expect(chevronBox!.x + chevronBox!.width).toBeLessThanOrEqual(selectBox!.x + selectBox!.width);
     await card.getByRole('combobox', { name: 'Додати канал' }).selectOption('SMS');
     await card.getByRole('button', { name: 'Прибрати канал Telegram-бот' }).click();
     await expect(card.getByTestId('action-0-channels').locator('[data-channel]')).toHaveCount(1);
@@ -349,6 +355,22 @@ test.describe('Автоматизація — правила, журнал, дз
       await expect(page).toHaveURL(new RegExp(`/work-orders/?\\?open=${state.wo!.id}`), {
         timeout: 20_000,
       });
+
+      // Телефон (390 px): дзвіночок — у меню після аватара й імені, панель не виходить за
+      // правий край (Bug #1003: «100vw − 5rem» давало 52 px за межею екрана).
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto('/tasks');
+      await page.getByRole('button', { name: 'Відкрити меню' }).click();
+      const mobileBell = page.locator('[data-testid="notification-center"]:visible');
+      await mobileBell.locator('button').first().click();
+      const panel = mobileBell.getByTestId('notification-panel');
+      await expect(panel.locator('[data-notification-id]').first()).toBeVisible({
+        timeout: 15_000,
+      });
+      const box = await panel.boundingBox();
+      expect(box, 'панель сповіщень видима').not.toBeNull();
+      expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+      await page.screenshot({ path: test.info().outputPath('aut_mechanic_bell_390.png') });
     } finally {
       await ctx.close();
     }

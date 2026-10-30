@@ -102,6 +102,21 @@ describe('Сповіщення — автоматизація', () => {
     });
   });
 
+  // guards: BR-AUT-013 (Bug #1005)
+  it('тихі години: порожній / недонабраний час — пояснення формату під полем, без PATCH', async () => {
+    renderTab();
+    const start = await screen.findByLabelText('Початок');
+    expect(screen.queryByText('Вкажіть час у форматі ГГ:ХХ (00:00–23:59)')).toBeNull();
+    fireEvent.change(start, { target: { value: '' } });
+    expect(screen.getByText('Вкажіть час у форматі ГГ:ХХ (00:00–23:59)')).toBeInTheDocument();
+    const save = screen.getByTestId('quiet-hours').querySelector('button')!;
+    expect(save).toBeDisabled();
+    fireEvent.click(save);
+    expect(calls('/settings/organisation', 'PATCH')).toHaveLength(0);
+    fireEvent.change(start, { target: { value: '22:00' } });
+    expect(screen.queryByText('Вкажіть час у форматі ГГ:ХХ (00:00–23:59)')).toBeNull();
+  });
+
   // guards: BR-AUT-040
   it('бот: «Підключити» → PUT з токеном, ім’я бота й підказка додати канал у філії', async () => {
     renderTab();

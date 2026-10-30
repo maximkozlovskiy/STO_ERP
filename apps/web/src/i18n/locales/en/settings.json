@@ -485,7 +485,8 @@
     "start": "Start",
     "end": "End",
     "saved": "Quiet hours saved",
-    "off": "Equal bounds — no quiet hours, messages go at once"
+    "off": "Equal bounds — no quiet hours, messages go at once",
+    "invalid": "Enter the time as HH:MM (00:00–23:59)"
   },
   "telegramBot": {
     "title": "Shop Telegram bot",
