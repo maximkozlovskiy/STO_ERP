@@ -1723,13 +1723,13 @@ export function PurchaseOrderCreateModal({
                             })()}
                           </td>
                         )}
-                        <td className="px-3 py-2 tabular-nums">{line.price}</td>
+                        <td className="px-3 py-2 tabular-nums">
+                          {fmtMoney(parseFloat(String(line.price)) || 0)}
+                        </td>
                         {vatMode !== 'NONE' && (
                           <td className="px-3 py-2 tabular-nums text-muted-foreground">
                             {vatRate > 0
-                              ? ((lineSubtotal(line.quantity, line.price) * vatRate) / 100).toFixed(
-                                  2,
-                                )
+                              ? fmtMoney((lineSubtotal(line.quantity, line.price) * vatRate) / 100)
                               : '—'}
                           </td>
                         )}

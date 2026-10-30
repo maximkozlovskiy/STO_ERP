@@ -342,7 +342,7 @@ export function WorksTable(props: WorksTableProps) {
                           {line.actualHours || '—'}
                         </td>
                         <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
-                          {line.price || '—'}
+                          {p != null ? fmtMoney(p) : '—'}
                         </td>
                         {vatMode !== 'NONE' && (
                           <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">

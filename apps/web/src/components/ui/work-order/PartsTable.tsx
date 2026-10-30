@@ -458,7 +458,7 @@ export function PartsTable(props: PartsTableProps) {
                           {part.costPrice != null ? fmtMoney(part.costPrice) : '—'}
                         </td>
                         <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
-                          {part.price || '—'}
+                          {p != null ? fmtMoney(p) : '—'}
                         </td>
                         {vatMode !== 'NONE' && (
                           <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">

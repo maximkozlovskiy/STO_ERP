@@ -85,6 +85,16 @@ describe('WorksTable — суми рядка й підсумку у формат
       screen.getAllByText((_, el) => norm(el?.textContent ?? '') === '1 230,45').length,
     ).toBeGreaterThan(0);
   });
+
+  // guards: BR-WO-033
+  // Bug #1011: ціна рядка друкувалась сирим рядком форми («820.30», «1200»). Мутація: повернути
+  // `{line.price || '—'}` у WorksTable — «820,30» зникає, червоний.
+  it('ціна за одиницю — «820,30», а не сирий «820.30»', () => {
+    const { container } = render(<WorksTable {...props()} />);
+    const text = norm(container.textContent);
+    expect(text).toContain('820,30');
+    expect(text).not.toContain('820.30');
+  });
 });
 
 /**
@@ -106,7 +116,9 @@ describe('картки документів — без toFixed(2) для сум'
   // guards: BR-WO-033
   it('жоден компонент components/ui не друкує суму через toFixed(2)', () => {
     const offenders = tsxFiles(UI)
-      .filter(f => readFileSync(f, 'utf8').includes('.toFixed(2)'))
+      // Bug #1011: prettier переносить довгий вираз на `.toFixed(` + `2,` + `)` окремими
+      // рядками — пошук підрядка «.toFixed(2)» такого місця не бачив.
+      .filter(f => /\.toFixed\(\s*2\s*,?\s*\)/.test(readFileSync(f, 'utf8')))
       .map(f => relative(UI, f).replace(/\\/g, '/'));
     expect(offenders).toEqual([]);
   });

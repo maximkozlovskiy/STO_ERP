@@ -1064,7 +1064,7 @@ export function StockDocumentCreateModal({
                       <td className="px-3 py-2 text-right text-muted-foreground">{display.unit}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{fmtQty(qty)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {Number.isFinite(price) && price ? String(line.price) : '—'}
+                        {Number.isFinite(price) && price ? fmtMoney(price) : '—'}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         {Number.isFinite(price) && price ? fmtMoney(lineAmount(qty, price)) : '—'}
