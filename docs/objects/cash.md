@@ -89,7 +89,6 @@ model ExpenseCategory {        // дерево статей руху кошті�
 | GET               | `/cash-registers`                                     | Список кас (+ isFiscal/initialBalance/balance)                                                                                                         |
 | GET               | `/cash-registers/:id`                                 | Картка каси (OWNER/ADMIN/ACCOUNTANT)                                                                                                                   |
 | POST/PATCH/DELETE | `/cash-registers[/:id]`                               | CRUD (OWNER/ADMIN)                                                                                                                                     |
-| GET               | `/cash-registers/:id/balance`                         | Поточний залишок                                                                                                                                       |
 | GET               | `/cash-registers/:id/operations`                      | Історія (limit, q, dateFrom, dateTo): контрагент / працівник, підстава, номер документа, чек                                                           |
 | POST              | `/cash-registers/:id/operations`                      | Ручна операція за приводом → `CashDeskService.create` (BR-CASH-016…021); `Idempotency-Key` обов'язковий (без нього — 400)                              |
 | POST              | `/cash-registers/:id/operations/:operationId/reverse` | Сторно операції `{ reason }` → `CashDeskService.reverse` (BR-CASH-023…025); OWNER/ADMIN/ACCOUNTANT; `Idempotency-Key` обов'язковий; 201 — рядок сторно |
@@ -326,7 +325,7 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 | підстава в рядку каси і стаття за замовчуванням для приводу (BR-CASH-020, 022)                                                        | `cash.default-category.spec.ts`                                                  | 16     |
 | ізоляція організацій (умови запитів)                                                                                                  | `cash.tenant.spec.ts`                                                            | 7      |
 | єдиний писар і append-only (статичний сторож по вихідному коду)                                                                       | `cash.single-writer.spec.ts`                                                     | 3      |
-| ролі на маршрутах `/cash-registers`                                                                                                   | `cash.access.spec.ts`                                                            | 8      |
+| ролі на маршрутах `/cash-registers`                                                                                                   | `cash.access.spec.ts`                                                            | 7      |
 | каса-диригент: привід ↔ напрям, обов'язкові контрагент / працівник / стаття, прості приводи (BR-CASH-016)                             | `../cash-registers/cash-desk.validation.spec.ts`                                 | 55     |
 | каса-диригент: документ-підстава — тип, повнота, існування, належність контрагентові (BR-CASH-020)                                    | `../cash-registers/cash-desk.base-document.spec.ts`                              | 44     |
 | каса-диригент: оплата контрагента і повернення клієнту (BR-CASH-017, 018)                                                             | `../cash-registers/cash-desk.client.spec.ts`                                     | 35     |
@@ -345,7 +344,7 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 | причина сторно в zod-схемі (BR-CASH-023)                                                                                              | `../../../../../packages/shared/src/schemas/forms/cash-reversal.schema.spec.ts`  | 11     |
 | каса з відкритою зміною: не видалити й не зняти «фіскальна» (BR-CASH-028)                                                             | `../cash-registers/cash-registers.open-shift-guard.spec.ts`                      | 5      |
 
-Разом: **665** кейсів (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
+Разом: **664** кейсів (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
 
 **Межі сторожів.** Мітка `// guards:` означає «порушення правила в коді валить цей тест» (кожну перевірено мутацією 2026-10-08), але не «правило стережеться повністю»:
 

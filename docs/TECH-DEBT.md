@@ -51,7 +51,7 @@
 - §8 L528(3/4/5/10) — ~~400 на NUL у `q`; DTO для `method` у `GET /payments`~~; регулярка дати в `@sto/shared`; ~~нагадування за київським часом (`followup.processor.ts:68`)~~. ✅ ЗАКРИТО 2026-10-24: (3), (4) `5ca8cde4` — `RejectNulCharacterPipe` у `globalPipes()`, `PaymentsListQueryDto`, тести `reject-nul-character.pipe.spec.ts`, `payments.list-query.contract.spec.ts` (BR-PAY-025); (10) `4fd3b8a2` — `kyivFollowUpAnchor`, тест `followup.processor.spec.ts` (BR-MAINT-007). Лишилось (5). ✅ (5) ✅ ЗАКРИТО 2026-10-26: `6ea0ed9e` — `CALENDAR_DATE_RE` у `packages/shared/src/constants.ts`, реекспорт в api і web.
 - ~~§8 L489 — прибрати мертвий `WorkOrderPreviewModal` (`CalendarSlotModal.tsx:109`).~~ ✅ ЗАКРИТО 2026-10-26: `b5fdcaaf`.
 - ~~§8 L479 — експорт звіту: апостроф перед від'ємним у CSV, числоподібний текст у XLSX, екранування назви аркуша.~~ ✅ ЗАКРИТО 2026-10-26: CSV і XLSX-текст — `bca302f9`, `d7d97cdf`; назва аркуша — `b74b1288` (`xlsxSheetName`, `escAttr`).
-- ~~§8 L424 — валюта чернетки оплати постачальнику при зміні джерела (`supplier-payments.service.ts:763-781`).~~ ✅ ЗАКРИТО 2026-10-24: `cdeccea7` — `update()` бере `currencyId` джерела, тест `supplier-payments.update-guards.spec.ts` (BR-SUPPAY-011).
+- ~~§8 L424 — валюта чернетки оплати постачальнику при зміні джерела (`supplier-payments.service.ts:763-781`).~~ ✅ ЗАКРИТО 2026-10-24: `cdeccea7` — `update()` бере `currencyId` джерела, тест `supplier-payments.update-guards.spec.ts` (BR-SUPPAY-011). `update()`, PATCH і цей тест прибрано 2026-10-30 (маршрут ніхто не викликав).
 - §8 L556 п. 8/10/11/15 — заборона видалення періоду / рахунку з рознесеними рядками; майбутня дата; ~~переповнення `amountBase`~~; колір `REFUND_OUT`. ✅ ЗАКРИТО 2026-10-24: (11) `cb314178` — `assertAmountBaseFits` (`bank-reconciliation.service.ts`), тести `bank-reconciliation.manual.spec.ts`, `bank-reconciliation.import.spec.ts` (BR-BANK-042). Лишилось 8 / 10 / 15. ✅ 8 / 10 / 15 ✅ ЗАКРИТО 2026-10-26: (8) `5e148b4c` — 400 на видалення періоду / рахунку з рознесеними рядками (BR-PAYR-012, BR-BANK-043) і на переказ на рахунок іншої валюти (рішення власника №9); (10) `6ea0ed9e` + `5e148b4c` — 400 на майбутню дату операції; (15) `6ea0ed9e` — `REFUND_OUT` у `SETTLEMENT_TX_CHARGE_LIKE_TYPES`.
 - ~~§8 L579 — NBU і автопідтягування виписок: attempts ≥ 10 + exponential.~~ ✅ ЗАКРИТО 2026-10-24: `4fd3b8a2` — `nbu-fetch.scheduler.ts`, `bank-statement-pull.scheduler.ts`, білий список `payments.queue-retry-policy.spec.ts`.
 - ~~§8 L585 — шифрування секретів на решті шляхів запису (`prisma.service.ts`).~~ ✅ ЗАКРИТО 2026-10-24: `4c2dbf86` — `encryptNestedWrite` / `WRITE_PAYLOADS` (`prisma.service.ts`), тест `field-encryption.extension.spec.ts` (BR-PAY-026).
@@ -101,6 +101,7 @@
 - §12 п. 9 — порядок блокувань «оплата ‖ сторно» (deadlock).
 - §13 п. 5 / 21 — запит діапазону `GET /calendar/slots?from&to` і позначка «не всі дні»; вихідні філії в планових датах.
 - §15 п. 4 / 8 / 10 — `canOpen(kind)` + `<LinkedDocRef>`; лічильник на `SupplierOfferBatch` (міграція); `setStatus(tx)` / `replaceDraftLines(tx)` у замовленнях.
+- Прибрати модель `WorkGoodCategoryLink` і таблицю `work_good_category_links` окремою міграцією (разом із seed): read-endpoint-и зв'язків категорій прибрано 2026-10-30, коду, що читає чи пише таблицю, не лишилось (BR-WORK-004 у `docs/objects/work.md`).
 
 **M/L — L:**
 
@@ -2137,7 +2138,8 @@ instead of rejecting`), окремо — 5 із 5 зелені. `purchase-lists.
 5. **HTTP-клієнти провайдерів перевіряють адресу лише текстом хоста** (`validatePublicUrl`): checkbox,
    vchasno, monobank (оплата й виписка), privat24, nova-poshta, liqpay, turbosms, esputnik. Ім'я, що
    резолвиться в приватну адресу, проходить. Перевірку після DNS (`validatePublicUrlResolved` у
-   `url-guard.ts`) мають лише `SupplierUrlPolicy` і `SettingsService.verifyFiscal` (CodeQL 2026-10-23).
+   `url-guard.ts`) мають лише `SupplierUrlPolicy` і збереження адрес провайдера в `SettingsService`
+   (CodeQL 2026-10-23; `verifyFiscal` разом із маршрутом прибрано 2026-10-30).
    Переводити разом із підставним `lookup` у спеках клієнтів — інакше unit-тести ходять у справжній DNS.
    Ризик обмежений: `apiUrl` задає лише OWNER/ADMIN.
 6. **Нова адреса провайдера не вимагала повторного ключа — ✅ ЗАКРИТО 2026-10-23** (рішення власника:

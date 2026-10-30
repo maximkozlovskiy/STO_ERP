@@ -133,7 +133,6 @@ create (метод без requiresFiscal) → null
 | Метод | URL                              | Дія                                                                                   | Ролі                                   |
 | ----- | -------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------- |
 | GET   | `/api/payments`                  | Список (page, limit, counterpartyId, dateFrom, dateTo, method, fiscalStatus, q)       | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
-| GET   | `/api/payments/:id`              | Деталь                                                                                | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
 | POST  | `/api/payments`                  | Реєстрація платежу (`CreatePaymentDto`, `Idempotency-Key` обов'язковий — 400)         | OWNER, ADMIN, ACCOUNTANT, RECEPTIONIST |
 | POST  | `/api/payments/:id/retry-fiscal` | Повторна фіскалізація (лише `FAILED` + `fiscalReceiptId=null`); throttle 10/60с       | OWNER, ADMIN, ACCOUNTANT               |
 | POST  | `/api/payments/:id/reverse`      | Сторно безготівкової оплати `{ reason }` (BR-PAY-024, `Idempotency-Key` обов'язковий) | OWNER, ADMIN, ACCOUNTANT               |
@@ -162,7 +161,6 @@ create (метод без requiresFiscal) → null
 
 | Метод | URL (…= `payment-gateways` / `fiscal-providers`) | Дія                                                                |
 | ----- | ------------------------------------------------ | ------------------------------------------------------------------ |
-| GET   | `/api/…`                                         | Метадані провайдерів (`code`, `name`)                              |
 | POST  | `/api/…/:code/verify`                            | Перевірка креденшелів (без реального чека/інвойсу); throttle 5/60с |
 | GET   | `/api/…/branch/:branchId`                        | Конфіги філії (без сирих секретів, лише `hasCredentials`)          |
 | PATCH | `/api/…/branch/:branchId`                        | Створити/оновити конфіг (creds write-only); `enabled` у тілі → 400 |
@@ -487,9 +485,9 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | HTTP-контракт стану зміни (BR-CASH-027)                                                           | `cash-shift.current-route.contract.spec.ts`              | 3      |
 | HTTP-клієнт (+SSRF resolved, BR-SEC-SSRF)                                                         | `checkbox.client.spec.ts`                                | 36     |
 | BullMQ-processor                                                                                  | `checkbox.processor.spec.ts`                             | 28     |
-| fiscal provider registry                                                                          | `fiscal/fiscal-provider-registry.spec.ts`                | 16     |
+| fiscal provider registry                                                                          | `fiscal/fiscal-provider-registry.spec.ts`                | 15     |
 | провайдер (+SSRF resolved, BR-SEC-SSRF)                                                           | `fiscal/vchasno.provider.spec.ts`                        | 34     |
-| payment gateway registry (+SSRF resolved, BR-SEC-SSRF)                                            | `gateways/payment-gateway-registry.spec.ts`              | 14     |
+| payment gateway registry (+SSRF resolved, BR-SEC-SSRF)                                            | `gateways/payment-gateway-registry.spec.ts`              | 13     |
 | HTTP-клієнт (+SSRF resolved, BR-SEC-SSRF)                                                         | `monobank.client.spec.ts`                                | 29     |
 | сервісна логіка                                                                                   | `online-payment.service.spec.ts`                         | 15     |
 | BullMQ-processor                                                                                  | `payment-polling.processor.spec.ts`                      | 26     |
@@ -519,7 +517,7 @@ Web (`apps/web/src`), ознака «Готівка» (BR-PAY-019): `components/
 (39; поле «Каса» за ознакою способу, не за кодом) і `app/(app)/ndi/__tests__/PaymentsTab.destination.test.tsx`
 (9; перемикач «Готівка» в картці способу, позначка в списку, POST / PATCH несуть `isCash`).
 
-Разом: **589** кейсів — сума рядків таблиці, разом зі спеками шифрування й довідника способів оплати
+Разом: **587** кейсів — сума рядків таблиці, разом зі спеками шифрування й довідника способів оплати
 (`payment-methods`) поза модулем; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
 `vitest --reporter=json` (звірено 2026-10-30), не з grep.
 

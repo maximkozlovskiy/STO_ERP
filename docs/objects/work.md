@@ -71,15 +71,14 @@ model Work {
 
 ### `/api/work-categories`
 
-| Метод  | URL                                               | Дія                                             |
-| ------ | ------------------------------------------------- | ----------------------------------------------- |
-| GET    | `/api/work-categories`                            | Дерево категорій                                |
-| GET    | `/api/work-categories/:id`                        | Категорія                                       |
-| GET    | `/api/work-categories/:id/linked-good-categories` | ID пов'язаних категорій товарів (лише читання)  |
-| POST   | `/api/work-categories`                            | Створити                                        |
-| PATCH  | `/api/work-categories/:id`                        | Оновити                                         |
-| PATCH  | `/api/work-categories/:id/toggle-active`          | Увімкнути/вимкнути категорію разом із нащадками |
-| DELETE | `/api/work-categories/:id`                        | Soft-delete категорії та всіх нащадків          |
+| Метод  | URL                                      | Дія                                             |
+| ------ | ---------------------------------------- | ----------------------------------------------- |
+| GET    | `/api/work-categories`                   | Дерево категорій                                |
+| GET    | `/api/work-categories/:id`               | Категорія                                       |
+| POST   | `/api/work-categories`                   | Створити                                        |
+| PATCH  | `/api/work-categories/:id`               | Оновити                                         |
+| PATCH  | `/api/work-categories/:id/toggle-active` | Увімкнути/вимкнути категорію разом із нащадками |
+| DELETE | `/api/work-categories/:id`               | Soft-delete категорії та всіх нащадків          |
 
 ---
 
@@ -115,7 +114,7 @@ Endpoint: `/api/services` — CRUD. Panel schema: `SERVICE_PANEL_SCHEMA`.
 - **BR-WORK-001**: `normoHours` — базова одиниця оцінки (використовується для `plannedHours` наряду)
 - **BR-WORK-002**: `isWarranty` — лише інформаційна позначка в довіднику робіт (чекбокс і бейдж у каталозі). На ціну рядка наряду чи рахунку НЕ впливає; ціну гарантійної роботи майстер ставить у наряді сам. Гарантійність на рядку наряду — окрема фіча в беклозі.
 - **BR-WORK-003**: `WorkCategory.isSystem: true` — системні категорії, не видаляються через UI
-- **BR-WORK-004**: зв'язки `WorkGoodCategoryLink` і два read-endpoint-и (`GET /work-categories/:id/linked-good-categories`, `GET /good-categories/:id/linked-work-categories`) існують як заділ; форма наряду у web і mobile їх не викликає, редагувати зв'язки ніде (лише seed). Підказки товарів у наряді — нереалізована фіча в беклозі.
+- **BR-WORK-004**: зв'язків «категорія робіт ↔ категорія товарів» застосунок не має. Заділ — два read-endpoint-и (`GET /work-categories/:id/linked-good-categories`, `GET /good-categories/:id/linked-work-categories`) — прибрано 2026-10-30: жоден клієнт їх не викликав, а зв'язки наповнював лише seed. Модель `WorkGoodCategoryLink` і таблиця поки лишились у схемі без коду, що їх читає, — прибере окрема міграція (`docs/TECH-DEBT.md`, розділ (а)). Підказки товарів у наряді — нереалізована фіча в беклозі.
 - **BR-WORK-005**: Ієрархія категорій — `parentId → children`. Бекенд глибину не обмежує: дерево будується рекурсивно, а `create`/`update` перевіряють, що батько існує у своїй організації; `update` ще й не дає перенести категорію в саму себе (400 «Категорія не може бути власним батьком») чи у власного нащадка (400 «…утворився б цикл») — так само, як категорії товарів. Обхід нащадків при видаленні стійкий до циклу, що лишився в даних з часу до цієї перевірки. UI показує всі рівні (`category-tree.tsx` рендерить рекурсивно; обмежено лише відступ — не більше трьох кроків). Менеджер категорій (`category-manager-modal.tsx`) дозволяє створити три рівні: кнопка «Додати підкатегорію» вимкнена на вузлі третього рівня (`depth >= 2`).
 - **BR-WORK-006**: Пошук по `name` через GIN trgm індекс
 
@@ -139,10 +138,10 @@ cd apps/api && npx vitest run src/modules/work-categories/<файл>.spec.ts
 | Аспект                                               | Тест                               | Кейсів |
 | ---------------------------------------------------- | ---------------------------------- | ------ |
 | сервісна логіка робіт (каталог, `isWarranty`, `ids`) | `works.service.spec.ts`            | 24     |
-| сервісна логіка категорій (системні, ієрархія)       | `work-categories.service.spec.ts`  | 14     |
-| HTTP-контракт категорій                              | `work-categories.contract.spec.ts` | 10     |
+| сервісна логіка категорій (системні, ієрархія)       | `work-categories.service.spec.ts`  | 13     |
+| HTTP-контракт категорій                              | `work-categories.contract.spec.ts` | 8      |
 
-Разом: **47** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **45** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Web-тест поза модулем api (у суму вище не входить):
 `apps/web/src/components/ui/__tests__/CreateWorkOrderModal.planned-hours.test.tsx` — 3 кейси,
@@ -161,17 +160,13 @@ Web-тест поза модулем api (у суму вище не входит
   `apps/api/src/modules/work-orders/work-orders.service.spec.ts` (зараз `isWarranty` у модулі
   `work-orders` не згадується взагалі). Чекбокс і бейдж у каталозі (`WorksTab.tsx`) — без
   компонентного тесту.
-- BR-WORK-004 — стережеться endpoint категорій робіт і читання зв'язків у межах організації.
-  Парний endpoint `GET /good-categories/:id/linked-work-categories` має контрактний кейс у
-  `good-categories.contract.spec.ts`, але без мітки (модуль агрегату Good). Твердження «web і
-  mobile endpoint-ів не викликають» і «редагувати зв'язки ніде» — це відсутність коду, тестом
-  не перевіряється.
 - BR-WORK-005 — стережеться бекенд (глибина не обмежена). UI-частина — рекурсивний рендер у
   `category-tree.tsx` і ліміт `depth >= 2` у `category-manager-modal.tsx` — без компонентного
   тесту.
 
 **Чого тут НЕМА.** HTTP-контракту для `/api/works` (`works.contract.spec.ts`) немає: DTO, статуси
 й валідацію робіт покриває лише E2E. Компонентних тестів `category-tree.tsx` і
-`category-manager-modal.tsx` немає.
+`category-manager-modal.tsx` немає. BR-WORK-004 описує відсутність коду (зв'язків категорій
+немає, read-endpoint-и прибрано 2026-10-30) — тестом не перевіряється.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)

@@ -97,7 +97,6 @@ CONFIRMED → REVERSED   (лише сторно з каси, внутрішні�
 | GET    | `/supplier-payments/schedule/documents` | Drill-down: документи (PO) клітинки графіка — BR-SUPPAY-010   |
 | GET    | `/supplier-payments/:id`                | Деталь                                                        |
 | POST   | `/supplier-payments`                    | Створити (DRAFT); web одразу викликає `confirm`               |
-| PATCH  | `/supplier-payments/:id`                | Оновити (тільки DRAFT)                                        |
 | POST   | `/supplier-payments/:id/confirm`        | DRAFT→CONFIRMED (+ settlement SUPPLIER_PAYMENT)               |
 | POST   | `/supplier-payments/:id/cancel`         | DRAFT→CANCELLED                                               |
 | DELETE | `/supplier-payments/:id`                | Soft-delete (крім CONFIRMED)                                  |
@@ -138,12 +137,12 @@ CONFIRMED → REVERSED   (лише сторно з каси, внутрішні�
 - **BR-SUPPAY-001**: Settlement SUPPLIER_PAYMENT пишеться ТІЛЬКИ через `SettlementsService.createTransaction()` при `confirm()`, ніколи при `create()`.
 - **BR-SUPPAY-002**: Джерело коштів обов'язкове й ексклюзивне: `BANK_ACCOUNT` ⇒ `bankAccountId` (без `cashRegisterId`); `CASH_REGISTER` ⇒ `cashRegisterId` (без `bankAccountId`).
 - **BR-SUPPAY-003**: Контрагент має бути постачальником (`type` ≠ `CLIENT`).
-- **BR-SUPPAY-004**: Опціональний `purchaseOrderId` має належати вказаному постачальнику; при зміні `supplierId` через `update()` orphan-PO авто-очищується (Bug #588).
+- **BR-SUPPAY-004**: Опціональний `purchaseOrderId` має належати вказаному постачальнику (перевіряє `create()`). Редагування оплати (`PATCH`, `update()` з авто-очищенням orphan-PO, Bug #588) прибрано 2026-10-30 — жоден клієнт його не викликав.
 - **BR-SUPPAY-005**: `documentType` у settlement = `'SupplierPayment'` (PascalCase).
-- **BR-SUPPAY-006**: Проведену (`CONFIRMED`) оплату не можна редагувати (`update`) чи видаляти (`remove`) — settlement append-only.
+- **BR-SUPPAY-006**: Проведену (`CONFIRMED`) оплату не можна видаляти (`remove`) — settlement append-only. Редагування оплати як маршруту немає (PATCH прибрано 2026-10-30).
 - **BR-SUPPAY-007**: Без Checkbox (ПРРО) і без лояльності — це supplier-side, не клієнтський продаж.
 - **BR-SUPPAY-008**: `confirm()` race-safe — re-read статусу всередині `$transaction`, подвійний confirm не подвоює SUPPLIER_PAYMENT.
-- **BR-SUPPAY-011**: Валюта оплати (`currencyId`) — валюта її джерела коштів (банківського рахунку чи каси) і в `create()`, і в `update()` чернетки: зміна рахунку, каси чи типу джерела перевизначає валюту з нового джерела; джерело без валюти — 400 `err.supplierPayment.sourceHasNoCurrency`. Сума (`amount`) лишається числом у валюті нового джерела; конвертація в базову — при `confirm()` (2026-10-24; раніше `update()` лишав стару валюту, і гривнева чернетка, перенесена на валютний рахунок, проводилась як гривнева).
+- **BR-SUPPAY-011**: Валюта оплати (`currencyId`) — валюта її джерела коштів (банківського рахунку чи каси), яку бере `create()`; джерело без валюти — 400 `err.supplierPayment.sourceHasNoCurrency`. Сума (`amount`) — число у валюті джерела; конвертація в базову — при `confirm()`. Частина правила про `update()` чернетки (2026-10-24) зникла разом із PATCH 2026-10-30.
 - **BR-SUPPAY-009** (Графік оплат — `getSchedule`): АВТОРИТЕТНЕ джерело суми боргу — `SettlementAccount.balance` (`payable = |−balance|` для `balance<0`), а НЕ `Σ PurchaseOrder.totalAmount` — баланс враховує ВСІ рухи (повернення, unlinked-платежі, коригування). Фільтр: `counterparty.deletedAt IS NULL` + `type IN (SUPPLIER, BOTH)` (Bug #599 — не показувати клієнтів з prepayment-refund). **FIFO-розподіл**: `payable` наливається на непогашені RECEIVED/PARTIAL PO по черзі від найстарішого (`orderBy paymentDate asc nulls first`), `take = min(po.outstanding, remaining)`; кожен PO лягає у колонку за `paymentDate` (null/<from → overdue; from..to → byDate[дата]; >to → planned) з РЕАЛЬНИМ залишком. PO, до яких борг не дійшов = оплачені (не показуються); надлишок понад ΣPO → overdue. Кредит-ліміт (макс по PURCHASE-договорах) віднімається з найпізніших. **Trade-off (Bug #600)**: `schedule.totals.total ≤ reports.settlements.totalCredit` — звіт НЕ фільтрує deleted/CLIENT, тож розбіжність = борги видалених + CLIENT-типу counterparty.
 - **BR-SUPPAY-010** (Drill-down — `getScheduleDocuments`): документи (PO) конкретної клітинки/бакета шахматки. Спільний private `computeScheduleAllocations` — ЄДИНЕ джерело FIFO-наливу + кредит-ліміту зі збереженням per-PO алокацій; `getSchedule` сумує їх у бакети, `getScheduleDocuments` фільтрує по цільовому бакету. **Інваріант консистентності**: `Σ allocated документів у бакеті == значення клітинки getSchedule` (за конструкцією — один helper, немає sibling-drift). Кредит-ліміт зменшує `allocated` з найпізніших PO (planned → byDate спадно → overdue), дзеркалить порядок getSchedule. Синтетичний рядок «борг без документа» (`poId=''`, коли balance > ΣPO) → overdue, некликабельний у UI. Query: `date` XOR `target` (overdue/planned), обидва з `@IsDateString({strict})+@Matches(YMD_RE)` (Bug #616); `supplierId` опційний (без нього — усі постачальники, клік по рядку «Разом»).
 
@@ -161,21 +160,20 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/supplier-payments/`
 
-| Аспект                                                         | Тест                                          | Кейсів |
-| -------------------------------------------------------------- | --------------------------------------------- | ------ |
-| cancel remove                                                  | `supplier-payments.cancel-remove.spec.ts`     | 5      |
-| confirm                                                        | `supplier-payments.confirm.spec.ts`           | 8      |
-| HTTP-контракт (DTO, статуси, валідація)                        | `supplier-payments.contract.spec.ts`          | 29     |
-| документ, позначений на видалення, — лише перегляд (BR-WO-012) | `supplier-payments.with-deleted.spec.ts`      | 9      |
-| create                                                         | `supplier-payments.create.spec.ts`            | 8      |
-| пов'язані документи                                            | `supplier-payments.linked-docs.spec.ts`       | 10     |
-| без ПРРО і лояльності (статичний сторож)                       | `supplier-payments.no-fiscal-loyalty.spec.ts` | 14     |
-| payables fx                                                    | `supplier-payments.payables-fx.spec.ts`       | 10     |
-| schedule                                                       | `supplier-payments.schedule.spec.ts`          | 26     |
-| сортування (whitelist orderBy)                                 | `supplier-payments.sort.spec.ts`              | 9      |
-| update guards, валюта чернетки з джерела (BR-SUPPAY-011)       | `supplier-payments.update-guards.spec.ts`     | 15     |
+| Аспект                                                             | Тест                                          | Кейсів |
+| ------------------------------------------------------------------ | --------------------------------------------- | ------ |
+| cancel remove                                                      | `supplier-payments.cancel-remove.spec.ts`     | 5      |
+| confirm                                                            | `supplier-payments.confirm.spec.ts`           | 8      |
+| HTTP-контракт (DTO, статуси, валідація)                            | `supplier-payments.contract.spec.ts`          | 21     |
+| документ, позначений на видалення, — лише перегляд (BR-WO-012)     | `supplier-payments.with-deleted.spec.ts`      | 8      |
+| create                                                             | `supplier-payments.create.spec.ts`            | 10     |
+| без ПРРО і лояльності (статичний сторож)                           | `supplier-payments.no-fiscal-loyalty.spec.ts` | 14     |
+| payables fx                                                        | `supplier-payments.payables-fx.spec.ts`       | 10     |
+| schedule                                                           | `supplier-payments.schedule.spec.ts`          | 26     |
+| сортування (whitelist orderBy)                                     | `supplier-payments.sort.spec.ts`              | 9      |
+| create guards (невідомий рахунок, замовлення іншого постачальника) | `supplier-payments.create-guards.spec.ts`     | 2      |
 
-Разом: **137** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **113** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Component-тест вкладки графіка:**
 `apps/web/src/app/(app)/purchase-orders/__tests__/SupplierPaymentScheduleTab.test.tsx` — 3 кейси:
@@ -186,7 +184,6 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 
 - Сторож «без ПРРО і лояльності» статичний (regex по вихідниках модуля): ловить імпорт із `modules/payments/` чи `modules/loyalty/` і будь-яку згадку checkbox / fiscal / vchasno / loyalty / ПРРО в коді. НЕ бачить транзитивного шляху: якщо фіскалізацію чи нарахування балів додадуть усередину `SettlementsService` або `CashService`, які цей модуль кличе, або в processor поза текою модуля — тест мовчатиме. Поведінкового тесту «після `confirm()` у черзі `checkbox` порожньо» немає — потрібен integration-спек із справжнім BullMQ.
-- Джерело коштів у `update()`: гілки «обидва джерела одночасно» (`sourceConflict`) з `update()` недосяжні за побудовою — він сам передає у `assertSourceConsistency` лише поле свого `sourceType`, а чуже пише `null`. Тобто `PATCH { sourceType: BANK_ACCOUNT, bankAccountId, cashRegisterId }` не дає 400 (на відміну від `create()`), а мовчки відкидає касу. Тести стережуть саме цю фактичну поведінку (обнулення чужого поля); чи має `update()` відповідати 400, як `create()`, — не вирішено.
 - Race-safety проведення перевірена на моках (CAS повернув `count=0` → settlement не пишеться). Двох справжніх одночасних транзакцій проти БД не ганяє ніхто — потрібен integration-спек (unit-тестом не закривається: на моках немає ані блокувань, ані ізоляції транзакцій).
 - Графік оплат: trade-off зі звітом «Взаєморозрахунки» (`schedule.totals.total ≤ reports.settlements.totalCredit`, Bug #600) не стережеться — це нерівність між двома модулями, unit-тест одного сервісу її не бачить; потрібен integration-спек, що викликає обидва сервіси на одних даних. Take-cap 5000 стережеться лише як число в запиті; що буде з графіком, коли рядків справді більше 5000 (тихе обрізання найновіших PO), не перевіряє ніхто.
 - Drill-down: компонентний тест вкладки стереже «некликабельність» синтетичного рядка на рівні DOM (role/tabIndex/клік). Справжній браузер (фокус Tab-ом, скрін-рідер) — лише E2E, якого для вкладки графіка немає.
