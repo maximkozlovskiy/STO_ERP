@@ -208,7 +208,7 @@ cd apps/api && npx vitest run src/modules/goods/<файл>.spec.ts
 | єдиний пошук товару в шляхах завантаження | `../xlsx/xlsx.good-matching.spec.ts`      | 11     |
 | імпорт довідників: правдиві лічильники    | `../xlsx/xlsx.catalog-import.spec.ts`     | 6      |
 
-Разом: **186** кейси (цифри з `vitest --reporter=json`, не з grep).
+Разом: **187** кейси (цифри з `vitest --reporter=json`, не з grep).
 
 Web: `apps/web/src/components/ui/__tests__/XlsxImportButton.summary.test.tsx` — підсумок імпорту
 («пропущено» окремо, нульове «оновлено» не показується) і назви кнопок імпорту.
