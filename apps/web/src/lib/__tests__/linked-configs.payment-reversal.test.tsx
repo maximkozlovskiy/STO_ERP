@@ -25,6 +25,8 @@ vi.mock('@/lib/api-client', () => ({
 vi.mock('@/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/format', () => ({
   fmtMoney: (v: number) => String(v),
+  fmtBankCurrencySuffix: (code: string | null | undefined) =>
+    !code || code === 'UAH' ? '₴' : code,
   fmtDate: (v: string) => `дата ${v.slice(0, 10)}`,
   fmtDateTime: (v: string) => `дата ${v.slice(0, 10)}`,
 }));
@@ -140,6 +142,23 @@ describe('рядок оплати: чек у черзі ПРРО (BR-PAY-029)', 
   it('чек FAILED → «Сторнувати» лишається (відхилений чек сторно знімає)', () => {
     const mapped = section(workOrderLinkedConfig(nav)).mapRow(payment({ fiscalStatus: 'FAILED' }));
     expect(mapped.dialogAction?.label).toBe('Сторнувати');
+  });
+});
+
+// Bug #1018: оплата на доларовий рахунок підписувалась «₴» — і в рядку, і в картці її сторно, яку
+// після BR-PAY-028 відкривають саме тут.
+describe('рядок оплати: сума у валюті оплати (Bug #1018)', () => {
+  it.each([
+    ['USD', payment({ amount: 20, currencyCode: 'USD' }), '20 USD'],
+    ['базова (null)', payment({ amount: 20, currencyCode: null }), '20 ₴'],
+    ['UAH', payment({ amount: 20, currencyCode: 'UAH' }), '20 ₴'],
+  ])('%s → «%s»', (_n, row, text) => {
+    for (const config of [workOrderLinkedConfig(nav), invoiceLinkedConfig(nav)]) {
+      const mapped = section(config).mapRow(row);
+      expect(mapped.primary).toBe(text);
+      expect(mapped.preview?.rows.find(r => r.label === 'Сума')?.value).toBe(text);
+      expect(mapped.dialogAction?.ariaLabel).toContain(text);
+    }
   });
 });
 

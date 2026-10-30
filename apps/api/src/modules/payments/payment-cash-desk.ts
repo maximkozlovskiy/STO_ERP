@@ -45,12 +45,14 @@ export async function paymentsInCashDesk(
 export interface LinkedPaymentSource extends PaymentCashDeskFields {
   amount: Prisma.Decimal | number | string;
   onlinePaymentIntentId: string | null;
+  /** Валюта оплати; null — базова (оплата без `currencyId`). */
+  currency?: { code: string } | null;
 }
 
 /**
- * Рядки секції «Оплати» «Пов'язаних документів» (BR-PAY-024): сума — число (§13), ознаки «онлайн-
- * оплата QR» (`isOnline`) і «лежить у касі» (`inCashDesk`, `paymentsInCashDesk`). Службові поля —
- * id онлайн-наміру й каси — клієнту не йдуть.
+ * Рядки секції «Оплати» «Пов'язаних документів» (BR-PAY-024): сума — число (§13) з кодом валюти
+ * оплати (`currencyCode`, null — базова; Bug #1018), ознаки «онлайн-оплата QR» (`isOnline`) і «лежить
+ * у касі» (`inCashDesk`, `paymentsInCashDesk`). Службові поля — id онлайн-наміру й каси — клієнту не йдуть.
  */
 export async function toLinkedPaymentRows<T extends LinkedPaymentSource>(
   db: Pick<Prisma.TransactionClient, 'cashOperation'>,
@@ -58,8 +60,9 @@ export async function toLinkedPaymentRows<T extends LinkedPaymentSource>(
   payments: readonly T[],
 ): Promise<
   Array<
-    Omit<T, 'amount' | 'onlinePaymentIntentId' | 'cashRegisterId'> & {
+    Omit<T, 'amount' | 'onlinePaymentIntentId' | 'cashRegisterId' | 'currency'> & {
       amount: number;
+      currencyCode: string | null;
       isOnline: boolean;
       inCashDesk: boolean;
     }
@@ -67,9 +70,10 @@ export async function toLinkedPaymentRows<T extends LinkedPaymentSource>(
 > {
   const inCash = await paymentsInCashDesk(db, orgId, payments);
   return payments.map(
-    ({ onlinePaymentIntentId, cashRegisterId: _cashRegisterId, amount, ...rest }) => ({
+    ({ onlinePaymentIntentId, cashRegisterId: _cashRegisterId, amount, currency, ...rest }) => ({
       ...rest,
       amount: Number(amount),
+      currencyCode: currency?.code ?? null,
       isOnline: onlinePaymentIntentId != null,
       inCashDesk: inCash.has(rest.id),
     }),

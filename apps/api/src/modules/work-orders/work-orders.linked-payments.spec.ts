@@ -27,6 +27,7 @@ function makeService() {
       sourceType: 'BANK_ACCOUNT',
       cashRegisterId: null,
       onlinePaymentIntentId: null,
+      currency: { code: 'USD' },
     },
     {
       id: 'p-qr',
@@ -110,5 +111,18 @@ describe('WorkOrdersService.getLinkedDocuments — рядок оплати дл�
     expect(byId['p-bank']).toMatchObject({ inCashDesk: false });
     expect(byId['p-qr']).toMatchObject({ inCashDesk: false });
     for (const p of res.payments) expect(p).not.toHaveProperty('cashRegisterId');
+  });
+
+  // Bug #1018: сума оплати в «Пов'язаних документах» — у валюті оплати, а не завжди «₴».
+  it('рядок оплати несе currencyCode валюти оплати; без валюти (базова) — null', async () => {
+    const { service, payment } = makeService();
+    const res = await service.getLinkedDocuments(ORG, WO);
+    const select = (payment.findMany.mock.calls[0]![0] as { select: Record<string, unknown> })
+      .select;
+    expect(select).toMatchObject({ currency: { select: { code: true } } });
+    const byId = Object.fromEntries(res.payments.map(p => [p.id, p]));
+    expect(byId['p-bank']).toMatchObject({ currencyCode: 'USD' });
+    expect(byId['p-qr']).toMatchObject({ currencyCode: null });
+    for (const p of res.payments) expect(p).not.toHaveProperty('currency');
   });
 });

@@ -27449,6 +27449,10 @@
           },
           "inCashDesk": {
             "type": "boolean"
+          },
+          "currencyCode": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -27458,7 +27462,8 @@
           "createdAt",
           "notes",
           "isOnline",
-          "inCashDesk"
+          "inCashDesk",
+          "currencyCode"
         ]
       },
       "LinkedSlotLiftDto": {
@@ -32532,6 +32537,10 @@
           },
           "inCashDesk": {
             "type": "boolean"
+          },
+          "currencyCode": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -32541,7 +32550,8 @@
           "createdAt",
           "notes",
           "isOnline",
-          "inCashDesk"
+          "inCashDesk",
+          "currencyCode"
         ]
       },
       "InvoiceLinkedCounterpartyRowDto": {

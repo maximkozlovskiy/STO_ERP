@@ -2703,6 +2703,8 @@ export class WorkOrdersService {
           sourceType: true,
           cashRegisterId: true,
           onlinePaymentIntentId: true,
+          // Сума оплати — у її валюті (Bug #1018): без коду web підписував усе «₴».
+          currency: { select: { code: true } },
         },
         orderBy: { createdAt: 'desc' },
         take: TAKE,

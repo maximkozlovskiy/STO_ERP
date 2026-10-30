@@ -323,6 +323,38 @@ describe('InvoicesService — linked-documents edge cases', () => {
     for (const p of res.payments) expect(p).not.toHaveProperty('onlinePaymentIntentId');
   });
 
+  // Bug #1018: оплата на доларовий рахунок у «Пов'язаних документах» підписувалась «₴» — рядок не
+  // мав валюти. Тепер — код валюти оплати; без `currencyId` (базова) — null, сам об'єкт не йде.
+  it('getLinkedDocuments: рядок оплати несе currencyCode валюти оплати (null — базова)', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ workOrderId: null, counterpartyId: CP });
+    const row = {
+      amount: '20.00',
+      method: 'bank_transfer',
+      createdAt: new Date('2026-10-31T10:00:00Z'),
+      notes: null,
+      fiscalStatus: null,
+      reversedAt: null,
+      sourceType: 'BANK_ACCOUNT',
+      cashRegisterId: null,
+      onlinePaymentIntentId: null,
+    };
+    prisma.payment.findMany.mockResolvedValue([
+      { ...row, id: 'p-usd', currency: { code: 'USD' } },
+      { ...row, id: 'p-base', currency: null },
+    ]);
+    prisma.cashOperation.findMany.mockResolvedValue([]);
+    prisma.counterparty.findFirst.mockResolvedValue(null);
+
+    const res = await service.getLinkedDocuments(ORG, A);
+
+    expect(prisma.payment.findMany.mock.calls[0][0].select).toMatchObject({
+      currency: { select: { code: true } },
+    });
+    expect(res.payments[0]).toMatchObject({ id: 'p-usd', currencyCode: 'USD' });
+    expect(res.payments[1]).toMatchObject({ id: 'p-base', currencyCode: null });
+    for (const p of res.payments) expect(p).not.toHaveProperty('currency');
+  });
+
   // Стара готівкова оплата (до BR-PAY-023) призначення не має, але гроші — у касі: її рядок каси
   // (`documentType = 'Payment'`) чи `cashRegisterId`. Сервер таку сторнує лише в касі
   // (`err.payment.reversalCashRow`), тож рядок оплати каже `inCashDesk` — і web не показує

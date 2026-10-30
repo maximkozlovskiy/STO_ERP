@@ -8348,6 +8348,7 @@ export interface components {
             sourceType?: "BANK_ACCOUNT" | "CASH_REGISTER" | null;
             isOnline: boolean;
             inCashDesk: boolean;
+            currencyCode: string | null;
         };
         LinkedSlotLiftDto: {
             name: string;
@@ -9686,6 +9687,7 @@ export interface components {
             sourceType?: "BANK_ACCOUNT" | "CASH_REGISTER" | null;
             isOnline: boolean;
             inCashDesk: boolean;
+            currencyCode: string | null;
         };
         InvoiceLinkedCounterpartyRowDto: {
             id: string;

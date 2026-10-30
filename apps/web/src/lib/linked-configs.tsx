@@ -24,7 +24,7 @@ import {
   fiscalStatusLabel,
   purchaseListStatusLabel,
 } from '@/i18n/enumLabel';
-import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
+import { fmtBankCurrencySuffix, fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
 import type {
   LinkedEntityConfig,
@@ -47,6 +47,14 @@ const PaymentReversalModal = dynamic(
 
 function fmt(n: string | number): string {
   return fmtMoney(Number(n));
+}
+
+/**
+ * Сума оплати клієнта — у валюті оплати (Bug #1018): доларова оплата на доларовий рахунок не
+ * «20,00 ₴», а «20,00 USD». Без коду (базова валюта) — «₴».
+ */
+function fmtPaymentAmount(row: Pick<LinkedPaymentRow, 'amount' | 'currencyCode'>): string {
+  return `${fmt(row.amount)} ${fmtBankCurrencySuffix(row.currencyCode)}`;
 }
 
 // ─── Спільні badge/label мапи ──────────────────────────────
@@ -267,7 +275,7 @@ function paymentReversalFields(
       },
     };
   }
-  const amountText = `${fmt(row.amount)} ₴`;
+  const amountText = fmtPaymentAmount(row);
   const dateText = fmtDateTime(row.createdAt);
   return {
     dialogAction: {
@@ -311,14 +319,14 @@ export function workOrderLinkedConfig(
         icon: CreditCard,
         mapRow: (row: LinkedPaymentRow) => ({
           id: row.id,
-          primary: `${fmt(row.amount)} ₴`,
+          primary: fmtPaymentAmount(row),
           secondary: fmtDateTime(row.createdAt),
           badge: row.reversedAt ? REVERSED_PAYMENT_BADGE : undefined,
           ...paymentReversalFields(row),
           preview: {
             title: 'Оплата',
             rows: [
-              { label: 'Сума', value: `${fmt(row.amount)} ₴` },
+              { label: 'Сума', value: fmtPaymentAmount(row) },
               { label: 'Метод', value: METHOD_LABELS[row.method] ?? row.method },
               { label: 'Дата', value: fmtDateTime(row.createdAt) },
               ...reversedPreviewRows(row),
@@ -427,7 +435,7 @@ export function invoiceLinkedConfig(
         icon: CreditCard,
         mapRow: (row: LinkedPaymentRow) => ({
           id: row.id,
-          primary: `${fmt(row.amount)} ₴`,
+          primary: fmtPaymentAmount(row),
           secondary: fmtDateTime(row.createdAt),
           // Сторнована оплата: позначка «Сторновано» замість чека й без «Повторити» — чек
           // сторнованої оплати сервер скасовує, повтор лише отримав би відмову.
@@ -440,7 +448,7 @@ export function invoiceLinkedConfig(
           preview: {
             title: 'Оплата',
             rows: [
-              { label: 'Сума', value: `${fmt(row.amount)} ₴` },
+              { label: 'Сума', value: fmtPaymentAmount(row) },
               { label: 'Метод', value: METHOD_LABELS[row.method] ?? row.method },
               { label: 'Дата', value: fmtDateTime(row.createdAt) },
               ...(row.fiscalStatus
