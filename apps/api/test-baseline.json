@@ -1010,6 +1010,7 @@
    "Типові правила організації WO_COMPLETED_CLIENT: друга міграція — старе тіло → поточне, канали Viber → SMS прибирає",
    "Типові правила організації WO_COMPLETED_CLIENT: перша міграція — той самий рядок, що setup.service, у старій редакції",
    "Типові правила організації друга міграція: канали прибирає лише точний Viber → SMS, тіло — лише дослівно старе",
+   "Типові правила організації кошторис: сума вже з одиницею — шаблон не дописує «грн» (ні новий, ні після міграції)",
    "Типові правила організації міграція не дублює правила й шаблон (ON CONFLICT DO NOTHING) і пише шаблон кошторису",
    "Типові правила організації рядки нової організації: усі типові правила, увімкнені, шаблон — лише змінні каталогу",
    "Типові правила організації старт api: збій запису правил не зупиняє старт",
@@ -6190,6 +6191,16 @@
    "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) порожні «інші доходи» дозволені (жодне надходження не є доходом)",
    "PATCH /settings/organisation — налаштування звіту P&L (BR-RPT-030) рядок без полів P&L (до міграції / старий кеш) — типові значення"
   ],
+  "apps/api/src/modules/settings/settings.quiet-hours.spec.ts": [
+   "тихі години в налаштуваннях організації (BR-AUT-013) GET віддає збережені межі з рядка налаштувань",
+   "тихі години в налаштуваннях організації (BR-AUT-013) PATCH відхиляє «21-00» з текстом про формат ГГ:ХХ, а не загальним шаблоном",
+   "тихі години в налаштуваннях організації (BR-AUT-013) PATCH відхиляє «21:60» з текстом про формат ГГ:ХХ, а не загальним шаблоном",
+   "тихі години в налаштуваннях організації (BR-AUT-013) PATCH відхиляє «24:00» з текстом про формат ГГ:ХХ, а не загальним шаблоном",
+   "тихі години в налаштуваннях організації (BR-AUT-013) PATCH відхиляє «9:00» з текстом про формат ГГ:ХХ, а не загальним шаблоном",
+   "тихі години в налаштуваннях організації (BR-AUT-013) PATCH відхиляє «» з текстом про формат ГГ:ХХ, а не загальним шаблоном",
+   "тихі години в налаштуваннях організації (BR-AUT-013) PATCH відхиляє «ніч» з текстом про формат ГГ:ХХ, а не загальним шаблоном",
+   "тихі години в налаштуваннях організації (BR-AUT-013) PATCH приймає «ГГ:ХХ» — і межі доби, і вікно через північ"
+  ],
   "apps/api/src/modules/settings/settings.service.spec.ts": [
    "SettingsService — C1b audit TaxRate best-effort: record() reject НЕ ламає основну мутацію (createTaxRate повертає результат)",
    "SettingsService — C1b audit TaxRate createTaxRate (non-default) → record(orgId, TaxRate, id, CREATE, userId)",
@@ -8328,11 +8339,12 @@
    "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) findByShareToken, «ПДВ зверху»: totalNet = план, totalVat = ПДВ на план, totalAmount = план + ПДВ",
    "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) findByShareToken, «ПДВ у ціні»: totalAmount = план, ПДВ виділено з нього",
    "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) findByShareToken, наряд без ПДВ: totalVat = 0, totalNet = totalAmount = план",
-   "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) sendEstimateSms, «ПДВ зверху»: {{totalAmount}} = планова сума З ПДВ (1800.00), не сума без ПДВ і не факт",
+   "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) sendEstimateSms, «ПДВ зверху»: {{totalAmount}} = планова сума З ПДВ (1 800,00 грн), не сума без ПДВ і не факт",
    "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) sendEstimateSms: WEB_PUBLIC_URL «https://sto.example///» → посилання https://sto.example/estimate/<токен>",
    "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) sendEstimateSms: WEB_PUBLIC_URL «https://sto.example/» → посилання https://sto.example/estimate/<токен>",
    "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) sendEstimateSms: WEB_PUBLIC_URL «https://sto.example» → посилання https://sto.example/estimate/<токен>",
    "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) sendEstimateSms: сума в SMS = сума на сторінці за посиланням (той самий наряд)",
+   "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) sendEstimateSms: сума у форматі правил («1 250,00») і валюті наряду, не toFixed і не завжди «грн»",
    "WorkOrderShareService.findByShareToken — public DTO leak guards NotFoundException якщо токен не знайдено",
    "WorkOrderShareService.findByShareToken — public DTO leak guards org та goodUoM запити викликаються паралельно (не sequential)",
    "WorkOrderShareService.findByShareToken — public DTO leak guards parts[] МАЄ НЕ МІСТИТИ costPrice (key absent, not undefined/null)",

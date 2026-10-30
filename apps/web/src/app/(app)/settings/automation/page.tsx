@@ -20,11 +20,11 @@ import {
   automationStatusLabel,
 } from '@/lib/automation';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useConfirmDeleteAutomationRule } from '@/hooks/useConfirmDeleteAutomationRule';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useListPage } from '@/hooks/useListPage';
 import {
   useAutomationRules,
-  useDeleteAutomationRule,
   useToggleAutomationRule,
   type AutomationRule,
 } from '@/hooks/api/useAutomation';
@@ -120,8 +120,8 @@ function AutomationPageClient() {
 
   const { data, isLoading, error, refetch } = useAutomationRules(isAuthorized);
   const toggle = useToggleAutomationRule();
-  const remove = useDeleteAutomationRule();
   const { confirm, dialogProps } = useConfirm();
+  const { deleteRule } = useConfirmDeleteAutomationRule(confirm);
   const features = useUiFeatures();
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -145,22 +145,6 @@ function AutomationPageClient() {
       toast.error(e instanceof Error ? e.message : t('loadError'));
     } finally {
       setBusyId(null);
-    }
-  };
-
-  const deleteRule = async (rule: AutomationRule) => {
-    const ok = await confirm({
-      title: t('deleteConfirm.title'),
-      message: t('deleteConfirm.message', { name: rule.name }),
-      confirmLabel: t('card.delete'),
-      variant: 'destructive',
-    });
-    if (!ok) return;
-    try {
-      await remove.mutateAsync(rule.id);
-      if (features.toastEnabled) toast.success(t('toast.deleted'));
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('loadError'));
     }
   };
 

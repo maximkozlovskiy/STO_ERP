@@ -36,12 +36,12 @@ import {
 } from '@/lib/automation';
 import { woCategoryLabel, woPriorityLabel } from '@/i18n/enumLabel';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useConfirmDeleteAutomationRule } from '@/hooks/useConfirmDeleteAutomationRule';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTaskAssignees } from '@/hooks/api/useTasks';
 import {
   useAutomationRule,
-  useDeleteAutomationRule,
   useSaveAutomationRule,
   type AutomationRule,
 } from '@/hooks/api/useAutomation';
@@ -240,7 +240,7 @@ export function AutomationRuleEditModal({
   const ruleQuery = useAutomationRule(ruleId, open);
   const rule = ruleId ? ruleQuery.data : undefined;
   const save = useSaveAutomationRule();
-  const remove = useDeleteAutomationRule();
+  const remove = useConfirmDeleteAutomationRule(confirm);
   const assignees = useTaskAssignees(open ? employee?.role : null);
 
   const [tab, setTab] = useState<Tab>('event');
@@ -428,22 +428,9 @@ export function AutomationRuleEditModal({
   );
 
   const deleteRule = async () => {
-    if (!rule) return;
-    const ok = await confirm({
-      title: t('deleteConfirm.title'),
-      message: t('deleteConfirm.message', { name: rule.name }),
-      confirmLabel: t('card.delete'),
-      variant: 'destructive',
-    });
-    if (!ok) return;
-    try {
-      await remove.mutateAsync(rule.id);
-      if (features.toastEnabled) toast.success(t('toast.deleted'));
-      dirty.resetDirty();
-      onClose();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('card.loadError'));
-    }
+    if (!rule || !(await remove.deleteRule(rule))) return;
+    dirty.resetDirty();
+    onClose();
   };
 
   const loading = !!ruleId && ruleQuery.isLoading;
