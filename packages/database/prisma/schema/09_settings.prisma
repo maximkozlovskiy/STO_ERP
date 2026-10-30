@@ -325,6 +325,9 @@ model PaymentMethodConfig {
   isSystem       Boolean   @default(false)
   sortOrder      Int       @default(0)
   requiresFiscal Boolean   @default(false)
+  // Готівка (BR-PAY-019: оплата лише з касою; ПРРО — тип CASH). Ознака довідника, а не код: власний
+  // спосіб «Готівка $» теж готівка. Рішення власника 2026-10-30 (TECH-DEBT (б) п. 45).
+  isCash         Boolean   @default(false)
   // Дефолтний рахунок-призначення для цього методу (мапінг method→куди лягають гроші):
   // напр. monobank_qr→BANK_ACCOUNT+моно-рахунок, cash→CASH_REGISTER+каса. Опційно; сервіс
   // підставляє у Payment якщо DTO не задав явно. Без FK-relation — конфіг-підказка, валідується
