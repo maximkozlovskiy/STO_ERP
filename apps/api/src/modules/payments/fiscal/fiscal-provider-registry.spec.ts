@@ -142,7 +142,11 @@ describe('VchasnoProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
     try {
       // 35.20 * 100 = 3520.0000000000005 у сирому JS → Math.round дає 3520 (без дрейфу).
-      const r = await p.sellReceipt(cfg, 'TOK', { amount: 35.2, method: 'card_terminal' });
+      const r = await p.sellReceipt(cfg, 'TOK', {
+        amount: 35.2,
+        method: 'card_terminal',
+        isCash: false,
+      });
       expect(r.fiscalReceiptId).toBe('v-fr-1');
       expect(sentBody.fiscal.task).toBe(1);
       expect(sentBody.fiscal.goods[0].price).toBe(3520);

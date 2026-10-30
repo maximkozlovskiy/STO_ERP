@@ -44,3 +44,24 @@ export function searchContains(q?: string): { contains: string; mode: 'insensiti
   const search = q.trim().slice(0, LIST_SEARCH_MAX_LENGTH);
   return search ? containsInsensitive(search) : undefined;
 }
+
+/**
+ * Пошук документа постачальника (замовлення, оплата, повернення): номер або назва / ПІБ
+ * постачальника, `%` і `_` буквально. Порожній текст → `undefined` (умову не додають).
+ */
+export function numberOrSupplierSearch(q?: string) {
+  const like = typeof q === 'string' ? q.trim() : '';
+  if (!like) return undefined;
+  return [
+    { number: containsInsensitive(like) },
+    {
+      supplier: {
+        OR: [
+          { companyName: containsInsensitive(like) },
+          { lastName: containsInsensitive(like) },
+          { firstName: containsInsensitive(like) },
+        ],
+      },
+    },
+  ];
+}

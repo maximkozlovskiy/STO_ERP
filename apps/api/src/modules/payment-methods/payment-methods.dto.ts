@@ -34,17 +34,8 @@ class PaymentMethodDestinationDto {
   defaultBankAccountId?: string | null;
 }
 
-export class CreatePaymentMethodDto extends PaymentMethodDestinationDto {
-  @ApiProperty({ example: 'cash' })
-  @IsString()
-  @IsNotEmpty()
-  code!: string;
-
-  @ApiProperty({ example: 'Готівка' })
-  @IsString()
-  @IsNotEmpty()
-  name!: string;
-
+/** Прапорці способу оплати — спільні для створення й зміни. */
+class PaymentMethodFlagsDto extends PaymentMethodDestinationDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
@@ -69,34 +60,23 @@ export class CreatePaymentMethodDto extends PaymentMethodDestinationDto {
   isCash?: boolean;
 }
 
-export class UpdatePaymentMethodDto extends PaymentMethodDestinationDto {
+export class CreatePaymentMethodDto extends PaymentMethodFlagsDto {
+  @ApiProperty({ example: 'cash' })
+  @IsString()
+  @IsNotEmpty()
+  code!: string;
+
+  @ApiProperty({ example: 'Готівка' })
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+}
+
+export class UpdatePaymentMethodDto extends PaymentMethodFlagsDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   name?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsBoolean()
-  isActive?: boolean;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  sortOrder?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsBoolean()
-  requiresFiscal?: boolean;
-
-  @ApiPropertyOptional({
-    description: 'Готівка: оплата лише з касою, у чеку ПРРО — CASH (BR-PAY-019)',
-  })
-  @IsOptional()
-  @IsBoolean()
-  isCash?: boolean;
 }
 
 export class PaymentMethodResponseDto {

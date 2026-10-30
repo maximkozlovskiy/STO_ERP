@@ -6878,15 +6878,15 @@ export interface components {
             defaultCashRegisterId?: string | null;
             /** Format: uuid */
             defaultBankAccountId?: string | null;
-            /** @example cash */
-            code: string;
-            /** @example Готівка */
-            name: string;
             isActive?: boolean;
             sortOrder?: number;
             requiresFiscal?: boolean;
             /** @description Готівка: оплата лише з касою, у чеку ПРРО — CASH (BR-PAY-019) */
             isCash?: boolean;
+            /** @example cash */
+            code: string;
+            /** @example Готівка */
+            name: string;
         };
         UpdatePaymentMethodDto: {
             /** @enum {string|null} */
@@ -6895,12 +6895,12 @@ export interface components {
             defaultCashRegisterId?: string | null;
             /** Format: uuid */
             defaultBankAccountId?: string | null;
-            name?: string;
             isActive?: boolean;
             sortOrder?: number;
             requiresFiscal?: boolean;
             /** @description Готівка: оплата лише з касою, у чеку ПРРО — CASH (BR-PAY-019) */
             isCash?: boolean;
+            name?: string;
         };
         SetupInitDto: {
             /** @example СТО Авто-Майстер */

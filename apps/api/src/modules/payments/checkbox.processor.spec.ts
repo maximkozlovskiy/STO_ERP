@@ -24,6 +24,7 @@ interface CheckboxJobData {
   branchId: string | null;
   amount: number;
   method: string;
+  isCash?: boolean;
 }
 
 const makeJob = (data: Partial<CheckboxJobData> = {}, attemptsMade = 0): Job<CheckboxJobData> =>

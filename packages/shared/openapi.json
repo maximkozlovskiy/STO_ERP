@@ -22099,14 +22099,6 @@
             "nullable": true,
             "format": "uuid"
           },
-          "code": {
-            "type": "string",
-            "example": "cash"
-          },
-          "name": {
-            "type": "string",
-            "example": "Готівка"
-          },
           "isActive": {
             "type": "boolean"
           },
@@ -22120,6 +22112,14 @@
           "isCash": {
             "type": "boolean",
             "description": "Готівка: оплата лише з касою, у чеку ПРРО — CASH (BR-PAY-019)"
+          },
+          "code": {
+            "type": "string",
+            "example": "cash"
+          },
+          "name": {
+            "type": "string",
+            "example": "Готівка"
           }
         },
         "required": [
@@ -22148,9 +22148,6 @@
             "nullable": true,
             "format": "uuid"
           },
-          "name": {
-            "type": "string"
-          },
           "isActive": {
             "type": "boolean"
           },
@@ -22164,6 +22161,9 @@
           "isCash": {
             "type": "boolean",
             "description": "Готівка: оплата лише з касою, у чеку ПРРО — CASH (BR-PAY-019)"
+          },
+          "name": {
+            "type": "string"
           }
         }
       },

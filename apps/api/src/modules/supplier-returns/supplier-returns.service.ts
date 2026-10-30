@@ -25,7 +25,7 @@ import {
   SupplierReturnResponseDto,
   PaginatedSupplierReturnsDto,
 } from './supplier-returns.dto';
-import { containsInsensitive } from '../../common/utils/like-pattern';
+import { numberOrSupplierSearch } from '../../common/utils/like-pattern';
 
 type SRStatus = SupplierReturnStatus;
 
@@ -95,23 +95,8 @@ export class SupplierReturnsService {
       ...(showDeleted ? {} : { deletedAt: null }),
     };
     if (status) where.status = status;
-    if (q) {
-      const like = q.trim();
-      if (like.length > 0) {
-        where.OR = [
-          { number: containsInsensitive(like) },
-          {
-            supplier: {
-              OR: [
-                { companyName: containsInsensitive(like) },
-                { lastName: containsInsensitive(like) },
-                { firstName: containsInsensitive(like) },
-              ],
-            },
-          },
-        ];
-      }
-    }
+    const search = numberOrSupplierSearch(q);
+    if (search) where.OR = search;
     // documentDate - date without time (@db.Date): bounds are calendar dates, no timezone shift.
     const documentDate = dateOnlyRangeFilter(dateFrom, dateTo);
     if (documentDate) where.documentDate = documentDate;

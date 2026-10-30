@@ -32,7 +32,7 @@ import {
   PurchaseOrderResponseDto,
   PaginatedPurchaseOrdersDto,
 } from './purchase-orders.dto';
-import { containsInsensitive } from '../../common/utils/like-pattern';
+import { numberOrSupplierSearch } from '../../common/utils/like-pattern';
 
 type POStatus = PurchaseOrderStatus;
 
@@ -195,23 +195,8 @@ export class PurchaseOrdersService {
     };
     if (status) where.status = status as POStatus;
     if (supplierId) where.supplierId = supplierId;
-    if (q) {
-      const like = q.trim();
-      if (like.length > 0) {
-        where.OR = [
-          { number: containsInsensitive(like) },
-          {
-            supplier: {
-              OR: [
-                { companyName: containsInsensitive(like) },
-                { lastName: containsInsensitive(like) },
-                { firstName: containsInsensitive(like) },
-              ],
-            },
-          },
-        ];
-      }
-    }
+    const search = numberOrSupplierSearch(q);
+    if (search) where.OR = search;
     // documentDate - date without time (@db.Date): bounds are calendar dates, no timezone shift.
     const documentDate = dateOnlyRangeFilter(dateFrom, dateTo);
     if (documentDate) where.documentDate = documentDate;

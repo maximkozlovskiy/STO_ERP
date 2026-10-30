@@ -503,7 +503,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | політика повторів черг                                                                            | `payments.queue-retry-policy.spec.ts`                    | 6      |
 | сервісна логіка (+SSRF upsert, BR-SEC-SSRF)                                                       | `provider-config.service.spec.ts`                        | 40     |
 | upsert провайдера без `enabled` (лише activate)                                                   | `provider-upsert-dto.contract.spec.ts`                   | 12     |
-| шифрування at-rest, усі шляхи запису (BR-PAY-026)                                                 | `../../prisma/field-encryption.extension.spec.ts`        | 29     |
+| шифрування at-rest, усі шляхи запису (BR-PAY-026)                                                 | `../../prisma/field-encryption.extension.spec.ts`        | 30     |
 | шифрування (сервіс)                                                                               | `../../common/crypto/encryption.service.spec.ts`         | 11     |
 | готівка (ознака isCash) — через касу, безготівкова — з рахунком; спосіб із довідника (BR-PAY-027) | `payments.cash-register-required.spec.ts`                | 28     |
 | куди надходять кошти                                                                              | `../payment-methods/payment-methods.destination.spec.ts` | 27     |
@@ -513,15 +513,15 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | HTTP-контракт сторно (BR-PAY-024)                                                                 | `payments.reverse-route.contract.spec.ts`                | 15     |
 | HTTP-контракт списку: query DTO, NUL (BR-PAY-025)                                                 | `payments.list-query.contract.spec.ts`                   | 8      |
 | NUL у query/param/тілі → 400, глоб. труби (BR-PAY-025, BR-SEC-NUL)                                | `../../common/pipes/reject-nul-character.pipe.spec.ts`   | 7      |
-| секрети філії не у відповіді й кеші (BR-PAY-015)                                                  | `../settings/settings.branch-secrets.contract.spec.ts`   | 6      |
+| секрети філії не у відповіді й кеші (BR-PAY-015)                                                  | `../settings/settings.branch-secrets.contract.spec.ts`   | 7      |
 
 Web (`apps/web/src`), ознака «Готівка» (BR-PAY-019): `components/ui/__tests__/ClientPaymentModal.test.tsx`
 (39; поле «Каса» за ознакою способу, не за кодом) і `app/(app)/ndi/__tests__/PaymentsTab.destination.test.tsx`
 (9; перемикач «Готівка» в картці способу, позначка в списку, POST / PATCH несуть `isCash`).
 
-Разом: **563** кейси — 493 у модулі + 34 у двох спеках шифрування + 36 у довіднику способів оплати
-(`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
-`vitest --reporter=json` (2026-10-24), не з grep.
+Разом: **589** кейсів — сума рядків таблиці, разом зі спеками шифрування й довідника способів оплати
+(`payment-methods`) поза модулем; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
+`vitest --reporter=json` (звірено 2026-10-30), не з grep.
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 

@@ -142,7 +142,7 @@ cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
 | єдиний писар балансу (статичний сторож)                                         | `settlements.single-writer.spec.ts`      | 3      |
 | місця виклику `createTransaction` і їхній захист від повтору (статичний сторож) | `settlements.callers.spec.ts`            | 6      |
 
-Разом: **93** кейси (цифри з `vitest --reporter=json`, не з grep).
+Разом: **95** кейси (цифри з `vitest --reporter=json`, не з grep).
 
 Спільний сетап спеків `SettlementsAccountService` — `settlements.spec-fixture.ts` (factory).
 
