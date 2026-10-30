@@ -3,8 +3,8 @@
  * `getMe`, невірний токен і «немає мережі» — різні 400 українською, токен назовні не віддається,
  * відключення зупиняє опитування.
  */
-import { describe, expect, it } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { describe, expect, it, vi } from 'vitest';
+import { BadRequestException, Logger } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import {
   TelegramApiError,
@@ -89,5 +89,19 @@ describe('Підключення Telegram-бота (BR-AUT-040)', () => {
     });
     expect(h.tables.organisationSettings.rows[1]!.telegramBotToken).toBe('other');
     expect(h.scheduler.stop).toHaveBeenCalledWith(ORG);
+
+    // Redis недоступний: токен уже стерто — відключення не стає помилкою 500.
+    const r = botHarness();
+    r.scheduler.stop.mockRejectedValueOnce(new Error('Redis недоступний'));
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      await expect(r.service.disconnect(ORG, ADMIN)).resolves.toEqual({
+        connected: false,
+        username: null,
+      });
+      expect(r.tables.organisationSettings.rows[0]!.telegramBotToken).toBeNull();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

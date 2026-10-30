@@ -6,6 +6,13 @@ import { redactSecrets } from '../../../common/utils/redact';
 export const TELEGRAM_API_DEFAULT_URL = 'https://api.telegram.org';
 const HTTP_TIMEOUT_MS = 10_000;
 
+/**
+ * Формат токена BotFather: `<id бота>:<секрет>`. Токен іде в шлях запиту до Bot API — сувора
+ * перевірка формату не пускає туди `/`, `?` чи `..` (BR-AUT-040). Перевіряє і DTO підключення, і
+ * сам клієнт: токен приходить ще й тілом `POST /notifications/providers/telegram-bot/verify`.
+ */
+export const TELEGRAM_BOT_TOKEN_RE = /^\d{3,20}:[A-Za-z0-9_-]{20,100}$/;
+
 /** Telegram відповів `ok: false` (невірний токен, чат не знайдено, бота заблоковано…). */
 export class TelegramApiError extends Error {
   constructor(
@@ -78,6 +85,10 @@ export class TelegramApiClient {
   }
 
   private async call<T>(token: string, method: string, body: Record<string, unknown>): Promise<T> {
+    // Не токен BotFather — у шлях запиту не підставляється (як відмова Telegram 401).
+    if (!TELEGRAM_BOT_TOKEN_RE.test(token)) {
+      throw new TelegramApiError(401, 'Unauthorized: невірний формат токена бота');
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
     let response: Response;

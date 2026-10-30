@@ -72,6 +72,21 @@ describe('TelegramApiClient', () => {
     expect(netErr).toBeInstanceOf(TelegramNetworkError);
     expect((netErr as Error).message).not.toContain(TOKEN);
   });
+
+  // guards: BR-AUT-040
+  it('не токен BotFather (перевірка провайдера тілом запиту) — у шлях не підставляється, fetch не йде', async () => {
+    for (const bad of ['../../getMe?x=', `${TOKEN}/../sendMessage`, 'abc:short', '']) {
+      const e = await client()
+        .getMe(bad)
+        .catch((x: unknown) => x);
+      expect(e).toBeInstanceOf(TelegramApiError);
+      expect((e as TelegramApiError).errorCode).toBe(401);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+    const verified = await new TelegramBotProvider(client()).verifyCredentials({ apiKey: '../x' });
+    expect(verified.valid).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('TelegramBotProvider', () => {

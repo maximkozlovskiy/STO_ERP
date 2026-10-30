@@ -68,6 +68,9 @@ grep -rnE "\b(in)\s+[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method
       `counterparties.dto.ts`. Grep: `grep -rn -A6 "@Transform" apps/api/src --include="*.dto.ts" | grep "split("`
       → у кожного збігу є гілка `Array.isArray(value)`; тест контракту з повтором параметра
       (`journal/security.md`, 2026-10-15)
+- [ ] **Секрет у ШЛЯХУ URL (`/bot${token}/…`) → перевірка формату в самому клієнті, не лише в DTO одного
+      маршруту:** той самий клієнт може отримати значення з іншого входу (загальний `…/providers/:code/verify`)
+      (`journal/security.md`, 2026-10-30)
 - [ ] `process.env` тільки у `main.ts` та конфіг-файлах — сервіси → `ConfigService`
 - [ ] Немає `eval()`, `new Function()`, `child_process.exec()`
 
@@ -129,6 +132,11 @@ grep -rnE "await this\.[a-zA-Z]+[Qq]ueue\.add\(" apps/api/src/modules --include=
 - [ ] **`.add()` де `job.data` містить секрет (apiKey/token/creds/пароль) → `removeOnFail: N`** (bounded; інакше невдалі jobs осідають у Redis назавжди → секрет живе безстроково + ріст памʼяті). Grep: `grep -rn "\.add(" apps/api/src --include="*.ts" -A8 | grep -iE "apiKey|token|secret|creds|password"` → перевірити `removeOnFail`
 - [ ] **Централізований writer job.data → durable-БД (DLQ/audit-таблиця/IntegrationLog) МУСИТЬ редагувати sensitive-ключі перед persist (secrets-at-rest).** Конвенція «секрети не у job.data» НЕ гарантована по ВСІХ чергах: webhooks-черга носить `secret: ep.secret` (підписний ключ) у payload. Якщо будь-який компонент пише `job.data` цілком у постійне сховище (`DeadLetterService.capture` → `payload JSONB`), секрет осяде plaintext назавжди. Fix: рекурсивний **key-based** редактор перед записом (`sanitizePayload`: case-insensitive `/secret|token|password|api[-_]?key|credential|authorization|private[-_]?key|pin[-_]?code|signature/` → `[REDACTED]`; не мутує вхід; обмежений глибиною проти циклів). Відрізняється від `redactSecrets` (value-based, коли значення секрету у скоупі) — тут writer НЕ має значень, тож редагуємо за ІМЕНЕМ ключа. Grep: `grep -rnE "payload:\s*\(?job\.data|payload:\s*job\.data|\.\.\.job\.data" apps/api/src --include="*.ts" | grep -v spec` → кожен persist job.data у БД без sanitize = HIGH. Severity: HIGH
 - [ ] **One-off/manual `.add()` (enqueueImmediate/«зробити зараз») у scheduler з repeatable-сіблінгами → `jobId` (дедуп спаму) + `removeOnFail: N`, як repeatable-сіблінги у ТОМУ Ж файлі.** Без `removeOnFail` manual-jobs ростуть у Redis; без `jobId` спам кнопки = дублі. `jobId` ОКРЕМИЙ від repeatable (`<x>-now-<org>`, не `<x>-<org>`). Grep: `grep -rn "\.add(" apps/api/src/modules/**/*.scheduler.ts -A8`. Severity: IMPORTANT
+- [ ] **Повторюваний job (`repeat: { every }`) у черзі з `concurrency > 1`, чий тік може тривати довше за
+      `every` (зовнішній HTTP із тайм-аутом) → захист від перекриття тієї самої сутності.** BullMQ ставить
+      наступну ітерацію, щойно поточна стала активною: повільний тік і наступний ідуть паралельно з тим
+      самим станом (offset) — дубль зовнішніх повідомлень. Grep: `grep -rn "every:" apps/api/src/modules --include="*.scheduler.ts"`
+      (`journal/security.md`, 2026-10-30). Severity: IMPORTANT
 - [ ] ПРРО: `attempts: 288`, `backoff: { delay: 300_000 }` (24 год)
 - [ ] SMS: `attempts: 10`, `backoff: { delay: 60_000 }`
 - [ ] Процесори → `try/catch` + `throw err` (щоб BullMQ retry спрацював)

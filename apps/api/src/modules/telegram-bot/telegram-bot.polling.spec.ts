@@ -105,6 +105,26 @@ describe('Опитування getUpdates (BR-AUT-041)', () => {
     }
   });
 
+  // guards: BR-AUT-041
+  it('тік ще йде (повільний Telegram) — наступний тік тієї ж org пропускається, без другої відповіді', async () => {
+    const code = linkCode();
+    const h = botHarness({ codes: [code] });
+    let release!: (u: ReturnType<typeof textUpdate>[]) => void;
+    h.api.getUpdates.mockImplementationOnce(
+      () => new Promise<ReturnType<typeof textUpdate>[]>(r => (release = r)),
+    );
+    const first = h.service.poll(ORG);
+    // BullMQ уже поставив наступну ітерацію в сусідній слот concurrency.
+    await expect(h.service.poll(ORG)).resolves.toEqual({ processed: 0 });
+    expect(h.api.getUpdates).toHaveBeenCalledTimes(1);
+    release([textUpdate(`/start ${String(code.code)}`)]);
+    await expect(first).resolves.toEqual({ processed: 1 });
+    expect(h.replies()).toHaveLength(1);
+    // Тік завершився — наступний опитує знову.
+    await h.service.poll(ORG);
+    expect(h.api.getUpdates).toHaveBeenCalledTimes(2);
+  });
+
   // guards: BR-AUT-041, BR-AUT-052
   it('job черги `telegram-bot` опитує саме свою організацію', async () => {
     const h = botHarness();

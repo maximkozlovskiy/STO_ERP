@@ -68,6 +68,8 @@ export class TelegramBotService {
   private readonly logger = new Logger(TelegramBotService.name);
   /** Організації, чий останній тік опитування не дістався до Telegram: лог — лише на зміні стану. */
   private readonly offline = new Set<string>();
+  /** Організації, чий тік опитування зараз іде в цьому процесі (див. `poll`). */
+  private readonly polling = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -81,11 +83,13 @@ export class TelegramBotService {
   // ─── Підключення (BR-AUT-040) ──────────────────────────────────────────────────────────────
 
   async status(orgId: string): Promise<TelegramBotStatusDto> {
-    const s = await this.prisma.organisationSettings.findFirst({
-      where: { orgId },
-      select: { telegramBotUsername: true },
-    });
-    const connected = await this.recipients.isConnected(orgId);
+    const [s, connected] = await Promise.all([
+      this.prisma.organisationSettings.findFirst({
+        where: { orgId },
+        select: { telegramBotUsername: true },
+      }),
+      this.recipients.isConnected(orgId),
+    ]);
     return { connected, username: connected ? (s?.telegramBotUsername ?? null) : null };
   }
 
@@ -131,7 +135,15 @@ export class TelegramBotService {
       where: { orgId },
       data: { telegramBotToken: null, telegramBotUsername: null, telegramBotUpdateOffset: null },
     });
-    await this.scheduler.stop(orgId);
+    // Токен уже стерто: збій Redis не робить відключення помилкою 500. Тік без токена нічого не
+    // робить, а «осиротілий» повторюваний job зніме наступний старт api.
+    try {
+      await this.scheduler.stop(orgId);
+    } catch (e: unknown) {
+      this.logger.warn(
+        `Telegram-бот org=${orgId}: опитування не знято — ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
     this.offline.delete(orgId);
     this.recordAudit(orgId, userId, before?.telegramBotUsername ?? null, null);
     return { connected: false, username: null };
@@ -215,8 +227,23 @@ export class TelegramBotService {
    * Один тік опитування організації. Помилка мережі чи Telegram не кидається (офлайн-вимога):
    * тік завершується, наступний пробує знову. Offset — наступний `update_id` після обробки,
    * записується умовно за прочитаним (паралельний тік іншого екземпляра api не відкотить його).
+   *
+   * BullMQ ставить наступну ітерацію повторюваного job-а, щойно поточна стала активною: тік, довший
+   * за 3 с (повільний Telegram, тайм-аут 10 с), перекрився б наступним у сусідньому слоті
+   * `concurrency` — обидва з тим самим offset, і бот відповів би на `/start` двічі. Тому в межах
+   * процесу тік організації, що застав попередній незавершеним, пропускається.
    */
   async poll(orgId: string): Promise<{ processed: number }> {
+    if (this.polling.has(orgId)) return { processed: 0 };
+    this.polling.add(orgId);
+    try {
+      return await this.pollOnce(orgId);
+    } finally {
+      this.polling.delete(orgId);
+    }
+  }
+
+  private async pollOnce(orgId: string): Promise<{ processed: number }> {
     const s = await this.prisma.organisationSettings.findFirst({
       where: { orgId },
       select: { telegramBotToken: true, telegramBotUpdateOffset: true, language: true },

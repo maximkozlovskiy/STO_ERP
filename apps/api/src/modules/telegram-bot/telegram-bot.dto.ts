@@ -1,12 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, Matches, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
-
-/**
- * Формат токена BotFather: `<id бота>:<секрет>`. Токен іде в шлях запиту до Bot API — сувора
- * перевірка формату не пускає туди `/`, `?` чи `..` (BR-AUT-040).
- */
-export const TELEGRAM_BOT_TOKEN_RE = /^\d{3,20}:[A-Za-z0-9_-]{20,100}$/;
+// Формат токена — один для DTO і клієнта Bot API (токен іде в шлях запиту, BR-AUT-040).
+import { TELEGRAM_BOT_TOKEN_RE } from '../notifications/providers/telegram-api.client';
 
 export class ConnectTelegramBotDto {
   @ApiProperty({
