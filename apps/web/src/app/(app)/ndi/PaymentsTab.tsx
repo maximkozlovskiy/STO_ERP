@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { CASH_METHOD_CODE, isOnlineMethodCode } from '@sto/shared';
 import { useConfirm } from '@/hooks/useConfirm';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -60,6 +61,7 @@ function DestinationFields({
   savedName,
   active,
   cashOnly = false,
+  bankOnly = false,
 }: {
   value: DestinationForm;
   onChange: (next: DestinationForm) => void;
@@ -71,6 +73,11 @@ function DestinationFields({
    * поле показувало б «— не вказано —», а вибрати саме цей варіант браузер не дав би.
    */
   cashOnly?: boolean;
+  /**
+   * Онлайн-спосіб `<шлюз>_qr` (BR-PAY-031): гроші приходять від шлюзу на банківський рахунок —
+   * каси немає у виборі. Каса, збережена до правила, лишається видимою (недоступна + пояснення).
+   */
+  bankOnly?: boolean;
 }) {
   const { t } = useTranslation('ndi');
   const { data: registers = [] } = useCashRegisters(active);
@@ -89,6 +96,7 @@ function DestinationFields({
   );
   const incomplete = destinationIncomplete(value);
   const legacyBank = cashOnly && value.type === 'BANK_ACCOUNT';
+  const legacyCash = bankOnly && value.type === 'CASH_REGISTER';
 
   return (
     <div className="space-y-3">
@@ -97,11 +105,21 @@ function DestinationFields({
         value={value.type}
         onChange={e => onChange({ ...value, type: e.target.value as DestinationType })}
         hint={t('payments.destinationHint')}
-        errorMessage={legacyBank ? t('payments.cashOnlyRegister') : undefined}
+        errorMessage={
+          legacyBank
+            ? t('payments.cashOnlyRegister')
+            : legacyCash
+              ? t('payments.onlineBankOnly')
+              : undefined
+        }
         className="h-8 text-[13px] py-0.5 px-2 pr-7"
       >
         <option value="">{t('payments.destinationNone')}</option>
-        <option value="CASH_REGISTER">{t('payments.destinationCash')}</option>
+        {(!bankOnly || legacyCash) && (
+          <option value="CASH_REGISTER" disabled={bankOnly}>
+            {t('payments.destinationCash')}
+          </option>
+        )}
         {(!cashOnly || legacyBank) && (
           <option value="BANK_ACCOUNT" disabled={cashOnly}>
             {t('payments.destinationBank')}
@@ -112,6 +130,7 @@ function DestinationFields({
         <Select
           label={t('payments.cashRegisterLabel')}
           required
+          disabled={bankOnly}
           value={value.cashRegisterId}
           onChange={e => onChange({ ...value, cashRegisterId: e.target.value })}
           placeholder={t('payments.selectPlaceholder')}
@@ -214,6 +233,9 @@ export default function PaymentsTab() {
       destination: destinationOf(pm),
     });
   };
+
+  // BR-PAY-032: ознаку «Готівка» системного способу `cash` не зняти (сервер теж відмовляє).
+  const cashFlagLocked = editPayment?.code === CASH_METHOD_CODE;
 
   const saveEditPayment = async () => {
     if (!editPayment) return;
@@ -472,21 +494,37 @@ export default function PaymentsTab() {
               />
               <span className="text-[13px] text-foreground">{t('payments.fiscalLabel')}</span>
             </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={editPaymentForm.isCash}
-                onChange={e => setEditPaymentForm(f => ({ ...f, isCash: e.target.checked }))}
-                className="rounded border-border"
-              />
-              <span className="text-[13px] text-foreground">{t('payments.cashLabel')}</span>
-            </label>
+            <div>
+              <label
+                className={cn(
+                  'flex items-center gap-2',
+                  cashFlagLocked ? 'cursor-not-allowed' : 'cursor-pointer',
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={editPaymentForm.isCash}
+                  // BR-PAY-032: системний `cash` завжди готівковий — оплати з каси йдуть ним у чек ПРРО.
+                  disabled={cashFlagLocked}
+                  aria-describedby={cashFlagLocked ? 'pm-cash-flag-locked' : undefined}
+                  onChange={e => setEditPaymentForm(f => ({ ...f, isCash: e.target.checked }))}
+                  className="rounded border-border"
+                />
+                <span className="text-[13px] text-foreground">{t('payments.cashLabel')}</span>
+              </label>
+              {cashFlagLocked && (
+                <p id="pm-cash-flag-locked" className="mt-1 text-xs text-muted-foreground">
+                  {t('payments.cashFlagLocked')}
+                </p>
+              )}
+            </div>
             <DestinationFields
               value={editPaymentForm.destination}
               onChange={destination => setEditPaymentForm(f => ({ ...f, destination }))}
               savedName={editPayment.defaultDestinationName}
               active
               cashOnly={editPaymentForm.isCash}
+              bankOnly={isOnlineMethodCode(editPayment.code)}
             />
           </div>
         </Modal>
@@ -553,6 +591,7 @@ export default function PaymentsTab() {
             onChange={destination => setNewPaymentForm(f => ({ ...f, destination }))}
             active={paymentModal}
             cashOnly={newPaymentForm.isCash}
+            bankOnly={isOnlineMethodCode(newPaymentForm.code)}
           />
         </div>
       </Modal>

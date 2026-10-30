@@ -660,6 +660,12 @@ export default function CashOperationsTab({
                               label: t('reversal.action'),
                               icon: <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />,
                               destructive: true,
+                              // BR-PAY-029: чек у черзі ПРРО може бути вже в дорозі — сервер
+                              // сторно відмовить, тож дія вимкнена з поясненням.
+                              disabledReason:
+                                op.fiscalStatus === 'QUEUED'
+                                  ? t('reversal.fiscalQueued')
+                                  : undefined,
                               onSelect: () => openReverse(op),
                             },
                           ]}

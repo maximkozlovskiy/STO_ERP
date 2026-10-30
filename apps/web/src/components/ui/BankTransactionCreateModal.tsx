@@ -11,7 +11,7 @@ import {
   bankTransactionCreateFormSchema,
   bankTransactionCreateOutgoingAllocationFormSchema,
   bankTransactionIncomingAllocationSchema,
-  isBankTxInMatchType,
+  isBankTxInAllocationType,
   kyivTodayYmd,
   normalizeDecimalInput,
   translateValidation,
@@ -37,6 +37,7 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import {
   IncomingAllocationFields,
+  isSupplierAllocation,
   emptyIncomingAllocation,
   type IncomingAllocationValue,
 } from '@/components/ui/IncomingAllocationFields';
@@ -182,20 +183,23 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
   const direction = watch('direction');
   const purpose = asText(watch('purpose'));
   const account = accounts?.find(a => a.id === bankAccountId);
-  const allocKind = allocType === '' ? null : isBankTxInMatchType(allocType) ? 'in' : 'out';
+  const allocKind = allocType === '' ? null : isBankTxInAllocationType(allocType) ? 'in' : 'out';
 
   const changeAllocType = (next: BankTxAllocationTypeValue | '') => {
     setIncomingErrors({});
     setOutLabels(EMPTY_OUTGOING_LABELS);
-    if (next === '' || !isBankTxInMatchType(next)) {
+    if (next === '' || !isBankTxInAllocationType(next)) {
       setIncoming(emptyIncomingAllocation());
       outForm.reset(emptyOutgoingAllocation(next === '' ? 'EXPENSE' : next));
     } else {
-      // Між вхідними видами контрагент лишається; рахунок — лише для «Оплати рахунку».
+      // Між видами оплати клієнта контрагент лишається; рахунок — лише для «Оплати рахунку».
+      // Повернення від постачальника — інша роль: контрагента обирають заново (BR-BANK-046).
       setIncoming(prev =>
-        next === 'INVOICE'
-          ? { ...prev, type: next }
-          : { ...emptyIncomingAllocation(next, prev.counterpartyId, prev.counterpartyName) },
+        isSupplierAllocation(next) !== isSupplierAllocation(prev.type)
+          ? emptyIncomingAllocation(next)
+          : next === 'INVOICE'
+            ? { ...prev, type: next }
+            : { ...emptyIncomingAllocation(next, prev.counterpartyId, prev.counterpartyName) },
       );
     }
     setAllocType(next);
@@ -312,7 +316,9 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
           ? incoming.invoiceNumber
           : allocation.type === 'CASH_WITHDRAWAL'
             ? outLabels.cashRegisterName
-            : outLabels.counterpartyName,
+            : allocKind === 'in'
+              ? incoming.counterpartyName
+              : outLabels.counterpartyName,
       amount: `${fmtMoney(values.amount)} ${fmtBankCurrencySuffix(account?.currencyCode)}`,
     });
   };

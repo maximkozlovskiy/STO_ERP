@@ -23,6 +23,11 @@
     "completedToday": "{{n}} completed today",
     "open": "Pending",
     "revenueToday": "Payments today",
+    "revenueTodayHelp": {
+      "label": "How payments today are counted",
+      "title": "Payments today",
+      "text": "Net amount for today (Kyiv day) in the base currency: client payments and prepayments minus refunds to clients and payment reversals. A refund reversal adds the amount back. Charges, exchange differences and supplier payments are not included."
+    },
     "revenueMonth": "Revenue this month (excl. VAT)",
     "netProfitMonth": "Net profit this month",
     "payrollNotComputed": "payroll not computed",

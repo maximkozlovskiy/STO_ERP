@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { isBankTxInMatchType } from '@sto/shared';
+import { isBankTxInAllocationType } from '@sto/shared';
 import { toast } from '@/lib/toast';
 import { fmtMoney, fmtDate, fmtBankCurrencySuffix } from '@/lib/format';
 import { Modal } from '@/components/ui/modal';
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/IncomingAllocationFields';
 import {
   useMatchBankTransaction,
+  useReconcileBankTransaction,
   type BankTransaction,
   type BankTxMatchType,
 } from '@/hooks/api/useBankStatements';
@@ -40,6 +41,9 @@ export function MatchBankTransactionModal({
 }: Props) {
   const { t } = useTranslation('bankStatements');
   const matchMut = useMatchBankTransaction();
+  // «Повернення від постачальника» — не оплата клієнта: проводка через `reconcile` (BR-BANK-046).
+  const reconcileMut = useReconcileBankTransaction();
+  const pending = matchMut.isPending || reconcileMut.isPending;
 
   const [value, setValue] = useState<IncomingAllocationValue>(emptyIncomingAllocation);
   const [error, setError] = useState('');
@@ -50,7 +54,7 @@ export function MatchBankTransactionModal({
     setError('');
     setValue(
       emptyIncomingAllocation(
-        suggestedMatchType && isBankTxInMatchType(suggestedMatchType)
+        suggestedMatchType && isBankTxInAllocationType(suggestedMatchType)
           ? suggestedMatchType
           : 'PREPAYMENT',
         suggestedCounterpartyId ?? '',
@@ -74,14 +78,18 @@ export function MatchBankTransactionModal({
     }
     setError('');
     try {
-      await matchMut.mutateAsync({
-        id: transaction.id,
-        data: {
-          counterpartyId,
-          type,
-          invoiceId: type === 'INVOICE' ? invoiceId : undefined,
-        },
-      });
+      if (type === 'SUPPLIER_REFUND_IN') {
+        await reconcileMut.mutateAsync({ id: transaction.id, data: { type, counterpartyId } });
+      } else {
+        await matchMut.mutateAsync({
+          id: transaction.id,
+          data: {
+            counterpartyId,
+            type,
+            invoiceId: type === 'INVOICE' ? invoiceId : undefined,
+          },
+        });
+      }
       toast.success(t('match.success'));
       onMatched?.();
       onClose();
@@ -90,7 +98,7 @@ export function MatchBankTransactionModal({
       setError(msg);
       toast.error(msg);
     }
-  }, [transaction, counterpartyId, type, invoiceId, matchMut, t, onMatched, onClose]);
+  }, [transaction, counterpartyId, type, invoiceId, matchMut, reconcileMut, t, onMatched, onClose]);
 
   // Стабільний onClose: картка не перестворює обробник на кожен рендер.
   const onCloseRef = useRef(onClose);
@@ -106,13 +114,13 @@ export function MatchBankTransactionModal({
       size="md"
       footer={
         <div className="flex gap-2 items-center justify-end w-full">
-          <Button variant="outline" size="sm" onClick={onClose} disabled={matchMut.isPending}>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={pending}>
             {t('match.cancel')}
           </Button>
           <Button
             onClick={() => void handleSubmit()}
-            loading={matchMut.isPending}
-            disabled={matchMut.isPending || !counterpartyId}
+            loading={pending}
+            disabled={pending || !counterpartyId}
             size="sm"
           >
             {t('match.submit')}

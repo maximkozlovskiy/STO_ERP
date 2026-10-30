@@ -145,6 +145,8 @@
     "destinationColumn": "Goes to",
     "destinationMissing": "cash register or account deleted",
     "cashOnlyRegister": "Cash can only go to a cash register — choose a register or “not set”",
+    "onlineBankOnly": "Online (QR) payments arrive from the gateway to a bank account — a cash register is not available.",
+    "cashFlagLocked": "The system Cash method is always cash: cash-desk payments go through it to the fiscal receipt.",
     "activeAria": "Active: {{name}}",
     "deleteAria": "Delete payment method: {{name}}"
   },

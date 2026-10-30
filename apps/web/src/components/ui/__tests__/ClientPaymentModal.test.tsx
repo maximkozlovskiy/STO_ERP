@@ -73,6 +73,8 @@ const BANKS = [
   { id: 'ba-usd', name: 'Рахунок доларовий', currencyCode: 'USD' },
 ];
 let payResponse: () => Promise<unknown> = () => Promise.resolve({ id: 'pay-1' });
+/** Підключений платіжний шлюз філії рахунку (`GET /online-payments/gateway`, BR-PAY-033). */
+let gatewayProvider: string | null = 'monobank';
 
 const INVOICE: ClientPaymentTarget = {
   kind: 'invoice',
@@ -167,10 +169,13 @@ beforeEach(() => {
     }),
   ];
   payResponse = () => Promise.resolve({ id: 'pay-1' });
+  gatewayProvider = 'monobank';
   registersQuery = { data: REGISTERS, isPending: false, isError: false };
   apiFetchMock.mockReset();
   apiFetchMock.mockImplementation((path: string) => {
     if (path === '/payment-methods') return Promise.resolve(methods);
+    if (path.startsWith('/online-payments/gateway'))
+      return Promise.resolve({ provider: gatewayProvider });
     if (path === '/bank-accounts') return Promise.resolve({ items: BANKS });
     if (path === '/payments') return payResponse();
     return Promise.resolve({});
@@ -363,6 +368,7 @@ describe('ClientPaymentModal — QR лише для рахунку (Bug #859)', 
   it('рахунок, monobank QR із касою за замовчуванням: поля «Каса» немає, кнопка «Показати QR»', async () => {
     withQr();
     const { dialog, onShowQr } = await openDialog();
+    await within(dialog).findByRole('option', { name: 'Monobank QR' });
 
     fireEvent.change(methodSelect(dialog), { target: { value: 'monobank_qr' } });
     expect(cashSelect(dialog)).toBeNull();
@@ -384,6 +390,7 @@ describe('ClientPaymentModal — QR лише для рахунку (Bug #859)', 
   ])('QR: сума «%s» (%s) → %s', async (value, _why, expected) => {
     withQr();
     const { dialog, onShowQr } = await openDialog({ ...INVOICE, amount: 2000 });
+    await within(dialog).findByRole('option', { name: 'Monobank QR' });
     fireEvent.change(methodSelect(dialog), { target: { value: 'monobank_qr' } });
     fireEvent.change(within(dialog).getByLabelText(/^Сума,/), { target: { value } });
     fireEvent.click(
@@ -421,6 +428,66 @@ describe('ClientPaymentModal — QR лише для рахунку (Bug #859)', 
       .map(o => (o as HTMLOptionElement).value);
     expect(codes).toContain('cash');
     expect(codes.filter(c => c.endsWith('_qr'))).toEqual([]);
+  });
+});
+
+// Рішення власника 2026-10-30 (TECH-DEBT (б) №55): на сторінці рахунків QR-спосіб лише того шлюзу,
+// що підключений у філії рахунку; PrivatBank QR провайдера не має — не показується ніколи.
+describe('ClientPaymentModal — QR лише підключеного шлюзу (BR-PAY-033)', () => {
+  const allQr = () =>
+    methods.push(
+      method('monobank_qr', 'Monobank QR'),
+      method('privat24_qr', 'PrivatPay QR'),
+      method('liqpay_qr', 'LiqPay QR'),
+    );
+  const codes = (dialog: HTMLElement) =>
+    within(methodSelect(dialog))
+      .getAllByRole('option')
+      .map(o => (o as HTMLOptionElement).value);
+
+  // guards: BR-PAY-033
+  it('підключено LiqPay → лише «LiqPay QR», він веде до QR; monobank і PrivatBank QR сховані', async () => {
+    allQr();
+    gatewayProvider = 'liqpay';
+    const { dialog, onShowQr } = await openDialog();
+    await within(dialog).findByRole('option', { name: 'LiqPay QR' });
+
+    expect(codes(dialog).filter(c => c.endsWith('_qr'))).toEqual(['liqpay_qr']);
+    fireEvent.change(methodSelect(dialog), { target: { value: 'liqpay_qr' } });
+    expect(cashSelect(dialog)).toBeNull();
+    fireEvent.click(
+      within(dialog.closest('[role="dialog"]') ?? dialog).getByRole('button', {
+        name: 'Показати QR',
+      }),
+    );
+    expect(onShowQr).toHaveBeenCalledWith(undefined);
+    expect(paymentBody()).toBeNull();
+  });
+
+  // guards: BR-PAY-033
+  it('шлюз не підключено → жодного QR-способу; запит шлюзу — за рахунком вікна', async () => {
+    allQr();
+    gatewayProvider = null;
+    const { dialog } = await openDialog();
+    await waitFor(() =>
+      expect(
+        apiFetchMock.mock.calls.some(([p]) => p === '/online-payments/gateway?invoiceId=inv-a'),
+      ).toBe(true),
+    );
+
+    expect(codes(dialog)).toContain('cash');
+    expect(codes(dialog).filter(c => c.endsWith('_qr'))).toEqual([]);
+  });
+
+  // guards: BR-PAY-033
+  it('наряд: шлюз не питаємо, QR немає', async () => {
+    allQr();
+    const { dialog } = await openDialog(WORK_ORDER);
+
+    expect(codes(dialog).filter(c => c.endsWith('_qr'))).toEqual([]);
+    expect(apiFetchMock.mock.calls.some(([p]) => String(p).startsWith('/online-payments'))).toBe(
+      false,
+    );
   });
 });
 

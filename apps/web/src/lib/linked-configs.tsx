@@ -250,6 +250,15 @@ function paymentReversalFields(
   row: LinkedPaymentRow,
 ): Pick<LinkedSectionItem, 'dialogAction' | 'actionHint'> {
   if (row.reversedAt || row.isOnline) return {};
+  // BR-PAY-029: чек ще в черзі ПРРО — сторно відмовить, поки ПРРО не відповів.
+  if (row.fiscalStatus === 'QUEUED') {
+    return {
+      actionHint: {
+        text: i18n.t('cash:paymentReversal.fiscalQueuedHint'),
+        roles: PAYMENT_REVERSAL_ROLES,
+      },
+    };
+  }
   if (row.inCashDesk || row.sourceType === 'CASH_REGISTER') {
     return {
       actionHint: {

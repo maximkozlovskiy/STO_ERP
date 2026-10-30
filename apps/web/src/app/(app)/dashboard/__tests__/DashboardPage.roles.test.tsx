@@ -1,7 +1,7 @@
 // Bug #879: дашборд механіка й приймальні показував банер помилки й «Немає даних», бо слав запити
 // до списків, які їхня роль не читає (403 → isError, kpi = null). Тепер запити — лише дозволені,
 // показники без доступу — «—», а картки показників рендеряться.
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 import { kyivToday } from '@/lib/format';
@@ -203,6 +203,26 @@ describe('Дашборд — показники (TECH-DEBT §8, §10 п. 26)', (
     renderPage();
     expect(await screen.findByText('Оплати сьогодні')).toBeInTheDocument();
     expect(kpi('Оплати сьогодні').value).toBe('0,00 ₴');
+  });
+
+  // Рішення власника 2026-10-30 (TECH-DEBT (б) №39): картка показує чисту суму — «?» пояснює склад.
+  // guards: BR-PAY-030
+  it('«Оплати сьогодні»: «?» поза посиланням картки пояснює, що сума чиста', async () => {
+    streamData = {
+      activeWo: 0,
+      todayRevenue: 990,
+      pendingInvoices: 0,
+      lowStockCount: 0,
+      timestamp: 'x',
+    };
+    renderPage();
+    const help = await screen.findByRole('button', { name: 'Як рахуються оплати сьогодні' });
+    // Кнопка всередині <a> недійсна й ламає клавіатуру — «?» стоїть поруч із посиланням.
+    expect(help.closest('a')).toBeNull();
+    fireEvent.click(help);
+    expect(await screen.findByRole('dialog', { name: 'Оплати сьогодні' })).toHaveTextContent(
+      /мінус повернення клієнтам і сторно оплат/,
+    );
   });
 
   it('«завершено сьогодні» не рахує наряд, скасований після завершення', async () => {

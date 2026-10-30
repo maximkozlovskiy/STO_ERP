@@ -107,6 +107,8 @@ export function buildOutgoingPayload(
       return { type: v.type, transferBankAccountId: v.transferBankAccountId };
     case 'CASH_WITHDRAWAL':
       return { type: v.type, cashRegisterId: v.cashRegisterId };
+    case 'SUPPLIER_REFUND_IN':
+      return { type: v.type, counterpartyId: v.counterpartyId };
   }
 }
 

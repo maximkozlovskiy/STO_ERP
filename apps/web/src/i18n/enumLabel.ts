@@ -102,6 +102,8 @@ const BANK_TX_MATCH_TYPE_FALLBACK: LabelMap = {
   PAYROLL: 'Зарплата',
   TRANSFER: 'Переказ між рахунками',
   CASH_WITHDRAWAL: 'Зняття готівки',
+  // Вхідний вид `reconcile` (BR-BANK-046).
+  SUPPLIER_REFUND_IN: 'Повернення від постачальника',
 };
 const BANK_TX_SOURCE_FALLBACK: LabelMap = {
   FILE_IMPORT: 'Файл виписки',

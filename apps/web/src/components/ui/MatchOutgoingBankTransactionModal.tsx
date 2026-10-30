@@ -68,7 +68,9 @@ export function MatchOutgoingBankTransactionModal({
     () =>
       allowedTypes?.length
         ? BANK_TX_OUT_MATCH_TYPE_VALUES.filter(v => allowedTypes.includes(v))
-        : BANK_TX_OUT_MATCH_TYPE_VALUES,
+        : // «Повернення від постачальника» — вхідний вид (BR-BANK-046): його обирають у вікні
+          // рознесення вхідного платежу, не тут.
+          BANK_TX_OUT_MATCH_TYPE_VALUES.filter(v => v !== 'SUPPLIER_REFUND_IN'),
     [allowedTypes],
   );
   const initialType = types[0] ?? 'SUPPLIER_PAYMENT';

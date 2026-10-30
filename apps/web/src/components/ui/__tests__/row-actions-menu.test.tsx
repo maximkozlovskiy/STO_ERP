@@ -99,4 +99,31 @@ describe('RowActionsMenu', () => {
     render(<RowActionsMenu actions={[]} />);
     expect(screen.queryByRole('button', { name: 'Дії рядка' })).toBeNull();
   });
+
+  // Дія, недоступна зараз (чек у черзі ПРРО, BR-PAY-029): пункт видно з причиною, але він не діє.
+  // guards: BR-PAY-029
+  it('вимкнений пункт: причина під підписом, aria-disabled, клік не виконує дію й не закриває меню', () => {
+    const onSelect = vi.fn();
+    render(
+      <RowActionsMenu
+        actions={[
+          {
+            key: 'rev',
+            label: 'Сторнувати',
+            destructive: true,
+            disabledReason: 'Чек ще відправляється в ПРРО',
+            onSelect,
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Дії рядка' }));
+    const item = screen.getByRole('menuitem', { name: /Сторнувати/ });
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(item).toHaveTextContent('Чек ще відправляється в ПРРО');
+
+    fireEvent.click(item);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+  });
 });

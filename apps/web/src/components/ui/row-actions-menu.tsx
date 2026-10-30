@@ -15,6 +15,11 @@ export interface RowMenuAction {
   icon?: ReactNode;
   /** Незворотна чи фінансова дія (сторно, скасування) — червоним. */
   destructive?: boolean;
+  /**
+   * Дія зараз недоступна — пункт видно, але він вимкнений, а причина стоїть під підписом (чек ще
+   * в черзі ПРРО тощо). Без причини вимкнений пункт не показуємо: людина не зрозуміє, чому.
+   */
+  disabledReason?: string;
 }
 
 interface RowActionsMenuProps {
@@ -159,18 +164,30 @@ export function RowActionsMenu({ actions, label, className }: RowActionsMenuProp
                 key={a.key}
                 type="button"
                 role="menuitem"
+                aria-disabled={a.disabledReason ? true : undefined}
                 className={cn(
-                  'flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px]',
+                  'flex w-full items-start gap-2 px-3 py-1.5 text-left text-[13px]',
                   'hover:bg-secondary focus-visible:bg-secondary focus-visible:outline-none',
-                  a.destructive ? 'text-destructive' : 'text-foreground',
+                  a.disabledReason
+                    ? 'cursor-not-allowed text-muted-foreground'
+                    : a.destructive
+                      ? 'text-destructive'
+                      : 'text-foreground',
                 )}
                 onClick={() => {
+                  // Вимкнений пункт фокус отримує (причину читає читач екрана), але не діє.
+                  if (a.disabledReason) return;
                   close();
                   a.onSelect();
                 }}
               >
-                {a.icon}
-                {a.label}
+                {a.icon && <span className="mt-0.5 shrink-0">{a.icon}</span>}
+                <span className="min-w-0">
+                  {a.label}
+                  {a.disabledReason && (
+                    <span className="block text-[12px] leading-snug">{a.disabledReason}</span>
+                  )}
+                </span>
               </button>
             ))}
           </div>,

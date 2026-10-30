@@ -253,8 +253,10 @@ export function useReconcileBankTransaction() {
       }),
     onSuccess: (_res, { data }) => {
       if (data.type === 'SUPPLIER_PAYMENT') invalidateSupplierPaymentEffects(qc);
-      // Повернення клієнту — проведення REFUND_OUT: борг клієнта (BR-BANK-030).
-      if (data.type === 'CLIENT_REFUND') invalidateBalanceAffected(qc);
+      // Повернення клієнту (REFUND_OUT, BR-BANK-030) і від постачальника (SUPPLIER_PAYMENT_RETURN,
+      // BR-BANK-046) — проведення: баланс контрагента.
+      if (data.type === 'CLIENT_REFUND' || data.type === 'SUPPLIER_REFUND_IN')
+        invalidateBalanceAffected(qc);
       if (data.type === 'CASH_WITHDRAWAL') void qc.invalidateQueries({ queryKey: cashKeys.all });
     },
     // onSettled, не onSuccess: відмова 409 «уже рознесено» означає, що рядок у списку застарів.

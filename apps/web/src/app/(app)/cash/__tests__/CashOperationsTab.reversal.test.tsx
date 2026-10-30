@@ -168,6 +168,45 @@ describe('CashOperationsTab — дія «Сторнувати»', () => {
   });
 });
 
+// Рішення власника 2026-10-30 (TECH-DEBT (б) №43): поки чек у черзі ПРРО, сторно недоступне —
+// сервер відмовить (BR-PAY-029), тож дія вимкнена з поясненням.
+describe('CashOperationsTab — сторно оплати, чек якої в черзі ПРРО (BR-PAY-029)', () => {
+  beforeEach(() => {
+    operations = [];
+  });
+
+  const payment = (id: string, fiscalStatus: string) =>
+    op({
+      id,
+      reason: 'SALE_PAYMENT',
+      documentType: 'Payment',
+      documentId: `pay-${id}`,
+      fiscalStatus,
+    });
+
+  // guards: BR-PAY-029
+  it('чек QUEUED: «Сторнувати» вимкнена з поясненням про ПРРО; картка сторно не відкривається', () => {
+    operations = [payment('queued', 'QUEUED')];
+    render(<CashOperationsTab canOperate />);
+    fireEvent.click(within(rowById('queued')).getByRole('button', { name: ROW_MENU_LABEL }));
+    const item = screen.getByRole('menuitem', { name: /^Сторнувати/ });
+
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(item).toHaveTextContent(/ПРРО/);
+    fireEvent.click(item);
+    expect(screen.queryByRole('region', { name: 'Що сторнується' })).toBeNull();
+  });
+
+  // guards: BR-PAY-029
+  it.each(['FAILED', 'SKIPPED'])('чек %s: «Сторнувати» доступна', status => {
+    operations = [payment('other', status)];
+    render(<CashOperationsTab canOperate />);
+    const item = rowMenuItem(rowById('other'), 'Сторнувати');
+    expect(item).toBeVisible();
+    expect(item).not.toHaveAttribute('aria-disabled');
+  });
+});
+
 describe('CashOperationsTab — позначки сторно', () => {
   beforeEach(() => {
     operations = [];

@@ -166,4 +166,86 @@ describe('MatchBankTransactionModal', () => {
     expect(await within(picker).findByText(/^77,00\sUSD$/)).toBeInTheDocument();
     expect(within(picker).getByText(/^300,00\s₴$/)).toBeInTheDocument();
   });
+
+  // Рішення власника 2026-10-30 (TECH-DEBT (б) №48): гроші від постачальника — не оплата клієнта,
+  // а «Повернення від постачальника» через `reconcile` (проводка SUPPLIER_PAYMENT_RETURN).
+  // guards: BR-BANK-046
+  it('«Повернення від постачальника»: контрагента скинуто, пікер постачальників, submit — reconcile, не match', async () => {
+    apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
+      if (path.includes('/reconcile') && opts?.method === 'POST')
+        return Promise.resolve({ ...TX, status: 'MATCHED', matchedType: 'SUPPLIER_REFUND_IN' });
+      if (path.startsWith('/counterparties?'))
+        return Promise.resolve({ items: [{ id: CP_UUID, companyName: 'ТОВ Постачальник' }] });
+      return Promise.resolve({ items: [] });
+    });
+    renderWithQueryClient(
+      <MatchBankTransactionModal
+        open
+        onClose={() => {}}
+        transaction={TX}
+        suggestedCounterpartyId="11111111-1111-4111-8111-111111111111"
+        suggestedCounterpartyName="ТОВ Клієнт"
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('combobox', { name: /Тип операції/ }), {
+      target: { value: 'SUPPLIER_REFUND_IN' },
+    });
+    // Клієнт із підказки постачальником не є — поле порожнє, підпис «Постачальник».
+    expect(screen.queryByText('ТОВ Клієнт')).toBeNull();
+    expect(screen.getByText(/Постачальник/)).toBeInTheDocument();
+    expect((screen.getByRole('button', { name: 'Рознести' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
+  // guards: BR-BANK-045, BR-BANK-046
+  it('пікер контрагента: оплата клієнта — лише клієнти, повернення від постачальника — постачальники', async () => {
+    apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
+      if (path.includes('/reconcile') && opts?.method === 'POST')
+        return Promise.resolve({ ...TX, status: 'MATCHED' });
+      if (path.startsWith('/counterparties?'))
+        return Promise.resolve({ items: [{ id: CP_UUID, companyName: 'ТОВ Постачальник' }] });
+      return Promise.resolve({ items: [] });
+    });
+    renderWithQueryClient(<MatchBankTransactionModal open onClose={() => {}} transaction={TX} />);
+    const pickerTypes = async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /Обрати/ })[0]!);
+      const picker = await screen.findByRole('dialog', { name: /Оберіть/ });
+      await waitFor(() =>
+        expect(apiFetchMock.mock.calls.some(c => String(c[0]).startsWith('/counterparties?'))).toBe(
+          true,
+        ),
+      );
+      const url = apiFetchMock.mock.calls
+        .map(c => String(c[0]))
+        .filter(p => p.startsWith('/counterparties?'))
+        .at(-1)!;
+      return { picker, types: new URLSearchParams(url.split('?')[1]).getAll('types') };
+    };
+
+    const client = await pickerTypes();
+    expect(client.types).toEqual(['CLIENT', 'BOTH']);
+    fireEvent.keyDown(client.picker, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Оберіть/ })).toBeNull());
+
+    fireEvent.change(screen.getByRole('combobox', { name: /Тип операції/ }), {
+      target: { value: 'SUPPLIER_REFUND_IN' },
+    });
+    const supplier = await pickerTypes();
+    expect(supplier.types).toEqual(['SUPPLIER', 'BOTH']);
+    fireEvent.click(await within(supplier.picker).findByText('ТОВ Постачальник'));
+    fireEvent.click(screen.getByRole('button', { name: 'Рознести' }));
+
+    await waitFor(() => {
+      const call = apiFetchMock.mock.calls.find(c => String(c[0]).includes('/reconcile'));
+      expect(call).toBeTruthy();
+      expect(call![0]).toBe('/bank-statements/transactions/tx-1/reconcile');
+      expect(JSON.parse((call![1] as { body: string }).body)).toEqual({
+        type: 'SUPPLIER_REFUND_IN',
+        counterpartyId: CP_UUID,
+      });
+    });
+    expect(apiFetchMock.mock.calls.some(c => String(c[0]).includes('/match'))).toBe(false);
+  });
 });

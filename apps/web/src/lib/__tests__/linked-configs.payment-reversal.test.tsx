@@ -116,6 +116,33 @@ describe('рядок оплати: дія чи підказка (BR-PAY-024)', (
   });
 });
 
+// Рішення власника 2026-10-30 (TECH-DEBT (б) №43): поки чек у черзі ПРРО, сторно відмовляє
+// (BR-PAY-029) — замість кнопки підказка, тим самим ролям.
+describe('рядок оплати: чек у черзі ПРРО (BR-PAY-029)', () => {
+  // guards: BR-PAY-029
+  it.each([
+    ['банківська', payment({ fiscalStatus: 'QUEUED' })],
+    ['касова', payment({ sourceType: 'CASH_REGISTER', fiscalStatus: 'QUEUED' })],
+  ])('%s, чек QUEUED → підказка про ПРРО замість «Сторнувати»', (_n, row) => {
+    for (const config of [workOrderLinkedConfig(nav), invoiceLinkedConfig(nav)]) {
+      const mapped = section(config).mapRow(row);
+      expect(mapped.dialogAction).toBeUndefined();
+      expect(mapped.actionHint?.text).toMatch(/ПРРО/);
+      expect([...(mapped.actionHint?.roles ?? [])].sort()).toEqual([
+        'ACCOUNTANT',
+        'ADMIN',
+        'OWNER',
+      ]);
+    }
+  });
+
+  // guards: BR-PAY-029
+  it('чек FAILED → «Сторнувати» лишається (відхилений чек сторно знімає)', () => {
+    const mapped = section(workOrderLinkedConfig(nav)).mapRow(payment({ fiscalStatus: 'FAILED' }));
+    expect(mapped.dialogAction?.label).toBe('Сторнувати');
+  });
+});
+
 describe('панель: ролі й картка сторно', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();

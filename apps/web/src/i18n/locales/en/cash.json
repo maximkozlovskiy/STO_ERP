@@ -178,6 +178,7 @@
   },
   "reversal": {
     "action": "Reverse",
+    "fiscalQueued": "The receipt is still being sent to the fiscal register — reversal becomes possible once the register responds (closed shift: open it)",
     "actionAria": "Reverse the operation of {{date}} for {{amount}}",
     "colActions": "Actions",
     "title": "Reverse cash operation",
@@ -219,6 +220,7 @@
     "action": "Reverse",
     "actionAria": "Reverse the payment of {{amount}} from {{date}}",
     "cashHint": "Reversed at the cash desk",
+    "fiscalQueuedHint": "The receipt is still being sent to the fiscal register — reversal becomes possible once the register responds (closed shift: open it)",
     "title": "Reverse payment",
     "summaryTitle": "What is reversed",
     "fieldDate": "Payment date",

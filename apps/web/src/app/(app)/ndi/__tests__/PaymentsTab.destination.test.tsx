@@ -293,4 +293,53 @@ describe('НДІ → способи оплати: куди надходять к
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(screen.queryByText(REJECT)).toBeNull();
   });
+
+  // Рішення власника 2026-10-30 (TECH-DEBT (б) №46): QR-оплата приходить від шлюзу на банківський
+  // рахунок — каси серед варіантів призначення немає.
+  // guards: BR-PAY-031
+  it('онлайн-спосіб `monobank_qr`: каси серед варіантів немає; збережену касу видно з поясненням', async () => {
+    list = [
+      CASH,
+      { ...CARD, id: 'pm-qr', code: 'monobank_qr', name: 'MonoPay QR', isSystem: true },
+      {
+        ...CARD,
+        id: 'pm-qr2',
+        code: 'liqpay_qr',
+        name: 'LiqPay QR',
+        isSystem: true,
+        defaultSourceType: 'CASH_REGISTER',
+        defaultCashRegisterId: 'cr-main',
+        defaultBankAccountId: null,
+        defaultDestinationName: 'Каса головна',
+      },
+    ];
+    const dialog = await openEdit('MonoPay QR');
+    const values = within(destinationSelect(dialog))
+      .getAllByRole('option')
+      .map(o => (o as HTMLOptionElement).value);
+    expect(values).toEqual(['', 'BANK_ACCOUNT']);
+    cleanup();
+
+    const legacy = await openEdit('LiqPay QR');
+    const cashOption = within(destinationSelect(legacy)).getByRole('option', {
+      name: 'Каса',
+    }) as HTMLOptionElement;
+    expect(cashOption.disabled).toBe(true);
+    expect(
+      within(legacy).getByText(/QR\) надходить від шлюзу на банківський рахунок/),
+    ).toBeVisible();
+  });
+
+  // Рішення власника 2026-10-30 (TECH-DEBT (б) №81): системний `cash` завжди готівковий.
+  // guards: BR-PAY-032
+  it('системна «Готівка»: прапорець «Готівка» заблокований з поясненням; у «Картки» — ні', async () => {
+    const cashDialog = await openEdit('Готівка');
+    const cashBox = within(cashDialog).getByRole('checkbox', { name: /Готівка/ });
+    expect(cashBox).toBeDisabled();
+    expect(within(cashDialog).getByText(/завжди готівковий/)).toBeVisible();
+    cleanup();
+
+    const cardDialog = await openEdit('Картка');
+    expect(within(cardDialog).getByRole('checkbox', { name: /Готівка/ })).toBeEnabled();
+  });
 });

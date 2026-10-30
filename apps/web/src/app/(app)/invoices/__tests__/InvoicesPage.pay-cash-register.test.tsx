@@ -165,6 +165,9 @@ describe('Рахунки — вікно «Оплатити» відкриває�
     apiFetchMock.mockReset();
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/payment-methods') return Promise.resolve(methods);
+      // Підключений шлюз філії рахунку (BR-PAY-033): QR-спосіб видно лише свого шлюзу.
+      if (path.startsWith('/online-payments/gateway'))
+        return Promise.resolve({ provider: 'monobank' });
       if (path === '/payments') return payResponse();
       if (path === '/invoices/inv-a')
         return Promise.resolve({ ...INV, currencyCode: invCurrency, lines: [] });
@@ -219,6 +222,7 @@ describe('Рахунки — вікно «Оплатити» відкриває�
       }),
     );
     const dialog = await openPayDialog();
+    await within(dialog).findByRole('option', { name: 'Monobank QR' });
 
     fireEvent.change(methodSelect(dialog), { target: { value: 'monobank_qr' } });
     expect(cashSelect(dialog)).toBeNull();

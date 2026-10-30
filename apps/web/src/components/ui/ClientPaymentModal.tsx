@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CASH_METHOD_CODE, normalizeDecimalInput, type ApiSchema } from '@sto/shared';
+import {
+  CASH_METHOD_CODE,
+  isOnlineMethodCode,
+  normalizeDecimalInput,
+  type ApiSchema,
+} from '@sto/shared';
+import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { fmtMoney } from '@/lib/format';
@@ -41,9 +47,8 @@ const EMPTY_BANK_ACCOUNTS: BankAccountOption[] = [];
 // а переліку рахунків не має (403): йому вікно пропонує рахунок способу оплати, назву якого дає
 // `GET /payment-methods` (BR-PAY-023).
 const BANK_LIST_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
-const QR_METHOD_CODE = 'monobank_qr';
-// Коди QR-способів оплати — `<шлюз>_qr` (monobank_qr, privat24_qr, liqpay_qr; setup.service).
-const QR_CODE_SUFFIX = '_qr';
+/** Ролі `GET /online-payments/gateway` (і створення QR-наміру) — ті, що приймають оплату. */
+const QR_GATEWAY_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'];
 
 /**
  * Що оплачується. `invoice` — рахунок (сторінка рахунків; наряд сервер виводить із рахунку,
@@ -69,8 +74,8 @@ export interface ClientPaymentModalProps {
   /** Оплату зареєстровано: сума, що пішла на сервер, і вона ж із валютою документа («300,00 ₴»). */
   onPaid: (amount: number, formatted: string) => void;
   /**
-   * monobank QR — лише для рахунку: QR-оплату створює сервер за рахунком. Без колбека спосіб QR
-   * у переліку не показується.
+   * QR-оплата — лише для рахунку: намір створює сервер за рахунком через підключений шлюз філії
+   * (BR-PAY-033). Без колбека жоден QR-спосіб у переліку не показується.
    */
   onShowQr?: (amount: number | undefined) => void;
 }
@@ -139,14 +144,28 @@ export function ClientPaymentModal({
   } = useCashRegisters(open);
 
   const allowQr = !!onShowQr && target?.kind === 'invoice';
+  // BR-PAY-033: QR-спосіб видно лише той, чий шлюз підключено у філії рахунку (`<шлюз>_qr`);
+  // PrivatBank QR провайдера немає — він не показується ніколи. Доки відповіді немає — жодного QR.
+  const canAskGateway = allowQr && QR_GATEWAY_ROLES.includes(employee?.role ?? '');
+  const { data: gateway } = useQuery({
+    queryKey: ['online-payments', 'gateway', target?.id],
+    queryFn: () =>
+      apiFetch<{ provider: string | null }>(
+        `/online-payments/gateway?invoiceId=${encodeURIComponent(target?.id ?? '')}`,
+      ),
+    enabled: open && canAskGateway && !!target?.id,
+    staleTime: 60_000,
+  });
+  const qrMethodCode = canAskGateway && gateway?.provider ? `${gateway.provider}_qr` : null;
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     // Без QR-сценарію (наряд) — жодного QR-способу: setup створює ще privat24_qr і liqpay_qr, і
-    // обраний такий спосіб реєстрував оплату одразу, без жодного QR (Bug #870).
+    // обраний такий спосіб реєстрував оплату одразу, без жодного QR (Bug #870). На рахунку —
+    // лише спосіб підключеного шлюзу (BR-PAY-033): інший QR так само записав би оплату без QR.
     const keep = (list: PayMethodOption[]) =>
-      allowQr ? list : list.filter(m => !m.code.endsWith(QR_CODE_SUFFIX));
+      list.filter(m => !isOnlineMethodCode(m.code) || m.code === qrMethodCode);
     // Довідник — одразу з sessionStorage, свіжий список фоном.
     const cached = getCached<PayMethodOption[]>('cache:payment-methods');
     if (cached) setPayMethods(keep(cached));
@@ -175,7 +194,7 @@ export function ClientPaymentModal({
     return () => {
       cancelled = true;
     };
-  }, [open, allowQr, t]);
+  }, [open, qrMethodCode, t]);
 
   // Вікно могло відкритись раніше, ніж прийшли способи: якщо «Готівку» вимкнено, у формі лишився б
   // неактивний код. Синхронізуємо з першим активним способом лише коли поточного немає в переліку.
@@ -189,9 +208,9 @@ export function ClientPaymentModal({
   const method = payMethods.find(m => m.code === form.method);
   // BR-PAY-019: «готівка» — ознака способу в довіднику; запис кешу до ознаки — за кодом `cash`.
   const needsCash = method?.isCash ?? form.method === CASH_METHOD_CODE;
-  // monobank QR: вікно лише показує QR, оплату створює сервер за способом оплати — каса з поля
-  // нікуди не йшла б (Bug #859), тож поля для QR немає.
-  const isQr = form.method === QR_METHOD_CODE;
+  // QR підключеного шлюзу: вікно лише показує QR, оплату створює сервер за способом оплати — каса
+  // з поля нікуди не йшла б (Bug #859), тож поля для QR немає.
+  const isQr = qrMethodCode !== null && form.method === qrMethodCode;
   const showsCash = !isQr && (needsCash || method?.defaultSourceType === 'CASH_REGISTER');
   const defaultCashId =
     method?.defaultSourceType === 'CASH_REGISTER' ? (method.defaultCashRegisterId ?? '') : '';

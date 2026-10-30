@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BANK_TX_IN_MATCH_TYPE_VALUES, type BankTxInMatchTypeValue } from '@sto/shared';
+import { BANK_TX_IN_ALLOCATION_TYPE_VALUES, type BankTxInAllocationTypeValue } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { displayCounterpartyName } from '@/lib/utils';
 import { fmtMoney, fmtBankCurrencySuffix } from '@/lib/format';
@@ -17,9 +17,12 @@ import { bankTxMatchTypeLabel } from '@/i18n/enumLabel';
  * рахунок цього контрагента. Спільні для вікна рознесення рядка (`MatchBankTransactionModal`) і
  * вікна «Новий банківський платіж» (BR-BANK-041). Компонент лише показує й змінює значення;
  * перевіряє і відправляє його вікно-власник.
+ *
+ * Види оплати клієнта — лише на клієнта (пікер «клієнт» / «обидва», BR-BANK-045); «Повернення від
+ * постачальника» — лише на постачальника (пікер «постачальник» / «обидва», BR-BANK-046).
  */
 export interface IncomingAllocationValue {
-  type: BankTxInMatchTypeValue;
+  type: BankTxInAllocationTypeValue;
   counterpartyId: string;
   counterpartyName: string;
   invoiceId: string;
@@ -29,7 +32,7 @@ export interface IncomingAllocationValue {
 }
 
 export const emptyIncomingAllocation = (
-  type: BankTxInMatchTypeValue = 'PREPAYMENT',
+  type: BankTxInAllocationTypeValue = 'PREPAYMENT',
   counterpartyId = '',
   counterpartyName = '',
 ): IncomingAllocationValue => ({
@@ -42,6 +45,13 @@ export const emptyIncomingAllocation = (
 });
 
 const NO_INVOICE = { invoiceId: '', invoiceNumber: '', invoiceRemaining: null } as const;
+
+/** Вид, де контрагент — постачальник, а не клієнт (BR-BANK-046). */
+export const isSupplierAllocation = (type: string): boolean => type === 'SUPPLIER_REFUND_IN';
+
+/** Ролі контрагента в пікері виду: клієнт чи постачальник, разом із «обидва». */
+const counterpartyTypesQuery = (type: string): string =>
+  isSupplierAllocation(type) ? 'types=SUPPLIER&types=BOTH' : 'types=CLIENT&types=BOTH';
 
 interface CounterpartyRef {
   id: string;
@@ -93,15 +103,16 @@ export function IncomingAllocationFields({
 
   const openPicker = (next: Exclude<Picker, null>) => setPicker(next);
   const closePicker = () => setPicker(null);
+  const supplier = isSupplierAllocation(value.type);
 
   return (
     <>
       <div>
         <EntityPickerField
-          label={t('match.counterparty')}
+          label={t(supplier ? 'match.supplier' : 'match.counterparty')}
           required
           display={value.counterpartyName}
-          placeholder={t('match.counterpartyPlaceholder')}
+          placeholder={t(supplier ? 'match.supplierPlaceholder' : 'match.counterpartyPlaceholder')}
           className="h-8 text-[13px]"
           onPick={() => openPicker('counterparty')}
           onClear={() => onChange({ ...value, counterpartyId: '', counterpartyName: '' })}
@@ -119,16 +130,21 @@ export function IncomingAllocationFields({
           required
           value={value.type}
           onChange={e => {
-            const next = e.target.value as BankTxInMatchTypeValue;
+            const next = e.target.value as BankTxInAllocationTypeValue;
+            // Клієнт і постачальник — різні ролі: контрагент іншої ролі вже не підходить.
+            const keep =
+              isSupplierAllocation(next) === supplier
+                ? {}
+                : { counterpartyId: '', counterpartyName: '' };
             onChange(
               next === 'INVOICE'
-                ? { ...value, type: next }
-                : { ...value, type: next, ...NO_INVOICE },
+                ? { ...value, ...keep, type: next }
+                : { ...value, ...keep, type: next, ...NO_INVOICE },
             );
           }}
           className="h-8 text-[13px]"
         >
-          {BANK_TX_IN_MATCH_TYPE_VALUES.map(mt => (
+          {BANK_TX_IN_ALLOCATION_TYPE_VALUES.map(mt => (
             <option key={mt} value={mt}>
               {bankTxMatchTypeLabel(mt)}
             </option>
@@ -171,10 +187,10 @@ export function IncomingAllocationFields({
           });
           closePicker();
         }}
-        title={t('match.pickCounterparty')}
+        title={t(supplier ? 'match.pickSupplier' : 'match.pickCounterparty')}
         fetchItems={q =>
           apiFetch<{ items: CounterpartyRef[] }>(
-            `/counterparties?q=${encodeURIComponent(q)}&limit=30`,
+            `/counterparties?q=${encodeURIComponent(q)}&${counterpartyTypesQuery(value.type)}&limit=30`,
           ).then(d => d.items.map(c => ({ id: c.id, primary: displayCounterpartyName(c) })))
         }
       />

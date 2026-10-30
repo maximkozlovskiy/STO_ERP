@@ -177,7 +177,8 @@ describe('BankTransactionCreateModal — розділ «Рознести як»'
     expect(allocSelect()).toBeEnabled();
   });
 
-  it('вхідний — «не розносити», види match і переказ; вихідний — шість видів reconcile', async () => {
+  // guards: BR-BANK-046
+  it('вхідний — «не розносити», види match, повернення від постачальника і переказ; вихідний — шість видів reconcile', async () => {
     mockApi();
     await openReady();
     expect(optionValues()).toEqual([
@@ -187,6 +188,7 @@ describe('BankTransactionCreateModal — розділ «Рознести як»'
       'INVOICE',
       'REFUND',
       'OTHER',
+      'SUPPLIER_REFUND_IN',
       'TRANSFER',
     ]);
     fireEvent.click(screen.getByRole('button', { name: 'Вихідний' }));
@@ -339,6 +341,44 @@ describe('BankTransactionCreateModal — тіло запиту й підтвер
     });
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(toastMock.success).toHaveBeenCalledWith('Платіж внесено й рознесено');
+  });
+
+  // Рішення власника 2026-10-30 (TECH-DEBT (б) №48): оплату клієнта розносять лише на клієнта,
+  // гроші від постачальника — окремим видом «Повернення від постачальника».
+  // guards: BR-BANK-045
+  it('вхідні види оплати клієнта шукають лише клієнтів («клієнт» / «обидва»)', async () => {
+    mockApi();
+    await openReady();
+    choose('Рознести як', 'PREPAYMENT');
+    await pickVia('Пошук контрагента…');
+
+    const query = apiFetchMock.mock.calls
+      .map(c => String(c[0]))
+      .find(p => p.startsWith('/counterparties?'))!;
+    expect(new URLSearchParams(query.split('?')[1]).getAll('types')).toEqual(['CLIENT', 'BOTH']);
+  });
+
+  // guards: BR-BANK-046
+  it('«Повернення від постачальника»: пікер постачальників, підтвердження з ім’ям, allocation з постачальником', async () => {
+    mockApi();
+    await openReady();
+    choose('Рознести як', 'SUPPLIER_REFUND_IN');
+    await pickVia('Пошук постачальника…');
+
+    const query = apiFetchMock.mock.calls
+      .map(c => String(c[0]))
+      .find(p => p.startsWith('/counterparties?'))!;
+    expect(new URLSearchParams(query.split('?')[1]).getAll('types')).toEqual(['SUPPLIER', 'BOTH']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Внести й рознести' }));
+    expect(await screen.findByRole('note')).toHaveTextContent(
+      'Буде проведено повернення від постачальника «ТОВ Клієнт» на 600,00 ₴',
+    );
+    expect(createCalls()).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Підтвердити' }));
+
+    await waitFor(() => expect(createCalls()).toHaveLength(1));
+    expect(lastBody().allocation).toEqual({ type: 'SUPPLIER_REFUND_IN', counterpartyId: CLIENT });
   });
 
   it('вихідна «Витрата»: allocation лише з полями виду, без підтвердження', async () => {

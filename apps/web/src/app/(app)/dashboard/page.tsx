@@ -43,6 +43,7 @@ const RevenueChart = dynamic(() => import('./RevenueChart'), {
   loading: () => <div className="h-50 bg-surface-hover animate-pulse rounded-lg" />,
 });
 import { KpiCard, Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HelpPopover } from '@/components/ui/help-popover';
 import { PageSpinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn, roundMoney } from '@/lib/utils';
@@ -397,18 +398,30 @@ export default function DashboardPage() {
                 className="w-full"
               />
             </Link>
-            <Link href="/reports" className="flex">
-              <KpiCard
-                label={t('kpi.revenueToday')}
-                // «Оплати сьогодні» — гроші, що надійшли за день (живий потік). Запасного
-                // значення немає свідомо: сума завершених нарядів — інша величина, і під
-                // цим підписом вона вводила б в оману. `null` — підзапит сервера не встиг: «—», не 0.
-                value={streamData?.todayRevenue != null ? fmt(streamData.todayRevenue) : '—'}
-                icon={<TrendingUp />}
-                colorClass="kpi-card-green"
-                className="w-full"
-              />
-            </Link>
+            {/* Кнопка «?» — поза посиланням картки: кнопка всередині <a> недійсна і для клавіатури. */}
+            <div className="relative flex">
+              <Link href="/reports" className="flex w-full">
+                <KpiCard
+                  label={t('kpi.revenueToday')}
+                  // «Оплати сьогодні» — чиста сума за день (BR-PAY-030, живий потік). Запасного
+                  // значення немає свідомо: сума завершених нарядів — інша величина, і під
+                  // цим підписом вона вводила б в оману. `null` — підзапит не встиг: «—», не 0.
+                  value={streamData?.todayRevenue != null ? fmt(streamData.todayRevenue) : '—'}
+                  icon={<TrendingUp />}
+                  colorClass="kpi-card-green"
+                  className="w-full"
+                />
+              </Link>
+              <HelpPopover
+                label={t('kpi.revenueTodayHelp.label')}
+                title={t('kpi.revenueTodayHelp.title')}
+                size="sm"
+                className="absolute right-11 top-2"
+                testId="revenue-today-help"
+              >
+                <p className="text-[13px] text-foreground">{t('kpi.revenueTodayHelp.text')}</p>
+              </HelpPopover>
+            </div>
             <Link href="/reports" className="flex">
               <KpiCard
                 label={t('kpi.revenueMonth')}

@@ -73,7 +73,8 @@
       "EXPENSE": "Expense",
       "PAYROLL": "Payroll",
       "TRANSFER": "Transfer between accounts",
-      "CASH_WITHDRAWAL": "Cash withdrawal"
+      "CASH_WITHDRAWAL": "Cash withdrawal",
+      "SUPPLIER_REFUND_IN": "Refund from supplier"
     },
     "status": {
       "UNMATCHED": "Unmatched",
@@ -102,6 +103,9 @@
     "counterparty": "Counterparty",
     "counterpartyPlaceholder": "Search counterparty…",
     "pickCounterparty": "Select counterparty",
+    "supplier": "Supplier",
+    "supplierPlaceholder": "Search for a supplier…",
+    "pickSupplier": "Pick a supplier",
     "type": "Operation type",
     "invoice": "Invoice",
     "invoicePlaceholder": "Select invoice…",
@@ -209,7 +213,8 @@
     "confirm": {
       "SUPPLIER_PAYMENT": "A supplier payment to \"{{name}}\" for {{amount}} will be created and confirmed — the debt will decrease.",
       "CLIENT_REFUND": "A refund to client \"{{name}}\" for {{amount}} will be posted — their prepayment decreases or debt grows.",
-      "CASH_WITHDRAWAL": "{{amount}} will be deposited into cash register \"{{name}}\" — a cash-in operation will appear."
+      "CASH_WITHDRAWAL": "{{amount}} will be deposited into cash register \"{{name}}\" — a cash-in operation will appear.",
+      "SUPPLIER_REFUND_IN": "A refund from supplier \"{{name}}\" for {{amount}} will be posted — our advance to them decreases."
     },
     "success": "Payment reconciled",
     "error": "Failed to reconcile payment"
@@ -226,7 +231,8 @@
       "CASH_WITHDRAWAL": "The same amount will be written off the cash register. If there is not enough cash, the reconciliation will not be undone.",
       "EXPENSE": "Only the payment classification is removed — there were no postings or cash operations.",
       "PAYROLL": "Only the payment classification is removed — the payroll period state does not change.",
-      "TRANSFER": "Only the transfer mark is removed — there were no postings or cash operations."
+      "TRANSFER": "Only the transfer mark is removed — there were no postings or cash operations.",
+      "SUPPLIER_REFUND_IN": "A reversing posting for the same amount will be made — the advance to the supplier is restored."
     },
     "submit": "Undo reconciliation",
     "cancel": "Cancel",
