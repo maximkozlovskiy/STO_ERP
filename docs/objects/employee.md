@@ -23,6 +23,10 @@
 | POST                | `/api/auth/login`                                                | Вхід; звільнений → 403                                                                           | публічний                              |
 | POST                | `/api/auth/refresh`                                              | Оновлення токена; звільнений → 401                                                               | cookie                                 |
 
+UI підписки на бот (автоматизація блок 4): вкладка «Telegram» картки працівника
+(`EmployeeEditModal`, OWNER / ADMIN) і блок у «Моєму профілі» (`/profile`) —
+`EmployeeTelegramSubscription` з `components/ui/TelegramSubscriptionBlock.tsx`.
+
 ## Бізнес-правила (BR-EMP)
 
 - **BR-EMP-001**: **Працівник зі статусом «звільнено» (`FIRED`) не має доступу до системи**

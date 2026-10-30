@@ -229,17 +229,18 @@ const openCpDetail = useCallback(async () => {
 
 ### §24.4 — Реєстр \*EditModal компонентів
 
-| Компонент                  | Файл                              | Відкривається для                  |
-| -------------------------- | --------------------------------- | ---------------------------------- |
-| `CounterpartyEditModal`    | `ui/CounterpartyEditModal.tsx`    | контрагент (клієнт / постачальник) |
-| `GoodEditModal`            | `ui/GoodEditModal.tsx`            | товар / запчастина                 |
-| `EmployeeEditModal`        | `ui/EmployeeEditModal.tsx`        | співробітник                       |
-| `WorkOrderAddLineModal`    | `ui/WorkOrderAddLineModal.tsx`    | додавання роботи до наряду         |
-| `WorkOrderAddPartModal`    | `ui/WorkOrderAddPartModal.tsx`    | додавання запчастини до наряду     |
-| `PurchaseOrderCreateModal` | `ui/PurchaseOrderCreateModal.tsx` | замовлення постачальнику           |
-| `InvoiceCreateModal`       | `ui/InvoiceCreateModal.tsx`       | рахунок                            |
-| `StockDocumentCreateModal` | `ui/StockDocumentCreateModal.tsx` | документ складу                    |
-| `TaskEditModal`            | `ui/TaskEditModal.tsx`            | задача співробітнику               |
+| Компонент                  | Файл                              | Відкривається для                    |
+| -------------------------- | --------------------------------- | ------------------------------------ |
+| `CounterpartyEditModal`    | `ui/CounterpartyEditModal.tsx`    | контрагент (клієнт / постачальник)   |
+| `GoodEditModal`            | `ui/GoodEditModal.tsx`            | товар / запчастина                   |
+| `EmployeeEditModal`        | `ui/EmployeeEditModal.tsx`        | співробітник                         |
+| `WorkOrderAddLineModal`    | `ui/WorkOrderAddLineModal.tsx`    | додавання роботи до наряду           |
+| `WorkOrderAddPartModal`    | `ui/WorkOrderAddPartModal.tsx`    | додавання запчастини до наряду       |
+| `PurchaseOrderCreateModal` | `ui/PurchaseOrderCreateModal.tsx` | замовлення постачальнику             |
+| `InvoiceCreateModal`       | `ui/InvoiceCreateModal.tsx`       | рахунок                              |
+| `StockDocumentCreateModal` | `ui/StockDocumentCreateModal.tsx` | документ складу                      |
+| `TaskEditModal`            | `ui/TaskEditModal.tsx`            | задача співробітнику                 |
+| `AutomationRuleEditModal`  | `ui/AutomationRuleEditModal.tsx`  | правило автоматизації (налаштування) |
 
 > При додаванні нової сутності — додай рядок у цю таблицю.
 

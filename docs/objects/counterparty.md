@@ -161,7 +161,13 @@ model CounterpartyStatusLink {
 | Detail Panel schema      | `lib/panel-schema.ts` → `COUNTERPARTY_PANEL_SCHEMA`                                                                                                                    |
 | Hook (TanStack Query)    | `hooks/api/useCounterparties.ts`                                                                                                                                       |
 
-**Вкладки CounterpartyEditModal:** main / vehicles / contracts / work-orders
+**Вкладки CounterpartyEditModal:** main / vehicles / contracts / work-orders / messaging
+
+**Вкладка «Повідомлення» (`components/ui/CounterpartyMessagingBlock.tsx`, автоматизація блок 4,
+BR-AUT-011, 041, 042):** «не надсилати службові», «згода на маркетинг» (коли й хто змінив — лише
+показ), бажаний канал з поясненням; кожен перемикач — `PATCH` лише свого поля. Блок «Telegram-бот»
+(`TelegramSubscriptionBlock`): статус підписки, «Отримати посилання» → посилання й QR
+(`TelegramLinkModal`, `next/dynamic`), «Відписати». Тести — `docs/objects/automation.md` (Web).
 
 **Форма контрагента (`CounterpartyForm`, рішення власника 2026-10-12):** статуси-мітки стоять у
 рядку з полем «Тип» (проп `typeAside`; лише при редагуванні наявного контрагента); секції

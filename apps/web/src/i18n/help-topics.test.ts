@@ -30,6 +30,7 @@ const TOPICS: ReadonlyArray<[ns: string, topic: string]> = [
   ['employees', 'editModal.rateHelp'],
   ['workOrders', 'partsTable.warehouseHelp'],
   ['workOrders', 'invoice.baseHelp'],
+  ['automation', 'help'],
 ];
 
 function pick(obj: unknown, path: string): unknown {
