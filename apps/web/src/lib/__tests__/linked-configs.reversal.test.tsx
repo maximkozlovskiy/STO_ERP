@@ -25,6 +25,8 @@ vi.mock('@/lib/api-client', () => ({
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ employee: { role: 'ACCOUNTANT' } }) }));
 vi.mock('@/lib/format', () => ({
   fmtMoney: (v: number) => String(v),
+  fmtBankCurrencySuffix: (code: string | null | undefined) =>
+    !code || code === 'UAH' ? '₴' : code,
   fmtDate: (v: string) => `дата ${v.slice(0, 10)}`,
   fmtDateTime: (v: string) => `дата ${v.slice(0, 10)}`,
 }));
