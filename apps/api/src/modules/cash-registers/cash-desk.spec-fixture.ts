@@ -355,9 +355,30 @@ export function makeDesk() {
     afterReversal: vi.fn((..._args: unknown[]) => undefined),
   };
 
-  // Справжній SupplierPaymentsService: create → чернетка без руху грошей; confirm → рядок каси
-  // (documentType = 'SupplierPayment') і проводка; cancel → чернетка скасована.
+  // Справжній SupplierPaymentsService: createAndConfirm → документ, створений і проведений однією
+  // транзакцією (BR-SUPPAY-013): рядок каси (documentType = 'SupplierPayment') і проводка; create /
+  // confirm / cancel — окремі кроки чернетки, яких каса більше не кличе.
   const supplierPayments = {
+    createAndConfirm: vi.fn((orgId: string, dto: MemRow, ..._rest: unknown[]) => {
+      cashRows.push(
+        cashRow(orgId, {
+          cashRegisterId: dto.cashRegisterId,
+          direction: 'OUT',
+          reason: 'SUPPLIER_PAYMENT',
+          amount: dto.amount,
+          counterpartyId: dto.supplierId,
+          documentType: 'SupplierPayment',
+          documentId: 'sp-1',
+        }),
+      );
+      return Promise.resolve({
+        id: 'sp-1',
+        orgId,
+        number: 'ОПП-2026-000001',
+        status: 'CONFIRMED',
+        ...dto,
+      });
+    }),
     create: vi.fn((orgId: string, dto: MemRow, ..._rest: unknown[]) =>
       Promise.resolve({ id: 'sp-1', orgId, status: 'DRAFT', ...dto }),
     ),
@@ -457,6 +478,7 @@ export function expectNothingMoved(h: Desk): void {
   expect(h.payments.create).not.toHaveBeenCalled();
   expect(h.supplierPayments.create).not.toHaveBeenCalled();
   expect(h.supplierPayments.confirm).not.toHaveBeenCalled();
+  expect(h.supplierPayments.createAndConfirm).not.toHaveBeenCalled();
   expect(h.settlements.createTransaction).not.toHaveBeenCalled();
   expect(h.cashRows).toEqual([]);
   expect(h.settlementRows).toEqual([]);

@@ -11,7 +11,7 @@ import { memoryTable } from '../cash/cash.spec-fixture';
 const ORG = '11111111-1111-4111-8111-111111111111';
 const WO = 'd1000001-0000-4000-8000-000000000001';
 
-function makeService() {
+function makeService(invoices: unknown[] = []) {
   const empty = () => ({ findMany: vi.fn().mockResolvedValue([]) });
   const payment = memoryTable([
     {
@@ -67,7 +67,7 @@ function makeService() {
   const prisma = {
     payment,
     cashOperation,
-    invoice: empty(),
+    invoice: { findMany: vi.fn().mockResolvedValue(invoices) },
     calendarSlot: empty(),
     warranty: empty(),
     purchaseListItem: empty(),
@@ -85,7 +85,11 @@ function makeService() {
     null as never, // orgPrintInfo
     null as never, // calendar
   );
-  return { service, payment };
+  return {
+    service,
+    payment,
+    invoice: prisma.invoice as unknown as { findMany: ReturnType<typeof vi.fn> },
+  };
 }
 
 describe('WorkOrdersService.getLinkedDocuments — рядок оплати для сторно (BR-PAY-024)', () => {
@@ -124,5 +128,22 @@ describe('WorkOrdersService.getLinkedDocuments — рядок оплати дл�
     expect(byId['p-bank']).toMatchObject({ currencyCode: 'USD' });
     expect(byId['p-qr']).toMatchObject({ currencyCode: null });
     for (const p of res.payments) expect(p).not.toHaveProperty('currency');
+  });
+
+  // Рахунок наряду в доларах підписувався «₴» — рядок рахунку несе код своєї валюти.
+  // guards: BR-SUPPAY-016
+  it('рядок рахунку несе currencyCode валюти рахунку; без валюти — null', async () => {
+    const { service, invoice } = makeService([
+      { id: 'inv-usd', amount: '20.00', currency: { code: 'USD' } },
+      { id: 'inv-base', amount: '5.00', currency: null },
+    ]);
+    const res = await service.getLinkedDocuments(ORG, WO);
+    const select = (invoice.findMany.mock.calls[0]![0] as { select: Record<string, unknown> })
+      .select;
+    expect(select).toMatchObject({ currency: { select: { code: true } } });
+    expect(res.invoices).toEqual([
+      { id: 'inv-usd', amount: 20, currencyCode: 'USD' },
+      { id: 'inv-base', amount: 5, currencyCode: null },
+    ]);
   });
 });

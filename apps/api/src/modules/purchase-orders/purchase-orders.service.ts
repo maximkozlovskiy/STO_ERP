@@ -12,7 +12,12 @@ import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { err } from '../../common/utils/err';
 import { PrismaService } from '../../prisma/prisma.service';
-import { formatPersonName, TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
+import {
+  formatPersonName,
+  TRANSACTION_TIMEOUT_MS,
+  MAX_QUERY_LIMIT,
+  PO_PAYABLE_STATUSES,
+} from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -35,6 +40,8 @@ import {
 import { numberOrSupplierSearch } from '../../common/utils/like-pattern';
 
 type POStatus = PurchaseOrderStatus;
+
+const isPoStatus = (s: string): s is POStatus => s in PurchaseOrderStatus;
 
 // Shared shape для всіх PO read paths (findOne/create/update) — попереджає drift
 // (sto-review 2026-06-19): кожен новий scalar тут автоматично потрапляє у всі три
@@ -188,12 +195,18 @@ export class PurchaseOrdersService {
     sortBy?: string,
     sortDir?: 'asc' | 'desc',
     supplierId?: string,
+    payableOnly = false,
   ): Promise<PaginatedPurchaseOrdersDto> {
     const where: Prisma.PurchaseOrderWhereInput = {
       orgId,
       ...(showDeleted ? {} : { deletedAt: null }),
     };
     if (status) where.status = status as POStatus;
+    // Пікер підстави оплати (BR-SUPPAY-015): лише статуси, що приймають оплату; разом зі `status`
+    // — перетин (статус поза переліком дає порожній список).
+    if (payableOnly) {
+      where.AND = [{ status: { in: PO_PAYABLE_STATUSES.filter(isPoStatus) } }];
+    }
     if (supplierId) where.supplierId = supplierId;
     const search = numberOrSupplierSearch(q);
     if (search) where.OR = search;
@@ -1375,6 +1388,8 @@ export class PurchaseOrdersService {
           method: true,
           status: true,
           documentDate: true,
+          // Сума оплати — у валюті її джерела коштів (як рядок оплати клієнта, Bug #1018).
+          currency: { select: { code: true } },
         },
         orderBy: { createdAt: 'desc' },
         take: TAKE,
@@ -1400,7 +1415,11 @@ export class PurchaseOrdersService {
 
     // §13 API Contract: Prisma Decimal → number у DTO.
     return {
-      supplierPayments: supplierPayments.map(sp => ({ ...sp, amount: Number(sp.amount) })),
+      supplierPayments: supplierPayments.map(({ currency, ...sp }) => ({
+        ...sp,
+        amount: Number(sp.amount),
+        currencyCode: currency?.code ?? null,
+      })),
       counterparty: counterparty ? [counterparty] : [],
       purchaseLists: Array.from(new Map(listItems.map(i => [i.list.id, i.list])).values()),
     };

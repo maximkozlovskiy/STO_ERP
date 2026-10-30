@@ -56,7 +56,8 @@ describe('SupplierPaymentsService — create', () => {
       USER_ID,
     );
 
-    expect(docNumbers.next).toHaveBeenCalledWith(ORG, 'SUPPLIER_PAYMENT');
+    // BR-SUPPAY-013: номер береться в транзакції створення — відкат повертає його.
+    expect(docNumbers.next).toHaveBeenCalledWith(ORG, 'SUPPLIER_PAYMENT', prisma);
     // settlement НЕ пишеться при створенні — тільки при confirm.
     expect(settlements.createTransaction).not.toHaveBeenCalled();
   });

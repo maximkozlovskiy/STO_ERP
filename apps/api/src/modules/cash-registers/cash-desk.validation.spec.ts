@@ -188,8 +188,7 @@ describe('CashDeskService.create — прості приводи рухають 
       });
 
       expect(h.payments.create).not.toHaveBeenCalled();
-      expect(h.supplierPayments.create).not.toHaveBeenCalled();
-      expect(h.supplierPayments.confirm).not.toHaveBeenCalled();
+      expect(h.supplierPayments.createAndConfirm).not.toHaveBeenCalled();
       expect(h.settlements.createTransaction).not.toHaveBeenCalled();
       expect(h.settlementRows).toEqual([]);
       expect(h.cashRows).toHaveLength(1);

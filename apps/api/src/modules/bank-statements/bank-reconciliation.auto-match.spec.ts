@@ -50,6 +50,21 @@ describe('BankReconciliationService.resolveBatch — пріоритет каск
     expect(m.reason).toBe('iban');
   });
 
+  // Оплату клієнта на контрагента лише з роллю постачальника рознести не можна (BR-BANK-045), тож
+  // вхідний рядок від нього підказує повернення від постачальника; «обидва» й клієнт — оплату послуг.
+  // guards: BR-BANK-004, BR-BANK-048
+  it.each([
+    ['SUPPLIER', 'SUPPLIER_REFUND_IN'],
+    ['BOTH', 'SERVICE'],
+    ['CLIENT', 'SERVICE'],
+  ])('вхідний рядок, платник %s за IBAN → підказка %s', async (type, expected) => {
+    counterpartiesBy([CP('cp-1', { iban: 'UA111', type })], []);
+    const res = await service.resolveBatch(ORG, [
+      { externalId: 'e1', operationDate: new Date(), amount: 100, payerIban: 'UA111' },
+    ]);
+    expect(res.get('e1')!.matchType).toBe(expected);
+  });
+
   // guards: BR-BANK-004
   it('purpose → наряд (WO-…) → matched SERVICE confidence 0.7, без invoiceId', async () => {
     prisma.workOrder.findMany.mockResolvedValueOnce([

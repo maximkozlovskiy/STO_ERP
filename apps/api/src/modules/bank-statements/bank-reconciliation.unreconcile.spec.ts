@@ -499,8 +499,8 @@ describe('BankReconciliationService.unreconcile — скасування роз�
       });
     });
 
-    // guards: BR-BANK-039
-    it('CASH_WITHDRAWAL: одна зворотна касова операція OUT / MANUAL_OUT на ту саму суму в ту саму касу, в транзакції рядка', async () => {
+    // guards: BR-BANK-039, BR-BANK-047
+    it('CASH_WITHDRAWAL: одна зворотна касова операція OUT / BANK_DEPOSIT на ту саму суму в ту саму касу, в транзакції рядка', async () => {
       const w = await makeWorld();
       arrangeMatched(w, 'CASH_WITHDRAWAL');
 
@@ -512,7 +512,7 @@ describe('BankReconciliationService.unreconcile — скасування роз�
       expect(input).toMatchObject({
         cashRegisterId: ID.cashUah,
         direction: 'OUT',
-        reason: 'MANUAL_OUT',
+        reason: 'BANK_DEPOSIT',
         withoutCategory: true,
         amount: ROW_AMOUNT,
       });
@@ -541,7 +541,7 @@ describe('BankReconciliationService.unreconcile — скасування роз�
       expect(input).toMatchObject({
         cashRegisterId: ID.cashUah,
         direction: 'OUT',
-        reason: 'MANUAL_OUT',
+        reason: 'BANK_DEPOSIT',
         // base реверсу == base оригіналу (не перераховано за now()).
         conversion: { rateUsed: 41.5, amountBase: 8300 },
       });

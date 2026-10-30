@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
-import { DocumentType } from '@prisma/client';
+import { DocumentType, Prisma } from '@prisma/client';
 
 // Module-level Intl singleton — `new Intl.DateTimeFormat()` is expensive (locale-data init).
 // Called on every document number generation (WO/Invoice/PO/SD/CompletionAct/ReconciliationAct create);
@@ -20,91 +20,106 @@ export class DocumentNumberService {
   /**
    * Atomically increment and return the next document number.
    * Uses SELECT FOR UPDATE to prevent TOCTOU race conditions under concurrent requests.
+   *
+   * `tx` — транзакція виклику: лічильник тоді рухається В НІЙ, і відкат документа повертає номер
+   * (BR-SUPPAY-013). Рядок лічильника лишається заблокованим до кінця цієї транзакції — тому
+   * номер беруть якомога пізніше, після всіх читань і перевірок. Без `tx` — власна коротка
+   * транзакція, як для решти документів (номер витрачено, навіть якщо документ далі не створено).
    */
-  async next(orgId: string, documentType: DocumentType, _tx?: unknown): Promise<string> {
-    return this.prisma.$transaction(
-      async tx => {
-        // Prisma schema uses camelCase without @map, so Postgres columns are camelCase.
-        // Raw SQL must quote camelCase identifiers — otherwise Postgres folds to lowercase
-        // (`org_id` won't match `"orgId"`).
-        const configs = await tx.$queryRaw<
-          Array<{
-            id: string;
-            prefix: string | null;
-            includeDate: boolean;
-            separator: string;
-            padding: number;
-            currentSeq: bigint;
-            resetPeriod: string;
-            lastResetYear: number | null;
-            lastResetMonth: number | null;
-            updatedAt: Date;
-          }>
-        >`
-        SELECT id, prefix, "includeDate", separator, padding,
-               "currentSeq", "resetPeriod", "lastResetYear", "lastResetMonth", "updatedAt"
-        FROM document_number_configs
-        WHERE "orgId" = ${orgId}::uuid
-          AND "documentType" = ${documentType}::"DocumentType"
-        FOR UPDATE
-        LIMIT 1
-      `;
+  async next(
+    orgId: string,
+    documentType: DocumentType,
+    tx?: Prisma.TransactionClient,
+  ): Promise<string> {
+    if (tx) return this.allocate(tx, orgId, documentType);
+    return this.prisma.$transaction(own => this.allocate(own, orgId, documentType), {
+      timeout: TRANSACTION_TIMEOUT_MS,
+    }); // explicit timeout: SELECT FOR UPDATE + UPDATE in one tx, well below Prisma default 30s
+  }
 
-        if (!configs.length) {
-          throw new NotFoundException(
-            translateError('err.documentNumber.configNotFound', getLocale(), { documentType }),
-          );
-        }
+  private async allocate(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    documentType: DocumentType,
+  ): Promise<string> {
+    // Prisma schema uses camelCase without @map, so Postgres columns are camelCase.
+    // Raw SQL must quote camelCase identifiers — otherwise Postgres folds to lowercase
+    // (`org_id` won't match `"orgId"`).
+    const configs = await tx.$queryRaw<
+      Array<{
+        id: string;
+        prefix: string | null;
+        includeDate: boolean;
+        separator: string;
+        padding: number;
+        currentSeq: bigint;
+        resetPeriod: string;
+        lastResetYear: number | null;
+        lastResetMonth: number | null;
+        updatedAt: Date;
+      }>
+    >`
+    SELECT id, prefix, "includeDate", separator, padding,
+           "currentSeq", "resetPeriod", "lastResetYear", "lastResetMonth", "updatedAt"
+    FROM document_number_configs
+    WHERE "orgId" = ${orgId}::uuid
+      AND "documentType" = ${documentType}::"DocumentType"
+    FOR UPDATE
+    LIMIT 1
+  `;
 
-        const cfg = configs[0];
-        const now = new Date();
-        const [currentYear, currentMonth] = KYIV_YEAR_MONTH_FMT.format(now).split('-').map(Number);
+    if (!configs.length) {
+      throw new NotFoundException(
+        translateError('err.documentNumber.configNotFound', getLocale(), { documentType }),
+      );
+    }
 
-        // NULL lastResetYear means the counter has never been anchored to a period.
-        // For a YEARLY/MONTHLY config that must be treated as "needs reset" so the
-        // FIRST number of the current period starts at 1 — otherwise a config with a
-        // non-zero currentSeq (legacy import, admin-set start seq) would keep
-        // incrementing across the year boundary instead of restarting.
-        // The old `cfg.lastResetYear !== null &&` guard on YEARLY made it asymmetric
-        // with MONTHLY (which already resets on NULL) and left such configs never
-        // resetting per year.
-        const needsYearlyReset = cfg.resetPeriod === 'YEARLY' && cfg.lastResetYear !== currentYear;
+    const cfg = configs[0];
+    const now = new Date();
+    const [currentYear, currentMonth] = KYIV_YEAR_MONTH_FMT.format(now).split('-').map(Number);
 
-        const needsMonthlyReset =
-          cfg.resetPeriod === 'MONTHLY' &&
-          (cfg.lastResetYear !== currentYear || cfg.lastResetMonth !== currentMonth);
+    // NULL lastResetYear means the counter has never been anchored to a period.
+    // For a YEARLY/MONTHLY config that must be treated as "needs reset" so the
+    // FIRST number of the current period starts at 1 — otherwise a config with a
+    // non-zero currentSeq (legacy import, admin-set start seq) would keep
+    // incrementing across the year boundary instead of restarting.
+    // The old `cfg.lastResetYear !== null &&` guard on YEARLY made it asymmetric
+    // with MONTHLY (which already resets on NULL) and left such configs never
+    // resetting per year.
+    const needsYearlyReset = cfg.resetPeriod === 'YEARLY' && cfg.lastResetYear !== currentYear;
 
-        const isReset = needsYearlyReset || needsMonthlyReset;
-        const newSeq = isReset ? 1n : BigInt(cfg.currentSeq) + 1n;
+    const needsMonthlyReset =
+      cfg.resetPeriod === 'MONTHLY' &&
+      (cfg.lastResetYear !== currentYear || cfg.lastResetMonth !== currentMonth);
 
-        await tx.$executeRaw`
-        UPDATE document_number_configs
-        SET "currentSeq"      = ${newSeq},
-            "lastResetYear"   = ${currentYear},
-            "lastResetMonth"  = ${currentMonth},
-            "updatedAt"       = NOW()
-        WHERE id = ${cfg.id}::uuid
-      `;
+    const isReset = needsYearlyReset || needsMonthlyReset;
+    const newSeq = isReset ? 1n : BigInt(cfg.currentSeq) + 1n;
 
-        const seq = Number(newSeq);
-        const seqStr = String(seq).padStart(cfg.padding, '0');
+    await tx.$executeRaw`
+    UPDATE document_number_configs
+    SET "currentSeq"      = ${newSeq},
+        "lastResetYear"   = ${currentYear},
+        "lastResetMonth"  = ${currentMonth},
+        "updatedAt"       = NOW()
+    WHERE id = ${cfg.id}::uuid
+  `;
 
-        if (cfg.includeDate) {
-          const prefix = cfg.prefix ? `${cfg.prefix}${cfg.separator}` : '';
-          // MONTHLY-reset рестартує лічильник щомісяця → у номер МУСИТЬ входити місяць, інакше
-          // INV-2026-0001 повторюється у січні/лютому/... (дублі номерів документів). Для YEARLY/NEVER
-          // достатньо року. Місяць — 2 цифри (09), у Kyiv-таймзоні (KYIV_YEAR_MONTH_FMT).
-          const datePart =
-            cfg.resetPeriod === 'MONTHLY'
-              ? `${currentYear}${cfg.separator}${String(currentMonth).padStart(2, '0')}`
-              : `${currentYear}`;
-          return `${prefix}${datePart}${cfg.separator}${seqStr}`;
-        }
+    const seq = Number(newSeq);
+    const seqStr = String(seq).padStart(cfg.padding, '0');
 
-        const prefix = cfg.prefix ? `${cfg.prefix}${cfg.separator}` : '';
-        return `${prefix}${seqStr}`;
-      },
-      { timeout: TRANSACTION_TIMEOUT_MS },
-    ); // explicit timeout: SELECT FOR UPDATE + UPDATE in one tx, well below Prisma default 30s
+    if (cfg.includeDate) {
+      const prefix = cfg.prefix ? `${cfg.prefix}${cfg.separator}` : '';
+      // MONTHLY-reset рестартує лічильник щомісяця → у номер МУСИТЬ входити місяць, інакше
+      // INV-2026-0001 повторюється у січні/лютому/... (дублі номерів документів). Для YEARLY/NEVER
+      // достатньо року. Місяць — 2 цифри (09), у Kyiv-таймзоні (KYIV_YEAR_MONTH_FMT).
+      const datePart =
+        cfg.resetPeriod === 'MONTHLY'
+          ? `${currentYear}${cfg.separator}${String(currentMonth).padStart(2, '0')}`
+          : `${currentYear}`;
+      return `${prefix}${datePart}${cfg.separator}${seqStr}`;
+    }
+
+    const prefix = cfg.prefix ? `${cfg.prefix}${cfg.separator}` : '';
+    return `${prefix}${seqStr}`;
   }
 }

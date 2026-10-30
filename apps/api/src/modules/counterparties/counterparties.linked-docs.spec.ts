@@ -100,6 +100,34 @@ describe('CounterpartiesService — linked documents (Phase C)', () => {
     expect(res.purchaseOrders[0].totalAmount).toBe(200);
   });
 
+  // «₴» без валюти: рахунок і оплата постачальнику в доларах підписувались гривнею. Рядки несуть
+  // код валюти документа (null — базова), сам об'єкт валюти клієнту не йде.
+  // guards: BR-SUPPAY-016
+  it('getLinkedDocuments: рядки рахунків і оплат постачальнику несуть currencyCode', async () => {
+    prisma.invoice.findMany.mockResolvedValueOnce([
+      { id: 'i1', amount: 20, currency: { code: 'USD' } },
+      { id: 'i2', amount: 5, currency: null },
+    ]);
+    prisma.supplierPayment.findMany.mockResolvedValueOnce([
+      { id: 's1', amount: '30.00', currency: { code: 'EUR' } },
+    ]);
+
+    const res = await service.getLinkedDocuments('org-1', 'cp-1');
+
+    for (const m of [prisma.invoice.findMany, prisma.supplierPayment.findMany]) {
+      expect(m).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({ currency: { select: { code: true } } }),
+        }),
+      );
+    }
+    expect(res.invoices).toEqual([
+      { id: 'i1', amount: 20, currencyCode: 'USD' },
+      { id: 'i2', amount: 5, currencyCode: null },
+    ]);
+    expect(res.supplierPayments).toEqual([{ id: 's1', amount: 30, currencyCode: 'EUR' }]);
+  });
+
   it('getLinkedCounts: zero-init для КОЖНОГО id + порожній вхід → {}', async () => {
     expect(await service.getLinkedCounts('org-1', [])).toEqual({});
     // id без жодних зв'язків має з'явитись у мапі з нулями (не бути відсутнім)

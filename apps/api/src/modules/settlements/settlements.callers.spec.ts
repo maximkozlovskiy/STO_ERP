@@ -352,10 +352,11 @@ const CALL_SITES: Record<string, CallSite> = {
   },
 
   // ── Оплати постачальникам ──────────────────────────────────────────────────────────────
-  'modules/supplier-payments/supplier-payments.service.ts#confirm:SUPPLIER_PAYMENT': {
+  // `confirmInTx` — спільне проведення `confirm` (чернетка) і `createAndConfirm` (BR-SUPPAY-013).
+  'modules/supplier-payments/supplier-payments.service.ts#confirmInTx:SUPPLIER_PAYMENT': {
     guard:
       'CAS статусу першим записом у tx: supplierPayment.updateMany where status = DRAFT → CONFIRMED; ' +
-      'count=0 → 400. CONFIRMED — термінальний.',
+      'count=0 → 400. CONFIRMED — термінальний. Оплата однією дією — та сама tx, що й створення.',
     anchors: [
       /tx\.supplierPayment\.updateMany\(\{\s*where:\s*\{[^}]*\bstatus:\s*SupplierPaymentStatus\.DRAFT\b/,
       /if\s*\(cas\.count === 0\)\s*\{\s*throw\b/,
@@ -368,7 +369,7 @@ const CALL_SITES: Record<string, CallSite> = {
       },
     ],
   },
-  'modules/supplier-payments/supplier-payments.service.ts#confirm:FX_GAIN|FX_LOSS': {
+  'modules/supplier-payments/supplier-payments.service.ts#confirmInTx:FX_GAIN|FX_LOSS': {
     guard:
       'CAS статусу оплати + CAS paidAmount замовлення (purchaseOrder.updateMany where paidAmount = прочитаний) + ' +
       'лише при ПЕРШІЙ повній оплаті (paidAt == null) + перевірка наявної проводки: count FX цього PO === 0.',

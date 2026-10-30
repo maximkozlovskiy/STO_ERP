@@ -647,6 +647,7 @@ export const VALIDATION_KEYS = [
   'err.supplierPayment.bankRequiresAccount',
   'err.supplierPayment.sourceConflict',
   'err.supplierPayment.cashRequiresRegister',
+  'err.supplierPayment.orderNotPayable',
   // Exception-повідомлення: purchase-orders-модуль
   'err.deliveryProvider.invalidCode',
   'err.deliveryProvider.unknown',

@@ -524,6 +524,8 @@ export const uk: Record<string, string> = {
     'Для оплати з банку потрібно вказати банківський рахунок',
   'err.supplierPayment.sourceConflict': 'Не можна одночасно вказувати банківський рахунок і касу',
   'err.supplierPayment.cashRequiresRegister': 'Для оплати з каси потрібно вказати касу',
+  'err.supplierPayment.orderNotPayable':
+    'Оплатити можна лише замовлення «Замовлено», «Частково» чи «Отримано» — це замовлення «{{status}}»',
 
   // ── Exception-повідомлення: purchase-orders-модуль ──
   'err.deliveryProvider.invalidCode': 'Некоректний код служби',

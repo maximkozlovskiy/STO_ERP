@@ -2,10 +2,11 @@
  * Гроші постачальника через касу (BR-CASH-019): «оплата постачальнику» (видача) і «повернення
  * від постачальника» (внесення).
  *
- * Оплата — це документ: чернетка (`SupplierPaymentsService.create`) і одразу проведення
- * (`confirm`), яке саме пише рядок каси й зменшує борг. Проведення не вдалося → чернетка
- * скасовується (`cancel`), каса й борг не змінюються. Повернення від постачальника документа не
- * має: рядок каси й проводка `SUPPLIER_PAYMENT_RETURN` в одній транзакції.
+ * Оплата — це документ, створений і проведений однією транзакцією
+ * (`SupplierPaymentsService.createAndConfirm`, BR-SUPPAY-013): він сам пише рядок каси й зменшує
+ * борг. Проведення не вдалося → відкочується все, чернетки не лишається. Повернення від
+ * постачальника документа не має: рядок каси й проводка `SUPPLIER_PAYMENT_RETURN` в одній
+ * транзакції, не більше нашого авансу постачальнику (BR-CASH-032).
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
@@ -35,7 +36,7 @@ describe('CashDeskService.create — оплата постачальнику (SU
     ['постачальник', SUPPLIER],
     ['«обидва»', BOTH],
   ])(
-    'контрагент %s → чернетка оплати з джерелом «каса», готівкою, на суму з копійками',
+    'контрагент %s → оплата з джерелом «каса», готівкою, на суму з копійками',
     async (_n, supplierId) => {
       const h = makeDesk();
       await createOp(
@@ -47,8 +48,8 @@ describe('CashDeskService.create — оплата постачальнику (SU
         }),
       );
 
-      expect(h.supplierPayments.create).toHaveBeenCalledTimes(1);
-      const [orgId, dto, userId] = h.supplierPayments.create.mock.calls[0];
+      expect(h.supplierPayments.createAndConfirm).toHaveBeenCalledTimes(1);
+      const [orgId, dto, userId] = h.supplierPayments.createAndConfirm.mock.calls[0];
       expect(orgId).toBe(ORG);
       expect(dto).toMatchObject({
         supplierId,
@@ -62,18 +63,18 @@ describe('CashDeskService.create — оплата постачальнику (SU
     },
   );
 
-  // guards: BR-CASH-019
-  it('чернетку одразу проведено: confirm ПІСЛЯ create, з id чернетки й автором; cancel не викликано', async () => {
+  // Рішення власника 2026-10-30 (TECH-DEBT (б) №34): створення й проведення — одна дія. Окремі
+  // create → confirm → cancel лишали скасовану чернетку з витраченим номером.
+  // guards: BR-CASH-019, BR-SUPPAY-013
+  it('одна дія «створити й провести»: ні окремої чернетки, ні проведення, ні скасування', async () => {
     const h = makeDesk();
-    await createOp(h, validInput('SUPPLIER_PAYMENT'));
+    const row = await createOp(h, validInput('SUPPLIER_PAYMENT'));
 
-    expect(h.supplierPayments.confirm).toHaveBeenCalledTimes(1);
-    const [orgId, id, userId] = h.supplierPayments.confirm.mock.calls[0];
-    expect([orgId, id, userId]).toEqual([ORG, 'sp-1', USER]);
-    expect(h.supplierPayments.create.mock.invocationCallOrder[0]).toBeLessThan(
-      h.supplierPayments.confirm.mock.invocationCallOrder[0],
-    );
+    expect(h.supplierPayments.createAndConfirm).toHaveBeenCalledTimes(1);
+    expect(h.supplierPayments.create).not.toHaveBeenCalled();
+    expect(h.supplierPayments.confirm).not.toHaveBeenCalled();
     expect(h.supplierPayments.cancel).not.toHaveBeenCalled();
+    expect(row.documentNumber).toBe('ОПП-2026-000001');
   });
 
   // guards: BR-CASH-019, BR-CASH-001
@@ -87,35 +88,21 @@ describe('CashDeskService.create — оплата постачальнику (SU
     expect(h.cashRows[0]).toMatchObject({ documentType: 'SupplierPayment', documentId: 'sp-1' });
   });
 
-  // guards: BR-CASH-019
-  it('проведення не вдалося → чернетку скасовано, помилка піднята, каса не змінилась', async () => {
+  // guards: BR-CASH-019, BR-SUPPAY-013
+  it('проведення не вдалося → помилка піднята, нічого не скасовують (нічого й не лишилось), каса не змінилась', async () => {
     const h = makeDesk();
     const boom = new BadRequestException('Недостатньо готівки в касі: доступно 10, потрібно 100');
-    h.supplierPayments.confirm.mockRejectedValueOnce(boom);
+    h.supplierPayments.createAndConfirm.mockRejectedValueOnce(boom);
 
     await expect(createOp(h, validInput('SUPPLIER_PAYMENT'))).rejects.toBe(boom);
 
-    expect(h.supplierPayments.cancel).toHaveBeenCalledTimes(1);
-    expect(h.supplierPayments.cancel.mock.calls[0].slice(0, 2)).toEqual([ORG, 'sp-1']);
+    expect(h.supplierPayments.cancel).not.toHaveBeenCalled();
     expect(h.cashRows).toEqual([]);
     expect(h.settlementRows).toEqual([]);
   });
 
   // guards: BR-CASH-019
-  it('чернетку створити не вдалося → ні проведення, ні скасування; помилка піднята', async () => {
-    const h = makeDesk();
-    const boom = new BadRequestException('Постачальника не знайдено');
-    h.supplierPayments.create.mockRejectedValueOnce(boom);
-
-    await expect(createOp(h, validInput('SUPPLIER_PAYMENT'))).rejects.toBe(boom);
-
-    expect(h.supplierPayments.confirm).not.toHaveBeenCalled();
-    expect(h.supplierPayments.cancel).not.toHaveBeenCalled();
-    expect(h.cashRows).toEqual([]);
-  });
-
-  // guards: BR-CASH-019
-  it('клієнт в «оплаті постачальнику» → 400, чернетку не створено', async () => {
+  it('клієнт в «оплаті постачальнику» → 400, оплату не створено', async () => {
     const h = makeDesk();
     const call = createOp(h, validInput('SUPPLIER_PAYMENT', { counterpartyId: CLIENT }));
     await expect(call).rejects.toThrow(BadRequestException);
@@ -130,7 +117,7 @@ describe('CashDeskService.create — оплата постачальнику (SU
       h,
       validInput('SUPPLIER_PAYMENT', { baseDocumentType: 'PurchaseOrder', baseDocumentId: PO }),
     );
-    expect(h.supplierPayments.create.mock.calls[0][1]).toMatchObject({
+    expect(h.supplierPayments.createAndConfirm.mock.calls[0][1]).toMatchObject({
       supplierId: SUPPLIER,
       purchaseOrderId: PO,
     });
@@ -140,14 +127,11 @@ describe('CashDeskService.create — оплата постачальнику (SU
   it('без підстави purchaseOrderId в оплату не йде', async () => {
     const h = makeDesk();
     await createOp(h, validInput('SUPPLIER_PAYMENT'));
-    expect(h.supplierPayments.create.mock.calls[0][1].purchaseOrderId ?? null).toBeNull();
+    expect(h.supplierPayments.createAndConfirm.mock.calls[0][1].purchaseOrderId ?? null).toBeNull();
   });
 
-  // ПОТРЕБУЄ ЗВІРКИ після злиття: контракт каже, що «додатки касового рядка» (стаття, підстава)
-  // отримує `SupplierPaymentsService.confirm`; у якому аргументі — не каже. Кейс приймає їх у
-  // будь-якому аргументі create або confirm.
   // guards: BR-CASH-019, BR-CASH-020
-  it('стаття й підстава, обрані в касі, доходять до оплати «додатками» (у create або confirm)', async () => {
+  it('стаття й підстава, обрані в касі, доходять до оплати «додатками» касового рядка', async () => {
     const h = makeDesk();
     await createOp(
       h,
@@ -157,18 +141,11 @@ describe('CashDeskService.create — оплата постачальнику (SU
         baseDocumentId: PO,
       }),
     );
-    const args: unknown[] = [
-      ...h.supplierPayments.create.mock.calls[0],
-      ...h.supplierPayments.confirm.mock.calls[0],
-    ];
-    expect(args).toEqual(
-      expect.arrayContaining([expect.objectContaining({ expenseCategoryId: CAT_EXPENSE })]),
-    );
-    expect(args).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ baseDocumentType: 'PurchaseOrder', baseDocumentId: PO }),
-      ]),
-    );
+    expect(h.supplierPayments.createAndConfirm.mock.calls[0][3]).toMatchObject({
+      expenseCategoryId: CAT_EXPENSE,
+      baseDocumentType: 'PurchaseOrder',
+      baseDocumentId: PO,
+    });
   });
 
   // Дата без часу проти мітки часу (урок Bug #798). `SupplierPayment.documentDate` — календарний
@@ -180,7 +157,7 @@ describe('CashDeskService.create — оплата постачальнику (SU
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-14T22:30:00.000Z') });
     const h = makeDesk();
     await createOp(h, validInput('SUPPLIER_PAYMENT'));
-    const documentDate: unknown = h.supplierPayments.create.mock.calls[0][1].documentDate;
+    const documentDate: unknown = h.supplierPayments.createAndConfirm.mock.calls[0][1].documentDate;
     // Не передано — день ставить сам SupplierPaymentsService (його правила, його спеки).
     expect([undefined, '2026-10-15']).toContain(documentDate);
   });
@@ -189,7 +166,53 @@ describe('CashDeskService.create — оплата постачальнику (SU
   it('одна копійка оплати доходить як 0.01', async () => {
     const h = makeDesk();
     await createOp(h, validInput('SUPPLIER_PAYMENT', { amount: 0.01 }));
-    expect(h.supplierPayments.create.mock.calls[0][1].amount).toBe(0.01);
+    expect(h.supplierPayments.createAndConfirm.mock.calls[0][1].amount).toBe(0.01);
+  });
+});
+
+// Рішення власника 2026-10-30 (TECH-DEBT (б) №37): повернути від постачальника можна не більше
+// нашого авансу йому (`max(0, balance)` у базовій валюті).
+describe('CashDeskService.create — повернення від постачальника не більше авансу (BR-CASH-032)', () => {
+  // guards: BR-CASH-032
+  it('понад аванс → 400 з доступною сумою; ні рядка каси, ні проводки', async () => {
+    const h = makeDesk();
+    h.refundAvailable.value = 99.99;
+
+    await expect(
+      createOp(h, validInput('SUPPLIER_REFUND_IN', { amount: 100 })),
+    ).rejects.toMatchObject({ status: 400, message: expect.stringContaining('99.99') });
+
+    expect(h.cashRows).toEqual([]);
+    expect(h.settlementRows).toEqual([]);
+  });
+
+  // guards: BR-CASH-032
+  it('рівно весь аванс проходить: рядок каси і SUPPLIER_PAYMENT_RETURN', async () => {
+    const h = makeDesk();
+    h.refundAvailable.value = 100;
+
+    await createOp(h, validInput('SUPPLIER_REFUND_IN', { amount: 100 }));
+
+    expect(h.cashRows).toHaveLength(1);
+    expect(h.settlementRows).toEqual([
+      expect.objectContaining({ type: 'SUPPLIER_PAYMENT_RETURN', amount: 100 }),
+    ]);
+  });
+
+  // guards: BR-CASH-032
+  it('аванс читається як сторона «постачальник» з блокуванням у транзакції, до рядка каси', async () => {
+    const h = makeDesk();
+
+    await createOp(h, validInput('SUPPLIER_REFUND_IN', { counterpartyId: BOTH }));
+
+    expect(h.settlements.lockRefundAvailable).toHaveBeenCalledTimes(1);
+    const [orgId, counterpartyId, side, client] = h.settlements.lockRefundAvailable.mock.calls[0];
+    expect([orgId, counterpartyId, side]).toEqual([ORG, BOTH, 'supplier']);
+    expect(h.isTx(client)).toBe(true);
+    expect(h.settlements.lockRefundAvailable.mock.invocationCallOrder[0]).toBeLessThan(
+      h.cash.createOperation.mock.invocationCallOrder[0],
+    );
+    expect(h.settlements.assertRefundWithin.mock.calls[0][1]).toBe('supplier');
   });
 });
 
@@ -280,8 +303,7 @@ describe('CashDeskService.create — повернення від постача�
         expenseCategoryId: CAT_INCOME,
       }),
     );
-    expect(h.supplierPayments.create).not.toHaveBeenCalled();
-    expect(h.supplierPayments.confirm).not.toHaveBeenCalled();
+    expect(h.supplierPayments.createAndConfirm).not.toHaveBeenCalled();
     expect(h.payments.create).not.toHaveBeenCalled();
     expect(h.settlements.createTransaction).toHaveBeenCalledTimes(1);
     expect(h.cash.createOperation.mock.calls[0][1]).toMatchObject({

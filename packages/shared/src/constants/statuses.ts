@@ -286,6 +286,17 @@ export const PO_STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Скасовано',
 };
 
+/**
+ * Статуси замовлення постачальнику, які приймають оплату (рішення власника 2026-10-30, TECH-DEBT (б)
+ * №38; BR-SUPPAY-015): відправлене, частково чи повністю отримане. Чернетка й скасоване — ні.
+ * Перевіряють створення й проведення оплати постачальнику та каса; пікери web фільтрують цим же.
+ */
+export const PO_PAYABLE_STATUSES: readonly string[] = Object.freeze([
+  'ORDERED',
+  'PARTIAL',
+  'RECEIVED',
+]);
+
 export const PO_STATUS_BADGE: Record<string, BadgeVariant> = {
   DRAFT: 'secondary',
   ORDERED: 'default',

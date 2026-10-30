@@ -137,7 +137,7 @@ describe('PurchaseOrdersService — linked-documents edge cases', () => {
 
     const res = await service.getLinkedDocuments(ORG, P);
 
-    expect(res.supplierPayments).toEqual([{ id: 'sp-1', amount: 10 }]);
+    expect(res.supplierPayments).toEqual([{ id: 'sp-1', amount: 10, currencyCode: null }]);
     expect(res.counterparty).toEqual([{ id: SUP }]);
     // Цілі зв'язків — як і раніше лише живі.
     expect(prisma.counterparty.findFirst).toHaveBeenCalledWith(
@@ -148,6 +148,28 @@ describe('PurchaseOrdersService — linked-documents edge cases', () => {
       counterparty: [],
       purchaseLists: [],
     });
+  });
+
+  // «₴» без валюти: оплата постачальнику з доларового рахунку в «Пов'язаних документах» підписувалась
+  // гривнею. Рядок несе код валюти оплати (null — базова), сам об'єкт валюти клієнту не йде.
+  // guards: BR-SUPPAY-016
+  it('getLinkedDocuments: рядок оплати постачальнику несе currencyCode валюти оплати', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValue({ supplierId: SUP });
+    prisma.supplierPayment.findMany.mockResolvedValue([
+      { id: 'sp-usd', amount: '20.00', currency: { code: 'USD' } },
+      { id: 'sp-base', amount: '5.00', currency: null },
+    ]);
+    prisma.counterparty.findFirst.mockResolvedValue({ id: SUP });
+
+    const res = await service.getLinkedDocuments(ORG, P);
+
+    expect(prisma.supplierPayment.findMany.mock.calls[0][0].select).toMatchObject({
+      currency: { select: { code: true } },
+    });
+    expect(res.supplierPayments).toEqual([
+      { id: 'sp-usd', amount: 20, currencyCode: 'USD' },
+      { id: 'sp-base', amount: 5, currencyCode: null },
+    ]);
   });
 
   it('списки купівлі замовлення: різні списки рахуються один раз, лише в своїй org', async () => {

@@ -73,6 +73,22 @@ describe('PurchaseOrdersService.findAll — sortBy=paymentDate nulls-last (Bug #
     ).orderBy;
   }
 
+  // Пікер підстави оплати постачальнику показує лише замовлення, що приймають оплату.
+  // guards: BR-SUPPAY-015
+  it('payable → лише Замовлено / Частково / Отримано; без прапорця — без обмеження статусу', async () => {
+    const where = (i: number) =>
+      (prisma.purchaseOrder.findMany.mock.calls[i]![0] as { where: Record<string, unknown> }).where;
+    const args = [ORG, 1, 20, undefined, undefined, false, undefined, undefined] as const;
+
+    await service.findAll(...args, undefined, undefined, undefined, true);
+    await service.findAll(...args, undefined, undefined, undefined, false);
+
+    const statuses = (where(0).AND as Array<{ status: { in: string[] } }>)[0].status.in;
+    expect([...statuses].sort()).toEqual(['ORDERED', 'PARTIAL', 'RECEIVED']);
+    expect(where(1).AND).toBeUndefined();
+    expect(where(1).status).toBeUndefined();
+  });
+
   it('sortBy=paymentDate + desc → { paymentDate: { sort: desc, nulls: last } }', async () => {
     await service.findAll(
       ORG,

@@ -408,6 +408,8 @@ export class CounterpartyLinkedInvoiceRowDto {
   @ApiProperty({ enum: InvoiceStatus }) status!: InvoiceStatus;
   @ApiProperty() amount!: number;
   @ApiProperty({ type: String, format: 'date' }) documentDate!: string;
+  // Валюта рахунку; null — базова.
+  @ApiProperty({ type: String, nullable: true }) currencyCode!: string | null;
 }
 
 export class CounterpartyLinkedPurchaseOrderRowDto {
@@ -427,6 +429,8 @@ export class CounterpartyLinkedSupplierPaymentRowDto {
   @ApiProperty({ description: 'Код способу оплати (PaymentMethodConfig.code)' })
   method!: string;
   @ApiProperty({ type: String, format: 'date' }) documentDate!: string;
+  // Валюта оплати — валюта її джерела коштів; null — базова.
+  @ApiProperty({ type: String, nullable: true }) currencyCode!: string | null;
 }
 
 export class CounterpartyLinkedSupplierReturnRowDto {

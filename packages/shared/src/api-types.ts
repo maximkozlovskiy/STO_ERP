@@ -4088,6 +4088,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/supplier-payments/pay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Оплатити постачальнику: створити й провести (усе або нічого) */
+        post: operations["SupplierPaymentsController_pay_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/supplier-payments/schedule": {
         parameters: {
             query?: never;
@@ -7033,6 +7050,7 @@ export interface components {
             amount: number;
             /** Format: date */
             documentDate: string;
+            currencyCode: string | null;
         };
         CounterpartyLinkedPurchaseOrderRowDto: {
             id: string;
@@ -7053,6 +7071,7 @@ export interface components {
             method: string;
             /** Format: date */
             documentDate: string;
+            currencyCode: string | null;
         };
         CounterpartyLinkedSupplierReturnRowDto: {
             id: string;
@@ -8332,6 +8351,7 @@ export interface components {
             amount: number;
             /** Format: date-time */
             documentDate: string | null;
+            currencyCode: string | null;
         };
         LinkedPaymentRowDto: {
             id: string;
@@ -17180,6 +17200,8 @@ export interface operations {
                 supplierId?: string;
                 /** @description Показати видалені */
                 showDeleted?: string;
+                /** @description Лише замовлення, що приймають оплату: Замовлено / Частково / Отримано (BR-SUPPAY-015) */
+                payable?: string;
                 /** @description Дата документа від (YYYY-MM-DD) */
                 dateFrom?: string;
                 /** @description Дата документа до (YYYY-MM-DD) */
@@ -17384,7 +17406,10 @@ export interface operations {
     PurchaseOrdersController_receive_v1: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400. */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -18681,6 +18706,28 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierPaymentResponseDto"];
+                };
+            };
+        };
+    };
+    SupplierPaymentsController_pay_v1: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };

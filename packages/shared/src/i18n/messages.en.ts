@@ -533,6 +533,8 @@ export const en: Record<string, string> = {
   'err.supplierPayment.sourceConflict':
     'You cannot specify both a bank account and a cash register',
   'err.supplierPayment.cashRequiresRegister': 'For a cash payment you must specify a cash register',
+  'err.supplierPayment.orderNotPayable':
+    'Only an order that is Ordered, Partially received or Received can be paid — this order is "{{status}}"',
 
   // ── Exception messages: purchase-orders module ──
   'err.deliveryProvider.invalidCode': 'Invalid service code',

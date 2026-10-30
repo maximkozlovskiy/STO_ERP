@@ -575,8 +575,8 @@ describe('BankReconciliationService.reconcile — вихідні платежі'
   });
 
   describe('CASH_WITHDRAWAL — зняття готівки в касу', () => {
-    // guards: BR-BANK-026, BR-BANK-034
-    it('рівно одна касова операція IN / MANUAL_IN на суму рядка з посиланням на рядок; cashOperationId записано', async () => {
+    // guards: BR-BANK-026, BR-BANK-034, BR-BANK-047
+    it('рівно одна касова операція IN / BANK_WITHDRAWAL на суму рядка з посиланням на рядок; cashOperationId записано', async () => {
       const w = await makeWorld();
       w.addRow();
       const forged = { ...VALID.CASH_WITHDRAWAL, amount: 1 } as ReconcileTransactionDto;
@@ -589,7 +589,7 @@ describe('BankReconciliationService.reconcile — вихідні платежі'
       expect(input).toMatchObject({
         cashRegisterId: ID.cashUah,
         direction: 'IN',
-        reason: 'MANUAL_IN',
+        reason: 'BANK_WITHDRAWAL',
         // Переміщення власних грошей — без статті, навіть якщо за приводом закріплено статтю.
         withoutCategory: true,
         amount: ROW_AMOUNT,

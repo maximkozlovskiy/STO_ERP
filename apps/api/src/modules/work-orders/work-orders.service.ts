@@ -2685,7 +2685,15 @@ export class WorkOrdersService {
         // `createFromWorkOrder` pre-check: the "Документи" badge must not count cancelled
         // invoices — otherwise the user sees count > 0 but no active invoice exists.
         where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
-        select: { id: true, number: true, status: true, amount: true, documentDate: true },
+        select: {
+          id: true,
+          number: true,
+          status: true,
+          amount: true,
+          documentDate: true,
+          // Сума рахунку — у його валюті, як рядок оплати (Bug #1018).
+          currency: { select: { code: true } },
+        },
         orderBy: { createdAt: 'desc' },
         take: TAKE,
       }),
@@ -2749,7 +2757,11 @@ export class WorkOrdersService {
     // уже повертає ISO). Decimal без cast серіалізується як рядок — фронт типує
     // `string | number`, тож приймається обидва, але нормалізація на бекенді консистентніше.
     return {
-      invoices: invoices.map(i => ({ ...i, amount: Number(i.amount) })),
+      invoices: invoices.map(({ currency, ...i }) => ({
+        ...i,
+        amount: Number(i.amount),
+        currencyCode: currency?.code ?? null,
+      })),
       // BR-PAY-024: ознаки «онлайн-оплата QR» і «лежить у касі» — та сама функція, що й відмова
       // `reverseNonCash`; id онлайн-наміру й каси клієнту не йдуть.
       payments: await toLinkedPaymentRows(this.prisma, orgId, payments),

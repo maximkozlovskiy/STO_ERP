@@ -10525,6 +10525,15 @@
             }
           },
           {
+            "name": "payable",
+            "required": false,
+            "in": "query",
+            "description": "Лише замовлення, що приймають оплату: Замовлено / Частково / Отримано (BR-SUPPAY-015)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "dateFrom",
             "required": false,
             "in": "query",
@@ -10911,6 +10920,15 @@
             "name": "id",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400.",
+            "required": true,
             "schema": {
               "type": "string"
             }
@@ -13336,6 +13354,43 @@
           }
         ],
         "summary": "Список оплат постачальникам",
+        "tags": [
+          "Supplier Payments"
+        ]
+      }
+    },
+    "/api/v1/supplier-payments/pay": {
+      "post": {
+        "operationId": "SupplierPaymentsController_pay_v1",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Унікальний ключ запиту (напр. UUID): повтор із тим самим ключем повертає першу відповідь, а не виконує операцію вдруге. Без ключа — 400.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierPaymentResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Оплатити постачальнику: створити й провести (усе або нічого)",
         "tags": [
           "Supplier Payments"
         ]
@@ -22875,6 +22930,10 @@
           "documentDate": {
             "type": "string",
             "format": "date"
+          },
+          "currencyCode": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -22882,7 +22941,8 @@
           "number",
           "status",
           "amount",
-          "documentDate"
+          "documentDate",
+          "currencyCode"
         ]
       },
       "CounterpartyLinkedPurchaseOrderRowDto": {
@@ -22948,6 +23008,10 @@
           "documentDate": {
             "type": "string",
             "format": "date"
+          },
+          "currencyCode": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -22956,7 +23020,8 @@
           "status",
           "amount",
           "method",
-          "documentDate"
+          "documentDate",
+          "currencyCode"
         ]
       },
       "CounterpartyLinkedSupplierReturnRowDto": {
@@ -27396,6 +27461,10 @@
             "type": "string",
             "nullable": true,
             "format": "date-time"
+          },
+          "currencyCode": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -27403,7 +27472,8 @@
           "number",
           "status",
           "amount",
-          "documentDate"
+          "documentDate",
+          "currencyCode"
         ]
       },
       "LinkedPaymentRowDto": {

@@ -279,6 +279,14 @@ export class PurchaseOrderQueryDto {
   @IsBooleanString()
   showDeleted?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Лише замовлення, що приймають оплату: Замовлено / Частково / Отримано (BR-SUPPAY-015)',
+  })
+  @IsOptional()
+  @IsBooleanString()
+  payable?: string;
+
   @ApiPropertyOptional({ description: 'Дата документа від (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)

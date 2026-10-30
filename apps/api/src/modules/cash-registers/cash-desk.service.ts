@@ -381,11 +381,11 @@ export class CashDeskService {
   }
 
   /**
-   * BR-CASH-019: оплата постачальнику = документ оплати, створений і одразу проведений. Борг,
-   * «сплачено» замовлення й рядок каси робить `SupplierPaymentsService.confirm` у своїй
-   * транзакції. Проведення не вдалося (каса в мінус, зміна закрита, немає курсу) — чернетку
-   * скасовуємо: каса й борг не змінились, «висячого» документа не лишається. Порядок той самий,
-   * що в рознесенні банківського платежу (BR-BANK-028).
+   * BR-CASH-019: оплата постачальнику = документ оплати, створений і проведений однією
+   * транзакцією (`SupplierPaymentsService.createAndConfirm`, BR-SUPPAY-013): борг, «сплачено»
+   * замовлення й рядок каси. Проведення не вдалося (каса в мінус, зміна закрита, замовлення не того
+   * статусу — BR-SUPPAY-015, немає курсу) — відкочується все, разом із номером документа: ні
+   * скасованої чернетки, ні дірки в нумерації.
    */
   private async payToSupplier(
     orgId: string,
@@ -397,7 +397,7 @@ export class CashDeskService {
   ): Promise<DeskOutcome> {
     // Проведення вимагає автора; маршрут завжди дає його з токена.
     const userId = required(actor.id);
-    const draft = await this.supplierPayments.create(
+    const paid = await this.supplierPayments.createAndConfirm(
       orgId,
       {
         supplierId,
@@ -409,31 +409,19 @@ export class CashDeskService {
         notes: dto.notes,
       },
       userId,
+      cashRow,
     );
-    try {
-      await this.supplierPayments.confirm(orgId, draft.id, userId, undefined, cashRow);
-    } catch (confirmError: unknown) {
-      await this.supplierPayments
-        .cancel(orgId, draft.id)
-        .catch((cancelError: unknown) =>
-          this.logger.warn(
-            `Не вдалось скасувати чернетку оплати постачальнику ${draft.id} після невдалого проведення: ${
-              cancelError instanceof Error ? cancelError.message : String(cancelError)
-            }`,
-          ),
-        );
-      throw confirmError;
-    }
     return {
-      row: await this.readRowOf(orgId, 'SupplierPayment', draft.id),
-      documentNumber: draft.number,
+      row: await this.readRowOf(orgId, 'SupplierPayment', paid.id),
+      documentNumber: paid.number,
     };
   }
 
   /**
    * BR-CASH-018, BR-CASH-019: повернення клієнту (`REFUND` → `REFUND_OUT`, борг клієнта росте; не
    * більше переплати клієнта, BR-CASH-029) і повернення від постачальника (`SUPPLIER_REFUND_IN` →
-   * `SUPPLIER_PAYMENT_RETURN`, його борг перед нами меншає). Рядок каси і проводка — одна
+   * `SUPPLIER_PAYMENT_RETURN`, його борг перед нами меншає; не більше нашого авансу йому,
+   * BR-CASH-032). Рядок каси і проводка — одна
    * транзакція: або обидва, або нічого. «Сплачено» в рахунку, наряді й замовленні не змінюється.
    *
    * BR-SETL-010 (проводка не ідемпотентна): вона 1:1 із рядком каси, щойно створеним У ЦІЙ САМІЙ
@@ -452,15 +440,20 @@ export class CashDeskService {
     actor: CashDeskActor,
   ): Promise<DeskOutcome> {
     const refundToClient = dto.reason === 'REFUND';
+    const side = refundToClient ? 'client' : 'supplier';
     try {
       return await this.prisma.$transaction(
         async tx => {
-          // BR-CASH-029: повернення клієнту — не більше його переплати (у базовій валюті). Рахунок
-          // розрахунків блокується ПЕРШИМ (той самий порядок «рахунок → каса», що в оплаті), сума в
-          // базовій валюті відома після рядка каси; відмова відкочує рядок.
-          const refundAvailable = refundToClient
-            ? await this.settlements.lockRefundAvailable(orgId, counterpartyId, 'client', tx)
-            : null;
+          // BR-CASH-029 / BR-CASH-032: повернення клієнту — не більше його переплати, від
+          // постачальника — не більше нашого авансу йому (у базовій валюті). Рахунок розрахунків
+          // блокується ПЕРШИМ (той самий порядок «рахунок → каса», що в оплаті), сума в базовій
+          // валюті відома після рядка каси; відмова відкочує рядок.
+          const refundAvailable = await this.settlements.lockRefundAvailable(
+            orgId,
+            counterpartyId,
+            side,
+            tx,
+          );
           const operation = await this.cash.createOperation(
             orgId,
             {
@@ -474,14 +467,12 @@ export class CashDeskService {
             },
             tx,
           );
-          if (refundAvailable !== null) {
-            await this.settlements.assertRefundWithin(
-              orgId,
-              'client',
-              refundAvailable,
-              operation.amountBase ?? operation.amount,
-            );
-          }
+          await this.settlements.assertRefundWithin(
+            orgId,
+            side,
+            refundAvailable,
+            operation.amountBase ?? operation.amount,
+          );
           await this.settlements.createTransaction(
             orgId,
             {

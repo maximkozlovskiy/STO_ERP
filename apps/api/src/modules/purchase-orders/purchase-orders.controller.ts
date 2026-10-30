@@ -22,7 +22,10 @@ import {
   ApiCreatedResponse,
   ApiNoContentResponse,
 } from '@nestjs/swagger';
-import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
+import {
+  IdempotencyInterceptor,
+  RequireIdempotencyKey,
+} from '../../common/interceptors/idempotency.interceptor';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -82,6 +85,7 @@ export class PurchaseOrdersController {
       query.sortBy,
       query.sortDir,
       query.supplierId,
+      query.payable === 'true',
     );
   }
 
@@ -101,14 +105,16 @@ export class PurchaseOrdersController {
   }
 
   @Get(':id/linked-documents')
-  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  // BR-PO-015: бухгалтер відкриває картку замовлення на перегляд (зміни — лише ролі документа).
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: "Пов'язані документи замовлення (оплати, контрагент)" })
   getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getLinkedDocuments(orgId, id);
   }
 
   @Post('linked-counts')
-  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  // BR-PO-015: бухгалтер відкриває картку замовлення на перегляд (зміни — лише ролі документа).
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Кількість пов'язаних документів для списку замовлень (batch)" })
   getLinkedCounts(@OrgContext() orgId: string, @Body() dto: LinkedCountsDto) {
@@ -116,7 +122,8 @@ export class PurchaseOrdersController {
   }
 
   @Get(':id')
-  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  // BR-PO-015: бухгалтер відкриває картку замовлення на перегляд (зміни — лише ролі документа).
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Замовлення постачальнику по ID' })
   @ApiOkResponse({ type: PurchaseOrderResponseDto })
   @ApiQuery(WITH_DELETED_API_QUERY)
@@ -190,6 +197,9 @@ export class PurchaseOrdersController {
 
   @Post(':id/receive')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  // BR-PO-014: повтор прийому з тим самим ключем (подвійний клік, обрив відповіді) віддає збережену
+  // відповідь, а не приймає товар удруге; справжній другий прийом — нове відкриття вікна, новий ключ.
+  @RequireIdempotencyKey()
   @ApiOperation({ summary: 'Прийняти товари по замовленню' })
   @ApiOkResponse({ type: PurchaseOrderResponseDto })
   receive(

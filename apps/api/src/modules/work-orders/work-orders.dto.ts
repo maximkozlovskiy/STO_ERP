@@ -677,6 +677,8 @@ export class LinkedInvoiceRowDto {
   @ApiProperty() amount!: number;
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   documentDate!: string | null;
+  // Валюта рахунку; null — базова (рахунок без `currency`). Web: «20,00 USD», не «20,00 ₴».
+  @ApiProperty({ type: String, nullable: true }) currencyCode!: string | null;
 }
 
 export class LinkedPaymentRowDto {

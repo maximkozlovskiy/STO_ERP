@@ -298,8 +298,10 @@ describe('BankReconciliationService.previewImport — підказки для в
     }
   });
 
-  // guards: BR-BANK-004, BR-BANK-036
-  it('вхідний рядок від того самого контрагента підказки SUPPLIER_PAYMENT не отримує — лишається SERVICE', async () => {
+  // Постачальнику оплату клієнта не рознести (BR-BANK-045) — вхідний рядок від нього підказує
+  // повернення від постачальника, а не SUPPLIER_PAYMENT вихідного напряму.
+  // guards: BR-BANK-004, BR-BANK-036, BR-BANK-048
+  it('вхідний рядок від того самого постачальника підказки SUPPLIER_PAYMENT не отримує — SUPPLIER_REFUND_IN', async () => {
     const w = await makeWorld();
     w.db.get('counterparty', ID.supplier).iban = SUPPLIER_IBAN;
 
@@ -310,7 +312,7 @@ describe('BankReconciliationService.previewImport — підказки для в
     expect(row).toMatchObject({
       direction: 'IN',
       suggestedCounterpartyId: ID.supplier,
-      suggestedMatchType: 'SERVICE',
+      suggestedMatchType: 'SUPPLIER_REFUND_IN',
     });
   });
 

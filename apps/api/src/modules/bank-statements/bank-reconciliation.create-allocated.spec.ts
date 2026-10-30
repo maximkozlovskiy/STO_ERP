@@ -322,7 +322,7 @@ describe('createManual з allocation — вихідні види (BR-BANK-041)',
     expect(w.cash.createOperation.mock.calls[0]![1]).toMatchObject({
       cashRegisterId: ID.cashUah,
       direction: 'IN',
-      reason: 'MANUAL_IN',
+      reason: 'BANK_WITHDRAWAL',
       amount: 2400.75,
       documentId: row.id,
     });

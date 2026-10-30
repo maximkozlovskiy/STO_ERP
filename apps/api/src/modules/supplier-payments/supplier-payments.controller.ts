@@ -66,6 +66,22 @@ export class SupplierPaymentsController {
     return this.service.create(orgId, dto, user.id);
   }
 
+  // BR-SUPPAY-013: створити й провести однією транзакцією — вікно «Оплатити». Ключ обов'язковий:
+  // повтор після обриву відповіді віддає ту саму оплату, а не проводить другу.
+  @Post('pay')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireIdempotencyKey()
+  @ApiOperation({ summary: 'Оплатити постачальнику: створити й провести (усе або нічого)' })
+  @ApiCreatedResponse({ type: SupplierPaymentResponseDto })
+  pay(
+    @OrgContext() orgId: string,
+    @Body(new ZodValidationPipe(supplierPaymentCreateSchema)) dto: SupplierPaymentCreateValues,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.service.createAndConfirm(orgId, dto, user.id);
+  }
+
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список оплат постачальникам' })

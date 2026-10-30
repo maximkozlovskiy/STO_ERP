@@ -27,7 +27,7 @@ const RECEPTIONIST: DeskUser = { id: USER, role: 'RECEPTIONIST' };
 const somethingMoved = (h: ReturnType<typeof makeDesk>): boolean =>
   h.cash.createOperation.mock.calls.length +
     h.payments.create.mock.calls.length +
-    h.supplierPayments.create.mock.calls.length >
+    h.supplierPayments.createAndConfirm.mock.calls.length >
   0;
 
 describe('CashDeskService.create — ролі за приводом', () => {

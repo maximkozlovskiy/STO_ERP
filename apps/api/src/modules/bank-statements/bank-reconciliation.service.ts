@@ -106,15 +106,17 @@ function counterpartyName(cp: {
 const ymdOf = (d: Date): string => d.toISOString().slice(0, 10);
 
 /**
- * Підказка виду рознесення для знайденого контрагента. Вхідний рядок — `SERVICE` (BR-BANK-004).
- * Вихідний — `SUPPLIER_PAYMENT`, лише якщо контрагент має роль постачальника (BR-BANK-036);
- * для клієнта підказки немає: повернення це чи щось інше — з виписки не видно.
+ * Підказка виду рознесення для знайденого контрагента. Вхідний рядок — `SERVICE` (BR-BANK-004),
+ * а від контрагента лише з роллю постачальника — `SUPPLIER_REFUND_IN` (BR-BANK-048): оплату
+ * клієнта йому не рознести (BR-BANK-045). Вихідний — `SUPPLIER_PAYMENT`, лише якщо контрагент має
+ * роль постачальника (BR-BANK-036); для клієнта підказки немає: повернення це чи щось інше — з
+ * виписки не видно.
  */
 function hintMatchType(
   direction: BankTransactionDirection,
   type: CounterpartyType,
 ): BankTransactionMatchType | undefined {
-  if (direction === 'IN') return 'SERVICE';
+  if (direction === 'IN') return type === 'SUPPLIER' ? 'SUPPLIER_REFUND_IN' : 'SERVICE';
   return type === 'SUPPLIER' || type === 'BOTH' ? 'SUPPLIER_PAYMENT' : undefined;
 }
 
@@ -1331,17 +1333,18 @@ export class BankReconciliationService {
     }
 
     if (plan.kind === 'CASH_WITHDRAWAL') {
-      // BR-BANK-034: готівка, знята з рахунку, надходить у касу. Без статті руху коштів —
-      // це переміщення власних грошей, а не дохід. Фіскальна каса без відкритої зміни →
-      // 400 із CashService, і транзакція відкочує захоплення рядка.
+      // BR-BANK-034: готівка, знята з рахунку, надходить у касу приводом «Зняття з банку»
+      // (BR-BANK-047). Без статті руху коштів — це переміщення власних грошей, а не дохід.
+      // Фіскальна каса без відкритої зміни → 400 із CashService, і транзакція відкочує
+      // захоплення рядка.
       const operation = await this.cash.createOperation(
         orgId,
         {
           cashRegisterId: plan.cashRegisterId,
           direction: 'IN',
-          reason: 'MANUAL_IN',
-          // Інакше стаття, закріплена за приводом «Внесення» (BR-CASH-022), зробила б зняття
-          // з рахунку доходом у звіті за статтями.
+          reason: 'BANK_WITHDRAWAL',
+          // Стаття, закріплена за приводом (BR-CASH-022), зробила б зняття з рахунку доходом
+          // у звіті за статтями.
           withoutCategory: true,
           amount: Number(row.amount),
           documentType: 'BankTransaction',
@@ -1696,8 +1699,9 @@ export class BankReconciliationService {
         }
 
         if (matchedType === 'CASH_WITHDRAWAL') {
-          // Готівка повертається з ТІЄЇ Ж каси, куди надійшла. Каса append-only: початкова операція
-          // лишається, додається зворотна. Овердрафт → 400 із CashService і відкат усієї транзакції.
+          // Готівка повертається з ТІЄЇ Ж каси, куди надійшла, приводом «Здача в банк» (BR-BANK-047).
+          // Каса append-only: початкова операція лишається, додається зворотна. Овердрафт → 400 із
+          // CashService і відкат усієї транзакції.
           const original = row.cashOperationId
             ? await tx.cashOperation.findFirst({
                 where: { id: row.cashOperationId, orgId },
@@ -1721,7 +1725,7 @@ export class BankReconciliationService {
             {
               cashRegisterId: original.cashRegisterId,
               direction: 'OUT',
-              reason: 'MANUAL_OUT',
+              reason: 'BANK_DEPOSIT',
               withoutCategory: true, // зворотний рух того самого переміщення — теж без статті
               amount,
               ...(conversion ? { conversion } : {}),

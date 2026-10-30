@@ -53,6 +53,7 @@ describe('SupplierPaymentsService — payables-fx', () => {
   // Дефолтні exchangeRates мок — базова валюта (rate=1); FX-тести перевизначають base через getBaseCurrency.
   const setupPo = (poCurrencyId: string | null, totalAmount: number, paidAmount: number) =>
     prisma.purchaseOrder.findFirst.mockResolvedValue({
+      status: 'RECEIVED',
       currencyId: poCurrencyId,
       totalAmount,
       paidAmount,
@@ -180,6 +181,7 @@ describe('SupplierPaymentsService — payables-fx', () => {
       .mockResolvedValueOnce(confirmedRow); // findOne
     // PO: total=1000, вже сплачено 800 (попередні часткові), paidAt ще null.
     prisma.purchaseOrder.findFirst.mockResolvedValue({
+      status: 'RECEIVED',
       currencyId: USD,
       totalAmount: 1000,
       paidAmount: 800,
@@ -216,6 +218,7 @@ describe('SupplierPaymentsService — payables-fx', () => {
     setupSpPre(USD);
     // PO вже повністю сплачено раніше: paidAmount=100=total, paidAt виставлено.
     prisma.purchaseOrder.findFirst.mockResolvedValue({
+      status: 'RECEIVED',
       currencyId: USD,
       totalAmount: 100,
       paidAmount: 100,

@@ -1131,7 +1131,14 @@ export class CounterpartiesService {
     const [invoices, purchaseOrders, supplierPayments, supplierReturns] = await Promise.all([
       this.prisma.invoice.findMany({
         where: { counterpartyId, orgId, deletedAt: null },
-        select: { id: true, number: true, status: true, amount: true, documentDate: true },
+        select: {
+          id: true,
+          number: true,
+          status: true,
+          amount: true,
+          documentDate: true,
+          currency: { select: { code: true } },
+        },
         orderBy: { createdAt: 'desc' },
         take: TAKE,
       }),
@@ -1150,6 +1157,7 @@ export class CounterpartiesService {
           amount: true,
           method: true,
           documentDate: true,
+          currency: { select: { code: true } },
         },
         orderBy: { createdAt: 'desc' },
         take: TAKE,
@@ -1163,9 +1171,18 @@ export class CounterpartiesService {
     ]);
 
     return {
-      invoices: invoices.map(i => ({ ...i, amount: Number(i.amount) })),
+      // Суми рахунків і оплат — у валюті документа (currencyCode; null — базова).
+      invoices: invoices.map(({ currency, ...i }) => ({
+        ...i,
+        amount: Number(i.amount),
+        currencyCode: currency?.code ?? null,
+      })),
       purchaseOrders: purchaseOrders.map(p => ({ ...p, totalAmount: Number(p.totalAmount) })),
-      supplierPayments: supplierPayments.map(p => ({ ...p, amount: Number(p.amount) })),
+      supplierPayments: supplierPayments.map(({ currency, ...p }) => ({
+        ...p,
+        amount: Number(p.amount),
+        currencyCode: currency?.code ?? null,
+      })),
       supplierReturns: supplierReturns.map(r => ({ ...r, totalAmount: Number(r.totalAmount) })),
     };
   }

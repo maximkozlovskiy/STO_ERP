@@ -12,7 +12,13 @@ import { assertMoneyFits, money, moneyFromDecimal } from '../../common/utils/mon
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
-import { formatPersonName, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
+import {
+  formatPersonName,
+  PO_PAYABLE_STATUSES,
+  PO_STATUS_LABELS,
+  TRANSACTION_TIMEOUT_MS,
+  translateError,
+} from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
@@ -56,6 +62,44 @@ const SP_SORT_FIELDS: Record<string, string> = {
   documentDate: 'documentDate',
   createdAt: 'createdAt',
 };
+
+/** Статуси замовлення, що приймають оплату (BR-SUPPAY-015) — типами Prisma для `where`. */
+const PO_PAYABLE: PurchaseOrderStatus[] = Object.values(PurchaseOrderStatus).filter(s =>
+  PO_PAYABLE_STATUSES.includes(s),
+);
+
+/** BR-SUPPAY-015: підстава оплати — замовлення «Замовлено» / «Частково» / «Отримано». */
+function assertOrderPayable(status: PurchaseOrderStatus): void {
+  if (PO_PAYABLE_STATUSES.includes(status)) return;
+  throw new BadRequestException(
+    translateError('err.supplierPayment.orderNotPayable', getLocale(), {
+      status: PO_STATUS_LABELS[status] ?? status,
+    }),
+  );
+}
+
+/** Що проведенню треба знати про оплату — з чернетки в базі або з даних нової оплати. */
+interface ConfirmSource {
+  supplierId: string;
+  amount: Prisma.Decimal | number;
+  sourceType: PaymentSourceType;
+  cashRegisterId: string | null;
+  currencyId: string | null;
+  purchaseOrderId: string | null;
+}
+
+/** Результат перевірок проведення до транзакції. */
+interface ConfirmPlan {
+  po: {
+    status: PurchaseOrderStatus;
+    currencyId: string | null;
+    totalAmount: Prisma.Decimal;
+    paidAmount: Prisma.Decimal;
+    paidAt: Date | null;
+  } | null;
+  conv: { rateUsed: number; amountBase: number };
+  confirmDate: Date;
+}
 
 @Injectable()
 export class SupplierPaymentsService {
@@ -532,11 +576,65 @@ export class SupplierPaymentsService {
     return this.toDto(sp);
   }
 
+  /** Чернетка оплати (BR-SUPPAY-013: номер і запис — одна транзакція). */
   async create(
     orgId: string,
     dto: CreateSupplierPaymentDto,
     userId?: string,
   ): Promise<SupplierPaymentResponseDto> {
+    const { currencyId } = await this.prepareCreate(orgId, dto);
+    const sp = await this.prisma.$transaction(
+      tx => this.createInTx(tx, orgId, dto, currencyId, userId),
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+    return this.toDto(sp);
+  }
+
+  /**
+   * BR-SUPPAY-013 (рішення власника 2026-10-30, TECH-DEBT (б) №34): оплата постачальнику однією дією —
+   * створення й проведення в ОДНІЙ транзакції, усе або нічого. Відмова проведення (каса в мінус,
+   * зміна закрита, замовлення не того статусу, немає курсу) не лишає ні документа, ні витраченого
+   * номера: лічильник номерів рухається в цій же транзакції. Так платять каса (`CashDeskService`)
+   * і вікно «Оплатити» (`POST /supplier-payments/pay`). Усі читання й перевірки — до транзакції;
+   * у ній номер береться першим записом, далі — лише записи, щоб рядок лічильника був заблокований
+   * якомога коротше.
+   */
+  async createAndConfirm(
+    orgId: string,
+    dto: CreateSupplierPaymentDto,
+    userId: string,
+    cashRow?: CashOperationExtras,
+  ): Promise<SupplierPaymentResponseDto> {
+    const { currencyId } = await this.prepareCreate(orgId, dto);
+    const source: ConfirmSource = {
+      supplierId: dto.supplierId,
+      amount: dto.amount,
+      sourceType: dto.sourceType,
+      cashRegisterId:
+        dto.sourceType === PaymentSourceType.CASH_REGISTER ? (dto.cashRegisterId ?? null) : null,
+      currencyId,
+      purchaseOrderId: dto.purchaseOrderId ?? null,
+    };
+    const plan = await this.prepareConfirm(orgId, source);
+    const id = await this.prisma.$transaction(
+      async tx => {
+        const created = await this.createInTx(tx, orgId, dto, currencyId, userId);
+        await this.confirmInTx(tx, orgId, created.id, source, plan, userId, cashRow);
+        return created.id;
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+    return this.findOne(orgId, id);
+  }
+
+  /**
+   * Перевірки створення (BR-SUPPAY-002…004, 011, 015) — лише читання, до будь-якого запису.
+   * Повертає валюту оплати — валюту джерела коштів.
+   */
+  private async prepareCreate(
+    orgId: string,
+    dto: CreateSupplierPaymentDto,
+  ): Promise<{ currencyId: string }> {
     this.assertSourceConsistency(dto.sourceType, dto.bankAccountId, dto.cashRegisterId);
 
     // Паралельна валідація незалежних FK: постачальник + джерело коштів + PO.
@@ -581,9 +679,8 @@ export class SupplierPaymentsService {
           translateError('err.supplierPayment.orderNotForSupplier', getLocale()),
         );
       }
+      assertOrderPayable(purchaseOrder.status);
     }
-
-    const number = await this.docNumbers.next(orgId, 'SUPPLIER_PAYMENT');
 
     // Мультивалюта (Фаза 3): валюта оплати — з обраного source-рахунку. Конвертація base — на confirm
     // (по курсу на дату проведення), тут лише фіксуємо валюту (amount у ній). TD1: currencyId NOT NULL —
@@ -597,46 +694,55 @@ export class SupplierPaymentsService {
         translateError('err.supplierPayment.sourceHasNoCurrency', getLocale()),
       );
     }
-
-    // BR-AUT-060: подія «створено» — у тій самій транзакції, що й оплата.
-    const sp = await this.prisma.$transaction(
-      async tx => {
-        const created = await tx.supplierPayment.create({
-          data: {
-            orgId,
-            supplierId: dto.supplierId,
-            purchaseOrderId: dto.purchaseOrderId ?? null,
-            sourceType: dto.sourceType,
-            bankAccountId:
-              dto.sourceType === PaymentSourceType.BANK_ACCOUNT ? dto.bankAccountId : null,
-            cashRegisterId:
-              dto.sourceType === PaymentSourceType.CASH_REGISTER ? dto.cashRegisterId : null,
-            number,
-            amount: dto.amount,
-            currencyId,
-            method: dto.method,
-            notes: dto.notes ?? null,
-            documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
-          },
-          include: SP_DETAIL_INCLUDE,
-        });
-        await recordDocumentEvent(tx, {
-          orgId,
-          documentType: 'SUPPLIER_PAYMENT',
-          documentId: created.id,
-          kind: 'CREATED',
-          toStatus: created.status,
-          actorId: userId ?? null,
-        });
-        return created;
-      },
-      { timeout: TRANSACTION_TIMEOUT_MS },
-    );
-
-    return this.toDto(sp);
+    return { currencyId };
   }
 
   /**
+   * Запис чернетки в транзакції виклику: номер (`DocumentNumberService.next` з `tx` — відкат цієї
+   * транзакції повертає номер), сама оплата й подія «створено» (BR-AUT-060).
+   */
+  private async createInTx(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    dto: CreateSupplierPaymentDto,
+    currencyId: string,
+    userId?: string,
+  ) {
+    const number = await this.docNumbers.next(orgId, 'SUPPLIER_PAYMENT', tx);
+    const created = await tx.supplierPayment.create({
+      data: {
+        orgId,
+        supplierId: dto.supplierId,
+        purchaseOrderId: dto.purchaseOrderId ?? null,
+        sourceType: dto.sourceType,
+        bankAccountId: dto.sourceType === PaymentSourceType.BANK_ACCOUNT ? dto.bankAccountId : null,
+        cashRegisterId:
+          dto.sourceType === PaymentSourceType.CASH_REGISTER ? dto.cashRegisterId : null,
+        number,
+        amount: dto.amount,
+        currencyId,
+        method: dto.method,
+        notes: dto.notes ?? null,
+        documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
+      },
+      include: SP_DETAIL_INCLUDE,
+    });
+    await recordDocumentEvent(tx, {
+      orgId,
+      documentType: 'SUPPLIER_PAYMENT',
+      documentId: created.id,
+      kind: 'CREATED',
+      toStatus: created.status,
+      actorId: userId ?? null,
+    });
+    return created;
+  }
+
+  /**
+   * Проведення чернетки — «Провести» у списку оплат постачальнику (BR-SUPPAY-014) і рознесення
+   * банківського рядка (BR-BANK-028). Стара чернетка проходить ті самі перевірки, що й нова
+   * оплата: статус замовлення (BR-SUPPAY-015), зміна й залишок каси (`CashService` у транзакції).
+   *
    * `opts.rateDate` — дата, на яку береться курс (і `date` проведення). Типово — мить проведення.
    * Задає її рознесення вихідного банківського платежу: гроші пішли в день операції з виписки,
    * а не в день, коли бухгалтер розніс рядок (BR-BANK-028).
@@ -669,48 +775,6 @@ export class SupplierPaymentsService {
     if (!pre)
       throw new NotFoundException(translateError('err.supplierPayment.notFound', getLocale()));
 
-    // Payables FX (Фаза 5): якщо оплата привʼязана до PO — валюта оплати мусить збігатися з валютою PO
-    // (інакше крос-валютна алокація = FX-політика поза scope; залишок тоді = чиста курсова різниця).
-    // NULL currencyId (історичні/base) еквівалентні базовій валюті. Guard саме у confirm — валюта
-    // консеквентна лише тут (DRAFT-валюта ще може змінитись через update()).
-    let po: {
-      currencyId: string | null;
-      totalAmount: Prisma.Decimal;
-      paidAmount: Prisma.Decimal;
-      paidAt: Date | null;
-    } | null = null;
-    if (pre.purchaseOrderId) {
-      po = await this.prisma.purchaseOrder.findFirst({
-        where: { id: pre.purchaseOrderId, orgId, deletedAt: null },
-        select: { currencyId: true, totalAmount: true, paidAmount: true, paidAt: true },
-      });
-      if (
-        po &&
-        !(await this.exchangeRates.sameCurrency(orgId, pre.currencyId ?? null, po.currencyId))
-      ) {
-        throw new BadRequestException(
-          translateError('err.supplierPayment.currencyMustMatchOrder', getLocale()),
-        );
-      }
-    }
-
-    // Base-конвертація суми на дату проведення (fallbackToLatest — документний потік). Без валюти → base.
-    const confirmDate = opts?.rateDate ?? new Date();
-    const conv = pre.currencyId
-      ? await this.exchangeRates.resolveBaseConversion(
-          orgId,
-          pre.currencyId,
-          confirmDate,
-          Number(pre.amount),
-          true,
-        )
-      : { rateUsed: 1, amountBase: Number(pre.amount) };
-
-    // BR-FIN-MONEYCAP: SupplierPayment.totalAmountBase — Decimal(12,2). Іновалютна сума × курс
-    // (conv.amountBase) може перерости колонку на CONFIRM, хоч сама сума в межах — 400 з назвою
-    // поля, а не 500 numeric field overflow. Дзеркаль settlements F7.
-    assertMoneyFits(conv.amountBase, 'сума оплати постачальнику');
-
     const allowed = SP_TRANSITIONS[pre.status];
     if (!allowed.includes(SupplierPaymentStatus.CONFIRMED)) {
       throw new BadRequestException(
@@ -720,168 +784,239 @@ export class SupplierPaymentsService {
       );
     }
 
+    const plan = await this.prepareConfirm(orgId, pre, opts?.rateDate);
     await this.prisma.$transaction(
-      async tx => {
-        // CAS DRAFT→CONFIRMED ПЕРШИМ (не stale-read!): два concurrent confirm() інакше обидва
-        // проходять re-read і дають ПОДВІЙНИЙ SUPPLIER_PAYMENT (борг постачальнику ×2). Дзеркалить
-        // stock-documents.transition / completion-acts.confirm. count===0 → інший уже провів.
-        const cas = await tx.supplierPayment.updateMany({
-          where: { id, orgId, deletedAt: null, status: SupplierPaymentStatus.DRAFT },
-          // Мультивалюта (Фаза 3): фіксуємо base-суму + курс на момент проведення.
-          data: {
-            status: SupplierPaymentStatus.CONFIRMED,
-            totalAmountBase: conv.amountBase,
-            rateUsed: conv.rateUsed,
-          },
-        });
-        if (cas.count === 0) {
-          throw new BadRequestException(
-            translateError('err.supplierPayment.alreadyConfirmedOrChanged', getLocale()),
-          );
-        }
-        await recordDocumentEvent(tx, {
-          orgId,
-          documentType: 'SUPPLIER_PAYMENT',
-          documentId: id,
-          kind: 'STATUS_CHANGED',
-          fromStatus: SupplierPaymentStatus.DRAFT,
-          toStatus: SupplierPaymentStatus.CONFIRMED,
-          actorId: userId,
-        });
-
-        // Дані для settlement — з pre-tx знімка (amount/supplierId незмінні у DRAFT).
-        // Оплата постачальнику: ми надсилаємо йому кошти → наш борг зменшується.
-        // Семантика — SUPPLIER_PAYMENT (BALANCE_SIGN = +1, підіймає від'ємний борг до 0).
-        // НЕ PAYMENT (−1) — той для клієнтської оплати (клієнт платить НАМ).
-        await this.settlements.createTransaction(
-          orgId,
-          {
-            counterpartyId: pre.supplierId,
-            type: 'SUPPLIER_PAYMENT',
-            amount: Number(pre.amount),
-            // Мультивалюта (Фаза 3): борг постачальнику ↓ у base по курсу на дату проведення.
-            currencyId: pre.currencyId ?? undefined,
-            date: confirmDate,
-            fallbackToLatest: true,
-            documentType: 'SupplierPayment',
-            documentId: id,
-            createdBy: userId,
-          },
-          tx,
-        );
-
-        // Готівкова оплата постачальнику → видача готівки з каси (cash-out) У ТУ САМУ транзакцію,
-        // щоб оплата/розрахунок/каса не розсинхронились. CashService.createOperation — ЄДИНА точка
-        // руху готівки: застосовує overdraft-guard (OUT не вижене касу в мінус → 400 + rollback усього
-        // confirm) і shift-guard для фіскальної каси. Без цього cash-оплата постачальнику ніколи не
-        // залишала касу → баланс завищений, guard оминається.
-        if (pre.sourceType === PaymentSourceType.CASH_REGISTER && pre.cashRegisterId) {
-          await this.cash.createOperation(
-            orgId,
-            {
-              cashRegisterId: pre.cashRegisterId,
-              direction: 'OUT',
-              amount: Number(pre.amount),
-              reason: 'SUPPLIER_PAYMENT',
-              counterpartyId: pre.supplierId,
-              documentType: 'SupplierPayment',
-              documentId: id,
-              createdBy: userId,
-              ...cashRow,
-            },
-            tx,
-          );
-        }
-
-        // Payables FX (Фаза 5): трекінг оплати PO + realized FX при повній оплаті. Після
-        // SUPPLIER_PAYMENT settlement (щоб paidBase включав цей платіж). Лише для привʼязаних до PO.
-        if (pre.purchaseOrderId && po) {
-          const poId = pre.purchaseOrderId;
-          // paidAmount CAS (валюта оплати == валюта PO за guard вище) — дзеркалить invoice.paidAmount CAS.
-          const newPaid = money(moneyFromDecimal(po.paidAmount) + moneyFromDecimal(pre.amount));
-          const totalAmount = Number(po.totalAmount);
-          const becameFullyPaid =
-            totalAmount > 0 && newPaid >= totalAmount - 0.005 && po.paidAt == null;
-          const paidCas = await tx.purchaseOrder.updateMany({
-            where: { id: poId, orgId, deletedAt: null, paidAmount: po.paidAmount },
-            data: { paidAmount: newPaid, ...(becameFullyPaid ? { paidAt: kyivToday() } : {}) },
-          });
-          if (paidCas.count === 0) {
-            throw new BadRequestException(
-              translateError('err.supplierPayment.orderConcurrentChange', getLocale()),
-            );
-          }
-
-          // FX лише коли PO вперше повністю сплачено + не-базова валюта. Курс нарахування (дата
-          // прийому) ≠ курс оплати → base-залишок ≠ 0; одна проводка обнуляє.
-          if (
-            becameFullyPaid &&
-            !(await this.exchangeRates.sameCurrency(orgId, null, po.currencyId))
-          ) {
-            const [chargeAgg, spIds, fxNet] = await Promise.all([
-              tx.settlementTransaction.aggregate({
-                where: {
-                  orgId,
-                  type: 'SUPPLIER_CHARGE',
-                  documentType: 'PurchaseOrder',
-                  documentId: poId,
-                },
-                _sum: { amountBase: true },
-              }),
-              tx.supplierPayment.findMany({
-                where: {
-                  orgId,
-                  purchaseOrderId: poId,
-                  status: SupplierPaymentStatus.CONFIRMED,
-                  deletedAt: null,
-                },
-                select: { id: true },
-                take: 500,
-              }),
-              // Чиста FX замовлення ≠ 0 — вже визнано; сторно, що зробило замовлення не сплаченим,
-              // її обнуляє (BR-SUPPAY-012) — тоді повна оплата визнає її заново.
-              netFxBalanceEffect(tx, orgId, [{ documentType: 'PurchaseOrder', documentId: poId }]),
-            ]);
-            if (!hasNetFx(fxNet)) {
-              const paidAgg = await tx.settlementTransaction.aggregate({
-                where: {
-                  orgId,
-                  type: 'SUPPLIER_PAYMENT',
-                  documentType: 'SupplierPayment',
-                  documentId: { in: spIds.map(s => s.id) },
-                },
-                _sum: { amountBase: true },
-              });
-              const chargeBase = Number(chargeAgg._sum.amountBase ?? 0);
-              const paidBase = Number(paidAgg._sum.amountBase ?? 0);
-              const fx = money(chargeBase - paidBase);
-              if (Math.abs(fx) >= 0.005) {
-                await this.settlements.createTransaction(
-                  orgId,
-                  {
-                    counterpartyId: pre.supplierId,
-                    // ⚠️ ІНВЕРСІЯ клієнта: SUPPLIER_CHARGE(−1)/SUPPLIER_PAYMENT(+1) → залишок = paidBase−chargeBase.
-                    // fx>0 (нарахували більше base) → залишок ВІД'ЄМНИЙ → FX_GAIN(+1) підіймає до 0.
-                    // fx<0 (сплатили більше) → залишок ДОДАТНИЙ → FX_LOSS(−1). НЕ копіювати клієнтський тернарник!
-                    type: fx > 0 ? 'FX_GAIN' : 'FX_LOSS',
-                    amount: Math.abs(fx),
-                    // БЕЗ currencyId → base-дельта (rate=1, base=amount).
-                    documentType: 'PurchaseOrder',
-                    documentId: poId,
-                    notes: `Курсова різниця (постачальник): нараховано ${chargeBase.toFixed(2)} за курсом прийому, сплачено ${paidBase.toFixed(2)} за курсом оплат`,
-                    createdBy: userId,
-                  },
-                  tx,
-                );
-              }
-            }
-          }
-        }
-      },
+      tx => this.confirmInTx(tx, orgId, id, pre, plan, userId, cashRow),
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
 
     return this.findOne(orgId, id);
+  }
+
+  /**
+   * Перевірки й розрахунок проведення — лише читання: замовлення (статус BR-SUPPAY-015, валюта),
+   * курс на дату проведення, межа колонки базової суми.
+   */
+  private async prepareConfirm(
+    orgId: string,
+    source: ConfirmSource,
+    rateDate?: Date,
+  ): Promise<ConfirmPlan> {
+    // Payables FX (Фаза 5): якщо оплата привʼязана до PO — валюта оплати мусить збігатися з валютою PO
+    // (інакше крос-валютна алокація = FX-політика поза scope; залишок тоді = чиста курсова різниця).
+    // NULL currencyId (історичні/base) еквівалентні базовій валюті.
+    let po: ConfirmPlan['po'] = null;
+    if (source.purchaseOrderId) {
+      po = await this.prisma.purchaseOrder.findFirst({
+        where: { id: source.purchaseOrderId, orgId, deletedAt: null },
+        select: {
+          status: true,
+          currencyId: true,
+          totalAmount: true,
+          paidAmount: true,
+          paidAt: true,
+        },
+      });
+      // BR-SUPPAY-015: стара чернетка на замовлення, яке відтоді скасували, не проводиться.
+      if (po) assertOrderPayable(po.status);
+      if (
+        po &&
+        !(await this.exchangeRates.sameCurrency(orgId, source.currencyId ?? null, po.currencyId))
+      ) {
+        throw new BadRequestException(
+          translateError('err.supplierPayment.currencyMustMatchOrder', getLocale()),
+        );
+      }
+    }
+
+    // Base-конвертація суми на дату проведення (fallbackToLatest — документний потік). Без валюти → base.
+    const confirmDate = rateDate ?? new Date();
+    const conv = source.currencyId
+      ? await this.exchangeRates.resolveBaseConversion(
+          orgId,
+          source.currencyId,
+          confirmDate,
+          Number(source.amount),
+          true,
+        )
+      : { rateUsed: 1, amountBase: Number(source.amount) };
+
+    // BR-FIN-MONEYCAP: SupplierPayment.totalAmountBase — Decimal(12,2). Іновалютна сума × курс
+    // (conv.amountBase) може перерости колонку на CONFIRM, хоч сама сума в межах — 400 з назвою
+    // поля, а не 500 numeric field overflow. Дзеркаль settlements F7.
+    assertMoneyFits(conv.amountBase, 'сума оплати постачальнику');
+    return { po, conv, confirmDate };
+  }
+
+  /** Проведення в транзакції виклику (BR-SUPPAY-001, 008): CAS статусу, борг, каса, «сплачено» замовлення. */
+  private async confirmInTx(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    id: string,
+    pre: ConfirmSource,
+    { po, conv, confirmDate }: ConfirmPlan,
+    userId: string,
+    cashRow?: CashOperationExtras,
+  ): Promise<void> {
+    // CAS DRAFT→CONFIRMED ПЕРШИМ (не stale-read!): два concurrent confirm() інакше обидва
+    // проходять re-read і дають ПОДВІЙНИЙ SUPPLIER_PAYMENT (борг постачальнику ×2). Дзеркалить
+    // stock-documents.transition / completion-acts.confirm. count===0 → інший уже провів.
+    const cas = await tx.supplierPayment.updateMany({
+      where: { id, orgId, deletedAt: null, status: SupplierPaymentStatus.DRAFT },
+      // Мультивалюта (Фаза 3): фіксуємо base-суму + курс на момент проведення.
+      data: {
+        status: SupplierPaymentStatus.CONFIRMED,
+        totalAmountBase: conv.amountBase,
+        rateUsed: conv.rateUsed,
+      },
+    });
+    if (cas.count === 0) {
+      throw new BadRequestException(
+        translateError('err.supplierPayment.alreadyConfirmedOrChanged', getLocale()),
+      );
+    }
+    await recordDocumentEvent(tx, {
+      orgId,
+      documentType: 'SUPPLIER_PAYMENT',
+      documentId: id,
+      kind: 'STATUS_CHANGED',
+      fromStatus: SupplierPaymentStatus.DRAFT,
+      toStatus: SupplierPaymentStatus.CONFIRMED,
+      actorId: userId,
+    });
+
+    // Дані для settlement — з pre-tx знімка (amount/supplierId незмінні у DRAFT).
+    // Оплата постачальнику: ми надсилаємо йому кошти → наш борг зменшується.
+    // Семантика — SUPPLIER_PAYMENT (BALANCE_SIGN = +1, підіймає від'ємний борг до 0).
+    // НЕ PAYMENT (−1) — той для клієнтської оплати (клієнт платить НАМ).
+    await this.settlements.createTransaction(
+      orgId,
+      {
+        counterpartyId: pre.supplierId,
+        type: 'SUPPLIER_PAYMENT',
+        amount: Number(pre.amount),
+        // Мультивалюта (Фаза 3): борг постачальнику ↓ у base по курсу на дату проведення.
+        currencyId: pre.currencyId ?? undefined,
+        date: confirmDate,
+        fallbackToLatest: true,
+        documentType: 'SupplierPayment',
+        documentId: id,
+        createdBy: userId,
+      },
+      tx,
+    );
+
+    // Готівкова оплата постачальнику → видача готівки з каси (cash-out) У ТУ САМУ транзакцію,
+    // щоб оплата/розрахунок/каса не розсинхронились. CashService.createOperation — ЄДИНА точка
+    // руху готівки: застосовує overdraft-guard (OUT не вижене касу в мінус → 400 + rollback усього
+    // confirm) і shift-guard для фіскальної каси. Без цього cash-оплата постачальнику ніколи не
+    // залишала касу → баланс завищений, guard оминається.
+    if (pre.sourceType === PaymentSourceType.CASH_REGISTER && pre.cashRegisterId) {
+      await this.cash.createOperation(
+        orgId,
+        {
+          cashRegisterId: pre.cashRegisterId,
+          direction: 'OUT',
+          amount: Number(pre.amount),
+          reason: 'SUPPLIER_PAYMENT',
+          counterpartyId: pre.supplierId,
+          documentType: 'SupplierPayment',
+          documentId: id,
+          createdBy: userId,
+          ...cashRow,
+        },
+        tx,
+      );
+    }
+
+    // Payables FX (Фаза 5): трекінг оплати PO + realized FX при повній оплаті. Після
+    // SUPPLIER_PAYMENT settlement (щоб paidBase включав цей платіж). Лише для привʼязаних до PO.
+    if (pre.purchaseOrderId && po) {
+      const poId = pre.purchaseOrderId;
+      // paidAmount CAS (валюта оплати == валюта PO за guard вище) — дзеркалить invoice.paidAmount CAS.
+      // Статус у CAS (BR-SUPPAY-015): замовлення, скасоване між перевіркою й записом, оплату не приймає.
+      const newPaid = money(moneyFromDecimal(po.paidAmount) + moneyFromDecimal(pre.amount));
+      const totalAmount = Number(po.totalAmount);
+      const becameFullyPaid =
+        totalAmount > 0 && newPaid >= totalAmount - 0.005 && po.paidAt == null;
+      const paidCas = await tx.purchaseOrder.updateMany({
+        where: {
+          id: poId,
+          orgId,
+          deletedAt: null,
+          paidAmount: po.paidAmount,
+          status: { in: PO_PAYABLE },
+        },
+        data: { paidAmount: newPaid, ...(becameFullyPaid ? { paidAt: kyivToday() } : {}) },
+      });
+      if (paidCas.count === 0) {
+        throw new BadRequestException(
+          translateError('err.supplierPayment.orderConcurrentChange', getLocale()),
+        );
+      }
+
+      // FX лише коли PO вперше повністю сплачено + не-базова валюта. Курс нарахування (дата
+      // прийому) ≠ курс оплати → base-залишок ≠ 0; одна проводка обнуляє.
+      if (becameFullyPaid && !(await this.exchangeRates.sameCurrency(orgId, null, po.currencyId))) {
+        const [chargeAgg, spIds, fxNet] = await Promise.all([
+          tx.settlementTransaction.aggregate({
+            where: {
+              orgId,
+              type: 'SUPPLIER_CHARGE',
+              documentType: 'PurchaseOrder',
+              documentId: poId,
+            },
+            _sum: { amountBase: true },
+          }),
+          tx.supplierPayment.findMany({
+            where: {
+              orgId,
+              purchaseOrderId: poId,
+              status: SupplierPaymentStatus.CONFIRMED,
+              deletedAt: null,
+            },
+            select: { id: true },
+            take: 500,
+          }),
+          // Чиста FX замовлення ≠ 0 — вже визнано; сторно, що зробило замовлення не сплаченим,
+          // її обнуляє (BR-SUPPAY-012) — тоді повна оплата визнає її заново.
+          netFxBalanceEffect(tx, orgId, [{ documentType: 'PurchaseOrder', documentId: poId }]),
+        ]);
+        if (!hasNetFx(fxNet)) {
+          const paidAgg = await tx.settlementTransaction.aggregate({
+            where: {
+              orgId,
+              type: 'SUPPLIER_PAYMENT',
+              documentType: 'SupplierPayment',
+              documentId: { in: spIds.map(s => s.id) },
+            },
+            _sum: { amountBase: true },
+          });
+          const chargeBase = Number(chargeAgg._sum.amountBase ?? 0);
+          const paidBase = Number(paidAgg._sum.amountBase ?? 0);
+          const fx = money(chargeBase - paidBase);
+          if (Math.abs(fx) >= 0.005) {
+            await this.settlements.createTransaction(
+              orgId,
+              {
+                counterpartyId: pre.supplierId,
+                // ⚠️ ІНВЕРСІЯ клієнта: SUPPLIER_CHARGE(−1)/SUPPLIER_PAYMENT(+1) → залишок = paidBase−chargeBase.
+                // fx>0 (нарахували більше base) → залишок ВІД'ЄМНИЙ → FX_GAIN(+1) підіймає до 0.
+                // fx<0 (сплатили більше) → залишок ДОДАТНИЙ → FX_LOSS(−1). НЕ копіювати клієнтський тернарник!
+                type: fx > 0 ? 'FX_GAIN' : 'FX_LOSS',
+                amount: Math.abs(fx),
+                // БЕЗ currencyId → base-дельта (rate=1, base=amount).
+                documentType: 'PurchaseOrder',
+                documentId: poId,
+                notes: `Курсова різниця (постачальник): нараховано ${chargeBase.toFixed(2)} за курсом прийому, сплачено ${paidBase.toFixed(2)} за курсом оплат`,
+                createdBy: userId,
+              },
+              tx,
+            );
+          }
+        }
+      }
+    }
   }
 
   async cancel(orgId: string, id: string, userId?: string): Promise<SupplierPaymentResponseDto> {
@@ -1092,17 +1227,17 @@ export class SupplierPaymentsService {
   }
 
   /**
-   * Пошук PO для оплати: `{ id, orgId, deletedAt: null }` + `select { id, supplierId }`.
+   * Пошук PO для оплати: `{ id, orgId, deletedAt: null }` + `select { id, supplierId, status }`.
    * Приймає ВЖЕ-резолвлений id — guard лишається у викликача.
    */
   private findPurchaseOrderForPayment(
     orgId: string,
     purchaseOrderId?: string | null,
-  ): Promise<{ id: string; supplierId: string } | null> {
+  ): Promise<{ id: string; supplierId: string; status: PurchaseOrderStatus } | null> {
     return purchaseOrderId
       ? this.prisma.purchaseOrder.findFirst({
           where: { id: purchaseOrderId, orgId, deletedAt: null },
-          select: { id: true, supplierId: true },
+          select: { id: true, supplierId: true, status: true },
         })
       : Promise.resolve(null);
   }

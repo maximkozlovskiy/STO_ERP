@@ -101,6 +101,36 @@ describe('DocumentNumberService.next', () => {
     );
   });
 
+  // Номер у транзакції виклику: її відкат повертає номер (оплата постачальнику однією дією). Без
+  // `tx` — своя коротка транзакція, як було для всіх документів.
+  // guards: BR-SUPPAY-013
+  it('з tx — лічильник читається й пишеться ЦІЄЮ транзакцією, власної не відкриває', async () => {
+    const { prisma, tx, executed } = makePrisma(baseConfig({ currentSeq: 7n }));
+    service = new DocumentNumberService(prisma);
+    const own = vi.mocked(prisma.$transaction);
+    own.mockClear();
+
+    const num = await service.next(ORG_ID, DocumentType.SUPPLIER_PAYMENT, tx as never);
+
+    expect(num).toBe('НРД-000008');
+    expect(own).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(executed[0].newSeq).toBe(8n);
+  });
+
+  // guards: BR-SUPPAY-013
+  it('без tx — власна транзакція з таймаутом (решта документів — як було)', async () => {
+    const { prisma } = makePrisma(baseConfig({ currentSeq: 1n }));
+    service = new DocumentNumberService(prisma);
+
+    await service.next(ORG_ID, DocumentType.WORK_ORDER);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(prisma.$transaction).mock.calls[0][1]).toMatchObject({
+      timeout: expect.any(Number),
+    });
+  });
+
   it('NEVER: просто інкрементує currentSeq (+1) з паддингом', async () => {
     const { executed } = build(baseConfig({ resetPeriod: 'NEVER', currentSeq: 41n }));
     const num = await service.next(ORG_ID, DocumentType.WORK_ORDER);
