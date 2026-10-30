@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { ThrottlerException } from '@nestjs/throttler';
 import { Prisma } from '@prisma/client';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { translateError, type ValidationLocale } from '@sto/shared';
@@ -122,6 +123,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       message = translateError('err.internal', locale);
       code = 'err.internal';
+    } else if (exception instanceof ThrottlerException) {
+      // Власний текст ThrottlerGuard — англійський «ThrottlerException: Too Many Requests»; його
+      // бачить і клієнт на публічній сторінці кошторису (BR-WO-034), тож — i18n-ключ мовою запиту.
+      status = HttpStatus.TOO_MANY_REQUESTS;
+      message = translateError('err.tooManyRequests', locale);
+      code = 'err.tooManyRequests';
     } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       const response = exception.getResponse();

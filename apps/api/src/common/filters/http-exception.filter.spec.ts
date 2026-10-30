@@ -1,8 +1,10 @@
 import type { ArgumentsHost } from '@nestjs/common';
 import { BadRequestException, HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
+import { ThrottlerException } from '@nestjs/throttler';
 import { Prisma } from '@prisma/client';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HttpExceptionFilter } from './http-exception.filter';
+import { runWithTenant } from '../tenant/tenant-context';
 
 /** Створює мок ArgumentsHost для unit-тестування фільтра. */
 function makeHost(method = 'GET', url = '/api/test') {
@@ -53,6 +55,29 @@ describe('HttpExceptionFilter', () => {
       expect(reply.send).toHaveBeenCalledWith(
         expect.objectContaining({ message: 'поле1 порожнє; поле2 неправильне' }),
       );
+    });
+  });
+
+  describe('429 від ThrottlerGuard — текст мовою запиту, не «ThrottlerException»', () => {
+    // guards: BR-WO-034
+    it('ThrottlerException → 429 «Забагато запитів, спробуйте за хвилину» і code', () => {
+      const { host, reply } = makeHost('GET', '/api/public/work-orders/abc');
+      filter.catch(new ThrottlerException(), host);
+
+      expect(reply.status).toHaveBeenCalledWith(429);
+      const body = reply.send.mock.calls[0]![0] as { message: string; code: string };
+      expect(body.message).toBe('Забагато запитів, спробуйте за хвилину');
+      expect(body.code).toBe('err.tooManyRequests');
+      expect(body.message).not.toMatch(/Throttler|Too Many/);
+    });
+
+    // guards: BR-WO-034
+    it('Accept-Language: en → англійський текст тим самим ключем', () => {
+      const { host, reply } = makeHost();
+      runWithTenant({ locale: 'en' }, () => filter.catch(new ThrottlerException(), host));
+
+      const body = reply.send.mock.calls[0]![0] as { message: string };
+      expect(body.message).toBe('Too many requests, please try again in a minute');
     });
   });
 

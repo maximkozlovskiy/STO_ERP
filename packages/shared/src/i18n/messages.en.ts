@@ -214,6 +214,7 @@ export const en: Record<string, string> = {
   'err.internal': 'Internal server error',
   'err.badRequest': 'Invalid request data',
   'err.fastifyBadRequest': 'Malformed request: check the body and Content-Type',
+  'err.tooManyRequests': 'Too many requests, please try again in a minute',
   'err.requestFileTooLarge':
     'The file is too large — the maximum upload size was exceeded. Reduce the resolution or split the file into parts.',
   'err.prisma.unique': 'A record with this value already exists ({{fields}})',

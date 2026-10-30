@@ -16,13 +16,16 @@ test.describe.configure({ mode: 'serial' });
  *
  * Передумови через API — клієнт, гараж, авто. Прибирання: наряд (через «Скасовано»), авто, гараж,
  * клієнт. Публічний кошторис має ліміт 20 запитів/хв з IP: тут три відкриття сторінки
- * (у dev-збірці кожне — два запити), тож `--repeat-each` цього спеку впирається в 429.
+ * (у dev-збірці кожне — два запити), тож `--repeat-each` і повний прогін упираються в 429. Ліміт —
+ * захист продукту від перебору токенів, тест його не вимикає: на 429 сторінка показує
+ * «Забагато запитів, спробуйте за хвилину» (BR-WO-034), і тест чекає нового вікна й перезавантажує.
  */
 
 const uid = `${Date.now().toString().slice(-6)}${process.pid % 1000}`;
 const CLIENT = `000 E2E TST-SHARE ${uid} клієнт`;
 const PLATE = `SH${uid.slice(-5)}`;
 const INVALID = 'Посилання не дійсне або термін дії минув';
+const THROTTLED = 'Забагато запитів, спробуйте за хвилину';
 
 const state: {
   token?: string;
@@ -36,11 +39,31 @@ async function api<T = unknown>(page: Page, method: string, path: string, body?:
   return apiCall<T>(page, state.token ?? (await getToken(page)), method, path, body);
 }
 
+/**
+ * Завантажити публічний кошторис із поправкою на ліміт: дочекатися відповіді сторінки (кошторис,
+ * «недійсне» чи 429); на 429 — текст українською (BR-WO-034), чекати вікна ліміту й повторити.
+ */
+async function loadPublic(client: Page, load: () => Promise<unknown>) {
+  const throttled = client.getByText(THROTTLED);
+  const settled = client
+    .getByRole('heading', { name: /Кошторис/ })
+    .or(client.getByText(INVALID))
+    .or(throttled);
+  await load();
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await expect(settled.first()).toBeVisible({ timeout: 30_000 });
+    if (!(await throttled.isVisible())) return;
+    await client.waitForTimeout(10_000);
+    await client.reload();
+  }
+  throw new Error('публічний кошторис віддає 429 довше за вікно ліміту (60 с)');
+}
+
 /** Кошторис за адресою — у вікні без входу (клієнт, якому надіслали посилання). */
 async function openAsClient(page: Page, url: string) {
   const ctx = await page.context().browser()!.newContext();
   const client = await ctx.newPage();
-  await client.goto(url);
+  await loadPublic(client, () => client.goto(url));
   return { client, close: () => ctx.close() };
 }
 
@@ -79,7 +102,7 @@ test.describe('Посилання на кошторис — відкликанн
   test('«Поділитись» → кошторис відкривається; «Відкликати» → недійсне; «Згенерувати нове» → нове працює', async ({
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(300_000);
     await page.goto('/work-orders');
     await expect(page.getByRole('button', { name: /^Наряд$/ }).first()).toBeVisible({
       timeout: 30_000,
@@ -194,7 +217,7 @@ test.describe('Посилання на кошторис — відкликанн
       await panel.getByRole('button', { name: 'Відкликати' }).click();
       await expect(panel.getByRole('status')).toContainText('Посилання відкликано');
       await expect(linkBox).toBeHidden();
-      await first.client.reload();
+      await loadPublic(first.client, () => first.client.reload());
       await expect(first.client.getByText(INVALID)).toBeVisible({ timeout: 30_000 });
       await first.client.screenshot({ path: test.info().outputPath('wo032_revoked_public.png') });
     } finally {
