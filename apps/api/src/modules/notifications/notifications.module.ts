@@ -12,6 +12,9 @@ import { FollowUpScheduler } from './followup.scheduler';
 import { TurboSmsProvider } from './providers/turbosms.provider';
 import { EsputnikProvider } from './providers/esputnik.provider';
 import { EmailProvider } from './providers/email.provider';
+import { TelegramBotProvider } from './providers/telegram-bot.provider';
+import { TelegramApiClient } from './providers/telegram-api.client';
+import { TelegramRecipientsService } from './telegram-recipients.service';
 import { NotificationProviderRegistry } from './providers/provider-registry';
 import { NOTIFICATION_PROVIDERS } from './providers/notification-provider.interface';
 import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
@@ -35,6 +38,9 @@ import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
     TurboSmsProvider,
     EsputnikProvider,
     EmailProvider,
+    TelegramApiClient,
+    TelegramBotProvider,
+    TelegramRecipientsService,
     // Multi-provider реєстрація: реєстр інжектить NOTIFICATION_PROVIDERS як NotificationProvider[].
     // ОДИН factory повертає масив singleton-ів (NestJS 10 не має Angular-style multi:true).
     {
@@ -43,11 +49,17 @@ import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
         turbosms: TurboSmsProvider,
         esputnik: EsputnikProvider,
         email: EmailProvider,
-      ) => [turbosms, esputnik, email],
-      inject: [TurboSmsProvider, EsputnikProvider, EmailProvider],
+        telegramBot: TelegramBotProvider,
+      ) => [turbosms, esputnik, email, telegramBot],
+      inject: [TurboSmsProvider, EsputnikProvider, EmailProvider, TelegramBotProvider],
     },
     NotificationProviderRegistry,
   ],
-  exports: [NotificationsService, NotificationProviderRegistry],
+  exports: [
+    NotificationsService,
+    NotificationProviderRegistry,
+    TelegramApiClient,
+    TelegramRecipientsService,
+  ],
 })
 export class NotificationsModule {}

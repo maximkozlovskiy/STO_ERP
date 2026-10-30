@@ -21,6 +21,7 @@ import {
 import { Type, Transform } from 'class-transformer';
 import { EmployeeStatus, UserRole } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { TelegramSubscriptionStatusDto } from '../notifications/telegram-subscription.dto';
 
 // rateScheme-схема тепер у @sto/shared (ЄДИНЕ джерело правди web ↔ api) — реекспорт для
 // зворотної сумісності імпортів (employees.service та ін.).
@@ -277,6 +278,11 @@ export class EmployeeResponseDto {
   @ApiProperty() updatedAt!: string;
   @ApiPropertyOptional({ description: 'Set when the employee is soft-deleted' })
   deletedAt?: string | null;
+  @ApiPropertyOptional({
+    type: TelegramSubscriptionStatusDto,
+    description: 'Підписка на Telegram-бот СТО (лише картка працівника, BR-AUT-041)',
+  })
+  telegramSubscription?: TelegramSubscriptionStatusDto;
 }
 
 export class EmployeeListDto {

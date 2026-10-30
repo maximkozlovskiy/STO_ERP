@@ -90,6 +90,7 @@ import { CounterpartyImportMappingsModule } from './modules/counterparty-import-
 import { SystemTemplatesModule } from './modules/system-templates/system-templates.module';
 import { BullBoardModule } from './modules/bull-board/bull-board.module';
 import { AutomationModule } from './modules/automation/automation.module';
+import { TelegramBotModule } from './modules/telegram-bot/telegram-bot.module';
 
 @Module({
   imports: [
@@ -255,6 +256,7 @@ import { AutomationModule } from './modules/automation/automation.module';
     CounterpartyImportMappingsModule,
     SystemTemplatesModule,
     AutomationModule,
+    TelegramBotModule,
     // D3 — bull-board admin UI для BullMQ-черг. register() повертає порожній модуль у production
     // (роут не існує на проді, як Swagger); non-prod — /api/admin/queues за auth-middleware (OWNER/ADMIN).
     BullBoardModule.register(),

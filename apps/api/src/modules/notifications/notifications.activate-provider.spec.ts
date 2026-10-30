@@ -10,6 +10,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import type { TelegramRecipientsService } from './telegram-recipients.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { NotificationChannel } from '@prisma/client';
 import type { Queue } from 'bullmq';
@@ -75,7 +76,7 @@ describe('NotificationsService.activateProvider', () => {
         return { count };
       },
     );
-    service = new NotificationsService(prisma, registry, queue);
+    service = new NotificationsService(prisma, registry, queue, {} as TelegramRecipientsService);
   });
 
   const enabledProviders = (rows: Row[]): string[] => [
@@ -203,12 +204,13 @@ describe('NotificationsService.activateProvider', () => {
 
     expect(updateMany).toHaveBeenCalledTimes(2);
     const [disableCall, enableCall] = updateMany.mock.calls;
-    // #1 — вимкнути інших: orgId+branchId+deletedAt+provider{not}
+    // #1 — вимкнути інших: orgId+branchId+deletedAt+provider{notIn}; власний Telegram-бот (креди в
+    // налаштуваннях org) — не конкурент провайдера, його рядок не вимикається (BR-AUT-011).
     expect(disableCall[0].where).toMatchObject({
       orgId: 'org-1',
       branchId: 'br-1',
       deletedAt: null,
-      provider: { not: 'turbosms' },
+      provider: { notIn: ['turbosms', 'telegram-bot'] },
     });
     expect(disableCall[0].data).toEqual({ enabled: false });
     // #2 — увімкнути активного: orgId+branchId+deletedAt+provider

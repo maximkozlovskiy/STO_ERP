@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import type { TelegramRecipientsService } from './telegram-recipients.service';
 import { NotificationChannel } from '@prisma/client';
 import type { Job, Queue } from 'bullmq';
 import { SmsProcessor } from './sms.processor';
@@ -30,9 +31,15 @@ describe('SmsProcessor (fallback engine)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (registry.get as ReturnType<typeof vi.fn>).mockReturnValue({ send });
-    processor = new SmsProcessor(registry, prisma, queue, {
-      capture: vi.fn(),
-    } as unknown as DeadLetterService);
+    processor = new SmsProcessor(
+      registry,
+      prisma,
+      queue,
+      {
+        capture: vi.fn(),
+      } as unknown as DeadLetterService,
+      {} as TelegramRecipientsService,
+    );
   });
 
   const step = (channel: NotificationChannel) => ({

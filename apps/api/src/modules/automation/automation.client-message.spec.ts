@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import type { Queue } from 'bullmq';
 import { AUTOMATION_DEFAULT_RULES, defaultRuleActions } from '@sto/shared';
 import { NotificationsService } from '../notifications/notifications.service';
+import type { TelegramRecipientsService } from '../notifications/telegram-recipients.service';
 import type { NotificationProviderRegistry } from '../notifications/providers/provider-registry';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { memoryTable } from '../cash/cash.spec-fixture';
@@ -179,7 +180,7 @@ describe('Дія «повідомлення клієнту»', () => {
   });
 
   // guards: BR-AUT-011
-  it('Telegram-бот до блоку 3 недоступний; лише бот — SKIPPED «бот не підключено»; жоден канал не налаштовано — NO_CHANNEL', async () => {
+  it('Telegram-бот у правилі, а в організації бота не підключено: лише бот — SKIPPED «бот не підключено», бот і SMS — SMS; жоден канал не налаштовано — NO_CHANNEL', async () => {
     const bot = await fire({ rule: { actions: [clientMessage({ channels: ['TELEGRAM_BOT'] })] } });
     expect(bot.h.enqueueChain).not.toHaveBeenCalled();
     expect(bot.logs[0]).toMatchObject({ skipReason: 'TELEGRAM_BOT_NOT_CONNECTED' });
@@ -236,7 +237,7 @@ describe('Дія «повідомлення клієнту»', () => {
       actorId: ACTOR,
       occurredAt: new Date(),
       now: new Date('2026-10-29T21:30:00.000Z'), // у тихі години
-      test: { phone: '+380679999999', email: null },
+      test: { phone: '+380679999999', email: null, telegramChatId: null },
     };
     const res = await h.actions.clientMessage(0, clientMessage() as never, run);
     expect(res.status).toBe('DONE');
@@ -258,9 +259,12 @@ describe('NotificationsService — черга й канали правила', (
   // guards: BR-AUT-015, BR-AUT-013
   it('enqueueChain: черга `sms` з ≥ 10 спробами й експоненційною паузою; тихі години — delay', async () => {
     const add = vi.fn().mockResolvedValue({});
-    const svc = new NotificationsService({} as PrismaService, registry, {
-      add,
-    } as unknown as Queue);
+    const svc = new NotificationsService(
+      {} as PrismaService,
+      registry,
+      { add } as unknown as Queue,
+      {} as TelegramRecipientsService,
+    );
     const step = {
       channel: 'SMS' as const,
       provider: 'turbosms',
@@ -324,7 +328,12 @@ describe('NotificationsService — черга й канали правила', (
         }),
       },
     } as unknown as PrismaService;
-    const svc = new NotificationsService(prisma, registry, { add: vi.fn() } as unknown as Queue);
+    const svc = new NotificationsService(
+      prisma,
+      registry,
+      { add: vi.fn() } as unknown as Queue,
+      {} as TelegramRecipientsService,
+    );
     const out = await svc.resolveChannels('org-a', 'b1', ['SMS', 'EMAIL', 'VIBER', 'TELEGRAM']);
     expect(out).toEqual([
       { channel: 'SMS', provider: 'turbosms', senderName: 'OLD' },
@@ -365,6 +374,7 @@ describe('NotificationsService — черга й канали правила', (
         } as unknown as PrismaService,
         registry,
         { add: vi.fn() } as unknown as Queue,
+        {} as TelegramRecipientsService,
       );
 
     const svc = make([

@@ -25,6 +25,7 @@ describe('CounterpartiesService — статуси-мітки (assign / unassign
   let service: CounterpartiesService;
   let invalidateCache: ReturnType<typeof vi.fn>;
   let prisma: {
+    telegramSubscription: PrismaModelMock;
     counterparty: PrismaModelMock;
     counterpartyStatus: PrismaModelMock;
     counterpartyStatusLink: PrismaModelMock;
@@ -61,6 +62,8 @@ describe('CounterpartiesService — статуси-мітки (assign / unassign
 
   beforeEach(async () => {
     prisma = {
+      // Картка читає статус підписки на Telegram-бот (BR-AUT-041) — тут підписок немає.
+      telegramSubscription: { findFirst: vi.fn().mockResolvedValue(null) },
       counterparty: { findFirst: vi.fn().mockResolvedValue(cpRow([])) },
       counterpartyStatus: { findFirst: vi.fn().mockResolvedValue({ id: 'st-1' }) },
       counterpartyStatusLink: {

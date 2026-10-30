@@ -25,6 +25,7 @@ import {
   type NotificationLogMeta,
   type ResolvedChannel,
 } from '../notifications/notifications.service';
+import { TelegramRecipientsService } from '../notifications/telegram-recipients.service';
 import { TasksService, OPEN_TASK_STATUSES } from '../tasks/tasks.service';
 import { AutomationContextService, type DocumentContext } from './automation-context.service';
 import { quietHoursDelayMs } from './automation-text';
@@ -61,8 +62,11 @@ export interface ActionRun {
   /** Подія правила — у `meta` job-а: «створено» оплати сторно скасовує до відправки (BR-AUT-016). */
   eventKind?: AutomationEventKind;
   now: Date;
-  /** «Надіслати тест» (BR-AUT-051): одержувач — той, хто тестує; без згоди й тихих годин. */
-  test?: { phone: string | null; email: string | null };
+  /**
+   * «Надіслати тест» (BR-AUT-051): одержувач — той, хто тестує (телефон, email, chat id його
+   * підписки на бот); без згоди й тихих годин.
+   */
+  test?: { phone: string | null; email: string | null; telegramChatId: string | null };
 }
 
 const EMAIL: NotificationChannel = 'EMAIL';
@@ -71,6 +75,13 @@ const HOUR_MS = 3_600_000;
 const MAX_RECIPIENTS = 500;
 
 type Template = { subject?: string | undefined; body: string };
+
+/** Адреси одержувача за каналами: телефон, email, chat id підписки на бот (BR-AUT-041). */
+interface Contact {
+  phone: string | null;
+  email: string | null;
+  chatId: string | null;
+}
 
 /** Обрізає текст до `max` символів з «…» у кінці (поле задачі з лімітом схеми). */
 const clip = (text: string, max: number): string =>
@@ -101,6 +112,7 @@ export class AutomationActionsService {
     private readonly notifications: NotificationsService,
     private readonly tasks: TasksService,
     private readonly context: AutomationContextService,
+    private readonly telegram: TelegramRecipientsService,
   ) {}
 
   // ─── Повідомлення клієнту ─────────────────────────────────────────────────────────────────
@@ -137,12 +149,20 @@ export class AutomationActionsService {
         return skip('NO_MARKETING_CONSENT');
     }
 
+    // BR-AUT-041: Telegram-бот — лише підписаному клієнту (chat id його активної підписки).
+    const counterpartyId = client?.counterpartyId ?? null;
+    const chatId = run.test
+      ? run.test.telegramChatId
+      : counterpartyId
+        ? ((await this.telegram.chatIds(run.orgId, 'counterparty', [counterpartyId])).get(
+            counterpartyId,
+          ) ?? null)
+        : null;
     const built = await this.buildChain(
       run,
       { wanted: action.channels, allowed: AUTOMATION_CHANNELS },
       action.template,
-      phone,
-      email,
+      { phone, email, chatId },
     );
     if ('reason' in built) return skip(built.reason);
 
@@ -179,7 +199,9 @@ export class AutomationActionsService {
     if (run.test) {
       // Тест — лише зовнішній текст на телефон того, хто тестує (BR-AUT-051).
       if (!action.external) return { ...base, status: 'SKIPPED', reason: 'NO_CHANNEL' };
-      return this.sendExternal(base, run, action.external, [{ phone: run.test.phone }]);
+      return this.sendExternal(base, run, action.external, [
+        { phone: run.test.phone, email: null, chatId: run.test.telegramChatId },
+      ]);
     }
 
     const employees = await this.recipients(action, run);
@@ -199,7 +221,18 @@ export class AutomationActionsService {
       });
     }
     if (action.external) {
-      const ext = await this.sendExternal(base, run, action.external, employees);
+      // BR-AUT-022: Telegram-бот — підписаним працівникам; chat id — одним запитом на всіх.
+      const chats = await this.telegram.chatIds(
+        run.orgId,
+        'employee',
+        employees.map(e => e.id),
+      );
+      const to = employees.map(e => ({
+        phone: e.phone,
+        email: null,
+        chatId: chats.get(e.id) ?? null,
+      }));
+      const ext = await this.sendExternal(base, run, action.external, to);
       if (!action.inApp) return { ...ext, recipients: employees.length };
     }
     return { ...base, status: 'DONE', recipients: employees.length };
@@ -240,7 +273,7 @@ export class AutomationActionsService {
     base: { index: number; type: AutomationActionTypeValue },
     run: ActionRun,
     external: NonNullable<AutomationEmployeeNotificationAction['external']>,
-    to: readonly { phone: string | null }[],
+    to: readonly Contact[],
   ): Promise<ActionResult> {
     const meta: NotificationLogMeta = {
       ruleId: run.rule.id,
@@ -257,8 +290,7 @@ export class AutomationActionsService {
         run,
         { wanted: external.channels, allowed: AUTOMATION_EMPLOYEE_CHANNELS },
         external.template,
-        person.phone,
-        null,
+        person,
         cache,
       );
       if ('reason' in built) {
@@ -360,32 +392,37 @@ export class AutomationActionsService {
   /**
    * BR-AUT-011: канали дії ∩ налаштовані канали філії, з адресою одержувача. Явний перелік правила
    * — лише його канали в його порядку; без переліку — усі налаштовані канали філії за пріоритетом,
-   * який задав власник (серед дозволених для дії). Telegram-бот до блоку 3 недоступний. Причина
-   * порожнього ланцюжка — для журналу.
+   * який задав власник (серед дозволених для дії), Telegram-бот — там, де власник поставив його
+   * рядок каналу. Адреса бота — chat id підписки: не підписаний одержувач боту недоступний, ланцюжок
+   * іде далі. Причина порожнього ланцюжка — для журналу; бот у переліку правила, а в організації
+   * його не підключено, — `TELEGRAM_BOT_NOT_CONNECTED`.
    */
   private async buildChain(
     run: ActionRun,
     choice: ChannelChoice,
     template: Template,
-    phone: string | null,
-    email: string | null,
+    contact: Contact,
     cache?: ChannelCache,
   ): Promise<{ chain: ChannelStep[] } | { reason: AutomationSkipReason }> {
-    const recipientOf = (c: NotificationChannel): string | null => (c === EMAIL ? email : phone);
+    const recipientOf = (c: NotificationChannel): string | null =>
+      c === EMAIL ? contact.email : c === TELEGRAM_BOT ? contact.chatId : contact.phone;
     const { wanted, allowed } = choice;
+    const botMissing = async (): Promise<boolean> =>
+      !!wanted?.includes(TELEGRAM_BOT) && !(await this.telegram.isConnected(run.orgId));
     let resolved: ResolvedChannel[];
     if (wanted && wanted.length > 0) {
-      const addressable = wanted.filter(c => c !== TELEGRAM_BOT && !!recipientOf(c));
+      const addressable = wanted.filter(c => !!recipientOf(c));
       if (addressable.length === 0) {
-        const onlyBot = wanted.includes(TELEGRAM_BOT) && (phone || email);
-        return { reason: onlyBot ? 'TELEGRAM_BOT_NOT_CONNECTED' : 'NO_CONTACT' };
+        return { reason: (await botMissing()) ? 'TELEGRAM_BOT_NOT_CONNECTED' : 'NO_CONTACT' };
       }
       resolved = await this.branchChannels(run, addressable, cache);
-      if (resolved.length === 0) return { reason: 'NO_CHANNEL' };
+      if (resolved.length === 0) {
+        return { reason: (await botMissing()) ? 'TELEGRAM_BOT_NOT_CONNECTED' : 'NO_CHANNEL' };
+      }
     } else {
-      if (!phone && !email) return { reason: 'NO_CONTACT' };
-      const branch = (await this.branchChannels(run, null, cache)).filter(
-        r => r.channel !== TELEGRAM_BOT && allowed.includes(r.channel),
+      if (!contact.phone && !contact.email && !contact.chatId) return { reason: 'NO_CONTACT' };
+      const branch = (await this.branchChannels(run, null, cache)).filter(r =>
+        allowed.includes(r.channel),
       );
       if (branch.length === 0) return { reason: 'NO_CHANNEL' };
       resolved = branch.filter(r => !!recipientOf(r.channel));

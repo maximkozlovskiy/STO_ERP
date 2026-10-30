@@ -8,6 +8,7 @@ import { EmployeeStatus, Prisma, UserRole } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { telegramSubscriptionStatus } from '../notifications/telegram-recipients.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { calculatePagination } from '../../common/utils/pagination';
 import {
@@ -123,17 +124,21 @@ export class EmployeesService {
     id: string,
     includeRateScheme = false,
   ): Promise<EmployeeResponseDto | EmployeeDetailDto> {
-    const item = await this.prisma.employee.findFirst({
-      where: { id, orgId, deletedAt: null },
-      include: {
-        employeeZones: { select: { zoneId: true } },
-        employeeLifts: { select: { liftId: true } },
-        employeeWorkCategories: { select: { workCategoryId: true } },
-        employeeBranches: { select: { branchId: true } },
-      },
-    });
+    const [item, telegramSubscription] = await Promise.all([
+      this.prisma.employee.findFirst({
+        where: { id, orgId, deletedAt: null },
+        include: {
+          employeeZones: { select: { zoneId: true } },
+          employeeLifts: { select: { liftId: true } },
+          employeeWorkCategories: { select: { workCategoryId: true } },
+          employeeBranches: { select: { branchId: true } },
+        },
+      }),
+      // BR-AUT-041: статус підписки на бот — у картці працівника.
+      telegramSubscriptionStatus(this.prisma, orgId, 'employee', id),
+    ]);
     if (!item) throw new NotFoundException(translateError('err.employee.notFound', getLocale()));
-    return this.toDto(item, includeRateScheme);
+    return { ...this.toDto(item, includeRateScheme), telegramSubscription };
   }
 
   async create(orgId: string, dto: CreateEmployeeDto): Promise<EmployeeResponseDto> {

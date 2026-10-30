@@ -9,6 +9,7 @@ import type { PrismaService } from '../../prisma/prisma.service';
 import { runWithTenant } from '../../common/tenant/tenant-context';
 import { handleDbUnavailable, testDatabaseUrl } from '../../common/testing/require-db';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TelegramRecipientsService } from '../notifications/telegram-recipients.service';
 import type { NotificationProviderRegistry } from '../notifications/providers/provider-registry';
 import { TasksService } from '../tasks/tasks.service';
 import { AutomationActionsService } from './automation-actions.service';
@@ -37,7 +38,8 @@ let eventId = '';
 function engineOn(prisma: PrismaService) {
   const queue = { add: vi.fn().mockResolvedValue({}) } as unknown as Queue;
   const registry = { get: vi.fn() } as unknown as NotificationProviderRegistry;
-  const notifications = new NotificationsService(prisma, registry, queue);
+  const telegram = new TelegramRecipientsService(prisma);
+  const notifications = new NotificationsService(prisma, registry, queue, telegram);
   const config = { get: vi.fn().mockReturnValue(undefined) } as unknown as ConfigService;
   const context = new AutomationContextService(prisma, config);
   const actions = new AutomationActionsService(
@@ -45,6 +47,7 @@ function engineOn(prisma: PrismaService) {
     notifications,
     new TasksService(prisma),
     context,
+    telegram,
   );
   return new AutomationEngine(prisma, context, actions);
 }

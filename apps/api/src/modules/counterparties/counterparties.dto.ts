@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
@@ -22,16 +22,39 @@ import {
   CounterpartyType,
   InvoiceStatus,
   LegalForm,
+  NotificationChannel,
   PurchaseOrderStatus,
   SupplierPaymentStatus,
   SupplierReturnStatus,
 } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { TelegramSubscriptionStatusDto } from '../notifications/telegram-subscription.dto';
 import { toUpperCurrencyCode } from '../../common/transforms/to-upper-currency-code';
 
 // ─── Counterparty ────────────────────────────────────────
 
-export class CreateCounterpartyDto {
+/**
+ * Згода на повідомлення (BR-AUT-012, 042) — спільна для створення й зміни контрагента. Дату й
+ * автора згоди на маркетинг ставить сервер.
+ */
+export class CounterpartyConsentDto {
+  @ApiPropertyOptional({
+    description: 'Не надсилати службові повідомлення (статус, оплата, запис)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  noServiceMessages?: boolean;
+  @ApiPropertyOptional({ description: 'Згода на маркетингові повідомлення' })
+  @IsOptional()
+  @IsBoolean()
+  marketingConsent?: boolean;
+  @ApiPropertyOptional({ enum: NotificationChannel, nullable: true, description: 'Бажаний канал' })
+  @IsOptional()
+  @IsEnum(NotificationChannel)
+  preferredChannel?: NotificationChannel | null;
+}
+
+export class CreateCounterpartyDto extends CounterpartyConsentDto {
   @ApiProperty({ enum: CounterpartyType })
   @IsEnum(CounterpartyType)
   type!: CounterpartyType;
@@ -57,32 +80,8 @@ export class CreateCounterpartyDto {
   @ApiPropertyOptional() @IsOptional() @IsString() taxNumber?: string;
 }
 
-export class UpdateCounterpartyDto {
-  @ApiPropertyOptional({ enum: CounterpartyType })
-  @IsOptional()
-  @IsEnum(CounterpartyType)
-  type?: CounterpartyType;
-
-  @ApiPropertyOptional() @IsOptional() @IsString() firstName?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() lastName?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() companyName?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() edrpou?: string;
-  @ApiPropertyOptional() @IsOptional() @IsBoolean() vatPayer?: boolean;
-  @ApiPropertyOptional() @IsOptional() @IsString() phone?: string;
-  @ApiPropertyOptional() @IsOptional() @Transform(emptyToUndefined) @IsEmail() email?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
-  @ApiPropertyOptional({ enum: LegalForm })
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsEnum(LegalForm)
-  legalForm?: LegalForm;
-  @ApiPropertyOptional() @IsOptional() @IsString() legalAddress?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() actualAddress?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() bankAccount?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() bankName?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() contactPerson?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() taxNumber?: string;
-}
+/** Зміна — ті самі поля, що й створення, усі необов'язкові (тип теж). */
+export class UpdateCounterpartyDto extends PartialType(CreateCounterpartyDto) {}
 
 export class CounterpartyQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() q?: string;
@@ -164,6 +163,19 @@ export class CounterpartyResponseDto {
   @ApiPropertyOptional() contactPerson?: string | null;
   @ApiPropertyOptional() taxNumber?: string | null;
   @ApiPropertyOptional() balance?: number;
+  @ApiPropertyOptional() noServiceMessages?: boolean;
+  @ApiPropertyOptional() marketingConsent?: boolean;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Коли змінено згоду (ISO)' })
+  marketingConsentAt?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Хто змінив згоду' })
+  marketingConsentById?: string | null;
+  @ApiPropertyOptional({ enum: NotificationChannel, nullable: true })
+  preferredChannel?: NotificationChannel | null;
+  @ApiPropertyOptional({
+    type: TelegramSubscriptionStatusDto,
+    description: 'Підписка на Telegram-бот СТО (лише у detail view, BR-AUT-041)',
+  })
+  telegramSubscription?: TelegramSubscriptionStatusDto;
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
   @ApiPropertyOptional({ description: 'Set when soft-deleted (showDeleted=true)' })

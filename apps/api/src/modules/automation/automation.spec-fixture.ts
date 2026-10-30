@@ -3,7 +3,9 @@ import { Prisma, type DomainEvent } from '@prisma/client';
 import type { ConfigService } from '@nestjs/config';
 import { memoryTable } from '../cash/cash.spec-fixture';
 import { TasksService } from '../tasks/tasks.service';
-import type { NotificationsService } from '../notifications/notifications.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import type { NotificationProviderRegistry } from '../notifications/providers/provider-registry';
+import { TelegramRecipientsService } from '../notifications/telegram-recipients.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { AutomationActionsService } from './automation-actions.service';
 import { AutomationContextService, type DocumentContext } from './automation-context.service';
@@ -155,7 +157,30 @@ export interface HarnessInit {
   channels?: string[];
   quiet?: [string, string];
   ctx?: DocumentContext | null;
+  /** Токен власного Telegram-бота організації; без нього бот не підключено (BR-AUT-040). */
+  botToken?: string | null;
+  /** Підписки на бот (BR-AUT-041). */
+  subscriptions?: Row[];
+  /**
+   * Рядки `NotificationChannelConfig` філії: з ними канали резолвить СПРАВЖНІЙ
+   * `NotificationsService.resolveChannels` (пріоритет, бот, legacy SMS), а не мок `channels`.
+   */
+  branchConfigs?: Row[];
+  /** Legacy SMS філії (`BranchSettings`) — лише разом із `branchConfigs`. */
+  legacySms?: boolean;
 }
+
+/** Провайдери для справжнього `resolveChannels`: TurboSMS, SMTP і власний бот (креди в org). */
+const fakeRegistry = (): NotificationProviderRegistry => {
+  const providers: Record<string, Row> = {
+    turbosms: { code: 'turbosms', channels: ['SMS', 'VIBER'] },
+    smtp: { code: 'smtp', channels: ['EMAIL'] },
+    'telegram-bot': { code: 'telegram-bot', channels: ['TELEGRAM_BOT'], orgCredentials: true },
+  };
+  return {
+    get: (code: string) => providers[code] ?? null,
+  } as unknown as NotificationProviderRegistry;
+};
 
 export function automationHarness(init: HarnessInit = {}) {
   const runs: Row[] = [];
@@ -199,25 +224,72 @@ export function automationHarness(init: HarnessInit = {}) {
         orgId: ORG,
         quietHoursStart: init.quiet?.[0] ?? '21:00',
         quietHoursEnd: init.quiet?.[1] ?? '09:00',
+        telegramBotToken: init.botToken ?? null,
       },
     ]),
+    telegramSubscription: memoryTable(init.subscriptions ?? [], () => ({
+      active: true,
+      deletedAt: null,
+      subscribedAt: new Date(),
+    })),
+    notificationChannelConfig: memoryTable(
+      (init.branchConfigs ?? []).map(r => ({
+        orgId: ORG,
+        branchId: BRANCH,
+        enabled: true,
+        apiKey: 'key',
+        senderName: 'STO',
+        externalTemplateId: null,
+        deletedAt: null,
+        ...r,
+      })),
+    ),
+    branchSettings: memoryTable(
+      init.legacySms
+        ? [
+            {
+              orgId: ORG,
+              branchId: BRANCH,
+              smsEnabled: true,
+              smsApiKey: 'legacy',
+              smsProvider: 'turbosms',
+              smsSenderName: 'OLD',
+            },
+          ]
+        : [],
+    ),
   };
   const prisma = {
     ...tables,
     $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
   } as unknown as PrismaService & typeof tables;
 
+  const telegram = new TelegramRecipientsService(prisma);
   // Налаштовані канали філії в пріоритеті власника; `wanted = null` — «як у філії» (BR-AUT-011).
   const configured = init.channels ?? ['VIBER', 'SMS', 'EMAIL'];
-  const enqueueChain = vi.fn().mockResolvedValue(undefined);
-  const resolveChannels = vi.fn((_org: string, _branch: string, wanted: readonly string[] | null) =>
-    Promise.resolve(
-      (wanted ?? configured)
-        .filter(c => configured.includes(c))
-        .map(c => ({ channel: c, provider: 'turbosms', senderName: 'STO' })),
-    ),
-  );
-  const notifications = { enqueueChain, resolveChannels } as unknown as NotificationsService;
+  let notifications: NotificationsService;
+  let enqueueChain;
+  let resolveChannels;
+  if (init.branchConfigs) {
+    notifications = new NotificationsService(
+      prisma,
+      fakeRegistry(),
+      { add: vi.fn() } as never,
+      telegram,
+    );
+    enqueueChain = vi.spyOn(notifications, 'enqueueChain').mockResolvedValue(undefined);
+    resolveChannels = vi.spyOn(notifications, 'resolveChannels');
+  } else {
+    enqueueChain = vi.fn().mockResolvedValue(undefined);
+    resolveChannels = vi.fn((_org: string, _branch: string, wanted: readonly string[] | null) =>
+      Promise.resolve(
+        (wanted ?? configured)
+          .filter(c => configured.includes(c))
+          .map(c => ({ channel: c, provider: 'turbosms', senderName: 'STO' })),
+      ),
+    );
+    notifications = { enqueueChain, resolveChannels } as unknown as NotificationsService;
+  }
 
   const config = { get: vi.fn().mockReturnValue(undefined) } as unknown as ConfigService;
   const context = new AutomationContextService(prisma, config);
@@ -225,8 +297,19 @@ export function automationHarness(init: HarnessInit = {}) {
     .spyOn(context, 'load')
     .mockResolvedValue(init.ctx === undefined ? fakeCtx() : init.ctx);
   const tasks = new TasksService(prisma);
-  const actions = new AutomationActionsService(prisma, notifications, tasks, context);
+  const actions = new AutomationActionsService(prisma, notifications, tasks, context, telegram);
   const engine = new AutomationEngine(prisma, context, actions);
 
-  return { prisma, tables, runs, engine, actions, context, load, enqueueChain, resolveChannels };
+  return {
+    prisma,
+    tables,
+    runs,
+    engine,
+    actions,
+    context,
+    load,
+    enqueueChain,
+    resolveChannels,
+    telegram,
+  };
 }

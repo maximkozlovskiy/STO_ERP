@@ -31,6 +31,13 @@ export interface SendResult {
   providerMessageId?: string;
   /** Причина відмови (для fallback-рішення + NotificationLog). */
   error?: string;
+  /**
+   * Відмова остаточна (невірний одержувач, заборона): повтор черги нічого не змінить — ланцюг
+   * іде далі, а на останньому каналі job завершується без retry.
+   */
+  permanent?: boolean;
+  /** Одержувач заблокував бота (Telegram 403): підписку вимкнути (BR-AUT-041). */
+  recipientBlocked?: boolean;
 }
 
 export interface VerifyResult {
@@ -61,6 +68,12 @@ export interface NotificationProvider {
    * для того, які канали вимагають externalTemplateId — і бекенд-валідація, і UI.
    */
   readonly templateChannels?: NotificationChannel[];
+  /**
+   * Облікові дані — у налаштуваннях організації, а не в конфігу каналу філії (власний Telegram-бот,
+   * BR-AUT-040). Рядок каналу філії такого провайдера — лише місце в пріоритеті: без ключа, і
+   * ексклюзивна активація іншого провайдера його не вимикає.
+   */
+  readonly orgCredentials?: boolean;
 
   /** Відправити одне повідомлення обраним каналом. */
   send(params: SendParams): Promise<SendResult>;

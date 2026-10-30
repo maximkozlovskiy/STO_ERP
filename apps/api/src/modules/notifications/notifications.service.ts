@@ -7,15 +7,17 @@ import {
   type AutomationDocumentType,
   type AutomationEventKind,
 } from '@prisma/client';
-import { translateError } from '@sto/shared';
+import { TELEGRAM_BOT_PROVIDER, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { NotificationProviderRegistry } from './providers/provider-registry';
+import { TelegramRecipientsService } from './telegram-recipients.service';
 
 export type NotificationEvent = NotificationEventType;
 
 /** Канали, отримувач яких — email (а не телефон). Для них locator береться з payload.email. */
 const EMAIL_CHANNELS = new Set<NotificationChannel>([NotificationChannel.EMAIL]);
+const TELEGRAM_BOT = NotificationChannel.TELEGRAM_BOT;
 
 /** Один канал у fallback-ланцюзі: провайдер + креди + вже відрендерений текст + отримувач. */
 export interface ChannelStep {
@@ -83,6 +85,7 @@ export class NotificationsService {
     private readonly prisma: PrismaService,
     private readonly registry: NotificationProviderRegistry,
     @InjectQueue('sms') private readonly smsQueue: Queue,
+    private readonly telegram: TelegramRecipientsService,
   ) {}
 
   async send(
@@ -284,7 +287,12 @@ export class NotificationsService {
    *   legacy `BranchSettings.sms*` (як ключ у `SmsProcessor`).
    * - `wanted = null` — «як у налаштуваннях філії» (рішення власника 2026-10-29): усі придатні
    *   канали за `priority`, який задав власник, — той самий ланцюжок, що `resolveConfig` давав
-   *   зашитим повідомленням: жодного придатного конфігу — legacy SMS.
+   *   зашитим повідомленням: жодного придатного конфігу, крім бота, — legacy SMS у кінці ланцюжка.
+   *
+   * Власний Telegram-бот (BR-AUT-011, 040): облікових даних у рядку каналу немає (токен — у
+   * налаштуваннях організації), тож він придатний, коли бот підключено. «Як у філії» — лише з
+   * рядком каналу TELEGRAM_BOT (місце в пріоритеті задає власник; бот не стає першим сам);
+   * явний перелік правила — і без рядка, якщо філія не вимкнула бота своїм рядком.
    */
   async resolveChannels(
     orgId: string,
@@ -311,7 +319,15 @@ export class NotificationsService {
       take: 20, // bounded by @@unique([branchId, channel])
     });
     const byChannel = new Map(configs.map(c => [c.channel, c]));
+    const botRow = byChannel.get(TELEGRAM_BOT);
+    const botWanted = wanted ? wanted.includes(TELEGRAM_BOT) : !!botRow?.enabled;
+    const botConnected = botWanted ? await this.telegram.isConnected(orgId) : false;
+    const bot = (provider: string): ResolvedChannel | null =>
+      botConnected && this.registry.get(provider)?.orgCredentials
+        ? { channel: TELEGRAM_BOT, provider, senderName: '' }
+        : null;
     const usable = (c: (typeof configs)[number]): ResolvedChannel | null => {
+      if (c.channel === TELEGRAM_BOT) return c.enabled ? bot(c.provider) : null;
       if (!c.enabled || !c.apiKey) return null;
       const templateBased = this.registry.get(c.provider)?.templateChannels?.includes(c.channel);
       if (templateBased && !c.externalTemplateId) return null;
@@ -338,9 +354,11 @@ export class NotificationsService {
 
     if (!wanted) {
       const out = configs.map(usable).filter((c): c is ResolvedChannel => c !== null);
-      if (out.length > 0) return out;
+      // Бот доставляє лише підписаним: філія з legacy SMS і рядком бота без SMS-ланцюжка лишилась
+      // би без каналу для решти клієнтів — legacy SMS іде після бота.
+      if (out.some(c => c.channel !== TELEGRAM_BOT)) return out;
       const sms = await legacySms();
-      return sms ? [sms] : [];
+      return sms ? [...out, sms] : out;
     }
 
     const sms =
@@ -350,7 +368,13 @@ export class NotificationsService {
     const out: ResolvedChannel[] = [];
     for (const channel of wanted) {
       const c = byChannel.get(channel);
-      const resolved = c ? usable(c) : channel === NotificationChannel.SMS ? sms : null;
+      const resolved = c
+        ? usable(c)
+        : channel === NotificationChannel.SMS
+          ? sms
+          : channel === TELEGRAM_BOT
+            ? bot(TELEGRAM_BOT_PROVIDER)
+            : null;
       if (resolved) out.push(resolved);
     }
     return out;
@@ -422,8 +446,17 @@ export class NotificationsService {
       },
       take: 20,
     });
-    // Мапимо apiKey → hasApiKey (write-only секрет не виходить за межі бекенду).
-    return rows.map(({ apiKey, ...r }) => ({ ...r, hasApiKey: apiKey != null && apiKey !== '' }));
+    // Мапимо apiKey → hasApiKey (write-only секрет не виходить за межі бекенду). Канал провайдера з
+    // кредами організації (Telegram-бот) має «ключ», коли бота підключено (BR-AUT-040).
+    const botConnected = rows.some(r => this.registry.get(r.provider)?.orgCredentials)
+      ? await this.telegram.isConnected(orgId)
+      : false;
+    return rows.map(({ apiKey, ...r }) => ({
+      ...r,
+      hasApiKey: this.registry.get(r.provider)?.orgCredentials
+        ? botConnected
+        : apiKey != null && apiKey !== '',
+    }));
   }
 
   /**
@@ -473,8 +506,10 @@ export class NotificationsService {
     const isTemplateChannel = impl.templateChannels?.includes(dto.channel) ?? false;
     const externalTemplateId = isTemplateChannel ? (dto.externalTemplateId ?? null) : null;
 
-    // apiKey: оновлюємо лише коли надіслано непорожнє значення (write-only).
-    const apiKeyPatch = dto.apiKey != null && dto.apiKey !== '' ? { apiKey: dto.apiKey } : {};
+    // apiKey: оновлюємо лише коли надіслано непорожнє значення (write-only). Провайдер із кредами
+    // організації (Telegram-бот) ключа в рядку каналу не має — токен лише в налаштуваннях org.
+    const apiKeyPatch =
+      !impl.orgCredentials && dto.apiKey != null && dto.apiKey !== '' ? { apiKey: dto.apiKey } : {};
 
     // Atomic upsert по @@unique([branchId, channel]) — уникає findFirst-then-create гонки
     // (два одночасні PATCH на той самий (branchId,channel) → інакше P2002/500 або дубль).
@@ -525,10 +560,25 @@ export class NotificationsService {
     });
     if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
+    // Провайдер із кредами організації (Telegram-бот) — доповнення до ланцюжка, а не конкурент:
+    // його активація інших не вимикає, а активація іншого не вимикає його (BR-AUT-011).
+    const standalone = [TELEGRAM_BOT_PROVIDER];
+    if (this.registry.get(providerCode)?.orgCredentials) {
+      await this.prisma.notificationChannelConfig.updateMany({
+        where: { orgId, branchId, deletedAt: null, provider: providerCode },
+        data: { enabled: true },
+      });
+      return { activeProvider: providerCode };
+    }
     await this.prisma.$transaction([
-      // Вимкнути канали всіх інших провайдерів.
+      // Вимкнути канали всіх інших провайдерів (крім тих, що з кредами організації).
       this.prisma.notificationChannelConfig.updateMany({
-        where: { orgId, branchId, deletedAt: null, provider: { not: providerCode } },
+        where: {
+          orgId,
+          branchId,
+          deletedAt: null,
+          provider: { notIn: [providerCode, ...standalone] },
+        },
         data: { enabled: false },
       }),
       // Увімкнути канали активного провайдера.

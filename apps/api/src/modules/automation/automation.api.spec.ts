@@ -47,7 +47,7 @@ const form = (over: Record<string, unknown> = {}): AutomationRuleFormValues =>
 function rulesService(rules: Record<string, unknown>[] = []) {
   const h = automationHarness({ rules });
   h.tables.automationRun.groupBy = vi.fn().mockResolvedValue([]) as never;
-  return { h, svc: new AutomationRulesService(h.prisma, h.context, h.engine) };
+  return { h, svc: new AutomationRulesService(h.prisma, h.context, h.engine, h.telegram) };
 }
 
 describe('Ролі маршрутів автоматизації', () => {

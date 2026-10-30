@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { err } from '../../common/utils/err';
 import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { calculatePagination } from '../../common/utils/pagination';
+import { TelegramRecipientsService } from '../notifications/telegram-recipients.service';
 import type { ActionResult, ActionRun } from './automation-actions.service';
 import { AutomationContextService } from './automation-context.service';
 import { AutomationEngine, eventVars, parseStoredRule } from './automation-engine';
@@ -63,6 +64,7 @@ export class AutomationRulesService {
     private readonly prisma: PrismaService,
     private readonly context: AutomationContextService,
     private readonly engine: AutomationEngine,
+    private readonly telegram: TelegramRecipientsService,
   ) {}
 
   async findAll(
@@ -261,7 +263,7 @@ export class AutomationRulesService {
 
   /**
    * BR-AUT-051: «Надіслати тест» — повідомлення правила з даними обраного документа на телефон /
-   * email того, хто тестує; без згоди й тихих годин; у журналі `isTest`. Спрацювання не пишеться,
+   * email / Telegram (якщо підписаний на бот) того, хто тестує; без згоди й тихих годин; у журналі `isTest`. Спрацювання не пишеться,
    * задачі й сповіщення в системі не створюються.
    */
   async test(
@@ -275,11 +277,15 @@ export class AutomationRulesService {
     if (!rule) throw new BadRequestException(err('err.automation.ruleNotFound'));
     const ctx = await this.context.load(orgId, stored.documentType, documentId);
     if (!ctx) throw new NotFoundException(err('err.automation.documentNotFound'));
-    const tester = await this.prisma.employee.findFirst({
-      where: { id: actorId, orgId, deletedAt: null },
-      select: { phone: true, email: true },
-    });
-    if (!tester?.phone && !tester?.email)
+    const [tester, chats] = await Promise.all([
+      this.prisma.employee.findFirst({
+        where: { id: actorId, orgId, deletedAt: null },
+        select: { phone: true, email: true },
+      }),
+      this.telegram.chatIds(orgId, 'employee', [actorId]),
+    ]);
+    const telegramChatId = tester ? (chats.get(actorId) ?? null) : null;
+    if (!tester?.phone && !tester?.email && !telegramChatId)
       throw new BadRequestException(err('err.automation.testNoContact'));
 
     const now = new Date();
@@ -291,7 +297,7 @@ export class AutomationRulesService {
       actorId,
       occurredAt: now,
       now,
-      test: { phone: tester.phone, email: tester.email },
+      test: { phone: tester?.phone ?? null, email: tester?.email ?? null, telegramChatId },
     };
     const actionResults: ActionResult[] = [];
     for (const [index, action] of rule.actions.entries()) {

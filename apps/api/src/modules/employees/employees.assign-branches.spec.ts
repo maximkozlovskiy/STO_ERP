@@ -25,6 +25,8 @@ function setup() {
       }),
     },
     garageBranch: { findMany: vi.fn().mockResolvedValue([{ id: BRANCH }]) },
+    // Картка читає статус підписки на Telegram-бот (BR-AUT-041) — тут підписок немає.
+    telegramSubscription: { findFirst: vi.fn().mockResolvedValue(null) },
     $transaction: vi.fn((cb: (tx: unknown) => unknown) =>
       cb({ employeeBranch: { deleteMany, createMany }, employee: { updateMany: vi.fn() } }),
     ),

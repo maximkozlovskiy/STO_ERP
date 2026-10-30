@@ -12,6 +12,7 @@ import type { Queue } from 'bullmq';
 import type { AutomationDocumentType, AutomationEventKind } from '@prisma/client';
 import { memoryTable } from '../cash/cash.spec-fixture';
 import { SmsProcessor } from '../notifications/sms.processor';
+import type { TelegramRecipientsService } from '../notifications/telegram-recipients.service';
 import type { NotificationLogMeta } from '../notifications/notifications.service';
 import type { NotificationProviderRegistry } from '../notifications/providers/provider-registry';
 import type { DeadLetterService } from '../dead-letter/dead-letter.service';
@@ -52,6 +53,7 @@ function harness(tables: Record<string, Row[]> = {}) {
     prisma as unknown as PrismaService,
     { add: queueAdd } as unknown as Queue,
     { capture: vi.fn() } as unknown as DeadLetterService,
+    {} as TelegramRecipientsService,
   );
   const step = (channel: string) => ({
     channel,

@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import type { TelegramRecipientsService } from './telegram-recipients.service';
 import type { Logger } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { NotificationChannel } from '@prisma/client';
@@ -52,7 +53,7 @@ describe('NotificationsService — Phase 3 providers/channels', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new NotificationsService(prisma, registry, queue);
+    service = new NotificationsService(prisma, registry, queue, {} as TelegramRecipientsService);
   });
 
   // ─── listProviders ────────────────────────────────────────────────────────

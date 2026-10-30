@@ -10,6 +10,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import type { TelegramRecipientsService } from './telegram-recipients.service';
 import { NotificationChannel } from '@prisma/client';
 import type { Queue } from 'bullmq';
 import { NotificationsService } from './notifications.service';
@@ -26,7 +27,7 @@ describe('NotificationsService.sendWithConfig', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new NotificationsService(prisma, registry, queue);
+    service = new NotificationsService(prisma, registry, queue, {} as TelegramRecipientsService);
   });
 
   const config = {

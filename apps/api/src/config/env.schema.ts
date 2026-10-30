@@ -69,6 +69,10 @@ export const envSchema = z
     // production: у production непорожнє значення — відмова старту (checkProdStrict нижче).
     SUPPLIER_API_DEV_ALLOWED_ORIGINS: z.string().optional(),
 
+    // ── Власний Telegram-бот (BR-AUT-040) ──────────────────────────────────────
+    // Адреса Bot API; порожнє → https://api.telegram.org. Інша — фейк для тестів і живої перевірки.
+    TELEGRAM_API_URL: z.string().url('TELEGRAM_API_URL має бути валідним URL').optional(),
+
     // ── Sentry (опційне; вимкнене у dev) ──────────────────────────────────────
     SENTRY_DSN: z.string().optional(),
     SENTRY_AUTH_TOKEN: z.string().optional(),

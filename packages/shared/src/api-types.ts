@@ -6374,6 +6374,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/telegram-bot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Стан власного Telegram-бота (токен не віддається) */
+        get: operations["TelegramBotSettingsController_status_v1"];
+        /** Підключити бота: перевірка getMe, токен зберігається зашифрованим */
+        put: operations["TelegramBotSettingsController_connect_v1"];
+        post?: never;
+        /** Відключити бота (опитування зупиняється) */
+        delete: operations["TelegramBotSettingsController_disconnect_v1"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/counterparties/{id}/telegram-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Посилання підписки клієнта на бот (одноразовий код, 7 днів) */
+        post: operations["CounterpartyTelegramController_createLink_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/counterparties/{id}/telegram-subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Відписати клієнта від бота */
+        delete: operations["CounterpartyTelegramController_unsubscribe_v1"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employees/me/telegram-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Посилання підписки на бот для себе */
+        post: operations["EmployeeTelegramController_createMyLink_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employees/me/telegram-subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Моя підписка на бот */
+        get: operations["EmployeeTelegramController_mySubscription_v1"];
+        put?: never;
+        post?: never;
+        /** Відписатися від бота */
+        delete: operations["EmployeeTelegramController_unsubscribeMe_v1"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employees/{id}/telegram-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Посилання підписки працівника на бот */
+        post: operations["EmployeeTelegramController_createLink_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/employees/{id}/telegram-subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Відписати працівника від бота */
+        delete: operations["EmployeeTelegramController_unsubscribe_v1"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6951,6 +7073,12 @@ export interface components {
             icon?: string;
             sortOrder?: number;
         };
+        TelegramSubscriptionStatusDto: {
+            /** @description Є активна підписка (бот надсилає в цей чат) */
+            active: boolean;
+            /** @description Коли підписався (ISO); null — підписки немає */
+            subscribedAt: string | null;
+        };
         EmployeeResponseDto: {
             id: string;
             orgId: string;
@@ -6974,6 +7102,8 @@ export interface components {
             updatedAt: string;
             /** @description Set when the employee is soft-deleted */
             deletedAt?: string | null;
+            /** @description Підписка на Telegram-бот СТО (лише картка працівника, BR-AUT-041) */
+            telegramSubscription?: components["schemas"]["TelegramSubscriptionStatusDto"];
         };
         EmployeeListDto: {
             items: components["schemas"]["EmployeeResponseDto"][];
@@ -7028,6 +7158,16 @@ export interface components {
             contactPerson?: string | null;
             taxNumber?: string | null;
             balance?: number;
+            noServiceMessages?: boolean;
+            marketingConsent?: boolean;
+            /** @description Коли змінено згоду (ISO) */
+            marketingConsentAt?: string | null;
+            /** @description Хто змінив згоду */
+            marketingConsentById?: string | null;
+            /** @enum {string|null} */
+            preferredChannel?: "SMS" | "VIBER" | "EMAIL" | "TELEGRAM" | "TELEGRAM_BOT" | null;
+            /** @description Підписка на Telegram-бот СТО (лише у detail view, BR-AUT-041) */
+            telegramSubscription?: components["schemas"]["TelegramSubscriptionStatusDto"];
             createdAt: string;
             updatedAt: string;
             /** @description Set when soft-deleted (showDeleted=true) */
@@ -11198,6 +11338,23 @@ export interface components {
         ReadAllResultDto: {
             /** @description Скільки позначено прочитаними */
             updated: number;
+        };
+        TelegramBotStatusDto: {
+            connected: boolean;
+            /** @description Ім'я бота (@username) для посилань */
+            username: string | null;
+        };
+        ConnectTelegramBotDto: {
+            /** @description Токен бота від @BotFather (лише запис — у відповіді не повертається) */
+            token: string;
+        };
+        TelegramLinkDto: {
+            /** @description Одноразовий код (параметр start) */
+            code: string;
+            /** @description https://t.me/<бот>?start=<код> — і для QR */
+            url: string;
+            /** @description Код діє до (ISO) */
+            expiresAt: string;
         };
     };
     responses: never;
@@ -22637,6 +22794,208 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EmployeeNotificationResponseDto"];
+                };
+            };
+        };
+    };
+    TelegramBotSettingsController_status_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramBotStatusDto"];
+                };
+            };
+        };
+    };
+    TelegramBotSettingsController_connect_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectTelegramBotDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramBotStatusDto"];
+                };
+            };
+        };
+    };
+    TelegramBotSettingsController_disconnect_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramBotStatusDto"];
+                };
+            };
+        };
+    };
+    CounterpartyTelegramController_createLink_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramLinkDto"];
+                };
+            };
+        };
+    };
+    CounterpartyTelegramController_unsubscribe_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramSubscriptionStatusDto"];
+                };
+            };
+        };
+    };
+    EmployeeTelegramController_createMyLink_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramLinkDto"];
+                };
+            };
+        };
+    };
+    EmployeeTelegramController_mySubscription_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramSubscriptionStatusDto"];
+                };
+            };
+        };
+    };
+    EmployeeTelegramController_unsubscribeMe_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramSubscriptionStatusDto"];
+                };
+            };
+        };
+    };
+    EmployeeTelegramController_createLink_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramLinkDto"];
+                };
+            };
+        };
+    };
+    EmployeeTelegramController_unsubscribe_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramSubscriptionStatusDto"];
                 };
             };
         };

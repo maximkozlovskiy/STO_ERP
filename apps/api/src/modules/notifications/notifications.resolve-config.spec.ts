@@ -10,6 +10,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import type { TelegramRecipientsService } from './telegram-recipients.service';
 import { NotificationChannel } from '@prisma/client';
 import type { Queue } from 'bullmq';
 import { NotificationsService } from './notifications.service';
@@ -44,7 +45,7 @@ describe('NotificationsService.resolveConfig', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new NotificationsService(prisma, registry, queue);
+    service = new NotificationsService(prisma, registry, queue, {} as TelegramRecipientsService);
   });
 
   const cfgRow = (over: Partial<Record<string, unknown>> = {}) => ({
@@ -354,7 +355,7 @@ describe('NotificationsService.resolveConfig (EMAIL subject)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new NotificationsService(prisma, registry, queue);
+    service = new NotificationsService(prisma, registry, queue, {} as TelegramRecipientsService);
   });
 
   it('EMAIL-канал з локальним шаблоном (body+subject) → templateBody+templateSubject у config', async () => {

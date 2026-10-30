@@ -27,13 +27,21 @@ export class NotificationProviderRegistry {
   }
 
   /** Метадані всіх провайдерів для UI (без кредів). */
-  list(): Array<{ code: string; name: string; channels: string[]; templateChannels: string[] }> {
+  list(): Array<{
+    code: string;
+    name: string;
+    channels: string[];
+    templateChannels: string[];
+    orgCredentials: boolean;
+  }> {
     return [...this.providers.values()].map(p => ({
       code: p.code,
       name: p.name,
       channels: p.channels,
       // Канали, що потребують externalTemplateId — UI показує поле «ID шаблону» саме для них.
       templateChannels: p.templateChannels ?? [],
+      // Креди — у налаштуваннях організації (Telegram-бот): UI не питає ключ і не активує ексклюзивно.
+      orgCredentials: p.orgCredentials ?? false,
     }));
   }
 }

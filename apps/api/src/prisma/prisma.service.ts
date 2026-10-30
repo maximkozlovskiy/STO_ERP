@@ -17,6 +17,8 @@ export const ENCRYPTED_FIELDS: Readonly<Record<string, readonly string[]>> = {
   BranchProviderConfig: ['credentials'],
   // Підключення до API постачальників (BR-SCON): креди й кеш JWT (UTR/AD) — JSON-рядки цілим полем.
   SupplierConnection: ['credentials', 'authState'],
+  // Токен власного Telegram-бота організації (BR-AUT-040).
+  OrganisationSettings: ['telegramBotToken'],
 };
 
 // Models that carry syncVersion — auto-incremented on every write, set to 1 on create

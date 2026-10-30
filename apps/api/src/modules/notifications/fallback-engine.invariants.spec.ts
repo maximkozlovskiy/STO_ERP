@@ -1,4 +1,5 @@
 import * as fc from 'fast-check';
+import type { TelegramRecipientsService } from './telegram-recipients.service';
 import { vi, describe, it, expect } from 'vitest';
 import { NotificationChannel } from '@prisma/client';
 import type { Job, Queue } from 'bullmq';
@@ -53,9 +54,15 @@ async function runChain(outcomes: Outcome[]): Promise<{
     get: vi.fn((_provider: string) => ({ send })),
   } as unknown as NotificationProviderRegistry;
 
-  const processor = new SmsProcessor(registry, prisma, queue, {
-    capture: vi.fn(),
-  } as unknown as DeadLetterService);
+  const processor = new SmsProcessor(
+    registry,
+    prisma,
+    queue,
+    {
+      capture: vi.fn(),
+    } as unknown as DeadLetterService,
+    {} as TelegramRecipientsService,
+  );
   // Приглушити app-логи у 600 property-run-ах (шум, не поведінка).
   vi.spyOn(processor['logger'], 'log').mockImplementation(() => undefined);
   vi.spyOn(processor['logger'], 'warn').mockImplementation(() => undefined);

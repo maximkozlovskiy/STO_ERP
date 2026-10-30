@@ -7,6 +7,7 @@ import type { NotificationLogMeta } from './notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runWithTenant } from '../../common/tenant/tenant-context';
 import { NotificationProviderRegistry } from './providers/provider-registry';
+import { TelegramRecipientsService } from './telegram-recipients.service';
 import { DeadLetterWorkerHost } from '../../modules/dead-letter/dead-letter-worker-host';
 import { DeadLetterService } from '../../modules/dead-letter/dead-letter.service';
 
@@ -57,6 +58,7 @@ export class SmsProcessor extends DeadLetterWorkerHost {
     private readonly prisma: PrismaService,
     @InjectQueue('sms') private readonly smsQueue: Queue,
     deadLetter: DeadLetterService,
+    private readonly telegram: TelegramRecipientsService,
   ) {
     super(deadLetter);
   }
@@ -105,7 +107,10 @@ export class SmsProcessor extends DeadLetterWorkerHost {
       }
 
       // T8: apiKey НЕ зберігається у job.data (Redis plaintext) — резолвимо+розшифровуємо у point-of-use.
-      const apiKey = await this.resolveApiKey(orgId, branchId, step.channel);
+      // Провайдер із кредами організації (власний Telegram-бот) — токен із налаштувань org.
+      const apiKey = impl.orgCredentials
+        ? await this.telegram.botToken(orgId)
+        : await this.resolveApiKey(orgId, branchId, step.channel);
       if (!apiKey) {
         await this.log(orgId, branchId, { event, meta }, step, 'FAILED', {
           error: `Не знайдено активний apiKey для ${step.channel}/${step.provider}`,
@@ -136,9 +141,16 @@ export class SmsProcessor extends DeadLetterWorkerHost {
         return;
       }
 
+      // BR-AUT-041: одержувач заблокував бота — підписку вимкнено, наступні повідомлення йдуть
+      // іншими каналами ланцюжка.
+      let error = result.error;
+      if (result.recipientBlocked) {
+        await this.telegram.deactivateChat(orgId, step.recipient);
+        error = `${result.error ?? 'Telegram 403'} — підписку на бота вимкнено`;
+      }
       // Відхилено провайдером — лог REJECTED і спроба наступного каналу.
       await this.log(orgId, branchId, { event, meta }, step, 'REJECTED', {
-        error: result.error,
+        error,
         attempt: job.attemptsMade + 1,
       });
 
@@ -152,6 +164,8 @@ export class SmsProcessor extends DeadLetterWorkerHost {
         return;
       }
 
+      // Остаточна відмова (заблоковано, чат не знайдено) — повтор нічого не змінить.
+      if (result.permanent) return;
       // Останній канал відхилено → BullMQ retry (транзієнтна помилка провайдера/мережі).
       throw new Error(result.error ?? `${step.channel} відхилено провайдером`);
     });

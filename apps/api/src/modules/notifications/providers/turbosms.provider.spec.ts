@@ -150,6 +150,7 @@ describe('NotificationProviderRegistry', () => {
         channels: [NotificationChannel.SMS, NotificationChannel.VIBER],
         // turbosms — усі канали inline (текст inline), template-каналів немає.
         templateChannels: [],
+        orgCredentials: false,
       },
       {
         code: 'esputnik',
@@ -161,12 +162,14 @@ describe('NotificationProviderRegistry', () => {
         ],
         // eSputnik — Viber/Telegram лише через готовий шаблон (smartsend).
         templateChannels: [NotificationChannel.VIBER, NotificationChannel.TELEGRAM],
+        orgCredentials: false,
       },
       {
         code: 'smtp',
         name: 'Email (SMTP)',
         channels: [NotificationChannel.EMAIL],
         templateChannels: [], // email inline (тема+тіло з наших шаблонів)
+        orgCredentials: false,
       },
     ]);
   });

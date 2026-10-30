@@ -20625,6 +20625,316 @@
           "notifications"
         ]
       }
+    },
+    "/api/v1/settings/telegram-bot": {
+      "get": {
+        "operationId": "TelegramBotSettingsController_status_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramBotStatusDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Стан власного Telegram-бота (токен не віддається)",
+        "tags": [
+          "Telegram-бот"
+        ]
+      },
+      "put": {
+        "operationId": "TelegramBotSettingsController_connect_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectTelegramBotDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramBotStatusDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Підключити бота: перевірка getMe, токен зберігається зашифрованим",
+        "tags": [
+          "Telegram-бот"
+        ]
+      },
+      "delete": {
+        "operationId": "TelegramBotSettingsController_disconnect_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramBotStatusDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Відключити бота (опитування зупиняється)",
+        "tags": [
+          "Telegram-бот"
+        ]
+      }
+    },
+    "/api/v1/counterparties/{id}/telegram-link": {
+      "post": {
+        "operationId": "CounterpartyTelegramController_createLink_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramLinkDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Посилання підписки клієнта на бот (одноразовий код, 7 днів)",
+        "tags": [
+          "Telegram-бот"
+        ]
+      }
+    },
+    "/api/v1/counterparties/{id}/telegram-subscription": {
+      "delete": {
+        "operationId": "CounterpartyTelegramController_unsubscribe_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramSubscriptionStatusDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Відписати клієнта від бота",
+        "tags": [
+          "Telegram-бот"
+        ]
+      }
+    },
+    "/api/v1/employees/me/telegram-link": {
+      "post": {
+        "operationId": "EmployeeTelegramController_createMyLink_v1",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramLinkDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Посилання підписки на бот для себе",
+        "tags": [
+          "Telegram-бот"
+        ]
+      }
+    },
+    "/api/v1/employees/me/telegram-subscription": {
+      "get": {
+        "operationId": "EmployeeTelegramController_mySubscription_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramSubscriptionStatusDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Моя підписка на бот",
+        "tags": [
+          "Telegram-бот"
+        ]
+      },
+      "delete": {
+        "operationId": "EmployeeTelegramController_unsubscribeMe_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramSubscriptionStatusDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Відписатися від бота",
+        "tags": [
+          "Telegram-бот"
+        ]
+      }
+    },
+    "/api/v1/employees/{id}/telegram-link": {
+      "post": {
+        "operationId": "EmployeeTelegramController_createLink_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramLinkDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Посилання підписки працівника на бот",
+        "tags": [
+          "Telegram-бот"
+        ]
+      }
+    },
+    "/api/v1/employees/{id}/telegram-subscription": {
+      "delete": {
+        "operationId": "EmployeeTelegramController_unsubscribe_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramSubscriptionStatusDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Відписати працівника від бота",
+        "tags": [
+          "Telegram-бот"
+        ]
+      }
     }
   },
   "info": {
@@ -22468,6 +22778,24 @@
           }
         }
       },
+      "TelegramSubscriptionStatusDto": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Є активна підписка (бот надсилає в цей чат)"
+          },
+          "subscribedAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Коли підписався (ISO); null — підписки немає"
+          }
+        },
+        "required": [
+          "active",
+          "subscribedAt"
+        ]
+      },
       "EmployeeResponseDto": {
         "type": "object",
         "properties": {
@@ -22561,6 +22889,14 @@
             "type": "string",
             "nullable": true,
             "description": "Set when the employee is soft-deleted"
+          },
+          "telegramSubscription": {
+            "description": "Підписка на Telegram-бот СТО (лише картка працівника, BR-AUT-041)",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TelegramSubscriptionStatusDto"
+              }
+            ]
           }
         },
         "required": [
@@ -22792,6 +23128,41 @@
           },
           "balance": {
             "type": "number"
+          },
+          "noServiceMessages": {
+            "type": "boolean"
+          },
+          "marketingConsent": {
+            "type": "boolean"
+          },
+          "marketingConsentAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Коли змінено згоду (ISO)"
+          },
+          "marketingConsentById": {
+            "type": "string",
+            "nullable": true,
+            "description": "Хто змінив згоду"
+          },
+          "preferredChannel": {
+            "nullable": true,
+            "enum": [
+              "SMS",
+              "VIBER",
+              "EMAIL",
+              "TELEGRAM",
+              "TELEGRAM_BOT"
+            ],
+            "type": "string"
+          },
+          "telegramSubscription": {
+            "description": "Підписка на Telegram-бот СТО (лише у detail view, BR-AUT-041)",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TelegramSubscriptionStatusDto"
+              }
+            ]
           },
           "createdAt": {
             "type": "string"
@@ -37532,6 +37903,58 @@
         },
         "required": [
           "updated"
+        ]
+      },
+      "TelegramBotStatusDto": {
+        "type": "object",
+        "properties": {
+          "connected": {
+            "type": "boolean"
+          },
+          "username": {
+            "type": "string",
+            "nullable": true,
+            "description": "Ім'я бота (@username) для посилань"
+          }
+        },
+        "required": [
+          "connected",
+          "username"
+        ]
+      },
+      "ConnectTelegramBotDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 130,
+            "description": "Токен бота від @BotFather (лише запис — у відповіді не повертається)"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "TelegramLinkDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Одноразовий код (параметр start)"
+          },
+          "url": {
+            "type": "string",
+            "description": "https://t.me/<бот>?start=<код> — і для QR"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "Код діє до (ISO)"
+          }
+        },
+        "required": [
+          "code",
+          "url",
+          "expiresAt"
         ]
       }
     }

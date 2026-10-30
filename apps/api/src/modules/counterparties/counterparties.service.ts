@@ -1,11 +1,18 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ContractType, CounterpartyType, LegalForm, Prisma } from '@prisma/client';
+import {
+  ContractType,
+  CounterpartyType,
+  LegalForm,
+  type NotificationChannel,
+  Prisma,
+} from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { calculatePagination } from '../../common/utils/pagination';
 import { initCountsMap } from '../../common/utils/linked-counts';
 import { searchContains } from '../../common/utils/like-pattern';
 import { PrismaService } from '../../prisma/prisma.service';
+import { telegramSubscriptionStatus } from '../notifications/telegram-recipients.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { AuditService } from '../audit/audit.service';
 import { CounterpartyStatusesService } from '../counterparty-statuses/counterparty-statuses.service';
@@ -219,18 +226,22 @@ export class CounterpartiesService {
   }
 
   async findOne(orgId: string, id: string): Promise<CounterpartyResponseDto> {
-    const item = await this.prisma.counterparty.findFirst({
-      where: { id, orgId, deletedAt: null },
-      include: {
-        settlementAccount: { select: { balance: true } },
-        statusLinks: {
-          select: { status: { select: { id: true, name: true, color: true, deletedAt: true } } },
+    const [item, telegramSubscription] = await Promise.all([
+      this.prisma.counterparty.findFirst({
+        where: { id, orgId, deletedAt: null },
+        include: {
+          settlementAccount: { select: { balance: true } },
+          statusLinks: {
+            select: { status: { select: { id: true, name: true, color: true, deletedAt: true } } },
+          },
         },
-      },
-    });
+      }),
+      // BR-AUT-041: статус підписки на бот — у картці контрагента.
+      telegramSubscriptionStatus(this.prisma, orgId, 'counterparty', id),
+    ]);
     if (!item)
       throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
-    return this.toDto(item, true);
+    return { ...this.toDto(item, true), telegramSubscription };
   }
 
   /** Призначити статус-мітку контрагенту (M:N). Валідує, що обидва належать org. Ідемпотентно (P2002→no-op). */
@@ -328,7 +339,9 @@ export class CounterpartiesService {
 
     const item = await this.prisma.$transaction(
       async tx => {
-        const cp = await tx.counterparty.create({ data: { ...dto, orgId } });
+        const cp = await tx.counterparty.create({
+          data: { ...dto, orgId, ...this.consentStamp(dto.marketingConsent, false, userId) },
+        });
         // Auto-create settlement account
         await tx.settlementAccount.create({
           data: { orgId, counterpartyId: cp.id, balance: 0 },
@@ -411,6 +424,9 @@ export class CounterpartiesService {
         bankName: true,
         contactPerson: true,
         taxNumber: true,
+        noServiceMessages: true,
+        marketingConsent: true,
+        preferredChannel: true,
       },
     });
     if (!existing)
@@ -430,7 +446,10 @@ export class CounterpartiesService {
     }
     const item = await this.prisma.counterparty.update({
       where: { id, orgId },
-      data: dto,
+      data: {
+        ...dto,
+        ...this.consentStamp(dto.marketingConsent, existing.marketingConsent, userId),
+      },
       include: { settlementAccount: { select: { balance: true } } },
     });
     // C1b: аудит редагування — diff обчислює AuditService (old=знімок ДО зміни, new=dto).
@@ -457,6 +476,18 @@ export class CounterpartiesService {
         );
     }
     return this.toDto(item, true);
+  }
+
+  /**
+   * BR-AUT-042: зміна згоди на маркетинг — сервер ставить дату й автора; той самий стан — без змін.
+   */
+  private consentStamp(
+    next: boolean | undefined,
+    current: boolean,
+    userId: string | undefined,
+  ): { marketingConsentAt: Date; marketingConsentById: string | null } | Record<string, never> {
+    if (next === undefined || next === current) return {};
+    return { marketingConsentAt: new Date(), marketingConsentById: userId ?? null };
   }
 
   async remove(orgId: string, id: string, userId?: string): Promise<void> {
@@ -1006,6 +1037,11 @@ export class CounterpartiesService {
       bankName: string | null;
       contactPerson: string | null;
       taxNumber: string | null;
+      noServiceMessages?: boolean;
+      marketingConsent?: boolean;
+      marketingConsentAt?: Date | null;
+      marketingConsentById?: string | null;
+      preferredChannel?: NotificationChannel | null;
       createdAt: Date;
       updatedAt: Date;
       deletedAt?: Date | null;
@@ -1037,6 +1073,12 @@ export class CounterpartiesService {
       contactPerson: item.contactPerson,
       taxNumber: item.taxNumber,
       balance: item.settlementAccount ? Number(item.settlementAccount.balance) : 0,
+      // Згода на повідомлення (BR-AUT-042).
+      noServiceMessages: item.noServiceMessages,
+      marketingConsent: item.marketingConsent,
+      marketingConsentAt: item.marketingConsentAt?.toISOString() ?? null,
+      marketingConsentById: item.marketingConsentById ?? null,
+      preferredChannel: item.preferredChannel ?? null,
       createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
       updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
       deletedAt: item.deletedAt instanceof Date ? item.deletedAt.toISOString() : item.deletedAt,

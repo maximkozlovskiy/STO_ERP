@@ -37,6 +37,8 @@ const EXTERNAL_API_QUEUES: Record<string, string> = {
   'supplier-search': 'API постачальників автозапчастин (перевірка, пошук пропозицій)',
   'supplier-order': 'API постачальників автозапчастин (замовлення, статуси)',
   'supplier-catalog': 'API постачальника (дзеркало каталогу AVD)',
+  // Опитування getUpdates власного Telegram-бота (BR-AUT-041); надсилання — черга `sms`.
+  'telegram-bot': 'Telegram Bot API (опитування оновлень)',
 };
 
 /** Черги, чий процесор працює лише з власною БД/Redis (правило про зовнішні API їх не стосується). */
@@ -411,6 +413,7 @@ describe('Політика повторів черг зовнішніх API (с�
       'supplier-search': 2,
       'supplier-catalog': 3,
       'supplier-order': 4,
+      'telegram-bot': 1,
     });
     expect(found.registerSites.filter(r => r.name !== null).length).toBeGreaterThanOrEqual(14);
   });
