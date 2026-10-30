@@ -416,7 +416,12 @@ function ListDetailModal({
     setDocCounts(null);
   }, [listId]);
   const linkedConfig = usePurchaseListLinkedConfig();
-  const docTotal = docCounts ? Object.values(docCounts).reduce((a, b) => a + b, 0) : 0;
+  // Лічильник вкладки — одразу, з тих самих лічильників, що колонка «Документи» таблиці; після
+  // відкриття вкладки — з її відповіді (свіжіша). Раніше число з'являлось лише після першого кліку.
+  const countIds = useMemo(() => (listId ? [listId] : []), [listId]);
+  const seededCounts = usePurchaseListLinkedCounts(countIds);
+  const counts = docCounts ?? (listId ? seededCounts[listId] : undefined);
+  const docTotal = counts ? Object.values(counts).reduce((a, b) => a + b, 0) : 0;
 
   const ids = Array.from(bulk.selected);
   const splitOut = () =>

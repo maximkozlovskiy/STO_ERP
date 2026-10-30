@@ -4,7 +4,8 @@
 //
 // Mutation-verify: колонка без `counts={linkedCounts[l.id]}` → «лічильники» падає; клік по
 // лічильнику відкриває картку замість вікна (без stopPropagation) → «вікно документів» падає;
-// вкладка не скидається на іншому списку → «інший список» падає.
+// вкладка не скидається на іншому списку → «інший список» падає; лічильник вкладки лише з відповіді
+// панелі (без `usePurchaseListLinkedCounts([listId])`) → «до першого її відкриття» падає.
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -111,7 +112,8 @@ describe('Списки купівлі — пов’язані документи
     expect(within(row).getByTitle('Наряди: 2')).toHaveTextContent('2');
     expect(within(row).getByTitle('Замовлення постачальнику: 1')).toBeInTheDocument();
     expect(within(row).queryByTitle(/Обʼєднані списки/)).toBeNull();
-    expect(countsCalls.at(-1)).toEqual(['pl-1', 'pl-2']);
+    // Таблиця — один набір на відсортовані id сторінки (картка списку питає лише свій id).
+    expect(countsCalls).toContainEqual(['pl-1', 'pl-2']);
   });
 
   // guards: BR-PL-020
@@ -121,7 +123,7 @@ describe('Списки купівлі — пов’язані документи
     expect(screen.getByTestId('linked-popup')).toHaveTextContent(
       '/purchase-lists/pl-1/linked-documents',
     );
-    expect(screen.queryByRole('tab', { name: 'Документи' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: /^Документи/ })).toBeNull();
   });
 
   // guards: BR-PL-020
@@ -131,15 +133,23 @@ describe('Списки купівлі — пов’язані документи
     expect(screen.getByRole('tab', { name: 'Основне' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByTestId('linked-panel')).toBeNull();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Документи' }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Документи/ }));
     expect(screen.getByTestId('linked-panel')).toHaveTextContent(
       '/purchase-lists/pl-1/linked-documents',
     );
   });
 
+  // guards: BR-PL-020 — число на вкладці видно одразу, а не лише після першого відкриття вкладки.
+  it('картка: лічильник на вкладці «Документи» — до першого її відкриття', () => {
+    renderView();
+    fireEvent.click(screen.getAllByTestId('purchase-list-row')[0]!);
+    expect(screen.getByRole('tab', { name: /^Документи/ })).toHaveTextContent(/Документи\s*3$/);
+    expect(countsCalls).toContainEqual(['pl-1']);
+  });
+
   it('інший список у тій самій картці (перехід з «Обʼєднаних списків») — знову «Основне»', () => {
     const { rerender } = renderView('pl-1');
-    fireEvent.click(screen.getByRole('tab', { name: 'Документи' }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Документи/ }));
     expect(screen.getByTestId('linked-panel')).toBeInTheDocument();
 
     rerender('pl-2');
