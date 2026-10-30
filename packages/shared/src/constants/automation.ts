@@ -35,3 +35,10 @@ export const AUTOMATION_PAYMENT_ACTIVE_STATUS = 'ACTIVE';
 
 /** Термін дії одноразового коду підписки на Telegram-бот (рішення власника 2026-10-29). */
 export const TELEGRAM_LINK_CODE_TTL_DAYS = 7;
+
+/**
+ * Код провайдера власного Telegram-бота в каналах філії (`NotificationChannelConfig.provider`,
+ * BR-AUT-011, 040). Рядок каналу TELEGRAM_BOT цього провайдера — лише місце бота в пріоритеті
+ * філії, без облікових даних: токен бота — у налаштуваннях організації.
+ */
+export const TELEGRAM_BOT_PROVIDER = 'telegram-bot';

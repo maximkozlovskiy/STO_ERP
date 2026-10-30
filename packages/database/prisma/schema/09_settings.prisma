@@ -64,6 +64,9 @@ model OrganisationSettings {
   // Власний Telegram-бот (BR-AUT-040): токен зашифровано (як apiKey каналів), ім'я бота — для посилань.
   telegramBotToken                 String?
   telegramBotUsername              String?
+  // Наступний update_id для getUpdates (long polling, BR-AUT-041): оновлення не обробляються
+  // вдруге після рестарту api. Зміна / відключення токена — null.
+  telegramBotUpdateOffset          BigInt?
   // Скільки днів зберігати логи зовнішніх обмінів (IntegrationLog). Читається purge-scheduler
   // (НЕ hardcoded). Append-only таблиця → щоденне очищення старших за N днів. clamp [1,365].
   integrationLogRetentionDays      Int             @default(30)

@@ -484,6 +484,16 @@ export const VALIDATION_KEYS = [
   'err.automation.testNoContact',
   'err.automation.notificationNotFound',
   'err.automation.systemAuthor',
+  // Власний Telegram-бот (BR-AUT-040, 041): підключення, коди підписки, відповіді бота
+  'err.telegramBot.invalidToken',
+  'err.telegramBot.unreachable',
+  'err.telegramBot.notConnected',
+  'bot.telegram.subscribed',
+  'bot.telegram.codeExpired',
+  'bot.telegram.codeUsed',
+  'bot.telegram.codeUnknown',
+  'bot.telegram.startHint',
+  'bot.telegram.unsubscribed',
   // Exception-повідомлення: warranties-модуль
   'err.warranty.notFound',
   'err.warranty.workOrderNotFound',

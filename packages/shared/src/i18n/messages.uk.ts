@@ -324,10 +324,26 @@ export const uk: Record<string, string> = {
   'err.automation.branchNotFound': 'Філію з умови правила не знайдено',
   'err.automation.employeeNotFound': 'Працівника з правила не знайдено або його звільнено',
   'err.automation.documentNotFound': 'Документ для тесту не знайдено',
-  'err.automation.testNoContact':
-    'У вашому профілі немає телефону чи email для тестового повідомлення',
   'err.automation.notificationNotFound': 'Сповіщення не знайдено',
   'err.automation.systemAuthor': 'Автоматизація',
+  'err.automation.testNoContact':
+    'У вашому профілі немає телефону, email чи підписки на Telegram-бот для тестового повідомлення',
+  'err.telegramBot.invalidToken':
+    'Telegram не прийняв токен бота — перевірте, чи його скопійовано повністю',
+  'err.telegramBot.unreachable':
+    "Немає зв'язку з Telegram — перевірте інтернет і спробуйте підключити бота ще раз",
+  'err.telegramBot.notConnected': 'Telegram-бот не підключено — додайте токен бота в налаштуваннях',
+  'bot.telegram.subscribed':
+    'Готово! Ви підписані на повідомлення «{{org}}». Щоб відписатися, надішліть /stop.',
+  'bot.telegram.codeExpired':
+    'Посилання для підписки прострочене. Попросіть у «{{org}}» нове посилання.',
+  'bot.telegram.codeUsed': 'Це посилання вже використано. Попросіть у «{{org}}» нове посилання.',
+  'bot.telegram.codeUnknown':
+    'Посилання для підписки недійсне. Попросіть у «{{org}}» нове посилання.',
+  'bot.telegram.startHint':
+    'Щоб отримувати повідомлення від «{{org}}», відкрийте персональне посилання підписки, яке вам надіслали.',
+  'bot.telegram.unsubscribed':
+    'Ви відписалися від повідомлень «{{org}}». Щоб підписатися знову, відкрийте нове посилання.',
   'err.warranty.lineNotFound': 'Рядок наряду не знайдено',
   'err.warranty.partNotFound': 'Запчастину наряду не знайдено',
   'err.warranty.endDateFuture': 'Дата завершення гарантії має бути в майбутньому',

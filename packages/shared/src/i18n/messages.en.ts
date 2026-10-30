@@ -319,9 +319,25 @@ export const en: Record<string, string> = {
   'err.automation.branchNotFound': 'The branch in the rule condition was not found',
   'err.automation.employeeNotFound': 'The employee in the rule was not found or has been dismissed',
   'err.automation.documentNotFound': 'The document for the test was not found',
-  'err.automation.testNoContact': 'Your profile has no phone or email for the test message',
   'err.automation.notificationNotFound': 'Notification not found',
   'err.automation.systemAuthor': 'Automation',
+  'err.automation.testNoContact':
+    'Your profile has no phone, email or Telegram bot subscription for the test message',
+  'err.telegramBot.invalidToken':
+    'Telegram rejected the bot token — check that it was copied in full',
+  'err.telegramBot.unreachable':
+    'Telegram is unreachable — check the internet connection and try connecting the bot again',
+  'err.telegramBot.notConnected':
+    'The Telegram bot is not connected — add the bot token in settings',
+  'bot.telegram.subscribed':
+    'Done! You are subscribed to messages from "{{org}}". To unsubscribe, send /stop.',
+  'bot.telegram.codeExpired': 'The subscription link has expired. Ask "{{org}}" for a new one.',
+  'bot.telegram.codeUsed': 'This link has already been used. Ask "{{org}}" for a new one.',
+  'bot.telegram.codeUnknown': 'The subscription link is invalid. Ask "{{org}}" for a new one.',
+  'bot.telegram.startHint':
+    'To receive messages from "{{org}}", open the personal subscription link you were sent.',
+  'bot.telegram.unsubscribed':
+    'You have unsubscribed from messages from "{{org}}". To subscribe again, open a new link.',
   'err.warranty.lineNotFound': 'Work order line not found',
   'err.warranty.partNotFound': 'Work order part not found',
   'err.warranty.endDateFuture': 'The warranty end date must be in the future',
