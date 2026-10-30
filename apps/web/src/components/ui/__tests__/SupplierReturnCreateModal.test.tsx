@@ -162,7 +162,7 @@ describe('SupplierReturnCreateModal — повтор товару окремим
 
     // У таблиці два рядки одного товару; сума — обох: 2 × 100 + 1 × 90.
     await waitFor(() => expect(within(table).getAllByText('Фільтр')).toHaveLength(2));
-    expect(table).toHaveTextContent('290.00');
+    expect(table).toHaveTextContent('290,00');
 
     await user.click(screen.getByRole('button', { name: 'Зберегти зміни' }));
 
@@ -255,7 +255,7 @@ describe('SupplierReturnCreateModal — повтор товару окремим
     render(<SupplierReturnCreateModal open onClose={() => {}} onSaved={() => {}} editId="sr1" />);
     await screen.findAllByText('Фільтр');
     const table = screen.getByRole('table');
-    expect(within(table).getAllByText('30.02')).toHaveLength(2);
-    expect(table).toHaveTextContent('60.04');
+    expect(within(table).getAllByText('30,02')).toHaveLength(2);
+    expect(table).toHaveTextContent('60,04');
   });
 });

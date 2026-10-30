@@ -242,8 +242,8 @@ describe('Картка замовлення постачальнику — су�
       within(row)
         .getAllByRole('cell')
         .map(c => c.textContent),
-    ).toContain('30.02');
-    expect(totalRow()).toHaveTextContent('30.02');
+    ).toContain('30,02');
+    expect(totalRow()).toHaveTextContent('30,02');
   });
 
   it('замовлення: три рядки 0,3 × 111,11 — «Разом» 99.99', async () => {
@@ -255,7 +255,7 @@ describe('Картка замовлення постачальнику — су�
       <PurchaseOrderCreateModal open purchaseOrderId="po-1" onClose={vi.fn()} />,
     );
     await screen.findByText('Товар В', undefined, { timeout: 2000 });
-    expect(totalRow()).toHaveTextContent('99.99');
+    expect(totalRow()).toHaveTextContent('99,99');
   });
 });
 
@@ -281,7 +281,7 @@ describe('Картка складського документа — сума р
     );
     render(<StockDocumentCreateModal open stockDocumentId="sd-1" onClose={vi.fn()} />);
     // Колонки: товар · артикул · ОВ · к-сть · ціна · сума.
-    expect(await lineCell('Фільтр', 5)).toBe('30.02');
+    expect(await lineCell('Фільтр', 5)).toBe('30,02');
     expect(totalRow()).toHaveTextContent('30,02');
   });
 
@@ -305,6 +305,6 @@ describe('Картка складського документа — сума р
     await user.clear(qty);
     await user.type(qty, '0.3');
     await user.type(within(row).getByPlaceholderText('0.00'), '100.05');
-    expect(within(row).getAllByRole('cell')[5]).toHaveTextContent('30.02');
+    expect(within(row).getAllByRole('cell')[5]).toHaveTextContent('30,02');
   });
 });

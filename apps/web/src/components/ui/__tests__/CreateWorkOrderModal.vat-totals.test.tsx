@@ -198,13 +198,13 @@ describe('CreateWorkOrderModal — підсумок з ПДВ за режимо�
     expect(row('vat-totals-gross')).toBe('Разом527,98');
   });
 
-  it('рядок 0.3 × 100.05 показано як 30.02 — так само, як його зберігає бекенд', async () => {
+  it('рядок 0.3 × 100.05 показано як 30,02 — так само, як його зберігає бекенд', async () => {
     mockApi({ vatMode: 'NONE', lines: [{ normoHours: 0.3, price: 100.05 }] });
     await openModal();
 
     await waitFor(() => expect(row('vat-totals-gross')).toBe('Разом230,02'));
-    expect(screen.getAllByText('30.02').length).toBeGreaterThan(0);
-    expect(screen.queryByText('30.01')).toBeNull();
+    expect(screen.getAllByText('30,02').length).toBeGreaterThan(0);
+    expect(screen.queryByText('30,01')).toBeNull();
   });
 
   it('ставка за замовчуванням береться з налаштувань організації, а не з прапорця isDefault', async () => {
