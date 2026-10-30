@@ -472,15 +472,13 @@ export function InvoiceCreateModal({
   // BR-INV-017: сума рядка округлена до копійки (`lineAmount`), як її пише сервер, а «Разом» —
   // сума округлених рядків: сирий добуток давав 0,3 × 100,05 = «30.01» замість 30.02 і три рядки
   // 0,3 × 111,11 = «100.00» замість 99.99 (клас Bug #811).
-  const total = useMemo(
-    () =>
-      roundMoney(
-        (watchedLines ?? []).reduce(
-          (sum, l) => sum + linePreviewTotal(l as LocalLine, serverNetRef.current),
-          0,
-        ),
-      ),
-    [watchedLines],
+  // Без useMemo: `watch('lines')` повертає той самий масив, коли міняється поле рядка (кількість,
+  // ціна), — мемо за ним лишало «Разом» старим, хоча сума рядка вже нова.
+  const total = roundMoney(
+    (watchedLines ?? []).reduce(
+      (sum, l) => sum + linePreviewTotal(l as LocalLine, serverNetRef.current),
+      0,
+    ),
   );
   // Без жодного рядка — збережена сума документа (те, що показує список і що оплачують);
   // щойно рядки є, «Разом» рахується з них.

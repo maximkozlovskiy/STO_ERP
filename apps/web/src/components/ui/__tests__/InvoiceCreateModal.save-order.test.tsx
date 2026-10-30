@@ -156,10 +156,13 @@ describe('Картка рахунку — збереження рядків (BR-
     expect(lineCalls()).toEqual(['DELETE lines/l-b']);
   });
 
-  it('змінена кількість — сума рядка з ПДВ пропорційно (120 → 360), «Разом» теж', async () => {
+  it('змінена кількість — сума рядка з ПДВ пропорційно (120 → 360), «Разом» теж (216 → 456)', async () => {
     await openCard();
     fireEvent.change(screen.getByLabelText('Кількість: Діагностика'), { target: { value: '3' } });
     const sums = screen.getAllByTestId('invoice-line-sum').map(el => el.textContent);
     expect(sums).toEqual(['360,00', '60,00', '36,00']);
+    // «Разом» — теж перераховано (watch('lines') віддає той самий масив — мемо за ним лишало 216).
+    const totalRow = screen.getByText('Разом:').closest('tr') as HTMLElement;
+    expect(totalRow.textContent?.replace(/\s/g, '')).toContain('456,00');
   });
 });

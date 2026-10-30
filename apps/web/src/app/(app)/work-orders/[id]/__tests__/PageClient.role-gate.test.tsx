@@ -227,10 +227,8 @@ describe('сторінка наряду — видалений наряд (TECH-
 // ролям кнопки немає (RECEPTIONIST колись зберігав шаблон, тепер — ні).
 // Mutation-verify: прибрати гейт `SERVICE_WRITE_ROLES` → «RECEPTIONIST: кнопки немає» падає.
 describe('сторінка наряду — «Зберегти як послугу» за роллю (BR-WO-036)', () => {
-  const withLine = () =>
-    workOrder({
-      lines: [{ id: 'l1', workId: 'w1', employeeId: 'e1', normoHours: 1, price: 100, amount: 100 }],
-    });
+  const LINE = { id: 'l1', workId: 'w1', employeeId: 'e1', normoHours: 1, price: 100, amount: 100 };
+  const withLine = (over: Record<string, unknown> = {}) => workOrder({ lines: [LINE], ...over });
 
   // guards: BR-WO-036
   it.each(['OWNER', 'ADMIN'])('%s: кнопка є', async r => {
@@ -258,7 +256,7 @@ describe('сторінка наряду — «Зберегти як послуг
 
   // guards: BR-WO-012
   it('видалений наряд — кнопки немає', async () => {
-    wo = { ...withLine(), deletedAt: '2026-10-20T10:00:00.000Z' };
+    wo = withLine({ deletedAt: '2026-10-20T10:00:00.000Z' });
     renderPage();
     await woShown();
     expect(screen.queryByRole('button', { name: 'Зберегти як послугу' })).toBeNull();
