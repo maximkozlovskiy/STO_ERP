@@ -43,6 +43,7 @@ const cp = {
   email: 'ivan@example.com',
   noServiceMessages: false,
   marketingConsent: true,
+  preferredChannel: 'TELEGRAM_BOT',
 };
 const supplier = { firstName: null, lastName: null, companyName: 'ТОВ Запчастини' };
 const vehicle = { make: 'Toyota', model: 'Camry', licensePlate: 'AA1234BB' };
@@ -210,9 +211,9 @@ describe('AutomationContextService — змінні й одержувачі', ()
     expect(eventVars(ctx!, at).status).toBe('Виконано');
   });
 
-  // guards: BR-AUT-010
-  it('одержувач: контрагент документа зі згодами; онлайн-запис — ім’я й телефон заявки', async () => {
-    const { svc } = service();
+  // guards: BR-AUT-010, BR-AUT-011
+  it('одержувач: контрагент документа зі згодами й бажаним каналом; онлайн-запис — ім’я й телефон заявки', async () => {
+    const { svc, prisma } = service();
     const wo = await svc.load('org-a', 'WORK_ORDER', 'doc-1');
     expect(wo!.client).toEqual({
       counterpartyId: 'cp-1',
@@ -221,12 +222,28 @@ describe('AutomationContextService — змінні й одержувачі', ()
       email: 'ivan@example.com',
       noServiceMessages: false,
       marketingConsent: true,
+      preferredChannel: 'TELEGRAM_BOT',
     });
+    // Фейк віддає заготовку — тож поле, яке справжня Prisma поверне, перевіряємо в select-і.
+    const withClient = [
+      ['workOrder', 'WORK_ORDER'],
+      ['invoice', 'INVOICE'],
+      ['payment', 'PAYMENT'],
+    ] as const;
+    for (const [model, type] of withClient) {
+      const { findFirst } = prisma[model] as { findFirst: ReturnType<typeof vi.fn> };
+      await svc.load('org-a', type, 'doc-1');
+      const arg = findFirst.mock.calls.at(-1)![0] as {
+        select: { counterparty: { select: Record<string, boolean> } };
+      };
+      expect(arg.select.counterparty.select).toMatchObject({ preferredChannel: true });
+    }
     const booking = await svc.load('org-a', 'BOOKING', 'doc-1');
     expect(booking!.client).toMatchObject({
       counterpartyId: null,
       name: 'Олена',
       phone: '+380501112233',
+      preferredChannel: null,
     });
     const po = await svc.load('org-a', 'PURCHASE_ORDER', 'doc-1');
     expect(po!.client).toBeNull();

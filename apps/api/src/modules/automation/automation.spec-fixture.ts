@@ -74,6 +74,7 @@ export function fakeCtx(over: Partial<DocumentContext> = {}): DocumentContext {
       email: 'ivan@example.com',
       noServiceMessages: false,
       marketingConsent: false,
+      preferredChannel: null,
     },
     responsibleIds: [MECH_1, MECH_2],
     responsibleIsAuthor: false,

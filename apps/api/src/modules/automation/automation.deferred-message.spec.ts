@@ -2,7 +2,8 @@
  * Відкладене повідомлення правила (docs/objects/automation.md, BR-AUT-016): тихі години ставлять
  * повідомлення клієнту в чергу `sms` з паузою до ранку. На мить відправки `SmsProcessor` перевіряє,
  * чи воно ще доречне: документ видалено — не надсилати; повідомлення про «створено» оплати, а оплату
- * сторновано — не надсилати; у журналі SKIPPED із причиною. Звичайна зміна статусу не скасовує.
+ * сторновано — не надсилати; «створено» оплати / повернення постачальнику, а чернетку скасовано —
+ * не надсилати; у журналі SKIPPED із причиною. Звичайна зміна статусу не скасовує.
  *
  * Таблиці документів — у пам'яті з виконанням `where` (memoryTable): зниклий `orgId` чи
  * `deletedAt` у перевірці ламає тест, а не проходить мовчки.
@@ -134,6 +135,50 @@ describe('Відкладене повідомлення правила — до�
     const confirmed = harness({ supplierPayment: [row('CONFIRMED')] });
     await confirmed.process(meta('SUPPLIER_PAYMENT', 'CREATED'));
     expect(confirmed.send).toHaveBeenCalledTimes(1);
+  });
+
+  // Рішення власника 2026-10-30: скасована чернетка оплати постачальнику = сторно — «не надсилати».
+  // Повернення постачальнику має той самий DRAFT → CANCELLED, тож і для нього так само.
+  // guards: BR-AUT-016
+  it.each([
+    ['SUPPLIER_PAYMENT', 'supplierPayment'],
+    ['SUPPLIER_RETURN', 'supplierReturn'],
+  ] as const)(
+    '%s створено, а чернетку скасовано до відправки — не надсилається, SKIPPED DOCUMENT_CANCELLED',
+    async (type, table) => {
+      const h = harness({
+        [table]: [{ id: DOC, orgId: ORG, status: 'CANCELLED', deletedAt: null }],
+      });
+      await h.process(meta(type, 'CREATED'));
+      expect(h.send).not.toHaveBeenCalled();
+      expect(h.queueAdd).not.toHaveBeenCalled(); // ланцюг далі (SMS) не йде
+      expect(h.logs).toEqual([
+        expect.objectContaining({
+          status: 'SKIPPED',
+          skipReason: 'DOCUMENT_CANCELLED',
+          documentType: type,
+          documentId: DOC,
+          channel: 'VIBER',
+        }),
+      ]);
+    },
+  );
+
+  // guards: BR-AUT-016
+  it('повідомлення про САМЕ скасування (зміна статусу) і «створено» проведеного повернення — надсилаються', async () => {
+    const row = (status: string): Row => ({ id: DOC, orgId: ORG, status, deletedAt: null });
+    const cancelNotice = harness({ supplierPayment: [row('CANCELLED')] });
+    await cancelNotice.process(meta('SUPPLIER_PAYMENT', 'STATUS_CHANGED'));
+    expect(cancelNotice.send).toHaveBeenCalledTimes(1);
+
+    const returnCancelNotice = harness({ supplierReturn: [row('CANCELLED')] });
+    await returnCancelNotice.process(meta('SUPPLIER_RETURN', 'STATUS_CHANGED'));
+    expect(returnCancelNotice.send).toHaveBeenCalledTimes(1);
+
+    const confirmedReturn = harness({ supplierReturn: [row('CONFIRMED')] });
+    await confirmedReturn.process(meta('SUPPLIER_RETURN', 'CREATED'));
+    expect(confirmedReturn.send).toHaveBeenCalledTimes(1);
+    expect(confirmedReturn.logs[0]).toMatchObject({ status: 'SENT' });
   });
 
   // guards: BR-AUT-016
