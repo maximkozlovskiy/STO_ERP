@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AUTOMATION_CHANNELS } from '../../constants/automation-rules';
 import { optionalString } from '../validators';
 
 /**
@@ -51,6 +52,13 @@ const counterpartyBaseShape = {
   bankAccount: optionalString(),
   bankName: optionalString(),
   taxNumber: optionalString(),
+  // Згода на повідомлення (BR-AUT-012, 042) і бажаний канал (BR-AUT-011). Дату й автора згоди
+  // ставить сервер. Bug #1000: поля були лише в Swagger-DTO, а тіло валідує ця схема — zod їх
+  // викидав, PATCH відповідав 200 і нічого не зберігав. `null` у прапорцях — 400 з назвою поля.
+  noServiceMessages: z.boolean().optional(),
+  marketingConsent: z.boolean().optional(),
+  // `null` — очистити бажаний канал. Перелік — усі канали повідомлень (= enum NotificationChannel).
+  preferredChannel: z.enum(AUTOMATION_CHANNELS).nullable().optional(),
 };
 
 // Крос-польова перевірка name-by-type; помилка на companyName (форма підсвітить поле).
@@ -77,6 +85,12 @@ export const counterpartyFormSchema = z.object(counterpartyBaseShape).superRefin
 export type CounterpartyFormValues = z.infer<typeof counterpartyFormSchema>;
 export type CounterpartyFormInput = z.input<typeof counterpartyFormSchema>;
 
-/** Часткове оновлення (PATCH): усі поля опційні; name-by-type перевіряється на MERGED-стані у сервісі. */
-export const counterpartyUpdateSchema = z.object(counterpartyBaseShape).partial();
+/**
+ * Часткове оновлення (PATCH): усі поля опційні; name-by-type перевіряється на MERGED-стані у сервісі.
+ * Bug #1001: `.partial()` у zod 4 НЕ прибирає `.default()` — `vatPayer` без default, інакше будь-який
+ * частковий PATCH (тег, згода) мовчки скидав «Платник ПДВ» на false.
+ */
+export const counterpartyUpdateSchema = z
+  .object({ ...counterpartyBaseShape, vatPayer: z.boolean().optional() })
+  .partial();
 export type CounterpartyUpdateValues = z.infer<typeof counterpartyUpdateSchema>;

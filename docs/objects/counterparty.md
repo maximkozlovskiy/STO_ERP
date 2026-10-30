@@ -191,6 +191,7 @@ BR-VEH-006…013 і тести — у [vehicle.md](vehicle.md))
 - **BR-CP-013**: `syncVersion` — поле для cloud sync (pull blacklist: `phone`, `edrpou`, `email` не синхронізуються на мобільний)
 - **BR-CP-015**: **Гараж із живим авто не видаляється** (рішення власника 2026-10-22). `DELETE /counterparties/:id/garages/:garageId` — 400 «У гаражі є авто — спершу видаліть їх або перенесіть в інший гараж», поки в гаражі є невидалене авто; перевірка в транзакції видалення, до запису. Видалення гаража через sync push заборонено (як контрагента й авто) — інакше правило обходилось би. Гонку з одночасним створенням авто закрито блокуванням рядка гаража: `removeGarage` — `FOR UPDATE` перед лічильником, `VehiclesService.create` — `FOR SHARE` у транзакції зі вставкою (видалений гараж — 404); так само `VehiclesService.restore` (видалений гараж — 400, Bug #949) і sync push авто з `customerGarageId` — створення й перенесення (конфлікт запису, Bug #950). Раніше авто лишалось живим на видаленому гаражі. Web кнопки видалення гаража не має.
 - **BR-CP-014**: **Комірник читає постачальників** (рішення власника 2026-10-18). STOREKEEPER отримує читання лише контрагентів із роллю постачальника — для вибору постачальника в позиції списку купівлі, у картці замовлення й у підключенні до API: id, назва (ім'я / назва компанії), тип, ЄДРПОУ, ролі й договори закупівлі (номер, умови оплати). Клієнтів, телефонів, e-mail, балансів і розрахунків комірник не бачить; створення, зміна й видалення контрагентів — 403, як і раніше.
+- **BR-CP-016**: Частковий `PATCH /counterparties/:id` змінює лише поля, що є в тілі: поле, якого немає, лишається як було (зокрема «Платник ПДВ» — Bug #1001: `.partial()` над `.default(false)` у zod скидав `vatPayer` на кожному PATCH). Поля згоди й бажаний канал (BR-AUT-042) проходять схему контролера (`counterpartyFormSchema` / `counterpartyUpdateSchema` у `@sto/shared`), а не лише Swagger-DTO (Bug #1000); `null` у прапорцях — 400 з назвою поля.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
 → [docs/PATTERNS.md](../PATTERNS.md) (EntityPickerField для вибору в формах)
@@ -209,19 +210,19 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 
 **Маршрути UI:** `/counterparties`, `/vehicles`
 
-| Аспект                                                          | Тест                                            | Кейсів |
-| --------------------------------------------------------------- | ----------------------------------------------- | ------ |
-| audit snapshot                                                  | `counterparties.audit-snapshot.spec.ts`         | 4      |
-| HTTP-контракт (DTO, статуси, валідація)                         | `counterparties.contract.spec.ts`               | 21     |
-| counterparty contracts                                          | `counterparties.counterparty-contracts.spec.ts` | 32     |
-| crud search                                                     | `counterparties.crud-search.spec.ts`            | 17     |
-| гаражі (isDefault, гараж з авто й блокування рядка — BR-CP-015) | `counterparties.garages.spec.ts`                | 8      |
-| пов'язані документи                                             | `counterparties.linked-docs.spec.ts`            | 4      |
-| рахунок розрахунків (SettlementAccount)                         | `counterparties.settlement-account.spec.ts`     | 3      |
-| статуси-мітки (assign / unassign)                               | `counterparties.status-labels.spec.ts`          | 9      |
-| комірник читає постачальників (BR-CP-014)                       | `counterparties.storekeeper-suppliers.spec.ts`  | 22     |
-| supplier naming (+ назва обов'язкова)                           | `counterparties.supplier-naming.spec.ts`        | 6      |
-| згода на повідомлення й підписка на бот (BR-AUT-041, 042)       | `counterparties.consent.spec.ts`                | 5      |
+| Аспект                                                                                                                                                                       | Тест                                            | Кейсів |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------ |
+| audit snapshot                                                                                                                                                               | `counterparties.audit-snapshot.spec.ts`         | 4      |
+| HTTP-контракт (DTO, статуси, валідація)                                                                                                                                      | `counterparties.contract.spec.ts`               | 21     |
+| counterparty contracts                                                                                                                                                       | `counterparties.counterparty-contracts.spec.ts` | 32     |
+| crud search                                                                                                                                                                  | `counterparties.crud-search.spec.ts`            | 17     |
+| гаражі (isDefault, гараж з авто й блокування рядка — BR-CP-015)                                                                                                              | `counterparties.garages.spec.ts`                | 8      |
+| пов'язані документи                                                                                                                                                          | `counterparties.linked-docs.spec.ts`            | 4      |
+| рахунок розрахунків (SettlementAccount)                                                                                                                                      | `counterparties.settlement-account.spec.ts`     | 3      |
+| статуси-мітки (assign / unassign)                                                                                                                                            | `counterparties.status-labels.spec.ts`          | 9      |
+| комірник читає постачальників (BR-CP-014)                                                                                                                                    | `counterparties.storekeeper-suppliers.spec.ts`  | 22     |
+| supplier naming (+ назва обов'язкова)                                                                                                                                        | `counterparties.supplier-naming.spec.ts`        | 6      |
+| згода на повідомлення й підписка на бот; тіло через схему контролера — поля згоди не губляться, `vatPayer` не скидається частковим PATCH (BR-AUT-041, 042; Bug #1000, #1001) | `counterparties.consent.spec.ts`                | 6      |
 
 Разом: **131** кейсів (цифри з `vitest --reporter=json`, не з grep).
 

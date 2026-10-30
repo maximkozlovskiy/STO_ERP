@@ -4,8 +4,11 @@
  * бажаний канал — через API оновлення, зміни — у журналі змін; картка показує підписку на бот.
  */
 import { describe, expect, it, vi } from 'vitest';
+import { BadRequestException } from '@nestjs/common';
+import { counterpartyFormSchema, counterpartyUpdateSchema } from '@sto/shared';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuditService } from '../audit/audit.service';
 import { memoryTable } from '../cash/cash.spec-fixture';
@@ -119,6 +122,38 @@ describe('Згода контрагента на повідомлення (BR-AU
       { noServiceMessages: false, marketingConsent: false, preferredChannel: null },
       { noServiceMessages: true, marketingConsent: true, preferredChannel: 'SMS' },
     );
+  });
+
+  // guards: BR-AUT-042, BR-AUT-011, BR-CP-016 (Bug #1000, #1001)
+  it('тіло PATCH / POST проходить схему контролера: поля згоди й бажаний канал не губляться, vatPayer не скидається, null у прапорцях — 400', () => {
+    const pipe = (
+      schema: typeof counterpartyUpdateSchema | typeof counterpartyFormSchema,
+      body: unknown,
+    ): Record<string, unknown> =>
+      new ZodValidationPipe<Record<string, unknown>>(schema).transform(body);
+    const consent = {
+      noServiceMessages: true,
+      marketingConsent: true,
+      preferredChannel: 'TELEGRAM_BOT',
+    };
+    expect(pipe(counterpartyUpdateSchema, consent)).toEqual(consent);
+    expect(
+      pipe(counterpartyFormSchema, { type: 'CLIENT', firstName: 'Іван', ...consent }),
+    ).toMatchObject(consent);
+    expect(pipe(counterpartyUpdateSchema, { preferredChannel: null })).toEqual({
+      preferredChannel: null,
+    });
+    // Частковий PATCH не чіпає того, чого в ньому немає (Bug #1001: vatPayer → false).
+    expect(pipe(counterpartyUpdateSchema, { notes: 'дзвонити після 18:00' })).toEqual({
+      notes: 'дзвонити після 18:00',
+    });
+    for (const bad of [
+      { noServiceMessages: null },
+      { marketingConsent: null },
+      { preferredChannel: 'PIGEON' },
+    ]) {
+      expect(() => pipe(counterpartyUpdateSchema, bad)).toThrow(BadRequestException);
+    }
   });
 
   // guards: BR-AUT-042
