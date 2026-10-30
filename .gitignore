@@ -8,6 +8,9 @@ dist/
 build/
 .next/
 .next-e2e/
+# Свої збірки агентів (NEXT_DIST_DIR=.next-<мітка>): без ignore Tailwind сканує їхні бінарні кеші й
+# ламає globals.css на всіх dev-серверах (docs/GOTCHAS.md 2026-10-30).
+.next-*/
 out/
 
 # Environment — НІКОЛИ не комітити!

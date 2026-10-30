@@ -4,6 +4,24 @@
 
 ---
 
+## [2026-10-30] Своя збірка `NEXT_DIST_DIR=.next-<мітка>` ламає CSS усіх dev-серверів web
+
+Виконавець автоматизації (блок 4) запустив свій `next dev` з `NEXT_DIST_DIR=.next-b4` і `next build`
+з `.next-b4build` усередині `apps/web`. Tailwind 4 (`@import "tailwindcss"`) сам сканує теку
+проєкту, пропускаючи лише те, що в `.gitignore`; там були тільки `.next/` і `.next-e2e/`. Бінарні
+кеші Turbopack (`*.sst`) дали «клас» зі сміттям — `globals.css` перестав розбиратися («Parsing CSS
+source code failed … Unexpected token Semicolon»), і **кожна** сторінка віддавала 500 — і на своєму
+:3012, і на dev :3001 власника. Видалення теки не допомагає: dev-сервер тримає знайдені кандидати
+в пам'яті; оживило :3001 без перезапуску лише справжнє редагування `globals.css` (повна
+перебудова Tailwind) і повернення файла назад.
+
+Тепер `.next-*/` у `.gitignore`. Ще одна пастка тієї ж збірки: при `output: 'export'` з
+`distDir` експорт іде в `distDir`, а не в `out/` — `check-page-budget.mjs` (читає `out/`) після
+такої збірки мовчки міряє СТАРИЙ `out/`. Бюджет — лише після звичайного `next build` або з
+`out/`, підміненим на свіжий експорт.
+
+---
+
 ## [2026-10-29] Dev-API падає «Cannot find module» — кілька `nest start --watch` пишуть в один `dist`
 
 Dev-API :3000 двічі за день лежав з `Cannot find module '../work-orders/work-order-totals.service'`,
