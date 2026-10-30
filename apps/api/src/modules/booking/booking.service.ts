@@ -3,7 +3,7 @@ import { Prisma, CalendarSlotStatus } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale, runUnscoped } from '../../common/tenant/tenant-context';
-import { EARLIEST_DB_INSTANT_MS, kyivOffsetMs } from '../../common/utils/kyiv-date';
+import { kyivDayEnd, kyivDayStart, kyivWallTimeToUtc } from '../../common/utils/kyiv-date';
 import { workDaysOf } from '../../common/utils/work-hours';
 import { CalendarService } from '../calendar/calendar.service';
 import { recordDocumentEvent } from '../automation/record-document-event';
@@ -105,38 +105,17 @@ export class BookingService {
     );
   }
 
-  /**
-   * Working hours are LOCAL to Europe/Kyiv, not UTC. Use `+02:00`/`+03:00` ISO
-   * offset depending on DST so slots are produced in real Kyiv time. Derive the
-   * offset from a `toLocaleString` round-trip on the requested date to handle
-   * DST transition days correctly.
-   */
-  private kyivOffsetForDate(date: string): string {
-    // Convert the date's noon-UTC moment to Kyiv local time and read the offset.
-    // Using noon (not midnight) avoids issues with DST transition at 03:00 local.
-    const probe = new Date(`${date}T12:00:00.000Z`);
-    const offsetMin = Math.round(kyivOffsetMs(probe) / 60_000);
-    const sign = offsetMin >= 0 ? '+' : '-';
-    const abs = Math.abs(offsetMin);
-    const h = String(Math.floor(abs / 60)).padStart(2, '0');
-    const m = String(abs % 60).padStart(2, '0');
-    return `${sign}${h}:${m}`;
-  }
-
   async getAvailability(
     orgId: string,
     branchId: string,
     date: string,
     serviceIds?: string[],
   ): Promise<AvailabilitySlotDto[]> {
-    // Day boundaries must be Kyiv-local, not UTC, otherwise a slot
-    // requested for "2026-05-27 in Kyiv" would search a misaligned UTC window.
-    const offset = this.kyivOffsetForDate(date);
-    // Bug #821: the start of Kyiv day 0001-01-01 is 31.12 of year 0 in UTC; Postgres has no year 0.
-    const dayStart = new Date(
-      Math.max(new Date(`${date}T00:00:00.000${offset}`).getTime(), EARLIEST_DB_INSTANT_MS),
-    );
-    const dayEnd = new Date(`${date}T23:59:59.999${offset}`);
+    // BR-CAL-015: межі КИЇВСЬКОЇ доби, кожна у своєму зсуві (`kyiv-date.ts`, DST-aware). Один
+    // зсув на полудень для обох меж у дні переведення годинника (29.03, 25.10) зсував північ на
+    // годину. Нижню межу притискає до 0001-01-01Z сам `kyivWallTimeToUtc` (Bug #821).
+    const dayStart = kyivDayStart(date);
+    const dayEnd = kyivDayEnd(date);
 
     // Parallel: lifts, busy slots, branch settings, booked requests, optional work durations.
     const [lifts, busyCalendarSlots, branchSettings, bookedSlots, works] = await Promise.all([
@@ -199,8 +178,7 @@ export class BookingService {
     const workDays = workDaysOf(branchSettings);
     // Kyiv-aware ISO-weekday (НЕ .getDay() на offset-рядку — той дає server-local день і на
     // non-UTC хості класифікує робочий/вихідний день неправильно). Дзеркалить create() (KYIV_WEEKDAY_FMT).
-    const isoDay =
-      WEEKDAY_TO_ISO[KYIV_WEEKDAY_FMT.format(new Date(`${date}T12:00:00.000${offset}`))];
+    const isoDay = WEEKDAY_TO_ISO[KYIV_WEEKDAY_FMT.format(kyivWallTimeToUtc(`${date}T12:00:00`))];
     if (!isoDay || !workDays.includes(isoDay)) return [];
 
     // Calculate duration from requested services (falls back to stepMinutes).
@@ -264,8 +242,9 @@ export class BookingService {
     ) {
       const hour = Math.floor(minutes / 60);
       const min = minutes % 60;
-      const startKyiv = `${date}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00.000${offset}`;
-      const slotStart = new Date(startKyiv);
+      const slotStart = kyivWallTimeToUtc(
+        `${date}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`,
+      );
       const slotStartMs = slotStart.getTime();
       const slotEndMs = slotStartMs + totalMinutes * 60_000;
       const timeKey = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
@@ -412,17 +391,8 @@ export class BookingService {
     };
     if (filters?.status) where.status = filters.status;
     if (filters?.date) {
-      const offset = this.kyivOffsetForDate(filters.date);
-      where.requestedDate = {
-        // Bug #821: same floor as in getAvailability - Postgres has no year 0.
-        gte: new Date(
-          Math.max(
-            new Date(`${filters.date}T00:00:00.000${offset}`).getTime(),
-            EARLIEST_DB_INSTANT_MS,
-          ),
-        ),
-        lte: new Date(`${filters.date}T23:59:59.999${offset}`),
-      };
+      // BR-CAL-015: ті самі межі київської доби, що й у getAvailability.
+      where.requestedDate = { gte: kyivDayStart(filters.date), lte: kyivDayEnd(filters.date) };
     }
     const [items, total] = await Promise.all([
       this.prisma.bookingRequest.findMany({
