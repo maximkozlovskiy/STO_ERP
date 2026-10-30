@@ -211,6 +211,8 @@
     "placeholder": "Select a currency…"
   },
   "linkedDocuments": {
+    "purchaseLists": "Purchase lists",
+    "workOrder": "Work order",
     "warehouse": "Warehouse",
     "warranty": "Warranty",
     "title": "Linked documents",

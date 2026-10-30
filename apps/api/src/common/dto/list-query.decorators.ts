@@ -1,7 +1,19 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsNumber, IsOptional, Max, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsNumber,
+  IsOptional,
+  Matches,
+  Max,
+  Min,
+} from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { UUID_REGEX } from '@sto/shared';
+import { csvArray } from '../transforms/csv-array';
 
 /**
  * Поля пагінації й напряму сортування query-DTO списків одним декоратором кожне. Нові списки
@@ -34,4 +46,28 @@ export const LimitParam = (defaultLimit: number, max = 200) =>
     IsNumber(),
     Min(1),
     Max(max),
+  );
+
+/** `showDeleted=true` — показати видалені записи. */
+export const ShowDeletedParam = () =>
+  applyDecorators(
+    ApiPropertyOptional({ description: 'Показати видалені' }),
+    IsOptional(),
+    Transform(({ value }: { value: unknown }) => value === 'true' || value === true),
+    IsBoolean(),
+  );
+
+/**
+ * Записи за id: `?ids=a,b` або повторений параметр (Fastify віддає масивом) → масив UUID, до `max`
+ * (як `limit`); порожньо — `undefined`. `maxMessage` — ключ помилки довідника.
+ */
+export const IdsParam = (description: string, maxMessage: string, max = 200) =>
+  applyDecorators(
+    // maxItems — явно: swagger-плагін не бачить @ArrayMaxSize усередині applyDecorators.
+    ApiPropertyOptional({ type: String, description, maxItems: max }),
+    IsOptional(),
+    Transform(csvArray),
+    IsArray(),
+    ArrayMaxSize(max, { message: maxMessage }),
+    Matches(UUID_REGEX, { each: true }),
   );

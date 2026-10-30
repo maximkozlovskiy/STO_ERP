@@ -10,9 +10,13 @@ import {
   type InvoiceFormInput,
   type InvoiceFormValues,
 } from '@sto/shared';
-import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
-import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
+import {
+  CollapsibleDocumentHeader,
+  DocumentCardBody,
+  DocumentHeaderToggle,
+} from '@/components/ui/document-card-body';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
@@ -33,12 +37,14 @@ import { Modal } from '@/components/ui/modal';
 import {
   DocumentCancelAction,
   DocumentCardHeaderActions,
+  DocumentCloseButton,
   DocumentEditActions,
 } from '@/components/ui/document-card-actions';
 import {
   DocumentHeaderField,
   DocumentNumberField,
   DocumentStatusStepper,
+  FormCurrencySelect,
   FormDateInput,
 } from '@/components/ui/document-card-header';
 import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-header';
@@ -48,7 +54,6 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
-import { CurrencySelect } from '@/components/ui/CurrencySelect';
 import { useBaseCurrency } from '@/hooks/api/useCash';
 import type { Invoice } from '@/hooks/api/useInvoices';
 
@@ -837,164 +842,104 @@ export function InvoiceCreateModal({
                   {t('card.create')}
                 </Button>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                // Як Escape і «×»: незбережені зміни — спершу підтвердження (useDirtyForm).
-                onClick={() => void handleModalClose()}
-                disabled={saving || transitioning}
-              >
-                {t('common:close')}
-              </Button>
+              <DocumentCloseButton onClose={handleModalClose} disabled={saving || transitioning} />
             </div>
           </div>
         }
       >
-        <div className="flex flex-col min-h-[70dvh]">
-          {isDeleted && <DeletedDocumentBanner className="mb-3 shrink-0" />}
-          {/* Помилка — над шапкою, не в ній: «Додати» згортає шапку, і відмова збереження рядків
-              (BR-INV-024) ховалась у згорнутому блоці — картка мовчки лишалась відкритою. */}
-          {error && (
-            <div
-              role="alert"
-              data-testid="invoice-card-error"
-              className="mb-3 shrink-0 text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2"
-            >
-              {error}
-            </div>
-          )}
+        <DocumentCardBody errorTestId="invoice-card-error" deleted={isDeleted} error={error}>
           {/* ── Collapsible header ─────────────────────────────────────── */}
-          <div
-            className="grid transition-[grid-template-rows] duration-300 ease-in-out shrink-0"
-            style={{ gridTemplateRows: headerCollapsed ? '0fr' : '1fr' }}
-          >
-            <div className="overflow-hidden">
-              <div className="space-y-4 pb-1">
-                {loading && (
-                  <div className="flex justify-center py-4 text-sm text-muted-foreground">
-                    {t('common:loading')}
-                  </div>
-                )}
-                {/* Рядок 2: Контрагент | Тип */}
-                <div className="grid grid-cols-2 gap-4">
-                  <EntityPickerField<CpItem>
-                    label={t('columns.counterparty')}
-                    required={!isEditMode}
-                    display={counterpartyDisplay}
-                    placeholder={t('card.counterpartyPlaceholder')}
-                    className="h-8 text-[13px]"
-                    disabled={!canEdit}
-                    onPick={() => setCpPickerOpen(true)}
-                    onSearch={fetchCpItems}
-                    onSearchSelect={item => {
-                      setCounterpartyDisplay(item.primary);
-                      setValue('counterpartyId', item.id, {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      });
-                    }}
-                    onClear={() => {
-                      setCounterpartyDisplay('');
-                      setValue('counterpartyId', '', { shouldDirty: true });
-                    }}
-                  />
-                  <Select
-                    label={t('card.invoiceType')}
-                    {...register('invoiceType')}
-                    disabled={!canEdit}
-                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                  >
-                    {Object.keys(INVOICE_TYPE_LABELS).map(k => (
-                      <option key={k} value={k}>
-                        {invoiceTypeLabel(k)}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-
-                {/* Рядок 3: Валюта */}
-                <div className="grid grid-cols-2 gap-4">
-                  <Controller
-                    control={control}
-                    name="currencyId"
-                    render={({ field }) => (
-                      <CurrencySelect
-                        value={typeof field.value === 'string' ? field.value : ''}
-                        onChange={id => field.onChange(id)}
-                        // Bug #639-клас: авто-дефолт базової валюти — програмна зміна, не дія
-                        // користувача → shouldDirty:false, щоб незаймана модалка не вважалась брудною
-                        // (інакше Escape на щойно відкритій формі показує «Є незбережені зміни»).
-                        onAutoDefault={id => setValue('currencyId', id, { shouldDirty: false })}
-                        disabled={!canEdit}
-                      />
-                    )}
-                  />
-                </div>
-
-                {/* Рядок 4: Термін оплати | Примітки */}
-                <div className="grid grid-cols-2 gap-4">
-                  <Controller
-                    control={control}
-                    name="dueDate"
-                    render={({ field }) => (
-                      <DatePickerInput
-                        label={t('columns.dueDate')}
-                        value={typeof field.value === 'string' ? field.value : ''}
-                        onChange={field.onChange}
-                        disabled={!canEdit}
-                      />
-                    )}
-                  />
-                  <Input
-                    label={t('card.notes')}
-                    {...register('notes')}
-                    disabled={!canEdit}
-                    placeholder={t('card.notesPlaceholder')}
-                    className="h-8 text-[13px]"
-                  />
-                </div>
-
-                {/* Рядок 4: Наряд (тільки в edit mode якщо прив'язаний) */}
-                {isEditMode && workOrderNumber && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <Input
-                      label={t('columns.workOrder')}
-                      value={workOrderNumber}
-                      disabled
-                      readOnly
-                      className="h-8 text-[13px]"
-                    />
-                  </div>
-                )}
-              </div>
+          <CollapsibleDocumentHeader collapsed={headerCollapsed} loading={loading}>
+            {/* Рядок 2: Контрагент | Тип */}
+            <div className="grid grid-cols-2 gap-4">
+              <EntityPickerField<CpItem>
+                label={t('columns.counterparty')}
+                required={!isEditMode}
+                display={counterpartyDisplay}
+                placeholder={t('card.counterpartyPlaceholder')}
+                className="h-8 text-[13px]"
+                disabled={!canEdit}
+                onPick={() => setCpPickerOpen(true)}
+                onSearch={fetchCpItems}
+                onSearchSelect={item => {
+                  setCounterpartyDisplay(item.primary);
+                  setValue('counterpartyId', item.id, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                }}
+                onClear={() => {
+                  setCounterpartyDisplay('');
+                  setValue('counterpartyId', '', { shouldDirty: true });
+                }}
+              />
+              <Select
+                label={t('card.invoiceType')}
+                {...register('invoiceType')}
+                disabled={!canEdit}
+                className="h-8 text-[13px] py-0.5 px-2 pr-7"
+              >
+                {Object.keys(INVOICE_TYPE_LABELS).map(k => (
+                  <option key={k} value={k}>
+                    {invoiceTypeLabel(k)}
+                  </option>
+                ))}
+              </Select>
             </div>
-          </div>
+
+            {/* Рядок 3: Валюта */}
+            <div className="grid grid-cols-2 gap-4">
+              <FormCurrencySelect
+                control={control}
+                name="currencyId"
+                disabled={!canEdit}
+                onAutoDefault={id => setValue('currencyId', id, { shouldDirty: false })}
+              />
+            </div>
+
+            {/* Рядок 4: Термін оплати | Примітки */}
+            <div className="grid grid-cols-2 gap-4">
+              <Controller
+                control={control}
+                name="dueDate"
+                render={({ field }) => (
+                  <DatePickerInput
+                    label={t('columns.dueDate')}
+                    value={typeof field.value === 'string' ? field.value : ''}
+                    onChange={field.onChange}
+                    disabled={!canEdit}
+                  />
+                )}
+              />
+              <Input
+                label={t('card.notes')}
+                {...register('notes')}
+                disabled={!canEdit}
+                placeholder={t('card.notesPlaceholder')}
+                className="h-8 text-[13px]"
+              />
+            </div>
+
+            {/* Рядок 4: Наряд (тільки в edit mode якщо прив'язаний) */}
+            {isEditMode && workOrderNumber && (
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label={t('columns.workOrder')}
+                  value={workOrderNumber}
+                  disabled
+                  readOnly
+                  className="h-8 text-[13px]"
+                />
+              </div>
+            )}
+          </CollapsibleDocumentHeader>
 
           {/* ── Header toggle strip ──────────────────────────────────────── */}
-          <button
-            type="button"
-            onClick={() => setHeaderCollapsed(c => !c)}
-            className={[
-              'flex items-center gap-2 w-full py-1.5 px-2 text-[11px]',
-              'hover:bg-secondary/60 transition-colors select-none shrink-0',
-              'border-t border-border',
-            ].join(' ')}
-          >
-            {headerCollapsed ? (
-              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            )}
-            <span className="text-muted-foreground">{t('common:documentHeader')}</span>
-            {headerChips.map((chip, i) => (
-              <span
-                key={i}
-                className="bg-secondary text-muted-foreground rounded px-1.5 py-0.5 text-[10px]"
-              >
-                {chip}
-              </span>
-            ))}
-          </button>
+          <DocumentHeaderToggle
+            collapsed={headerCollapsed}
+            onToggle={() => setHeaderCollapsed(c => !c)}
+            chips={headerChips}
+          />
 
           {/* ── Lines table ──────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto">
@@ -1215,7 +1160,7 @@ export function InvoiceCreateModal({
               </tfoot>
             </table>
           </div>
-        </div>
+        </DocumentCardBody>
       </Modal>
 
       {/* Counterparty picker */}

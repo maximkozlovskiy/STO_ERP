@@ -211,6 +211,8 @@
     "placeholder": "Оберіть валюту…"
   },
   "linkedDocuments": {
+    "purchaseLists": "Списки купівлі",
+    "workOrder": "Наряд",
     "warehouse": "Склад",
     "warranty": "Гарантія",
     "title": "Пов'язані документи",

@@ -10,7 +10,7 @@ import {
   type StockDocumentFormValues,
   DEFAULT_GOOD_UNIT,
 } from '@sto/shared';
-import { ChevronDown, ChevronUp, Plus, Trash2, Upload } from 'lucide-react';
+import { Plus, Trash2, Upload } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -19,7 +19,11 @@ import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
+import {
+  CollapsibleDocumentHeader,
+  DocumentCardBody,
+  DocumentHeaderToggle,
+} from '@/components/ui/document-card-body';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { lineAmount, sumLineAmounts } from '@/lib/utils';
 import { fmtDateTime, fmtMoney, fmtQty, kyivToday } from '@/lib/format';
@@ -43,6 +47,7 @@ import { ExcelImportWizard } from '@/components/ui/ExcelImportWizard';
 import {
   DocumentCancelAction,
   DocumentCardHeaderActions,
+  DocumentCloseButton,
   DocumentEditActions,
 } from '@/components/ui/document-card-actions';
 import {
@@ -50,6 +55,7 @@ import {
   DocumentNumberField,
   DocumentStatusStepper,
   FormDateInput,
+  FormWarehouseSelect,
 } from '@/components/ui/document-card-header';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -787,196 +793,138 @@ export function StockDocumentCreateModal({
                   {t('card.create')}
                 </Button>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void handleModalClose()}
-                disabled={saving || transitioning}
-              >
-                {t('common:close')}
-              </Button>
+              <DocumentCloseButton onClose={handleModalClose} disabled={saving || transitioning} />
             </div>
           </div>
         }
       >
-        <div className="flex flex-col min-h-[70dvh]">
-          {isDeleted && <DeletedDocumentBanner className="mb-3 shrink-0" />}
+        <DocumentCardBody errorTestId="stock-document-card-error" deleted={isDeleted} error={error}>
           {/* ── Collapsible header ─────────────────────────────────────── */}
-          <div
-            className="grid transition-[grid-template-rows] duration-300 ease-in-out shrink-0"
-            style={{ gridTemplateRows: headerCollapsed ? '0fr' : '1fr' }}
-          >
-            <div className="overflow-hidden">
-              <div className="space-y-4 pb-1">
-                {loading && (
-                  <div className="flex justify-center py-4 text-sm text-muted-foreground">
-                    {t('common:loading')}
-                  </div>
+          <CollapsibleDocumentHeader collapsed={headerCollapsed} loading={loading}>
+            {/* Рядок 2: Тип документа | Філія */}
+            <div className="grid grid-cols-2 gap-4">
+              <Controller
+                control={control}
+                name="type"
+                render={({ field }) => (
+                  <Select
+                    label={t('card.docType')}
+                    required
+                    value={field.value}
+                    onChange={e => {
+                      field.onChange(e.target.value);
+                      // зміна типу з TRANSFER на інший скидає targetWarehouseId
+                      // (щоб не лишити orphan; superRefine інакше не спрацює бо не-TRANSFER).
+                      if (e.target.value !== 'TRANSFER') {
+                        setValue('targetWarehouseId', '', { shouldDirty: true });
+                      }
+                    }}
+                    disabled={!canEdit || isEditMode}
+                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                  >
+                    {Object.keys(STOCK_DOC_TYPE_LABELS).map(k => (
+                      <option key={k} value={k}>
+                        {stockDocTypeLabel(k)}
+                      </option>
+                    ))}
+                  </Select>
                 )}
-                {error && (
-                  <div className="text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2">
-                    {error}
-                  </div>
+              />
+              <Controller
+                control={control}
+                name="branchId"
+                render={({ field }) => (
+                  <Select
+                    label={t('card.branch')}
+                    required
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    errorMessage={errors.branchId?.message}
+                    disabled={!canEdit || isEditMode}
+                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                  >
+                    <option value="">{t('card.choose')}</option>
+                    {branches.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </Select>
                 )}
+              />
+            </div>
 
-                {/* Рядок 2: Тип документа | Філія */}
-                <div className="grid grid-cols-2 gap-4">
-                  <Controller
-                    control={control}
-                    name="type"
-                    render={({ field }) => (
-                      <Select
-                        label={t('card.docType')}
-                        required
-                        value={field.value}
-                        onChange={e => {
-                          field.onChange(e.target.value);
-                          // зміна типу з TRANSFER на інший скидає targetWarehouseId
-                          // (щоб не лишити orphan; superRefine інакше не спрацює бо не-TRANSFER).
-                          if (e.target.value !== 'TRANSFER') {
-                            setValue('targetWarehouseId', '', { shouldDirty: true });
-                          }
-                        }}
-                        disabled={!canEdit || isEditMode}
-                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                      >
-                        {Object.keys(STOCK_DOC_TYPE_LABELS).map(k => (
-                          <option key={k} value={k}>
-                            {stockDocTypeLabel(k)}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  />
-                  <Controller
-                    control={control}
-                    name="branchId"
-                    render={({ field }) => (
-                      <Select
-                        label={t('card.branch')}
-                        required
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                        errorMessage={errors.branchId?.message}
-                        disabled={!canEdit || isEditMode}
-                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                      >
-                        <option value="">{t('card.choose')}</option>
-                        {branches.map(b => (
-                          <option key={b.id} value={b.id}>
-                            {b.name}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  />
-                </div>
-
-                {/* Рядок 3: Склад | Склад призначення (тільки для TRANSFER) */}
-                <div className="grid gap-4 grid-cols-2">
-                  <Controller
-                    control={control}
-                    name="warehouseId"
-                    render={({ field }) => (
-                      <Select
-                        label={warehouseLabel}
-                        required
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                        errorMessage={errors.warehouseId?.message}
-                        disabled={!canEdit || isEditMode}
-                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                      >
-                        <option value="">{t('card.choose')}</option>
-                        {warehouses.map(w => (
+            {/* Рядок 3: Склад | Склад призначення (тільки для TRANSFER) */}
+            <div className="grid gap-4 grid-cols-2">
+              <FormWarehouseSelect
+                control={control}
+                name="warehouseId"
+                label={warehouseLabel}
+                chooseLabel={t('card.choose')}
+                warehouses={warehouses}
+                errorMessage={errors.warehouseId?.message}
+                disabled={!canEdit || isEditMode}
+              />
+              {isTransfer ? (
+                <Controller
+                  control={control}
+                  name="targetWarehouseId"
+                  render={({ field }) => (
+                    <Select
+                      label={t('card.targetWarehouse')}
+                      required
+                      value={typeof field.value === 'string' ? field.value : ''}
+                      onChange={field.onChange}
+                      errorMessage={errors.targetWarehouseId?.message}
+                      disabled={!canEdit || isEditMode}
+                      className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                    >
+                      <option value="">{t('card.choose')}</option>
+                      {warehouses
+                        .filter(w => w.id !== warehouseId)
+                        .map(w => (
                           <option key={w.id} value={w.id}>
                             {w.name}
                           </option>
                         ))}
-                      </Select>
-                    )}
-                  />
-                  {isTransfer ? (
-                    <Controller
-                      control={control}
-                      name="targetWarehouseId"
-                      render={({ field }) => (
-                        <Select
-                          label={t('card.targetWarehouse')}
-                          required
-                          value={typeof field.value === 'string' ? field.value : ''}
-                          onChange={field.onChange}
-                          errorMessage={errors.targetWarehouseId?.message}
-                          disabled={!canEdit || isEditMode}
-                          className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                        >
-                          <option value="">{t('card.choose')}</option>
-                          {warehouses
-                            .filter(w => w.id !== warehouseId)
-                            .map(w => (
-                              <option key={w.id} value={w.id}>
-                                {w.name}
-                              </option>
-                            ))}
-                        </Select>
-                      )}
-                    />
-                  ) : (
-                    <div />
+                    </Select>
                   )}
-                </div>
-
-                {/* Рядок 4: Замовлення (джерело) — опціонально (Phase D2) */}
-                <EntityPickerField
-                  label={t('card.sourceOrder')}
-                  display={purchaseOrderNumber}
-                  placeholder={t('card.sourceOrderPlaceholder')}
-                  className="h-8 text-[13px]"
-                  disabled={!canEdit || isEditMode}
-                  onPick={() => setPoPickerOpen(true)}
-                  onClear={() => {
-                    setValue('purchaseOrderId', '', { shouldDirty: true });
-                    setPurchaseOrderNumber('');
-                  }}
                 />
-
-                {/* Рядок 5: Примітки */}
-                <Input
-                  label={t('card.notes')}
-                  {...register('notes')}
-                  disabled={!canEdit}
-                  placeholder={t('card.notesPlaceholder')}
-                  className="h-8 text-[13px]"
-                />
-              </div>
+              ) : (
+                <div />
+              )}
             </div>
-          </div>
+
+            {/* Рядок 4: Замовлення (джерело) — опціонально (Phase D2) */}
+            <EntityPickerField
+              label={t('card.sourceOrder')}
+              display={purchaseOrderNumber}
+              placeholder={t('card.sourceOrderPlaceholder')}
+              className="h-8 text-[13px]"
+              disabled={!canEdit || isEditMode}
+              onPick={() => setPoPickerOpen(true)}
+              onClear={() => {
+                setValue('purchaseOrderId', '', { shouldDirty: true });
+                setPurchaseOrderNumber('');
+              }}
+            />
+
+            {/* Рядок 5: Примітки */}
+            <Input
+              label={t('card.notes')}
+              {...register('notes')}
+              disabled={!canEdit}
+              placeholder={t('card.notesPlaceholder')}
+              className="h-8 text-[13px]"
+            />
+          </CollapsibleDocumentHeader>
 
           {/* ── Header toggle strip ──────────────────────────────────────── */}
-          <button
-            type="button"
-            onClick={() => setHeaderCollapsed(c => !c)}
-            className={[
-              'flex items-center gap-2 w-full py-1.5 px-2 text-[11px]',
-              'hover:bg-secondary/60 transition-colors select-none shrink-0',
-              'border-t border-border',
-            ].join(' ')}
-          >
-            {headerCollapsed ? (
-              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            )}
-            <span className="text-muted-foreground">{t('common:documentHeader')}</span>
-            {headerChips.map((chip, i) => (
-              <span
-                key={i}
-                className="bg-secondary text-muted-foreground rounded px-1.5 py-0.5 text-[10px]"
-              >
-                {chip}
-              </span>
-            ))}
-          </button>
+          <DocumentHeaderToggle
+            collapsed={headerCollapsed}
+            onToggle={() => setHeaderCollapsed(c => !c)}
+            chips={headerChips}
+          />
 
           {/* ── Lines table ──────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto">
@@ -1181,7 +1129,7 @@ export function StockDocumentCreateModal({
               </p>
             )}
           </div>
-        </div>
+        </DocumentCardBody>
       </Modal>
 
       {/* Good picker for new line */}

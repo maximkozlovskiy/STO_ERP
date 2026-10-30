@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import { validationText } from '@/lib/validation';
 import {
@@ -31,22 +31,23 @@ import { Modal } from '@/components/ui/modal';
 import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { CollapsibleHeader } from '@/components/ui/collapsible-header';
 import {
   DocumentCancelAction,
   DocumentCardHeaderActions,
+  DocumentCloseButton,
   DocumentEditActions,
 } from '@/components/ui/document-card-actions';
 import {
   DocumentHeaderField,
   DocumentNumberField,
   DocumentStatusStepper,
+  FormCurrencySelect,
   FormDateInput,
+  FormWarehouseSelect,
 } from '@/components/ui/document-card-header';
-import { CurrencySelect } from '@/components/ui/CurrencySelect';
 import { useBaseCurrency } from '@/hooks/api/useCash';
 import {
   CounterpartyEditModal,
@@ -66,7 +67,7 @@ import {
 } from '@/components/ui/purchase-order/SupplierApiOrderBlock';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
-import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
+import { CollapsibleDocumentHeader, DocumentCardBody } from '@/components/ui/document-card-body';
 import { ExcelImportWizard } from '@/components/ui/ExcelImportWizard';
 import {
   type Warehouse,
@@ -1188,150 +1189,102 @@ export function PurchaseOrderCreateModal({
                   {t('card.create')}
                 </Button>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                // Як Escape і «×»: незбережені зміни — спершу підтвердження (useDirtyForm).
-                onClick={() => void handleModalClose()}
-                disabled={saving || transitioning}
-              >
-                {t('common:close')}
-              </Button>
+              <DocumentCloseButton onClose={handleModalClose} disabled={saving || transitioning} />
             </div>
           </div>
         }
       >
-        <div className="flex flex-col min-h-[70dvh]">
-          {isDeleted && <DeletedDocumentBanner className="mb-3 shrink-0" />}
+        <DocumentCardBody errorTestId="po-card-error" deleted={isDeleted} error={error}>
           {/* ── Collapsible header ─────────────────────────────────────── */}
-          <div
-            className="grid transition-[grid-template-rows] duration-300 ease-in-out shrink-0"
-            style={{ gridTemplateRows: headerCollapsed ? '0fr' : '1fr' }}
-          >
-            <div className="overflow-hidden">
-              <div className="space-y-4 pb-1">
-                {loading && (
-                  <div className="flex justify-center py-4 text-sm text-muted-foreground">
-                    {t('common:loading')}
-                  </div>
-                )}
-                {error && (
-                  <div className="text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2">
-                    {error}
-                  </div>
-                )}
-
-                {/* Рядок 2: Постачальник | Склад */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <EntityPickerField<SupplierItem>
-                      label={t('columns.supplier')}
-                      required
-                      display={supplierDisplay}
-                      placeholder={t('card.supplierSearch')}
-                      className="h-8 text-[13px]"
-                      disabled={!canEdit}
-                      onPick={() => setSupplierPickerOpen(true)}
-                      onOpenDetail={
-                        supplierIdValue && canOpenSupplierCard
-                          ? () => void openSupplierDetail()
-                          : undefined
-                      }
-                      onSearch={fetchSupplierItems}
-                      onSearchSelect={item => {
-                        setSupplierDisplay(item.primary);
-                        setValue('supplierId', item.id, { shouldDirty: true });
-                        // Clear contract when supplier changes
-                        setContractId(null);
-                        setContractNumber(null);
-                      }}
-                      onClear={() => {
-                        setSupplierDisplay('');
-                        setValue('supplierId', '', { shouldDirty: true });
-                        setContractId(null);
-                        setContractNumber(null);
-                      }}
-                    />
-                    {errors.supplierId && (
-                      <p className="text-[12px] text-destructive leading-tight mt-1">
-                        {errors.supplierId.message}
-                      </p>
-                    )}
-                  </div>
-                  <Controller
-                    control={control}
-                    name="warehouseId"
-                    render={({ field }) => (
-                      <Select
-                        label={t('columns.warehouse')}
-                        required
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                        errorMessage={errors.warehouseId?.message}
-                        disabled={!canEdit}
-                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                      >
-                        <option value="">{t('card.choose')}</option>
-                        {warehouses.map(w => (
-                          <option key={w.id} value={w.id}>
-                            {w.name}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  />
-                </div>
-
-                {/* Рядок 3: Договір | Валюта */}
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label={t('card.contract')}
-                    value={contractNumber ?? ''}
-                    disabled
-                    readOnly
-                    placeholder={t('card.contractAuto')}
-                    className="h-8 text-[13px]"
-                  />
-                  <Controller
-                    control={control}
-                    name="currencyId"
-                    render={({ field }) => (
-                      <CurrencySelect
-                        value={typeof field.value === 'string' ? field.value : ''}
-                        onChange={id => field.onChange(id)}
-                        // Bug #639-клас: авто-дефолт базової валюти — програмна зміна → shouldDirty:false,
-                        // щоб незаймана модалка не вважалась брудною (Escape/закриття без хибного guard-у).
-                        onAutoDefault={id => setValue('currencyId', id, { shouldDirty: false })}
-                        disabled={!canEdit}
-                      />
-                    )}
-                  />
-                </div>
-
-                {/* Рядок 4: Опис */}
-                <Input
-                  label={t('card.notes')}
-                  {...register('notes')}
-                  disabled={!canEdit}
-                  placeholder={t('card.notesPlaceholder')}
+          <CollapsibleDocumentHeader collapsed={headerCollapsed} loading={loading}>
+            {/* Рядок 2: Постачальник | Склад */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <EntityPickerField<SupplierItem>
+                  label={t('columns.supplier')}
+                  required
+                  display={supplierDisplay}
+                  placeholder={t('card.supplierSearch')}
                   className="h-8 text-[13px]"
+                  disabled={!canEdit}
+                  onPick={() => setSupplierPickerOpen(true)}
+                  onOpenDetail={
+                    supplierIdValue && canOpenSupplierCard
+                      ? () => void openSupplierDetail()
+                      : undefined
+                  }
+                  onSearch={fetchSupplierItems}
+                  onSearchSelect={item => {
+                    setSupplierDisplay(item.primary);
+                    setValue('supplierId', item.id, { shouldDirty: true });
+                    // Clear contract when supplier changes
+                    setContractId(null);
+                    setContractNumber(null);
+                  }}
+                  onClear={() => {
+                    setSupplierDisplay('');
+                    setValue('supplierId', '', { shouldDirty: true });
+                    setContractId(null);
+                    setContractNumber(null);
+                  }}
                 />
-
-                {/* Передача в API постачальника (BR-SCON-009…014) */}
-                {isEditMode && purchaseOrderId && !viewOnly && (
-                  <SupplierApiOrderBlock
-                    purchaseOrderId={purchaseOrderId}
-                    poStatus={currentStatus}
-                    unsavedChanges={rhfDirty}
-                    onChanged={() => {
-                      void loadPo(purchaseOrderId, true);
-                      onSaved?.();
-                    }}
-                  />
+                {errors.supplierId && (
+                  <p className="text-[12px] text-destructive leading-tight mt-1">
+                    {errors.supplierId.message}
+                  </p>
                 )}
               </div>
+              <FormWarehouseSelect
+                control={control}
+                name="warehouseId"
+                label={t('columns.warehouse')}
+                chooseLabel={t('card.choose')}
+                warehouses={warehouses}
+                errorMessage={errors.warehouseId?.message}
+                disabled={!canEdit}
+              />
             </div>
-          </div>
+
+            {/* Рядок 3: Договір | Валюта */}
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label={t('card.contract')}
+                value={contractNumber ?? ''}
+                disabled
+                readOnly
+                placeholder={t('card.contractAuto')}
+                className="h-8 text-[13px]"
+              />
+              <FormCurrencySelect
+                control={control}
+                name="currencyId"
+                disabled={!canEdit}
+                onAutoDefault={id => setValue('currencyId', id, { shouldDirty: false })}
+              />
+            </div>
+
+            {/* Рядок 4: Опис */}
+            <Input
+              label={t('card.notes')}
+              {...register('notes')}
+              disabled={!canEdit}
+              placeholder={t('card.notesPlaceholder')}
+              className="h-8 text-[13px]"
+            />
+
+            {/* Передача в API постачальника (BR-SCON-009…014) */}
+            {isEditMode && purchaseOrderId && !viewOnly && (
+              <SupplierApiOrderBlock
+                purchaseOrderId={purchaseOrderId}
+                poStatus={currentStatus}
+                unsavedChanges={rhfDirty}
+                onChanged={() => {
+                  void loadPo(purchaseOrderId, true);
+                  onSaved?.();
+                }}
+              />
+            )}
+          </CollapsibleDocumentHeader>
 
           {/* ── Header toggle strip ──────────────────────────────────────── */}
           <CollapsibleHeader
@@ -1936,7 +1889,7 @@ export function PurchaseOrderCreateModal({
               </table>
             </div>
           </div>
-        </div>
+        </DocumentCardBody>
       </Modal>
 
       {/* Supplier picker */}

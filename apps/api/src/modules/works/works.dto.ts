@@ -11,6 +11,7 @@ import {
   IsPositive,
   IsBoolean,
 } from 'class-validator';
+import { IdsParam } from '../../common/dto/list-query.decorators';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 // Shared regex accepts any UUID including nil UUID (00000000-...) used in seed data.
@@ -64,16 +65,7 @@ export class WorkQueryDto {
    * Роботи за id (`?ids=a,b` або повторений параметр) — категорії робіт послуги для правила
    * виконавця (BR-WO-030) без завантаження всього довідника. До 200, як `limit`.
    */
-  @ApiPropertyOptional({ type: String, description: 'id робіт через кому' })
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(200, { message: 'err.dto.work.ids.max' })
-  @Matches(UUID_REGEX, { each: true })
-  @Transform(({ value }: { value: unknown }) => {
-    const list = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
-    const ids = list.map(v => String(v).trim()).filter(Boolean);
-    return ids.length ? ids : undefined;
-  })
+  @IdsParam('id робіт через кому', 'err.dto.work.ids.max')
   ids?: string[];
 
   @ApiPropertyOptional()

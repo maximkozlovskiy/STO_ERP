@@ -126,13 +126,10 @@ interface LinkedPurchaseListRow {
 
 /** Секція «Списки купівлі» — списки з позиціями наряду чи замовлення (docs/objects/purchase-list.md).
  * Картка списку купівлі показує тут списки, обʼєднані в нього (`title` — свій). */
-function purchaseListSection(
-  nav: LinkedNav,
-  { title = 'Списки купівлі' }: { title?: string } = {},
-) {
+function purchaseListSection(nav: LinkedNav, { title }: { title?: string } = {}) {
   return {
     key: 'purchaseLists',
-    title,
+    title: title ?? i18n.t('common:linkedDocuments.purchaseLists'),
     icon: ListChecks,
     mapRow: (row: LinkedPurchaseListRow) => ({
       id: row.id,
@@ -176,11 +173,11 @@ function counterpartySection(nav: LinkedNav) {
 /** Секція «Наряд» — для рахунку (один наряд, `workOrder`); список купівлі — `workOrders` (кілька). */
 function workOrderSection(
   nav: LinkedNav,
-  { key = 'workOrder', title = 'Наряд' }: { key?: string; title?: string } = {},
+  { key = 'workOrder', title }: { key?: string; title?: string } = {},
 ) {
   return {
     key,
-    title,
+    title: title ?? i18n.t('common:linkedDocuments.workOrder'),
     icon: ClipboardList,
     mapRow: (row: LinkedWorkOrderRow) => ({
       id: row.id,

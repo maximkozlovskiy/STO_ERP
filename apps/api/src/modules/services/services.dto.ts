@@ -3,16 +3,14 @@ import {
   IsNotEmpty,
   IsNumber,
   Min,
-  Max,
-  IsPositive,
   IsOptional,
   IsUUID,
   IsArray,
-  IsBoolean,
   ValidateNested,
   ArrayMaxSize,
 } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { LimitParam, PageParam, ShowDeletedParam } from '../../common/dto/list-query.decorators';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 
 export class ServiceWorkItemDto {
@@ -78,25 +76,13 @@ export class ServiceQueryDto {
   @IsString()
   q?: string;
 
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
+  @PageParam()
   page: number = 1;
 
-  @ApiPropertyOptional({ default: 50 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @IsPositive()
-  @Max(200)
+  @LimitParam(50)
   limit: number = 50;
 
-  @ApiPropertyOptional({ description: 'Показати видалені' })
-  @IsOptional()
-  @Transform(({ value }) => value === 'true' || value === true)
-  @IsBoolean()
+  @ShowDeletedParam()
   showDeleted?: boolean;
 }
 

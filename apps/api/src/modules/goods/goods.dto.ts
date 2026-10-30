@@ -6,14 +6,17 @@ import {
   IsArray,
   Matches,
   Min,
-  Max,
   IsOptional,
-  IsPositive,
-  IsBoolean,
   IsEnum,
   IsUUID,
 } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import {
+  IdsParam,
+  LimitParam,
+  PageParam,
+  ShowDeletedParam,
+} from '../../common/dto/list-query.decorators';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { StockBatchDto } from '../inventory/batch.service';
 import { GoodType } from '@prisma/client';
@@ -99,37 +102,16 @@ export class GoodQueryDto {
    * Товари за id (`?ids=a,b` або повторений параметр) — «Зберегти як послугу» (BR-WO-036)
    * відсіює товари наряду, видалені з каталогу, без завантаження всього довідника. До 200, як `limit`.
    */
-  @ApiPropertyOptional({ type: String, description: 'id товарів через кому' })
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(200, { message: 'err.dto.good.ids.max' })
-  @Matches(UUID_REGEX, { each: true })
-  @Transform(({ value }: { value: unknown }) => {
-    const list = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
-    const ids = list.map(v => String(v).trim()).filter(Boolean);
-    return ids.length ? ids : undefined;
-  })
+  @IdsParam('id товарів через кому', 'err.dto.good.ids.max')
   ids?: string[];
 
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
+  @PageParam()
   page: number = 1;
 
-  @ApiPropertyOptional({ default: 50 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @IsPositive()
-  @Max(200)
+  @LimitParam(50)
   limit: number = 50;
 
-  @ApiPropertyOptional({ description: 'Показати видалені' })
-  @IsOptional()
-  @Transform(({ value }) => value === 'true' || value === true)
-  @IsBoolean()
+  @ShowDeletedParam()
   showDeleted?: boolean;
 }
 

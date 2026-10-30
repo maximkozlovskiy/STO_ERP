@@ -11,7 +11,7 @@ import {
 } from '@sto/shared';
 import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
-import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
+import { CollapsibleDocumentHeader, DocumentCardBody } from '@/components/ui/document-card-body';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
@@ -25,7 +25,8 @@ import { Modal } from '@/components/ui/modal';
 import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { DocumentCloseButton } from '@/components/ui/document-card-actions';
+import { FormWarehouseSelect } from '@/components/ui/document-card-header';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal } from '@/components/ui/search-picker-modal';
@@ -602,104 +603,74 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                   {isEdit ? t('card.saveChanges') : t('supplierReturn.create')}
                 </Button>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void handleModalClose()}
-                disabled={saving || transitioning}
-              >
-                {t('common:close')}
-              </Button>
+              <DocumentCloseButton onClose={handleModalClose} disabled={saving || transitioning} />
             </div>
           </div>
         }
       >
-        <div className="flex flex-col min-h-[70dvh]">
-          {isDeleted && <DeletedDocumentBanner className="mb-3 shrink-0" />}
-          {/* ── Collapsible header ──────────────────────────────────────────── */}
-          <div
-            className="grid transition-[grid-template-rows] duration-300 ease-in-out shrink-0"
-            style={{ gridTemplateRows: headerCollapsed ? '0fr' : '1fr' }}
-          >
-            <div className="overflow-hidden">
-              <div className="space-y-4 pb-1">
-                {error && (
-                  <div className="text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2">
-                    {error}
-                  </div>
-                )}
-
-                {/* Постачальник | Склад */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <EntityPickerField
-                      label={t('columns.supplier')}
-                      required
-                      display={supplierName}
-                      placeholder={t('card.supplierSearch')}
-                      className="h-8 text-[13px]"
-                      disabled={!canEdit}
-                      onPick={() => setSupplierPickerOpen(true)}
-                      onClear={() => {
-                        setValue('supplierId', '', { shouldDirty: true });
-                        setSupplierName('');
-                      }}
-                    />
-                    {errors.supplierId && (
-                      <p className="text-[12px] text-destructive leading-tight mt-1">
-                        {errors.supplierId.message}
-                      </p>
-                    )}
-                  </div>
-                  <Controller
-                    control={control}
-                    name="warehouseId"
-                    render={({ field }) => (
-                      <Select
-                        label={t('columns.warehouse')}
-                        required
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                        errorMessage={errors.warehouseId?.message}
-                        disabled={!canEdit}
-                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                      >
-                        <option value="">{t('card.choose')}</option>
-                        {warehouses.map(w => (
-                          <option key={w.id} value={w.id}>
-                            {w.name}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  />
-                </div>
-
-                {/* Замовлення (джерело) — опціонально (Phase D2) */}
+        <DocumentCardBody
+          errorTestId="supplier-return-card-error"
+          deleted={isDeleted}
+          error={error}
+        >
+          {/* ── Collapsible header ─────────────────────────────────────── */}
+          <CollapsibleDocumentHeader collapsed={headerCollapsed}>
+            {/* Постачальник | Склад */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
                 <EntityPickerField
-                  label={t('supplierReturn.sourceOrder')}
-                  display={purchaseOrderNumber}
-                  placeholder={t('supplierReturn.sourceOrderPlaceholder')}
+                  label={t('columns.supplier')}
+                  required
+                  display={supplierName}
+                  placeholder={t('card.supplierSearch')}
                   className="h-8 text-[13px]"
-                  disabled={!canEdit || isEdit}
-                  onPick={() => setPoPickerOpen(true)}
+                  disabled={!canEdit}
+                  onPick={() => setSupplierPickerOpen(true)}
                   onClear={() => {
-                    setValue('purchaseOrderId', '', { shouldDirty: true });
-                    setPurchaseOrderNumber('');
+                    setValue('supplierId', '', { shouldDirty: true });
+                    setSupplierName('');
                   }}
                 />
-
-                {/* Опис */}
-                <Input
-                  label={t('card.notes')}
-                  {...register('notes')}
-                  disabled={!canEdit}
-                  placeholder={t('card.notesPlaceholder')}
-                  className="h-8 text-[13px]"
-                />
+                {errors.supplierId && (
+                  <p className="text-[12px] text-destructive leading-tight mt-1">
+                    {errors.supplierId.message}
+                  </p>
+                )}
               </div>
+              <FormWarehouseSelect
+                control={control}
+                name="warehouseId"
+                label={t('columns.warehouse')}
+                chooseLabel={t('card.choose')}
+                warehouses={warehouses}
+                errorMessage={errors.warehouseId?.message}
+                disabled={!canEdit}
+              />
             </div>
-          </div>
+
+            {/* Замовлення (джерело) — опціонально (Phase D2) */}
+            <EntityPickerField
+              label={t('supplierReturn.sourceOrder')}
+              display={purchaseOrderNumber}
+              placeholder={t('supplierReturn.sourceOrderPlaceholder')}
+              className="h-8 text-[13px]"
+              disabled={!canEdit || isEdit}
+              onPick={() => setPoPickerOpen(true)}
+              onClear={() => {
+                setValue('purchaseOrderId', '', { shouldDirty: true });
+                setPurchaseOrderNumber('');
+              }}
+            />
+
+            {/* Опис */}
+            <Input
+              label={t('card.notes')}
+              {...register('notes')}
+              disabled={!canEdit}
+              placeholder={t('card.notesPlaceholder')}
+              className="h-8 text-[13px]"
+            />
+          </CollapsibleDocumentHeader>
 
           {/* ── Header toggle strip ─────────────────────────────────────────── */}
           <CollapsibleHeader
@@ -925,7 +896,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
               </table>
             </div>
           </div>
-        </div>
+        </DocumentCardBody>
       </Modal>
 
       {/* Supplier picker */}
