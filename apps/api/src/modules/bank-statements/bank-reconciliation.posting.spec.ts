@@ -428,3 +428,75 @@ describe('BankReconciliationService.matchTransaction — лише вхідний
     expect(w.row()).toMatchObject({ status: 'MATCHED', matchedType: 'PREPAYMENT' });
   });
 });
+
+// Вхідні види — оплата клієнта (проводка PAYMENT / PREPAYMENT / REFUND); гроші від постачальника —
+// окремий вид «Повернення від постачальника» (BR-BANK-046, `bank-reconciliation.outgoing.spec.ts`).
+describe('BankReconciliationService — вхідні види оплати клієнта лише для клієнта (BR-BANK-045)', () => {
+  // guards: BR-BANK-045
+  it.each(BANK_TX_IN_MATCH_TYPES)(
+    'рознесення %s на постачальника → 400 «не є клієнтом» до захоплення рядка; оплати немає',
+    async type => {
+      const w = await makeWorld();
+      w.addRow({ direction: 'IN' });
+      const invoiceId = w.db.seed('invoice', {
+        id: w.db.nextId(),
+        orgId: W_ORG,
+        number: '778',
+        counterpartyId: ID.supplier,
+      }).id as string;
+
+      await expect(
+        w.service.matchTransaction(
+          W_ORG,
+          ID.tx,
+          { counterpartyId: ID.supplier, type, ...(type === 'INVOICE' ? { invoiceId } : {}) },
+          USER,
+        ),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: translateError('err.counterparty.notAClient', 'uk'),
+      });
+
+      expect(w.payments.create).not.toHaveBeenCalled();
+      expect(w.row()).toMatchObject({ status: 'UNMATCHED', matchedType: null, paymentId: null });
+    },
+  );
+
+  // guards: BR-BANK-045, BR-BANK-041
+  it('внесення з рознесенням «Передоплата» на постачальника → 400, рядка не лишається', async () => {
+    const w = await makeWorld();
+
+    await expect(
+      w.service.createManual(
+        W_ORG,
+        {
+          bankAccountId: ID.account,
+          direction: 'IN',
+          amount: 300,
+          operationDate: '2026-10-09',
+          allocation: { type: 'PREPAYMENT', counterpartyId: ID.supplier },
+        },
+        USER,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+
+    expect(w.payments.create).not.toHaveBeenCalled();
+    expect(w.db.rows('bankTransaction')).toEqual([]);
+  });
+
+  // guards: BR-BANK-045
+  it('контрагент «обидва» — клієнт: передоплата проходить', async () => {
+    const w = await makeWorld();
+    w.addRow({ direction: 'IN' });
+
+    await w.service.matchTransaction(
+      W_ORG,
+      ID.tx,
+      { counterpartyId: ID.both, type: 'PREPAYMENT' },
+      USER,
+    );
+
+    expect(w.payments.create).toHaveBeenCalledTimes(1);
+    expect(w.row()).toMatchObject({ status: 'MATCHED', counterpartyId: ID.both });
+  });
+});

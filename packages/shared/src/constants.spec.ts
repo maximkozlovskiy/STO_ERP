@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CALENDAR_DATE_RE, kyivTodayYmd } from './constants';
+import { CALENDAR_DATE_RE, isOnlineMethodCode, kyivTodayYmd } from './constants';
 
 // Одне визначення форми календарної дати для api, web і схем форм (TECH-DEBT §8, раніше п'ять
 // різних копій: дві приймали рік 0000 — Bug #818). Мутація: прибрати `(?!0000)` → кейс року 0000.
@@ -25,5 +25,21 @@ describe('kyivTodayYmd', () => {
   it('узимку зсув +2: 22:30 UTC — наступна доба, 21:30 — ще та сама', () => {
     expect(kyivTodayYmd(new Date('2026-01-14T22:30:00Z'))).toBe('2026-01-15');
     expect(kyivTodayYmd(new Date('2026-01-14T21:30:00Z'))).toBe('2026-01-14');
+  });
+});
+
+describe('isOnlineMethodCode — онлайн-спосіб оплати (QR, BR-PAY-031)', () => {
+  // guards: BR-PAY-031
+  it.each([
+    ['monobank_qr', true],
+    ['LIQPAY_QR', true],
+    ['privat24_qr', true],
+    ['cash', false],
+    ['card_terminal', false],
+    ['qr_card', false],
+    ['', false],
+    [null, false],
+  ] as const)('%s → %s', (code, expected) => {
+    expect(isOnlineMethodCode(code)).toBe(expected);
   });
 });

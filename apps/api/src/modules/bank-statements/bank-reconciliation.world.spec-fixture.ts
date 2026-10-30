@@ -28,7 +28,7 @@ import { AuditService } from '../audit/audit.service';
 import { CashService } from '../cash/cash.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { PaymentsService } from '../payments/payments.service';
-import { SettlementsService } from '../settlements/settlements.service';
+import { BALANCE_SIGN, SettlementsService } from '../settlements/settlements.service';
 import { SupplierPaymentsService } from '../supplier-payments/supplier-payments.service';
 import { BankReconciliationService } from './bank-reconciliation.service';
 
@@ -793,6 +793,9 @@ function makeDeps(db: FakeDb, root: FakeClient) {
     ),
   };
 
+  /** Сальдо контрагента ДО кейсу (balance > 0 — нам винні, < 0 — ми винні). */
+  const openingBalances = new Map<string, number>();
+
   // Проведення пишеться в журнал ЧЕРЕЗ ПЕРЕДАНИЙ клієнт (як касова операція нижче): сторно при
   // скасуванні рознесення шукає початкове проведення рядка й копіює його суму в базовій валюті
   // (BR-BANK-039). Конвертація — як у справжньому сервісі: явна `conversion` або курс на `date`.
@@ -823,6 +826,30 @@ function makeDeps(db: FakeDb, root: FakeClient) {
         },
       });
     }),
+    /**
+     * BR-BANK-044 / 046: переплата клієнта / аванс постачальнику — початкове сальдо кейсу
+     * (`setBalance`) плюс проводки, записані цим світом. Сальдо не задане — без обмеження, щоб
+     * правило не заважало кейсам про інше.
+     */
+    lockRefundAvailable: vi.fn(
+      async (orgId: string, counterpartyId: string, side: string, tx?: FakeClient) => {
+        const opening = openingBalances.get(counterpartyId);
+        if (opening === undefined) return 1e9;
+        const rows = (await (tx ?? root).settlementTransaction.findMany({
+          where: { orgId, counterpartyId },
+        })) as Rec[];
+        const balance = rows.reduce(
+          (sum, r) =>
+            sum + BALANCE_SIGN[r.type as keyof typeof BALANCE_SIGN] * Number(r.amountBase),
+          opening,
+        );
+        return Math.max(0, side === 'client' ? -balance : balance);
+      },
+    ),
+    // Справжнє правило SettlementsService (рівно доступна сума проходить; текст — з базовою валютою).
+    assertRefundWithin: vi.fn((...args: Parameters<SettlementsService['assertRefundWithin']>) =>
+      SettlementsService.prototype.assertRefundWithin.apply({ exchangeRates: exchange }, args),
+    ),
   };
 
   // Касова операція пишеться ЧЕРЕЗ ПЕРЕДАНИЙ клієнт: якщо сервіс передав tx — запис відкотиться
@@ -839,7 +866,7 @@ function makeDeps(db: FakeDb, root: FakeClient) {
   const audit = { record: vi.fn().mockResolvedValue(undefined) };
   const payments = { create: vi.fn().mockResolvedValue({ id: uuid(990) }) };
 
-  return { supplierPayments, settlements, cash, audit, payments, exchange };
+  return { supplierPayments, settlements, cash, audit, payments, exchange, openingBalances };
 }
 
 export type WorldDeps = ReturnType<typeof makeDeps>;
@@ -889,6 +916,9 @@ export async function makeWorld() {
     service,
     ...deps,
     calls,
+    /** Сальдо контрагента до кейсу: −500 — переплата клієнта 500; +500 — наш аванс постачальнику. */
+    setBalance: (counterpartyId: string, balance: number) =>
+      deps.openingBalances.set(counterpartyId, balance),
     /** Покласти рядок виписки у світ. */
     addRow: (over: Rec = {}) => db.seed('bankTransaction', bankRow(over)),
     /** Живий рядок виписки (стан ПІСЛЯ виклику сервісу). */

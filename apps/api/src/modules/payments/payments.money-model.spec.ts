@@ -334,6 +334,39 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     expect(settlements.createTransaction).toHaveBeenCalledTimes(2);
   });
 
+  // Рішення власника 2026-10-30 (TECH-DEBT (б) №44): часткова оплата рахунку з минулим терміном
+  // лишає його «Прострочено» одразу — не «Частково оплачено» до нічної позначки.
+  // guards: BR-INV-025
+  it('прострочений рахунок (термін минув): часткова оплата → лишається OVERDUE, повна → PAID', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
+      status: 'OVERDUE',
+      workOrderId: null,
+      amount: 500,
+      paidAmount: 0,
+      dueDate: new Date('2020-01-10T00:00:00.000Z'),
+    });
+    prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+    await service.create(ORG, { ...baseDto, amount: 200 }, 'user-1');
+    await service.create(ORG, { ...baseDto, amount: 500 }, 'user-1');
+
+    expect(prisma.invoice.updateMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({ paidAmount: 200, status: 'OVERDUE' }),
+      }),
+    );
+    expect(prisma.invoice.updateMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({ paidAmount: 500, status: 'PAID' }),
+      }),
+    );
+    // Термін читається разом із сумами рахунку в транзакції.
+    expect(prisma.invoice.findFirst.mock.calls.at(-1)![0].select).toMatchObject({ dueDate: true });
+  });
+
   // Каса (CashDeskService) передає статтю, підставу й примітку ВНУТРІШНІМ аргументом: єдиний
   // рядок каси мусить нести їх одразу — журнал лише дописується.
   // guards: BR-CASH-017

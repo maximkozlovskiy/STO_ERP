@@ -47,19 +47,29 @@ const payment = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('види «Рознести як» за напрямом', () => {
-  // guards: BR-BANK-025, BR-BANK-041
-  it('вхідний — види match і переказ; вихідний — усі види reconcile', () => {
+  // guards: BR-BANK-025, BR-BANK-041, BR-BANK-046
+  it('вхідний — види match, повернення від постачальника і переказ; вихідний — види reconcile без повернення від постачальника', () => {
     expect(BANK_TX_ALLOCATION_TYPES_BY_DIRECTION.IN).toEqual([
       ...BANK_TX_IN_MATCH_TYPE_VALUES,
+      'SUPPLIER_REFUND_IN',
       'TRANSFER',
     ]);
-    expect(BANK_TX_ALLOCATION_TYPES_BY_DIRECTION.OUT).toEqual(BANK_TX_OUT_MATCH_TYPE_VALUES);
+    expect(BANK_TX_ALLOCATION_TYPES_BY_DIRECTION.OUT).toEqual(
+      BANK_TX_OUT_MATCH_TYPE_VALUES.filter(t => t !== 'SUPPLIER_REFUND_IN'),
+    );
+    expect(BANK_TX_ALLOCATION_TYPES_BY_DIRECTION.OUT).not.toContain('SUPPLIER_REFUND_IN');
   });
 
-  // guards: BR-BANK-041
+  // guards: BR-BANK-041, BR-BANK-046
   it('підтвердження перед видами, що проводять гроші: постачальник, повернення, каса, рахунок', () => {
     expect([...BANK_TX_CREATE_CONFIRM_TYPES].sort()).toEqual(
-      ['CASH_WITHDRAWAL', 'CLIENT_REFUND', 'INVOICE', 'SUPPLIER_PAYMENT'].sort(),
+      [
+        'CASH_WITHDRAWAL',
+        'CLIENT_REFUND',
+        'INVOICE',
+        'SUPPLIER_PAYMENT',
+        'SUPPLIER_REFUND_IN',
+      ].sort(),
     );
   });
 });
@@ -125,6 +135,31 @@ describe('bankTransactionAllocationSchema — блок allocation тіла за�
     ['INVOICE', 'counterpartyId', 'v.bankTransaction.counterparty.required'],
   ])('%s без обов’язкового поля → помилка %s', (type, field, key) => {
     expect(issues(bankTransactionAllocationSchema, { type })).toContain(`${field}: ${key}`);
+  });
+
+  // guards: BR-BANK-046
+  it('повернення від постачальника без постачальника → «Оберіть постачальника»; з ним — проходить і як вхідний вид', () => {
+    expect(issues(bankTransactionAllocationSchema, { type: 'SUPPLIER_REFUND_IN' })).toEqual([
+      'counterpartyId: v.bankTransaction.supplier.required',
+    ]);
+    expect(
+      issues(bankTransactionIncomingAllocationSchema, {
+        type: 'SUPPLIER_REFUND_IN',
+        counterpartyId: UUID_A,
+      }),
+    ).toEqual([]);
+    expect(
+      issues(bankTransactionCreateRequestSchema, {
+        ...payment(),
+        allocation: { type: 'SUPPLIER_REFUND_IN', counterpartyId: UUID_A },
+      }),
+    ).toEqual([]);
+    expect(
+      issues(bankTransactionCreateRequestSchema, {
+        ...payment({ direction: 'OUT' }),
+        allocation: { type: 'SUPPLIER_REFUND_IN', counterpartyId: UUID_A },
+      }),
+    ).toEqual(['allocation.type: v.bankTransaction.allocation.direction']);
   });
 
   // guards: BR-BANK-041

@@ -37,8 +37,10 @@ import {
   settleIfFullyPaidInTx,
   type WorkOrderStatusStep,
 } from '../work-orders/work-order-status';
-import { postWorkOrderFxInTx } from '../work-orders/work-order-fx';
+import { postWorkOrderFxInTx, workOrderFxDocuments } from '../work-orders/work-order-fx';
 import { syncWorkOrderInvoicePaid } from '../invoices/work-order-invoice-mirror';
+import { invoiceStatusForPaid } from '../invoices/invoice-paid-status';
+import { hasNetFx, netFxBalanceEffect, reverseNetFxInTx } from '../settlements/fx-net';
 import { LoyaltyService, type LoyaltyEarnReversal } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
@@ -608,6 +610,7 @@ export class PaymentsService {
               amount: true,
               paidAmount: true,
               currencyId: true,
+              dueDate: true,
             },
           });
           // Рахунок видалили між перевіркою і транзакцією → 404 і відкат, а не оплата «у нікуди».
@@ -655,7 +658,8 @@ export class PaymentsService {
             );
           }
           const newPaid = prevPaid + dto.amount;
-          const newStatus = newPaid >= invAmount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID';
+          // BR-INV-025: часткова оплата простроченого рахунку лишає його «Прострочено» одразу.
+          const newStatus = invoiceStatusForPaid(inv.status, invAmount, newPaid, inv.dueDate);
           // CAS: оновлюємо лише якщо paidAmount і статус досі ті, що прочитали. Статус — бо з нього
           // вище рахувалась відмова (скасований між читанням і записом рахунок не стає «Оплачено»)
           // і з нього ж — `fromStatus` події (BR-AUT-060).
@@ -786,6 +790,7 @@ export class PaymentsService {
               documentId: created.id,
               createdBy: userId,
               ...cashRow,
+              ...cashRowBaseDocument(cashRow, workOrderId),
             },
             tx,
           );
@@ -917,24 +922,31 @@ export class PaymentsService {
     if (payment.fiscalStatus === FiscalReceiptStatus.DONE || payment.fiscalReceiptId) {
       throw new BadRequestException(translateError('err.cash.reversalFiscalDone', locale));
     }
-    // Іновалютна оплата могла закрити рахунок і провести курсову різницю — сторно її не
-    // відкочує (питання власнику), тож таку оплату не сторнуємо зовсім.
-    if (!(await this.exchangeRates.sameCurrency(orgId, payment.currencyId, null))) {
-      throw new BadRequestException(translateError('err.cash.reversalForeignCurrency', locale));
+    // BR-PAY-029: чек у черзі ПРРО може бути вже в дорозі — пробитий після сторно, він лишився б
+    // за оплатою, якої немає. Сторно — лише коли ПРРО відповів (пробито → відмова вище,
+    // відхилено → сторно знімає чек).
+    if (payment.fiscalStatus === FiscalReceiptStatus.QUEUED) {
+      throw new BadRequestException(translateError('err.cash.reversalFiscalQueued', locale));
     }
 
     const [workOrder, invoice] = await Promise.all([
       payment.workOrderId
         ? tx.workOrder.findFirst({
             where: { id: payment.workOrderId, orgId, deletedAt: null },
-            select: { status: true, paidAmount: true, totalAmount: true },
+            select: { status: true, paidAmount: true, totalAmount: true, counterpartyId: true },
           })
         : null,
       // Рахунок окремо — лише для оплати без наряду: рахунок наряду — дзеркало (BR-INV-018).
       payment.invoiceId && !payment.workOrderId
         ? tx.invoice.findFirst({
             where: { id: payment.invoiceId, orgId, deletedAt: null },
-            select: { status: true, paidAmount: true, amount: true },
+            select: {
+              status: true,
+              paidAmount: true,
+              amount: true,
+              dueDate: true,
+              counterpartyId: true,
+            },
           })
         : null,
     ]);
@@ -962,10 +974,8 @@ export class PaymentsService {
     }
 
     // CAS першим записом: друге сторно (паралельне чи повторне) тут програє, нічого не змінивши.
-    // Чек, що ще чекає в черзі, знімаємо тим самим записом — обробник пропускає сторновану оплату.
-    const fiscalPending =
-      payment.fiscalStatus === FiscalReceiptStatus.QUEUED ||
-      payment.fiscalStatus === FiscalReceiptStatus.FAILED;
+    // Відхилений ПРРО чек знімаємо тим самим записом — повтор фіскалізації його вже не поставить.
+    const fiscalPending = payment.fiscalStatus === FiscalReceiptStatus.FAILED;
     // У `where` — і прочитаний стан чека: обробник пише DONE без блокування, і чек, пробитий між
     // читанням вище й цим записом, інакше пройшов би повз відмову «чек уже пробито», а його DONE
     // затерло б SKIPPED (review 2026-10-14).
@@ -1086,22 +1096,32 @@ export class PaymentsService {
         }
       }
       await syncWorkOrderInvoicePaid(tx, orgId, payment.workOrderId, ctx.userId);
+      // BR-PAY-028: наряд більше не сплачений повністю — курсова різниця повної оплати відкочується.
+      if (!isWorkOrderFullyPaid(workOrder.totalAmount, newPaid)) {
+        await reverseNetFxInTx(tx, this.settlements, orgId, {
+          counterpartyId: workOrder.counterpartyId,
+          target: { documentType: 'WorkOrder', documentId: payment.workOrderId },
+          documents: await workOrderFxDocuments(tx, orgId, payment.workOrderId),
+          notes: `Курсова різниця відкочена: сторно оплати — ${ctx.reason}`,
+          userId: ctx.userId,
+        });
+      }
     }
 
     // Оплата рахунку БЕЗ наряду: «сплачено» рахунку назад (не нижче нуля); «Оплачено» / «Частково
-    // оплачено» → «Частково оплачено» або «Виставлено». Статус — та сама формула, що в create, лише
-    // навпаки: сплачене й далі покриває суму рахунку → лишається «Оплачено». CAS на сумі й статусі.
+    // оплачено» / «Прострочено» → за тією самою формулою, що в create (BR-INV-025): сплачене й далі
+    // покриває суму → «Оплачено»; термін минув → «Прострочено» одразу; інакше «Частково оплачено» або
+    // «Виставлено». CAS на сумі й статусі.
     if (invoice && payment.invoiceId) {
       const newPaid = money(Math.max(0, moneyFromDecimal(invoice.paidAmount) - amount));
+      const invoiceAmount = moneyFromDecimal(invoice.amount);
       const wasPaid =
-        invoice.status === InvoiceStatus.PAID || invoice.status === InvoiceStatus.PARTIALLY_PAID;
+        invoice.status === InvoiceStatus.PAID ||
+        invoice.status === InvoiceStatus.PARTIALLY_PAID ||
+        invoice.status === InvoiceStatus.OVERDUE;
       const newStatus = !wasPaid
         ? invoice.status
-        : newPaid >= moneyFromDecimal(invoice.amount) - 1e-9
-          ? InvoiceStatus.PAID
-          : newPaid > 0
-            ? InvoiceStatus.PARTIALLY_PAID
-            : InvoiceStatus.SENT;
+        : invoiceStatusForPaid(invoice.status, invoiceAmount, newPaid, invoice.dueDate);
       const fromStatus = invoice.status;
       const moved = await tx.invoice.updateMany({
         where: {
@@ -1127,6 +1147,17 @@ export class PaymentsService {
         toStatus: newStatus,
         actorId: ctx.userId ?? null,
       });
+      // BR-PAY-028: рахунок більше не сплачений повністю — курсова різниця його повної оплати
+      // відкочується (базова валюта — чистої FX немає, виклик нічого не пише).
+      if (newPaid < invoiceAmount - 1e-9) {
+        await reverseNetFxInTx(tx, this.settlements, orgId, {
+          counterpartyId: invoice.counterpartyId,
+          target: { documentType: 'Invoice', documentId: payment.invoiceId },
+          documents: [{ documentType: 'Invoice', documentId: payment.invoiceId }],
+          notes: `Курсова різниця відкочена: сторно оплати — ${ctx.reason}`,
+          userId: ctx.userId,
+        });
+      }
     }
 
     const loyalty = await this.loyalty.reverseEarn(orgId, payment.id, tx);
@@ -1319,7 +1350,7 @@ export class PaymentsService {
     counterpartyId: string,
     userId?: string,
   ): Promise<void> {
-    const [chargeAgg, paidAgg, fxExisting] = await Promise.all([
+    const [chargeAgg, paidAgg, fxNet] = await Promise.all([
       tx.settlementTransaction.aggregate({
         where: { orgId, type: 'CHARGE', documentType: 'Invoice', documentId: invoiceId },
         _sum: { amountBase: true },
@@ -1328,17 +1359,11 @@ export class PaymentsService {
         where: { orgId, invoiceId, reversedAt: null },
         _sum: { amountBase: true },
       }),
-      // Idempotency: якщо FX для цього рахунку вже проведено — не дублюємо (повторний PAID).
-      tx.settlementTransaction.count({
-        where: {
-          orgId,
-          type: { in: ['FX_GAIN', 'FX_LOSS'] },
-          documentType: 'Invoice',
-          documentId: invoiceId,
-        },
-      }),
+      // Idempotency: чиста FX рахунку ≠ 0 — вже визнано, не дублюємо. Сторно, що зробило рахунок
+      // не сплаченим, її обнуляє (BR-PAY-028) — тоді повна оплата визнає її заново.
+      netFxBalanceEffect(tx, orgId, [{ documentType: 'Invoice', documentId: invoiceId }]),
     ]);
-    if (fxExisting > 0) return;
+    if (hasNetFx(fxNet)) return;
     const chargeBase = moneyFromDecimal(chargeAgg._sum.amountBase);
     const paidBase = moneyFromDecimal(paidAgg._sum.amountBase);
     const fx = money(chargeBase - paidBase);
@@ -1542,4 +1567,17 @@ export class PaymentsService {
       createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
     };
   }
+}
+
+/**
+ * BR-CASH-030: підстава рядка каси для оплати в касу. Підставу, яку задала каса (картка касової
+ * операції, BR-CASH-020), не чіпаємо; оплата за нарядом (з вікна наряду чи через рахунок наряду)
+ * без неї отримує підставою сам наряд — у журналі каси видно, за що прийнято гроші.
+ */
+function cashRowBaseDocument(
+  cashRow: CashOperationExtras | undefined,
+  workOrderId: string | null,
+): Pick<CashOperationExtras, 'baseDocumentType' | 'baseDocumentId'> {
+  if (cashRow?.baseDocumentId) return {};
+  return workOrderId ? { baseDocumentType: 'WorkOrder', baseDocumentId: workOrderId } : {};
 }

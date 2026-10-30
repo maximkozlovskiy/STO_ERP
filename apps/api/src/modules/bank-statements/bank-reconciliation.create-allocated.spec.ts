@@ -296,7 +296,12 @@ describe('createManual з allocation — вихідні види (BR-BANK-041)',
       documentType: 'BankTransaction',
       documentId: row.id,
     });
-    expect((input.date as Date).toISOString()).toBe('2026-10-09T00:00:00.000Z');
+    // Курс — на дату операції внесеного рядка; та сама конверсія — і в ліміті переплати (BR-BANK-044).
+    const rateDates = w.exchange.resolveBaseConversion.mock.calls.map(c =>
+      (c[2] as Date).toISOString(),
+    );
+    expect(rateDates.every(d => d === '2026-10-09T00:00:00.000Z')).toBe(true);
+    expect(input.conversion).toMatchObject({ amountBase: 2400.75 });
     expect(client).toBe(w.tx);
   });
 

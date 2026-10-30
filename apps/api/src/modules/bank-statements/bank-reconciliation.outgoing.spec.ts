@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import { describe, it, expect } from 'vitest';
+import { formatMoneyForMessage } from '../../common/utils/money';
 import {
   BANK_TX_OUT_MATCH_TYPES,
   type BankTxOutMatchType,
@@ -52,9 +53,31 @@ const VALID: Record<BankTxOutMatchType, ReconcileTransactionDto> = {
   PAYROLL: { type: 'PAYROLL', payrollPeriodId: ID.periodComputed },
   TRANSFER: { type: 'TRANSFER', transferBankAccountId: ID.account2 },
   CASH_WITHDRAWAL: { type: 'CASH_WITHDRAWAL', cashRegisterId: ID.cashUah },
+  SUPPLIER_REFUND_IN: { type: 'SUPPLIER_REFUND_IN', counterpartyId: ID.supplier },
 };
 
-const OUT_ONLY = BANK_TX_OUT_MATCH_TYPES.filter(t => t !== 'TRANSFER');
+/** Види лише для вихідного рядка (переказ — для обох, повернення від постачальника — для вхідного). */
+const OUT_ONLY = BANK_TX_OUT_MATCH_TYPES.filter(
+  t => t !== 'TRANSFER' && t !== 'SUPPLIER_REFUND_IN',
+);
+/** Види, якими можна рознести вихідний рядок. */
+const OUT_DIRECTION = BANK_TX_OUT_MATCH_TYPES.filter(t => t !== 'SUPPLIER_REFUND_IN');
+/** Напрям рядка, для якого вид дозволений. */
+const directionFor = (type: BankTxOutMatchType) => ({
+  direction: type === 'SUPPLIER_REFUND_IN' ? 'IN' : 'OUT',
+});
+
+// Сума в тексті — розряди й копійки за мовою (`formatMoneyForMessage`), валюта — базова.
+const REFUND_OVER_OVERPAYMENT = (available: number) =>
+  translateError('err.settlement.refundExceedsOverpayment', 'uk', {
+    available: formatMoneyForMessage(available, 'uk'),
+    currency: 'UAH',
+  });
+const REFUND_OVER_ADVANCE = (available: number) =>
+  translateError('err.settlement.refundExceedsAdvance', 'uk', {
+    available: formatMoneyForMessage(available, 'uk'),
+    currency: 'UAH',
+  });
 
 const reconcile = (w: World, dto: ReconcileTransactionDto, txId: string = ID.tx) =>
   w.service.reconcile(ORG, txId, dto, USER);
@@ -101,17 +124,14 @@ describe('BankReconciliationService.reconcile — вихідні платежі'
     });
 
     // guards: BR-BANK-025
-    it.each(BANK_TX_OUT_MATCH_TYPES)(
-      'вихідний рядок, вид %s → рознесено саме цим видом',
-      async type => {
-        const w = await makeWorld();
-        w.addRow();
+    it.each(OUT_DIRECTION)('вихідний рядок, вид %s → рознесено саме цим видом', async type => {
+      const w = await makeWorld();
+      w.addRow();
 
-        await reconcile(w, VALID[type]);
+      await reconcile(w, VALID[type]);
 
-        expect(w.row()).toMatchObject({ status: 'MATCHED', matchedType: type });
-      },
-    );
+      expect(w.row()).toMatchObject({ status: 'MATCHED', matchedType: type });
+    });
   });
 
   describe('обов’язкові поля виду — 400 до захоплення рядка', () => {
@@ -174,7 +194,12 @@ describe('BankReconciliationService.reconcile — вихідні платежі'
       'рядок уже рознесений, вид %s → 409, без ефектів, попереднє рознесення ціле',
       async type => {
         const w = await makeWorld();
-        w.addRow({ status: 'MATCHED', matchedType: 'EXPENSE', expenseCategoryId: ID.expense });
+        w.addRow({
+          ...directionFor(type),
+          status: 'MATCHED',
+          matchedType: 'EXPENSE',
+          expenseCategoryId: ID.expense,
+        });
 
         await expect(reconcile(w, VALID[type])).rejects.toMatchObject({ status: 409 });
 
@@ -204,7 +229,7 @@ describe('BankReconciliationService.reconcile — вихідні платежі'
       'CAS програв гонку, вид %s → 409, ефект не викликано',
       async type => {
         const w = await makeWorld();
-        w.addRow();
+        w.addRow(directionFor(type));
         w.loseNextCas();
 
         await expect(reconcile(w, VALID[type])).rejects.toMatchObject({ status: 409 });
@@ -282,8 +307,18 @@ describe('BankReconciliationService.reconcile — вихідні платежі'
         documentType: 'BankTransaction',
         documentId: ID.tx,
       });
-      // Курс — на дату операції рядка (BR-BANK-030 / 035), а не на «сьогодні» і не з запиту.
-      expect(posting.date).toEqual(OP_DATE);
+      // Курс — на дату операції рядка (BR-BANK-030 / 035), а не на «сьогодні» і не з запиту; та сама
+      // конверсія звіряється з переплатою й іде в проводку (BR-BANK-044).
+      expect(w.exchange.resolveBaseConversion).toHaveBeenCalledWith(
+        ORG,
+        ID.usd,
+        OP_DATE,
+        200,
+        true,
+      );
+      expect(posting.conversion).toEqual(
+        await w.exchange.resolveBaseConversion.mock.results[0]!.value,
+      );
       expect(w.row()).toMatchObject({
         status: 'MATCHED',
         matchedType: 'CLIENT_REFUND',
@@ -335,6 +370,80 @@ describe('BankReconciliationService.reconcile — вихідні платежі'
       expect(w.row()).toMatchObject(FREE_ROW);
     });
 
+    // guards: BR-BANK-044
+    it('понад переплату клієнта → 400 з доступною сумою; рядок вільний, проведення немає', async () => {
+      const w = await makeWorld();
+      w.addRow();
+      w.setBalance(ID.client, -(ROW_AMOUNT - 0.01));
+
+      await expect(reconcile(w, VALID.CLIENT_REFUND)).rejects.toMatchObject({
+        status: 400,
+        message: REFUND_OVER_OVERPAYMENT(1500.49),
+      });
+
+      expect(w.settlements.createTransaction).not.toHaveBeenCalled();
+      expect(w.row()).toMatchObject({ ...FREE_ROW, matchedAt: null, matchedBy: null });
+    });
+
+    // guards: BR-BANK-044
+    it('рівно вся переплата проходить; без переплати (борг клієнта) — 400 «не більше 0,00»', async () => {
+      const exact = await makeWorld();
+      exact.addRow();
+      exact.setBalance(ID.client, -ROW_AMOUNT);
+      await reconcile(exact, VALID.CLIENT_REFUND);
+      expect(exact.settlements.createTransaction).toHaveBeenCalledTimes(1);
+
+      const debtor = await makeWorld();
+      debtor.addRow();
+      debtor.setBalance(ID.client, 250);
+      await expect(reconcile(debtor, VALID.CLIENT_REFUND)).rejects.toMatchObject({
+        message: REFUND_OVER_OVERPAYMENT(0),
+      });
+    });
+
+    // Сума рядка — у валюті рахунку; переплата — у базовій валюті: порівнюється сума в базовій.
+    // guards: BR-BANK-044
+    it('валютний рядок: ліміт звіряється з сумою в базовій валюті за курсом дати операції', async () => {
+      const w = await makeWorld();
+      w.addRow({ bankAccountId: ID.accountUsd, currencyId: ID.usd, amount: dec(200) });
+      w.exchange.resolveBaseConversion.mockImplementation(
+        (_o: string, _c: string, _d: Date, amount: number) =>
+          Promise.resolve({ rateUsed: 41.5, amountBase: amount * 41.5 }),
+      );
+      // 200 USD × 41,5 = 8 300 грн; переплата 8 299,99 — бракує копійки.
+      w.setBalance(ID.client, -8299.99);
+
+      await expect(reconcile(w, VALID.CLIENT_REFUND)).rejects.toMatchObject({
+        message: REFUND_OVER_OVERPAYMENT(8299.99),
+      });
+      expect(w.exchange.resolveBaseConversion).toHaveBeenCalledWith(
+        ORG,
+        ID.usd,
+        OP_DATE,
+        200,
+        true,
+      );
+    });
+
+    // guards: BR-BANK-044
+    it('рахунок розрахунків блокується в транзакції рознесення, до проведення', async () => {
+      const w = await makeWorld();
+      w.addRow();
+      w.setBalance(ID.client, -ROW_AMOUNT);
+
+      await reconcile(w, VALID.CLIENT_REFUND);
+
+      expect(w.settlements.lockRefundAvailable).toHaveBeenCalledWith(
+        ORG,
+        ID.client,
+        'client',
+        w.tx,
+      );
+      expect(w.settlements.lockRefundAvailable.mock.invocationCallOrder[0]).toBeLessThan(
+        w.settlements.createTransaction.mock.invocationCallOrder[0]!,
+      );
+    });
+
     // guards: BR-BANK-030
     it('контрагент з обома ролями (BOTH) — клієнт: повернення проходить', async () => {
       const w = await makeWorld();
@@ -360,6 +469,108 @@ describe('BankReconciliationService.reconcile — вихідні платежі'
 
       expect(effectCalls(w)).toEqual(NO_EFFECTS);
       expect(w.row()).toMatchObject(FREE_ROW);
+    });
+  });
+
+  describe('SUPPLIER_REFUND_IN — повернення від постачальника (вхідний рядок)', () => {
+    // guards: BR-BANK-046
+    it('вхідний рядок → одне проведення SUPPLIER_PAYMENT_RETURN на суму рядка, у транзакції рядка', async () => {
+      const w = await makeWorld();
+      w.addRow({ direction: 'IN' });
+
+      await reconcile(w, VALID.SUPPLIER_REFUND_IN);
+
+      expect(w.settlements.createTransaction).toHaveBeenCalledTimes(1);
+      const [, posting, client] = w.settlements.createTransaction.mock.calls[0]!;
+      expect(posting).toMatchObject({
+        counterpartyId: ID.supplier,
+        type: 'SUPPLIER_PAYMENT_RETURN',
+        amount: ROW_AMOUNT,
+        documentType: 'BankTransaction',
+        documentId: ID.tx,
+      });
+      expect(w.exchange.resolveBaseConversion).toHaveBeenCalledWith(
+        ORG,
+        expect.any(String),
+        OP_DATE,
+        ROW_AMOUNT,
+        true,
+      );
+      expect(client).toBe(w.tx);
+      expect(w.row()).toMatchObject({
+        status: 'MATCHED',
+        matchedType: 'SUPPLIER_REFUND_IN',
+        counterpartyId: ID.supplier,
+      });
+      expect({ ...effectCalls(w), 'settlements.createTransaction': 0 }).toEqual(NO_EFFECTS);
+    });
+
+    // guards: BR-BANK-046, BR-BANK-025
+    it('вихідний рядок → 400 «не підходить для напряму», жодного запису', async () => {
+      const w = await makeWorld();
+      w.addRow();
+
+      await expect(reconcile(w, VALID.SUPPLIER_REFUND_IN)).rejects.toMatchObject({
+        status: 400,
+        message: WRONG_DIRECTION,
+      });
+      expectRowNeverWritten(w);
+      expect(effectCalls(w)).toEqual(NO_EFFECTS);
+    });
+
+    // guards: BR-BANK-046
+    it('контрагент лише клієнт → 400; «обидва» — проходить', async () => {
+      const client = await makeWorld();
+      client.addRow({ direction: 'IN' });
+      await expect(
+        reconcile(client, { type: 'SUPPLIER_REFUND_IN', counterpartyId: ID.client }),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: translateError('err.counterparty.notASupplier', 'uk'),
+      });
+      expect(effectCalls(client)).toEqual(NO_EFFECTS);
+
+      const both = await makeWorld();
+      both.addRow({ direction: 'IN' });
+      await reconcile(both, { type: 'SUPPLIER_REFUND_IN', counterpartyId: ID.both });
+      expect(both.row()).toMatchObject({ status: 'MATCHED', counterpartyId: ID.both });
+    });
+
+    // guards: BR-BANK-046
+    it('понад наш аванс постачальнику → 400 з доступною сумою; рівно аванс — проходить', async () => {
+      const over = await makeWorld();
+      over.addRow({ direction: 'IN' });
+      over.setBalance(ID.supplier, ROW_AMOUNT - 0.01);
+      await expect(reconcile(over, VALID.SUPPLIER_REFUND_IN)).rejects.toMatchObject({
+        status: 400,
+        message: REFUND_OVER_ADVANCE(1500.49),
+      });
+      expect(over.settlements.createTransaction).not.toHaveBeenCalled();
+      expect(over.row()).toMatchObject({ ...FREE_ROW, matchedAt: null, matchedBy: null });
+
+      const exact = await makeWorld();
+      exact.addRow({ direction: 'IN' });
+      exact.setBalance(ID.supplier, ROW_AMOUNT);
+      await reconcile(exact, VALID.SUPPLIER_REFUND_IN);
+      expect(exact.settlements.lockRefundAvailable).toHaveBeenCalledWith(
+        ORG,
+        ID.supplier,
+        'supplier',
+        exact.tx,
+      );
+      expect(exact.settlements.createTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    // guards: BR-BANK-046
+    it('без постачальника → 400, рядок не чіпається', async () => {
+      const w = await makeWorld();
+      w.addRow({ direction: 'IN' });
+
+      await expect(reconcile(w, { type: 'SUPPLIER_REFUND_IN' })).rejects.toMatchObject({
+        status: 400,
+        message: FIELD_REQUIRED,
+      });
+      expectRowNeverWritten(w);
     });
   });
 

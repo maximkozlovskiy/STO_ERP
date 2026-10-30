@@ -65,6 +65,52 @@ describe('mirroredInvoiceStatus — статус рахунку наряду з�
   });
 });
 
+// Рішення власника 2026-10-30 (TECH-DEBT (б) №44): прострочений рахунок наряду, що перестав бути
+// сплаченим повністю (сторно) чи сплачений частково, — «Прострочено» одразу.
+describe('syncWorkOrderInvoicePaid — прострочений рахунок наряду (BR-INV-025)', () => {
+  const PAST = new Date('2020-01-10T00:00:00.000Z');
+  const FUTURE = new Date('2999-01-10T00:00:00.000Z');
+
+  // guards: BR-INV-025
+  it('сторно повної оплати простроченого рахунку → «Прострочено», а не «Виставлено»', async () => {
+    const t = tables({ paidAmount: 0 }, [
+      { status: 'PAID', amount: 1000, paidAmount: 1000, dueDate: PAST },
+    ]);
+
+    await syncWorkOrderInvoicePaid(t as never, ORG, WO, 'emp-1');
+
+    expect(t.invoice.rows[0]).toMatchObject({ paidAmount: 0, status: 'OVERDUE' });
+    expect(t.domainEvent.rows).toEqual([
+      expect.objectContaining({ fromStatus: 'PAID', toStatus: 'OVERDUE' }),
+    ]);
+    // Термін читається тим самим запитом, що й суми рахунку (без нього правило сліпе).
+    const readArgs = t.invoice.findFirst.mock.calls[0]![0] as { select?: Record<string, boolean> };
+    expect(readArgs.select).toMatchObject({ dueDate: true });
+  });
+
+  // guards: BR-INV-025
+  it('часткова оплата простроченого рахунку наряду → лишається «Прострочено»', async () => {
+    const t = tables({ paidAmount: 300 }, [
+      { status: 'OVERDUE', amount: 1000, paidAmount: 0, dueDate: PAST },
+    ]);
+
+    await syncWorkOrderInvoicePaid(t as never, ORG, WO);
+
+    expect(t.invoice.rows[0]).toMatchObject({ paidAmount: 300, status: 'OVERDUE' });
+  });
+
+  // guards: BR-INV-025
+  it('термін ще не минув → «Частково оплачено», як раніше', async () => {
+    const t = tables({ paidAmount: 300 }, [
+      { status: 'SENT', amount: 1000, paidAmount: 0, dueDate: FUTURE },
+    ]);
+
+    await syncWorkOrderInvoicePaid(t as never, ORG, WO);
+
+    expect(t.invoice.rows[0]).toMatchObject({ paidAmount: 300, status: 'PARTIALLY_PAID' });
+  });
+});
+
 describe('syncWorkOrderInvoicePaid — дзеркало сплаченого наряду (BR-INV-018)', () => {
   // guards: BR-AUT-060
   it('зміна статусу рахунку дзеркалом — подія з попереднім статусом і ініціатором', async () => {

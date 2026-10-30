@@ -392,3 +392,78 @@ describe('CashDeskService.create — повернення клієнту (REFUND
     expect(h.settlementRows[0].amount).toBe(0.01);
   });
 });
+
+// Рішення власника 2026-10-30 (TECH-DEBT (б) №37): повернути клієнту можна не більше його переплати.
+describe('CashDeskService.create — повернення клієнту не більше переплати (BR-CASH-029)', () => {
+  // guards: BR-CASH-029
+  it('понад переплату → 400 з доступною сумою; ні рядка каси, ні проводки', async () => {
+    const h = makeDesk();
+    h.refundAvailable.value = 99.99;
+
+    await expect(createOp(h, validInput('REFUND', { amount: 100 }))).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining('99.99'),
+    });
+
+    expect(h.cashRows).toEqual([]);
+    expect(h.settlementRows).toEqual([]);
+  });
+
+  // guards: BR-CASH-029
+  it('рівно вся переплата проходить: рядок каси і REFUND_OUT', async () => {
+    const h = makeDesk();
+    h.refundAvailable.value = 100;
+
+    await createOp(h, validInput('REFUND', { amount: 100 }));
+
+    expect(h.cashRows).toHaveLength(1);
+    expect(h.settlementRows).toEqual([
+      expect.objectContaining({ type: 'REFUND_OUT', amount: 100 }),
+    ]);
+  });
+
+  // guards: BR-CASH-029
+  it('без переплати (клієнт винен) → 400, навіть на копійку', async () => {
+    const h = makeDesk();
+    h.refundAvailable.value = 0;
+
+    await expect(createOp(h, validInput('REFUND', { amount: 0.01 }))).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(h.cashRows).toEqual([]);
+  });
+
+  // Переплата — у базовій валюті, видача — у валюті каси: звіряється сума рядка в базовій валюті.
+  // guards: BR-CASH-029
+  it('валютна каса: ліміт звіряється з сумою в базовій валюті (amountBase рядка каси)', async () => {
+    const h = makeDesk();
+    h.tables.cashRegister.rows[0].currencyId = 'usd-id';
+    h.refundAvailable.value = 4150;
+    h.cash.createOperation.mockImplementationOnce((orgId: string, input: MemRow) =>
+      Promise.resolve({ id: 'op-usd', orgId, ...input, amountBase: 4150.01, rateUsed: 41.5 }),
+    );
+
+    await expect(createOp(h, validInput('REFUND', { amount: 100 }))).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(h.settlements.assertRefundWithin).toHaveBeenCalledWith(ORG, 'client', 4150, 4150.01);
+    expect(h.settlementRows).toEqual([]);
+  });
+
+  // Рахунок розрахунків блокується в транзакції повернення ПЕРШИМ — той самий порядок «рахунок →
+  // каса», що в оплаті: паралельні оплата й повернення не блокують одне одного навхрест.
+  // guards: BR-CASH-029
+  it('переплата читається з блокуванням у транзакції повернення, до рядка каси', async () => {
+    const h = makeDesk();
+
+    await createOp(h, validInput('REFUND', { counterpartyId: BOTH }));
+
+    expect(h.settlements.lockRefundAvailable).toHaveBeenCalledTimes(1);
+    const [orgId, counterpartyId, side, client] = h.settlements.lockRefundAvailable.mock.calls[0];
+    expect([orgId, counterpartyId, side]).toEqual([ORG, BOTH, 'client']);
+    expect(h.isTx(client)).toBe(true);
+    expect(h.settlements.lockRefundAvailable.mock.invocationCallOrder[0]).toBeLessThan(
+      h.cash.createOperation.mock.invocationCallOrder[0],
+    );
+  });
+});

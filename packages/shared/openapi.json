@@ -15174,6 +15174,42 @@
         ]
       }
     },
+    "/api/v1/online-payments/gateway": {
+      "get": {
+        "operationId": "OnlinePaymentController_gateway_v1",
+        "parameters": [
+          {
+            "name": "invoiceId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveGatewayDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Підключений платіжний шлюз для QR-оплати рахунку (BR-PAY-033): провайдер або null",
+        "tags": [
+          "Online Payments"
+        ]
+      }
+    },
     "/api/v1/online-payments/{id}": {
       "get": {
         "operationId": "OnlinePaymentController_get_v1",
@@ -32837,6 +32873,19 @@
           "invoiceId"
         ]
       },
+      "ActiveGatewayDto": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "nullable": true,
+            "description": "Код шлюзу (monobank, liqpay) або null"
+          }
+        },
+        "required": [
+          "provider"
+        ]
+      },
       "VerifyGatewayDto": {
         "type": "object",
         "properties": {
@@ -33055,7 +33104,8 @@
               "EXPENSE",
               "PAYROLL",
               "TRANSFER",
-              "CASH_WITHDRAWAL"
+              "CASH_WITHDRAWAL",
+              "SUPPLIER_REFUND_IN"
             ],
             "type": "string"
           },
@@ -33256,7 +33306,8 @@
               "EXPENSE",
               "PAYROLL",
               "TRANSFER",
-              "CASH_WITHDRAWAL"
+              "CASH_WITHDRAWAL",
+              "SUPPLIER_REFUND_IN"
             ],
             "type": "string"
           },
@@ -33413,7 +33464,8 @@
               "EXPENSE",
               "PAYROLL",
               "TRANSFER",
-              "CASH_WITHDRAWAL"
+              "CASH_WITHDRAWAL",
+              "SUPPLIER_REFUND_IN"
             ],
             "type": "string"
           },
@@ -33564,7 +33616,8 @@
               "EXPENSE",
               "PAYROLL",
               "TRANSFER",
-              "CASH_WITHDRAWAL"
+              "CASH_WITHDRAWAL",
+              "SUPPLIER_REFUND_IN"
             ],
             "type": "string"
           },

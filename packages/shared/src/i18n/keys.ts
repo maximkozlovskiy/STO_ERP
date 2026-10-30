@@ -1030,7 +1030,7 @@ export const VALIDATION_KEYS = [
   'err.cash.reversalOfReversal',
   'err.cash.reversalNotHere',
   'err.cash.reversalFiscalDone',
-  'err.cash.reversalForeignCurrency',
+  'err.cash.reversalFiscalQueued',
   'err.cash.reversalWorkOrderArchived',
   'err.cash.reversalInvoiceCancelled',
   'err.cash.reversalStateChanged',
@@ -1085,6 +1085,8 @@ export const VALIDATION_KEYS = [
   'err.paymentMethod.systemUndeletable',
   'err.paymentMethod.destinationMismatch',
   'err.paymentMethod.cashOnlyRegister',
+  'err.paymentMethod.onlineBankOnly',
+  'err.paymentMethod.cashFlagLocked',
   // Exception-повідомлення: payroll-модуль
   'err.payroll.startAfterEnd',
   'err.payroll.periodNotFound',
@@ -1131,6 +1133,8 @@ export const VALIDATION_KEYS = [
   'err.settlement.reconciliationActNotFound',
   'err.settlement.amountMustBePositive',
   'err.settlement.counterpartyAccountNotFound',
+  'err.settlement.refundExceedsOverpayment',
+  'err.settlement.refundExceedsAdvance',
   // Exception-повідомлення: setup-модуль
   'err.setup.alreadyConfiguredReinit',
   'err.setup.alreadyConfigured',

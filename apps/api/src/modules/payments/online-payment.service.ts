@@ -82,15 +82,7 @@ export class OnlinePaymentService {
       );
     }
 
-    // Активний платіжний шлюз філії (гілка наряду або перша філія org), з legacy-fallback.
-    const branchId = invoice.workOrderId
-      ? (
-          await this.prisma.workOrder.findFirst({
-            where: { id: invoice.workOrderId, orgId },
-            select: { branchId: true },
-          })
-        )?.branchId
-      : undefined;
+    const branchId = await this.invoiceBranchId(orgId, invoice.workOrderId);
     const active = await this.providerConfig.resolveActive(orgId, branchId, 'PAYMENT');
     if (!active) {
       throw new BadRequestException(
@@ -191,6 +183,40 @@ export class OnlinePaymentService {
         }),
       );
     }
+  }
+
+  /**
+   * BR-PAY-033: підключений платіжний шлюз, через який пройде QR-оплата цього рахунку, — той самий
+   * вибір, що й у `createIntent` (філія наряду рахунку або будь-яка філія організації, з
+   * legacy-fallback). `null` — шлюзу немає або він не відомий системі: QR-способів вікно оплати не
+   * пропонує. Кредів і адрес не віддає.
+   */
+  async activeGatewayForInvoice(
+    orgId: string,
+    invoiceId: string,
+  ): Promise<{ provider: string | null }> {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, orgId, deletedAt: null },
+      select: { workOrderId: true },
+    });
+    if (!invoice)
+      throw new NotFoundException(translateError('err.onlinePayment.invoiceNotFound', getLocale()));
+    const branchId = await this.invoiceBranchId(orgId, invoice.workOrderId);
+    const active = await this.providerConfig.resolveActive(orgId, branchId, 'PAYMENT');
+    return { provider: active && this.gateways.get(active.provider) ? active.provider : null };
+  }
+
+  /** Філія платіжного шлюзу рахунку: філія наряду; рахунок без наряду — будь-яка філія (undefined). */
+  private async invoiceBranchId(
+    orgId: string,
+    workOrderId: string | null,
+  ): Promise<string | undefined> {
+    if (!workOrderId) return undefined;
+    const wo = await this.prisma.workOrder.findFirst({
+      where: { id: workOrderId, orgId },
+      select: { branchId: true },
+    });
+    return wo?.branchId ?? undefined;
   }
 
   /** Статус наміру (frontend опитує НАШ статус, не monobank напряму). */

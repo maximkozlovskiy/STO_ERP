@@ -291,10 +291,11 @@ describe('InvoicesService — transition-settlements', () => {
       // Леджер по рахунку: CHARGE base=4150 (100 USD × 41.5 курс документа); дзеркальний PAYMENT
       // (40 USD × 41.5 = 1660, base) — payAgg. Реальні часткові: 60 USD × 42.0 = 2520 (курс оплати).
       // Base-залишок = 4150 − 1660 − 2520 = −30 → отримали більше base → FX_GAIN 30.
-      prisma.settlementTransaction.count.mockResolvedValue(0);
-      prisma.settlementTransaction.aggregate
-        .mockResolvedValueOnce({ _sum: { amountBase: 4150 } }) // CHARGE
-        .mockResolvedValueOnce({ _sum: { amountBase: 1660 } }); // дзеркальний PAYMENT
+      const journal: Record<string, number> = { CHARGE: 4150, PAYMENT: 1660 }; // дзеркальний PAYMENT
+      prisma.settlementTransaction.aggregate.mockImplementation(
+        (args: { where: { type?: string } }) =>
+          Promise.resolve({ _sum: { amountBase: journal[args.where.type ?? ''] ?? null } }),
+      );
       prisma.payment.aggregate.mockResolvedValue({ _sum: { amountBase: 2520 } }); // реальні часткові
 
       await service.transition(ORG, INV_ID, 'PAID' as never, 'user-1');
@@ -315,7 +316,8 @@ describe('InvoicesService — transition-settlements', () => {
       expect((fxCall![1] as { currencyId?: unknown }).currencyId).toBeUndefined();
     });
 
-    it('іновалютний ручний →PAID, FX вже проведено (count>0) → повторно НЕ бронюється (Bug #745 idempotency)', async () => {
+    // guards: BR-PAY-028
+    it('іновалютний ручний →PAID, чиста FX ≠ 0 (FX_GAIN 30 не відкочено) → повторно НЕ бронюється (Bug #745 idempotency)', async () => {
       const USD = 'usd-2222-2222-2222-222222222222';
       prisma.invoice.findFirst
         .mockResolvedValueOnce({
@@ -330,7 +332,10 @@ describe('InvoicesService — transition-settlements', () => {
         .mockResolvedValue({ ...findOneRow, currencyId: USD });
       prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
       exchangeRatesMockRef.getBaseCurrency.mockResolvedValue({ id: 'uah-base', code: 'UAH' });
-      prisma.settlementTransaction.count.mockResolvedValue(1); // FX уже існує
+      prisma.settlementTransaction.aggregate.mockImplementation(
+        (args: { where: { type?: string } }) =>
+          Promise.resolve({ _sum: { amountBase: args.where.type === 'FX_GAIN' ? 30 : 0 } }),
+      );
 
       await service.transition(ORG, INV_ID, 'PAID' as never, 'user-1');
 

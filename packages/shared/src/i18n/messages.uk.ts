@@ -1008,7 +1008,8 @@ export const uk: Record<string, string> = {
   'err.cash.reversalNotHere': 'Цю операцію створено документом «{{document}}» — скасуйте її там',
   'err.cash.reversalFiscalDone':
     'За цю оплату вже пробито фіскальний чек — спершу оформіть повернення в ПРРО',
-  'err.cash.reversalForeignCurrency': 'Сторно оплати в іноземній валюті не підтримується',
+  'err.cash.reversalFiscalQueued':
+    'Чек за цю оплату ще відправляється в ПРРО — сторно стане можливим, коли ПРРО його пробʼє або відхилить. Якщо зміну ПРРО закрито, чек чекає її відкриття: відкрийте зміну й повторіть сторно після відповіді ПРРО',
   'err.cash.reversalWorkOrderArchived': 'Наряд оплати в архіві — сторно неможливе',
   'err.cash.reversalInvoiceCancelled': 'Рахунок оплати скасовано — сторно неможливе',
   'err.cash.reversalStateChanged': 'Документ оплати змінився — оновіть сторінку й повторіть',
@@ -1076,6 +1077,10 @@ export const uk: Record<string, string> = {
   'err.paymentMethod.destinationMismatch':
     'Касу вказують лише для надходження в касу, банківський рахунок — лише для надходження на рахунок',
   'err.paymentMethod.cashOnlyRegister': 'Для готівки кошти надходять лише в касу — оберіть касу',
+  'err.paymentMethod.onlineBankOnly':
+    'Онлайн-оплата (QR) надходить від шлюзу на банківський рахунок — оберіть рахунок, а не касу',
+  'err.paymentMethod.cashFlagLocked':
+    'Зі способу «Готівка» ознаку «Готівка» зняти не можна: оплати з каси інакше пішли б у чек як безготівкові',
 
   // ── Exception-повідомлення: payroll-модуль ──
   'err.payroll.startAfterEnd': 'Дата початку має бути не пізніше дати закінчення',
@@ -1130,6 +1135,10 @@ export const uk: Record<string, string> = {
   'err.settlement.reconciliationActNotFound': 'Акт звірки не знайдено',
   'err.settlement.amountMustBePositive': 'Сума транзакції повинна бути більшою за нуль',
   'err.settlement.counterpartyAccountNotFound': 'Розрахунковий рахунок контрагента не знайдено',
+  'err.settlement.refundExceedsOverpayment':
+    'Повернути клієнту можна не більше {{available}} {{currency}} — це його переплата',
+  'err.settlement.refundExceedsAdvance':
+    'Повернення від постачальника — не більше {{available}} {{currency}}: це наш аванс постачальнику',
 
   // ── Exception-повідомлення: setup-модуль ──
   'err.setup.alreadyConfiguredReinit':

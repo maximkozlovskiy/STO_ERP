@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { kyivTodayYmd, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { dateOnlyRangeFilter, isCalendarDate } from '../../common/utils/kyiv-date';
 import { searchContains } from '../../common/utils/like-pattern';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -736,13 +737,16 @@ export class BankReconciliationService {
     // Валідація контрагента (у межах org) — до CAS, щоб не блокувати транзакцію на битому вводі.
     const counterparty = await this.prisma.counterparty.findFirst({
       where: { id: dto.counterpartyId, orgId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, type: true },
     });
     if (!counterparty) {
       throw new NotFoundException(
         translateError('err.bankStatement.counterpartyNotFound', getLocale()),
       );
     }
+    // BR-BANK-045: вхідні види — оплата КЛІЄНТА (проводка PAYMENT / PREPAYMENT / REFUND); гроші від
+    // постачальника — окремий вид «Повернення від постачальника» (BR-BANK-046).
+    assertCounterpartyRole(counterparty.type, 'client');
     if (dto.type === 'INVOICE' && dto.invoiceId) {
       const inv = await this.prisma.invoice.findFirst({
         where: { id: dto.invoiceId, orgId, deletedAt: null },
@@ -1273,8 +1277,17 @@ export class BankReconciliationService {
     }
 
     if (plan.kind === 'CLIENT_REFUND') {
+      // BR-BANK-044: не більше переплати клієнта в базовій валюті (рахунок розрахунків блокується
+      // до кінця транзакції); відмова відкочує й захоплення рядка.
+      const conversion = await this.refundConversionWithinBalance(
+        tx,
+        orgId,
+        plan.counterpartyId,
+        'client',
+        row,
+      );
       // BR-BANK-030: гроші повернуто клієнту → він знову винен / його аванс зменшився.
-      // `date` — лише для курсу; саме проведення датується моментом рознесення (BR-BANK-035).
+      // Курс — на дату операції рядка; саме проведення датується моментом рознесення (BR-BANK-035).
       await this.settlements.createTransaction(
         orgId,
         {
@@ -1282,8 +1295,33 @@ export class BankReconciliationService {
           type: 'REFUND_OUT',
           amount: Number(row.amount),
           currencyId: row.currencyId,
-          date: row.operationDate,
-          fallbackToLatest: true,
+          conversion,
+          documentType: 'BankTransaction',
+          documentId: txId,
+          createdBy: userId,
+        },
+        tx,
+      );
+    }
+
+    if (plan.kind === 'SUPPLIER_REFUND_IN') {
+      // BR-BANK-046: постачальник повернув гроші → наш аванс йому меншає (як повернення в касі,
+      // BR-CASH-019); не більше аванса в базовій валюті.
+      const conversion = await this.refundConversionWithinBalance(
+        tx,
+        orgId,
+        plan.counterpartyId,
+        'supplier',
+        row,
+      );
+      await this.settlements.createTransaction(
+        orgId,
+        {
+          counterpartyId: plan.counterpartyId,
+          type: 'SUPPLIER_PAYMENT_RETURN',
+          amount: Number(row.amount),
+          currencyId: row.currencyId,
+          conversion,
           documentType: 'BankTransaction',
           documentId: txId,
           createdBy: userId,
@@ -1317,6 +1355,31 @@ export class BankReconciliationService {
         data: { cashOperationId: operation.id },
       });
     }
+  }
+
+  /**
+   * BR-BANK-044 / 046: курс рядка на дату операції (BR-BANK-035) і перевірка, що сума в базовій
+   * валюті не більша за переплату клієнта / аванс постачальнику. Повертає ту саму конверсію, якою
+   * проводиться повернення: звірене й проведене — одна сума. Рахунок розрахунків блокується до
+   * кінця транзакції — дві паралельні видачі на ту саму переплату не пройдуть обидві.
+   */
+  private async refundConversionWithinBalance(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    counterpartyId: string,
+    side: 'client' | 'supplier',
+    row: { currencyId: string; amount: Prisma.Decimal | number; operationDate: Date },
+  ): Promise<{ rateUsed: number; amountBase: number }> {
+    const available = await this.settlements.lockRefundAvailable(orgId, counterpartyId, side, tx);
+    const conv = await this.exchangeRates.resolveBaseConversion(
+      orgId,
+      row.currencyId,
+      row.operationDate,
+      Number(row.amount),
+      true,
+    );
+    await this.settlements.assertRefundWithin(orgId, side, available, conv.amountBase);
+    return conv;
   }
 
   /**
@@ -1581,6 +1644,42 @@ export class BankReconciliationService {
             {
               counterpartyId: row.counterpartyId,
               type: 'REFUND_OUT_CANCEL',
+              amount: Number(original.amount),
+              currencyId: original.currencyId ?? undefined,
+              conversion: {
+                rateUsed: Number(original.rateUsed),
+                amountBase: Number(original.amountBase),
+              },
+              documentType: 'BankTransaction',
+              documentId: txId,
+              notes: reason,
+              createdBy: userId,
+            },
+            tx,
+          );
+        }
+
+        if (matchedType === 'SUPPLIER_REFUND_IN') {
+          if (!row.counterpartyId) throw notMatched();
+          // BR-BANK-046: сторно дзеркалить початкову проводку повернення — її суму й курс.
+          const original = await tx.settlementTransaction.findFirst({
+            where: {
+              orgId,
+              documentType: 'BankTransaction',
+              documentId: txId,
+              type: 'SUPPLIER_PAYMENT_RETURN',
+            },
+            orderBy: { createdAt: 'desc' },
+            select: { amount: true, currencyId: true, amountBase: true, rateUsed: true },
+          });
+          if (!original || original.amountBase == null || original.rateUsed == null) {
+            throw notMatched();
+          }
+          await this.settlements.createTransaction(
+            orgId,
+            {
+              counterpartyId: row.counterpartyId,
+              type: 'SUPPLIER_PAYMENT_RETURN_CANCEL',
               amount: Number(original.amount),
               currencyId: original.currencyId ?? undefined,
               conversion: {

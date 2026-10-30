@@ -18,6 +18,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { CashService, type CashOperationExtras } from '../cash/cash.service';
 import { recordDocumentEvent } from '../automation/record-document-event';
+import { hasNetFx, netFxBalanceEffect, reverseNetFxInTx } from '../settlements/fx-net';
 import {
   CreateSupplierPaymentDto,
   SupplierPaymentResponseDto,
@@ -817,7 +818,7 @@ export class SupplierPaymentsService {
             becameFullyPaid &&
             !(await this.exchangeRates.sameCurrency(orgId, null, po.currencyId))
           ) {
-            const [chargeAgg, spIds, fxExisting] = await Promise.all([
+            const [chargeAgg, spIds, fxNet] = await Promise.all([
               tx.settlementTransaction.aggregate({
                 where: {
                   orgId,
@@ -837,16 +838,11 @@ export class SupplierPaymentsService {
                 select: { id: true },
                 take: 500,
               }),
-              tx.settlementTransaction.count({
-                where: {
-                  orgId,
-                  type: { in: ['FX_GAIN', 'FX_LOSS'] },
-                  documentType: 'PurchaseOrder',
-                  documentId: poId,
-                },
-              }),
+              // Чиста FX замовлення ≠ 0 — вже визнано; сторно, що зробило замовлення не сплаченим,
+              // її обнуляє (BR-SUPPAY-012) — тоді повна оплата визнає її заново.
+              netFxBalanceEffect(tx, orgId, [{ documentType: 'PurchaseOrder', documentId: poId }]),
             ]);
-            if (fxExisting === 0) {
+            if (!hasNetFx(fxNet)) {
               const paidAgg = await tx.settlementTransaction.aggregate({
                 where: {
                   orgId,
@@ -942,7 +938,7 @@ export class SupplierPaymentsService {
    * (`ctx.cashOperationId`). «Проведено» → «Сторновано» (публічного переходу немає —
    * `SP_TRANSITIONS.CONFIRMED` порожній), проводка `SUPPLIER_PAYMENT_CANCEL` з курсом оригіналу,
    * «сплачено» замовлення назад (не нижче нуля), `paidAt` знімається, якщо замовлення вже не
-   * сплачене повністю.
+   * сплачене повністю, а з ним відкочується й курсова різниця повної оплати (BR-SUPPAY-012).
    */
   async reverse(
     orgId: string,
@@ -965,11 +961,6 @@ export class SupplierPaymentsService {
     if (sp.status === SupplierPaymentStatus.REVERSED) {
       throw new BadRequestException(translateError('err.cash.alreadyReversed', locale));
     }
-    // Іновалютна оплата могла закрити замовлення курсовою різницею — сторно її не відкочує.
-    if (!(await this.exchangeRates.sameCurrency(orgId, sp.currencyId ?? null, null))) {
-      throw new BadRequestException(translateError('err.cash.reversalForeignCurrency', locale));
-    }
-
     // CAS першим записом: паралельне чи повторне сторно тут програє, нічого не змінивши.
     const cas = await tx.supplierPayment.updateMany({
       where: { id, orgId, deletedAt: null, status: SupplierPaymentStatus.CONFIRMED },
@@ -1040,6 +1031,17 @@ export class SupplierPaymentsService {
           throw new BadRequestException(
             translateError('err.supplierPayment.orderConcurrentChange', locale),
           );
+        }
+        // BR-SUPPAY-012: замовлення більше не сплачене повністю — курсова різниця його повної
+        // оплати відкочується за курсом оплати (базова валюта — чистої FX немає, нічого не пише).
+        if (!stillFullyPaid) {
+          await reverseNetFxInTx(tx, this.settlements, orgId, {
+            counterpartyId: sp.supplierId,
+            target: { documentType: 'PurchaseOrder', documentId: sp.purchaseOrderId },
+            documents: [{ documentType: 'PurchaseOrder', documentId: sp.purchaseOrderId }],
+            notes: `Курсова різниця відкочена: сторно оплати — ${ctx.reason}`,
+            userId: ctx.userId,
+          });
         }
       }
     }

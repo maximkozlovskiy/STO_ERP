@@ -51,6 +51,12 @@ const FULL_ACCESS_ROLES: ReadonlySet<string> = new Set([
   UserRole.ACCOUNTANT,
 ]);
 
+// Приводи, якими каса проводить платіжний документ способом «Готівка» (BR-CASH-031).
+const CASH_METHOD_REASONS: ReadonlySet<string> = new Set([
+  CashOperationReason.SALE_PAYMENT,
+  CashOperationReason.SUPPLIER_PAYMENT,
+]);
+
 // Рядки каси, які створив інший документ і скасовує лише він (BR-CASH-023): назва документа для
 // тексту відмови «скасуйте її там».
 const REVERSED_ELSEWHERE: Readonly<Record<string, { uk: string; en: string }>> = {
@@ -245,38 +251,54 @@ export class CashDeskService {
   ): Promise<DeskContext> {
     const locale = getLocale();
     const alive = { orgId, deletedAt: null };
-    const [register, counterparty, employee, workOrder, purchaseOrder] = await Promise.all([
-      this.prisma.cashRegister.findFirst({
-        where: { id: cashRegisterId, ...alive },
-        select: { id: true, currencyId: true },
-      }),
-      dto.counterpartyId
-        ? this.prisma.counterparty.findFirst({
-            where: { id: dto.counterpartyId, ...alive },
-            select: { id: true, type: true, firstName: true, lastName: true, companyName: true },
-          })
-        : null,
-      dto.employeeId
-        ? this.prisma.employee.findFirst({
-            where: { id: dto.employeeId, ...alive },
-            select: { id: true, firstName: true, lastName: true },
-          })
-        : null,
-      dto.baseDocumentType === 'WorkOrder' && dto.baseDocumentId
-        ? this.prisma.workOrder.findFirst({
-            where: { id: dto.baseDocumentId, ...alive },
-            select: { id: true, status: true, number: true, counterpartyId: true },
-          })
-        : null,
-      dto.baseDocumentType === 'PurchaseOrder' && dto.baseDocumentId
-        ? this.prisma.purchaseOrder.findFirst({
-            where: { id: dto.baseDocumentId, ...alive },
-            select: { id: true, number: true, supplierId: true },
-          })
-        : null,
-    ]);
+    const paysByMethod = CASH_METHOD_REASONS.has(dto.reason);
+    const [register, counterparty, employee, workOrder, purchaseOrder, cashMethod] =
+      await Promise.all([
+        this.prisma.cashRegister.findFirst({
+          where: { id: cashRegisterId, ...alive },
+          select: { id: true, currencyId: true },
+        }),
+        dto.counterpartyId
+          ? this.prisma.counterparty.findFirst({
+              where: { id: dto.counterpartyId, ...alive },
+              select: { id: true, type: true, firstName: true, lastName: true, companyName: true },
+            })
+          : null,
+        dto.employeeId
+          ? this.prisma.employee.findFirst({
+              where: { id: dto.employeeId, ...alive },
+              select: { id: true, firstName: true, lastName: true },
+            })
+          : null,
+        dto.baseDocumentType === 'WorkOrder' && dto.baseDocumentId
+          ? this.prisma.workOrder.findFirst({
+              where: { id: dto.baseDocumentId, ...alive },
+              select: { id: true, status: true, number: true, counterpartyId: true },
+            })
+          : null,
+        dto.baseDocumentType === 'PurchaseOrder' && dto.baseDocumentId
+          ? this.prisma.purchaseOrder.findFirst({
+              where: { id: dto.baseDocumentId, ...alive },
+              select: { id: true, number: true, supplierId: true },
+            })
+          : null,
+        paysByMethod
+          ? this.prisma.paymentMethodConfig.findFirst({
+              where: { code: CASH_METHOD_CODE, ...alive },
+              select: { isActive: true },
+            })
+          : null,
+      ]);
 
     if (!register) throw new NotFoundException(translateError('err.cashRegister.notFound', locale));
+    // BR-CASH-031: оплата контрагента й оплата постачальнику йдуть способом «Готівка» — вимкнений
+    // чи видалений у довіднику спосіб тут так само недоступний, як у вікні оплати (BR-PAY-027).
+    // Відмова — до будь-якого запису. Ручні внесення / вилучення й повернення способом не є.
+    if (paysByMethod && !cashMethod?.isActive) {
+      throw new BadRequestException(
+        translateError('err.payment.methodUnavailable', locale, { method: CASH_METHOD_CODE }),
+      );
+    }
     if (dto.counterpartyId) {
       if (!counterparty) {
         throw new NotFoundException(translateError('err.cash.counterpartyNotFound', locale));
@@ -405,10 +427,10 @@ export class CashDeskService {
   }
 
   /**
-   * BR-CASH-018, BR-CASH-019: повернення клієнту (`REFUND` → `REFUND_OUT`, борг клієнта росте) і
-   * повернення від постачальника (`SUPPLIER_REFUND_IN` → `SUPPLIER_PAYMENT_RETURN`, його борг
-   * перед нами меншає). Рядок каси і проводка — одна транзакція: або обидва, або нічого.
-   * «Сплачено» в рахунку, наряді й замовленні не змінюється.
+   * BR-CASH-018, BR-CASH-019: повернення клієнту (`REFUND` → `REFUND_OUT`, борг клієнта росте; не
+   * більше переплати клієнта, BR-CASH-029) і повернення від постачальника (`SUPPLIER_REFUND_IN` →
+   * `SUPPLIER_PAYMENT_RETURN`, його борг перед нами меншає). Рядок каси і проводка — одна
+   * транзакція: або обидва, або нічого. «Сплачено» в рахунку, наряді й замовленні не змінюється.
    *
    * BR-SETL-010 (проводка не ідемпотентна): вона 1:1 із рядком каси, щойно створеним У ЦІЙ САМІЙ
    * транзакції (`documentId: operation.id`) — другої проводки для того самого рядка не буває.
@@ -429,6 +451,12 @@ export class CashDeskService {
     try {
       return await this.prisma.$transaction(
         async tx => {
+          // BR-CASH-029: повернення клієнту — не більше його переплати (у базовій валюті). Рахунок
+          // розрахунків блокується ПЕРШИМ (той самий порядок «рахунок → каса», що в оплаті), сума в
+          // базовій валюті відома після рядка каси; відмова відкочує рядок.
+          const refundAvailable = refundToClient
+            ? await this.settlements.lockRefundAvailable(orgId, counterpartyId, 'client', tx)
+            : null;
           const operation = await this.cash.createOperation(
             orgId,
             {
@@ -442,6 +470,14 @@ export class CashDeskService {
             },
             tx,
           );
+          if (refundAvailable !== null) {
+            await this.settlements.assertRefundWithin(
+              orgId,
+              'client',
+              refundAvailable,
+              operation.amountBase ?? operation.amount,
+            );
+          }
           await this.settlements.createTransaction(
             orgId,
             {

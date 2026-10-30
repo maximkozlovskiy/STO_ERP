@@ -108,9 +108,22 @@ function makeHarness(seed: Seed = {}) {
         defaultBankAccountId: 'bank-1',
         deletedAt: null,
       },
+      // Готівка в касу (BR-PAY-019) — для кейсів підстави рядка каси (BR-CASH-030).
+      {
+        orgId: ORG,
+        code: 'cash',
+        isActive: true,
+        isCash: true,
+        requiresFiscal: false,
+        defaultSourceType: 'CASH_REGISTER',
+        defaultCashRegisterId: 'cash-reg-1',
+        deletedAt: null,
+      },
     ]),
     bankAccount: memoryTable([{ id: 'bank-1', orgId: ORG, deletedAt: null, currencyId: null }]),
-    cashRegister: memoryTable([]),
+    cashRegister: memoryTable([
+      { id: 'cash-reg-1', orgId: ORG, deletedAt: null, isFiscal: false, currencyId: null },
+    ]),
     garageBranch: memoryTable([{ id: 'br-1', orgId: ORG, deletedAt: null }]),
     settlementTransaction: memoryTable([]),
   };
@@ -153,13 +166,14 @@ function makeHarness(seed: Seed = {}) {
       emittedInTx.push(inTx);
     }),
   };
+  const cash = { createOperation: vi.fn().mockResolvedValue(undefined) };
   const service = new PaymentsService(
     prisma as unknown as PrismaService,
     settlements as unknown as SettlementsService,
     workOrders as unknown as WorkOrdersService,
     { queueEarn: vi.fn().mockResolvedValue(undefined) } as unknown as LoyaltyService,
     { record: vi.fn().mockResolvedValue(undefined) } as unknown as AuditService,
-    { createOperation: vi.fn().mockResolvedValue(undefined) } as unknown as CashService,
+    cash as unknown as CashService,
     exchangeRatesMock() as unknown as ExchangeRatesService,
     { add: vi.fn().mockResolvedValue(undefined) } as unknown as Queue,
   );
@@ -174,6 +188,7 @@ function makeHarness(seed: Seed = {}) {
   return {
     service,
     prisma,
+    cash,
     beforeTx,
     tables,
     settlements,
@@ -780,5 +795,74 @@ describe('PaymentsService.create — подія outbox «створено» (BR-
         actorId: 'user-1',
       }),
     ]);
+  });
+});
+
+// ── BR-CASH-030: наряд — підстава рядка каси для оплати з наряду ───────────────────────────
+
+describe('PaymentsService.create — підстава рядка каси для оплати наряду (BR-CASH-030)', () => {
+  const cashDto = { ...woDto, method: 'cash', amount: 200 };
+  const cashRowOf = (h: ReturnType<typeof makeHarness>) => {
+    expect(h.cash.createOperation).toHaveBeenCalledTimes(1);
+    return h.cash.createOperation.mock.calls[0]![1] as MemRow;
+  };
+
+  // guards: BR-CASH-030
+  it('оплата наряду готівкою в касу → рядок каси з підставою «наряд»', async () => {
+    const h = makeHarness();
+
+    await h.service.create(ORG, cashDto, 'user-1');
+
+    expect(cashRowOf(h)).toMatchObject({
+      documentType: 'Payment',
+      baseDocumentType: 'WorkOrder',
+      baseDocumentId: WO_ID,
+    });
+  });
+
+  // Сторінка рахунків шле лише invoiceId — наряд сервер виводить із рахунку (BR-PAY-021).
+  // guards: BR-CASH-030
+  it('оплата через рахунок наряду (лише invoiceId) → підстава рядка каси теж наряд', async () => {
+    const h = makeHarness({ invoice: {} });
+
+    await h.service.create(
+      ORG,
+      { counterpartyId: CP_ID, invoiceId: INV_ID, amount: 200, method: 'cash' },
+      'user-1',
+    );
+
+    expect(cashRowOf(h)).toMatchObject({ baseDocumentType: 'WorkOrder', baseDocumentId: WO_ID });
+  });
+
+  // Каса з картки касової операції задає підставу сама (BR-CASH-020) — її не переписуємо.
+  // guards: BR-CASH-030
+  it('підстава, задана касою, має перевагу', async () => {
+    const h = makeHarness();
+
+    await h.service.create(ORG, cashDto, 'user-1', {
+      baseDocumentType: 'WorkOrder',
+      baseDocumentId: OTHER_WO,
+      notes: 'з каси',
+    });
+
+    expect(cashRowOf(h)).toMatchObject({
+      baseDocumentType: 'WorkOrder',
+      baseDocumentId: OTHER_WO,
+      notes: 'з каси',
+    });
+  });
+
+  // guards: BR-CASH-030
+  it('оплата без наряду в касу → підстави немає (як раніше)', async () => {
+    const h = makeHarness();
+
+    await h.service.create(ORG, { counterpartyId: CP_ID, amount: 200, method: 'cash' }, 'user-1', {
+      baseDocumentType: null,
+      baseDocumentId: null,
+    });
+
+    const row = cashRowOf(h);
+    expect(row.baseDocumentType ?? null).toBeNull();
+    expect(row.baseDocumentId ?? null).toBeNull();
   });
 });

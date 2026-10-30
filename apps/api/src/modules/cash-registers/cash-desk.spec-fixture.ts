@@ -246,6 +246,10 @@ export function makeDesk() {
     /** Оплати клієнтів і постачальникам, що породили рядки каси (для сторно). */
     payment: memoryTable([]),
     supplierPayment: memoryTable([]),
+    /** Спосіб «Готівка» в довіднику (BR-CASH-031): кейс вимикає чи видаляє його сам. */
+    paymentMethodConfig: memoryTable([
+      { id: 'pm-cash', orgId: ORG, code: 'cash', isActive: true, deletedAt: null },
+    ]),
   };
 
   /** Закомічені рядки каси й проводки взаєморозрахунків. */
@@ -377,11 +381,28 @@ export function makeDesk() {
     reverse: vi.fn((..._args: unknown[]) => Promise.resolve()),
   };
 
+  /**
+   * Переплата клієнта / аванс постачальнику в базовій валюті (BR-CASH-029): кейс задає її сам,
+   * за замовчуванням — з запасом, щоб правило не заважало кейсам про інше.
+   */
+  const refundAvailable = { value: 1_000_000 };
   const settlements = {
     createTransaction: vi.fn((orgId: string, dto: MemRow, tx?: unknown) => {
       (bucketOf(tx)?.settlements ?? settlementRows).push({ orgId, ...dto });
       return Promise.resolve();
     }),
+    lockRefundAvailable: vi.fn(
+      (_orgId: string, _counterpartyId: string, _side: string, _tx?: unknown) =>
+        Promise.resolve(refundAvailable.value),
+    ),
+    // Те саме правило, що в SettlementsService (рівно доступна сума проходить), без бази.
+    assertRefundWithin: vi.fn((_orgId: string, _side: string, available: number, base: number) =>
+      Math.round(base * 100) > Math.round(available * 100)
+        ? Promise.reject(
+            new BadRequestException(`Повернути клієнту можна не більше ${available} UAH`),
+          )
+        : Promise.resolve(),
+    ),
   };
 
   const service = new CashDeskService(
@@ -402,6 +423,7 @@ export function makeDesk() {
     settlements,
     cashRows,
     settlementRows,
+    refundAvailable,
     isTx,
   };
 }

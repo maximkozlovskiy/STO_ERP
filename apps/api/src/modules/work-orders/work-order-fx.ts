@@ -3,6 +3,7 @@ import { money, moneyFromDecimal } from '../../common/utils/money';
 import type { SettlementsService } from '../settlements/settlements.service';
 import type { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { isWorkOrderFullyPaid } from './work-order-status';
+import { hasNetFx, netFxBalanceEffect, type FxDocumentFilter } from '../settlements/fx-net';
 
 // Борг наряду вже нараховано (CHARGE при «Виконано») — лише тоді є з чим порівнювати оплати.
 const CHARGED_STATUSES = new Set(['COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED']);
@@ -13,8 +14,9 @@ const CHARGED_STATUSES = new Set(['COMPLETED', 'INVOICED', 'PAID', 'ARCHIVED']);
  * контрагента за нарядом ≠ 0; одна проводка FX_LOSS / FX_GAIN його обнуляє.
  *
  * Нараховано — Σ `amountBase` проводок CHARGE наряду; сплачено — Σ `amountBase` оплат наряду без
- * сторно. Документ проводки — `WorkOrder`. Повторно не проводиться: якщо вже є курсова проводка
- * наряду або будь-якого його рахунку (старий шлях «рахунок став PAID» проводив її на `Invoice`).
+ * сторно. Документ проводки — `WorkOrder`. Повторно не проводиться, поки чиста курсова різниця
+ * наряду й будь-якого його рахунку ≠ 0 (старий шлях «рахунок став PAID» проводив її на `Invoice`);
+ * сторно, що зробило наряд не сплаченим, її обнуляє (BR-PAY-028) — тоді повна оплата пише заново.
  *
  * Викликати в транзакції, що зробила наряд сплаченим (оплата) або нарахувала борг (перехід у
  * «Виконано»), ПІСЛЯ запису оплати. Нічого не робить для базової валюти і неповної оплати.
@@ -40,25 +42,12 @@ export async function postWorkOrderFxInTx(
   if (!isWorkOrderFullyPaid(wo.totalAmount, wo.paidAmount)) return;
   if (await deps.exchangeRates.sameCurrency(orgId, null, wo.currencyId)) return;
 
-  const invoices = await tx.invoice.findMany({
-    where: { orgId, workOrderId },
-    select: { id: true },
-    // Рахунки одного наряду (з видаленими й скасованими) — одиниці; межа — від OOM, не відбір.
-    take: 500,
-  });
-  const fxExisting = await tx.settlementTransaction.count({
-    where: {
-      orgId,
-      type: { in: ['FX_GAIN', 'FX_LOSS'] },
-      OR: [
-        { documentType: 'WorkOrder', documentId: workOrderId },
-        ...(invoices.length > 0
-          ? [{ documentType: 'Invoice', documentId: { in: invoices.map(i => i.id) } }]
-          : []),
-      ],
-    },
-  });
-  if (fxExisting > 0) return;
+  const fxNet = await netFxBalanceEffect(
+    tx,
+    orgId,
+    await workOrderFxDocuments(tx, orgId, workOrderId),
+  );
+  if (hasNetFx(fxNet)) return;
 
   const [chargeAgg, paidAgg] = await Promise.all([
     tx.settlementTransaction.aggregate({
@@ -90,4 +79,27 @@ export async function postWorkOrderFxInTx(
     },
     tx,
   );
+}
+
+/**
+ * Документи, на яких могла лягти курсова різниця наряду: сам наряд і його рахунки (з видаленими
+ * й скасованими — старий шлях «рахунок став PAID» проводив FX на рахунок).
+ */
+export async function workOrderFxDocuments(
+  tx: Prisma.TransactionClient,
+  orgId: string,
+  workOrderId: string,
+): Promise<FxDocumentFilter[]> {
+  const invoices = await tx.invoice.findMany({
+    where: { orgId, workOrderId },
+    select: { id: true },
+    // Рахунки одного наряду — одиниці; межа — від OOM, не відбір.
+    take: 500,
+  });
+  return [
+    { documentType: 'WorkOrder', documentId: workOrderId },
+    ...(invoices.length > 0
+      ? [{ documentType: 'Invoice', documentId: { in: invoices.map(i => i.id) } }]
+      : []),
+  ];
 }

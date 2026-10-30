@@ -84,3 +84,13 @@ export type WarrantyState = (typeof WARRANTY_STATES)[number];
  * web — вікно оплати рахунку й картку способу в НДІ. Одне джерело для обох.
  */
 export const CASH_METHOD_CODE = 'cash';
+
+/**
+ * Онлайн-спосіб оплати (QR-еквайринг): код `<шлюз>_qr` (`monobank_qr`, `privat24_qr`, `liqpay_qr`;
+ * засів організації, `payment-polling.processor`). Без урахування регістру: картка НДІ пише код
+ * великими літерами. Гроші приходять від шлюзу на банківський рахунок — каса призначенням такого
+ * способу неможлива (BR-PAY-031).
+ */
+export function isOnlineMethodCode(code: string | null | undefined): boolean {
+  return !!code && /_qr$/i.test(code);
+}

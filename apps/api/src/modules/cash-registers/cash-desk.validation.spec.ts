@@ -221,3 +221,50 @@ describe('CashDeskService.create — прості приводи рухають 
     expect(h.cashRows).toEqual([]);
   });
 });
+
+// Рішення власника 2026-10-30 (TECH-DEBT (б) №80): оплати з каси йдуть способом «Готівка»; вимкнений
+// чи видалений у довіднику спосіб недоступний і тут, як у вікні оплати (BR-PAY-027).
+describe('CashDeskService.create — спосіб «Готівка» вимкнено (BR-CASH-031)', () => {
+  const disableCash = (h: ReturnType<typeof makeDesk>, over: Record<string, unknown>) =>
+    Object.assign(h.tables.paymentMethodConfig.rows[0]!, over);
+
+  // guards: BR-CASH-031
+  it.each([
+    ['SALE_PAYMENT', 'вимкнено', { isActive: false }],
+    ['SUPPLIER_PAYMENT', 'вимкнено', { isActive: false }],
+    ['SALE_PAYMENT', 'видалено', { deletedAt: new Date('2026-10-01T00:00:00.000Z') }],
+    ['SUPPLIER_PAYMENT', 'видалено', { deletedAt: new Date('2026-10-01T00:00:00.000Z') }],
+  ] as const)('%s, «Готівку» %s → 400 до будь-якого запису', async (reason, _label, over) => {
+    const h = makeDesk();
+    disableCash(h, over);
+
+    await expect(createOp(h, validInput(reason))).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining('cash'),
+    });
+    expectNothingMoved(h);
+  });
+
+  // guards: BR-CASH-031
+  it('«Готівка» іншої організації не рахується: своєї немає → 400', async () => {
+    const h = makeDesk();
+    disableCash(h, { orgId: '99999999-9999-4999-8999-999999999999' });
+
+    await expect(createOp(h, validInput('SALE_PAYMENT'))).rejects.toThrow(BadRequestException);
+    expectNothingMoved(h);
+  });
+
+  // Ручні внесення / вилучення й повернення способом оплати не є — вимкнена «Готівка» їх не чіпає.
+  // guards: BR-CASH-031
+  it.each(['MANUAL_IN', 'MANUAL_OUT', 'REFUND', 'SUPPLIER_REFUND_IN'] as const)(
+    '%s при вимкненій «Готівці» проходить',
+    async reason => {
+      const h = makeDesk();
+      disableCash(h, { isActive: false });
+
+      await createOp(h, validInput(reason));
+
+      expect(h.cashRows).toHaveLength(1);
+    },
+  );
+});

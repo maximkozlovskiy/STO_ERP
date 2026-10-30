@@ -14,7 +14,35 @@ import { modelMock, type PrismaModelMock } from '../../common/testing/prisma-moc
  *    або «—»), а getSummary() НІКОЛИ не кидає (Promise.allSettled + withTimeout): повільний
  *    Postgres не має рвати SSE tick; деградований знімок не кешується;
  *  - **«сьогодні» = київська доба**, не server-local: виручка рахується від київської півночі.
+ *  - **виручка чиста** (BR-PAY-030): оплати й аванси мінус повернення клієнтам і сторно, у базовій
+ *    валюті. Журнал проводок — масив у пам'яті, і фейковий `groupBy` справді виконує `where`.
  */
+
+interface JournalRow {
+  orgId: string;
+  type: string;
+  amount: number;
+  amountBase: number;
+  createdAt: Date;
+}
+
+/** `groupBy({ by: ['type'], where, _sum: { amountBase } })`, що виконує `where` над журналом. */
+function groupByType(
+  journal: JournalRow[],
+  args: {
+    where: { orgId: string; type: { in: string[] }; createdAt: { gte: Date; lte: Date } };
+  },
+) {
+  const { orgId, type, createdAt } = args.where;
+  const sums = new Map<string, number>();
+  for (const r of journal) {
+    if (r.orgId !== orgId || !type.in.includes(r.type)) continue;
+    if (r.createdAt < createdAt.gte || r.createdAt > createdAt.lte) continue;
+    sums.set(r.type, (sums.get(r.type) ?? 0) + r.amountBase);
+  }
+  return [...sums].map(([t, sum]) => ({ type: t, _sum: { amountBase: sum } }));
+}
+
 describe('DashboardService', () => {
   let prisma: {
     workOrder: PrismaModelMock;
@@ -29,15 +57,30 @@ describe('DashboardService', () => {
   /** Field reference `prisma.invoice.fields.amount` — у моку маркер, з яким порівнюємо where. */
   const AMOUNT_FIELD = { modelName: 'Invoice', name: 'amount' };
 
+  /** Журнал проводок за сьогодні (кейс дописує свої); `now` — мить «зараз» для меж доби. */
+  let journal: JournalRow[];
+  const now = () => new Date();
+  const row = (type: string, amountBase: number, over: Partial<JournalRow> = {}): JournalRow => ({
+    orgId: ORG,
+    type,
+    amount: amountBase,
+    amountBase,
+    createdAt: now(),
+    ...over,
+  });
+
   beforeEach(() => {
     prisma = {
       workOrder: modelMock('count'),
-      settlementTransaction: modelMock('aggregate'),
+      settlementTransaction: modelMock('groupBy'),
       invoice: Object.assign(modelMock('count'), { fields: { amount: AMOUNT_FIELD } }),
       $queryRaw: vi.fn(),
     };
+    journal = [row('PAYMENT', 1250.5)];
     prisma.workOrder.count.mockResolvedValue(3);
-    prisma.settlementTransaction.aggregate.mockResolvedValue({ _sum: { amount: 1250.5 } });
+    prisma.settlementTransaction.groupBy.mockImplementation(
+      (args: Parameters<typeof groupByType>[1]) => Promise.resolve(groupByType(journal, args)),
+    );
     prisma.invoice.count.mockResolvedValue(2);
     prisma.$queryRaw.mockResolvedValue([{ count: 7n }]);
 
@@ -76,7 +119,7 @@ describe('DashboardService', () => {
       const r = await svc.getSummary(ORG);
       expect(r).toBe(cached);
       expect(prisma.workOrder.count).not.toHaveBeenCalled();
-      expect(prisma.settlementTransaction.aggregate).not.toHaveBeenCalled();
+      expect(prisma.settlementTransaction.groupBy).not.toHaveBeenCalled();
       expect(prisma.invoice.count).not.toHaveBeenCalled();
       expect(prisma.$queryRaw).not.toHaveBeenCalled();
       expect(cache.set).not.toHaveBeenCalled();
@@ -99,12 +142,29 @@ describe('DashboardService', () => {
       expect(where.status.in).toEqual(['IN_PROGRESS', 'ON_HOLD']);
     });
 
-    it('settlementTransaction.aggregate фільтрує по orgId і type=PAYMENT', async () => {
+    // guards: BR-PAY-030
+    it('проводки виручки фільтруються по orgId і шести типах; сума — у базовій валюті', async () => {
       await svc.getSummary(ORG);
-      const where = prisma.settlementTransaction.aggregate.mock.calls[0][0].where;
-      expect(where.orgId).toBe(ORG);
-      expect(where.type).toBe('PAYMENT');
-      expect(where.createdAt.gte).toBeInstanceOf(Date);
+      const args = prisma.settlementTransaction.groupBy.mock.calls[0][0];
+      expect(args.where.orgId).toBe(ORG);
+      expect([...args.where.type.in].sort()).toEqual(
+        [
+          'PAYMENT',
+          'PAYMENT_CANCEL',
+          'PREPAYMENT',
+          'PREPAYMENT_CANCEL',
+          'REFUND_OUT',
+          'REFUND_OUT_CANCEL',
+        ].sort(),
+      );
+      expect(args._sum).toEqual({ amountBase: true });
+    });
+
+    // guards: BR-PAY-030
+    it('проводки іншої організації у виручку не потрапляють', async () => {
+      journal.push(row('PAYMENT', 9999, { orgId: 'org-2' }));
+      const r = await svc.getSummary(ORG);
+      expect(r.todayRevenue).toBe(1250.5);
     });
 
     it('invoice.count фільтрує по orgId, deletedAt=null і pending-статусами', async () => {
@@ -136,11 +196,70 @@ describe('DashboardService', () => {
   describe('«сьогодні» = київська доба', () => {
     it('нижня межа виручки — київська північ (НЕ UTC-північ)', async () => {
       await svc.getSummary(ORG);
-      const gte: Date = prisma.settlementTransaction.aggregate.mock.calls[0][0].where.createdAt.gte;
+      const gte: Date = prisma.settlementTransaction.groupBy.mock.calls[0][0].where.createdAt.gte;
       // Київ влітку UTC+3 → північ 00:00 Kyiv = 21:00 попереднього дня UTC.
       // Взимку UTC+2 → 22:00. У будь-якому разі UTC-година НЕ 00 (інакше брали б UTC-добу).
       const h = gte.getUTCHours();
       expect([21, 22]).toContain(h);
+    });
+
+    // guards: BR-PAY-030
+    it('вчорашні оплати й сторно у виручку сьогодні не входять (межа — київська доба)', async () => {
+      const gte: Date = await svc
+        .getSummary(ORG)
+        .then(() => prisma.settlementTransaction.groupBy.mock.calls[0][0].where.createdAt.gte);
+      journal.push(
+        row('PAYMENT', 700, { createdAt: new Date(gte.getTime() - 1) }),
+        row('PAYMENT_CANCEL', 1250.5, { createdAt: new Date(gte.getTime() - 60_000) }),
+      );
+      cache.get.mockResolvedValue(null);
+      const r = await svc.getSummary(ORG);
+      expect(r.todayRevenue).toBe(1250.5);
+    });
+  });
+
+  // Рішення власника 2026-10-30 (TECH-DEBT (б) №39): «Виручка сьогодні» — чиста.
+  describe('чиста виручка (BR-PAY-030)', () => {
+    // guards: BR-PAY-030
+    it('оплати + аванси − повернення клієнтам − сторно оплат і авансів + сторно повернень', async () => {
+      journal = [
+        row('PAYMENT', 1000),
+        row('PREPAYMENT', 300),
+        row('REFUND_OUT', 100),
+        row('REFUND_OUT_CANCEL', 40),
+        row('PAYMENT_CANCEL', 200),
+        row('PREPAYMENT_CANCEL', 50),
+      ];
+      const r = await svc.getSummary(ORG);
+      // 1000 + 300 − 100 + 40 − 200 − 50 = 990
+      expect(r.todayRevenue).toBe(990);
+    });
+
+    // guards: BR-PAY-030
+    it('сторно сьогоднішньої оплати зменшує виручку дня до нуля', async () => {
+      journal = [row('PAYMENT', 500), row('PAYMENT_CANCEL', 500)];
+      const r = await svc.getSummary(ORG);
+      expect(r.todayRevenue).toBe(0);
+    });
+
+    // guards: BR-PAY-030
+    it('валютна оплата — у базовій валюті (amountBase), не в сумі документа', async () => {
+      journal = [row('PAYMENT', 4150, { amount: 100 })];
+      const r = await svc.getSummary(ORG);
+      expect(r.todayRevenue).toBe(4150);
+    });
+
+    // guards: BR-PAY-030
+    it('нарахування, курсові різниці й проводки постачальників виручкою не є', async () => {
+      journal = [
+        row('PAYMENT', 100),
+        row('CHARGE', 5000),
+        row('FX_GAIN', 30),
+        row('SUPPLIER_PAYMENT', 800),
+        row('SUPPLIER_PAYMENT_RETURN', 70),
+      ];
+      const r = await svc.getSummary(ORG);
+      expect(r.todayRevenue).toBe(100);
     });
   });
 
@@ -155,7 +274,7 @@ describe('DashboardService', () => {
 
     it('усі підзапити reject → всі поля null, метод НЕ кидає', async () => {
       prisma.workOrder.count.mockRejectedValue(new Error('x'));
-      prisma.settlementTransaction.aggregate.mockRejectedValue(new Error('x'));
+      prisma.settlementTransaction.groupBy.mockRejectedValue(new Error('x'));
       prisma.invoice.count.mockRejectedValue(new Error('x'));
       prisma.$queryRaw.mockRejectedValue(new Error('x'));
       const r = await svc.getSummary(ORG);
@@ -168,7 +287,7 @@ describe('DashboardService', () => {
     });
 
     it('«Оплати сьогодні» не встигли → todayRevenue null, а не 0 (TECH-DEBT §8 п. 5)', async () => {
-      prisma.settlementTransaction.aggregate.mockRejectedValue(new Error('statement timeout'));
+      prisma.settlementTransaction.groupBy.mockRejectedValue(new Error('statement timeout'));
       const r = await svc.getSummary(ORG);
       expect(r.todayRevenue).toBeNull();
       expect(r.activeWo).toBe(3);
@@ -195,8 +314,16 @@ describe('DashboardService', () => {
   });
 
   describe('нормалізація значень', () => {
-    it('_sum.amount === null (немає платежів сьогодні) → todayRevenue 0', async () => {
-      prisma.settlementTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } });
+    it('проводок виручки сьогодні немає → todayRevenue 0 (не null)', async () => {
+      journal = [];
+      const r = await svc.getSummary(ORG);
+      expect(r.todayRevenue).toBe(0);
+    });
+
+    it('_sum.amountBase === null у групі → 0, не NaN', async () => {
+      prisma.settlementTransaction.groupBy.mockResolvedValue([
+        { type: 'PAYMENT', _sum: { amountBase: null } },
+      ]);
       const r = await svc.getSummary(ORG);
       expect(r.todayRevenue).toBe(0);
     });

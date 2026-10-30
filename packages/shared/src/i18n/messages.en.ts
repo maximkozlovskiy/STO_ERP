@@ -1023,7 +1023,8 @@ export const en: Record<string, string> = {
   'err.cash.reversalNotHere': 'This operation was created by «{{document}}» — cancel it there',
   'err.cash.reversalFiscalDone':
     'A fiscal receipt has already been issued for this payment — register a return in the fiscal register first',
-  'err.cash.reversalForeignCurrency': 'Reversal of a foreign-currency payment is not supported',
+  'err.cash.reversalFiscalQueued':
+    'The receipt for this payment is still being sent to the fiscal register — reversal becomes possible once the register issues or rejects it. If the fiscal shift is closed, the receipt waits for it to open: open the shift and retry the reversal after the register responds',
   'err.cash.reversalWorkOrderArchived':
     'The work order of this payment is archived — reversal is not possible',
   'err.cash.reversalInvoiceCancelled':
@@ -1093,6 +1094,10 @@ export const en: Record<string, string> = {
   'err.paymentMethod.destinationMismatch':
     'A cash register goes only with the cash register destination, a bank account only with the bank account destination',
   'err.paymentMethod.cashOnlyRegister': 'Cash can only go to a cash register — choose a register',
+  'err.paymentMethod.onlineBankOnly':
+    'Online (QR) payments arrive from the gateway to a bank account — choose an account, not a cash register',
+  'err.paymentMethod.cashFlagLocked':
+    'The «Cash» flag cannot be removed from the Cash method: cash-desk payments would otherwise be fiscalised as cashless',
 
   // ── Exception messages: payroll module ──
   'err.payroll.startAfterEnd': 'The start date must not be later than the end date',
@@ -1149,6 +1154,10 @@ export const en: Record<string, string> = {
   'err.settlement.reconciliationActNotFound': 'Reconciliation act not found',
   'err.settlement.amountMustBePositive': 'The transaction amount must be greater than zero',
   'err.settlement.counterpartyAccountNotFound': 'Counterparty settlement account not found',
+  'err.settlement.refundExceedsOverpayment':
+    'At most {{available}} {{currency}} can be refunded to the client — that is their overpayment',
+  'err.settlement.refundExceedsAdvance':
+    'A refund from the supplier can be at most {{available}} {{currency}} — that is our advance to the supplier',
 
   // ── Exception messages: setup module ──
   'err.setup.alreadyConfiguredReinit':

@@ -59,6 +59,13 @@ describe('SupplierPaymentsService — payables-fx', () => {
       paidAt: null,
     });
 
+  /** Суми журналу за типом проводки — як у справжній базі (FX_GAIN / FX_LOSS теж за типом). */
+  const journalByType = (sums: Record<string, number>) =>
+    prisma.settlementTransaction.aggregate.mockImplementation(
+      (args: { where: { type?: string } }) =>
+        Promise.resolve({ _sum: { amountBase: sums[args.where.type ?? ''] ?? null } }),
+    );
+
   const fxCall = () =>
     settlements.createTransaction.mock.calls.find(
       c => c[1]?.type === 'FX_GAIN' || c[1]?.type === 'FX_LOSS',
@@ -85,9 +92,7 @@ describe('SupplierPaymentsService — payables-fx', () => {
       service as unknown as { exchangeRates: { getBaseCurrency: ReturnType<typeof vi.fn> } }
     ).exchangeRates.getBaseCurrency = vi.fn().mockResolvedValue({ id: UAH, code: 'UAH' });
     // Нараховано 4200 base (курс прийому), сплачено 4150 base (курс оплати) → fx=+50.
-    prisma.settlementTransaction.aggregate
-      .mockResolvedValueOnce({ _sum: { amountBase: 4200 } }) // SUPPLIER_CHARGE
-      .mockResolvedValueOnce({ _sum: { amountBase: 4150 } }); // SUPPLIER_PAYMENT
+    journalByType({ SUPPLIER_CHARGE: 4200, SUPPLIER_PAYMENT: 4150 });
     prisma.supplierPayment.findMany.mockResolvedValue([{ id: SP_ID }]);
 
     await service.confirm(ORG, SP_ID, USER_ID);
@@ -116,9 +121,7 @@ describe('SupplierPaymentsService — payables-fx', () => {
     (
       service as unknown as { exchangeRates: { getBaseCurrency: ReturnType<typeof vi.fn> } }
     ).exchangeRates.getBaseCurrency = vi.fn().mockResolvedValue({ id: UAH, code: 'UAH' });
-    prisma.settlementTransaction.aggregate
-      .mockResolvedValueOnce({ _sum: { amountBase: 4100 } }) // charge
-      .mockResolvedValueOnce({ _sum: { amountBase: 4150 } }); // paid → fx=−50
+    journalByType({ SUPPLIER_CHARGE: 4100, SUPPLIER_PAYMENT: 4150 }); // fx=−50
     prisma.supplierPayment.findMany.mockResolvedValue([{ id: SP_ID }]);
 
     await service.confirm(ORG, SP_ID, USER_ID);
@@ -138,14 +141,14 @@ describe('SupplierPaymentsService — payables-fx', () => {
     );
   });
 
-  it('idempotency: FX для PO вже проведено (count>0) → повторно НЕ бронюється', async () => {
+  // guards: BR-SUPPAY-012
+  it('idempotency: чиста FX замовлення ≠ 0 (FX_GAIN не відкочено) → повторно НЕ бронюється', async () => {
     setupSpPre(USD);
     setupPo(USD, 100, 0);
     (
       service as unknown as { exchangeRates: { getBaseCurrency: ReturnType<typeof vi.fn> } }
     ).exchangeRates.getBaseCurrency = vi.fn().mockResolvedValue({ id: UAH, code: 'UAH' });
-    prisma.settlementTransaction.aggregate.mockResolvedValue({ _sum: { amountBase: 4200 } });
-    prisma.settlementTransaction.count.mockResolvedValue(1); // FX вже є
+    journalByType({ SUPPLIER_CHARGE: 4200, SUPPLIER_PAYMENT: 4150, FX_GAIN: 50 }); // FX вже є
     prisma.supplierPayment.findMany.mockResolvedValue([{ id: SP_ID }]);
     await service.confirm(ORG, SP_ID, USER_ID);
     expect(fxCall()).toBeUndefined();
@@ -186,9 +189,7 @@ describe('SupplierPaymentsService — payables-fx', () => {
       service as unknown as { exchangeRates: { getBaseCurrency: ReturnType<typeof vi.fn> } }
     ).exchangeRates.getBaseCurrency = vi.fn().mockResolvedValue({ id: UAH, code: 'UAH' });
     // chargeBase = Σ усіх SUPPLIER_CHARGE = 42000; paidBase = Σ усіх SUPPLIER_PAYMENT = 41900 → fx=+100.
-    prisma.settlementTransaction.aggregate
-      .mockResolvedValueOnce({ _sum: { amountBase: 42000 } }) // charge
-      .mockResolvedValueOnce({ _sum: { amountBase: 41900 } }); // paid (усі 5 платежів)
+    journalByType({ SUPPLIER_CHARGE: 42000, SUPPLIER_PAYMENT: 41900 }); // paid — усі 5 платежів
     prisma.supplierPayment.findMany.mockResolvedValue([
       { id: 'sp-1' },
       { id: 'sp-2' },

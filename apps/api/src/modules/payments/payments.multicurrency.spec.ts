@@ -422,7 +422,8 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
   const INV_FX = '99999999-9999-4999-8999-999999999999';
 
   // Хелпер: повна оплата USD-інвойсу (стає PAID) з заданими chargeBase (леджер) і paidBase (Payment agg).
-  const setupFxInvoicePaid = (chargeBase: number, paidBase: number, existingFx = 0) => {
+  // `fxLossBooked` — уже проведена й не відкочена FX_LOSS рахунку (чиста FX ≠ 0, BR-PAY-028).
+  const setupFxInvoicePaid = (chargeBase: number, paidBase: number, fxLossBooked = 0) => {
     prisma.cashRegister.findFirst.mockResolvedValue({
       id: CASH_ID,
       isFiscal: false,
@@ -440,8 +441,19 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
     exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: paidBase });
     const pr = prisma as never as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
-    pr.settlementTransaction.aggregate.mockResolvedValue({ _sum: { amountBase: chargeBase } });
-    pr.settlementTransaction.count.mockResolvedValue(existingFx);
+    // Суми журналу — за типом проводки, як у справжній базі (CHARGE / FX_GAIN / FX_LOSS).
+    pr.settlementTransaction.aggregate.mockImplementation((args: { where: { type?: string } }) =>
+      Promise.resolve({
+        _sum: {
+          amountBase:
+            args.where.type === 'CHARGE'
+              ? chargeBase
+              : args.where.type === 'FX_LOSS'
+                ? fxLossBooked
+                : 0,
+        },
+      }),
+    );
     pr.payment.aggregate.mockResolvedValue({ _sum: { amountBase: paidBase } });
   };
 
@@ -483,8 +495,9 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     expect(fxCall()).toBeUndefined();
   });
 
-  it('idempotency: FX для рахунку вже проведено (count>0) → повторно НЕ бронюється', async () => {
-    setupFxInvoicePaid(4200, 4150, 1); // existingFx=1
+  // guards: BR-PAY-028
+  it('idempotency: чиста FX рахунку ≠ 0 (FX_LOSS 50 не відкочено) → повторно НЕ бронюється', async () => {
+    setupFxInvoicePaid(4200, 4150, 50);
     await service.create(ORG, { ...usdCashDto, invoiceId: INV_FX }, 'user-1');
     expect(fxCall()).toBeUndefined();
   });
@@ -553,6 +566,8 @@ describe('PaymentsService.create — курсова різниця наряду 
     chargeBase?: number;
     invoice?: boolean;
     existingFx?: { documentType: string; documentId: string };
+    /** Курсові проводки журналу ДО оплати (проведена й відкочена сторно різниця тощо). */
+    fxJournal?: Array<{ type: string; amountBase: number }>;
   }) {
     const tables = {
       domainEvent: memoryTable([]),
@@ -615,6 +630,13 @@ describe('PaymentsService.create — курсова різниця наряду 
         ...(opts.existingFx
           ? [{ id: 'st-fx', orgId: ORG, type: 'FX_LOSS', amountBase: 10, ...opts.existingFx }]
           : []),
+        ...(opts.fxJournal ?? []).map((r, i) => ({
+          id: `st-fx-j${i}`,
+          orgId: ORG,
+          documentType: 'WorkOrder',
+          documentId: WO,
+          ...r,
+        })),
       ]),
     };
     const prisma: Record<string, unknown> = { ...tables };
@@ -692,8 +714,8 @@ describe('PaymentsService.create — курсова різниця наряду 
     ]);
   });
 
-  // guards: BR-PAY-022
-  it('idempotency: курсову різницю наряду вже проведено (count>0) → повторно НЕ бронюється', async () => {
+  // guards: BR-PAY-022, BR-PAY-028
+  it('idempotency: курсову різницю наряду вже проведено (чиста FX ≠ 0) → повторно НЕ бронюється', async () => {
     const h = harness({ existingFx: { documentType: 'WorkOrder', documentId: WO } });
 
     await h.service.create(ORG, { ...dto, workOrderId: WO }, 'user-1');
@@ -729,6 +751,25 @@ describe('PaymentsService.create — курсова різниця наряду 
     await h.service.create(ORG, { ...dto, workOrderId: WO }, 'user-1');
 
     expect(h.fx()).toEqual([]);
+  });
+
+  // Сторно зробило наряд не сплаченим і відкотило курсову різницю (FX_LOSS 50 + FX_GAIN 50):
+  // повторна повна оплата визнає її заново за курсами оплат, що лишились.
+  // guards: BR-PAY-028
+  it('чиста FX = 0 (визнано й відкочено сторно) → повна оплата знову пише курсову різницю', async () => {
+    const h = harness({
+      chargeBase: 4200,
+      fxJournal: [
+        { type: 'FX_LOSS', amountBase: 50 },
+        { type: 'FX_GAIN', amountBase: 50 },
+      ],
+    });
+
+    await h.service.create(ORG, { ...dto, workOrderId: WO }, 'user-1');
+
+    expect(h.fx()).toEqual([
+      expect.objectContaining({ type: 'FX_LOSS', amount: 50, documentType: 'WorkOrder' }),
+    ]);
   });
 
   // guards: BR-PAY-022

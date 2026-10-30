@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PaymentSourceType } from '@prisma/client';
-import { translateError } from '@sto/shared';
+import { CASH_METHOD_CODE, isOnlineMethodCode, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -91,7 +91,7 @@ export class PaymentMethodsService {
     // відновлення з банківським рахунком без ознаки в запиті дало б «готівку» з рахунком (BR-PAY-019).
     const isCash = dto.isCash ?? false;
     const destination =
-      (await this.resolveDestination(orgId, isCash, {
+      (await this.resolveDestination(orgId, isCash, isOnlineMethodCode(dto.code), {
         defaultSourceType,
         defaultCashRegisterId,
         defaultBankAccountId,
@@ -128,7 +128,7 @@ export class PaymentMethodsService {
     // Narrow tenant guard — full DTO load марний бо update сам повертає item.
     const existing = await this.prisma.paymentMethodConfig.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { id: true, isSystem: true, isCash: true, defaultSourceType: true },
+      select: { id: true, code: true, isSystem: true, isCash: true, defaultSourceType: true },
     });
     if (!existing)
       throw new NotFoundException(translateError('err.paymentMethod.notFound', getLocale()));
@@ -140,14 +140,26 @@ export class PaymentMethodsService {
         translateError('err.paymentMethod.systemImmutableName', getLocale()),
       );
     }
+    // BR-PAY-032: ознаку «Готівка» системного способу `cash` не зняти — інакше оплата з каси
+    // (`cash-desk`, спосіб `cash`) пішла б у чек ПРРО як безготівкова.
+    if (existing.code === CASH_METHOD_CODE && dto.isCash === false) {
+      throw new BadRequestException(
+        translateError('err.paymentMethod.cashFlagLocked', getLocale()),
+      );
+    }
     const { defaultSourceType, defaultCashRegisterId, defaultBankAccountId, ...fields } = dto;
     // undefined — призначення в запиті немає, поля лишаються як були.
     const isCash = dto.isCash ?? existing.isCash;
-    const destination = await this.resolveDestination(orgId, isCash, {
-      defaultSourceType,
-      defaultCashRegisterId,
-      defaultBankAccountId,
-    });
+    const destination = await this.resolveDestination(
+      orgId,
+      isCash,
+      isOnlineMethodCode(existing.code),
+      {
+        defaultSourceType,
+        defaultCashRegisterId,
+        defaultBankAccountId,
+      },
+    );
     // BR-PAY-019: ПОЗНАЧИТИ «Готівкою» спосіб, чиї кошти за замовчуванням ідуть на банківський
     // рахунок, — та сама суперечність, що й банківський рахунок для готівки. Рахунок, збережений
     // до правила, інших правок (активність, фіскалізація) не блокує — лише вмикання ознаки.
@@ -194,11 +206,14 @@ export class PaymentMethodsService {
    * Куди надходять кошти — з полів запиту в три поля моделі, що пишуться разом.
    * `undefined` — запит призначення не чіпає. Тип без явного значення виводиться з переданого id.
    * Каса — лише з `CASH_REGISTER`, рахунок — лише з `BANK_ACCOUNT` (400); тип без id → 400; каса чи
-   * рахунок чужої організації або видалені → 404. Id іншого типу завжди обнуляється.
+   * рахунок чужої організації або видалені → 404. Id іншого типу завжди обнуляється. Онлайн-спосіб
+   * (`<шлюз>_qr`) касу призначенням не приймає (400, BR-PAY-031); збережену раніше касу інші правки
+   * не чіпають — правило діє лише на призначення в запиті.
    */
   private async resolveDestination(
     orgId: string,
     isCash: boolean,
+    online: boolean,
     input: {
       defaultSourceType?: PaymentSourceType | null;
       defaultCashRegisterId?: string | null;
@@ -224,6 +239,12 @@ export class PaymentMethodsService {
       return NO_DESTINATION;
     }
     if (type === PaymentSourceType.CASH_REGISTER) {
+      // BR-PAY-031: QR-оплату створює сервер від шлюзу в призначення способу — у касі її гроші
+      // не лежать, а фіскальна каса без зміни чи каса іншої валюти зупинила б фіналізацію оплати.
+      if (online)
+        throw new BadRequestException(
+          translateError('err.paymentMethod.onlineBankOnly', getLocale()),
+        );
       if (bankId) throw mismatch();
       if (!cashId)
         throw new BadRequestException(

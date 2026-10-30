@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { SettlementTransactionType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { money, moneyFromDecimal } from '../../common/utils/money';
 import { CacheService } from '../../redis/cache.service';
 import { normalizeKyivDateRange, kyivYmd } from '../../common/utils/kyiv-date';
 
@@ -18,6 +20,20 @@ interface DashboardSummary {
 // Dashboard is polled every 30s via SSE — cache for 25s so each SSE tick
 // returns fresh data but we never hit the DB more than once per interval.
 const DASHBOARD_TTL = 25;
+
+/**
+ * BR-PAY-030: «Виручка сьогодні» — чиста, у базовій валюті: оплати й аванси клієнтів мінус
+ * повернення клієнтам і сторно оплат; сторно повернення повертає суму назад. Знак — внесок у виручку.
+ */
+const REVENUE_SIGN: Partial<Record<SettlementTransactionType, 1 | -1>> = {
+  PAYMENT: 1,
+  PREPAYMENT: 1,
+  REFUND_OUT: -1,
+  REFUND_OUT_CANCEL: 1,
+  PAYMENT_CANCEL: -1,
+  PREPAYMENT_CANCEL: -1,
+};
+const REVENUE_TYPES = Object.keys(REVENUE_SIGN) as SettlementTransactionType[];
 
 // Each sub-query has 8s hard ceiling — на повільному Postgres або при connection
 // pool starvation один запит не повинен блокувати SSE tick. Timeout повертає null,
@@ -62,7 +78,7 @@ export class DashboardService {
     // «Сьогодні» = Kyiv-доба (не server-local). На UTC-контейнері `new Date(y,m,d)` дало б
     // UTC-північ → виручка зсунута на TZ-offset і не збігалася б зі звітами (усі на Kyiv).
     const todayKyiv = kyivYmd(now);
-    const todayStart = normalizeKyivDateRange(todayKyiv, todayKyiv).fromDate;
+    const today = normalizeKyivDateRange(todayKyiv, todayKyiv);
 
     // Кожен sub-query обгорнутий у withTimeout: 8s ceiling — slow Postgres або
     // connection-pool starvation не повинен зривати SSE tick. Timeout → null,
@@ -80,15 +96,17 @@ export class DashboardService {
           SUBQUERY_TIMEOUT_MS,
         ),
 
-        // PAYMENT settlement transactions (SettlementTransaction is append-only — no deletedAt)
+        // BR-PAY-030: проводки виручки за київську добу (журнал лише дописується — без deletedAt),
+        // сума в базовій валюті за типом; знак — REVENUE_SIGN.
         this.withTimeout(
-          this.prisma.settlementTransaction.aggregate({
+          this.prisma.settlementTransaction.groupBy({
+            by: ['type'],
             where: {
               orgId,
-              type: 'PAYMENT',
-              createdAt: { gte: todayStart },
+              type: { in: REVENUE_TYPES },
+              createdAt: { gte: today.fromDate, lte: today.toDate },
             },
-            _sum: { amount: true },
+            _sum: { amountBase: true },
           }),
           SUBQUERY_TIMEOUT_MS,
         ),
@@ -151,12 +169,16 @@ export class DashboardService {
         ? activeWoCount.value
         : null;
 
-    // `amount` у SettlementTransaction — Prisma.Decimal. Через Number() безпечно
-    // перетворюємо у JS-число (no `as any`). `_sum.amount` буде null коли немає рядків — це 0
-    // (оплат не було), а не відмова підзапиту.
+    // `amountBase` — Prisma.Decimal; порожня група (проводок не було) — 0, а не відмова підзапиту.
     const todayRevenue =
       todayRevenueData.status === 'fulfilled' && todayRevenueData.value !== null
-        ? Number(todayRevenueData.value._sum.amount ?? 0)
+        ? money(
+            todayRevenueData.value.reduce(
+              (sum, g) =>
+                sum + (REVENUE_SIGN[g.type] ?? 0) * moneyFromDecimal(g._sum.amountBase ?? null),
+              0,
+            ),
+          )
         : null;
 
     const pendingInvoices =

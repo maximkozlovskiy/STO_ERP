@@ -25,7 +25,11 @@ export const BANK_TX_IN_MATCH_TYPE_VALUES = [
 
 export type BankTxInMatchTypeValue = (typeof BANK_TX_IN_MATCH_TYPE_VALUES)[number];
 
-/** Види рознесення вихідного платежу (`POST …/reconcile`). TRANSFER дозволений і для вхідного. */
+/**
+ * Види рознесення через `POST …/reconcile` (проведення без оплати клієнта). Вихідні — для `OUT`;
+ * `TRANSFER` — для обох напрямків; `SUPPLIER_REFUND_IN` («Повернення від постачальника»,
+ * BR-BANK-046) — лише для вхідного: гроші повертає постачальник, оплатою клієнта вони не є.
+ */
 export const BANK_TX_OUT_MATCH_TYPE_VALUES = [
   'SUPPLIER_PAYMENT',
   'CLIENT_REFUND',
@@ -33,8 +37,19 @@ export const BANK_TX_OUT_MATCH_TYPE_VALUES = [
   'PAYROLL',
   'TRANSFER',
   'CASH_WITHDRAWAL',
+  'SUPPLIER_REFUND_IN',
 ] as const;
 export type BankTxOutMatchTypeValue = (typeof BANK_TX_OUT_MATCH_TYPE_VALUES)[number];
+
+/**
+ * Види, які обирає людина для ВХІДНОГО платежу у вікнах рознесення й внесення: види оплати
+ * клієнта (`match`) і повернення від постачальника (`reconcile`, BR-BANK-046).
+ */
+export const BANK_TX_IN_ALLOCATION_TYPE_VALUES = [
+  ...BANK_TX_IN_MATCH_TYPE_VALUES,
+  'SUPPLIER_REFUND_IN',
+] as const;
+export type BankTxInAllocationTypeValue = (typeof BANK_TX_IN_ALLOCATION_TYPE_VALUES)[number];
 
 /**
  * Види рознесення, що створюють проведення або касову операцію: перед ними UI показує
@@ -44,24 +59,31 @@ export const BANK_TX_POSTING_MATCH_TYPES: ReadonlySet<string> = new Set([
   'SUPPLIER_PAYMENT',
   'CLIENT_REFUND',
   'CASH_WITHDRAWAL',
+  'SUPPLIER_REFUND_IN',
 ]);
 
 /** Вид рознесення при внесенні платежу (BR-BANK-041): будь-який вхідний або вихідний. */
 export type BankTxAllocationTypeValue = BankTxInMatchTypeValue | BankTxOutMatchTypeValue;
 
 /**
- * BR-BANK-025 / 041: які види «Рознести як» можна обрати для напряму платежу. Вхідний — види
- * `match` і переказ; вихідний — усі види `reconcile` (оплата постачальнику при внесенні — лише нова).
+ * BR-BANK-025 / 041 / 046: які види «Рознести як» можна обрати для напряму платежу. Вхідний — види
+ * `match`, повернення від постачальника і переказ; вихідний — види `reconcile`, крім повернення від
+ * постачальника (оплата постачальнику при внесенні — лише нова).
  */
 export const BANK_TX_ALLOCATION_TYPES_BY_DIRECTION: Readonly<
   Record<BankTxDirectionValue, readonly BankTxAllocationTypeValue[]>
 > = {
-  IN: [...BANK_TX_IN_MATCH_TYPE_VALUES, 'TRANSFER'],
-  OUT: BANK_TX_OUT_MATCH_TYPE_VALUES,
+  IN: [...BANK_TX_IN_ALLOCATION_TYPE_VALUES, 'TRANSFER'],
+  OUT: BANK_TX_OUT_MATCH_TYPE_VALUES.filter(t => t !== 'SUPPLIER_REFUND_IN'),
 };
 
 export function isBankTxInMatchType(type: string): type is BankTxInMatchTypeValue {
   return (BANK_TX_IN_MATCH_TYPE_VALUES as readonly string[]).includes(type);
+}
+
+/** Вид вхідного платежу, який розносять полями «контрагент» (і рахунок): `match` чи повернення. */
+export function isBankTxInAllocationType(type: string): type is BankTxInAllocationTypeValue {
+  return (BANK_TX_IN_ALLOCATION_TYPE_VALUES as readonly string[]).includes(type);
 }
 
 /**
@@ -73,6 +95,7 @@ export const BANK_TX_CREATE_CONFIRM_TYPES: ReadonlySet<string> = new Set([
   'CLIENT_REFUND',
   'CASH_WITHDRAWAL',
   'INVOICE',
+  'SUPPLIER_REFUND_IN',
 ]);
 
 /** Довжина причини скасування рознесення і призначення ручного платежу. */
@@ -171,6 +194,9 @@ function refineOutgoingRefs(v: OutgoingRefs, ctx: z.RefinementCtx, supplierMessa
         'v.bankTransaction.cashRegister.required',
       );
       break;
+    case 'SUPPLIER_REFUND_IN':
+      requireField(ctx, v.counterpartyId, 'counterpartyId', 'v.bankTransaction.supplier.required');
+      break;
   }
 }
 
@@ -211,10 +237,13 @@ function refineIncomingRefs(
     requireField(ctx, v.invoiceId, 'invoiceId', 'v.bankTransaction.invoice.required');
 }
 
-/** Поля вхідного виду (як у `match`, BR-BANK-010): контрагент завжди, рахунок — для оплати рахунку. */
+/**
+ * Поля вхідного виду (як у `match`, BR-BANK-010, і повернення від постачальника, BR-BANK-046):
+ * контрагент завжди, рахунок — для оплати рахунку.
+ */
 export const bankTransactionIncomingAllocationSchema = z
   .object({
-    type: z.enum(BANK_TX_IN_MATCH_TYPE_VALUES, { error: 'v.bankTransaction.type.required' }),
+    type: z.enum(BANK_TX_IN_ALLOCATION_TYPE_VALUES, { error: 'v.bankTransaction.type.required' }),
     counterpartyId: optionalUuid(),
     invoiceId: optionalUuid(),
   })

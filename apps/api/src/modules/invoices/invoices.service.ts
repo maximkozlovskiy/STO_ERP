@@ -36,6 +36,7 @@ import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
 import { syncWorkOrderInvoicePaid } from './work-order-invoice-mirror';
+import { hasNetFx, netFxBalanceEffect } from '../settlements/fx-net';
 import { recordDocumentEvent } from '../automation/record-document-event';
 import {
   CreateInvoiceDto,
@@ -719,16 +720,12 @@ export class InvoicesService {
           // тож рахуємо base-залишок напряму з леджера цього документа.
           if (!(await this.exchangeRates.sameCurrency(orgId, null, inv.currencyId))) {
             // Idempotency: PAID термінальний (INV_TRANSITIONS PAID:[]), але guard симетричний із
-            // payments.service — повторна FX для цього рахунку не дублюється.
-            const fxExisting = await tx.settlementTransaction.count({
-              where: {
-                orgId,
-                type: { in: ['FX_GAIN', 'FX_LOSS'] },
-                documentType: 'Invoice',
-                documentId: id,
-              },
-            });
-            if (fxExisting === 0) {
+            // payments.service — чиста FX рахунку ≠ 0 означає «вже визнано»; сторно, що зробило
+            // рахунок не сплаченим, її обнуляє (BR-PAY-028).
+            const fxNet = await netFxBalanceEffect(tx, orgId, [
+              { documentType: 'Invoice', documentId: id },
+            ]);
+            if (!hasNetFx(fxNet)) {
               // Base-залишок цього рахунку = CHARGE(doc, курс документа) − дзеркальний PAYMENT(doc,
               // курс документа) − Σреальні_часткові_оплати (Payment.amountBase по invoiceId, курс
               // дати оплати). Реальні часткові оплати мають settlement documentType='Payment' (не

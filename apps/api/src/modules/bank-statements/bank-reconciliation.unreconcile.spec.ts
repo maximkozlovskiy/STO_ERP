@@ -49,6 +49,14 @@ const LINKS: Record<BankTxOutMatchType, Record<string, unknown>> = {
   PAYROLL: { payrollPeriodId: ID.periodComputed, employeeId: ID.employee },
   TRANSFER: { transferBankAccountId: ID.account2 },
   CASH_WITHDRAWAL: { cashOperationId: ID.cashOp },
+  // Повернення від постачальника розносять на ВХІДНИЙ рядок (BR-BANK-046).
+  SUPPLIER_REFUND_IN: { counterpartyId: ID.supplier, direction: 'IN' },
+};
+
+/** Проводка, яку лишило рознесення виду з проведенням: сторно мусить її дзеркалити. */
+const POSTING: Partial<Record<BankTxOutMatchType, { type: string; counterpartyId: string }>> = {
+  CLIENT_REFUND: { type: 'REFUND_OUT', counterpartyId: ID.client },
+  SUPPLIER_REFUND_IN: { type: 'SUPPLIER_PAYMENT_RETURN', counterpartyId: ID.supplier },
 };
 
 /** Рядок, рознесений через reconcile видом `type`, разом із тим, що рознесення створило. */
@@ -79,12 +87,13 @@ function arrangeMatched(w: World, type: BankTxOutMatchType, over: Record<string,
       createdAt: new Date('2026-10-03T10:00:00.000Z'),
     });
   }
-  if (type === 'CLIENT_REFUND') {
+  const posting = POSTING[type];
+  if (posting) {
     w.db.seed('settlementTransaction', {
       id: w.db.nextId(),
       orgId: ORG,
-      counterpartyId: ID.client,
-      type: 'REFUND_OUT',
+      counterpartyId: posting.counterpartyId,
+      type: posting.type,
       amount: row.amount,
       currencyId: row.currencyId,
       amountBase: row.amountBase,
@@ -369,6 +378,37 @@ describe('BankReconciliationService.unreconcile — скасування роз�
       });
       expect(txArg).toBe(w.tx);
       expect({ ...effectCalls(w), 'settlements.createTransaction': 0 }).toEqual(NO_EFFECTS);
+    });
+
+    // guards: BR-BANK-046
+    it('SUPPLIER_REFUND_IN: одне сторно SUPPLIER_PAYMENT_RETURN_CANCEL з курсом і базовою сумою початкового, в транзакції рядка', async () => {
+      const w = await makeWorld();
+      arrangeMatched(w, 'SUPPLIER_REFUND_IN', {
+        bankAccountId: ID.accountUsd,
+        currencyId: ID.usd,
+        amount: dec(200),
+        amountBase: dec(8300),
+        rateUsed: dec(41.5),
+      });
+      // Курс на дату операції змінився після рознесення — сторно його не перечитує.
+      w.exchange.resolveBaseConversion.mockResolvedValue({ rateUsed: 42.1, amountBase: 8420 });
+
+      await unreconcile(w);
+
+      expect(w.settlements.createTransaction).toHaveBeenCalledTimes(1);
+      const [, posting, txArg] = w.settlements.createTransaction.mock.calls[0]!;
+      expect(posting).toMatchObject({
+        counterpartyId: ID.supplier,
+        type: 'SUPPLIER_PAYMENT_RETURN_CANCEL',
+        amount: 200,
+        currencyId: ID.usd,
+        conversion: { rateUsed: 41.5, amountBase: 8300 },
+        documentType: 'BankTransaction',
+        documentId: ID.tx,
+        notes: REASON,
+      });
+      expect(txArg).toBe(w.tx);
+      expect(w.row()).toMatchObject({ ...FREE_ROW, unmatchReason: REASON });
     });
 
     // Курс на дату операції додали / виправили ПІСЛЯ рознесення: перерахунок дав би іншу базову

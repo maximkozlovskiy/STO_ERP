@@ -6,7 +6,8 @@
  *   • проводка `SUPPLIER_PAYMENT_CANCEL` (−1) на ту саму суму з курсом оригіналу;
  *   • «сплачено» замовлення мінус сума (не нижче 0); `paidAt` знімається, коли замовлення вже не
  *     сплачене повністю, і лишається, коли сплачене;
- *   • оплата не в базовій валюті → 400.
+ *   • валютна оплата — за курсом оплати; курсова різниця повної оплати замовлення відкочується,
+ *     коли замовлення перестає бути сплаченим повністю (BR-SUPPAY-012).
  *
  * Метод внутрішній: кличе його каса зі СВОЄЮ транзакцією, тож кореневий prisma тут на запис
  * заборонений. Довідники — таблиці в пам'яті (`memoryTable`).
@@ -40,6 +41,8 @@ const CTX = { cashOperationId: STORNO_OP, reason: 'оплачено не том�
 interface Seed {
   sp?: MemRow;
   po?: MemRow | null;
+  /** Інші проводки журналу ДО сторно (курсова різниця повної оплати замовлення). */
+  journal?: MemRow[];
 }
 
 function makeHarness(seed: Seed = {}) {
@@ -94,6 +97,7 @@ function makeHarness(seed: Seed = {}) {
         documentType: 'SupplierPayment',
         documentId: SP,
       },
+      ...(seed.journal ?? []),
     ]),
   };
 
@@ -224,16 +228,76 @@ describe('SupplierPaymentsService.reverse — проводка', () => {
     expect(Number(conversion.amountBase)).toBe(4200.35);
     expect(posting.__tx).toBe(h.tx);
   });
+});
 
-  // guards: BR-CASH-024
-  it('оплата не в базовій валюті → 400, статус і замовлення не змінено', async () => {
-    const h = makeHarness({
-      sp: { currencyId: 'usd-id', amount: 100, totalAmountBase: 4147, rateUsed: 41.47 },
-      po: { currencyId: 'usd-id', totalAmount: 100, paidAmount: 100 },
+// Сторно валютної оплати постачальнику — за курсом оплати; курсова різниця повної оплати
+// замовлення відкочується, коли замовлення перестає бути сплаченим повністю (рішення 2026-10-30).
+describe('SupplierPaymentsService.reverse — валютна оплата і курсова різниця (BR-SUPPAY-012)', () => {
+  const USD = 'usd-id';
+  const poFx = (type: string, amountBase: number): MemRow => ({
+    id: `st-fx-${type}`,
+    orgId: ORG,
+    settlementAccountId: 'acc-sup',
+    type,
+    amount: amountBase,
+    amountBase,
+    rateUsed: 1,
+    currencyId: null,
+    documentType: 'PurchaseOrder',
+    documentId: PO,
+  });
+  const fxRows = (h: ReturnType<typeof makeHarness>) =>
+    h.settlementRows.filter(r => r.type === 'FX_GAIN' || r.type === 'FX_LOSS');
+  const usd = {
+    sp: { currencyId: USD, amount: 100, totalAmountBase: 4147, rateUsed: 41.47 },
+    po: { currencyId: USD, totalAmount: 100, paidAmount: 100 },
+  };
+
+  // guards: BR-SUPPAY-012
+  it('USD-оплата → «Сторновано», SUPPLIER_PAYMENT_CANCEL за курсом оплати, без 400', async () => {
+    const h = makeHarness(usd);
+
+    await h.reverse();
+
+    expect(h.sp.status).toBe('REVERSED');
+    expect(h.settlementRows.find(r => r.type === 'SUPPLIER_PAYMENT_CANCEL')).toMatchObject({
+      amount: 100,
+      currencyId: USD,
+      conversion: { rateUsed: 41.47, amountBase: 4147 },
     });
-    await expect(h.reverse()).rejects.toThrow(BadRequestException);
-    expect(h.sp.status).toBe('CONFIRMED');
-    expect(h.settlementRows).toEqual([]);
+  });
+
+  // guards: BR-SUPPAY-012
+  it('замовлення перестало бути сплаченим → зворотна курсова різниця на чисту суму, у tx каси', async () => {
+    const h = makeHarness({ ...usd, journal: [poFx('FX_GAIN', 53)] });
+
+    await h.reverse();
+
+    expect(fxRows(h)).toEqual([
+      expect.objectContaining({
+        type: 'FX_LOSS',
+        amount: 53,
+        counterpartyId: SUPPLIER,
+        documentType: 'PurchaseOrder',
+        documentId: PO,
+        __tx: h.tx,
+      }),
+    ]);
+    expect(fxRows(h)[0]!.currencyId).toBeUndefined();
+    expect(h.po?.paidAt).toBeNull();
+  });
+
+  // guards: BR-SUPPAY-012
+  it('переплачене замовлення і після сторно сплачене повністю → курсову різницю не чіпаємо', async () => {
+    const h = makeHarness({
+      sp: usd.sp,
+      po: { currencyId: USD, totalAmount: 100, paidAmount: 250 },
+      journal: [poFx('FX_GAIN', 53)],
+    });
+
+    await h.reverse();
+
+    expect(fxRows(h)).toEqual([]);
   });
 });
 

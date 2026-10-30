@@ -1,5 +1,14 @@
-import { Body, Controller, Get, Param, Post, ParseUUIDPipe, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  ParseUUIDPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiOkResponse } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IsUUID, IsOptional, IsNumber, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -12,6 +21,19 @@ import { OnlinePaymentService } from './online-payment.service';
 class CreateIntentDto {
   @ApiProperty() @IsUUID() invoiceId!: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) amount?: number;
+}
+
+class ActiveGatewayQueryDto {
+  @ApiProperty() @IsUUID() invoiceId!: string;
+}
+
+class ActiveGatewayDto {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Код шлюзу (monobank, liqpay) або null',
+  })
+  provider!: string | null;
 }
 
 @ApiTags('Online Payments')
@@ -28,6 +50,17 @@ export class OnlinePaymentController {
   @ApiOperation({ summary: 'Створити QR-намір оплати (monobank)' })
   create(@OrgContext() orgId: string, @Body() dto: CreateIntentDto) {
     return this.service.createIntent(orgId, dto);
+  }
+
+  // Специфічний маршрут — ПЕРЕД `:id` (Fastify матчить у порядку оголошення).
+  @Get('gateway')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
+  @ApiOperation({
+    summary: 'Підключений платіжний шлюз для QR-оплати рахунку (BR-PAY-033): провайдер або null',
+  })
+  @ApiOkResponse({ type: ActiveGatewayDto })
+  gateway(@OrgContext() orgId: string, @Query() query: ActiveGatewayQueryDto) {
+    return this.service.activeGatewayForInvoice(orgId, query.invoiceId);
   }
 
   @Get(':id')

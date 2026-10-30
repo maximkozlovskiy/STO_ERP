@@ -51,6 +51,7 @@ export const NO_OUTGOING_LINKS: OutgoingLinks = {
 export type OutgoingPlan =
   | { kind: 'LINK'; links: OutgoingLinks }
   | { kind: 'CLIENT_REFUND'; links: OutgoingLinks; counterpartyId: string }
+  | { kind: 'SUPPLIER_REFUND_IN'; links: OutgoingLinks; counterpartyId: string }
   | { kind: 'CASH_WITHDRAWAL'; links: OutgoingLinks; cashRegisterId: string }
   | { kind: 'NEW_SUPPLIER_PAYMENT'; supplierId: string; purchaseOrderId?: string };
 
@@ -59,14 +60,17 @@ const sameAmount = (a: Prisma.Decimal | number, b: Prisma.Decimal | number): boo
   Math.abs(Number(a) - Number(b)) < 0.005;
 
 /**
- * BR-BANK-025: вихідні види — лише для `OUT`-рядка; `TRANSFER` — для обох напрямків.
- * Невідповідність → 400 до будь-якого запису.
+ * BR-BANK-025: вихідні види — лише для `OUT`-рядка; `TRANSFER` — для обох напрямків;
+ * `SUPPLIER_REFUND_IN` — лише для `IN`-рядка (BR-BANK-046). Невідповідність → 400 до будь-якого
+ * запису.
  */
 export function assertOutgoingDirection(
   direction: BankTransactionDirection,
   type: BankTxOutMatchType,
 ): void {
-  if (type !== 'TRANSFER' && direction !== 'OUT') {
+  if (type === 'TRANSFER') return;
+  const expected: BankTransactionDirection = type === 'SUPPLIER_REFUND_IN' ? 'IN' : 'OUT';
+  if (direction !== expected) {
     throw badRequest('err.bankStatement.wrongDirection');
   }
 }
@@ -289,6 +293,16 @@ export async function resolveOutgoingPlan(
       return planTransfer(prisma, orgId, row, dto, baseCurrencyId);
     case 'CASH_WITHDRAWAL':
       return planCashWithdrawal(prisma, orgId, row, dto);
+    case 'SUPPLIER_REFUND_IN': {
+      // BR-BANK-046: гроші повертає постачальник — контрагент у ролі постачальника.
+      const supplier = await findCounterparty(prisma, orgId, required(dto.counterpartyId));
+      assertCounterpartyRole(supplier.type, 'supplier');
+      return {
+        kind: 'SUPPLIER_REFUND_IN',
+        links: { ...NO_OUTGOING_LINKS, counterpartyId: supplier.id },
+        counterpartyId: supplier.id,
+      };
+    }
     default: {
       const unknown: never = dto.type;
       void unknown;

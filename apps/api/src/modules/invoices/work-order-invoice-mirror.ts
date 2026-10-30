@@ -4,6 +4,7 @@ import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { money, moneyFromDecimal } from '../../common/utils/money';
 import { recordDocumentEvent } from '../automation/record-document-event';
+import { invoiceStatusForPaid } from './invoice-paid-status';
 
 // Статуси, які дзеркало перераховує за сплаченим. DRAFT показує сплачене, але лишається DRAFT;
 // CANCELLED — не активний рахунок, його дзеркало не чіпає (BR-INV-018).
@@ -20,18 +21,18 @@ const MAX_ATTEMPTS = 3;
 
 /**
  * Статус рахунку наряду за сплаченим (BR-INV-018). Чиста функція — її ж перевіряють спеки.
- * SENT / PARTIALLY_PAID / OVERDUE / PAID → PAID при повній сумі, PARTIALLY_PAID при частковій,
- * SENT при нулі (OVERDUE лишається OVERDUE); DRAFT і CANCELLED не змінюються.
+ * SENT / PARTIALLY_PAID / OVERDUE / PAID → за `invoiceStatusForPaid` (BR-INV-025: прострочений
+ * несплачений чи частково сплачений — одразу «Прострочено»); DRAFT і CANCELLED не змінюються.
  */
 export function mirroredInvoiceStatus(
   status: InvoiceStatus,
   amount: number,
   paid: number,
+  dueDate?: Date | null,
+  today?: Date,
 ): InvoiceStatus {
   if (!MIRRORED_STATUSES.has(status)) return status;
-  if (amount > 0 && paid >= amount - 1e-9) return InvoiceStatus.PAID;
-  if (paid > 1e-9) return InvoiceStatus.PARTIALLY_PAID;
-  return status === InvoiceStatus.OVERDUE ? InvoiceStatus.OVERDUE : InvoiceStatus.SENT;
+  return invoiceStatusForPaid(status, amount, paid, dueDate, today);
 }
 
 /**
@@ -66,14 +67,14 @@ export async function syncWorkOrderInvoicePaid(
           deletedAt: null,
           status: { not: InvoiceStatus.CANCELLED },
         },
-        select: { id: true, status: true, amount: true, paidAmount: true },
+        select: { id: true, status: true, amount: true, paidAmount: true, dueDate: true },
       }),
     ]);
     if (!wo || !inv) return;
 
     const amount = moneyFromDecimal(inv.amount);
     const paid = money(Math.min(moneyFromDecimal(wo.paidAmount), amount));
-    const status = mirroredInvoiceStatus(inv.status, amount, paid);
+    const status = mirroredInvoiceStatus(inv.status, amount, paid, inv.dueDate);
     if (paid === moneyFromDecimal(inv.paidAmount) && status === inv.status) return;
 
     const fromStatus = inv.status;

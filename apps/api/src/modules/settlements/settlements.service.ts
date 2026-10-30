@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
-import { assertMoneyFits } from '../../common/utils/money';
+import { assertMoneyFits, formatMoneyForMessage, money } from '../../common/utils/money';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { Prisma, SettlementTransactionType } from '@prisma/client';
 
@@ -159,6 +159,54 @@ export class SettlementsService {
       // explicit timeout — called from work-orders COMPLETED flow where additional writes may be in flight
       await this.prisma.$transaction(run, { timeout: TRANSACTION_TIMEOUT_MS });
     }
+  }
+
+  /**
+   * BR-CASH-029, BR-BANK-044, BR-BANK-046: скільки можна повернути, у БАЗОВІЙ валюті. Клієнту
+   * (`client`) — його переплата `max(0, −баланс)`; від постачальника (`supplier`) — наш аванс
+   * йому `max(0, баланс)`. Баланс один на контрагента, тож для «обидва» це чисте сальдо.
+   *
+   * Блокує рядок рахунку розрахунків до кінця транзакції викликача (`FOR UPDATE`): дві паралельні
+   * видачі на ту саму переплату не пройдуть обидві. Викликати в транзакції ДО запису грошей —
+   * блокування «рахунок розрахунків → каса» той самий, що в оплаті.
+   */
+  async lockRefundAvailable(
+    orgId: string,
+    counterpartyId: string,
+    side: 'client' | 'supplier',
+    tx: Prisma.TransactionClient,
+  ): Promise<number> {
+    const rows = await tx.$queryRaw<Array<{ balance: Prisma.Decimal | number | string }>>`
+      SELECT balance FROM settlement_accounts
+      WHERE "orgId" = ${orgId}::uuid AND "counterpartyId" = ${counterpartyId}::uuid
+      FOR UPDATE
+    `;
+    const balance = rows.length > 0 ? Number(rows[0].balance) : 0;
+    return money(Math.max(0, side === 'client' ? -balance : balance));
+  }
+
+  /**
+   * Сума повернення в базовій валюті не більша за доступну (`lockRefundAvailable`); рівно доступна
+   * проходить. Більше → 400 з доступною сумою в базовій валюті організації.
+   */
+  async assertRefundWithin(
+    orgId: string,
+    side: 'client' | 'supplier',
+    available: number,
+    amountBase: number,
+  ): Promise<void> {
+    if (money(amountBase) <= money(available)) return;
+    const locale = getLocale();
+    const base = await this.exchangeRates.getBaseCurrency(orgId);
+    throw new BadRequestException(
+      translateError(
+        side === 'client'
+          ? 'err.settlement.refundExceedsOverpayment'
+          : 'err.settlement.refundExceedsAdvance',
+        locale,
+        { available: formatMoneyForMessage(available, locale), currency: base.code },
+      ),
+    );
   }
 
   async getBalance(orgId: string, counterpartyId: string): Promise<number> {

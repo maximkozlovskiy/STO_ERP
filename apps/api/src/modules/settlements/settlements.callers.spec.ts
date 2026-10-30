@@ -70,12 +70,14 @@ const WORK_ORDER_STATUS_CAS = [
   /tx\.workOrder\.updateMany\(\{\s*where:\s*\{[^}]*\bstatus:\s*wo\.status\b/,
   /if\s*\(cas\.count === 0\)\s*\{\s*throw\b/,
 ];
-const FX_ALREADY_BOOKED = [
-  /tx\.settlementTransaction\.count\(\{\s*where:\s*\{[^}]*type:\s*\{\s*in:\s*\['FX_GAIN',\s*'FX_LOSS'\]/,
-  /if\s*\(fxExisting === 0\)/,
+// Курсову різницю документа вже визнано, поки чиста FX (Σ FX_GAIN − Σ FX_LOSS) ≠ 0 (BR-PAY-028):
+// сторно, що зробило документ не сплаченим, обнуляє її — тоді наступна повна оплата пише заново.
+const FX_ALREADY_BOOKED = [/netFxBalanceEffect\(/, /if\s*\(!hasNetFx\(fxNet\)\)/];
+// Той самий захист, записаний раннім виходом (`if (hasNetFx(fxNet)) return;`).
+const FX_ALREADY_BOOKED_EARLY_RETURN = [
+  FX_ALREADY_BOOKED[0],
+  /if\s*\(hasNetFx\(fxNet\)\)\s*return;/,
 ];
-// Той самий захист, записаний раннім виходом (`if (fxExisting > 0) return;`).
-const FX_ALREADY_BOOKED_EARLY_RETURN = [FX_ALREADY_BOOKED[0], /if\s*\(fxExisting > 0\)\s*return;/];
 
 /**
  * ПЕРЕЛІК МІСЦЬ ВИКЛИКУ. Ключ: `<файл від apps/api/src>#<метод>:<тип проводки>`.
@@ -118,7 +120,7 @@ const CALL_SITES: Record<string, CallSite> = {
       {
         spec: 'invoices/invoices.transition-settlements.spec.ts',
         title:
-          'іновалютний ручний →PAID, FX вже проведено (count>0) → повторно НЕ бронюється (Bug #745 idempotency)',
+          'іновалютний ручний →PAID, чиста FX ≠ 0 (FX_GAIN 30 не відкочено) → повторно НЕ бронюється (Bug #745 idempotency)',
       },
     ],
   },
@@ -188,7 +190,8 @@ const CALL_SITES: Record<string, CallSite> = {
     raceTests: [
       {
         spec: 'payments/payments.multicurrency.spec.ts',
-        title: 'idempotency: FX для рахунку вже проведено (count>0) → повторно НЕ бронюється',
+        title:
+          'idempotency: чиста FX рахунку ≠ 0 (FX_LOSS 50 не відкочено) → повторно НЕ бронюється',
       },
     ],
   },
@@ -196,15 +199,31 @@ const CALL_SITES: Record<string, CallSite> = {
   // ── Наряди: курсова різниця (BR-PAY-022) ─────────────────────────────────────────────────
   'modules/work-orders/work-order-fx.ts#postWorkOrderFxInTx:FX_GAIN|FX_LOSS': {
     guard:
-      'Перевірка наявної проводки в тій самій tx: settlementTransaction.count FX_GAIN/FX_LOSS наряду або ' +
-      'будь-якого його рахунку > 0 → вихід. Обидва викликачі (оплата наряду, перехід у «Виконано») ' +
+      'Перевірка визнаної різниці в тій самій tx: чиста FX (Σ FX_GAIN − Σ FX_LOSS) наряду й ' +
+      'будь-якого його рахунку ≠ 0 → вихід. Обидва викликачі (оплата наряду, перехід у «Виконано») ' +
       'тримають рядок наряду CAS-ом у своїй tx, тож дві проводки паралельно не пройдуть.',
     anchors: [...FX_ALREADY_BOOKED_EARLY_RETURN],
     raceTests: [
       {
         spec: 'payments/payments.multicurrency.spec.ts',
         title:
-          'idempotency: курсову різницю наряду вже проведено (count>0) → повторно НЕ бронюється',
+          'idempotency: курсову різницю наряду вже проведено (чиста FX ≠ 0) → повторно НЕ бронюється',
+      },
+    ],
+  },
+
+  // ── Сторно: курсова різниця повної оплати відкочується (BR-PAY-028, BR-SUPPAY-012) ───────
+  'modules/settlements/fx-net.ts#reverseNetFxInTx:FX_GAIN|FX_LOSS': {
+    guard:
+      'Пише рівно ЧИСТУ курсову різницю документа протилежним знаком: після проводки чиста FX = 0, і ' +
+      'повторний виклик (net < EPS) нічого не пише. Викликачі — сторно оплати клієнта й оплати ' +
+      'постачальнику — кличуть його в tx сторно ПІСЛЯ CAS «не сторновано» (payment.reversedAt / ' +
+      'supplierPayment.status = CONFIRMED), тож друге сторно тієї самої оплати сюди не доходить.',
+    anchors: [/netFxBalanceEffect\(/, /if\s*\(!hasNetFx\(net\)\)\s*return;/],
+    raceTests: [
+      {
+        spec: 'payments/payments.reverse.spec.ts',
+        title: 'чиста FX уже 0 (визнано й відкочено раніше) → нової курсової проводки немає',
       },
     ],
   },
@@ -363,7 +382,8 @@ const CALL_SITES: Record<string, CallSite> = {
     raceTests: [
       {
         spec: 'supplier-payments/supplier-payments.payables-fx.spec.ts',
-        title: 'idempotency: FX для PO вже проведено (count>0) → повторно НЕ бронюється',
+        title:
+          'idempotency: чиста FX замовлення ≠ 0 (FX_GAIN не відкочено) → повторно НЕ бронюється',
       },
       {
         spec: 'supplier-payments/supplier-payments.payables-fx.spec.ts',
@@ -410,6 +430,41 @@ const CALL_SITES: Record<string, CallSite> = {
       },
     ],
   },
+  'modules/bank-statements/bank-reconciliation.service.ts#applyOutgoingPlan:SUPPLIER_PAYMENT_RETURN':
+    {
+      guard:
+        'Той самий CAS статусу рядка першим записом у tx (UNMATCHED → MATCHED); count=0 → 409/404 до ' +
+        'проводки (BR-BANK-026, 046). Проводка — у тій самій tx, documentId = id рядка.',
+      anchors: [
+        /tx\.bankTransaction\.updateMany\(\{\s*where:\s*\{[^}]*\bstatus:\s*'UNMATCHED'/,
+        /if\s*\(captured\.count === 0\)\s*\{\s*throw\b/,
+      ],
+      argAnchors: [/documentType:\s*'BankTransaction'/, /documentId:\s*txId/],
+      raceTests: [
+        {
+          spec: 'bank-statements/bank-reconciliation.outgoing.spec.ts',
+          title: 'CAS програв гонку, вид %s → 409, ефект не викликано',
+        },
+      ],
+    },
+  'modules/bank-statements/bank-reconciliation.service.ts#unreconcile:SUPPLIER_PAYMENT_RETURN_CANCEL':
+    {
+      guard:
+        'Той самий CAS статусу рядка першим записом у tx (MATCHED → UNMATCHED за прочитаним виглядом ' +
+        'рознесення); count=0 → 409 до сторно (BR-BANK-039, 046). Повторне скасування рядка в MATCHED не ' +
+        'знаходить, тож другого сторно немає.',
+      anchors: [
+        /tx\.bankTransaction\.updateMany\(\{\s*where:\s*\{[^}]*\bstatus:\s*'MATCHED'/,
+        /if\s*\(released\.count === 0\)\s*\{\s*throw\b/,
+      ],
+      argAnchors: [/documentType:\s*'BankTransaction'/, /documentId:\s*txId/],
+      raceTests: [
+        {
+          spec: 'bank-statements/bank-reconciliation.unreconcile.spec.ts',
+          title: 'CAS програв гонку, вид %s → 409, зворотного запису немає',
+        },
+      ],
+    },
   'modules/bank-statements/bank-reconciliation.service.ts#unreconcile:REFUND_OUT_CANCEL': {
     guard:
       'CAS статусу рядка першим записом у tx: bankTransaction.updateMany where status = MATCHED, paymentId = null, ' +

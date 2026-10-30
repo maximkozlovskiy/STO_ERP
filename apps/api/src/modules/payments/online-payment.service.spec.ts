@@ -78,6 +78,59 @@ describe('OnlinePaymentService.createIntent (QR registry)', () => {
     );
   });
 
+  // Рішення власника 2026-10-30 (TECH-DEBT (б) №55): QR-способи у вікні оплати рахунку — лише
+  // підключеного провайдера філії; маршрут каже, який саме (без кредів).
+  describe('activeGatewayForInvoice — підключений шлюз для QR-оплати рахунку (BR-PAY-033)', () => {
+    // guards: BR-PAY-033
+    it('рахунок наряду → шлюз філії наряду; відповідь — лише код провайдера', async () => {
+      prisma.invoice.findFirst.mockResolvedValue({ workOrderId: 'wo-1' });
+      prisma.workOrder.findFirst.mockResolvedValue({ branchId: 'br-7' });
+
+      const res = await service.activeGatewayForInvoice(ORG, INV_ID);
+
+      expect(res).toEqual({ provider: 'monobank' });
+      expect(providerConfig.resolveActive).toHaveBeenCalledWith(ORG, 'br-7', 'PAYMENT');
+      expect(prisma.invoice.findFirst.mock.calls[0][0].where).toEqual({
+        id: INV_ID,
+        orgId: ORG,
+        deletedAt: null,
+      });
+      expect(prisma.workOrder.findFirst.mock.calls[0][0].where).toMatchObject({ orgId: ORG });
+    });
+
+    // guards: BR-PAY-033
+    it('рахунок без наряду → будь-яка філія організації (як createIntent)', async () => {
+      prisma.invoice.findFirst.mockResolvedValue({ workOrderId: null });
+      providerConfig.resolveActive.mockResolvedValue({ ...activeMonobank, provider: 'liqpay' });
+
+      await expect(service.activeGatewayForInvoice(ORG, INV_ID)).resolves.toEqual({
+        provider: 'liqpay',
+      });
+      expect(providerConfig.resolveActive).toHaveBeenCalledWith(ORG, undefined, 'PAYMENT');
+      expect(prisma.workOrder.findFirst).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-PAY-033
+    it('шлюз не підключено або невідомий системі → provider: null', async () => {
+      prisma.invoice.findFirst.mockResolvedValue({ workOrderId: null });
+      providerConfig.resolveActive.mockResolvedValueOnce(null);
+      await expect(service.activeGatewayForInvoice(ORG, INV_ID)).resolves.toEqual({
+        provider: null,
+      });
+
+      gateways.get.mockReturnValueOnce(null);
+      await expect(service.activeGatewayForInvoice(ORG, INV_ID)).resolves.toEqual({
+        provider: null,
+      });
+    });
+
+    // guards: BR-PAY-033
+    it('чужий / видалений рахунок → 404', async () => {
+      prisma.invoice.findFirst.mockResolvedValue(null);
+      await expect(service.activeGatewayForInvoice(ORG, INV_ID)).rejects.toThrow(NotFoundException);
+    });
+  });
+
   const sentInvoice = (over: Record<string, unknown> = {}) => ({
     counterpartyId: CP_ID,
     workOrderId: null,

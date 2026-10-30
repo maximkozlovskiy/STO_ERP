@@ -4624,6 +4624,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/online-payments/gateway": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Підключений платіжний шлюз для QR-оплати рахунку (BR-PAY-033): провайдер або null */
+        get: operations["OnlinePaymentController_gateway_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/online-payments/{id}": {
         parameters: {
             query?: never;
@@ -9758,6 +9775,10 @@ export interface components {
             invoiceId: string;
             amount?: number;
         };
+        ActiveGatewayDto: {
+            /** @description Код шлюзу (monobank, liqpay) або null */
+            provider: string | null;
+        };
         VerifyGatewayDto: {
             apiUrl?: string;
             credentials: Record<string, never>;
@@ -9820,7 +9841,7 @@ export interface components {
             suggestedCounterpartyId?: string | null;
             suggestedCounterpartyName?: string | null;
             /** @enum {string|null} */
-            suggestedMatchType?: "PREPAYMENT" | "SERVICE" | "INVOICE" | "REFUND" | "OTHER" | "SUPPLIER_PAYMENT" | "CLIENT_REFUND" | "EXPENSE" | "PAYROLL" | "TRANSFER" | "CASH_WITHDRAWAL" | null;
+            suggestedMatchType?: "PREPAYMENT" | "SERVICE" | "INVOICE" | "REFUND" | "OTHER" | "SUPPLIER_PAYMENT" | "CLIENT_REFUND" | "EXPENSE" | "PAYROLL" | "TRANSFER" | "CASH_WITHDRAWAL" | "SUPPLIER_REFUND_IN" | null;
             suggestedInvoiceId?: string | null;
             /** @enum {string|null} */
             matchReason?: "iban" | "edrpou" | "purpose" | null;
@@ -9872,7 +9893,7 @@ export interface components {
             /** @enum {string} */
             status: "UNMATCHED" | "MATCHED" | "IGNORED";
             /** @enum {string|null} */
-            matchedType?: "PREPAYMENT" | "SERVICE" | "INVOICE" | "REFUND" | "OTHER" | "SUPPLIER_PAYMENT" | "CLIENT_REFUND" | "EXPENSE" | "PAYROLL" | "TRANSFER" | "CASH_WITHDRAWAL" | null;
+            matchedType?: "PREPAYMENT" | "SERVICE" | "INVOICE" | "REFUND" | "OTHER" | "SUPPLIER_PAYMENT" | "CLIENT_REFUND" | "EXPENSE" | "PAYROLL" | "TRANSFER" | "CASH_WITHDRAWAL" | "SUPPLIER_REFUND_IN" | null;
             counterpartyId?: string | null;
             paymentId?: string | null;
             matchConfidence?: number | null;
@@ -9908,7 +9929,7 @@ export interface components {
         };
         BankTransactionAllocationDto: {
             /** @enum {string} */
-            type: "PREPAYMENT" | "SERVICE" | "INVOICE" | "REFUND" | "OTHER" | "SUPPLIER_PAYMENT" | "CLIENT_REFUND" | "EXPENSE" | "PAYROLL" | "TRANSFER" | "CASH_WITHDRAWAL";
+            type: "PREPAYMENT" | "SERVICE" | "INVOICE" | "REFUND" | "OTHER" | "SUPPLIER_PAYMENT" | "CLIENT_REFUND" | "EXPENSE" | "PAYROLL" | "TRANSFER" | "CASH_WITHDRAWAL" | "SUPPLIER_REFUND_IN";
             /**
              * Format: uuid
              * @description Платник / постачальник / клієнт / контрагент витрати
@@ -9965,7 +9986,7 @@ export interface components {
         };
         ReconcileTransactionDto: {
             /** @enum {string} */
-            type: "SUPPLIER_PAYMENT" | "CLIENT_REFUND" | "EXPENSE" | "PAYROLL" | "TRANSFER" | "CASH_WITHDRAWAL";
+            type: "SUPPLIER_PAYMENT" | "CLIENT_REFUND" | "EXPENSE" | "PAYROLL" | "TRANSFER" | "CASH_WITHDRAWAL" | "SUPPLIER_REFUND_IN";
             /**
              * Format: uuid
              * @description Постачальник / клієнт / довідковий контрагент витрати
@@ -19598,6 +19619,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    OnlinePaymentController_gateway_v1: {
+        parameters: {
+            query: {
+                invoiceId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveGatewayDto"];
                 };
             };
         };

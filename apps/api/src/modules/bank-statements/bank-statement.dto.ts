@@ -43,7 +43,10 @@ export const BANK_TX_IN_MATCH_TYPES = [
   'REFUND',
   'OTHER',
 ] as const satisfies readonly BankTransactionMatchType[];
-/** Типи для `reconcile`. TRANSFER — єдиний, що дозволений і для вхідного рядка. */
+/**
+ * Типи для `reconcile` (проведення без оплати клієнта). Вихідні — для `OUT`; TRANSFER — для обох
+ * напрямків; SUPPLIER_REFUND_IN — лише для вхідного (повернення від постачальника, BR-BANK-046).
+ */
 export const BANK_TX_OUT_MATCH_TYPES = [
   'SUPPLIER_PAYMENT',
   'CLIENT_REFUND',
@@ -51,6 +54,7 @@ export const BANK_TX_OUT_MATCH_TYPES = [
   'PAYROLL',
   'TRANSFER',
   'CASH_WITHDRAWAL',
+  'SUPPLIER_REFUND_IN',
 ] as const satisfies readonly BankTransactionMatchType[];
 export type BankTxOutMatchType = (typeof BANK_TX_OUT_MATCH_TYPES)[number];
 export type BankTxInMatchType = (typeof BANK_TX_IN_MATCH_TYPES)[number];
@@ -405,6 +409,7 @@ export class CreateBankTransactionDto {
  * | PAYROLL          | payrollPeriodId                     | employeeId                        |
  * | TRANSFER         | transferBankAccountId               |                                   |
  * | CASH_WITHDRAWAL  | cashRegisterId                      |                                   |
+ * | SUPPLIER_REFUND_IN | counterpartyId (постачальник)     |                                   |
  */
 export class ReconcileTransactionDto {
   @ApiProperty({ enum: BANK_TX_OUT_MATCH_TYPES })

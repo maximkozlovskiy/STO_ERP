@@ -480,4 +480,114 @@ describe('PaymentMethodsService — куди надходять кошти', () 
     expect(prisma.paymentMethodConfig.findMany).not.toHaveBeenCalled();
     expect(list[0].defaultDestinationName).toBe('Каса нова назва');
   });
+
+  // Рішення власника 2026-10-30 (TECH-DEBT (б) №46): онлайн-оплату (QR) створює сервер від шлюзу —
+  // у касі її гроші не лежать, призначення лише банківський рахунок.
+  // guards: BR-PAY-031
+  it.each(['monobank_qr', 'LIQPAY_QR'])(
+    'create онлайн-способу %s з касою за замовчуванням → 400 до запису',
+    async code => {
+      await expect(
+        service.create(ORG, {
+          code,
+          name: 'QR',
+          defaultSourceType: 'CASH_REGISTER',
+          defaultCashRegisterId: CASH_ID,
+        }),
+      ).rejects.toThrow(/банківський рахунок/);
+      expect(prisma.paymentMethodConfig.create).not.toHaveBeenCalled();
+      expect(prisma.paymentMethodConfig.update).not.toHaveBeenCalled();
+    },
+  );
+
+  // guards: BR-PAY-031
+  it('онлайн-спосіб: каса з update → 400; банківський рахунок — пишеться', async () => {
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+      id: PM_ID,
+      code: 'monobank_qr',
+      isSystem: true,
+      isCash: false,
+      defaultSourceType: null,
+    });
+
+    await expect(service.update(ORG, PM_ID, { defaultCashRegisterId: CASH_ID })).rejects.toThrow(
+      /банківський рахунок/,
+    );
+    expect(prisma.paymentMethodConfig.update).not.toHaveBeenCalled();
+
+    await service.update(ORG, PM_ID, { defaultBankAccountId: BANK_ID });
+    expect(updateData()).toMatchObject({
+      defaultSourceType: 'BANK_ACCOUNT',
+      defaultBankAccountId: BANK_ID,
+      defaultCashRegisterId: null,
+    });
+  });
+
+  // Наявні рядки з касою лишаються (як BR-PAY-019): правило діє лише на призначення в запиті.
+  // guards: BR-PAY-031
+  it('онлайн-спосіб із касою, збереженою до правила: правка без призначення проходить', async () => {
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+      id: PM_ID,
+      code: 'liqpay_qr',
+      isSystem: true,
+      isCash: false,
+      defaultSourceType: 'CASH_REGISTER',
+    });
+
+    await service.update(ORG, PM_ID, { requiresFiscal: false });
+
+    expect(updateData()).toEqual({ requiresFiscal: false });
+  });
+
+  // Рішення власника 2026-10-30 (TECH-DEBT (б) №81): оплата з каси йде способом `cash`; без ознаки
+  // «Готівка» її чек ПРРО пішов би як безготівковий.
+  // guards: BR-PAY-032
+  it('системний `cash`: зняти ознаку «Готівка» → 400, нічого не пишеться', async () => {
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+      id: PM_ID,
+      code: 'cash',
+      isSystem: true,
+      isCash: true,
+      defaultSourceType: 'CASH_REGISTER',
+    });
+
+    await expect(service.update(ORG, PM_ID, { isCash: false })).rejects.toThrow(
+      /ознаку «Готівка» зняти не можна/,
+    );
+    expect(prisma.paymentMethodConfig.update).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PAY-032
+  it('системний `cash`: інші правки (активність, фіскалізація, ознака true) проходять; інший спосіб знімає ознаку', async () => {
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+      id: PM_ID,
+      code: 'cash',
+      isSystem: true,
+      isCash: true,
+      defaultSourceType: 'CASH_REGISTER',
+    });
+    await service.update(ORG, PM_ID, { isActive: false, requiresFiscal: true, isCash: true });
+    expect(updateData()).toMatchObject({ isActive: false, requiresFiscal: true });
+
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+      id: 'pm-other',
+      code: 'CASH2',
+      isSystem: false,
+      isCash: true,
+      defaultSourceType: null,
+    });
+    await service.update(ORG, 'pm-other', { isCash: false });
+    expect(
+      (prisma.paymentMethodConfig.update.mock.calls[1][0] as { data: Record<string, unknown> })
+        .data,
+    ).toMatchObject({ isCash: false });
+  });
+
+  // guards: BR-PAY-032
+  it('оновлення читає код способу (без нього правило системного `cash` сліпе)', async () => {
+    await service.update(ORG, PM_ID, { requiresFiscal: true });
+    expect(prisma.paymentMethodConfig.findFirst.mock.calls[0][0].select).toMatchObject({
+      code: true,
+    });
+  });
 });
