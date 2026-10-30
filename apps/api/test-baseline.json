@@ -140,8 +140,6 @@
    "Стелі сум і кількостей — 400 через ZodValidationPipe маршруту PATCH /invoices/:id/lines unitPrice: понад стелю — 400 з назвою поля",
    "Стелі сум і кількостей — 400 через ZodValidationPipe маршруту PATCH /stock-documents lines[].quantity: значення на межі проходить",
    "Стелі сум і кількостей — 400 через ZodValidationPipe маршруту PATCH /stock-documents lines[].quantity: понад стелю — 400 з назвою поля",
-   "Стелі сум і кількостей — 400 через ZodValidationPipe маршруту PATCH /supplier-payments amount: значення на межі проходить",
-   "Стелі сум і кількостей — 400 через ZodValidationPipe маршруту PATCH /supplier-payments amount: понад стелю — 400 з назвою поля",
    "Стелі сум і кількостей — 400 через ZodValidationPipe маршруту PATCH /work-orders actualHours: значення на межі проходить",
    "Стелі сум і кількостей — 400 через ZodValidationPipe маршруту PATCH /work-orders actualHours: понад стелю — 400 з назвою поля",
    "Стелі сум і кількостей — 400 через ZodValidationPipe маршруту PATCH /work-orders plannedHours: значення на межі проходить",
@@ -247,7 +245,9 @@
    "invoiceLineSchema (POST /invoices/:id/lines) відхиляє quantity <= 0 (@Min(0.001))",
    "invoiceLineSchema (POST /invoices/:id/lines) відхиляє від'ємну ціну (@Min(0))",
    "invoiceLineSchema (POST /invoices/:id/lines) відхиляє порожній опис",
-   "invoiceLineSchema (POST /invoices/:id/lines) приймає валідний рядок"
+   "invoiceLineSchema (POST /invoices/:id/lines) приймає валідний рядок",
+   "invoiceLineUpdateSchema (PATCH /invoices/:id/lines/:lineId) контракт не обіцяє зміну товару, роботи й одиниці — updateLine їх не застосовує",
+   "invoiceLineUpdateSchema (PATCH /invoices/:id/lines/:lineId) кількість і ціна — ті самі межі, що й у новому рядку"
   ],
   "apps/api/src/common/pipes/purchase-order-schema.spec.ts": [
    "purchaseOrderFormSchema (спільна, web ↔ api) UA-кома у quantity/price/pricedSalePrice: \"1,5\" → 1.5 (moneyString backstop, не NaN/усічення)",
@@ -289,7 +289,6 @@
    "supplierPaymentFormSchema (спільна, web ↔ api) CASH_REGISTER без каси → помилка на cashRegisterId",
    "supplierPaymentFormSchema (спільна, web ↔ api) CASH_REGISTER з касою — валідний; кома в сумі коерситься",
    "supplierPaymentFormSchema (спільна, web ↔ api) amount < 0.01 → помилка",
-   "supplierPaymentFormSchema (спільна, web ↔ api) update — усі поля опційні (порожній обʼєкт ok, cross-field на merged у сервісі)",
    "supplierPaymentFormSchema (спільна, web ↔ api) битий documentDate → помилка (validation-parity @IsDateString)",
    "supplierPaymentFormSchema (спільна, web ↔ api) одночасно банк І каса → помилка (конфлікт джерела)",
    "supplierPaymentFormSchema (спільна, web ↔ api) порожній method → помилка"
@@ -421,7 +420,7 @@
   "apps/api/src/common/utils/counterparty-role.spec.ts": [
    "assertCounterpartyRole (BR-CP-001) invoices/invoices.service.ts перевіряє роль «client» у 3 місцях",
    "assertCounterpartyRole (BR-CP-001) purchase-orders/purchase-orders.service.ts перевіряє роль «supplier» у 2 місцях",
-   "assertCounterpartyRole (BR-CP-001) supplier-payments/supplier-payments.service.ts перевіряє роль «supplier» у 2 місцях",
+   "assertCounterpartyRole (BR-CP-001) supplier-payments/supplier-payments.service.ts перевіряє роль «supplier» у 1 місцях",
    "assertCounterpartyRole (BR-CP-001) supplier-returns/supplier-returns.service.ts перевіряє роль «supplier» у 2 місцях",
    "assertCounterpartyRole (BR-CP-001) work-orders/work-orders.service.ts перевіряє роль «client» у 2 місцях",
    "assertCounterpartyRole (BR-CP-001) повідомлення українською і різне для двох ролей",
@@ -2461,7 +2460,6 @@
    "CashRegistersService — assertFiscalProvider (привʼязка каси до ПРРО) валідний провайдер із кредами → create проходить + привʼязку записано"
   ],
   "apps/api/src/modules/cash/cash.access.spec.ts": [
-   "CashRegistersController — ролі доступу до каси balance — перегляд: OWNER, ADMIN, ACCOUNTANT і RECEPTIONIST",
    "CashRegistersController — ролі доступу до каси create каси — лише OWNER і ADMIN",
    "CashRegistersController — ролі доступу до каси findAll — перегляд: OWNER, ADMIN, ACCOUNTANT і RECEPTIONIST",
    "CashRegistersController — ролі доступу до каси operations — перегляд: OWNER, ADMIN, ACCOUNTANT і RECEPTIONIST",
@@ -3145,8 +3143,6 @@
    "GoodCategories — HTTP Contract DELETE /good-categories/:id повертає 400 при невалідному UUID id",
    "GoodCategories — HTTP Contract GET /good-categories повертає 200 + дерево (масив)",
    "GoodCategories — HTTP Contract GET /good-categories повертає 403 коли JWT guard не пропустив",
-   "GoodCategories — HTTP Contract GET /good-categories/:id/linked-work-categories sub-resource роут не плутається з :id (Bug #100 pattern)",
-   "GoodCategories — HTTP Contract GET /good-categories/:id/linked-work-categories повертає 200 + масив UUID-ів",
    "GoodCategories — HTTP Contract PATCH /good-categories/:id викликає service.update з orgId, id, DTO",
    "GoodCategories — HTTP Contract PATCH /good-categories/:id повертає 400 при невалідному UUID id",
    "GoodCategories — HTTP Contract PATCH /good-categories/:id/toggle-active викликає service.toggleActive з isActive=true",
@@ -3211,6 +3207,9 @@
    "GoodMatcherService — пошук товару за рядком файла (BR-GOOD-008) штрихкод: і з таблиці штрихкодів, і зі старого поля картки"
   ],
   "apps/api/src/modules/goods/goods-query.dto.spec.ts": [
+   "GoodQueryDto — ids не-UUID і понад 200 id — помилка валідації",
+   "GoodQueryDto — ids повторений параметр (масив) лишається масивом; порожній рядок → undefined",
+   "GoodQueryDto — ids рядок через кому → масив без пробілів і порожніх",
    "GoodQueryDto — trim q/barcode (Bug #N сканер) barcode лише з пробілів → undefined",
    "GoodQueryDto — trim q/barcode (Bug #N сканер) q лише з пробілів → undefined (не фільтр за пробілом)",
    "GoodQueryDto — trim q/barcode (Bug #N сканер) відсутні q/barcode лишаються undefined",
@@ -3273,6 +3272,7 @@
    "GoodsService create — skuNormalized (SOT) sku заданий → skuNormalized нормалізований у create.data",
    "GoodsService findAll — пошук за штрих-кодом ?barcode= (exact) шукає головний АБО додатковий ШК; фільтрує orgId",
    "GoodsService findAll — пошук за штрих-кодом ?barcode= sub-ШК some.orgId == orgId запитувача (не leak між org)",
+   "GoodsService findAll — пошук за штрих-кодом ?ids= фільтрує за id і лишає deletedAt: null (видалені не повертаються)",
    "GoodsService findAll — пошук за штрих-кодом ?q= sub-ШК some.orgId == orgId запитувача (не leak між org)",
    "GoodsService findAll — пошук за штрих-кодом ?q= sub-ШК гілка exact (equals), головний barcode гілка contains",
    "GoodsService findAll — пошук за штрих-кодом ?q= шукає по name, sku і barcode через contains + insensitive",
@@ -3793,6 +3793,7 @@
    "Рахунок — одиниця рядка як у наряді (Bug #868) addLine приймає UnitOfMeasure.id (як наряд): пара шукається за unitOfMeasureId товару",
    "Рахунок — одиниця рядка як у наряді (Bug #868) друкований рахунок: одиниця рядка «Пак»",
    "Рахунок — одиниця рядка як у наряді (Bug #868) картка рахунку: «Пак» з коефіцієнтом товару, а не базова «шт»",
+   "Рахунок — одиниця рядка як у наряді (Bug #868) картка рахунку: рядки за sortOrder, далі за часом створення й id",
    "Рахунок — одиниця рядка як у наряді (Bug #868) оновлення рахунку з наряду: рядок запчастини записується з одиницею наряду",
    "Рахунок — одиниця рядка як у наряді (Bug #868) робота — «год» у друкованому рахунку, ручний рядок без товару й роботи — «шт»",
    "Рахунок — одиниця рядка як у наряді (Bug #868) робота — «год» у картці рахунку (рішення власника 2026-10-22)",
@@ -4427,7 +4428,6 @@
    "CheckboxProvider (обгортка parity) verifyCredentials: getCashRegisterInfo → null (best-effort) → valid без назви",
    "CheckboxProvider (обгортка parity) verifyCredentials: успішний signIn → valid + назва каси (getCashRegisterInfo); 401 → invalid",
    "FiscalProviderRegistry get() повертає зареєстрований провайдер; невідомий → null",
-   "FiscalProviderRegistry list() — метадані обох провайдерів без кредів",
    "VchasnoProvider 3xx redirect (SSRF-tamper) → кидає",
    "VchasnoProvider 401 → FiscalUnauthorizedError (для re-sign-in у processor)",
    "VchasnoProvider sellReceipt: method=cash → payment.type=CASH",
@@ -4485,8 +4485,7 @@
    "LiqpayGateway публічне ім`я → метадані (DNS) → SSRF-guard кидає на createInvoice (перед формуванням URL)",
    "MonobankGateway (обгортка parity) createInvoice без token у credentials → кидає",
    "MonobankGateway (обгортка parity) createInvoice делегує MonobankClient і мапить pageUrl→checkoutUrl",
-   "PaymentGatewayRegistry get() повертає зареєстрований шлюз; невідомий → null (не кидає)",
-   "PaymentGatewayRegistry list() — метадані обох шлюзів без кредів"
+   "PaymentGatewayRegistry get() повертає зареєстрований шлюз; невідомий → null (не кидає)"
   ],
   "apps/api/src/modules/payments/monobank.client.spec.ts": [
    "MonobankClient (QR-оплата — HTTP-клієнт) AbortController timeout abort після HTTP_TIMEOUT_MS → reject (fetch відхиляється по signal)",
@@ -5273,6 +5272,7 @@
    "PurchaseLists — HTTP-контракт RECEPTIONIST: POST /purchase-lists/from-work-order → дозволено",
    "PurchaseLists — HTTP-контракт RECEPTIONIST: POST /purchase-lists/merge → 403",
    "PurchaseLists — HTTP-контракт STOREKEEPER: редагування дозволено",
+   "PurchaseLists — HTTP-контракт пов'язані документи списку — роль доходить до сервісу (§2.1: суму замовлення маскує)",
    "PurchaseLists — HTTP-контракт тіла валідуються спільними zod-схемами (400 до сервісу)"
   ],
   "apps/api/src/modules/purchase-lists/purchase-lists.create-orders.spec.ts": [
@@ -5306,9 +5306,11 @@
   ],
   "apps/api/src/modules/purchase-lists/purchase-lists.linked-docs.spec.ts": [
    "Зв'язки списку купівлі видалений список (перегляд) → наряди позицій, видалених разом із ним; чужа org — порожньо",
+   "Зв'язки списку купівлі замовлення — із сумою числом і валютою; злитий список — з датою ISO (контракт вкладки «Документи»)",
    "Зв'язки списку купівлі лічильники списків збігаються з деталями; чужий список — нулі",
    "Зв'язки списку купівлі наряд → списки купівлі його позицій (кожен один раз)",
-   "Зв'язки списку купівлі список → унікальні наряди й замовлення його позицій, злиті в нього списки"
+   "Зв'язки списку купівлі список → унікальні наряди й замовлення його позицій, злиті в нього списки",
+   "Зв'язки списку купівлі сума замовлення — лише ролям із закупівельною ціною; приймальні й без ролі — null (§2.1)"
   ],
   "apps/api/src/modules/purchase-lists/purchase-lists.merge-split.spec.ts": [
    "BR-PL-004 ручна позиція клієнт як постачальник → 400; чужий склад → 404; закритий список → 400",
@@ -5399,7 +5401,6 @@
   ],
   "apps/api/src/modules/purchase-orders/delivery/delivery-provider-registry.spec.ts": [
    "DeliveryProviderRegistry get() повертає зареєстровану службу; невідома → null",
-   "DeliveryProviderRegistry list() — метадані без кредів",
    "NovaPoshtaClient 3xx redirect (SSRF-tamper) → кидає",
    "NovaPoshtaClient getStatusDocument: success → statusCode+status; тіло POST /v2.0/json/ з apiKey/model",
    "NovaPoshtaClient non-ok відповідь → кидає зі статусом",
@@ -6160,12 +6161,6 @@
    "Settings — HTTP Contract Bug #515: PATCH /settings/branch/:id workStartTime/workEndTime validation PATCH з workStartTime=\"foo\" → 400",
    "Settings — HTTP Contract Bug #515: PATCH /settings/branch/:id workStartTime/workEndTime validation PATCH з валідним \"09:00\"/\"18:00\" → 200 cross-field check passes",
    "Settings — HTTP Contract Bug #515: PATCH /settings/branch/:id workStartTime/workEndTime validation PATCH тільки workEndTime=\"08:00\" коли current workStartTime=\"09:00\" → 400 (merged compare)",
-   "Settings — HTTP Contract Bug #666: POST /settings/branch/:id/fiscal/verify contract POST без тіла (порожній) → бере збережений ключ → 201",
-   "Settings — HTTP Contract Bug #666: POST /settings/branch/:id/fiscal/verify contract POST з licenseKey не-рядком → 400 (@IsString)",
-   "Settings — HTTP Contract Bug #666: POST /settings/branch/:id/fiscal/verify contract POST з валідним body → 200 + {valid:true, cashRegisterName}",
-   "Settings — HTTP Contract Bug #666: POST /settings/branch/:id/fiscal/verify contract POST з зайвим полем → 400 (whitelist forbidNonWhitelisted)",
-   "Settings — HTTP Contract Bug #666: POST /settings/branch/:id/fiscal/verify contract POST з невалідним UUID branchId → 400 (ParseUUIDPipe)",
-   "Settings — HTTP Contract Bug #666: POST /settings/branch/:id/fiscal/verify contract невідома філія → 404",
    "Settings — HTTP Contract Bug #84 regression: followUp fields end-to-end GET /settings/organisation повертає followUpActive і followUpDays",
    "Settings — HTTP Contract Bug #84 regression: followUp fields end-to-end PATCH /settings/organisation приймає followUpActive=true, followUpDays=120",
    "Settings — HTTP Contract Bug #84 regression: followUp fields end-to-end PATCH відхиляє followUpDays < 30 (поза межами @Min/@Max)",
@@ -6259,23 +6254,7 @@
    "SettingsService — кеш налаштувань організації з відбитком схеми invalidateOrgCache видаляє саме версійний ключ",
    "SettingsService — кеш налаштувань організації з відбитком схеми запис старого формату (без полів supplier*) не читається — повні поля з БД",
    "SettingsService — кеш налаштувань організації з відбитком схеми ключ кешу несе відбиток поточної схеми; повторне читання — з кешу",
-   "SettingsService — кеш налаштувань організації з відбитком схеми нова колонка в моделі змінює відбиток (старі записи стають невидимими)",
-   "SettingsService.verifyFiscal — Bug #665 3xx redirect (redirect:manual) → {valid:false} \"перенаправлення\"",
-   "SettingsService.verifyFiscal — Bug #665 SSRF-заблокований apiUrl (cloud metadata) → {valid:false} БЕЗ fetch",
-   "SettingsService.verifyFiscal — Bug #665 SSRF: loopback apiUrl → {valid:false} БЕЗ fetch",
-   "SettingsService.verifyFiscal — Bug #665 non-ok (401) → {valid:false} з кодом статусу",
-   "SettingsService.verifyFiscal — Bug #665 success (results-обгортка) → {valid:true, cashRegisterName}",
-   "SettingsService.verifyFiscal — Bug #665 success (голий масив) → {valid:true, cashRegisterName}",
-   "SettingsService.verifyFiscal — Bug #665 success з порожнім списком кас → {valid:true} без cashRegisterName",
-   "SettingsService.verifyFiscal — Bug #665 КРЕДИ ніколи не потрапляють у повернутий об`єкт (error/non-ok)",
-   "SettingsService.verifyFiscal — Bug #665 КРЕДИ ніколи не потрапляють у повернутий об`єкт (success)",
-   "SettingsService.verifyFiscal — Bug #665 використовує збережений ключ коли body не містить licenseKey",
-   "SettingsService.verifyFiscal — Bug #665 збережений ключ НЕ йде на іншу адресу з body → {valid:false} без fetch",
-   "SettingsService.verifyFiscal — Bug #665 ключ не переданий і не збережений → {valid:false} без fetch",
-   "SettingsService.verifyFiscal — Bug #665 мережевий збій (fetch reject) → {valid:false} з повідомленням, не кидає",
-   "SettingsService.verifyFiscal — Bug #665 невідома філія → NotFoundException",
-   "SettingsService.verifyFiscal — Bug #665 публічне ім`я, що резолвиться в loopback → {valid:false} БЕЗ fetch",
-   "SettingsService.verifyFiscal — Bug #665 та сама збережена адреса з кінцевим слешем → збережений ключ іде на неї"
+   "SettingsService — кеш налаштувань організації з відбитком схеми нова колонка в моделі змінює відбиток (старі записи стають невидимими)"
   ],
   "apps/api/src/modules/settings/settings.tax-rates-cache.spec.ts": [
    "SettingsService — кеш ставок ПДВ Redis недоступний під час запису ставки → ставка зберігається, без помилки",
@@ -6863,25 +6842,17 @@
    "SupplierPaymentsService — confirm confirm(): з CANCELLED статусу (pre-check) → BadRequestException"
   ],
   "apps/api/src/modules/supplier-payments/supplier-payments.contract.spec.ts": [
-   "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id/linked-documents route ordering: linked-documents не ловиться :id (findOne НЕ викликаний)",
-   "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id/linked-documents повертає 200 і делегує (orgId, id)",
-   "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id/linked-documents повертає 400 для не-UUID id",
-   "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=\"\" → 400 українською, сервіс не викликається",
-   "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=\"1\" → 400 українською, сервіс не викликається",
-   "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=\"TRUE\" → 400 українською, сервіс не викликається",
-   "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=\"abc\" → 400 українською, сервіс не викликається",
-   "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=\"yes\" → 400 українською, сервіс не викликається",
-   "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=false → 404, як без прапорця",
-   "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=true → 200, у відповіді заповнений deletedAt",
-   "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) без прапорця видалений документ → 404; сервіс отримує withDeleted: false",
-   "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) документ чужої організації → 404 і з withDeleted=true; організація береться з токена",
-   "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) повтор параметра (withDeleted=true&withDeleted=false) → 400",
-   "SupplierPayments — linked-documents HTTP Contract POST /supplier-payments/:id/confirm — ідемпотентність (MV-M2) без Idempotency-Key → 400, confirm НЕ викликається",
-   "SupplierPayments — linked-documents HTTP Contract POST /supplier-payments/linked-counts route ordering: linked-counts не ловиться POST :id",
-   "SupplierPayments — linked-documents HTTP Contract POST /supplier-payments/linked-counts повертає 200 і делегує (orgId, ids)",
-   "SupplierPayments — linked-documents HTTP Contract POST /supplier-payments/linked-counts повертає 400 для 501 id (ArrayMaxSize)",
-   "SupplierPayments — linked-documents HTTP Contract POST /supplier-payments/linked-counts повертає 400 для non-UUID елемента",
-   "SupplierPayments — linked-documents HTTP Contract POST /supplier-payments/linked-counts повертає 400 для порожнього масиву (ArrayMinSize)",
+   "SupplierPayments — HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=\"\" → 400 українською, сервіс не викликається",
+   "SupplierPayments — HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=\"1\" → 400 українською, сервіс не викликається",
+   "SupplierPayments — HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=\"TRUE\" → 400 українською, сервіс не викликається",
+   "SupplierPayments — HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=\"abc\" → 400 українською, сервіс не викликається",
+   "SupplierPayments — HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=\"yes\" → 400 українською, сервіс не викликається",
+   "SupplierPayments — HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=false → 404, як без прапорця",
+   "SupplierPayments — HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) withDeleted=true → 200, у відповіді заповнений deletedAt",
+   "SupplierPayments — HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) без прапорця видалений документ → 404; сервіс отримує withDeleted: false",
+   "SupplierPayments — HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) документ чужої організації → 404 і з withDeleted=true; організація береться з токена",
+   "SupplierPayments — HTTP Contract GET /supplier-payments/:id?withDeleted — документ, позначений на видалення (BR-WO-012) повтор параметра (withDeleted=true&withDeleted=false) → 400",
+   "SupplierPayments — HTTP Contract POST /supplier-payments/:id/confirm — ідемпотентність (MV-M2) без Idempotency-Key → 400, confirm НЕ викликається",
    "SupplierPaymentsController — schedule/documents contract Bug #616 — DTO validation for `date` catches semantic-invalid dates `from` у SupplierPaymentScheduleQueryDto — теж ловить semantic-invalid дату",
    "SupplierPaymentsController — schedule/documents contract Bug #616 — DTO validation for `date` catches semantic-invalid dates date=2026-02-31 → validation error (не пропускається у сервіс)",
    "SupplierPaymentsController — schedule/documents contract Bug #616 — DTO validation for `date` catches semantic-invalid dates date=2026-09-08 (valid) → no validation errors",
@@ -6893,27 +6864,21 @@
    "SupplierPaymentsController — schedule/documents contract target=overdue → делегує з {kind:overdue}",
    "SupplierPaymentsController — schedule/documents contract ні date, ні target → BadRequestException"
   ],
+  "apps/api/src/modules/supplier-payments/supplier-payments.create-guards.spec.ts": [
+   "SupplierPaymentsService — create-guards create(): purchaseOrder іншого постачальника → BadRequestException (cross-supplier)",
+   "SupplierPaymentsService — create-guards create(): невідомий bankAccountId (для BANK_ACCOUNT) → NotFoundException"
+  ],
   "apps/api/src/modules/supplier-payments/supplier-payments.create.spec.ts": [
    "SupplierPaymentsService — create create(): BANK_ACCOUNT без bankAccountId → BadRequestException",
    "SupplierPaymentsService — create create(): BANK_ACCOUNT одночасно з cashRegisterId → BadRequestException, БЕЗ DB-виклику",
    "SupplierPaymentsService — create create(): CASH_REGISTER без cashRegisterId → BadRequestException, БЕЗ DB-виклику",
    "SupplierPaymentsService — create create(): CASH_REGISTER одночасно з bankAccountId → BadRequestException",
+   "SupplierPaymentsService — create create(): валюта оплати — валюта банківського рахунку-джерела",
+   "SupplierPaymentsService — create create(): джерело без валюти → 400 sourceHasNoCurrency, без запису",
    "SupplierPaymentsService — create create(): контрагент-CLIENT → BadRequestException (не постачальник)",
    "SupplierPaymentsService — create create(): успішне створення з касою → DRAFT, settlement НЕ пишеться",
    "supplierPaymentCreateSchema — межі суми (Bug #846) найбільша сума, яку вміщує колонка, проходить",
    "supplierPaymentCreateSchema — межі суми (Bug #846) сума понад місткість Decimal(12,2) → відмова на полі amount, а не 500 від бази"
-  ],
-  "apps/api/src/modules/supplier-payments/supplier-payments.linked-docs.spec.ts": [
-   "SupplierPaymentsService — linked-documents edge cases Bug #A: soft-deleted bank account → account count=0 (відповідає detail)",
-   "SupplierPaymentsService — linked-documents edge cases Bug #A: soft-deleted постачальник → counterparty count=0",
-   "SupplierPaymentsService — linked-documents edge cases getLinkedCounts: bank-оплата → account=1, counterparty=1, PO=1",
-   "SupplierPaymentsService — linked-documents edge cases getLinkedCounts: cross-org → нулі, orgId у where",
-   "SupplierPaymentsService — linked-documents edge cases getLinkedCounts: duplicate ids keyed by id",
-   "SupplierPaymentsService — linked-documents edge cases getLinkedCounts: без bank і cash → account=0 (не crash)",
-   "SupplierPaymentsService — linked-documents edge cases getLinkedCounts: видалена оплата (список із видаленими) → лічильники як у панелі",
-   "SupplierPaymentsService — linked-documents edge cases getLinkedDocuments: bank account soft-deleted → account:[] (не crash)",
-   "SupplierPaymentsService — linked-documents edge cases getLinkedDocuments: cross-org id → порожні секції",
-   "SupplierPaymentsService — linked-documents edge cases getLinkedDocuments: видалена оплата (перегляд) → секції заповнені, orgId у пошуку"
   ],
   "apps/api/src/modules/supplier-payments/supplier-payments.no-fiscal-loyalty.spec.ts": [
    "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор бачить порушення: BullModule.registerQueue({ name: 'loyalty' }),",
@@ -7006,23 +6971,6 @@
    "SupplierPaymentsService — sort findAll(): лише dateFrom → у documentDate тільки нижня межа, сама дата",
    "SupplierPaymentsService — sort findAll(): невідомий sortBy → fallback orderBy { createdAt: desc }"
   ],
-  "apps/api/src/modules/supplier-payments/supplier-payments.update-guards.spec.ts": [
-   "SupplierPaymentsService — update-guards create(): purchaseOrder іншого постачальника → BadRequestException (cross-supplier)",
-   "SupplierPaymentsService — update-guards create(): невідомий bankAccountId (для BANK_ACCOUNT) → NotFoundException",
-   "SupplierPaymentsService — update-guards update(): PATCH purchaseOrderId іншого постачальника → BadRequestException, ніяких writes",
-   "SupplierPaymentsService — update-guards update(): PATCH sourceType=BANK_ACCOUNT без bankAccountId → BadRequestException",
-   "SupplierPaymentsService — update-guards update(): PATCH sourceType=CASH_REGISTER без cashRegisterId (чернетка на банку) → BadRequestException, БЕЗ DB-виклику",
-   "SupplierPaymentsService — update-guards update(): PATCH без полів джерела → збережене джерело проходить перевірку і переписується як було",
-   "SupplierPaymentsService — update-guards update(): PATCH на CONFIRMED → BadRequestException, ніяких writes",
-   "SupplierPaymentsService — update-guards update(): гривнева чернетка на банку → інший рахунок у USD → currencyId = валюта нового рахунку",
-   "SupplierPaymentsService — update-guards update(): джерело без валюти → 400 sourceHasNoCurrency, без запису",
-   "SupplierPaymentsService — update-guards update(): зміна supplierId без purchaseOrderId → авто-очищення orphan PO (Bug #588)",
-   "SupplierPaymentsService — update-guards update(): зміна supplierId коли purchaseOrderId вже null → НЕ пише зайвий purchaseOrderId",
-   "SupplierPaymentsService — update-guards update(): зміна supplierId на контрагента-CLIENT → BadRequestException, ніяких writes",
-   "SupplierPaymentsService — update-guards update(): каса (UAH) → банківський рахунок у USD → currencyId із рахунку, не з каси",
-   "SupplierPaymentsService — update-guards update(): перехід банк → каса → у запис іде cashRegisterId, а bankAccountId обнуляється",
-   "SupplierPaymentsService — update-guards update(): перехід каса → банк → у запис іде bankAccountId, а cashRegisterId обнуляється"
-  ],
   "apps/api/src/modules/supplier-payments/supplier-payments.with-deleted.spec.ts": [
    "SupplierPaymentsService — документ, позначений на видалення (BR-WO-012) findOne withDeleted: false — те саме, що без прапорця",
    "SupplierPaymentsService — документ, позначений на видалення (BR-WO-012) findOne withDeleted: true → документ повернуто з заповненим deletedAt; orgId у запиті лишається",
@@ -7031,8 +6979,7 @@
    "SupplierPaymentsService — документ, позначений на видалення (BR-WO-012) findOne чужа організація → 404 і з withDeleted: true",
    "SupplierPaymentsService — документ, позначений на видалення (BR-WO-012) змінити видалений документ неможливо cancel → 404, у базу нічого не записано",
    "SupplierPaymentsService — документ, позначений на видалення (BR-WO-012) змінити видалений документ неможливо confirm → 404, у базу нічого не записано",
-   "SupplierPaymentsService — документ, позначений на видалення (BR-WO-012) змінити видалений документ неможливо remove (повторне видалення) → 404, у базу нічого не записано",
-   "SupplierPaymentsService — документ, позначений на видалення (BR-WO-012) змінити видалений документ неможливо update → 404, у базу нічого не записано"
+   "SupplierPaymentsService — документ, позначений на видалення (BR-WO-012) змінити видалений документ неможливо remove (повторне видалення) → 404, у базу нічого не записано"
   ],
   "apps/api/src/modules/supplier-returns/supplier-returns.confirm-fsm.spec.ts": [
    "SupplierReturnsService — regression guards cancel() з CONFIRMED → BadRequestException (FSM правило)",
@@ -7737,8 +7684,6 @@
    "WorkCategories — HTTP Contract DELETE /work-categories/:id повертає 204 при успіху",
    "WorkCategories — HTTP Contract GET /work-categories повертає 200 + дерево (масив)",
    "WorkCategories — HTTP Contract GET /work-categories повертає 403 коли JWT guard не пропустив",
-   "WorkCategories — HTTP Contract GET /work-categories/:id/linked-good-categories sub-resource роут не плутається з :id",
-   "WorkCategories — HTTP Contract GET /work-categories/:id/linked-good-categories повертає 200 + масив UUID-ів",
    "WorkCategories — HTTP Contract PATCH /work-categories/:id/toggle-active викликає service.toggleActive з isActive=false",
    "WorkCategories — HTTP Contract PATCH /work-categories/:id/toggle-active повертає 400 коли isActive не boolean",
    "WorkCategories — HTTP Contract PATCH /work-categories/:id/toggle-active повертає 400 при невалідному UUID id",
@@ -7746,7 +7691,6 @@
    "WorkCategories — HTTP Contract POST /work-categories повертає 400 коли name відсутнє"
   ],
   "apps/api/src/modules/work-categories/work-categories.service.spec.ts": [
-   "WorkCategoriesService getLinkedGoodCategories — зв’язки лише читаються повертає goodCategoryId зв’язків категорії у своїй org",
    "WorkCategoriesService remove — системна категорія не видаляється isSystem=true → 400, жодного запису в БД і кеш не скидається",
    "WorkCategoriesService remove — системна категорія не видаляється гард читає категорію у СВОЇЙ org і не видалену",
    "WorkCategoriesService remove — системна категорія не видаляється звичайна категорія → soft-delete її та всіх нащадків у своїй org",
@@ -7780,20 +7724,6 @@
    "WorkOrderMediaService upload — валідація ДО БД і MinIO розширення не з whitelist (байти ок — PDF, але .exe) → 400",
    "WorkOrderMediaService upload — валідація ДО БД і MinIO тип у MinIO і БД — КАНОНІЧНИЙ із сигнатури, а не клієнтський mimetype (M4)",
    "WorkOrderMediaService upload — валідація ДО БД і MinIO чужий/видалений наряд → 404, upload у MinIO НЕ відбувається"
-  ],
-  "apps/api/src/modules/work-order-templates/work-order-templates.service.spec.ts": [
-   "WorkOrderTemplatesService create — дефолти і orgId без lines/parts → у data порожні масиви (не undefined/null)",
-   "WorkOrderTemplatesService create — дефолти і orgId передані lines/parts зберігаються як є",
-   "WorkOrderTemplatesService findAll — ліміт і tenant isolation where з orgId + deletedAt:null, ліміт 200",
-   "WorkOrderTemplatesService findOne — tenant isolation читає у своїй org, не видалене",
-   "WorkOrderTemplatesService findOne — tenant isolation чужий/видалений шаблон → 404",
-   "WorkOrderTemplatesService remove — soft delete count=0 (чужа org або вже видалено) → 404",
-   "WorkOrderTemplatesService remove — soft delete updateMany з deletedAt + повний tenant-where (hard delete заборонений)",
-   "WorkOrderTemplatesService update — часткове оновлення JSON через updateMany count=0 (чужий/видалений/неіснуючий) → 404 ДО read-back",
-   "WorkOrderTemplatesService update — часткове оновлення JSON через updateMany lines: [] явно очищає склад (поле присутнє зі значенням [])",
-   "WorkOrderTemplatesService update — часткове оновлення JSON через updateMany read-back повертає оновлений рядок через toDto",
-   "WorkOrderTemplatesService update — часткове оновлення JSON через updateMany updateMany пише з повним tenant-where (orgId + deletedAt:null)",
-   "WorkOrderTemplatesService update — часткове оновлення JSON через updateMany відсутнє поле у DTO → не потрапляє у data (JSON не затирається)"
   ],
   "apps/api/src/modules/work-orders/events/work-order.handlers.spec.ts": [
    "WorkOrderEventHandlers createWarranty з warrantyDays=0 → без autoCreate",

@@ -10,7 +10,7 @@
 
 ```
 Дата:         2026-10-30
-Latest review: 2026-10-30 (борг (а) — 1: review 2a8d13d3, tester #1007–#1011).
+Latest review: 2026-10-30 (чистка API + три доробки: review f0e5e128, tester #1012–#1016).
 HEAD:       див. `git log --oneline -1` (хеш тут НЕ дублюється — старіє щокоміту)
 Фаза:       PHASES.md 229/231 закрито. Хвости: EAS Build (mobile) + smoke на чистій
             Windows VM — обидва потребують фізичного оточення, не коду.

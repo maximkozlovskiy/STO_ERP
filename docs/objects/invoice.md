@@ -272,7 +272,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | друкований рахунок: реквізити своєї організації, дата, валюта, 404                       | `invoices.pdf.spec.ts`                     | 4      |
 | одиниця рядка як у наряді (Bug #868), робота — «год»; порядок рядків (BR-INV-024)        | `invoices.line-units.spec.ts`              | 9      |
 
-Разом: **253** кейси (цифри з `vitest --reporter=json`, не з grep).
+Разом: **254** кейси (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест для BR-INV-024 — збереження рядків картки (web і контракт, мітки `// guards:`):
 
