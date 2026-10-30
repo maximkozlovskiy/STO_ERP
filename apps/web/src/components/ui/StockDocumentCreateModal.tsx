@@ -1066,7 +1066,7 @@ export function StockDocumentCreateModal({
                         {Number.isFinite(price) && price ? String(line.price) : '—'}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {Number.isFinite(price) && price ? lineAmount(qty, price).toFixed(2) : '—'}
+                        {Number.isFinite(price) && price ? fmtMoney(lineAmount(qty, price)) : '—'}
                       </td>
                       <td className="px-2 py-2">
                         {canEdit && (
@@ -1127,10 +1127,12 @@ export function StockDocumentCreateModal({
                       />
                     </td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
-                      {lineAmount(
-                        parseFloat(newLine.quantity) || 0,
-                        parseFloat(newLine.price) || 0,
-                      ).toFixed(2)}
+                      {fmtMoney(
+                        lineAmount(
+                          parseFloat(newLine.quantity) || 0,
+                          parseFloat(newLine.price) || 0,
+                        ),
+                      )}
                     </td>
                     <td className="px-2 py-1.5">
                       <div className="flex gap-1">

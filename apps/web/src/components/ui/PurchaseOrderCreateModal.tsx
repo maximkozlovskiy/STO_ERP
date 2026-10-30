@@ -21,7 +21,7 @@ import { usePendingOpen } from '@/hooks/usePendingOpen';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { displayCounterpartyName, lineAmount, sumLineAmounts } from '@/lib/utils';
-import { kyivToday } from '@/lib/format';
+import { fmtMoney, kyivToday } from '@/lib/format';
 import { pickScannedGood } from '@/lib/barcode';
 import { PO_STATUS_TRANSITIONS, PO_STATUS_ACTION_LABELS } from '@sto/shared';
 import { poStatusLabel } from '@/i18n/enumLabel';
@@ -1635,16 +1635,16 @@ export function PurchaseOrderCreateModal({
                         {vatMode !== 'NONE' && (
                           <td className="px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                             {vatRate > 0
-                              ? (
+                              ? fmtMoney(
                                   (lineSubtotal(editingLine.quantity, editingLine.price) *
                                     vatRate) /
-                                  100
-                                ).toFixed(2)
+                                    100,
+                                )
                               : '—'}
                           </td>
                         )}
                         <td className="px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
-                          {lineSubtotal(editingLine.quantity, editingLine.price).toFixed(2)}
+                          {fmtMoney(lineSubtotal(editingLine.quantity, editingLine.price))}
                         </td>
                         <td className="px-2 py-1.5">
                           <div className="flex flex-row gap-2 items-center">
@@ -1733,7 +1733,7 @@ export function PurchaseOrderCreateModal({
                           </td>
                         )}
                         <td className="px-3 py-2 tabular-nums">
-                          {lineSubtotal(line.quantity, line.price).toFixed(2)}
+                          {fmtMoney(lineSubtotal(line.quantity, line.price))}
                         </td>
                         {canPrice && (
                           <td
@@ -1873,15 +1873,14 @@ export function PurchaseOrderCreateModal({
                       {vatMode !== 'NONE' && (
                         <td className="px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
                           {vatRate > 0
-                            ? (
-                                (lineSubtotal(newLine.quantity, newLine.price) * vatRate) /
-                                100
-                              ).toFixed(2)
+                            ? fmtMoney(
+                                (lineSubtotal(newLine.quantity, newLine.price) * vatRate) / 100,
+                              )
                             : '—'}
                         </td>
                       )}
                       <td className="px-2 py-1.5 tabular-nums text-muted-foreground text-[11px]">
-                        {lineSubtotal(newLine.quantity, newLine.price).toFixed(2)}
+                        {fmtMoney(lineSubtotal(newLine.quantity, newLine.price))}
                       </td>
                       <td className="px-2 py-1.5">
                         <div className="flex flex-row gap-2 items-center">
@@ -1922,11 +1921,11 @@ export function PurchaseOrderCreateModal({
                     <td />
                     {vatMode !== 'NONE' && (
                       <td className="px-3 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
-                        {vatTotal.toFixed(2)}
+                        {fmtMoney(vatTotal)}
                       </td>
                     )}
                     <td className="px-3 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
-                      {total.toFixed(2)}
+                      {fmtMoney(total)}
                     </td>
                     {canPrice && <td className="px-3 py-1.5" />}
                     {canPrice && <td className="px-3 py-1.5" />}

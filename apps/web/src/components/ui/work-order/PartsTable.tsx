@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/document-section';
 import { type GoodPickerItem } from '@/components/ui/GoodPickerModal';
 import { calcVatOnBase, lineAmount } from '@/lib/utils';
-import { fmtQty } from '@/lib/format';
+import { fmtMoney, fmtQty } from '@/lib/format';
 import type { LocalPart, Warehouse, Unit } from './types';
 import type { WarehouseFree } from '@/lib/part-warehouse';
 import { ProcurementBadge } from '@/components/ui/purchase-list/ProcurementBadge';
@@ -359,7 +359,7 @@ export function PartsTable(props: PartsTableProps) {
                               const q = toNumberOrUndefined(editingPart.quantity);
                               const pr = toNumberOrUndefined(editingPart.price);
                               return q != null && pr != null && vatRate > 0
-                                ? calcVatOnBase(q * pr, vatRate, vatMode).toFixed(2)
+                                ? fmtMoney(calcVatOnBase(q * pr, vatRate, vatMode))
                                 : '—';
                             })()}
                           </td>
@@ -368,7 +368,7 @@ export function PartsTable(props: PartsTableProps) {
                           {(() => {
                             const q = toNumberOrUndefined(editingPart.quantity);
                             const pr = toNumberOrUndefined(editingPart.price);
-                            return q != null && pr != null ? (q * pr).toFixed(2) : '—';
+                            return q != null && pr != null ? fmtMoney(q * pr) : '—';
                           })()}
                         </td>
                         <td className="px-1.5 py-1.5">
@@ -455,7 +455,7 @@ export function PartsTable(props: PartsTableProps) {
                           {part.unitShortName || t('parts.unitDefault')}
                         </td>
                         <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
-                          {part.costPrice != null ? part.costPrice.toFixed(2) : '—'}
+                          {part.costPrice != null ? fmtMoney(part.costPrice) : '—'}
                         </td>
                         <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                           {part.price || '—'}
@@ -463,12 +463,12 @@ export function PartsTable(props: PartsTableProps) {
                         {vatMode !== 'NONE' && (
                           <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                             {qty != null && p != null && vatRate > 0
-                              ? calcVatOnBase(lineAmount(qty, p), vatRate, vatMode).toFixed(2)
+                              ? fmtMoney(calcVatOnBase(lineAmount(qty, p), vatRate, vatMode))
                               : '—'}
                           </td>
                         )}
                         <td className="px-2 py-1.5 text-left tabular-nums font-medium text-foreground">
-                          {sum != null ? sum.toFixed(2) : '—'}
+                          {sum != null ? fmtMoney(sum) : '—'}
                         </td>
                         <td className="px-1.5 py-1.5 text-left">
                           <div className="flex flex-row gap-2 items-center">
@@ -609,7 +609,7 @@ export function PartsTable(props: PartsTableProps) {
                         const qty = toNumberOrUndefined(newPart.quantity);
                         const p = toNumberOrUndefined(newPart.price);
                         return qty != null && p != null && vatRate > 0
-                          ? calcVatOnBase(lineAmount(qty, p), vatRate, vatMode).toFixed(2)
+                          ? fmtMoney(calcVatOnBase(lineAmount(qty, p), vatRate, vatMode))
                           : '—';
                       })()}
                     </td>
@@ -618,7 +618,7 @@ export function PartsTable(props: PartsTableProps) {
                     {(() => {
                       const qty = toNumberOrUndefined(newPart.quantity);
                       const p = toNumberOrUndefined(newPart.price);
-                      return qty != null && p != null ? lineAmount(qty, p).toFixed(2) : '—';
+                      return qty != null && p != null ? fmtMoney(lineAmount(qty, p)) : '—';
                     })()}
                   </td>
                   <td className="px-1.5 py-1.5">
@@ -662,11 +662,11 @@ export function PartsTable(props: PartsTableProps) {
                   )}
                   {vatMode !== 'NONE' && (
                     <td className="px-2 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
-                      {partsTotals.vat.toFixed(2)}
+                      {fmtMoney(partsTotals.vat)}
                     </td>
                   )}
                   <td className="px-2 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
-                    {partsTotals.total.toFixed(2)}
+                    {fmtMoney(partsTotals.total)}
                   </td>
                   <td />
                 </tr>

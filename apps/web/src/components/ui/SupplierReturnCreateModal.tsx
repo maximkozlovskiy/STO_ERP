@@ -18,7 +18,7 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { displayCounterpartyName, cn, lineAmount, roundMoney } from '@/lib/utils';
-import { kyivToday } from '@/lib/format';
+import { fmtMoney, kyivToday } from '@/lib/format';
 import { pickScannedGood } from '@/lib/barcode';
 import { supplierReturnStatusLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
@@ -802,7 +802,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                         <td className="px-1 py-1.5">
                           {isReadOnly ? (
                             <span className="tabular-nums px-2">
-                              {(parseFloat(price) || 0).toFixed(2)}
+                              {fmtMoney(parseFloat(price) || 0)}
                             </span>
                           ) : (
                             <input
@@ -815,7 +815,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                           )}
                         </td>
                         <td className="px-3 py-1.5 tabular-nums text-[12px] font-medium">
-                          {sub.toFixed(2)}
+                          {fmtMoney(sub)}
                         </td>
                         <td className="px-2 py-1.5">
                           {canEdit && (
@@ -874,7 +874,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                         />
                       </td>
                       <td className="px-3 py-1.5 tabular-nums text-muted-foreground text-[11px]">
-                        {lineSubtotal(newLine.quantity, newLine.price).toFixed(2)}
+                        {fmtMoney(lineSubtotal(newLine.quantity, newLine.price))}
                       </td>
                       <td className="px-2 py-1.5">
                         <div className="flex items-center gap-1">
@@ -917,7 +917,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                     </td>
                     <td />
                     <td className="px-3 py-1.5 text-left tabular-nums text-xs font-semibold text-foreground">
-                      {total.toFixed(2)}
+                      {fmtMoney(total)}
                     </td>
                     <td />
                   </tr>
