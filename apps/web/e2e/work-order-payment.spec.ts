@@ -14,7 +14,8 @@ test.describe.configure({ mode: 'serial' });
  *   2. завершення → оплата залишку → «Оплачено» без рахунку (BR-PAY-005, BR-WO-016);
  *   3. акт на повністю оплаченому наряді → рахунок-чернетка зі сплаченим = сума (BR-INV-020);
  *   4. оплата рахунку наряду зі сторінки «Рахунки» → «Сплачено» наряду росте (BR-PAY-021);
- *   5. скасування наряду з оплатою → «спершу сторнуйте оплату» (BR-WO-014).
+ *   5. скасування наряду з оплатою → «спершу сторнуйте оплату» (BR-WO-014);
+ *   6. аванс з вікна наряду в касу → «Підстава» рядка каси — наряд (BR-CASH-030).
  *
  * Спек створює власні дані й не покладається на вміст dev-бази: касу «000 E2E Каса оплата
  * наряду …», спосіб оплати з цією касою за замовчуванням, клієнта з гаражем і авто, категорію й
@@ -247,6 +248,32 @@ test.describe('Оплата наряду з документа наряду', ()
     await expect(page.getByTestId('wo-totals-remaining')).toContainText(
       (after.totalAmount - 400).toLocaleString('uk-UA', { minimumFractionDigits: 2 }),
     );
+  });
+
+  // Рішення власника 2026-10-30 (TECH-DEBT (б) №56): оплата з вікна наряду в касу — у журналі каси
+  // «Підстава» — сам наряд, номером із посиланням на наряд.
+  // guards: BR-CASH-030
+  test('аванс з наряду в касу → у журналі каси «Підстава» — номер наряду, веде на наряд', async ({
+    page,
+  }) => {
+    expect(woId, 'попередній тест мав внести аванс з вікна наряду').toBeTruthy();
+    await page.goto('/cash');
+    await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+    const token = await getToken(page);
+    const wo = await getWo(page, token, woId);
+    const select = page.locator('select').first();
+    await expect(select).toBeVisible({ timeout: 15_000 });
+    await select.selectOption(ctx.registerId);
+    const row = page
+      .locator('table tbody tr')
+      .filter({ hasText: `E2E Клієнт оплата наряду ${stamp}` })
+      .first();
+    const base = row.getByRole('button', { name: `Відкрити документ ${wo.number}` });
+    await expect(base).toBeVisible({ timeout: 15_000 });
+
+    await base.click();
+    await expect(page).toHaveURL(new RegExp(`/work-orders/${wo.id}`), { timeout: 15_000 });
+    await expect(page.locator('h1', { hasText: wo.number })).toBeVisible({ timeout: 20_000 });
   });
 
   // guards: BR-PAY-005, BR-WO-016

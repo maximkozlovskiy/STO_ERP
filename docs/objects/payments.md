@@ -216,13 +216,15 @@ create (метод без requiresFiscal) → null
 (`POST /cash-registers/:id/operations/:operationId/reverse` → `CashDeskService.reverse`) у тій самій
 транзакції викликає внутрішній `PaymentsService.reverse(orgId, paymentId, ctx, tx)` (`ctx` — id рядка сторно,
 причина, користувач). Що він робить, у порядку записів: CAS `reversedAt: null → now()` (друге сторно →
-400; чек у черзі / `FAILED` одразу `SKIPPED`) → проводка `PAYMENT_CANCEL` / `PREPAYMENT_CANCEL` (за типом
+400; відхилений ПРРО чек `FAILED` одразу `SKIPPED`) → проводка `PAYMENT_CANCEL` / `PREPAYMENT_CANCEL` (за типом
 проводки оригіналу, курс оригіналу, документ — рядок сторно каси) → «сплачено» рахунку і наряду мінус
 сума (не нижче нуля) — спершу наряд, потім рахунок (той самий порядок блокувань, що в оплаті), статус
 наряду PAID → INVOICED (`reopenPaidWorkOrderInTx`); рахунок наряду перераховується з наряду (дзеркало,
-BR-INV-018), рахунок без наряду — PAID/PARTIALLY_PAID → PARTIALLY_PAID/SENT → списання нарахованих бонусів (`LoyaltyService.reverseEarn`, `EARN_REVERSAL`).
-Відмови (400): чек уже пробито (`DONE` / є `fiscalReceiptId`), оплата не в базовій валюті, наряд в архіві,
-рахунок скасовано (лише для оплати рахунку без наряду: рахунок наряду — дзеркало, його скасування сторно
+BR-INV-018), рахунок без наряду — за `invoiceStatusForPaid` (BR-INV-025) → курсова різниця повної оплати
+відкочується, якщо документ перестав бути сплаченим повністю (BR-PAY-028) → списання нарахованих бонусів
+(`LoyaltyService.reverseEarn`, `EARN_REVERSAL`).
+Відмови (400): чек уже пробито (`DONE` / є `fiscalReceiptId`), чек ще в черзі ПРРО (`QUEUED`, BR-PAY-029),
+наряд в архіві, рахунок скасовано (лише для оплати рахунку без наряду: рахунок наряду — дзеркало, його скасування сторно
 оплати наряду не блокує).
 
 Сторнована оплата **виключена** (`reversedAt: null` у відборі): із сум «сплачено», нічної звірки
@@ -230,7 +232,7 @@ BR-INV-018), рахунок без наряду — PAID/PARTIALLY_PAID → PART
 фіскальної черги (`checkbox.processor` пропускає). У відповідях `GET /payments` і пов'язаних документів
 вона віддається з `reversedAt` / `reversalCashOperationId`; у конструкторі звітів — поле «Сторновано».
 
-Тести касового сторно оплати — у реєстрі `cash.md` (`payments.reverse.spec.ts`,
+Тести касового сторно оплати — у реєстрі `cash.md` (`payments.reverse.spec.ts`, `payments.reverse-fx.spec.ts`,
 `payments.reversal-excluded.spec.ts`); безготівкового (BR-PAY-024) — у реєстрі нижче
 (`payments.reverse-noncash.spec.ts`, `payments.reverse-route.contract.spec.ts`).
 
@@ -403,8 +405,46 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
 - **BR-PAY-022**: **Курсова різниця — за нарядом.** Для наряду в іноземній валюті курсова різниця
   проводиться, коли наряд сплачено повністю і борг уже нараховано («Виконано» / «Виставлено»; якщо
   все сплачено авансом — при переході в «Виконано»): нараховано — проводка `CHARGE` наряду,
-  сплачено — Σ `amountBase` оплат наряду без сторно; документ — `WorkOrder`; повторно не проводиться
-  (враховуються й попередні курсові проводки рахунків цього наряду).
+  сплачено — Σ `amountBase` оплат наряду без сторно; документ — `WorkOrder`; повторно не проводиться,
+  поки **чиста** курсова різниця (Σ `FX_GAIN` − Σ `FX_LOSS`) наряду й попередніх курсових проводок його
+  рахунків ≠ 0 (`netFxBalanceEffect`, `settlements/fx-net.ts`); сторно, що зробило наряд не сплаченим,
+  обнуляє її (BR-PAY-028) — тоді повна оплата пише заново. Та сама перевірка — у курсовій різниці рахунку
+  без наряду (`postInvoiceFx`) і ручного «Оплачено» рахунку (`InvoicesService.transition`).
+- **BR-PAY-028**: **Сторно валютної оплати — за курсом оплати** (рішення власника 2026-10-30, TECH-DEBT
+  (б) №42). Оплата у валюті, відмінній від базової, сторнується (у касі й `POST /payments/:id/reverse`) —
+  400 «не підтримується» прибрано: проводка `PAYMENT_CANCEL` / `PREPAYMENT_CANCEL` бере суму, валюту, курс
+  і базову суму проводки оплати. Курсова різниця, визнана при повній оплаті, відкочується в тій самій
+  транзакції, коли сторно робить документ **не сплаченим повністю**: одна проводка протилежного знаку на
+  чисту суму (`reverseNetFxInTx`) — наряд (документ `WorkOrder`, враховуються й FX його рахунків), рахунок
+  без наряду (`Invoice`). Документ і після сторно сплачений повністю (переплата) — FX не чіпається; чиста
+  FX уже 0 — нічого не пишеться. Наступна повна оплата бачить чисту FX = 0 і визнає різницю заново за
+  курсами оплат, що лишились (BR-PAY-022). Постачальник — BR-SUPPAY-012.
+- **BR-PAY-029**: **Сторно, поки чек у черзі ПРРО, — 400** (рішення власника 2026-10-30, TECH-DEBT (б) №43).
+  Оплата з `fiscalStatus = QUEUED` не сторнується (`err.cash.reversalFiscalQueued`) до першого запису:
+  запит на чек міг уже піти в ПРРО, і пробитий після сторно чек лишився б за оплатою, якої немає. Текст
+  пояснює й закриту зміну (чек чекає її відкриття). `FAILED` (ПРРО відхилив) — сторно проходить і знімає чек
+  (`SKIPPED`), `DONE` — як раніше 400 «оформіть повернення в ПРРО». Web: у касі пункт «Сторнувати» меню рядка
+  вимкнений із причиною; у «Пов'язаних документах» замість кнопки — підказка (`linked-configs`).
+- **BR-PAY-030**: **«Оплати сьогодні» на дашборді — чиста сума** (рішення власника 2026-10-30, TECH-DEBT (б)
+  №39). `DashboardService.getSummary.todayRevenue` = Σ `amountBase` за київську добу (`createdAt` від
+  київської півночі до кінця доби): `PAYMENT` + `PREPAYMENT` − `REFUND_OUT` + `REFUND_OUT_CANCEL` −
+  `PAYMENT_CANCEL` − `PREPAYMENT_CANCEL`. Нарахування, курсові різниці й проводки постачальників не
+  входять. Валютні оплати — у базовій валюті. Картка має «?» з поясненням складу (поза посиланням картки).
+- **BR-PAY-031**: **Онлайн-спосіб (QR) — призначення лише банківський рахунок** (рішення власника 2026-10-30,
+  TECH-DEBT (б) №46). Код `<шлюз>_qr` (`isOnlineMethodCode`, без урахування регістру) у `POST` / `PATCH
+/payment-methods` з касою призначенням → 400 `err.paymentMethod.onlineBankOnly`; банківський рахунок —
+  пишеться. Каса, збережена до правила, лишається (інші правки без призначення проходять, як BR-PAY-019).
+  НДІ: у картці QR-способу каси немає серед варіантів; збережену видно недоступною з поясненням.
+- **BR-PAY-032**: **Ознаку «Готівка» системного способу `cash` не зняти** (рішення власника 2026-10-30,
+  TECH-DEBT (б) №81). `PATCH /payment-methods/:id { isCash: false }` для коду `cash` → 400
+  `err.paymentMethod.cashFlagLocked` до запису (оплата з каси йде цим способом — без ознаки чек ПРРО був би
+  безготівковим). Інші правки й інші способи — без змін. НДІ: прапорець заблокований із поясненням.
+- **BR-PAY-033**: **QR-способи у вікні оплати рахунку — лише підключеного шлюзу** (рішення власника
+  2026-10-30, TECH-DEBT (б) №55). `GET /online-payments/gateway?invoiceId=` (OWNER, ADMIN, ACCOUNTANT,
+  RECEPTIONIST) віддає `{ provider }` — шлюз, через який пройде QR-оплата рахунку (той самий вибір, що
+  `createIntent`: філія наряду рахунку або будь-яка філія; невідомий системі шлюз чи жодного — `null`),
+  без кредів. `ClientPaymentModal` на рахунку показує лише `<provider>_qr` і веде його до QR
+  (`QrPaymentModal`); PrivatBank QR провайдера не має — не показується ніколи; на наряді QR немає.
 - **BR-PAY-023**: **Безготівкова оплата — лише з призначенням** (рішення власника 2026-10-22). Оплата
   будь-яким способом, крім «Готівки», мусить мати призначення після розв'язання (BR-PAY-002): банківський
   рахунок із запиту чи за замовчуванням способу, або касу, коли вона — призначення способу за замовчуванням
@@ -478,46 +518,46 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 
 **Маршрути UI:** `/cash`, `/invoices` (`/payments` — лише редирект)
 
-| Аспект                                                                                            | Тест                                                     | Кейсів |
-| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------ |
-| сервісна логіка                                                                                   | `cash-shift.service.spec.ts`                             | 31     |
-| зміна своя в кожної каси (BR-CASH-027)                                                            | `cash-shift.per-register.spec.ts`                        | 13     |
-| HTTP-контракт стану зміни (BR-CASH-027)                                                           | `cash-shift.current-route.contract.spec.ts`              | 3      |
-| HTTP-клієнт (+SSRF resolved, BR-SEC-SSRF)                                                         | `checkbox.client.spec.ts`                                | 36     |
-| BullMQ-processor                                                                                  | `checkbox.processor.spec.ts`                             | 28     |
-| fiscal provider registry                                                                          | `fiscal/fiscal-provider-registry.spec.ts`                | 15     |
-| провайдер (+SSRF resolved, BR-SEC-SSRF)                                                           | `fiscal/vchasno.provider.spec.ts`                        | 34     |
-| payment gateway registry (+SSRF resolved, BR-SEC-SSRF)                                            | `gateways/payment-gateway-registry.spec.ts`              | 13     |
-| HTTP-клієнт (+SSRF resolved, BR-SEC-SSRF)                                                         | `monobank.client.spec.ts`                                | 29     |
-| сервісна логіка                                                                                   | `online-payment.service.spec.ts`                         | 15     |
-| BullMQ-processor                                                                                  | `payment-polling.processor.spec.ts`                      | 26     |
-| ланцюг опитування (Redis)                                                                         | `payment-polling.queue.integration.spec.ts`              | 1      |
-| fiscal gate                                                                                       | `payments.fiscal-gate.spec.ts`                           | 8      |
-| idempotency                                                                                       | `payments.idempotency.spec.ts`                           | 7      |
-| money model                                                                                       | `payments.money-model.spec.ts`                           | 22     |
-| multicurrency                                                                                     | `payments.multicurrency.spec.ts`                         | 25     |
-| query dto                                                                                         | `payments.query-dto.spec.ts`                             | 48     |
-| передумови + наряд; подія «створено» оплати (BR-AUT-060)                                          | `payments.work-order.spec.ts`                            | 53     |
-| політика повторів черг                                                                            | `payments.queue-retry-policy.spec.ts`                    | 6      |
-| сервісна логіка (+SSRF upsert, BR-SEC-SSRF)                                                       | `provider-config.service.spec.ts`                        | 40     |
-| upsert провайдера без `enabled` (лише activate)                                                   | `provider-upsert-dto.contract.spec.ts`                   | 12     |
-| шифрування at-rest, усі шляхи запису (BR-PAY-026)                                                 | `../../prisma/field-encryption.extension.spec.ts`        | 30     |
-| шифрування (сервіс)                                                                               | `../../common/crypto/encryption.service.spec.ts`         | 11     |
-| готівка (ознака isCash) — через касу, безготівкова — з рахунком; спосіб із довідника (BR-PAY-027) | `payments.cash-register-required.spec.ts`                | 28     |
-| куди надходять кошти                                                                              | `../payment-methods/payment-methods.destination.spec.ts` | 27     |
-| HTTP-контракт способів                                                                            | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
-| системні способи оплати                                                                           | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
-| сторно безготівкової оплати (BR-PAY-024)                                                          | `payments.reverse-noncash.spec.ts`                       | 24     |
-| HTTP-контракт сторно (BR-PAY-024)                                                                 | `payments.reverse-route.contract.spec.ts`                | 15     |
-| HTTP-контракт списку: query DTO, NUL (BR-PAY-025)                                                 | `payments.list-query.contract.spec.ts`                   | 8      |
-| NUL у query/param/тілі → 400, глоб. труби (BR-PAY-025, BR-SEC-NUL)                                | `../../common/pipes/reject-nul-character.pipe.spec.ts`   | 7      |
-| секрети філії не у відповіді й кеші (BR-PAY-015)                                                  | `../settings/settings.branch-secrets.contract.spec.ts`   | 7      |
+| Аспект                                                                                              | Тест                                                     | Кейсів |
+| --------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------ |
+| сервісна логіка                                                                                     | `cash-shift.service.spec.ts`                             | 31     |
+| зміна своя в кожної каси (BR-CASH-027)                                                              | `cash-shift.per-register.spec.ts`                        | 13     |
+| HTTP-контракт стану зміни (BR-CASH-027)                                                             | `cash-shift.current-route.contract.spec.ts`              | 3      |
+| HTTP-клієнт (+SSRF resolved, BR-SEC-SSRF)                                                           | `checkbox.client.spec.ts`                                | 36     |
+| BullMQ-processor                                                                                    | `checkbox.processor.spec.ts`                             | 28     |
+| fiscal provider registry                                                                            | `fiscal/fiscal-provider-registry.spec.ts`                | 15     |
+| провайдер (+SSRF resolved, BR-SEC-SSRF)                                                             | `fiscal/vchasno.provider.spec.ts`                        | 34     |
+| payment gateway registry (+SSRF resolved, BR-SEC-SSRF)                                              | `gateways/payment-gateway-registry.spec.ts`              | 13     |
+| HTTP-клієнт (+SSRF resolved, BR-SEC-SSRF)                                                           | `monobank.client.spec.ts`                                | 29     |
+| сервісна логіка; підключений шлюз рахунку (BR-PAY-033)                                              | `online-payment.service.spec.ts`                         | 19     |
+| BullMQ-processor                                                                                    | `payment-polling.processor.spec.ts`                      | 26     |
+| ланцюг опитування (Redis)                                                                           | `payment-polling.queue.integration.spec.ts`              | 1      |
+| fiscal gate                                                                                         | `payments.fiscal-gate.spec.ts`                           | 8      |
+| idempotency                                                                                         | `payments.idempotency.spec.ts`                           | 7      |
+| money model                                                                                         | `payments.money-model.spec.ts`                           | 23     |
+| multicurrency                                                                                       | `payments.multicurrency.spec.ts`                         | 26     |
+| query dto                                                                                           | `payments.query-dto.spec.ts`                             | 48     |
+| передумови + наряд; подія «створено» оплати (BR-AUT-060); наряд — підстава рядка каси (BR-CASH-030) | `payments.work-order.spec.ts`                            | 57     |
+| політика повторів черг                                                                              | `payments.queue-retry-policy.spec.ts`                    | 6      |
+| сервісна логіка (+SSRF upsert, BR-SEC-SSRF)                                                         | `provider-config.service.spec.ts`                        | 40     |
+| upsert провайдера без `enabled` (лише activate)                                                     | `provider-upsert-dto.contract.spec.ts`                   | 12     |
+| шифрування at-rest, усі шляхи запису (BR-PAY-026)                                                   | `../../prisma/field-encryption.extension.spec.ts`        | 30     |
+| шифрування (сервіс)                                                                                 | `../../common/crypto/encryption.service.spec.ts`         | 11     |
+| готівка (ознака isCash) — через касу, безготівкова — з рахунком; спосіб із довідника (BR-PAY-027)   | `payments.cash-register-required.spec.ts`                | 28     |
+| куди надходять кошти; QR лише на рахунок, ознака «Готівка» `cash` (BR-PAY-031, 032)                 | `../payment-methods/payment-methods.destination.spec.ts` | 34     |
+| HTTP-контракт способів                                                                              | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
+| системні способи оплати                                                                             | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
+| сторно безготівкової оплати (BR-PAY-024)                                                            | `payments.reverse-noncash.spec.ts`                       | 24     |
+| HTTP-контракт сторно (BR-PAY-024)                                                                   | `payments.reverse-route.contract.spec.ts`                | 15     |
+| HTTP-контракт списку: query DTO, NUL (BR-PAY-025)                                                   | `payments.list-query.contract.spec.ts`                   | 8      |
+| NUL у query/param/тілі → 400, глоб. труби (BR-PAY-025, BR-SEC-NUL)                                  | `../../common/pipes/reject-nul-character.pipe.spec.ts`   | 7      |
+| секрети філії не у відповіді й кеші (BR-PAY-015)                                                    | `../settings/settings.branch-secrets.contract.spec.ts`   | 7      |
 
 Web (`apps/web/src`), ознака «Готівка» (BR-PAY-019): `components/ui/__tests__/ClientPaymentModal.test.tsx`
 (39; поле «Каса» за ознакою способу, не за кодом) і `app/(app)/ndi/__tests__/PaymentsTab.destination.test.tsx`
 (9; перемикач «Готівка» в картці способу, позначка в списку, POST / PATCH несуть `isCash`).
 
-Разом: **587** кейсів — сума рядків таблиці, разом зі спеками шифрування й довідника способів оплати
+Разом: **604** кейси — сума рядків таблиці, разом зі спеками шифрування й довідника способів оплати
 (`payment-methods`) поза модулем; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
 `vitest --reporter=json` (звірено 2026-10-30), не з grep.
 

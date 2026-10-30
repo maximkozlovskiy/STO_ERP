@@ -237,6 +237,7 @@ PARTIALLY_PAID)`. `count=0` (гонка паралельного платежу)
 - **BR-INV-022**: **Скасування виставленого standalone-рахунку → `CREDIT_NOTE` на непогашений залишок** (MV-H1, 2026-10-25). `transition` → `CANCELLED` для рахунку без наряду (`workOrderId = null`), який уже був у `SENT`/`PARTIALLY_PAID`/`OVERDUE` (отже, мав нарахований `CHARGE`), постить компенсуючий `CREDIT_NOTE` на `amount − paidAmount` у тій самій транзакції після CAS-flip статусу — борг у леджері обнуляється на непогашене, часткові оплати лишаються. `DRAFT → CANCELLED` не постить проводку (`CHARGE` нараховується лише на `DRAFT → SENT`). Конверсія `CREDIT_NOTE` дзеркалить курс оригінальної `CHARGE` (залишок × `rateUsed` оригіналу), legacy без збереженого курсу — ре-конвертація за датою документа (`fallbackToLatest`), як WO-шлях `returnPartsAndCredit`. Рахунок наряду цю гілку не зачіпає. `createdBy` — користувач переходу (F10)
 - **BR-INV-023**: **Рахунок без рядків не виставляється** (рішення власника 2026-10-29; РАХ-2026-004310 мав суму 100,00 без жодного рядка). Перехід `DRAFT → SENT` для рахунку без рядків (`InvoiceLine` — 0) → 400 `err.invoice.noLinesToIssue`, і для standalone, і для рахунку наряду; `DRAFT → CANCELLED` дозволено. Перевірка — до CAS-переходу й до `CHARGE` (FIN-C2). Чернетка з сумою без рядків лишається можливою (створення двокрокове: `POST /invoices`, далі рядки). Уже виставлені без рядків рахунки не змінюються. Web: «Виставити» неактивна з підказкою, поки рядків немає
 - **BR-INV-024**: **Картка рахунку: спершу додати й змінити рядки, потім видалити** (як BR-WO-035 наряду; чистка API 2026-10-30). «Зберегти зміни» чернетки: `PATCH` шапки → `POST` нових рядків → `PATCH` збережених рядків, змінених у картці (кількість і ціна правляться на місці, прапорець `_dirty`), → `DELETE` прибраних — останнім. Усе послідовно: кожен запит перераховує суми рахунку (`recalcTotals` без транзакції, паралельні запити губили б суму). Раніше `DELETE` ішов першим, а змінити рядок можна було лише видаленням і новим рядком. Збій `POST` нічого не видаляє; відмова одного `DELETE` не зупиняє решти, невидалені лишаються на повтор, помилка — у картці (картка не закривається). Повторне «Зберегти» не задвоює вже додані рядки (Bug #755) і шле ті самі `PATCH` (ідемпотентні); доданий рядок отримує у формі `id` з відповіді `POST`, тож якщо після збою його прибрати перед повтором — повтор його видаляє (`DELETE`), а не лишає сиротою на сервері. Схема оновлення рядка (`invoiceLineUpdateSchema`) не містить `goodId`/`workId`/`unitOfMeasureId` — `updateLine` їх не застосовує, тож контракт їх і не обіцяє (зайві поля мовчки відкидаються). Рядки рахунку (картка, дублювання, друк) упорядковано `sortOrder`, далі `createdAt`, `id`: ручні рядки мають `sortOrder` 0, і без вторинного ключа змінений на місці рядок перескакував у кінець (Bug #1013). Помилка збереження — над шапкою картки: «Додати» шапку згортає (Bug #1014). Прев'ю зміненого рядка рахує ПДВ, як `updateLine`: сума з ПДВ дорівнювала сумі рядка → нова сума, інакше нова сума + ПДВ за ставкою рядка, округлений окремо (Bug #1015). (`InvoiceCreateModal.handleSave`)
+- **BR-INV-025**: **«Прострочено» одразу** (рішення власника 2026-10-30, TECH-DEBT (б) №44). Статус виставленого рахунку від сплаченого — одна формула `invoiceStatusForPaid` (`invoices/invoice-paid-status.ts`) для оплати рахунку без наряду, сторно й дзеркала рахунку наряду (`mirroredInvoiceStatus`, у `syncWorkOrderInvoicePaid` читається й `dueDate`): сплачено повністю → «Оплачено»; інакше, якщо термін минув (`dueDate` раніше за київську дату сьогодні — та сама умова, що в нічній позначці `invoice-overdue.processor`), → «Прострочено»; частково → «Частково оплачено»; нічого → «Виставлено» («Прострочено» з нулем ним і лишається). Часткова оплата чи сторно простроченого рахунку не повертають його в «Частково оплачено» / «Виставлено» до ночі. Чернетка й скасований не змінюються.
 - **BR-INV-021**: **Одиниця рядка — як у наряді** (Bug #868, 2026-10-22). Рядок рахунку з наряду отримує одиницю рядка запчастини наряду (`unitOfMeasureId` — `UnitOfMeasure.id`), кількість і ціна — у тій самій одиниці; клонування рахунку її зберігає. Картка й друкований рахунок показують одиницю рядка, коефіцієнт — з пари (товар, одиниця) у `GoodUoM`; без одиниці рядка — базова одиниця товару. Ручний рядок (`POST /invoices/:id/lines`) приймає `unitOfMeasureId` як `UnitOfMeasure.id` — так само, як рядок наряду; одиниця, якої немає в товару, — 404. Роботи йдуть у годинах (факт, інакше норма): рядок роботи (`workId`) без власної одиниці картка й друкований рахунок показують з «год» (`WORK_UNIT_SHORT_NAME` у `@sto/shared`, рішення власника 2026-10-22; раніше друкувалось «шт»), ручний рядок без товару й роботи друкується «шт»
 
 ---
@@ -251,28 +252,29 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/invoices/`
 
-| Аспект                                                                                   | Тест                                       | Кейсів |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------ | ------ |
-| BullMQ-processor: OVERDUE за фільтром, подія на кожен рахунок (BR-INV-005, BR-AUT-060)   | `invoice-overdue.processor.spec.ts`        | 6      |
-| HTTP-контракт (DTO, статуси, валідація)                                                  | `invoices.contract.spec.ts`                | 45     |
-| документ, позначений на видалення, — лише перегляд (BR-WO-012)                           | `invoices.with-deleted.spec.ts`            | 13     |
-| create defaults (номер, invoiceType)                                                     | `invoices.create-defaults.spec.ts`         | 5      |
-| create from work order                                                                   | `invoices.create-from-work-order.spec.ts`  | 14     |
-| dto and linked docs                                                                      | `invoices.dto-and-linked-docs.spec.ts`     | 13     |
-| due date                                                                                 | `invoices.due-date.spec.ts`                | 7      |
-| find by work order                                                                       | `invoices.find-by-work-order.spec.ts`      | 5      |
-| line totals (recalcTotals на бекенді)                                                    | `invoices.line-totals.spec.ts`             | 19     |
-| список: відбір за датою документа                                                        | `invoices.list-date-filter.spec.ts`        | 6      |
-| список: відбір за контрагентом, статусами, пошук                                         | `invoices.list-filters.spec.ts`            | 7      |
-| refresh from work order                                                                  | `invoices.refresh-from-work-order.spec.ts` | 15     |
-| transition settlements; виставлення без рядків (BR-INV-023)                              | `invoices.transition-settlements.spec.ts`  | 23     |
-| рахунок наряду — дзеркало наряду, подія зміни статусу (BR-INV-018, 020, 023, BR-AUT-060) | `work-order-invoice-mirror.spec.ts`        | 35     |
-| update: зміна контрагента (org, роль)                                                    | `invoices.update-counterparty.spec.ts`     | 5      |
-| рядки рахунку з наряду (чиста функція)                                                   | `invoices.work-order-lines.spec.ts`        | 23     |
-| друкований рахунок: реквізити своєї організації, дата, валюта, 404                       | `invoices.pdf.spec.ts`                     | 4      |
-| одиниця рядка як у наряді (Bug #868), робота — «год»; порядок рядків (BR-INV-024)        | `invoices.line-units.spec.ts`              | 9      |
+| Аспект                                                                                        | Тест                                       | Кейсів |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------ | ------ |
+| BullMQ-processor: OVERDUE за фільтром, подія на кожен рахунок (BR-INV-005, BR-AUT-060)        | `invoice-overdue.processor.spec.ts`        | 6      |
+| HTTP-контракт (DTO, статуси, валідація)                                                       | `invoices.contract.spec.ts`                | 45     |
+| документ, позначений на видалення, — лише перегляд (BR-WO-012)                                | `invoices.with-deleted.spec.ts`            | 13     |
+| create defaults (номер, invoiceType)                                                          | `invoices.create-defaults.spec.ts`         | 5      |
+| create from work order                                                                        | `invoices.create-from-work-order.spec.ts`  | 14     |
+| dto and linked docs                                                                           | `invoices.dto-and-linked-docs.spec.ts`     | 13     |
+| due date                                                                                      | `invoices.due-date.spec.ts`                | 7      |
+| find by work order                                                                            | `invoices.find-by-work-order.spec.ts`      | 5      |
+| line totals (recalcTotals на бекенді)                                                         | `invoices.line-totals.spec.ts`             | 19     |
+| список: відбір за датою документа                                                             | `invoices.list-date-filter.spec.ts`        | 6      |
+| список: відбір за контрагентом, статусами, пошук                                              | `invoices.list-filters.spec.ts`            | 7      |
+| refresh from work order                                                                       | `invoices.refresh-from-work-order.spec.ts` | 15     |
+| transition settlements; виставлення без рядків (BR-INV-023)                                   | `invoices.transition-settlements.spec.ts`  | 23     |
+| рахунок наряду — дзеркало наряду, подія зміни статусу (BR-INV-018, 020, 023, 025, BR-AUT-060) | `work-order-invoice-mirror.spec.ts`        | 38     |
+| статус від сплаченого: «Прострочено» одразу (BR-INV-025)                                      | `invoice-paid-status.spec.ts`              | 14     |
+| update: зміна контрагента (org, роль)                                                         | `invoices.update-counterparty.spec.ts`     | 5      |
+| рядки рахунку з наряду (чиста функція)                                                        | `invoices.work-order-lines.spec.ts`        | 23     |
+| друкований рахунок: реквізити своєї організації, дата, валюта, 404                            | `invoices.pdf.spec.ts`                     | 4      |
+| одиниця рядка як у наряді (Bug #868), робота — «год»; порядок рядків (BR-INV-024)             | `invoices.line-units.spec.ts`              | 9      |
 
-Разом: **254** кейси (цифри з `vitest --reporter=json`, не з grep).
+Разом: **271** кейс (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест для BR-INV-024 — збереження рядків картки (web і контракт, мітки `// guards:`):
 

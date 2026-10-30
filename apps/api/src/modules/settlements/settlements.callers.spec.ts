@@ -222,7 +222,7 @@ const CALL_SITES: Record<string, CallSite> = {
     anchors: [/netFxBalanceEffect\(/, /if\s*\(!hasNetFx\(net\)\)\s*return;/],
     raceTests: [
       {
-        spec: 'payments/payments.reverse.spec.ts',
+        spec: 'payments/payments.reverse-fx.spec.ts',
         title: 'чиста FX уже 0 (визнано й відкочено раніше) → нової курсової проводки немає',
       },
     ],

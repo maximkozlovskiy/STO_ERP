@@ -132,17 +132,18 @@ cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
 
 **Маршрути UI:** `/settlements`, `/counterparties`
 
-| Аспект                                                                          | Тест                                     | Кейсів |
-| ------------------------------------------------------------------------------- | ---------------------------------------- | ------ |
-| ролі доступу на маршрутах                                                       | `settlements.access.spec.ts`             | 5      |
-| читання балансу і журналу                                                       | `settlements.account-read.spec.ts`       | 8      |
-| інваріанти (property-based)                                                     | `settlements.invariants.spec.ts`         | 16     |
-| акт звірки (+ номер документа в PDF, BR-SETL-016)                               | `settlements.reconciliation-act.spec.ts` | 22     |
-| `createTransaction` (сервісна логіка; межа Decimal(12,2) суми й балансу)        | `settlements.service.spec.ts`            | 33     |
-| єдиний писар балансу (статичний сторож)                                         | `settlements.single-writer.spec.ts`      | 3      |
-| місця виклику `createTransaction` і їхній захист від повтору (статичний сторож) | `settlements.callers.spec.ts`            | 6      |
+| Аспект                                                                                                 | Тест                                     | Кейсів |
+| ------------------------------------------------------------------------------------------------------ | ---------------------------------------- | ------ |
+| ролі доступу на маршрутах                                                                              | `settlements.access.spec.ts`             | 5      |
+| читання балансу і журналу                                                                              | `settlements.account-read.spec.ts`       | 8      |
+| інваріанти (property-based)                                                                            | `settlements.invariants.spec.ts`         | 16     |
+| акт звірки (+ номер документа в PDF, BR-SETL-016)                                                      | `settlements.reconciliation-act.spec.ts` | 22     |
+| `createTransaction` (сервісна логіка; межа Decimal(12,2) суми й балансу)                               | `settlements.service.spec.ts`            | 33     |
+| єдиний писар балансу (статичний сторож)                                                                | `settlements.single-writer.spec.ts`      | 3      |
+| місця виклику `createTransaction` і їхній захист від повтору (статичний сторож)                        | `settlements.callers.spec.ts`            | 6      |
+| межа повернення: переплата клієнта / аванс постачальнику, `FOR UPDATE` (BR-CASH-029, BR-BANK-044, 046) | `settlements.refund-limit.spec.ts`       | 10     |
 
-Разом: **95** кейси (цифри з `vitest --reporter=json`, не з grep).
+Разом: **105** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Спільний сетап спеків `SettlementsAccountService` — `settlements.spec-fixture.ts` (factory).
 

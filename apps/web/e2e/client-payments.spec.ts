@@ -32,7 +32,8 @@ test.describe.configure({ mode: 'serial' });
  *
  * ── Свідомо НЕ покрито (потребує зовнішнього шлюзу) ──
  *   - QR-оплата (monobank/LiqPay) повний roundtrip — покрито детерміновану частину:
- *     перемикання методу на monobank_qr → футер модалки міняється на «Показати QR».
+ *     перемикання методу на monobank_qr → футер модалки міняється на «Показати QR» — лише коли
+ *     monobank підключено у філії; інакше способу monobank_qr у вікні немає (BR-PAY-033).
  *   - Фіскальний чек до DONE: без налаштованого Checkbox воркер переводить QUEUED у SKIPPED.
  *   - Успішне відкриття касової зміни: без ПРРО — «Фіскалізацію не налаштовано».
  *
@@ -370,8 +371,25 @@ test.describe('Оплати клієнтів (money-flow)', () => {
     test.skip(!hasQr, 'Метод monobank_qr не активований у цій організації — QR-гілка недоступна');
 
     const inv = await createSentInvoice(page, token, await getClientId(page, token), 100);
+    const gateway = await apiCall<{ provider: string | null }>(
+      page,
+      token,
+      'GET',
+      `/online-payments/gateway?invoiceId=${inv.id}`,
+    );
     const modal = await openInvoicePayModal(page, inv.number);
     await expect(modal.getByRole('button', { name: 'Підтвердити оплату' })).toBeVisible();
+    // BR-PAY-033: QR-спосіб — лише підключеного у філії шлюзу; PrivatBank QR — ніколи.
+    await expect(
+      modal.getByLabel('Метод оплати').locator('option[value="privat24_qr"]'),
+    ).toHaveCount(0);
+    if (gateway.body.provider !== 'monobank') {
+      await expect(
+        modal.getByLabel('Метод оплати').locator('option[value="monobank_qr"]'),
+      ).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      return;
+    }
     await modal.getByLabel('Метод оплати').selectOption('monobank_qr');
     await expect(modal.getByRole('button', { name: 'Показати QR' })).toBeVisible({
       timeout: 5_000,

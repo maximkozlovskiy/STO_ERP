@@ -276,12 +276,13 @@ OWNER/ADMIN/ACCOUNTANT; меню немає для вже
     списуються, але не нижче нуля (решта — у примітці сторно). Відмова: фіскальний чек уже
     пробито (`fiscalStatus = DONE`) — 400 «спершу оформіть повернення в ПРРО», зокрема коли
     чек пробито між читанням оплати і записом сторно (CAS на стані чека); «Повторити чек»
-    сторнованої оплати — 400; оплата не в
-    базовій валюті — 400; наряд оплати в архіві або рахунок скасовано — 400.
+    сторнованої оплати — 400; чек ще в черзі ПРРО (`QUEUED`) — 400 (BR-PAY-029); наряд оплати в архіві
+    або рахунок скасовано — 400. Валютна оплата сторнується за курсом оплати, курсова різниця повної
+    оплати відкочується (BR-PAY-028); рахунок із минулим терміном — «Прострочено» (BR-INV-025).
   - _Оплата постачальнику_ (`SupplierPayment`): статус «Проведено» → «Сторновано» (`REVERSED`, лише
     так — публічної дії немає); проводка `SUPPLIER_PAYMENT_CANCEL` (−1) з курсом оригіналу;
     «сплачено» замовлення мінус сума (не нижче нуля), `paidAt` знімається, якщо замовлення вже не
-    сплачене повністю. Оплата не в базовій валюті — 400.
+    сплачене повністю. Валютна оплата — за курсом оплати, курсова різниця відкочується (BR-SUPPAY-012).
 - **BR-CASH-025**: **Сторно повернень.** Повернення клієнту (`REFUND`) — проводка `REFUND_OUT_CANCEL`
   (−1); повернення від постачальника (`SUPPLIER_REFUND_IN`) — `SUPPLIER_PAYMENT_RETURN_CANCEL` (+1);
   обидві з курсом оригіналу й посиланням на рядок сторно. Решта ручних приводів — лише рядок каси.
@@ -306,6 +307,27 @@ OWNER/ADMIN/ACCOUNTANT; меню немає для вже
   вибраної каси, тож зміна видаленої чи нефіскальної каси лишилась би відкритою без Z-звіту (Bug #959).
   Інші правки каси при відкритій зміні дозволені, зокрема переведення в іншу філію.
 
+> Правила BR-CASH-029…031 — рішення власника 2026-10-30 (TECH-DEBT (б) №37, №56, №80).
+
+- **BR-CASH-029**: **Повернення клієнту — не більше його переплати.** Видача `REFUND` проходить, лише
+  коли сума рядка каси в базовій валюті (`amountBase`, за курсом рядка) не більша за переплату клієнта
+  `max(0, −баланс)`; баланс один на контрагента, тож для «обидва» — чисте сальдо. Рахунок розрахунків
+  блокується `FOR UPDATE` у транзакції повернення ПЕРШИМ (до рядка каси — порядок «рахунок → каса», як в
+  оплаті), рівно доступна сума проходить; більше → 400 «Повернути клієнту можна не більше X UAH — це його
+  переплата» (`err.settlement.refundExceedsOverpayment`, сума в базовій валюті), рядок каси відкочується.
+  `SettlementsService.lockRefundAvailable` / `assertRefundWithin`; банк — BR-BANK-044. Межа повернення від
+  постачальника в касі (`SUPPLIER_REFUND_IN`) — етап Г2.
+- **BR-CASH-030**: **Наряд — «Підстава» рядка каси для оплати з наряду.** Оплата за нарядом у касу (з вікна
+  наряду чи через рахунок наряду — наряд виводиться з рахунку, BR-PAY-021) пише в рядок каси
+  `baseDocumentType = 'WorkOrder'`, `baseDocumentId` = наряд; підстава, задана карткою касової операції
+  (BR-CASH-020), має перевагу. Журнал показує номер наряду з посиланням. Старі рядки не переписуються.
+  (`PaymentsService.create`, `cashRowBaseDocument`)
+- **BR-CASH-031**: **Вимкнена «Готівка» — 400 і в касі.** Оплата контрагента (`SALE_PAYMENT`) і оплата
+  постачальнику (`SUPPLIER_PAYMENT`) з каси йдуть способом `cash`: якщо його в довіднику організації
+  вимкнено (`isActive = false`) чи видалено — 400 `err.payment.methodUnavailable` до будь-якого запису (як
+  BR-PAY-027 у вікні оплати). Ручні внесення / вилучення й повернення способом оплати не є — не чіпаються.
+  (`CashDeskService.loadContext`)
+
 ---
 
 ## Аспекти і тести, що їх стережуть
@@ -318,33 +340,34 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/cash/`
 
-| Аспект                                                                                                                                | Тест                                                                             | Кейсів |
-| ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------ |
-| сервісна логіка: гілки createOperation, overdraft, залишок                                                                            | `cash.service.spec.ts`                                                           | 30     |
-| рядок журналу: сума, зміна, стаття, конфлікт, документ, аудит, історія                                                                | `cash.operation-record.spec.ts`                                                  | 36     |
-| підстава в рядку каси і стаття за замовчуванням для приводу (BR-CASH-020, 022)                                                        | `cash.default-category.spec.ts`                                                  | 16     |
-| ізоляція організацій (умови запитів)                                                                                                  | `cash.tenant.spec.ts`                                                            | 7      |
-| єдиний писар і append-only (статичний сторож по вихідному коду)                                                                       | `cash.single-writer.spec.ts`                                                     | 3      |
-| ролі на маршрутах `/cash-registers`                                                                                                   | `cash.access.spec.ts`                                                            | 7      |
-| каса-диригент: привід ↔ напрям, обов'язкові контрагент / працівник / стаття, прості приводи (BR-CASH-016)                             | `../cash-registers/cash-desk.validation.spec.ts`                                 | 55     |
-| каса-диригент: документ-підстава — тип, повнота, існування, належність контрагентові (BR-CASH-020)                                    | `../cash-registers/cash-desk.base-document.spec.ts`                              | 44     |
-| каса-диригент: оплата контрагента і повернення клієнту (BR-CASH-017, 018)                                                             | `../cash-registers/cash-desk.client.spec.ts`                                     | 35     |
-| каса-диригент: оплата постачальнику і повернення від постачальника (BR-CASH-019)                                                      | `../cash-registers/cash-desk.supplier.spec.ts`                                   | 19     |
-| каса-диригент: ролі за приводом (BR-CASH-021)                                                                                         | `../cash-registers/cash-desk.roles.spec.ts`                                      | 58     |
-| HTTP-контракт `/cash-registers`, зокрема тіло ручної операції і маршрут сторно (ролі, причина, ідемпотентність)                       | `../cash-registers/cash-registers.contract.spec.ts`                              | 44     |
-| привід за замовчуванням у статті: закріплення, конфлікт, напрям, відновлення (BR-CASH-022)                                            | `../expense-categories/expense-categories.default-reason.spec.ts`                | 53     |
-| таблиця приводів `CASH_REASON_RULES` і zod-схема ручної операції                                                                      | `../../../../../packages/shared/src/schemas/forms/cash-operation.schema.spec.ts` | 102    |
-| сторно: рядок у журналі — курс оригіналу, `reversalOfId`, P2002 → 400 (BR-CASH-023)                                                   | `cash.reversal-record.spec.ts`                                                   | 10     |
-| каса-диригент: сторно — рядок протилежного напряму, відмови, одна транзакція (BR-CASH-023)                                            | `../cash-registers/cash-desk.reverse.spec.ts`                                    | 33     |
-| каса-диригент: відкат за приводом — оплати, повернення, прості приводи (BR-CASH-024, 025)                                             | `../cash-registers/cash-desk.reverse-branches.spec.ts`                           | 21     |
-| сторно оплати контрагента: CAS, `PAYMENT_CANCEL`/`PREPAYMENT_CANCEL`, «сплачено», чек, бонуси, події outbox (BR-CASH-024, BR-AUT-060) | `../payments/payments.reverse.spec.ts`                                           | 40     |
-| сторнована оплата поза нічною звіркою і фіскальною чергою (BR-CASH-024)                                                               | `../payments/payments.reversal-excluded.spec.ts`                                 | 7      |
-| сторно оплати постачальнику: REVERSED, `SUPPLIER_PAYMENT_CANCEL`, «сплачено» замовлення (BR-CASH-024)                                 | `../supplier-payments/supplier-payments.reverse.spec.ts`                         | 16     |
-| бонуси за сторновану оплату: списання не нижче нуля, повтор, `earn` (BR-CASH-024)                                                     | `../loyalty/loyalty.reverse-earn.spec.ts`                                        | 12     |
-| причина сторно в zod-схемі (BR-CASH-023)                                                                                              | `../../../../../packages/shared/src/schemas/forms/cash-reversal.schema.spec.ts`  | 11     |
-| каса з відкритою зміною: не видалити й не зняти «фіскальна» (BR-CASH-028)                                                             | `../cash-registers/cash-registers.open-shift-guard.spec.ts`                      | 5      |
+| Аспект                                                                                                                                                        | Тест                                                                             | Кейсів |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------ |
+| сервісна логіка: гілки createOperation, overdraft, залишок                                                                                                    | `cash.service.spec.ts`                                                           | 30     |
+| рядок журналу: сума, зміна, стаття, конфлікт, документ, аудит, історія                                                                                        | `cash.operation-record.spec.ts`                                                  | 36     |
+| підстава в рядку каси і стаття за замовчуванням для приводу (BR-CASH-020, 022)                                                                                | `cash.default-category.spec.ts`                                                  | 16     |
+| ізоляція організацій (умови запитів)                                                                                                                          | `cash.tenant.spec.ts`                                                            | 7      |
+| єдиний писар і append-only (статичний сторож по вихідному коду)                                                                                               | `cash.single-writer.spec.ts`                                                     | 3      |
+| ролі на маршрутах `/cash-registers`                                                                                                                           | `cash.access.spec.ts`                                                            | 7      |
+| каса-диригент: привід ↔ напрям, обов'язкові контрагент / працівник / стаття, прості приводи, вимкнена «Готівка» (BR-CASH-016, 031)                            | `../cash-registers/cash-desk.validation.spec.ts`                                 | 64     |
+| каса-диригент: документ-підстава — тип, повнота, існування, належність контрагентові (BR-CASH-020)                                                            | `../cash-registers/cash-desk.base-document.spec.ts`                              | 44     |
+| каса-диригент: оплата контрагента і повернення клієнту, повернення ≤ переплати (BR-CASH-017, 018, 029)                                                        | `../cash-registers/cash-desk.client.spec.ts`                                     | 40     |
+| каса-диригент: оплата постачальнику і повернення від постачальника (BR-CASH-019)                                                                              | `../cash-registers/cash-desk.supplier.spec.ts`                                   | 19     |
+| каса-диригент: ролі за приводом (BR-CASH-021)                                                                                                                 | `../cash-registers/cash-desk.roles.spec.ts`                                      | 58     |
+| HTTP-контракт `/cash-registers`, зокрема тіло ручної операції і маршрут сторно (ролі, причина, ідемпотентність)                                               | `../cash-registers/cash-registers.contract.spec.ts`                              | 44     |
+| привід за замовчуванням у статті: закріплення, конфлікт, напрям, відновлення (BR-CASH-022)                                                                    | `../expense-categories/expense-categories.default-reason.spec.ts`                | 53     |
+| таблиця приводів `CASH_REASON_RULES` і zod-схема ручної операції                                                                                              | `../../../../../packages/shared/src/schemas/forms/cash-operation.schema.spec.ts` | 102    |
+| сторно: рядок у журналі — курс оригіналу, `reversalOfId`, P2002 → 400 (BR-CASH-023)                                                                           | `cash.reversal-record.spec.ts`                                                   | 10     |
+| каса-диригент: сторно — рядок протилежного напряму, відмови, одна транзакція (BR-CASH-023)                                                                    | `../cash-registers/cash-desk.reverse.spec.ts`                                    | 33     |
+| каса-диригент: відкат за приводом — оплати, повернення, прості приводи (BR-CASH-024, 025)                                                                     | `../cash-registers/cash-desk.reverse-branches.spec.ts`                           | 21     |
+| сторно оплати контрагента: CAS, `PAYMENT_CANCEL`/`PREPAYMENT_CANCEL`, «сплачено», чек, бонуси, події outbox, черга ПРРО (BR-CASH-024, BR-AUT-060, BR-PAY-029) | `../payments/payments.reverse.spec.ts`                                           | 39     |
+| сторно валютної оплати клієнта й курсова різниця; «Прострочено» рахунку (BR-PAY-028, BR-INV-025)                                                              | `../payments/payments.reverse-fx.spec.ts`                                        | 8      |
+| сторнована оплата поза нічною звіркою і фіскальною чергою (BR-CASH-024)                                                                                       | `../payments/payments.reversal-excluded.spec.ts`                                 | 7      |
+| сторно оплати постачальнику: REVERSED, `SUPPLIER_PAYMENT_CANCEL`, «сплачено» замовлення, валютна оплата й FX (BR-CASH-024, BR-SUPPAY-012)                     | `../supplier-payments/supplier-payments.reverse.spec.ts`                         | 18     |
+| бонуси за сторновану оплату: списання не нижче нуля, повтор, `earn` (BR-CASH-024)                                                                             | `../loyalty/loyalty.reverse-earn.spec.ts`                                        | 12     |
+| причина сторно в zod-схемі (BR-CASH-023)                                                                                                                      | `../../../../../packages/shared/src/schemas/forms/cash-reversal.schema.spec.ts`  | 11     |
+| каса з відкритою зміною: не видалити й не зняти «фіскальна» (BR-CASH-028)                                                                                     | `../cash-registers/cash-registers.open-shift-guard.spec.ts`                      | 5      |
 
-Разом: **664** кейсів (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
+Разом: **687** кейсів (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
 
 **Межі сторожів.** Мітка `// guards:` означає «порушення правила в коді валить цей тест» (кожну перевірено мутацією 2026-10-08), але не «правило стережеться повністю»:
 

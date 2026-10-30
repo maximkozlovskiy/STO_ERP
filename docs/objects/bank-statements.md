@@ -251,6 +251,9 @@ Nav — «Банківські платежі» (Landmark, section settlements).
 - **BR-BANK-040**: Вхідний рядок, рознесений через `match` (є `paymentId`), знімається лише сторном оплати (`POST /payments/:id/reverse`, BR-PAY-024, рішення власника 2026-10-22): у тій самій транзакції, що й сторно, рядок CAS MATCHED → UNMATCHED, `paymentId = null`, `unmatchReason/At/By` — і його можна рознести заново. `unreconcile` такого рядка → 400 (дія — «Сторнувати оплату»); ігнорований чи нерознесений рядок → 409. Повторне скасування → 409 без другого зворотного запису.
 - **BR-BANK-041**: Ручний платіж можна рознести вже при внесенні (рішення власника 2026-10-14): `POST /bank-statements/transactions` приймає необов'язковий блок `allocation` — вид і поля виду, як у `match` для вхідних видів і як у `reconcile` для вихідних і переказу, але без `supplierPaymentId` (оплату постачальнику при внесенні лише створюють нову; наявну прив'язують уже до внесеного рядка). Це одна дія: або платіж внесено й рознесено, або платежу немає. Вид проти напряму (BR-BANK-025), обов'язкові поля виду й усі його посилання (BR-BANK-010, 027…034, 038) перевіряються ДО вставки рядка — відмова тут не створює нічого. Вихідні види, крім нової оплати постачальнику, вставляють рядок і розносять його в одній транзакції БД — відмова відкочує і проведення, і сам рядок. Вхідні види й нова оплата постачальнику проводяться власними транзакціями (`PaymentsService.create`, `SupplierPaymentsService.create` + `confirm`): рядок вставляється й розноситься тим самим шляхом, що `match` / `reconcile`, а якщо рознесення не вдалося й рядок повернувся в `UNMATCHED` (BR-BANK-009, 029), він м'яко видаляється, і клієнт отримує початкову помилку. Рядок, що лишився `MATCHED` (оплату постачальнику проведено або її стан невідомий; оплату клієнта створено, а посилання на неї не записалось), не видаляється — інакше повторне внесення заплатило б удруге. Відповідь — рядок із результатом рознесення. Без `allocation` — як BR-BANK-023; ключ ідемпотентності після відмови звільняється, тож повтор проходить.
 - **BR-BANK-043**: Банківський рахунок не видаляється, поки на нього рознесено рядки виписки (рішення власника №9, 2026-10-26): живий рядок `MATCHED` цього рахунку (`bankAccountId`) або рядок іншого рахунку, рознесений як переказ на цей (`transferBankAccountId`) → 400 «На рахунок рознесено рядки банківської виписки — спершу скасуйте рознесення», рахунок не видаляється. Нерознесені (`UNMATCHED`), ігноровані й видалені рядки видалення не блокують. Модуль `bank-accounts` (`BankAccountsService.remove`). Зарплатний період — BR-PAYR-012.
+- **BR-BANK-044**: **Повернення клієнту з виписки — не більше переплати** (рішення власника 2026-10-30, TECH-DEBT (б) №37). Рознесення `CLIENT_REFUND` (і при внесенні, BR-BANK-041) проходить, лише коли сума рядка в базовій валюті (курс на дату операції — та сама конверсія йде в проводку `REFUND_OUT`) не більша за переплату клієнта `max(0, −баланс)`; рахунок розрахунків блокується `FOR UPDATE` у транзакції рознесення, рівно доступна сума проходить. Більше → 400 з доступною сумою в базовій валюті, захоплення рядка відкочується (рядок лишається `UNMATCHED`). Каса — BR-CASH-029.
+- **BR-BANK-045**: **Вхідні види оплати клієнта — лише клієнтові** (рішення власника 2026-10-30, TECH-DEBT (б) №48). `match` і внесення з рознесенням видів `PREPAYMENT` / `SERVICE` / `INVOICE` / `REFUND` / `OTHER` (проводка оплати клієнта) на контрагента лише з роллю постачальника → 400 «Контрагент не є клієнтом» до захоплення рядка; «обидва» — проходить. Пікер контрагента цих видів показує лише клієнтів і «обидва» (`types=CLIENT&types=BOTH`).
+- **BR-BANK-046**: **«Повернення від постачальника» — окремий вхідний вид** (`SUPPLIER_REFUND_IN`, рішення власника 2026-10-30, TECH-DEBT (б) №48). Розноситься через `reconcile` (і при внесенні): лише вхідний рядок (вихідний → 400 «не підходить для напряму»), контрагент — постачальник або «обидва» (клієнт → 400), обов'язковий. У транзакції рознесення — проводка `SUPPLIER_PAYMENT_RETURN` (наш аванс постачальнику меншає, як повернення в касі BR-CASH-019), сума й валюта з рядка, курс на дату операції; не більше нашого аванса `max(0, баланс)` у базовій валюті (рахунок розрахунків `FOR UPDATE`, рівно аванс проходить; більше → 400 з доступною сумою). Скасування рознесення — проводка `SUPPLIER_PAYMENT_RETURN_CANCEL` з сумою, курсом і базовою сумою початкової (BR-BANK-039). Web: вид у вікні рознесення вхідного платежу й у «Рознести як» вхідного внесення, пікер постачальників (`types=SUPPLIER&types=BOTH`), підтвердження перед проведенням.
 - **BR-BANK-042**: Еквівалент рядка в базовій валюті (`amountBase`, `Decimal(12,2)`) не більший за 9 999 999 999,99 — і в ручному внесенні (`createManual`), і в імпорті (`applyImport`): сума в DTO вже обмежена `BANK_TX_AMOUNT_MAX`, але валютна сума × курс може вийти за межу колонки. Понад межу (округлено до копійки, як ляже в колонку) — 400 `err.bankStatement.amountBaseOverflow` до будь-якого запису; імпорт тоді не пише жодного рядка (2026-10-24; раніше БД відповідала 500 `numeric field overflow`).
 
 ---
@@ -265,38 +268,38 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/bank-statements/`
 
-| Аспект                                                | Тест                                                       | Кейсів |
-| ----------------------------------------------------- | ---------------------------------------------------------- | ------ |
-| авто-матч з контрагентом                              | `bank-reconciliation.auto-match.spec.ts`                   | 5      |
-| внесення з рознесенням (BR-BANK-041)                  | `bank-reconciliation.create-allocated.spec.ts`             | 48     |
-| напрям в імпорті, ручні дублі, підказки вихідних      | `bank-reconciliation.direction.spec.ts`                    | 21     |
-| імпорт у staging, межа amountBase (BR-BANK-042)       | `bank-reconciliation.import.spec.ts`                       | 6      |
-| ручне внесення і видалення ручного рядка              | `bank-reconciliation.manual.spec.ts`                       | 25     |
-| рознесення вихідних (напрям, CAS, види без оплати)    | `bank-reconciliation.outgoing.spec.ts`                     | 77     |
-| рознесення вхідних / ігнорування (FSM)                | `bank-reconciliation.posting.spec.ts`                      | 23     |
-| сервісна логіка                                       | `bank-reconciliation.service.spec.ts`                      | 27     |
-| вихідний як оплата постачальнику, кандидати           | `bank-reconciliation.supplier-payment.spec.ts`             | 32     |
-| скасування рознесення                                 | `bank-reconciliation.unreconcile.spec.ts`                  | 37     |
-| парсер файлу виписки (+ напрям рядка)                 | `bank-statement-parser.service.spec.ts`                    | 71     |
-| контролер провайдерів                                 | `bank-statement-providers.controller.spec.ts`              | 7      |
-| BullMQ-processor                                      | `bank-statement-pull.processor.spec.ts`                    | 24     |
-| scheduler                                             | `bank-statement-pull.scheduler.spec.ts`                    | 4      |
-| DTO-межі запитів                                      | `bank-statement.dto.spec.ts`                               | 92     |
-| доступ (ролі), маршрути                               | `bank-statements.controller.spec.ts`                       | 19     |
-| HTTP-клієнт                                           | `providers/mono-statement.client.spec.ts`                  | 16     |
-| провайдер                                             | `providers/monobank-statement.provider.spec.ts`            | 26     |
-| HTTP-клієнт                                           | `providers/privat24.client.spec.ts`                        | 13     |
-| провайдер                                             | `providers/privat24.provider.spec.ts`                      | 25     |
-| purpose parser                                        | `purpose-parser.spec.ts`                                   | 11     |
-| курс проведення оплати постачальнику на дату операції | `../supplier-payments/supplier-payments.rate-date.spec.ts` | 4      |
-| видалення рахунку з рознесеними рядками (BR-BANK-043) | `../bank-accounts/bank-accounts.service.spec.ts`           | 5      |
+| Аспект                                                                                                               | Тест                                                       | Кейсів |
+| -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------ |
+| авто-матч з контрагентом                                                                                             | `bank-reconciliation.auto-match.spec.ts`                   | 5      |
+| внесення з рознесенням (BR-BANK-041)                                                                                 | `bank-reconciliation.create-allocated.spec.ts`             | 48     |
+| напрям в імпорті, ручні дублі, підказки вихідних                                                                     | `bank-reconciliation.direction.spec.ts`                    | 21     |
+| імпорт у staging, межа amountBase (BR-BANK-042)                                                                      | `bank-reconciliation.import.spec.ts`                       | 6      |
+| ручне внесення і видалення ручного рядка                                                                             | `bank-reconciliation.manual.spec.ts`                       | 25     |
+| рознесення вихідних (напрям, CAS, види без оплати; межа повернення, повернення від постачальника — BR-BANK-044, 046) | `bank-reconciliation.outgoing.spec.ts`                     | 88     |
+| рознесення вхідних / ігнорування (FSM); оплата клієнта лише клієнтам (BR-BANK-045)                                   | `bank-reconciliation.posting.spec.ts`                      | 30     |
+| сервісна логіка                                                                                                      | `bank-reconciliation.service.spec.ts`                      | 27     |
+| вихідний як оплата постачальнику, кандидати                                                                          | `bank-reconciliation.supplier-payment.spec.ts`             | 32     |
+| скасування рознесення                                                                                                | `bank-reconciliation.unreconcile.spec.ts`                  | 39     |
+| парсер файлу виписки (+ напрям рядка)                                                                                | `bank-statement-parser.service.spec.ts`                    | 71     |
+| контролер провайдерів                                                                                                | `bank-statement-providers.controller.spec.ts`              | 7      |
+| BullMQ-processor                                                                                                     | `bank-statement-pull.processor.spec.ts`                    | 24     |
+| scheduler                                                                                                            | `bank-statement-pull.scheduler.spec.ts`                    | 4      |
+| DTO-межі запитів                                                                                                     | `bank-statement.dto.spec.ts`                               | 92     |
+| доступ (ролі), маршрути                                                                                              | `bank-statements.controller.spec.ts`                       | 19     |
+| HTTP-клієнт                                                                                                          | `providers/mono-statement.client.spec.ts`                  | 16     |
+| провайдер                                                                                                            | `providers/monobank-statement.provider.spec.ts`            | 26     |
+| HTTP-клієнт                                                                                                          | `providers/privat24.client.spec.ts`                        | 13     |
+| провайдер                                                                                                            | `providers/privat24.provider.spec.ts`                      | 25     |
+| purpose parser                                                                                                       | `purpose-parser.spec.ts`                                   | 11     |
+| курс проведення оплати постачальнику на дату операції                                                                | `../supplier-payments/supplier-payments.rate-date.spec.ts` | 4      |
+| видалення рахунку з рознесеними рядками (BR-BANK-043)                                                                | `../bank-accounts/bank-accounts.service.spec.ts`           | 5      |
 
 Спільний сетап аспектних спеків `bank-reconciliation.*` — `bank-reconciliation.spec-fixture.ts` (фабрики моків) і
 `bank-reconciliation.world.spec-fixture.ts` («світ» вихідних платежів: Prisma-підробка з даними в пам'яті, що
 виконує `where`, справжній CAS в `updateMany`, відкат записів tx-клієнта в `$transaction`; сервіс збирається
 через DI за токенами класів).
 
-Разом: **608** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **628** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Спільні zod-схеми рознесення при внесенні (види за напрямом, обов'язкові поля виду) —
 `packages/shared/src/schemas/forms/bank-transaction.schema.spec.ts` (поза модулем api).
