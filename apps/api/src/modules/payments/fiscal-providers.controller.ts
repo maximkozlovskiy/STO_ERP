@@ -62,13 +62,6 @@ export class FiscalProvidersController {
     private readonly integrationLog: IntegrationLogService,
   ) {}
 
-  @Get()
-  @Roles('OWNER', 'ADMIN')
-  @ApiOperation({ summary: 'Метадані провайдерів ПРРО (code, name)' })
-  list() {
-    return this.registry.list();
-  }
-
   // Verify робить зовнішній HTTP-виклик до провайдера — тротлимо суворіше (5/хв).
   @Post(':code/verify')
   @Roles('OWNER', 'ADMIN')

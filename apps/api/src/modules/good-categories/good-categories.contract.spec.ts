@@ -16,7 +16,6 @@ const serviceMock = {
   update: vi.fn(),
   remove: vi.fn(),
   toggleActive: vi.fn(),
-  getLinkedWorkCategories: vi.fn(),
 };
 
 let jwtAllow = true;
@@ -31,7 +30,6 @@ const mockJwtGuard = {
 const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
 
 const VALID_UUID = '11111111-1111-4111-8111-111111111111';
-const VALID_UUID_2 = '22222222-2222-4222-8222-222222222222';
 
 describe('GoodCategories — HTTP Contract', () => {
   let app: INestApplication;
@@ -260,33 +258,6 @@ describe('GoodCategories — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(400);
       expect(serviceMock.toggleActive).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('GET /good-categories/:id/linked-work-categories', () => {
-    it('повертає 200 + масив UUID-ів', async () => {
-      serviceMock.getLinkedWorkCategories.mockResolvedValueOnce([VALID_UUID_2]);
-      const res = await (app as NestFastifyApplication).inject({
-        method: 'GET',
-        url: `/good-categories/${VALID_UUID}/linked-work-categories`,
-      });
-      expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual([VALID_UUID_2]);
-      expect(serviceMock.getLinkedWorkCategories).toHaveBeenCalledWith('org-1', VALID_UUID);
-    });
-
-    // Bug #100/#155 pattern: sub-resource route must NOT be eaten by :id wildcard.
-    // Якщо хтось перенесе цей роут ПІСЛЯ @Get(':id') — Fastify зробить @Get(':id')
-    // match для "linked-work-categories" (як UUID-string) → ParseUUIDPipe → 400.
-    it('sub-resource роут не плутається з :id (Bug #100 pattern)', async () => {
-      serviceMock.getLinkedWorkCategories.mockResolvedValueOnce([]);
-      const res = await (app as NestFastifyApplication).inject({
-        method: 'GET',
-        url: `/good-categories/${VALID_UUID}/linked-work-categories`,
-      });
-      expect(res.statusCode).toBe(200);
-      // findOne (для @Get(':id')) НЕ повинен викликатись
-      expect(serviceMock.findOne).not.toHaveBeenCalled();
     });
   });
 });

@@ -13,7 +13,6 @@ import {
   stockDocumentCreateSchema,
   stockDocumentUpdateSchema,
   supplierPaymentCreateSchema,
-  supplierPaymentUpdateSchema,
   workOrderCreateSchema,
   workOrderUpdateSchema,
   workOrderLineSchema,
@@ -109,12 +108,6 @@ const CASES: Case[] = [
       amount: v,
       method: 'BANK',
     }),
-    cap: 'money',
-  },
-  {
-    name: 'PATCH /supplier-payments amount',
-    schema: supplierPaymentUpdateSchema,
-    body: v => ({ amount: v }),
     cap: 'money',
   },
   // Складський документ

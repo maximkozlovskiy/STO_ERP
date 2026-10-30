@@ -6,7 +6,7 @@ import { type FiscalProvider, FISCAL_PROVIDERS } from './fiscal-provider.interfa
  * DI-токен FISCAL_PROVIDERS — додати нового = зареєструвати impl у payments.module
  * (`{ provide: FISCAL_PROVIDERS, useExisting: <Impl>, multi: true }`), сам реєстр НЕ чіпається
  * (Open/Closed + DIP: реєстр залежить від абстракції FiscalProvider[], не від конкретних класів).
- * cash-shift.service та fiscal.processor звертаються сюди через `get(code)` / `list()`.
+ * cash-shift.service та fiscal.processor звертаються сюди через `get(code)`.
  */
 @Injectable()
 export class FiscalProviderRegistry {
@@ -22,10 +22,5 @@ export class FiscalProviderRegistry {
     const p = this.providers.get(code);
     if (!p) this.logger.warn(`Невідомий провайдер ПРРО: ${code}`);
     return p ?? null;
-  }
-
-  /** Метадані всіх провайдерів для UI (без кредів). */
-  list(): Array<{ code: string; name: string }> {
-    return [...this.providers.values()].map(p => ({ code: p.code, name: p.name }));
   }
 }

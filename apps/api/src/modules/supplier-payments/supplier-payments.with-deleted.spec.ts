@@ -38,7 +38,6 @@ describeDeletedDocument<SupplierPaymentsService>({
   },
   findOne: (svc, orgId, id, opts) => svc.findOne(orgId, id, opts),
   mutations: {
-    update: (svc, orgId, id) => svc.update(orgId, id, { notes: 'нове' }),
     confirm: (svc, orgId, id) => svc.confirm(orgId, id, 'user-1'),
     cancel: (svc, orgId, id) => svc.cancel(orgId, id),
     'remove (повторне видалення)': (svc, orgId, id) => svc.remove(orgId, id),

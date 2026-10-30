@@ -116,8 +116,8 @@ describe('SupplierPaymentsController — schedule/documents contract', () => {
   });
 });
 
-// ─── Linked documents (Phase B backend) — full HTTP contract ─────────────
-const linkedServiceMock = {
+// ─── HTTP-контракт маршрутів із повним модулем Nest (ідемпотентність, withDeleted) ───
+const serviceMock = {
   create: vi.fn(),
   findAll: vi.fn(),
   getSchedule: vi.fn(),
@@ -125,10 +125,7 @@ const linkedServiceMock = {
   confirm: vi.fn(),
   cancel: vi.fn(),
   findOne: vi.fn(),
-  update: vi.fn(),
   remove: vi.fn(),
-  getLinkedDocuments: vi.fn(),
-  getLinkedCounts: vi.fn(),
 };
 
 let jwtAllow = true;
@@ -142,14 +139,14 @@ const mockJwtGuard = {
 };
 const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
 
-describe('SupplierPayments — linked-documents HTTP Contract', () => {
+describe('SupplierPayments — HTTP Contract', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [SupplierPaymentsController],
       providers: [
-        { provide: SupplierPaymentsService, useValue: linkedServiceMock },
+        { provide: SupplierPaymentsService, useValue: serviceMock },
         // MV-M2: confirm несе @RequireIdempotencyKey() → RequiredIdempotencyInterceptor (DI
         // потребує PrismaService). idempotencyKey.* не викликається для «без ключа» (400 раніше).
         { provide: PrismaService, useValue: { idempotencyKey: {} } },
@@ -180,103 +177,6 @@ describe('SupplierPayments — linked-documents HTTP Contract', () => {
 
   const VALID_UUID = '11111111-1111-4111-8111-111111111111';
 
-  describe('GET /supplier-payments/:id/linked-documents', () => {
-    it('повертає 200 і делегує (orgId, id)', async () => {
-      linkedServiceMock.getLinkedDocuments.mockResolvedValueOnce({
-        purchaseOrder: [],
-        counterparty: [],
-        account: [],
-      });
-      const res = await (app as NestFastifyApplication).inject({
-        method: 'GET',
-        url: `/supplier-payments/${VALID_UUID}/linked-documents`,
-      });
-      expect(res.statusCode).toBe(200);
-      expect(linkedServiceMock.getLinkedDocuments).toHaveBeenCalledWith('org-1', VALID_UUID);
-    });
-
-    it('повертає 400 для не-UUID id', async () => {
-      const res = await (app as NestFastifyApplication).inject({
-        method: 'GET',
-        url: '/supplier-payments/not-uuid/linked-documents',
-      });
-      expect(res.statusCode).toBe(400);
-    });
-
-    // Route ordering: :id/linked-documents НЕ має бути перехоплений @Get(':id').
-    it('route ordering: linked-documents не ловиться :id (findOne НЕ викликаний)', async () => {
-      linkedServiceMock.getLinkedDocuments.mockResolvedValueOnce({
-        purchaseOrder: [],
-        counterparty: [],
-        account: [],
-      });
-      await (app as NestFastifyApplication).inject({
-        method: 'GET',
-        url: `/supplier-payments/${VALID_UUID}/linked-documents`,
-      });
-      expect(linkedServiceMock.getLinkedDocuments).toHaveBeenCalledTimes(1);
-      expect(linkedServiceMock.findOne).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('POST /supplier-payments/linked-counts', () => {
-    it('повертає 200 і делегує (orgId, ids)', async () => {
-      linkedServiceMock.getLinkedCounts.mockResolvedValueOnce({});
-      const res = await (app as NestFastifyApplication).inject({
-        method: 'POST',
-        url: '/supplier-payments/linked-counts',
-        headers: { 'content-type': 'application/json' },
-        payload: JSON.stringify({ ids: [VALID_UUID] }),
-      });
-      expect(res.statusCode).toBe(200);
-      expect(linkedServiceMock.getLinkedCounts).toHaveBeenCalledWith('org-1', [VALID_UUID]);
-    });
-
-    it('повертає 400 для порожнього масиву (ArrayMinSize)', async () => {
-      const res = await (app as NestFastifyApplication).inject({
-        method: 'POST',
-        url: '/supplier-payments/linked-counts',
-        headers: { 'content-type': 'application/json' },
-        payload: JSON.stringify({ ids: [] }),
-      });
-      expect(res.statusCode).toBe(400);
-    });
-
-    it('повертає 400 для 501 id (ArrayMaxSize)', async () => {
-      const ids = Array.from({ length: 501 }, () => VALID_UUID);
-      const res = await (app as NestFastifyApplication).inject({
-        method: 'POST',
-        url: '/supplier-payments/linked-counts',
-        headers: { 'content-type': 'application/json' },
-        payload: JSON.stringify({ ids }),
-      });
-      expect(res.statusCode).toBe(400);
-    });
-
-    it('повертає 400 для non-UUID елемента', async () => {
-      const res = await (app as NestFastifyApplication).inject({
-        method: 'POST',
-        url: '/supplier-payments/linked-counts',
-        headers: { 'content-type': 'application/json' },
-        payload: JSON.stringify({ ids: ['not-a-uuid'] }),
-      });
-      expect(res.statusCode).toBe(400);
-    });
-
-    // Route ordering: POST /linked-counts не має вимагати UUID :id.
-    it('route ordering: linked-counts не ловиться POST :id', async () => {
-      linkedServiceMock.getLinkedCounts.mockResolvedValueOnce({});
-      const res = await (app as NestFastifyApplication).inject({
-        method: 'POST',
-        url: '/supplier-payments/linked-counts',
-        headers: { 'content-type': 'application/json' },
-        payload: JSON.stringify({ ids: [VALID_UUID] }),
-      });
-      expect(res.statusCode).toBe(200);
-      expect(linkedServiceMock.getLinkedCounts).toHaveBeenCalledTimes(1);
-    });
-  });
-
   describe('POST /supplier-payments/:id/confirm — ідемпотентність (MV-M2)', () => {
     // MV-M2 (аудит 2026-10-25): confirm має @RequireIdempotencyKey() — повтор після обриву з тим
     // самим ключем віддає збережене тіло, а не 400 alreadyConfirmedOrChanged. Контрактний guard:
@@ -289,7 +189,7 @@ describe('SupplierPayments — linked-documents HTTP Contract', () => {
         headers: { 'content-type': 'application/json' },
       });
       expect(res.statusCode).toBe(400);
-      expect(linkedServiceMock.confirm).not.toHaveBeenCalled();
+      expect(serviceMock.confirm).not.toHaveBeenCalled();
     });
   });
 
@@ -297,7 +197,7 @@ describe('SupplierPayments — linked-documents HTTP Contract', () => {
   describeWithDeletedRoute({
     path: '/supplier-payments',
     app: () => app,
-    findOne: linkedServiceMock.findOne,
+    findOne: serviceMock.findOne,
     callerOrgId: 'org-1',
   });
 });

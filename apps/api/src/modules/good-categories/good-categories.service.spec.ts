@@ -22,7 +22,6 @@ describe('GoodCategoriesService — business rules', () => {
       updateMany: ReturnType<typeof vi.fn>;
     };
     good: { updateMany: ReturnType<typeof vi.fn> };
-    workGoodCategoryLink: { findMany: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
   let cache: {
@@ -42,7 +41,6 @@ describe('GoodCategoriesService — business rules', () => {
         updateMany: vi.fn(),
       },
       good: { updateMany: vi.fn() },
-      workGoodCategoryLink: { findMany: vi.fn() },
       $transaction: vi.fn(async fn => fn(prisma)),
     };
     cache = { get: vi.fn().mockResolvedValue(null), set: vi.fn(), del: vi.fn() };

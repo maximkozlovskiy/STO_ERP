@@ -84,10 +84,6 @@ export const supplierPaymentFormSchema = z.object(supplierPaymentShape).superRef
 export type SupplierPaymentFormValues = z.infer<typeof supplierPaymentFormSchema>;
 export type SupplierPaymentFormInput = z.input<typeof supplierPaymentFormSchema>;
 
-// Бек-схеми: create = форма (той самий superRefine); update — усі поля опційні (cross-field на merged
-// перевіряє service; тут не рефайнимо, щоб PATCH одного поля не вимагав повного набору).
+// Бек-схема create = форма (той самий superRefine). PATCH оплати прибрано 2026-10-30 — схеми update немає.
 export const supplierPaymentCreateSchema = supplierPaymentFormSchema;
 export type SupplierPaymentCreateValues = SupplierPaymentFormValues;
-
-export const supplierPaymentUpdateSchema = z.object(supplierPaymentShape).partial();
-export type SupplierPaymentUpdateValues = z.infer<typeof supplierPaymentUpdateSchema>;

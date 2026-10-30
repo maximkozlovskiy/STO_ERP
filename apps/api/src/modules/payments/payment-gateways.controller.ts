@@ -59,13 +59,6 @@ export class PaymentGatewaysController {
     private readonly integrationLog: IntegrationLogService,
   ) {}
 
-  @Get()
-  @Roles('OWNER', 'ADMIN')
-  @ApiOperation({ summary: 'Метадані платіжних шлюзів (code, name)' })
-  list() {
-    return this.gateways.list();
-  }
-
   // Verify робить зовнішній HTTP-виклик до шлюзу — тротлимо суворіше (5/хв).
   @Post(':code/verify')
   @Roles('OWNER', 'ADMIN')

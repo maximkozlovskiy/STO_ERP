@@ -24,7 +24,7 @@ describe('CashRegistersController — ролі доступу до каси', ()
   });
 
   // guards: BR-CASH-014
-  it.each(['findAll', 'balance', 'operations'] as const)(
+  it.each(['findAll', 'operations'] as const)(
     '%s — перегляд: OWNER, ADMIN, ACCOUNTANT і RECEPTIONIST',
     method => {
       expect(rolesOf(method)).toEqual(['ACCOUNTANT', 'ADMIN', 'OWNER', 'RECEPTIONIST']);

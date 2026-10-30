@@ -518,7 +518,6 @@ export const en: Record<string, string> = {
   'err.supplierPayment.purchaseOrderNotFound': 'Purchase order not found',
   'err.supplierPayment.orderNotForSupplier': 'The order does not belong to the specified supplier',
   'err.supplierPayment.sourceHasNoCurrency': 'The source account has no currency',
-  'err.supplierPayment.onlyDraftEditable': 'Editing is allowed only in the "Draft" status',
   'err.supplierPayment.currencyMustMatchOrder':
     'The payment currency must match the order currency',
   'err.supplierPayment.cannotConfirmFromStatus':

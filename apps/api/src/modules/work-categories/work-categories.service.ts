@@ -184,16 +184,6 @@ export class WorkCategoriesService {
     return { ...this.toDto(updated), children: [] };
   }
 
-  async getLinkedGoodCategories(orgId: string, id: string): Promise<string[]> {
-    const links = await this.prisma.workGoodCategoryLink.findMany({
-      where: { orgId, workCategoryId: id },
-      select: { goodCategoryId: true },
-      // OOM guard — links per work category typovo 5-50; cap високий щоб покрити "Універсал".
-      take: 500,
-    });
-    return links.map(l => l.goodCategoryId);
-  }
-
   private async getDescendantIds(orgId: string, parentId: string): Promise<string[]> {
     // Load all org categories once, then walk in memory — avoids N+1 recursion.
     // Сторінками до кінця, не `take: 1000`: на обході тримаються захист від циклу й каскадне

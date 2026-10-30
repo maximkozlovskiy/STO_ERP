@@ -638,7 +638,6 @@ export const VALIDATION_KEYS = [
   'err.supplierPayment.purchaseOrderNotFound',
   'err.supplierPayment.orderNotForSupplier',
   'err.supplierPayment.sourceHasNoCurrency',
-  'err.supplierPayment.onlyDraftEditable',
   'err.supplierPayment.currencyMustMatchOrder',
   'err.supplierPayment.cannotConfirmFromStatus',
   'err.supplierPayment.alreadyConfirmedOrChanged',

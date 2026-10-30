@@ -10,7 +10,7 @@ import {
 
 /**
  * Registry служб доставки + Нова Пошта client/provider units.
- * Доводимо: registry get/list; NovaPoshtaClient (SSRF/3xx/timeout/JSON-shape); mapStatus усіх кодів.
+ * Доводимо: registry get; NovaPoshtaClient (SSRF/3xx/timeout/JSON-shape); mapStatus усіх кодів.
  */
 describe('DeliveryProviderRegistry', () => {
   const make = () =>
@@ -20,11 +20,6 @@ describe('DeliveryProviderRegistry', () => {
     const r = make();
     expect(r.get('novaposhta')?.code).toBe('novaposhta');
     expect(r.get('unknown')).toBeNull();
-  });
-
-  it('list() — метадані без кредів', () => {
-    const list = make().list();
-    expect(list).toEqual([{ code: 'novaposhta', name: 'Нова Пошта' }]);
   });
 });
 

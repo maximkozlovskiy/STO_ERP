@@ -278,23 +278,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/settings/branch/{branchId}/fiscal/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Перевірити креди ПРРО (Checkbox) — без пробиття чеку */
-        post: operations["SettingsController_verifyFiscal_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/settings/document-numbers": {
         parameters: {
             query?: never;
@@ -723,23 +706,6 @@ export interface paths {
         head?: never;
         /** Увімкнути/вимкнути категорію робіт */
         patch: operations["WorkCategoriesController_toggleActive_v1"];
-        trace?: never;
-    };
-    "/api/v1/work-categories/{id}/linked-good-categories": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Пов'язані категорії товарів для категорії робіт */
-        get: operations["WorkCategoriesController_getLinkedGoodCategories_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/work-categories/{id}": {
@@ -2146,23 +2112,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/good-categories/{id}/linked-work-categories": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Пов'язані категорії робіт для категорії товарів */
-        get: operations["GoodCategoriesController_getLinkedWorkCategories_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/good-categories/{id}/toggle-active": {
         parameters: {
             query?: never;
@@ -3314,23 +3263,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/delivery-providers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Метадані служб доставки (code, name) */
-        get: operations["DeliveryProvidersController_list_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/delivery-providers/{code}/verify": {
         parameters: {
             query?: never;
@@ -4224,40 +4156,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/supplier-payments/{id}/linked-documents": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Пов'язані документи оплати (замовлення, контрагент, рахунок) */
-        get: operations["SupplierPaymentsController_getLinkedDocuments_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/supplier-payments/linked-counts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Кількість пов'язаних документів для списку оплат (batch) */
-        post: operations["SupplierPaymentsController_getLinkedCounts_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/supplier-payments/{id}": {
         parameters: {
             query?: never;
@@ -4273,8 +4171,7 @@ export interface paths {
         delete: operations["SupplierPaymentsController_remove_v1"];
         options?: never;
         head?: never;
-        /** Оновити оплату (тільки DRAFT) */
-        patch: operations["SupplierPaymentsController_update_v1"];
+        patch?: never;
         trace?: never;
     };
     "/api/v1/stock-documents": {
@@ -4625,23 +4522,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/payments/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Платіж за id */
-        get: operations["PaymentsController_findOne_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/payments/{id}/reverse": {
         parameters: {
             query?: never;
@@ -4761,23 +4641,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/payment-gateways": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Метадані платіжних шлюзів (code, name) */
-        get: operations["PaymentGatewaysController_list_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/payment-gateways/{code}/verify": {
         parameters: {
             query?: never;
@@ -4824,23 +4687,6 @@ export interface paths {
         put?: never;
         /** Активувати шлюз (ексклюзивно): інші вимикаються */
         post: operations["PaymentGatewaysController_activate_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/fiscal-providers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Метадані провайдерів ПРРО (code, name) */
-        get: operations["FiscalProvidersController_list_v1"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6096,23 +5942,6 @@ export interface paths {
         patch: operations["CashRegistersController_update_v1"];
         trace?: never;
     };
-    "/api/v1/cash-registers/{id}/balance": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Поточний залишок каси */
-        get: operations["CashRegistersController_balance_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/cash-registers/{id}/operations": {
         parameters: {
             query?: never;
@@ -6757,10 +6586,6 @@ export interface components {
             smsSenderName?: string;
             /** @description Робочі дні тижня, ISO (1=пн, ..., 7=нд) */
             workDays?: number[];
-        };
-        VerifyFiscalDto: {
-            apiUrl?: string;
-            credentials: Record<string, never>;
         };
         UpdateDocNumberDto: {
             prefix?: Record<string, never>;
@@ -9947,6 +9772,10 @@ export interface components {
         ActivateGatewayDto: {
             provider: string;
         };
+        VerifyFiscalDto: {
+            apiUrl?: string;
+            credentials: Record<string, never>;
+        };
         UpsertFiscalDto: {
             provider: string;
             apiUrl?: string;
@@ -11738,29 +11567,6 @@ export interface operations {
             };
         };
     };
-    SettingsController_verifyFiscal_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                branchId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VerifyFiscalDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
     SettingsController_getDocNumbers_v1: {
         parameters: {
             query?: never;
@@ -12816,27 +12622,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkCategoryResponseDto"];
-                };
-            };
-        };
-    };
-    WorkCategoriesController_getLinkedGoodCategories_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": string[];
                 };
             };
         };
@@ -15712,27 +15497,6 @@ export interface operations {
             };
         };
     };
-    GoodCategoriesController_getLinkedWorkCategories_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": string[];
-                };
-            };
-        };
-    };
     GoodCategoriesController_toggleActive_v1: {
         parameters: {
             query?: never;
@@ -17678,23 +17442,6 @@ export interface operations {
             };
         };
     };
-    DeliveryProvidersController_list_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
     DeliveryProvidersController_verify_v1: {
         parameters: {
             query?: never;
@@ -19055,48 +18802,6 @@ export interface operations {
             };
         };
     };
-    SupplierPaymentsController_getLinkedDocuments_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    SupplierPaymentsController_getLinkedCounts_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LinkedCountsDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-        };
-    };
     SupplierPaymentsController_findOne_v1: {
         parameters: {
             query?: {
@@ -19137,27 +18842,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    SupplierPaymentsController_update_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SupplierPaymentResponseDto"];
-                };
             };
         };
     };
@@ -19811,27 +19495,6 @@ export interface operations {
             };
         };
     };
-    PaymentsController_findOne_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaymentResponseDto"];
-                };
-            };
-        };
-    };
     PaymentsController_reverse_v1: {
         parameters: {
             query?: never;
@@ -19990,23 +19653,6 @@ export interface operations {
             };
         };
     };
-    PaymentGatewaysController_list_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
     PaymentGatewaysController_verify_v1: {
         parameters: {
             query?: never;
@@ -20094,23 +19740,6 @@ export interface operations {
         };
         responses: {
             201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    FiscalProvidersController_list_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22285,25 +21914,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CashRegisterResponseDto"];
                 };
-            };
-        };
-    };
-    CashRegistersController_balance_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };

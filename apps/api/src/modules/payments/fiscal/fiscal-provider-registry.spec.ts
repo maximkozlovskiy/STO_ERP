@@ -8,7 +8,7 @@ import { publicHostLookup } from '../../../common/testing/host-lookup';
 
 /**
  * Registry провайдерів ПРРО + checkbox/vchasno units.
- * Доводимо: registry.get/list; CheckboxProvider обгортка parity + 401-map; Vchasno SSRF/401.
+ * Доводимо: registry.get; CheckboxProvider обгортка parity + 401-map; Vchasno SSRF/401.
  */
 describe('FiscalProviderRegistry', () => {
   const make = () =>
@@ -22,11 +22,6 @@ describe('FiscalProviderRegistry', () => {
     expect(r.get('checkbox')?.code).toBe('checkbox');
     expect(r.get('vchasno')?.code).toBe('vchasno');
     expect(r.get('unknown')).toBeNull();
-  });
-
-  it('list() — метадані обох провайдерів без кредів', () => {
-    const list = make().list();
-    expect(list.map(p => p.code).sort()).toEqual(['checkbox', 'vchasno']);
   });
 });
 

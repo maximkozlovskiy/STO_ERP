@@ -180,14 +180,27 @@ export class GoodCategoriesService {
     return { ...this.toDto(updated), children: [] };
   }
 
-  async getLinkedWorkCategories(orgId: string, id: string): Promise<string[]> {
-    const links = await this.prisma.workGoodCategoryLink.findMany({
-      where: { orgId, goodCategoryId: id },
-      select: { workCategoryId: true },
-      // OOM guard — links per category typovo 5-50; cap високий щоб покрити "Універсал".
-      take: 500,
-    });
-    return links.map(l => l.workCategoryId);
+  private buildTree(
+    all: Array<{
+      id: string;
+      orgId: string;
+      parentId: string | null;
+      name: string;
+      code: string | null;
+      isSystem: boolean;
+      isActive: boolean;
+      sortOrder: number;
+      createdAt: Date;
+      updatedAt: Date;
+    }>,
+    parentId: string | null,
+  ): GoodCategoryResponseDto[] {
+    return all
+      .filter(item => item.parentId === parentId)
+      .map(item => ({
+        ...this.toDto(item),
+        children: this.buildTree(all, item.id),
+      }));
   }
 
   private async getDescendantIds(orgId: string, parentId: string): Promise<string[]> {
@@ -219,29 +232,6 @@ export class GoodCategoriesService {
       }
     }
     return result;
-  }
-
-  private buildTree(
-    all: Array<{
-      id: string;
-      orgId: string;
-      parentId: string | null;
-      name: string;
-      code: string | null;
-      isSystem: boolean;
-      isActive: boolean;
-      sortOrder: number;
-      createdAt: Date;
-      updatedAt: Date;
-    }>,
-    parentId: string | null,
-  ): GoodCategoryResponseDto[] {
-    return all
-      .filter(item => item.parentId === parentId)
-      .map(item => ({
-        ...this.toDto(item),
-        children: this.buildTree(all, item.id),
-      }));
   }
 
   private toDto(item: {

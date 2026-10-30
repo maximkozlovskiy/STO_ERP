@@ -102,13 +102,6 @@ export class CashRegistersController {
 
   // ─── Рух готівки (операції) ───────────────────────────────────────────────
 
-  @Get(':id/balance')
-  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Поточний залишок каси' })
-  async balance(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return { balance: await this.cash.getBalance(orgId, id) };
-  }
-
   @Get(':id/operations')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Історія касових операцій' })

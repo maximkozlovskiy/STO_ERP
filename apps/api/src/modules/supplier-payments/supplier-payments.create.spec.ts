@@ -61,6 +61,49 @@ describe('SupplierPaymentsService — create', () => {
     expect(settlements.createTransaction).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SUPPAY-011
+  it('create(): валюта оплати — валюта банківського рахунку-джерела', async () => {
+    prisma.counterparty.findFirst.mockResolvedValueOnce({ id: SUPPLIER_ID, type: 'SUPPLIER' });
+    prisma.bankAccount.findFirst.mockResolvedValueOnce({ id: BANK_ID, currencyId: 'usd-cur' });
+    prisma.supplierPayment.create.mockResolvedValueOnce({ ...confirmedRow, status: 'DRAFT' });
+
+    await service.create(
+      ORG,
+      {
+        supplierId: SUPPLIER_ID,
+        sourceType: PaymentSourceType.BANK_ACCOUNT,
+        bankAccountId: BANK_ID,
+        amount: 100,
+        method: 'transfer',
+      },
+      USER_ID,
+    );
+
+    const data = prisma.supplierPayment.create.mock.calls[0][0].data as { currencyId: string };
+    expect(data.currencyId).toBe('usd-cur');
+  });
+
+  // guards: BR-SUPPAY-011
+  it('create(): джерело без валюти → 400 sourceHasNoCurrency, без запису', async () => {
+    prisma.counterparty.findFirst.mockResolvedValueOnce({ id: SUPPLIER_ID, type: 'SUPPLIER' });
+    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID, currencyId: null });
+
+    await expect(
+      service.create(
+        ORG,
+        {
+          supplierId: SUPPLIER_ID,
+          sourceType: PaymentSourceType.CASH_REGISTER,
+          cashRegisterId: CASH_ID,
+          amount: 100,
+          method: 'cash',
+        },
+        USER_ID,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.supplierPayment.create).not.toHaveBeenCalled();
+  });
+
   // guards: BR-SUPPAY-002
   it('create(): BANK_ACCOUNT без bankAccountId → BadRequestException', async () => {
     await expect(

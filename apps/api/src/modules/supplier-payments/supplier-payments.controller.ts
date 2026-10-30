@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Post,
-  Patch,
   Delete,
   Body,
   Param,
@@ -29,12 +28,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { SupplierPaymentsService } from './supplier-payments.service';
-import {
-  supplierPaymentCreateSchema,
-  supplierPaymentUpdateSchema,
-  type SupplierPaymentCreateValues,
-  type SupplierPaymentUpdateValues,
-} from '@sto/shared';
+import { supplierPaymentCreateSchema, type SupplierPaymentCreateValues } from '@sto/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { RequireIdempotencyKey } from '../../common/interceptors/idempotency.interceptor';
 import {
@@ -46,7 +40,6 @@ import {
   SupplierPaymentQueryDto,
   SupplierPaymentScheduleQueryDto,
   SupplierPaymentScheduleDocumentsQueryDto,
-  LinkedCountsDto,
   SupplierPaymentResponseDto,
   PaginatedSupplierPaymentsDto,
   SupplierPaymentScheduleDto,
@@ -155,24 +148,6 @@ export class SupplierPaymentsController {
     return this.service.cancel(orgId, id, user?.id);
   }
 
-  // ─── Linked Documents ─────────────────────────────────
-  // Специфічні маршрути ПЕРЕД @Get(':id') — Fastify route ordering
-
-  @Get(':id/linked-documents')
-  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @ApiOperation({ summary: "Пов'язані документи оплати (замовлення, контрагент, рахунок)" })
-  getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getLinkedDocuments(orgId, id);
-  }
-
-  @Post('linked-counts')
-  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Кількість пов'язаних документів для списку оплат (batch)" })
-  getLinkedCounts(@OrgContext() orgId: string, @Body() dto: LinkedCountsDto) {
-    return this.service.getLinkedCounts(orgId, dto.ids);
-  }
-
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Деталі оплати постачальнику' })
@@ -185,18 +160,6 @@ export class SupplierPaymentsController {
   ) {
     // BR-WO-012: прапорець приймає лише цей маршрут — решта викликів findOne бачить невидалені.
     return this.service.findOne(orgId, id, opts);
-  }
-
-  @Patch(':id')
-  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Оновити оплату (тільки DRAFT)' })
-  @ApiOkResponse({ type: SupplierPaymentResponseDto })
-  update(
-    @OrgContext() orgId: string,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body(new ZodValidationPipe(supplierPaymentUpdateSchema)) dto: SupplierPaymentUpdateValues,
-  ) {
-    return this.service.update(orgId, id, dto);
   }
 
   @Delete(':id')

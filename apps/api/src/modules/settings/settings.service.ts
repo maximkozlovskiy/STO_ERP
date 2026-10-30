@@ -23,7 +23,7 @@ import {
   type HostLookup,
 } from '../../common/utils/url-guard';
 import { HOST_LOOKUP } from '../../common/utils/host-lookup.token';
-import { sameApiUrl, trimTrailingSlashes } from '../../common/utils/trim-trailing-slashes';
+import { sameApiUrl } from '../../common/utils/trim-trailing-slashes';
 import { workHoursOf } from '../../common/utils/work-hours';
 import { PNL_SETTINGS_DEFAULTS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -124,10 +124,9 @@ export class SettingsService {
     private readonly nbuFetchScheduler: NbuFetchScheduler,
     private readonly bankPullScheduler: BankStatementPullScheduler,
     private readonly audit: AuditService,
-    // Один спільний DNS-резолвер для SSRF resolved-перевірки. Інжектиться через DI (дефолт
-    // `lookupAllAddresses`), бо resolved-перевірка викликається з HTTP-шляху, де 4-й аргумент не
-    // передати; тест-модуль перевизначає токен фейком → `settings.contract.spec` більше не ходить
-    // у справжній DNS (`api.checkbox.ua`), що зрідка валив повний прогін.
+    // Один спільний DNS-резолвер для SSRF resolved-перевірки адрес провайдера при збереженні
+    // філії. Інжектиться через DI (дефолт `lookupAllAddresses`), бо перевірка викликається з
+    // HTTP-шляху; тест-модуль перевизначає токен фейком і не ходить у справжній DNS.
     @Inject(HOST_LOOKUP) private readonly lookup: HostLookup = lookupAllAddresses,
   ) {}
 
@@ -999,82 +998,5 @@ export class SettingsService {
       bankAccountId: org.bankAccountId ?? null,
       updatedAt: org.updatedAt instanceof Date ? org.updatedAt.toISOString() : org.updatedAt,
     };
-  }
-
-  /**
-   * Перевірка кредів ПРРО (Checkbox): тест-виклик без пробиття чеку. Валідує ключ/URL.
-   * SSRF-захист (validatePublicUrl + redirect:'manual'), AbortController 10s (offline-інваріант).
-   * Креди з body write-only — не логуються, не зберігаються. Якщо licenseKey не передано,
-   * використати збережений (щоб «Перевірити» працювало без повторного вводу ключа) — але ЛИШЕ на
-   * збережену адресу: інакше `apiUrl` у тілі переслав би write-only ключ ліцензії ПРРО на будь-який
-   * сервер у заголовку Authorization. Адреса перевіряється й після DNS-резолву.
-   */
-  async verifyFiscal(
-    orgId: string,
-    branchId: string,
-    dto: { apiUrl?: string; licenseKey?: string },
-    // Явний аргумент (unit-спек передає фейк) має пріоритет; інакше — інжектований `this.lookup`
-    // (дефолт `lookupAllAddresses`, у тест-модулі перевизначений). Так HTTP-шлях контролера, що
-    // 4-й аргумент не передає, НЕ ходить у справжній DNS під час contract-тестів.
-    lookupArg?: HostLookup,
-  ): Promise<{ valid: boolean; cashRegisterName?: string; error?: string }> {
-    const lookup = lookupArg ?? this.lookup;
-    const branch = await this.prisma.garageBranch.findFirst({
-      where: { id: branchId, orgId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
-
-    // licenseKey: з body (write-only) або збережений (extension дешифрує при читанні).
-    const stored =
-      dto.licenseKey && dto.apiUrl
-        ? null
-        : await this.prisma.branchSettings.findFirst({
-            where: { branchId, orgId },
-            select: { checkboxLicenseKey: true, checkboxApiUrl: true },
-          });
-    const storedUrl = stored?.checkboxApiUrl || 'https://api.checkbox.ua';
-    const apiUrl = dto.apiUrl || storedUrl;
-    if (
-      !dto.licenseKey &&
-      stored?.checkboxLicenseKey &&
-      trimTrailingSlashes(apiUrl) !== trimTrailingSlashes(storedUrl)
-    ) {
-      return { valid: false, error: 'Для нової адреси API введіть ліцензійний ключ ще раз' };
-    }
-    const licenseKey = dto.licenseKey || stored?.checkboxLicenseKey || undefined;
-    if (!licenseKey) return { valid: false, error: 'Не вказано ліцензійний ключ' };
-
-    const urlError = await validatePublicUrlResolved(apiUrl, lookup);
-    if (urlError) return { valid: false, error: `Невалідний API URL: ${urlError}` };
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10_000);
-    try {
-      // /api/v1/cash-registers — підтверджує валідність ключа й повертає касу(и).
-      const res = await fetch(`${trimTrailingSlashes(apiUrl)}/api/v1/cash-registers`, {
-        method: 'GET',
-        redirect: 'manual',
-        headers: {
-          Authorization: `Bearer ${licenseKey}`,
-          'X-License-Key': licenseKey,
-        },
-        signal: controller.signal,
-      });
-      if (res.status >= 300 && res.status < 400) {
-        return { valid: false, error: 'Підозріле перенаправлення від API' };
-      }
-      if (!res.ok) {
-        return { valid: false, error: `Checkbox: ${res.status}` };
-      }
-      const data = (await res.json()) as
-        { results?: Array<{ title?: string }> } | Array<{ title?: string }>;
-      const list = Array.isArray(data) ? data : (data.results ?? []);
-      return { valid: true, cashRegisterName: list[0]?.title };
-    } catch (e) {
-      return { valid: false, error: e instanceof Error ? e.message : 'Помилка перевірки' };
-    } finally {
-      clearTimeout(timer);
-    }
   }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { supplierPaymentFormSchema, supplierPaymentUpdateSchema } from '@sto/shared';
+import { supplierPaymentFormSchema } from '@sto/shared';
 
 const SUP = '11111111-1111-4111-8111-111111111111';
 const ACC = '22222222-2222-4222-8222-222222222222';
@@ -78,9 +78,5 @@ describe('supplierPaymentFormSchema (спільна, web ↔ api)', () => {
       documentDate: 'not-a-date',
     });
     expect(r.success).toBe(false);
-  });
-
-  it('update — усі поля опційні (порожній обʼєкт ok, cross-field на merged у сервісі)', () => {
-    expect(supplierPaymentUpdateSchema.safeParse({}).success).toBe(true);
   });
 });

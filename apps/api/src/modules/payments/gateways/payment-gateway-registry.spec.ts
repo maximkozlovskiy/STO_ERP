@@ -7,7 +7,7 @@ import { publicHostLookup } from '../../../common/testing/host-lookup';
 
 /**
  * Registry шлюзів + LiqPay/monobank gateway units.
- * Доводимо: registry.get/list, LiqPay signature+checkout+status-мапінг, monobank-обгортка parity.
+ * Доводимо: registry.get, LiqPay signature+checkout+status-мапінг, monobank-обгортка parity.
  */
 describe('PaymentGatewayRegistry', () => {
   const make = () =>
@@ -21,12 +21,6 @@ describe('PaymentGatewayRegistry', () => {
     expect(r.get('monobank')?.code).toBe('monobank');
     expect(r.get('liqpay')?.code).toBe('liqpay');
     expect(r.get('unknown')).toBeNull();
-  });
-
-  it('list() — метадані обох шлюзів без кредів', () => {
-    const list = make().list();
-    expect(list.map(g => g.code).sort()).toEqual(['liqpay', 'monobank']);
-    expect(JSON.stringify(list)).not.toMatch(/token|privateKey|publicKey/i);
   });
 });
 

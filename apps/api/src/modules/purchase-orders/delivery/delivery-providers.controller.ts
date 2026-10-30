@@ -57,13 +57,6 @@ export class DeliveryProvidersController {
     private readonly integrationLog: IntegrationLogService,
   ) {}
 
-  @Get()
-  @Roles('OWNER', 'ADMIN')
-  @ApiOperation({ summary: 'Метадані служб доставки (code, name)' })
-  list() {
-    return this.registry.list();
-  }
-
   // Verify робить зовнішній HTTP-виклик до служби — тротлимо суворіше (5/хв).
   @Post(':code/verify')
   @Roles('OWNER', 'ADMIN')

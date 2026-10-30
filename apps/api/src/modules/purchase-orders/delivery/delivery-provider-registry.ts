@@ -5,7 +5,7 @@ import { type DeliveryProvider, DELIVERY_PROVIDERS } from './delivery-provider.i
  * Реєстр служб доставки. Провайдери інжектяться масивом через multi-provider DI-токен
  * DELIVERY_PROVIDERS — додати нову службу = зареєструвати impl у purchase-orders.module
  * (`{ provide: DELIVERY_PROVIDERS, useExisting: <Impl>, multi: true }`), сам реєстр НЕ чіпається
- * (Open/Closed + DIP). nova-poshta-polling.processor та delivery-endpoints звертаються через get()/list().
+ * (Open/Closed + DIP). nova-poshta-polling.processor та delivery-endpoints звертаються через get().
  */
 @Injectable()
 export class DeliveryProviderRegistry {
@@ -21,10 +21,5 @@ export class DeliveryProviderRegistry {
     const p = this.providers.get(code);
     if (!p) this.logger.warn(`Невідома служба доставки: ${code}`);
     return p ?? null;
-  }
-
-  /** Метадані всіх служб для UI (без кредів). */
-  list(): Array<{ code: string; name: string }> {
-    return [...this.providers.values()].map(p => ({ code: p.code, name: p.name }));
   }
 }

@@ -52,13 +52,6 @@ export class PaymentsController {
     });
   }
 
-  @Get(':id')
-  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
-  @ApiOperation({ summary: 'Платіж за id' })
-  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findOne(orgId, id);
-  }
-
   @Post()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @RequireIdempotencyKey() // A1: дедуплікація create під offline-retry (money-critical) (ключ обов'язковий, 400 без нього)

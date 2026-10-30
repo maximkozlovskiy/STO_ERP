@@ -510,7 +510,6 @@ export const uk: Record<string, string> = {
   'err.supplierPayment.purchaseOrderNotFound': 'Замовлення постачальнику не знайдено',
   'err.supplierPayment.orderNotForSupplier': 'Замовлення не належить вказаному постачальнику',
   'err.supplierPayment.sourceHasNoCurrency': 'Рахунок-джерело не має валюти',
-  'err.supplierPayment.onlyDraftEditable': 'Редагування дозволено лише у статусі "Чернетка"',
   'err.supplierPayment.currencyMustMatchOrder': 'Валюта оплати має збігатися з валютою замовлення',
   'err.supplierPayment.cannotConfirmFromStatus':
     'Неможливо провести оплату зі статусу "{{status}}"',

@@ -11,14 +11,12 @@ import { modelMock, type PrismaModelMock } from '../../common/testing/prisma-moc
  *
  *  - **BR-WORK-003** — системну категорію не можна видалити: бекенд авторитетний, UI лише
  *    ховає кнопку. Без гарда raw-запит із валідним JWT стирає системний каталог;
- *  - **BR-WORK-004** — зв'язки `WorkGoodCategoryLink` лише читаються (заділ під підказки
- *    товарів), і читаються в межах своєї організації;
  *  - **BR-WORK-005** — бекенд не обмежує глибину ієрархії: дерево будується рекурсивно,
  *    створення під батьком будь-якого рівня дозволене (ліміт у три рівні — лише в UI).
  */
 describe('WorkCategoriesService', () => {
   let svc: WorkCategoriesService;
-  let prisma: { workCategory: PrismaModelMock; workGoodCategoryLink: PrismaModelMock };
+  let prisma: { workCategory: PrismaModelMock };
   let cache: Record<'get' | 'set' | 'del', ReturnType<typeof vi.fn>>;
 
   const ORG = 'org-1';
@@ -42,14 +40,12 @@ describe('WorkCategoriesService', () => {
   beforeEach(() => {
     prisma = {
       workCategory: modelMock('findMany', 'findFirst', 'findFirstOrThrow', 'create', 'updateMany'),
-      workGoodCategoryLink: modelMock('findMany'),
     };
     prisma.workCategory.findMany.mockResolvedValue([]);
     prisma.workCategory.findFirst.mockResolvedValue({ id: ID, isSystem: false });
     prisma.workCategory.findFirstOrThrow.mockResolvedValue(row());
     prisma.workCategory.create.mockResolvedValue(row());
     prisma.workCategory.updateMany.mockResolvedValue({ count: 1 });
-    prisma.workGoodCategoryLink.findMany.mockResolvedValue([]);
     cache = {
       get: vi.fn().mockResolvedValue(null),
       set: vi.fn().mockResolvedValue(undefined),
@@ -202,22 +198,6 @@ describe('WorkCategoriesService', () => {
         NotFoundException,
       );
       expect(prisma.workCategory.create).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('getLinkedGoodCategories — зв’язки лише читаються', () => {
-    // guards: BR-WORK-004
-    it('повертає goodCategoryId зв’язків категорії у своїй org', async () => {
-      prisma.workGoodCategoryLink.findMany.mockResolvedValue([
-        { goodCategoryId: 'gc-1' },
-        { goodCategoryId: 'gc-2' },
-      ]);
-      const ids = await svc.getLinkedGoodCategories(ORG, ID);
-      expect(ids).toEqual(['gc-1', 'gc-2']);
-      expect(prisma.workGoodCategoryLink.findMany.mock.calls[0][0].where).toEqual({
-        orgId: ORG,
-        workCategoryId: ID,
-      });
     });
   });
 });

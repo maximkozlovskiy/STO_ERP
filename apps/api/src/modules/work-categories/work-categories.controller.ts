@@ -53,13 +53,6 @@ export class WorkCategoriesController {
     return this.service.toggleActive(orgId, id, dto.isActive);
   }
 
-  @Get(':id/linked-good-categories')
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER')
-  @ApiOperation({ summary: "Пов'язані категорії товарів для категорії робіт" })
-  getLinkedGoodCategories(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getLinkedGoodCategories(orgId, id);
-  }
-
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {

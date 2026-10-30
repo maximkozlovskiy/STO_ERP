@@ -22,7 +22,6 @@ import {
 } from '@nestjs/swagger';
 // ApiResponse is used for org-info endpoints above
 import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
-import { Throttle } from '@nestjs/throttler';
 import { ResetPeriod } from '@prisma/client';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -54,11 +53,6 @@ class UpdateDocNumberDto {
   @IsOptional()
   @IsIn(Object.values(ResetPeriod))
   resetPeriod?: ResetPeriod;
-}
-
-class VerifyFiscalDto {
-  @ApiPropertyOptional() @IsOptional() @IsString() apiUrl?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() licenseKey?: string;
 }
 
 class CreateTaxRateDto {
@@ -198,19 +192,6 @@ export class SettingsController {
     @Body() dto: UpdateBranchSettingsDto,
   ) {
     return this.service.updateBranchSettings(orgId, branchId, dto, user?.id);
-  }
-
-  // Verify робить зовнішній HTTP-виклик до Checkbox — тротлимо (5/хв), креди не логуються.
-  @Post('branch/:branchId/fiscal/verify')
-  @Roles('OWNER', 'ADMIN')
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  @ApiOperation({ summary: 'Перевірити креди ПРРО (Checkbox) — без пробиття чеку' })
-  verifyFiscal(
-    @OrgContext() orgId: string,
-    @Param('branchId', ParseUUIDPipe) branchId: string,
-    @Body() dto: VerifyFiscalDto,
-  ) {
-    return this.service.verifyFiscal(orgId, branchId, dto);
   }
 
   @Get('document-numbers')

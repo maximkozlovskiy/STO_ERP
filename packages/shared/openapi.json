@@ -478,45 +478,6 @@
         ]
       }
     },
-    "/api/v1/settings/branch/{branchId}/fiscal/verify": {
-      "post": {
-        "operationId": "SettingsController_verifyFiscal_v1",
-        "parameters": [
-          {
-            "name": "branchId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VerifyFiscalDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Перевірити креди ПРРО (Checkbox) — без пробиття чеку",
-        "tags": [
-          "Налаштування"
-        ]
-      }
-    },
     "/api/v1/settings/document-numbers": {
       "get": {
         "operationId": "SettingsController_getDocNumbers_v1",
@@ -2162,45 +2123,6 @@
           }
         ],
         "summary": "Увімкнути/вимкнути категорію робіт",
-        "tags": [
-          "Категорії робіт"
-        ]
-      }
-    },
-    "/api/v1/work-categories/{id}/linked-good-categories": {
-      "get": {
-        "operationId": "WorkCategoriesController_getLinkedGoodCategories_v1",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Пов'язані категорії товарів для категорії робіт",
         "tags": [
           "Категорії робіт"
         ]
@@ -7525,45 +7447,6 @@
         ]
       }
     },
-    "/api/v1/good-categories/{id}/linked-work-categories": {
-      "get": {
-        "operationId": "GoodCategoriesController_getLinkedWorkCategories_v1",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Пов'язані категорії робіт для категорії товарів",
-        "tags": [
-          "Категорії товарів"
-        ]
-      }
-    },
     "/api/v1/good-categories/{id}/toggle-active": {
       "patch": {
         "operationId": "GoodCategoriesController_toggleActive_v1",
@@ -11102,26 +10985,6 @@
         ]
       }
     },
-    "/api/v1/delivery-providers": {
-      "get": {
-        "operationId": "DeliveryProvidersController_list_v1",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Метадані служб доставки (code, name)",
-        "tags": [
-          "PurchaseOrders"
-        ]
-      }
-    },
     "/api/v1/delivery-providers/{code}/verify": {
       "post": {
         "operationId": "DeliveryProvidersController_verify_v1",
@@ -13666,72 +13529,6 @@
         ]
       }
     },
-    "/api/v1/supplier-payments/{id}/linked-documents": {
-      "get": {
-        "operationId": "SupplierPaymentsController_getLinkedDocuments_v1",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Пов'язані документи оплати (замовлення, контрагент, рахунок)",
-        "tags": [
-          "Supplier Payments"
-        ]
-      }
-    },
-    "/api/v1/supplier-payments/linked-counts": {
-      "post": {
-        "operationId": "SupplierPaymentsController_getLinkedCounts_v1",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LinkedCountsDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Кількість пов'язаних документів для списку оплат (batch)",
-        "tags": [
-          "Supplier Payments"
-        ]
-      }
-    },
     "/api/v1/supplier-payments/{id}": {
       "get": {
         "operationId": "SupplierPaymentsController_findOne_v1",
@@ -13772,40 +13569,6 @@
           }
         ],
         "summary": "Деталі оплати постачальнику",
-        "tags": [
-          "Supplier Payments"
-        ]
-      },
-      "patch": {
-        "operationId": "SupplierPaymentsController_update_v1",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SupplierPaymentResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Оновити оплату (тільки DRAFT)",
         "tags": [
           "Supplier Payments"
         ]
@@ -15139,42 +14902,6 @@
         ]
       }
     },
-    "/api/v1/payments/{id}": {
-      "get": {
-        "operationId": "PaymentsController_findOne_v1",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaymentResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Платіж за id",
-        "tags": [
-          "Payments"
-        ]
-      }
-    },
     "/api/v1/payments/{id}/reverse": {
       "post": {
         "operationId": "PaymentsController_reverse_v1",
@@ -15463,26 +15190,6 @@
         ]
       }
     },
-    "/api/v1/payment-gateways": {
-      "get": {
-        "operationId": "PaymentGatewaysController_list_v1",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Метадані платіжних шлюзів (code, name)",
-        "tags": [
-          "Payments"
-        ]
-      }
-    },
     "/api/v1/payment-gateways/{code}/verify": {
       "post": {
         "operationId": "PaymentGatewaysController_verify_v1",
@@ -15646,26 +15353,6 @@
           }
         ],
         "summary": "Активувати шлюз (ексклюзивно): інші вимикаються",
-        "tags": [
-          "Payments"
-        ]
-      }
-    },
-    "/api/v1/fiscal-providers": {
-      "get": {
-        "operationId": "FiscalProvidersController_list_v1",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Метадані провайдерів ПРРО (code, name)",
         "tags": [
           "Payments"
         ]
@@ -19508,35 +19195,6 @@
         ]
       }
     },
-    "/api/v1/cash-registers/{id}/balance": {
-      "get": {
-        "operationId": "CashRegistersController_balance_v1",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Поточний залишок каси",
-        "tags": [
-          "Каса"
-        ]
-      }
-    },
     "/api/v1/cash-registers/{id}/operations": {
       "get": {
         "operationId": "CashRegistersController_operations_v1",
@@ -21728,20 +21386,6 @@
             }
           }
         }
-      },
-      "VerifyFiscalDto": {
-        "type": "object",
-        "properties": {
-          "apiUrl": {
-            "type": "string"
-          },
-          "credentials": {
-            "type": "object"
-          }
-        },
-        "required": [
-          "credentials"
-        ]
       },
       "UpdateDocNumberDto": {
         "type": "object",
@@ -33236,6 +32880,20 @@
         },
         "required": [
           "provider"
+        ]
+      },
+      "VerifyFiscalDto": {
+        "type": "object",
+        "properties": {
+          "apiUrl": {
+            "type": "string"
+          },
+          "credentials": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "credentials"
         ]
       },
       "UpsertFiscalDto": {

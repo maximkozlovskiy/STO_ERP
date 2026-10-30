@@ -11,9 +11,6 @@ import {
   IsNumberString,
   IsIn,
   Matches,
-  IsArray,
-  ArrayMinSize,
-  ArrayMaxSize,
 } from 'class-validator';
 // Стелі — місткість колонок (MONEY_AMOUNT_MAX = Decimal(12,2)) і QTY_MAX для кількості/годин:
 // понад них 400 з назвою поля, а не 500 `numeric field overflow`. На маршрутах із ZodValidationPipe
@@ -68,62 +65,6 @@ export class CreateSupplierPaymentDto {
   notes?: string;
 
   @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD), за замовчуванням — сьогодні' })
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsDateString()
-  documentDate?: string;
-}
-
-export class UpdateSupplierPaymentDto {
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsUUID()
-  supplierId?: string;
-
-  @ApiPropertyOptional({ enum: PaymentSourceType })
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsEnum(PaymentSourceType)
-  sourceType?: PaymentSourceType;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsUUID()
-  bankAccountId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsUUID()
-  cashRegisterId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsUUID()
-  purchaseOrderId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsNumber()
-  @Min(0.01, { message: 'err.dto.supplierPayment.amount.min' })
-  @Max(MONEY_AMOUNT_MAX)
-  amount?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsString()
-  method?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  notes?: string;
-
-  @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsDateString()
@@ -326,15 +267,4 @@ export class SupplierPaymentScheduleDocumentDto {
   outstanding!: number;
   @ApiProperty({ description: 'Сума боргу, «налита» на цей PO (після кредит-ліміту)' })
   allocated!: number;
-}
-
-// ─── Linked documents (batch counts) ────────────────────────
-// §2.3 Input validation: обмежуємо batch до page-size+запас, відкидаємо non-UUID.
-export class LinkedCountsDto {
-  @ApiProperty({ type: [String], description: 'UUID документів (макс. 500)' })
-  @IsArray()
-  @ArrayMinSize(1)
-  @ArrayMaxSize(500)
-  @IsUUID('all', { each: true })
-  ids!: string[];
 }
