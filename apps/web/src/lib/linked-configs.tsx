@@ -111,7 +111,8 @@ interface LinkedPurchaseOrderRow {
   id: string;
   number: string;
   status: string;
-  totalAmount: string | number;
+  /** null — роль не бачить закупівельних цін (список купівлі для приймальні, §2.1). */
+  totalAmount: string | number | null;
   /** Символ валюти замовлення — віддає лише список купівлі; решта секцій — гривня. */
   currencySymbol?: string | null;
 }
@@ -515,8 +516,11 @@ function purchaseOrderSourceSection(
   {
     key = 'purchaseOrder',
     icon = ClipboardList,
-  }: { key?: string; icon?: typeof ClipboardList } = {},
+    canOpen = true,
+  }: { key?: string; icon?: typeof ClipboardList; canOpen?: boolean } = {},
 ) {
+  const amount = (row: LinkedPurchaseOrderRow) =>
+    row.totalAmount == null ? null : `${fmt(row.totalAmount)} ${row.currencySymbol || '₴'}`;
   return {
     key,
     title: 'Замовлення постачальнику',
@@ -524,7 +528,7 @@ function purchaseOrderSourceSection(
     mapRow: (row: LinkedPurchaseOrderRow) => ({
       id: row.id,
       primary: `Замовлення ${row.number}`,
-      secondary: `${fmt(row.totalAmount)} ${row.currencySymbol || '₴'}`,
+      secondary: amount(row) ?? undefined,
       badge: {
         label: poStatusLabel(row.status),
         className: 'bg-secondary text-muted-foreground',
@@ -533,10 +537,11 @@ function purchaseOrderSourceSection(
         title: `Замовлення ${row.number}`,
         rows: [
           { label: 'Статус', value: poStatusLabel(row.status) },
-          { label: 'Сума', value: `${fmt(row.totalAmount)} ${row.currencySymbol || '₴'}` },
+          ...(amount(row) ? [{ label: 'Сума', value: amount(row) }] : []),
         ],
       },
-      navigate: () => nav.toPurchaseOrder(row.id),
+      // Приймальні картка замовлення закрита (`GET /purchase-orders/:id` — 403, Bug #914).
+      navigate: canOpen ? () => nav.toPurchaseOrder(row.id) : undefined,
     }),
   };
 }
@@ -625,7 +630,10 @@ export function counterpartyLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
 // Картка списку купівлі, вкладка «Документи» (BR-PL-020): наряди й замовлення постачальнику його
 // позицій, списки, обʼєднані в нього. Ключі секцій — як у `GET /purchase-lists/:id/linked-documents`.
 
-export function purchaseListLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
+export function purchaseListLinkedConfig(
+  nav: LinkedNav,
+  { canOpenPurchaseOrders = true }: { canOpenPurchaseOrders?: boolean } = {},
+): LinkedEntityConfig {
   return {
     fetchPath: id => `/purchase-lists/${id}/linked-documents`,
     sections: [
@@ -633,7 +641,11 @@ export function purchaseListLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
         key: 'workOrders',
         title: i18n.t('purchaseLists:documents.workOrders'),
       }),
-      purchaseOrderSourceSection(nav, { key: 'purchaseOrders', icon: ShoppingCart }),
+      purchaseOrderSourceSection(nav, {
+        key: 'purchaseOrders',
+        icon: ShoppingCart,
+        canOpen: canOpenPurchaseOrders,
+      }),
       purchaseListSection(nav, { title: i18n.t('purchaseLists:documents.mergedLists') }),
     ],
   };

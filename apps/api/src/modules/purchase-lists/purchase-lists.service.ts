@@ -28,6 +28,7 @@ import {
   OPEN_ITEM_WHERE,
 } from './purchase-lists.helpers';
 import {
+  canSeeItemCost,
   ITEM_INCLUDE,
   LIST_INCLUDE,
   maskItemCost,
@@ -457,8 +458,16 @@ export class PurchaseListsService {
 
   // ─── Зв'язки ──────────────────────────────────────────────
 
-  /** Наряди й замовлення постачальникам позицій списку, списки, злиті в нього (BR-PL-020). */
-  async getLinkedDocuments(orgId: string, id: string): Promise<PurchaseListLinkedDocumentsDto> {
+  /**
+   * Наряди й замовлення постачальникам позицій списку, списки, злиті в нього (BR-PL-020).
+   * §2.1: сума замовлення — закупівельна, її бачать лише PURCHASE_PRICE_VISIBLE_ROLES (приймальні
+   * відкрито перегляд списків, BR-PL-015, — вона отримує `null`, як і очікувану ціну позиції).
+   */
+  async getLinkedDocuments(
+    orgId: string,
+    id: string,
+    role?: string,
+  ): Promise<PurchaseListLinkedDocumentsDto> {
     // BR-WO-012: джерело шукаємо й серед видалених (orgId лишається). Позиції видаляються разом
     // зі списком тією ж міткою `deletedAt` (`remove`) — у видаленого списку беремо саме їх.
     const list = await this.prisma.purchaseList.findFirst({
@@ -492,6 +501,7 @@ export class PurchaseListsService {
         take: TAKE,
       }),
     ]);
+    const showCost = canSeeItemCost(role);
     const unique = <T extends { id: string; deletedAt: Date | null }>(rows: (T | null)[]) =>
       Array.from(
         new Map(
@@ -505,7 +515,7 @@ export class PurchaseListsService {
       purchaseOrders: unique(items.map(i => i.purchaseOrder)).map(
         ({ totalAmount, currency, ...po }) => ({
           ...po,
-          totalAmount: Number(totalAmount),
+          totalAmount: showCost ? Number(totalAmount) : null,
           currencySymbol: currency?.symbol || currency?.code || null,
         }),
       ),

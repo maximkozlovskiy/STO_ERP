@@ -3,8 +3,8 @@
 // замовлення постачальнику (сума у валюті замовлення) та обʼєднані в список списки.
 //
 // Mutation-verify: ключ `workOrder` замість `workOrders` → «ключі секцій» падає (секція порожня
-// завжди); `₴` замість символу валюти замовлення → «сума у валюті» падає; перехід секції
-// замовлень на `toInvoice` → «переходи» падає.
+// завжди); `₴` замість символу валюти замовлення → «сума у валюті» падає; перехід без
+// `canOpen` → «приймальня» падає.
 
 import { describe, it, expect, vi } from 'vitest';
 import { ClipboardList, ListChecks, ShoppingCart } from 'lucide-react';
@@ -89,5 +89,24 @@ describe('purchaseListLinkedConfig (BR-PL-020)', () => {
     expect(nav.toWorkOrder).toHaveBeenCalledWith('wo-1');
     expect(nav.toPurchaseOrder).toHaveBeenCalledWith('po-1');
     expect(nav.toPurchaseList).toHaveBeenCalledWith('pl-2');
+  });
+
+  // guards: BR-PL-020
+  it('приймальня: замовлення без переходу (картка замовлення їй закрита) і без суми (§2.1)', () => {
+    const nav = makeNav();
+    const s = sectionOf(
+      purchaseListLinkedConfig(nav, { canOpenPurchaseOrders: false }),
+      'purchaseOrders',
+    );
+    const row = s.mapRow({
+      id: 'po-1',
+      number: 'ЗП-1',
+      status: 'ORDERED',
+      totalAmount: null,
+      currencySymbol: '₴',
+    } as never);
+    expect(row.navigate).toBeUndefined();
+    expect(row.secondary).toBeUndefined();
+    expect(row.preview.rows.map(r => r.label)).toEqual(['Статус']);
   });
 });

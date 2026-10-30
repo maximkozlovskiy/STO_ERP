@@ -30082,7 +30082,8 @@
           },
           "totalAmount": {
             "type": "number",
-            "description": "Сума замовлення у валюті замовлення."
+            "nullable": true,
+            "description": "Сума у валюті замовлення; null — роль не бачить закупівельних цін (§2.1)"
           },
           "currencySymbol": {
             "type": "string",

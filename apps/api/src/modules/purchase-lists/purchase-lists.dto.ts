@@ -299,8 +299,12 @@ export class PurchaseListLinkedPurchaseOrderRowDto {
   @ApiProperty() id!: string;
   @ApiProperty() number!: string;
   @ApiProperty({ enum: PurchaseOrderStatus }) status!: PurchaseOrderStatus;
-  /** Сума замовлення у валюті замовлення. */
-  @ApiProperty() totalAmount!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Сума у валюті замовлення; null — роль не бачить закупівельних цін (§2.1)',
+  })
+  totalAmount!: number | null;
   @ApiProperty({ type: String, nullable: true, description: 'Символ (або код) валюти замовлення' })
   currencySymbol!: string | null;
 }

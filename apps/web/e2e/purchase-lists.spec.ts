@@ -544,6 +544,34 @@ test.describe('Управління купівлями — від нестачі
     await expect(rows.first().getByRole('checkbox')).toHaveCount(0);
     await expect(rp.getByRole('button', { name: 'Зняти резерв' })).toHaveCount(0);
     await rp.screenshot({ path: test.info().outputPath('pl_e2e_reception_items.png') });
+    // «Документи» списку (BR-PL-020): замовлення без переходу (картка замовлення приймальні
+    // закрита) і без суми (§2.1 — закупівельна).
+    await rp.getByRole('tab', { name: 'Списки' }).click();
+    await rp
+      .getByRole('group', { name: 'Статус' })
+      .getByRole('button', { name: 'Всі', exact: true })
+      .click();
+    await rp.getByLabel('Номер або назва списку').fill(LIST_NAME);
+    await rp
+      .getByTestId('purchase-list-row')
+      .filter({ hasText: LIST_NAME })
+      .getByText(LIST_NAME)
+      .click();
+    const listCard = rp.getByRole('dialog').filter({ hasText: LIST_NAME });
+    await listCard.getByRole('tab', { name: /Документи/ }).click();
+    await expect(listCard.getByText(`Замовлення ${state.poNumber!}`)).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      listCard.getByRole('button', { name: `Перейти до документа: Замовлення ${state.poNumber!}` }),
+    ).toHaveCount(0);
+    await expect(
+      listCard.getByRole('button', { name: `Перейти до документа: Наряд ${state.woA!.number}` }),
+    ).toBeVisible();
+    await expect(listCard.getByText(/₴/)).toHaveCount(0);
+    await listCard.screenshot({ path: test.info().outputPath('pl_e2e_reception_documents.png') });
+    await rp.keyboard.press('Escape');
+    await expect(listCard).toBeHidden();
     // Наведення на «Купівля» в меню не підтягує список замовлень, закритий приймальні (403).
     await rp.getByRole('link', { name: 'Купівля' }).first().hover();
     await rp.waitForLoadState('networkidle');

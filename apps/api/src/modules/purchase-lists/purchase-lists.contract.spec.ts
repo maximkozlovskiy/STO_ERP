@@ -160,6 +160,13 @@ describe('PurchaseLists — HTTP-контракт', () => {
     expect(lists.fromWorkOrder).not.toHaveBeenCalled();
   });
 
+  // guards: BR-PL-020
+  it("пов'язані документи списку — роль доходить до сервісу (§2.1: суму замовлення маскує)", async () => {
+    const res = await call('GET', `/purchase-lists/${ID}/linked-documents`);
+    expect(res.statusCode).toBe(200);
+    expect(lists.getLinkedDocuments).toHaveBeenCalledWith('org-1', ID, 'OWNER');
+  });
+
   it('?supplierId=none — позиції без постачальника доходять до сервісу', async () => {
     const res = await call('GET', '/purchase-list-items?supplierId=none&status=OPEN');
     expect(res.statusCode).toBe(200);

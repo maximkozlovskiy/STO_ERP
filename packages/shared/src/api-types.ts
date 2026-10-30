@@ -9055,8 +9055,8 @@ export interface components {
             number: string;
             /** @enum {string} */
             status: "DRAFT" | "ORDERED" | "RECEIVED" | "PARTIAL" | "CANCELLED";
-            /** @description Сума замовлення у валюті замовлення. */
-            totalAmount: number;
+            /** @description Сума у валюті замовлення; null — роль не бачить закупівельних цін (§2.1) */
+            totalAmount: number | null;
             /** @description Символ (або код) валюти замовлення */
             currencySymbol: string | null;
         };

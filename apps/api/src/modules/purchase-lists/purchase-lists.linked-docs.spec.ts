@@ -71,7 +71,7 @@ describe("Зв'язки списку купівлі", () => {
   it('замовлення — із сумою числом і валютою; злитий список — з датою ISO (контракт вкладки «Документи»)', async () => {
     const h = harness();
 
-    const docs = await h.lists.getLinkedDocuments(ORG, 'list-1');
+    const docs = await h.lists.getLinkedDocuments(ORG, 'list-1', 'OWNER');
 
     // Фейкова Prisma вкладений `select` не застосовує — тому toMatchObject, а не toEqual.
     expect(docs.purchaseOrders).toMatchObject([
@@ -80,6 +80,19 @@ describe("Зв'язки списку купівлі", () => {
     expect(typeof docs.purchaseOrders[0]?.totalAmount).toBe('number');
     expect(docs.workOrders[0]).toMatchObject({ id: WO_A, status: 'APPROVED' });
     expect(docs.purchaseLists[0]?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  // guards: BR-PL-020
+  it('сума замовлення — лише ролям із закупівельною ціною; приймальні й без ролі — null (§2.1)', async () => {
+    const h = harness();
+    for (const role of ['RECEPTIONIST', 'MECHANIC', undefined]) {
+      const docs = await h.lists.getLinkedDocuments(ORG, 'list-1', role);
+      expect(docs.purchaseOrders[0]).toMatchObject({ id: PO, totalAmount: null });
+    }
+    for (const role of ['ADMIN', 'STOREKEEPER']) {
+      const docs = await h.lists.getLinkedDocuments(ORG, 'list-1', role);
+      expect(docs.purchaseOrders[0]?.totalAmount).toBe(1250.5);
+    }
   });
 
   // guards: BR-WO-012

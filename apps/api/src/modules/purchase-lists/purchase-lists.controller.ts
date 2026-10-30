@@ -156,8 +156,13 @@ export class PurchaseListsController {
   @Roles(...PROCUREMENT_READ_ROLES)
   @ApiOperation({ summary: "Пов'язані документи списку (наряди, замовлення, злиті списки)" })
   @ApiOkResponse({ type: PurchaseListLinkedDocumentsDto })
-  getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getLinkedDocuments(orgId, id);
+  getLinkedDocuments(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    // §2.1: суму замовлення бачать лише ролі із закупівельною ціною (BR-PL-020).
+    return this.service.getLinkedDocuments(orgId, id, user.role);
   }
 
   @Post(':id/items')
