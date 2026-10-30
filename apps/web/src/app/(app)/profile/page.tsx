@@ -8,7 +8,14 @@ import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { EmployeeTelegramSubscription } from '@/components/ui/TelegramSubscriptionBlock';
+import dynamic from 'next/dynamic';
+
+// Підписка на бот — окремим chunk-ом (каталог автоматизації і QR не вантажаться з профілем).
+const EmployeeTelegramSubscription = dynamic(
+  () =>
+    import('@/components/ui/TelegramSubscriptionBlock').then(m => m.EmployeeTelegramSubscription),
+  { ssr: false },
+);
 
 interface Me {
   id: string;

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { resources } from './resources';
+import { resources as shellResources } from './resources';
+import { lazyResources } from './lazy-resources';
+
+const resources = {
+  uk: { ...shellResources.uk, ...lazyResources.uk },
+  en: { ...shellResources.en, ...lazyResources.en },
+};
 
 /**
  * Тексти кнопок «?» (`CatalogHelp` / `HelpBlocks`, рішення власника 2026-10-29) — у каталогах

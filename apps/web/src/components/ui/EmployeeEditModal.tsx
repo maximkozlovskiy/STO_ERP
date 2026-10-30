@@ -27,7 +27,14 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { CatalogHelp } from '@/components/ui/help-popover';
-import { EmployeeTelegramSubscription } from '@/components/ui/TelegramSubscriptionBlock';
+import dynamic from 'next/dynamic';
+
+// Підписка на бот — окремим chunk-ом (каталог автоматизації), лише коли відкрили вкладку.
+const EmployeeTelegramSubscription = dynamic(
+  () =>
+    import('@/components/ui/TelegramSubscriptionBlock').then(m => m.EmployeeTelegramSubscription),
+  { ssr: false },
+);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

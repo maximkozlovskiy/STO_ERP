@@ -61,7 +61,6 @@ if (!i18n.isInitialized) {
       'errorPages',
       'supplierApi',
       'tasks',
-      'automation',
     ],
     interpolation: { escapeValue: false }, // React вже екранує
     returnNull: false,

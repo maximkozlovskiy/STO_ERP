@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { useTranslation } from 'react-i18next';
 import { Link2, Send, Unlink } from 'lucide-react';
+import '@/i18n/automation-ns';
 import { apiFetch } from '@/lib/api-client';
 import { fmtDate } from '@/lib/format';
 import { toast } from '@/lib/toast';

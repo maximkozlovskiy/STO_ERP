@@ -31,18 +31,27 @@ import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { WO_STATUS_BADGE } from '@sto/shared';
 import { woStatusLabel, contractTypeLabel } from '@/i18n/enumLabel';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { useAuth } from '@/lib/auth';
 import { StatusManager } from '@/components/ui/CounterpartyStatusManager';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 import type { CpType } from '@/hooks/api/useCounterparties';
-import { CounterpartyMessagingBlock } from '@/components/ui/CounterpartyMessagingBlock';
 import {
   CounterpartyForm,
   emptyCounterpartyForm,
   counterpartyToForm,
 } from '@/components/ui/CounterpartyForm';
+
+// Вкладка «Повідомлення» (згода, бажаний канал, Telegram-бот) — окремим chunk-ом: картку
+// контрагента відкривають і зі сторінок звітів / календаря, а каталог автоматизації їм не потрібен
+// до відкриття вкладки (бюджет first-load, check-page-budget.mjs).
+const CounterpartyMessagingBlock = dynamic(
+  () =>
+    import('@/components/ui/CounterpartyMessagingBlock').then(m => m.CounterpartyMessagingBlock),
+  { ssr: false },
+);
 
 export type { CpType };
 

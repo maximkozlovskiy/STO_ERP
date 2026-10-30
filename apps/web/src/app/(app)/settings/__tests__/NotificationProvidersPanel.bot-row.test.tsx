@@ -97,7 +97,8 @@ describe('Telegram-бот у каналах філії', () => {
     ];
     render(<NotificationProvidersPanel />);
     const turbo = await screen.findByRole('switch', { name: /TurboSMS/ });
-    expect(turbo).toBeChecked();
+    // Канали читаються після провайдерів — чекаємо на їхній стан, а не на першу відмальовку.
+    await waitFor(() => expect(turbo).toBeChecked());
     expect(screen.getByText('бот не підключено')).toBeInTheDocument();
     const botToggle = screen
       .getAllByRole('switch')

@@ -31,7 +31,6 @@ import ukBankStatements from './locales/uk/bankStatements.json';
 import ukPurchaseLists from './locales/uk/purchaseLists.json';
 import ukSupplierApi from './locales/uk/supplierApi.json';
 import ukTasks from './locales/uk/tasks.json';
-import ukAutomation from './locales/uk/automation.json';
 
 import enCommon from './locales/en/common.json';
 import enNav from './locales/en/nav.json';
@@ -64,7 +63,6 @@ import enBankStatements from './locales/en/bankStatements.json';
 import enPurchaseLists from './locales/en/purchaseLists.json';
 import enSupplierApi from './locales/en/supplierApi.json';
 import enTasks from './locales/en/tasks.json';
-import enAutomation from './locales/en/automation.json';
 
 export const resources = {
   uk: {
@@ -99,7 +97,6 @@ export const resources = {
     purchaseLists: ukPurchaseLists,
     supplierApi: ukSupplierApi,
     tasks: ukTasks,
-    automation: ukAutomation,
   },
   en: {
     common: enCommon,
@@ -133,6 +130,5 @@ export const resources = {
     purchaseLists: enPurchaseLists,
     supplierApi: enSupplierApi,
     tasks: enTasks,
-    automation: enAutomation,
   },
 } as const;

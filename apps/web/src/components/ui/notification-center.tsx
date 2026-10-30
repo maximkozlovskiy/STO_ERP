@@ -7,7 +7,7 @@ import { Bell, CheckCheck, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtShortDateTime } from '@/lib/format';
 import { useAuth } from '@/lib/auth';
-import { automationDocumentHref } from '@/lib/automation';
+import { automationDocumentHref } from '@/lib/automation-href';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import {
   useMarkAllNotificationsRead,

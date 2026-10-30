@@ -3,6 +3,7 @@
 import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
 import { Copy, ExternalLink } from 'lucide-react';
+import '@/i18n/automation-ns';
 import { fmtDateTime } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { Button } from './button';
