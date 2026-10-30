@@ -669,6 +669,12 @@ export function StockDocumentCreateModal({
         ].filter(Boolean)
       : [];
 
+  // Зняти замовлення-джерело: поле форми й номер у полі вибору.
+  const clearSourceOrder = () => {
+    setValue('purchaseOrderId', '', { shouldDirty: true });
+    setPurchaseOrderNumber('');
+  };
+
   return (
     <>
       <Modal
@@ -862,7 +868,6 @@ export function StockDocumentCreateModal({
                 label={warehouseLabel}
                 chooseLabel={t('card.choose')}
                 warehouses={warehouses}
-                errorMessage={errors.warehouseId?.message}
                 disabled={!canEdit || isEditMode}
               />
               {isTransfer ? (
@@ -903,10 +908,7 @@ export function StockDocumentCreateModal({
               className="h-8 text-[13px]"
               disabled={!canEdit || isEditMode}
               onPick={() => setPoPickerOpen(true)}
-              onClear={() => {
-                setValue('purchaseOrderId', '', { shouldDirty: true });
-                setPurchaseOrderNumber('');
-              }}
+              onClear={clearSourceOrder}
             />
 
             {/* Рядок 5: Примітки */}

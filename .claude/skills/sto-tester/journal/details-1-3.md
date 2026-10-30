@@ -449,6 +449,10 @@ fetch, що показує `e.message`, — через `fetchOrNetworkError`, `l
   (route → 500) → «Зберегти» — смугу має бути видно.
   **Фікс:** смуга помилки — над згортуваним блоком (`role="alert"`). Тест: `closest('[style*="grid-template-rows"]')`
   для тексту помилки — `null`. Взірець — `CreateWorkOrderModal` (смуга вже над шапкою).
+  **Повтор (Bug #1017):** той самий блок жив ще в замовленні, складському документі й поверненні —
+  тепер тіло картки з табличною частиною будується на `DocumentCardBody` + `CollapsibleDocumentHeader`
+  (`components/ui/document-card-body.tsx`): помилка завжди над шапкою. Нова картка — на них, а не
+  копією розмітки; детектор: `grep -n "gridTemplateRows: headerCollapsed" apps/web/src/components/ui`.
 
 <!-- T1.3-103 -->
 

@@ -4,6 +4,8 @@ import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react';
 import { Controller, type Control, type FieldPath, type FieldValues } from 'react-hook-form';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { CurrencySelect } from '@/components/ui/CurrencySelect';
+import { Select } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
 /**
@@ -62,6 +64,99 @@ export function FormDateInput<T extends FieldValues>({
         />
       )}
     />
+  );
+}
+
+/**
+ * Валюта документа з форми react-hook-form. Авто-дефолт базової валюти — програмна зміна, не дія
+ * користувача: картка пише її через `onAutoDefault` з `shouldDirty: false`, щоб незаймана картка не
+ * вважалась брудною (Bug #639/#747-клас).
+ */
+export function FormCurrencySelect<T extends FieldValues>({
+  control,
+  name,
+  disabled,
+  onAutoDefault,
+}: {
+  control: Control<T>;
+  name: FieldPath<T>;
+  disabled?: boolean;
+  onAutoDefault: (currencyId: string) => void;
+}) {
+  return (
+    <Controller
+      control={control}
+      name={name}
+      render={({ field }) => (
+        <CurrencySelect
+          value={typeof field.value === 'string' ? field.value : ''}
+          onChange={id => field.onChange(id)}
+          onAutoDefault={onAutoDefault}
+          disabled={disabled}
+        />
+      )}
+    />
+  );
+}
+
+/** Склад документа з форми react-hook-form: «Оберіть…», список складів, помилка поля з форми. */
+export function FormWarehouseSelect<T extends FieldValues>({
+  control,
+  name,
+  label,
+  chooseLabel,
+  warehouses,
+  disabled,
+}: {
+  control: Control<T>;
+  name: FieldPath<T>;
+  label: string;
+  chooseLabel: string;
+  warehouses: readonly { id: string; name: string }[];
+  disabled?: boolean;
+}) {
+  return (
+    <Controller
+      control={control}
+      name={name}
+      render={({ field, fieldState }) => (
+        <Select
+          label={label}
+          required
+          value={typeof field.value === 'string' ? field.value : ''}
+          onChange={field.onChange}
+          errorMessage={fieldState.error?.message}
+          disabled={disabled}
+          className="h-8 text-[13px] py-0.5 px-2 pr-7"
+        >
+          <option value="">{chooseLabel}</option>
+          {warehouses.map(w => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </Select>
+      )}
+    />
+  );
+}
+
+/**
+ * Поле шапки, у контролу якого немає власного `errorMessage` (`EntityPickerField`): контрол і під
+ * ним текст помилки валідації.
+ */
+export function FieldWithError({
+  error,
+  children,
+}: {
+  error?: string | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      {children}
+      {error && <p className="text-[12px] text-destructive leading-tight mt-1">{error}</p>}
+    </div>
   );
 }
 

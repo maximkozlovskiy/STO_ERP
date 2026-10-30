@@ -77,6 +77,25 @@ export function DocumentCardHeaderActions({
 }
 
 /**
+ * «Закрити» у підвалі картки. Як Escape і «×»: незбережені зміни — спершу підтвердження
+ * (`useDirtyForm`), тому картка передає свій `handleModalClose`, а не `onClose` батька.
+ */
+export function DocumentCloseButton({
+  onClose,
+  disabled,
+}: {
+  onClose: () => unknown;
+  disabled: boolean;
+}) {
+  const { t } = useTranslation('common');
+  return (
+    <Button variant="outline" size="sm" onClick={() => void onClose()} disabled={disabled}>
+      {t('close')}
+    </Button>
+  );
+}
+
+/**
  * «Скасувати» документ (перехід у CANCELLED) — ліворуч у підвалі картки, окремо від «Закрити» й
  * «Друк» (UX-огляд 2026-10-29: червона «Скасувати» поруч із «Закрити» скасовувала документ).
  * Підпис називає документ («Скасувати наряд»). Видно, коли перехід є серед дозволених: для нового,

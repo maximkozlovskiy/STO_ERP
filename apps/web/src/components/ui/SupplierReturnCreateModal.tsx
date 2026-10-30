@@ -26,7 +26,7 @@ import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-head
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DocumentCloseButton } from '@/components/ui/document-card-actions';
-import { FormWarehouseSelect } from '@/components/ui/document-card-header';
+import { FieldWithError, FormWarehouseSelect } from '@/components/ui/document-card-header';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal } from '@/components/ui/search-picker-modal';
@@ -485,6 +485,12 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     : t('supplierReturn.newTitle');
 
   // ── Render ─────────────────────────────────────────────────────────────────
+  // Зняти замовлення-джерело: поле форми й номер у полі вибору.
+  const clearSourceOrder = () => {
+    setValue('purchaseOrderId', '', { shouldDirty: true });
+    setPurchaseOrderNumber('');
+  };
+
   return (
     <>
       <Modal
@@ -617,7 +623,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           <CollapsibleDocumentHeader collapsed={headerCollapsed}>
             {/* Постачальник | Склад */}
             <div className="grid grid-cols-2 gap-4">
-              <div>
+              <FieldWithError error={errors.supplierId?.message}>
                 <EntityPickerField
                   label={t('columns.supplier')}
                   required
@@ -631,19 +637,13 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                     setSupplierName('');
                   }}
                 />
-                {errors.supplierId && (
-                  <p className="text-[12px] text-destructive leading-tight mt-1">
-                    {errors.supplierId.message}
-                  </p>
-                )}
-              </div>
+              </FieldWithError>
               <FormWarehouseSelect
                 control={control}
                 name="warehouseId"
                 label={t('columns.warehouse')}
                 chooseLabel={t('card.choose')}
                 warehouses={warehouses}
-                errorMessage={errors.warehouseId?.message}
                 disabled={!canEdit}
               />
             </div>
@@ -656,10 +656,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
               className="h-8 text-[13px]"
               disabled={!canEdit || isEdit}
               onPick={() => setPoPickerOpen(true)}
-              onClear={() => {
-                setValue('purchaseOrderId', '', { shouldDirty: true });
-                setPurchaseOrderNumber('');
-              }}
+              onClear={clearSourceOrder}
             />
 
             {/* Опис */}

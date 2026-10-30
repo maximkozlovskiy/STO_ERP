@@ -5471,3 +5471,22 @@ CreatePaymentDto` (`PaymentsService.create` приймає його). Глоба
 відкриття — з відповіді панелі. Тест «лічильник на вкладці — до першого її відкриття», мутація — червоний.
 Наживо: «Документи 1» одразу після відкриття картки (1440, 390, приймальня).
 **Статус:** [x] виправлено
+
+## Bug #1017 — [MEDIUM] Замовлення, складський документ, повернення постачальнику: відмова збереження невидима після «Додати» (клас Bug #1014)
+
+**Файли:** `apps/web/src/components/ui/PurchaseOrderCreateModal.tsx`, `StockDocumentCreateModal.tsx`,
+`SupplierReturnCreateModal.tsx`
+**Severity:** MEDIUM
+**Категорія:** frontend / стан помилки (T1.3-102)
+
+**Опис:** у трьох картках «Додати» згортає шапку (`if (showLineInput) setHeaderCollapsed(true)`), а
+смуга помилки лишалась усередині згортуваного блоку (`0fr` + `overflow-hidden`), як у рахунку до
+Bug #1014. Відмова «Зберегти зміни» → картка відкрита, повідомлення немає. Знайдено гейтом клонів:
+той самий блок (тіло картки → шапка → помилка) скопійований у чотири картки.
+**Фікс:** спільні `DocumentCardBody` (смуга «видалено» + помилка `role="alert"` НАД шапкою),
+`CollapsibleDocumentHeader`, `DocumentHeaderToggle` (`components/ui/document-card-body.tsx`),
+`DocumentCloseButton`, `FormCurrencySelect`, `FormWarehouseSelect`, `FieldWithError` — чотири картки на
+них. Тести `*.error-visible.test.tsx` (PO, SD, SR): «Додати» → шапка `data-collapsed="true"`, PATCH
+падає → `role="alert"` поза шапкою; мутація — помилку в шапку — усі три червоні. Наживо (1440, route
+PATCH → 500): замовлення й складський документ — смуга над згорнутою шапкою.
+**Статус:** [x] виправлено

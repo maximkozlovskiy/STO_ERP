@@ -44,6 +44,7 @@ import {
   DocumentHeaderField,
   DocumentNumberField,
   DocumentStatusStepper,
+  FieldWithError,
   FormCurrencySelect,
   FormDateInput,
   FormWarehouseSelect,
@@ -1199,7 +1200,7 @@ export function PurchaseOrderCreateModal({
           <CollapsibleDocumentHeader collapsed={headerCollapsed} loading={loading}>
             {/* Рядок 2: Постачальник | Склад */}
             <div className="grid grid-cols-2 gap-4">
-              <div>
+              <FieldWithError error={errors.supplierId?.message}>
                 <EntityPickerField<SupplierItem>
                   label={t('columns.supplier')}
                   required
@@ -1228,19 +1229,13 @@ export function PurchaseOrderCreateModal({
                     setContractNumber(null);
                   }}
                 />
-                {errors.supplierId && (
-                  <p className="text-[12px] text-destructive leading-tight mt-1">
-                    {errors.supplierId.message}
-                  </p>
-                )}
-              </div>
+              </FieldWithError>
               <FormWarehouseSelect
                 control={control}
                 name="warehouseId"
                 label={t('columns.warehouse')}
                 chooseLabel={t('card.choose')}
                 warehouses={warehouses}
-                errorMessage={errors.warehouseId?.message}
                 disabled={!canEdit}
               />
             </div>
