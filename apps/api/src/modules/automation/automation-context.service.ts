@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { AutomationDocumentType, Prisma } from '@prisma/client';
+import type { AutomationDocumentType, NotificationChannel, Prisma } from '@prisma/client';
 import { AUTOMATION_STATUS_LABELS, type AutomationVariableKey } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { trimTrailingSlashes } from '../../common/utils/trim-trailing-slashes';
@@ -15,6 +15,8 @@ export interface AutomationClient {
   email: string | null;
   noServiceMessages: boolean;
   marketingConsent: boolean;
+  /** Бажаний канал контрагента — першим у ланцюжку «як у філії», якщо доступний (BR-AUT-011). */
+  preferredChannel: NotificationChannel | null;
 }
 
 /**
@@ -54,6 +56,7 @@ const CP_SELECT = {
   email: true,
   noServiceMessages: true,
   marketingConsent: true,
+  preferredChannel: true,
 } satisfies Prisma.CounterpartySelect;
 
 type CpRow = Prisma.CounterpartyGetPayload<{ select: typeof CP_SELECT }>;
@@ -79,6 +82,7 @@ const toClient = (c: CpRow): AutomationClient => ({
   email: c.email,
   noServiceMessages: c.noServiceMessages,
   marketingConsent: c.marketingConsent,
+  preferredChannel: c.preferredChannel,
 });
 
 const vehicleVars = (v: VehicleRow): Partial<Record<AutomationVariableKey, string>> =>
@@ -357,6 +361,7 @@ export class AutomationContextService {
           email: null,
           noServiceMessages: false,
           marketingConsent: false,
+          preferredChannel: null,
         };
         return {
           ...EMPTY,

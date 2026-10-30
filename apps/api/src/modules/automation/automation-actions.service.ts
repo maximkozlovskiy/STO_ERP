@@ -94,7 +94,26 @@ type ChannelCache = Map<string, Promise<ResolvedChannel[]>>;
 interface ChannelChoice {
   wanted: readonly NotificationChannel[] | undefined;
   allowed: readonly NotificationChannel[];
+  /**
+   * Бажаний канал клієнта (`Counterparty.preferredChannel`): у режимі «як у філії» — першим, якщо
+   * доступний; явний перелік правила його не змінює. Працівникам і тесту — не передається.
+   */
+  preferred?: NotificationChannel | null;
 }
+
+/**
+ * BR-AUT-011, бажаний канал клієнта: якщо він серед ДОСТУПНИХ каналів (налаштований у філії, з
+ * адресою одержувача; бот — лише підписаному) — іде першим, решта — за пріоритетом філії без
+ * повтору. Недоступний чи не заданий — порядок філії без змін (без «пропущено»).
+ */
+const preferredFirst = (
+  channels: ResolvedChannel[],
+  preferred: NotificationChannel | null | undefined,
+): ResolvedChannel[] => {
+  const i = preferred ? channels.findIndex(r => r.channel === preferred) : -1;
+  const first = channels[i];
+  return i <= 0 || !first ? channels : [first, ...channels.filter((_, j) => j !== i)];
+};
 
 /** Канал рядка «пропущено» в журналі: перший канал правила, без нього — SMS. */
 const firstChannel = (wanted: readonly NotificationChannel[] | undefined): NotificationChannel =>
@@ -160,7 +179,12 @@ export class AutomationActionsService {
         : null;
     const built = await this.buildChain(
       run,
-      { wanted: action.channels, allowed: AUTOMATION_CHANNELS },
+      {
+        wanted: action.channels,
+        allowed: AUTOMATION_CHANNELS,
+        // BR-AUT-011: тест іде тому, хто тестує, — бажаний канал клієнта його не стосується.
+        preferred: run.test ? null : (client?.preferredChannel ?? null),
+      },
       action.template,
       { phone, email, chatId },
     );
@@ -393,8 +417,8 @@ export class AutomationActionsService {
    * BR-AUT-011: канали дії ∩ налаштовані канали філії, з адресою одержувача. Явний перелік правила
    * — лише його канали в його порядку; без переліку — усі налаштовані канали філії за пріоритетом,
    * який задав власник (серед дозволених для дії), Telegram-бот — там, де власник поставив його
-   * рядок каналу. Адреса бота — chat id підписки: не підписаний одержувач боту недоступний, ланцюжок
-   * іде далі. Причина порожнього ланцюжка — для журналу; бот у переліку правила, а в організації
+   * рядок каналу; бажаний канал клієнта, якщо доступний, — першим. Адреса бота — chat id підписки:
+   * не підписаний одержувач боту недоступний, ланцюжок іде далі. Причина порожнього ланцюжка — для журналу; бот у переліку правила, а в організації
    * його не підключено, — `TELEGRAM_BOT_NOT_CONNECTED`.
    */
   private async buildChain(
@@ -425,7 +449,10 @@ export class AutomationActionsService {
         allowed.includes(r.channel),
       );
       if (branch.length === 0) return { reason: 'NO_CHANNEL' };
-      resolved = branch.filter(r => !!recipientOf(r.channel));
+      resolved = preferredFirst(
+        branch.filter(r => !!recipientOf(r.channel)),
+        choice.preferred,
+      );
       if (resolved.length === 0) return { reason: 'NO_CONTACT' };
     }
     const message = renderAutomationTemplate(template.body, run.vars);

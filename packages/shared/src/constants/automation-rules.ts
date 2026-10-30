@@ -56,6 +56,8 @@ export const AUTOMATION_SKIP_REASONS = [
   // Відкладене повідомлення (тихі години) на момент відправки вже недоречне (BR-AUT-016).
   'DOCUMENT_DELETED',
   'PAYMENT_REVERSED',
+  // «Створено» оплати / повернення постачальнику, а чернетку скасовано до відправки (BR-AUT-016).
+  'DOCUMENT_CANCELLED',
 ] as const;
 export type AutomationSkipReason = (typeof AUTOMATION_SKIP_REASONS)[number];
 

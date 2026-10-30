@@ -1,7 +1,12 @@
 import { Processor, InjectQueue, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
-import { NotificationChannel, NotificationEventType } from '@prisma/client';
+import {
+  NotificationChannel,
+  NotificationEventType,
+  SupplierPaymentStatus,
+  SupplierReturnStatus,
+} from '@prisma/client';
 import type { AutomationSkipReason } from '@sto/shared';
 import type { NotificationLogMeta } from './notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -226,8 +231,10 @@ export class SmsProcessor extends DeadLetterWorkerHost {
   /**
    * BR-AUT-016: чи доречне ще повідомлення правила про документ. Документ видалено (чи його немає
    * в org) — `DOCUMENT_DELETED`; повідомлення про «створено» оплати клієнта / постачальнику, а
-   * оплату вже сторновано — `PAYMENT_REVERSED`. Звичайна зміна статусу не скасовує («Виконано»
-   * лишається правдою й після «Оплачено»). Тест (`isTest`) і зашиті події — без перевірки.
+   * оплату вже сторновано — `PAYMENT_REVERSED`; «створено» оплати чи повернення постачальнику, а
+   * чернетку скасовано (CANCELLED — документа так і не було) — `DOCUMENT_CANCELLED`. Звичайна
+   * зміна статусу не скасовує («Виконано» лишається правдою й після «Оплачено»). Тест (`isTest`) і
+   * зашиті події — без перевірки.
    */
   private async staleReason(
     orgId: string,
@@ -251,7 +258,17 @@ export class SmsProcessor extends DeadLetterWorkerHost {
           select: { deletedAt: true, status: true },
         });
         if (!p || p.deletedAt) return 'DOCUMENT_DELETED';
-        return created && p.status === 'REVERSED' ? 'PAYMENT_REVERSED' : null;
+        if (!created) return null;
+        if (p.status === SupplierPaymentStatus.REVERSED) return 'PAYMENT_REVERSED';
+        return p.status === SupplierPaymentStatus.CANCELLED ? 'DOCUMENT_CANCELLED' : null;
+      }
+      case 'SUPPLIER_RETURN': {
+        const r = await this.prisma.supplierReturn.findFirst({
+          where,
+          select: { deletedAt: true, status: true },
+        });
+        if (!r || r.deletedAt) return 'DOCUMENT_DELETED';
+        return created && r.status === SupplierReturnStatus.CANCELLED ? 'DOCUMENT_CANCELLED' : null;
       }
       case 'WORK_ORDER':
         row = await this.prisma.workOrder.findFirst({ where, select: live });
@@ -264,9 +281,6 @@ export class SmsProcessor extends DeadLetterWorkerHost {
         break;
       case 'STOCK_DOCUMENT':
         row = await this.prisma.stockDocument.findFirst({ where, select: live });
-        break;
-      case 'SUPPLIER_RETURN':
-        row = await this.prisma.supplierReturn.findFirst({ where, select: live });
         break;
       case 'BOOKING':
         row = await this.prisma.bookingRequest.findFirst({ where, select: live });
