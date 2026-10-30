@@ -91,7 +91,7 @@ export class CheckboxClient {
   async sellReceipt(
     apiUrl: string,
     accessToken: string,
-    params: { amount: number; method: string; goodName?: string },
+    params: { amount: number; method: string; isCash: boolean; goodName?: string },
   ): Promise<SellReceiptResult> {
     const cents = Math.round(params.amount * 100);
     const res = await this.call('POST', apiUrl, '/api/v1/receipts/sell', SELL_TIMEOUT_MS, {
@@ -103,7 +103,7 @@ export class CheckboxClient {
             quantity: 1000, // Checkbox: milli-units → 1.000
           },
         ],
-        payments: [{ type: params.method === 'cash' ? 'CASH' : 'CASHLESS', value: cents }],
+        payments: [{ type: params.isCash ? 'CASH' : 'CASHLESS', value: cents }],
       },
     });
     const id = res?.id ?? res?.fiscal_code;

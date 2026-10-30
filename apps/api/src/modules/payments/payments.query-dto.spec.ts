@@ -29,6 +29,7 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
     counterparty: { findFirst: ReturnType<typeof vi.fn> };
     workOrder: { findFirst: ReturnType<typeof vi.fn> };
     garageBranch: { findFirst: ReturnType<typeof vi.fn> };
+    paymentMethodConfig: { findFirst: ReturnType<typeof vi.fn> };
     payment: {
       findFirst: ReturnType<typeof vi.fn>;
       findMany: ReturnType<typeof vi.fn>;
@@ -75,6 +76,18 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
       counterparty: { findFirst: vi.fn() },
       workOrder: { findFirst: vi.fn() },
       garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: 'br-1' }) },
+      // Довідник способів: ознака «Готівка» лише в cash (BR-PAY-019); фейк виконує `where.code`.
+      paymentMethodConfig: {
+        findFirst: vi
+          .fn()
+          .mockImplementation((args: { where: { code: string } }) =>
+            Promise.resolve(
+              ['cash', 'card'].includes(args.where.code)
+                ? { isCash: args.where.code === 'cash' }
+                : null,
+            ),
+          ),
+      },
       payment: {
         findFirst: vi.fn(),
         findMany: vi.fn().mockResolvedValue([]),
@@ -379,9 +392,24 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
     expect(checkboxQueue.add).toHaveBeenCalledTimes(1);
     expect(checkboxQueue.add).toHaveBeenCalledWith(
       'fiscal-receipt',
-      expect.objectContaining({ paymentId: PAY_ID, orgId: ORG, method: 'card', amount: 500 }),
+      expect.objectContaining({
+        paymentId: PAY_ID,
+        orgId: ORG,
+        method: 'card',
+        amount: 500,
+        isCash: false,
+      }),
       expect.objectContaining({ attempts: 288 }),
     );
+  });
+
+  // guards: BR-PAY-019
+  it('retryFiscal: тип оплати чека — за ознакою способу в довіднику (cash → isCash)', async () => {
+    prisma.payment.findFirst
+      .mockResolvedValueOnce(failedPayment({ method: 'cash' }))
+      .mockResolvedValueOnce(paymentRow({ fiscalStatus: 'QUEUED' }));
+    await service.retryFiscal(ORG, PAY_ID);
+    expect(checkboxQueue.add.mock.calls[0][1]).toMatchObject({ method: 'cash', isCash: true });
   });
 
   // Повторна фіскалізація — окремий `.add()` у retryFiscal зі своєю копією опцій: мусить тримати

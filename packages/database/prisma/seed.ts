@@ -145,7 +145,7 @@ async function main() {
 
   // ─── PaymentMethodConfig ─────────────────────────────────
   const paymentMethods = [
-    { code: 'cash', name: 'Готівка', sortOrder: 1, requiresFiscal: true },
+    { code: 'cash', name: 'Готівка', sortOrder: 1, requiresFiscal: true, isCash: true },
     { code: 'card_terminal', name: 'Картка (термінал)', sortOrder: 2, requiresFiscal: true },
     { code: 'bank_transfer', name: 'Банківський переказ', sortOrder: 3, requiresFiscal: false },
     { code: 'privat24_qr', name: 'PrivatBank QR', sortOrder: 4, requiresFiscal: false },
@@ -993,7 +993,14 @@ async function main() {
       key: 'cash',
       name: 'Готівка',
       sortOrder: 1,
-      data: { code: 'cash', name: 'Готівка', sortOrder: 1, requiresFiscal: true, isActive: true },
+      data: {
+        code: 'cash',
+        name: 'Готівка',
+        sortOrder: 1,
+        requiresFiscal: true,
+        isCash: true,
+        isActive: true,
+      },
     },
     {
       entityType: 'payment_method',

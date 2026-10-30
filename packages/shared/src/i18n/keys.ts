@@ -597,6 +597,7 @@ export const VALIDATION_KEYS = [
   'err.payment.cashRegisterNotSpecified',
   'err.payment.cashRegisterNotFound',
   'err.payment.cashRequiresRegister',
+  'err.payment.methodUnavailable',
   'err.payment.reversalCashRow',
   'err.payment.reversalOnlineQr',
   'err.payment.alreadyReversed',

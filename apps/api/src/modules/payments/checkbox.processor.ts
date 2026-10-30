@@ -1,6 +1,7 @@
 import { Processor, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
+import { CASH_METHOD_CODE } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runWithTenant } from '../../common/tenant/tenant-context';
 import { FiscalUnauthorizedError } from './fiscal/fiscal-provider.interface';
@@ -16,6 +17,8 @@ interface FiscalReceiptJob {
   branchId: string | null;
   amount: number;
   method: string;
+  /** Готівка за ознакою довідника (BR-PAY-019); job, поставлений до ознаки, її не має. */
+  isCash?: boolean;
 }
 
 // concurrency: 3 — кожен job = 15s мережевий виклик Checkbox. concurrency обмежує паралелізм
@@ -38,6 +41,7 @@ export class CheckboxProcessor extends DeadLetterWorkerHost {
   async process(job: Job<FiscalReceiptJob>): Promise<void> {
     return runWithTenant({ orgId: job.data.orgId }, async () => {
       const { paymentId, orgId, branchId, amount, method } = job.data;
+      const isCash = job.data.isCash ?? method === CASH_METHOD_CODE;
 
       // Idempotency: якщо fiscalReceiptId уже є (попередня спроба пробила чек, але DB-update впав),
       // пропускаємо зовнішній виклик — інакше retry створить ДРУГИЙ чек у Checkbox.
@@ -123,13 +127,13 @@ export class CheckboxProcessor extends DeadLetterWorkerHost {
       let result;
       try {
         result = await this.integrationLog.wrap({ ...sellCtx, provider: provider.code }, () =>
-          provider.sellReceipt(cfg, token, { amount, method }),
+          provider.sellReceipt(cfg, token, { amount, method, isCash }),
         );
       } catch (e) {
         if (e instanceof FiscalUnauthorizedError) {
           ({ provider, cfg, token } = await this.shifts.refreshToken(orgId, shift.id));
           result = await this.integrationLog.wrap({ ...sellCtx, provider: provider.code }, () =>
-            provider.sellReceipt(cfg, token, { amount, method }),
+            provider.sellReceipt(cfg, token, { amount, method, isCash }),
           );
         } else {
           throw e;

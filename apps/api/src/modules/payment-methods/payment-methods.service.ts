@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PaymentSourceType } from '@prisma/client';
-import { CASH_METHOD_CODE, translateError } from '@sto/shared';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -46,6 +46,7 @@ interface PaymentMethodModel {
   isSystem: boolean;
   sortOrder: number;
   requiresFiscal: boolean;
+  isCash: boolean;
   defaultSourceType?: PaymentSourceType | null;
   defaultCashRegisterId?: string | null;
   defaultBankAccountId?: string | null;
@@ -87,7 +88,7 @@ export class PaymentMethodsService {
   async create(orgId: string, dto: CreatePaymentMethodDto): Promise<PaymentMethodResponseDto> {
     const { defaultSourceType, defaultCashRegisterId, defaultBankAccountId, ...fields } = dto;
     const destination =
-      (await this.resolveDestination(orgId, dto.code, {
+      (await this.resolveDestination(orgId, dto.isCash ?? false, {
         defaultSourceType,
         defaultCashRegisterId,
         defaultBankAccountId,
@@ -124,7 +125,7 @@ export class PaymentMethodsService {
     // Narrow tenant guard — full DTO load марний бо update сам повертає item.
     const existing = await this.prisma.paymentMethodConfig.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { id: true, isSystem: true, code: true },
+      select: { id: true, isSystem: true, isCash: true, defaultSourceType: true },
     });
     if (!existing)
       throw new NotFoundException(translateError('err.paymentMethod.notFound', getLocale()));
@@ -138,11 +139,24 @@ export class PaymentMethodsService {
     }
     const { defaultSourceType, defaultCashRegisterId, defaultBankAccountId, ...fields } = dto;
     // undefined — призначення в запиті немає, поля лишаються як були.
-    const destination = await this.resolveDestination(orgId, existing.code, {
+    const isCash = dto.isCash ?? existing.isCash;
+    const destination = await this.resolveDestination(orgId, isCash, {
       defaultSourceType,
       defaultCashRegisterId,
       defaultBankAccountId,
     });
+    // BR-PAY-019: ПОЗНАЧИТИ «Готівкою» спосіб, чиї кошти за замовчуванням ідуть на банківський
+    // рахунок, — та сама суперечність, що й банківський рахунок для готівки. Рахунок, збережений
+    // до правила, інших правок (активність, фіскалізація) не блокує — лише вмикання ознаки.
+    if (
+      dto.isCash === true &&
+      !existing.isCash &&
+      destination === undefined &&
+      existing.defaultSourceType === PaymentSourceType.BANK_ACCOUNT
+    )
+      throw new BadRequestException(
+        translateError('err.paymentMethod.cashOnlyRegister', getLocale()),
+      );
     const item = await this.prisma.paymentMethodConfig.update({
       where: { id, orgId },
       data: { ...fields, ...destination },
@@ -181,7 +195,7 @@ export class PaymentMethodsService {
    */
   private async resolveDestination(
     orgId: string,
-    code: string,
+    isCash: boolean,
     input: {
       defaultSourceType?: PaymentSourceType | null;
       defaultCashRegisterId?: string | null;
@@ -224,7 +238,7 @@ export class PaymentMethodsService {
     }
     // BR-PAY-019: готівка лягає лише в касу — банківський рахунок за замовчуванням зробив би
     // кожну оплату готівкою без явної каси відмовою (рішення власника 2026-10-14).
-    if (code === CASH_METHOD_CODE)
+    if (isCash)
       throw new BadRequestException(
         translateError('err.paymentMethod.cashOnlyRegister', getLocale()),
       );
@@ -313,6 +327,7 @@ export class PaymentMethodsService {
       isSystem: item.isSystem,
       sortOrder: item.sortOrder,
       requiresFiscal: item.requiresFiscal,
+      isCash: item.isCash,
       defaultSourceType: item.defaultSourceType ?? null,
       defaultCashRegisterId: item.defaultCashRegisterId ?? null,
       defaultBankAccountId: item.defaultBankAccountId ?? null,

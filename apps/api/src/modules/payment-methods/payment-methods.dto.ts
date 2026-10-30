@@ -60,6 +60,13 @@ export class CreatePaymentMethodDto extends PaymentMethodDestinationDto {
   @IsOptional()
   @IsBoolean()
   requiresFiscal?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Готівка: оплата лише з касою, у чеку ПРРО — CASH (BR-PAY-019)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isCash?: boolean;
 }
 
 export class UpdatePaymentMethodDto extends PaymentMethodDestinationDto {
@@ -83,6 +90,13 @@ export class UpdatePaymentMethodDto extends PaymentMethodDestinationDto {
   @IsOptional()
   @IsBoolean()
   requiresFiscal?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Готівка: оплата лише з касою, у чеку ПРРО — CASH (BR-PAY-019)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isCash?: boolean;
 }
 
 export class PaymentMethodResponseDto {
@@ -94,6 +108,7 @@ export class PaymentMethodResponseDto {
   @ApiProperty() isSystem!: boolean;
   @ApiProperty() sortOrder!: number;
   @ApiProperty() requiresFiscal!: boolean;
+  @ApiProperty({ description: 'Готівка (BR-PAY-019)' }) isCash!: boolean;
   @ApiProperty({ enum: PaymentSourceType, nullable: true })
   defaultSourceType!: PaymentSourceType | null;
   @ApiProperty({ type: String, nullable: true }) defaultCashRegisterId!: string | null;

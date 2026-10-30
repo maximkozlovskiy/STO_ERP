@@ -474,6 +474,8 @@ export const en: Record<string, string> = {
     'An online QR payment cannot be reversed here — refund it in the payment service account',
   'err.payment.alreadyReversed': 'The payment has already been reversed',
   'err.payment.cashRequiresRegister': 'Specify a cash register for a cash payment',
+  'err.payment.methodUnavailable':
+    'Payment method “{{method}}” is not found, disabled or deleted — choose another one',
   // cash-shift
   'err.cashShift.fiscalNotConfigured':
     'Fiscalization is not configured (provider/credentials/enablement)',

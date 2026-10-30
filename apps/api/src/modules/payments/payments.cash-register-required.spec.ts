@@ -1,7 +1,10 @@
 /**
- * PaymentsService — готівка лише через касу (BR-PAY-019).
+ * PaymentsService — готівка лише через касу (BR-PAY-019) і спосіб оплати з довідника (BR-PAY-027).
  *
- * Оплата способом «Готівка» (`cash`) мусить мати касу: з запиту або касу за замовчуванням способу
+ * «Готівка» — ознака способу в довіднику (`PaymentMethodConfig.isCash`), не код `cash`.
+ * Фейковий довідник нижче ВИКОНУЄ `where` (код, `deletedAt: null`) над рядками способів.
+ *
+ * Оплата способом-«готівкою» мусить мати касу: з запиту або касу за замовчуванням способу
  * оплати. Без каси борг гасився, а каса й її історія про оплату не знали (TECH-DEBT §10 п. 17).
  * Правило діє ПІСЛЯ розв'язання рахунку-призначення, тож застаріле замовчування (касу видалено,
  * BR-PAY-002 мовчки знімає його) теж дає 400. Решта способів — BR-PAY-023 (рахунок обов'язковий), нижче.
@@ -47,6 +50,17 @@ describe('PaymentsService — готівка лише через касу (BR-PA
     $transaction: Fn;
   };
   let cash: { createOperation: Fn };
+  let queue: { add: Fn };
+  /** Довідник способів оплати організації ORG. */
+  let methods: Array<{
+    code: string;
+    isCash?: boolean;
+    isActive?: boolean;
+    requiresFiscal?: boolean;
+    deleted?: boolean;
+  }>;
+  /** Призначення за замовчуванням, яке кейс задає будь-якому способу. */
+  let methodDefaults: Record<string, unknown>;
   let lastCreateData: Record<string, unknown> | undefined;
 
   beforeEach(async () => {
@@ -92,7 +106,7 @@ describe('PaymentsService — готівка лише через касу (BR-PA
         }),
         update: vi.fn().mockResolvedValue({}),
       },
-      paymentMethodConfig: { findFirst: vi.fn().mockResolvedValue({ requiresFiscal: false }) },
+      paymentMethodConfig: { findFirst: vi.fn() },
       // Будь-яка запитана каса жива й нефіскальна; видалену/чужу кейс задає сам.
       cashRegister: {
         findFirst: vi
@@ -111,6 +125,37 @@ describe('PaymentsService — готівка лише через касу (BR-PA
       }),
     };
     cash = { createOperation: vi.fn().mockResolvedValue(undefined) };
+    queue = { add: vi.fn().mockResolvedValue(undefined) };
+    methods = [
+      { code: 'cash', isCash: true },
+      { code: 'card_terminal' },
+      { code: 'bank' },
+      { code: 'monobank_qr' },
+    ];
+    prisma.paymentMethodConfig.findFirst.mockImplementation(
+      (args: { where: { orgId: string; code: string; deletedAt?: null } }) => {
+        const row = methods.find(
+          m =>
+            m.code === args.where.code &&
+            (args.where.deletedAt !== null || !m.deleted) &&
+            args.where.orgId === ORG,
+        );
+        return Promise.resolve(
+          row
+            ? {
+                isActive: row.isActive ?? true,
+                isCash: row.isCash ?? false,
+                requiresFiscal: row.requiresFiscal ?? false,
+                defaultSourceType: null,
+                defaultCashRegisterId: null,
+                defaultBankAccountId: null,
+                ...methodDefaults,
+              }
+            : null,
+        );
+      },
+    );
+    methodDefaults = {};
 
     const module = await Test.createTestingModule({
       providers: [
@@ -126,7 +171,7 @@ describe('PaymentsService — готівка лише через касу (BR-PA
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
         { provide: CashService, useValue: cash },
         { provide: ExchangeRatesService, useValue: exchangeRatesMock() },
-        { provide: getQueueToken('checkbox'), useValue: { add: vi.fn() } },
+        { provide: getQueueToken('checkbox'), useValue: queue },
       ],
     }).compile();
     service = module.get(PaymentsService);
@@ -146,12 +191,11 @@ describe('PaymentsService — готівка лише через касу (BR-PA
 
   // guards: BR-PAY-019
   it('готівка з касою за замовчуванням способу → рядок у цій касі, платіж несе касу', async () => {
-    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
-      requiresFiscal: false,
+    methodDefaults = {
       defaultSourceType: 'CASH_REGISTER',
       defaultCashRegisterId: DEFAULT_CASH_ID,
       defaultBankAccountId: null,
-    });
+    };
 
     await service.create(ORG, cashDto, 'user-1');
 
@@ -176,12 +220,11 @@ describe('PaymentsService — готівка лише через касу (BR-PA
 
   // guards: BR-PAY-019
   it('явна каса в запиті перемагає касу за замовчуванням', async () => {
-    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
-      requiresFiscal: false,
+    methodDefaults = {
       defaultSourceType: 'CASH_REGISTER',
       defaultCashRegisterId: DEFAULT_CASH_ID,
       defaultBankAccountId: null,
-    });
+    };
 
     await service.create(
       ORG,
@@ -204,12 +247,11 @@ describe('PaymentsService — готівка лише через касу (BR-PA
 
   // guards: BR-PAY-019
   it('застаріле замовчування (касу видалено) → 400, а не оплата повз касу', async () => {
-    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
-      requiresFiscal: false,
+    methodDefaults = {
       defaultSourceType: 'CASH_REGISTER',
       defaultCashRegisterId: DEFAULT_CASH_ID,
       defaultBankAccountId: null,
-    });
+    };
     prisma.cashRegister.findFirst.mockResolvedValue(null);
 
     await expect(service.create(ORG, cashDto, 'user-1')).rejects.toThrow(
@@ -229,12 +271,11 @@ describe('PaymentsService — готівка лише через касу (BR-PA
       ),
     ).rejects.toThrow(new BadRequestException(CASH_MSG));
 
-    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
-      requiresFiscal: false,
+    methodDefaults = {
       defaultSourceType: 'BANK_ACCOUNT',
       defaultCashRegisterId: null,
       defaultBankAccountId: BANK_ID,
-    });
+    };
     await expect(service.create(ORG, cashDto, 'user-1')).rejects.toThrow(
       new BadRequestException(CASH_MSG),
     );
@@ -248,12 +289,11 @@ describe('PaymentsService — готівка лише через касу (BR-PA
   ] as const)(
     'каса в запиті без sourceType (%s) → тип із id, оплата лягає в цю касу',
     async (_label, method, defaultSourceType) => {
-      prisma.paymentMethodConfig.findFirst.mockResolvedValue({
-        requiresFiscal: false,
+      methodDefaults = {
         defaultSourceType,
         defaultCashRegisterId: null,
         defaultBankAccountId: defaultSourceType ? BANK_ID : null,
-      });
+      };
 
       await service.create(ORG, { ...cashDto, method, cashRegisterId: EXPLICIT_CASH_ID }, 'user-1');
 
@@ -298,12 +338,11 @@ describe('PaymentsService — готівка лише через касу (BR-PA
 
     // guards: BR-PAY-023
     it('картка через термінал з касою за замовчуванням → у касу, без рахунку', async () => {
-      prisma.paymentMethodConfig.findFirst.mockResolvedValue({
-        requiresFiscal: false,
+      methodDefaults = {
         defaultSourceType: 'CASH_REGISTER',
         defaultCashRegisterId: DEFAULT_CASH_ID,
         defaultBankAccountId: null,
-      });
+      };
       await service.create(ORG, { ...dto, method: 'card_terminal' }, 'user-1');
       expect(lastCreateData).toMatchObject({
         sourceType: 'CASH_REGISTER',
@@ -313,12 +352,11 @@ describe('PaymentsService — готівка лише через касу (BR-PA
 
     // guards: BR-PAY-023
     it('рахунок за замовчуванням видалено → 400, а не оплата без рахунку', async () => {
-      prisma.paymentMethodConfig.findFirst.mockResolvedValue({
-        requiresFiscal: false,
+      methodDefaults = {
         defaultSourceType: 'BANK_ACCOUNT',
         defaultCashRegisterId: null,
         defaultBankAccountId: BANK_ID,
-      });
+      };
       prisma.bankAccount.findFirst.mockResolvedValue(null);
       await expect(service.create(ORG, { ...dto, method: 'bank' }, 'user-1')).rejects.toThrow(
         'Безготівкова оплата: оберіть банківський рахунок',
@@ -335,6 +373,102 @@ describe('PaymentsService — готівка лише через касу (BR-PA
       );
       expect(prisma.payment.create).toHaveBeenCalledTimes(1);
       expect(lastCreateData).toMatchObject({ sourceType: null, bankAccountId: null });
+    });
+  });
+
+  /**
+   * BR-PAY-019 за ознакою довідника: «готівкою» є спосіб з `isCash`, а не код `cash` (рішення
+   * власника 2026-10-30, TECH-DEBT (б) п. 45). НДІ створює коди великими літерами (`CASH`), і такий
+   * власний «готівковий» спосіб раніше проходив без каси.
+   */
+  describe('готівка — ознака способу в довіднику (BR-PAY-019)', () => {
+    // guards: BR-PAY-019
+    it('власний спосіб CASH з isCash без каси → 400, як «Готівка»', async () => {
+      methods.push({ code: 'CASH', isCash: true });
+      await expect(
+        service.create(ORG, { ...cashDto, method: 'CASH' }, 'user-1', undefined, {
+          fromRequest: true,
+        }),
+      ).rejects.toThrow(new BadRequestException(CASH_MSG));
+      expect(prisma.payment.create).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-PAY-019
+    it('код cash без ознаки isCash — не готівка: з рахунком у запиті проходить', async () => {
+      methods[0] = { code: 'cash', isCash: false };
+      await service.create(ORG, { ...cashDto, bankAccountId: BANK_ID }, 'user-1');
+      expect(lastCreateData).toMatchObject({ sourceType: 'BANK_ACCOUNT', bankAccountId: BANK_ID });
+    });
+
+    // guards: BR-PAY-019
+    it('чек ПРРО: тип оплати — за ознакою (isCash у job), не за кодом', async () => {
+      methods.push({ code: 'CASH', isCash: true, requiresFiscal: true });
+      methods.push({ code: 'cash_like', requiresFiscal: true });
+      await service.create(
+        ORG,
+        {
+          ...cashDto,
+          method: 'CASH',
+          sourceType: 'CASH_REGISTER',
+          cashRegisterId: EXPLICIT_CASH_ID,
+        },
+        'user-1',
+      );
+      await service.create(
+        ORG,
+        { ...cashDto, method: 'cash_like', bankAccountId: BANK_ID },
+        'user-1',
+      );
+      const jobs = queue.add.mock.calls.map(c => c[1] as { method: string; isCash: boolean });
+      expect(jobs).toEqual([
+        expect.objectContaining({ method: 'CASH', isCash: true }),
+        expect.objectContaining({ method: 'cash_like', isCash: false }),
+      ]);
+    });
+  });
+
+  /**
+   * BR-PAY-027 (рішення власника 2026-10-30, TECH-DEBT (б) п. 45): `POST /payments` приймає лише
+   * спосіб, що є в довіднику, активний і не видалений; інакше 400 до транзакції. Раніше будь-який
+   * код (`Cash`, вимкнений, видалений) давав оплату. Внутрішні викликачі (рознесення виписки —
+   * `bank`, онлайн-оплата, каса) під правило не підпадають.
+   */
+  describe('спосіб оплати із запиту — лише з довідника (BR-PAY-027)', () => {
+    const METHOD_MSG = /Спосіб оплати «.+» не знайдено, вимкнено або видалено/;
+    const req = { counterpartyId: CP_ID, amount: 100, bankAccountId: BANK_ID };
+    const fromRequest = { fromRequest: true };
+
+    // guards: BR-PAY-027
+    it.each([
+      ['невідомий код', 'Cash', {}],
+      ['вимкнений', 'card_terminal', { isActive: false }],
+      ['видалений', 'card_terminal', { deleted: true }],
+    ] as const)('%s (%s) → 400, оплати немає', async (_label, method, patch) => {
+      methods = methods.map(m => (m.code === method ? { ...m, ...patch } : m));
+      await expect(
+        service.create(ORG, { ...req, method }, 'user-1', undefined, fromRequest),
+      ).rejects.toThrow(METHOD_MSG);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.payment.create).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-PAY-027
+    it('наявний активний спосіб → оплата проходить', async () => {
+      await service.create(
+        ORG,
+        { ...req, method: 'card_terminal' },
+        'user-1',
+        undefined,
+        fromRequest,
+      );
+      expect(prisma.payment.create).toHaveBeenCalledTimes(1);
+    });
+
+    // guards: BR-PAY-027
+    it('внутрішній виклик (рознесення виписки, спосіб bank поза довідником) — без перевірки', async () => {
+      methods = methods.filter(m => m.code !== 'bank');
+      await service.create(ORG, { ...req, method: 'bank' }, 'user-1');
+      expect(prisma.payment.create).toHaveBeenCalledTimes(1);
     });
   });
 });

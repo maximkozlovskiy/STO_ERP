@@ -117,7 +117,7 @@ export class SetupService {
             });
 
             const methods = [
-              { code: 'cash', name: 'Готівка', sortOrder: 1, requiresFiscal: true },
+              { code: 'cash', name: 'Готівка', sortOrder: 1, requiresFiscal: true, isCash: true },
               { code: 'card_terminal', name: 'Термінал', sortOrder: 2, requiresFiscal: true },
               {
                 code: 'bank_transfer',

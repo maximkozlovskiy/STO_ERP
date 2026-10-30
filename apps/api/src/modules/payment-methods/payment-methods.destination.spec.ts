@@ -29,6 +29,7 @@ const row = (over: Record<string, unknown> = {}) => ({
   isSystem: true,
   sortOrder: 1,
   requiresFiscal: false,
+  isCash: true,
   defaultSourceType: null,
   defaultCashRegisterId: null,
   defaultBankAccountId: null,
@@ -144,7 +145,8 @@ describe('PaymentMethodsService — куди надходять кошти', () 
       prisma.paymentMethodConfig.findFirst.mockResolvedValue({
         id: PM_ID,
         isSystem: true,
-        code: 'cash',
+        isCash: true,
+        defaultSourceType: null,
       });
 
       await expect(service.update(ORG, PM_ID, dto)).rejects.toThrow(/лише в касу/);
@@ -158,7 +160,8 @@ describe('PaymentMethodsService — куди надходять кошти', () 
     prisma.paymentMethodConfig.findFirst.mockResolvedValue({
       id: PM_ID,
       isSystem: true,
-      code: 'cash',
+      isCash: true,
+      defaultSourceType: null,
     });
 
     await service.update(ORG, PM_ID, {
@@ -177,7 +180,8 @@ describe('PaymentMethodsService — куди надходять кошти', () 
     prisma.paymentMethodConfig.findFirst.mockResolvedValue({
       id: PM_ID,
       isSystem: true,
-      code: 'cash',
+      isCash: true,
+      defaultSourceType: null,
     });
 
     await service.update(ORG, PM_ID, { isActive: false, requiresFiscal: true });
@@ -187,16 +191,45 @@ describe('PaymentMethodsService — куди надходять кошти', () 
   });
 
   // guards: BR-PAY-019
-  it('create способу з кодом «cash» і банківським рахунком → 400 до запису', async () => {
+  it('create способу з ознакою «Готівка» і банківським рахунком → 400 до запису', async () => {
     await expect(
       service.create(ORG, {
-        code: 'cash',
+        code: 'CASH2',
         name: 'Готівка 2',
+        isCash: true,
         defaultSourceType: 'BANK_ACCOUNT',
         defaultBankAccountId: BANK_ID,
       }),
     ).rejects.toThrow(/лише в касу/);
     expect(prisma.paymentMethodConfig.create).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PAY-019
+  it('увімкнути ознаку «Готівка» способу з банківським рахунком за замовчуванням → 400', async () => {
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+      id: PM_ID,
+      isSystem: false,
+      isCash: false,
+      defaultSourceType: 'BANK_ACCOUNT',
+    });
+
+    await expect(service.update(ORG, PM_ID, { isCash: true })).rejects.toThrow(/лише в касу/);
+    expect(prisma.paymentMethodConfig.update).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PAY-019
+  it('ознака «Готівка» з касою за замовчуванням пишеться й повертається у відповіді', async () => {
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+      id: PM_ID,
+      isSystem: false,
+      isCash: false,
+      defaultSourceType: 'CASH_REGISTER',
+    });
+
+    const res = await service.update(ORG, PM_ID, { isCash: true });
+
+    expect(updateData()).toEqual({ isCash: true });
+    expect(res.isCash).toBe(true);
   });
 
   it('тип не вказано — виводиться з переданого id', async () => {

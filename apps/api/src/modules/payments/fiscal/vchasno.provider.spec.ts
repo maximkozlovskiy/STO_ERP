@@ -75,7 +75,11 @@ describe('VchasnoProvider — Cloud API v3 dispatcher', () => {
 
   it('sellReceipt → task:1, копійки int, повертає fiscalReceiptId', async () => {
     fetchMock.mockResolvedValue(okJson({ fisn: 'RCPT-42' }));
-    const r = await provider.sellReceipt(cfg, 'TKN-123', { amount: 150.5, method: 'card' });
+    const r = await provider.sellReceipt(cfg, 'TKN-123', {
+      amount: 150.5,
+      method: 'card',
+      isCash: false,
+    });
     const body = lastBody().fiscal;
     expect(body.task).toBe(1);
     expect(body.goods[0].price).toBe(15050); // 150.50 грн → копійки
@@ -85,7 +89,7 @@ describe('VchasnoProvider — Cloud API v3 dispatcher', () => {
 
   it("sellReceipt method='cash' → payment.type CASH", async () => {
     fetchMock.mockResolvedValue(okJson({ fisn: 'RCPT-1' }));
-    await provider.sellReceipt(cfg, 'TKN-123', { amount: 10, method: 'cash' });
+    await provider.sellReceipt(cfg, 'TKN-123', { amount: 10, method: 'cash', isCash: true });
     expect(lastBody().fiscal.payment.type).toBe('CASH');
   });
 
@@ -107,7 +111,11 @@ describe('VchasnoProvider — Cloud API v3 dispatcher', () => {
     ];
     it.each(cases)('amount=%d → %d коп (goods.price == payment.value)', async (amount, cents) => {
       fetchMock.mockResolvedValue(okJson({ fisn: 'RCPT-X' }));
-      await provider.sellReceipt(cfg, 'TKN-123', { amount, method: 'card_terminal' });
+      await provider.sellReceipt(cfg, 'TKN-123', {
+        amount,
+        method: 'card_terminal',
+        isCash: false,
+      });
       const body = lastBody().fiscal;
       expect(body.goods[0].price).toBe(cents);
       expect(body.payment.value).toBe(cents);
@@ -117,19 +125,23 @@ describe('VchasnoProvider — Cloud API v3 dispatcher', () => {
   });
 
   // Bug #708: CASH ⇔ CASHLESS для ВСІХ методів оплати системи (seed PaymentMethodConfig +
-  // *_qr online). Лише 'cash' → CASH; усе інше (термінал/переказ/будь-який QR) → CASHLESS.
+  // *_qr online). BR-PAY-019: тип — за ознакою «Готівка» способу в довіднику (`isCash`), не за
+  // кодом: seed ставить її лише `cash`; власний «CASH» з ознакою — теж CASH.
   describe('Bug #708: мапінг усіх методів оплати системи → CASH/CASHLESS', () => {
-    const methods: Array<[string, 'CASH' | 'CASHLESS']> = [
-      ['cash', 'CASH'],
-      ['card_terminal', 'CASHLESS'],
-      ['bank_transfer', 'CASHLESS'],
-      ['privat24_qr', 'CASHLESS'],
-      ['monobank_qr', 'CASHLESS'],
-      ['liqpay_qr', 'CASHLESS'],
+    const methods: Array<[string, boolean, 'CASH' | 'CASHLESS']> = [
+      ['cash', true, 'CASH'],
+      ['CASH', true, 'CASH'],
+      ['cash', false, 'CASHLESS'],
+      ['card_terminal', false, 'CASHLESS'],
+      ['bank_transfer', false, 'CASHLESS'],
+      ['privat24_qr', false, 'CASHLESS'],
+      ['monobank_qr', false, 'CASHLESS'],
+      ['liqpay_qr', false, 'CASHLESS'],
     ];
-    it.each(methods)("method='%s' → payment.type='%s'", async (method, type) => {
+    // guards: BR-PAY-019
+    it.each(methods)("method='%s', isCash=%s → payment.type='%s'", async (method, isCash, type) => {
       fetchMock.mockResolvedValue(okJson({ fisn: 'RCPT-M' }));
-      await provider.sellReceipt(cfg, 'TKN-123', { amount: 100, method });
+      await provider.sellReceipt(cfg, 'TKN-123', { amount: 100, method, isCash });
       expect(lastBody().fiscal.payment.type).toBe(type);
     });
   });
@@ -141,7 +153,7 @@ describe('VchasnoProvider — Cloud API v3 dispatcher', () => {
     it('sellReceipt на {} → кидає «не отримано id чеку»', async () => {
       fetchMock.mockResolvedValue(okJson({}));
       await expect(
-        provider.sellReceipt(cfg, 'TKN-123', { amount: 10, method: 'cash' }),
+        provider.sellReceipt(cfg, 'TKN-123', { amount: 10, method: 'cash', isCash: true }),
       ).rejects.toThrow(/не отримано id чеку/);
     });
     it('openShift на порожнє тіло (200, text="") → кидає «не отримано id зміни»', async () => {
@@ -155,12 +167,16 @@ describe('VchasnoProvider — Cloud API v3 dispatcher', () => {
     it('sellReceipt на відповідь без жодного кандидат-ключа ({other:1}) → кидає', async () => {
       fetchMock.mockResolvedValue(okJson({ other: 1, nested: { fisn: 'ignored-deep' } }));
       await expect(
-        provider.sellReceipt(cfg, 'TKN-123', { amount: 10, method: 'cash' }),
+        provider.sellReceipt(cfg, 'TKN-123', { amount: 10, method: 'cash', isCash: true }),
       ).rejects.toThrow(/не отримано id чеку/);
     });
     it('extractId читає з обгортки {fiscal:{...}}', async () => {
       fetchMock.mockResolvedValue(okJson({ fiscal: { fisn: 'WRAPPED-42' } }));
-      const r = await provider.sellReceipt(cfg, 'TKN-123', { amount: 10, method: 'cash' });
+      const r = await provider.sellReceipt(cfg, 'TKN-123', {
+        amount: 10,
+        method: 'cash',
+        isCash: true,
+      });
       expect(r.fiscalReceiptId).toBe('WRAPPED-42');
     });
   });

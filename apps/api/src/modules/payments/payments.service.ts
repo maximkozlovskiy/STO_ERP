@@ -9,7 +9,6 @@ import { InjectQueue } from '@nestjs/bullmq';
 import {
   AUTOMATION_PAYMENT_ACTIVE_STATUS,
   AUTOMATION_PAYMENT_REVERSED_STATUS,
-  CASH_METHOD_CODE,
   formatPersonName,
   type PaymentReversalFormValues,
   TRANSACTION_TIMEOUT_MS,
@@ -73,6 +72,11 @@ const WORK_ORDER_PAYMENT_SELECT = {
 
 // Примітка фіскального статусу оплати, чий чек зняли з черги сторно (BR-CASH-024).
 const REVERSED_FISCAL_NOTE = 'Оплату сторновано';
+
+/** Звідки прийшла оплата: `fromRequest` — `POST /payments` (спосіб обрала людина, BR-PAY-027). */
+export interface CreatePaymentOptions {
+  fromRequest?: boolean;
+}
 
 /**
  * Сторно оплати: причина й автор; `cashOperationId` — рядок каси-сторно (BR-CASH-024). Безготівкове
@@ -262,10 +266,25 @@ export class PaymentsService {
       throw new BadRequestException(translateError('err.payment.retryOnlyFailed', getLocale()));
     }
 
+    // Тип оплати в чеку (готівка / безготівка) — за ознакою способу в довіднику (BR-PAY-019).
+    const methodIsCash =
+      (
+        await this.prisma.paymentMethodConfig.findFirst({
+          where: { orgId, code: payment.method },
+          select: { isCash: true },
+        })
+      )?.isCash ?? false;
     await this.checkboxQueue
       .add(
         'fiscal-receipt',
-        { paymentId: id, orgId, branchId, amount: Number(payment.amount), method: payment.method },
+        {
+          paymentId: id,
+          orgId,
+          branchId,
+          amount: Number(payment.amount),
+          method: payment.method,
+          isCash: methodIsCash,
+        },
         {
           attempts: 288,
           backoff: { type: 'exponential', delay: 300_000 },
@@ -299,6 +318,7 @@ export class PaymentsService {
     dto: CreatePaymentDto,
     userId?: string,
     cashRow?: CashOperationExtras,
+    opts: CreatePaymentOptions = {},
   ): Promise<PaymentResponseDto> {
     // Один паралельний батч: контрагент, наряд із запиту, наряд рахунку (BR-PAY-021) і спосіб оплати.
     const [counterparty, requestedWorkOrder, invoicePre, methodConfig] = await Promise.all([
@@ -332,6 +352,8 @@ export class PaymentsService {
       this.prisma.paymentMethodConfig.findFirst({
         where: { orgId, code: dto.method, deletedAt: null },
         select: {
+          isActive: true,
+          isCash: true,
           requiresFiscal: true,
           defaultSourceType: true,
           defaultBankAccountId: true,
@@ -341,6 +363,16 @@ export class PaymentsService {
     ]);
     if (!counterparty)
       throw new NotFoundException(translateError('err.payment.counterpartyNotFound', getLocale()));
+    // BR-PAY-027: спосіб оплати із запиту людини — лише наявний активний невидалений з довідника.
+    // Внутрішні викликачі (каса, рознесення виписки `bank`, онлайн-оплата `<шлюз>_qr`) передають
+    // спосіб самі й під правило не підпадають: гроші вже прийнято, відмова їх загубила б.
+    if (opts.fromRequest && !methodConfig?.isActive)
+      throw new BadRequestException(
+        translateError('err.payment.methodUnavailable', getLocale(), { method: dto.method }),
+      );
+    // BR-PAY-019: «готівка» — ознака способу в довіднику (`isCash`), не код. Невідомий спосіб
+    // (внутрішній `bank`) — безготівковий.
+    const isCash = methodConfig?.isCash ?? false;
 
     // Рахунок-призначення: DTO задає явно, інакше дефолт з methodConfig. sourceType↔id узгоджені.
     const resolvedSource = await this.resolveDestinationAccount(orgId, dto, methodConfig);
@@ -348,7 +380,7 @@ export class PaymentsService {
     // BR-PAY-019: готівка без каси — гроші, яких не видно в жодній касі (борг погашено, а залишок
     // каси й її історія про оплату не знають). Перевірка ПІСЛЯ розв'язання: каса з запиту або каса
     // за замовчуванням способу оплати; застаріле замовчування (касу видалено) теж дає 400.
-    if (dto.method === CASH_METHOD_CODE && resolvedSource.sourceType !== 'CASH_REGISTER')
+    if (isCash && resolvedSource.sourceType !== 'CASH_REGISTER')
       throw new BadRequestException(
         translateError('err.payment.cashRequiresRegister', getLocale()),
       );
@@ -357,11 +389,7 @@ export class PaymentsService {
     // замовчуванням способу оплати (картка через термінал може мати касу за замовчуванням);
     // застаріле замовчування (рахунок видалено) теж 400. Онлайн-оплата (QR) приходить від шлюзу
     // зі своїм наміром оплати й під правило не підпадає.
-    if (
-      dto.method !== CASH_METHOD_CODE &&
-      !dto.onlinePaymentIntentId &&
-      resolvedSource.sourceType === null
-    )
+    if (!isCash && !dto.onlinePaymentIntentId && resolvedSource.sourceType === null)
       throw new BadRequestException(
         translateError('err.payment.nonCashRequiresDestination', getLocale()),
       );
@@ -778,6 +806,7 @@ export class PaymentsService {
             branchId: workOrder?.branchId ?? null,
             amount: dto.amount,
             method: dto.method,
+            isCash,
           },
           {
             attempts: 288,

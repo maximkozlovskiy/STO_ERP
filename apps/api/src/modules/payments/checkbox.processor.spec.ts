@@ -164,11 +164,27 @@ describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
     expect(sellReceipt).not.toHaveBeenCalled();
   });
 
+  // guards: BR-PAY-019
+  it('тип оплати — з job (isCash за довідником); job до ознаки — за кодом cash', async () => {
+    await processor.process(makeJob({ method: 'CASH_DESK', isCash: true }));
+    await processor.process(makeJob({ method: 'cash', isCash: false }));
+    await processor.process(makeJob({ method: 'cash' }));
+    expect(sellReceipt.mock.calls.map(c => (c[2] as { isCash: boolean }).isCash)).toEqual([
+      true,
+      false,
+      true,
+    ]);
+  });
+
   it('success: sell у зміну через provider(cfg,token) → DONE + fiscalReceiptId', async () => {
     await processor.process(makeJob());
     expect(ensureToken).toHaveBeenCalledWith('org-1', 'shift-1');
     // provider.sellReceipt(cfg, token, {amount, method})
-    expect(sellReceipt).toHaveBeenCalledWith(cfg, 'tok', { amount: 100, method: 'cash' });
+    expect(sellReceipt).toHaveBeenCalledWith(cfg, 'tok', {
+      amount: 100,
+      method: 'cash',
+      isCash: true,
+    });
     // Bug #713: CAS-write несе fiscalReceiptId:null у where → атомарний single-writer.
     expect(paymentUpdateMany).toHaveBeenCalledWith({
       where: { id: 'pay-1', orgId: 'org-1', fiscalReceiptId: null },

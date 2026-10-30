@@ -87,7 +87,7 @@ export class VchasnoProvider implements FiscalProvider {
     const res = await this.execute(cfg, SELL_TIMEOUT_MS, accessToken, {
       task: TASK.SELL,
       goods: [{ name: params.goodName ?? 'Послуги автосервісу', price: cents, quantity: 1 }],
-      payment: { type: params.method === 'cash' ? 'CASH' : 'CASHLESS', value: cents },
+      payment: { type: params.isCash ? 'CASH' : 'CASHLESS', value: cents },
     });
     const id = this.extractId(res, ['fisn', 'fiscal_number', 'fiscal_code', 'receipt_id', 'id']);
     if (!id) throw new Error('Вчасно: не отримано id чеку');

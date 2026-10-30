@@ -469,6 +469,8 @@ export const uk: Record<string, string> = {
     'Онлайн-оплату за QR тут не сторнувати — повернення робиться в кабінеті платіжного сервісу',
   'err.payment.alreadyReversed': 'Оплату вже сторновано',
   'err.payment.cashRequiresRegister': 'Для оплати готівкою вкажіть касу',
+  'err.payment.methodUnavailable':
+    'Спосіб оплати «{{method}}» не знайдено, вимкнено або видалено — оберіть інший у довіднику',
   // cash-shift
   'err.cashShift.fiscalNotConfigured': 'Фіскалізацію не налаштовано (провайдер/креди/увімкнення)',
   'err.cashShift.unknownProvider': 'Невідомий провайдер ПРРО: {{provider}}',

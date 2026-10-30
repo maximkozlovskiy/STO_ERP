@@ -6859,6 +6859,8 @@ export interface components {
             isSystem: boolean;
             sortOrder: number;
             requiresFiscal: boolean;
+            /** @description Готівка (BR-PAY-019) */
+            isCash: boolean;
             /** @enum {string|null} */
             defaultSourceType: "BANK_ACCOUNT" | "CASH_REGISTER" | null;
             defaultCashRegisterId: string | null;
@@ -6883,6 +6885,8 @@ export interface components {
             isActive?: boolean;
             sortOrder?: number;
             requiresFiscal?: boolean;
+            /** @description Готівка: оплата лише з касою, у чеку ПРРО — CASH (BR-PAY-019) */
+            isCash?: boolean;
         };
         UpdatePaymentMethodDto: {
             /** @enum {string|null} */
@@ -6895,6 +6899,8 @@ export interface components {
             isActive?: boolean;
             sortOrder?: number;
             requiresFiscal?: boolean;
+            /** @description Готівка: оплата лише з касою, у чеку ПРРО — CASH (BR-PAY-019) */
+            isCash?: boolean;
         };
         SetupInitDto: {
             /** @example СТО Авто-Майстер */

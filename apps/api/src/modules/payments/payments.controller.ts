@@ -69,7 +69,7 @@ export class PaymentsController {
     @CurrentUser() user: { id: string },
   ) {
     // jwt.strategy.ts повертає { id, orgId, role }. Поле `sub` живе тільки у JWT payload, не в request.user.
-    return this.service.create(orgId, dto, user?.id);
+    return this.service.create(orgId, dto, user?.id, undefined, { fromRequest: true });
   }
 
   // BR-PAY-024: сторно безготівкової оплати (і старої без призначення). Касову сторнують у касі.

@@ -147,7 +147,11 @@ describe('CheckboxClient (ПРРО Крок 2 — HTTP-клієнт)', () => {
   describe('sellReceipt', () => {
     it('повертає {fiscalReceiptId} з res.id; Bearer=accessToken; cash→CASH', async () => {
       fetchMock.mockResolvedValueOnce(OK({ id: 'receipt-1' }));
-      const res = await client.sellReceipt(URL, 'tok', { amount: 100, method: 'cash' });
+      const res = await client.sellReceipt(URL, 'tok', {
+        amount: 100,
+        method: 'cash',
+        isCash: true,
+      });
       expect(res.fiscalReceiptId).toBe('receipt-1');
 
       const [calledUrl, opts] = fetchMock.mock.calls[0];
@@ -159,15 +163,26 @@ describe('CheckboxClient (ПРРО Крок 2 — HTTP-клієнт)', () => {
 
     it('non-cash метод → CASHLESS', async () => {
       fetchMock.mockResolvedValueOnce(OK({ id: 'r' }));
-      await client.sellReceipt(URL, 'tok', { amount: 50, method: 'card' });
+      await client.sellReceipt(URL, 'tok', { amount: 50, method: 'card', isCash: false });
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
       expect(body.payments[0].type).toBe('CASHLESS');
+    });
+
+    // guards: BR-PAY-019
+    it.each([
+      ['власний код CASH_DESK з ознакою «Готівка»', 'CASH_DESK', true, 'CASH'],
+      ['код cash без ознаки', 'cash', false, 'CASHLESS'],
+    ])('тип оплати в чеку — за ознакою довідника: %s → %s', async (_l, method, isCash, type) => {
+      fetchMock.mockResolvedValueOnce(OK({ id: 'r' }));
+      await client.sellReceipt(URL, 'tok', { amount: 10, method, isCash });
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.payments[0].type).toBe(type);
     });
 
     it('cents = Math.round(amount*100) без float-дрейфу', async () => {
       fetchMock.mockResolvedValueOnce(OK({ id: 'r' }));
       // 35.20*100 = 3519.9999999999995 у IEEE-754 → Math.round → 3520 (не 3519).
-      await client.sellReceipt(URL, 'tok', { amount: 35.2, method: 'cash' });
+      await client.sellReceipt(URL, 'tok', { amount: 35.2, method: 'cash', isCash: true });
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
       expect(body.payments[0].value).toBe(3520);
       expect(body.goods[0].good.price).toBe(3520);
@@ -176,20 +191,21 @@ describe('CheckboxClient (ПРРО Крок 2 — HTTP-клієнт)', () => {
     it('fallback fiscalReceiptId на fiscal_code', async () => {
       fetchMock.mockResolvedValueOnce(OK({ fiscal_code: 'fc-9' }));
       expect(
-        (await client.sellReceipt(URL, 'tok', { amount: 1, method: 'cash' })).fiscalReceiptId,
+        (await client.sellReceipt(URL, 'tok', { amount: 1, method: 'cash', isCash: true }))
+          .fiscalReceiptId,
       ).toBe('fc-9');
     });
 
     it('немає id чеку → Error', async () => {
       fetchMock.mockResolvedValueOnce(OK({}));
-      await expect(client.sellReceipt(URL, 'tok', { amount: 1, method: 'cash' })).rejects.toThrow(
-        /id чеку/,
-      );
+      await expect(
+        client.sellReceipt(URL, 'tok', { amount: 1, method: 'cash', isCash: true }),
+      ).rejects.toThrow(/id чеку/);
     });
 
     it('default goodName коли не передано', async () => {
       fetchMock.mockResolvedValueOnce(OK({ id: 'r' }));
-      await client.sellReceipt(URL, 'tok', { amount: 1, method: 'cash' });
+      await client.sellReceipt(URL, 'tok', { amount: 1, method: 'cash', isCash: true });
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
       expect(body.goods[0].good.name).toBe('Послуги автосервісу');
     });

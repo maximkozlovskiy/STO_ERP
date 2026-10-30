@@ -22026,6 +22026,10 @@
           "requiresFiscal": {
             "type": "boolean"
           },
+          "isCash": {
+            "type": "boolean",
+            "description": "Готівка (BR-PAY-019)"
+          },
           "defaultSourceType": {
             "nullable": true,
             "enum": [
@@ -22065,6 +22069,7 @@
           "isSystem",
           "sortOrder",
           "requiresFiscal",
+          "isCash",
           "defaultSourceType",
           "defaultCashRegisterId",
           "defaultBankAccountId",
@@ -22111,6 +22116,10 @@
           },
           "requiresFiscal": {
             "type": "boolean"
+          },
+          "isCash": {
+            "type": "boolean",
+            "description": "Готівка: оплата лише з касою, у чеку ПРРО — CASH (BR-PAY-019)"
           }
         },
         "required": [
@@ -22151,6 +22160,10 @@
           },
           "requiresFiscal": {
             "type": "boolean"
+          },
+          "isCash": {
+            "type": "boolean",
+            "description": "Готівка: оплата лише з касою, у чеку ПРРО — CASH (BR-PAY-019)"
           }
         }
       },

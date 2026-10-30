@@ -55,11 +55,12 @@ describe('CheckboxProvider (обгортка parity)', () => {
   it('sellReceipt делегує клієнту (cfg.apiUrl, token, params)', async () => {
     const client = { sellReceipt: vi.fn().mockResolvedValue({ fiscalReceiptId: 'fr' }) };
     const p = new CheckboxProvider(client as never);
-    const r = await p.sellReceipt(cfg, 'tok', { amount: 100, method: 'cash' });
+    const r = await p.sellReceipt(cfg, 'tok', { amount: 100, method: 'cash', isCash: true });
     expect(r).toEqual({ fiscalReceiptId: 'fr' });
     expect(client.sellReceipt).toHaveBeenCalledWith('https://api.checkbox.ua', 'tok', {
       amount: 100,
       method: 'cash',
+      isCash: true,
     });
   });
 
@@ -68,9 +69,9 @@ describe('CheckboxProvider (обгортка parity)', () => {
       sellReceipt: vi.fn().mockRejectedValue(new CheckboxUnauthorizedError('401')),
     };
     const p = new CheckboxProvider(client as never);
-    await expect(p.sellReceipt(cfg, 'tok', { amount: 1, method: 'cash' })).rejects.toBeInstanceOf(
-      FiscalUnauthorizedError,
-    );
+    await expect(
+      p.sellReceipt(cfg, 'tok', { amount: 1, method: 'cash', isCash: true }),
+    ).rejects.toBeInstanceOf(FiscalUnauthorizedError);
   });
 
   it('creds без license/pin → кидає', async () => {
@@ -161,7 +162,7 @@ describe('VchasnoProvider', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     try {
-      await p.sellReceipt(cfg, 'TOK', { amount: 10, method: 'cash' });
+      await p.sellReceipt(cfg, 'TOK', { amount: 10, method: 'cash', isCash: true });
       expect(sentBody.fiscal.payment.type).toBe('CASH');
     } finally {
       vi.unstubAllGlobals();

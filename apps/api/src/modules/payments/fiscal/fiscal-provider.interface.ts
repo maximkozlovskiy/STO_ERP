@@ -23,6 +23,8 @@ export interface FiscalToken {
 export interface SellReceiptParams {
   amount: number;
   method: string;
+  /** Тип оплати в чеку: готівка за ознакою способу в довіднику (BR-PAY-019), не за кодом. */
+  isCash: boolean;
   goodName?: string;
 }
 
