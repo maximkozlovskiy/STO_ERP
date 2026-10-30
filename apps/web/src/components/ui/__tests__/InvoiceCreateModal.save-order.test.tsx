@@ -130,7 +130,9 @@ describe('Картка рахунку — збереження рядків (BR-
     const onClose = await openCard();
     await editAndSave();
 
-    expect(await screen.findByText('Збій мережі')).toBeInTheDocument();
+    const message = await screen.findByText('Збій мережі');
+    // «Додати» згорнуло шапку: помилка мусить бути поза нею, інакше її не видно (0fr + overflow).
+    expect(message.closest('[style*="grid-template-rows"]')).toBeNull();
     expect(lineCalls()).toEqual(['POST lines']);
     expect(onClose).not.toHaveBeenCalled();
   });

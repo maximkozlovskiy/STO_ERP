@@ -82,6 +82,8 @@ interface LocalLine {
   // значення, НЕ перераховуємо, щоб не подвоїти). Нові ручні рядки — undefined (backend
   // recalcTotals порахує при збереженні), прев'ю тоді qty×unitPrice без ПДВ (чесно).
   lineTotalWithVat?: number;
+  /** Ставка ПДВ рядка з сервера — прев'ю зміненого рядка рахує ПДВ, як `updateLine` (BR-INV-024). */
+  vatRate?: number;
   /** Одиниця рядка з сервера (BR-INV-021: як у наряді, напр. «Пак»); ручний рядок — без неї. */
   unitShortName?: string;
   /** Збережений рядок змінено у формі → PATCH при «Зберегти» (BR-INV-024). */
@@ -342,6 +344,7 @@ export function InvoiceCreateModal({
           quantity: String(l.quantity),
           unitPrice: String(l.unitPrice),
           lineTotalWithVat: l.priceWithVat, // WEB-R3-4: авторитетна сума з ПДВ для прев'ю «Разом»
+          vatRate: l.vatRate,
           // BR-INV-021: картка показує одиницю рядка — «1» без «Пак» читалось як 1 шт (Bug #941).
           unitShortName: l.unitShortName ?? undefined,
         }));
@@ -513,6 +516,7 @@ export function InvoiceCreateModal({
     quantity: string;
     unitPrice: string;
     lineTotalWithVat?: number;
+    vatRate?: number;
     unitShortName?: string;
   };
 
@@ -848,6 +852,17 @@ export function InvoiceCreateModal({
       >
         <div className="flex flex-col min-h-[70dvh]">
           {isDeleted && <DeletedDocumentBanner className="mb-3 shrink-0" />}
+          {/* Помилка — над шапкою, не в ній: «Додати» згортає шапку, і відмова збереження рядків
+              (BR-INV-024) ховалась у згорнутому блоці — картка мовчки лишалась відкритою. */}
+          {error && (
+            <div
+              role="alert"
+              data-testid="invoice-card-error"
+              className="mb-3 shrink-0 text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2"
+            >
+              {error}
+            </div>
+          )}
           {/* ── Collapsible header ─────────────────────────────────────── */}
           <div
             className="grid transition-[grid-template-rows] duration-300 ease-in-out shrink-0"
@@ -860,12 +875,6 @@ export function InvoiceCreateModal({
                     {t('common:loading')}
                   </div>
                 )}
-                {error && (
-                  <div className="text-[13px] text-destructive bg-destructive-subtle border border-destructive/30 rounded-lg px-3 py-2">
-                    {error}
-                  </div>
-                )}
-
                 {/* Рядок 2: Контрагент | Тип */}
                 <div className="grid grid-cols-2 gap-4">
                   <EntityPickerField<CpItem>
