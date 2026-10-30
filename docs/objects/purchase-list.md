@@ -83,6 +83,7 @@ model PurchaseListItem {
 - **BR-PL-017**: **Знімок пропозиції йде за позицією** (рішення власника 2026-10-18). Обрана пропозиція постачальника зберігається на позиції (`offer*`, BR-SOFR-006). Кожне розділення позиції — «Розділити», остача при прийманні й скасуванні (BR-PL-010, BR-PL-012), повернення непідтвердженого (BR-SCON-013), автопідбір (BR-SOFR-009) — копіює знімок у нову частину (`copyOfferSnapshot`); повернення непідтвердженого постачальником знімок не копіює. Відкрита частина зі знімком і змінена кількість позиції зі знімком кратні пропозиції — некратна округлюється вгору (BR-SOFR-006, `setItemQuantity`); скасована частина — як є.
 - **BR-PL-018**: **Замовлення зі списку з пропозиціями.** `create-orders` групує позиції, як і раніше, за (постачальник, склад); рядок замовлення — на (товар, ціна, `offerKey`), тож дві пропозиції того самого товару з різних складів постачальника не зливаються. Ціна рядка — `expectedPrice` у гривні; замовлення завжди в гривні (рішення власника).
 - **BR-PL-019**: **Ручна зміна позиції й пропозиція.** Зміна постачальника на іншого контрагента скидає знімок пропозиції; збільшення кількості понад кількість пропозиції знімок лишає, а відповідь позначає `offerQtyExceeded` (крім обмеженої кількості «≥N» — це нижня межа). Масова зміна постачальника (`bulk-update`) скидає знімок так само.
+- **BR-PL-020**: **Пов'язані документи списку** (чистка API 2026-10-30). `GET /purchase-lists/:id/linked-documents` віддає `{ workOrders, purchaseOrders, purchaseLists }`: невидалені наряди й замовлення постачальнику позицій списку (кожен один раз, до 500) і невидалені списки, обʼєднані в нього (`mergedIntoId`, BR-PL-006). Замовлення — з сумою (`totalAmount` числом, у валюті замовлення) і символом валюти (`currencySymbol`, інакше код; немає — null), дата злитого списку — ISO. Видалений список (перегляд, BR-WO-012) показує документи позицій, видалених разом із ним (та сама мітка `deletedAt`); чужа організація — порожньо. `POST /purchase-lists/linked-counts` (до 500 id) — лічильники `workOrders` / `purchaseOrders` / `purchaseLists` на кожен id тими самими правилами, чужий id — нулі. Web: колонка «Документи» таблиці списків (лічильники, клік — вікно документів) і вкладка «Документи» картки списку (поруч з «Основне»; інший список у тій самій картці — знову «Основне»).
 
 ---
 
@@ -97,9 +98,9 @@ S = OWNER, ADMIN, STOREKEEPER (BR-PL-015). Контролери — `apps/api/sr
 | GET    | `/api/purchase-lists`                                 | R            | Списки (`status`, `q`, пагінація) з лічильниками позицій                                  |
 | POST   | `/api/purchase-lists`                                 | R            | Новий список (BR-PL-001), Idempotency-Key                                                 |
 | POST   | `/api/purchase-lists/from-work-order`                 | R            | Товари наряду → список (BR-PL-003), Idempotency-Key                                       |
-| POST   | `/api/purchase-lists/linked-counts`                   | R            | Лічильники зв'язків (наряди, замовлення, злиті списки)                                    |
+| POST   | `/api/purchase-lists/linked-counts`                   | R            | Лічильники зв'язків (наряди, замовлення, злиті списки), BR-PL-020                         |
 | GET    | `/api/purchase-lists/:id`                             | R            | Список з позиціями                                                                        |
-| GET    | `/api/purchase-lists/:id/linked-documents`            | R            | Наряди й замовлення позицій, злиті списки                                                 |
+| GET    | `/api/purchase-lists/:id/linked-documents`            | R            | Наряди й замовлення позицій (сума й валюта), злиті списки, BR-PL-020                      |
 | PATCH  | `/api/purchase-lists/:id`                             | S            | Назва, типовий склад, примітка (лише OPEN)                                                |
 | POST   | `/api/purchase-lists/:id/items`                       | S            | Ручна позиція (BR-PL-004)                                                                 |
 | POST   | `/api/purchase-lists/merge`                           | S            | Об'єднання (BR-PL-006)                                                                    |
@@ -140,8 +141,12 @@ BR-PL-009/010/012/013) і `PurchaseListReceiptService` (розподіл отр�
 - `purchase-orders/procurement/ItemsView.tsx` — позиції з фільтрами (статус, постачальник / «без
   постачальника», склад, список, пошук) і масовими діями: постачальник і ціна, перенесення,
   «Створити замовлення», скасування; у рядку — «Розділити», «Зняти резерв»;
-- `purchase-orders/procurement/ListsView.tsx` — списки, новий, «Обʼєднати»; картка списку:
-  «Винести в новий список», ручна позиція, «Створити замовлення», закрити / скасувати / видалити.
+- `purchase-orders/procurement/ListsView.tsx` — списки, новий, «Обʼєднати», колонка «Документи»
+  (лічильники `POST /purchase-lists/linked-counts`, клік — вікно `LinkedDocumentsPopup`); картка
+  списку: вкладки «Основне» (позиції, «Винести в новий список», ручна позиція, «Створити
+  замовлення») і «Документи» (`LinkedDocumentsPanel` з `purchaseListLinkedConfig` у
+  `lib/linked-configs.tsx`: наряди, замовлення постачальнику, обʼєднані списки, BR-PL-020);
+  закрити / скасувати / видалити.
 
 Картка наряду (`components/ui/CreateWorkOrderModal.tsx` → `work-order/PartsTable.tsx`; сторінка
 `/work-orders/[id]` → `WorkOrderPartsSection.tsx`): бейдж стану біля залишку збереженого рядка
@@ -171,10 +176,10 @@ cd apps/api && npx vitest run src/modules/purchase-lists/<файл>.spec.ts
 | замовлення зі списку, рядки за пропозицією (BR-PL-008, 018, BR-PO-010)                                                                                                   | `purchase-lists.create-orders.spec.ts`      | 7      |
 | розподіл отриманого й резерв (BR-PL-011, BR-PO-009, BR-INVT-018), «Зняти резерв» (BR-PL-016)                                                                             | `purchase-lists.receive-allocation.spec.ts` | 15     |
 | звірка чернетки, видалення й скасування, остача; решта позиції закритого (завершеного, скасованого, видаленого) наряду — «Скасовано» (BR-PL-009, 010, 012)               | `purchase-lists.po-lifecycle.spec.ts`       | 18     |
-| звʼязки списку й наряду                                                                                                                                                  | `purchase-lists.linked-docs.spec.ts`        | 4      |
+| звʼязки списку й наряду; контракт вкладки «Документи» — сума замовлення числом, дата ISO (BR-PL-020)                                                                     | `purchase-lists.linked-docs.spec.ts`        | 5      |
 | знімок пропозиції постачальника: розділення, остача, повернення непідтвердженого, зміна постачальника, кратність після вибору (BR-PL-017, 019, BR-SCON-013, BR-SOFR-006) | `purchase-lists.offer-snapshot.spec.ts`     | 11     |
 
-Разом: **120** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **121** кейс (цифри з `vitest --reporter=json`, не з grep).
 
 Спеки — справжні сервіси над таблицями в пам'яті (`purchase-lists.spec-fixture.ts` поверх
 `work-orders/work-order-stock.spec-fixture.ts`: справжній InventoryService, відкат транзакції,
@@ -189,3 +194,10 @@ BR-PL-009, BR-WO-021). Web: `purchase-orders/__tests__/PurchaseOrdersPage.procur
 `ProcurementTab.test.tsx`, `ItemsView.po-link-release.test.tsx` (номер замовлення для приймальні — текст, «Зняти резерв» лише для активного наряду), `procurement/__tests__/FormDialog.test.tsx` (повторне надсилання, поки запит іде), `components/ui/purchase-list/__tests__/*`,
 `components/ui/__tests__/CreateWorkOrderModal.procurement.test.tsx`,
 `settings/__tests__/NumbersTab.purchase-list.test.tsx`. E2E через браузер — `apps/web/e2e/purchase-lists.spec.ts`.
+
+Правило → тест для BR-PL-020 (мітки `// guards:`): api — `purchase-lists.linked-docs.spec.ts`; web —
+`procurement/__tests__/ListsView.linked-docs.test.tsx` (4: лічильники рядка й один запит на
+сторінку, клік — вікно документів, вкладки картки, інший список — знову «Основне») і
+`lib/__tests__/linked-configs.purchase-list.test.tsx` (3: шлях і ключі секцій, сума у валюті
+замовлення, переходи); E2E — `purchase-lists.spec.ts`, крок «2a» (колонка й вкладка «Документи»:
+обидва наряди й замовлення, перехід у картку замовлення).

@@ -63,6 +63,7 @@ const state: {
   woB?: WoRef;
   poId?: string;
   poNumber?: string;
+  listId?: string;
   receptionId?: string;
 } = {};
 
@@ -320,6 +321,7 @@ test.describe('Управління купівлями — від нестачі
     const a = await procurementOf(page, state.woA.id);
     expect(a.items).toEqual([expect.objectContaining({ status: 'OPEN' })]);
     const listId = a.items[0]!.listId;
+    state.listId = listId;
 
     // ── Вкладка «Нестача»: наряд Б → у той самий список ───────────────────
     await page.goto('/purchase-orders?tab=procurement&view=shortage');
@@ -366,6 +368,48 @@ test.describe('Управління купівлями — від нестачі
       expect.objectContaining({ goodId: state.goodId, quantity: 2, price: 120 }),
     ]);
     state.poNumber = po.body.number;
+  });
+
+  // guards: BR-PL-020
+  test('2a. «Списки»: колонка «Документи» і вкладка «Документи» картки — наряди й замовлення', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.goto('/purchase-orders?tab=procurement&view=lists');
+    await page.getByLabel('Номер або назва списку').fill(LIST_NAME);
+    const row = page.getByTestId('purchase-list-row').filter({ hasText: LIST_NAME });
+    await expect(row).toHaveCount(1, { timeout: 30_000 });
+    // Лічильники рядка: два наряди, одне замовлення (POST /purchase-lists/linked-counts).
+    await expect(row.getByTitle('Наряди: 2')).toBeVisible({ timeout: 15_000 });
+    await expect(row.getByTitle('Замовлення постачальнику: 1')).toBeVisible();
+    await row.getByTitle('Наряди: 2').click();
+    const popup = page.getByRole('dialog', { name: 'Повʼязані документи списку' });
+    await expect(popup.getByText(`Наряд ${state.woA!.number}`)).toBeVisible({ timeout: 15_000 });
+    await expect(popup.getByText(`Замовлення ${state.poNumber!}`)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(popup).toBeHidden();
+
+    // Картка списку → «Документи».
+    await row.getByText(LIST_NAME).click();
+    const card = page.getByRole('dialog').filter({ hasText: LIST_NAME });
+    await expect(card.getByRole('tab', { name: 'Основне' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await card.getByRole('tab', { name: /Документи/ }).click();
+    await expect(card.getByText(`Наряд ${state.woA!.number}`)).toBeVisible({ timeout: 15_000 });
+    await expect(card.getByText(`Наряд ${state.woB!.number}`)).toBeVisible();
+    const poRow = card.getByText(`Замовлення ${state.poNumber!}`);
+    await expect(poRow).toBeVisible();
+    await card.screenshot({ path: test.info().outputPath('pl_e2e_list_documents.png') });
+
+    // Перехід із вкладки — картка замовлення.
+    await card
+      .getByRole('button', { name: `Перейти до документа: Замовлення ${state.poNumber!}` })
+      .click();
+    await expect(page.getByRole('dialog').filter({ hasText: state.poNumber! })).toBeVisible({
+      timeout: 30_000,
+    });
   });
 
   test('3. замовлення: «Замовлено» → «Оприбуткувати все» → «Підтвердити прийом»', async ({

@@ -102,6 +102,7 @@
 - §13 п. 5 / 21 — запит діапазону `GET /calendar/slots?from&to` і позначка «не всі дні»; вихідні філії в планових датах.
 - §15 п. 4 / 8 / 10 — `canOpen(kind)` + `<LinkedDocRef>`; лічильник на `SupplierOfferBatch` (міграція); `setStatus(tx)` / `replaceDraftLines(tx)` у замовленнях.
 - Прибрати модель `WorkGoodCategoryLink` і таблицю `work_good_category_links` окремою міграцією (разом із seed): read-endpoint-и зв'язків категорій прибрано 2026-10-30, коду, що читає чи пише таблицю, не лишилось (BR-WORK-004 у `docs/objects/work.md`).
+- Прибрати модель `WorkOrderTemplate` і таблицю `work_order_templates` окремою міграцією (і зв'язок `Organisation.workOrderTemplates`, і `'WorkOrderTemplate'` у списку моделей `prisma.service.ts`): API `/work-order-templates` прибрано 2026-10-30, шаблони перенесено в послуги міграцією `20261030190000_work_order_templates_to_services` і позначено видаленими; таблицю лишено, щоб не ламати синк старих мобільних клієнтів (BR-WO-036 у `docs/objects/work-order.md`).
 
 **M/L — L:**
 

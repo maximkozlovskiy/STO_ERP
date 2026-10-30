@@ -1178,8 +1178,10 @@ GET /batches/lookup?goodId=X&warehouseId=Y&documentType=Z&documentId=W
 ### F10 — Шаблони нарядів
 
 - [x] `[sto-database]` Модель `WorkOrderTemplate` (`orgId`, `name`, `lines: Json[]`, `parts: Json[]`)
-- [x] `[sto-backend]` CRUD `/work-order-templates` + `POST /work-orders` з optional `templateId` → авто-заповнення ліній
-- [x] `[sto-web]` Кнопка "Зберегти як шаблон" у картці WO + Select шаблону у формі створення
+- [x] `[sto-backend]` CRUD `/work-order-templates` (обіцяного `templateId` у `POST /work-orders` з авто-заповненням ліній не було ніколи)
+- [x] `[sto-web]` Кнопка "Зберегти як шаблон" у картці WO (Select шаблону у формі створення прибрано в `ec6dd70b1` — рядків він не додавав)
+
+> 2026-10-30 (рішення власника): шаблони замінено «Послугою» каталогу — кнопка «Зберегти як послугу» на сторінці наряду, застосування — кнопка «Послуга» в картці наряду (BR-WO-036, BR-WO-030). API `/work-order-templates` прибрано, наявні шаблони перенесено в послуги міграцією `20261030190000_work_order_templates_to_services`; модель і таблицю прибере окрема міграція (TECH-DEBT (а)).
 
 ### F11 — Offline-pending counter у SyncIndicator
 
