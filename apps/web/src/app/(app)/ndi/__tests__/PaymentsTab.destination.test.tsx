@@ -33,6 +33,7 @@ const CASH = {
   isSystem: true,
   sortOrder: 1,
   requiresFiscal: false,
+  isCash: true,
   defaultSourceType: null,
   defaultCashRegisterId: null,
   defaultBankAccountId: null,
@@ -44,6 +45,7 @@ const CARD = {
   code: 'card',
   name: 'Картка',
   isSystem: false,
+  isCash: false,
   defaultSourceType: 'BANK_ACCOUNT',
   defaultBankAccountId: 'ba-1',
   defaultDestinationName: 'ПриватБанк',
@@ -213,10 +215,54 @@ describe('НДІ → способи оплати: куди надходять к
   it('призначення не змінювали — запит його не несе (збережена каса могла зникнути)', async () => {
     const dialog = await openEdit('Картка');
 
-    fireEvent.click(within(dialog).getByRole('checkbox'));
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Фіскальний/ }));
     fireEvent.click(saveButton(dialog));
 
     await waitFor(() => expect(patchBody()).not.toBeNull());
     expect(patchBody()).toEqual({ name: 'Картка', requiresFiscal: true });
+  });
+
+  // guards: BR-PAY-019 — «готівка» — ознака способу в довіднику, не код `cash`
+  it('ознака «Готівка» видна в списку й у картці; увімкнули — запит несе isCash, рахунок недоступний', async () => {
+    renderTab();
+    expect(await screen.findByText(/^cash · готівка/)).toBeTruthy();
+    cleanup();
+
+    const dialog = await openEdit('Картка');
+    const cashFlag = within(dialog).getByRole('checkbox', { name: /^Готівка/ }) as HTMLInputElement;
+    expect(cashFlag.checked).toBe(false);
+    fireEvent.click(cashFlag);
+    // Банківський рахунок за замовчуванням тепер суперечить ознаці — поле пояснює чому.
+    expect(within(dialog).getByText(/Для готівки кошти надходять лише в касу/)).toBeTruthy();
+    fireEvent.change(destinationSelect(dialog), { target: { value: '' } });
+    fireEvent.click(saveButton(dialog));
+
+    await waitFor(() => expect(patchBody()).not.toBeNull());
+    expect(patchBody()).toMatchObject({ isCash: true, defaultSourceType: null });
+  });
+
+  // guards: BR-PAY-019
+  it('новий спосіб з ознакою «Готівка» — POST несе isCash: true', async () => {
+    renderTab();
+    fireEvent.click(await screen.findByRole('button', { name: /Метод оплати/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/^Код/), { target: { value: 'cash2' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Назва/), { target: { value: 'Каса 2' } });
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /^Готівка/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Додати' }));
+
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/payment-methods',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    const post = apiFetchMock.mock.calls.find(
+      ([, i]) => (i as { method?: string })?.method === 'POST',
+    )!;
+    expect(JSON.parse((post[1] as { body: string }).body)).toMatchObject({
+      code: 'CASH2',
+      isCash: true,
+    });
   });
 });

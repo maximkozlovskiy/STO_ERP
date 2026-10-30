@@ -26,6 +26,7 @@ type PayMethodOption = Pick<PaymentMethodDto, 'code' | 'name'> &
   Partial<
     Pick<
       PaymentMethodDto,
+      | 'isCash'
       | 'defaultSourceType'
       | 'defaultCashRegisterId'
       | 'defaultBankAccountId'
@@ -77,7 +78,7 @@ export interface ClientPaymentModalProps {
 /**
  * Вікно «Оплатити» — спільне для рахунку й наряду (рішення власника 2026-10-15). Винесене зі
  * сторінки рахунків разом із її правилами:
- *  - каса для готівки обов'язкова (BR-PAY-019, `CASH_METHOD_CODE`); поле «Каса» є й для способу,
+ *  - каса для готівки обов'язкова (BR-PAY-019, ознака способу `isCash`); поле «Каса» є й для способу,
  *    у якого кошти за замовчуванням надходять у касу, і заповнюється касою способу, доки касир
  *    не обрав іншу сам;
  *  - безготівковий спосіб без каси за замовчуванням вимагає банківський рахунок (BR-PAY-023): поле
@@ -156,6 +157,7 @@ export function ClientPaymentModal({
           .map(m => ({
             code: m.code,
             name: m.name,
+            isCash: m.isCash,
             defaultSourceType: m.defaultSourceType,
             defaultCashRegisterId: m.defaultCashRegisterId,
             defaultBankAccountId: m.defaultBankAccountId,
@@ -185,7 +187,8 @@ export function ClientPaymentModal({
   }, [payMethods, open]);
 
   const method = payMethods.find(m => m.code === form.method);
-  const needsCash = form.method === CASH_METHOD_CODE;
+  // BR-PAY-019: «готівка» — ознака способу в довіднику; запис кешу до ознаки — за кодом `cash`.
+  const needsCash = method?.isCash ?? form.method === CASH_METHOD_CODE;
   // monobank QR: вікно лише показує QR, оплату створює сервер за способом оплати — каса з поля
   // нікуди не йшла б (Bug #859), тож поля для QR немає.
   const isQr = form.method === QR_METHOD_CODE;

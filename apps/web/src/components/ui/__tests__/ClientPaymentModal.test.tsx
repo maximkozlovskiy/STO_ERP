@@ -46,6 +46,7 @@ type Method = {
   code: string;
   name: string;
   isActive: boolean;
+  isCash: boolean;
   defaultSourceType: 'CASH_REGISTER' | 'BANK_ACCOUNT' | null;
   defaultCashRegisterId: string | null;
   defaultBankAccountId: string | null;
@@ -56,6 +57,8 @@ const method = (code: string, name: string, over: Partial<Method> = {}): Method 
   code,
   name,
   isActive: true,
+  // Ознака «Готівка» з довідника (BR-PAY-019): seed ставить її лише способу `cash`.
+  isCash: code === 'cash',
   defaultSourceType: null,
   defaultCashRegisterId: null,
   defaultBankAccountId: null,
@@ -217,6 +220,25 @@ describe('ClientPaymentModal — каса для готівки (BR-PAY-019)', (
       sourceType: 'CASH_REGISTER',
       cashRegisterId: 'cr-second',
     });
+  });
+
+  // guards: BR-PAY-019 — «готівка» — ознака способу в довіднику, не код `cash`
+  it("власний спосіб CASH з ознакою «Готівка»: поле «Каса» обов'язкове, як у «Готівки»", async () => {
+    methods = [method('CASH', 'Готівка (власна)', { isCash: true })];
+    const { dialog } = await openDialog();
+
+    expect(cashSelect(dialog)?.value).toBe('');
+    expect(payButton(dialog)).toBeDisabled();
+    expect(within(dialog).getByText('Для оплати готівкою оберіть касу')).toBeInTheDocument();
+  });
+
+  // guards: BR-PAY-019
+  it('код cash без ознаки «Готівка» — безготівковий: поле «Рахунок», а не «Каса»', async () => {
+    methods = [method('cash', 'Готівка', { isCash: false })];
+    const { dialog } = await openDialog();
+
+    expect(cashSelect(dialog)).toBeNull();
+    expect(bankSelect(dialog)).not.toBeNull();
   });
 
   it('зміна способу міняє касу на його замовчування, доки касир касу не чіпав', async () => {

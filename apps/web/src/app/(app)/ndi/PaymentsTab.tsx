@@ -14,7 +14,6 @@ import { TemplatePickerModal, type SystemTemplate } from '@/components/ui/templa
 import { cn } from '@/lib/utils';
 import { useCashRegisters } from '@/hooks/api/useCash';
 import { useBankAccountOptions } from '@/hooks/api/useBankStatements';
-import { CASH_METHOD_CODE } from '@sto/shared';
 import { type PaymentMethod } from './shared';
 
 /** Куди надходять кошти у формі: '' — не вказано. */
@@ -158,6 +157,7 @@ export default function PaymentsTab() {
   const [editPaymentForm, setEditPaymentForm] = useState({
     name: '',
     requiresFiscal: false,
+    isCash: false,
     destination: NO_DESTINATION,
   });
   const [paymentModal, setPaymentModal] = useState(false);
@@ -166,6 +166,7 @@ export default function PaymentsTab() {
     code: '',
     name: '',
     requiresFiscal: false,
+    isCash: false,
     destination: NO_DESTINATION,
   });
   const [savingPayment, setSavingPayment] = useState(false);
@@ -208,6 +209,7 @@ export default function PaymentsTab() {
     setEditPaymentForm({
       name: pm.name,
       requiresFiscal: pm.requiresFiscal,
+      isCash: pm.isCash,
       destination: destinationOf(pm),
     });
   };
@@ -224,6 +226,9 @@ export default function PaymentsTab() {
         body: JSON.stringify({
           ...(editPayment.isSystem ? {} : { name: editPaymentForm.name }),
           requiresFiscal: editPaymentForm.requiresFiscal,
+          ...(editPaymentForm.isCash === editPayment.isCash
+            ? {}
+            : { isCash: editPaymentForm.isCash }),
           // Призначення шлемо лише змінене: збережена, а потім видалена каса інакше давала б 404
           // на будь-яке інше редагування способу.
           ...(sameDestination(editPaymentForm.destination, destinationOf(editPayment))
@@ -253,12 +258,19 @@ export default function PaymentsTab() {
           code: newPaymentForm.code.trim().toUpperCase(),
           name: newPaymentForm.name.trim(),
           requiresFiscal: newPaymentForm.requiresFiscal,
+          isCash: newPaymentForm.isCash,
           ...(newPaymentForm.destination.type ? destinationBody(newPaymentForm.destination) : {}),
         }),
       });
       setPayments(prev => [...prev, created]);
       setPaymentModal(false);
-      setNewPaymentForm({ code: '', name: '', requiresFiscal: false, destination: NO_DESTINATION });
+      setNewPaymentForm({
+        code: '',
+        name: '',
+        requiresFiscal: false,
+        isCash: false,
+        destination: NO_DESTINATION,
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
@@ -317,6 +329,7 @@ export default function PaymentsTab() {
               code: '',
               name: '',
               requiresFiscal: false,
+              isCash: false,
               destination: NO_DESTINATION,
             });
             setPaymentModal(true);
@@ -352,6 +365,7 @@ export default function PaymentsTab() {
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {pm.code}
+                {pm.isCash ? t('payments.cashSuffix') : ''}
                 {pm.requiresFiscal ? t('payments.fiscalSuffix') : ''}
               </p>
             </div>
@@ -453,12 +467,21 @@ export default function PaymentsTab() {
               />
               <span className="text-[13px] text-foreground">{t('payments.fiscalLabel')}</span>
             </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editPaymentForm.isCash}
+                onChange={e => setEditPaymentForm(f => ({ ...f, isCash: e.target.checked }))}
+                className="rounded border-border"
+              />
+              <span className="text-[13px] text-foreground">{t('payments.cashLabel')}</span>
+            </label>
             <DestinationFields
               value={editPaymentForm.destination}
               onChange={destination => setEditPaymentForm(f => ({ ...f, destination }))}
               savedName={editPayment.defaultDestinationName}
               active
-              cashOnly={editPayment.code === CASH_METHOD_CODE}
+              cashOnly={editPaymentForm.isCash}
             />
           </div>
         </Modal>
@@ -511,10 +534,20 @@ export default function PaymentsTab() {
             />
             <span className="text-[13px] text-foreground">{t('payments.fiscalLabel')}</span>
           </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={newPaymentForm.isCash}
+              onChange={e => setNewPaymentForm(f => ({ ...f, isCash: e.target.checked }))}
+              className="rounded border-border"
+            />
+            <span className="text-[13px] text-foreground">{t('payments.cashLabel')}</span>
+          </label>
           <DestinationFields
             value={newPaymentForm.destination}
             onChange={destination => setNewPaymentForm(f => ({ ...f, destination }))}
             active={paymentModal}
+            cashOnly={newPaymentForm.isCash}
           />
         </div>
       </Modal>
