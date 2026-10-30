@@ -18,8 +18,9 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { useEscapeLayer } from '@/hooks/useEscapeLayer';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
-import { displayCounterpartyName, lineAmount, roundMoney } from '@/lib/utils';
+import { cn, displayCounterpartyName, lineAmount, roundMoney } from '@/lib/utils';
 import { fmtMoney, kyivToday } from '@/lib/format';
+import { linePreviewTotal } from '@/lib/invoice-line-total';
 import {
   INVOICE_STATUS_LABELS,
   INVOICE_STATUS_DESCRIPTIONS,
@@ -83,6 +84,8 @@ interface LocalLine {
   lineTotalWithVat?: number;
   /** Одиниця рядка з сервера (BR-INV-021: як у наряді, напр. «Пак»); ручний рядок — без неї. */
   unitShortName?: string;
+  /** Збережений рядок змінено у формі → PATCH при «Зберегти» (BR-INV-024). */
+  _dirty?: boolean;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -107,6 +110,10 @@ const nextKey = () =>
     : `k${Math.random().toString(36).slice(2)}`;
 
 const EMPTY_LINE: Omit<LocalLine, '_key'> = { description: '', quantity: '1', unitPrice: '' };
+
+// Поле кількості / ціни рядка в таблиці — те саме, що в рядку нової позиції.
+const LINE_INPUT_CLASS =
+  'w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring';
 
 // Бек-дефолт invoiceType='INVOICE' (Prisma @default, createFromWorkOrder/refreshFromWorkOrder
 // не передають invoiceType у create()) — значення НЕ входить до UI-enum STANDARD/PREPAYMENT/
@@ -210,6 +217,9 @@ export function InvoiceCreateModal({
   // рядки які користувач видалив локально (з UI). Без цього DELETE на бекенд не
   // йде і видалені рядки повертаються при наступному перезавантаженні модалки.
   const initialLineIdsRef = useRef<Set<string>>(new Set());
+  // Сума рядка без ПДВ станом на завантаження (id → кількість × ціна): змінений рядок показує суму
+  // з ПДВ пропорційно новій (`lineTotalWithVat × нова / стара`) — ставка рядка та сама.
+  const serverNetRef = useRef<Map<string, number>>(new Map());
   // Retry-safety: якщо POST /invoices вже створив рахунок, але наступний крок
   // (POST /lines) провалився на обриві — повторний клік «Створити» не має
   // створити ДРУГИЙ рахунок. Зберігаємо id першого успіху й дошиваємо лише
@@ -261,6 +271,7 @@ export function InvoiceCreateModal({
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
     initialLineIdsRef.current = new Set();
+    serverNetRef.current = new Map();
     createdInvoiceRef.current = null;
     postedLineKeysRef.current = new Set();
     if (!isEditMode) {
@@ -346,6 +357,9 @@ export function InvoiceCreateModal({
         });
         setCounterpartyDisplay(inv.counterpartyName ?? '');
         initialLineIdsRef.current = new Set(loadedLines.map(l => l.id).filter(Boolean));
+        serverNetRef.current = new Map(
+          (inv.lines ?? []).map(l => [l.id, lineAmount(l.quantity, l.unitPrice)] as const),
+        );
       })
       .catch(e => {
         if (cancelled) return;
@@ -461,14 +475,10 @@ export function InvoiceCreateModal({
   const total = useMemo(
     () =>
       roundMoney(
-        (watchedLines ?? []).reduce((sum, l) => {
-          const withVat = (l as { lineTotalWithVat?: number }).lineTotalWithVat;
-          if (withVat != null) return sum + withVat;
-          return (
-            sum +
-            lineAmount(parseFloat(String(l.quantity)) || 0, parseFloat(String(l.unitPrice)) || 0)
-          );
-        }, 0),
+        (watchedLines ?? []).reduce(
+          (sum, l) => sum + linePreviewTotal(l as LocalLine, serverNetRef.current),
+          0,
+        ),
       ),
     [watchedLines],
   );
@@ -485,6 +495,13 @@ export function InvoiceCreateModal({
 
   const removeLine = (index: number) => remove(index);
 
+  // Збережений рядок змінено у формі → PATCH при «Зберегти» (BR-INV-024). Новий рядок (без id) і так
+  // іде POST-ом з поточними значеннями.
+  const markLineDirty = (index: number) => {
+    const line = getValues(`lines.${index}`) as FormLine | undefined;
+    if (line?.id && !line._dirty) setValue(`lines.${index}._dirty`, true);
+  };
+
   // ── Save / Create ─────────────────────────────────────────────────────────
 
   const canEdit = isEditMode ? currentStatus === 'DRAFT' && !viewOnly : true;
@@ -493,6 +510,7 @@ export function InvoiceCreateModal({
   type FormLine = {
     _key?: string;
     id?: string;
+    _dirty?: boolean;
     description: string;
     quantity: string;
     unitPrice: string;
@@ -598,16 +616,11 @@ export function InvoiceCreateModal({
       });
 
       const linesNow = collectLines();
-      // DELETE рядків, прибраних локально (є у initialLineIdsRef, немає у поточних id).
-      const currentIds = new Set(linesNow.map(l => l.id).filter(Boolean) as string[]);
-      const removedIds = [...initialLineIdsRef.current].filter(id => !currentIds.has(id));
-      for (const lineId of removedIds) {
-        await apiFetch(`/invoices/${invoiceId}/lines/${lineId}`, { method: 'DELETE' });
-        initialLineIdsRef.current.delete(lineId);
-      }
-      // POST нових рядків (без id). Bug #755: на ретраї (DELETE ok, але POST нового впав)
-      // пропускаємо вже збережені _key — інакше повторний «Зберегти» задвоював нові рядки
-      // (без id вони щоразу потрапляли у фільтр). Успіх фіксуємо у postedLineKeysRef.
+      // BR-INV-024 (як BR-WO-035 наряду): спершу додати й змінити рядки, видалити — останнім. Навпаки
+      // заміна рядка давала проміжну суму рахунку без нього, а збій посередині лишав рахунок без
+      // рядків. Усе послідовно: кожен запит перераховує суми рахунку (`recalcTotals` без транзакції).
+      // POST нових рядків (без id). Bug #755: на ретраї пропускаємо вже збережені _key — інакше
+      // повторний «Зберегти» задвоював нові рядки.
       for (const line of linesNow.filter(l => !l.id)) {
         if (line._key && postedLineKeysRef.current.has(line._key)) continue;
         await apiFetch(`/invoices/${invoiceId}/lines`, {
@@ -620,6 +633,31 @@ export function InvoiceCreateModal({
         });
         if (line._key) postedLineKeysRef.current.add(line._key);
       }
+      // PATCH збережених рядків, змінених у формі. Після помилки прапорець лишається — повторне
+      // «Зберегти» шле ті самі значення ще раз (PATCH ідемпотентний).
+      for (const line of linesNow.filter(l => !!l.id && l._dirty)) {
+        await apiFetch(`/invoices/${invoiceId}/lines/${line.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            quantity: parseFloat(String(line.quantity)) || 1,
+            unitPrice: parseFloat(String(line.unitPrice)) || 0,
+          }),
+        });
+      }
+      // DELETE рядків, прибраних локально (є у initialLineIdsRef, немає серед поточних id). Відмова
+      // одного не зупиняє решту (як allSettled), невидалені лишаються на повтор, помилка — у картці.
+      const currentIds = new Set(linesNow.map(l => l.id).filter(Boolean) as string[]);
+      const removedIds = [...initialLineIdsRef.current].filter(id => !currentIds.has(id));
+      let deleteFailure: Error | null = null;
+      for (const lineId of removedIds) {
+        try {
+          await apiFetch(`/invoices/${invoiceId}/lines/${lineId}`, { method: 'DELETE' });
+          initialLineIdsRef.current.delete(lineId);
+        } catch (e: unknown) {
+          deleteFailure ??= e instanceof Error ? e : new Error(t('card.saveError'));
+        }
+      }
+      if (deleteFailure) throw deleteFailure;
       postedLineKeysRef.current = new Set();
 
       if (features.toastEnabled) toast.success(t('toast.invoiceSaved'));
@@ -967,34 +1005,77 @@ export function InvoiceCreateModal({
                 )}
                 {fields.map((field, index) => {
                   const line = (watchedLines?.[index] ?? field) as FormLine;
+                  const lineErrors = errors.lines?.[index];
                   return (
                     <tr key={field.id} className="hover:bg-secondary/20 group">
                       <td className="px-3 py-2">{line.description}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {line.quantity}
-                        {line.unitShortName && (
-                          <span className="ml-1 text-muted-foreground">{line.unitShortName}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{line.unitPrice}</td>
+                      {canEdit ? (
+                        <>
+                          {/* BR-INV-024: кількість і ціну рядка чернетки правлять на місці —
+                              збережений рядок іде PATCH-ем (`_dirty`), а не видаленням і новим. */}
+                          <td className="px-2 py-1.5">
+                            <div className="flex items-center justify-end gap-1">
+                              <input
+                                type="number"
+                                min="0.001"
+                                step="1"
+                                {...register(`lines.${index}.quantity`, {
+                                  onChange: () => markLineDirty(index),
+                                })}
+                                aria-label={t('card.lineQtyAria', { name: line.description })}
+                                aria-invalid={lineErrors?.quantity ? true : undefined}
+                                className={cn(
+                                  LINE_INPUT_CLASS,
+                                  lineErrors?.quantity && 'border-destructive',
+                                )}
+                              />
+                              {line.unitShortName && (
+                                <span className="text-muted-foreground">{line.unitShortName}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              {...register(`lines.${index}.unitPrice`, {
+                                onChange: () => markLineDirty(index),
+                              })}
+                              aria-label={t('card.linePriceAria', { name: line.description })}
+                              aria-invalid={lineErrors?.unitPrice ? true : undefined}
+                              className={cn(
+                                LINE_INPUT_CLASS,
+                                lineErrors?.unitPrice && 'border-destructive',
+                              )}
+                            />
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-3 py-2 text-right tabular-nums">
+                            {line.quantity}
+                            {line.unitShortName && (
+                              <span className="ml-1 text-muted-foreground">
+                                {line.unitShortName}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums">{line.unitPrice}</td>
+                        </>
+                      )}
                       <td className="px-3 py-2 text-right tabular-nums">
                         <div className="flex items-center justify-end gap-1">
-                          <span>
-                            {/* WEB-R3-4: рядкова СУМА збігається з логікою «Разом» — завантажений
-                                рядок бере авторитетний lineTotalWithVat (з ПДВ), інакше qty×unitPrice. */}
-                            {fmtMoney(
-                              line.lineTotalWithVat ??
-                                lineAmount(
-                                  parseFloat(String(line.quantity)) || 0,
-                                  parseFloat(String(line.unitPrice)) || 0,
-                                ),
-                            )}
+                          <span data-testid="invoice-line-sum">
+                            {/* WEB-R3-4: рядкова СУМА збігається з логікою «Разом» (linePreviewTotal). */}
+                            {fmtMoney(linePreviewTotal(line, serverNetRef.current))}
                           </span>
                           {canEdit && (
                             <button
                               type="button"
                               onClick={() => removeLine(index)}
-                              className="opacity-0 group-hover:opacity-100 ml-1 text-muted-foreground hover:text-destructive transition-all"
+                              aria-label={t('card.removeLineAria', { name: line.description })}
+                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 ml-1 text-muted-foreground hover:text-destructive transition-all"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>

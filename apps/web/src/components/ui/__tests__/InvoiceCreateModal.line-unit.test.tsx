@@ -82,10 +82,13 @@ const DOC = {
   ],
 };
 
+let doc: Record<string, unknown> = DOC;
+
 beforeEach(() => {
+  doc = DOC;
   apiFetchMock.mockReset();
   apiFetchMock.mockImplementation((path: string) => {
-    if (path === '/invoices/inv-1?withDeleted=true') return Promise.resolve(DOC);
+    if (path === '/invoices/inv-1?withDeleted=true') return Promise.resolve(doc);
     return Promise.resolve({ items: [] });
   });
 });
@@ -93,6 +96,7 @@ beforeEach(() => {
 describe('Картка рахунку — одиниця рядка (BR-INV-021, Bug #941)', () => {
   // guards: BR-INV-021
   it('рядок товару в альтернативній одиниці показує кількість з одиницею рядка', async () => {
+    doc = { ...DOC, status: 'SENT' };
     render(<InvoiceCreateModal open invoiceId="inv-1" onClose={vi.fn()} />);
     const row = (await screen.findByText('Моторна олива 5W-40')).closest('tr') as HTMLElement;
     const cells = within(row).getAllByRole('cell');
@@ -100,8 +104,17 @@ describe('Картка рахунку — одиниця рядка (BR-INV-021,
   });
 
   it('рядок без одиниці (робота) — лише кількість', async () => {
+    doc = { ...DOC, status: 'SENT' };
     render(<InvoiceCreateModal open invoiceId="inv-1" onClose={vi.fn()} />);
     const row = (await screen.findByText('Заміна оливи')).closest('tr') as HTMLElement;
     expect(within(row).getAllByRole('cell')[1]!.textContent).toBe('1');
+  });
+
+  // Чернетка: кількість — поле вводу (BR-INV-024), одиниця рядка лишається поруч.
+  it('чернетка — поле кількості з одиницею рядка поруч', async () => {
+    render(<InvoiceCreateModal open invoiceId="inv-1" onClose={vi.fn()} />);
+    const qty = await screen.findByLabelText('Кількість: Моторна олива 5W-40');
+    expect(qty).toHaveValue(1);
+    expect(qty.closest('td')!.textContent).toBe('Пак');
   });
 });
