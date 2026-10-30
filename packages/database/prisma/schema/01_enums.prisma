@@ -226,6 +226,7 @@ enum BankTransactionMatchType {
   PAYROLL // вихідний: виплата зарплати (PayrollPeriod [+ Employee]), без зміни payroll
   TRANSFER // переказ між власними рахунками (обидва напрямки), без проведення
   CASH_WITHDRAWAL // вихідний: зняття готівки в касу → CashOperation IN
+  SUPPLIER_REFUND_IN // вхідний: повернення від постачальника → SUPPLIER_PAYMENT_RETURN (TECH-DEBT (б) №48)
 }
 
 // Джерело завантаження банк-транзакції.
