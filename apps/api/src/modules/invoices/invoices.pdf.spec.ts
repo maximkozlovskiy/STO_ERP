@@ -75,6 +75,12 @@ describe('InvoicesService.generatePdf — реквізити організац�
     const select = (h.prisma.invoice.findFirst.mock.calls[0]?.[0] as { select: object }).select;
     expect(select).toMatchObject({ documentDate: true });
     expect(select).not.toHaveProperty('createdAt');
+    // BR-INV-024: порядок рядків друку — як у картці (змінений рядок не перескакує в кінець).
+    expect((select as { lines: { orderBy: unknown } }).lines.orderBy).toEqual([
+      { sortOrder: 'asc' },
+      { createdAt: 'asc' },
+      { id: 'asc' },
+    ]);
     const arg = h.pdf.generateInvoicePdf.mock.calls[0]?.[0] as { date: Date };
     expect(arg.date).toEqual(new Date('2026-10-01T00:00:00Z'));
   });

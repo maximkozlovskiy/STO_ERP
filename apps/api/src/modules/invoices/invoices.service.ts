@@ -80,6 +80,17 @@ const INVOICE_LINE_INCLUDE = {
 
 type LineUoM = { coefficient: number; unitOfMeasure: { shortName: string } };
 
+/**
+ * Порядок рядків рахунку (картка, дублювання, друк). Ручні рядки мають `sortOrder` 0, тож без
+ * вторинного ключа порядок однакових визначав Postgres — і рядок, змінений на місці (`updateLine`,
+ * BR-INV-024), після збереження перескакував у кінець таблиці й друкованого рахунку.
+ */
+const INVOICE_LINE_ORDER: Prisma.InvoiceLineOrderByWithRelationInput[] = [
+  { sortOrder: 'asc' },
+  { createdAt: 'asc' },
+  { id: 'asc' },
+];
+
 // Поля відповіді щойно створеного рахунку (створення й дублювання — одна форма DTO).
 const INVOICE_CREATED_INCLUDE = {
   counterparty: { select: { firstName: true, lastName: true, companyName: true } },
@@ -213,7 +224,7 @@ export class InvoicesService {
         // good.unit + unitOfMeasure required: unitShortName/coefficient were always undefined
         // until includes were updated to match DTO fields.
         lines: {
-          orderBy: { sortOrder: 'asc' },
+          orderBy: INVOICE_LINE_ORDER,
           take: 500,
           include: INVOICE_LINE_INCLUDE,
         },
@@ -813,7 +824,7 @@ export class InvoicesService {
         workOrder: { select: { number: true } },
         // good.unitOfMeasure required for correct toDto(true) on clone completion.
         lines: {
-          orderBy: { sortOrder: 'asc' },
+          orderBy: INVOICE_LINE_ORDER,
           take: 500,
           include: INVOICE_LINE_INCLUDE,
         },
@@ -1508,7 +1519,7 @@ export class InvoicesService {
             },
           },
           lines: {
-            orderBy: { sortOrder: 'asc' },
+            orderBy: INVOICE_LINE_ORDER,
             take: 500,
             select: {
               description: true,

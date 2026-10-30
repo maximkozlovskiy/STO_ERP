@@ -145,6 +145,21 @@ describe('Рахунок — одиниця рядка як у наряді (Bug
     expect(data[0]).toMatchObject({ goodId: GOOD, quantity: 1, unitOfMeasureId: PAK });
   });
 
+  // guards: BR-INV-024 — ручні рядки мають sortOrder 0: без вторинного ключа змінений на місці рядок
+  // після збереження перескакував у кінець картки.
+  it('картка рахунку: рядки за sortOrder, далі за часом створення й id', async () => {
+    h.prisma.invoice.findFirst.mockResolvedValue(invoiceRow([pakLine()]));
+    await h.service.findOne(ORG, INV_ID);
+    const args = h.prisma.invoice.findFirst.mock.calls[0]?.[0] as {
+      include: { lines: { orderBy: unknown } };
+    };
+    expect(args.include.lines.orderBy).toEqual([
+      { sortOrder: 'asc' },
+      { createdAt: 'asc' },
+      { id: 'asc' },
+    ]);
+  });
+
   // guards: BR-INV-021
   it('картка рахунку: «Пак» з коефіцієнтом товару, а не базова «шт»', async () => {
     h.prisma.invoice.findFirst.mockResolvedValue(invoiceRow([pakLine()]));
