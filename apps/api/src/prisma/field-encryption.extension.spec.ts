@@ -160,6 +160,8 @@ describe('Шифрування секретів at-rest — справжній P
       ['BranchSettings', 'monobankToken', 'еквайринг monobank (legacy-колонка)'],
       ['NotificationChannelConfig', 'apiKey', 'канал сповіщень SMS / Viber / Email'],
       ['CashShift', 'checkboxAccessToken', 'токен касира відкритої зміни ПРРО'],
+      // guards: BR-AUT-040
+      ['OrganisationSettings', 'telegramBotToken', 'токен власного Telegram-бота організації'],
     ])('%s.%s — %s', async (model, field) => {
       const secret = `SECRET-${model}-${field}`;
 

@@ -14,12 +14,14 @@
 
 ## API Endpoints (`/api/employees`, `/api/auth`)
 
-| Метод | URL                  | Дія                                                                                        | Ролі                                   |
-| ----- | -------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------- |
-| GET   | `/api/employees`     | Список; `liftId` — лише закріплені за підйомником, не звільнені й не видалені (BR-CAL-012) | OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT |
-| PATCH | `/api/employees/:id` | Зміна картки, зокрема статусу (звільнення — BR-EMP-001)                                    | OWNER, ADMIN                           |
-| POST  | `/api/auth/login`    | Вхід; звільнений → 403                                                                     | публічний                              |
-| POST  | `/api/auth/refresh`  | Оновлення токена; звільнений → 401                                                         | cookie                                 |
+| Метод               | URL                                                              | Дія                                                                                              | Ролі                                   |
+| ------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------- |
+| GET                 | `/api/employees`                                                 | Список; `liftId` — лише закріплені за підйомником, не звільнені й не видалені (BR-CAL-012)       | OWNER, ADMIN, RECEPTIONIST, ACCOUNTANT |
+| PATCH               | `/api/employees/:id`                                             | Зміна картки, зокрема статусу (звільнення — BR-EMP-001)                                          | OWNER, ADMIN                           |
+| POST / DELETE       | `/api/employees/:id/telegram-link`, `/:id/telegram-subscription` | Підписка працівника на Telegram-бот (automation.md, BR-AUT-041); картка — `telegramSubscription` | OWNER, ADMIN                           |
+| POST / GET / DELETE | `/api/employees/me/telegram-link`, `/me/telegram-subscription`   | Своя підписка на бот                                                                             | усі ролі персоналу                     |
+| POST                | `/api/auth/login`                                                | Вхід; звільнений → 403                                                                           | публічний                              |
+| POST                | `/api/auth/refresh`                                              | Оновлення токена; звільнений → 401                                                               | cookie                                 |
 
 ## Бізнес-правила (BR-EMP)
 

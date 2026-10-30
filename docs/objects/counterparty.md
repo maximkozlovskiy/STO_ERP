@@ -105,6 +105,8 @@ model CounterpartyStatusLink {
 | POST   | `/api/counterparties/:id/contracts/:contractId/restore` | Відновити (deletedAt→null, isPrimary→false) — OWNER/ADMIN                      |
 | POST   | `/api/counterparties/:id/statuses`                      | Призначити статус-мітку `{statusId}` (ідемпотентно) — OWNER/ADMIN/RECEPTIONIST |
 | DELETE | `/api/counterparties/:id/statuses/:statusId`            | Зняти статус-мітку — OWNER/ADMIN/RECEPTIONIST                                  |
+| POST   | `/api/counterparties/:id/telegram-link`                 | Посилання підписки на Telegram-бот (7 днів) — automation.md, BR-AUT-041        |
+| DELETE | `/api/counterparties/:id/telegram-subscription`         | Відписати від бота — OWNER/ADMIN/RECEPTIONIST                                  |
 
 **Довідник статусів** (`/api/counterparty-statuses`, окремий модуль — дзеркалить brands):
 
@@ -151,7 +153,7 @@ model CounterpartyStatusLink {
 
 | Компонент / сторінка     | Файл                                                                                                                                                                   |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Список + вкладки         | `app/(app)/counterparties/page.tsx` (таб-роутер `?tab`: список / статуси / марки авто)                                                                                              |
+| Список + вкладки         | `app/(app)/counterparties/page.tsx` (таб-роутер `?tab`: список / статуси / марки авто)                                                                                 |
 | Картка контрагента       | `app/(app)/counterparties/[id]/page.tsx`                                                                                                                               |
 | Довідник статусів (таб)  | `app/(app)/counterparties/CounterpartyStatusesTab.tsx`                                                                                                                 |
 | Керування мітками        | `components/ui/CounterpartyStatusManager.tsx` (badge-и + dropdown; режими: керований / self-fetch) — у `CounterpartyEditModal` (вкладка «Основне») + `[id]/PageClient` |
@@ -219,8 +221,9 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 | статуси-мітки (assign / unassign)                               | `counterparties.status-labels.spec.ts`          | 9      |
 | комірник читає постачальників (BR-CP-014)                       | `counterparties.storekeeper-suppliers.spec.ts`  | 22     |
 | supplier naming (+ назва обов'язкова)                           | `counterparties.supplier-naming.spec.ts`        | 6      |
+| згода на повідомлення й підписка на бот (BR-AUT-041, 042)       | `counterparties.consent.spec.ts`                | 5      |
 
-Разом: **126** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **131** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Поза модулем правила цього агрегату стережуть ще два файли:
 
