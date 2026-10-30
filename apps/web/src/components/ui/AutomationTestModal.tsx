@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Send } from 'lucide-react';
 import type { AutomationDocumentTypeValue } from '@sto/shared';
@@ -94,6 +94,8 @@ export function AutomationTestModal({
   const [result, setResult] = useState<AutomationTestResult | null>(null);
   const [error, setError] = useState('');
   const test = useTestAutomationRule();
+  // Синхронний замок проти подвійного кліку: `isPending` оновлюється лише з наступним рендером.
+  const sendingRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -105,7 +107,8 @@ export function AutomationTestModal({
   const fetchItems = useCallback((q: string) => fetchDocuments(documentType, q), [documentType]);
 
   const send = async () => {
-    if (!doc || test.isPending) return;
+    if (!doc || sendingRef.current) return;
+    sendingRef.current = true;
     setError('');
     setResult(null);
     try {
@@ -114,6 +117,8 @@ export function AutomationTestModal({
       toast.success(t('test.sent'));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('card.loadError'));
+    } finally {
+      sendingRef.current = false;
     }
   };
 

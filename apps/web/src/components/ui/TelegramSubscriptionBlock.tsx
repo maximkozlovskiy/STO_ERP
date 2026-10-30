@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { useTranslation } from 'react-i18next';
@@ -58,9 +58,13 @@ export function TelegramSubscriptionBlock({
   const [linkOpen, setLinkOpen] = useState(false);
   const [busy, setBusy] = useState<'link' | 'unsubscribe' | null>(null);
   const [error, setError] = useState('');
+  // Синхронний замок: стан `busy` оновлюється лише з наступним рендером, і два кліки в одному
+  // такті видали б два коди підписки.
+  const busyRef = useRef(false);
 
   const getLink = async () => {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy('link');
     setError('');
     try {
@@ -70,19 +74,21 @@ export function TelegramSubscriptionBlock({
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('telegram.botNotConnected'));
     } finally {
+      busyRef.current = false;
       setBusy(null);
     }
   };
 
   const unsubscribe = async () => {
-    if (busy) return;
+    if (busyRef.current) return;
     const ok = await confirm({
       title: self ? t('telegram.unsubscribeSelf') : t('telegram.unsubscribe'),
       message: t('telegram.unsubscribeConfirm'),
       confirmLabel: self ? t('telegram.unsubscribeSelf') : t('telegram.unsubscribe'),
       variant: 'destructive',
     });
-    if (!ok) return;
+    if (!ok || busyRef.current) return;
+    busyRef.current = true;
     setBusy('unsubscribe');
     setError('');
     try {
@@ -92,6 +98,7 @@ export function TelegramSubscriptionBlock({
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('card.loadError'));
     } finally {
+      busyRef.current = false;
       setBusy(null);
     }
   };

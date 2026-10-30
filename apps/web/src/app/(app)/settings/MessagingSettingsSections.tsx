@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, Moon, Send, Unplug } from 'lucide-react';
 import type { ApiSchema } from '@sto/shared';
@@ -132,6 +132,8 @@ export function TelegramBotSection({ onChanged }: { onChanged: () => void }) {
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Синхронний замок: два кліки «Підключити» в одному такті — два виклики getMe (ліміт 5 / хв).
+  const busyRef = useRef(false);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -144,7 +146,8 @@ export function TelegramBotSection({ onChanged }: { onChanged: () => void }) {
   }, [t]);
 
   const connect = async () => {
-    if (!token.trim() || busy) return;
+    if (!token.trim() || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError('');
     try {
@@ -159,6 +162,7 @@ export function TelegramBotSection({ onChanged }: { onChanged: () => void }) {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('common.saveError'));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -170,7 +174,8 @@ export function TelegramBotSection({ onChanged }: { onChanged: () => void }) {
       confirmLabel: t('telegramBot.disconnect'),
       variant: 'destructive',
     });
-    if (!ok) return;
+    if (!ok || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError('');
     try {
@@ -179,6 +184,7 @@ export function TelegramBotSection({ onChanged }: { onChanged: () => void }) {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('common.saveError'));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
