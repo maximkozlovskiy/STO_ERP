@@ -619,17 +619,34 @@ export function InvoiceCreateModal({
       // рядків. Усе послідовно: кожен запит перераховує суми рахунку (`recalcTotals` без транзакції).
       // POST нових рядків (без id). Bug #755: на ретраї пропускаємо вже збережені _key — інакше
       // повторний «Зберегти» задвоював нові рядки.
+      // id рядків, які цей прохід щойно створив і записав у форму: `linesNow` — знімок до POST, без них.
+      const createdIds = new Set<string>();
       for (const line of linesNow.filter(l => !l.id)) {
         if (line._key && postedLineKeysRef.current.has(line._key)) continue;
-        await apiFetch(`/invoices/${invoiceId}/lines`, {
-          method: 'POST',
-          body: JSON.stringify({
-            description: line.description,
-            quantity: parseFloat(String(line.quantity)) || 1,
-            unitPrice: parseFloat(String(line.unitPrice)) || 0,
-          }),
-        });
+        const created = await apiFetch<{ id?: string } | undefined>(
+          `/invoices/${invoiceId}/lines`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              description: line.description,
+              quantity: parseFloat(String(line.quantity)) || 1,
+              unitPrice: parseFloat(String(line.unitPrice)) || 0,
+            }),
+          },
+        );
         if (line._key) postedLineKeysRef.current.add(line._key);
+        // Рядок уже на сервері — даємо йому id у формі: якщо далі збій і користувач перед повтором
+        // прибере цей рядок, повтор його видалить (DELETE), а не лишить сиротою; правка — PATCH.
+        if (created?.id) {
+          const idx = ((getValues('lines') as FormLine[]) ?? []).findIndex(
+            l => !!line._key && l._key === line._key,
+          );
+          if (idx >= 0) {
+            setValue(`lines.${idx}.id`, created.id);
+            initialLineIdsRef.current.add(created.id);
+            createdIds.add(created.id);
+          }
+        }
       }
       // PATCH збережених рядків, змінених у формі. Після помилки прапорець лишається — повторне
       // «Зберегти» шле ті самі значення ще раз (PATCH ідемпотентний).
@@ -644,7 +661,10 @@ export function InvoiceCreateModal({
       }
       // DELETE рядків, прибраних локально (є у initialLineIdsRef, немає серед поточних id). Відмова
       // одного не зупиняє решту (як allSettled), невидалені лишаються на повтор, помилка — у картці.
-      const currentIds = new Set(linesNow.map(l => l.id).filter(Boolean) as string[]);
+      const currentIds = new Set([
+        ...(linesNow.map(l => l.id).filter(Boolean) as string[]),
+        ...createdIds,
+      ]);
       const removedIds = [...initialLineIdsRef.current].filter(id => !currentIds.has(id));
       let deleteFailure: Error | null = null;
       for (const lineId of removedIds) {

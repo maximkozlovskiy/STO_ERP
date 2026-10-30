@@ -156,6 +156,34 @@ describe('Картка рахунку — збереження рядків (BR-
     expect(lineCalls()).toEqual(['DELETE lines/l-b']);
   });
 
+  // guards: BR-INV-024
+  it('новий рядок збережено, далі збій; прибрали його перед повтором — повтор його видаляє, не лишає сиротою', async () => {
+    let refuseB = true;
+    fail = (path, method) =>
+      method === 'DELETE' && path.endsWith('/l-b') && refuseB ? new Error('Рядок зайнятий') : null;
+    apiFetchMock.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === '/invoices/inv-1?withDeleted=true') return Promise.resolve(DOC);
+      const err = fail(path, init?.method);
+      if (err) return Promise.reject(err);
+      if (path === '/invoices/inv-1/lines' && init?.method === 'POST')
+        return Promise.resolve({ id: 'l-new' });
+      return Promise.resolve(path === '/currencies' ? { items: [] } : {});
+    });
+    const onClose = await openCard();
+    await editAndSave();
+    expect(await screen.findByText('Рядок зайнятий')).toBeInTheDocument();
+    // Перший прохід: щойно збережений рядок НЕ видаляється тим самим «Зберегти».
+    expect(lineCalls()).toEqual(['POST lines', 'PATCH lines/l-a', 'DELETE lines/l-b']);
+
+    refuseB = false;
+    apiFetchMock.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Видалити позицію: Шиномонтаж' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти зміни' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    // POST не повторюється; PATCH «Діагностики» — повтор того самого (ідемпотентно).
+    expect(lineCalls()).toEqual(['PATCH lines/l-a', 'DELETE lines/l-b', 'DELETE lines/l-new']);
+  });
+
   it('змінена кількість — сума рядка з ПДВ пропорційно (120 → 360), «Разом» теж (216 → 456)', async () => {
     await openCard();
     fireEvent.change(screen.getByLabelText('Кількість: Діагностика'), { target: { value: '3' } });

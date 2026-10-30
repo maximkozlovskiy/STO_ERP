@@ -44,7 +44,7 @@ describe('assertCounterpartyRole (BR-CP-001)', () => {
     ['purchase-orders/purchase-orders.service.ts', 'supplier', 2], // create, update (зміна постачальника)
     ['work-orders/work-orders.service.ts', 'client', 2], // create, clone
     ['invoices/invoices.service.ts', 'client', 3], // create, update (зміна контрагента), clone
-    ['supplier-payments/supplier-payments.service.ts', 'supplier', 2], // create, update
+    ['supplier-payments/supplier-payments.service.ts', 'supplier', 1], // create (update прибрано — постачальника не змінити після створення)
     ['supplier-returns/supplier-returns.service.ts', 'supplier', 2], // create, update (зміна постачальника)
   ];
 
