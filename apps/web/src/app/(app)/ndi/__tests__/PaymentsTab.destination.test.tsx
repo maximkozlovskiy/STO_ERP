@@ -265,4 +265,32 @@ describe('НДІ → способи оплати: куди надходять к
       isCash: true,
     });
   });
+
+  // Bug #1010: відмова сервера («лише в касу») лишалась над списком і після успішного збереження.
+  // Мутація: прибрати `setError('')` на початку `createPaymentMethod` — текст лишається, червоний.
+  it('помилка попередньої спроби зникає після успішного додавання', async () => {
+    const REJECT = 'Для готівки кошти надходять лише в касу — оберіть касу';
+    let posts = 0;
+    const base = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string, init?: { method?: string; body?: string }) => {
+      if (init?.method === 'POST') {
+        posts += 1;
+        return posts === 1
+          ? Promise.reject(new Error(REJECT))
+          : Promise.resolve({ ...CARD, id: 'pm-new', code: 'CASH2', name: 'Каса 2', isCash: true });
+      }
+      return base(path, init);
+    });
+    renderTab();
+    fireEvent.click(await screen.findByRole('button', { name: /Метод оплати/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/^Код/), { target: { value: 'cash2' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Назва/), { target: { value: 'Каса 2' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Додати' }));
+    expect(await screen.findByText(REJECT)).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Додати' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByText(REJECT)).toBeNull();
+  });
 });

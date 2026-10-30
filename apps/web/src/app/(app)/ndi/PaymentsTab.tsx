@@ -190,6 +190,7 @@ export default function PaymentsTab() {
   };
 
   const togglePayment = async (pm: PaymentMethod) => {
+    setError('');
     setTogglingId(pm.id);
     try {
       const updated = await apiFetch<PaymentMethod>(`/payment-methods/${pm.id}`, {
@@ -216,6 +217,8 @@ export default function PaymentsTab() {
 
   const saveEditPayment = async () => {
     if (!editPayment) return;
+    // Bug #1010: відмова попередньої спроби не лишається над списком після успішного збереження.
+    setError('');
     setSavingPayment(true);
     try {
       // Системний метод: сервер блокує зміну name (payment-methods.service isSystem-guard),
@@ -246,6 +249,7 @@ export default function PaymentsTab() {
   };
 
   const createPaymentMethod = async () => {
+    setError('');
     if (!newPaymentForm.code.trim() || !newPaymentForm.name.trim()) {
       setError(t('payments.codeNameRequired'));
       return;
@@ -302,6 +306,7 @@ export default function PaymentsTab() {
   const deletePaymentMethod = async (id: string) => {
     if (!(await confirm({ title: t('payments.deleteConfirmTitle'), variant: 'destructive' })))
       return;
+    setError('');
     try {
       await apiFetch(`/payment-methods/${id}`, { method: 'DELETE' });
       setPayments(prev => prev.filter(p => p.id !== id));
