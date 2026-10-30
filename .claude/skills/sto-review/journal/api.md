@@ -3,6 +3,21 @@
 > Архів реальних випадків (дата — назва — §N + Сигнал / Grep / Фікс / Severity).
 > Не читати цілком — шукати за ключовим словом. Чекліст секції: `../sections/api.md`.
 
+### 2026-10-30 — нова ознака довідника (`isCash`) у спільному писачі: внутрішній викликач і відновлення — §5
+
+**Сигнал:** BR-PAY-019 перевели з коду `cash` на ознаку `PaymentMethodConfig.isCash`. `PaymentsService.create`
+кличуть людина (`POST /payments`), каса, рознесення виписки й фіналізація онлайн-оплати (`<шлюз>_qr`). Для
+людини відмову 400 «вкажіть касу» додали свідомо, а для шлюзу ознака, ввімкнена на QR-способі, давала б ту саму
+400 на кожну спробу фіналізації вже прийнятих грошей (раніше код `cash` для QR не траплявся). Друге: гілка
+відновлення видаленого способу в `PaymentMethodsService.create` писала `{ ...fields, ...destination }` — без
+`isCash` у запиті лишалась ознака видаленого рядка, а призначення перевірялось як для «не готівки».
+**Grep:** `grep -rn "<сервіс>\.create(" apps/api/src/modules --include="*.ts" | grep -v spec` → для кожного
+внутрішнього викликача: чи може нова відмова спрацювати на ньому; `grep -n "deletedAt: null }" <модуль>.service.ts`
+у гілці restore → поля, від яких залежить перевірка, пишуться явно.
+**Фікс:** `viaGateway = !opts.fromRequest && !!dto.onlinePaymentIntentId` → ознака не діє (і в `retryFiscal`);
+відновлення пише `isCash: dto.isCash ?? false`. Тести з мутацією (`payments.cash-register-required.spec.ts`,
+`payment-methods.destination.spec.ts`, `payments.query-dto.spec.ts`). **Severity:** IMPORTANT (гроші, ПРРО)
+
 ### 2026-10-24 — рефакторинг спільного каркаса/хелпера зберігає порядок і per-caller guard — §4/§5
 
 **Сигнал:** jscpd-рефактор витягує спільний boilerplate у хелпер — `$extends`-каркас Prisma-розширень

@@ -54,6 +54,7 @@ grep -rn "ALTER TYPE.*ADD VALUE" packages/database/prisma/migrations/ | tail -5
       `col: null`. Grep: `grep -rnE "[a-zA-Z]+Id: \{ not: [a-zA-Z.]+ \}" apps/api/src/modules --include="*.ts" | grep -v spec`
       → для кожного nullable-поля — гілка NULL (`journal/database.md`, 2026-10-16)
 - [ ] **Правило унікальності «перевірив → записав» без блокування — гонка.** Два одночасні збереження обидва проходять перевірку; `createMany skipDuplicates` після неї ховає програш мовчки. Перевірку й запис — в одну `$transaction` під `pg_advisory_xact_lock(hashtext('<агрегат>:<orgId>'))` (взірець: `BrandsService.underWritingsLock`, `payroll`). Перевіряти ВСІ писачі: create, update, restore, імпорт (`journal/database.md`, 2026-10-12)
+- [ ] **Відновлення видаленого рядка в `create` (resurrection) пише явно кожне поле, від якого залежить перевірка запиту** (`isCash`): `{ ...fields }` без нього лишає значення видаленого рядка, і відновлений спосіб «готівка» отримує банківський рахунок, повз BR-PAY-019 (`journal/api.md`, 2026-10-30)
 - [ ] **Нова колонка в моделі, чий змаплений DTO кешується в Redis (`settings:org:<id>`) → ключ кешу
       мусить змінитись разом зі схемою.** Інакше після оновлення до кінця TTL читається старий об'єкт без
       нового поля (`supplierOfferTtlMinutes` undefined → 400). Взірець — `schemaFingerprint(Prisma.<Model>ScalarFieldEnum)`
