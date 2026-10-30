@@ -11359,7 +11359,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/PurchaseListLinkedCountsEntryDto"
+                  }
                 }
               }
             }
@@ -11472,7 +11475,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseListLinkedDocumentsDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -17426,175 +17436,6 @@
         "summary": "Видалити коментар (тільки автор або OWNER/ADMIN)",
         "tags": [
           "Comments"
-        ]
-      }
-    },
-    "/api/v1/work-order-templates": {
-      "get": {
-        "operationId": "WorkOrderTemplatesController_findAll_v1",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkOrderTemplatesListDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Список шаблонів нарядів",
-        "tags": [
-          "Work Order Templates"
-        ]
-      },
-      "post": {
-        "operationId": "WorkOrderTemplatesController_create_v1",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateWorkOrderTemplateDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkOrderTemplateResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Створити шаблон",
-        "tags": [
-          "Work Order Templates"
-        ]
-      }
-    },
-    "/api/v1/work-order-templates/{id}": {
-      "get": {
-        "operationId": "WorkOrderTemplatesController_findOne_v1",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkOrderTemplateResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Шаблон за ID",
-        "tags": [
-          "Work Order Templates"
-        ]
-      },
-      "patch": {
-        "operationId": "WorkOrderTemplatesController_update_v1",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateWorkOrderTemplateDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkOrderTemplateResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Оновити шаблон",
-        "tags": [
-          "Work Order Templates"
-        ]
-      },
-      "delete": {
-        "operationId": "WorkOrderTemplatesController_remove_v1",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Видалити шаблон",
-        "tags": [
-          "Work Order Templates"
         ]
       }
     },
@@ -29659,6 +29500,25 @@
           "limit"
         ]
       },
+      "PurchaseListLinkedCountsEntryDto": {
+        "type": "object",
+        "properties": {
+          "workOrders": {
+            "type": "number"
+          },
+          "purchaseOrders": {
+            "type": "number"
+          },
+          "purchaseLists": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "workOrders",
+          "purchaseOrders",
+          "purchaseLists"
+        ]
+      },
       "PurchaseListResponseDto": {
         "type": "object",
         "properties": {
@@ -30168,6 +30028,132 @@
         },
         "required": [
           "orders"
+        ]
+      },
+      "PurchaseListLinkedWorkOrderRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "ESTIMATE",
+              "APPROVED",
+              "IN_PROGRESS",
+              "ON_HOLD",
+              "COMPLETED",
+              "INVOICED",
+              "PAID",
+              "ARCHIVED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status"
+        ]
+      },
+      "PurchaseListLinkedPurchaseOrderRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "ORDERED",
+              "RECEIVED",
+              "PARTIAL",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "Сума замовлення у валюті замовлення."
+          },
+          "currencySymbol": {
+            "type": "string",
+            "nullable": true,
+            "description": "Символ (або код) валюти замовлення"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status",
+          "totalAmount",
+          "currencySymbol"
+        ]
+      },
+      "PurchaseListLinkedListRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "OPEN",
+              "CLOSED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status",
+          "createdAt"
+        ]
+      },
+      "PurchaseListLinkedDocumentsDto": {
+        "type": "object",
+        "properties": {
+          "workOrders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseListLinkedWorkOrderRowDto"
+            }
+          },
+          "purchaseOrders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseListLinkedPurchaseOrderRowDto"
+            }
+          },
+          "purchaseLists": {
+            "description": "Списки, об'єднані в цей (BR-PL-006)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseListLinkedListRowDto"
+            }
+          }
+        },
+        "required": [
+          "workOrders",
+          "purchaseOrders",
+          "purchaseLists"
         ]
       },
       "ShortageRowDto": {
@@ -35244,153 +35230,6 @@
           "entityId",
           "body"
         ]
-      },
-      "TemplateLineDto": {
-        "type": "object",
-        "properties": {
-          "workId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "quantity": {
-            "type": "number",
-            "minimum": 0
-          },
-          "note": {
-            "type": "string",
-            "maxLength": 500
-          }
-        },
-        "required": [
-          "workId",
-          "quantity"
-        ]
-      },
-      "TemplatePartDto": {
-        "type": "object",
-        "properties": {
-          "goodId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "quantity": {
-            "type": "number",
-            "minimum": 0
-          }
-        },
-        "required": [
-          "goodId",
-          "quantity"
-        ]
-      },
-      "WorkOrderTemplateResponseDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "orgId": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "lines": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TemplateLineDto"
-            }
-          },
-          "parts": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TemplatePartDto"
-            }
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "orgId",
-          "name",
-          "lines",
-          "parts",
-          "createdAt",
-          "updatedAt"
-        ]
-      },
-      "WorkOrderTemplatesListDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/WorkOrderTemplateResponseDto"
-            }
-          },
-          "total": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "items",
-          "total"
-        ]
-      },
-      "CreateWorkOrderTemplateDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
-          },
-          "lines": {
-            "maxItems": 200,
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TemplateLineDto"
-            }
-          },
-          "parts": {
-            "maxItems": 200,
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TemplatePartDto"
-            }
-          }
-        },
-        "required": [
-          "name"
-        ]
-      },
-      "UpdateWorkOrderTemplateDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 200
-          },
-          "lines": {
-            "maxItems": 200,
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TemplateLineDto"
-            }
-          },
-          "parts": {
-            "maxItems": 200,
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TemplatePartDto"
-            }
-          }
-        }
       },
       "WorkOrderMediaResponseDto": {
         "type": "object",

@@ -16,8 +16,11 @@ import {
  * додаються окремими POST /invoices/:id/lines. Тому:
  *  · `invoiceHeaderSchema`/`invoiceUpdateSchema` — валідують ШАПКУ (бек-pipe на create/update).
  *  · `invoiceLineSchema`/`invoiceLineUpdateSchema` — валідують РЯДОК (бек-pipe на /lines).
+ *    Оновлення рядка (`updateLine`) міняє лише опис, кількість, ціну, ставку ПДВ і порядок —
+ *    товар, роботу й одиницю рядка не міняє, тому їх у схемі оновлення немає (BR-INV-017).
  *  · `invoiceFormSchema` — форма web (шапка + `lines: z.array`), валідується RHF+useFieldArray;
- *    submit лишається multi-request (POST шапка → N× POST /lines → DELETE видалених).
+ *    submit лишається multi-request: створення — POST шапка → N× POST /lines; збереження чернетки —
+ *    PATCH шапки → POST нових → PATCH змінених (`_dirty`) → DELETE прибраних останнім (BR-INV-024).
  *
  * invoiceType — вільний рядок на беку; UI-значення STANDARD/PREPAYMENT/CREDIT_NOTE (INVOICE_TYPE_LABELS).
  * Дати dueDate/documentDate — optionalDateString (дзеркалить @IsDateString; без нього битий рядок → 500).
@@ -60,7 +63,10 @@ const invoiceLineShape = {
 export const invoiceLineSchema = z.object(invoiceLineShape);
 export type InvoiceLineValues = z.infer<typeof invoiceLineSchema>;
 
-export const invoiceLineUpdateSchema = z.object(invoiceLineShape).partial();
+export const invoiceLineUpdateSchema = z
+  .object(invoiceLineShape)
+  .omit({ goodId: true, workId: true, unitOfMeasureId: true })
+  .partial();
 export type InvoiceLineUpdateValues = z.infer<typeof invoiceLineUpdateSchema>;
 
 // ─── Шапка рахунку (POST /invoices) ──────────────────────────────────────────
@@ -90,6 +96,8 @@ export const invoiceFormLineSchema = z.object({
   // _key/id — локальні RHF-поля (стабільний ключ / серверний id рядка) — не валідуються схемою даних.
   _key: z.string().optional(),
   id: z.string().optional(),
+  // Збережений рядок змінено у формі → PATCH при «Зберегти» (BR-INV-024). Локальне, не дані.
+  _dirty: z.boolean().optional(),
   description: z.string().trim().min(1, 'v.invoice.line.description.required').max(500),
   // moneyString (не numericString): UA-кома-aware backstop — інпут вільний рядок; хоча зараз
   // type=number блокує кому в браузері, це захищає програмні/Excel-значення (Number('1,5')=NaN інакше).

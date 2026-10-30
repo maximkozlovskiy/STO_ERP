@@ -137,11 +137,7 @@ export class UpdateInvoiceLineDto {
   unitPrice?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(100) vatRate?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) sortOrder?: number;
-  @ApiPropertyOptional({ description: 'ID одиниці виміру з GoodUoM товару' })
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsUUID()
-  unitOfMeasureId?: string;
+  // Товар, робота й одиниця рядка при оновленні не міняються (`invoiceLineUpdateSchema`, BR-INV-017).
 }
 
 export class InvoiceLineResponseDto {

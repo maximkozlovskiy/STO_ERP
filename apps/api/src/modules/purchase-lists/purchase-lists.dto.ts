@@ -286,3 +286,46 @@ export class WorkOrderProcurementDto {
   @ApiProperty({ type: [PurchaseListItemResponseDto] }) items!: PurchaseListItemResponseDto[];
   @ApiProperty({ type: [WorkOrderPartShortageDto] }) shortage!: WorkOrderPartShortageDto[];
 }
+
+// ─── Пов'язані документи (BR-PL-020) ────────────────────────────────────────────
+
+export class PurchaseListLinkedWorkOrderRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: WorkOrderStatus }) status!: WorkOrderStatus;
+}
+
+export class PurchaseListLinkedPurchaseOrderRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: PurchaseOrderStatus }) status!: PurchaseOrderStatus;
+  /** Сума замовлення у валюті замовлення. */
+  @ApiProperty() totalAmount!: number;
+  @ApiProperty({ type: String, nullable: true, description: 'Символ (або код) валюти замовлення' })
+  currencySymbol!: string | null;
+}
+
+export class PurchaseListLinkedListRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: PurchaseListStatus }) status!: PurchaseListStatus;
+  @ApiProperty({ type: String, format: 'date-time' }) createdAt!: string;
+}
+
+export class PurchaseListLinkedDocumentsDto {
+  @ApiProperty({ type: [PurchaseListLinkedWorkOrderRowDto] })
+  workOrders!: PurchaseListLinkedWorkOrderRowDto[];
+  @ApiProperty({ type: [PurchaseListLinkedPurchaseOrderRowDto] })
+  purchaseOrders!: PurchaseListLinkedPurchaseOrderRowDto[];
+  @ApiProperty({
+    type: [PurchaseListLinkedListRowDto],
+    description: "Списки, об'єднані в цей (BR-PL-006)",
+  })
+  purchaseLists!: PurchaseListLinkedListRowDto[];
+}
+
+export class PurchaseListLinkedCountsEntryDto {
+  @ApiProperty() workOrders!: number;
+  @ApiProperty() purchaseOrders!: number;
+  @ApiProperty() purchaseLists!: number;
+}

@@ -39,6 +39,7 @@ import type {
   PaginatedPurchaseListsDto,
   PurchaseListDetailDto,
   PurchaseListItemResponseDto,
+  PurchaseListLinkedDocumentsDto,
   PurchaseListQueryDto,
   PurchaseListResponseDto,
 } from './purchase-lists.dto';
@@ -456,8 +457,8 @@ export class PurchaseListsService {
 
   // ─── Зв'язки ──────────────────────────────────────────────
 
-  /** Наряди й замовлення постачальникам позицій списку, списки, злиті в нього. */
-  async getLinkedDocuments(orgId: string, id: string) {
+  /** Наряди й замовлення постачальникам позицій списку, списки, злиті в нього (BR-PL-020). */
+  async getLinkedDocuments(orgId: string, id: string): Promise<PurchaseListLinkedDocumentsDto> {
     // BR-WO-012: джерело шукаємо й серед видалених (orgId лишається). Позиції видаляються разом
     // зі списком тією ж міткою `deletedAt` (`remove`) — у видаленого списку беремо саме їх.
     const list = await this.prisma.purchaseList.findFirst({
@@ -471,7 +472,16 @@ export class PurchaseListsService {
         where: { orgId, listId: id, deletedAt: list.deletedAt },
         select: {
           workOrder: { select: { id: true, number: true, status: true, deletedAt: true } },
-          purchaseOrder: { select: { id: true, number: true, status: true, deletedAt: true } },
+          purchaseOrder: {
+            select: {
+              id: true,
+              number: true,
+              status: true,
+              deletedAt: true,
+              totalAmount: true,
+              currency: { select: { symbol: true, code: true } },
+            },
+          },
         },
         take: TAKE * 4,
       }),
@@ -492,8 +502,14 @@ export class PurchaseListsService {
       ).slice(0, TAKE);
     return {
       workOrders: unique(items.map(i => i.workOrder)),
-      purchaseOrders: unique(items.map(i => i.purchaseOrder)),
-      purchaseLists: merged,
+      purchaseOrders: unique(items.map(i => i.purchaseOrder)).map(
+        ({ totalAmount, currency, ...po }) => ({
+          ...po,
+          totalAmount: Number(totalAmount),
+          currencySymbol: currency?.symbol || currency?.code || null,
+        }),
+      ),
+      purchaseLists: merged.map(l => ({ ...l, createdAt: l.createdAt.toISOString() })),
     };
   }
 

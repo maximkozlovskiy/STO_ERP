@@ -3,6 +3,7 @@ import {
   invoiceHeaderSchema,
   invoiceUpdateSchema,
   invoiceLineSchema,
+  invoiceLineUpdateSchema,
   invoiceFormSchema,
 } from '@sto/shared';
 
@@ -113,6 +114,34 @@ describe('invoiceLineSchema (POST /invoices/:id/lines)', () => {
       invoiceLineSchema.safeParse({ description: 'X', quantity: '1', unitPrice: '10', vatRate: 20 })
         .success,
     ).toBe(true);
+  });
+});
+
+describe('invoiceLineUpdateSchema (PATCH /invoices/:id/lines/:lineId)', () => {
+  // guards: BR-INV-017
+  it('контракт не обіцяє зміну товару, роботи й одиниці — updateLine їх не застосовує', () => {
+    const r = invoiceLineUpdateSchema.safeParse({
+      quantity: '2',
+      unitPrice: 15,
+      goodId: CP,
+      workId: CP,
+      unitOfMeasureId: CP,
+    });
+    expect(r.success).toBe(true);
+    expect(r.success && r.data).toEqual({ quantity: 2, unitPrice: 15 });
+    expect(Object.keys(invoiceLineUpdateSchema.shape).sort()).toEqual([
+      'description',
+      'quantity',
+      'sortOrder',
+      'unitPrice',
+      'vatRate',
+    ]);
+  });
+
+  it('кількість і ціна — ті самі межі, що й у новому рядку', () => {
+    expect(invoiceLineUpdateSchema.safeParse({ quantity: 0 }).success).toBe(false);
+    expect(invoiceLineUpdateSchema.safeParse({ unitPrice: -1 }).success).toBe(false);
+    expect(invoiceLineUpdateSchema.safeParse({}).success).toBe(true);
   });
 });
 

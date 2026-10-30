@@ -30,6 +30,8 @@ function harness() {
         orgId: ORG,
         number: 'ЗП-1',
         status: 'DRAFT',
+        // Decimal з Prisma приходить об'єктом/рядком — сервіс віддає число.
+        totalAmount: '1250.50',
         deletedAt: null,
         createdAt: new Date(),
       },
@@ -63,6 +65,21 @@ describe("Зв'язки списку купівлі", () => {
     expect(docs.workOrders.map(w => w.id)).toEqual([WO_A]);
     expect(docs.purchaseOrders.map(p => p.id)).toEqual([PO]);
     expect(docs.purchaseLists.map(l => l.id)).toEqual(['list-old']);
+  });
+
+  // guards: BR-PL-020
+  it('замовлення — із сумою числом і валютою; злитий список — з датою ISO (контракт вкладки «Документи»)', async () => {
+    const h = harness();
+
+    const docs = await h.lists.getLinkedDocuments(ORG, 'list-1');
+
+    // Фейкова Prisma вкладений `select` не застосовує — тому toMatchObject, а не toEqual.
+    expect(docs.purchaseOrders).toMatchObject([
+      { id: PO, number: 'ЗП-1', status: 'DRAFT', totalAmount: 1250.5, currencySymbol: null },
+    ]);
+    expect(typeof docs.purchaseOrders[0]?.totalAmount).toBe('number');
+    expect(docs.workOrders[0]).toMatchObject({ id: WO_A, status: 'APPROVED' });
+    expect(docs.purchaseLists[0]?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   // guards: BR-WO-012

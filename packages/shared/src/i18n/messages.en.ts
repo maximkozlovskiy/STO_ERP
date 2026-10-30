@@ -1209,9 +1209,6 @@ export const en: Record<string, string> = {
   // ── Exception messages: webhooks module ──
   'err.webhook.notFound': 'Webhook not found',
 
-  // ── Exception messages: work-order-templates module ──
-  'err.workOrderTemplate.notFound': 'Template not found',
-
   // ── Exception messages: works module ──
   'err.work.notFound': 'Work not found',
   'err.work.categoryNotFound': 'Category not found',
@@ -1292,8 +1289,6 @@ export const en: Record<string, string> = {
   'err.dto.supplierReturn.lines.max': 'No more than 500 lines in the return',
   'err.dto.userPreference.key.notEmpty': 'Key cannot be empty',
   'err.dto.userPreference.value.object': 'Value must be an object',
-  'err.dto.workOrderTemplate.workLines.max': 'No more than 200 work lines in the template',
-  'err.dto.workOrderTemplate.parts.max': 'No more than 200 parts in the template',
   'err.dto.work.categories.max': 'No more than 100 categories in the filter',
   'err.dto.work.ids.max': 'No more than 200 works per request',
   'err.dto.xlsx.rows.max': 'No more than 1000 rows per import',

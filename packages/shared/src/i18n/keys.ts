@@ -1173,8 +1173,6 @@ export const VALIDATION_KEYS = [
   'err.warehouse.onlyOneMain',
   // Exception-повідомлення: webhooks-модуль
   'err.webhook.notFound',
-  // Exception-повідомлення: work-order-templates-модуль
-  'err.workOrderTemplate.notFound',
   // Exception-повідомлення: works-модуль
   'err.work.notFound',
   'err.work.categoryNotFound',
@@ -1251,8 +1249,6 @@ export const VALIDATION_KEYS = [
   'err.dto.supplierReturn.lines.max',
   'err.dto.userPreference.key.notEmpty',
   'err.dto.userPreference.value.object',
-  'err.dto.workOrderTemplate.workLines.max',
-  'err.dto.workOrderTemplate.parts.max',
   'err.dto.work.categories.max',
   'err.dto.work.ids.max',
   'err.dto.xlsx.rows.max',

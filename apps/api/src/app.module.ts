@@ -68,7 +68,6 @@ import { MaintenanceSchedulesModule } from './modules/maintenance-schedules/main
 import { CompletionActsModule } from './modules/completion-acts/completion-acts.module';
 import { SearchModule } from './modules/search/search.module';
 import { CommentsModule } from './modules/comments/comments.module';
-import { WorkOrderTemplatesModule } from './modules/work-order-templates/work-order-templates.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { WorkOrderMediaModule } from './modules/work-order-media/work-order-media.module';
 import { AuditModule } from './modules/audit/audit.module';
@@ -235,7 +234,6 @@ import { TelegramBotModule } from './modules/telegram-bot/telegram-bot.module';
     CompletionActsModule,
     SearchModule,
     CommentsModule,
-    WorkOrderTemplatesModule,
     DashboardModule,
     WorkOrderMediaModule,
     AuditModule,

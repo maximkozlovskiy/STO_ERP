@@ -5464,43 +5464,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/work-order-templates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Список шаблонів нарядів */
-        get: operations["WorkOrderTemplatesController_findAll_v1"];
-        put?: never;
-        /** Створити шаблон */
-        post: operations["WorkOrderTemplatesController_create_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/work-order-templates/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Шаблон за ID */
-        get: operations["WorkOrderTemplatesController_findOne_v1"];
-        put?: never;
-        post?: never;
-        /** Видалити шаблон */
-        delete: operations["WorkOrderTemplatesController_remove_v1"];
-        options?: never;
-        head?: never;
-        /** Оновити шаблон */
-        patch: operations["WorkOrderTemplatesController_update_v1"];
-        trace?: never;
-    };
     "/api/v1/dashboard/summary": {
         parameters: {
             query?: never;
@@ -8959,6 +8922,11 @@ export interface components {
             page: number;
             limit: number;
         };
+        PurchaseListLinkedCountsEntryDto: {
+            workOrders: number;
+            purchaseOrders: number;
+            purchaseLists: number;
+        };
         PurchaseListResponseDto: {
             id: string;
             number: string;
@@ -9075,6 +9043,36 @@ export interface components {
         };
         CreateOrdersResultDto: {
             orders: components["schemas"]["CreatedOrderDto"][];
+        };
+        PurchaseListLinkedWorkOrderRowDto: {
+            id: string;
+            number: string;
+            /** @enum {string} */
+            status: "DRAFT" | "ESTIMATE" | "APPROVED" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "INVOICED" | "PAID" | "ARCHIVED" | "CANCELLED";
+        };
+        PurchaseListLinkedPurchaseOrderRowDto: {
+            id: string;
+            number: string;
+            /** @enum {string} */
+            status: "DRAFT" | "ORDERED" | "RECEIVED" | "PARTIAL" | "CANCELLED";
+            /** @description Сума замовлення у валюті замовлення. */
+            totalAmount: number;
+            /** @description Символ (або код) валюти замовлення */
+            currencySymbol: string | null;
+        };
+        PurchaseListLinkedListRowDto: {
+            id: string;
+            number: string;
+            /** @enum {string} */
+            status: "OPEN" | "CLOSED" | "CANCELLED";
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PurchaseListLinkedDocumentsDto: {
+            workOrders: components["schemas"]["PurchaseListLinkedWorkOrderRowDto"][];
+            purchaseOrders: components["schemas"]["PurchaseListLinkedPurchaseOrderRowDto"][];
+            /** @description Списки, об'єднані в цей (BR-PL-006) */
+            purchaseLists: components["schemas"]["PurchaseListLinkedListRowDto"][];
         };
         ShortageRowDto: {
             workOrderId: string;
@@ -10497,40 +10495,6 @@ export interface components {
             /** Format: uuid */
             entityId: string;
             body: string;
-        };
-        TemplateLineDto: {
-            /** Format: uuid */
-            workId: string;
-            quantity: number;
-            note?: string;
-        };
-        TemplatePartDto: {
-            /** Format: uuid */
-            goodId: string;
-            quantity: number;
-        };
-        WorkOrderTemplateResponseDto: {
-            id: string;
-            orgId: string;
-            name: string;
-            lines: components["schemas"]["TemplateLineDto"][];
-            parts: components["schemas"]["TemplatePartDto"][];
-            createdAt: string;
-            updatedAt: string;
-        };
-        WorkOrderTemplatesListDto: {
-            items: components["schemas"]["WorkOrderTemplateResponseDto"][];
-            total: number;
-        };
-        CreateWorkOrderTemplateDto: {
-            name: string;
-            lines?: components["schemas"]["TemplateLineDto"][];
-            parts?: components["schemas"]["TemplatePartDto"][];
-        };
-        UpdateWorkOrderTemplateDto: {
-            name?: string;
-            lines?: components["schemas"]["TemplateLineDto"][];
-            parts?: components["schemas"]["TemplatePartDto"][];
         };
         WorkOrderMediaResponseDto: {
             id: string;
@@ -17627,7 +17591,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        [key: string]: components["schemas"]["PurchaseListLinkedCountsEntryDto"];
+                    };
                 };
             };
         };
@@ -17704,7 +17670,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PurchaseListLinkedDocumentsDto"];
+                };
             };
         };
     };
@@ -20905,113 +20873,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    WorkOrderTemplatesController_findAll_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkOrderTemplatesListDto"];
-                };
-            };
-        };
-    };
-    WorkOrderTemplatesController_create_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateWorkOrderTemplateDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkOrderTemplateResponseDto"];
-                };
-            };
-        };
-    };
-    WorkOrderTemplatesController_findOne_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkOrderTemplateResponseDto"];
-                };
-            };
-        };
-    };
-    WorkOrderTemplatesController_remove_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkOrderTemplatesController_update_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateWorkOrderTemplateDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkOrderTemplateResponseDto"];
-                };
             };
         };
     };

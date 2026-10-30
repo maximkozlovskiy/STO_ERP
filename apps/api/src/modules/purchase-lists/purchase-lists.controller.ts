@@ -16,10 +16,12 @@ import {
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiExtraModels,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import {
   PROCUREMENT_READ_ROLES,
@@ -54,12 +56,15 @@ import {
   PaginatedPurchaseListsDto,
   PurchaseListDetailDto,
   PurchaseListItemResponseDto,
+  PurchaseListLinkedCountsEntryDto,
+  PurchaseListLinkedDocumentsDto,
   PurchaseListQueryDto,
   PurchaseListResponseDto,
 } from './purchase-lists.dto';
 
 /** Списки купівлі (docs/objects/purchase-list.md). Ролі — BR-PL-015. */
 @ApiTags('Purchase Lists')
+@ApiExtraModels(PurchaseListLinkedCountsEntryDto)
 @Controller('purchase-lists')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
@@ -83,6 +88,13 @@ export class PurchaseListsController {
   @Roles(...PROCUREMENT_READ_ROLES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Кількість пов'язаних документів для списків (batch)" })
+  // Мапа ID → лічильники: клас з index-signature Swagger не читає, схема явна.
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      additionalProperties: { $ref: getSchemaPath(PurchaseListLinkedCountsEntryDto) },
+    },
+  })
   getLinkedCounts(@OrgContext() orgId: string, @Body() dto: LinkedCountsDto) {
     return this.service.getLinkedCounts(orgId, dto.ids);
   }
@@ -143,6 +155,7 @@ export class PurchaseListsController {
   @Get(':id/linked-documents')
   @Roles(...PROCUREMENT_READ_ROLES)
   @ApiOperation({ summary: "Пов'язані документи списку (наряди, замовлення, злиті списки)" })
+  @ApiOkResponse({ type: PurchaseListLinkedDocumentsDto })
   getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getLinkedDocuments(orgId, id);
   }
