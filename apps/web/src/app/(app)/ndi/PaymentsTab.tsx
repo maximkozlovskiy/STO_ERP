@@ -235,7 +235,9 @@ export default function PaymentsTab() {
   };
 
   // BR-PAY-032: ознаку «Готівка» системного способу `cash` не зняти (сервер теж відмовляє).
-  const cashFlagLocked = editPayment?.code === CASH_METHOD_CODE;
+  // Блокується лише ЗБЕРЕЖЕНА ознака: спосіб `cash`, з якого її зняли до правила, має змогу
+  // поставити її знову (сервер відмовляє лише на зняття).
+  const cashFlagLocked = editPayment?.code === CASH_METHOD_CODE && editPayment.isCash;
 
   const saveEditPayment = async () => {
     if (!editPayment) return;

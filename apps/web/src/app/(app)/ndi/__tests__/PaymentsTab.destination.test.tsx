@@ -342,4 +342,17 @@ describe('НДІ → способи оплати: куди надходять к
     const cardDialog = await openEdit('Картка');
     expect(within(cardDialog).getByRole('checkbox', { name: /Готівка/ })).toBeEnabled();
   });
+
+  // Review 2026-10-31: блокується лише збережена ознака. `cash`, з якого її зняли до правила,
+  // інакше лишався б «безготівковим» назавжди — прапорець вимкнений, а сервер забороняє лише зняття.
+  // guards: BR-PAY-032
+  it('системна «Готівка» без ознаки (до правила): прапорець можна поставити, PATCH несе isCash: true', async () => {
+    list = [{ ...CASH, isCash: false }, CARD];
+    const dialog = await openEdit('Готівка');
+    const box = within(dialog).getByRole('checkbox', { name: /Готівка/ });
+    expect(box).toBeEnabled();
+    fireEvent.click(box);
+    fireEvent.click(saveButton(dialog));
+    await waitFor(() => expect(patchBody()).toMatchObject({ isCash: true }));
+  });
 });

@@ -616,8 +616,8 @@ export class PaymentsService {
           // Рахунок видалили між перевіркою і транзакцією → 404 і відкат, а не оплата «у нікуди».
           if (!inv)
             throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
-          // OVERDUE теж оплачуваний (прострочений рахунок ще належить сплатити); часткова
-          // оплата переведе його у PARTIALLY_PAID, повна — у PAID.
+          // OVERDUE теж оплачуваний (прострочений рахунок ще належить сплатити); повна оплата
+          // переведе його у PAID, часткова лишає «Прострочено» (BR-INV-025).
           if (
             inv.status !== 'SENT' &&
             inv.status !== 'PARTIALLY_PAID' &&
