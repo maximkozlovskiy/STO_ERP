@@ -87,6 +87,22 @@ describe('buildServiceFromWorkOrder (BR-WO-036)', () => {
   });
 
   // guards: BR-WO-036
+  it('товар, якого немає в каталозі (видалений), не потрапляє в послугу і названий у skippedGoodIds', () => {
+    const r = buildServiceFromWorkOrder(
+      [],
+      [
+        { goodId: G1, quantity: 2 },
+        { goodId: 'gone', quantity: 1 },
+        { goodId: 'gone', quantity: 3 },
+      ],
+      new Map(),
+      new Set([G1]),
+    );
+    expect(r.goods).toEqual([{ goodId: G1, quantity: 2 }]);
+    expect(r.skippedGoodIds).toEqual(['gone']);
+  });
+
+  // guards: BR-WO-036
   it('товари згруповано за goodId, кількість — сума в базовій одиниці (× коефіцієнт рядка)', () => {
     const r = buildServiceFromWorkOrder(
       [],

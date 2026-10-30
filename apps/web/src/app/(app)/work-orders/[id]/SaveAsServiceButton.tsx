@@ -15,21 +15,35 @@ import {
   type WorkOrderPartForService,
 } from '@/lib/work-order-to-service';
 
-/** Скільки id в одному `GET /works?ids=` (межа сервера — 200, як `limit`). */
-const WORK_IDS_PER_REQUEST = 200;
+/** Скільки id в одному `GET /works?ids=` / `GET /goods?ids=` (межа сервера — 200, як `limit`). */
+const IDS_PER_REQUEST = 200;
 
 /** Норми робіт каталогу за id; видалених робіт сервер не повертає — їх у мапі немає. */
 async function catalogNormoHours(workIds: readonly string[]): Promise<Map<string, number>> {
   const wanted = [...new Set(workIds)];
   const map = new Map<string, number>();
-  for (let i = 0; i < wanted.length; i += WORK_IDS_PER_REQUEST) {
-    const ids = wanted.slice(i, i + WORK_IDS_PER_REQUEST);
+  for (let i = 0; i < wanted.length; i += IDS_PER_REQUEST) {
+    const ids = wanted.slice(i, i + IDS_PER_REQUEST);
     const r = await apiFetch<{ items: { id: string; normoHours: number }[] }>(
-      `/works?ids=${ids.map(encodeURIComponent).join(',')}&limit=${WORK_IDS_PER_REQUEST}`,
+      `/works?ids=${ids.map(encodeURIComponent).join(',')}&limit=${IDS_PER_REQUEST}`,
     );
     for (const w of r.items ?? []) map.set(w.id, Number(w.normoHours) || 0);
   }
   return map;
+}
+
+/** Товари, що є в каталозі; видалених сервер не повертає — їх у множині немає. */
+async function catalogGoodIds(goodIds: readonly string[]): Promise<Set<string>> {
+  const wanted = [...new Set(goodIds)];
+  const found = new Set<string>();
+  for (let i = 0; i < wanted.length; i += IDS_PER_REQUEST) {
+    const ids = wanted.slice(i, i + IDS_PER_REQUEST);
+    const r = await apiFetch<{ items: { id: string }[] }>(
+      `/goods?ids=${ids.map(encodeURIComponent).join(',')}&limit=${IDS_PER_REQUEST}`,
+    );
+    for (const g of r.items ?? []) found.add(g.id);
+  }
+  return found;
 }
 
 interface SaveAsServiceButtonProps {
@@ -80,10 +94,16 @@ export function SaveAsServiceButton({ number, lines, parts }: SaveAsServiceButto
     setSaving(true);
     setFormError('');
     try {
-      const norms = lines.length
-        ? await catalogNormoHours(lines.map(l => l.workId))
-        : new Map<string, number>();
-      const draft = buildServiceFromWorkOrder(lines, parts, norms);
+      // Видалені з каталогу роботи й товари відсіюємо: інакше сервер відхиляє всю послугу (404).
+      const [norms, goodIds] = await Promise.all([
+        lines.length
+          ? catalogNormoHours(lines.map(l => l.workId))
+          : Promise.resolve(new Map<string, number>()),
+        parts.length
+          ? catalogGoodIds(parts.map(p => p.goodId))
+          : Promise.resolve(new Set<string>()),
+      ]);
+      const draft = buildServiceFromWorkOrder(lines, parts, norms, goodIds);
       if (draft.works.length === 0 && draft.goods.length === 0) {
         setFormError(t('detail.saveAsService.nothingToSave'));
         return;
@@ -98,11 +118,9 @@ export function SaveAsServiceButton({ number, lines, parts }: SaveAsServiceButto
         }),
       });
       setOpen(false);
-      const message = draft.skippedWorkIds.length
-        ? t('detail.saveAsService.savedSkipped', {
-            name: trimmed,
-            count: draft.skippedWorkIds.length,
-          })
+      const skipped = draft.skippedWorkIds.length + draft.skippedGoodIds.length;
+      const message = skipped
+        ? t('detail.saveAsService.savedSkipped', { name: trimmed, count: skipped })
         : t('detail.saveAsService.saved', { name: trimmed });
       if (features.toastEnabled) {
         toast.success(message, 8000, {

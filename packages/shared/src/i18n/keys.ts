@@ -1219,6 +1219,7 @@ export const VALIDATION_KEYS = [
   'err.dto.counterpartyStatus.color.hex',
   'err.dto.goodStatus.color.hex',
   'err.dto.good.categories.max',
+  'err.dto.good.ids.max',
   'err.dto.inspection.points.max',
   'err.dto.pricingRule.tiers.max',
   'err.dto.pricingRule.goodIds.max',

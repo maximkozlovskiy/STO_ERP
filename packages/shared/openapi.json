@@ -4318,6 +4318,16 @@
             }
           },
           {
+            "name": "ids",
+            "required": false,
+            "in": "query",
+            "description": "id товарів через кому",
+            "schema": {
+              "maxItems": 200,
+              "type": "string"
+            }
+          },
+          {
             "name": "page",
             "required": false,
             "in": "query",

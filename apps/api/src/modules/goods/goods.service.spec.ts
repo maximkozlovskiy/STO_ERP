@@ -817,6 +817,16 @@ describe('GoodsService', () => {
       }
     });
 
+    // «Зберегти як послугу» (BR-WO-036) питає товари наряду за id: видалених каталог не повертає.
+    // guards: BR-WO-036
+    it('?ids= фільтрує за id і лишає deletedAt: null (видалені не повертаються)', async () => {
+      prisma.good.findMany.mockResolvedValueOnce([]);
+      prisma.good.count.mockResolvedValueOnce(0);
+      await service.findAll('org-1', q({ ids: ['g-1', 'g-2'] }));
+      const where = prisma.good.findMany.mock.calls[0][0].where;
+      expect(where).toMatchObject({ orgId: 'org-1', deletedAt: null, id: { in: ['g-1', 'g-2'] } });
+    });
+
     it('?barcode= (exact) шукає головний АБО додатковий ШК; фільтрує orgId', async () => {
       prisma.good.findMany.mockResolvedValueOnce([goodRow]);
       prisma.good.count.mockResolvedValueOnce(1);

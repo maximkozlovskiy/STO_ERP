@@ -52,6 +52,7 @@ beforeEach(() => {
           { id: 'w-2', normoHours: 1.5 },
         ],
       });
+    if (path.startsWith('/goods?ids=')) return Promise.resolve({ items: [{ id: 'g-1' }] });
     if (path === '/services') return postResult();
     return Promise.resolve({ items: [] });
   });
@@ -95,6 +96,29 @@ describe('SaveAsServiceButton (BR-WO-036)', () => {
     action.onClick();
     expect(push).toHaveBeenCalledWith(
       '/catalog?tab=services&q=%D0%9D%D0%B0%D1%80%D1%8F%D0%B4%20%D0%9D%D0%A0%D0%94-7',
+    );
+  });
+
+  // guards: BR-WO-036 — товар, видалений з каталогу, сервер відхилив би з усією послугою (404).
+  it('товар, видалений з каталогу, не йде в POST; тост каже, скільки позицій пропущено', async () => {
+    render(
+      <SaveAsServiceButton
+        number="НРД-7"
+        lines={[{ workId: 'w-1', normoHours: 1 }]}
+        parts={[...PARTS, { goodId: 'g-gone', quantity: 5 }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти як послугу' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(apiFetchMock).toHaveBeenCalledWith('/goods?ids=g-1,g-gone&limit=200');
+    const body = JSON.parse(String((posts()[0]![1] as { body: string }).body)) as {
+      goods: unknown[];
+    };
+    expect(body.goods).toEqual([{ goodId: 'g-1', quantity: 3 }]);
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
+    expect(toastSuccess.mock.calls[0]![0]).toBe(
+      'Послугу «Наряд НРД-7» збережено; 1 позицію, видалену з каталогу, пропущено',
     );
   });
 

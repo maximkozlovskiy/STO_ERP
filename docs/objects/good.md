@@ -88,7 +88,7 @@ model GoodStatusLink {   // junction M:N, без syncVersion/deletedAt
 
 | Метод  | URL                                      | Дія                                                                                            |
 | ------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| GET    | `/api/goods`                             | Список (фільтри: q, goodType, brandId, categoryId)                                             |
+| GET    | `/api/goods`                             | Список (фільтри: q, goodType, brandId, categoryId, `ids` — до 200 id через кому, BR-WO-036)    |
 | GET    | `/api/goods/stock-totals`                | Залишки по всіх складах (агрегат); по складу — `quantity`, `reserved`, `available` (BR-WO-029) |
 | GET    | `/api/goods/:id`                         | Деталь                                                                                         |
 | POST   | `/api/goods`                             | Створити                                                                                       |
@@ -195,10 +195,10 @@ cd apps/api && npx vitest run src/modules/goods/<файл>.spec.ts
 
 | Аспект                                    | Тест                                      | Кейсів |
 | ----------------------------------------- | ----------------------------------------- | ------ |
-| dto                                       | `goods-query.dto.spec.ts`                 | 6      |
+| dto                                       | `goods-query.dto.spec.ts`                 | 9      |
 | HTTP-контракт (DTO, статуси, валідація)   | `goods-stock-totals.contract.spec.ts`     | 13     |
 | рольовий доступ                           | `goods.role-gate.spec.ts`                 | 14     |
-| сервісна логіка                           | `goods.service.spec.ts`                   | 58     |
+| сервісна логіка                           | `goods.service.spec.ts`                   | 59     |
 | вільна кількість по складах (BR-WO-029)   | `goods.stock-free.spec.ts`                | 4      |
 | статуси-мітки (assign / unassign, ролі)   | `goods.statuses.spec.ts`                  | 11     |
 | бренди: одне написання — один бренд       | `../brands/brands.synonym-unique.spec.ts` | 22     |

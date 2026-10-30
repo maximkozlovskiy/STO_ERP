@@ -1258,6 +1258,7 @@ export const en: Record<string, string> = {
   'err.dto.counterpartyStatus.color.hex': 'Color must be in HEX format (#rrggbb)',
   'err.dto.goodStatus.color.hex': 'Color must be in HEX format (#rrggbb)',
   'err.dto.good.categories.max': 'No more than 100 categories in the filter',
+  'err.dto.good.ids.max': 'No more than 200 goods per request',
   'err.dto.inspection.points.max': 'No more than 50 inspection points',
   'err.dto.pricingRule.tiers.max': 'No more than 50 tiers in the pricing rule',
   'err.dto.pricingRule.goodIds.max': 'No more than 5000 goods in a rule list',

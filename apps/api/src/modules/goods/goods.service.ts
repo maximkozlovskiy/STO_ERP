@@ -73,6 +73,7 @@ export class GoodsService {
     if (query.category) where.category = containsInsensitive(query.category);
     if (query.goodCategoryIds?.length) where.goodCategoryId = { in: query.goodCategoryIds };
     else if (query.goodCategoryId) where.goodCategoryId = query.goodCategoryId;
+    if (query.ids?.length) where.id = { in: query.ids };
 
     const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
     const supplierSelect = {

@@ -13728,6 +13728,8 @@ export interface operations {
                 category?: string;
                 goodCategoryId?: string;
                 goodCategoryIds?: string[];
+                /** @description id товарів через кому */
+                ids?: string;
                 page?: number;
                 limit?: number;
                 /** @description Показати видалені */

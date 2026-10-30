@@ -95,6 +95,22 @@ export class GoodQueryDto {
   @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
   goodCategoryIds?: string[];
 
+  /**
+   * Товари за id (`?ids=a,b` або повторений параметр) — «Зберегти як послугу» (BR-WO-036)
+   * відсіює товари наряду, видалені з каталогу, без завантаження всього довідника. До 200, як `limit`.
+   */
+  @ApiPropertyOptional({ type: String, description: 'id товарів через кому' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200, { message: 'err.dto.good.ids.max' })
+  @Matches(UUID_REGEX, { each: true })
+  @Transform(({ value }: { value: unknown }) => {
+    const list = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
+    const ids = list.map(v => String(v).trim()).filter(Boolean);
+    return ids.length ? ids : undefined;
+  })
+  ids?: string[];
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Type(() => Number)

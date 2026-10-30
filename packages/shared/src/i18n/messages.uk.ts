@@ -1235,6 +1235,7 @@ export const uk: Record<string, string> = {
   'err.dto.counterpartyStatus.color.hex': 'Колір має бути у форматі HEX (#rrggbb)',
   'err.dto.goodStatus.color.hex': 'Колір має бути у форматі HEX (#rrggbb)',
   'err.dto.good.categories.max': 'Не більше 100 категорій у фільтрі',
+  'err.dto.good.ids.max': 'Не більше 200 товарів у запиті',
   'err.dto.inspection.points.max': 'Не більше 50 точок огляду',
   'err.dto.pricingRule.tiers.max': 'Не більше 50 рівнів у правилі ціноутворення',
   'err.dto.pricingRule.goodIds.max': 'Не більше 5000 товарів у списку правила',
