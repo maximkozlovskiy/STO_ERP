@@ -14,6 +14,7 @@ import {
   findUnknownTemplateVariables,
 } from '@sto/shared';
 import type { PrismaService } from '../../prisma/prisma.service';
+import { formatMoney } from './automation-text';
 import { defaultAutomationRuleRows, ESTIMATE_READY_SMS_BODY } from './default-rules';
 import { AutomationDefaultRulesBootstrap } from './default-rules.bootstrap';
 
@@ -24,6 +25,10 @@ const sql = readFileSync(
 );
 const upgradeSql = readFileSync(
   join(MIGRATIONS, '20261030090000_automation_default_rules_branch_channels/migration.sql'),
+  'utf8',
+);
+const currencySql = readFileSync(
+  join(MIGRATIONS, '20261030150000_estimate_template_currency/migration.sql'),
   'utf8',
 );
 const lit = (v: string) => `'${v.replace(/'/g, "''")}'`;
@@ -97,7 +102,25 @@ describe('Типові правила організації', () => {
   it('міграція не дублює правила й шаблон (ON CONFLICT DO NOTHING) і пише шаблон кошторису', () => {
     expect(sql).toContain('ON CONFLICT ("orgId", "systemKey") DO NOTHING');
     expect(sql).toContain('ON CONFLICT ("orgId", "eventType", "channel") DO NOTHING');
-    expect(sql).toContain(lit(ESTIMATE_READY_SMS_BODY));
+    expect(sql).toContain('WO_ESTIMATE_READY');
+  });
+
+  // guards: BR-AUT-007
+  it('кошторис: сума вже з одиницею — шаблон не дописує «грн» (ні новий, ні після міграції)', () => {
+    const render = (body: string) =>
+      body.replace(/\{\{(\w+)\}\}/g, (_, k: string) =>
+        k === 'totalAmount' ? formatMoney(1800, 'UAH') : `<${k}>`,
+      );
+    // Intl розділяє тисячі нерозривним пробілом — для порівняння зводимо до звичайного
+    expect(render(ESTIMATE_READY_SMS_BODY).replace(/\s/g, ' ')).toContain(
+      'Сума: 1 800,00 грн. Деталі',
+    );
+    expect(render(ESTIMATE_READY_SMS_BODY)).not.toMatch(/грн\s+грн/);
+    // старий текст першої міграції третя міграція переводить саме в поточний
+    const oldBody = ESTIMATE_READY_SMS_BODY.replace('{{totalAmount}}', '{{totalAmount}} грн');
+    expect(sql).toContain(lit(oldBody));
+    expect(currencySql).toContain(`REPLACE("body", '{{totalAmount}} грн', '{{totalAmount}}')`);
+    expect(oldBody.replace('{{totalAmount}} грн', '{{totalAmount}}')).toBe(ESTIMATE_READY_SMS_BODY);
   });
 
   // guards: BR-AUT-007, BR-AUT-014

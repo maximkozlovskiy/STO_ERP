@@ -7,7 +7,7 @@ import { AUTOMATION_DEFAULT_RULES, defaultRuleActions } from '@sto/shared';
  */
 export const ESTIMATE_READY_SMS_BODY =
   '{{clientName}}, кошторис {{woNumber}} на ремонт {{vehiclePlate}} готовий. ' +
-  'Сума: {{totalAmount}} грн. Деталі: {{link}}';
+  'Сума: {{totalAmount}}. Деталі: {{link}}';
 
 /**
  * Рядки типових правил організації (BR-AUT-007) для `automationRule.createMany` — нова
