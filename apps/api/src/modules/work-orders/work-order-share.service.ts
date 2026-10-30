@@ -7,6 +7,7 @@ import { formatPersonName, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { getLocale, runUnscoped } from '../../common/tenant/tenant-context';
+import { formatMoney } from '../automation/automation-text';
 import { SHAREABLE_STATUSES } from './work-orders.fsm';
 import type {
   EstimatePublicDto,
@@ -217,6 +218,7 @@ export class WorkOrderShareService {
         totalParts: true,
         totalNet: true,
         totalAmount: true,
+        currency: { select: { code: true } },
         vehicle: { select: { licensePlate: true, make: true, model: true } },
         counterparty: {
           select: { phone: true, email: true, firstName: true, lastName: true, companyName: true },
@@ -254,8 +256,9 @@ export class WorkOrderShareService {
       email: wo.counterparty.email,
       clientName,
       vehiclePlate,
-      // та сама сума, що клієнт побачить на сторінці за посиланням: планова, з ПДВ
-      totalAmount: plannedWorkOrderTotals(wo).totalAmount.toFixed(2),
+      // та сама сума, що клієнт побачить на сторінці за посиланням: планова, з ПДВ; формат і валюта
+      // — як у правилах автоматизації («1 250,00 грн», документ у доларах — «100,00 USD»)
+      totalAmount: formatMoney(plannedWorkOrderTotals(wo).totalAmount, wo.currency?.code),
       woNumber: wo.number,
       link,
     });

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 // A3: findByShareToken винесено з WorkOrdersService у WorkOrderShareService.
 import { WorkOrderShareService } from './work-order-share.service';
+import { formatMoney } from '../automation/automation-text';
 import type { PrismaService } from '../../prisma/prisma.service';
 
 // ─── Regression spec: findByShareToken — public DTO leak guards ────────────
@@ -385,18 +386,29 @@ describe('WorkOrderShareService — ПДВ у публічному коштор�
     });
     return { service, send };
   }
+  // Intl uk-UA розділяє тисячі нерозривним пробілом — порівнюємо зі звичайним.
+  const plain = (v: string) => v.replace(/\s/g, ' ');
   const smsVars = (send: ReturnType<typeof vi.fn>) =>
     send.mock.calls[0][2] as { totalAmount: string; link: string };
 
   // guards: BR-WO-007
-  it('sendEstimateSms, «ПДВ зверху»: {{totalAmount}} = планова сума З ПДВ (1800.00), не сума без ПДВ і не факт', async () => {
+  it('sendEstimateSms, «ПДВ зверху»: {{totalAmount}} = планова сума З ПДВ (1 800,00 грн), не сума без ПДВ і не факт', async () => {
     const { service, send } = smsService(EXCL);
 
     await service.sendEstimateSms('org-1', 'wo-1');
 
     expect(send).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith('org-1', 'WO_ESTIMATE_READY', expect.anything());
-    expect(smsVars(send).totalAmount).toBe('1800.00');
+    expect(plain(smsVars(send).totalAmount)).toBe('1 800,00 грн');
+  });
+
+  // guards: BR-AUT-014
+  it('sendEstimateSms: сума у форматі правил («1 250,00») і валюті наряду, не toFixed і не завжди «грн»', async () => {
+    const { service, send } = smsService({ ...NO_VAT, currency: { code: 'USD' } } as never);
+
+    await service.sendEstimateSms('org-1', 'wo-1');
+
+    expect(plain(smsVars(send).totalAmount)).toBe('1 500,00 USD');
   });
 
   // guards: BR-WO-007
@@ -406,7 +418,7 @@ describe('WorkOrderShareService — ПДВ у публічному коштор�
       await service.sendEstimateSms('org-1', 'wo-1');
       const page = await makeService(publicPrisma(totals)).findByShareToken(TOKEN);
 
-      expect(smsVars(send).totalAmount).toBe(page.totalAmount.toFixed(2));
+      expect(smsVars(send).totalAmount).toBe(formatMoney(page.totalAmount));
     }
   });
 

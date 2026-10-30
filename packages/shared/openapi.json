@@ -21095,6 +21095,14 @@
             "type": "number",
             "description": "Година автозавантаження курсів НБУ (0–23)"
           },
+          "quietHoursStart": {
+            "type": "string",
+            "description": "Тихі години — початок (ГГ:ХХ, Київ; BR-AUT-013)"
+          },
+          "quietHoursEnd": {
+            "type": "string",
+            "description": "Тихі години — кінець (ГГ:ХХ, Київ)"
+          },
           "deliveryPollIntervalMinutes": {
             "type": "number",
             "description": "Інтервал опитування служби доставки (хв)"
@@ -21236,6 +21244,8 @@
           "followUpDays",
           "maintenanceForecastDays",
           "nbuFetchHour",
+          "quietHoursStart",
+          "quietHoursEnd",
           "deliveryPollIntervalMinutes",
           "bankStatementPollIntervalMinutes",
           "integrationLogRetentionDays",
@@ -21386,6 +21396,16 @@
             "minimum": 0,
             "maximum": 23,
             "description": "Година автозавантаження курсів НБУ (0–23)"
+          },
+          "quietHoursStart": {
+            "type": "string",
+            "description": "Тихі години — початок (ГГ:ХХ, Київ; BR-AUT-013)",
+            "example": "21:00"
+          },
+          "quietHoursEnd": {
+            "type": "string",
+            "description": "Тихі години — кінець (ГГ:ХХ, Київ; однакові межі — без тихих годин)",
+            "example": "09:00"
           },
           "deliveryPollIntervalMinutes": {
             "type": "number",

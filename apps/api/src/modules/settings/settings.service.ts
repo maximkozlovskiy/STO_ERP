@@ -520,6 +520,8 @@ export class SettingsService {
     followUpDays: number;
     maintenanceForecastDays: number;
     nbuFetchHour: number;
+    quietHoursStart: string;
+    quietHoursEnd: string;
     deliveryPollIntervalMinutes: number;
     bankStatementPollIntervalMinutes: number;
     integrationLogRetentionDays: number;
@@ -567,6 +569,8 @@ export class SettingsService {
       followUpDays: s.followUpDays,
       maintenanceForecastDays: s.maintenanceForecastDays,
       nbuFetchHour: s.nbuFetchHour,
+      quietHoursStart: s.quietHoursStart,
+      quietHoursEnd: s.quietHoursEnd,
       deliveryPollIntervalMinutes: s.deliveryPollIntervalMinutes,
       bankStatementPollIntervalMinutes: s.bankStatementPollIntervalMinutes,
       integrationLogRetentionDays: s.integrationLogRetentionDays,

@@ -43,6 +43,26 @@ import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { emptyToNull } from '../../common/transforms/empty-to-null';
 import { toUpperCurrencyCode } from '../../common/transforms/to-upper-currency-code';
 
+// HH:MM regex (00:00–23:59). Без regex backend приймає 'foo'/'25:99' →
+// БД корумпована → getBranchSettings повертає сміття → frontend settings form
+// показує невалідні значення; gorshe — workStartTime='20:00' + workEndTime='09:00'
+// проходить (обидва валідні строки) → getWorkHours повертає інвертовані години →
+// frontend dynHours=[] → NaN у CSS → DOM crash.
+const HH_MM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * «ГГ:ХХ» з власним ім'ям обмеження: для стандартного `matches` validationExceptionFactory підставив
+ * би загальний шаблон, і текст «Формат “ГГ:ХХ”» до відповіді не дійшов би (GOTCHAS 2026-10-15).
+ */
+const hhMmTime = () =>
+  ValidateBy(
+    {
+      name: 'hhMmTime',
+      validator: { validate: (v: unknown) => typeof v === 'string' && HH_MM_RE.test(v) },
+    },
+    { message: 'err.dto.settings.time.format' } satisfies ValidationOptions,
+  );
+
 export interface UiFeatures {
   toastEnabled: boolean;
   unsavedGuardEnabled: boolean;
@@ -186,6 +206,22 @@ export class UpdateOrganisationSettingsDto {
   @Min(0)
   @Max(23)
   nbuFetchHour?: number;
+
+  @ApiPropertyOptional({
+    description: 'Тихі години — початок (ГГ:ХХ, Київ; BR-AUT-013)',
+    example: '21:00',
+  })
+  @IsOptional()
+  @hhMmTime()
+  quietHoursStart?: string;
+
+  @ApiPropertyOptional({
+    description: 'Тихі години — кінець (ГГ:ХХ, Київ; однакові межі — без тихих годин)',
+    example: '09:00',
+  })
+  @IsOptional()
+  @hhMmTime()
+  quietHoursEnd?: string;
 
   @ApiPropertyOptional({
     description: 'Інтервал опитування служби доставки (хв). clamp [5,1440].',
@@ -419,13 +455,6 @@ export class UpdateOrganisationSettingsDto {
   supplierUnknownDeliveryDays?: number;
 }
 
-// HH:MM regex (00:00–23:59). Без regex backend приймає 'foo'/'25:99' →
-// БД корумпована → getBranchSettings повертає сміття → frontend settings form
-// показує невалідні значення; gorshe — workStartTime='20:00' + workEndTime='09:00'
-// проходить (обидва валідні строки) → getWorkHours повертає інвертовані години →
-// frontend dynHours=[] → NaN у CSS → DOM crash.
-const HH_MM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-
 export class UpdateBranchSettingsDto {
   @ApiPropertyOptional({ example: '09:00' })
   @IsOptional()
@@ -575,6 +604,10 @@ export class OrganisationSettingsResponseDto {
     description: 'Година автозавантаження курсів НБУ (0–23)',
   })
   nbuFetchHour!: number;
+  @ApiProperty({ description: 'Тихі години — початок (ГГ:ХХ, Київ; BR-AUT-013)' })
+  quietHoursStart!: string;
+  @ApiProperty({ description: 'Тихі години — кінець (ГГ:ХХ, Київ)' })
+  quietHoursEnd!: string;
   @ApiProperty({ description: 'Інтервал опитування служби доставки (хв)' })
   deliveryPollIntervalMinutes!: number;
   @ApiProperty({ description: 'Інтервал auto-pull банк-виписки Privat24 (хв)' })

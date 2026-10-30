@@ -6543,6 +6543,10 @@ export interface components {
             maintenanceForecastDays: number;
             /** @description Година автозавантаження курсів НБУ (0–23) */
             nbuFetchHour: number;
+            /** @description Тихі години — початок (ГГ:ХХ, Київ; BR-AUT-013) */
+            quietHoursStart: string;
+            /** @description Тихі години — кінець (ГГ:ХХ, Київ) */
+            quietHoursEnd: string;
             /** @description Інтервал опитування служби доставки (хв) */
             deliveryPollIntervalMinutes: number;
             /** @description Інтервал auto-pull банк-виписки Privat24 (хв) */
@@ -6630,6 +6634,16 @@ export interface components {
             maintenanceForecastDays?: number;
             /** @description Година автозавантаження курсів НБУ (0–23) */
             nbuFetchHour?: number;
+            /**
+             * @description Тихі години — початок (ГГ:ХХ, Київ; BR-AUT-013)
+             * @example 21:00
+             */
+            quietHoursStart?: string;
+            /**
+             * @description Тихі години — кінець (ГГ:ХХ, Київ; однакові межі — без тихих годин)
+             * @example 09:00
+             */
+            quietHoursEnd?: string;
             /** @description Інтервал опитування служби доставки (хв). clamp [5,1440]. */
             deliveryPollIntervalMinutes?: number;
             /** @description Інтервал auto-pull банк-виписки Privat24 (хв). clamp [15,1440]. */
