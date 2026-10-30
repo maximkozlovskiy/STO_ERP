@@ -66,7 +66,11 @@ fi
 # --continue: падіння type-check не обриває lint — у звіті видно обидва.
 # --force: CI кешу turbo не має, а локальний кеш не бачить входів поза пакетом (згенерований
 # Prisma-клієнт у node_modules) — «cache hit» тоді повторює старий вердикт.
-bg "type-check · lint (api · web · shared · mobile)"   pnpm exec turbo run type-check lint --force --continue --output-logs=errors-only
+# --concurrency 2: на машині розробника з dev-серверами, VS Code і браузером повна паралельність turbo
+# (type-check + lint чотирьох пакетів поруч із рештою перевірок нижче) вичерпувала ліміт пам'яті
+# Windows — web lint падав «Zone Allocation failed — out of memory» (exit 134), хоча окремо чистий
+# (2026-10-30, тричі за день). CI має свою машину й цього скрипта не запускає.
+bg "type-check · lint (api · web · shared · mobile)"   pnpm exec turbo run type-check lint --force --continue --output-logs=errors-only --concurrency="${PREPUSH_TURBO_CONCURRENCY:-2}"
 bg "circular dependencies" pnpm run --silent cycles
 # Нові клони проти @{u} — рівно те, що піде в push (CI на push порівнює з комітом останнього успішного прогону).
 bg "copy-paste (нові клони)" bash scripts/check-dupes.sh
