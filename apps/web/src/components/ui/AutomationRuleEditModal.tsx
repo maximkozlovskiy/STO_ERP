@@ -553,6 +553,7 @@ export function AutomationRuleEditModal({
                     )}
                     {tabHasErrors(tb.key) && (
                       <span
+                        role="img"
                         className="h-1.5 w-1.5 rounded-full bg-destructive"
                         title={t('card.tabHasErrors')}
                         aria-label={t('card.tabHasErrors')}

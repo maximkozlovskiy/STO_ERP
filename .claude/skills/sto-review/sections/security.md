@@ -158,5 +158,8 @@ grep -n "SentryProvider" apps/web/src/app/layout.tsx apps/web/src/app/\(setup\)/
 - [ ] `enabled: NODE_ENV === 'production' && !!dsn`
 - [ ] `captureException` тільки при `status >= 500`; 4xx — ніколи
 - [ ] `SentryProvider` у root layout, **відсутній** у setup layout
+- [ ] **Блок із кнопками дій, вставлений у спільну картку → ролі кнопок звірено з УСІМА сторінками,
+      що відкривають картку**, а не з коментарем «картка лише для адміна»: `canManage` хардкодом
+      `true` у картці, яку відкриває ширша роль, = кнопки з 403 (`journal/security.md`, 2026-10-30)
 
 ---

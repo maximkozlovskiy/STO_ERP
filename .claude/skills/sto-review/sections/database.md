@@ -101,5 +101,8 @@ grep -n "model " packages/database/prisma/schema/*.prisma | grep -v "//"
 - [ ] Нові таблиці → `PULL_TABLES` або обґрунтовано виключені
 - [ ] Push-безпечні → `PUSH_SAFE_TABLES` + `PUSH_FIELD_WHITELIST`
 - [ ] PII у `PULL_FIELD_BLACKLIST` (phone, edrpou, email)
+- [ ] **Змінено формат змінної шаблону (додано валюту / одиницю) → звірено ТИПОВІ тексти шаблонів**
+      у константах, `seed.ts` і міграціях даних: текст, що вже дописує «грн» після змінної, дасть
+      «грн грн» (`journal/database.md`, 2026-10-30)
 
 ---

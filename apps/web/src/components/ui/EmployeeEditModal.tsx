@@ -729,7 +729,8 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                       key: 'telegram',
                       label: t('editModal.tabTelegram'),
                       content: (
-                        // Картка працівника — лише OWNER / ADMIN (сторінка «Співробітники»).
+                        // Кнопки посилання й відписки — лише OWNER / ADMIN (звужує сам блок);
+                        // RECEPTIONIST зі «Співробітників» бачить статус.
                         <EmployeeTelegramSubscription employeeId={employee.id} canManage />
                       ),
                     },

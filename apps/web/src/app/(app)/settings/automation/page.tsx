@@ -20,6 +20,7 @@ import {
   automationStatusLabel,
 } from '@/lib/automation';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useListPage } from '@/hooks/useListPage';
 import {
   useAutomationRules,
@@ -117,6 +118,7 @@ function AutomationPageClient() {
   const toggle = useToggleAutomationRule();
   const remove = useDeleteAutomationRule();
   const { confirm, dialogProps } = useConfirm();
+  const features = useUiFeatures();
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const all = data?.items ?? NO_RULES;
@@ -134,7 +136,7 @@ function AutomationPageClient() {
     setBusyId(rule.id);
     try {
       await toggle.mutateAsync({ id: rule.id, enabled });
-      toast.success(t(enabled ? 'toast.enabled' : 'toast.disabled'));
+      if (features.toastEnabled) toast.success(t(enabled ? 'toast.enabled' : 'toast.disabled'));
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : t('loadError'));
     } finally {
@@ -152,7 +154,7 @@ function AutomationPageClient() {
     if (!ok) return;
     try {
       await remove.mutateAsync(rule.id);
-      toast.success(t('toast.deleted'));
+      if (features.toastEnabled) toast.success(t('toast.deleted'));
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : t('loadError'));
     }

@@ -7,6 +7,7 @@ import type { ApiSchema } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
@@ -20,6 +21,7 @@ const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
  */
 export function QuietHoursSection() {
   const { t } = useTranslation('settings');
+  const features = useUiFeatures();
   const [saved, setSaved] = useState<{ start: string; end: string } | null>(null);
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
@@ -58,7 +60,7 @@ export function QuietHoursSection() {
         },
       );
       setSaved({ start: res.quietHoursStart, end: res.quietHoursEnd });
-      toast.success(t('quietHours.saved'));
+      if (features.toastEnabled) toast.success(t('quietHours.saved'));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('common.saveError'));
     } finally {
@@ -128,6 +130,7 @@ export function QuietHoursSection() {
 export function TelegramBotSection({ onChanged }: { onChanged: () => void }) {
   const { t } = useTranslation('settings');
   const { confirm, dialogProps } = useConfirm();
+  const features = useUiFeatures();
   const [status, setStatus] = useState<BotStatus | null>(null);
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
@@ -157,7 +160,8 @@ export function TelegramBotSection({ onChanged }: { onChanged: () => void }) {
       });
       setStatus(res);
       setToken('');
-      toast.success(t('telegramBot.connected', { name: res.username ?? '' }));
+      if (features.toastEnabled)
+        toast.success(t('telegramBot.connected', { name: res.username ?? '' }));
       onChanged();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('common.saveError'));

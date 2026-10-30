@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api-client';
 import { fmtDate } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { automationDocumentTypeLabel } from '@/lib/automation';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useTestAutomationRule, type AutomationTestResult } from '@/hooks/api/useAutomation';
 import { Button } from './button';
 import { EntityPickerField } from './entity-picker-field';
@@ -94,6 +95,7 @@ export function AutomationTestModal({
   const [result, setResult] = useState<AutomationTestResult | null>(null);
   const [error, setError] = useState('');
   const test = useTestAutomationRule();
+  const features = useUiFeatures();
   // Синхронний замок проти подвійного кліку: `isPending` оновлюється лише з наступним рендером.
   const sendingRef = useRef(false);
 
@@ -114,7 +116,7 @@ export function AutomationTestModal({
     try {
       const res = await test.mutateAsync({ id: ruleId, documentId: doc.id });
       setResult(res);
-      toast.success(t('test.sent'));
+      if (features.toastEnabled) toast.success(t('test.sent'));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('card.loadError'));
     } finally {

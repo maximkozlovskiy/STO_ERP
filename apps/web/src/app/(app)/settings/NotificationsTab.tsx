@@ -34,7 +34,9 @@ export default function NotificationsTab() {
   useEffect(() => {
     apiFetch<NotificationTemplate[]>('/notification-templates')
       // Шаблони, які замінили типові правила (BR-AUT-007), ні на що не впливають — не редагуються.
-      .then(list => setTemplates(list.filter(tpl => !(tpl.eventType in LEGACY_TEMPLATE_RULES))))
+      .then(list =>
+        setTemplates(list.filter(tpl => !Object.hasOwn(LEGACY_TEMPLATE_RULES, tpl.eventType))),
+      )
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : tr('notifications.templatesLoadError')),
       );

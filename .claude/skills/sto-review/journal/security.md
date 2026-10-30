@@ -3,6 +3,18 @@
 > Архів реальних випадків (дата — назва — §N + Сигнал / Grep / Фікс / Severity).
 > Не читати цілком — шукати за ключовим словом. Чекліст секції: `../sections/security.md`.
 
+### 2026-10-30 — Спільний блок із кнопками вужчих `@Roles` у картці, яку відкриває ширша роль — §2
+
+**Сигнал:** рев'ю блоку 4 автоматизації. `EmployeeTelegramSubscription` у вкладці «Telegram» картки
+працівника отримував `canManage` завжди: коментар казав «картка — лише OWNER / ADMIN», а сторінка
+«Співробітники» пускає й RECEPTIONIST (`useRequireAuth(['OWNER','ADMIN','RECEPTIONIST'])`, `GET
+employees/:id` теж). Кнопки «Отримати посилання» / «Відписати» кличуть `employees/:id/telegram-*`
+з `@Roles('OWNER','ADMIN')` → приймальник бачив кнопки й отримував 403. **Grep:** для нового блоку
+з `canManage` / `canEdit` — `grep -rn "<Блок" apps/web/src` → кожне місце вставки → `useRequireAuth`
+сторінки, що відкриває картку, проти `@Roles` endpoint-ів кнопок. **Фікс:** блок сам звужує
+`canManage` за роллю (`EMPLOYEE_LINK_ROLES`), RECEPTIONIST бачить лише статус; тест
+`EmployeeTelegramSubscription.test.tsx` (мутація перевірена). **Severity:** IMPORTANT
+
 ### 2026-10-30 — Повторюваний job довший за `every` перекривається сам із собою — §2.5
 
 **Сигнал:** опитування Telegram-бота — `repeat: { every: 3_000 }`, `@Processor({ concurrency: 4 })`,

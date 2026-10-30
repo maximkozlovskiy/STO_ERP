@@ -7,9 +7,11 @@ import { useTranslation } from 'react-i18next';
 import { Link2, Send, Unlink } from 'lucide-react';
 import '@/i18n/automation-ns';
 import { apiFetch } from '@/lib/api-client';
+import { useAuth } from '@/lib/auth';
 import { fmtDate } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { Badge } from './badge';
 import { Button } from './button';
 import { ConfirmDialog } from './confirm-dialog';
@@ -55,6 +57,7 @@ export function TelegramSubscriptionBlock({
 }: TelegramSubscriptionBlockProps) {
   const { t } = useTranslation('automation');
   const { confirm, dialogProps } = useConfirm();
+  const features = useUiFeatures();
   const [link, setLink] = useState<TelegramLink | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [busy, setBusy] = useState<'link' | 'unsubscribe' | null>(null);
@@ -94,7 +97,7 @@ export function TelegramSubscriptionBlock({
     setError('');
     try {
       await apiFetch<void>(unsubscribePath, { method: 'DELETE' });
-      toast.success(t('telegram.unsubscribed'));
+      if (features.toastEnabled) toast.success(t('telegram.unsubscribed'));
       onChanged();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('card.loadError'));
@@ -176,8 +179,12 @@ export function TelegramSubscriptionBlock({
 interface EmployeeTelegramSubscriptionProps {
   /** `null` — своя підписка (профіль, `/employees/me/*`), інакше — картка працівника для адміна. */
   employeeId: string | null;
+  /** Чужа підписка додатково звужується до OWNER / ADMIN — `@Roles` посилання й відписки. */
   canManage: boolean;
 }
+
+/** Хто отримує посилання й відписує ЧУЖУ підписку (`telegram-bot.controller`, `employees/:id/*`). */
+const EMPLOYEE_LINK_ROLES = ['OWNER', 'ADMIN'];
 
 /** Підписка працівника на бот: своя — у профілі, чужа — у картці працівника (OWNER / ADMIN). */
 export function EmployeeTelegramSubscription({
@@ -185,6 +192,10 @@ export function EmployeeTelegramSubscription({
   canManage,
 }: EmployeeTelegramSubscriptionProps) {
   const { t } = useTranslation('automation');
+  // Картку працівника відкриває й RECEPTIONIST («Співробітники»): статус йому видно, а кнопки дали
+  // б 403 — сервер дозволяє посилання й відписку чужої підписки лише OWNER / ADMIN.
+  const { employee: me } = useAuth();
+  const allowed = canManage && (!employeeId || EMPLOYEE_LINK_ROLES.includes(me?.role ?? ''));
   const base = employeeId ? `/employees/${employeeId}` : '/employees/me';
   const status = useQuery({
     queryKey: ['employees', 'telegram-subscription', employeeId ?? 'me'],
@@ -201,7 +212,7 @@ export function EmployeeTelegramSubscription({
       status={status.data}
       linkPath={`${base}/telegram-link`}
       unsubscribePath={`${base}/telegram-subscription`}
-      canManage={canManage}
+      canManage={allowed}
       self={!employeeId}
       hint={employeeId ? undefined : t('telegram.selfHint')}
       onChanged={() => void status.refetch()}

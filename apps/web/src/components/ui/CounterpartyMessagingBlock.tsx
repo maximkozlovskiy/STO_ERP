@@ -10,6 +10,7 @@ import { toast } from '@/lib/toast';
 import { automationChannelLabel } from '@/lib/automation';
 import { counterpartiesKeys } from '@/hooks/api/useCounterparties';
 import { useTaskAssignees } from '@/hooks/api/useTasks';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { Select } from './select';
 import { Spinner } from './spinner';
 import { Switch } from './switch';
@@ -35,6 +36,7 @@ export function CounterpartyMessagingBlock({ counterpartyId }: { counterpartyId:
   const { t } = useTranslation('counterparties');
   const { employee } = useAuth();
   const qc = useQueryClient();
+  const features = useUiFeatures();
   const canEdit = EDIT_ROLES.includes(employee?.role ?? '');
   const employees = useTaskAssignees(employee?.role);
 
@@ -55,7 +57,7 @@ export function CounterpartyMessagingBlock({ counterpartyId }: { counterpartyId:
       qc.setQueryData<CounterpartyDetail>(messagingKey(counterpartyId), prev =>
         prev ? { ...prev, ...updated, telegramSubscription: prev.telegramSubscription } : updated,
       );
-      toast.success(t('consent.saved'));
+      if (features.toastEnabled) toast.success(t('consent.saved'));
     },
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : t('common.error')),
   });
