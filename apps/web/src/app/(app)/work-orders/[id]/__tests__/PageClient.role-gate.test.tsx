@@ -222,3 +222,45 @@ describe('сторінка наряду — видалений наряд (TECH-
     expect(requested('/comments?')).toBe(false);
   });
 });
+
+// BR-WO-036: «Зберегти як послугу» — `POST /services` сервер дозволяє лише OWNER / ADMIN; іншим
+// ролям кнопки немає (RECEPTIONIST колись зберігав шаблон, тепер — ні).
+// Mutation-verify: прибрати гейт `SERVICE_WRITE_ROLES` → «RECEPTIONIST: кнопки немає» падає.
+describe('сторінка наряду — «Зберегти як послугу» за роллю (BR-WO-036)', () => {
+  const withLine = () =>
+    workOrder({
+      lines: [{ id: 'l1', workId: 'w1', employeeId: 'e1', normoHours: 1, price: 100, amount: 100 }],
+    });
+
+  // guards: BR-WO-036
+  it.each(['OWNER', 'ADMIN'])('%s: кнопка є', async r => {
+    role = r;
+    wo = withLine();
+    renderPage();
+    await woShown();
+    expect(screen.getByRole('button', { name: 'Зберегти як послугу' })).toBeEnabled();
+  });
+
+  // guards: BR-WO-036
+  it.each(['RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT'])('%s: кнопки немає', async r => {
+    role = r;
+    wo = withLine();
+    renderPage();
+    await woShown();
+    expect(screen.queryByRole('button', { name: 'Зберегти як послугу' })).toBeNull();
+  });
+
+  it('наряд без робіт і запчастин — кнопка неактивна', async () => {
+    renderPage();
+    await woShown();
+    expect(screen.getByRole('button', { name: 'Зберегти як послугу' })).toBeDisabled();
+  });
+
+  // guards: BR-WO-012
+  it('видалений наряд — кнопки немає', async () => {
+    wo = { ...withLine(), deletedAt: '2026-10-20T10:00:00.000Z' };
+    renderPage();
+    await woShown();
+    expect(screen.queryByRole('button', { name: 'Зберегти як послугу' })).toBeNull();
+  });
+});

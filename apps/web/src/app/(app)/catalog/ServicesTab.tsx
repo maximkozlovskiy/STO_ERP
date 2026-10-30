@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'next/navigation';
 import { activateRow } from '@/lib/row-activation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Search, Trash2, Layers, Eye, EyeOff, RotateCcw, X } from 'lucide-react';
@@ -131,7 +132,9 @@ export default function ServicesTab() {
   const [services, setServices] = useState<PaginatedServices | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDeleted, setShowDeleted] = useState(false);
-  const [q, setQ] = useState('');
+  // `?q=` — пошук з посилання: «Зберегти як послугу» в наряді веде сюди на щойно створену послугу.
+  const searchParams = useSearchParams();
+  const [q, setQ] = useState(() => searchParams.get('q') ?? '');
   const debouncedQ = useDebounce(q);
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(false);

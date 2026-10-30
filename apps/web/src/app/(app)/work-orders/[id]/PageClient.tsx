@@ -52,6 +52,8 @@ import { SectionErrorBoundary } from '@/components/ui/SectionErrorBoundary';
 import { CommentsSection } from '@/components/ui/CommentsSection';
 import { WorkOrderAuditSection, useWorkOrderAudit } from './WorkOrderAuditSection';
 import { InvoiceSection, type InvoiceRef } from './InvoiceSection';
+import { SaveAsServiceButton } from './SaveAsServiceButton';
+import { SERVICE_WRITE_ROLES } from '@/lib/work-order-to-service';
 import {
   ACTIVE_MECHANICS_URL,
   activeMechanics,
@@ -306,8 +308,6 @@ export default function WorkOrderCardPage() {
 
   const [media, setMedia] = useState<WorkOrderMedia[]>([]);
 
-  const [savingTemplate, setSavingTemplate] = useState(false);
-
   const features = useUiFeatures();
 
   const mountedRef = useRef(true);
@@ -397,36 +397,6 @@ export default function WorkOrderCardPage() {
         console.warn('Помилка завантаження медіа наряду:', e);
       });
   }, [id]);
-
-  const saveAsTemplate = async () => {
-    if (!wo) return;
-    const name = window.prompt(
-      t('detail.template_.prompt'),
-      wo.number || t('detail.template_.default'),
-    );
-    if (!name?.trim()) return;
-    setSavingTemplate(true);
-    try {
-      await apiFetch('/work-order-templates', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: name.trim(),
-          lines: wo.lines.map(l => ({
-            workId: l.workId,
-            quantity: l.normoHours,
-            note: l.notes ?? undefined,
-          })),
-          parts: wo.parts.map(p => ({ goodId: p.goodId, quantity: p.quantity })),
-        }),
-      });
-      if (features.toastEnabled) toast.success(t('detail.template_.saved', { name: name.trim() }));
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : t('detail.template_.saveError');
-      if (features.toastEnabled) toast.error(msg);
-    } finally {
-      setSavingTemplate(false);
-    }
-  };
 
   useEffect(() => {
     // Reference data — paint instantly from sessionStorage, refresh in background.
@@ -924,15 +894,9 @@ export default function WorkOrderCardPage() {
             >
               {t('detail.clone')}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void saveAsTemplate()}
-              loading={savingTemplate}
-              disabled={savingTemplate || (!wo?.lines.length && !wo?.parts.length)}
-            >
-              {t('detail.template')}
-            </Button>
+            {SERVICE_WRITE_ROLES.includes(role) && (
+              <SaveAsServiceButton number={wo.number} lines={wo.lines} parts={wo.parts} />
+            )}
           </>
         )}
       </div>
