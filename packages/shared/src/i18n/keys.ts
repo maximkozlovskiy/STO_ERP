@@ -1031,6 +1031,7 @@ export const VALIDATION_KEYS = [
   'err.cash.reversalNotHere',
   'err.cash.reversalFiscalDone',
   'err.cash.reversalFiscalQueued',
+  'err.cash.cashMethodDisabled',
   'err.cash.reversalWorkOrderArchived',
   'err.cash.reversalInvoiceCancelled',
   'err.cash.reversalStateChanged',

@@ -248,7 +248,7 @@ export function makeDesk() {
     supplierPayment: memoryTable([]),
     /** Спосіб «Готівка» в довіднику (BR-CASH-031): кейс вимикає чи видаляє його сам. */
     paymentMethodConfig: memoryTable([
-      { id: 'pm-cash', orgId: ORG, code: 'cash', isActive: true, deletedAt: null },
+      { id: 'pm-cash', orgId: ORG, code: 'cash', name: 'Готівка', isActive: true, deletedAt: null },
     ]),
   };
 

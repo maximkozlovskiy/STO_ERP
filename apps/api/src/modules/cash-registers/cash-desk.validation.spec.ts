@@ -240,9 +240,22 @@ describe('CashDeskService.create — спосіб «Готівка» вимкн�
 
     await expect(createOp(h, validInput(reason))).rejects.toMatchObject({
       status: 400,
-      message: expect.stringContaining('cash'),
+      message: expect.stringContaining('увімкніть'),
     });
     expectNothingMoved(h);
+  });
+
+  // Bug #1019: у картці каси способу не обирають — відмова не радить «оберіть інший» і називає
+  // спосіб назвою з довідника, а не кодом.
+  it('вимкнена «Готівка» → текст називає спосіб назвою і радить увімкнути, не «оберіть інший»', async () => {
+    const h = makeDesk();
+    disableCash(h, { isActive: false });
+
+    const err = (await createOp(h, validInput('SALE_PAYMENT')).catch((e: unknown) => e)) as Error;
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(err.message).toContain('«Готівка»');
+    expect(err.message).toContain('увімкніть');
+    expect(err.message).not.toContain('оберіть інший');
   });
 
   // guards: BR-CASH-031

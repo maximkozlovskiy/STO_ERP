@@ -324,9 +324,10 @@ OWNER/ADMIN/ACCOUNTANT; меню немає для вже
   (`PaymentsService.create`, `cashRowBaseDocument`)
 - **BR-CASH-031**: **Вимкнена «Готівка» — 400 і в касі.** Оплата контрагента (`SALE_PAYMENT`) і оплата
   постачальнику (`SUPPLIER_PAYMENT`) з каси йдуть способом `cash`: якщо його в довіднику організації
-  вимкнено (`isActive = false`) чи видалено — 400 `err.payment.methodUnavailable` до будь-якого запису (як
-  BR-PAY-027 у вікні оплати). Ручні внесення / вилучення й повернення способом оплати не є — не чіпаються.
-  (`CashDeskService.loadContext`)
+  вимкнено (`isActive = false`) чи видалено — 400 `err.cash.cashMethodDisabled` до будь-якого запису (як
+  BR-PAY-027 у вікні оплати): текст називає спосіб назвою з довідника й радить увімкнути його в НДІ — у
+  картці каси способу не обирають (Bug #1019). Ручні внесення / вилучення й повернення способом оплати не
+  є — не чіпаються. (`CashDeskService.loadContext`)
 
 ---
 
@@ -348,7 +349,7 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 | ізоляція організацій (умови запитів)                                                                                                                          | `cash.tenant.spec.ts`                                                            | 7      |
 | єдиний писар і append-only (статичний сторож по вихідному коду)                                                                                               | `cash.single-writer.spec.ts`                                                     | 3      |
 | ролі на маршрутах `/cash-registers`                                                                                                                           | `cash.access.spec.ts`                                                            | 7      |
-| каса-диригент: привід ↔ напрям, обов'язкові контрагент / працівник / стаття, прості приводи, вимкнена «Готівка» (BR-CASH-016, 031)                            | `../cash-registers/cash-desk.validation.spec.ts`                                 | 64     |
+| каса-диригент: привід ↔ напрям, обов'язкові контрагент / працівник / стаття, прості приводи, вимкнена «Готівка» (BR-CASH-016, 031)                            | `../cash-registers/cash-desk.validation.spec.ts`                                 | 65     |
 | каса-диригент: документ-підстава — тип, повнота, існування, належність контрагентові (BR-CASH-020)                                                            | `../cash-registers/cash-desk.base-document.spec.ts`                              | 44     |
 | каса-диригент: оплата контрагента і повернення клієнту, повернення ≤ переплати (BR-CASH-017, 018, 029)                                                        | `../cash-registers/cash-desk.client.spec.ts`                                     | 40     |
 | каса-диригент: оплата постачальнику і повернення від постачальника (BR-CASH-019)                                                                              | `../cash-registers/cash-desk.supplier.spec.ts`                                   | 19     |

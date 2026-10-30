@@ -1025,6 +1025,8 @@ export const en: Record<string, string> = {
     'A fiscal receipt has already been issued for this payment — register a return in the fiscal register first',
   'err.cash.reversalFiscalQueued':
     'The receipt for this payment is still being sent to the fiscal register — reversal becomes possible once the register issues or rejects it. If the fiscal shift is closed, the receipt waits for it to open: open the shift and retry the reversal after the register responds',
+  'err.cash.cashMethodDisabled':
+    'Payment method “{{method}}” is disabled or deleted in Reference data (“Payment”) — enable it to take client and supplier payments through the cash desk',
   'err.cash.reversalWorkOrderArchived':
     'The work order of this payment is archived — reversal is not possible',
   'err.cash.reversalInvoiceCancelled':

@@ -285,7 +285,7 @@ export class CashDeskService {
         paysByMethod
           ? this.prisma.paymentMethodConfig.findFirst({
               where: { code: CASH_METHOD_CODE, ...alive },
-              select: { isActive: true },
+              select: { isActive: true, name: true },
             })
           : null,
       ]);
@@ -294,9 +294,13 @@ export class CashDeskService {
     // BR-CASH-031: оплата контрагента й оплата постачальнику йдуть способом «Готівка» — вимкнений
     // чи видалений у довіднику спосіб тут так само недоступний, як у вікні оплати (BR-PAY-027).
     // Відмова — до будь-якого запису. Ручні внесення / вилучення й повернення способом не є.
+    // Текст — свій (Bug #1019): у картці каси способу не обирають, тож «оберіть інший» хибне;
+    // спосіб — назвою з довідника, а не кодом.
     if (paysByMethod && !cashMethod?.isActive) {
       throw new BadRequestException(
-        translateError('err.payment.methodUnavailable', locale, { method: CASH_METHOD_CODE }),
+        translateError('err.cash.cashMethodDisabled', locale, {
+          method: cashMethod?.name ?? CASH_METHOD_CODE,
+        }),
       );
     }
     if (dto.counterpartyId) {
