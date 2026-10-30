@@ -87,8 +87,11 @@ export class PaymentMethodsService {
 
   async create(orgId: string, dto: CreatePaymentMethodDto): Promise<PaymentMethodResponseDto> {
     const { defaultSourceType, defaultCashRegisterId, defaultBankAccountId, ...fields } = dto;
+    // Ознака пишеться явно й у гілці відновлення: видалений рядок міг мати `isCash: true`, і
+    // відновлення з банківським рахунком без ознаки в запиті дало б «готівку» з рахунком (BR-PAY-019).
+    const isCash = dto.isCash ?? false;
     const destination =
-      (await this.resolveDestination(orgId, dto.isCash ?? false, {
+      (await this.resolveDestination(orgId, isCash, {
         defaultSourceType,
         defaultCashRegisterId,
         defaultBankAccountId,
@@ -105,13 +108,13 @@ export class PaymentMethodsService {
         );
       const restored = await this.prisma.paymentMethodConfig.update({
         where: { id: anyExisting.id, orgId },
-        data: { ...fields, ...destination, deletedAt: null },
+        data: { ...fields, isCash, ...destination, deletedAt: null },
       });
       await this.cache.del(cacheKey(orgId));
       return this.toDtoWithName(orgId, restored);
     }
     const item = await this.prisma.paymentMethodConfig.create({
-      data: { ...fields, ...destination, orgId },
+      data: { ...fields, isCash, ...destination, orgId },
     });
     await this.cache.del(cacheKey(orgId));
     return this.toDtoWithName(orgId, item);

@@ -394,6 +394,35 @@ describe('PaymentsService — готівка лише через касу (BR-PA
     });
 
     // guards: BR-PAY-019
+    it('онлайн-оплата від шлюзу: ознака isCash на QR-способі не дає 400, чек — CASHLESS', async () => {
+      methods = methods.map(m =>
+        m.code === 'monobank_qr' ? { ...m, isCash: true, requiresFiscal: true } : m,
+      );
+      await service.create(
+        ORG,
+        { ...cashDto, method: 'monobank_qr', onlinePaymentIntentId: 'intent-1' },
+        'user-1',
+      );
+      expect(prisma.payment.create).toHaveBeenCalledTimes(1);
+      expect(queue.add.mock.calls[0]?.[1]).toMatchObject({ method: 'monobank_qr', isCash: false });
+    });
+
+    // guards: BR-PAY-019
+    it('намір у запиті людини (POST /payments) ознаку не обходить → 400', async () => {
+      methods.push({ code: 'CASH', isCash: true });
+      await expect(
+        service.create(
+          ORG,
+          { ...cashDto, method: 'CASH', onlinePaymentIntentId: 'intent-2' },
+          'user-1',
+          undefined,
+          { fromRequest: true },
+        ),
+      ).rejects.toThrow(new BadRequestException(CASH_MSG));
+      expect(prisma.payment.create).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-PAY-019
     it('код cash без ознаки isCash — не готівка: з рахунком у запиті проходить', async () => {
       methods[0] = { code: 'cash', isCash: false };
       await service.create(ORG, { ...cashDto, bankAccountId: BANK_ID }, 'user-1');

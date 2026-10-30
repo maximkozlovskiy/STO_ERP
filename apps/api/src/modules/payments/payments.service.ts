@@ -222,6 +222,7 @@ export class PaymentsService {
         amount: true,
         workOrderId: true,
         reversedAt: true,
+        onlinePaymentIntentId: true,
       },
     });
     if (!payment) throw new NotFoundException(translateError('err.payment.notFound', getLocale()));
@@ -266,14 +267,18 @@ export class PaymentsService {
       throw new BadRequestException(translateError('err.payment.retryOnlyFailed', getLocale()));
     }
 
-    // Тип оплати в чеку (готівка / безготівка) — за ознакою способу в довіднику (BR-PAY-019).
+    // Тип оплати в чеку (готівка / безготівка) — за ознакою способу в довіднику (BR-PAY-019), як у
+    // create: оплата від шлюзу — безготівкова завжди. Без `deletedAt: null` свідомо: спосіб, який
+    // видалили після оплати, тип її чека не змінює (код унікальний в організації — рядок один).
     const methodIsCash =
-      (
+      !payment.onlinePaymentIntentId &&
+      ((
         await this.prisma.paymentMethodConfig.findFirst({
           where: { orgId, code: payment.method },
           select: { isCash: true },
         })
-      )?.isCash ?? false;
+      )?.isCash ??
+        false);
     await this.checkboxQueue
       .add(
         'fiscal-receipt',
@@ -371,8 +376,11 @@ export class PaymentsService {
         translateError('err.payment.methodUnavailable', getLocale(), { method: dto.method }),
       );
     // BR-PAY-019: «готівка» — ознака способу в довіднику (`isCash`), не код. Невідомий спосіб
-    // (внутрішній `bank`) — безготівковий.
-    const isCash = methodConfig?.isCash ?? false;
+    // (внутрішній `bank`) — безготівковий. Оплата від шлюзу (`<шлюз>_qr` з наміром) безготівкова
+    // за природою: ознака, помилково ввімкнена на QR-способі, давала б 400 «вкажіть касу» на кожну
+    // спробу фіналізації — гроші прийнято, а оплати немає. Наміром із запиту людини це не обійти.
+    const viaGateway = !opts.fromRequest && !!dto.onlinePaymentIntentId;
+    const isCash = !viaGateway && (methodConfig?.isCash ?? false);
 
     // Рахунок-призначення: DTO задає явно, інакше дефолт з methodConfig. sourceType↔id узгоджені.
     const resolvedSource = await this.resolveDestinationAccount(orgId, dto, methodConfig);

@@ -338,6 +338,7 @@ describe('PaymentMethodsService — куди надходять кошти', () 
       data: {
         code: 'cash_safe',
         name: 'Готівка (сейф)',
+        isCash: false,
         defaultSourceType: 'CASH_REGISTER',
         defaultCashRegisterId: CASH_ID,
         defaultBankAccountId: null,
@@ -345,6 +346,31 @@ describe('PaymentMethodsService — куди надходять кошти', () 
       },
     });
     expect(res.defaultDestinationName).toBe('Каса 1');
+  });
+
+  // guards: BR-PAY-019
+  it('відновлення видаленого «готівкового» способу з банківським рахунком без ознаки → ознака знімається', async () => {
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+      id: PM_ID,
+      deletedAt: new Date('2026-10-01T00:00:00.000Z'),
+    });
+
+    await service.create(ORG, {
+      code: 'CASH_SAFE',
+      name: 'Сейф',
+      defaultSourceType: 'BANK_ACCOUNT',
+      defaultBankAccountId: BANK_ID,
+    });
+
+    expect(prisma.paymentMethodConfig.update).toHaveBeenCalledWith({
+      where: { id: PM_ID, orgId: ORG },
+      data: expect.objectContaining({
+        isCash: false,
+        defaultSourceType: 'BANK_ACCOUNT',
+        defaultBankAccountId: BANK_ID,
+        deletedAt: null,
+      }),
+    });
   });
 
   it('create з чужою касою → 404 до запису', async () => {

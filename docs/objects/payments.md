@@ -384,7 +384,11 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
   «Каса» у вікні «Оплатити» (`ClientPaymentModal`) і тип оплати в чеку ПРРО (Checkbox і Вчасно: `CASH` /
   `CASHLESS`, ознака йде в job черги `checkbox`; job, поставлений до ознаки, — за кодом `cash`) діють
   для будь-якого способу з ознакою — зокрема власного `CASH` з НДІ. Код `cash` без ознаки — безготівковий
-  (BR-PAY-023). Ознаку вмикає перемикач «Готівка» в картці способу (НДІ → «Оплата»), у списку — «· готівка».
+  (BR-PAY-023). Оплата від шлюзу (`<шлюз>_qr` з наміром онлайн-оплати, не з `POST /payments`) — безготівкова
+  завжди, і в чеку, і при повторній фіскалізації: ознака, помилково ввімкнена на QR-способі, інакше давала б 400
+  на кожну спробу фіналізації вже прийнятих грошей. `POST /payment-methods`, що відновлює видалений спосіб,
+  пише ознаку з запиту (без неї — `false`), а не лишає ознаку видаленого рядка. Ознаку вмикає перемикач
+  «Готівка» в картці способу (НДІ → «Оплата»), у списку — «· готівка».
 - **BR-PAY-020**: **Аванс і оплата наряду — за статусом** (рішення власника 2026-10-15). Тип проводки
   оплати наряду визначає статус, прочитаний у транзакції (`woPaymentKind` з `@sto/shared`): «Чернетка»…
   «Призупинено» (`WO_PREPAYMENT_STATUSES`) — `PREPAYMENT` (борг ще не нараховано — це аванс),
@@ -491,15 +495,15 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | idempotency                                                                                       | `payments.idempotency.spec.ts`                           | 7      |
 | money model                                                                                       | `payments.money-model.spec.ts`                           | 22     |
 | multicurrency                                                                                     | `payments.multicurrency.spec.ts`                         | 25     |
-| query dto                                                                                         | `payments.query-dto.spec.ts`                             | 47     |
+| query dto                                                                                         | `payments.query-dto.spec.ts`                             | 48     |
 | передумови + наряд; подія «створено» оплати (BR-AUT-060)                                          | `payments.work-order.spec.ts`                            | 53     |
 | політика повторів черг                                                                            | `payments.queue-retry-policy.spec.ts`                    | 6      |
 | сервісна логіка (+SSRF upsert, BR-SEC-SSRF)                                                       | `provider-config.service.spec.ts`                        | 40     |
 | upsert провайдера без `enabled` (лише activate)                                                   | `provider-upsert-dto.contract.spec.ts`                   | 12     |
 | шифрування at-rest, усі шляхи запису (BR-PAY-026)                                                 | `../../prisma/field-encryption.extension.spec.ts`        | 29     |
 | шифрування (сервіс)                                                                               | `../../common/crypto/encryption.service.spec.ts`         | 11     |
-| готівка (ознака isCash) — через касу, безготівкова — з рахунком; спосіб із довідника (BR-PAY-027) | `payments.cash-register-required.spec.ts`                | 22     |
-| куди надходять кошти                                                                              | `../payment-methods/payment-methods.destination.spec.ts` | 26     |
+| готівка (ознака isCash) — через касу, безготівкова — з рахунком; спосіб із довідника (BR-PAY-027) | `payments.cash-register-required.spec.ts`                | 24     |
+| куди надходять кошти                                                                              | `../payment-methods/payment-methods.destination.spec.ts` | 27     |
 | HTTP-контракт способів                                                                            | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
 | системні способи оплати                                                                           | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
 | сторно безготівкової оплати (BR-PAY-024)                                                          | `payments.reverse-noncash.spec.ts`                       | 24     |

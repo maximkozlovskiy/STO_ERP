@@ -412,6 +412,15 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
     expect(checkboxQueue.add.mock.calls[0][1]).toMatchObject({ method: 'cash', isCash: true });
   });
 
+  // guards: BR-PAY-019
+  it('retryFiscal: оплата від шлюзу — CASHLESS навіть зі способом, позначеним «Готівка»', async () => {
+    prisma.payment.findFirst
+      .mockResolvedValueOnce(failedPayment({ method: 'cash', onlinePaymentIntentId: 'intent-1' }))
+      .mockResolvedValueOnce(paymentRow({ fiscalStatus: 'QUEUED' }));
+    await service.retryFiscal(ORG, PAY_ID);
+    expect(checkboxQueue.add.mock.calls[0][1]).toMatchObject({ method: 'cash', isCash: false });
+  });
+
   // Повторна фіскалізація — окремий `.add()` у retryFiscal зі своєю копією опцій: мусить тримати
   // ту саму політику, що й первинний чек (CLAUDE.md «Офлайн-незалежність»: ПРРО attempts=288,
   // backoff exponential). Сусідній кейс вище фіксує лише attempts.
