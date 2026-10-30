@@ -12,7 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { BatchService, BatchConsumeResult } from './batch.service';
 import { SettingsService } from '../settings/settings.service';
 import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
-import { searchContains } from '../../common/utils/like-pattern';
+import { containsInsensitive, searchContains } from '../../common/utils/like-pattern';
 import { calculatePagination } from '../../common/utils/pagination';
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -452,9 +452,7 @@ export class InventoryService {
     const where: Prisma.StockItemWhereInput = {
       orgId,
       deletedAt: null,
-      good: q
-        ? { deletedAt: null, name: { contains: q, mode: 'insensitive' } }
-        : { deletedAt: null },
+      good: q ? { deletedAt: null, name: containsInsensitive(q) } : { deletedAt: null },
       warehouse: { deletedAt: null },
     };
     if (warehouseId) where.warehouseId = warehouseId;

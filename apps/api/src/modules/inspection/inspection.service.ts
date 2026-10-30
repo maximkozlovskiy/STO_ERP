@@ -12,6 +12,7 @@ import { CreateInspectionDto, InspectionResponseDto } from './inspection.dto';
 import { EDITABLE_STATUSES } from '../work-orders/work-orders.fsm';
 import { WorkOrderTotalsService } from '../work-orders/work-order-totals.service';
 import { lineAmount } from '../../common/utils/money';
+import { containsInsensitive } from '../../common/utils/like-pattern';
 
 // Дефолтні точки огляду
 export const DEFAULT_INSPECTION_POINTS = [
@@ -96,7 +97,7 @@ export class InspectionService {
             orgId,
             deletedAt: null,
             OR: criticalPoints.map(p => ({
-              name: { contains: p.name, mode: 'insensitive' as const },
+              name: containsInsensitive(p.name),
             })),
           },
           select: { id: true, price: true, normoHours: true, name: true },

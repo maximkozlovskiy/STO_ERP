@@ -6,6 +6,7 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { normalizeArticle } from '../../common/utils/normalize-article';
 import { CacheService } from '../../redis/cache.service';
 import { BrandResponseDto, CreateBrandDto, UpdateBrandDto } from './brands.dto';
+import { equalsInsensitive } from '../../common/utils/like-pattern';
 
 const TTL = 300;
 const cacheKey = (orgId: string) => `ref:brands:${orgId}`;
@@ -16,15 +17,8 @@ const cacheKey = (orgId: string) => `ref:brands:${orgId}`;
  */
 const synonymKey = (s: string): string => s.trim().toLocaleLowerCase('uk');
 
-/**
- * Prisma `equals` + `mode: 'insensitive'` іде в Postgres як `ILIKE` БЕЗ екранування: `_` і `%`
- * у значенні працюють як шаблон. Синонім «A_C» «збігався» з чужим «AXC», а «%» — з будь-яким
- * (перевірено через API 2026-10-12). Екрануємо самі; остаточне рішення — за `synonymKey` у JS.
- */
-const insensitive = (value: string) => ({
-  equals: value.replace(/[\\%_]/g, '\\$&'),
-  mode: 'insensitive' as const,
-});
+/** Порівняння написання бренду / синоніма в Postgres — `equalsInsensitive` (`%` / `_` буквально). */
+const insensitive = equalsInsensitive;
 
 /** Стеля для вибірки кандидатів: до 21 написання в запиті, збігів на кожне — одиниці. */
 const CANDIDATES = 200;

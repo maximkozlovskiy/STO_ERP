@@ -17,6 +17,23 @@ export function escapeLike(value: string): string {
 export { LIST_SEARCH_MAX_LENGTH };
 
 /**
+ * Значення → умова Prisma «містить, без урахування регістру» з буквальними `%` / `_` / `\`.
+ * Порожнього рядка не відсікає й не обрізає — це робить викликач (для тексту зі списку —
+ * `searchContains`). Сирий `{ contains: q, mode: 'insensitive' }` у сервісах — та сама діра.
+ */
+export function containsInsensitive(value: string): { contains: string; mode: 'insensitive' } {
+  return { contains: escapeLike(value), mode: 'insensitive' };
+}
+
+/**
+ * «Дорівнює без урахування регістру»: Prisma на PostgreSQL будує для `equals` + `insensitive`
+ * теж `ILIKE`, тож `%` / `_` у значенні — шаблон («A_C» збігалося з «AXC»). Екрануємо так само.
+ */
+export function equalsInsensitive(value: string): { equals: string; mode: 'insensitive' } {
+  return { equals: escapeLike(value), mode: 'insensitive' };
+}
+
+/**
  * Текст пошуку зі списку → умова Prisma «містить, без урахування регістру» з буквальними
  * `%` / `_`. Порожній або з самих пробілів → `undefined` (умову в `where` не додають).
  */
@@ -25,5 +42,5 @@ export function searchContains(q?: string): { contains: string; mode: 'insensiti
   // масивом, і `.trim()` на ньому кидав TypeError → 500. Не-рядок — це «пошуку немає».
   if (typeof q !== 'string') return undefined;
   const search = q.trim().slice(0, LIST_SEARCH_MAX_LENGTH);
-  return search ? { contains: escapeLike(search), mode: 'insensitive' as const } : undefined;
+  return search ? containsInsensitive(search) : undefined;
 }

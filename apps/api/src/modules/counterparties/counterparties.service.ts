@@ -10,7 +10,7 @@ import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { calculatePagination } from '../../common/utils/pagination';
 import { initCountsMap } from '../../common/utils/linked-counts';
-import { searchContains } from '../../common/utils/like-pattern';
+import { containsInsensitive, escapeLike, searchContains } from '../../common/utils/like-pattern';
 import { PrismaService } from '../../prisma/prisma.service';
 import { telegramSubscriptionStatus } from '../notifications/telegram-recipients.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -79,11 +79,11 @@ export class CounterpartiesService {
       ...(query.q
         ? {
             OR: [
-              { firstName: { contains: query.q, mode: 'insensitive' as const } },
-              { lastName: { contains: query.q, mode: 'insensitive' as const } },
-              { companyName: { contains: query.q, mode: 'insensitive' as const } },
-              { phone: { contains: query.q } },
-              { edrpou: { contains: query.q } },
+              { firstName: containsInsensitive(query.q) },
+              { lastName: containsInsensitive(query.q) },
+              { companyName: containsInsensitive(query.q) },
+              { phone: { contains: escapeLike(query.q) } },
+              { edrpou: { contains: escapeLike(query.q) } },
               // Search by vehicle license plate — user looks up client by car number
               {
                 customerGarages: {
@@ -92,7 +92,7 @@ export class CounterpartiesService {
                     vehicles: {
                       some: {
                         deletedAt: null,
-                        licensePlate: { contains: query.q, mode: 'insensitive' as const },
+                        licensePlate: containsInsensitive(query.q),
                       },
                     },
                   },

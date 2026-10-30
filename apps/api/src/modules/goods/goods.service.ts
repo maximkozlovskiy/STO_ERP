@@ -25,6 +25,7 @@ import {
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 import { GoodStatusesService } from '../good-statuses/good-statuses.service';
 import { toPriceHistoryRow } from '../inventory/price-history.mapper';
+import { containsInsensitive } from '../../common/utils/like-pattern';
 
 // §2.1 Auth: purchasePrice (закупівельна ціна) — фінансово чутливе поле.
 // MECHANIC/RECEPTIONIST бачать каталог запчастин (Roles на @Get/findAll/findOne),
@@ -62,14 +63,14 @@ export class GoodsService {
       ];
     } else if (query.q) {
       where.OR = [
-        { name: { contains: query.q, mode: 'insensitive' } },
-        { sku: { contains: query.q, mode: 'insensitive' } },
-        { barcode: { contains: query.q, mode: 'insensitive' } },
+        { name: containsInsensitive(query.q) },
+        { sku: containsInsensitive(query.q) },
+        { barcode: containsInsensitive(query.q) },
         // Додаткові ШК (GoodBarcode[]) — точний матч (сканер дає повний код).
         { barcodes: { some: { barcode: { equals: query.q }, orgId } } },
       ];
     }
-    if (query.category) where.category = { contains: query.category, mode: 'insensitive' };
+    if (query.category) where.category = containsInsensitive(query.category);
     if (query.goodCategoryIds?.length) where.goodCategoryId = { in: query.goodCategoryIds };
     else if (query.goodCategoryId) where.goodCategoryId = query.goodCategoryId;
 

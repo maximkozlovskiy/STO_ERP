@@ -10,6 +10,7 @@ import {
   ServiceResponseDto,
   PaginatedServicesDto,
 } from './services.dto';
+import { containsInsensitive } from '../../common/utils/like-pattern';
 
 @Injectable()
 export class ServicesService {
@@ -240,7 +241,7 @@ export class ServicesService {
     showDeleted = false,
   ): Promise<PaginatedServicesDto> {
     const where: Prisma.ServiceWhereInput = { orgId, ...(showDeleted ? {} : { deletedAt: null }) };
-    if (q) where.name = { contains: q, mode: 'insensitive' };
+    if (q) where.name = containsInsensitive(q);
 
     const { skip, take } = calculatePagination({ page, limit });
     const [items, total] = await Promise.all([

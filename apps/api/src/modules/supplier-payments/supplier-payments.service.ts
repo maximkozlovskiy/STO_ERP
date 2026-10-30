@@ -26,6 +26,7 @@ import {
   PaginatedSupplierPaymentsDto,
   SupplierPaymentScheduleDto,
 } from './supplier-payments.dto';
+import { containsInsensitive } from '../../common/utils/like-pattern';
 
 type SPStatus = SupplierPaymentStatus;
 
@@ -103,13 +104,13 @@ export class SupplierPaymentsService {
       const like = q.trim();
       if (like.length > 0) {
         where.OR = [
-          { number: { contains: like, mode: 'insensitive' } },
+          { number: containsInsensitive(like) },
           {
             supplier: {
               OR: [
-                { companyName: { contains: like, mode: 'insensitive' } },
-                { lastName: { contains: like, mode: 'insensitive' } },
-                { firstName: { contains: like, mode: 'insensitive' } },
+                { companyName: containsInsensitive(like) },
+                { lastName: containsInsensitive(like) },
+                { firstName: containsInsensitive(like) },
               ],
             },
           },

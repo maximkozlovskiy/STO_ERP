@@ -97,6 +97,7 @@ import {
 } from './work-order-dto.mapper';
 import { toLinkedPaymentRows } from '../payments/payment-cash-desk';
 import { recordDocumentEvent } from '../automation/record-document-event';
+import { containsInsensitive } from '../../common/utils/like-pattern';
 
 /** Живі статуси рахунку наряду — їх скасовує скасування наряду (BR-WO-031). */
 const LIVE_INVOICE_STATUSES: readonly InvoiceStatus[] = [
@@ -366,10 +367,10 @@ export class WorkOrdersService {
     }
     if (query.q) {
       where.OR = [
-        { number: { contains: query.q, mode: 'insensitive' } },
-        { counterparty: { companyName: { contains: query.q, mode: 'insensitive' } } },
-        { counterparty: { lastName: { contains: query.q, mode: 'insensitive' } } },
-        { counterparty: { firstName: { contains: query.q, mode: 'insensitive' } } },
+        { number: containsInsensitive(query.q) },
+        { counterparty: { companyName: containsInsensitive(query.q) } },
+        { counterparty: { lastName: containsInsensitive(query.q) } },
+        { counterparty: { firstName: containsInsensitive(query.q) } },
       ];
     }
     // documentDate - date without time (@db.Date): bounds are calendar dates, no timezone shift.

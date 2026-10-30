@@ -12,6 +12,7 @@ import {
   WorkResponseDto,
   PaginatedWorksDto,
 } from './works.dto';
+import { equalsInsensitive } from '../../common/utils/like-pattern';
 
 @Injectable()
 export class WorksService {
@@ -107,7 +108,7 @@ export class WorksService {
 
   async findCategoryByName(orgId: string, name: string): Promise<{ id: string } | null> {
     return this.prisma.workCategory.findFirst({
-      where: { orgId, name: { equals: name, mode: 'insensitive' }, deletedAt: null },
+      where: { orgId, name: equalsInsensitive(name), deletedAt: null },
       select: { id: true },
     });
   }

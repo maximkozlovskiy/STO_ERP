@@ -24,6 +24,7 @@ import {
   UpdateEmployeeDto,
   rateSchemeSchema,
 } from './employees.dto';
+import { containsInsensitive } from '../../common/utils/like-pattern';
 
 @Injectable()
 export class EmployeesService {
@@ -51,10 +52,10 @@ export class EmployeesService {
       const q = query.q.trim();
       if (q.length > 0) {
         where.OR = [
-          { firstName: { contains: q, mode: 'insensitive' } },
-          { lastName: { contains: q, mode: 'insensitive' } },
-          { phone: { contains: q, mode: 'insensitive' } },
-          { email: { contains: q, mode: 'insensitive' } },
+          { firstName: containsInsensitive(q) },
+          { lastName: containsInsensitive(q) },
+          { phone: containsInsensitive(q) },
+          { email: containsInsensitive(q) },
         ];
       }
     }
@@ -100,10 +101,7 @@ export class EmployeesService {
     };
     const q = query.q?.trim();
     if (q) {
-      where.OR = [
-        { firstName: { contains: q, mode: 'insensitive' } },
-        { lastName: { contains: q, mode: 'insensitive' } },
-      ];
+      where.OR = [{ firstName: containsInsensitive(q) }, { lastName: containsInsensitive(q) }];
     }
     const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
     const [items, total] = await Promise.all([
