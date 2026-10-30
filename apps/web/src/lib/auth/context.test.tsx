@@ -95,3 +95,46 @@ describe('AuthProvider — refresh-on-mount 429 не вивалює живу с�
     expect(sessionStorage.getItem(TOKEN_KEY)).toBeNull();
   });
 });
+
+// Bug #1009: вхід — прямий `fetch` поза api-client, і обрив зв'язку (сервер СТО впав) друкував
+// у формі входу англійське «Failed to fetch». Мутаційна перевірка: у `login` повернути
+// `fetch(` замість `fetchOrNetworkError(` — асерція тексту валиться.
+describe('AuthProvider.login — обрив зв’язку мовою інтерфейсу (Bug #1009)', () => {
+  let login: ((email: string, password: string) => Promise<void>) | null = null;
+  function LoginProbe() {
+    login = useAuth().login;
+    return null;
+  }
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  it('fetch відхилено TypeError → помилка «Немає зв’язку з сервером…», оригінал у cause', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).endsWith('/auth/login')) throw new TypeError('Failed to fetch');
+      return { ok: false, status: 401, json: async () => ({}) } as unknown as Response;
+    });
+    render(
+      <AuthProvider>
+        <LoginProbe />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(login).not.toBeNull());
+
+    const err = await login!('a@b.c', 'x').then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+    expect(err?.message).toMatch(/Немає зв.язку з сервером/);
+    expect(err?.message).not.toMatch(/Failed to fetch/);
+    expect((err?.cause as Error | undefined)?.message).toBe('Failed to fetch');
+  });
+});

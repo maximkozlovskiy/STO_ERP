@@ -8,6 +8,7 @@ import { PhoneInput } from '@/components/ui/phone-input';
 import { Spinner } from '@/components/ui/spinner';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { getCurrentLocale } from '@/i18n/locale';
+import { fetchOrNetworkError } from '@/lib/network-error';
 
 interface Branch {
   id: string;
@@ -38,7 +39,8 @@ const SLOT_TIME_FMT = new Intl.DateTimeFormat('uk-UA', {
 async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
   // API-версіонування (backend #3): booking-контролер під /api/v1 (не version-neutral).
   // Публічна сторінка /booking лишається стабільним URL — версіонується лише її API-виклик.
-  const res = await fetch(`${API_URL}/api/v1${path}`, {
+  // Обрив мережі — текст мовою інтерфейсу, не «Failed to fetch» (Bug #1009).
+  const res = await fetchOrNetworkError(`${API_URL}/api/v1${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',

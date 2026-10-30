@@ -11,6 +11,7 @@ import {
 import type { AuthEmployee, AuthState } from './types';
 import { getCurrentLocale } from '@/i18n/locale';
 import i18n from '@/i18n/config';
+import { fetchOrNetworkError } from '@/lib/network-error';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 const TOKEN_KEY = 'sto_access_token';
@@ -227,7 +228,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string): Promise<void> => {
-    const res = await fetch(`${API_URL}/api/v1/auth/login`, {
+    // Сервер СТО недоступний — «Немає зв'язку з сервером…», а не «Failed to fetch» (Bug #1009).
+    const res = await fetchOrNetworkError(`${API_URL}/api/v1/auth/login`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'Accept-Language': getCurrentLocale() },

@@ -1,5 +1,5 @@
 import { TOKEN_KEY } from './auth';
-import i18n from '@/i18n/config';
+import { NetworkError, fetchOrNetworkError } from './network-error';
 import { getCurrentLocale } from '@/i18n/locale';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
@@ -39,44 +39,7 @@ function emitSyncStatus(status: 'idle' | 'offline'): void {
   window.dispatchEvent(new CustomEvent('sto:sync-status', { detail: { status } }));
 }
 
-/** Запит скасував сам клієнт (AbortController), а не обірвала мережа. */
-function isAbortError(err: unknown, signal?: AbortSignal | null): boolean {
-  if (signal?.aborted) return true;
-  return (
-    typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError'
-  );
-}
-
-/**
- * Обрив зв'язку з сервером (fetch відхилено не через AbortController). Браузер кидає TypeError з
- * англійським текстом («Failed to fetch», «Load failed», «NetworkError when attempting…»), і
- * місця, що показують `e.message`, друкували його людині (TECH-DEBT §8 L802). Тут — текст мовою
- * інтерфейсу; оригінал лишається в `cause`.
- */
-export class NetworkError extends Error {
-  constructor(cause: unknown) {
-    super(i18n.t('common:networkError'), { cause });
-    this.name = 'NetworkError';
-  }
-}
-
-/**
- * `fetch` з перекладом мережевої помилки. Скасований запит (AbortError) прокидається як є —
- * викликачі розпізнають його за `name` і мовчать.
- */
-async function fetchOrNetworkError(
-  input: string,
-  init: RequestInit | undefined,
-  onNetworkError?: () => void,
-): Promise<Response> {
-  try {
-    return await fetch(input, init);
-  } catch (err) {
-    if (isAbortError(err, init?.signal)) throw err;
-    onNetworkError?.();
-    throw new NetworkError(err);
-  }
-}
+export { NetworkError };
 
 function setToken(token: string): void {
   if (typeof window !== 'undefined') sessionStorage.setItem(TOKEN_KEY, token);
