@@ -65,18 +65,18 @@
 - ~~§12 п. 13, §14 — питати перед Escape у вікні «Оплатити»; попередження про незбережені рядки в «До списку купівлі».~~ ✅ ЗАКРИТО 2026-10-26: §12 п. 13 — `f8856921` (сам `ClientPaymentModal.tsx`) + `b74b1288` (тести); §14 — `b5fdcaaf` (попередження, не блокування).
 - ~~§13 п. 2 / 9 / 19 / 20 / 32 — E2E-пошук картки під «ще N»; перечитати механіків після 400; прибрати `syncCalendarSlotWithPlannedHours`; prefill через `calcEndFromHours`; видалення в минулих днях.~~ ✅ ЗАКРИТО 2026-10-26: п. 2 / 9 / 20 / 32 — `b5fdcaaf`; п. 19 — `f8856921` (міграція `20261026140000_drop_sync_calendar_slot_setting`).
 - ~~§15 п. 6 / 13 — `applyOfferData` / `setItemQuantity`; `SupplierOptionsSelect` у `components/` і в `SupplierConnectionModal`.~~ ✅ ЗАКРИТО 2026-10-26: п. 6 — `5e148b4c` (некратна кількість округлюється вгору, BR-SOFR-006, рішення власника); п. 13 — `b74b1288`.
-- (2026-10-26, tester) Суми рядків у кількох картках документів друкуються через `toFixed(2)` («30.00», не «30,00») — перевести на `formatMoney`.
-- (2026-10-26) Публічна сторінка кошторису на 429 (ліміт 10/хв, `work-orders-public.controller.ts`) показує клієнту сирий текст `ThrottlerException: Too Many Requests` — потрібне українське «Забагато запитів, спробуйте за хвилину». Той самий ліміт робить flaky `e2e/estimate-share-revoke.spec.ts` у повному прогоні й при `--repeat-each`.
+- ~~(2026-10-26, tester) Суми рядків у кількох картках документів друкуються через `toFixed(2)` («30.00», не «30,00») — перевести на `formatMoney`.~~ ✅ ЗАКРИТО 2026-10-30: `0b800469d` + `8f59fc9c1` (тести) — `fmtMoney` у `WorksTable`, `PartsTable`, `PurchaseOrderCreateModal`, `StockDocumentCreateModal`, `SupplierReturnCreateModal` (33 місця); BR-WO-033, тест `WorksTable.money-format.test.tsx` (рендер + сканер `components/ui` на `toFixed(2)`).
+- ~~(2026-10-26) Публічна сторінка кошторису на 429 (ліміт 10/хв, `work-orders-public.controller.ts`) показує клієнту сирий текст `ThrottlerException: Too Many Requests` — потрібне українське «Забагато запитів, спробуйте за хвилину». Той самий ліміт робить flaky `e2e/estimate-share-revoke.spec.ts` у повному прогоні й при `--repeat-each`.~~ ✅ ЗАКРИТО 2026-10-30: `a27b00f3f` — будь-який 429 `ThrottlerGuard` → `err.tooManyRequests` мовою запиту (`http-exception.filter.ts`, BR-WO-034, тест `http-exception.filter.spec.ts`); ліміт продукту не змінено, E2E на 429 чекає вікна ліміту й перезавантажує (`loadPublic`).
 
 **S/M:**
 
-- §8 L521(3) — екранування `%`/`_` у 21 пошуку (через `searchContains`).
-- §8 L444 + L528(8) — межі доби онлайн-запису (слот через північ, переведення годинника).
-- §8 L802 — переклад мережевої помилки в `api-client.ts` (зачіпає тести, що звіряють текст).
-- §10 п. 24 / 32 — `MONEY_AMOUNT_MAX` на сумах рахунку; 400 на невідомий / вимкнений код способу оплати.
-- §11 п. 7 — номер документа в акті звірки.
-- §12 п. 10 — у картці наряду спершу додавати рядки, потім видаляти.
-- §15 п. 2 — гейт на кириличні запасні тексти + 13 місць у `components/ui`, `hooks`, `lib`.
+- ~~§8 L521(3) — екранування `%`/`_` у 21 пошуку (через `searchContains`).~~ ✅ ЗАКРИТО 2026-10-30: `1cf529469` — `containsInsensitive` / `equalsInsensitive` (`common/utils/like-pattern.ts`) в 11 сервісах і брендах; BR-CP-017, BR-EMP-003, тест `like-pattern.sites.spec.ts` (емулятор `ILIKE` виконує `where`, сканер сирих умов). Конструктор звітів екранував і раніше (BR-RPT-003).
+- ~~§8 L444 + L528(8) — межі доби онлайн-запису (слот через північ, переведення годинника).~~ ✅ ЗАКРИТО 2026-10-30: `8f1f483e8` — `kyivDayStart` / `kyivDayEnd` / `kyivWallTimeToUtc` у `booking.service.ts` (BR-CAL-015, `booking.service.spec.ts`); перетин слота через північ уже стояв (BR-CAL-006).
+- ~~§8 L802 — переклад мережевої помилки в `api-client.ts` (зачіпає тести, що звіряють текст).~~ ✅ ЗАКРИТО 2026-10-30: `98f00540b` — `NetworkError` (`common:networkError`) у всіх обгортках `api-client.ts`, AbortError — як є; тест `api-client.test.ts`.
+- ~~§10 п. 24 / 32 — `MONEY_AMOUNT_MAX` на сумах рахунку; 400 на невідомий / вимкнений код способу оплати.~~ ✅ ЗАКРИТО 2026-10-30: п. 24 — уже закрито `57ed9e63c` (M3, `invoice.schema.ts` `MONEY_CAP`, тест `amount-caps.spec.ts`); п. 32 — `648094563` (api: BR-PAY-019 за `isCash`, BR-PAY-027 — 400 `err.payment.methodUnavailable`, тип оплати чека Checkbox / Вчасно) + `f2cad8ac2` (web: перемикач «Готівка», `ClientPaymentModal`).
+- ~~§11 п. 7 — номер документа в акті звірки.~~ ✅ ЗАКРИТО 2026-10-30: `5fb4a3d2e` — «Наряд № …» тощо в PDF (`SettlementsAccountService.generateReconciliationPdf`, BR-SETL-016, `settlements.reconciliation-act.spec.ts`).
+- ~~§12 п. 10 — у картці наряду спершу додавати рядки, потім видаляти.~~ ✅ ЗАКРИТО 2026-10-30: `dad544260` — DELETE після POST / PATCH у `CreateWorkOrderModal.save` (BR-WO-035, `CreateWorkOrderModal.save-delete-error.test.tsx`).
+- ~~§15 п. 2 — гейт на кириличні запасні тексти + 13 місць у `components/ui`, `hooks`, `lib`.~~ ✅ ЗАКРИТО 2026-10-30: `4669ad1c4` — `scripts/check-cyrillic-fallbacks.py` (self-test; `prepush.sh`, CI `quality`), 13 місць виправлено. Лишились кириличні підписи без форми «запасного» (напр. заголовки секцій `lib/linked-configs.tsx`) — черга перекладу, не цей гейт.
 
 **M (1–2 дні):**
 
@@ -1524,6 +1524,7 @@ positive quantity`, `RETURN з від'ємною к-стю` (склад); `expen
     Частково: з `36c21f8d` (BR-PAY-023) безготівковий спосіб без призначення — 400, тож `'Cash'` без каси
     вже не проходить; лишилось: невідомий / вимкнений / видалений код приймається
     (`payments.service.ts:330-338`), BR-PAY-019 і далі лише для точного `'cash'` (`:349`).
+    ✅ ЗАКРИТО 2026-10-30 (відповідь власника — (б) п. 45): `648094563`, `f2cad8ac2` — BR-PAY-019 за `isCash`, BR-PAY-027.
 
 Додано bug hunt-ом 2026-10-14 (вікно «Оплатити» з полем «Каса»; виправлене — Bug #857…#859 у `BUG_REPORT.md`):
 
@@ -1600,6 +1601,7 @@ positive quantity`, `RETURN з від'ємною к-стю` (склад); `expen
    попередження в лог. Документ друкується; дрібний борг — не кешувати те, що pdfmake не прийняв.
 7. **Акт звірки: колонка «Документ»** друкує сирий тип (`WorkOrder`) без номера документа —
    було й до цього diff-у (`generateReconciliationActPdf`, `t.documentType`).
+   ✅ ЗАКРИТО 2026-10-30: `5fb4a3d2e` (BR-SETL-016).
 8. **MECHANIC на сторінці наряду** отримує 403 на `GET /invoices/from-work-order/:id/find`
    (`PageClient` запитує рахунок наряду без гейту ролі; разом із ще кількома 403 сторінки — completion-acts,
    audit, employees, settings). Кнопки друку рахунку механік не бачить — гейт правильний, лишається
@@ -1659,6 +1661,7 @@ BR-INV-018…020, BR-CASH-026). Поведінку нижче не змінен�
     спершу видаляє рядки, потім додає нові. Наряд з авансом 500: замінити рядок 1000 на 600 одним
     збереженням не вийде — проміжна сума 0 < 500 → 400 (тепер текст видно в картці). Обхід — двома
     збереженнями (спершу додати, потім видалити). Переставити видалення після додавання?
+    ✅ ЗАКРИТО 2026-10-30: `dad544260` — видалення після додавання (BR-WO-035).
 11. **QR-способи на сторінці рахунків (tester 2026-10-15).** У вікні рахунку QR-сценарій є лише в
     `monobank_qr`; «PrivatBank QR» і «LiqPay QR» (їх створює setup) реєструють оплату одразу, без QR,
     і з `requiresFiscal` ставлять чек. Так було й до спільного вікна; для наряду їх сховано (Bug #870).
