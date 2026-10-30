@@ -11,7 +11,7 @@
  */
 
 import { Test } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { getQueueToken } from '@nestjs/bullmq';
 import { PaymentsService } from './payments.service';
@@ -25,6 +25,8 @@ import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { exchangeRatesMock } from './payments.spec-fixture';
 import { domainEventMock } from '../../common/testing/prisma-mock';
+import { globalPipes } from '../../common/pipes/global-pipes';
+import { PaymentsController } from './payments.controller';
 
 const ORG = 'org-1';
 const CP_ID = '22222222-2222-4222-8222-222222222222';
@@ -499,5 +501,63 @@ describe('PaymentsService — готівка лише через касу (BR-PA
       await service.create(ORG, { ...req, method: 'bank' }, 'user-1');
       expect(prisma.payment.create).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+/**
+ * Тіло `POST /payments` — лише те, що задає людина (BR-PAY-027). Внутрішні поля
+ * (`onlinePaymentIntentId` від шлюзу, `settlementType` від рознесення виписки) у тілі → 400 від
+ * глобального ValidationPipe. До Bug #1007 намір із запиту знімав вимогу рахунку (BR-PAY-023),
+ * робив оплату несторнованою (BR-PAY-024) і займав унікальне посилання наміру онлайн-оплати.
+ */
+describe('POST /payments — внутрішні поля не з тіла запиту (Bug #1007, #1008)', () => {
+  // Тип тіла — з метаданих маршруту: той самий клас, що бачить глобальний ValidationPipe.
+  const paramTypes = Reflect.getMetadata(
+    'design:paramtypes',
+    PaymentsController.prototype,
+    'create',
+  ) as (new () => object)[];
+  const metatype = paramTypes.find(t => t.name === 'CreatePaymentDto');
+  const validation = globalPipes().find(p => p instanceof ValidationPipe) as ValidationPipe;
+  const body = {
+    counterpartyId: CP_ID,
+    amount: 100,
+    method: 'card_terminal',
+    bankAccountId: BANK_ID,
+  };
+  const validate = (extra: Record<string, unknown>) =>
+    validation.transform({ ...body, ...extra }, { type: 'body', metatype, data: undefined });
+  const messageOf = async (extra: Record<string, unknown>) => {
+    try {
+      await validate(extra);
+    } catch (e) {
+      return JSON.stringify((e as BadRequestException).getResponse());
+    }
+    return null;
+  };
+
+  it('тіло маршруту — CreatePaymentDto', () => {
+    expect(metatype).toBeDefined();
+  });
+
+  // guards: BR-PAY-023
+  it('onlinePaymentIntentId у тілі → 400 «недозволене» українською', async () => {
+    await expect(validate({ onlinePaymentIntentId: PAY_ID })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(await messageOf({ onlinePaymentIntentId: PAY_ID })).toMatch(
+      /onlinePaymentIntentId.*недозволене/,
+    );
+  });
+
+  // guards: BR-PAY-027
+  it('settlementType у тілі → 400', async () => {
+    await expect(validate({ settlementType: 'REFUND' })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('звичайне тіло оплати проходить (контроль)', async () => {
+    await expect(validate({})).resolves.toMatchObject(body);
   });
 });

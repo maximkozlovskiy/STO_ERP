@@ -9926,10 +9926,6 @@ export interface components {
             bankAccountId?: string;
             /** Format: uuid */
             cashRegisterId?: string;
-            /** Format: uuid */
-            onlinePaymentIntentId?: string;
-            /** @enum {string} */
-            settlementType?: "PAYMENT" | "PREPAYMENT" | "REFUND";
         };
         PaymentReversalDto: {
             /** @description Причина сторно — обов’язкова, до 500 символів */

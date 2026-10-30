@@ -53,18 +53,21 @@ export class CreatePaymentDto {
   @Transform(emptyToUndefined)
   @IsUUID()
   cashRegisterId?: string;
-  // Внутрішнє: лінк на онлайн-намір (QR monobank). @unique у БД → idempotency-guard проти дубля
-  // Payment під час реконсиляції наміру (Bug #688). Не для публічного вводу (касир не задає).
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Transform(emptyToUndefined)
-  @IsUUID()
+}
+
+/**
+ * Вхід `PaymentsService.create` для ВНУТРІШНІХ викликачів: тіло `POST /payments` плюс поля, які
+ * людина не задає. Свідомо НЕ в `CreatePaymentDto`: глобальний ValidationPipe
+ * (`forbidNonWhitelisted`) відхиляє їх у тілі запиту 400 «Поле … недозволене» (BR-PAY-027).
+ *  - `onlinePaymentIntentId` — лінк на намір онлайн-оплати (QR від шлюзу, `payment-polling`).
+ *    @unique у БД → idempotency-guard проти дубля Payment під час реконсиляції наміру (Bug #688).
+ *    З тіла запиту знімав вимогу рахунку (BR-PAY-023), робив оплату несторнованою (BR-PAY-024) і
+ *    займав унікальне посилання чужого наміру (Bug #1007).
+ *  - `settlementType` — тип проводки балансу (дефолт PAYMENT); рознесення виписки передає
+ *    PREPAYMENT / REFUND. З тіла запиту касир проводив «повернення» як оплату (Bug #1008).
+ */
+export interface CreatePaymentInput extends CreatePaymentDto {
   onlinePaymentIntentId?: string;
-  // Внутрішнє: тип проводки балансу (дефолт PAYMENT). Bank-statement рознесення передає PREPAYMENT/
-  // REFUND. Не для публічного вводу — касир завжди PAYMENT. append-only-safe (default зберігає поведінку).
-  @ApiPropertyOptional({ enum: PAYMENT_SETTLEMENT_TYPES })
-  @IsOptional()
-  @IsIn(PAYMENT_SETTLEMENT_TYPES)
   settlementType?: PaymentSettlementType;
 }
 

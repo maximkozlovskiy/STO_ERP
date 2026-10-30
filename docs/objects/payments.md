@@ -427,6 +427,9 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
   спосіб самі й під правило не підпадають (гроші вже прийнято): каса (`cash`), рознесення банківської
   виписки (`bank` — у довіднику його немає), онлайн-оплата від шлюзу (`<шлюз>_qr`).
   (`PaymentsService.create` з `{ fromRequest: true }` від `PaymentsController.create`)
+  Поля внутрішніх викликачів — намір онлайн-оплати (`onlinePaymentIntentId`) і тип проводки
+  (`settlementType`) — у тілі `POST /payments` дають 400 «Поле … недозволене»: їх немає в
+  `CreatePaymentDto`, лише у внутрішньому `CreatePaymentInput` (Bug #1007, #1008).
 - **BR-PAY-024**: **Сторно безготівкової оплати** (рішення власника 2026-10-22). `POST /payments/:id/reverse
 { reason }` сторнує оплату клієнта без касового рядка: на банківський рахунок (з вікна «Оплатити» чи з
   рознесення виписки) і стару оплату без призначення. Ролі — OWNER, ADMIN, ACCOUNTANT (як сторно в касі);
@@ -502,7 +505,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | upsert провайдера без `enabled` (лише activate)                                                   | `provider-upsert-dto.contract.spec.ts`                   | 12     |
 | шифрування at-rest, усі шляхи запису (BR-PAY-026)                                                 | `../../prisma/field-encryption.extension.spec.ts`        | 29     |
 | шифрування (сервіс)                                                                               | `../../common/crypto/encryption.service.spec.ts`         | 11     |
-| готівка (ознака isCash) — через касу, безготівкова — з рахунком; спосіб із довідника (BR-PAY-027) | `payments.cash-register-required.spec.ts`                | 24     |
+| готівка (ознака isCash) — через касу, безготівкова — з рахунком; спосіб із довідника (BR-PAY-027) | `payments.cash-register-required.spec.ts`                | 28     |
 | куди надходять кошти                                                                              | `../payment-methods/payment-methods.destination.spec.ts` | 27     |
 | HTTP-контракт способів                                                                            | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
 | системні способи оплати                                                                           | `../payment-methods/payment-methods.service.spec.ts`     | 5      |

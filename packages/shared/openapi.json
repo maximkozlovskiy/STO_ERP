@@ -33161,18 +33161,6 @@
           "cashRegisterId": {
             "type": "string",
             "format": "uuid"
-          },
-          "onlinePaymentIntentId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "settlementType": {
-            "enum": [
-              "PAYMENT",
-              "PREPAYMENT",
-              "REFUND"
-            ],
-            "type": "string"
           }
         },
         "required": [

@@ -44,7 +44,12 @@ import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { assertMoneyFits, money, moneyFromDecimal } from '../../common/utils/money';
 import { searchContains } from '../../common/utils/like-pattern';
-import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
+import {
+  CreatePaymentDto,
+  type CreatePaymentInput,
+  PaymentResponseDto,
+  PaginatedPaymentsDto,
+} from './payments.dto';
 import { paymentsInCashDesk } from './payment-cash-desk';
 import { recordDocumentEvent } from '../automation/record-document-event';
 
@@ -320,7 +325,7 @@ export class PaymentsService {
    */
   async create(
     orgId: string,
-    dto: CreatePaymentDto,
+    dto: CreatePaymentInput,
     userId?: string,
     cashRow?: CashOperationExtras,
     opts: CreatePaymentOptions = {},
