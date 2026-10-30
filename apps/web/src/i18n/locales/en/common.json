@@ -312,7 +312,8 @@
     "titleUnread": "Notifications ({{n}} unread)",
     "markAllRead": "Mark all as read",
     "empty": "No notifications",
-    "remove": "Delete notification"
+    "openDocument": "Open document",
+    "loadError": "Failed to load notifications"
   },
   "savedFilters": {
     "empty": "No saved views",

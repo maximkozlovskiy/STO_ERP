@@ -7,8 +7,12 @@ import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { type NotificationTemplate, EVENT_KEYS } from './shared';
+import Link from 'next/link';
+import { Info } from 'lucide-react';
+import { useAutomationRules } from '@/hooks/api/useAutomation';
+import { type NotificationTemplate, EVENT_KEYS, LEGACY_TEMPLATE_RULES } from './shared';
 import NotificationProvidersPanel from './NotificationProvidersPanel';
+import { QuietHoursSection, TelegramBotSection } from './MessagingSettingsSections';
 
 export default function NotificationsTab() {
   // `tr` alias — у розмітці нижче є map-цикл із loop-var `t` (шаблон), тож не називаємо переклад `t`.
@@ -20,10 +24,17 @@ export default function NotificationsTab() {
   const [editingTemplate, setEditingTemplate] = useState<NotificationTemplate | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Підключення / відключення бота міняє «ключ є» рядка бота в каналах філії — панель перечитує.
+  const [providersVersion, setProvidersVersion] = useState(0);
+  const rules = useAutomationRules();
+  const ruleIdByKey = new Map(
+    (rules.data?.items ?? []).filter(r => r.systemKey).map(r => [r.systemKey, r.id]),
+  );
 
   useEffect(() => {
     apiFetch<NotificationTemplate[]>('/notification-templates')
-      .then(setTemplates)
+      // Шаблони, які замінили типові правила (BR-AUT-007), ні на що не впливають — не редагуються.
+      .then(list => setTemplates(list.filter(tpl => !(tpl.eventType in LEGACY_TEMPLATE_RULES))))
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : tr('notifications.templatesLoadError')),
       );
@@ -64,7 +75,10 @@ export default function NotificationsTab() {
         </div>
       )}
 
-      <NotificationProvidersPanel />
+      <QuietHoursSection />
+      <TelegramBotSection onChanged={() => setProvidersVersion(v => v + 1)} />
+
+      <NotificationProvidersPanel key={providersVersion} />
 
       <div className="border-t border-border pt-6">
         <h3 className="text-sm font-semibold text-foreground mb-3">
@@ -77,6 +91,36 @@ export default function NotificationsTab() {
           vars: '{{workOrderNumber}}, {{clientName}}, {{amount}}',
         })}
       </p>
+
+      <div
+        className="flex gap-2 rounded-lg border border-info-border bg-info-subtle px-3 py-2 text-xs text-info-text"
+        data-testid="legacy-templates-note"
+      >
+        <Info className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <div>
+          <p>{tr('notifications.legacyNote')}</p>
+          <ul className="mt-1 space-y-0.5">
+            {Object.entries(LEGACY_TEMPLATE_RULES).map(([event, systemKey]) => {
+              const id = ruleIdByKey.get(systemKey);
+              return (
+                <li key={event}>
+                  {eventLabel(event)} →{' '}
+                  <Link
+                    href={
+                      id
+                        ? `/settings/automation?open=${encodeURIComponent(id)}`
+                        : '/settings/automation'
+                    }
+                    className="font-medium underline underline-offset-2"
+                  >
+                    {tr(`notifications.legacyRule.${systemKey}`)}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </div>
 
       {templates.length === 0 && (
         <p className="text-muted-foreground text-sm">{tr('notifications.noTemplates')}</p>

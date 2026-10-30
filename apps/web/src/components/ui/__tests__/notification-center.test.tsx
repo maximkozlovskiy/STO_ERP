@@ -1,172 +1,152 @@
-import { act, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { it, expect, describe, beforeEach, afterEach } from 'vitest';
-import { NotificationCenter, useNotifications, type AppNotification } from '../notification-center';
-import { renderHook } from '@testing-library/react';
+// Серверний дзвіночок (docs/objects/automation.md, BR-AUT-021, US-AUT-3): лічильник непрочитаних
+// з `GET /notifications/me/unread-count` (опитування 30 с), список при відкритті, «прочитано»,
+// «прочитати все», перехід до документа — лише ролі, яка має сторінку документа. Старий механізм
+// localStorage прибрано: дзвіночок один.
 
-const STORAGE_KEY = 'sto_notifications';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-function seed(items: AppNotification[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+let role = 'ADMIN';
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ employee: { id: 'me', role } }) }));
+const push = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
+const apiFetchMock = vi.fn();
+vi.mock('@/lib/api-client', () => ({ apiFetch: (...a: unknown[]) => apiFetchMock(...a) }));
+
+import { NotificationCenter } from '../notification-center';
+import { NOTIFICATIONS_POLL_MS } from '@/hooks/api/useMyNotifications';
+
+const WO = '11111111-1111-4111-8111-000000000001';
+const INV = '11111111-1111-4111-8111-000000000002';
+const ITEMS = [
+  {
+    id: 'n1',
+    title: 'Наряд НРД-1 затверджено',
+    body: 'Підготуйте пост',
+    documentType: 'WORK_ORDER',
+    documentId: WO,
+    readAt: null,
+    createdAt: '2026-10-30T08:00:00.000Z',
+  },
+  {
+    id: 'n2',
+    title: 'Рахунок РАХ-7 оплачено',
+    body: null,
+    documentType: 'INVOICE',
+    documentId: INV,
+    readAt: '2026-10-30T09:00:00.000Z',
+    createdAt: '2026-10-30T07:00:00.000Z',
+  },
+];
+
+let unread = 2;
+const calls = (path: string, method = 'GET') =>
+  apiFetchMock.mock.calls.filter(
+    ([p, init]) => p === path && ((init as { method?: string })?.method ?? 'GET') === method,
+  );
+
+function renderBell(enabled = true) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <NotificationCenter enabled={enabled} />
+    </QueryClientProvider>,
+  );
 }
 
-describe('NotificationCenter', () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
-
-  afterEach(() => {
-    localStorage.clear();
-  });
-
-  it('enabled=false → не рендерить нічого', () => {
-    const { container } = render(<NotificationCenter enabled={false} />);
-    expect(container.firstChild).toBeNull();
-  });
-
-  it('enabled=true → рендерить bell button', () => {
-    render(<NotificationCenter enabled />);
-    expect(screen.getByLabelText(/Сповіщення/)).toBeInTheDocument();
-  });
-
-  it('badge показує unread count', () => {
-    seed([
-      { id: 'n1', type: 'info', title: 'A', createdAt: Date.now(), read: false },
-      { id: 'n2', type: 'info', title: 'B', createdAt: Date.now(), read: false },
-      { id: 'n3', type: 'info', title: 'C', createdAt: Date.now(), read: true },
-    ]);
-    render(<NotificationCenter enabled />);
-    expect(screen.getByText('2')).toBeInTheDocument();
-  });
-
-  it('badge показує "9+" коли unread > 9', () => {
-    const items: AppNotification[] = Array.from({ length: 12 }, (_, i) => ({
-      id: `n${i}`,
-      type: 'info',
-      title: `T${i}`,
-      createdAt: Date.now(),
-      read: false,
-    }));
-    seed(items);
-    render(<NotificationCenter enabled />);
-    expect(screen.getByText('9+')).toBeInTheDocument();
-  });
-
-  it('клік на bell відкриває панель сповіщень', async () => {
-    seed([{ id: 'n1', type: 'success', title: 'Збережено', createdAt: Date.now(), read: false }]);
-    render(<NotificationCenter enabled />);
-    await userEvent.click(screen.getByLabelText(/Сповіщення/));
-    expect(screen.getByText('Збережено')).toBeInTheDocument();
-  });
-
-  it('порожній стан показує "Немає сповіщень"', async () => {
-    render(<NotificationCenter enabled />);
-    await userEvent.click(screen.getByLabelText(/Сповіщення/));
-    expect(screen.getByText('Немає сповіщень')).toBeInTheDocument();
-  });
-
-  it('клік на рядок-сповіщення позначає як прочитане', async () => {
-    seed([{ id: 'n1', type: 'info', title: 'Hello', createdAt: Date.now(), read: false }]);
-    render(<NotificationCenter enabled />);
-    await userEvent.click(screen.getByLabelText(/Сповіщення/));
-    // unread badge існує перед кліком
-    expect(screen.getByText('1')).toBeInTheDocument();
-    await userEvent.click(screen.getByText('Hello'));
-    // після кліку badge зник
-    expect(screen.queryByText('1')).not.toBeInTheDocument();
-  });
-
-  it('Bug #56 регресія: keydown на нащадку не викликає markRead', async () => {
-    seed([{ id: 'n1', type: 'info', title: 'Hello', createdAt: Date.now(), read: false }]);
-    render(<NotificationCenter enabled />);
-    await userEvent.click(screen.getByLabelText(/Сповіщення/));
-    expect(screen.getByText('1')).toBeInTheDocument();
-
-    // Симулюємо keydown від нащадка (target !== currentTarget)
-    const deleteBtn = screen.getByLabelText('Видалити сповіщення');
-    deleteBtn.focus();
-    await userEvent.keyboard(' ');
-    // notification видалене кнопкою X → unread badge зникає (бо немає елементів)
-    expect(screen.queryByText('1')).not.toBeInTheDocument();
+beforeEach(() => {
+  role = 'ADMIN';
+  unread = 2;
+  push.mockReset();
+  apiFetchMock.mockReset();
+  apiFetchMock.mockImplementation((path: string, init?: { method?: string }) => {
+    const method = init?.method ?? 'GET';
+    if (path === '/notifications/me/unread-count') return Promise.resolve({ count: unread });
+    if (path.startsWith('/notifications/me?')) return Promise.resolve({ items: ITEMS, total: 2 });
+    if (method === 'POST' && path === '/notifications/me/read-all') {
+      unread = 0;
+      return Promise.resolve({ updated: 1 });
+    }
+    if (method === 'POST' && path.endsWith('/read')) {
+      unread = Math.max(0, unread - 1);
+      return Promise.resolve({ ...ITEMS[0], readAt: '2026-10-30T10:00:00.000Z' });
+    }
+    return Promise.resolve({});
   });
 });
+afterEach(() => vi.useRealTimers());
 
-describe('useNotifications', () => {
-  beforeEach(() => {
-    localStorage.clear();
+const bell = () => screen.getByRole('button', { name: /Сповіщення/ });
+
+describe('Дзвіночок — серверні сповіщення працівнику', () => {
+  it('enabled=false → нічого не рендерить і не опитує сервер', () => {
+    const { container } = renderBell(false);
+    expect(container.firstChild).toBeNull();
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
-  it('початковий стан: items=[]', () => {
-    const { result } = renderHook(() => useNotifications());
-    expect(result.current.items).toEqual([]);
-    expect(result.current.unreadCount).toBe(0);
+  // guards: BR-AUT-021
+  it('лічильник — з unread-count сервера; «9+», коли більше дев’яти; без localStorage', async () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem');
+    unread = 12;
+    renderBell();
+    expect(await screen.findByTestId('notification-badge')).toHaveTextContent('9+');
+    expect(getItem.mock.calls.some(([k]) => k === 'sto_notifications')).toBe(false);
+    getItem.mockRestore();
   });
 
-  it('add додає сповіщення у початок списку', () => {
-    const { result } = renderHook(() => useNotifications());
-    act(() => {
-      result.current.add('info', 'Hello', 'World');
+  // guards: BR-AUT-021
+  it('лічильник опитується раз на 30 с (як дашборд), список не читається до відкриття', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderBell();
+    await waitFor(() => expect(calls('/notifications/me/unread-count')).toHaveLength(1));
+    expect(NOTIFICATIONS_POLL_MS).toBe(30_000);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(NOTIFICATIONS_POLL_MS + 50);
     });
-    expect(result.current.items).toHaveLength(1);
-    expect(result.current.items[0].title).toBe('Hello');
-    expect(result.current.items[0].body).toBe('World');
-    expect(result.current.items[0].read).toBe(false);
-    expect(result.current.unreadCount).toBe(1);
+    await waitFor(() => expect(calls('/notifications/me/unread-count')).toHaveLength(2));
+    expect(apiFetchMock.mock.calls.some(([p]) => String(p).startsWith('/notifications/me?'))).toBe(
+      false,
+    );
   });
 
-  it('add записує у localStorage', () => {
-    const { result } = renderHook(() => useNotifications());
-    act(() => {
-      result.current.add('warning', 'X');
-    });
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
-    expect(stored).toHaveLength(1);
-    expect(stored[0].title).toBe('X');
+  // guards: BR-AUT-021
+  it('клік по непрочитаному: POST read і перехід у картку наряду (?open=)', async () => {
+    renderBell();
+    fireEvent.click(bell());
+    fireEvent.click(await screen.findByText('Наряд НРД-1 затверджено'));
+    await waitFor(() => expect(calls('/notifications/me/n1/read', 'POST')).toHaveLength(1));
+    expect(push).toHaveBeenCalledWith(`/work-orders?open=${WO}`);
   });
 
-  it('markRead встановлює read=true для одного запису', () => {
-    const { result } = renderHook(() => useNotifications());
-    act(() => {
-      result.current.add('info', 'A');
-    });
-    const id = result.current.items[0].id;
-    act(() => {
-      result.current.markRead(id);
-    });
-    expect(result.current.items[0].read).toBe(true);
-    expect(result.current.unreadCount).toBe(0);
+  // guards: BR-AUT-021
+  it('прочитане не позначається вдруге; роль без сторінки документа — лише текст, без переходу', async () => {
+    role = 'MECHANIC';
+    renderBell();
+    fireEvent.click(bell());
+    const item = await screen.findByText('Рахунок РАХ-7 оплачено');
+    expect(item.closest('button')).not.toHaveTextContent('Відкрити документ');
+    fireEvent.click(item);
+    expect(calls('/notifications/me/n2/read', 'POST')).toHaveLength(0);
+    expect(push).not.toHaveBeenCalled();
   });
 
-  it('markAllRead позначає всі як прочитані', () => {
-    const { result } = renderHook(() => useNotifications());
-    act(() => {
-      result.current.add('info', 'A');
-      result.current.add('info', 'B');
-    });
-    expect(result.current.unreadCount).toBe(2);
-    act(() => {
-      result.current.markAllRead();
-    });
-    expect(result.current.unreadCount).toBe(0);
+  // guards: BR-AUT-021
+  it('«Всі прочитано» → POST read-all, лічильник перечитується й зникає', async () => {
+    renderBell();
+    expect(await screen.findByTestId('notification-badge')).toHaveTextContent('2');
+    fireEvent.click(bell());
+    fireEvent.click(await screen.findByRole('button', { name: 'Всі прочитано' }));
+    await waitFor(() => expect(calls('/notifications/me/read-all', 'POST')).toHaveLength(1));
+    await waitFor(() => expect(screen.queryByTestId('notification-badge')).toBeNull());
   });
 
-  it('remove видаляє запис', () => {
-    const { result } = renderHook(() => useNotifications());
-    act(() => {
-      result.current.add('info', 'A');
-    });
-    const id = result.current.items[0].id;
-    act(() => {
-      result.current.remove(id);
-    });
-    expect(result.current.items).toHaveLength(0);
-  });
-
-  it('обмежує MAX_STORED=50 записами', () => {
-    const { result } = renderHook(() => useNotifications());
-    act(() => {
-      for (let i = 0; i < 60; i++) result.current.add('info', `T${i}`);
-    });
-    expect(result.current.items.length).toBeLessThanOrEqual(50);
+  it('Escape закриває панель', async () => {
+    renderBell();
+    fireEvent.click(bell());
+    expect(await screen.findByRole('dialog', { name: 'Сповіщення' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Сповіщення' })).toBeNull());
   });
 });

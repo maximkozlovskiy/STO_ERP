@@ -330,5 +330,19 @@
     "addressPlaceholder": "1 Khreshchatyk St, Kyiv",
     "bankSection": "Bank details",
     "bankNamePlaceholder": "PrivatBank JSC"
+  },
+  "consent": {
+    "tab": "Messages",
+    "title": "Client messages",
+    "saved": "Saved",
+    "noServiceMessages": "No service messages",
+    "noServiceMessagesHint": "Document status, payment, booking — the client opted out of them",
+    "marketing": "Marketing consent",
+    "marketingHint": "Marketing messages go only to clients with consent",
+    "changedAt": "Changed {{date}}",
+    "changedBy": "Changed {{date}}, {{name}}",
+    "preferredChannel": "Preferred channel",
+    "preferredNone": "Not set",
+    "preferredHint": "In rules “as in branch settings” the preferred channel goes first when it is available for the message (among the branch channels, a contact exists; Telegram bot — the client is subscribed). A rule with its own channel list ignores the preferred channel."
   }
 }

@@ -2,17 +2,17 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowDown, ArrowUp, Check, KeyRound, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, KeyRound, Plus, Send, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { getCached, setCache } from '@/lib/ref-cache';
 import { toast } from '@/lib/toast';
+import { cn } from '@/lib/utils';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
 import { Modal, ModalFooter } from '@/components/ui/modal';
+import { Select } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { getCached, setCache } from '@/lib/ref-cache';
-import { cn } from '@/lib/utils';
 import { type BranchInfo } from './shared';
 
 interface ProviderMeta {
@@ -22,6 +22,9 @@ interface ProviderMeta {
   // Канали, що надсилаються за готовим шаблоном у кабінеті провайдера (потребують ID шаблону).
   // Джерело правди — бекенд (provider.templateChannels), тож UI не хардкодить список.
   templateChannels?: string[];
+  // Креди — у налаштуваннях організації (власний Telegram-бот, BR-AUT-040): у рядку каналу ключа
+  // немає, ексклюзивної активації теж — рядок лише задає місце бота в пріоритеті філії.
+  orgCredentials?: boolean;
 }
 
 interface ChannelConfig {
@@ -48,13 +51,15 @@ export default function NotificationProvidersPanel() {
   const currentFeatures = useUiFeatures();
   // Підписи каналів — з settings-каталогу (providers.channelLabels.<code>); невідомі → код як є.
   const channelLabel = (code: string): string =>
-    ['SMS', 'VIBER', 'TELEGRAM', 'EMAIL', 'PUSH'].includes(code)
+    ['SMS', 'VIBER', 'TELEGRAM', 'TELEGRAM_BOT', 'EMAIL', 'PUSH'].includes(code)
       ? t(`providers.channelLabels.${code}`)
       : code;
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [selectedBranch, setSelectedBranch] = useState('');
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
   const [channels, setChannels] = useState<ChannelConfig[]>([]);
+  // Для якої філії канали вже прочитано: місце нового рядка бота рахується від них.
+  const [channelsFor, setChannelsFor] = useState('');
   const [error, setError] = useState('');
 
   // Модалка кредів
@@ -94,7 +99,10 @@ export default function NotificationProvidersPanel() {
 
   const loadChannels = useCallback((branchId: string) => {
     apiFetch<ChannelConfig[]>(`/notification-channels/${branchId}`)
-      .then(setChannels)
+      .then(list => {
+        setChannels(list);
+        setChannelsFor(branchId);
+      })
       .catch((e: unknown) =>
         console.warn('[Providers] channels load failed:', e instanceof Error ? e.message : e),
       );
@@ -136,7 +144,12 @@ export default function NotificationProvidersPanel() {
   // порушення «активний лише 1». Вимкнення каналів активного провайдера дозволене (звузити
   // ланцюг, напр. лишити тільки SMS). Активація іншого провайдера — через Switch на картці.
   const toggleEnabled = (c: ChannelConfig, enabled: boolean) => {
-    if (enabled && activeProvider !== null && c.provider !== activeProvider) {
+    if (
+      enabled &&
+      !isOrgCredentials(c.provider) &&
+      activeProvider !== null &&
+      c.provider !== activeProvider
+    ) {
       const msg = t('providers.activateExclusiveError');
       setError(msg);
       if (currentFeatures.toastEnabled) toast.error(msg);
@@ -265,9 +278,29 @@ export default function NotificationProvidersPanel() {
 
   const sortedChannels = [...channels].sort((a, b) => a.priority - b.priority);
 
+  // Провайдер із кредами організації (Telegram-бот) — доповнення до ланцюжка, не конкурент.
+  const isOrgCredentials = (code: string) =>
+    providers.find(p => p.code === code)?.orgCredentials ?? false;
+
   // Активний провайдер = той, чиї канали enabled (ексклюзивно, лише один). Похідне зі стану
-  // каналів — окреме поле не потрібне (resolveConfig уже фільтрує enabled:true).
-  const activeProvider = channels.find(c => c.enabled)?.provider ?? null;
+  // каналів — окреме поле не потрібне (resolveConfig уже фільтрує enabled:true). Рядок бота не
+  // рахується: він стоїть поруч з активним провайдером, а не замість нього (BR-AUT-011).
+  const activeProvider =
+    channels.find(c => c.enabled && !isOrgCredentials(c.provider))?.provider ?? null;
+
+  // Рядок бота в каналах філії — вручну, на останнє місце; далі власник ставить його куди треба.
+  const addOrgCredentialsRow = async (provider: ProviderMeta) => {
+    const channel = provider.channels[0];
+    if (!channel) return;
+    const maxPriority = channels.reduce((m, c) => Math.max(m, c.priority), 0);
+    const ok = await patchChannel({
+      channel,
+      provider: provider.code,
+      enabled: true,
+      priority: channels.length > 0 ? maxPriority + 1 : 0,
+    });
+    if (ok && currentFeatures.toastEnabled) toast.success(t('providers.botAdded'));
+  };
 
   const activateProvider = async (providerCode: string) => {
     if (!selectedBranch || activeProvider === providerCode) return;
@@ -323,6 +356,42 @@ export default function NotificationProvidersPanel() {
       {/* Провайдери — клік по назві відкриває модалку кредів; Switch = ексклюзивна активація */}
       <div className="grid gap-2 sm:grid-cols-2">
         {providers.map(p => {
+          if (p.orgCredentials) {
+            const added = channels.some(c => c.provider === p.code);
+            return (
+              <div
+                key={p.code}
+                className="flex items-center justify-between gap-2 bg-surface rounded-xl border border-border p-3"
+                data-provider={p.code}
+              >
+                <div className="flex flex-1 items-center gap-2">
+                  <Send className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                  <div>
+                    <div className="text-sm font-medium text-foreground">{p.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {t('providers.botCardHint')}
+                    </div>
+                  </div>
+                </div>
+                {added ? (
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {t('providers.botInChannels')}
+                  </span>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void addOrgCredentialsRow(p)}
+                    disabled={!selectedBranch || channelsFor !== selectedBranch}
+                    className="shrink-0"
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                    {t('providers.addBot')}
+                  </Button>
+                )}
+              </div>
+            );
+          }
           const isActive = activeProvider === p.code;
           return (
             <div
@@ -411,7 +480,11 @@ export default function NotificationProvidersPanel() {
                     </span>
                     <span className="text-sm text-foreground">{c.provider}</span>
                     {!c.hasApiKey && (
-                      <span className="text-xs text-warning">{t('providers.noKey')}</span>
+                      <span className="text-xs text-warning">
+                        {isOrgCredentials(c.provider)
+                          ? t('providers.botNotConnected')
+                          : t('providers.noKey')}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -420,7 +493,12 @@ export default function NotificationProvidersPanel() {
                   onChange={v => toggleEnabled(c, v)}
                   // Канал неактивного провайдера не можна увімкнути окремо (порушило б
                   // ексклюзивність) — блокуємо Switch поки він вимкнений і провайдер не активний.
-                  disabled={!c.enabled && activeProvider !== null && c.provider !== activeProvider}
+                  disabled={
+                    !c.enabled &&
+                    !isOrgCredentials(c.provider) &&
+                    activeProvider !== null &&
+                    c.provider !== activeProvider
+                  }
                   ariaLabel={t('providers.toggleChannelAria', {
                     action: c.enabled
                       ? t('providers.disableChannelAria')

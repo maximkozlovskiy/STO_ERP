@@ -37,5 +37,6 @@
   "shell.logout": "Sign out",
   "shell.logoutAll": "Sign out on all devices",
   "shell.openMenu": "Open menu",
-  "shell.openSearch": "Open search"
+  "shell.openSearch": "Open search",
+  "settingsAutomation": "Automation"
 }

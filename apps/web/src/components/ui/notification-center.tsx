@@ -1,134 +1,76 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { Bell, X, CheckCheck, Info, AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
+import { Bell, CheckCheck, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { fmtTime } from '@/lib/format';
-
-export type NotifType = 'info' | 'success' | 'warning' | 'error';
-
-export interface AppNotification {
-  id: string;
-  type: NotifType;
-  title: string;
-  body?: string;
-  createdAt: number;
-  read: boolean;
-}
-
-const STORAGE_KEY = 'sto_notifications';
-const MAX_STORED = 50;
-
-const ICONS: Record<NotifType, typeof Info> = {
-  info: Info,
-  success: CheckCircle,
-  warning: AlertTriangle,
-  error: AlertCircle,
-};
-const ICON_STYLES: Record<NotifType, string> = {
-  info: 'text-info',
-  success: 'text-success',
-  warning: 'text-warning',
-  error: 'text-destructive',
-};
-
-function readStored(): AppNotification[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeStored(items: AppNotification[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(0, MAX_STORED)));
-  } catch {
-    /* ignore */
-  }
-}
-
-export function useNotifications() {
-  const [items, setItems] = useState<AppNotification[]>([]);
-
-  useEffect(() => {
-    setItems(readStored());
-  }, []);
-
-  const add = useCallback((type: NotifType, title: string, body?: string) => {
-    const n: AppNotification = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      type,
-      title,
-      body,
-      createdAt: Date.now(),
-      read: false,
-    };
-    setItems(prev => {
-      const next = [n, ...prev].slice(0, MAX_STORED);
-      writeStored(next);
-      return next;
-    });
-    window.dispatchEvent(new CustomEvent('sto:notification-add', { detail: n }));
-  }, []);
-
-  const markRead = useCallback((id: string) => {
-    setItems(prev => {
-      const next = prev.map(n => (n.id === id ? { ...n, read: true } : n));
-      writeStored(next);
-      return next;
-    });
-  }, []);
-
-  const markAllRead = useCallback(() => {
-    setItems(prev => {
-      const next = prev.map(n => ({ ...n, read: true }));
-      writeStored(next);
-      return next;
-    });
-  }, []);
-
-  const remove = useCallback((id: string) => {
-    setItems(prev => {
-      const next = prev.filter(n => n.id !== id);
-      writeStored(next);
-      return next;
-    });
-  }, []);
-
-  const unreadCount = items.filter(n => !n.read).length;
-  return { items, add, markRead, markAllRead, remove, unreadCount };
-}
+import { fmtShortDateTime } from '@/lib/format';
+import { useAuth } from '@/lib/auth';
+import { automationDocumentHref } from '@/lib/automation';
+import { useEscapeLayer } from '@/hooks/useEscapeLayer';
+import {
+  useMarkAllNotificationsRead,
+  useMarkNotificationRead,
+  useMyNotifications,
+  useUnreadNotificationsCount,
+  type EmployeeNotification,
+} from '@/hooks/api/useMyNotifications';
+import { Spinner } from './spinner';
 
 interface NotificationCenterProps {
   enabled: boolean;
 }
 
+/**
+ * Дзвіночок оболонки — серверні сповіщення працівнику (docs/objects/automation.md, BR-AUT-021,
+ * US-AUT-3): лічильник непрочитаних опитується раз на 30 с, список читається при відкритті.
+ * Клік по сповіщенню позначає його прочитаним і відкриває документ (`?open=` списку); роль без
+ * доступу до сторінки документа бачить лише текст. Кожен працівник бачить лише свої — тримає API.
+ */
 export function NotificationCenter({ enabled }: NotificationCenterProps) {
   const { t } = useTranslation('common');
+  const router = useRouter();
+  const { employee } = useAuth();
   const [open, setOpen] = useState(false);
-  const { items, markRead, markAllRead, remove, unreadCount } = useNotifications();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const active = enabled && !!employee;
 
-  // close on outside click
+  const unread = useUnreadNotificationsCount(active);
+  const list = useMyNotifications(active && open);
+  const markRead = useMarkNotificationRead();
+  const markAll = useMarkAllNotificationsRead();
+  const unreadCount = unread.data?.count ?? 0;
+  const items = list.data?.items ?? [];
+
+  useEscapeLayer(open, () => setOpen(false));
+
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      const el = document.getElementById('sto-notif-panel');
-      if (el && !el.contains(e.target as Node)) setOpen(false);
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  if (!enabled) return null;
+  if (!active) return null;
+
+  const activate = (n: EmployeeNotification) => {
+    if (!n.readAt) markRead.mutate(n.id);
+    const href = automationDocumentHref(n.documentType, n.documentId, employee?.role);
+    if (href) {
+      setOpen(false);
+      router.push(href);
+    }
+  };
 
   return (
-    <div className="relative" id="sto-notif-panel">
+    <div className="relative" ref={rootRef} data-testid="notification-center">
       <button
+        type="button"
         onClick={() => setOpen(v => !v)}
+        aria-expanded={open}
         className="relative flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-muted hover:text-white hover:bg-sidebar-hover transition-colors"
         aria-label={
           unreadCount > 0
@@ -136,94 +78,101 @@ export function NotificationCenter({ enabled }: NotificationCenterProps) {
             : t('notifications.title')
         }
       >
-        <Bell className="h-4 w-4" />
+        <Bell className="h-4 w-4" aria-hidden="true" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-white text-[9px] font-bold">
+          <span
+            className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 px-0.5 items-center justify-center rounded-full bg-destructive text-white text-[9px] font-bold"
+            data-testid="notification-badge"
+          >
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute left-full bottom-0 ml-2 w-80 bg-surface border border-border rounded-xl shadow-2xl z-250 overflow-hidden">
+        <div
+          role="dialog"
+          aria-label={t('notifications.title')}
+          className="absolute left-full bottom-0 ml-2 w-80 max-w-[calc(100vw-5rem)] bg-surface border border-border rounded-xl shadow-2xl z-250 overflow-hidden"
+        >
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <span className="text-[13px] font-semibold text-foreground">
               {t('notifications.title')}
             </span>
             {unreadCount > 0 && (
               <button
-                onClick={markAllRead}
-                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                type="button"
+                onClick={() => markAll.mutate()}
+                disabled={markAll.isPending}
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
               >
-                <CheckCheck className="h-3.5 w-3.5" />
+                <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" />
                 {t('notifications.markAllRead')}
               </button>
             )}
           </div>
 
-          <div className="max-h-80 overflow-y-auto divide-y divide-border">
-            {items.length === 0 ? (
+          <div className="max-h-96 overflow-y-auto divide-y divide-border">
+            {list.isLoading ? (
+              <div className="flex justify-center py-8">
+                <Spinner size="sm" />
+              </div>
+            ) : list.isError ? (
+              <p className="py-8 text-center text-[13px] text-destructive-text" role="alert">
+                {t('notifications.loadError')}
+              </p>
+            ) : items.length === 0 ? (
               <p className="py-8 text-center text-[13px] text-muted-foreground">
                 {t('notifications.empty')}
               </p>
             ) : (
               items.map(n => {
-                const Icon = ICONS[n.type];
+                const href = automationDocumentHref(n.documentType, n.documentId, employee?.role);
                 return (
-                  <div
+                  <button
                     key={n.id}
+                    type="button"
+                    data-notification-id={n.id}
+                    data-unread={n.readAt ? undefined : 'true'}
+                    onClick={() => activate(n)}
                     className={cn(
-                      'group flex gap-3 px-4 py-3 cursor-pointer hover:bg-secondary transition-colors',
-                      !n.read && 'bg-primary-subtle/30',
+                      'flex w-full gap-3 px-4 py-3 text-left hover:bg-secondary transition-colors',
+                      !n.readAt && 'bg-primary-subtle/30',
                     )}
-                    onClick={() => markRead(n.id)}
-                    role="button"
-                    tabIndex={0}
-                    // Guard: only react when the keydown originated on the row itself,
-                    // not from a nested interactive element (e.g. the delete button).
-                    // Without this, pressing Space on "X" both deletes the notification
-                    // AND marks it read via bubbled keydown.
-                    onKeyDown={e => {
-                      if (e.target !== e.currentTarget) return;
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        markRead(n.id);
-                      }
-                    }}
                   >
-                    <Icon
-                      className={cn('h-4 w-4 mt-0.5 shrink-0', ICON_STYLES[n.type])}
+                    <span
+                      className={cn(
+                        'mt-1.5 h-2 w-2 shrink-0 rounded-full',
+                        n.readAt ? 'bg-transparent' : 'bg-primary',
+                      )}
                       aria-hidden="true"
                     />
-                    <div className="flex-1 min-w-0">
-                      <p
+                    <span className="flex-1 min-w-0">
+                      <span
                         className={cn(
-                          'text-[12px] font-medium text-foreground',
-                          !n.read && 'font-semibold',
+                          'block text-[12px] text-foreground wrap-break-word',
+                          n.readAt ? 'font-medium' : 'font-semibold',
                         )}
                       >
                         {n.title}
-                      </p>
+                      </span>
                       {n.body && (
-                        <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
+                        <span className="block text-[11px] text-muted-foreground mt-0.5 line-clamp-3 wrap-break-word">
                           {n.body}
-                        </p>
+                        </span>
                       )}
-                      <p className="text-[10px] text-muted-foreground mt-1">
-                        {fmtTime(n.createdAt)}
-                      </p>
-                    </div>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        remove(n.id);
-                      }}
-                      className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                      aria-label={t('notifications.remove')}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                      <span className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
+                        {fmtShortDateTime(n.createdAt)}
+                        {href && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                            {t('notifications.openDocument')}
+                          </>
+                        )}
+                      </span>
+                    </span>
+                  </button>
                 );
               })
             )}

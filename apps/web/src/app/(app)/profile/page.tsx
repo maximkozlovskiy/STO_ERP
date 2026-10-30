@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { EmployeeTelegramSubscription } from '@/components/ui/TelegramSubscriptionBlock';
 
 interface Me {
   id: string;
@@ -109,6 +110,9 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+
+      {/* Своя підписка на Telegram-бот СТО (BR-AUT-041, 022) */}
+      <EmployeeTelegramSubscription employeeId={null} canManage />
 
       {/* Change password */}
       <div className="bg-surface rounded-xl border border-border p-5 space-y-4">

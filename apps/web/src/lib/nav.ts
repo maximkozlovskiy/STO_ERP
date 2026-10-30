@@ -30,6 +30,7 @@ import {
   Banknote,
   Landmark,
   ListTodo,
+  Workflow,
 } from 'lucide-react';
 
 export type NavSection =
@@ -252,6 +253,15 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     labelKey: 'settings',
     label: 'Система',
     icon: Settings,
+    section: 'settings',
+    roles: ['OWNER', 'ADMIN'],
+  },
+  {
+    // Правила «подія → умови → дії», журнал (docs/objects/automation.md): керують OWNER і ADMIN.
+    href: '/settings/automation',
+    labelKey: 'settingsAutomation',
+    label: 'Автоматизація',
+    icon: Workflow,
     section: 'settings',
     roles: ['OWNER', 'ADMIN'],
   },

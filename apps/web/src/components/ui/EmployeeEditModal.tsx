@@ -27,6 +27,7 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { CatalogHelp } from '@/components/ui/help-popover';
+import { EmployeeTelegramSubscription } from '@/components/ui/TelegramSubscriptionBlock';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -711,6 +712,18 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                             {t('editModal.allBranchesHint')}
                           </p>
                         </div>
+                      ),
+                    },
+                  ]
+                : []),
+              ...(employee && !readOnly
+                ? [
+                    {
+                      key: 'telegram',
+                      label: t('editModal.tabTelegram'),
+                      content: (
+                        // Картка працівника — лише OWNER / ADMIN (сторінка «Співробітники»).
+                        <EmployeeTelegramSubscription employeeId={employee.id} canManage />
                       ),
                     },
                   ]

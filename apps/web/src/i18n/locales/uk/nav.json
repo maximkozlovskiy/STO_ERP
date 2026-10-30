@@ -37,5 +37,6 @@
   "shell.logout": "Вийти",
   "shell.logoutAll": "Вийти на всіх пристроях",
   "shell.openMenu": "Відкрити меню",
-  "shell.openSearch": "Відкрити пошук"
+  "shell.openSearch": "Відкрити пошук",
+  "settingsAutomation": "Автоматизація"
 }

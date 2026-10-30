@@ -113,5 +113,16 @@ export const EVENT_KEYS = [
   'BOOKING_CONFIRMATION',
 ];
 
+/**
+ * Зашиті повідомлення, які стали типовими правилами автоматизації (BR-AUT-007): їхні шаблони ні на
+ * що не впливають — у налаштуваннях шаблонів не редагуються, натомість примітка з посиланням на
+ * правило (`systemKey` з `AUTOMATION_DEFAULT_RULES`).
+ */
+export const LEGACY_TEMPLATE_RULES: Readonly<Record<string, string>> = {
+  WO_COMPLETED: 'WO_COMPLETED_CLIENT',
+  PAYMENT_RECEIVED: 'PAYMENT_CREATED_CLIENT',
+  BOOKING_CONFIRMATION: 'BOOKING_CREATED_CLIENT',
+};
+
 // Події вебхуків (порядок збережено). Підписи — settings-каталог (integrations.eventOptions.<value>).
 export const WEBHOOK_EVENT_VALUES = ['WO_STATUS_CHANGED', 'PAYMENT_RECEIVED', 'LOW_STOCK_ALERT'];

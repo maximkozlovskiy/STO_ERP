@@ -37,6 +37,7 @@ import { StatusManager } from '@/components/ui/CounterpartyStatusManager';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 import type { CpType } from '@/hooks/api/useCounterparties';
+import { CounterpartyMessagingBlock } from '@/components/ui/CounterpartyMessagingBlock';
 import {
   CounterpartyForm,
   emptyCounterpartyForm,
@@ -148,7 +149,9 @@ export function CounterpartyEditModal({
   const statusesLabelId = useId();
 
   // ── Form ─────────────────────────────────────────────────────────────────────
-  const [editTab, setEditTab] = useState<'main' | 'vehicles' | 'contracts' | 'work-orders'>('main');
+  const [editTab, setEditTab] = useState<
+    'main' | 'vehicles' | 'contracts' | 'work-orders' | 'messaging'
+  >('main');
   const [saving, setSaving] = useState(false);
   // WEB-H3 (Bug #632, клас Bug #630): синхронний guard проти concurrent double-submit.
   // `<Button loading={saving}>` вимикається лише ПІСЛЯ re-render React між кліками;
@@ -785,6 +788,7 @@ export function CounterpartyEditModal({
                   label: t('editModal.tabHistory'),
                   count: modalWorkOrders.length,
                 },
+                { key: 'messaging', label: t('consent.tab') },
               ] as { key: typeof editTab; label: string; count?: number }[]
             ).map(tab => (
               <button
@@ -849,6 +853,13 @@ export function CounterpartyEditModal({
                 ) : undefined
               }
             />
+          </div>
+        )}
+
+        {/* ── Tab: Messaging (згода, бажаний канал, Telegram-бот) ─────────────────── */}
+        {isEdit && counterparty && editTab === 'messaging' && (
+          <div key="tab-messaging" data-animate data-state="open" data-variant="content">
+            <CounterpartyMessagingBlock counterpartyId={counterparty.id} />
           </div>
         )}
 

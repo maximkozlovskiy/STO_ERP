@@ -1,0 +1,371 @@
+{
+  "title": "Automation",
+  "tabs": {
+    "rules": "Rules",
+    "journal": "Log"
+  },
+  "newRule": "Rule",
+  "newRuleTitle": "New rule",
+  "searchPlaceholder": "Search by name…",
+  "documentAll": "All documents",
+  "documentLabel": "Document",
+  "stateLabel": "State",
+  "all": "All",
+  "enabledOnly": "Enabled",
+  "disabledOnly": "Disabled",
+  "columns": {
+    "name": "Name",
+    "document": "Document",
+    "event": "Event → status",
+    "actions": "Actions",
+    "lastRun": "Last run",
+    "enabled": "Enabled"
+  },
+  "system": "Default",
+  "systemHint": "Default rule: replaced a hardcoded message; it can be disabled but not deleted",
+  "anyStatus": "any status",
+  "never": "has not run yet",
+  "toggleAria": "{{action}} rule “{{name}}”",
+  "enable": "Enable",
+  "disable": "Disable",
+  "deleteAria": "Delete rule “{{name}}”",
+  "toast": {
+    "created": "Rule created",
+    "saved": "Rule saved",
+    "deleted": "Rule deleted",
+    "enabled": "Rule enabled",
+    "disabled": "Rule disabled"
+  },
+  "deleteConfirm": {
+    "title": "Delete rule?",
+    "message": "Rule “{{name}}” will stop running. Its run log is kept."
+  },
+  "empty": {
+    "title": "No rules yet",
+    "desc": "Create a rule: document event → conditions → actions"
+  },
+  "loadError": "Failed to load rules",
+  "documentTypes": {
+    "WORK_ORDER": "Work order",
+    "INVOICE": "Invoice",
+    "PURCHASE_ORDER": "Purchase order",
+    "STOCK_DOCUMENT": "Stock document",
+    "PAYMENT": "Client payment",
+    "SUPPLIER_PAYMENT": "Supplier payment",
+    "SUPPLIER_RETURN": "Supplier return",
+    "BOOKING": "Online booking",
+    "TASK": "Task"
+  },
+  "eventKinds": {
+    "CREATED": "Created",
+    "STATUS_CHANGED": "Status changed"
+  },
+  "messageKinds": {
+    "SERVICE": "Service",
+    "MARKETING": "Marketing"
+  },
+  "messageKindHint": "Service messages skip clients who opted out of messages; marketing ones reach only clients with marketing consent",
+  "channels": {
+    "TELEGRAM_BOT": "Telegram bot",
+    "VIBER": "Viber",
+    "SMS": "SMS",
+    "EMAIL": "Email",
+    "TELEGRAM": "Telegram (eSputnik)"
+  },
+  "actionTypes": {
+    "client_message": "Message the client",
+    "employee_notification": "Notify employees",
+    "create_task": "Create a task"
+  },
+  "paymentStatuses": {
+    "ACTIVE": "Active",
+    "REVERSED": "Reversed"
+  },
+  "bookingStatuses": {
+    "PENDING": "New",
+    "CONFIRMED": "Confirmed",
+    "CANCELLED": "Cancelled"
+  },
+  "runStatuses": {
+    "DONE": "Done",
+    "PARTIAL": "Partial",
+    "FAILED": "Failed",
+    "SKIPPED": "Skipped"
+  },
+  "actionStatuses": {
+    "DONE": "done",
+    "SKIPPED": "skipped",
+    "FAILED": "failed"
+  },
+  "deliveryStatuses": {
+    "QUEUED": "Queued",
+    "SENT": "Sent",
+    "REJECTED": "Rejected",
+    "FAILED": "Failed",
+    "SKIPPED": "Skipped"
+  },
+  "skipReasons": {
+    "NO_CONTACT": "the recipient has no contact for any channel",
+    "NO_SERVICE_MESSAGES": "the client opted out of service messages",
+    "NO_MARKETING_CONSENT": "no marketing consent from the client",
+    "NO_CHANNEL": "no channel is configured for the branch",
+    "TELEGRAM_BOT_NOT_CONNECTED": "the Telegram bot is not connected in settings",
+    "NO_RECIPIENTS": "nobody to notify",
+    "NO_ASSIGNEE": "no assignee for the task",
+    "TASK_EXISTS": "such an open task already exists",
+    "DOCUMENT_DELETED": "the document was deleted before sending",
+    "PAYMENT_REVERSED": "the payment was reversed before sending",
+    "DOCUMENT_CANCELLED": "the document was cancelled before sending"
+  },
+  "card": {
+    "tabs": {
+      "event": "Event",
+      "conditions": "Conditions",
+      "actions": "Actions",
+      "journal": "Log"
+    },
+    "tabHasErrors": "has errors",
+    "name": "Rule name",
+    "namePlaceholder": "E.g. “Work order in progress — SMS to client”",
+    "enabled": "Rule enabled",
+    "documentType": "Document",
+    "eventKind": "Event",
+    "toStatuses": "To status",
+    "toStatusesCreated": "Initial status",
+    "toStatusesHint": "Nothing selected — any status",
+    "messageKind": "Client message type",
+    "branches": "Branches",
+    "branchesHint": "Nothing selected — the whole organisation",
+    "fromStatuses": "From status",
+    "fromStatusesHint": "Nothing selected — from any",
+    "repairCategories": "Repair type",
+    "priorities": "Priority",
+    "minAmount": "Amount from",
+    "minAmountHint": "In the organisation base currency; a document in another currency is compared by its base amount",
+    "conditionsHint": "All conditions must hold at once. An empty condition does not restrict.",
+    "noConditions": "This document and event have no extra conditions — the rule fires on the event.",
+    "addAction": "Add action",
+    "removeAction": "Remove action",
+    "actionN": "Action {{n}}",
+    "moveUp": "Up",
+    "moveDown": "Down",
+    "noActions": "Add at least one action",
+    "clientMessageUnavailable": "This document has no client — a client message is unavailable",
+    "taskOnTaskUnavailable": "A rule on a task event does not create tasks",
+    "channels": "Channels",
+    "channelsBranch": "As in branch settings",
+    "channelsBranchHint": "All configured branch channels in the priority you set; the client’s preferred channel goes first when available",
+    "channelsCustom": "Custom list",
+    "channelsCustomHint": "Only these channels, in this order: not delivered — the next one. The client’s preferred channel is ignored here",
+    "addChannel": "Add channel",
+    "removeChannel": "Remove channel {{channel}}",
+    "subject": "Subject (for email)",
+    "body": "Message text",
+    "recipients": "Whom to notify",
+    "responsible": "Responsible from the document",
+    "responsibleHint": "work order — work assignees; task — assignee; others — the document author",
+    "roles": "Roles",
+    "employees": "Employees",
+    "employeesPlaceholder": "Add employee…",
+    "removeEmployee": "Remove {{name}}",
+    "employeeUnavailable": "{{name}} (unavailable)",
+    "notifyInitiator": "Also notify whoever changed the document",
+    "notifyInitiatorHint": "No by default: an employee is not notified about their own action",
+    "inApp": "In the app (bell)",
+    "external": "External channel (Telegram bot / Viber / SMS)",
+    "notificationTitle": "Notification title",
+    "notificationBody": "Notification text",
+    "externalBody": "External message text",
+    "taskTitle": "Task title",
+    "taskDescription": "Task description",
+    "assignee": "Assignee",
+    "assigneeResponsible": "Responsible from the document",
+    "assigneeSpecific": "Specific employee",
+    "assigneePlaceholder": "Choose an employee",
+    "fallbackAssignee": "Fallback assignee",
+    "fallbackNone": "None — do not create the task",
+    "fallbackHint": "If there is no responsible person, or they are dismissed or on leave",
+    "dueInHours": "Due, hours after the event",
+    "priority": "Priority",
+    "save": "Save",
+    "create": "Create",
+    "cancel": "Cancel",
+    "close": "Close",
+    "delete": "Delete",
+    "loadError": "Failed to load the rule",
+    "saveFirst": "Save the rule first to send a test",
+    "invalid": "Check the fields marked in red"
+  },
+  "template": {
+    "insertVariable": "Insert variable",
+    "variablesFor": "Variables of “{{document}}”",
+    "unknown": "Unknown variables: {{vars}} — “{{document}}” has none of them",
+    "fragmentError": "Optional fragment [[…]] is not closed or is nested in another",
+    "fragmentHint": "[[…]] is an optional fragment: it disappears entirely if any variable inside is empty. E.g. {{example}}",
+    "preview": "Preview with sample data",
+    "previewEmpty": "The text is empty",
+    "counter": "{{n}} / {{max}}",
+    "sendTest": "Send test",
+    "variables": {
+      "documentNumber": "document number",
+      "status": "status",
+      "clientName": "client",
+      "clientPhone": "client phone",
+      "supplierName": "supplier",
+      "vehicle": "vehicle",
+      "vehiclePlate": "plate number",
+      "totalAmount": "amount",
+      "date": "event date",
+      "time": "event time",
+      "visitDate": "visit date",
+      "visitTime": "visit time",
+      "taskTitle": "task title",
+      "assigneeName": "assignee",
+      "branchName": "branch",
+      "branchPhone": "organisation phone",
+      "estimateLink": "estimate link"
+    },
+    "samples": {
+      "documentNumber": "WO-2026-0042",
+      "clientName": "Ivan Petrenko",
+      "clientPhone": "+380501234567",
+      "supplierName": "Autodetal LLC",
+      "vehicle": "Toyota Camry (AA1234BB)",
+      "vehiclePlate": "AA1234BB",
+      "totalAmount": "1 250,00 UAH",
+      "date": "30.10.2026",
+      "time": "10:15",
+      "visitDate": "31.10.2026",
+      "visitTime": "09:30",
+      "taskTitle": "Prepare the bay",
+      "assigneeName": "Oleh Koval",
+      "branchName": "Main branch",
+      "estimateLink": "https://sto.example/estimate/…"
+    },
+    "previewPhoneHint": "The sample organisation phone is empty — so you can see how a [[…]] fragment disappears",
+    "previewShort": "Preview"
+  },
+  "test": {
+    "title": "Send test",
+    "pickDocument": "Document for the test",
+    "pickTitle": "Choose a “{{document}}”",
+    "pickEmpty": "No documents found",
+    "hint": "The rule’s messages go to your own phone / email / Telegram with the chosen document’s data — without consent and quiet-hours checks. No tasks or in-app notifications are created.",
+    "send": "Send",
+    "result": "Result",
+    "resultEmpty": "The rule has no messages to test",
+    "sent": "Test queued",
+    "checkJournal": "Delivery status is in the message log (marked “test”)"
+  },
+  "journal": {
+    "runs": "Runs",
+    "messages": "Messages",
+    "rule": "Rule",
+    "document": "Document",
+    "event": "Event",
+    "status": "Status",
+    "results": "Actions",
+    "occurredAt": "When",
+    "recipient": "To",
+    "channel": "Channel",
+    "provider": "Provider",
+    "reason": "Reason / error",
+    "test": "test",
+    "statusAll": "All statuses",
+    "documentAll": "All documents",
+    "testAll": "All messages",
+    "testOnly": "Tests only",
+    "realOnly": "Without tests",
+    "periodFrom": "From",
+    "periodTo": "To",
+    "openDocument": "Open document",
+    "noLink": "document has no page",
+    "emptyRuns": "No runs yet",
+    "emptyMessages": "No messages yet",
+    "loadError": "Failed to load the log",
+    "delayedUntil": "delayed until {{at}} (quiet hours)",
+    "recipientsN": "recipients: {{n}}",
+    "taskCreated": "task created",
+    "eventCreated": "created ({{status}})",
+    "eventChanged": "{{from}} → {{to}}"
+  },
+  "help": {
+    "title": "How automation rules work",
+    "blocks": [
+      {
+        "title": "Event → conditions → actions",
+        "items": [
+          {
+            "term": "Event",
+            "text": "a document was created or its status changed — by any path: a button, a payment, an automatic transition"
+          },
+          {
+            "term": "Conditions",
+            "text": "branch, status “from” and “to”, repair type, priority, amount from X — all must hold at once"
+          },
+          {
+            "term": "Actions",
+            "text": "message the client, notify employees (bell and / or Telegram bot, Viber, SMS), create a task"
+          },
+          "One document event runs a rule once; a failed action does not cancel the others or the document change."
+        ]
+      },
+      {
+        "title": "Client message channels",
+        "items": [
+          {
+            "term": "As in branch",
+            "text": "all configured branch channels in the priority you set in “Settings → Notifications”; the client’s preferred channel goes first when available"
+          },
+          {
+            "term": "Custom list",
+            "text": "only the chosen channels in the chosen order; not delivered — the next one"
+          },
+          "The Telegram bot reaches only a client who subscribed via the link or QR from their card."
+        ]
+      },
+      {
+        "title": "Consent and quiet hours",
+        "items": [
+          {
+            "term": "Service",
+            "text": "always sent, except to clients marked “no service messages”"
+          },
+          {
+            "term": "Marketing",
+            "text": "only to clients with marketing consent"
+          },
+          {
+            "term": "Quiet hours",
+            "text": "a client message created at night waits until quiet hours end (set in “Notifications”); employee notifications are not restricted"
+          }
+        ]
+      },
+      {
+        "title": "Log",
+        "items": [
+          "Every run and message is in the log with the skip reason. A test is sent to yourself, with the chosen document’s data."
+        ]
+      }
+    ]
+  },
+  "telegram": {
+    "title": "Telegram bot",
+    "subscribed": "Subscribed since {{date}}",
+    "notSubscribed": "Not subscribed",
+    "botNotConnected": "The bot is not connected — connect it in “Settings → Notifications”",
+    "getLink": "Get link",
+    "unsubscribe": "Unsubscribe",
+    "unsubscribeSelf": "Unsubscribe",
+    "unsubscribeConfirm": "The bot will stop sending messages to this chat. You can subscribe again with a new link.",
+    "unsubscribed": "Subscription turned off",
+    "linkTitle": "Telegram bot subscription",
+    "linkHint": "Open the link or scan the QR with your phone and press “Start” in the bot.",
+    "linkExpires": "One-time link, valid until {{date}}",
+    "copy": "Copy",
+    "copied": "Link copied",
+    "open": "Open in Telegram",
+    "qrAlt": "Subscription link QR code",
+    "selfHint": "Get notifications about tasks and documents in Telegram"
+  }
+}

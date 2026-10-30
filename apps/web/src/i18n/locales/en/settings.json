@@ -187,7 +187,13 @@
     "active": "Active",
     "inactive": "Disabled",
     "subject": "Subject: {{subject}}",
-    "edit": "Edit"
+    "edit": "Edit",
+    "legacyNote": "These messages are now sent by default automation rules — change text and channels in the rule:",
+    "legacyRule": {
+      "WO_COMPLETED_CLIENT": "rule “Work order completed”",
+      "PAYMENT_CREATED_CLIENT": "rule “Payment received”",
+      "BOOKING_CREATED_CLIENT": "rule “Online booking created”"
+    }
   },
   "providers": {
     "channelLabels": {
@@ -195,7 +201,8 @@
       "VIBER": "Viber",
       "TELEGRAM": "Telegram",
       "EMAIL": "Email",
-      "PUSH": "Push"
+      "PUSH": "Push",
+      "TELEGRAM_BOT": "Telegram bot"
     },
     "loadError": "Failed to load providers",
     "activateExclusiveError": "First activate this provider (toggle on the card) — only one can be active",
@@ -234,7 +241,12 @@
     "verifyError": "Verification error",
     "tokenValid": "Token valid",
     "balance": " · balance: {{balance}}",
-    "tokenInvalid": "Invalid token"
+    "tokenInvalid": "Invalid token",
+    "botCardHint": "The token is in the “Shop Telegram bot” block above; here — the bot’s place in the branch channel queue",
+    "addBot": "Add to channels",
+    "botInChannels": "In branch channels",
+    "botAdded": "Telegram bot added to branch channels",
+    "botNotConnected": "bot not connected"
   },
   "registry": {
     "verifyError": "Verification error",
@@ -466,5 +478,24 @@
     "pullNow": "Pull now",
     "pullQueued": "Job queued",
     "pullError": "Failed to queue the job"
+  },
+  "quietHours": {
+    "title": "Quiet hours",
+    "hint": "A client message from automation rules created during quiet hours waits until they end (Kyiv time). Employee notifications are not restricted.",
+    "start": "Start",
+    "end": "End",
+    "saved": "Quiet hours saved",
+    "off": "Equal bounds — no quiet hours, messages go at once"
+  },
+  "telegramBot": {
+    "title": "Shop Telegram bot",
+    "hint": "Your own bot: employees and clients who subscribed via a link or QR get messages for free. The token comes from @BotFather.",
+    "token": "Bot token",
+    "connect": "Connect",
+    "connected": "Bot {{name}} connected",
+    "statusConnected": "Connected: @{{name}}",
+    "disconnect": "Disconnect",
+    "disconnectConfirm": "The bot will stop sending and receiving messages. Subscriptions are kept — reconnecting the same bot brings them back.",
+    "addChannelHint": "Add the Telegram bot channel in the branch channel settings and put it in the right place"
   }
 }
