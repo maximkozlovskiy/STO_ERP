@@ -224,14 +224,14 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 | counterparty contracts                                                                                                                                                       | `counterparties.counterparty-contracts.spec.ts` | 32     |
 | crud search                                                                                                                                                                  | `counterparties.crud-search.spec.ts`            | 17     |
 | гаражі (isDefault, гараж з авто й блокування рядка — BR-CP-015)                                                                                                              | `counterparties.garages.spec.ts`                | 8      |
-| пов'язані документи                                                                                                                                                          | `counterparties.linked-docs.spec.ts`            | 4      |
+| пов'язані документи                                                                                                                                                          | `counterparties.linked-docs.spec.ts`            | 5      |
 | рахунок розрахунків (SettlementAccount)                                                                                                                                      | `counterparties.settlement-account.spec.ts`     | 3      |
 | статуси-мітки (assign / unassign)                                                                                                                                            | `counterparties.status-labels.spec.ts`          | 9      |
 | комірник читає постачальників (BR-CP-014)                                                                                                                                    | `counterparties.storekeeper-suppliers.spec.ts`  | 22     |
 | supplier naming (+ назва обов'язкова)                                                                                                                                        | `counterparties.supplier-naming.spec.ts`        | 6      |
 | згода на повідомлення й підписка на бот; тіло через схему контролера — поля згоди не губляться, `vatPayer` не скидається частковим PATCH (BR-AUT-041, 042; Bug #1000, #1001) | `counterparties.consent.spec.ts`                | 6      |
 
-Разом: **132** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **133** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Поза модулем правила цього агрегату стережуть ще три файли:
 

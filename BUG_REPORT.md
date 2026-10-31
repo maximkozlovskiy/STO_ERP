@@ -5533,3 +5533,27 @@ PATCH → 500): замовлення й складський документ �
 увімкнути» + наявні it.each тепер чекають «увімкніть»; мутація (старий ключ) — 5 червоних. Наживо: 400 «Спосіб
 оплати «Готівка» вимкнено або видалено в НДІ («Оплата») — увімкніть його…», `cash` увімкнено назад.
 **Статус:** [x] виправлено
+
+## Bug #1020 — [HIGH] «Оплатити» в картці замовлення постачальнику створює оплату й одразу її скасовує
+
+**Файл:** `apps/web/src/hooks/api/useSupplierPayments.ts` (`useConfirmSupplierPayment`),
+`apps/web/src/components/ui/SupplierPaymentCreateModal.tsx` (`onValid` / `settlePayment`)
+**Severity:** HIGH
+**Категорія:** web ↔ api контракт / гроші й нумерація
+
+**Опис:** з 2026-10-25 (`a0e3890c2`) `POST /supplier-payments/:id/confirm` має `@RequireIdempotencyKey()`,
+а web шле його без заголовка `Idempotency-Key`. Вікно оплати робить create → confirm, отримує 400 і, як
+задумано на відмову проведення, скасовує щойно створену чернетку. Наживо (dev :3001, OWNER, 1440):
+картка `ЗАМ-2026-002760` (Замовлено) → «Оплатити» → каса «Грн каса», 1 ₴ → «Оплатити»: `POST
+/supplier-payments` 201, `POST …/confirm` 400 «Потрібен заголовок Idempotency-Key…», `GET …` 200, `POST
+…/cancel` 200. Оплатити постачальнику з картки замовлення неможливо, а кожна спроба лишає скасований
+документ і витрачений номер.
+**Очікувана поведінка:** одна дія «оплатити» — проведена оплата або нічого (TECH-DEBT (б) №34).
+**Фікс:** етап Г2 №34 (BR-SUPPAY-013) — `POST /supplier-payments/pay`: створення й проведення в одній
+транзакції з `Idempotency-Key`, номер документа рухається в тій самій транзакції й відкочується разом із нею
+(`DocumentNumberService.next(…, tx)`); каса — та сама дія. Web шле ключ на відкриття вікна; create → confirm →
+cancel, `pendingIdRef` і `settlePayment` прибрано. Тести: `supplier-payments.pay.spec.ts`,
+`supplier-payments.pay-rollback.integration.spec.ts` (жива БД: номер не витрачається),
+`SupplierPaymentCreateModal.test.tsx`, E2E `supplier-payment-pay.spec.ts` («Оплатити» → `CONFIRMED:150`, жодної
+скасованої). Наживо (:3010/:3012, OWNER): один `POST /supplier-payments/pay` 201, скасованих оплат немає.
+**Статус:** [x] виправлено

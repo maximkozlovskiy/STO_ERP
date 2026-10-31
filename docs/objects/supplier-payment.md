@@ -90,16 +90,17 @@ CONFIRMED → REVERSED   (лише сторно з каси, внутрішні�
 
 ## API Endpoints (`/api/supplier-payments`)
 
-| Метод  | URL                                     | Дія                                                           |
-| ------ | --------------------------------------- | ------------------------------------------------------------- |
-| GET    | `/supplier-payments`                    | Список (status, supplierId, q, dateFrom/To)                   |
-| GET    | `/supplier-payments/schedule`           | Графік оплат (шахматка боргів по датах, FIFO) — BR-SUPPAY-009 |
-| GET    | `/supplier-payments/schedule/documents` | Drill-down: документи (PO) клітинки графіка — BR-SUPPAY-010   |
-| GET    | `/supplier-payments/:id`                | Деталь                                                        |
-| POST   | `/supplier-payments`                    | Створити (DRAFT); web одразу викликає `confirm`               |
-| POST   | `/supplier-payments/:id/confirm`        | DRAFT→CONFIRMED (+ settlement SUPPLIER_PAYMENT)               |
-| POST   | `/supplier-payments/:id/cancel`         | DRAFT→CANCELLED                                               |
-| DELETE | `/supplier-payments/:id`                | Soft-delete (крім CONFIRMED)                                  |
+| Метод  | URL                                     | Дія                                                              |
+| ------ | --------------------------------------- | ---------------------------------------------------------------- |
+| GET    | `/supplier-payments`                    | Список (status, supplierId, q, dateFrom/To)                      |
+| GET    | `/supplier-payments/schedule`           | Графік оплат (шахматка боргів по датах, FIFO) — BR-SUPPAY-009    |
+| GET    | `/supplier-payments/schedule/documents` | Drill-down: документи (PO) клітинки графіка — BR-SUPPAY-010      |
+| GET    | `/supplier-payments/:id`                | Деталь                                                           |
+| POST   | `/supplier-payments`                    | Створити (DRAFT) — банк і старі клієнти; web не кличе            |
+| POST   | `/supplier-payments/pay`                | Створити й провести однією tx, `Idempotency-Key` — BR-SUPPAY-013 |
+| POST   | `/supplier-payments/:id/confirm`        | DRAFT→CONFIRMED, `Idempotency-Key` — «Провести» чернетку (014)   |
+| POST   | `/supplier-payments/:id/cancel`         | DRAFT→CANCELLED                                                  |
+| DELETE | `/supplier-payments/:id`                | Soft-delete (крім CONFIRMED)                                     |
 
 Ролі: `OWNER`, `ADMIN`, `ACCOUNTANT`.
 
@@ -107,16 +108,18 @@ CONFIRMED → REVERSED   (лише сторно з каси, внутрішні�
 
 ## UI (Web)
 
-**Сторінок оплат постачальнику немає** (2026-10-14): `/supplier-payments` і `/supplier-payments/<id>` лише
-перенаправляють (`LegacyRouteRedirect`) на графік оплат. Оплату постачальнику вносять двома шляхами:
-з каси (привід `SUPPLIER_PAYMENT`, BR-CASH-019 — `CashDeskService` створює й одразу проводить) і кнопкою
-«Оплатити» в картці замовлення постачальнику (`SupplierPaymentCreateModal`: `POST /supplier-payments`, одразу
-`…/confirm`; не вдалося провести — `…/cancel` і текст відмови в картці, чернетка не лишається).
+**Окремої сторінки оплат постачальнику немає** (2026-10-14): `/supplier-payments` і `/supplier-payments/<id>`
+лише перенаправляють (`LegacyRouteRedirect`) на графік оплат. Оплату постачальнику вносять двома шляхами,
+обидва — однією дією (BR-SUPPAY-013): з каси (привід `SUPPLIER_PAYMENT`, BR-CASH-019) і кнопкою «Оплатити»
+в картці замовлення постачальнику (`SupplierPaymentCreateModal` → `POST /supplier-payments/pay` з ключем на
+відкриття вікна; відмова — текст у картці, документа не лишається). Перелік оплат із фільтром статусу —
+вкладка «Оплати постачальникам» у «Купівлі» (BR-SUPPAY-014).
 
 | Компонент / сторінка  | Файл                                                                                |
 | --------------------- | ----------------------------------------------------------------------------------- |
 | Графік + drill-down   | `app/(app)/purchase-orders/SupplierPaymentScheduleTab.tsx` (вкладка «Графік оплат») |
 | Модалка «Оплатити»    | `components/ui/SupplierPaymentCreateModal.tsx`                                      |
+| Перелік / чернетки    | `app/(app)/purchase-orders/SupplierPaymentsTab.tsx` (`?tab=payments`)               |
 | Hook (TanStack Query) | `hooks/api/useSupplierPayments.ts`                                                  |
 | Старі адреси          | `app/(app)/supplier-payments/page.tsx`, `[id]/page.tsx` → редирект                  |
 
@@ -143,6 +146,10 @@ CONFIRMED → REVERSED   (лише сторно з каси, внутрішні�
 - **BR-SUPPAY-007**: Без Checkbox (ПРРО) і без лояльності — це supplier-side, не клієнтський продаж.
 - **BR-SUPPAY-008**: `confirm()` race-safe — re-read статусу всередині `$transaction`, подвійний confirm не подвоює SUPPLIER_PAYMENT.
 - **BR-SUPPAY-012**: **Сторно валютної оплати постачальнику — за курсом оплати** (рішення власника 2026-10-30, TECH-DEBT (б) №42). `SupplierPaymentsService.reverse` (з каси) більше не відмовляє валютній оплаті: `SUPPLIER_PAYMENT_CANCEL` дзеркалить суму, курс і базову суму проводки оплати. Коли сторно робить замовлення не сплаченим повністю (`paidAt` знімається), у тій самій транзакції курсова різниця його повної оплати відкочується одною проводкою протилежного знаку на чисту суму (Σ `FX_GAIN` − Σ `FX_LOSS` документа `PurchaseOrder`, `reverseNetFxInTx`); переплачене й після сторно замовлення FX не чіпає. `confirm` визнає FX при першій повній оплаті, лише поки чиста FX замовлення = 0 — повторна повна оплата після сторно пише її заново. Клієнт — BR-PAY-028.
+- **BR-SUPPAY-013**: **Оплата постачальнику — одна транзакція: створення й проведення, усе або нічого** (рішення власника 2026-10-30, TECH-DEBT (б) №34). `SupplierPaymentsService.createAndConfirm` = перевірки створення й проведення ДО транзакції (лише читання), далі в одній `$transaction`: номер (`DocumentNumberService.next(orgId, 'SUPPLIER_PAYMENT', tx)` — лічильник рухається в цій транзакції, тож відкат повертає номер), запис оплати й подія «створено», проведення (`confirmInTx`: CAS DRAFT→CONFIRMED, `SUPPLIER_PAYMENT`, рядок каси, «сплачено» замовлення, FX). Відмова будь-якого кроку (каса в мінус, зміна закрита, немає курсу) — ні документа, ні витраченого номера, ні скасованої чернетки. Так платять каса (BR-CASH-019) і вікно «Оплатити» — `POST /supplier-payments/pay`, ключ `Idempotency-Key` обов'язковий (повтор після обриву віддає ту саму оплату; ключ — на відкриття вікна). Чернетка (`create`) теж бере номер у своїй транзакції. Без `tx` `DocumentNumberService.next` — власна коротка транзакція, як і була, для всіх інших документів. Банк (рознесення рядка виписки, BR-BANK-028) — як був: `create` + `confirm`. Bug #1020: до цього web слав `confirm` без ключа (400 з 2026-10-25) і скасовував щойно створену оплату.
+- **BR-SUPPAY-014**: **Перелік оплат постачальнику й старі чернетки** (рішення власника 2026-10-30, №36). У «Купівлі» вкладка «Оплати постачальникам» (власник, адміністратор, бухгалтер — ролі `GET /supplier-payments`): статуси кнопками («Чернетки» за замовчуванням, «Всі», «Проведено», «Скасовано», «Сторновано»), сума у валюті оплати, номер замовлення відкриває його картку. Чернетка: «Провести» (підтвердження; `POST …/confirm` з новим ключем на дію) і «Скасувати» (підтвердження; `POST …/cancel`, без руху грошей). Проведення старої чернетки проходить ті самі перевірки, що й нова оплата: статус замовлення (BR-SUPPAY-015), зміна й залишок каси (`CashService` у транзакції), курс.
+- **BR-SUPPAY-015**: **Підстава оплати — замовлення «Замовлено», «Частково» чи «Отримано»** (рішення власника 2026-10-30, №38; `PO_PAYABLE_STATUSES` у `@sto/shared`). Створення й проведення оплати з замовленням-підставою іншого статусу (чернетка, скасоване) — 400 `err.supplierPayment.orderNotPayable` з назвою статусу до будь-якого запису (зокрема в касі й для старої чернетки, чиє замовлення відтоді скасували). CAS «сплачено» замовлення в транзакції проведення має статус у `where` — скасування між перевіркою й записом дає 400 «замовлення змінено». Пікери підстави просять `GET /purchase-orders?payable=true`; «Оплатити» в картці замовлення видно лише в цих статусах.
+- **BR-SUPPAY-016**: **Сума в «Пов'язаних документах» — у валюті документа.** Рядки оплат постачальнику (картка замовлення й контрагента) і рахунків (наряд, контрагент) несуть `currencyCode` (null — базова); web пише «20,00 USD», а не «20,00 ₴» (як рядок оплати клієнта, Bug #1018).
 - **BR-SUPPAY-011**: Валюта оплати (`currencyId`) — валюта її джерела коштів (банківського рахунку чи каси), яку бере `create()`; джерело без валюти — 400 `err.supplierPayment.sourceHasNoCurrency`. Сума (`amount`) — число у валюті джерела; конвертація в базову — при `confirm()`. Частина правила про `update()` чернетки (2026-10-24) зникла разом із PATCH 2026-10-30.
 - **BR-SUPPAY-009** (Графік оплат — `getSchedule`): АВТОРИТЕТНЕ джерело суми боргу — `SettlementAccount.balance` (`payable = |−balance|` для `balance<0`), а НЕ `Σ PurchaseOrder.totalAmount` — баланс враховує ВСІ рухи (повернення, unlinked-платежі, коригування). Фільтр: `counterparty.deletedAt IS NULL` + `type IN (SUPPLIER, BOTH)` (Bug #599 — не показувати клієнтів з prepayment-refund). **FIFO-розподіл**: `payable` наливається на непогашені RECEIVED/PARTIAL PO по черзі від найстарішого (`orderBy paymentDate asc nulls first`), `take = min(po.outstanding, remaining)`; кожен PO лягає у колонку за `paymentDate` (null/<from → overdue; from..to → byDate[дата]; >to → planned) з РЕАЛЬНИМ залишком. PO, до яких борг не дійшов = оплачені (не показуються); надлишок понад ΣPO → overdue. Кредит-ліміт (макс по PURCHASE-договорах) віднімається з найпізніших. **Trade-off (Bug #600)**: `schedule.totals.total ≤ reports.settlements.totalCredit` — звіт НЕ фільтрує deleted/CLIENT, тож розбіжність = борги видалених + CLIENT-типу counterparty.
 - **BR-SUPPAY-010** (Drill-down — `getScheduleDocuments`): документи (PO) конкретної клітинки/бакета шахматки. Спільний private `computeScheduleAllocations` — ЄДИНЕ джерело FIFO-наливу + кредит-ліміту зі збереженням per-PO алокацій; `getSchedule` сумує їх у бакети, `getScheduleDocuments` фільтрує по цільовому бакету. **Інваріант консистентності**: `Σ allocated документів у бакеті == значення клітинки getSchedule` (за конструкцією — один helper, немає sibling-drift). Кредит-ліміт зменшує `allocated` з найпізніших PO (planned → byDate спадно → overdue), дзеркалить порядок getSchedule. Синтетичний рядок «борг без документа» (`poId=''`, коли balance > ΣPO) → overdue, некликабельний у UI. Query: `date` XOR `target` (overdue/planned), обидва з `@IsDateString({strict})+@Matches(YMD_RE)` (Bug #616); `supplierId` опційний (без нього — усі постачальники, клік по рядку «Разом»).
@@ -161,26 +168,39 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/supplier-payments/`
 
-| Аспект                                                             | Тест                                          | Кейсів |
-| ------------------------------------------------------------------ | --------------------------------------------- | ------ |
-| cancel remove                                                      | `supplier-payments.cancel-remove.spec.ts`     | 5      |
-| confirm                                                            | `supplier-payments.confirm.spec.ts`           | 8      |
-| HTTP-контракт (DTO, статуси, валідація)                            | `supplier-payments.contract.spec.ts`          | 21     |
-| документ, позначений на видалення, — лише перегляд (BR-WO-012)     | `supplier-payments.with-deleted.spec.ts`      | 8      |
-| create                                                             | `supplier-payments.create.spec.ts`            | 10     |
-| без ПРРО і лояльності (статичний сторож)                           | `supplier-payments.no-fiscal-loyalty.spec.ts` | 14     |
-| payables fx                                                        | `supplier-payments.payables-fx.spec.ts`       | 10     |
-| schedule                                                           | `supplier-payments.schedule.spec.ts`          | 26     |
-| сортування (whitelist orderBy)                                     | `supplier-payments.sort.spec.ts`              | 9      |
-| create guards (невідомий рахунок, замовлення іншого постачальника) | `supplier-payments.create-guards.spec.ts`     | 2      |
+| Аспект                                                                                  | Тест                                                 | Кейсів |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------ |
+| cancel remove                                                                           | `supplier-payments.cancel-remove.spec.ts`            | 5      |
+| confirm                                                                                 | `supplier-payments.confirm.spec.ts`                  | 8      |
+| HTTP-контракт (DTO, статуси, валідація)                                                 | `supplier-payments.contract.spec.ts`                 | 21     |
+| документ, позначений на видалення, — лише перегляд (BR-WO-012)                          | `supplier-payments.with-deleted.spec.ts`             | 8      |
+| create                                                                                  | `supplier-payments.create.spec.ts`                   | 10     |
+| без ПРРО і лояльності (статичний сторож)                                                | `supplier-payments.no-fiscal-loyalty.spec.ts`        | 14     |
+| payables fx                                                                             | `supplier-payments.payables-fx.spec.ts`              | 10     |
+| schedule                                                                                | `supplier-payments.schedule.spec.ts`                 | 26     |
+| сортування (whitelist orderBy)                                                          | `supplier-payments.sort.spec.ts`                     | 9      |
+| create guards (невідомий рахунок, замовлення іншого постачальника)                      | `supplier-payments.create-guards.spec.ts`            | 2      |
+| оплата однією транзакцією, статус замовлення-підстави, `POST /pay` (BR-SUPPAY-013, 015) | `supplier-payments.pay.spec.ts`                      | 18     |
+| номер відкочується з транзакцією — жива БД (BR-SUPPAY-013)                              | `supplier-payments.pay-rollback.integration.spec.ts` | 2      |
 
-Разом: **113** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **133** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Component-тест вкладки графіка:**
 `apps/web/src/app/(app)/purchase-orders/__tests__/SupplierPaymentScheduleTab.test.tsx` — 3 кейси:
 клік клітинки запитує документи саме цього бакета; синтетичний рядок «борг без документа»
 (`poId=''`) не є кнопкою (UI-половина BR-SUPPAY-010); рядок справжнього PO відкриває саме його.
 Запуск: `cd apps/web && npx vitest run "src/app/(app)/purchase-orders"`.
+
+**Web-тести етапу Г2 (2026-10-31):** `components/ui/__tests__/SupplierPaymentCreateModal.test.tsx` — одна
+дія `POST /pay`, ключ на відкриття вікна (повтор — той самий, нове відкриття — новий), відмова без
+скасування, пікер `payable=true` (BR-SUPPAY-013, 015); `hooks/api/useSupplierPayments.test.tsx` — ключ у
+`pay` і `confirm`; `app/(app)/purchase-orders/__tests__/SupplierPaymentsTab.test.tsx` — «Чернетки»,
+«Провести» з ключем, «Скасувати», відмова над таблицею (BR-SUPPAY-014);
+`components/ui/__tests__/PurchaseOrderCreateModal.pay-role.test.tsx` — «Оплатити» лише на статусах оплати
+(BR-SUPPAY-015) і картка бухгалтера на перегляді (BR-PO-015); `lib/__tests__/linked-configs.test.tsx` —
+суми у валюті документа (BR-SUPPAY-016). E2E через інтерфейс — `apps/web/e2e/supplier-payment-pay.spec.ts`
+(5 кейсів: «Оплатити» → одна проведена оплата без скасованих; відмова каси без документа; чернетка
+замовлення без «Оплатити»; «Чернетки» → провести / скасувати; повтор прийому з тим самим ключем).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 
