@@ -448,12 +448,14 @@ const CALL_SITES: Record<string, CallSite> = {
         },
       ],
     },
-  'modules/bank-statements/bank-reconciliation.service.ts#unreconcile:SUPPLIER_PAYMENT_RETURN_CANCEL':
+  // Один виклик на обидва види (CLIENT_REFUND → REFUND_OUT_CANCEL, SUPPLIER_REFUND_IN →
+  // SUPPLIER_PAYMENT_RETURN_CANCEL, BR-BANK-040/046): сторно дзеркалить початкову проводку.
+  'modules/bank-statements/bank-reconciliation.service.ts#unreconcile:REFUND_OUT_CANCEL|SUPPLIER_PAYMENT_RETURN_CANCEL':
     {
       guard:
-        'Той самий CAS статусу рядка першим записом у tx (MATCHED → UNMATCHED за прочитаним виглядом ' +
-        'рознесення); count=0 → 409 до сторно (BR-BANK-039, 046). Повторне скасування рядка в MATCHED не ' +
-        'знаходить, тож другого сторно немає.',
+        'CAS статусу рядка першим записом у tx: bankTransaction.updateMany where status = MATCHED, ' +
+        'paymentId = null, matchedType = прочитаний → UNMATCHED; count=0 → 409 до сторно (BR-BANK-039, ' +
+        '040, 046). Повторне скасування не знаходить рядок у MATCHED, тож другого сторно немає.',
       anchors: [
         /tx\.bankTransaction\.updateMany\(\{\s*where:\s*\{[^}]*\bstatus:\s*'MATCHED'/,
         /if\s*\(released\.count === 0\)\s*\{\s*throw\b/,
@@ -466,23 +468,6 @@ const CALL_SITES: Record<string, CallSite> = {
         },
       ],
     },
-  'modules/bank-statements/bank-reconciliation.service.ts#unreconcile:REFUND_OUT_CANCEL': {
-    guard:
-      'CAS статусу рядка першим записом у tx: bankTransaction.updateMany where status = MATCHED, paymentId = null, ' +
-      'matchedType = прочитаний → UNMATCHED; count=0 → 409 до сторно (BR-BANK-039, 040). Повторне скасування ' +
-      'не знаходить рядок у MATCHED, тож другого сторно немає.',
-    anchors: [
-      /tx\.bankTransaction\.updateMany\(\{\s*where:\s*\{[^}]*\bstatus:\s*'MATCHED'/,
-      /if\s*\(released\.count === 0\)\s*\{\s*throw\b/,
-    ],
-    argAnchors: [/documentType:\s*'BankTransaction'/, /documentId:\s*txId/],
-    raceTests: [
-      {
-        spec: 'bank-statements/bank-reconciliation.unreconcile.spec.ts',
-        title: 'CAS програв гонку, вид %s → 409, зворотного запису немає',
-      },
-    ],
-  },
 
   // ── Наряди ─────────────────────────────────────────────────────────────────────────────
   'modules/work-orders/work-order-stock-effects.service.ts#writeOffPartsAndCharge:CHARGE': {

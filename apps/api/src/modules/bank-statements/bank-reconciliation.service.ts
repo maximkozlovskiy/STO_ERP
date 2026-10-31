@@ -12,7 +12,6 @@ import {
   BankTransactionMatchType,
   BankTransactionSource,
   CounterpartyType,
-  SettlementTransactionType,
 } from '@prisma/client';
 import { kyivTodayYmd, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -154,23 +153,6 @@ const UNMATCHED_STATE = {
   matchedBy: null,
 } satisfies Prisma.BankTransactionUpdateManyMutationInput &
   Prisma.BankTransactionUncheckedUpdateManyInput;
-
-/**
- * Вихідні види, чиє скасування сторнує проведення в розрахунках контрагента: початковий тип
- * проведення → тип сторно (`unmatch` дзеркалить суму й курс початкового).
- */
-const SETTLEMENT_REVERSAL: Partial<
-  Record<
-    BankTransactionMatchType,
-    { original: SettlementTransactionType; cancel: SettlementTransactionType }
-  >
-> = {
-  CLIENT_REFUND: { original: 'REFUND_OUT', cancel: 'REFUND_OUT_CANCEL' },
-  SUPPLIER_REFUND_IN: {
-    original: 'SUPPLIER_PAYMENT_RETURN',
-    cancel: 'SUPPLIER_PAYMENT_RETURN_CANCEL',
-  },
-};
 
 /** BR-BANK-041: що зробити з рядком, внесеним разом із рознесенням (усе вже перевірено). */
 type AllocationPlan =
@@ -1646,9 +1628,9 @@ export class BankReconciliationService {
           throw notMatched();
         }
 
-        const mirrored = SETTLEMENT_REVERSAL[matchedType];
-        if (mirrored) {
+        if (matchedType === 'CLIENT_REFUND' || matchedType === 'SUPPLIER_REFUND_IN') {
           if (!row.counterpartyId) throw notMatched();
+          const toClient = matchedType === 'CLIENT_REFUND';
           // Сторно дзеркалить ПОЧАТКОВЕ проведення: його суму, валюту, курс і суму в базовій
           // валюті (CLIENT_REFUND; BR-BANK-046 — SUPPLIER_REFUND_IN). Перераховувати за курсом на
           // `operationDate` не можна — курс на цю дату могли додати чи виправити вже після
@@ -1659,7 +1641,7 @@ export class BankReconciliationService {
               orgId,
               documentType: 'BankTransaction',
               documentId: txId,
-              type: mirrored.original,
+              type: toClient ? 'REFUND_OUT' : 'SUPPLIER_PAYMENT_RETURN',
             },
             orderBy: { createdAt: 'desc' },
             select: { amount: true, currencyId: true, amountBase: true, rateUsed: true },
@@ -1671,7 +1653,7 @@ export class BankReconciliationService {
             orgId,
             {
               counterpartyId: row.counterpartyId,
-              type: mirrored.cancel,
+              type: toClient ? 'REFUND_OUT_CANCEL' : 'SUPPLIER_PAYMENT_RETURN_CANCEL',
               amount: Number(original.amount),
               currencyId: original.currencyId ?? undefined,
               conversion: {
