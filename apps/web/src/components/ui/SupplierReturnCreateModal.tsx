@@ -501,7 +501,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         size="content"
         hideClose
         headerContent={
-          <div className="flex items-center gap-6">
+          // Bug #1031: на 390 px шапка переноситься — інакше дата обрізана, а «Статус» за краєм картки.
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 min-w-0">
             {/* Date */}
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-[13px] font-medium text-muted-foreground">
@@ -695,8 +696,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
               onAdd={canEdit && !showLineInput ? () => setShowLineInput(true) : undefined}
             />
 
-            <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full table-fixed text-[12px]">
+            {/* Bug #1032: 390 px — таблиця гортається всередині картки, а не стискає стовпці. */}
+            <div className="rounded-lg border border-border overflow-x-auto">
+              <table className="w-full min-w-[640px] table-fixed text-[12px]">
                 <colgroup>
                   <col />
                   <col className="w-[8%]" />

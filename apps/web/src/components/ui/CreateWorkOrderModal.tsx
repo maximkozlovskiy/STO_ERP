@@ -2029,7 +2029,8 @@ export function CreateWorkOrderModal({
         footerClassName="bg-surface"
         hideClose
         headerContent={
-          <div className="flex items-center gap-6">
+          // Bug #1031: на 390 px шапка переноситься — інакше дата обрізана, а «Статус» за краєм картки.
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 min-w-0">
             <DocumentNumberField
               label={t('card.number')}
               value={isEditMode && woNumber ? woNumber : t('card.autoNumber')}

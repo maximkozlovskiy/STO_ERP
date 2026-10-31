@@ -685,7 +685,8 @@ export function StockDocumentCreateModal({
         size="content"
         hideClose
         headerContent={
-          <div className="flex items-center gap-6">
+          // Bug #1031: на 390 px шапка переноситься — інакше дата обрізана, а «Статус» за краєм картки.
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 min-w-0">
             <DocumentNumberField
               label={t('card.number')}
               value={isEditMode && docNumber ? docNumber : t('card.autoNumber')}
@@ -952,179 +953,184 @@ export function StockDocumentCreateModal({
                 </>
               )}
             </DocLinesHeader>
-            <table className="w-full table-fixed text-[12px]">
-              <colgroup>
-                <col className="w-[32%]" />
-                <col className="w-[14%]" />
-                <col className="w-[8%]" />
-                <col className="w-[11%]" />
-                <col className="w-[15%]" />
-                <col className="w-[15%]" />
-                <col className="w-[5%]" />
-              </colgroup>
-              <thead>
-                <tr className="border-b border-border bg-secondary/40">
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">
-                    {t('card.colGood')}
-                  </th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">
-                    {t('card.colSku')}
-                  </th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    {t('card.colUnit')}
-                  </th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    {t('card.colQty')}
-                  </th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    {t('card.colPrice')}
-                  </th>
-                  <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    {t('card.colSum')}
-                  </th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {/* Незавантажений документ (notLoaded) підказки не має: рядків ми ще не знаємо. */}
-                {fields.length === 0 && !showLineInput && !notLoaded && (
-                  <DocLinesEmptyRow colSpan={7} canEdit={canEdit} />
-                )}
-                {fields.map((line, index) => {
-                  const qtyRaw = watchedLines?.[index]?.quantity;
-                  const priceRaw = watchedLines?.[index]?.price;
-                  const qty = parseFloat(String(qtyRaw ?? line.quantity)) || 0;
-                  const price = parseFloat(String(priceRaw ?? line.price ?? ''));
-                  // goodName/unit — display-only поля, збережені у field-array при append/load,
-                  // але поза zod-схемою (payload їх не містить) → читаємо через cast.
-                  const display = line as unknown as {
-                    goodName?: string;
-                    goodSku?: string;
-                    unit?: string;
-                  };
-                  return (
-                    <tr key={line.id} className="hover:bg-secondary/20 group">
-                      <td className="px-3 py-2">{display.goodName}</td>
-                      <td
-                        className="px-3 py-2 truncate text-muted-foreground"
-                        title={display.goodSku}
-                      >
-                        {display.goodSku || '—'}
+            {/* Bug #1032: 390 px — таблиця гортається всередині картки, а не стискає стовпці. */}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] table-fixed text-[12px]">
+                <colgroup>
+                  <col className="w-[32%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[5%]" />
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-border bg-secondary/40">
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                      {t('card.colGood')}
+                    </th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">
+                      {t('card.colSku')}
+                    </th>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">
+                      {t('card.colUnit')}
+                    </th>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">
+                      {t('card.colQty')}
+                    </th>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">
+                      {t('card.colPrice')}
+                    </th>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground">
+                      {t('card.colSum')}
+                    </th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {/* Незавантажений документ (notLoaded) підказки не має: рядків ми ще не знаємо. */}
+                  {fields.length === 0 && !showLineInput && !notLoaded && (
+                    <DocLinesEmptyRow colSpan={7} canEdit={canEdit} />
+                  )}
+                  {fields.map((line, index) => {
+                    const qtyRaw = watchedLines?.[index]?.quantity;
+                    const priceRaw = watchedLines?.[index]?.price;
+                    const qty = parseFloat(String(qtyRaw ?? line.quantity)) || 0;
+                    const price = parseFloat(String(priceRaw ?? line.price ?? ''));
+                    // goodName/unit — display-only поля, збережені у field-array при append/load,
+                    // але поза zod-схемою (payload їх не містить) → читаємо через cast.
+                    const display = line as unknown as {
+                      goodName?: string;
+                      goodSku?: string;
+                      unit?: string;
+                    };
+                    return (
+                      <tr key={line.id} className="hover:bg-secondary/20 group">
+                        <td className="px-3 py-2">{display.goodName}</td>
+                        <td
+                          className="px-3 py-2 truncate text-muted-foreground"
+                          title={display.goodSku}
+                        >
+                          {display.goodSku || '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right text-muted-foreground">
+                          {display.unit}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">{fmtQty(qty)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {Number.isFinite(price) && price ? fmtMoney(price) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {Number.isFinite(price) && price ? fmtMoney(lineAmount(qty, price)) : '—'}
+                        </td>
+                        <td className="px-2 py-2">
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => remove(index)}
+                              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {/* Add line input row */}
+                  {canEdit && showLineInput && (
+                    <tr className="bg-primary/5">
+                      <td className="px-2 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setGoodSearchOpen(true)}
+                          className="w-full text-left rounded border border-input bg-background px-2 py-1 text-[12px] hover:border-primary transition-colors"
+                        >
+                          {newLine.goodName || (
+                            <span className="text-muted-foreground">
+                              {t('card.pickGoodPlaceholder')}
+                            </span>
+                          )}
+                        </button>
                       </td>
-                      <td className="px-3 py-2 text-right text-muted-foreground">{display.unit}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtQty(qty)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {Number.isFinite(price) && price ? fmtMoney(price) : '—'}
+                      <td className="px-2 py-1.5 truncate text-[11px] text-muted-foreground">
+                        {newLine.goodSku}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {Number.isFinite(price) && price ? fmtMoney(lineAmount(qty, price)) : '—'}
+                      <td className="px-2 py-1.5 text-right text-[11px] text-muted-foreground">
+                        {newLine.unit}
                       </td>
-                      <td className="px-2 py-2">
-                        {canEdit && (
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0.001"
+                          step="1"
+                          value={newLine.quantity}
+                          onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
+                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={newLine.price}
+                          onChange={e => setNewLine(l => ({ ...l, price: e.target.value }))}
+                          placeholder="0.00"
+                          className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
+                        {fmtMoney(
+                          lineAmount(
+                            parseFloat(newLine.quantity) || 0,
+                            parseFloat(newLine.price) || 0,
+                          ),
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <div className="flex gap-1">
                           <button
                             type="button"
-                            onClick={() => remove(index)}
-                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                            onClick={addLine}
+                            disabled={!newLine.goodId}
+                            className="text-primary hover:text-primary/80 disabled:opacity-30"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowLineInput(false);
+                              setNewLine(EMPTY_LINE);
+                            }}
+                            className="text-muted-foreground hover:text-foreground"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
-                  );
-                })}
-
-                {/* Add line input row */}
-                {canEdit && showLineInput && (
-                  <tr className="bg-primary/5">
-                    <td className="px-2 py-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setGoodSearchOpen(true)}
-                        className="w-full text-left rounded border border-input bg-background px-2 py-1 text-[12px] hover:border-primary transition-colors"
-                      >
-                        {newLine.goodName || (
-                          <span className="text-muted-foreground">
-                            {t('card.pickGoodPlaceholder')}
-                          </span>
-                        )}
-                      </button>
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-secondary/20">
+                    <td
+                      colSpan={5}
+                      className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground"
+                    >
+                      {t('card.total')}
                     </td>
-                    <td className="px-2 py-1.5 truncate text-[11px] text-muted-foreground">
-                      {newLine.goodSku}
+                    <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums">
+                      {total > 0 ? `${fmtMoney(total)} ₴` : '—'}
                     </td>
-                    <td className="px-2 py-1.5 text-right text-[11px] text-muted-foreground">
-                      {newLine.unit}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        type="number"
-                        min="0.001"
-                        step="1"
-                        value={newLine.quantity}
-                        onChange={e => setNewLine(l => ({ ...l, quantity: e.target.value }))}
-                        className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={newLine.price}
-                        onChange={e => setNewLine(l => ({ ...l, price: e.target.value }))}
-                        placeholder="0.00"
-                        className="w-full rounded border border-input bg-background px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground text-[11px]">
-                      {fmtMoney(
-                        lineAmount(
-                          parseFloat(newLine.quantity) || 0,
-                          parseFloat(newLine.price) || 0,
-                        ),
-                      )}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <div className="flex gap-1">
-                        <button
-                          type="button"
-                          onClick={addLine}
-                          disabled={!newLine.goodId}
-                          className="text-primary hover:text-primary/80 disabled:opacity-30"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowLineInput(false);
-                            setNewLine(EMPTY_LINE);
-                          }}
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
+                    <td />
                   </tr>
-                )}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-border bg-secondary/20">
-                  <td
-                    colSpan={5}
-                    className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground"
-                  >
-                    {t('card.total')}
-                  </td>
-                  <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums">
-                    {total > 0 ? `${fmtMoney(total)} ₴` : '—'}
-                  </td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
+                </tfoot>
+              </table>
+            </div>
             {currentStatus === 'CONFIRMED' && confirmedAt && (
               <p className="px-3 py-2 text-[12px] text-muted-foreground tabular-nums">
                 {t('card.confirmedAt', { date: fmtDateTime(confirmedAt) })}

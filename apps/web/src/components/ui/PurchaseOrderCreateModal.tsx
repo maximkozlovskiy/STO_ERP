@@ -1445,8 +1445,9 @@ export function PurchaseOrderCreateModal({
                 </button>
               )}
             </DocLinesHeader>
-            <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full table-fixed text-[12px]">
+            {/* Bug #1032: 390 px — таблиця гортається всередині картки, а не стискає й не ріже стовпці. */}
+            <div className="rounded-lg border border-border overflow-x-auto">
+              <table className="w-full min-w-[880px] table-fixed text-[12px]">
                 <colgroup>
                   <col />
                   <col className="w-[8%]" />
